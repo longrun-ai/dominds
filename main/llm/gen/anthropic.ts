@@ -64,6 +64,9 @@ function funcToolToAnthropic(funcTool: FuncTool): Tool {
 /**
  * Reconstruct Anthropic context from persisted messages with genseq tracking.
  * Groups messages by generation sequence and converts to SDK MessageParam[] format.
+ *
+ * CRITICAL: Tool calls (tool_use) must be immediately followed by their results (tool_result)
+ * in the same message sequence for proper Anthropic API compatibility.
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
   // Group messages by generation sequence
@@ -80,7 +83,6 @@ function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageP
   }
 
   // Sort messages within each generation sequence by their natural ordering
-  // (This preserves the order in which they were added to the dialog)
   const sortedGenseqs = Array.from(messagesByGenseq.keys()).sort((a, b) => a - b);
 
   const reconstructedMessages: MessageParam[] = [];
@@ -88,33 +90,65 @@ function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageP
   for (const genseq of sortedGenseqs) {
     const messages = messagesByGenseq.get(genseq)!;
 
-    // Preserve natural order - aggregate only, no reordering
-    // Group messages by role for proper Anthropic message structure
-    const assistantContent: AnthropicContentBlock[] = [];
-    const toolResults: AnthropicContentBlock[] = [];
+    // Track pending tool calls awaiting results
+    const pendingToolCalls: Map<string, AnthropicContentBlock> = new Map();
+    // Track accumulated content for current assistant message
+    const currentAssistantContent: AnthropicContentBlock[] = [];
 
-    for (const msg of messages) {
-      const blocks = chatMessageToContentBlocks(msg);
+    // Index to track position for pairing tool calls with their results
+    let msgIndex = 0;
+    while (msgIndex < messages.length) {
+      const msg = messages[msgIndex];
 
-      for (const block of blocks) {
-        if (block.type === 'tool_use') {
-          // Tool calls go with assistant message
-          assistantContent.push(block);
-        } else if (block.type === 'tool_result') {
-          // Tool results aggregated into single user message
-          toolResults.push(block);
-        } else if (msg.role === 'assistant') {
-          // Non-tool assistant content (text, thinking)
-          assistantContent.push(block);
-        }
-        // Non-tool user messages (text) are added as-is below
-      }
-
-      // Add non-tool user messages directly in natural order
-      if (msg.role === 'user' && !msg.type.startsWith('func_')) {
+      // Handle function call message - collect tool_use block
+      if (msg.type === 'func_call_msg') {
         const blocks = chatMessageToContentBlocks(msg);
         for (const block of blocks) {
-          if (block.type !== 'tool_result') {
+          if (block.type === 'tool_use') {
+            currentAssistantContent.push(block);
+            pendingToolCalls.set(block.id, block);
+          }
+        }
+      }
+      // Handle function result message - pair with pending tool call and flush
+      else if (msg.type === 'func_result_msg') {
+        const blocks = chatMessageToContentBlocks(msg);
+        for (const block of blocks) {
+          if (block.type === 'tool_result') {
+            // Verify this result matches a pending tool call
+            const matchingCall = pendingToolCalls.get(block.tool_use_id);
+            if (matchingCall) {
+              pendingToolCalls.delete(block.tool_use_id);
+
+              // Flush accumulated assistant content (if any pending tool calls)
+              if (currentAssistantContent.length > 0) {
+                reconstructedMessages.push({
+                  role: 'assistant',
+                  content: currentAssistantContent,
+                });
+                currentAssistantContent.length = 0;
+              }
+
+              // Emit assistant message with tool_use
+              reconstructedMessages.push({
+                role: 'assistant',
+                content: [matchingCall],
+              });
+
+              // Emit user message with tool_result immediately after
+              reconstructedMessages.push({
+                role: 'user',
+                content: [block],
+              });
+            }
+          }
+        }
+      }
+      // Handle non-tool user messages (text content) - emit directly
+      else if (msg.role === 'user' && !msg.type.startsWith('func_')) {
+        const blocks = chatMessageToContentBlocks(msg);
+        for (const block of blocks) {
+          if (block.type === 'text' || block.type === 'thinking') {
             reconstructedMessages.push({
               role: 'user',
               content: [block],
@@ -122,21 +156,25 @@ function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageP
           }
         }
       }
+      // Handle non-tool assistant messages (saying, thinking)
+      else if (
+        msg.role === 'assistant' &&
+        (msg.type === 'saying_msg' || msg.type === 'thinking_msg')
+      ) {
+        const blocks = chatMessageToContentBlocks(msg);
+        for (const block of blocks) {
+          currentAssistantContent.push(block);
+        }
+      }
+
+      msgIndex++;
     }
 
-    // Add assistant message with aggregated tool calls (if any)
-    if (assistantContent.length > 0) {
+    // Flush any remaining assistant content at end of generation sequence
+    if (currentAssistantContent.length > 0) {
       reconstructedMessages.push({
         role: 'assistant',
-        content: assistantContent,
-      });
-    }
-
-    // Add user message with aggregated tool results (if any)
-    if (toolResults.length > 0) {
-      reconstructedMessages.push({
-        role: 'user',
-        content: toolResults,
+        content: currentAssistantContent,
       });
     }
   }

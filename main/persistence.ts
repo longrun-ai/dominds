@@ -2831,6 +2831,7 @@ export class DialogPersistence {
           messages.push({
             type: 'prompting_msg',
             role: 'user',
+            genseq: event.genseq,
             msgId: event.msgId,
             content: event.content,
           });

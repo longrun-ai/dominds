@@ -316,6 +316,11 @@ function latestBubble() {
 function snapshot() {
   const dialogContainer = getDialogContainer();
   const shadow = dialogContainer?.shadowRoot;
+  const app = getApp();
+
+  // Get current dialog info from app
+  const currentDialogInfo = app?.getCurrentDialogInfo?.() || null;
+
   if (!shadow) {
     return {
       userTexts: [],
@@ -324,6 +329,7 @@ function snapshot() {
       sayings: [],
       codeHeaders: [],
       codeContents: [],
+      dialogInfo: currentDialogInfo,
     };
   }
 
@@ -344,6 +350,7 @@ function snapshot() {
     codeContents: Array.from(
       shadow.querySelectorAll(`${sel.genBubble} ${sel.codeCompleted} ${sel.codeContent}`),
     ).map(mapText),
+    dialogInfo: currentDialogInfo,
   };
 }
 
@@ -355,6 +362,7 @@ function snapshot() {
  * Creates a new dialog using the component's public API method.
  * Source: dominds-app.tsx line 2228
  * Component method: createDialog(agentId, taskDocPath)
+ * Verifies the dialog title shows expected agent - throws if wrong responder.
  */
 async function createDialog(callsign, taskDocPath) {
   const agentId = callsign.replace(/^@/, '');
@@ -367,8 +375,23 @@ async function createDialog(callsign, taskDocPath) {
     throw new Error('createDialog method not available on dominds-app');
   }
 
+  // Capture original title
+  const originalTitle = getCurrentDialogTitle();
+
   // Call the real createDialog method
   const dialogInfo = await app.createDialog(agentId, taskDocPath);
+
+  // Wait for title to change
+  await waitUntil(() => {
+    const newTitle = getCurrentDialogTitle();
+    return newTitle !== originalTitle;
+  }, 5000);
+
+  // Verify the new title includes expected agent
+  const newTitle = getCurrentDialogTitle();
+  if (!newTitle.includes(`@${agentId}`)) {
+    throw new Error(`Expected @${agentId} in dialog title, got: "${newTitle}"`);
+  }
 
   return {
     callsign: agentId,
@@ -549,6 +572,18 @@ function getCurrentDialogInfo() {
   }
 
   return app.getCurrentDialogInfo();
+}
+
+/**
+ * Gets the current dialog title text from #current-dialog-title element.
+ * Element is in app's Shadow DOM.
+ * @returns {string} The dialog title text (e.g., "@cmdr - task-name")
+ */
+function getCurrentDialogTitle() {
+  const shadow = getAppShadow();
+  if (!shadow) return '';
+  const titleEl = shadow.querySelector('#current-dialog-title');
+  return titleEl ? (titleEl.textContent || '').trim() : '';
 }
 
 /**
@@ -1094,6 +1129,77 @@ async function answerQ4H(answer) {
 }
 
 // ============================================
+// Agent Function Call Detection & Nudging
+// ============================================
+
+/**
+ * Detects if the last assistant message contains a function call.
+ * Looks for .func-call-section elements which contain the function name in .func-call-title
+ * @param {string} [toolName] - Optional tool name to check for (e.g., 'shell_cmd')
+ * @returns {Object} Result with hasFuncCall (boolean) and funcCallInfo (object)
+ */
+function detectFuncCall(toolName) {
+  const dialogContainer = getDialogContainer();
+  const shadow = dialogContainer?.shadowRoot;
+  if (!shadow) {
+    return { hasFuncCall: false, toolName: null, index: -1 };
+  }
+
+  // Look for func-call-section elements in the dialog
+  const funcCallSections = shadow.querySelectorAll('.func-call-section');
+
+  if (funcCallSections.length === 0) {
+    return { hasFuncCall: false, toolName: null, index: -1 };
+  }
+
+  // Get the last func-call-section
+  const lastIndex = funcCallSections.length - 1;
+  const lastSection = funcCallSections[lastIndex];
+
+  // Extract function name from func-call-title element
+  const titleEl = lastSection.querySelector('.func-call-title');
+  const titleText = titleEl ? (titleEl.textContent || '').trim() : '';
+
+  // Extract arguments from func-call-arguments element
+  const argsEl = lastSection.querySelector('.func-call-arguments');
+  const argsText = argsEl ? (argsEl.textContent || '').trim() : '';
+
+  // Extract result from func-call-result element (if visible)
+  const resultEl = lastSection.querySelector('.func-call-result');
+  const resultText = resultEl && resultEl.style.display !== 'none'
+    ? (resultEl.textContent || '').trim()
+    : '';
+
+  // Extract the function name from "Function: name" format
+  const funcNameMatch = titleText.match(/^Function:\s*(.+)$/);
+  const funcName = funcNameMatch ? funcNameMatch[1].trim() : '';
+
+  if (toolName) {
+    // Check if the last func call is for the specified tool
+    const hasTool = funcName === toolName || titleText.includes(toolName);
+    return {
+      hasFuncCall: hasTool,
+      toolName: hasTool ? funcName : null,
+      index: hasTool ? lastIndex : -1,
+      header: hasTool ? titleText : null,
+      content: hasTool ? argsText : null,
+      result: hasTool ? resultText : null,
+      funcName: hasTool ? funcName : null,
+    };
+  }
+
+  return {
+    hasFuncCall: true,
+    toolName: funcName || null,
+    index: lastIndex,
+    header: titleText,
+    content: argsText,
+    result: resultText,
+    funcName,
+  };
+}
+
+// ============================================
 // Export to window.__e2e__
 // ============================================
 
@@ -1118,6 +1224,8 @@ function setGlobal() {
     noLingering,
     latestUserText,
     waitUntil,
+    // Function call detection
+    detectFuncCall,
     // Dialog creation
     createDialog,
     // Dialog selection
@@ -1129,6 +1237,7 @@ function setGlobal() {
     getSubdialogHierarchy,
     navigateToParent,
     getCurrentDialogInfo,
+    getCurrentDialogTitle,
     // Reminders widget
     openReminders,
     closeReminders,
