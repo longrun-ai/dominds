@@ -42,9 +42,11 @@ Frontend (Vite dev server) should be on port 5555
 Available API endpoints:
 • GET /api/health - Server health check
 • GET /api/live-reload - Development status
-• GET /api/team/members - Team configuration
-• GET /api/dialogs - Dialog management
+• GET /api/team/config - Team configuration
+• GET /api/dialogs - List all dialogs
 • POST /api/dialogs - Create new dialog
+• GET /api/dialogs/:id - Get specific dialog
+• GET /api/dialogs/:root/:self/hierarchy - Get dialog hierarchy
 • GET /api/task-documents - Task document listing
 
 WebSocket: ws://localhost:5556/ws
