@@ -234,7 +234,18 @@ export namespace Team {
       const team: Team = new Team({
         memberDefaults: dijiang,
         defaultResponder: 'dijiang',
-        members: { dijiang },
+        members: {
+          dijiang,
+          cmdr: new Team.Member({
+            id: 'cmdr',
+            icon: 'ᯓ★',
+            name: 'Commander',
+            provider,
+            model,
+            streaming: false,
+            toolsets: ['os'],
+          }),
+        },
       });
       return team;
     }
