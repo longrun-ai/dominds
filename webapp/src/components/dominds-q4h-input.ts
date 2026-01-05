@@ -88,8 +88,6 @@ export class DomindsQ4HInput extends HTMLElement {
       );
     }
 
-    // Get current IDs
-    const currentIds = new Set(this.questions.map((q) => q.id));
     const newIds = new Set(questions.map((q) => q.id));
 
     // Remove questions not in new list
@@ -622,21 +620,20 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  private async sendMessage(): Promise<void> {
+  private async sendMessage(): Promise<{ success: true; msgId: string }> {
     const content = this.textInput.value.trim();
 
     // Validate input
     if (!content) {
-      return;
+      throw new Error('Message content is empty');
     }
 
     if (!this.currentDialog) {
-      this.showError('No active dialog');
-      return;
+      throw new Error('No active dialog');
     }
 
     if (this.props.disabled) {
-      return;
+      throw new Error('Input is disabled');
     }
 
     // Generate message ID
@@ -672,10 +669,13 @@ export class DomindsQ4HInput extends HTMLElement {
           composed: true,
         }),
       );
+
+      return { success: true, msgId };
     } catch (error) {
       console.error('Failed to send message:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       this.showError(errorMessage);
+      throw error;
     }
   }
 
