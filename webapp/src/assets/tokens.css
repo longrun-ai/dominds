@@ -1,0 +1,190 @@
+/*
+ Dominds WebUI Tokens (Shadow DOM)
+ Purpose: Global CSS custom properties (design tokens) consumed by Shadow DOM components.
+ IMPORTANT: Shadow DOM encapsulates component styles; only CSS variables cross the boundary.
+ DO NOT add global class selectors here. Maintain variables-only to avoid unintended global styling.
+ To adjust theming, modify these variables or component-local styles within each shadow root.
+*/
+
+:root {
+  /* Palette */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f8fafc;
+  --color-bg-tertiary: #f1f5f9;
+  --color-fg-primary: #0f172a;
+  --color-fg-secondary: #475569;
+  --color-fg-tertiary: #64748b;
+  --color-accent-primary: #3b82f6;
+  --color-accent-secondary: #60a5fa;
+  --color-border-primary: #e2e8f0;
+  --color-border-secondary: #cbd5e1;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #06b6d4;
+
+  /* Dominds component tokens (defaults) */
+  --dominds-bg: #ffffff;
+  --dominds-fg: #333333;
+  --dominds-input-bg: #f8f9fa;
+  --dominds-header-bg: #f8f9fa;
+  --dominds-sidebar-bg: #f8f9fa;
+  --dominds-toolbar-bg: #f8f9fa;
+  --dominds-border: #e0e0e0;
+  --dominds-primary: #007acc;
+  --dominds-primary-hover: #005ea6;
+  --dominds-secondary: #6c757d;
+  --dominds-secondary-hover: #545b62;
+  --dominds-disabled: #cccccc;
+  --dominds-muted: #666666;
+  --dominds-hover: #f0f0f0;
+  --dominds-success: #28a745;
+  --dominds-success-bg: #d4edda;
+  --dominds-warning: #ffc107;
+  --dominds-warning-bg: #fff3cd;
+  --dominds-danger: #dc3545;
+  --dominds-danger-bg: #f8d7da;
+  --dominds-info: #007bff;
+
+  /* Status blocks (shared) */
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --warning-bg: #fef3c7;
+  --warning-text: #92400e;
+  --error-bg: #fee2e2;
+  --error-text: #991b1b;
+  --info-bg: #e0f2fe;
+  --info-text: #0c4a6e;
+
+  /* Spacing & typography */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+
+  /* Radii & elevation */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Motion */
+  --transition-fast: 0.15s ease-in-out;
+  --transition-normal: 0.25s ease-in-out;
+  --transition-slow: 0.35s ease-in-out;
+}
+
+/* System preference dark scheme: provides sensible defaults
+   Note: dominds-* variables may be overridden by runtime theme injection. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #0f172a;
+    --color-bg-secondary: #1e293b;
+    --color-bg-tertiary: #334155;
+    --color-fg-primary: #f8fafc;
+    --color-fg-secondary: #cbd5e1;
+    --color-fg-tertiary: #94a3b8;
+    --color-accent-primary: #60a5fa;
+    --color-accent-secondary: #3b82f6;
+    --color-border-primary: #334155;
+    --color-border-secondary: #475569;
+
+    --dominds-bg: #2d2d2d;
+    --dominds-fg: #ffffff;
+    --dominds-input-bg: #1e293b;
+    --dominds-header-bg: #1a1a1a;
+    --dominds-sidebar-bg: #1a1a1a;
+    --dominds-toolbar-bg: #1a1a1a;
+    --dominds-border: #404040;
+    --dominds-primary: #60a5fa;
+    --dominds-primary-hover: #3b82f6;
+    --dominds-secondary: #6c757d;
+    --dominds-secondary-hover: #545b62;
+    --dominds-disabled: #cccccc;
+    --dominds-muted: #cccccc;
+    --dominds-hover: #3a3a3a;
+    --dominds-success: #34d399;
+    --dominds-success-bg: #064e3b;
+    --dominds-warning: #fbbf24;
+    --dominds-warning-bg: #78350f;
+    --dominds-danger: #f87171;
+    --dominds-danger-bg: #7f1d1d;
+    --dominds-info: #22d3ee;
+
+    --color-success: #34d399;
+    --color-warning: #fbbf24;
+    --color-error: #f87171;
+    --color-info: #22d3ee;
+    --success-bg: #064e3b;
+    --success-text: #6ee7b7;
+    --warning-bg: #78350f;
+    --warning-text: #fcd34d;
+    --error-bg: #7f1d1d;
+    --error-text: #fca5a5;
+    --info-bg: #164e63;
+    --info-text: #67e8f9;
+  }
+}
+
+/* Explicit theme overrides via data-theme attribute */
+[data-theme='light'] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f8fafc;
+  --color-bg-tertiary: #f1f5f9;
+  --color-fg-primary: #0f172a;
+  --color-fg-secondary: #475569;
+  --color-fg-tertiary: #64748b;
+  --color-accent-primary: #3b82f6;
+  --color-accent-secondary: #60a5fa;
+  --color-border-primary: #e2e8f0;
+  --color-border-secondary: #cbd5e1;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #06b6d4;
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --warning-bg: #fef3c7;
+  --warning-text: #92400e;
+  --error-bg: #fee2e2;
+  --error-text: #991b1b;
+  --info-bg: #e0f2fe;
+  --info-text: #0c4a6e;
+}
+
+[data-theme='dark'] {
+  --color-bg-primary: #0f172a;
+  --color-bg-secondary: #1e293b;
+  --color-bg-tertiary: #334155;
+  --color-fg-primary: #f8fafc;
+  --color-fg-secondary: #cbd5e1;
+  --color-fg-tertiary: #94a3b8;
+  --color-accent-primary: #60a5fa;
+  --color-accent-secondary: #3b82f6;
+  --color-border-primary: #334155;
+  --color-border-secondary: #475569;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+  --color-info: #22d3ee;
+  --success-bg: #064e3b;
+  --success-text: #6ee7b7;
+  --warning-bg: #78350f;
+  --warning-text: #fcd34d;
+  --error-bg: #7f1d1d;
+  --error-text: #fca5a5;
+  --info-bg: #164e63;
+  --info-text: #67e8f9;
+}

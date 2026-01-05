@@ -1,0 +1,40 @@
+# Task Document Ignore Patterns
+# This file controls which files are excluded from the task document search
+
+# Team mindsets
+.team/**/*
+
+# Ignore common build artifacts
+dist/**/*
+build/**/*
+*.tsbuildinfo
+
+# Ignore test files that shouldn't be task documents
+test-*.md
+tests/**/*
+test-results/**/*
+
+# Ignore configuration files
+config/**/*
+.env*
+*.config.*
+
+# Ignore generated documentation
+api-docs/**/*
+changelog.md
+
+# Ignore files with these names (regardless of extension)
+draft-*
+TODO-*
+notes-*
+temp-*
+old-*
+archive/**/*
+
+# Example of directory-specific ignore patterns
+docs/design/**/*
+docs/specifications/**/*
+
+# You can also use glob patterns
+**/node_modules/**/*
+**/coverage/**/*

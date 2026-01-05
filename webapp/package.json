@@ -1,0 +1,26 @@
+{
+  "name": "dominds-webapp",
+  "version": "0.0.0",
+  "private": true,
+  "license": "LGPL-3.0-or-later",
+  "description": "dominds webui/frontend",
+  "scripts": {
+    "start": "echo 'Dominds WebApp is served by backend server.' && echo 'Dev: cd ../../ && ./dev-server.sh'",
+    "dev": "echo 'Dominds WebApp is served by backend server.' && echo 'Dev: cd ../../ && ./dev-server.sh'",
+    "test": "echo 'Dominds WebApp: Use lint:types for type checking.'",
+    "build": "echo 'Dominds WebApp is built by parent package.' && echo 'Dev: cd ../../ && npm run build:frontend'",
+    "clean": "echo 'Dominds WebApp artifacts cleaned by parent package.' && echo 'Dev: cd ../../ && npm run clean'",
+    "serve": "echo 'Dominds WebApp is served by backend server.' && echo 'Dev: cd ../../ && ./dev-server.sh'",
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" && prettier --write \"src/**/*.{css,md,json,html}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\" && prettier --check \"src/**/*.{css,md,json,html}\"",
+    "lint:types": "tsc -p src/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^16.4.1",
+    "mermaid": "^11.12.1"
+  },
+  "devDependencies": {
+    "vite": "^7.3.0"
+  }
+}

@@ -1,0 +1,541 @@
+/**
+ * HTTP API Client for Dominds WebUI
+ * Handles REST API communication with the backend server
+ */
+
+import {
+  ApiDialogHierarchyResponse,
+  ApiRootDialogResponse,
+  ApiSubdialogResponse,
+} from '../shared/types';
+import { formatUnifiedTimestamp } from '../shared/utils/time';
+
+export interface FrontendTeamMember {
+  id: string;
+  name: string;
+  provider?: string;
+  model?: string;
+  gofor?: string[];
+  toolsets?: string[];
+  tools?: string[];
+  icon?: string;
+  streaming?: boolean;
+}
+
+export interface FrontendTeam {
+  memberDefaults: FrontendTeamMember;
+  defaultResponder?: string;
+  members: Record<string, FrontendTeamMember>;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+  timestamp?: string;
+}
+
+interface ApiError extends Error {
+  status?: number;
+  code?: string;
+  response?: unknown;
+}
+
+type RequestOptions = {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  headers?: Record<string, string>;
+  body?: unknown;
+  timeout?: number;
+};
+
+export class ApiClient {
+  private baseURL: string;
+  private defaultHeaders: Record<string, string>;
+  private timeout: number;
+
+  constructor(baseURL: string = 'http://localhost:5556', timeout: number = 30000) {
+    this.baseURL = baseURL;
+    this.timeout = timeout;
+    this.defaultHeaders = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+  }
+
+  /**
+   * Make an HTTP request
+   */
+  private async request<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<ApiResponse<T>> {
+    const { method = 'GET', headers = {}, body, timeout = this.timeout } = options;
+
+    const url = `${this.baseURL}${endpoint}`;
+
+    const config: RequestInit = {
+      method,
+      headers: {
+        ...this.defaultHeaders,
+        ...headers,
+      },
+      signal: AbortSignal.timeout(timeout),
+    };
+
+    if (body && method !== 'GET') {
+      config.body = typeof body === 'string' ? body : JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(url, config);
+      const contentType = response.headers.get('content-type');
+
+      let data: unknown;
+      if (contentType?.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+
+      if (!response.ok) {
+        const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as ApiError;
+        error.status = response.status;
+        error.response = data;
+        throw error;
+      }
+
+      return {
+        success: true,
+        data: data as T,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        const timeoutError = new Error('Request timeout') as ApiError;
+        timeoutError.code = 'TIMEOUT';
+        throw timeoutError;
+      }
+
+      const apiError = error as ApiError;
+      console.error(`API request failed: ${method} ${url}`, apiError);
+
+      return {
+        success: false,
+        error: apiError.message,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      };
+    }
+  }
+
+  /**
+   * Health check endpoint
+   */
+  async healthCheck(): Promise<ApiResponse<{ status: string; uptime: number; timestamp: string }>> {
+    return this.request('/api/live-reload');
+  }
+
+  /**
+   * Get server information
+   */
+  async getServerInfo(): Promise<ApiResponse<{ name: string; version: string; mode: string }>> {
+    return this.request('/api/info');
+  }
+
+  /**
+   * Get all root dialogs (renamed from getDialogs to clarify it only returns root dialogs)
+   */
+  async getRootDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+    const response = await this.request('/api/dialogs');
+    if (response.success && response.data) {
+      const payload = response.data as
+        | { dialogs: ApiRootDialogResponse[] }
+        | ApiRootDialogResponse[];
+      const dialogs = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.dialogs)
+          ? payload.dialogs
+          : [];
+      return {
+        success: true,
+        data: dialogs,
+        timestamp: response.timestamp,
+      };
+    }
+    return response as ApiResponse<ApiRootDialogResponse[]>;
+  }
+
+  /**
+   * Get all dialogs (backward-compatible alias for getRootDialogs)
+   */
+  async getDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+    return this.getRootDialogs();
+  }
+
+  /**
+   * Get a specific dialog by ID
+   */
+  async getDialog(
+    rootDialogId: string,
+    selfDialogId?: string,
+  ): Promise<ApiResponse<ApiSubdialogResponse | ApiRootDialogResponse>> {
+    const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}`);
+  }
+
+  /**
+   * Get full hierarchy for a single root dialog
+   */
+  async getDialogHierarchy(
+    rootDialogId: string,
+  ): Promise<ApiResponse<ApiDialogHierarchyResponse['hierarchy']>> {
+    const response = await this.request(
+      `/api/dialogs/${encodeURIComponent(rootDialogId)}/hierarchy`,
+    );
+    if (response.success && response.data) {
+      // Backend returns {success: true, hierarchy: {root, subdialogs}}
+      // Unwrap to get just the hierarchy object
+      const payload = response.data as { hierarchy: ApiDialogHierarchyResponse['hierarchy'] };
+      if (payload && payload.hierarchy) {
+        return { success: true, data: payload.hierarchy, timestamp: response.timestamp };
+      }
+    }
+    return response as ApiResponse<ApiDialogHierarchyResponse['hierarchy']>;
+  }
+
+  /**
+   * Create a new dialog
+   */
+  async createDialog(
+    agentId: string,
+    taskDocPath?: string,
+  ): Promise<
+    ApiResponse<{ selfId: string; rootId: string; agentId: string; taskDocPath?: string }>
+  > {
+    return this.request('/api/dialogs', {
+      method: 'POST',
+      body: {
+        agentId,
+        taskDocPath,
+      },
+    });
+  }
+
+  /**
+   * Update dialog metadata
+   */
+  async updateDialog(
+    rootDialogId: string,
+    selfDialogId: string | undefined,
+    updates: Record<string, unknown>,
+  ): Promise<ApiResponse<void>> {
+    const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}`, {
+      method: 'PATCH',
+      body: updates,
+    });
+  }
+
+  /**
+   * Delete a dialog
+   */
+  async deleteDialog(
+    rootDialogId: string,
+    selfDialogId?: string,
+  ): Promise<ApiResponse<{ deleted: boolean }>> {
+    const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Get messages for a dialog
+   */
+  async getMessages(
+    rootDialogId: string,
+    selfDialogId?: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<ApiResponse<any[]>> {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (offset) params.append('offset', offset.toString());
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
+    const response = await this.request(
+      `/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}/messages${query}`,
+    );
+
+    if (response.success && response.data) {
+      return {
+        success: true,
+        data: Array.isArray(response.data) ? response.data : [],
+        timestamp: response.timestamp,
+      };
+    }
+    return response as ApiResponse<any[]>;
+  }
+
+  /**
+   * Send a message to a dialog
+   */
+  async sendMessage(
+    rootDialogId: string,
+    selfDialogId: string | undefined,
+    content: string,
+  ): Promise<ApiResponse<any>> {
+    const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}/messages`, {
+      method: 'POST',
+      body: {
+        content,
+        role: 'user',
+      },
+    });
+  }
+
+  // Removed legacy getTeamMembers; use getTeamConfig instead
+
+  /**
+   * Get team configuration
+   */
+  async getTeamConfig(): Promise<ApiResponse<{ configuration: FrontendTeam }>> {
+    return this.request('/api/team/config');
+  }
+
+  /**
+   * Upload file for processing
+   */
+  async uploadFile(
+    file: File,
+    metadata?: Record<string, any>,
+  ): Promise<ApiResponse<{ fileId: string; filename: string; size: number; url: string }>> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
+
+    return this.request('/api/files/upload', {
+      method: 'POST',
+      headers: {
+        // Don't set Content-Type for FormData, let browser set it with boundary
+      },
+      body: formData,
+      timeout: 60000, // Longer timeout for file uploads
+    });
+  }
+
+  /**
+   * Download file by ID
+   */
+  async downloadFile(fileId: string): Promise<ApiResponse<Blob>> {
+    const response = await fetch(`${this.baseURL}/api/files/${encodeURIComponent(fileId)}`, {
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    return {
+      success: true,
+      data: blob,
+      timestamp: formatUnifiedTimestamp(new Date()),
+    };
+  }
+
+  /**
+   * Search dialogs
+   */
+  async searchDialogs(
+    query: string,
+    filters?: { agentId?: string; status?: string; dateRange?: { start: string; end: string } },
+  ): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+    const params = new URLSearchParams();
+    params.append('q', query);
+
+    if (filters?.agentId) params.append('agentId', filters.agentId);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.dateRange) {
+      params.append('from', filters.dateRange.start);
+      params.append('to', filters.dateRange.end);
+    }
+
+    const response = await this.request('/api/dialogs/search?' + params.toString());
+    if (response.success && response.data) {
+      return {
+        success: true,
+        data: Array.isArray(response.data) ? (response.data as ApiRootDialogResponse[]) : [],
+        timestamp: response.timestamp,
+      };
+    }
+    return response as ApiResponse<ApiRootDialogResponse[]>;
+  }
+
+  /**
+   * Get application statistics
+   */
+  async getStats(): Promise<
+    ApiResponse<{
+      totalDialogs: number;
+      activeDialogs: number;
+      totalMessages: number;
+      uptime: number;
+      memoryUsage: unknown;
+    }>
+  > {
+    return this.request('/api/stats');
+  }
+
+  /**
+   * Export dialog data
+   */
+  async exportDialogs(
+    format: 'json' | 'csv' | 'txt' = 'json',
+    dialogIds?: string[],
+  ): Promise<ApiResponse<Blob>> {
+    const params = new URLSearchParams();
+    params.append('format', format);
+    if (dialogIds?.length) {
+      params.append('dialogIds', dialogIds.join(','));
+    }
+
+    const response = await fetch(`${this.baseURL}/api/export?${params.toString()}`, {
+      signal: AbortSignal.timeout(this.timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    return {
+      success: true,
+      data: blob,
+      timestamp: formatUnifiedTimestamp(new Date()),
+    };
+  }
+
+  /**
+   * Set authentication token for protected endpoints
+   */
+  setAuthToken(token: string): void {
+    this.defaultHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
+  /**
+   * Remove authentication token
+   */
+  clearAuthToken(): void {
+    delete this.defaultHeaders['Authorization'];
+  }
+
+  /**
+   * Update base URL
+   */
+  setBaseURL(baseURL: string): void {
+    this.baseURL = baseURL;
+  }
+
+  /**
+   * Get current base URL
+   */
+  getBaseURL(): string {
+    return this.baseURL;
+  }
+
+  /**
+   * Create a file download helper
+   */
+  createDownload(filename: string, blob: Blob): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Singleton instance for global use
+let globalApiClient: ApiClient | null = null;
+
+export function getApiClient(config?: { baseURL?: string; timeout?: number }): ApiClient {
+  if (!globalApiClient) {
+    let baseURL = config?.baseURL;
+    if (!baseURL) {
+      const { protocol, hostname, port } = window.location;
+      baseURL = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+    }
+    const timeout = config?.timeout || 30000;
+    globalApiClient = new ApiClient(baseURL, timeout);
+  }
+  return globalApiClient;
+}
+
+// Utility functions
+export const apiUtils = {
+  /**
+   * Check if the error is a network error
+   */
+  isNetworkError(error: unknown): boolean {
+    return error instanceof TypeError && error.message.includes('fetch');
+  },
+
+  /**
+   * Check if the error is a timeout error
+   */
+  isTimeoutError(error: unknown): boolean {
+    return error instanceof Error && error.name === 'TimeoutError';
+  },
+
+  /**
+   * Get a user-friendly error message
+   */
+  getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      if (apiUtils.isTimeoutError(error)) {
+        return 'Request timed out. Please check your connection and try again.';
+      }
+      if (apiUtils.isNetworkError(error)) {
+        return 'Network error. Please check your internet connection.';
+      }
+      return error.message;
+    }
+    return 'An unknown error occurred';
+  },
+
+  /**
+   * Retry a function with exponential backoff
+   */
+  async retry<T>(
+    fn: () => Promise<T>,
+    maxAttempts: number = 3,
+    delayMs: number = 1000,
+  ): Promise<T> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        if (attempt === maxAttempts) {
+          break;
+        }
+
+        const backoffDelay = delayMs * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+      }
+    }
+
+    throw lastError;
+  },
+};

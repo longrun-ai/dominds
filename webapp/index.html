@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Dominds - AI Dialog Management System" />
+    <link rel="icon" type="image/svg+xml" href="src/assets/favicon.svg" />
+    <title>Dominds - DevOps Mindsets</title>
+    <style>
+      /* Immediate theme styling to prevent flash on page load */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: rgb(248, 249, 250);
+        color: #333333;
+      }
+
+      /* Dark theme fallback */
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #2d2d2d;
+          color: #ffffff;
+        }
+      }
+
+      /* Fallback for no-js scenario */
+      noscript .noscript-message {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: rgb(248, 249, 250);
+        color: #333333;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" role="application" aria-label="Dominds WebUI" data-cy="app-container">
+      <noscript>
+        <div class="noscript-message">
+          <h1>JavaScript Required</h1>
+          <p>
+            This application requires JavaScript to function properly. Please enable JavaScript in
+            your browser settings.
+          </p>
+        </div>
+      </noscript>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

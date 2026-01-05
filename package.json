@@ -1,0 +1,63 @@
+{
+  "name": "dominds",
+  "version": "0.1.0",
+  "description": "in-tree developer team with self-improving mindsets",
+  "type": "commonjs",
+  "private": false,
+  "bin": {
+    "dominds": "dist/cli.js"
+  },
+  "main": "dist/cli.js",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
+    "dev": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
+    "test": "echo 'Dominds backend: Use lint:types for type checking.'",
+    "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
+    "build": "npm run build:backend && npm run build:frontend",
+    "clean": "rm -rf ./dist",
+    "lint": "npm run lint:types && npm run format:check",
+    "lint:types": "tsc -p main/tsconfig.json --noEmit && tsc -p webapp/src/tsconfig.json --noEmit",
+    "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
+    "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
+    "build:backend": "tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null",
+    "build:frontend": "cd webapp && npx vite build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/longrun-ai/dominds.git"
+  },
+  "keywords": [
+    "agentic",
+    "devops"
+  ],
+  "author": "Compl Yue",
+  "license": "LGPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/longrun-ai/dominds/issues"
+  },
+  "homepage": "https://github.com/longrun-ai/dominds#readme",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.67.0",
+    "async-mutex": "^0.5.0",
+    "openai": "^6.4.0",
+    "ws": "^8.18.3",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.11",
+    "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

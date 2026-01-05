@@ -1,0 +1,7 @@
+responses:
+  - input: 'Stream test: respond in short chunks.'
+    response: 'Chunked mock response ready. This should stream as space-separated tokens for test verification.'
+  - input: 'Verify streaming dispatch and event flow.'
+    response: 'Driver streaming verified. Event sink receives start, chunk, and end events without errors.'
+  - input: 'Reminder-only loop regression.'
+    response: "@add_reminder\nThis is a reminder created by mock LLM."

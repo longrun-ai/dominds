@@ -1,0 +1,11 @@
+{
+  "extends": "../main/tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "paths": {
+      "dominds": ["../main/index.ts"],
+      "dominds/*": ["../main/*.ts"]
+    }
+  }
+}

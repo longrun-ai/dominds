@@ -1,0 +1,9 @@
+member_defaults:
+  provider: local-mock
+  model: default
+default_responder: tester
+members:
+  tester:
+    name: Tester
+    provider: local-mock
+    model: default

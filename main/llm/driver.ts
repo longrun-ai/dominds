@@ -1,0 +1,1980 @@
+/**
+ * Module: llm/driver
+ *
+ * Drives dialog streaming end-to-end:
+ * - Loads minds/tools, selects generator, streams outputs
+ * - Parses texting/code blocks, executes tools, handles human prompts
+ * - Supports autonomous teammate calls: when an agent mentions a teammate (e.g., @cmdr), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
+
+import { inspect } from 'util';
+import { extractErrorDetails, log } from '../log';
+import { loadAgentMinds } from '../minds/load';
+import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import type { NewQ4HAskedEvent } from '../shared/types/dialog';
+import type { HumanQuestion } from '../shared/types/storage';
+import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { Team } from '../team';
+import { TextingEventsReceiver, TextingStreamParser } from '../texting';
+import type { ToolArguments } from '../tool';
+import { FuncTool, TextingTool, Tool, validateArgs } from '../tool';
+import { getTool } from '../tools/registry';
+import { generateDialogID } from '../utils/id';
+import { formatTaskDocContent } from '../utils/task-doc';
+import {
+  ChatMessage,
+  FuncCallMsg,
+  FuncResultMsg,
+  LlmConfig,
+  SayingMsg,
+  TextingCallResultMsg,
+  ThinkingMsg,
+} from './client';
+import { loadedDialogs } from './dialog-mutex';
+import { getLlmGenerator } from './gen/registry';
+
+// === HUMAN PROMPT TYPE ===
+
+export interface HumanPrompt {
+  content: string;
+  msgId: string; // Message ID for tracking and error recovery (required for all human text)
+}
+
+// === SUSPENSION AND RESUMPTION INTERFACES ===
+
+export interface DialogSuspension {
+  rootDialogId: string;
+  subdialogIds: string[];
+  pendingQuestions: PendingQuestion[];
+  suspensionPoint: string; // Where the dialog was suspended
+  suspendedAt: string;
+  parentDialogId?: string; // If this is a subdialog suspension
+}
+
+export interface PendingQuestion {
+  id: string;
+  rootDialogId: string;
+  subdialogId?: string; // undefined for root dialog questions
+  question: string;
+  context: string;
+  askedAt: string;
+  priority: 'low' | 'medium' | 'high';
+}
+
+// === PENDING SUBDIALOG RECORD TYPE ===
+type PendingSubdialogRecordType = {
+  subdialogId: string;
+  createdAt: string;
+  headLine: string;
+  targetAgentId: string;
+  callType: 'A' | 'B' | 'C';
+  topicId?: string;
+};
+
+export interface ResumptionContext {
+  // Which dialog(s) to respond to
+  targetType: 'root' | 'subdialog' | 'multiple' | 'hierarchy';
+  rootDialogId?: string;
+  subdialogIds?: string[];
+
+  // What type of response
+  responseType: 'answer' | 'followup' | 'retry' | 'new_message';
+
+  // Response data
+  humanResponse?: HumanPrompt;
+  newMessage?: HumanPrompt;
+  retryContext?: {
+    toolName: string;
+    previousArgs: ToolArguments;
+    errorContext: string;
+  };
+}
+
+export interface DialogTree {
+  rootDialogId: string;
+  subdialogs: Map<string, SubdialogInfo>;
+  suspensionMap: Map<string, DialogSuspension>;
+}
+
+export interface SubdialogInfo {
+  id: string;
+  parentDialogId: string;
+  agentId: string;
+  headLine: string;
+  status: 'active' | 'suspended' | 'completed' | 'failed';
+  round: number;
+  createdAt: string;
+}
+
+function showErrorToAi(err: unknown): string {
+  try {
+    if (err instanceof Error) {
+      return `${err.name}: ${err.message}${err.stack ? `\n${err.stack}` : ''}`;
+    }
+
+    if (typeof err === 'string') {
+      const s = err.trim();
+      return s.length > 500 ? s.slice(0, 497) + '...' : s;
+    }
+    return inspect(err, { depth: 5, breakLength: 120, compact: false, sorted: true });
+  } catch (fallbackErr) {
+    return `Unknown error of type ${typeof err}`;
+  }
+}
+
+/**
+ * Validate streaming configuration for a team member.
+ * Reports error if streaming=true but member has function tools.
+ */
+function validateStreamingConfiguration(agent: Team.Member, agentTools: Tool[]): void {
+  if (agent.streaming === true) {
+    const hasFunctionTools = agentTools.some((tool) => tool.type === 'func');
+    if (hasFunctionTools) {
+      const functionToolNames = agentTools
+        .filter((tool) => tool.type === 'func')
+        .map((tool) => tool.name)
+        .join(', ');
+      throw new Error(
+        `Member '${agent.id}': Function tools (${functionToolNames}) require streaming=false. ` +
+          'Only texting tools support streaming=true.',
+      );
+    }
+  }
+}
+
+// Dialog loading mutex - use loadedDialogs from dialog-mutex module
+
+// === UNIFIED STREAMING HANDLERS ===
+
+/**
+ * Create a TextingEventsReceiver for unified saying event emission.
+ * Handles @mentions, codeblocks, and markdown using TextingStreamParser.
+ * Used by both streaming and non-streaming modes.
+ */
+export function createSayingEventsReceiver(
+  dlg: Dialog,
+  dialogIdLog: DialogID,
+): TextingEventsReceiver {
+  return {
+    markdownStart: async () => {
+      await dlg.markdownStart();
+    },
+    markdownChunk: async (chunk: string) => {
+      await dlg.markdownChunk(chunk);
+    },
+    markdownFinish: async () => {
+      await dlg.markdownFinish();
+    },
+    callStart: async (first: string, callId: string) => {
+      await dlg.callingStart(first, callId);
+    },
+    callHeadLineChunk: async (chunk: string) => {
+      await dlg.callingHeadlineChunk(chunk);
+    },
+    callHeadLineFinish: async () => {
+      await dlg.callingHeadlineFinish();
+    },
+    callBodyStart: async (infoLine?: string) => {
+      await dlg.callingBodyStart(infoLine);
+    },
+    callBodyChunk: async (chunk: string) => {
+      await dlg.callingBodyChunk(chunk);
+    },
+    callBodyFinish: async (endQuote?: string) => {
+      await dlg.callingBodyFinish(endQuote);
+    },
+    callFinish: async (callId: string) => {
+      await dlg.callingFinish(callId);
+    },
+    codeBlockStart: async (infoLine: string) => {
+      await dlg.codeBlockStart(infoLine);
+    },
+    codeBlockChunk: async (chunk: string) => {
+      await dlg.codeBlockChunk(chunk);
+    },
+    codeBlockFinish: async (endQuote: string) => {
+      await dlg.codeBlockFinish(endQuote);
+    },
+  };
+}
+
+/**
+ * Emit thinking events for a thinking message (non-streaming mode).
+ * Emits thinkingStart, thinkingChunk with full content, and thinkingFinish.
+ * Returns the extracted signature for caller to use.
+ */
+export async function emitThinkingEvents(
+  dlg: Dialog,
+  content: string,
+): Promise<string | undefined> {
+  if (!content.trim()) return undefined;
+
+  await dlg.thinkingStart();
+  await dlg.thinkingChunk(content);
+  await dlg.thinkingFinish();
+
+  // Extract and return signature for caller to use
+  const signatureMatch = content.match(/<thinking[^>]*>(.*?)<\/thinking>/s);
+  return signatureMatch?.[1]?.trim();
+}
+
+/**
+ * Emit saying events using TextingStreamParser for @mentions/codeblocks (non-streaming mode).
+ * Processes the entire content at once, handling all markdown/call/code events.
+ */
+export async function emitSayingEvents(dlg: Dialog, content: string): Promise<void> {
+  if (!content.trim()) return;
+
+  const receiver = createSayingEventsReceiver(dlg, dlg.id);
+  const parser = new TextingStreamParser(receiver);
+  parser.takeUpstreamChunk(content);
+  parser.finalize();
+}
+
+// TODO: certain scenarios should pass `waitInQue=true`:
+//        - supdialog call for clarification
+/**
+ * Drive a dialog stream with the following phases:
+ *
+ * Phase 1 - Lock Acquisition:
+ *   - Attempt to acquire exclusive lock for the dialog using mutex
+ *   - If dialog is already being driven, either wait in queue or throw error
+ *
+ * Phase 2 - Human Prompt Processing (first iteration only):
+ *   - If humanPrompt is provided, add it as a prompting_msg
+ *   - Persist user message to storage
+ *
+ * Phase 3 - User Texting Calls Collection & Execution:
+ *   - Parse user text for @mentions and code blocks using TextingStreamParser
+ *   - Execute texting tools (agent-to-agent calls, intrinsic tools)
+ *   - Handle subdialog creation for @teammate mentions
+ *
+ * Phase 4 - Context Building:
+ *   - Load agent minds (team, agent, system prompt, memories, tools)
+ *   - Build context messages: memories, task doc, assignment from supdialog, dialog msgs
+ *   - Process and render reminders
+ *
+ * Phase 5 - LLM Generation:
+ *   - For streaming=false: Generate all messages at once
+ *   - For streaming=true: Stream responses with thinking/saying events
+ *
+ * Phase 6 - Function/Texting Call Execution:
+ *   - Execute function calls (non-streaming mode)
+ *   - Execute texting calls (streaming mode)
+ *   - Collect and persist results
+ *
+ * Phase 7 - Loop or Complete:
+ *   - Check if more generation iterations are needed
+ *   - Continue loop if new function calls or tool outputs exist
+ *   - Break and release lock when complete
+ */
+export async function driveDialogStream(
+  dlg: Dialog,
+  humanPrompt?: HumanPrompt,
+  waitInQue: boolean = false,
+): Promise<void> {
+  const release = await loadedDialogs.tryLock(dlg.id.valueOf());
+  if (release === undefined) {
+    if (!waitInQue) throw new Error(`Dialog busy driven, see how it proceeded and try again.`);
+    // Wait for existing drive to complete using the mutex
+    await loadedDialogs.runWithLock(dlg.id.valueOf(), async () => {});
+    return;
+  }
+
+  try {
+    await _driveDialogStream(dlg, humanPrompt);
+  } finally {
+    release();
+  }
+}
+
+async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promise<void> {
+  let pubRemindersVer = dlg.remindersVer;
+
+  let genIterNo = 0;
+  while (true) {
+    genIterNo++;
+
+    // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
+    const { team, agent, systemPrompt, memories, agentTools, textingTools } = await loadAgentMinds(
+      dlg.agentId,
+      dlg,
+    );
+
+    // reload cfgs every round, in case it's been updated by human or ai meanwhile
+
+    // Validate streaming configuration
+    try {
+      validateStreamingConfiguration(agent, agentTools);
+    } catch (error) {
+      log.warn(`Streaming configuration error for agent ${dlg.agentId}:`, error);
+      throw error;
+    }
+
+    // Validate that required provider and model are configured
+
+    // Validate that required provider and model are configured
+    const provider = agent.provider ?? team.memberDefaults.provider;
+    const model = agent.model ?? team.memberDefaults.model;
+
+    if (!provider) {
+      const error = new Error(
+        `Configuration Error: No provider configured for agent '${dlg.agentId}'. Please specify a provider in the agent's configuration or in member_defaults section of .minds/team.yaml.`,
+      );
+      log.warn(`Provider not configured for agent ${dlg.agentId}`, error);
+      throw error;
+    }
+
+    if (!model) {
+      const error = new Error(
+        `Configuration Error: No model configured for agent '${dlg.agentId}'. Please specify a model in the agent's configuration or in member_defaults section of .minds/team.yaml.`,
+      );
+      log.warn(`Model not configured for agent ${dlg.agentId}`, error);
+      throw error;
+    }
+
+    const llmCfg = await LlmConfig.load();
+    const providerCfg = llmCfg.getProvider(provider);
+    if (!providerCfg) {
+      const error = new Error(
+        `Provider configuration error: Provider '${provider}' not found for agent '${dlg.agentId}'. Please check .minds/llm.yaml and .minds/team.yaml configuration.`,
+      );
+      log.warn(`Provider not found for agent ${dlg.agentId}`, error);
+      throw error;
+    }
+
+    const llmGen = getLlmGenerator(providerCfg.apiType);
+    if (!llmGen) {
+      const error = new Error(
+        `LLM generator not found: API type '${providerCfg.apiType}' for provider '${provider}' in agent '${dlg.agentId}'. Please check .minds/llm.yaml configuration.`,
+      );
+      log.warn(`LLM generator not found for agent ${dlg.agentId}`, error);
+      throw error;
+    }
+
+    const funcTools: FuncTool[] = agentTools.filter((t): t is FuncTool => t.type === 'func');
+
+    let suspendForHuman = false;
+    let promptContent = '';
+
+    try {
+      await dlg.notifyGeneratingStart();
+
+      if (humanPrompt && genIterNo == 1) {
+        promptContent = humanPrompt.content;
+        const msgId = humanPrompt.msgId;
+
+        await dlg.addChatMessages({
+          type: 'prompting_msg',
+          role: 'user',
+          content: promptContent,
+          msgId: msgId,
+        });
+        // Persist user message to storage FIRST
+        // This emits user_text event immediately for proper frontend ordering
+        await dlg.persistUserMessage(promptContent, msgId);
+      }
+
+      // Collect and execute texting calls from user text using streaming parser
+      // Combine agent texting tools with intrinsic reminder tools
+      const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+      const userResult = await collectAndExecuteTextingCalls(
+        dlg,
+        agent,
+        allTextingTools,
+        promptContent,
+        'user',
+      );
+
+      if (userResult.toolOutputs.length > 0) {
+        await dlg.addChatMessages(...userResult.toolOutputs);
+      }
+      if (userResult.suspend) {
+        suspendForHuman = true;
+      }
+
+      // Fallback: Check for @teammate patterns in user message that TextingStreamParser might miss
+      // If no subdialogs were created but the message contains @teammate requests, create them now
+      if (userResult.subdialogsCreated === 0) {
+        const team = await Team.load();
+        const mentionPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/g;
+        const mentions: string[] = [];
+        let match;
+        while ((match = mentionPattern.exec(promptContent)) !== null) {
+          mentions.push(match[1]);
+        }
+        // Filter to only valid team members
+        const teammateTargets = mentions.filter((m) => team.getMember(m));
+        if (teammateTargets.length > 0) {
+          for (const tgt of teammateTargets) {
+            try {
+              const sub = await dlg.createSubDialog(tgt, promptContent, '', {
+                originRole: 'user',
+                originMemberId: 'human',
+              });
+              // Drive the subdialog (fire and forget - parent is suspended)
+              void (async () => {
+                try {
+                  await driveDialogStream(sub);
+                  // Extract summary and store in parent's pending summaries
+                  const summary = await extractSubdialogSummary(sub.id);
+                  // Note: We need access to parent dialog here - pass parent reference
+                  // The parent dialog is available as 'dlg' in the outer scope
+                  await onSubdialogCompletion(dlg, sub.id, summary);
+                } catch (err) {
+                  log.warn('Subdialog processing error for user request:', err);
+                }
+              })();
+              userResult.subdialogsCreated++;
+              // Suspend the parent dialog when a subdialog is created via user @mention
+              userResult.suspend = true;
+            } catch (err) {
+              log.warn('Failed to create subdialog for @teammate in user message:', err);
+            }
+          }
+        }
+      }
+
+      if (suspendForHuman) {
+        break;
+      }
+
+      // use fresh memory + updated msgs from dialog object
+      // Build ctxMsgs messages in logical order, then inject reminders as late as possible:
+      // 1) memories
+      // 2) task doc (user)
+      // 3) assignment from supdialog (user)
+      // 4) historical dialog msgs
+      // Finally, render reminders and place them immediately before the last 'user' message
+      // so they are salient for the next response without polluting earlier context.
+      const taskDocMsg: ChatMessage | undefined = dlg.taskDocPath
+        ? await formatTaskDocContent(dlg.taskDocPath)
+        : undefined;
+      const assignmentFromSupMsg: ChatMessage | undefined =
+        dlg.supdialog && dlg.assignmentFromSup
+          ? {
+              type: 'environment_msg',
+              role: 'user',
+              content: `This dialog is started as @${dlg.supdialog.agentId} asked you (@${dlg.agentId}):
+${dlg.assignmentFromSup.headLine}
+${dlg.assignmentFromSup.callBody}`,
+            }
+          : undefined;
+
+      const ctxMsgs: ChatMessage[] = [
+        ...memories,
+        ...(taskDocMsg ? [taskDocMsg] : []),
+        ...(assignmentFromSupMsg ? [assignmentFromSupMsg] : []),
+        ...dlg.msgs,
+      ];
+
+      await dlg.processReminderUpdates();
+      const renderedReminders: ChatMessage[] =
+        dlg.reminders.length > 0
+          ? await Promise.all(
+              dlg.reminders.map(async (reminder, index): Promise<ChatMessage> => {
+                if (reminder.owner) {
+                  return await reminder.owner.renderReminder(dlg, reminder, index);
+                }
+                return {
+                  type: 'transient_guide_msg',
+                  role: 'assistant',
+                  content: `Here I have reminder #${index + 1}, I should assess whether it's still relevant and issue \`@delete_reminder ${index + 1}\` immediately if deemed not.
+---
+${reminder.content}`,
+                };
+              }),
+            )
+          : [];
+
+      const reminderIntro: ChatMessage = {
+        type: 'transient_guide_msg',
+        role: 'assistant',
+        content: `I have ${dlg.reminders.length} reminder${dlg.reminders.length > 1 ? 's' : ''} available for my memory management.
+
+I can manage these anytime to maintain context across dialog rounds:
+- @add_reminder [<position>]\n<content>
+- @update_reminder <number>\n<new content>
+- @delete_reminder <number>
+
+Using @clear_mind or @change_mind would start a new round of dialog - this helps me keep my mindset clear while reminders carry important info to new rounds.
+
+Tip: I can use @clear_mind with a body, and that body will be added as a new reminder, while I'm in a new dialog round without old messages.`,
+      };
+
+      if (renderedReminders.length > 0 || dlg.reminders.length === 0) {
+        let insertIndex = -1;
+        for (let i = ctxMsgs.length - 1; i >= 0; i--) {
+          const m = ctxMsgs[i];
+          if (m && m.type === 'prompting_msg' && m.role === 'user') {
+            insertIndex = i;
+            break;
+          }
+        }
+        if (insertIndex >= 0) {
+          ctxMsgs.splice(insertIndex, 0, reminderIntro, ...renderedReminders);
+        } else {
+          ctxMsgs.push(reminderIntro, ...renderedReminders);
+        }
+      }
+
+      if (agent.streaming === false) {
+        const nonStreamMsgs = await llmGen.genMoreMessages(
+          providerCfg,
+          agent,
+          systemPrompt,
+          funcTools,
+          ctxMsgs,
+          dlg.activeGenSeq,
+        );
+        const assistantMsgs = nonStreamMsgs.filter(
+          (m): m is SayingMsg | ThinkingMsg => m.type === 'saying_msg' || m.type === 'thinking_msg',
+        );
+        if (assistantMsgs.length > 0) {
+          await dlg.addChatMessages(...assistantMsgs);
+
+          for (const msg of assistantMsgs) {
+            if (
+              msg.role === 'assistant' &&
+              msg.genseq !== undefined &&
+              (msg.type === 'thinking_msg' || msg.type === 'saying_msg')
+            ) {
+              const messageType = msg.type === 'thinking_msg' ? 'thinking_msg' : 'saying_msg';
+              await dlg.persistAgentMessage(msg.content, msg.genseq, messageType);
+
+              // Emit thinking events using shared handler (non-streaming mode)
+              if (msg.type === 'thinking_msg') {
+                await emitThinkingEvents(dlg, msg.content);
+              }
+
+              // Emit saying events using shared TextingStreamParser integration
+              if (msg.type === 'saying_msg') {
+                await emitSayingEvents(dlg, msg.content);
+              }
+            }
+          }
+        }
+
+        let assistantToolOutputsCount = 0;
+        const assistantText = nonStreamMsgs
+          .filter((m) => m.type === 'saying_msg' && m.role === 'assistant')
+          .map((m) => m.content)
+          .join('\n');
+        if (assistantText.trim()) {
+          const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+          const assistantResult = await collectAndExecuteTextingCalls(
+            dlg,
+            agent,
+            allTextingTools,
+            assistantText,
+            'assistant',
+          );
+          assistantToolOutputsCount = assistantResult.toolOutputs.length;
+          if (assistantResult.toolOutputs.length > 0) {
+            await dlg.addChatMessages(...assistantResult.toolOutputs);
+          }
+          if (assistantResult.suspend) {
+            suspendForHuman = true;
+          }
+        }
+
+        const funcCalls = nonStreamMsgs.filter((m): m is FuncCallMsg => m.type === 'func_call_msg');
+        const funcResults: FuncResultMsg[] = [];
+
+        const functionPromises = funcCalls.map(async (func) => {
+          // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
+          // This is critical for correct grouping in reconstructAnthropicContext()
+          const callGenseq = func.genseq;
+          // Use the LLM-allocated unique id for tracking
+          // This id comes from func_call_msg and is the proper unique identifier
+          const callId = func.id;
+
+          // argsStr is still needed for UI event (funcCallRequested)
+          const argsStr =
+            typeof func.arguments === 'string'
+              ? func.arguments
+              : JSON.stringify(func.arguments ?? {});
+
+          const tool = agentTools.find(
+            (t): t is FuncTool => t.type === 'func' && t.name === func.name,
+          );
+          if (!tool) {
+            const errorResult: FuncResultMsg = {
+              type: 'func_result_msg',
+              id: func.id,
+              name: func.name,
+              content: `Tool '${func.name}' not found`,
+              role: 'tool',
+              genseq: callGenseq,
+            };
+            await dlg.receiveFuncResult(errorResult);
+            return;
+          }
+
+          let rawArgs: unknown = {};
+          if (typeof func.arguments === 'string' && func.arguments.trim()) {
+            try {
+              rawArgs = JSON.parse(func.arguments);
+            } catch (parseErr) {
+              rawArgs = null;
+              log.warn('Failed to parse function arguments as JSON', {
+                funcName: func.name,
+                arguments: func.arguments,
+                error: parseErr,
+              });
+            }
+          }
+
+          const validation = validateArgs(tool.parameters, rawArgs);
+          let result: FuncResultMsg;
+          if (validation.ok) {
+            const argsObj = rawArgs as ToolArguments;
+
+            // Emit func_call_requested event to build the func-call section UI
+            try {
+              await dlg.funcCallRequested(func.id, func.name, argsStr);
+            } catch (err) {
+              log.warn('Failed to emit func_call_requested event', err);
+            }
+
+            try {
+              await dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
+            } catch (err) {
+              log.warn('Failed to persist function call', err);
+            }
+
+            try {
+              const content = await tool.call(dlg, agent, argsObj);
+              result = {
+                type: 'func_result_msg',
+                id: func.id,
+                name: func.name,
+                content: String(content),
+                role: 'tool',
+                genseq: callGenseq,
+              };
+            } catch (err) {
+              result = {
+                type: 'func_result_msg',
+                id: func.id,
+                name: func.name,
+                content: `Function '${func.name}' execution failed: ${showErrorToAi(err)}`,
+                role: 'tool',
+                genseq: callGenseq,
+              };
+            }
+          } else {
+            result = {
+              type: 'func_result_msg',
+              id: func.id,
+              name: func.name,
+              content: `Invalid arguments: ${validation.error}`,
+              role: 'tool',
+              genseq: callGenseq,
+            };
+          }
+
+          await dlg.receiveFuncResult(result);
+          funcResults.push(result);
+        });
+
+        const allFuncResults = await Promise.all(functionPromises);
+
+        await Promise.resolve();
+
+        // Add function calls AND results to dialog messages so LLM sees tool context in next iteration
+        // Both are needed: func_call_msg for the tool definition, func_result_msg for the output
+        if (funcCalls.length > 0) {
+          await dlg.addChatMessages(...funcCalls);
+        }
+        if (funcResults.length > 0) {
+          await dlg.addChatMessages(...funcResults);
+        }
+
+        if (suspendForHuman) {
+          break;
+        }
+
+        // Check if we should continue to another generation iteration.
+        // We continue if:
+        // 1. There are function calls
+        // 2. There are assistant tool outputs from texting calls
+        const shouldContinue =
+          funcCalls.length > 0 ||
+          assistantToolOutputsCount > 0 ||
+          (funcResults.length > 0 && funcCalls.length === 0);
+        if (!shouldContinue) {
+          break;
+        }
+
+        continue;
+      } else {
+        const dialogIdLog = dlg.id;
+        const newMsgs: ChatMessage[] = [];
+
+        // Track thinking content for signature extraction during streaming
+        let currentThinkingContent = '';
+        let currentThinkingSignature = '';
+        let currentSayingContent = '';
+
+        // Create receiver using shared helper (unified TextingStreamParser integration)
+        const receiver = createSayingEventsReceiver(dlg, dialogIdLog);
+
+        // Direct streaming parser that forwards events without state tracking
+        const parser = new TextingStreamParser(receiver);
+
+        try {
+          await llmGen.genToReceiver(
+            providerCfg,
+            agent,
+            systemPrompt,
+            funcTools,
+            ctxMsgs,
+            {
+              thinkingStart: async () => {
+                currentThinkingContent = '';
+                currentThinkingSignature = '';
+                await dlg.thinkingStart();
+              },
+              thinkingChunk: async (chunk: string) => {
+                currentThinkingContent += chunk;
+                // Extract Anthropic thinking signature from content
+                const signatureMatch = currentThinkingContent.match(
+                  /<thinking[^>]*>(.*?)<\/thinking>/s,
+                );
+                if (signatureMatch && signatureMatch[1]) {
+                  currentThinkingSignature = signatureMatch[1].trim();
+                }
+                await dlg.thinkingChunk(chunk);
+              },
+              thinkingFinish: async () => {
+                // Create thinking message with genseq and signature
+                const genseq = dlg.activeGenSeq;
+                if (genseq) {
+                  const thinkingMessage: ThinkingMsg = {
+                    type: 'thinking_msg',
+                    role: 'assistant',
+                    genseq,
+                    content: currentThinkingContent,
+                    provider_data: currentThinkingSignature
+                      ? { signature: currentThinkingSignature }
+                      : undefined,
+                  };
+                  newMsgs.push(thinkingMessage);
+                }
+                await dlg.thinkingFinish();
+              },
+              sayingStart: async () => {
+                currentSayingContent = '';
+                await dlg.sayingStart();
+              },
+              sayingChunk: async (chunk: string) => {
+                currentSayingContent += chunk;
+                parser.takeUpstreamChunk(chunk);
+                // Dialog store handles persistence - maintain ordering guarantee
+                await dlg.sayingChunk(chunk);
+              },
+              sayingFinish: async () => {
+                parser.finalize();
+
+                const sayingMessage: SayingMsg = {
+                  type: 'saying_msg',
+                  role: 'assistant',
+                  genseq: dlg.activeGenSeq,
+                  content: currentSayingContent,
+                };
+                newMsgs.push(sayingMessage);
+
+                await dlg.sayingFinish();
+              },
+            },
+            dlg.activeGenSeq,
+          );
+        } catch (err) {
+          log.error(`LLM gen error:`, err);
+          const errText = extractErrorDetails(err).message;
+          try {
+            await dlg.streamError(errText);
+          } catch (emitErr) {
+            log.warn('Failed to emit stream_error_evt via dlg.streamError', emitErr);
+          }
+        }
+
+        // Execute collected calls concurrently after streaming completes
+        const collectedCalls = parser.getCollectedCalls();
+
+        if (collectedCalls.length > 0 && !collectedCalls[0].callId) {
+          throw new Error(
+            'Collected calls missing callId - parser should have allocated one per call',
+          );
+        }
+
+        const results = await Promise.all(
+          collectedCalls.map((call) =>
+            executeTextingCall(
+              dlg,
+              agent,
+              textingTools,
+              call.firstMention,
+              call.headLine,
+              call.body,
+              'assistant',
+              call.callId,
+            ),
+          ),
+        );
+
+        // Combine results from all concurrent calls and track tool outputs for termination logic
+        let toolOutputsCount = 0;
+        for (const result of results) {
+          if (result.toolOutputs.length > 0) {
+            toolOutputsCount += result.toolOutputs.length;
+            newMsgs.push(...result.toolOutputs);
+          }
+          if (result.suspend) {
+            suspendForHuman = true;
+          }
+        }
+
+        // note: no function calls happen in streaming mode
+
+        await dlg.addChatMessages(...newMsgs);
+
+        // After tool execution, check latest remindersVer with published info,
+        // publish new version to propagate updated reminders to ui
+        if (dlg.remindersVer > pubRemindersVer) {
+          try {
+            await dlg.processReminderUpdates();
+            pubRemindersVer = dlg.remindersVer;
+          } catch (err) {
+            log.warn('Failed to propagate reminder text after tools', err);
+          }
+        }
+
+        await Promise.resolve();
+
+        if (suspendForHuman) {
+          break;
+        }
+
+        if (toolOutputsCount === 0) {
+          break;
+        }
+      }
+    } finally {
+      await dlg.notifyGeneratingFinish();
+    }
+  }
+
+  return;
+} // Close while loop
+
+// Dialog stream has completed - no need to mark queue as complete since we're using receivers
+
+// === SINGLE DIALOG HIERARCHY RESTORATION API ===
+
+/**
+ * Single API for restoring the complete dialog hierarchy (main dialog + all subdialogs)
+ * This is the only public restoration API - all serialization is implicit
+ */
+export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
+  rootDialog: Dialog;
+  subdialogs: Map<string, Dialog>;
+  summary: {
+    totalMessages: number;
+    totalRounds: number;
+    completionStatus: 'incomplete' | 'complete' | 'failed';
+  };
+}> {
+  try {
+    // Required modules are already imported statically
+
+    // Load metadata to determine if this is a subdialog
+    const metadata = await DialogPersistence.loadRootDialogMetadata(
+      new DialogID(rootDialogId),
+      'running',
+    );
+
+    // Assert that the loaded metadata matches the expected root dialog
+    if (metadata?.supdialogId) {
+      throw new Error(
+        `Expected root dialog ${rootDialogId} but found subdialog metadata with supdialogId: ${metadata.supdialogId}`,
+      );
+    }
+
+    // Create DialogID: for root dialog, use dialogId as both self and root
+    const restoredRootDialogId = new DialogID(rootDialogId);
+
+    // Restore the full dialog tree
+    const dialogTree = await DialogPersistence.restoreDialogTree(new DialogID(rootDialogId));
+    if (!dialogTree) {
+      throw new Error(`Failed to restore dialog hierarchy for ${rootDialogId}`);
+    }
+
+    // Create all dialog instances with proper relationships
+    const rootStore = new DiskFileDialogStore(restoredRootDialogId);
+    const rootDialog = new RootDialog(
+      rootStore,
+      dialogTree.metadata.taskDocPath,
+      restoredRootDialogId,
+      dialogTree.metadata.agentId,
+      {
+        messages: dialogTree.messages,
+        reminders: dialogTree.reminders,
+        currentRound: dialogTree.currentRound,
+      },
+    );
+
+    // Restore all subdialogs in the hierarchy
+    const subdialogs = new Map<string, Dialog>();
+    const allSubdialogIds = await (async () => {
+      const rootPath = DialogPersistence.getRootDialogPath(restoredRootDialogId, 'running');
+      const subPath = path.join(rootPath, DialogPersistence['SUBDIALOGS_DIR']);
+      try {
+        const entries = await fs.promises.readdir(subPath, { withFileTypes: true });
+        return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+      } catch {
+        log.warn(`Failed to read subdialogs directory: ${subPath}, returning empty array`);
+        return [];
+      }
+    })();
+
+    for (const subdialogId of allSubdialogIds) {
+      const subdialogState = await DialogPersistence.restoreDialog(
+        new DialogID(subdialogId, restoredRootDialogId.rootId),
+      );
+      if (subdialogState) {
+        // Load subdialog metadata to get the parent relationship
+        const subdialogMetadata = await DialogPersistence.loadDialogMetadata(
+          new DialogID(subdialogId, rootDialog.id.rootId),
+          'running',
+        );
+
+        // Create DialogID for subdialog: parent ID is the root dialog ID
+        const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
+
+        const subdialogStore = new DiskFileDialogStore(restoredSubdialogId);
+        const subdialog = new SubDialog(
+          rootDialog,
+          subdialogState.metadata.taskDocPath,
+          restoredSubdialogId,
+          subdialogState.metadata.agentId,
+          subdialogState.metadata.assignmentFromSup,
+          {
+            messages: subdialogState.messages,
+            reminders: subdialogState.reminders,
+            currentRound: subdialogState.currentRound,
+          },
+        );
+
+        subdialogs.set(subdialogId, subdialog);
+      }
+    }
+
+    // Calculate summary statistics
+    const summary: {
+      totalMessages: number;
+      totalRounds: number;
+      completionStatus: 'failed' | 'incomplete' | 'complete';
+    } = {
+      totalMessages:
+        dialogTree.messages.length +
+        Array.from(subdialogs.values()).reduce((sum, d) => sum + d.msgs.length, 0),
+      totalRounds:
+        dialogTree.currentRound +
+        Math.max(...Array.from(subdialogs.values()).map((d) => d.currentRound), 0),
+      completionStatus: 'incomplete',
+    };
+
+    return {
+      rootDialog,
+      subdialogs,
+      summary,
+    };
+  } catch (error) {
+    log.error(`Failed to restore dialog hierarchy for ${rootDialogId}:`, error);
+    throw error;
+  }
+}
+
+// === TEAMMATE CALL TYPE SYSTEM (Phase 5) ===
+// === PHASE 11 EXTENSION: Type A for subdialog calling its DIRECT parent (supdialog) ===
+
+/**
+ * Result of parsing a teammate call pattern.
+ * Three types based on the call syntax:
+ * - Type A: @<supdialogAgentId> - subdialog calling its direct parent (supdialog suspension)
+ * - Type B: @<agentId> !<topicId> - creates/resumes registered subdialog
+ * - Type C: @<agentId> - creates transient unregistered subdialog
+ */
+export type TeammateCallParseResult = TeammateCallTypeA | TeammateCallTypeB | TeammateCallTypeC;
+
+/**
+ * Type A: Supdialog suspension call.
+ * Syntax: @<supdialogAgentId> (when subdialog calls its direct parent)
+ * Suspends the subdialog, drives the supdialog for one round, returns response to subdialog.
+ * Only triggered when the @agentId matches the current dialog's supdialog.agentId.
+ */
+export interface TeammateCallTypeA {
+  type: 'A';
+  agentId: string;
+}
+
+/**
+ * Type B: Registered subdialog call with topic.
+ * Syntax: @<agentId> !<topicId>
+ * Creates or resumes a registered subdialog, tracked in registry.yaml.
+ */
+export interface TeammateCallTypeB {
+  type: 'B';
+  agentId: string;
+  topicId: string;
+}
+
+/**
+ * Type C: Transient subdialog call (unregistered).
+ * Syntax: @<agentId> (without !topicId)
+ * Creates a one-off subdialog that moves to done/ on completion.
+ */
+export interface TeammateCallTypeC {
+  type: 'C';
+  agentId: string;
+}
+
+/**
+ * Parse a teammate call pattern and return the appropriate type result.
+ *
+ * Patterns:
+ * - @<supdialogAgentId> (in subdialog context, matching supdialog.agentId) → Type A (supdialog suspension)
+ * - @<agentId> !<topicId> → Type B (registered subdialog)
+ * - @<agentId> → Type C (transient subdialog)
+ *
+ * @param text The text containing the teammate call (e.g., "@cmdr !code-review" or "@cmdr")
+ * @param currentDialog Optional current dialog context to detect Type A (subdialog calling parent)
+ * @returns The parsed TeammateCallParseResult
+ */
+export function parseTeammateCall(text: string, currentDialog?: Dialog): TeammateCallParseResult {
+  // Match @agentId !topicId pattern (Type B)
+  const typeBPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)\s*!\s*([a-zA-Z][a-zA-Z0-9_-]*)/;
+  const typeBMatch = text.match(typeBPattern);
+
+  if (typeBMatch) {
+    return {
+      type: 'B',
+      agentId: typeBMatch[1],
+      topicId: typeBMatch[2],
+    };
+  }
+
+  // Match @agentId pattern
+  const typeAPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/;
+  const typeAMatch = text.match(typeAPattern);
+
+  if (typeAMatch) {
+    const agentId = typeAMatch[1];
+
+    // Phase 11: Check if this is a Type A call (subdialog calling its direct parent)
+    // Type A only applies when:
+    // 1. A current dialog context is provided
+    // 2. The current dialog is a SubDialog (has a supdialog)
+    // 3. The @agentId matches the supdialog's agentId
+    if (
+      currentDialog &&
+      'supdialog' in currentDialog &&
+      currentDialog.supdialog &&
+      agentId === currentDialog.supdialog.agentId
+    ) {
+      return {
+        type: 'A',
+        agentId,
+      };
+    }
+
+    // Type C: Any @agentId is a transient subdialog call
+    return {
+      type: 'C',
+      agentId,
+    };
+  }
+
+  // No match - should not happen if called correctly
+  throw new Error(`Invalid teammate call pattern: ${text}`);
+}
+
+// === CONVENIENCE METHODS USING SINGLE RESTORATION API ===
+
+/**
+ * Continue dialog with human response (uses single restoration API)
+ */
+export async function continueDialogWithHumanResponse(
+  rootDialogId: string,
+  humanPrompt: HumanPrompt,
+  options?: {
+    targetSubdialogId?: string;
+    continuationType?: 'answer' | 'followup' | 'retry' | 'new_message';
+  },
+): Promise<void> {
+  try {
+    // Restore the complete dialog hierarchy (pure restoration, no continuation)
+    const result = await restoreDialogHierarchy(rootDialogId);
+
+    // Then perform continuation separately
+    if (options?.targetSubdialogId && result.subdialogs.has(options.targetSubdialogId)) {
+      // Continue specific subdialog
+      const targetSubdialog = result.subdialogs.get(options.targetSubdialogId)!;
+      await driveDialogStream(targetSubdialog, humanPrompt);
+    } else {
+      // Continue root dialog
+      await driveDialogStream(result.rootDialog, humanPrompt);
+    }
+  } catch (error) {
+    log.error(`Failed to continue dialog with human response:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Continue root dialog with followup message (uses single restoration API)
+ */
+export async function continueRootDialog(
+  rootDialogId: string,
+  humanPrompt: HumanPrompt,
+): Promise<void> {
+  try {
+    // Restore the complete dialog hierarchy (pure restoration, no continuation)
+    const result = await restoreDialogHierarchy(rootDialogId);
+
+    // Then perform continuation separately
+    await driveDialogStream(result.rootDialog, humanPrompt);
+  } catch (error) {
+    log.error(`Failed to continue root dialog:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Handle subdialog completion by storing summary in parent's pending summaries
+ * This enables detached subdialog driving where summaries are deferred until parent resumes
+ *
+ * @param parentDialog The parent dialog that created the subdialog
+ * @param subdialogId The ID of the completed subdialog
+ * @param summary The summary text from the subdialog
+ */
+async function onSubdialogCompletion(
+  parentDialog: Dialog,
+  subdialogId: DialogID,
+  summary: string,
+): Promise<void> {
+  try {
+    // Add summary to parent's pending summaries (in-memory)
+    parentDialog.addPendingSubdialogSummary(subdialogId, summary);
+
+    // Persist the pending summary for recovery on restart
+    const summaries = parentDialog.getPendingSubdialogSummaries();
+    await parentDialog.dlgStore.persistPendingSubdialogSummaries(parentDialog, summaries);
+  } catch (err) {
+    log.warn('Failed to store pending subdialog summary', {
+      parentId: parentDialog.id.selfId,
+      subdialogId: subdialogId.selfId,
+      error: err,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Unified function to extract the last assistant message from an array of messages.
+ * Prefers saying_msg over thinking_msg, truncates to 500 chars with "...".
+ *
+ * @param messages Array of chat messages to search
+ * @param defaultMessage Default message if no assistant message found
+ * @returns The extracted message content or default
+ */
+function extractLastAssistantMessage(
+  messages: Array<{ type: string; content?: string }>,
+  defaultMessage: string,
+): string {
+  let summary = '';
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.type === 'saying_msg' && typeof msg.content === 'string') {
+      summary = msg.content;
+      break;
+    }
+    if (msg.type === 'thinking_msg' && typeof msg.content === 'string') {
+      summary = msg.content;
+      // Keep looking for a saying_msg which is more complete
+    }
+  }
+
+  // If no assistant message found, use the default
+  if (!summary) {
+    summary = defaultMessage;
+  }
+
+  // Truncate summary if too long (max 500 characters)
+  if (summary.length > 500) {
+    summary = summary.substring(0, 497) + '...';
+  }
+
+  return summary;
+}
+
+/**
+ * Extract summary from a completed subdialog's messages
+ * Looks for the last assistant message (saying_msg preferred over thinking_msg)
+ */
+async function extractSubdialogSummary(subdialogId: DialogID): Promise<string> {
+  try {
+    const subdialogState = await DialogPersistence.restoreDialog(subdialogId, 'running');
+    if (!subdialogState) {
+      log.warn('Could not restore subdialog for summary extraction', {
+        subdialogId: subdialogId.key(),
+      });
+      return 'Subdialog completed without producing output.';
+    }
+
+    return extractLastAssistantMessage(
+      subdialogState.messages,
+      'Subdialog completed without producing output.',
+    );
+  } catch (err) {
+    log.warn('Failed to extract subdialog summary', { subdialogId: subdialogId.key(), error: err });
+    return 'Subdialog completed with errors.';
+  }
+}
+
+/**
+ * Helper function to drive a subdialog to completion and handle the common pattern:
+ * - driveDialogStream(subdialog)
+ * - extractSubdialogSummary(subdialog.id)
+ * - onSubdialogCompletion(parent, subdialog.id, summary)
+ *
+ * @param parentDialog The parent dialog that created/owns the subdialog
+ * @param subdialog The subdialog to drive
+ * @returns The summary string from the subdialog
+ */
+async function driveSubdialogToCompletion(
+  parentDialog: Dialog,
+  subdialog: SubDialog,
+): Promise<string> {
+  await driveDialogStream(subdialog);
+  const summary = await extractSubdialogSummary(subdialog.id);
+  // Emit subdialog_final_summary_evt to notify frontend
+  // Call postSubdialogSummary directly on the parent dialog (works for both Dialog and SubDialog)
+  await parentDialog.postSubdialogSummary(subdialog.id, summary);
+  return summary;
+}
+
+/**
+ * Phase 11: Extract summary from supdialog's current messages for Type A mechanism.
+ * Used when a subdialog calls its parent (supdialog) and needs the parent's response.
+ * Unlike extractSubdialogSummary which reads from persistence, this reads from the
+ * in-memory dialog object which contains the latest messages after driving.
+ *
+ * @param supdialog The supdialog that was just driven
+ * @returns The summary text from the supdialog's last assistant message
+ */
+async function extractSupdialogSummaryForTypeA(supdialog: Dialog): Promise<string> {
+  try {
+    return extractLastAssistantMessage(
+      supdialog.msgs,
+      'Supdialog completed without producing output.',
+    );
+  } catch (err) {
+    log.warn('Failed to extract supdialog summary for Type A', { error: err });
+    return 'Supdialog completed with errors.';
+  }
+}
+
+// === PHASE 6: SUBDIALOG SUPPLY MECHANISM ===
+
+/**
+ * Create a Type A subdialog for supdialog suspension.
+ * Creates subdialog, persists pending record, and returns suspended promise.
+ *
+ * Type A: Supdialog suspension call where subdialog calls parent and parent suspends.
+ *
+ * @param supdialog The parent dialog making the call
+ * @param targetAgentId The agent to handle the subdialog
+ * @param headLine The headline for the subdialog
+ * @param callBody The body content for the subdialog
+ * @returns Promise resolving when subdialog is created and pending record saved
+ */
+export async function createSubdialogForSupdialog(
+  supdialog: RootDialog,
+  targetAgentId: string,
+  headLine: string,
+  callBody: string,
+): Promise<void> {
+  try {
+    // Create the subdialog
+    const subdialog = await supdialog.createSubDialog(targetAgentId, headLine, callBody, {
+      originRole: 'assistant',
+      originMemberId: supdialog.agentId,
+    });
+
+    // Persist pending subdialog record
+    const pendingRecord: PendingSubdialogRecordType = {
+      subdialogId: subdialog.id.selfId,
+      createdAt: formatUnifiedTimestamp(new Date()),
+      headLine,
+      targetAgentId,
+      callType: 'A',
+    };
+
+    // Load existing pending subdialogs and add new one
+    const existingPending = await DialogPersistence.loadPendingSubdialogs(supdialog.id);
+    existingPending.push(pendingRecord);
+    await DialogPersistence.savePendingSubdialogs(supdialog.id, existingPending);
+
+    // Drive the subdialog asynchronously
+    void (async () => {
+      try {
+        await driveDialogStream(subdialog);
+        const summary = await extractSubdialogSummary(subdialog.id);
+        await supplyResponseToSupdialog(supdialog, subdialog.id, summary, 'A');
+      } catch (err) {
+        log.warn('Type A subdialog processing error:', err);
+      }
+    })();
+  } catch (error) {
+    log.error('Failed to create Type A subdialog for supdialog', {
+      supdialogId: supdialog.id.selfId,
+      targetAgentId,
+      error,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Create a Type B registered subdialog with registry lookup/register.
+ * Creates or resumes a registered subdialog tracked in registry.yaml.
+ *
+ * Type B: @<agentId> !<topicId> - Creates/resumes registered subdialog.
+ *
+ * @param rootDialog The root dialog making the call
+ * @param agentId The agent to handle the subdialog
+ * @param topicId The topic identifier for registry lookup
+ * @param headLine The headline for the subdialog
+ * @param callBody The body content for the subdialog
+ * @param originRole Origin role for the subdialog
+ * @returns Promise resolving when subdialog is created/registered
+ */
+export async function createRegisteredSubdialog(
+  rootDialog: RootDialog,
+  agentId: string,
+  topicId: string,
+  headLine: string,
+  callBody: string,
+  originRole: 'user' | 'assistant',
+): Promise<void> {
+  try {
+    // Check registry for existing active subdialog
+    const registryEntry = rootDialog.subdialogMutex.lookup(agentId, topicId);
+
+    if (registryEntry && registryEntry.locked) {
+      // Resume existing registered subdialog (CORRECTED: was status === 'active')
+
+      // Drive the existing subdialog
+      const subdialogState = await DialogPersistence.restoreDialog(
+        registryEntry.subdialogId,
+        'running',
+      );
+      if (subdialogState) {
+        const subdialogStore = new DiskFileDialogStore(registryEntry.subdialogId);
+        const subdialog = new SubDialog(
+          rootDialog,
+          subdialogState.metadata.taskDocPath,
+          registryEntry.subdialogId,
+          subdialogState.metadata.agentId,
+          subdialogState.metadata.assignmentFromSup,
+          {
+            messages: subdialogState.messages,
+            reminders: subdialogState.reminders,
+            currentRound: subdialogState.currentRound,
+          },
+        );
+
+        void (async () => {
+          try {
+            await driveDialogStream(subdialog);
+            const summary = await extractSubdialogSummary(subdialog.id);
+            await supplyResponseToSupdialog(rootDialog, subdialog.id, summary, 'B');
+          } catch (err) {
+            log.warn('Registered subdialog resumption error:', err);
+          }
+        })();
+      }
+    } else {
+      // Create new registered subdialog
+      const subdialog = await rootDialog.createSubDialog(agentId, headLine, callBody, {
+        originRole,
+        originMemberId: originRole === 'assistant' ? rootDialog.agentId : 'human',
+      });
+
+      // Register in subdialogRegistry
+      rootDialog.registerSubdialogByTopic(agentId, topicId, subdialog.id);
+      await rootDialog.saveRegistry();
+
+      // Persist pending subdialog record
+      const pendingRecord: PendingSubdialogRecordType = {
+        subdialogId: subdialog.id.selfId,
+        createdAt: formatUnifiedTimestamp(new Date()),
+        headLine,
+        targetAgentId: agentId,
+        callType: 'B',
+        topicId,
+      };
+
+      const existingPending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
+      existingPending.push(pendingRecord);
+      await DialogPersistence.savePendingSubdialogs(rootDialog.id, existingPending);
+
+      // Drive the subdialog asynchronously
+      void (async () => {
+        try {
+          await driveDialogStream(subdialog);
+          const summary = await extractSubdialogSummary(subdialog.id);
+          await supplyResponseToSupdialog(rootDialog, subdialog.id, summary, 'B');
+          // Mark as done in registry
+          rootDialog.unlockMutexByTopic(agentId, topicId);
+          await rootDialog.saveRegistry();
+        } catch (err) {
+          log.warn('Type B registered subdialog processing error:', err);
+        }
+      })();
+    }
+  } catch (error) {
+    log.error('Failed to create registered subdialog', {
+      rootDialogId: rootDialog.id.selfId,
+      agentId,
+      topicId,
+      error,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Supply a response from a completed subdialog to the parent dialog.
+ * Writes the response to persistence for later incorporation.
+ *
+ * @param parentDialog The parent dialog that created the subdialog
+ * @param subdialogId The ID of the completed subdialog
+ * @param summary The summary text from the subdialog
+ * @param callType The call type ('A', 'B', or 'C')
+ */
+export async function supplyResponseToSupdialog(
+  parentDialog: RootDialog,
+  subdialogId: DialogID,
+  summary: string,
+  callType: 'A' | 'B' | 'C',
+): Promise<void> {
+  try {
+    const response = {
+      subdialogId: subdialogId.selfId,
+      summary,
+      completedAt: formatUnifiedTimestamp(new Date()),
+      callType,
+    };
+
+    // Load existing responses and add new one
+    const existingResponses = await DialogPersistence.loadSubdialogResponses(parentDialog.id);
+    existingResponses.push(response);
+    await DialogPersistence.saveSubdialogResponses(parentDialog.id, existingResponses);
+
+    // Remove from pending subdialogs
+    const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(parentDialog.id);
+    const filteredPending = pendingSubdialogs.filter((p) => p.subdialogId !== subdialogId.selfId);
+    await DialogPersistence.savePendingSubdialogs(parentDialog.id, filteredPending);
+
+    // Emit subdialog_final_summary_evt to notify frontend
+    await parentDialog.postSubdialogSummary(subdialogId, summary);
+  } catch (error) {
+    log.error('Failed to supply subdialog response', {
+      parentId: parentDialog.id.selfId,
+      subdialogId: subdialogId.selfId,
+      error,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Check if all pending Type A subdialogs are satisfied (have responses).
+ *
+ * @param rootDialogId The root dialog ID to check
+ * @returns Promise<boolean> True if all Type A subdialogs have responses
+ */
+export async function areAllSubdialogsSatisfied(rootDialogId: DialogID): Promise<boolean> {
+  try {
+    const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(rootDialogId);
+    const responses = await DialogPersistence.loadSubdialogResponses(rootDialogId);
+
+    // Check if any pending subdialogs have responses
+    const pendingIds = new Set(pendingSubdialogs.map((p) => p.subdialogId));
+    const respondedIds = new Set(responses.map((r) => r.subdialogId));
+
+    // Check if all pending subdialogs have been responded to
+    for (const pendingId of pendingIds) {
+      if (!respondedIds.has(pendingId)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    log.error('Failed to check subdialog satisfaction', {
+      rootDialogId: rootDialogId.selfId,
+      error,
+    });
+    return false;
+  }
+}
+
+/**
+ * Incorporate subdialog responses into the parent dialog and resume.
+ * Reads responses from persistence and clears them after incorporation.
+ *
+ * @param rootDialog The root dialog to resume
+ * @returns Promise<Array<{ subdialogId: string; summary: string; callType: 'A' | 'B' | 'C' }>>
+ *   Array of incorporated responses
+ */
+export async function incorporateSubdialogResponses(rootDialog: RootDialog): Promise<
+  Array<{
+    subdialogId: string;
+    summary: string;
+    callType: 'A' | 'B' | 'C';
+  }>
+> {
+  try {
+    const responses = await DialogPersistence.loadSubdialogResponses(rootDialog.id);
+
+    // Incorporate each response
+    for (const response of responses) {
+      const subdialogId = new DialogID(response.subdialogId, rootDialog.id.rootId);
+
+      // Add to parent's pending summaries
+      rootDialog.addPendingSubdialogSummary(subdialogId, response.summary);
+
+      // Emit subdialog summary event
+      await rootDialog.postSubdialogSummary(subdialogId, response.summary);
+    }
+
+    // Clear responses after incorporation
+    await DialogPersistence.saveSubdialogResponses(rootDialog.id, []);
+
+    // Clear pending subdialogs that have been responded to
+    const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
+    const respondedIds = new Set(responses.map((r) => r.subdialogId));
+    const filteredPending = pendingSubdialogs.filter((p) => !respondedIds.has(p.subdialogId));
+    await DialogPersistence.savePendingSubdialogs(rootDialog.id, filteredPending);
+
+    return responses;
+  } catch (error) {
+    log.error('Failed to incorporate subdialog responses', {
+      rootDialogId: rootDialog.id.selfId,
+      error,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Collect texting calls using the streaming parser, then execute them
+ */
+interface TextingCall {
+  firstMention: string;
+  headLine: string;
+  body: string;
+}
+
+async function collectAndExecuteTextingCalls(
+  dlg: Dialog,
+  agent: Team.Member,
+  textingTools: TextingTool[],
+  text: string,
+  originRole: 'user' | 'assistant',
+): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: number }> {
+  // Create a receiver to capture callId during parsing
+  let capturedCallId: string | null = null;
+  const receiver: TextingEventsReceiver = {
+    callStart: async (first: string, callId: string) => {
+      capturedCallId = callId;
+      await dlg.callingStart(first, callId);
+    },
+    callHeadLineChunk: async () => {},
+    callHeadLineFinish: async () => {},
+    callBodyStart: async () => {},
+    callBodyChunk: async () => {},
+    callBodyFinish: async () => {},
+    callFinish: async (_callId: string) => {},
+    codeBlockStart: async () => {},
+    codeBlockChunk: async () => {},
+    codeBlockFinish: async () => {},
+    markdownStart: async () => {},
+    markdownChunk: async () => {},
+    markdownFinish: async () => {},
+  };
+
+  const parser = new TextingStreamParser(receiver);
+  parser.takeUpstreamChunk(text);
+  parser.finalize();
+
+  const collectedCalls: TextingCall[] = parser.getCollectedCalls();
+
+  // Get the callId captured during parsing (same for all calls in this text)
+  // Fallback to dialog's stored callId, then to a generated one if needed
+  const callId = capturedCallId ?? dlg.getCurrentCallId() ?? '';
+
+  // Execute collected calls concurrently
+  const results = await Promise.all(
+    collectedCalls.map((call) =>
+      executeTextingCall(
+        dlg,
+        agent,
+        textingTools,
+        call.firstMention,
+        call.headLine,
+        call.body,
+        originRole,
+        callId,
+      ),
+    ),
+  );
+
+  // Combine results from all concurrent calls
+  const suspend = results.some((result) => result.suspend);
+  const toolOutputs = results.flatMap((result) => result.toolOutputs);
+  const subdialogsCreated = results.reduce((sum, result) => sum + result.subdialogsCreated, 0);
+
+  return { suspend, toolOutputs, subdialogsCreated };
+}
+
+/**
+ * Execute a single texting call using Phase 5 3-Type Taxonomy.
+ * Handles Type A (supdialog suspension), Type B (registered subdialog), and Type C (transient subdialog).
+ */
+async function executeTextingCall(
+  dlg: Dialog,
+  agent: Team.Member,
+  textingTools: TextingTool[],
+  firstMention: string,
+  headLine: string,
+  body: string,
+  originRole: 'user' | 'assistant',
+  callId: string,
+): Promise<{
+  toolOutputs: ChatMessage[];
+  suspend: boolean;
+  subdialogsCreated: number;
+}> {
+  const toolOutputs: ChatMessage[] = [];
+  let suspend = false;
+  let subdialogsCreated = 0;
+
+  const team = await Team.load();
+  const intrinsicTools = dlg.getIntrinsicTools();
+  const member = team.getMember(firstMention);
+
+  // === Q4H: Handle @human teammate calls (Questions for Human) ===
+  // Q4H works for both user-initiated and assistant-initiated @human calls
+  const isQ4H = firstMention === 'human';
+  if (isQ4H) {
+    try {
+      // Create HumanQuestion entry
+      const questionId = `q4h-${generateDialogID()}`;
+      const question: HumanQuestion = {
+        id: questionId,
+        headLine: headLine.trim(),
+        bodyContent: body.trim(),
+        askedAt: formatUnifiedTimestamp(new Date()),
+        callSiteRef: {
+          round: dlg.currentRound,
+          messageIndex: dlg.msgs.length,
+        },
+      };
+
+      // Load existing questions and add new one
+      const existingQuestions = await DialogPersistence.loadQuestions4HumanState(dlg.id);
+      const previousCount = existingQuestions.length;
+      existingQuestions.push(question);
+
+      // Save to q4h.yaml
+      await DialogPersistence._saveQuestions4HumanState(dlg.id, existingQuestions);
+
+      // Emit new_q4h_asked event
+      const newQuestionEvent: NewQ4HAskedEvent = {
+        type: 'new_q4h_asked',
+        question: {
+          id: question.id,
+          dialogId: dlg.id.selfId,
+          headLine: question.headLine,
+          bodyContent: question.bodyContent,
+          askedAt: question.askedAt,
+          callSiteRef: question.callSiteRef,
+        },
+      };
+
+      // Import postDialogEvent for event emission
+      const { postDialogEvent } = await import('../evt-registry');
+      postDialogEvent(dlg, newQuestionEvent);
+
+      // Return empty output and suspend for human answer
+      return { toolOutputs, suspend: true, subdialogsCreated: 0 };
+    } catch (q4hErr: unknown) {
+      const errMsg = q4hErr instanceof Error ? q4hErr.message : String(q4hErr);
+      const errStack = q4hErr instanceof Error ? q4hErr.stack : '';
+      log.error('Q4H: Failed to register question', q4hErr, {
+        dialogId: dlg.id.selfId,
+        headLine: headLine.substring(0, 100),
+      });
+      // Don't throw - allow fallback to "Unknown call" handler
+    }
+  }
+
+  if (member) {
+    // This is a teammate call - parse using Phase 5 taxonomy
+    // Parse the call text to determine type A/B/C
+    const callText = `@${firstMention}${headLine.includes('!') ? ' !topic' : ''}`;
+    const parseResult = parseTeammateCall(callText, dlg);
+
+    // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
+    // This suspends the subdialog, drives the supdialog for one round, then returns to subdialog
+    if (parseResult.type === 'A') {
+      // Verify this is a subdialog with a supdialog
+      if ('supdialog' in dlg && dlg.supdialog) {
+        const supdialog = dlg.supdialog;
+
+        // Suspend the subdialog
+        dlg.setSuspensionState('suspended');
+
+        try {
+          // Drive the supdialog for one round
+          await driveDialogStream(supdialog);
+
+          // Extract summary from supdialog's last assistant message
+          const summary = await extractSupdialogSummaryForTypeA(supdialog);
+
+          // Resume the subdialog with the supdialog's response
+          dlg.setSuspensionState('resumed');
+
+          // Add the response as a tool output
+          toolOutputs.push({
+            type: 'environment_msg',
+            role: 'user',
+            content: `🔄 **Response from @${parseResult.agentId}:**
+
+${summary}`,
+          });
+        } catch (err) {
+          log.warn('Type A supdialog processing error:', err);
+          // Resume the subdialog even on error
+          dlg.setSuspensionState('resumed');
+          toolOutputs.push({
+            type: 'environment_msg',
+            role: 'user',
+            content: `❌ **Error processing request to @${parseResult.agentId}:**
+
+${showErrorToAi(err)}`,
+          });
+        }
+      } else {
+        log.warn('Type A call on dialog without supdialog, falling back to Type C', {
+          dialogId: dlg.id.selfId,
+        });
+        // Fall through to Type C handling
+      }
+    } else if (parseResult.type === 'B') {
+      // Type B: Registered subdialog with topic
+      // Check if this is a RootDialog with mutex registry (CORRECTED: was subdialogRegistry)
+      if ('subdialogMutex' in dlg) {
+        const rootDialog = dlg as RootDialog;
+        const registryEntry = rootDialog.subdialogMutex.lookup(
+          parseResult.agentId,
+          parseResult.topicId,
+        );
+
+        if (registryEntry && registryEntry.locked) {
+          // Resume existing registered subdialog (CORRECTED: was status === 'active')
+          // TODO: Resume the registered subdialog
+          // Note: Full resume requires loading the SubDialog object from disk using registryEntry.subdialogId
+          // For now, log the resume intent - the subdialog will continue when its events are processed
+          suspend = true;
+        } else {
+          // Create new registered subdialog
+          const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
+            originRole,
+            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+          });
+          // Register in SubdialogMutex (CORRECTED: was subdialogRegistry)
+          rootDialog.registerSubdialogByTopic(parseResult.agentId, parseResult.topicId, sub.id);
+          // Persist registry to disk
+          await rootDialog.saveRegistry();
+
+          const task = (async () => {
+            try {
+              await driveSubdialogToCompletion(rootDialog, sub);
+              // Mark as done in registry
+              rootDialog.unlockMutexByTopic(parseResult.agentId, parseResult.topicId);
+              await rootDialog.saveRegistry();
+            } catch (err) {
+              log.warn('Type B subdialog processing error:', err);
+            }
+          })();
+          void task;
+          subdialogsCreated++;
+          suspend = true;
+        }
+      } else {
+        // If not a RootDialog, fall back to Type C behavior (transient subdialog)
+        try {
+          const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+            originRole,
+            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+          });
+
+          const task = (async () => {
+            try {
+              await driveSubdialogToCompletion(dlg, sub);
+            } catch (err) {
+              log.warn('Type B→C fallback subdialog processing error:', err);
+            }
+          })();
+          void task;
+          subdialogsCreated++;
+          suspend = true;
+        } catch (err) {
+          log.warn('Type B→C fallback subdialog creation error:', err);
+        }
+      }
+    }
+
+    // Type C: Transient subdialog (unregistered)
+    if (parseResult.type === 'C') {
+      const mentions: string[] = [];
+      const lines = headLine.split('\n');
+      for (const ln of lines) {
+        const mm = ln.match(/@([^\s]+)/);
+        if (mm) mentions.push(mm[1]);
+      }
+      const targets = mentions.filter((m) => !!team.getMember(m));
+
+      for (const tgt of targets) {
+        try {
+          const sub = await dlg.createSubDialog(tgt, headLine, body, {
+            originRole,
+            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+          });
+
+          const task = (async () => {
+            try {
+              await driveSubdialogToCompletion(dlg, sub);
+              // Type C: Move to done/ on completion (handled by subdialog completion)
+            } catch (err) {
+              log.warn('Type C subdialog processing error:', err);
+            }
+          })();
+          void task;
+          subdialogsCreated++;
+          suspend = true;
+        } catch (err) {
+          log.warn('Subdialog creation error:', err);
+        }
+      }
+    }
+  } else {
+    // Not a team member - check for texting tools
+    let tool =
+      textingTools.find((t) => t.name === firstMention) ||
+      intrinsicTools.find((t) => t.name === firstMention);
+    if (!tool) {
+      try {
+        const globalTool = getTool(firstMention);
+        switch (globalTool?.type) {
+          case 'texter':
+            tool = globalTool;
+            break;
+          case 'func':
+            log.warn(`Function tool "${globalTool.name}" should not be called as texting tool!`);
+            break;
+        }
+      } catch (toolErr) {
+        // Fall through
+      }
+    }
+    if (tool) {
+      try {
+        const raw = await tool.call(dlg, agent, headLine, body);
+
+        // Always use what the tool returned
+        if (raw.messages) {
+          toolOutputs.push(...raw.messages);
+        }
+
+        // Emit tool response with callId (inline bubble) - callId is for UI correlation only
+        await dlg.receiveToolResponse(
+          firstMention,
+          headLine,
+          raw.status === 'completed' ? (raw.result ?? 'OK') : raw.result,
+          raw.status,
+          callId,
+        );
+
+        // Clear callId after response
+        dlg.clearCurrentCallId();
+
+        if (tool.backfeeding && !raw.messages) {
+          log.warn(
+            `Texting tool @${firstMention} returned empty output while backfeeding=true`,
+            undefined,
+            { headLine },
+          );
+        }
+      } catch (e) {
+        const msg = `❌ **Error executing @${firstMention}**\n\n- Head: ${headLine}\n- Detail: ${showErrorToAi(e)}\n\n**Body**\n\n\`\`\`\n${body}\n\`\`\``;
+        toolOutputs.push({
+          type: 'environment_msg',
+          role: 'user',
+          content: msg,
+        });
+
+        // Create error message (no callId - for LLM context only)
+        const errorMsg: TextingCallResultMsg = {
+          type: 'call_result_msg',
+          role: 'tool',
+          responderId: firstMention,
+          headLine,
+          status: 'failed',
+          content: msg,
+        };
+        toolOutputs.push(errorMsg);
+
+        // Emit tool response with callId for UI correlation
+        await dlg.receiveToolResponse(firstMention, headLine, msg, 'failed', callId);
+
+        // Clear callId after response
+        dlg.clearCurrentCallId();
+      }
+    } else {
+      const msg = `❌ **Unknown call** \`@${firstMention}\`\n- Head: ${headLine}`;
+      toolOutputs.push({
+        type: 'environment_msg',
+        role: 'user',
+        content: msg,
+      });
+
+      // Unknown call treated as teammate failure (separate bubble)
+      await dlg.receiveTeammateResponse(firstMention, headLine, msg, 'failed');
+      log.warn(`Unknown call @${firstMention} | Head: ${headLine}`);
+    }
+  }
+
+  return { toolOutputs, suspend, subdialogsCreated };
+}
