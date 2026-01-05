@@ -44,10 +44,13 @@ function isToolUseBlock(value: unknown): value is ToolUseBlock {
 }
 
 function funcToolToAnthropic(funcTool: FuncTool): Tool {
+  const input_schema: AnthropicCompatibleSchema = {
+    ...funcTool.parameters,
+  };
   return {
     name: funcTool.name,
     description: funcTool.description || '',
-    input_schema: funcTool.parameters as AnthropicCompatibleSchema,
+    input_schema,
   };
 }
 
@@ -149,17 +152,20 @@ function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageP
 function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock[] {
   // Handle TransientGuide messages as text content
   if (chatMsg.type === 'transient_guide_msg') {
-    return [{ type: 'text', text: chatMsg.content } as AnthropicContentBlock];
+    const block: AnthropicContentBlock = { type: 'text', text: chatMsg.content };
+    return [block];
   }
 
   // Handle prompting and reporting messages
   if (chatMsg.type === 'prompting_msg' || chatMsg.type === 'environment_msg') {
-    return [{ type: 'text', text: chatMsg.content } as AnthropicContentBlock];
+    const block: AnthropicContentBlock = { type: 'text', text: chatMsg.content };
+    return [block];
   }
 
   // Handle saying and thinking messages from assistant
   if (chatMsg.type === 'saying_msg' || chatMsg.type === 'thinking_msg') {
-    return [{ type: 'text', text: chatMsg.content } as AnthropicContentBlock];
+    const block: AnthropicContentBlock = { type: 'text', text: chatMsg.content };
+    return [block];
   }
 
   // Handle function calls
@@ -168,25 +174,23 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
     if (!isRecord(parsed) || Array.isArray(parsed)) {
       throw new Error('Invalid func_call_msg.arguments: expected JSON object');
     }
-    return [
-      {
-        type: 'tool_use',
-        id: chatMsg.id,
-        name: chatMsg.name,
-        input: parsed,
-      } as AnthropicContentBlock,
-    ];
+    const block: AnthropicContentBlock = {
+      type: 'tool_use',
+      id: chatMsg.id,
+      name: chatMsg.name,
+      input: parsed,
+    };
+    return [block];
   }
 
   // Handle function results (LLM-native tool calls)
   if (chatMsg.type === 'func_result_msg') {
-    return [
-      {
-        type: 'tool_result',
-        tool_use_id: chatMsg.id,
-        content: chatMsg.content,
-      } as AnthropicContentBlock,
-    ];
+    const block: AnthropicContentBlock = {
+      type: 'tool_result',
+      tool_use_id: chatMsg.id,
+      content: chatMsg.content,
+    };
+    return [block];
   }
 
   // Handle texting call results (NOT LLM-native, represented as role='user' messages)
@@ -202,7 +206,7 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
   // Exhaustiveness check - ensure all ChatMessage types are handled
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _exhaustive: never = chatMsg;
-  throw new Error(`Unsupported ChatMessage type: ${(_exhaustive as ChatMessage).type}`);
+  throw new Error(`Unsupported ChatMessage type: ${JSON.stringify(chatMsg)}`);
 }
 
 function chatMessageToAnthropic(chatMsg: ChatMessage): MessageParam {
@@ -389,8 +393,9 @@ export class AnthropicGen implements LlmGenerator {
         onTextDelta(textDelta);
       }
     } else if (event.type === 'content_block_start') {
-      if (event.content_block.type === 'tool_use') {
-        const toolBlock = event.content_block as ToolUseBlock;
+      const contentBlock = event.content_block;
+      if (isToolUseBlock(contentBlock)) {
+        const toolBlock = contentBlock;
         funcCalls.push({
           type: 'func_call_msg',
           id: toolBlock.id,
@@ -637,12 +642,18 @@ export class AnthropicGen implements LlmGenerator {
 
         // Note: input_json_delta is handled within content_block_delta as part of input_json_delta delta type
 
-        default:
+        default: {
           // Handle unexpected events with proper type checking
+          const unknownEvent: unknown = event;
+          const eventType =
+            isRecord(unknownEvent) && typeof unknownEvent.type === 'string'
+              ? unknownEvent.type
+              : 'unknown';
           log.warn('ANTH unexpected llm event', new Error('Unknown event type'), {
-            eventType: (event as MessageStreamEvent).type,
+            eventType,
           });
           break;
+        }
       }
     }
 
