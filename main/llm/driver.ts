@@ -371,6 +371,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         await dlg.addChatMessages({
           type: 'prompting_msg',
           role: 'user',
+          genseq: dlg.activeGenSeq,
           content: promptContent,
           msgId: msgId,
         });

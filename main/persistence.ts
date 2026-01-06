@@ -181,6 +181,7 @@ export class DiskFileDialogStore extends DialogStore {
     subdialog.msgs.push({
       type: 'prompting_msg',
       role: 'user',
+      genseq: 1,
       msgId: generatedId,
       content: assignmentMsgContent,
     });

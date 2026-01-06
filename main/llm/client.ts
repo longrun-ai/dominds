@@ -20,6 +20,7 @@ export type TransientGuideMsg = {
 export type PromptingMsg = {
   type: 'prompting_msg';
   role: 'user';
+  genseq: number;
   msgId: string;
   content: string;
 };
