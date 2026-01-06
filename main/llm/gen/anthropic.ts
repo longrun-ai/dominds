@@ -12,11 +12,12 @@ import type {
   Tool,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages';
+
 import { createLogger } from '../../log';
 import { EndOfStream, PubChan } from '../../shared/evt';
 import type { Team } from '../../team';
 import type { FuncTool, JsonSchema } from '../../tool';
-import type { ChatMessage, FuncCallMsg, ProviderConfig } from '../client';
+import type { ChatMessage, ProviderConfig } from '../client';
 import type { LlmGenerator, LlmStreamReceiver } from '../gen';
 
 const log = createLogger('llm/anthropic');
@@ -57,129 +58,63 @@ function funcToolToAnthropic(funcTool: FuncTool): Tool {
 /**
  * Context Reconstruction Functions
  *
- * Converts persisted messages with genseq tracking to Anthropic SDK MessageParam[] format.
- * Groups messages by generation sequence and maintains tool call/result relationships.
+ * Converts persisted messages to Anthropic SDK MessageParam[] format.
+ * Relies on natural storage order - func_result always follows func_call.
  */
 
 /**
- * Reconstruct Anthropic context from persisted messages with genseq tracking.
- * Groups messages by generation sequence and converts to SDK MessageParam[] format.
- *
- * CRITICAL: Tool calls (tool_use) must be immediately followed by their results (tool_result)
- * in the same message sequence for proper Anthropic API compatibility.
+ * Reconstruct Anthropic context from persisted messages.
+ * Relies on natural storage order - func_result always follows func_call.
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
-  // Group messages by generation sequence
-  const messagesByGenseq = new Map<number, ChatMessage[]>();
+  const reconstructed: MessageParam[] = [];
 
   for (const msg of persistedMessages) {
-    // Extract genseq from message (handle both old and new formats)
-    const genseq = 'genseq' in msg && typeof msg.genseq === 'number' ? msg.genseq : 1;
-
-    if (!messagesByGenseq.has(genseq)) {
-      messagesByGenseq.set(genseq, []);
+    // User text messages
+    if (msg.role === 'user' && !msg.type.startsWith('func_')) {
+      reconstructed.push({
+        role: 'user',
+        content: [{ type: 'text', text: msg.content }],
+      });
     }
-    messagesByGenseq.get(genseq)!.push(msg);
-  }
-
-  // Sort messages within each generation sequence by their natural ordering
-  const sortedGenseqs = Array.from(messagesByGenseq.keys()).sort((a, b) => a - b);
-
-  const reconstructedMessages: MessageParam[] = [];
-
-  for (const genseq of sortedGenseqs) {
-    const messages = messagesByGenseq.get(genseq)!;
-
-    // Track pending tool calls awaiting results
-    const pendingToolCalls: Map<string, AnthropicContentBlock> = new Map();
-    // Track accumulated content for current assistant message
-    const currentAssistantContent: AnthropicContentBlock[] = [];
-
-    // Index to track position for pairing tool calls with their results
-    let msgIndex = 0;
-    while (msgIndex < messages.length) {
-      const msg = messages[msgIndex];
-
-      // Handle function call message - collect tool_use block
-      if (msg.type === 'func_call_msg') {
-        const blocks = chatMessageToContentBlocks(msg);
-        for (const block of blocks) {
-          if (block.type === 'tool_use') {
-            currentAssistantContent.push(block);
-            pendingToolCalls.set(block.id, block);
-          }
-        }
-      }
-      // Handle function result message - pair with pending tool call and flush
-      else if (msg.type === 'func_result_msg') {
-        const blocks = chatMessageToContentBlocks(msg);
-        for (const block of blocks) {
-          if (block.type === 'tool_result') {
-            // Verify this result matches a pending tool call
-            const matchingCall = pendingToolCalls.get(block.tool_use_id);
-            if (matchingCall) {
-              pendingToolCalls.delete(block.tool_use_id);
-
-              // Flush accumulated assistant content (if any pending tool calls)
-              if (currentAssistantContent.length > 0) {
-                reconstructedMessages.push({
-                  role: 'assistant',
-                  content: currentAssistantContent,
-                });
-                currentAssistantContent.length = 0;
-              }
-
-              // Emit assistant message with tool_use
-              reconstructedMessages.push({
-                role: 'assistant',
-                content: [matchingCall],
-              });
-
-              // Emit user message with tool_result immediately after
-              reconstructedMessages.push({
-                role: 'user',
-                content: [block],
-              });
-            }
-          }
-        }
-      }
-      // Handle non-tool user messages (text content) - emit directly
-      else if (msg.role === 'user' && !msg.type.startsWith('func_')) {
-        const blocks = chatMessageToContentBlocks(msg);
-        for (const block of blocks) {
-          if (block.type === 'text' || block.type === 'thinking') {
-            reconstructedMessages.push({
-              role: 'user',
-              content: [block],
-            });
-          }
-        }
-      }
-      // Handle non-tool assistant messages (saying, thinking)
-      else if (
-        msg.role === 'assistant' &&
-        (msg.type === 'saying_msg' || msg.type === 'thinking_msg')
-      ) {
-        const blocks = chatMessageToContentBlocks(msg);
-        for (const block of blocks) {
-          currentAssistantContent.push(block);
-        }
-      }
-
-      msgIndex++;
-    }
-
-    // Flush any remaining assistant content at end of generation sequence
-    if (currentAssistantContent.length > 0) {
-      reconstructedMessages.push({
+    // Assistant text/thinking
+    else if (
+      msg.role === 'assistant' &&
+      (msg.type === 'saying_msg' || msg.type === 'thinking_msg')
+    ) {
+      reconstructed.push({
         role: 'assistant',
-        content: currentAssistantContent,
+        content: [{ type: 'text', text: msg.content }],
+      });
+    }
+    // Tool call -> immediately followed by tool_result (natural order)
+    else if (msg.type === 'func_call_msg') {
+      reconstructed.push({
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: msg.id,
+            name: msg.name,
+            input: JSON.parse(msg.arguments || '{}'),
+          },
+        ],
+      });
+    } else if (msg.type === 'func_result_msg') {
+      reconstructed.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: msg.id,
+            content: msg.content,
+          },
+        ],
       });
     }
   }
 
-  return reconstructedMessages;
+  return reconstructed;
 }
 
 /**
@@ -242,8 +177,6 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
   }
 
   // Exhaustiveness check - ensure all ChatMessage types are handled
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _exhaustive: never = chatMsg;
   throw new Error(`Unsupported ChatMessage type: ${JSON.stringify(chatMsg)}`);
 }
 
@@ -419,33 +352,6 @@ export class AnthropicGen implements LlmGenerator {
     return 'anthropic';
   }
 
-  private handleStreamEvent(
-    event: MessageStreamEvent,
-    funcCalls: FuncCallMsg[],
-    onTextDelta: (textDelta: string) => void,
-    genseq: number,
-  ): void {
-    if (event.type === 'content_block_delta') {
-      if (event.delta.type === 'text_delta') {
-        const textDelta = event.delta.text;
-        onTextDelta(textDelta);
-      }
-    } else if (event.type === 'content_block_start') {
-      const contentBlock = event.content_block;
-      if (isToolUseBlock(contentBlock)) {
-        const toolBlock = contentBlock;
-        funcCalls.push({
-          type: 'func_call_msg',
-          id: toolBlock.id,
-          name: toolBlock.name,
-          arguments: JSON.stringify(toolBlock.input),
-          role: 'assistant',
-          genseq: genseq,
-        });
-      }
-    }
-  }
-
   async genToReceiver(
     providerConfig: ProviderConfig,
     agent: Team.Member,
@@ -453,7 +359,7 @@ export class AnthropicGen implements LlmGenerator {
     funcTools: FuncTool[],
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
-    genseq: number,
+    _genseq: number,
   ): Promise<void> {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
@@ -499,12 +405,6 @@ export class AnthropicGen implements LlmGenerator {
       ...baseParams,
       stream: true,
     } satisfies MessageCreateParamsStreaming);
-
-    // Process stream and yield streams immediately as content becomes available
-    let textChunkCount = 0;
-    let thinkingChunkCount = 0;
-    let usageInfo: { input_tokens: number | null; output_tokens: number | null } | undefined =
-      undefined;
 
     // Stream lifecycle management using SDK start/stop events
     let currentContentBlock: { type: string } | null = null;
@@ -585,7 +485,6 @@ export class AnthropicGen implements LlmGenerator {
           if (delta.type === 'text_delta') {
             const textDelta = delta.text ?? '';
             if (textDelta) {
-              textChunkCount++;
               await receiver.sayingChunk(textDelta);
             }
           } else if (delta.type === 'thinking_delta') {
@@ -596,7 +495,6 @@ export class AnthropicGen implements LlmGenerator {
             }
             const thinkingDelta = delta.thinking ?? '';
             if (thinkingDelta) {
-              thinkingChunkCount++;
               await receiver.thinkingChunk(thinkingDelta);
             }
           } else if (delta.type === 'citations_delta') {
@@ -649,25 +547,16 @@ export class AnthropicGen implements LlmGenerator {
         }
 
         case 'message_start': {
-          const message = event.message;
-          if (message.usage) {
-            usageInfo = message.usage;
-          }
+          // Usage info captured but not currently used
           break;
         }
 
         case 'message_delta': {
-          // Modern TypeScript: Access properties directly from typed event
-          if ('usage' in event && event.usage) {
-            usageInfo = event.usage;
-          }
+          // Usage info captured but not currently used
           break;
         }
 
         case 'message_stop': {
-          // Modern TypeScript: Access stop_reason via property access with type narrowing
-          const stopReason = 'stop_reason' in event ? event.stop_reason : undefined;
-
           inputJsonChan?.write(EndOfStream);
 
           inputJsonChan = undefined;
