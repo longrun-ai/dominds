@@ -18,7 +18,7 @@ class MockTextingEventsReceiver implements TextingEventsReceiver {
     this.events.push({ type: 'markdownFinish', data: null });
   }
 
-  async callStart(firstMention: string, _callId: string): Promise<void> {
+  async callStart(firstMention: string): Promise<void> {
     this.events.push({ type: 'callStart', data: { firstMention } });
   }
 

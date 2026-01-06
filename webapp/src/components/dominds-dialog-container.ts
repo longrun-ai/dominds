@@ -39,11 +39,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private callingSection?: HTMLElement;
   private codeblockSection?: DomindsCodeBlock;
 
-  // Other state
-  private lastResponderId?: string;
-  private hadStreamError: boolean = false;
-  private lastStreamErrorText?: string;
-
   private callingSectionByKey = new Map<string, HTMLElement>();
   // Track calling sections by callId for direct lookup (tool calls only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
@@ -136,7 +131,6 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     this.currentDialog = dialog;
-    this.lastResponderId = dialog.agentId ? String(dialog.agentId) : undefined;
 
     this.render();
   }
@@ -167,8 +161,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.codeblockSection = undefined;
     this.currentRound = undefined;
     this.activeGenSeq = undefined;
-    this.hadStreamError = false;
-    this.lastStreamErrorText = undefined;
     this.callingSectionByKey.clear();
     this.callingSectionByCallId.clear();
 
@@ -613,7 +605,7 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.innerHTML = `
         <div class="bubble-content">
           <div class="bubble-header">
-            <div class="bubble-author">${this.getAuthorLabel('assistant', this.lastResponderId)}</div>
+            <div class="bubble-author">${this.getAuthorLabel('assistant', this.currentDialog?.agentId)}</div>
             <div class="timestamp">${new Date().toLocaleTimeString()}</div>
           </div>
           <div class="bubble-body"></div>
@@ -740,7 +732,7 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.innerHTML = `
         <div class="bubble-content">
           <div class="bubble-header">
-            <div class="bubble-author">${this.getAuthorLabel('assistant', this.lastResponderId)}</div>
+            <div class="bubble-author">${this.getAuthorLabel('assistant', this.currentDialog?.agentId)}</div>
             <div class="timestamp">${new Date().toLocaleTimeString()}</div>
           </div>
           <div class="bubble-body"></div>
@@ -1059,7 +1051,6 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Use summary if available (merged from subdialog_final_summary_evt), otherwise use result
     const content = event.summary || `@${event.responderId}: ${event.result}`;
-    this.lastResponderId = String(event.responderId || '');
 
     // Determine agentId for the bubble (use event.agentId if available, otherwise responderId)
     const agentId = event.agentId || event.responderId;
@@ -1189,7 +1180,7 @@ export class DomindsDialogContainer extends HTMLElement {
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
-          <div class="bubble-author">${this.getAuthorLabel('assistant', this.lastResponderId)}</div>
+          <div class="bubble-author">${this.getAuthorLabel('assistant', this.currentDialog?.agentId)}</div>
           <div class="timestamp">${new Date().toLocaleTimeString()}</div>
         </div>
         <div class="bubble-body">
@@ -1426,7 +1417,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private getAuthorLabel(role: string, responderId?: string): string {
     if (role === 'user') return 'Human';
 
-    const id = responderId || this.lastResponderId || '';
+    const id = responderId || this.currentDialog?.agentId || '';
     if (!id) return '🤖 Assistant';
 
     // Use team configuration if available

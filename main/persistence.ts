@@ -667,7 +667,7 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   // Tool call streaming methods (renamed from calling to tool_call)
-  public async callingStart(dialog: Dialog, firstMention: string, callId: string): Promise<void> {
+  public async callingStart(dialog: Dialog, firstMention: string): Promise<void> {
     const evt: ToolCallStartEvent = {
       type: 'tool_call_start_evt',
       firstMention,
@@ -1231,7 +1231,7 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callStart: async (first: string, callId: string) => {
+            callStart: async (first: string) => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({

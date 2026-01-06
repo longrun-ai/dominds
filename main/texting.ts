@@ -114,14 +114,21 @@
  * - **Memory**: Bounded buffers prevent memory growth during long streams
  */
 
+export interface CollectedTextingCall {
+  firstMention: string;
+  headLine: string;
+  body: string;
+  callId: string;
+}
+
 export interface TextingEventsReceiver {
   // interleaved free text segments between calls and code-blocks are emitted as markdown fragments
   markdownStart: () => Promise<void>;
   markdownChunk: (chunk: string) => Promise<void>;
   markdownFinish: () => Promise<void>;
 
-  // start of texting call - callId for tool call correlation
-  callStart: (firstMention: string, callId: string) => Promise<void>;
+  // start of texting call - firstMention determines target
+  callStart: (firstMention: string) => Promise<void>;
 
   // include all white spaces from upstream
   callHeadLineChunk: (chunk: string) => Promise<void>;
@@ -259,7 +266,7 @@ export class TextingStreamParser {
     call.firstMention = firstMention;
     // callId will be computed at emitCallFinish using content-hash
     // This ensures replay generates the same callId for correlation
-    this.downstream.callStart(firstMention, '');
+    this.downstream.callStart(firstMention);
     this.callStartEmitted = true;
   }
 
@@ -384,12 +391,7 @@ export class TextingStreamParser {
     }
   }
 
-  public getCollectedCalls(): Array<{
-    firstMention: string;
-    headLine: string;
-    body: string;
-    callId: string;
-  }> {
+  public getCollectedCalls(): CollectedTextingCall[] {
     return [...this.collectedCalls];
   }
 
@@ -908,7 +910,23 @@ export class TextingStreamParser {
           }
 
           if (atLineStart) {
-            // Next content is @ at line start - this indicates no body, just finish the call
+            // Check if this is @/ (call terminator) - should NOT start a new call
+            if (aheadPos + 1 < chunk.length && chunk[aheadPos + 1] === '/') {
+              // @/ at line start terminates the call, no body content
+              this.hasBody = false;
+              // Emit headline finish before call finish
+              if (this.headlineBuffer) {
+                this.downstream.callHeadLineFinish();
+              }
+              this.headlineFinished = true;
+              this.emitCallFinish();
+
+              // Switch to free text mode - @/ terminates the call, doesn't start a new one
+              this.mode = ParserMode.FREE_TEXT;
+              return aheadPos + 2; // Skip past @/
+            }
+
+            // Next content is @ at line start (not @/) - this indicates no body, just finish the call
             this.hasBody = false;
             // Emit headline finish before call finish
             if (this.headlineBuffer) {

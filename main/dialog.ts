@@ -258,9 +258,9 @@ export abstract class Dialog {
   }
 
   /**
-   * Set the current callId (called during call_start_evt for texting tool calls)
+   * Set the current callId (called during call_finish_evt for texting tool calls)
    *
-   * @param callId - The correlation ID from TextingEventsReceiver.callStart()
+   * @param callId - The correlation ID from TextingEventsReceiver.callFinish()
    */
   public setCurrentCallId(callId: string): void {
     this._currentCallId = callId;
@@ -745,10 +745,8 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   }
 
   // Tool call events (streaming mode - @tool_name mentions)
-  public async callingStart(firstMention: string, callId: string): Promise<void> {
-    // Store callId for tool call correlation
-    this.setCurrentCallId(callId);
-    await this.dlgStore.callingStart(this, firstMention, callId);
+  public async callingStart(firstMention: string): Promise<void> {
+    await this.dlgStore.callingStart(this, firstMention);
   }
 
   public async callingHeadlineChunk(chunk: string): Promise<void> {
@@ -772,6 +770,8 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   }
 
   public async callingFinish(callId: string): Promise<void> {
+    // Store callId for tool call correlation
+    this.setCurrentCallId(callId);
     await this.dlgStore.callingFinish(this, callId);
   }
 
@@ -1183,11 +1183,7 @@ export abstract class DialogStore {
   public async codeBlockFinish(_dialog: Dialog, _endQuote?: string): Promise<void> {}
 
   // Tool call streaming methods
-  public async callingStart(
-    _dialog: Dialog,
-    _firstMention: string,
-    _callId: string,
-  ): Promise<void> {}
+  public async callingStart(_dialog: Dialog, _firstMention: string): Promise<void> {}
   public async callingHeadlineChunk(_dialog: Dialog, _chunk: string): Promise<void> {}
   public async callingHeadlineFinish(_dialog: Dialog): Promise<void> {}
   public async callingBodyStart(_dialog: Dialog, _infoLine?: string): Promise<void> {}

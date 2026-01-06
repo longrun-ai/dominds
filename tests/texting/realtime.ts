@@ -67,7 +67,7 @@ class ChunkPreservationTestReceiver implements TextingEventsReceiver {
     this.logEvent('markdownFinish', null, 0);
   }
 
-  async callStart(firstMention: string, _callId: string): Promise<void> {
+  async callStart(firstMention: string): Promise<void> {
     this.logEvent('callStart', { firstMention }, 0);
   }
 

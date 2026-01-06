@@ -19,7 +19,7 @@ import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { HumanQuestion } from '../shared/types/storage';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import { TextingEventsReceiver, TextingStreamParser } from '../texting';
+import { CollectedTextingCall, TextingEventsReceiver, TextingStreamParser } from '../texting';
 import type { ToolArguments } from '../tool';
 import { FuncTool, TextingTool, Tool, validateArgs } from '../tool';
 import { getTool } from '../tools/registry';
@@ -155,10 +155,7 @@ function validateStreamingConfiguration(agent: Team.Member, agentTools: Tool[]):
  * Handles @mentions, codeblocks, and markdown using TextingStreamParser.
  * Used by both streaming and non-streaming modes.
  */
-export function createSayingEventsReceiver(
-  dlg: Dialog,
-  dialogIdLog: DialogID,
-): TextingEventsReceiver {
+export function createSayingEventsReceiver(dlg: Dialog): TextingEventsReceiver {
   return {
     markdownStart: async () => {
       await dlg.markdownStart();
@@ -169,8 +166,8 @@ export function createSayingEventsReceiver(
     markdownFinish: async () => {
       await dlg.markdownFinish();
     },
-    callStart: async (first: string, callId: string) => {
-      await dlg.callingStart(first, callId);
+    callStart: async (first: string) => {
+      await dlg.callingStart(first);
     },
     callHeadLineChunk: async (chunk: string) => {
       await dlg.callingHeadlineChunk(chunk);
@@ -226,13 +223,18 @@ export async function emitThinkingEvents(
  * Emit saying events using TextingStreamParser for @mentions/codeblocks (non-streaming mode).
  * Processes the entire content at once, handling all markdown/call/code events.
  */
-export async function emitSayingEvents(dlg: Dialog, content: string): Promise<void> {
-  if (!content.trim()) return;
+export async function emitSayingEvents(
+  dlg: Dialog,
+  content: string,
+): Promise<CollectedTextingCall[]> {
+  if (!content.trim()) return [];
 
-  const receiver = createSayingEventsReceiver(dlg, dlg.id);
+  const receiver = createSayingEventsReceiver(dlg);
   const parser = new TextingStreamParser(receiver);
   parser.takeUpstreamChunk(content);
   parser.finalize();
+
+  return parser.getCollectedCalls();
 }
 
 // TODO: certain scenarios should pass `waitInQue=true`:
@@ -383,11 +385,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       // Collect and execute texting calls from user text using streaming parser
       // Combine agent texting tools with intrinsic reminder tools
       const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
-      const userResult = await collectAndExecuteTextingCalls(
+      const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
+      const userResult = await executeTextingCalls(
         dlg,
         agent,
         allTextingTools,
-        promptContent,
+        collectedUserCalls,
         'user',
       );
 
@@ -535,6 +538,8 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
         const assistantMsgs = nonStreamMsgs.filter(
           (m): m is SayingMsg | ThinkingMsg => m.type === 'saying_msg' || m.type === 'thinking_msg',
         );
+        const collectedAssistantCalls: CollectedTextingCall[] = [];
+
         if (assistantMsgs.length > 0) {
           await dlg.addChatMessages(...assistantMsgs);
 
@@ -544,8 +549,10 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
               msg.genseq !== undefined &&
               (msg.type === 'thinking_msg' || msg.type === 'saying_msg')
             ) {
-              const messageType = msg.type === 'thinking_msg' ? 'thinking_msg' : 'saying_msg';
-              await dlg.persistAgentMessage(msg.content, msg.genseq, messageType);
+              // Only persist saying_msg - thinking_msg is persisted via thinkingFinish
+              if (msg.type === 'saying_msg') {
+                await dlg.persistAgentMessage(msg.content, msg.genseq, 'saying_msg');
+              }
 
               // Emit thinking events using shared handler (non-streaming mode)
               if (msg.type === 'thinking_msg') {
@@ -554,24 +561,21 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
 
               // Emit saying events using shared TextingStreamParser integration
               if (msg.type === 'saying_msg') {
-                await emitSayingEvents(dlg, msg.content);
+                const calls = await emitSayingEvents(dlg, msg.content);
+                collectedAssistantCalls.push(...calls);
               }
             }
           }
         }
 
         let assistantToolOutputsCount = 0;
-        const assistantText = nonStreamMsgs
-          .filter((m) => m.type === 'saying_msg' && m.role === 'assistant')
-          .map((m) => m.content)
-          .join('\n');
-        if (assistantText.trim()) {
+        if (collectedAssistantCalls.length > 0) {
           const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
-          const assistantResult = await collectAndExecuteTextingCalls(
+          const assistantResult = await executeTextingCalls(
             dlg,
             agent,
             allTextingTools,
-            assistantText,
+            collectedAssistantCalls,
             'assistant',
           );
           assistantToolOutputsCount = assistantResult.toolOutputs.length;
@@ -714,7 +718,6 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
 
         continue;
       } else {
-        const dialogIdLog = dlg.id;
         const newMsgs: ChatMessage[] = [];
 
         // Track thinking content for signature extraction during streaming
@@ -723,7 +726,7 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
         let currentSayingContent = '';
 
         // Create receiver using shared helper (unified TextingStreamParser integration)
-        const receiver = createSayingEventsReceiver(dlg, dialogIdLog);
+        const receiver = createSayingEventsReceiver(dlg);
 
         // Direct streaming parser that forwards events without state tracking
         const parser = new TextingStreamParser(receiver);
@@ -1590,50 +1593,13 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
 /**
  * Collect texting calls using the streaming parser, then execute them
  */
-interface TextingCall {
-  firstMention: string;
-  headLine: string;
-  body: string;
-}
-
-async function collectAndExecuteTextingCalls(
+async function executeTextingCalls(
   dlg: Dialog,
   agent: Team.Member,
   textingTools: TextingTool[],
-  text: string,
+  collectedCalls: CollectedTextingCall[],
   originRole: 'user' | 'assistant',
 ): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: number }> {
-  // Create a receiver to capture callId during parsing
-  let capturedCallId: string | null = null;
-  const receiver: TextingEventsReceiver = {
-    callStart: async (first: string, callId: string) => {
-      capturedCallId = callId;
-      await dlg.callingStart(first, callId);
-    },
-    callHeadLineChunk: async () => {},
-    callHeadLineFinish: async () => {},
-    callBodyStart: async () => {},
-    callBodyChunk: async () => {},
-    callBodyFinish: async () => {},
-    callFinish: async (_callId: string) => {},
-    codeBlockStart: async () => {},
-    codeBlockChunk: async () => {},
-    codeBlockFinish: async () => {},
-    markdownStart: async () => {},
-    markdownChunk: async () => {},
-    markdownFinish: async () => {},
-  };
-
-  const parser = new TextingStreamParser(receiver);
-  parser.takeUpstreamChunk(text);
-  parser.finalize();
-
-  const collectedCalls: TextingCall[] = parser.getCollectedCalls();
-
-  // Get the callId captured during parsing (same for all calls in this text)
-  // Fallback to dialog's stored callId, then to a generated one if needed
-  const callId = capturedCallId ?? dlg.getCurrentCallId() ?? '';
-
   // Execute collected calls concurrently
   const results = await Promise.all(
     collectedCalls.map((call) =>
@@ -1645,7 +1611,7 @@ async function collectAndExecuteTextingCalls(
         call.headLine,
         call.body,
         originRole,
-        callId,
+        call.callId,
       ),
     ),
   );
@@ -1971,8 +1937,26 @@ ${showErrorToAi(err)}`,
         content: msg,
       });
 
-      // Unknown call treated as teammate failure (separate bubble)
-      await dlg.receiveTeammateResponse(firstMention, headLine, msg, 'failed');
+      // Create error message for LLM context
+      const errorMsg: TextingCallResultMsg = {
+        type: 'call_result_msg',
+        role: 'tool',
+        responderId: firstMention,
+        headLine,
+        status: 'failed',
+        content: msg,
+      };
+      toolOutputs.push(errorMsg);
+
+      // Generate synthetic callId for unknown call (no actual call was made)
+      const unknownCallId = `unknown:${firstMention}:${headLine}`;
+      dlg.setCurrentCallId(unknownCallId);
+
+      // Emit tool response with callId for inline display (like tool failures)
+      await dlg.receiveToolResponse(firstMention, headLine, msg, 'failed', unknownCallId);
+
+      // Clear synthetic callId after response
+      dlg.clearCurrentCallId();
       log.warn(`Unknown call @${firstMention} | Head: ${headLine}`);
     }
   }
