@@ -203,12 +203,12 @@ export interface TeammateResponseEvent {
   agentId?: string; // merged from subdialog_final_summary_evt
 }
 
-export interface UserTextEvent {
-  type: 'user_text';
+// End of user saying event - emitted after user texting calls are parsed/executed
+// Used by frontend to render <hr/> separator between user content and AI response
+export interface EndOfUserSayingEvent {
+  type: 'end_of_user_saying_evt';
   round: number;
   genseq: number;
-  content: string;
-  msgId: string; // Message ID echoed back for tracking and error recovery (mandatory)
 }
 
 export type CodeBlockStartEvent = LlmGenDlgEvent & {
@@ -321,7 +321,7 @@ export type DialogEvent =
   // Subdialog events
   | SubdialogEvent
   // User events
-  | UserTextEvent
+  | EndOfUserSayingEvent
   | FullRemindersEvent
   | RoundEvent
   | NewQ4HAskedEvent

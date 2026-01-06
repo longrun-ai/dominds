@@ -380,66 +380,77 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         // Persist user message to storage FIRST
         // This emits user_text event immediately for proper frontend ordering
         await dlg.persistUserMessage(promptContent, msgId);
-      }
 
-      // Collect and execute texting calls from user text using streaming parser
-      // Combine agent texting tools with intrinsic reminder tools
-      const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
-      const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
-      const userResult = await executeTextingCalls(
-        dlg,
-        agent,
-        allTextingTools,
-        collectedUserCalls,
-        'user',
-      );
+        // Collect and execute texting calls from user text using streaming parser
+        // Combine agent texting tools with intrinsic reminder tools
+        const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+        const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
+        const userResult = await executeTextingCalls(
+          dlg,
+          agent,
+          allTextingTools,
+          collectedUserCalls,
+          'user',
+        );
 
-      if (userResult.toolOutputs.length > 0) {
-        await dlg.addChatMessages(...userResult.toolOutputs);
-      }
-      if (userResult.suspend) {
-        suspendForHuman = true;
-      }
-
-      // Fallback: Check for @teammate patterns in user message that TextingStreamParser might miss
-      // If no subdialogs were created but the message contains @teammate requests, create them now
-      if (userResult.subdialogsCreated === 0) {
-        const team = await Team.load();
-        const mentionPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/g;
-        const mentions: string[] = [];
-        let match;
-        while ((match = mentionPattern.exec(promptContent)) !== null) {
-          mentions.push(match[1]);
+        if (userResult.toolOutputs.length > 0) {
+          await dlg.addChatMessages(...userResult.toolOutputs);
         }
-        // Filter to only valid team members
-        const teammateTargets = mentions.filter((m) => team.getMember(m));
-        if (teammateTargets.length > 0) {
-          for (const tgt of teammateTargets) {
-            try {
-              const sub = await dlg.createSubDialog(tgt, promptContent, '', {
-                originRole: 'user',
-                originMemberId: 'human',
-              });
-              // Drive the subdialog (fire and forget - parent is suspended)
-              void (async () => {
-                try {
-                  await driveDialogStream(sub);
-                  // Extract summary and store in parent's pending summaries
-                  const summary = await extractSubdialogSummary(sub.id);
-                  // Note: We need access to parent dialog here - pass parent reference
-                  // The parent dialog is available as 'dlg' in the outer scope
-                  await onSubdialogCompletion(dlg, sub.id, summary);
-                } catch (err) {
-                  log.warn('Subdialog processing error for user request:', err);
-                }
-              })();
-              userResult.subdialogsCreated++;
-              // Suspend the parent dialog when a subdialog is created via user @mention
-              userResult.suspend = true;
-            } catch (err) {
-              log.warn('Failed to create subdialog for @teammate in user message:', err);
+        if (userResult.suspend) {
+          suspendForHuman = true;
+        }
+
+        // Fallback: Check for @teammate patterns in user message that TextingStreamParser might miss
+        // If no subdialogs were created but the message contains @teammate requests, create them now
+        if (userResult.subdialogsCreated === 0) {
+          const team = await Team.load();
+          const mentionPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/g;
+          const mentions: string[] = [];
+          let match;
+          while ((match = mentionPattern.exec(promptContent)) !== null) {
+            mentions.push(match[1]);
+          }
+          // Filter to only valid team members
+          const teammateTargets = mentions.filter((m) => team.getMember(m));
+          if (teammateTargets.length > 0) {
+            for (const tgt of teammateTargets) {
+              try {
+                const sub = await dlg.createSubDialog(tgt, promptContent, '', {
+                  originRole: 'user',
+                  originMemberId: 'human',
+                });
+                // Drive the subdialog (fire and forget - parent is suspended)
+                void (async () => {
+                  try {
+                    await driveDialogStream(sub);
+                    // Extract summary and store in parent's pending summaries
+                    const summary = await extractSubdialogSummary(sub.id);
+                    // Note: We need access to parent dialog here - pass parent reference
+                    // The parent dialog is available as 'dlg' in the outer scope
+                    await onSubdialogCompletion(dlg, sub.id, summary);
+                  } catch (err) {
+                    log.warn('Subdialog processing error for user request:', err);
+                  }
+                })();
+                userResult.subdialogsCreated++;
+                // Suspend the parent dialog when a subdialog is created via user @mention
+                userResult.suspend = true;
+              } catch (err) {
+                log.warn('Failed to create subdialog for @teammate in user message:', err);
+              }
             }
           }
+        }
+
+        try {
+          const { postDialogEvent } = await import('../evt-registry');
+          postDialogEvent(dlg, {
+            type: 'end_of_user_saying_evt',
+            round: dlg.currentRound,
+            genseq: dlg.activeGenSeq,
+          });
+        } catch (err) {
+          log.warn('Failed to emit end_of_user_saying_evt', err);
         }
       }
 

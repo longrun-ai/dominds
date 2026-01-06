@@ -810,13 +810,12 @@ export class DiskFileDialogStore extends DialogStore {
 
   /**
    * Persist a user message to storage
-   * CRITICAL: Emits user_text event immediately for frontend to render bubble
-   * Also marks generation as started to ensure proper subdialog event ordering
+   * Note: The end_of_user_saying_evt is emitted by the driver after texting calls
+   * are parsed/executed - see llm/driver.ts after executeTextingCalls()
    */
   public async persistUserMessage(dialog: Dialog, content: string, msgId: string): Promise<void> {
     const round = dialog.currentRound;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
-    // This happens when a user sends a message to a newly created dialog before any generation starts
     const genseq = dialog.activeGenSeqOrUndefined ?? 1;
 
     const humanEv: HumanTextRecord = {
@@ -828,19 +827,7 @@ export class DiskFileDialogStore extends DialogStore {
     };
     await this.appendEvent(round, humanEv);
 
-    // Emit user_text event IMMEDIATELY so frontend can render the user message bubble
-    // This must happen before LLM generation starts to ensure proper event ordering
-    try {
-      postDialogEvent(dialog, {
-        type: 'user_text',
-        round: dialog.currentRound,
-        genseq: genseq,
-        content: content,
-        msgId: msgId,
-      });
-    } catch (err) {
-      log.warn('Failed to emit user_text event', err);
-    }
+    // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after texting calls complete
   }
 
   /**
@@ -1056,26 +1043,209 @@ export class DiskFileDialogStore extends DialogStore {
     switch (event.type) {
       case 'human_text_record': {
         const genseq = event.genseq;
-        // Use the stored msgId from persistence (preserves browser-generated msgId)
-        const msgId = event.msgId;
+        const content = event.content || '';
 
-        // Create user_text event for frontend
-        const userTextEvent = {
-          type: 'user_text',
-          round,
-          genseq,
-          content: event.content,
-          msgId,
-          dialog: {
-            selfId: dialog.id.selfId,
-            rootId: dialog.id.rootId,
-          },
-          timestamp: event.ts,
-        };
+        // Parse user content and emit individual events (same as live mode)
+        // Use TextingStreamParser to emit @mentions, codeblocks, etc.
+        if (content) {
+          const receiver: TextingEventsReceiver = {
+            markdownStart: async () => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'markdown_start_evt',
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            markdownChunk: async (chunk: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'markdown_chunk_evt',
+                    chunk,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            markdownFinish: async () => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'markdown_finish_evt',
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callStart: async (first: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_start_evt',
+                    firstMention: first,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callHeadLineChunk: async (chunk: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_headline_chunk_evt',
+                    chunk,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callHeadLineFinish: async () => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_headline_finish_evt',
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callBodyStart: async (infoLine?: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_body_start_evt',
+                    infoLine,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callBodyChunk: async (chunk: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_body_chunk_evt',
+                    chunk,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callBodyFinish: async (endQuote?: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_body_finish_evt',
+                    endQuote,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            callFinish: async (_callId: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'tool_call_finish_evt',
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            codeBlockStart: async (infoLine: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'codeblock_start_evt',
+                    infoLine,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            codeBlockChunk: async (chunk: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'codeblock_chunk_evt',
+                    chunk,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+            codeBlockFinish: async (endQuote: string) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: 'codeblock_finish_evt',
+                    endQuote,
+                    round,
+                    genseq,
+                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                    timestamp: event.ts,
+                  }),
+                );
+              }
+            },
+          };
 
-        // Send directly to WebSocket (NO PubChan emission)
+          // Parse user content through TextingStreamParser (same as live mode)
+          const streamingParser = new TextingStreamParser(receiver);
+          streamingParser.takeUpstreamChunk(content);
+          streamingParser.finalize();
+        }
+
+        // Emit end_of_user_saying_evt to signal frontend to render <hr/> separator
         if (ws.readyState === 1) {
-          ws.send(JSON.stringify(userTextEvent));
+          ws.send(
+            JSON.stringify({
+              type: 'end_of_user_saying_evt',
+              round,
+              genseq,
+              dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+              timestamp: event.ts,
+            }),
+          );
         }
         break;
       }

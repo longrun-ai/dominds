@@ -152,7 +152,7 @@ async function main() {
         case 'questions_count_update':
         case 'full_reminders_update':
         case 'subdialog_created_evt':
-        case 'user_text':
+        case 'end_of_user_saying_evt':
         case 'markdown_start_evt':
         case 'markdown_chunk_evt':
         case 'markdown_finish_evt':

@@ -6,6 +6,7 @@ import mannedToolIcon from '../assets/manned-tool.svg';
 import walkieTalkieIcon from '../assets/walkie-talkie.svg';
 import { getWebSocketManager } from '../services/websocket.js';
 import type {
+  EndOfUserSayingEvent,
   FullRemindersEvent,
   FuncCallStartEvent,
   FunctionResultEvent,
@@ -213,33 +214,15 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     switch (event.type) {
-      case 'user_text':
+      case 'end_of_user_saying_evt':
         {
-          const msgId = event.msgId;
-          const content = event.content || '';
-
-          // Check if message with same ID already exists
-          let exists = false;
-          if (this.generationBubble) {
-            const existing = this.generationBubble.querySelector(
-              `.user-message[data-user-msg-id="${msgId}"]`,
-            );
-            exists = !!existing;
+          // Render <hr/> separator between user content and AI response
+          const ev: EndOfUserSayingEvent = event;
+          if (typeof ev.round !== 'number' || typeof ev.genseq !== 'number') {
+            this.handleProtocolError('end_of_user_saying_evt missing required fields');
+            break;
           }
-
-          if (exists) {
-            return;
-          }
-
-          // No generation bubble - create one for the user message
-          // This handles the case where user_text arrives before generating_start_evt
-          if (!this.generationBubble) {
-            this.activeGenSeq = event.genseq;
-            this.handleGeneratingStart(event.genseq);
-          }
-
-          // Render the user message in the bubble
-          this.renderUserMessageInBubble(msgId, content);
+          this.handleEndOfUserSaying();
         }
         break;
 
@@ -1184,47 +1167,32 @@ export class DomindsDialogContainer extends HTMLElement {
           <div class="timestamp">${new Date().toLocaleTimeString()}</div>
         </div>
         <div class="bubble-body">
-          <!-- User message and Thinking/Markdown sections will be inserted here -->
+          <!-- User message parsed events and AI content will be inserted here -->
         </div>
       </div>
     `;
     return el;
   }
 
-  // Render user message inside the generation bubble
-  private renderUserMessageInBubble(msgId: string, content: string): void {
+  // Render <hr/> separator between user content and AI response
+  // Called when end_of_user_saying_evt is received
+  private handleEndOfUserSaying(): void {
     const bubble = this.generationBubble;
     if (!bubble) {
-      console.warn('renderUserMessageInBubble called but no generation bubble exists');
+      console.warn('handleEndOfUserSaying called but no generation bubble exists');
       return;
     }
 
     const body = bubble.querySelector('.bubble-body');
     if (!body) {
-      console.warn('renderUserMessageInBubble: no bubble-body found');
+      console.warn('handleEndOfUserSaying: no bubble-body found');
       return;
     }
 
-    // Create user message element (using textarea for exact original rendering)
-    const userMsgEl = document.createElement('textarea');
-    userMsgEl.className = 'user-message';
-    userMsgEl.setAttribute('data-user-msg-id', msgId);
-    userMsgEl.setAttribute('readonly', 'readonly');
-    userMsgEl.setAttribute('rows', '1');
-    userMsgEl.value = content.trim();
-
-    // Add divider after user message to separate from AI content
+    // Add divider to separate user content from AI response
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
-
-    body.appendChild(userMsgEl);
     body.appendChild(divider);
-
-    // Auto-resize textarea to fit content perfectly
-    requestAnimationFrame(() => {
-      userMsgEl.style.height = '0px';
-      userMsgEl.style.height = `${userMsgEl.scrollHeight}px`;
-    });
     this.scrollToBottom();
   }
 
@@ -1394,33 +1362,8 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
-  // Create user message element for standalone messages (when no generation bubble exists)
-  private createUserMessageElement(content: string, msgId?: string): HTMLElement {
-    return this.createMessageElement(content, 'user', msgId);
-  }
-
-  // Create system message element for subdialog events and system notifications
-  private createSystemMessageElement(content: string, messageType: string): HTMLElement {
-    const el = document.createElement('div');
-    el.className = `message system ${messageType}`;
-    el.setAttribute('data-testid', 'system-message');
-    el.innerHTML = `
-      <div class="content-area">
-        <div class="bubble-header">
-          <div class="author">System</div>
-          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
-        <div class="content"></div>
-      </div>
-    `;
-    const md = this.createMarkdownSection();
-    md.setRawMarkdown(content);
-    el.querySelector('.content')?.appendChild(md);
-    return el;
-  }
-
   // === PUBLIC API FOR USER MESSAGE ===
-  // User messages are now handled by 'user_text' event - see handleDialogEvent()
+  // User messages are now handled by 'end_of_user_saying_evt' event - see handleDialogEvent()
 
   private getAuthorLabel(role: string, responderId?: string): string {
     if (role === 'user') return 'Human';
@@ -1577,8 +1520,8 @@ export class DomindsDialogContainer extends HTMLElement {
       
       
       /* Section styles (thinking, markdown) */
-  .thinking-section, .markdown-section { 
-        margin-bottom: 16px; 
+  .thinking-section, .markdown-section {
+        margin-bottom: 0; /* bubble-body gap provides spacing */
         padding: 12px; 
         border-radius: 8px; 
         background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9)); 
