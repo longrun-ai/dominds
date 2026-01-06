@@ -42,8 +42,8 @@ class MockTextingEventsReceiver implements TextingEventsReceiver {
     this.events.push({ type: 'callBodyFinish', data: endQuote !== undefined ? { endQuote } : {} });
   }
 
-  async callFinish(): Promise<void> {
-    this.events.push({ type: 'callFinish', data: null });
+  async callFinish(callId: string): Promise<void> {
+    this.events.push({ type: 'callFinish', data: callId });
   }
 
   async codeBlockStart(infoLine: string): Promise<void> {
@@ -89,9 +89,11 @@ async function runTest(
 
   const collectCallsFromEvents = (
     events: RecordedEvent[],
-  ): Array<{ firstMention: string; headLine: string; body: string }> => {
-    const calls: Array<{ firstMention: string; headLine: string; body: string }> = [];
-    let current: { firstMention: string; headLine: string; body: string } | null = null;
+  ): Array<{ firstMention: string; headLine: string; body: string; callId?: string }> => {
+    const calls: Array<{ firstMention: string; headLine: string; body: string; callId?: string }> =
+      [];
+    let current: { firstMention: string; headLine: string; body: string; callId?: string } | null =
+      null;
 
     for (const ev of events) {
       if (ev.type === 'callHeadLineChunk') {
@@ -115,7 +117,12 @@ async function runTest(
         continue;
       }
       if (ev.type === 'callFinish') {
-        if (current?.firstMention) calls.push(current);
+        if (current?.firstMention) {
+          if (ev.data && typeof ev.data === 'string') {
+            current.callId = ev.data;
+          }
+          calls.push(current);
+        }
         current = null;
         continue;
       }
@@ -127,6 +134,20 @@ async function runTest(
   // Deep comparison function that handles undefined values
   const deepEqual = (a: unknown, b: unknown): boolean => {
     if (a === b) return true;
+
+    // Special case for callFinish: if expected (b) has data null, ignore actual (a) data
+    if (
+      typeof b === 'object' &&
+      b !== null &&
+      'type' in b &&
+      (b as any).type === 'callFinish' &&
+      (b as any).data === null
+    ) {
+      if (typeof a === 'object' && a !== null && 'type' in a && (a as any).type === 'callFinish') {
+        return true;
+      }
+    }
+
     if (a == null || b == null) return false;
     if (typeof a !== typeof b) return false;
 
@@ -628,6 +649,24 @@ Done.`,
         `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
       ),
     ],
+  );
+
+  // Test 14: @ in body should NOT trigger calls - only @ at line start triggers calls
+  // This tests the scenario where assistant mentions @types in text, then @dijiang in text
+  // Neither should trigger calls since they're in body text, not at line start
+  await runTest(
+    '@ in body text should not trigger calls',
+    `I don't see a teammate named \`@types\` in my directory. Here's who I have available:
+
+**Team:**
+- \`@dijiang\` - Dijiang
+- \`@cmdr\` (self) - Commander (that's me!)
+
+Would you like me to reach out to \`@dijiang\` instead?`,
+    buildFreeTextEvents(
+      `I don't see a teammate named \`@types\` in my directory. Here's who I have available:\n\n**Team:**\n- \`@dijiang\` - Dijiang\n- \`@cmdr\` (self) - Commander (that's me!)\n\nWould you like me to reach out to \`@dijiang\` instead?`,
+      `I don't see a teammate named \`@types\` in my directory. Here's who I have available:\n\n**Team:**\n- \`@dijiang\` - Dijiang\n- \`@cmdr\` (self) - Commander (that's me!)\n\nWould you like me to reach out to \`@dijiang\` instead?`,
+    ),
   );
 
   if (failedCnt <= 0) {

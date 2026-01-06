@@ -194,6 +194,7 @@ export class TextingStreamParser {
   private mode: ParserMode = ParserMode.FREE_TEXT;
   private backtickState: BacktickState = BacktickState.NONE;
   private backtickCount = 0;
+  private inSingleBacktick = false;
 
   // Free text state
   private markdownChunkBuffer = '';
@@ -428,42 +429,56 @@ export class TextingStreamParser {
   ): number {
     // Check for @ mentions anywhere in free text
     if (charType === CharType.AT) {
-      if (position + 1 < chunk.length && chunk[position + 1] === '/') {
-        this.markdownChunkBuffer += '@/';
-        this.updateBacktickState(CharType.OTHER);
-        return position + 2;
-      }
-      if (this.markdownChunkBuffer) {
-        if (this.isAtLineStart) {
-          if (!this.markdownStarted) {
-            this.downstream.markdownStart();
-            this.markdownStarted = true;
-          }
-          this.downstream.markdownChunk(this.markdownChunkBuffer);
-          this.markdownChunkBuffer = '';
-          this.downstream.markdownFinish();
-          this.markdownStarted = false;
-        } else {
-          this.markdownChunkBuffer = '';
+      // Update backtick state for @ character - this handles toggling inSingleBacktick
+      // if we just saw a single backtick before this @.
+      this.updateBacktickState(charType);
+
+      if (!this.inSingleBacktick) {
+        if (position + 1 < chunk.length && chunk[position + 1] === '/') {
+          this.markdownChunkBuffer += '@/';
+          return position + 2;
         }
+        if (this.markdownChunkBuffer) {
+          if (this.isAtLineStart) {
+            if (!this.markdownStarted) {
+              this.downstream.markdownStart();
+              this.markdownStarted = true;
+            }
+            this.downstream.markdownChunk(this.markdownChunkBuffer);
+            this.markdownChunkBuffer = '';
+            this.downstream.markdownFinish();
+            this.markdownStarted = false;
+          } else {
+            this.markdownChunkBuffer = '';
+          }
+        }
+
+        // Start a new call - switch to HEADLINE mode
+        // Return current position so the main loop reprocesses this @ in HEADLINE mode
+        this.mode = ParserMode.TEXTING_CALL_HEADLINE;
+        this.headlineBuffer = '';
+        this.headlineFinished = false;
+        this.headlineHasContent = false;
+
+        // Return current position to reprocess this @ in the new HEADLINE mode
+        // The main loop will detect the mode change and continue from this position
+        return position;
+      } else {
+        // Inside single backticks, treat @ as regular markdown content
+        this.markdownChunkBuffer += char;
+        this.isAtLineStart = false;
+        return position + 1;
       }
-
-      // Start a new call - switch to HEADLINE mode
-      // Return current position so the main loop reprocesses this @ in HEADLINE mode
-      this.mode = ParserMode.TEXTING_CALL_HEADLINE;
-      this.headlineBuffer = '';
-      this.headlineFinished = false;
-      this.headlineHasContent = false;
-
-      // Return current position to reprocess this @ in the new HEADLINE mode
-      // The main loop will detect the mode change and continue from this position
-      return position;
     }
 
     // Check for triple backticks to transition to code block
     if (charType === CharType.BACKTICK) {
       // Update backtick state and check for triple backticks
       this.updateBacktickState(charType);
+
+      // Add backtick to buffer
+      this.markdownChunkBuffer += char;
+
       if (this.backtickState === BacktickState.TRIPLE_START && this.backtickCount >= 3) {
         // Remove the triple backticks from markdown buffer before emitting
         const cleanBuffer = this.markdownChunkBuffer.replace(/`{3,}$/, '');
@@ -485,9 +500,13 @@ export class TextingStreamParser {
         this.codeBlockInfoAccumulator = '';
         this.backtickState = BacktickState.NONE;
         this.backtickCount = 0;
+        this.inSingleBacktick = false; // Reset backtick state when entering code block
 
         return position + 1;
       }
+
+      this.isAtLineStart = false;
+      return position + 1;
     } else {
       // Regular markdown processing for non-backtick characters
       this.markdownChunkBuffer += char;
@@ -509,31 +528,45 @@ export class TextingStreamParser {
     charType: CharType,
   ): number {
     this.ensureCurrentCall();
-    if (charType === CharType.AT) {
-      // Handle @ character when firstMentionAccumulator is empty (e.g., after mode switch from FREE_TEXT)
-      // In this case, we need to set firstMentionAccumulator to '@' so the subsequent characters are accumulated
-      if (this.firstMentionAccumulator === '') {
-        this.firstMentionAccumulator = '@';
-        this.headlineBuffer += '@';
-        return position + 1;
-      }
-      // Only start a new mention if we're expecting one
-      if (this.expectingFirstMention) {
-        this.firstMentionAccumulator = '@';
-        this.headlineBuffer += '@'; // Add @ to headline buffer too
-        return position + 1;
-      } else {
-        // We're in headline mode, treat @ as regular content
-        // Only add @ if not already at the start of headlineBuffer (avoids double-add when space follows mention)
-        if (!this.headlineBuffer.endsWith('@')) {
-          this.headlineBuffer += '@';
-        }
 
+    if (charType === CharType.AT) {
+      // Update backtick state for @ character
+      this.updateBacktickState(charType);
+
+      if (!this.inSingleBacktick) {
+        // Handle @ character when firstMentionAccumulator is empty (e.g., after mode switch from FREE_TEXT)
+        // In this case, we need to set firstMentionAccumulator to '@' so the subsequent characters are accumulated
+        if (this.firstMentionAccumulator === '') {
+          this.firstMentionAccumulator = '@';
+          this.headlineBuffer += '@';
+          return position + 1;
+        }
+        // Only start a new mention if we're expecting one
+        if (this.expectingFirstMention) {
+          this.firstMentionAccumulator = '@';
+          this.headlineBuffer += '@'; // Add @ to headline buffer too
+          return position + 1;
+        } else {
+          // We're in headline mode, treat @ as regular content
+          // Only add @ if not already at the start of headlineBuffer (avoids double-add when space follows mention)
+          if (!this.headlineBuffer.endsWith('@')) {
+            this.headlineBuffer += '@';
+          }
+
+          return position + 1;
+        }
+      } else {
+        // Inside single backticks, treat @ as regular headline content
+        this.headlineBuffer += char;
+        this.headlineHasContent = true;
         return position + 1;
       }
     }
 
     if (charType === CharType.NEWLINE) {
+      // Update backtick state for newline character
+      this.updateBacktickState(charType);
+
       // Look ahead to see if the next non-empty line starts with @ (another mention) or triple backticks
       let aheadPos = position + 1;
 
@@ -649,6 +682,9 @@ export class TextingStreamParser {
     }
 
     if (!this.isValidMentionChar(char)) {
+      // Update backtick state for non-mention characters (like backticks)
+      this.updateBacktickState(charType);
+
       // Handle @ character when firstMentionAccumulator is empty (e.g., after mode switch from FREE_TEXT)
       if (char === '@') {
         this.firstMentionAccumulator = '@';
@@ -1226,6 +1262,11 @@ export class TextingStreamParser {
         this.backtickState = BacktickState.TRIPLE_CONTENT;
       }
     } else {
+      // If we saw exactly one backtick before this non-backtick character,
+      // toggle the inSingleBacktick state. This handles inline code like `@mention`.
+      if (this.backtickCount === 1) {
+        this.inSingleBacktick = !this.inSingleBacktick;
+      }
       this.backtickCount = 0;
       this.backtickState = BacktickState.NONE;
     }
