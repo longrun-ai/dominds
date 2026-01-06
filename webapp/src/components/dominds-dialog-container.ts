@@ -2115,21 +2115,19 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private scrollToBottom(): void {
-    const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
-    if (!messages) return;
+    // Scroll the parent element (.conversation-scroll-area) which has overflow-y: auto
+    const scrollContainer = this.parentElement as HTMLElement;
+    if (!scrollContainer) return;
 
-    // Use multiple requestAnimationFrame calls to ensure DOM is fully rendered
-    // This is especially important during animations (like the glow effect)
     const doScroll = () => {
-      messages.scrollTop = messages.scrollHeight;
+      const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+      scrollContainer.scrollTop = maxScroll;
     };
 
-    // Scroll immediately and then with multiple frames to catch late-rendered content
     doScroll();
     requestAnimationFrame(doScroll);
     requestAnimationFrame(() => {
       doScroll();
-      // If there's a generation bubble with glow, scroll again after animation frame
       if (this.generationBubble) {
         requestAnimationFrame(doScroll);
       }
