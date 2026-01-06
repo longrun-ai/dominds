@@ -7,6 +7,7 @@
 import { getWebSocketManager } from '../services/websocket.js';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogIdent } from '../shared/types/wire.js';
+import { generateShortId } from '../shared/utils/id.js';
 import { formatRelativeTime } from '../utils/time.js';
 
 /**
@@ -39,6 +40,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private expandedQuestions: Set<string> = new Set();
   private collapsedQuestions: Set<string> = new Set();
   private isListExpanded = false; // Start collapsed, auto-expand when questions arrive
+  private sendOnEnter = true; // Default to Enter to send
   private props: Q4HInputProps = {
     disabled: false,
     placeholder: 'Type your answer...',
@@ -208,22 +210,8 @@ export class DomindsQ4HInput extends HTMLElement {
       this.collapsedQuestions.delete(questionId);
     }
 
-    // Preserve input value and height across re-render
-    const currentValue = this.textInput?.value || '';
-    const currentHeight = this.textInput?.style.height || '';
-
-    this.render();
-    this.setupEventListeners();
-
-    // Restore input value and height
-    if (this.textInput) {
-      this.textInput.value = currentValue;
-      if (currentHeight) {
-        this.textInput.style.height = currentHeight;
-      }
-    }
-
-    this.updateUI();
+    // Preserve input value and height across re-render via safeRender
+    this.safeRender();
 
     // Dispatch selection change event
     const question = this.questions.find((q) => q.id === questionId);
@@ -257,8 +245,7 @@ export class DomindsQ4HInput extends HTMLElement {
   public expandQuestion(questionId: string): void {
     this.expandedQuestions.add(questionId);
     this.collapsedQuestions.delete(questionId);
-    this.render();
-    this.setupEventListeners();
+    this.safeRender();
   }
 
   /**
@@ -267,8 +254,7 @@ export class DomindsQ4HInput extends HTMLElement {
   public collapseQuestion(questionId: string): void {
     this.expandedQuestions.delete(questionId);
     this.collapsedQuestions.add(questionId);
-    this.render();
-    this.setupEventListeners();
+    this.safeRender();
   }
 
   /**
@@ -338,6 +324,25 @@ export class DomindsQ4HInput extends HTMLElement {
 
   // ==================== Private Methods ====================
 
+  /**
+   * Re-render while preserving input state
+   */
+  private safeRender(): void {
+    const currentValue = this.textInput?.value || '';
+    const currentHeight = this.textInput?.style.height || '';
+
+    this.render();
+    this.setupEventListeners();
+
+    if (this.textInput) {
+      this.textInput.value = currentValue;
+      if (currentHeight) {
+        this.textInput.style.height = currentHeight;
+      }
+    }
+    this.updateUI();
+  }
+
   private toggleQuestion(questionId: string): void {
     if (this.expandedQuestions.has(questionId)) {
       this.expandedQuestions.delete(questionId);
@@ -346,8 +351,7 @@ export class DomindsQ4HInput extends HTMLElement {
       this.expandedQuestions.add(questionId);
       this.collapsedQuestions.delete(questionId);
     }
-    this.render();
-    this.setupEventListeners();
+    this.safeRender();
   }
 
   private toggleSelection(questionId: string): void {
@@ -558,10 +562,35 @@ export class DomindsQ4HInput extends HTMLElement {
       });
 
       this.textInput.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-          e.preventDefault();
-          this.sendMessage();
+        if (this.sendOnEnter) {
+          // Send on Enter (unless modifier keys are pressed)
+          if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            this.sendMessage();
+          } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            // Manually insert newline for Ctrl+Enter or Cmd+Enter as Chrome doesn't by default
+            e.preventDefault();
+            document.execCommand('insertText', false, '\n');
+          }
+          // Shift+Enter works natively
+        } else {
+          // Send on Ctrl+Enter or Cmd+Enter
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            this.sendMessage();
+          }
+          // Enter and Shift+Enter work natively to create new line
         }
+      });
+    }
+
+    // Toggle send on enter button handler
+    const toggleBtn = this.shadowRoot.querySelector('.send-on-enter-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        this.sendOnEnter = !this.sendOnEnter;
+        this.safeRender();
+        this.focusInput();
       });
     }
 
@@ -637,7 +666,7 @@ export class DomindsQ4HInput extends HTMLElement {
     }
 
     // Generate message ID
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const msgId = generateShortId();
 
     try {
       if (this.selectedQuestionId) {
@@ -708,9 +737,10 @@ export class DomindsQ4HInput extends HTMLElement {
 
     this.textInput.style.height = 'auto';
     const scrollHeight = this.textInput.scrollHeight;
+    const minHeight = 48; // 2 rows
     const maxHeight = 120;
 
-    this.textInput.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+    this.textInput.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
   }
 
   private showError(message: string): void {
@@ -786,16 +816,25 @@ export class DomindsQ4HInput extends HTMLElement {
               class="message-input"
               placeholder="${this.props.placeholder}"
               maxlength="${this.props.maxLength}"
-              rows="1"
+              rows="2"
               ${this.props.disabled ? 'disabled' : ''}
             ></textarea>
-            <button class="send-button" type="button" disabled>
-              <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
-                <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
-                <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
-              </svg>
-            </button>
+            <div class="input-actions">
+              <button
+                class="send-on-enter-toggle ${this.sendOnEnter ? 'active' : ''}"
+                type="button"
+                title="${this.sendOnEnter ? 'Enter to send (Cmd/Ctrl+Enter for newline)' : 'Cmd/Ctrl+Enter to send (Enter for newline)'}"
+              >
+                ${this.sendOnEnter ? '⏎' : '⌘'}
+              </button>
+              <button class="send-button" type="button" disabled>
+                <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
+                  <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1090,12 +1129,47 @@ export class DomindsQ4HInput extends HTMLElement {
       .input-wrapper {
         display: flex;
         align-items: flex-end;
-        gap: 12px;
+        gap: 8px;
         background: var(--dominds-input-bg, #f8f9fa);
         border: 2px solid var(--dominds-border, #e0e0e0);
         border-radius: 24px;
         transition: all 0.2s ease;
         overflow: hidden;
+        padding-right: 12px;
+      }
+
+      .input-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding-bottom: 8px;
+      }
+
+      .send-on-enter-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-fg-tertiary, #64748b);
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        padding: 0;
+      }
+
+      .send-on-enter-toggle:hover {
+        background: var(--color-bg-tertiary, #f1f5f9);
+        color: var(--color-fg-primary, #0f172a);
+        border-color: var(--color-border-primary, #e2e8f0);
+      }
+
+      .send-on-enter-toggle.active {
+        font-weight: bold;
       }
 
       /* Q4H active state - purple background, no top border */
@@ -1133,7 +1207,7 @@ export class DomindsQ4HInput extends HTMLElement {
         line-height: 1.4;
         color: var(--dominds-fg, #333333);
         resize: none;
-        min-height: 20px;
+        min-height: 48px;
         max-height: 120px;
         font-family: inherit;
         white-space: pre-wrap;
