@@ -1205,11 +1205,13 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    // Create user message element
-    const userMsgEl = document.createElement('div');
+    // Create user message element (using textarea for exact original rendering)
+    const userMsgEl = document.createElement('textarea');
     userMsgEl.className = 'user-message';
     userMsgEl.setAttribute('data-user-msg-id', msgId);
-    userMsgEl.textContent = content;
+    userMsgEl.setAttribute('readonly', 'readonly');
+    userMsgEl.setAttribute('rows', '1');
+    userMsgEl.value = content.trim();
 
     // Add divider after user message to separate from AI content
     const divider = document.createElement('hr');
@@ -1217,6 +1219,12 @@ export class DomindsDialogContainer extends HTMLElement {
 
     body.appendChild(userMsgEl);
     body.appendChild(divider);
+
+    // Auto-resize textarea to fit content perfectly
+    requestAnimationFrame(() => {
+      userMsgEl.style.height = '0px';
+      userMsgEl.style.height = `${userMsgEl.scrollHeight}px`;
+    });
     this.scrollToBottom();
   }
 
@@ -1542,10 +1550,23 @@ export class DomindsDialogContainer extends HTMLElement {
 
       /* User message and divider styles */
       .user-message {
+        font-family: inherit;
         font-weight: 500;
+        font-size: 14px;
+        line-height: 1.4;
         color: var(--dominds-fg, var(--color-fg-primary, #333));
         margin: 0;
-        padding: 8px 0;
+        padding: 0;
+        width: 100%;
+        height: auto;
+        resize: none;
+        border: none;
+        outline: none;
+        background: transparent;
+        overflow: hidden;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        display: block;
       }
 
       .user-response-divider {
@@ -1553,9 +1574,6 @@ export class DomindsDialogContainer extends HTMLElement {
         border-top: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         margin: 8px 0;
       }
-      
-      
-      
       
       
       /* Section styles (thinking, markdown) */
