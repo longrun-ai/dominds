@@ -359,9 +359,14 @@ function snapshot() {
 // ============================================
 
 /**
- * Creates a new dialog using the component's public API method.
- * Source: dominds-app.tsx line 2228
- * Component method: createDialog(agentId, taskDocPath)
+ * Creates a new dialog using the UI modal flow.
+ * This simulates the full user interaction:
+ * 1. Click "New Dialog" button to open modal
+ * 2. Fill task document path in modal input
+ * 3. Select teammate from dropdown
+ * 4. Click "Create Dialog" button
+ *
+ * Source: dominds-app.tsx - showCreateDialogModal(), setupDialogModalEvents()
  * Verifies the dialog title shows expected agent - throws if wrong responder.
  */
 async function createDialog(callsign, taskDocPath) {
@@ -371,20 +376,61 @@ async function createDialog(callsign, taskDocPath) {
     throw new Error('dominds-app element not found');
   }
 
-  if (typeof app.createDialog !== 'function') {
-    throw new Error('createDialog method not available on dominds-app');
+  const shadow = getAppShadow();
+  if (!shadow) {
+    throw new Error('dominds-app shadowRoot not found');
   }
 
   // Capture original title
   const originalTitle = getCurrentDialogTitle();
 
-  // Call the real createDialog method
-  const dialogInfo = await app.createDialog(agentId, taskDocPath);
+  // Step 1: Click "New Dialog" button to open modal
+  const newDialogBtn = shadow.querySelector(sel.newDialogBtn);
+  if (!newDialogBtn) {
+    throw new Error('New Dialog button (#new-dialog-btn) not found');
+  }
+  newDialogBtn.click();
 
-  // Wait for title to change
+  // Step 2: Wait for modal to appear
   await waitUntil(() => {
+    const modal = shadow.querySelector(sel.dialogModal);
+    return modal !== null;
+  }, 3000);
+
+  const modal = shadow.querySelector(sel.dialogModal);
+  if (!modal) {
+    throw new Error('Create Dialog modal (.create-dialog-modal) did not appear');
+  }
+
+  // Step 3: Fill the task document path
+  const taskInput = shadow.querySelector(sel.taskDocInput);
+  if (!taskInput) {
+    throw new Error('Task doc input (#task-doc-input) not found');
+  }
+  taskInput.value = taskDocPath;
+  // Trigger input event for autocomplete to work properly
+  taskInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // Step 4: Select the teammate from dropdown
+  const teammateSelect = shadow.querySelector(sel.teammateSelect);
+  if (!teammateSelect) {
+    throw new Error('Teammate select (#teammate-select) not found');
+  }
+  teammateSelect.value = agentId;
+  teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+  // Step 5: Click "Create Dialog" button
+  const createBtn = shadow.querySelector(sel.createBtn);
+  if (!createBtn) {
+    throw new Error('Create Dialog button (#create-dialog-btn) not found');
+  }
+  createBtn.click();
+
+  // Wait for modal to be removed and title to change
+  await waitUntil(() => {
+    const modalStillExists = shadow.querySelector(sel.dialogModal);
     const newTitle = getCurrentDialogTitle();
-    return newTitle !== originalTitle;
+    return !modalStillExists && newTitle !== originalTitle;
   }, 5000);
 
   // Verify the new title includes expected agent
@@ -393,11 +439,14 @@ async function createDialog(callsign, taskDocPath) {
     throw new Error(`Expected @${agentId} in dialog title, got: "${newTitle}"`);
   }
 
+  // Get the created dialog info
+  const dialogInfo = getCurrentDialogInfo();
+
   return {
     callsign: agentId,
     taskDocPath,
-    dialogId: dialogInfo.selfId,
-    rootId: dialogInfo.rootId,
+    dialogId: dialogInfo?.selfId || dialogInfo?.rootId,
+    rootId: dialogInfo?.rootId,
     created: true,
   };
 }
@@ -1166,9 +1215,8 @@ function detectFuncCall(toolName) {
 
   // Extract result from func-call-result element (if visible)
   const resultEl = lastSection.querySelector('.func-call-result');
-  const resultText = resultEl && resultEl.style.display !== 'none'
-    ? (resultEl.textContent || '').trim()
-    : '';
+  const resultText =
+    resultEl && resultEl.style.display !== 'none' ? (resultEl.textContent || '').trim() : '';
 
   // Extract the function name from "Function: name" format
   const funcNameMatch = titleText.match(/^Function:\s*(.+)$/);
