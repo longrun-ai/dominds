@@ -1074,14 +1074,19 @@ export interface TeammateCallTypeC {
  */
 export function parseTeammateCall(text: string, currentDialog?: Dialog): TeammateCallParseResult {
   // Match @agentId !topicId pattern (Type B)
-  const typeBPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)\s*!\s*([a-zA-Z][a-zA-Z0-9_-]*)/;
+  // topicId format: "!topic" followed by identifier (e.g., "!topic env-check" -> topicId = "topic env-check")
+  // This allows multi-word topic names like "!topic env-check"
+  const typeBPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)\s+(![a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)/;
   const typeBMatch = text.match(typeBPattern);
 
   if (typeBMatch) {
+    // Strip leading '!' from topicId for registry key (format: "!topic env-check" -> "topic env-check")
+    const rawTopicId = typeBMatch[2];
+    const topicId = rawTopicId.startsWith('!') ? rawTopicId.slice(1).trim() : rawTopicId;
     return {
       type: 'B',
       agentId: typeBMatch[1],
-      topicId: typeBMatch[2],
+      topicId,
     };
   }
 
@@ -1486,7 +1491,7 @@ export async function createRegisteredSubdialog(
  * @param callType The call type ('A', 'B', or 'C')
  */
 export async function supplyResponseToSupdialog(
-  parentDialog: RootDialog,
+  parentDialog: Dialog,
   subdialogId: DialogID,
   summary: string,
   callType: 'A' | 'B' | 'C',
@@ -1720,7 +1725,20 @@ async function executeTextingCall(
   if (member) {
     // This is a teammate call - parse using Phase 5 taxonomy
     // Parse the call text to determine type A/B/C
-    const callText = `@${firstMention}${headLine.includes('!') ? ' !topic' : ''}`;
+    // Extract the full @agentId !topic topicId pattern from headLine
+    // Format: "@agentId !topic topicId to ..." or "@agentId to ..."
+    // Extract everything from @ until " to " or end of line
+    // Pattern: @agentId followed by optional !topic and topicId words (no ! prefix on topicId)
+    const callTextMatch = headLine.match(/(@[a-zA-Z][a-zA-Z0-9_-]*)(\s+![a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)?(?=\s+to\s|$)/);
+    let callText: string;
+    if (callTextMatch) {
+      callText = callTextMatch[1];
+      if (callTextMatch[2]) {
+        callText += callTextMatch[2];
+      }
+    } else {
+      callText = `@${firstMention}`;
+    }
     const parseResult = parseTeammateCall(callText, dlg);
 
     // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
@@ -1779,12 +1797,48 @@ ${showErrorToAi(err)}`,
           parseResult.topicId,
         );
 
-        if (registryEntry && registryEntry.locked) {
-          // Resume existing registered subdialog (CORRECTED: was status === 'active')
-          // TODO: Resume the registered subdialog
-          // Note: Full resume requires loading the SubDialog object from disk using registryEntry.subdialogId
-          // For now, log the resume intent - the subdialog will continue when its events are processed
-          suspend = true;
+        if (registryEntry) {
+          // Resume existing registered subdialog
+          const subdialogState = await DialogPersistence.restoreDialog(
+            registryEntry.subdialogId,
+            'running',
+          );
+          if (subdialogState) {
+            // Re-lock the mutex for driving
+            rootDialog.subdialogMutex.lock(parseResult.agentId, parseResult.topicId, registryEntry.subdialogId);
+            await rootDialog.saveRegistry();
+
+            // Create SubDialog object and drive it
+            const subdialog = new SubDialog(
+              rootDialog,
+              subdialogState.metadata.taskDocPath,
+              registryEntry.subdialogId,
+              subdialogState.metadata.agentId,
+              subdialogState.metadata.assignmentFromSup,
+              {
+                messages: subdialogState.messages,
+                reminders: subdialogState.reminders,
+                currentRound: subdialogState.currentRound,
+              },
+            );
+
+            // Drive asynchronously
+            const task = (async () => {
+              try {
+                await driveSubdialogToCompletion(rootDialog, subdialog);
+                // Extract summary and supply to parent
+                const summary = await extractSubdialogSummary(subdialog.id);
+                await supplyResponseToSupdialog(rootDialog, subdialog.id, summary, 'B');
+              } finally {
+                // Unlock on completion
+                rootDialog.unlockMutexByTopic(parseResult.agentId, parseResult.topicId);
+                await rootDialog.saveRegistry();
+              }
+            })();
+            void task;
+            subdialogsCreated++;
+            suspend = true;
+          }
         } else {
           // Create new registered subdialog
           const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
@@ -1799,6 +1853,9 @@ ${showErrorToAi(err)}`,
           const task = (async () => {
             try {
               await driveSubdialogToCompletion(rootDialog, sub);
+              // Supply response back to parent dialog
+              const summary = await extractSubdialogSummary(sub.id);
+              await supplyResponseToSupdialog(rootDialog, sub.id, summary, 'B');
               // Mark as done in registry
               rootDialog.unlockMutexByTopic(parseResult.agentId, parseResult.topicId);
               await rootDialog.saveRegistry();
@@ -1821,6 +1878,9 @@ ${showErrorToAi(err)}`,
           const task = (async () => {
             try {
               await driveSubdialogToCompletion(dlg, sub);
+              // Supply response back to parent dialog
+              const summary = await extractSubdialogSummary(sub.id);
+              await supplyResponseToSupdialog(dlg, sub.id, summary, 'C');
             } catch (err) {
               log.warn('Type B→C fallback subdialog processing error:', err);
             }
@@ -1854,6 +1914,9 @@ ${showErrorToAi(err)}`,
           const task = (async () => {
             try {
               await driveSubdialogToCompletion(dlg, sub);
+              // Supply response back to parent dialog (critical for Type C!)
+              const summary = await extractSubdialogSummary(sub.id);
+              await supplyResponseToSupdialog(dlg, sub.id, summary, 'C');
               // Type C: Move to done/ on completion (handled by subdialog completion)
             } catch (err) {
               log.warn('Type C subdialog processing error:', err);

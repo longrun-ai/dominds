@@ -66,7 +66,7 @@ async function restoreParentDialog(
   }
 
   const parentStore = new DiskFileDialogStore(parentIdObj);
-  return new RootDialog(
+  const parentDialog = new RootDialog(
     parentStore,
     parentMetadata.taskDocPath,
     parentIdObj,
@@ -77,6 +77,9 @@ async function restoreParentDialog(
       currentRound: parentState.currentRound,
     },
   );
+  // Restore TYPE B subdialog registry from disk for parent-call detection
+  await parentDialog.restoreRegistry();
+  return parentDialog;
 }
 
 /**
@@ -375,6 +378,11 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     } else {
       // This is a root dialog (or fallback if parent restore failed)
       dialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId);
+
+      // Restore TYPE B subdialog registry BEFORE sending events (which may trigger teammate calls)
+      if ('restoreRegistry' in dialog && typeof dialog.restoreRegistry === 'function') {
+        await dialog.restoreRegistry();
+      }
     }
 
     // CRITICAL FIX: Send dialog events directly to requesting WebSocket only
@@ -592,6 +600,8 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
       } else {
         // This is a root dialog (or fallback if parent restore failed)
         dialog = new RootDialog(dialogUI, metadata.taskDocPath, dialogId, metadata.agentId);
+        // Restore TYPE B subdialog registry from disk
+        await (dialog as RootDialog).restoreRegistry();
       }
       postDialogEvent(dialog, {
         type: 'round_update',
@@ -737,6 +747,8 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
           reminders: dialogState.reminders,
           currentRound: dialogState.currentRound,
         });
+        // Restore TYPE B subdialog registry from disk
+        await (dialog as RootDialog).restoreRegistry();
       }
 
       // Process pending subdialog summaries from in-memory state first
@@ -946,6 +958,8 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       );
     } else {
       dialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId);
+      // Restore TYPE B subdialog registry from disk
+      await (dialog as RootDialog).restoreRegistry();
     }
 
     // Emit q4h_answered event for answered question
@@ -1024,6 +1038,8 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
           currentRound: dialogState.currentRound,
         },
       );
+      // Restore TYPE B subdialog registry from disk
+      await (restoredDialog as RootDialog).restoreRegistry();
     }
 
     // Process any pending subdialog summaries

@@ -2600,44 +2600,59 @@ export class DomindsApp extends HTMLElement {
     const dialogContainer = this.shadowRoot?.querySelector(
       'dominds-dialog-container',
     ) as HTMLElement;
-    if (!dialogContainer) return;
+    const q4hInput = this.shadowRoot?.querySelector('#q4h-input') as HTMLElement;
 
-    // Apply host theme class for :host(.light/.dark) selectors in child component
-    if (theme === 'dark') {
-      dialogContainer.classList.add('dark');
-      dialogContainer.classList.remove('light');
-    } else {
-      dialogContainer.classList.add('light');
-      dialogContainer.classList.remove('dark');
-    }
+    // Apply host theme class to child components
+    const components = [dialogContainer, q4hInput].filter(Boolean) as HTMLElement[];
+    components.forEach((el) => {
+      if (theme === 'dark') {
+        el.classList.add('dark');
+        el.classList.remove('light');
+      } else {
+        el.classList.add('light');
+        el.classList.remove('dark');
+      }
+    });
+
+    if (components.length === 0) return;
 
     if (theme === 'dark') {
       // Use main app's actual background color (#2d2d2d = rgb(45, 45, 45))
-      dialogContainer.style.setProperty('--color-bg-primary', '#2d2d2d');
-      dialogContainer.style.setProperty('--color-bg-secondary', '#3a3a3a');
-      dialogContainer.style.setProperty('--color-bg-tertiary', '#4a4a4a');
-      dialogContainer.style.setProperty('--color-fg-primary', '#ffffff');
-      dialogContainer.style.setProperty('--color-fg-secondary', '#cbd5e1');
-      dialogContainer.style.setProperty('--color-fg-tertiary', '#94a3b8');
-      dialogContainer.style.setProperty('--color-accent-primary', '#60a5fa');
-      dialogContainer.style.setProperty('--color-border-primary', '#404040');
-      dialogContainer.style.setProperty('--color-error', '#ef4444');
-      dialogContainer.style.setProperty('--error-bg', '#7f1d1d');
-      dialogContainer.style.setProperty('--success-bg', '#14532d');
+      const props = {
+        '--color-bg-primary': '#2d2d2d',
+        '--color-bg-secondary': '#3a3a3a',
+        '--color-bg-tertiary': '#4a4a4a',
+        '--color-fg-primary': '#ffffff',
+        '--color-fg-secondary': '#cbd5e1',
+        '--color-fg-tertiary': '#94a3b8',
+        '--color-accent-primary': '#60a5fa',
+        '--color-border-primary': '#404040',
+        '--color-error': '#ef4444',
+        '--error-bg': '#7f1d1d',
+        '--success-bg': '#14532d',
+      };
+      components.forEach((el) => {
+        Object.entries(props).forEach(([prop, val]) => el.style.setProperty(prop, val));
+      });
     } else {
       // Use main app's actual background color for exact match
       const mainAppBg = window.getComputedStyle(this).backgroundColor;
-      dialogContainer.style.setProperty('--color-bg-primary', mainAppBg);
-      dialogContainer.style.setProperty('--color-bg-secondary', '#f8fafc');
-      dialogContainer.style.setProperty('--color-bg-tertiary', '#f1f5f9');
-      dialogContainer.style.setProperty('--color-fg-primary', '#0f172a');
-      dialogContainer.style.setProperty('--color-fg-secondary', '#475569');
-      dialogContainer.style.setProperty('--color-fg-tertiary', '#64748b');
-      dialogContainer.style.setProperty('--color-accent-primary', '#3b82f6');
-      dialogContainer.style.setProperty('--color-border-primary', '#e2e8f0');
-      dialogContainer.style.setProperty('--color-error', '#ef4444');
-      dialogContainer.style.setProperty('--error-bg', '#fee2e2');
-      dialogContainer.style.setProperty('--success-bg', '#dcfce7');
+      const props = {
+        '--color-bg-primary': mainAppBg,
+        '--color-bg-secondary': '#f8fafc',
+        '--color-bg-tertiary': '#f1f5f9',
+        '--color-fg-primary': '#0f172a',
+        '--color-fg-secondary': '#475569',
+        '--color-fg-tertiary': '#64748b',
+        '--color-accent-primary': '#3b82f6',
+        '--color-border-primary': '#e2e8f0',
+        '--color-error': '#ef4444',
+        '--error-bg': '#fee2e2',
+        '--success-bg': '#dcfce7',
+      };
+      components.forEach((el) => {
+        Object.entries(props).forEach(([prop, val]) => el.style.setProperty(prop, val));
+      });
     }
     // Q4H input component handles its own theme via Shadow DOM
   }

@@ -155,6 +155,56 @@ function getInputArea() {
   return document.querySelector('dominds-app')?.shadowRoot?.querySelector('dominds-q4h-input');
 }
 
+/**
+ * Waits for a dialog to be selected and ready for input.
+ * The input is NOT usable when no dialog is selected (common E2E state).
+ * MUST be called before every fillAndSend() to prevent failures.
+ * @param {number} [maxRetries=15] - Maximum retry attempts
+ * @param {number} [delayMs=300] - Delay between retries in milliseconds
+ * @returns {Promise<boolean>} True when input is ready
+ * @throws {Error} If input is not ready after max retries
+ */
+async function waitForInputEnabled(maxRetries = 15, delayMs = 300) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const app = getApp();
+    if (!app) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    const inputArea = getInputArea();
+    if (!inputArea || !inputArea.shadowRoot) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    const textarea = inputArea.shadowRoot.querySelector('.message-input');
+    if (!textarea) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    // Check if input is usable - textarea must be visible and interactive
+    const isVisible = textarea.offsetParent !== null;
+    const hasValue = textarea.value !== undefined;
+    const isEditable = !textarea.disabled && !textarea.readOnly;
+
+    // Also verify a dialog is selected (check app state)
+    const hasCurrentDialog = app.getCurrentDialogInfo?.() !== null;
+
+    if (isVisible && hasValue && isEditable && hasCurrentDialog) {
+      return true;
+    }
+
+    if (attempt < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error(
+    `Input not ready after ${maxRetries} attempts - no dialog selected or dialog not loaded`,
+  );
+}
+
 function getDialogContainer() {
   return document.querySelector('dominds-app')?.shadowRoot?.querySelector('#dialog-container');
 }
@@ -196,10 +246,32 @@ async function waitUntil(fn, timeoutMs = 15000, intervalMs = 100) {
  * Sends a message via the input area component.
  * Source: dominds-q4h-input.ts
  * Component methods: setValue(), sendMessage()
+ * @throws {Error} If input is disabled or no dialog is selected
  */
 async function fillAndSend(message) {
+  const app = getApp();
   const inputArea = getInputArea();
-  if (!inputArea) throw new Error('dominds-q4h-input not found');
+
+  if (!inputArea || !inputArea.shadowRoot) {
+    throw new Error('dominds-q4h-input not found');
+  }
+
+  const textarea = inputArea.shadowRoot.querySelector('.message-input');
+  if (!textarea) {
+    throw new Error('Input textarea not found');
+  }
+
+  // Check if input is usable
+  const isDisabled = textarea.disabled || textarea.readOnly;
+  const hasCurrentDialog = app?.getCurrentDialogInfo?.() !== null;
+
+  if (isDisabled || !hasCurrentDialog) {
+    throw new Error(
+      `Input is disabled - no dialog selected or dialog not loaded. ` +
+        `Use createDialog() first, or selectDialog() to load an existing dialog. ` +
+        `Did you forget to call waitForInputEnabled() before fillAndSend()?`,
+    );
+  }
 
   if (typeof inputArea.setValue !== 'function') {
     throw new Error('Input area does not have setValue method');
@@ -1265,6 +1337,7 @@ function setGlobal() {
     // Core messaging
     fillAndSend,
     waitStreamingComplete,
+    waitForInputEnabled,
     // State inspection
     counts,
     latestBubble,

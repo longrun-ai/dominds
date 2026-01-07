@@ -7,12 +7,8 @@
 
 // === DIALOG EVENT TYPE DEFINITIONS ===
 
-export interface SubdialogEvent {
+export interface SubdialogEvent extends DialogEventBase {
   type: 'subdialog_created_evt';
-  dialog?: {
-    selfId: string;
-    rootId: string;
-  };
   round: number;
   parentDialog: {
     selfId: string;

@@ -239,6 +239,7 @@ export class DiskFileDialogStore extends DialogStore {
         selfId: subdialogId.selfId,
         rootId: subdialogId.rootId,
       },
+      timestamp: new Date().toISOString(),
       round: parentRound,
       parentDialog: {
         selfId: supdialog.id.selfId,

@@ -850,6 +850,7 @@ export class DomindsQ4HInput extends HTMLElement {
         min-height: 0;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         --dominds-primary: #6366f1;
+        color-scheme: light dark;
       }
 
       /* Main container */
@@ -1263,6 +1264,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
       /* Dark theme */
       :host(.dark) {
+        color-scheme: dark;
         --dominds-bg: #2d2d2d;
         --dominds-fg: #ffffff;
         --dominds-border: #404040;
@@ -1340,6 +1342,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
       :host(.dark) .message-input {
         color: var(--dominds-fg, #ffffff);
+        background: transparent;
       }
 
       :host(.dark) .message-input::placeholder {

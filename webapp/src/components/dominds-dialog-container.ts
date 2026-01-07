@@ -363,8 +363,6 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleFuncResult(event);
         break;
 
-        break;
-
       // Texting responses (tool calls - attach inline)
       case 'tool_call_response_evt':
         this.handleToolCallResponse(event);
@@ -1027,6 +1025,15 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses callId for correlation
   //   - Uses handleToolCallResponse() instead
   private handleTeammateResponse(event: TeammateResponseEvent): void {
+    // Validate calleeDialogId is present
+    if (!event.calleeDialogId) {
+      console.error('handleTeammateResponse: Missing calleeDialogId', {
+        responderId: event.responderId,
+        result: event.result?.substring(0, 100),
+      });
+      return;
+    }
+
     // Create separate bubble for teammate response
     // The calleeDialogId (event.calleeDialogId) can refer to either:
     // - A subdialog (for @agentName calls from parent)
@@ -1040,7 +1047,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Create teammate bubble with the response
     const messageEl = this.createTeammateBubble(
-      event.calleeDialogId || '',
+      event.calleeDialogId,
       agentId,
       content,
       event.calling_genseq,
@@ -1055,9 +1062,21 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === SUBDIALOG EVENTS ===
   private handleSubdialogCreated(event: TypedDialogEvent): void {
-    // SubdialogEvent uses parentDialog/subDialog instead of dialog field
+    // Validate this is actually a subdialog_created_evt before casting
+    if (event.type !== 'subdialog_created_evt') {
+      console.warn('handleSubdialogCreated: Ignoring non-subdialog event', event.type);
+      return;
+    }
+
     const subdialogEvent = event as SubdialogEvent;
     const { subDialog } = subdialogEvent;
+
+    // Validate subDialog exists
+    if (!subDialog?.selfId) {
+      console.error('handleSubdialogCreated: Missing subDialog or selfId', subdialogEvent);
+      return;
+    }
+
     const calleeDialogId = subDialog.selfId;
 
     // Dispatch event for dialog list to update callee dialog count
@@ -1291,27 +1310,33 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleProtocolError(err: string): void {
+  private handleProtocolError(err: unknown): void {
     const container = this.shadowRoot?.querySelector('.messages');
-    if (!container) {
-      console.error('🚨 Protocol Error', err);
-      return;
-    }
+    if (!container) return;
+
+    // Extract error details - try to parse JSON from error message
+    let errorMessage = 'Unknown protocol error';
+    let errorDetails: Record<string, unknown> | undefined;
+
     try {
-      const m = String(err).match(/\{.*\}$/);
+      const errStr = String(err);
+      const m = errStr.match(/\{.*\}$/);
       if (m) {
         try {
-          const details = JSON.parse(m[0]);
-          console.error('🚨 Protocol Error', String(err).replace(m[0], '').trim(), details);
-        } catch (_) {
-          console.error('🚨 Protocol Error', err);
+          errorDetails = JSON.parse(m[0]);
+          errorMessage = errStr.replace(m[0], '').trim() || 'Protocol error with details';
+        } catch (parseErr) {
+          // JSON parse failed, use original error
+          errorMessage = errStr;
         }
       } else {
-        console.error('🚨 Protocol Error', err);
+        errorMessage = errStr;
       }
-    } catch (_e) {
-      console.error('🚨 Protocol Error', err);
+    } catch (stringifyErr) {
+      errorMessage = String(err);
     }
+
+    console.error('🚨 Protocol Error', errorMessage, errorDetails);
     const el = document.createElement('div');
     el.className = 'error-section';
     el.innerHTML = `
@@ -1319,7 +1344,7 @@ export class DomindsDialogContainer extends HTMLElement {
         <span class="section-icon">🚨</span>
         <span class="section-title">Protocol Error</span>
       </div>
-      <div class="error-content">${err}</div>
+      <div class="error-content">${errorMessage}</div>
     `;
     container.appendChild(el);
     this.scrollToBottom();
