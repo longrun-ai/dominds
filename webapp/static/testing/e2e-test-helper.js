@@ -381,49 +381,582 @@ function latestBubble() {
   return list.length > 0 ? list[list.length - 1] : null;
 }
 
+// ============================================
+// DomindsUI Class - UI State Snapshot
+// ============================================
+
 /**
- * Takes a full snapshot of the chat state.
- * Source: dominds-dialog-container.ts
+ * DomindsUI represents a snapshot of the Dominds application state.
+ * The tester agent observes these instances and compares them using reportDeltaTo().
  */
-function snapshot() {
-  const dialogContainer = getDialogContainer();
-  const shadow = dialogContainer?.shadowRoot;
+class DomindsUI {
+  constructor(data) {
+    this.timestamp = data.timestamp;
+    this.appExists = data.appExists;
+    this.shadowExists = data.shadowExists;
+
+    // 1. HEADER region
+    this.header = data.header;
+
+    // 2. SIDEBAR / DIALOG LIST
+    this.sidebar = data.sidebar;
+
+    // 3. CURRENT DIALOG INFO (toolbar area)
+    this.currentDialog = data.currentDialog;
+
+    // 4. CHAT AREA / MESSAGES
+    this.chat = data.chat;
+
+    // 5. INPUT AREA
+    this.input = data.input;
+
+    // 6. Q4H PANEL
+    this.q4h = data.q4h;
+
+    // 7. REMINDERS WIDGET
+    this.reminders = data.reminders;
+
+    // 8. MODALS
+    this.modals = data.modals;
+
+    // 9. CONNECTION STATUS
+    this.connection = data.connection;
+
+    // 10. TOASTS (if any)
+    this.toasts = data.toasts;
+  }
+
+  /**
+   * Report the delta between this snapshot and a previous one.
+   * @param {DomindsUI} prev - Previous UI snapshot to compare against
+   * @returns {string} Human-readable delta report
+   */
+  reportDeltaTo(prev) {
+    if (!prev) {
+      return formatFullState(this);
+    }
+
+    const delta = computeDeltaForClass(prev, this);
+    if (delta.changes.length === 0) {
+      return `=== UI STATE (NO CHANGES) ===
+${formatFullState(this)}`;
+    }
+
+    const changeLines = delta.changes.map((c) => {
+      if (c.path === 'currentDialog.title') {
+        return `  • Dialog title: "${c.previous}" → "${c.current}"`;
+      }
+      if (c.path === 'chat.messageCount') {
+        return `  • Messages: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'q4h.count') {
+        return `  • Q4H questions: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'reminders.count') {
+        return `  • Reminders: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'modals.anyModalVisible') {
+        return `  • Modal: ${c.current ? 'OPENED' : 'CLOSED'}`;
+      }
+      if (c.path === 'connection.connected') {
+        return `  • Connection: ${c.current ? 'Connected' : 'Disconnected'}`;
+      }
+      return `  • ${c.path}: ${JSON.stringify(c.previous)} → ${JSON.stringify(c.current)}`;
+    });
+
+    return `=== UI STATE CHANGED (${delta.changes.length} change${delta.changes.length > 1 ? 's' : ''}) ===
+${changeLines.join('\n')}
+
+=== CURRENT STATE ===
+${formatFullState(this)}`;
+  }
+}
+
+/**
+ * Takes a comprehensive snapshot of the Dominds UI state.
+ * Returns a DomindsUI instance for observation and delta comparison.
+ *
+ * @returns {DomindsUI} UI state snapshot
+ */
+function snapshotDomindsUI() {
   const app = getApp();
+  const shadow = getAppShadow();
 
-  // Get current dialog info from app
-  const currentDialogInfo = app?.getCurrentDialogInfo?.() || null;
+  // Capture all UI state
+  const data = {
+    timestamp: Date.now(),
+    appExists: !!app,
+    shadowExists: !!shadow,
 
-  if (!shadow) {
+    // 1. HEADER region
+    header: captureHeaderState(shadow),
+
+    // 2. SIDEBAR / DIALOG LIST
+    sidebar: captureSidebarState(shadow),
+
+    // 3. CURRENT DIALOG INFO (toolbar area)
+    currentDialog: captureCurrentDialogState(shadow, app),
+
+    // 4. CHAT AREA / MESSAGES
+    chat: captureChatState(shadow),
+
+    // 5. INPUT AREA
+    input: captureInputState(shadow),
+
+    // 6. Q4H PANEL
+    q4h: captureQ4HState(shadow, app),
+
+    // 7. REMINDERS WIDGET
+    reminders: captureRemindersState(shadow),
+
+    // 8. MODALS
+    modals: captureModalsState(shadow),
+
+    // 9. CONNECTION STATUS
+    connection: captureConnectionState(app),
+
+    // 10. TOASTS (if any)
+    toasts: captureToastsState(shadow),
+  };
+
+  return new DomindsUI(data);
+}
+
+// ============================================
+// Capture functions for each UI region
+// ============================================
+
+function captureHeaderState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const header = shadow.querySelector('.header');
+  return {
+    exists: !!header,
+    workspace: header?.querySelector('.workspace-indicator')?.textContent?.trim() || null,
+    themeToggle: header?.querySelector('#theme-toggle-btn')?.textContent?.trim() || null,
+  };
+}
+
+function captureSidebarState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const sidebar = shadow.querySelector('.sidebar');
+  // dialogList is available via shadow.querySelector('dominds-dialog-list') if needed
+
+  // Capture dialog tree structure
+  const dialogItems = Array.from(shadow.querySelectorAll('.dialog-item') || []);
+  const taskGroups = Array.from(shadow.querySelectorAll('.task-group-item') || []);
+
+  const dialogs = dialogItems.map((item) => {
+    const toggle = item.querySelector('.dialog-toggle');
+    const title = item.querySelector('.dialog-title');
+    const status = item.querySelector('.dialog-status');
+    const timestamp = item.querySelector('.dialog-timestamp');
+    const subdialogCount = item.querySelector('.dialog-count');
+
     return {
-      userTexts: [],
-      authors: [],
-      thinkings: [],
-      sayings: [],
-      codeHeaders: [],
-      codeContents: [],
-      dialogInfo: currentDialogInfo,
+      title: title?.textContent?.trim() || '',
+      status: status?.textContent?.trim() || '',
+      timestamp: timestamp?.textContent?.trim() || '',
+      subdialogs: subdialogCount?.textContent?.trim() || '',
+      expanded: toggle?.textContent?.includes('▼') || false,
+      hasSubdialogs: !!item.querySelector('.subdialog-item'),
+    };
+  });
+
+  const taskGroupsInfo = taskGroups.map((group) => {
+    const text = group.querySelector('.task-group-text');
+    const count = group.querySelector('.task-group-count');
+    const toggle = group.querySelector('.task-group-toggle');
+
+    return {
+      path: text?.textContent?.trim() || '',
+      count: count?.textContent?.trim() || '',
+      expanded: toggle?.textContent?.includes('▼') || false,
+    };
+  });
+
+  // Find currently selected dialog in sidebar
+  const selectedItem = shadow.querySelector('.dialog-item.selected, .dialog-item.active');
+
+  return {
+    exists: !!sidebar,
+    dialogCount: dialogItems.length,
+    taskGroupCount: taskGroups.length,
+    taskGroups: taskGroupsInfo,
+    dialogs,
+    selectedDialogTitle: selectedItem?.querySelector('.dialog-title')?.textContent?.trim() || null,
+    newDialogBtnExists: !!shadow.querySelector('#new-dialog-btn'),
+  };
+}
+
+function captureCurrentDialogState(shadow, app) {
+  if (!shadow) return { exists: false };
+
+  // Use app method for reliable info
+  const dialogInfo = app?.getCurrentDialogInfo?.() || null;
+
+  // Fallback: check DOM for title
+  const titleEl = shadow.querySelector('#current-dialog-title');
+  const titleText = titleEl?.textContent?.trim() || '';
+
+  // Round navigation state
+  const prevBtn = shadow.querySelector('#toolbar-prev');
+  const nextBtn = shadow.querySelector('#toolbar-next');
+  const roundText = shadow.querySelector('#round-nav span');
+
+  // Check if dialog is actually loaded (not placeholder)
+  const hasRealDialog = titleText !== '' && titleText !== 'Select or create a dialog to start';
+
+  return {
+    exists: true,
+    title: titleText,
+    hasRealDialog,
+    placeholder: titleText === 'Select or create a dialog to start',
+    dialogInfo,
+    round: roundText?.textContent?.trim() || '',
+    prevEnabled: !prevBtn?.hasAttribute?.('disabled'),
+    nextEnabled: !nextBtn?.hasAttribute?.('disabled'),
+  };
+}
+
+function captureChatState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const container = shadow.querySelector('dominds-dialog-container');
+  const containerShadow = container?.shadowRoot;
+
+  if (!containerShadow) {
+    return {
+      exists: !!container,
+      messageCount: 0,
+      messages: [],
     };
   }
 
-  const mapText = (n) => (n.textContent || '').trim();
+  const bubbles = containerShadow.querySelectorAll('.generation-bubble') || [];
+  const userMessages = containerShadow.querySelectorAll('.user-bubble') || [];
+
+  const messages = Array.from(bubbles).map((bubble) => {
+    const author = bubble.querySelector('.bubble-author')?.textContent?.trim() || '';
+    const thinking = bubble.querySelector('.thinking-section')?.textContent?.trim() || '';
+    const markdown = bubble.querySelector('.markdown-section')?.textContent?.trim() || '';
+    const hasFuncCall = bubble.querySelector('.func-call-section');
+    const funcName = bubble.querySelector('.func-call-header')?.textContent?.trim() || '';
+    const hasTeammate = bubble.querySelector('.teammate');
+    const teammateLabel = bubble.querySelector('.teammate-label')?.textContent?.trim() || '';
+
+    // Check completion state
+    const thinkingCompleted = bubble.querySelector('.thinking-section.completed');
+    const markdownCompleted = bubble.querySelector('.markdown-section.completed');
+
+    return {
+      author,
+      hasThinking: !!thinking,
+      thinkingPreview: thinking.slice(0, 100) + (thinking.length > 100 ? '...' : ''),
+      hasMarkdown: !!markdown,
+      markdownPreview: markdown.slice(0, 200) + (markdown.length > 200 ? '...' : ''),
+      hasFuncCall: !!hasFuncCall,
+      funcName: funcName || null,
+      hasTeammate: !!hasTeammate,
+      teammateLabel,
+      thinkingCompleted: !!thinkingCompleted,
+      markdownCompleted: !!markdownCompleted,
+    };
+  });
 
   return {
-    userTexts: Array.from(shadow.querySelectorAll(sel.userMsg)).map(mapText),
-    authors: Array.from(shadow.querySelectorAll(`${sel.genBubble} ${sel.author}`)).map(mapText),
-    thinkings: Array.from(shadow.querySelectorAll(`${sel.genBubble} ${sel.thinkingCompleted}`)).map(
-      mapText,
-    ),
-    sayings: Array.from(shadow.querySelectorAll(`${sel.genBubble} ${sel.markdownContent}`)).map(
-      mapText,
-    ),
-    codeHeaders: Array.from(
-      shadow.querySelectorAll(`${sel.genBubble} ${sel.codeCompleted} ${sel.codeTitle}`),
-    ).map(mapText),
-    codeContents: Array.from(
-      shadow.querySelectorAll(`${sel.genBubble} ${sel.codeCompleted} ${sel.codeContent}`),
-    ).map(mapText),
-    dialogInfo: currentDialogInfo,
+    exists: true,
+    messageCount: bubbles.length,
+    userMessageCount: userMessages.length,
+    messages,
+    latestMessage: messages[messages.length - 1] || null,
   };
+}
+
+function captureInputState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const inputArea = getInputArea();
+  if (!inputArea) return { exists: false };
+
+  const inputShadow = inputArea.shadowRoot;
+  if (!inputShadow) return { exists: true, shadowMissing: true };
+
+  const textarea = inputShadow.querySelector('.message-input');
+  const sendBtn = inputShadow.querySelector('.send-button');
+
+  return {
+    exists: true,
+    textareaExists: !!textarea,
+    textareaVisible: textarea?.offsetParent !== null,
+    textareaEnabled: !textarea?.disabled && !textarea?.readOnly,
+    textareaPlaceholder: textarea?.placeholder || '',
+    sendBtnExists: !!sendBtn,
+    sendBtnEnabled: !sendBtn?.disabled,
+  };
+}
+
+function captureQ4HState(shadow, app) {
+  if (!shadow) return { exists: false };
+
+  const inputArea = getInputArea();
+  const inputShadow = inputArea?.shadowRoot;
+
+  // Get count from app
+  const count = app?.q4hQuestions?.length || 0;
+
+  // Check if Q4H section is expanded
+  const q4hSection = inputShadow?.querySelector('.question-list');
+  const isExpanded = q4hSection?.offsetParent !== null && q4hSection?.children?.length > 0;
+
+  // Get question cards
+  const questionCards = inputShadow?.querySelectorAll('.q4h-question-card') || [];
+  const questions = Array.from(questionCards).map((card) => {
+    const headline = card.querySelector('.q4h-question-headline')?.textContent?.trim() || '';
+    const content = card.querySelector('.q4h-question-content')?.textContent?.trim() || '';
+    const timestamp = card.querySelector('.q4h-question-timestamp')?.textContent?.trim() || '';
+    const isChecked = card.querySelector('.q4h-checkbox-check');
+
+    return {
+      headline: headline.slice(0, 100) + (headline.length > 100 ? '...' : ''),
+      contentPreview: content.slice(0, 150) + (content.length > 150 ? '...' : ''),
+      timestamp,
+      checked: !!isChecked,
+    };
+  });
+
+  // Q4H panel in chat area (alternative view)
+  const q4hPanel = shadow.querySelector('dominds-q4h-panel');
+  const q4hPanelShadow = q4hPanel?.shadowRoot;
+
+  return {
+    exists: true,
+    count,
+    isExpanded,
+    questionCount: questions.length,
+    questions,
+    panelExists: !!q4hPanel,
+    panelExpanded: q4hPanelShadow?.querySelector('.q4h-panel-container.expanded') || false,
+  };
+}
+
+function captureRemindersState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const widget = shadow.querySelector('#reminders-widget');
+  const content = shadow.querySelector('#reminders-widget-content');
+  const toggle = shadow.querySelector('#toolbar-reminders-toggle');
+
+  // Get count from toggle
+  const toggleBadge = toggle?.querySelector('span');
+  const countText = toggleBadge?.textContent?.trim() || '0';
+  const count = parseInt(countText, 10) || 0;
+
+  const isVisible = widget?.offsetParent !== null;
+
+  // Capture reminder items if visible
+  let reminders = [];
+  if (isVisible && content) {
+    const items = content.querySelectorAll('.reminder-item') || [];
+    reminders = Array.from(items).map((item) => {
+      const index = item.querySelector('.reminder-index')?.textContent?.trim() || '';
+      const text = item.querySelector('.reminder-content')?.textContent?.trim() || '';
+      return { index, text: text.slice(0, 100) + (text.length > 100 ? '...' : '') };
+    });
+  }
+
+  return {
+    exists: true,
+    count,
+    isVisible,
+    hasReminders: reminders.length > 0,
+    reminderCount: reminders.length,
+    reminders,
+    closeBtnExists: !!shadow.querySelector('#reminders-widget-close'),
+  };
+}
+
+function captureModalsState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const createDialogModal = shadow.querySelector('.create-dialog-modal');
+  const teamMembersModal = shadow.querySelector('.modal-overlay');
+
+  return {
+    exists: true,
+    createDialogModalVisible: createDialogModal?.offsetParent !== null,
+    teamMembersModalVisible: teamMembersModal?.offsetParent !== null,
+    anyModalVisible: !!(
+      createDialogModal?.offsetParent !== null || teamMembersModal?.offsetParent !== null
+    ),
+  };
+}
+
+function captureConnectionState(app) {
+  if (!app) return { exists: false };
+
+  const statusEl = app.querySelector('dominds-connection-status');
+  if (!statusEl) return { exists: true, componentMissing: true };
+
+  return {
+    exists: true,
+    statusText: statusEl?.statusText || statusEl?.textContent?.trim() || '',
+    connected: statusEl?.connected || statusEl?.statusText?.includes?.('Connected') || false,
+  };
+}
+
+function captureToastsState(shadow) {
+  if (!shadow) return { exists: false };
+
+  const toasts = shadow.querySelectorAll('.toast') || [];
+  return {
+    exists: true,
+    count: toasts.length,
+    toasts: Array.from(toasts).map((t) => ({
+      text: t.textContent?.trim()?.slice(0, 100) || '',
+      type: t.classList.contains('error')
+        ? 'error'
+        : t.classList.contains('warning')
+          ? 'warning'
+          : 'info',
+    })),
+  };
+}
+
+// ============================================
+// Delta computation
+// ============================================
+
+function computeDeltaForClass(previous, current) {
+  const delta = { changes: [] };
+
+  // Helper to detect changes
+  const detectChange = (path, prevVal, currVal) => {
+    const prevStr = JSON.stringify(prevVal);
+    const currStr = JSON.stringify(currVal);
+    if (prevStr !== currStr) {
+      delta.changes.push({
+        path,
+        previous: prevVal,
+        current: currVal,
+      });
+    }
+  };
+
+  // Compare key fields
+  detectChange(
+    'currentDialog.hasRealDialog',
+    previous.currentDialog?.hasRealDialog,
+    current.currentDialog?.hasRealDialog,
+  );
+  detectChange('currentDialog.title', previous.currentDialog?.title, current.currentDialog?.title);
+  detectChange('currentDialog.round', previous.currentDialog?.round, current.currentDialog?.round);
+
+  detectChange('chat.messageCount', previous.chat?.messageCount, current.chat?.messageCount);
+  detectChange(
+    'chat.latestMessage.author',
+    previous.chat?.latestMessage?.author,
+    current.chat?.latestMessage?.author,
+  );
+
+  detectChange(
+    'input.textareaEnabled',
+    previous.input?.textareaEnabled,
+    current.input?.textareaEnabled,
+  );
+  detectChange(
+    'input.textareaVisible',
+    previous.input?.textareaVisible,
+    current.input?.textareaVisible,
+  );
+
+  detectChange('q4h.count', previous.q4h?.count, current.q4h?.count);
+  detectChange('q4h.isExpanded', previous.q4h?.isExpanded, current.q4h?.isExpanded);
+
+  detectChange('reminders.count', previous.reminders?.count, current.reminders?.count);
+  detectChange('reminders.isVisible', previous.reminders?.isVisible, current.reminders?.isVisible);
+
+  detectChange(
+    'modals.anyModalVisible',
+    previous.modals?.anyModalVisible,
+    current.modals?.anyModalVisible,
+  );
+
+  detectChange(
+    'sidebar.selectedDialogTitle',
+    previous.sidebar?.selectedDialogTitle,
+    current.sidebar?.selectedDialogTitle,
+  );
+
+  detectChange(
+    'connection.connected',
+    previous.connection?.connected,
+    current.connection?.connected,
+  );
+
+  detectChange('toasts.count', previous.toasts?.count, current.toasts?.count);
+
+  return delta;
+}
+
+// ============================================
+// Human-readable state formatting
+// ============================================
+
+function formatFullState(state) {
+  const lines = [];
+
+  // Current dialog (most important)
+  if (state.currentDialog?.hasRealDialog) {
+    lines.push(`  📂 Dialog: "${state.currentDialog.title}"`);
+    if (state.currentDialog.round) {
+      lines.push(`     Round: ${state.currentDialog.round}`);
+    }
+  } else {
+    lines.push(`  📂 No dialog selected`);
+  }
+
+  // Chat messages
+  if (state.chat?.messageCount > 0) {
+    lines.push(
+      `  💬 ${state.chat.messageCount} message(s), latest: @${state.chat.latestMessage?.author || '?'}`,
+    );
+  } else {
+    lines.push(`  💬 No messages yet`);
+  }
+
+  // Input state
+  const inputStatus = state.input?.textareaEnabled ? 'enabled' : 'disabled';
+  lines.push(`  ✏️  Input: ${inputStatus}`);
+
+  // Q4H
+  if (state.q4h?.count > 0) {
+    lines.push(
+      `  ❓ Q4H: ${state.q4h.count} question(s) ${state.q4h.isExpanded ? '[expanded]' : '[collapsed]'}`,
+    );
+  } else {
+    lines.push(`  ❓ Q4H: 0`);
+  }
+
+  // Reminders
+  if (state.reminders?.isVisible) {
+    lines.push(`  🔔 Reminders: ${state.reminders.count} [VISIBLE]`);
+  } else {
+    lines.push(`  🔔 Reminders: ${state.reminders.count} [hidden]`);
+  }
+
+  // Connection
+  lines.push(
+    `  ${state.connection?.connected ? '🟢' : '🔴'} Connection: ${state.connection?.statusText || 'unknown'}`,
+  );
+
+  // Modals
+  if (state.modals?.anyModalVisible) {
+    lines.push(`  ⚠️  Modal open`);
+  }
+
+  return lines.join('\n');
 }
 
 // ============================================
@@ -435,14 +968,17 @@ function snapshot() {
  * This simulates the full user interaction:
  * 1. Click "New Dialog" button to open modal
  * 2. Fill task document path in modal input
- * 3. Select teammate from dropdown
+ * 3. Select teammate from dropdown (optional - uses default if omitted)
  * 4. Click "Create Dialog" button
  *
+ * @param {string} taskDocPath - Path to the task document (e.g., 'cmds-test.md')
+ * @param {string} [callsign] - Optional teammate callsign (e.g., '@cmdr', '@dijiang').
+ *                             If omitted, uses the rt team's default responder.
+ * @returns {Promise<{callsign: string, taskDocPath: string, dialogId: string, rootId: string, created: boolean}>}
+ *
  * Source: dominds-app.tsx - showCreateDialogModal(), setupDialogModalEvents()
- * Verifies the dialog title shows expected agent - throws if wrong responder.
  */
-async function createDialog(callsign, taskDocPath) {
-  const agentId = callsign.replace(/^@/, '');
+async function createDialog(taskDocPath, callsign) {
   const app = getApp();
   if (!app) {
     throw new Error('dominds-app element not found');
@@ -452,6 +988,9 @@ async function createDialog(callsign, taskDocPath) {
   if (!shadow) {
     throw new Error('dominds-app shadowRoot not found');
   }
+
+  // Extract agentId from callsign if provided (e.g., '@cmdr' -> 'cmdr')
+  const agentId = callsign ? callsign.replace(/^@/, '') : null;
 
   // Capture original title
   const originalTitle = getCurrentDialogTitle();
@@ -483,13 +1022,15 @@ async function createDialog(callsign, taskDocPath) {
   // Trigger input event for autocomplete to work properly
   taskInput.dispatchEvent(new Event('input', { bubbles: true }));
 
-  // Step 4: Select the teammate from dropdown
-  const teammateSelect = shadow.querySelector(sel.teammateSelect);
-  if (!teammateSelect) {
-    throw new Error('Teammate select (#teammate-select) not found');
+  // Step 4: Select the teammate from dropdown (only if callsign provided)
+  if (agentId) {
+    const teammateSelect = shadow.querySelector(sel.teammateSelect);
+    if (!teammateSelect) {
+      throw new Error('Teammate select (#teammate-select) not found');
+    }
+    teammateSelect.value = agentId;
+    teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  teammateSelect.value = agentId;
-  teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
 
   // Step 5: Click "Create Dialog" button
   const createBtn = shadow.querySelector(sel.createBtn);
@@ -505,9 +1046,15 @@ async function createDialog(callsign, taskDocPath) {
     return !modalStillExists && newTitle !== originalTitle;
   }, 5000);
 
-  // Verify the new title includes expected agent
+  // Get the final title and extract actual agent from it
   const newTitle = getCurrentDialogTitle();
-  if (!newTitle.includes(`@${agentId}`)) {
+
+  // Extract agent callsign from title (format: "@agentId - taskName" or similar)
+  const actualAgentMatch = newTitle.match(/^@(\w+)/);
+  const actualAgentId = actualAgentMatch ? actualAgentMatch[1] : null;
+
+  // Verify the agent if callsign was specified
+  if (agentId && actualAgentId !== agentId) {
     throw new Error(`Expected @${agentId} in dialog title, got: "${newTitle}"`);
   }
 
@@ -515,7 +1062,7 @@ async function createDialog(callsign, taskDocPath) {
   const dialogInfo = getCurrentDialogInfo();
 
   return {
-    callsign: agentId,
+    callsign: actualAgentId,
     taskDocPath,
     dialogId: dialogInfo?.selfId || dialogInfo?.rootId,
     rootId: dialogInfo?.rootId,
@@ -1338,10 +1885,9 @@ function setGlobal() {
     fillAndSend,
     waitStreamingComplete,
     waitForInputEnabled,
-    // State inspection
-    counts,
-    latestBubble,
-    snapshot,
+    // State inspection - NEW: snapshotDomindsUI for delta-based UI observation
+    snapshotDomindsUI,
+    DomindsUI, // Class for UI snapshots with reportDeltaTo() method
     noLingering,
     latestUserText,
     waitUntil,
