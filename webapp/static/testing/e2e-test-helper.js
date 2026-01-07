@@ -671,6 +671,7 @@ function captureChatState(shadow) {
     userMessageCount: userMessages.length,
     messages,
     latestMessage: messages[messages.length - 1] || null,
+    pendingTeammateCalls: getPendingTeammateCalls().length,
   };
 }
 
@@ -858,6 +859,11 @@ function computeDeltaForClass(previous, current) {
     'chat.latestMessage.author',
     previous.chat?.latestMessage?.author,
     current.chat?.latestMessage?.author,
+  );
+  detectChange(
+    'chat.pendingTeammateCalls',
+    previous.chat?.pendingTeammateCalls,
+    current.chat?.pendingTeammateCalls,
   );
 
   detectChange(
@@ -1866,6 +1872,44 @@ function detectFuncCall(toolName) {
   };
 }
 
+/**
+ * Gets all pending teammate calls (calls still waiting for response).
+ * @returns {Array<{element: HTMLElement, firstMention: string, isHuman: boolean}>}
+ */
+function getPendingTeammateCalls() {
+  const dialogContainer = getDialogContainer();
+  const shadow = dialogContainer?.shadowRoot;
+  if (!shadow) return [];
+
+  const pendingCalls = shadow.querySelectorAll('.teammate-call-pending');
+  return Array.from(pendingCalls).map((el) => ({
+    element: el,
+    firstMention: el.getAttribute('data-first-mention') || '',
+    isHuman: el.getAttribute('data-is-human') === 'true',
+  }));
+}
+
+/**
+ * Waits for all pending teammate calls to complete.
+ * @param {number} [timeoutMs=60000] - Maximum wait time
+ * @returns {Promise<boolean>} True if completed, false if timeout
+ */
+async function waitForPendingTeammateCalls(timeoutMs = 60000) {
+  const startTime = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      const pendingCalls = getPendingTeammateCalls();
+      if (pendingCalls.length === 0) return resolve(true);
+      if (Date.now() - startTime >= timeoutMs) {
+        console.log(`waitForPendingTeammateCalls timeout: ${pendingCalls.length} pending`);
+        return resolve(false);
+      }
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
 // ============================================
 // Export to window.__e2e__
 // ============================================
@@ -1932,6 +1976,9 @@ function setGlobal() {
     },
     // DOM observation utilities
     domObs,
+    // Teammate calls
+    getPendingTeammateCalls,
+    waitForPendingTeammateCalls,
   };
   window.__e2e__ = g;
   return g;

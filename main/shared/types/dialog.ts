@@ -197,6 +197,7 @@ export interface TeammateResponseEvent {
   result: string;
   summary?: string; // merged from subdialog_final_summary_evt
   agentId?: string; // merged from subdialog_final_summary_evt
+  callId?: string; // For navigation from response back to call site
 }
 
 // End of user saying event - emitted after user texting calls are parsed/executed

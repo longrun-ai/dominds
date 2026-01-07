@@ -199,6 +199,10 @@ export abstract class Dialog {
   // - NOT used for teammate calls (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
 
+  // Phase 14: Type C Subdialog suspension state
+  protected _isSuspendedForSubdialogs: boolean = false;
+  protected _pendingSubdialogCallIds: Set<string> = new Set();
+
   constructor(
     dlgStore: DialogStore,
     taskDocPath: string,
@@ -273,6 +277,26 @@ export abstract class Dialog {
     this._currentCallId = null;
   }
 
+  // Phase 14: Type C Subdialog suspension methods
+
+  public get isSuspendedForSubdialogs(): boolean {
+    return this._isSuspendedForSubdialogs;
+  }
+
+  public suspendForSubdialogResponses(callIds: string[]): void {
+    this._pendingSubdialogCallIds = new Set(callIds);
+    this._isSuspendedForSubdialogs = true;
+  }
+
+  public markSubdialogResponseReceived(callId: string): boolean {
+    this._pendingSubdialogCallIds.delete(callId);
+    if (this._pendingSubdialogCallIds.size === 0) {
+      this._isSuspendedForSubdialogs = false;
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Abstract method for creating subdialogs.
    * Implemented by RootDialog to create SubDialog instances.
@@ -281,7 +305,7 @@ export abstract class Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string },
+    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; callId?: string },
   ): Promise<SubDialog>;
 
   /**
@@ -860,45 +884,44 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 
   /**
    * Post subdialog completion summary to this dialog
-   * CRITICAL: Waits until generation has started before emitting the event
-   * to ensure proper event ordering (user_text, generating_start_evt before subdialog_final_summary_evt)
+   * Phase 14: No wait - emit immediately with virtual gen markers for Type C subdialogs
    */
-  public async postSubdialogSummary(subdialogId: DialogID, summary: string): Promise<void> {
+  public async postSubdialogSummary(
+    subdialogId: DialogID,
+    summary: string,
+    callId?: string,
+  ): Promise<void> {
     try {
-      // Wait for generation to start if it hasn't already
-      // This ensures subdialog_final_summary_evt arrives AFTER user_text and generating_start_evt
-      // We wait until _generationStarted is true AND the genseq matches (or we're past it)
-      const currentGenseq = this._activeGenSeq ?? 0;
-      let waitCount = 0;
-      while (
-        (!this._generationStarted || this._generationStartedGenseq < currentGenseq) &&
-        waitCount < 100
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        waitCount++;
-      }
+      // NO WAIT - emit immediately with virtual gen markers
 
-      // Handle timeout gracefully - emit warning and proceed with best-effort approach
-      if (waitCount >= 100) {
-        const msg = `Timeout waiting for generation to start for subdialog ${subdialogId?.selfId ?? 'unknown'}`;
-        log.warn(msg);
-      }
+      // Emit virtual generating_start_evt for subdialog response bubble
+      await this.notifyGeneratingStart();
 
-      // Emit TeammateResponseEvent (subdialog_final_summary_evt merged into this)
+      // Emit TeammateResponseEvent
       const evt: TeammateResponseEvent = {
         type: 'teammate_response_evt',
-        responderId: subdialogId.rootId, // Use subdialog's rootId as the "responder"
+        responderId: subdialogId.rootId,
         calleeDialogId: subdialogId.selfId,
         headLine: summary.slice(0, 100) + (summary.length > 100 ? '...' : ''),
         status: 'completed',
         result: summary,
         round: this.currentRound,
-        summary, // merged from subdialog_final_summary_evt
-        agentId: subdialogId.rootId, // merged from subdialog_final_summary_evt
+        summary,
+        agentId: subdialogId.rootId,
+        callId: callId ?? undefined,
       };
-      // Post to PARENT's PubChan (this.id) for proper event reception
-      // The frontend subscribes to the parent's event stream to receive subdialog completion
       postDialogEvent(this, evt);
+
+      // Emit virtual generating_finish_evt
+      await this.notifyGeneratingFinish();
+
+      // Check if parent is suspended waiting for Type C responses
+      if (this._isSuspendedForSubdialogs && callId) {
+        const shouldResume = this.markSubdialogResponseReceived(callId);
+        if (shouldResume) {
+          log.info(`All Type C responses received for dialog ${this.id.selfId}, resuming...`);
+        }
+      }
     } catch (err) {
       log.warn('Failed to post teammate_response_evt event', undefined, {
         error: err,
@@ -1021,7 +1044,7 @@ export class RootDialog extends Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string },
+    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; callId?: string },
   ): Promise<SubDialog> {
     return await this.dlgStore.createSubDialog(this, targetAgentId, headLine, callBody, options);
   }
@@ -1089,7 +1112,7 @@ export abstract class DialogStore {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string },
+    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; callId?: string },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     // For subdialogs, use the supdialog's root dialog ID as the root

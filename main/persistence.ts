@@ -2422,7 +2422,7 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getRootDialogPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       await fs.promises.mkdir(dialogPath, { recursive: true });
       const filePath = path.join(dialogPath, 'pending-subdialogs.json');
 
@@ -2453,7 +2453,7 @@ export class DialogPersistence {
     }>
   > {
     try {
-      const dialogPath = this.getRootDialogPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const filePath = path.join(dialogPath, 'pending-subdialogs.json');
 
       try {
@@ -2472,6 +2472,27 @@ export class DialogPersistence {
   }
 
   /**
+   * Get the path for storing subdialog responses (supports both root and subdialog parents).
+   * For Type C subdialogs created inside another subdialog, responses are stored at the parent's level.
+   */
+  static getDialogResponsesPath(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): string {
+    // Root dialogs store responses in their own directory.
+    // Subdialogs store responses in the parent's location (root or subdialog).
+    if (dialogId.rootId === dialogId.selfId) {
+      // Root dialog: use root's directory
+      return this.getRootDialogPath(dialogId, status);
+    }
+    // Subdialog: store in parent's subdialogs directory
+    // The parent is always identified by rootId (could be root or parent subdialog)
+    const parentSelfId = dialogId.rootId;
+    const rootPath = this.getRootDialogPath(new DialogID(parentSelfId), status);
+    return path.join(rootPath, this.SUBDIALOGS_DIR, dialogId.selfId);
+  }
+
+  /**
    * Save subdialog responses for Type A supply mechanism.
    * Tracks responses from completed subdialogs.
    */
@@ -2486,7 +2507,7 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getRootDialogPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       await fs.promises.mkdir(dialogPath, { recursive: true });
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
 
@@ -2515,7 +2536,7 @@ export class DialogPersistence {
     }>
   > {
     try {
-      const dialogPath = this.getRootDialogPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
 
       try {
@@ -3163,7 +3184,7 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getRootDialogPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
 
       // Ensure directory exists
@@ -3209,7 +3230,7 @@ export class DialogPersistence {
     }>
   > {
     try {
-      const dialogPath = this.getRootDialogPath(rootDialogId, status);
+      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
 
       const content = await fs.promises.readFile(registryFilePath, 'utf-8');

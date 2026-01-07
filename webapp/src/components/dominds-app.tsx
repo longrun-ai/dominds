@@ -210,7 +210,7 @@ export class DomindsApp extends HTMLElement {
   connectedCallback(): void {
     // Apply theme immediately before any rendering to prevent flash
     this.applyTheme(this.currentTheme);
-    this.render();
+    this.initialRender();
     this.setupEventListeners();
     this.loadInitialData();
 
@@ -257,7 +257,11 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  public render(): void {
+  /**
+   * Initial render - creates the DOM structure once after component construction.
+   * This MUST only be called once from connectedCallback.
+   */
+  private initialRender(): void {
     if (!this.shadowRoot) return;
 
     const style = this.getStyles();
@@ -268,9 +272,10 @@ export class DomindsApp extends HTMLElement {
       ${html}
     `;
 
-    // Re-attach element-specific event listeners that were lost due to innerHTML overwrite
+    // Set up element-specific event listeners (only needed once at initial render)
     this.setupElementEventListeners();
 
+    // Initialize child components with current state
     const dialogList = this.shadowRoot.querySelector('#dialog-list');
     if (dialogList instanceof DomindsDialogList) {
       dialogList.setDialogs(this.dialogs);
@@ -282,12 +287,49 @@ export class DomindsApp extends HTMLElement {
     if (teamMembers instanceof DomindsTeamMembers) {
       teamMembers.setMembers(this.teamMembers);
     }
-    const dialogContainer = this.shadowRoot.querySelector('#dialog-container');
-    // Dialog container will be set up when selectDialog is called
-    // Q4H input component handles its own setup
 
     // Sync theme with child components after render
     this.syncThemeWithChildComponents(this.currentTheme);
+  }
+
+  /**
+   * Surgical update: Update only the dialog list without destroying the container.
+   * Use this after dialog list changes (e.g., subdialog creation, dialog loading).
+   */
+  private updateDialogList(): void {
+    const dialogList = this.shadowRoot?.querySelector('#dialog-list');
+    if (dialogList instanceof DomindsDialogList) {
+      dialogList.setDialogs(this.dialogs);
+    }
+  }
+
+  /**
+   * Surgical update: Update only the workspace indicator text.
+   * Use this when workspace info is loaded or changes.
+   */
+  private updateWorkspaceInfo(): void {
+    const workspaceIndicator = this.shadowRoot?.querySelector('.workspace-indicator');
+    if (workspaceIndicator) {
+      workspaceIndicator.textContent = `📁 ${this.backendWorkspace || 'Unknown workspace'}`;
+    }
+  }
+
+  /**
+   * Surgical update: Update only the toolbar display elements.
+   * Use this when dialog is loaded or round changes.
+   */
+  private updateToolbarDisplay(): void {
+    const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement | null;
+    const nextBtn = this.shadowRoot?.querySelector('#toolbar-next') as HTMLButtonElement | null;
+    const remBtnCount = this.shadowRoot?.querySelector(
+      '#toolbar-reminders-toggle span',
+    ) as HTMLElement | null;
+    const roundLabel = this.shadowRoot?.querySelector('#round-nav span') as HTMLElement | null;
+
+    if (prevBtn) prevBtn.disabled = this.toolbarCurrentRound <= 1;
+    if (nextBtn) nextBtn.disabled = this.toolbarCurrentRound >= this.toolbarTotalRounds;
+    if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
+    if (roundLabel) roundLabel.textContent = `R ${this.toolbarCurrentRound}`;
   }
 
   public getStyles(): string {
@@ -1633,12 +1675,12 @@ export class DomindsApp extends HTMLElement {
 
       if (data.workspace) {
         this.backendWorkspace = data.workspace;
-        this.render(); // Re-render to show the workspace info
+        this.updateWorkspaceInfo();
       }
     } catch (error) {
       console.error('Failed to load workspace info:', error);
       this.backendWorkspace = 'Unknown workspace';
-      this.render();
+      this.updateWorkspaceInfo();
     }
   }
 
@@ -1766,18 +1808,11 @@ export class DomindsApp extends HTMLElement {
       }, 100); // 100ms delay to ensure backend has processed display_dialog
 
       // Toolbar state will be managed by streaming events
-      const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement;
-      const nextBtn = this.shadowRoot?.querySelector('#toolbar-next') as HTMLButtonElement;
-      if (prevBtn) prevBtn.disabled = true;
-      if (nextBtn) nextBtn.disabled = true;
-      const remBtnCount = this.shadowRoot?.querySelector(
-        '#toolbar-reminders-toggle span',
-      ) as HTMLElement;
-      if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
-      const roundLabel = this.shadowRoot?.querySelector('#round-nav span') as HTMLElement;
-      if (roundLabel) roundLabel.textContent = `R ${this.toolbarCurrentRound}`;
+      this.updateToolbarDisplay();
+
+      // Re-render reminders widget if visible (this needs full render due to its fixed positioning)
       if (this.remindersWidgetVisible) {
-        this.render();
+        this.renderRemindersWidget();
         this.setupRemindersWidgetDrag();
       }
 
@@ -2891,7 +2926,8 @@ export class DomindsApp extends HTMLElement {
                 (d) => d.rootId !== root.id && d.supdialogId !== root.id,
               );
               this.dialogs.push(...entries);
-              this.render();
+              // FIXED: Use surgical update instead of full render to preserve dialog container state
+              this.updateDialogList();
               this.bumpDialogLastModified(
                 rootId,
                 root.lastModified || (message as TypedDialogEvent).timestamp,

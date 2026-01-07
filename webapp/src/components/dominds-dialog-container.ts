@@ -799,14 +799,17 @@ export class DomindsDialogContainer extends HTMLElement {
       this.handleProtocolError(error);
       return;
     }
+    currentSection.classList.remove('teammate-call-pending');
     currentSection.classList.add('completed');
+    // The callId is not available at this point - it will be set when the response arrives
+    // and the "Jump to response" link will be made visible at that time
     this.callingSection = undefined;
   }
 
   // Create teammate calling section with Q4H awareness
   private createTeammateCallingSection(firstMention: string, isHuman: boolean): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'calling-section teammate-call';
+    el.className = 'calling-section teammate-call teammate-call-pending';
     el.setAttribute('data-first-mention', firstMention);
     el.setAttribute('data-is-human', String(isHuman));
 
@@ -823,6 +826,7 @@ export class DomindsDialogContainer extends HTMLElement {
           <div class="calling-body"></div>
           <div class="calling-result" style="display:none"></div>
         </div>
+        <a href="#" class="call-site-link" data-call-id="" style="display:none">Jump to response</a>
       `;
     } else {
       // @agentName: Show headline content from backend with arrow icon (→) for subdialog navigation
@@ -838,6 +842,7 @@ export class DomindsDialogContainer extends HTMLElement {
           <div class="calling-body"></div>
           <div class="calling-result" style="display:none"></div>
         </div>
+        <a href="#" class="call-site-link" data-call-id="" style="display:none">Jump to response</a>
       `;
     }
     return el;
@@ -1045,12 +1050,47 @@ export class DomindsDialogContainer extends HTMLElement {
     // Determine agentId for the bubble (use event.agentId if available, otherwise responderId)
     const agentId = event.agentId || event.responderId;
 
+    // If callId is provided, find the calling section and set its data-call-id attribute
+    // and show the "Jump to response" link
+    if (event.callId) {
+      // Find the calling section by looking for the one without data-call-id set yet
+      // Since we don't have a direct map, we'll search for it
+      const callingSections = this.shadowRoot?.querySelectorAll('.calling-section.teammate-call');
+      if (callingSections) {
+        for (const section of Array.from(callingSections)) {
+          if (!section.hasAttribute('data-call-id')) {
+            section.setAttribute('data-call-id', event.callId);
+            // Show the "Jump to response" link
+            const jumpLink = section.querySelector('.call-site-link') as HTMLAnchorElement | null;
+            if (jumpLink) {
+              jumpLink.style.display = 'inline';
+              jumpLink.setAttribute('data-call-id', event.callId);
+              // Add click handler for navigation to response
+              jumpLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                const responseBubble = this.shadowRoot?.querySelector(
+                  `.message.teammate[data-call-id="${event.callId}"]`,
+                ) as HTMLElement | null;
+                if (responseBubble) {
+                  responseBubble.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  responseBubble.classList.add('highlighted');
+                  setTimeout(() => responseBubble.classList.remove('highlighted'), 2000);
+                }
+              });
+            }
+            break;
+          }
+        }
+      }
+    }
+
     // Create teammate bubble with the response
     const messageEl = this.createTeammateBubble(
       event.calleeDialogId,
       agentId,
       content,
       event.calling_genseq,
+      event.callId,
     );
 
     const container = this.shadowRoot?.querySelector('.messages');
@@ -1100,6 +1140,7 @@ export class DomindsDialogContainer extends HTMLElement {
     agentId: string | undefined,
     summary: string,
     callSiteId?: number,
+    callId?: string,
   ): HTMLElement {
     const el = document.createElement('div');
     el.className = 'message teammate';
@@ -1107,18 +1148,17 @@ export class DomindsDialogContainer extends HTMLElement {
     if (typeof callSiteId === 'number') {
       el.setAttribute('data-call-site-id', String(callSiteId));
     }
+    if (callId) {
+      el.setAttribute('data-call-id', callId);
+    }
     const callsign = agentId ? `@${agentId}` : 'Teammate';
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
-          <span class="teammate-label">Teammate Response</span>
-          ${typeof callSiteId === 'number' ? `<a href="#" class="call-site-link" data-target="${callSiteId}">View call site</a>` : ''}
+          <span class="author-name">${callsign}</span><span class="response-indicator">Response</span>
+          ${callId ? `<a href="#" class="response-call-site-link" data-call-id="${callId}">← Call site</a>` : ''}
         </div>
         <div class="bubble-body">
-          <div class="callee-link-pill">
-            <span>From: ${callsign}</span>
-            <a href="#" class="open-callee-link" data-callee-dialog-id="${calleeDialogId}">Open callee dialog</a>
-          </div>
           <div class="teammate-content"></div>
         </div>
       </div>
@@ -1126,32 +1166,20 @@ export class DomindsDialogContainer extends HTMLElement {
     const md = this.createMarkdownSection();
     md.setRawMarkdown(summary);
     el.querySelector('.teammate-content')?.appendChild(md);
-    // Add click handler for callee dialog navigation
-    const link = el.querySelector('.open-callee-link') as HTMLAnchorElement | null;
-    if (link) {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.dispatchEvent(
-          new CustomEvent('navigate-subdialog', {
-            detail: { calleeDialogId: calleeDialogId },
-            bubbles: true,
-            composed: true,
-          }),
-        );
-      });
-    }
     // Add click handler for call site link
-    const callSiteLink = el.querySelector('.call-site-link') as HTMLAnchorElement | null;
-    if (callSiteLink && typeof callSiteId === 'number') {
-      callSiteLink.addEventListener('click', (e) => {
+    const responseCallSiteLink = el.querySelector(
+      '.response-call-site-link',
+    ) as HTMLAnchorElement | null;
+    if (responseCallSiteLink && callId) {
+      responseCallSiteLink.addEventListener('click', (e) => {
         e.preventDefault();
-        const genBubble = this.shadowRoot?.querySelector(
-          `.generation-bubble[data-seq="${callSiteId}"]`,
+        const callingSection = this.shadowRoot?.querySelector(
+          `.calling-section.teammate-call[data-call-id="${callId}"]`,
         ) as HTMLElement | null;
-        if (genBubble) {
-          genBubble.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          genBubble.classList.add('highlighted');
-          setTimeout(() => genBubble.classList.remove('highlighted'), 2000);
+        if (callingSection) {
+          callingSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          callingSection.classList.add('highlighted');
+          setTimeout(() => callingSection.classList.remove('highlighted'), 2000);
         }
       });
     }
@@ -2011,9 +2039,25 @@ export class DomindsDialogContainer extends HTMLElement {
         border-left: 4px solid var(--dominds-primary, #6366f1);
       }
 
-      .teammate-label {
+      .author-name {
         font-weight: 600;
         color: var(--dominds-primary, #6366f1);
+      }
+
+      .response-indicator {
+        font-size: 0.75em;
+        color: var(--dominds-text-secondary, #64748b);
+        margin-left: 0.5em;
+      }
+
+      .teammate-call-pending {
+        animation: pending-glow 2s ease-in-out infinite;
+        border-left-color: var(--dominds-primary, #6366f1);
+      }
+
+      @keyframes pending-glow {
+        0%, 100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.3); }
+        50% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.5); }
       }
 
       .call-site-link {
@@ -2027,23 +2071,15 @@ export class DomindsDialogContainer extends HTMLElement {
         text-decoration: underline;
       }
 
-      .callee-link-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 4px 8px;
-        background: var(--dominds-primary, #6366f1);
-        color: white;
-        border-radius: 12px;
-        font-size: 12px;
-      }
-
-      .callee-link-pill a {
-        color: white;
+      .response-call-site-link {
+        color: var(--dominds-primary, #6366f1);
         text-decoration: none;
+        font-size: 12px;
+        margin-left: 8px;
+        cursor: pointer;
       }
 
-      .callee-link-pill a:hover {
+      .response-call-site-link:hover {
         text-decoration: underline;
       }
 
@@ -2053,13 +2089,12 @@ export class DomindsDialogContainer extends HTMLElement {
         line-height: 1.6;
       }
 
-      .open-callee-link {
-        color: white;
-        text-decoration: none;
+      /* Highlight animation for call site navigation */
+      .calling-section.highlighted {
+        animation: highlight-pulse 1s ease-in-out;
       }
 
-      /* Highlight animation for call site navigation */
-      .generation-bubble.highlighted {
+      .message.teammate.highlighted {
         animation: highlight-pulse 1s ease-in-out;
       }
 

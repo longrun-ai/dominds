@@ -879,6 +879,12 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
         if (toolOutputsCount === 0) {
           break;
         }
+
+        // Phase 14: Check if dialog should resume from Type C suspension
+        if (dlg.isSuspendedForSubdialogs) {
+          log.info(`Resuming dialog ${dlg.id.selfId} from Type C suspension`);
+          continue; // Continue the generation loop
+        }
       }
     } finally {
       await dlg.notifyGeneratingFinish();
@@ -1489,12 +1495,14 @@ export async function createRegisteredSubdialog(
  * @param subdialogId The ID of the completed subdialog
  * @param summary The summary text from the subdialog
  * @param callType The call type ('A', 'B', or 'C')
+ * @param callId Optional callId for Type C subdialog tracking
  */
 export async function supplyResponseToSupdialog(
   parentDialog: Dialog,
   subdialogId: DialogID,
   summary: string,
   callType: 'A' | 'B' | 'C',
+  callId?: string,
 ): Promise<void> {
   try {
     const response = {
@@ -1515,7 +1523,7 @@ export async function supplyResponseToSupdialog(
     await DialogPersistence.savePendingSubdialogs(parentDialog.id, filteredPending);
 
     // Emit subdialog_final_summary_evt to notify frontend
-    await parentDialog.postSubdialogSummary(subdialogId, summary);
+    await parentDialog.postSubdialogSummary(subdialogId, summary, callId);
   } catch (error) {
     log.error('Failed to supply subdialog response', {
       parentId: parentDialog.id.selfId,
@@ -1729,7 +1737,9 @@ async function executeTextingCall(
     // Format: "@agentId !topic topicId to ..." or "@agentId to ..."
     // Extract everything from @ until " to " or end of line
     // Pattern: @agentId followed by optional !topic and topicId words (no ! prefix on topicId)
-    const callTextMatch = headLine.match(/(@[a-zA-Z][a-zA-Z0-9_-]*)(\s+![a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)?(?=\s+to\s|$)/);
+    const callTextMatch = headLine.match(
+      /(@[a-zA-Z][a-zA-Z0-9_-]*)(\s+![a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)?(?=\s+to\s|$)/,
+    );
     let callText: string;
     if (callTextMatch) {
       callText = callTextMatch[1];
@@ -1805,7 +1815,11 @@ ${showErrorToAi(err)}`,
           );
           if (subdialogState) {
             // Re-lock the mutex for driving
-            rootDialog.subdialogMutex.lock(parseResult.agentId, parseResult.topicId, registryEntry.subdialogId);
+            rootDialog.subdialogMutex.lock(
+              parseResult.agentId,
+              parseResult.topicId,
+              registryEntry.subdialogId,
+            );
             await rootDialog.saveRegistry();
 
             // Create SubDialog object and drive it
@@ -1844,6 +1858,7 @@ ${showErrorToAi(err)}`,
           const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            callId,
           });
           // Register in SubdialogMutex (CORRECTED: was subdialogRegistry)
           rootDialog.registerSubdialogByTopic(parseResult.agentId, parseResult.topicId, sub.id);
@@ -1873,14 +1888,16 @@ ${showErrorToAi(err)}`,
           const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            callId,
           });
 
           const task = (async () => {
             try {
               await driveSubdialogToCompletion(dlg, sub);
-              // Supply response back to parent dialog
+              // Supply response back to the immediate parent dialog (dlg)
+              // This is correct whether dlg is RootDialog or SubDialog
               const summary = await extractSubdialogSummary(sub.id);
-              await supplyResponseToSupdialog(dlg, sub.id, summary, 'C');
+              await supplyResponseToSupdialog(dlg, sub.id, summary, 'B');
             } catch (err) {
               log.warn('Type B→C fallback subdialog processing error:', err);
             }
@@ -1904,6 +1921,9 @@ ${showErrorToAi(err)}`,
       }
       const targets = mentions.filter((m) => !!team.getMember(m));
 
+      // Phase 14: Collect callIds for Type C subdialogs to track for suspension
+      const typeCCallIds: string[] = [];
+
       for (const tgt of targets) {
         try {
           const sub = await dlg.createSubDialog(tgt, headLine, body, {
@@ -1911,12 +1931,16 @@ ${showErrorToAi(err)}`,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
           });
 
+          // Track the callId for this Type C subdialog
+          typeCCallIds.push(callId);
+
           const task = (async () => {
             try {
               await driveSubdialogToCompletion(dlg, sub);
-              // Supply response back to parent dialog (critical for Type C!)
+              // Supply response back to the immediate parent dialog (dlg)
+              // This is correct whether dlg is RootDialog or SubDialog
               const summary = await extractSubdialogSummary(sub.id);
-              await supplyResponseToSupdialog(dlg, sub.id, summary, 'C');
+              await supplyResponseToSupdialog(dlg, sub.id, summary, 'C', callId);
               // Type C: Move to done/ on completion (handled by subdialog completion)
             } catch (err) {
               log.warn('Type C subdialog processing error:', err);
@@ -1924,10 +1948,15 @@ ${showErrorToAi(err)}`,
           })();
           void task;
           subdialogsCreated++;
-          suspend = true;
         } catch (err) {
           log.warn('Subdialog creation error:', err);
         }
+      }
+
+      // Phase 14: Suspend parent dialog until all Type C responses are received
+      if (typeCCallIds.length > 0) {
+        dlg.suspendForSubdialogResponses(typeCCallIds);
+        suspend = true;
       }
     }
   } else {
