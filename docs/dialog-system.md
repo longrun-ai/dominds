@@ -5,19 +5,20 @@ This document provides detailed implementation specifications for the Dominds di
 ## Table of Contents
 
 1. [Terminology](#terminology)
-2. [3-Type Teammate Call Taxonomy](#3-type-teammate-call-taxonomy)
-3. [Core Mechanisms](#core-mechanisms)
-4. [Q4H: Questions for Human](#q4h-questions-for-human)
-5. [Dialog Hierarchy & Subdialogs](#dialog-hierarchy--subdialogs)
-6. [Mental Clarity Tools](#mental-clarity-tools)
-7. [Reminder Management](#reminder-management)
-8. [Subdialog Registry](#subdialog-registry)
-9. [Technical Architecture](#technical-architecture)
-10. [Dialog Management](#dialog-management)
-11. [Memory Management](#memory-management)
-12. [System Integration](#system-integration)
-13. [State Diagrams](#state-diagrams)
-14. [Complete Flow Reference](#complete-flow-reference)
+2. [Backend-Driven Architecture](#backend-driven-architecture)
+3. [3-Type Teammate Call Taxonomy](#3-type-teammate-call-taxonomy)
+4. [Core Mechanisms](#core-mechanisms)
+5. [Q4H: Questions for Human](#q4h-questions-for-human)
+6. [Dialog Hierarchy & Subdialogs](#dialog-hierarchy--subdialogs)
+7. [Mental Clarity Tools](#mental-clarity-tools)
+8. [Reminder Management](#reminder-management)
+9. [Subdialog Registry](#subdialog-registry)
+10. [Technical Architecture](#technical-architecture)
+11. [Dialog Management](#dialog-management)
+12. [Memory Management](#memory-management)
+13. [System Integration](#system-integration)
+14. [State Diagrams](#state-diagrams)
+15. [Complete Flow Reference](#complete-flow-reference)
 
 ---
 
@@ -41,7 +42,15 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are stored in the dialog's `q4h.yaml` file and are **cleared by `@clear_mind` and `@change_mind` operations**.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `@clear_mind` and `@change_mind` operations**. The actual question content is stored in the dialog's conversation messages where `@human` was called.
+
+### Subdialog Index (subdlg.yaml)
+
+A **subdlg.yaml** file indexes pending subdialogs that a parent dialog is waiting for. Like `q4h.yaml`, it is an index file, not the source of truth:
+
+- The index tracks which subdialog IDs the parent is waiting for
+- Actual subdialog state is verified from disk (done/ directory)
+- Used by the backend coroutine for crash recovery and auto-revive
 
 ### Subdialog Registry
 
@@ -49,7 +58,66 @@ The **subdialog registry** is a root dialog-scoped Map that maintains persistent
 
 ### Teammate Call
 
-A **teammate call** is a texting tool invocation that triggers communication with another agent or subdialog. Teammate calls have three distinct patterns with different semantics (see Section 2).
+A **teammate call** is a texting tool invocation that triggers communication with another agent or subdialog. Teammate calls have three distinct patterns with different semantics (see Section 3).
+
+---
+
+## Backend-Driven Architecture
+
+### Core Design Principle
+
+Dialog driving is a **sole backend algorithm**. The frontend/client never drives dialogs. All dialog state transitions, resumption logic, and generation loops execute entirely in backend coroutines. Frontend only subscribes to publish channels (PubChan) for real-time UI updates.
+
+### Registry Hierarchy
+
+The system maintains three levels of registries for dialog management:
+
+**Global Registry (Server-Scoped)**
+A server-wide mapping of `rootId → RootDialog` objects. This is the single source of truth for all active root dialogs. Backend coroutines scan this registry to find dialogs needing driving.
+
+**Local Registry (Per RootDialog)**
+A per-root mapping of `selfId → Dialog` objects. This registry contains the root dialog itself plus all loaded subdialogs, enabling O(1) lookup of any dialog within a hierarchy.
+
+**Subdialog Registry (Per RootDialog)**
+A per-root mapping of `agentId!topicId → Subdialog` objects. This registry tracks TYPE B registered subdialogs for resumption across multiple interactions. TYPE C transient subdialogs are never registered.
+
+### Per-Dialog Mutex
+
+Each Dialog object carries an exclusive mutex with an associated wait queue. When a backend coroutine needs to drive a dialog, it first acquires the mutex. If the dialog is already locked, the coroutine enqueues its promise and waits until the mutex is released. This ensures only one coroutine drives a dialog at any moment, preventing race conditions and ensuring consistent state.
+
+### Backend Coroutine Driving Loop
+
+Backend coroutines drive dialogs using the following pattern:
+
+1. Scan the Global Registry to identify root dialogs needing driving
+2. For each candidate, check resumption conditions (Q4H answered, subdialog completions received)
+3. Acquire the dialog's mutex before driving
+4. Execute the generation loop until suspension point or completion
+5. Release the mutex
+6. Persist all state changes to storage
+
+The driving loop continues until a dialog suspends (awaiting Q4H or subdialog) or completes. When conditions change (user answers Q4H, subdialog finishes), the backend detects these via storage checks and resumes driving automatically.
+
+### Frontend Integration
+
+Frontend clients never drive dialogs. Instead, they:
+
+- Subscribe to the current dialog's PubChan for real-time updates
+- Receive events for messages, state changes, and UI indicators
+- Send user input via API endpoints (drive_dlg_by_user_msg, drive_dialog_by_user_answer)
+
+All driving logic, resumption decisions, and state management remain purely backend concerns.
+
+### State Persistence
+
+Dialog state is persisted to storage at key points:
+
+- After each message generation
+- On suspension (Q4H raised, subdialog created)
+- On resumption (Q4H answered, subdialog completed)
+- On completion
+
+This ensures crash recovery and enables the backend to resume from any persisted state without depending on frontend state.
 
 ---
 
