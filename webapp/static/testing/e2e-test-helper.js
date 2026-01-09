@@ -218,6 +218,22 @@ function getDialogListShadow() {
   return dialogList && dialogList.shadowRoot ? dialogList.shadowRoot : null;
 }
 
+function getMessageContainer() {
+  const dialogContainer = getDialogContainer();
+  if (!dialogContainer || !dialogContainer.shadowRoot) return null;
+  return dialogContainer.shadowRoot.querySelector('.messages');
+}
+
+function getTeammateMessages() {
+  const container = getMessageContainer();
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('.message.teammate'));
+}
+
+function getTeammateMessageCount() {
+  return getTeammateMessages().length;
+}
+
 // ============================================
 // Utility
 // ============================================
@@ -236,6 +252,10 @@ async function waitUntil(fn, timeoutMs = 15000, intervalMs = 100) {
     };
     tick();
   });
+}
+
+function isElementVisible(el) {
+  return !!(el && el.offsetParent !== null);
 }
 
 // ============================================
@@ -449,11 +469,29 @@ ${formatFullState(this)}`;
       if (c.path === 'chat.messageCount') {
         return `  • Messages: ${c.previous} → ${c.current}`;
       }
+      if (c.path === 'chat.visibleMessageCount') {
+        return `  • Visible messages: ${c.previous} → ${c.current}`;
+      }
       if (c.path === 'q4h.count') {
         return `  • Q4H questions: ${c.previous} → ${c.current}`;
       }
       if (c.path === 'reminders.count') {
         return `  • Reminders: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'sidebar.dialogListLoaded') {
+        return `  • Sidebar list: ${c.current ? 'loaded' : 'missing'}`;
+      }
+      if (c.path === 'sidebar.dialogCount') {
+        return `  • Sidebar dialogs: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'sidebar.taskGroupCount') {
+        return `  • Sidebar tasks: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'sidebar.visibleNodeTitles') {
+        return `  • Sidebar visible: ${summarizeListDelta(c.previous, c.current)}`;
+      }
+      if (c.path === 'sidebar.selectedDialogTitle') {
+        return `  • Sidebar selection: "${c.previous || ''}" → "${c.current || ''}"`;
       }
       if (c.path === 'modals.anyModalVisible') {
         return `  • Modal: ${c.current ? 'OPENED' : 'CLOSED'}`;
@@ -513,7 +551,7 @@ function snapshotDomindsUI() {
     modals: captureModalsState(shadow),
 
     // 9. CONNECTION STATUS
-    connection: captureConnectionState(app),
+    connection: captureConnectionState(app, shadow),
 
     // 10. TOASTS (if any)
     toasts: captureToastsState(shadow),
@@ -541,11 +579,27 @@ function captureSidebarState(shadow) {
   if (!shadow) return { exists: false };
 
   const sidebar = shadow.querySelector('.sidebar');
-  // dialogList is available via shadow.querySelector('dominds-dialog-list') if needed
+  const listShadow = getDialogListShadow();
 
-  // Capture dialog tree structure
-  const dialogItems = Array.from(shadow.querySelectorAll('.dialog-item') || []);
-  const taskGroups = Array.from(shadow.querySelectorAll('.task-group-item') || []);
+  if (!listShadow) {
+    return {
+      exists: !!sidebar,
+      dialogListLoaded: false,
+      dialogCount: 0,
+      taskGroupCount: 0,
+      taskGroups: [],
+      dialogs: [],
+      visibleNodeTitles: [],
+      selectedDialogTitle: null,
+      newDialogBtnExists: !!shadow.querySelector('#new-dialog-btn'),
+    };
+  }
+
+  // Capture dialog tree structure from the dialog list shadow DOM
+  const allDialogItems = Array.from(listShadow.querySelectorAll('.dialog-item') || []);
+  const allTaskGroups = Array.from(listShadow.querySelectorAll('.task-group-item') || []);
+  const dialogItems = allDialogItems.filter((item) => isElementVisible(item));
+  const taskGroups = allTaskGroups.filter((group) => isElementVisible(group));
 
   const dialogs = dialogItems.map((item) => {
     const toggle = item.querySelector('.dialog-toggle');
@@ -553,14 +607,19 @@ function captureSidebarState(shadow) {
     const status = item.querySelector('.dialog-status');
     const timestamp = item.querySelector('.dialog-timestamp');
     const subdialogCount = item.querySelector('.dialog-count');
+    const toggleText = toggle?.textContent?.trim() || '';
+    const level = item.getAttribute('data-level') || '';
 
     return {
       title: title?.textContent?.trim() || '',
       status: status?.textContent?.trim() || '',
       timestamp: timestamp?.textContent?.trim() || '',
       subdialogs: subdialogCount?.textContent?.trim() || '',
-      expanded: toggle?.textContent?.includes('▼') || false,
-      hasSubdialogs: !!item.querySelector('.subdialog-item'),
+      expanded: toggleText === '▼',
+      hasSubdialogs: toggleText !== '' && toggleText !== '•',
+      level,
+      rootId: item.getAttribute('data-root-id') || '',
+      selfId: item.getAttribute('data-self-id') || '',
     };
   });
 
@@ -576,15 +635,33 @@ function captureSidebarState(shadow) {
     };
   });
 
+  const orderedNodes = Array.from(
+    listShadow.querySelectorAll('.task-group-item, .dialog-item') || [],
+  );
+  const visibleNodeTitles = orderedNodes
+    .filter((node) => isElementVisible(node))
+    .map((node) => {
+      if (node.classList.contains('task-group-item')) {
+        const text = node.querySelector('.task-group-text')?.textContent?.trim() || '';
+        return text ? `Task: ${text}` : 'Task: (unnamed)';
+      }
+      const title = node.querySelector('.dialog-title')?.textContent?.trim() || '';
+      const level = node.getAttribute('data-level');
+      const prefix = level === '3' ? 'Subdialog' : 'Dialog';
+      return title ? `${prefix}: ${title}` : `${prefix}: (untitled)`;
+    });
+
   // Find currently selected dialog in sidebar
-  const selectedItem = shadow.querySelector('.dialog-item.selected, .dialog-item.active');
+  const selectedItem = listShadow.querySelector('.dialog-item.selected, .dialog-item.active');
 
   return {
     exists: !!sidebar,
+    dialogListLoaded: true,
     dialogCount: dialogItems.length,
     taskGroupCount: taskGroups.length,
     taskGroups: taskGroupsInfo,
     dialogs,
+    visibleNodeTitles,
     selectedDialogTitle: selectedItem?.querySelector('.dialog-title')?.textContent?.trim() || null,
     newDialogBtnExists: !!shadow.querySelector('#new-dialog-btn'),
   };
@@ -635,22 +712,29 @@ function captureChatState(shadow) {
   }
 
   const bubbles = containerShadow.querySelectorAll('.generation-bubble') || [];
-  const userMessages = containerShadow.querySelectorAll('.user-bubble') || [];
+  const messageContainer = containerShadow.querySelector('.messages');
+  const messageNodes = messageContainer ? Array.from(messageContainer.children) : [];
+  const userMessages = containerShadow.querySelectorAll('.user-message, .message.user') || [];
 
   const messages = Array.from(bubbles).map((bubble) => {
     const author = bubble.querySelector('.bubble-author')?.textContent?.trim() || '';
     const thinking = bubble.querySelector('.thinking-section')?.textContent?.trim() || '';
     const markdown = bubble.querySelector('.markdown-section')?.textContent?.trim() || '';
     const hasFuncCall = bubble.querySelector('.func-call-section');
-    const funcName = bubble.querySelector('.func-call-header')?.textContent?.trim() || '';
-    const hasTeammate = bubble.querySelector('.teammate');
-    const teammateLabel = bubble.querySelector('.teammate-label')?.textContent?.trim() || '';
+    const funcTitle = bubble.querySelector('.func-call-title')?.textContent?.trim() || '';
+    const funcNameMatch = funcTitle.match(/^Function:\\s*(.+)$/);
+    const funcName = funcNameMatch ? funcNameMatch[1].trim() : funcTitle;
+    const callingSection = bubble.querySelector('.calling-section.teammate-call');
+    const callingHeadline =
+      callingSection?.querySelector('.calling-headline')?.textContent?.trim() || '';
+    const firstMention = callingSection?.getAttribute('data-first-mention') || '';
 
     // Check completion state
     const thinkingCompleted = bubble.querySelector('.thinking-section.completed');
     const markdownCompleted = bubble.querySelector('.markdown-section.completed');
 
     return {
+      type: 'generation',
       author,
       hasThinking: !!thinking,
       thinkingPreview: thinking.slice(0, 100) + (thinking.length > 100 ? '...' : ''),
@@ -658,10 +742,60 @@ function captureChatState(shadow) {
       markdownPreview: markdown.slice(0, 200) + (markdown.length > 200 ? '...' : ''),
       hasFuncCall: !!hasFuncCall,
       funcName: funcName || null,
-      hasTeammate: !!hasTeammate,
-      teammateLabel,
+      hasTeammate: !!callingSection,
+      teammateLabel: callingHeadline || firstMention || '',
       thinkingCompleted: !!thinkingCompleted,
       markdownCompleted: !!markdownCompleted,
+    };
+  });
+
+  const visibleMessages = messageNodes.map((node) => {
+    if (node.classList.contains('generation-bubble')) {
+      const author = node.querySelector('.bubble-author')?.textContent?.trim() || '';
+      const content = node.querySelector('.markdown-section')?.textContent?.trim() || '';
+      return {
+        type: 'generation',
+        author,
+        preview: content.slice(0, 120) + (content.length > 120 ? '...' : ''),
+      };
+    }
+    if (node.classList.contains('message')) {
+      const author =
+        node.querySelector('.author-name')?.textContent?.trim() ||
+        node.querySelector('.author')?.textContent?.trim() ||
+        '';
+      const type = node.classList.contains('teammate')
+        ? 'teammate'
+        : node.classList.contains('tool')
+          ? 'tool'
+          : node.classList.contains('assistant')
+            ? 'assistant'
+            : node.classList.contains('user')
+              ? 'user'
+              : node.classList.contains('system')
+                ? 'system'
+                : node.classList.contains('calling')
+                  ? 'calling'
+                  : node.classList.contains('subdialog')
+                    ? 'subdialog'
+                    : 'message';
+      const contentEl =
+        node.querySelector('.teammate-content') ||
+        node.querySelector('.content') ||
+        node.querySelector('.bubble-body') ||
+        node;
+      const contentText = contentEl?.textContent?.trim() || '';
+      return {
+        type,
+        author,
+        preview: contentText.slice(0, 120) + (contentText.length > 120 ? '...' : ''),
+      };
+    }
+    const text = node.textContent?.trim() || '';
+    return {
+      type: 'other',
+      author: '',
+      preview: text.slice(0, 120) + (text.length > 120 ? '...' : ''),
     };
   });
 
@@ -672,6 +806,8 @@ function captureChatState(shadow) {
     messages,
     latestMessage: messages[messages.length - 1] || null,
     pendingTeammateCalls: getPendingTeammateCalls().length,
+    visibleMessageCount: messageNodes.length,
+    visibleMessages,
   };
 }
 
@@ -738,7 +874,7 @@ function captureQ4HState(shadow, app) {
     questionCount: questions.length,
     questions,
     panelExists: !!q4hPanel,
-    panelExpanded: q4hPanelShadow?.querySelector('.q4h-panel-container.expanded') || false,
+    panelExpanded: !!q4hPanelShadow?.querySelector('.q4h-panel-container.expanded'),
   };
 }
 
@@ -782,28 +918,35 @@ function captureModalsState(shadow) {
   if (!shadow) return { exists: false };
 
   const createDialogModal = shadow.querySelector('.create-dialog-modal');
-  const teamMembersModal = shadow.querySelector('.modal-overlay');
+  const teamMembersModal = document.querySelector('.modal-overlay');
+
+  const createDialogModalVisible = isElementVisible(createDialogModal);
+  const teamMembersModalVisible = isElementVisible(teamMembersModal);
 
   return {
     exists: true,
-    createDialogModalVisible: createDialogModal?.offsetParent !== null,
-    teamMembersModalVisible: teamMembersModal?.offsetParent !== null,
-    anyModalVisible: !!(
-      createDialogModal?.offsetParent !== null || teamMembersModal?.offsetParent !== null
-    ),
+    createDialogModalVisible,
+    teamMembersModalVisible,
+    anyModalVisible: createDialogModalVisible || teamMembersModalVisible,
   };
 }
 
-function captureConnectionState(app) {
+function captureConnectionState(app, shadow) {
   if (!app) return { exists: false };
 
-  const statusEl = app.querySelector('dominds-connection-status');
-  if (!statusEl) return { exists: true, componentMissing: true };
+  const statusEl = shadow?.querySelector('dominds-connection-status');
+  const appState = app.connectionState || null;
+  const appStatus = appState && typeof appState.status === 'string' ? appState.status : '';
+  const appError = appState && typeof appState.error === 'string' ? appState.error : '';
+  const statusAttr = statusEl?.getAttribute('status') || '';
+  const statusText = statusAttr || appStatus || statusEl?.textContent?.trim() || '';
 
   return {
     exists: true,
-    statusText: statusEl?.statusText || statusEl?.textContent?.trim() || '',
-    connected: statusEl?.connected || statusEl?.statusText?.includes?.('Connected') || false,
+    statusText,
+    connected:
+      statusAttr === 'connected' || appStatus === 'connected' || statusText === 'connected',
+    error: statusEl?.getAttribute('error') || appError || null,
   };
 }
 
@@ -856,6 +999,11 @@ function computeDeltaForClass(previous, current) {
 
   detectChange('chat.messageCount', previous.chat?.messageCount, current.chat?.messageCount);
   detectChange(
+    'chat.visibleMessageCount',
+    previous.chat?.visibleMessageCount,
+    current.chat?.visibleMessageCount,
+  );
+  detectChange(
     'chat.latestMessage.author',
     previous.chat?.latestMessage?.author,
     current.chat?.latestMessage?.author,
@@ -894,6 +1042,22 @@ function computeDeltaForClass(previous, current) {
     previous.sidebar?.selectedDialogTitle,
     current.sidebar?.selectedDialogTitle,
   );
+  detectChange(
+    'sidebar.dialogListLoaded',
+    previous.sidebar?.dialogListLoaded,
+    current.sidebar?.dialogListLoaded,
+  );
+  detectChange('sidebar.dialogCount', previous.sidebar?.dialogCount, current.sidebar?.dialogCount);
+  detectChange(
+    'sidebar.taskGroupCount',
+    previous.sidebar?.taskGroupCount,
+    current.sidebar?.taskGroupCount,
+  );
+  detectChange(
+    'sidebar.visibleNodeTitles',
+    previous.sidebar?.visibleNodeTitles,
+    current.sidebar?.visibleNodeTitles,
+  );
 
   detectChange(
     'connection.connected',
@@ -910,6 +1074,31 @@ function computeDeltaForClass(previous, current) {
 // Human-readable state formatting
 // ============================================
 
+function formatList(items, maxItems = 6) {
+  if (!Array.isArray(items) || items.length === 0) return '[]';
+  const slice = items.slice(0, maxItems);
+  const suffix = items.length > maxItems ? ` +${items.length - maxItems} more` : '';
+  return `[${slice.join(' | ')}]${suffix}`;
+}
+
+function summarizeListDelta(previous, current) {
+  const prev = Array.isArray(previous) ? previous : [];
+  const curr = Array.isArray(current) ? current : [];
+  const prevSet = new Set(prev);
+  const currSet = new Set(curr);
+  const added = curr.filter((item) => !prevSet.has(item));
+  const removed = prev.filter((item) => !currSet.has(item));
+  const orderChanged =
+    added.length === 0 && removed.length === 0 && prev.join('|') !== curr.join('|');
+
+  const parts = [];
+  if (added.length > 0) parts.push(`+${formatList(added, 4)}`);
+  if (removed.length > 0) parts.push(`-${formatList(removed, 4)}`);
+  if (orderChanged) parts.push('order changed');
+  if (parts.length === 0) return 'unchanged';
+  return parts.join(' ');
+}
+
 function formatFullState(state) {
   const lines = [];
 
@@ -924,12 +1113,47 @@ function formatFullState(state) {
   }
 
   // Chat messages
-  if (state.chat?.messageCount > 0) {
+  const chatState = state.chat || null;
+  const messageCount =
+    chatState && typeof chatState.messageCount === 'number' ? chatState.messageCount : 0;
+  const visibleCount =
+    chatState && typeof chatState.visibleMessageCount === 'number'
+      ? chatState.visibleMessageCount
+      : 0;
+  const visibleMessages =
+    chatState && Array.isArray(chatState.visibleMessages) ? chatState.visibleMessages : [];
+  const latestVisible =
+    visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null;
+  const latestVisibleAuthor = latestVisible && latestVisible.author ? latestVisible.author : '';
+  const latestMessageAuthor =
+    chatState && chatState.latestMessage && chatState.latestMessage.author
+      ? chatState.latestMessage.author
+      : '?';
+
+  if (messageCount > 0 || visibleCount > 0) {
+    const latestAuthor = latestVisibleAuthor || latestMessageAuthor || '?';
     lines.push(
-      `  💬 ${state.chat.messageCount} message(s), latest: @${state.chat.latestMessage?.author || '?'}`,
+      `  💬 ${visibleCount} visible message(s) (bubbles: ${messageCount}), latest: @${latestAuthor}`,
     );
   } else {
     lines.push(`  💬 No messages yet`);
+  }
+
+  // Sidebar / dialog list
+  if (state.sidebar?.exists) {
+    if (state.sidebar.dialogListLoaded === false) {
+      lines.push(`  📚 Sidebar: dialog list not loaded`);
+    } else {
+      const dialogCount = state.sidebar.dialogCount || 0;
+      const taskCount = state.sidebar.taskGroupCount || 0;
+      lines.push(`  📚 Sidebar: ${dialogCount} dialog(s), ${taskCount} task group(s)`);
+      if (
+        Array.isArray(state.sidebar.visibleNodeTitles) &&
+        state.sidebar.visibleNodeTitles.length
+      ) {
+        lines.push(`     Visible: ${formatList(state.sidebar.visibleNodeTitles, 6)}`);
+      }
+    }
   }
 
   // Input state
@@ -988,6 +1212,14 @@ async function createDialog(taskDocPath, callsign) {
   const app = getApp();
   if (!app) {
     throw new Error('dominds-app element not found');
+  }
+
+  try {
+    await waitUntil(() => Array.isArray(app.teamMembers) && app.teamMembers.length > 0, 7000);
+  } catch {
+    throw new Error(
+      'No team members available. If .minds/team.yaml is missing, ensure an LLM provider API key env var is set so the adhoc team can be created.',
+    );
   }
 
   const shadow = getAppShadow();
@@ -1619,6 +1851,7 @@ async function waitUntilReminderStable(timeoutMs = 5000, intervalMs = 200) {
  */
 async function waitForWidgetStable(timeoutMs = 3000) {
   const startTime = Date.now();
+  const app = getApp();
 
   return new Promise((resolve) => {
     const check = () => {
@@ -1910,6 +2143,77 @@ async function waitForPendingTeammateCalls(timeoutMs = 60000) {
   });
 }
 
+/**
+ * Waits for the visible message list to reach a minimum count.
+ * Useful when teammate responses render as .message.* entries.
+ * @param {number} minCount - Minimum visible messages in .messages container
+ * @param {number} [timeoutMs=60000] - Maximum wait time
+ * @returns {Promise<boolean>} True if count reached, false if timeout
+ */
+async function waitForVisibleMessageCount(minCount, timeoutMs = 60000) {
+  const startTime = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      const container = getMessageContainer();
+      const count = container ? container.children.length : 0;
+      if (count >= minCount) return resolve(true);
+      if (Date.now() - startTime >= timeoutMs) {
+        console.log(`waitForVisibleMessageCount timeout: expected>=${minCount}, got ${count}`);
+        return resolve(false);
+      }
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+/**
+ * Waits for a teammate response bubble with non-trivial content.
+ * @param {Object} options - Options object
+ * @param {number} [options.timeoutMs=60000] - Maximum wait time
+ * @param {number} [options.minChars=12] - Minimum text length to consider complete
+ * @param {number} [options.initialCount] - Initial teammate message count (defaults to current)
+ * @param {number} [options.minNew=1] - Minimum number of new teammate messages to wait for
+ * @returns {Promise<boolean>} True if a new response appears, false if timeout
+ */
+async function waitForTeammateResponse(options = {}) {
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 60000;
+  const minChars = typeof options.minChars === 'number' ? options.minChars : 12;
+  const initialCount =
+    typeof options.initialCount === 'number' ? options.initialCount : getTeammateMessageCount();
+  const minNew = typeof options.minNew === 'number' ? options.minNew : 1;
+  const startTime = Date.now();
+
+  return new Promise((resolve) => {
+    const check = () => {
+      try {
+        const messages = getTeammateMessages();
+        if (messages.length >= initialCount + minNew) {
+          const newMessages = messages.slice(initialCount);
+          const hasContent = newMessages.some((message) => {
+            const contentEl = message.querySelector('.teammate-content');
+            if (!contentEl) return false;
+            const text = (contentEl.textContent || '').trim();
+            return text.length >= minChars;
+          });
+          if (hasContent) return resolve(true);
+        }
+      } catch (err) {
+        console.warn('Error checking teammate response:', err);
+      }
+
+      if (Date.now() - startTime >= timeoutMs) {
+        const newCount = getTeammateMessageCount() - initialCount;
+        console.log(`waitForTeammateResponse timeout: expected+${minNew}, got +${newCount}`);
+        return resolve(false);
+      }
+
+      setTimeout(check, 150);
+    };
+    check();
+  });
+}
+
 // ============================================
 // Export to window.__e2e__
 // ============================================
@@ -1925,6 +2229,8 @@ function setGlobal() {
     getDialogContainer,
     getDialogList,
     getDialogListShadow,
+    getMessageContainer,
+    getTeammateMessageCount,
     // Core messaging
     fillAndSend,
     waitStreamingComplete,
@@ -1979,6 +2285,8 @@ function setGlobal() {
     // Teammate calls
     getPendingTeammateCalls,
     waitForPendingTeammateCalls,
+    waitForVisibleMessageCount,
+    waitForTeammateResponse,
   };
   window.__e2e__ = g;
   return g;
