@@ -730,6 +730,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Create teammate calling section with Q4H awareness
     const callingSection = this.createTeammateCallingSection(firstMention, isHuman);
+    callingSection.setAttribute('data-call-site-id', String(event.genseq));
     (body || bubble).appendChild(callingSection);
     this.callingSection = callingSection;
 

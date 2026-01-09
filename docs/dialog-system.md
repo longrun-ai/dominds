@@ -224,6 +224,10 @@ Result:
 
 **Syntax**: `@<anyAgentId> !topic <topic-id>` (note the space before `!topic`)
 
+**Topic ID Schema**: `<topic-id>` uses the same identifier schema as `<mention-id>`:
+`[a-zA-Z][a-zA-Z0-9_-]*`. Parsing stops at whitespace or punctuation; any trailing
+headline text is ignored for topic ID parsing.
+
 **Registry Key**: `agentId!topicId`
 
 **Behavior**:
@@ -234,6 +238,13 @@ Result:
 4. Parent dialog **suspends** while subdialog runs
 5. Subdialog response flows back to parent
 6. Parent **resumes** with subdialog's response
+
+**Call Context on Resume**:
+
+- On every TYPE B call (new or resumed), the parent-provided `headLine`/`callBody`
+  is appended to the subdialog as a new user message before the subdialog is driven.
+  This ensures the subdialog receives the latest request context for each call.
+- System-injected resume prompts are context only and are **not parsed** for teammate/tool calls.
 
 **Key Characteristics**:
 

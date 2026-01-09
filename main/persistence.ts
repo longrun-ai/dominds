@@ -173,16 +173,20 @@ export class DiskFileDialogStore extends DialogStore {
 
     // Initialize subdialog's msgs array with the assignment message as the first user message
     // This ensures mockdb lookups succeed and the message appears in the dialog container
+    function formatAssignmentVerbatim(headLine: string, callBody: string): string {
+      const hasHead = headLine.trim() !== '';
+      const hasBody = callBody.trim() !== '';
+      if (hasHead && hasBody) {
+        return `${headLine}\n\n${callBody}`;
+      }
+      if (hasHead) {
+        return headLine;
+      }
+      return callBody;
+    }
+
     function formatSubdialogInitialContent(headLine: string, callBody: string): string {
-      // Remove @targetAgentId: prefix from headline
-      const cleanedHeadLine = headLine.replace(/^@[a-zA-Z0-9_-]+:\s*/, '');
-
-      // Prefix with > to block @ at line start (prevents TextingStreamParser triggers)
-      const prefix = '> Task from parent dialog: ';
-
-      return callBody
-        ? `${prefix}${cleanedHeadLine}\n\n${callBody}`
-        : `${prefix}${cleanedHeadLine}`;
+      return formatAssignmentVerbatim(headLine, callBody);
     }
 
     const assignmentMsgContent = formatSubdialogInitialContent(headLine, callBody);
@@ -267,9 +271,10 @@ export class DiskFileDialogStore extends DialogStore {
 
     try {
       const subRound = await DialogPersistence.getCurrentRoundNumber(subdialogId);
+      const assignmentContent = formatAssignmentVerbatim(headLine, callBody);
       const starterContent = `🔰 Subdialog started by ${
         options?.originMemberId ? `@${options.originMemberId}` : 'human'
-      } (${options?.originRole ?? 'assistant'})\n\nTask: ${headLine}\n\n${callBody}`;
+      } (${options?.originRole ?? 'assistant'})\n\nTask:\n${assignmentContent}`;
       const genseq = supdialog.activeGenSeq;
       if (!genseq) {
         throw new Error('Missing activeGenSeq for subdialog starter message');

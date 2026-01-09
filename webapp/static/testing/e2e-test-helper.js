@@ -2107,19 +2107,120 @@ function detectFuncCall(toolName) {
 
 /**
  * Gets all pending teammate calls (calls still waiting for response).
- * @returns {Array<{element: HTMLElement, firstMention: string, isHuman: boolean}>}
+ * @returns {Array<{element: HTMLElement, firstMention: string, isHuman: boolean, callSiteId: number | null}>}
  */
 function getPendingTeammateCalls() {
+  return getTeammateCallingSections().filter((item) => {
+    const el = item.element;
+    return !el.classList.contains('completed');
+  });
+}
+
+function parseCallSiteId(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMention(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^@/, '')
+    .trim();
+}
+
+function getTeamMemberIds() {
+  const app = getApp();
+  return Array.isArray(app?.teamMembers) ? app.teamMembers.map((m) => m.id) : [];
+}
+
+function isTeammateMention(firstMention) {
+  const normalized = normalizeMention(firstMention);
+  if (!normalized) return false;
+  return getTeamMemberIds().includes(normalized);
+}
+
+function extractCallSiteIdFromSection(el) {
+  const callSiteId = parseCallSiteId(el.getAttribute('data-call-site-id'));
+  if (callSiteId !== null) return callSiteId;
+  return parseCallSiteId(el.getAttribute('data-genseq'));
+}
+
+function getTeammateCallingSections() {
   const dialogContainer = getDialogContainer();
   const shadow = dialogContainer?.shadowRoot;
   if (!shadow) return [];
+  const sections = shadow.querySelectorAll('.calling-section');
+  return Array.from(sections)
+    .map((el) => {
+      const firstMention = el.getAttribute('data-first-mention') || '';
+      const isTeammate = el.classList.contains('teammate-call') || isTeammateMention(firstMention);
+      if (!isTeammate) return null;
+      return {
+        element: el,
+        firstMention,
+        isHuman: el.getAttribute('data-is-human') === 'true',
+        callSiteId: extractCallSiteIdFromSection(el),
+      };
+    })
+    .filter((item) => item !== null);
+}
 
-  const pendingCalls = shadow.querySelectorAll('.teammate-call-pending');
-  return Array.from(pendingCalls).map((el) => ({
-    element: el,
-    firstMention: el.getAttribute('data-first-mention') || '',
-    isHuman: el.getAttribute('data-is-human') === 'true',
-  }));
+function getTeammateCallSites() {
+  return getTeammateCallingSections();
+}
+
+function getLatestTeammateCallSiteId() {
+  const sites = getTeammateCallSites();
+  let latest = null;
+  for (const site of sites) {
+    if (typeof site.callSiteId !== 'number') continue;
+    if (latest === null || site.callSiteId > latest) {
+      latest = site.callSiteId;
+    }
+  }
+  return latest;
+}
+
+/**
+ * Waits for a new teammate call site to appear after a known call-site ID.
+ * @param {Object} options - Options object
+ * @param {number} [options.timeoutMs=60000] - Maximum wait time
+ * @param {number} [options.after] - Only return call sites with ID > after
+ * @param {string} [options.firstMention] - Optional filter for @mention (e.g., "@cmdr")
+ * @returns {Promise<number | null>} Call-site ID, or null on timeout
+ */
+async function waitForTeammateCallSiteId(options = {}) {
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 60000;
+  const after = typeof options.after === 'number' ? options.after : -Infinity;
+  const firstMention = typeof options.firstMention === 'string' ? options.firstMention : '';
+  const expectedMention = normalizeMention(firstMention);
+  const startTime = Date.now();
+
+  return new Promise((resolve) => {
+    const check = () => {
+      const sites = getTeammateCallSites();
+      let latest = null;
+      for (const site of sites) {
+        if (typeof site.callSiteId !== 'number') continue;
+        if (site.callSiteId <= after) continue;
+        if (expectedMention && normalizeMention(site.firstMention) !== expectedMention) continue;
+        if (latest === null || site.callSiteId > latest) {
+          latest = site.callSiteId;
+        }
+      }
+
+      if (latest !== null) return resolve(latest);
+      if (Date.now() - startTime >= timeoutMs) {
+        console.log(
+          `waitForTeammateCallSiteId timeout: after=${after}, mention=${firstMention || '*'}`,
+        );
+        return resolve(null);
+      }
+      setTimeout(check, 100);
+    };
+    check();
+  });
 }
 
 /**
@@ -2174,6 +2275,7 @@ async function waitForVisibleMessageCount(minCount, timeoutMs = 60000) {
  * @param {number} [options.minChars=12] - Minimum text length to consider complete
  * @param {number} [options.initialCount] - Initial teammate message count (defaults to current)
  * @param {number} [options.minNew=1] - Minimum number of new teammate messages to wait for
+ * @param {number} [options.callSiteId] - Require response bubble to match call-site ID
  * @returns {Promise<boolean>} True if a new response appears, false if timeout
  */
 async function waitForTeammateResponse(options = {}) {
@@ -2182,6 +2284,7 @@ async function waitForTeammateResponse(options = {}) {
   const initialCount =
     typeof options.initialCount === 'number' ? options.initialCount : getTeammateMessageCount();
   const minNew = typeof options.minNew === 'number' ? options.minNew : 1;
+  const callSiteId = typeof options.callSiteId === 'number' ? options.callSiteId : null;
   const startTime = Date.now();
 
   return new Promise((resolve) => {
@@ -2191,6 +2294,12 @@ async function waitForTeammateResponse(options = {}) {
         if (messages.length >= initialCount + minNew) {
           const newMessages = messages.slice(initialCount);
           const hasContent = newMessages.some((message) => {
+            if (callSiteId !== null) {
+              const messageCallSiteId = parseCallSiteId(
+                message.getAttribute('data-call-site-id'),
+              );
+              if (messageCallSiteId !== callSiteId) return false;
+            }
             const contentEl = message.querySelector('.teammate-content');
             if (!contentEl) return false;
             const text = (contentEl.textContent || '').trim();
@@ -2284,7 +2393,9 @@ function setGlobal() {
     domObs,
     // Teammate calls
     getPendingTeammateCalls,
+    getLatestTeammateCallSiteId,
     waitForPendingTeammateCalls,
+    waitForTeammateCallSiteId,
     waitForVisibleMessageCount,
     waitForTeammateResponse,
   };
