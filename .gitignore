@@ -1,15 +1,11 @@
 
 logs/
-
 .dialogs/
 
-node_modules
-dist
+node_modules/
+dist/
 
 .DS_Store
 ._*
 
 npm-debug.log*
-
-# Testing mock database (should use POC directories instead)
-.mockdb/
