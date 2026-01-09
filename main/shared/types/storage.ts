@@ -185,6 +185,7 @@ export interface TeammateResponseRecord {
   result: string;
   summary?: string; // merged from subdialog_final_summary_evt
   agentId?: string; // merged from subdialog_final_summary_evt
+  callId?: string; // For navigation from response back to call site
 }
 
 export interface GenStartRecord {

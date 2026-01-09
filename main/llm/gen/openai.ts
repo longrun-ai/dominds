@@ -127,6 +127,15 @@ function chatMessageToOpenAI(chatMsg: ChatMessage): ChatCompletionMessageParam {
     return userMessage;
   }
 
+  // Handle texting call results (treated as user messages)
+  if (chatMsg.type === 'call_result_msg') {
+    const userMessage: ChatCompletionUserMessageParam = {
+      role: 'user',
+      content: chatMsg.content,
+    };
+    return userMessage;
+  }
+
   // Handle saying and thinking messages from assistant
   if (chatMsg.type === 'saying_msg' || chatMsg.type === 'thinking_msg') {
     return {

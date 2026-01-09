@@ -9,6 +9,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { WebSocket } from 'ws';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
+import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
@@ -457,6 +458,7 @@ async function handleCreateDialog(
 
     // Create RootDialog
     const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
+    globalDialogRegistry.register(dialog);
 
     // Persist dialog metadata and latest.yaml (write-once pattern)
     const metadata = {
@@ -477,7 +479,7 @@ async function handleCreateDialog(
       subdialogCount: 0,
     });
 
-    // Dialog is automatically registered with the registry in its constructor
+    // Dialog is registered with the global registry on creation
     // No need to call registerDialog
 
     respondJson(res, 201, { success: true, selfId: dialogId.selfId, rootId: dialogId.rootId });

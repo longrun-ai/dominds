@@ -5,6 +5,7 @@
  * Provides a single point of dialog creation to ensure consistent initialization.
  */
 import { Dialog, DialogID, DialogInitParams, DialogStore, RootDialog, SubDialog } from './dialog';
+import { globalDialogRegistry } from './dialog-global-registry';
 import { generateDialogID } from './utils/id';
 
 /**
@@ -22,7 +23,9 @@ export class DialogFactory {
     id?: DialogID,
     initialState?: DialogInitParams['initialState'],
   ): RootDialog {
-    return new RootDialog(dlgStore, taskDocPath, id, agentId, initialState);
+    const rootDialog = new RootDialog(dlgStore, taskDocPath, id, agentId, initialState);
+    globalDialogRegistry.register(rootDialog);
+    return rootDialog;
   }
 
   /**
@@ -34,17 +37,19 @@ export class DialogFactory {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string },
+    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; topicId?: string },
     initialState?: DialogInitParams['initialState'],
   ): SubDialog {
     const generatedId = generateDialogID();
     const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
 
     return new SubDialog(
+      supdialog.dlgStore,
       supdialog,
       taskDocPath,
       subdialogId,
       targetAgentId,
+      options?.topicId,
       {
         headLine,
         callBody,

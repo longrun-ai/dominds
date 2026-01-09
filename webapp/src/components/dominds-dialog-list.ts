@@ -65,6 +65,7 @@ export class DomindsDialogList extends HTMLElement {
   private collapsedTasks: Set<string> = new Set(); // Track collapsed task groups
   private collapsedMainDialogs: Set<string> = new Set(); // Track collapsed main dialogs
   private collapsedSubdialogs: Set<string> = new Set(); // Track collapsed subdialogs (for future level-4)
+  private knownMainDialogIds: Set<string> = new Set(); // Track seen root dialogs for default collapse
   private dialogNodeIndex: Map<string, HTMLElement> = new Map();
   private taskNodeIndex: Map<string, HTMLElement> = new Map();
   private teamConfiguration: any = null; // Team configuration from API
@@ -103,7 +104,7 @@ export class DomindsDialogList extends HTMLElement {
    */
   private updateSubdialogDisplay(rootId: string): void {
     const count = this.subdialogCountByRoot.get(rootId) || 0;
-    const el = this.dialogNodeIndex.get(rootId);
+    const el = this.dialogNodeIndex.get(`main:${rootId}`);
     if (el) {
       const countEl = el.querySelector('.dialog-count');
       if (countEl) {
@@ -112,7 +113,12 @@ export class DomindsDialogList extends HTMLElement {
       // Update toggle icon if there are subdialogs
       const toggleEl = el.querySelector('.dialog-toggle');
       if (toggleEl) {
-        toggleEl.textContent = count > 0 ? '▼' : '•';
+        if (count > 0) {
+          const isCollapsed = this.collapsedMainDialogs.has(rootId);
+          toggleEl.textContent = isCollapsed ? '▶' : '▼';
+        } else {
+          toggleEl.textContent = '•';
+        }
       }
     }
   }
@@ -319,6 +325,23 @@ export class DomindsDialogList extends HTMLElement {
     this.updateActiveStates();
   }
 
+  public expandMainDialog(rootId: string, emitEvent: boolean = true): void {
+    if (!rootId) return;
+    if (!this.collapsedMainDialogs.has(rootId)) return;
+
+    this.collapsedMainDialogs.delete(rootId);
+    if (emitEvent) {
+      this.dispatchEvent(
+        new CustomEvent('dialog-expand', {
+          detail: { rootId },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+    this.render();
+  }
+
   /**
    * Set component properties
    */
@@ -417,6 +440,35 @@ export class DomindsDialogList extends HTMLElement {
     this.filterContainer = this.shadowRoot.querySelector('.filter-container')!;
 
     this.setupEventListeners();
+    this.rebuildDialogNodeIndex();
+  }
+
+  private rebuildDialogNodeIndex(): void {
+    this.dialogNodeIndex.clear();
+    this.taskNodeIndex.clear();
+    if (!this.dialogListContainer) return;
+
+    const taskNodes = this.dialogListContainer.querySelectorAll('.task-group-item');
+    taskNodes.forEach((node) => {
+      const taskPath = node.getAttribute('data-task-path');
+      if (taskPath) this.taskNodeIndex.set(taskPath, node as HTMLElement);
+    });
+
+    const dialogNodes = this.dialogListContainer.querySelectorAll('.dialog-item');
+    dialogNodes.forEach((node) => {
+      const rootId = node.getAttribute('data-root-id');
+      if (!rootId) return;
+      const level = node.getAttribute('data-level');
+      if (level === '2') {
+        this.dialogNodeIndex.set(`main:${rootId}`, node as HTMLElement);
+        return;
+      }
+      if (level === '3') {
+        const selfId = node.getAttribute('data-self-id');
+        const subKey = selfId ? `sub:${rootId}:${selfId}` : `sub:${rootId}:${rootId}`;
+        this.dialogNodeIndex.set(subKey, node as HTMLElement);
+      }
+    });
   }
 
   public getStyles(): string {
@@ -1507,6 +1559,7 @@ export class DomindsDialogList extends HTMLElement {
   }
 
   private updateFilteredDialogs(): void {
+    this.syncMainDialogCollapseState();
     let filtered = [...this.props.dialogs];
 
     // Validate all dialogs have valid taskDocPath - fail loudly on invalid data
@@ -1575,6 +1628,26 @@ export class DomindsDialogList extends HTMLElement {
         `.dialog-item[data-root-id="${CSS.escape(this.selectedRootId)}"]`,
       ) as HTMLElement | null;
       if (selected) selected.classList.add('active');
+    }
+  }
+
+  private syncMainDialogCollapseState(): void {
+    const currentRootIds = new Set<string>();
+    for (const dialog of this.props.dialogs) {
+      if (!dialog || !dialog.rootId) continue;
+      if (dialog.selfId) continue;
+      currentRootIds.add(dialog.rootId);
+      if (!this.knownMainDialogIds.has(dialog.rootId)) {
+        this.knownMainDialogIds.add(dialog.rootId);
+        this.collapsedMainDialogs.add(dialog.rootId);
+      }
+    }
+
+    for (const rootId of Array.from(this.knownMainDialogIds)) {
+      if (!currentRootIds.has(rootId)) {
+        this.knownMainDialogIds.delete(rootId);
+        this.collapsedMainDialogs.delete(rootId);
+      }
     }
   }
 
@@ -1662,16 +1735,19 @@ export class DomindsDialogList extends HTMLElement {
         }
         insertAfterEl = mainEl;
         this.updateMainDialogCount(main.rootId);
-        for (const sub of child.children || []) {
-          // Type guard: only main-dialog and subdialog nodes have dialog property
-          if (sub.type === 'subdialog' && sub.dialog) {
-            const sd = sub.dialog;
-            // Use rootId as fallback when selfId is missing to avoid collision risk
-            const subKey = sd.selfId
-              ? `sub:${sd.rootId}:${sd.selfId}`
-              : `sub:${sd.rootId}:${sd.rootId}`;
-            newDialogKeys.add(subKey);
-            this.ensureSubdialogNode(main.rootId, sd);
+        const isCollapsed = this.collapsedMainDialogs.has(main.rootId);
+        if (!isCollapsed) {
+          for (const sub of child.children || []) {
+            // Type guard: only main-dialog and subdialog nodes have dialog property
+            if (sub.type === 'subdialog' && sub.dialog) {
+              const sd = sub.dialog;
+              // Use rootId as fallback when selfId is missing to avoid collision risk
+              const subKey = sd.selfId
+                ? `sub:${sd.rootId}:${sd.selfId}`
+                : `sub:${sd.rootId}:${sd.rootId}`;
+              newDialogKeys.add(subKey);
+              this.ensureSubdialogNode(main.rootId, sd);
+            }
           }
         }
       }

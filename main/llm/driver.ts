@@ -12,6 +12,7 @@ import * as path from 'path';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 
 import { inspect } from 'util';
+import { globalDialogRegistry } from '../dialog-global-registry';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -34,7 +35,6 @@ import {
   TextingCallResultMsg,
   ThinkingMsg,
 } from './client';
-import { loadedDialogs } from './dialog-mutex';
 import { getLlmGenerator } from './gen/registry';
 
 // === HUMAN PROMPT TYPE ===
@@ -145,8 +145,6 @@ function validateStreamingConfiguration(agent: Team.Member, agentTools: Tool[]):
     }
   }
 }
-
-// Dialog loading mutex - use loadedDialogs from dialog-mutex module
 
 // === UNIFIED STREAMING HANDLERS ===
 
@@ -279,18 +277,110 @@ export async function driveDialogStream(
   humanPrompt?: HumanPrompt,
   waitInQue: boolean = false,
 ): Promise<void> {
-  const release = await loadedDialogs.tryLock(dlg.id.valueOf());
-  if (release === undefined) {
-    if (!waitInQue) throw new Error(`Dialog busy driven, see how it proceeded and try again.`);
-    // Wait for existing drive to complete using the mutex
-    await loadedDialogs.runWithLock(dlg.id.valueOf(), async () => {});
-    return;
+  if (!waitInQue && dlg.isLocked()) {
+    throw new Error(`Dialog busy driven, see how it proceeded and try again.`);
   }
 
+  const release = await dlg.acquire();
   try {
     await _driveDialogStream(dlg, humanPrompt);
   } finally {
     release();
+  }
+}
+
+/**
+ * Backend coroutine that continuously drives dialogs.
+ * Uses dynamic canDrive() checks instead of stored suspend state.
+ */
+export async function runBackendDriver(): Promise<void> {
+  while (true) {
+    try {
+      const dialogsToDrive = globalDialogRegistry.getDialogsNeedingDrive();
+
+      for (const rootDialog of dialogsToDrive) {
+        try {
+          globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
+          if (await rootDialog.canDrive()) {
+            const release = await rootDialog.acquire();
+            try {
+              await driveDialogToSuspension(rootDialog);
+
+              const status = await rootDialog.getSuspensionStatus();
+              if (status.subdialogs) {
+                log.info(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`);
+              }
+              if (status.q4h) {
+                log.info(`Dialog ${rootDialog.id.rootId} awaiting Q4H answer`);
+              }
+            } finally {
+              release();
+            }
+          }
+        } catch (err) {
+          log.error(`Error driving dialog ${rootDialog.id.rootId}:`, err, undefined, {
+            dialogId: rootDialog.id.rootId,
+          });
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (loopErr) {
+      log.error('Error in backend driver loop:', loopErr);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+}
+
+/**
+ * Drive a dialog until it suspends or completes.
+ * Called with mutex already acquired.
+ */
+async function driveDialogToSuspension(dlg: Dialog): Promise<void> {
+  try {
+    await _driveDialogStream(dlg);
+  } catch (err) {
+    log.warn(`Error in driveDialogToSuspension for ${dlg.id.selfId}:`, err);
+    throw err;
+  }
+}
+
+/**
+ * Frontend-triggered revive check (crash-recovery).
+ */
+export async function checkAndReviveSuspendedDialogs(): Promise<void> {
+  const allDialogs = globalDialogRegistry.getAll();
+
+  for (const rootDialog of allDialogs) {
+    if (rootDialog.hasPendingSubdialogs()) {
+      const allSatisfied = await areAllSubdialogsSatisfied(rootDialog.id);
+
+      if (allSatisfied) {
+        rootDialog.clearPendingSubdialogs();
+        globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
+        log.info(`All subdialogs complete for ${rootDialog.id.rootId}, auto-reviving`);
+      }
+    }
+
+    const subdialogs = rootDialog.getAllDialogs().filter((d) => d !== rootDialog);
+    for (const subdialog of subdialogs) {
+      const hasAnswer = await checkQ4HAnswered(subdialog.id);
+      if (hasAnswer && !(await subdialog.hasPendingQ4H())) {
+        globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
+        log.info(`Q4H answered for subdialog ${subdialog.id.selfId}, auto-reviving`);
+      }
+    }
+  }
+}
+
+async function checkQ4HAnswered(dialogId: DialogID): Promise<boolean> {
+  try {
+    const { DialogPersistence } = await import('../persistence');
+    const questions = await DialogPersistence.loadQuestions4HumanState(dialogId);
+    return questions.length === 0;
+  } catch (err) {
+    log.warn(`Error checking Q4H state ${dialogId.key()}:`, err);
+    return false;
   }
 }
 
@@ -402,7 +492,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
         // Fallback: Check for @teammate patterns in user message that TextingStreamParser might miss
         // If no subdialogs were created but the message contains @teammate requests, create them now
-        if (userResult.subdialogsCreated === 0) {
+        if (userResult.subdialogsCreated.length === 0) {
           const team = await Team.load();
           const mentionPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/g;
           const mentions: string[] = [];
@@ -427,12 +517,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     const summary = await extractSubdialogSummary(sub.id);
                     // Note: We need access to parent dialog here - pass parent reference
                     // The parent dialog is available as 'dlg' in the outer scope
-                    await onSubdialogCompletion(dlg, sub.id, summary);
+                    await supplyResponseToSupdialog(dlg, sub.id, summary, 'C');
                   } catch (err) {
                     log.warn('Subdialog processing error for user request:', err);
                   }
                 })();
-                userResult.subdialogsCreated++;
+                userResult.subdialogsCreated.push(sub.id);
                 // Suspend the parent dialog when a subdialog is created via user @mention
                 userResult.suspend = true;
               } catch (err) {
@@ -440,6 +530,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               }
             }
           }
+        }
+
+        if (userResult.subdialogsCreated.length > 0) {
+          dlg.addPendingSubdialogs(userResult.subdialogsCreated);
         }
 
         try {
@@ -595,6 +689,9 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
           }
           if (assistantResult.suspend) {
             suspendForHuman = true;
+          }
+          if (assistantResult.subdialogsCreated.length > 0) {
+            dlg.addPendingSubdialogs(assistantResult.subdialogsCreated);
           }
         }
 
@@ -879,12 +976,6 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
         if (toolOutputsCount === 0) {
           break;
         }
-
-        // Phase 14: Check if dialog should resume from Type C suspension
-        if (dlg.isSuspendedForSubdialogs) {
-          log.info(`Resuming dialog ${dlg.id.selfId} from Type C suspension`);
-          continue; // Continue the generation loop
-        }
       }
     } finally {
       await dlg.notifyGeneratingFinish();
@@ -949,6 +1040,8 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
         currentRound: dialogTree.currentRound,
       },
     );
+    globalDialogRegistry.register(rootDialog);
+    await rootDialog.loadPendingSubdialogsFromPersistence();
 
     // Restore all subdialogs in the hierarchy
     const subdialogs = new Map<string, Dialog>();
@@ -969,21 +1062,16 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
         new DialogID(subdialogId, restoredRootDialogId.rootId),
       );
       if (subdialogState) {
-        // Load subdialog metadata to get the parent relationship
-        const subdialogMetadata = await DialogPersistence.loadDialogMetadata(
-          new DialogID(subdialogId, rootDialog.id.rootId),
-          'running',
-        );
-
         // Create DialogID for subdialog: parent ID is the root dialog ID
         const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
-
         const subdialogStore = new DiskFileDialogStore(restoredSubdialogId);
         const subdialog = new SubDialog(
+          subdialogStore,
           rootDialog,
           subdialogState.metadata.taskDocPath,
           restoredSubdialogId,
           subdialogState.metadata.agentId,
+          undefined,
           subdialogState.metadata.assignmentFromSup,
           {
             messages: subdialogState.messages,
@@ -1108,12 +1196,7 @@ export function parseTeammateCall(text: string, currentDialog?: Dialog): Teammat
     // 1. A current dialog context is provided
     // 2. The current dialog is a SubDialog (has a supdialog)
     // 3. The @agentId matches the supdialog's agentId
-    if (
-      currentDialog &&
-      'supdialog' in currentDialog &&
-      currentDialog.supdialog &&
-      agentId === currentDialog.supdialog.agentId
-    ) {
+    if (currentDialog && currentDialog.supdialog && agentId === currentDialog.supdialog.agentId) {
       return {
         type: 'A',
         agentId,
@@ -1183,36 +1266,6 @@ export async function continueRootDialog(
 }
 
 /**
- * Handle subdialog completion by storing summary in parent's pending summaries
- * This enables detached subdialog driving where summaries are deferred until parent resumes
- *
- * @param parentDialog The parent dialog that created the subdialog
- * @param subdialogId The ID of the completed subdialog
- * @param summary The summary text from the subdialog
- */
-async function onSubdialogCompletion(
-  parentDialog: Dialog,
-  subdialogId: DialogID,
-  summary: string,
-): Promise<void> {
-  try {
-    // Add summary to parent's pending summaries (in-memory)
-    parentDialog.addPendingSubdialogSummary(subdialogId, summary);
-
-    // Persist the pending summary for recovery on restart
-    const summaries = parentDialog.getPendingSubdialogSummaries();
-    await parentDialog.dlgStore.persistPendingSubdialogSummaries(parentDialog, summaries);
-  } catch (err) {
-    log.warn('Failed to store pending subdialog summary', {
-      parentId: parentDialog.id.selfId,
-      subdialogId: subdialogId.selfId,
-      error: err,
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
-/**
  * Unified function to extract the last assistant message from an array of messages.
  * Prefers saying_msg over thinking_msg, truncates to 500 chars with "...".
  *
@@ -1275,24 +1328,15 @@ async function extractSubdialogSummary(subdialogId: DialogID): Promise<string> {
 }
 
 /**
- * Helper function to drive a subdialog to completion and handle the common pattern:
- * - driveDialogStream(subdialog)
- * - extractSubdialogSummary(subdialog.id)
- * - onSubdialogCompletion(parent, subdialog.id, summary)
+ * Helper function to drive a subdialog to completion and extract summary.
  *
  * @param parentDialog The parent dialog that created/owns the subdialog
  * @param subdialog The subdialog to drive
  * @returns The summary string from the subdialog
  */
-async function driveSubdialogToCompletion(
-  parentDialog: Dialog,
-  subdialog: SubDialog,
-): Promise<string> {
+async function driveSubdialogToCompletion(subdialog: SubDialog): Promise<string> {
   await driveDialogStream(subdialog);
   const summary = await extractSubdialogSummary(subdialog.id);
-  // Emit subdialog_final_summary_evt to notify frontend
-  // Call postSubdialogSummary directly on the parent dialog (works for both Dialog and SubDialog)
-  await parentDialog.postSubdialogSummary(subdialog.id, summary);
   return summary;
 }
 
@@ -1343,6 +1387,7 @@ export async function createSubdialogForSupdialog(
       originRole: 'assistant',
       originMemberId: supdialog.agentId,
     });
+    supdialog.addPendingSubdialogs([subdialog.id]);
 
     // Persist pending subdialog record
     const pendingRecord: PendingSubdialogRecordType = {
@@ -1392,101 +1437,6 @@ export async function createSubdialogForSupdialog(
  * @param originRole Origin role for the subdialog
  * @returns Promise resolving when subdialog is created/registered
  */
-export async function createRegisteredSubdialog(
-  rootDialog: RootDialog,
-  agentId: string,
-  topicId: string,
-  headLine: string,
-  callBody: string,
-  originRole: 'user' | 'assistant',
-): Promise<void> {
-  try {
-    // Check registry for existing active subdialog
-    const registryEntry = rootDialog.subdialogMutex.lookup(agentId, topicId);
-
-    if (registryEntry && registryEntry.locked) {
-      // Resume existing registered subdialog (CORRECTED: was status === 'active')
-
-      // Drive the existing subdialog
-      const subdialogState = await DialogPersistence.restoreDialog(
-        registryEntry.subdialogId,
-        'running',
-      );
-      if (subdialogState) {
-        const subdialogStore = new DiskFileDialogStore(registryEntry.subdialogId);
-        const subdialog = new SubDialog(
-          rootDialog,
-          subdialogState.metadata.taskDocPath,
-          registryEntry.subdialogId,
-          subdialogState.metadata.agentId,
-          subdialogState.metadata.assignmentFromSup,
-          {
-            messages: subdialogState.messages,
-            reminders: subdialogState.reminders,
-            currentRound: subdialogState.currentRound,
-          },
-        );
-
-        void (async () => {
-          try {
-            await driveDialogStream(subdialog);
-            const summary = await extractSubdialogSummary(subdialog.id);
-            await supplyResponseToSupdialog(rootDialog, subdialog.id, summary, 'B');
-          } catch (err) {
-            log.warn('Registered subdialog resumption error:', err);
-          }
-        })();
-      }
-    } else {
-      // Create new registered subdialog
-      const subdialog = await rootDialog.createSubDialog(agentId, headLine, callBody, {
-        originRole,
-        originMemberId: originRole === 'assistant' ? rootDialog.agentId : 'human',
-      });
-
-      // Register in subdialogRegistry
-      rootDialog.registerSubdialogByTopic(agentId, topicId, subdialog.id);
-      await rootDialog.saveRegistry();
-
-      // Persist pending subdialog record
-      const pendingRecord: PendingSubdialogRecordType = {
-        subdialogId: subdialog.id.selfId,
-        createdAt: formatUnifiedTimestamp(new Date()),
-        headLine,
-        targetAgentId: agentId,
-        callType: 'B',
-        topicId,
-      };
-
-      const existingPending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
-      existingPending.push(pendingRecord);
-      await DialogPersistence.savePendingSubdialogs(rootDialog.id, existingPending);
-
-      // Drive the subdialog asynchronously
-      void (async () => {
-        try {
-          await driveDialogStream(subdialog);
-          const summary = await extractSubdialogSummary(subdialog.id);
-          await supplyResponseToSupdialog(rootDialog, subdialog.id, summary, 'B');
-          // Mark as done in registry
-          rootDialog.unlockMutexByTopic(agentId, topicId);
-          await rootDialog.saveRegistry();
-        } catch (err) {
-          log.warn('Type B registered subdialog processing error:', err);
-        }
-      })();
-    }
-  } catch (error) {
-    log.error('Failed to create registered subdialog', {
-      rootDialogId: rootDialog.id.selfId,
-      agentId,
-      topicId,
-      error,
-    });
-    throw error;
-  }
-}
-
 /**
  * Supply a response from a completed subdialog to the parent dialog.
  * Writes the response to persistence for later incorporation.
@@ -1519,11 +1469,87 @@ export async function supplyResponseToSupdialog(
 
     // Remove from pending subdialogs
     const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(parentDialog.id);
+    let pendingRecord: PendingSubdialogRecordType | undefined;
+    for (const pending of pendingSubdialogs) {
+      if (pending.subdialogId === subdialogId.selfId) {
+        pendingRecord = pending;
+        break;
+      }
+    }
     const filteredPending = pendingSubdialogs.filter((p) => p.subdialogId !== subdialogId.selfId);
     await DialogPersistence.savePendingSubdialogs(parentDialog.id, filteredPending);
 
-    // Emit subdialog_final_summary_evt to notify frontend
-    await parentDialog.postSubdialogSummary(subdialogId, summary, callId);
+    let responderId = subdialogId.rootId;
+    let responderAgentId: string | undefined;
+    let headLine = summary;
+
+    if (pendingRecord) {
+      responderId = pendingRecord.targetAgentId;
+      responderAgentId = pendingRecord.targetAgentId;
+      headLine = pendingRecord.headLine;
+    } else {
+      try {
+        const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
+        if (metadata && typeof metadata.agentId === 'string' && metadata.agentId.trim() !== '') {
+          responderId = metadata.agentId;
+          responderAgentId = metadata.agentId;
+        }
+        if (
+          metadata &&
+          metadata.assignmentFromSup &&
+          typeof metadata.assignmentFromSup.headLine === 'string' &&
+          metadata.assignmentFromSup.headLine.trim() !== ''
+        ) {
+          headLine = metadata.assignmentFromSup.headLine;
+        }
+      } catch (err) {
+        log.warn('Failed to load subdialog metadata for response record', {
+          parentId: parentDialog.id.selfId,
+          subdialogId: subdialogId.selfId,
+          error: err,
+        });
+      }
+    }
+
+    if (headLine.trim() === '') {
+      headLine = summary.slice(0, 100) + (summary.length > 100 ? '...' : '');
+    }
+
+    const responseContent = `Teammate response received from @${responderId} (call complete). Do not re-issue this call unless asked.\n\n${summary}`;
+    const resultMsg: TextingCallResultMsg = {
+      type: 'call_result_msg',
+      role: 'tool',
+      responderId,
+      headLine,
+      status: 'completed',
+      content: responseContent,
+    };
+    await parentDialog.addChatMessages(resultMsg);
+
+    await parentDialog.receiveTeammateResponse(
+      responderId,
+      headLine,
+      responseContent,
+      'completed',
+      subdialogId,
+      {
+        summary,
+        agentId: responderAgentId,
+        callId,
+      },
+    );
+
+    // Remove from parent's pending list (in-memory)
+    parentDialog.removePendingSubdialog(subdialogId);
+
+    // Auto-revive when pending list is empty
+    if (!parentDialog.hasPendingSubdialogs()) {
+      parentDialog.clearPendingSubdialogs();
+      globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId);
+      log.info(
+        `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} auto-reviving`,
+      );
+    }
   } catch (error) {
     log.error('Failed to supply subdialog response', {
       parentId: parentDialog.id.selfId,
@@ -1623,7 +1649,7 @@ async function executeTextingCalls(
   textingTools: TextingTool[],
   collectedCalls: CollectedTextingCall[],
   originRole: 'user' | 'assistant',
-): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: number }> {
+): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: DialogID[] }> {
   // Execute collected calls concurrently
   const results = await Promise.all(
     collectedCalls.map((call) =>
@@ -1643,7 +1669,7 @@ async function executeTextingCalls(
   // Combine results from all concurrent calls
   const suspend = results.some((result) => result.suspend);
   const toolOutputs = results.flatMap((result) => result.toolOutputs);
-  const subdialogsCreated = results.reduce((sum, result) => sum + result.subdialogsCreated, 0);
+  const subdialogsCreated = results.flatMap((result) => result.subdialogsCreated);
 
   return { suspend, toolOutputs, subdialogsCreated };
 }
@@ -1664,11 +1690,11 @@ async function executeTextingCall(
 ): Promise<{
   toolOutputs: ChatMessage[];
   suspend: boolean;
-  subdialogsCreated: number;
+  subdialogsCreated: DialogID[];
 }> {
   const toolOutputs: ChatMessage[] = [];
   let suspend = false;
-  let subdialogsCreated = 0;
+  const subdialogsCreated: DialogID[] = [];
 
   const team = await Team.load();
   const intrinsicTools = dlg.getIntrinsicTools();
@@ -1718,7 +1744,7 @@ async function executeTextingCall(
       postDialogEvent(dlg, newQuestionEvent);
 
       // Return empty output and suspend for human answer
-      return { toolOutputs, suspend: true, subdialogsCreated: 0 };
+      return { toolOutputs, suspend: true, subdialogsCreated: [] };
     } catch (q4hErr: unknown) {
       const errMsg = q4hErr instanceof Error ? q4hErr.message : String(q4hErr);
       const errStack = q4hErr instanceof Error ? q4hErr.stack : '';
@@ -1755,7 +1781,7 @@ async function executeTextingCall(
     // This suspends the subdialog, drives the supdialog for one round, then returns to subdialog
     if (parseResult.type === 'A') {
       // Verify this is a subdialog with a supdialog
-      if ('supdialog' in dlg && dlg.supdialog) {
+      if (dlg.supdialog) {
         const supdialog = dlg.supdialog;
 
         // Suspend the subdialog
@@ -1799,87 +1825,69 @@ ${showErrorToAi(err)}`,
       }
     } else if (parseResult.type === 'B') {
       // Type B: Registered subdialog with topic
-      // Check if this is a RootDialog with mutex registry (CORRECTED: was subdialogRegistry)
-      if ('subdialogMutex' in dlg) {
-        const rootDialog = dlg as RootDialog;
-        const registryEntry = rootDialog.subdialogMutex.lookup(
+      if (dlg instanceof RootDialog) {
+        const rootDialog = dlg;
+        const existingSubdialog = rootDialog.lookupSubdialog(
           parseResult.agentId,
           parseResult.topicId,
         );
 
-        if (registryEntry) {
-          // Resume existing registered subdialog
-          const subdialogState = await DialogPersistence.restoreDialog(
-            registryEntry.subdialogId,
-            'running',
-          );
-          if (subdialogState) {
-            // Re-lock the mutex for driving
-            rootDialog.subdialogMutex.lock(
-              parseResult.agentId,
-              parseResult.topicId,
-              registryEntry.subdialogId,
-            );
-            await rootDialog.saveRegistry();
+        if (existingSubdialog) {
+          const pendingRecord: PendingSubdialogRecordType = {
+            subdialogId: existingSubdialog.id.selfId,
+            createdAt: formatUnifiedTimestamp(new Date()),
+            headLine,
+            targetAgentId: parseResult.agentId,
+            callType: 'B',
+            topicId: parseResult.topicId,
+          };
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
+          existingPending.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(rootDialog.id, existingPending);
 
-            // Create SubDialog object and drive it
-            const subdialog = new SubDialog(
-              rootDialog,
-              subdialogState.metadata.taskDocPath,
-              registryEntry.subdialogId,
-              subdialogState.metadata.agentId,
-              subdialogState.metadata.assignmentFromSup,
-              {
-                messages: subdialogState.messages,
-                reminders: subdialogState.reminders,
-                currentRound: subdialogState.currentRound,
-              },
-            );
-
-            // Drive asynchronously
-            const task = (async () => {
-              try {
-                await driveSubdialogToCompletion(rootDialog, subdialog);
-                // Extract summary and supply to parent
-                const summary = await extractSubdialogSummary(subdialog.id);
-                await supplyResponseToSupdialog(rootDialog, subdialog.id, summary, 'B');
-              } finally {
-                // Unlock on completion
-                rootDialog.unlockMutexByTopic(parseResult.agentId, parseResult.topicId);
-                await rootDialog.saveRegistry();
-              }
-            })();
-            void task;
-            subdialogsCreated++;
-            suspend = true;
-          }
+          const task = (async () => {
+            try {
+              const summary = await driveSubdialogToCompletion(existingSubdialog);
+              await supplyResponseToSupdialog(rootDialog, existingSubdialog.id, summary, 'B');
+            } catch (err) {
+              log.warn('Type B registered subdialog resumption error:', err);
+            }
+          })();
+          void task;
+          subdialogsCreated.push(existingSubdialog.id);
+          suspend = true;
         } else {
-          // Create new registered subdialog
           const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
             callId,
+            topicId: parseResult.topicId,
           });
-          // Register in SubdialogMutex (CORRECTED: was subdialogRegistry)
-          rootDialog.registerSubdialogByTopic(parseResult.agentId, parseResult.topicId, sub.id);
-          // Persist registry to disk
-          await rootDialog.saveRegistry();
+          rootDialog.registerSubdialog(sub);
+          await rootDialog.saveSubdialogRegistry();
+
+          const pendingRecord: PendingSubdialogRecordType = {
+            subdialogId: sub.id.selfId,
+            createdAt: formatUnifiedTimestamp(new Date()),
+            headLine,
+            targetAgentId: parseResult.agentId,
+            callType: 'B',
+            topicId: parseResult.topicId,
+          };
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
+          existingPending.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(rootDialog.id, existingPending);
 
           const task = (async () => {
             try {
-              await driveSubdialogToCompletion(rootDialog, sub);
-              // Supply response back to parent dialog
-              const summary = await extractSubdialogSummary(sub.id);
+              const summary = await driveSubdialogToCompletion(sub);
               await supplyResponseToSupdialog(rootDialog, sub.id, summary, 'B');
-              // Mark as done in registry
-              rootDialog.unlockMutexByTopic(parseResult.agentId, parseResult.topicId);
-              await rootDialog.saveRegistry();
             } catch (err) {
               log.warn('Type B subdialog processing error:', err);
             }
           })();
           void task;
-          subdialogsCreated++;
+          subdialogsCreated.push(sub.id);
           suspend = true;
         }
       } else {
@@ -1889,21 +1897,31 @@ ${showErrorToAi(err)}`,
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
             callId,
+            topicId: parseResult.topicId,
           });
+
+          const pendingRecord: PendingSubdialogRecordType = {
+            subdialogId: sub.id.selfId,
+            createdAt: formatUnifiedTimestamp(new Date()),
+            headLine,
+            targetAgentId: parseResult.agentId,
+            callType: 'B',
+            topicId: parseResult.topicId,
+          };
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
+          existingPending.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
 
           const task = (async () => {
             try {
-              await driveSubdialogToCompletion(dlg, sub);
-              // Supply response back to the immediate parent dialog (dlg)
-              // This is correct whether dlg is RootDialog or SubDialog
-              const summary = await extractSubdialogSummary(sub.id);
+              const summary = await driveSubdialogToCompletion(sub);
               await supplyResponseToSupdialog(dlg, sub.id, summary, 'B');
             } catch (err) {
               log.warn('Type B→C fallback subdialog processing error:', err);
             }
           })();
           void task;
-          subdialogsCreated++;
+          subdialogsCreated.push(sub.id);
           suspend = true;
         } catch (err) {
           log.warn('Type B→C fallback subdialog creation error:', err);
@@ -1921,25 +1939,26 @@ ${showErrorToAi(err)}`,
       }
       const targets = mentions.filter((m) => !!team.getMember(m));
 
-      // Phase 14: Collect callIds for Type C subdialogs to track for suspension
-      const typeCCallIds: string[] = [];
-
       for (const tgt of targets) {
         try {
           const sub = await dlg.createSubDialog(tgt, headLine, body, {
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
           });
-
-          // Track the callId for this Type C subdialog
-          typeCCallIds.push(callId);
+          const pendingRecord: PendingSubdialogRecordType = {
+            subdialogId: sub.id.selfId,
+            createdAt: formatUnifiedTimestamp(new Date()),
+            headLine,
+            targetAgentId: tgt,
+            callType: 'C',
+          };
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
+          existingPending.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
 
           const task = (async () => {
             try {
-              await driveSubdialogToCompletion(dlg, sub);
-              // Supply response back to the immediate parent dialog (dlg)
-              // This is correct whether dlg is RootDialog or SubDialog
-              const summary = await extractSubdialogSummary(sub.id);
+              const summary = await driveSubdialogToCompletion(sub);
               await supplyResponseToSupdialog(dlg, sub.id, summary, 'C', callId);
               // Type C: Move to done/ on completion (handled by subdialog completion)
             } catch (err) {
@@ -1947,15 +1966,13 @@ ${showErrorToAi(err)}`,
             }
           })();
           void task;
-          subdialogsCreated++;
+          subdialogsCreated.push(sub.id);
         } catch (err) {
           log.warn('Subdialog creation error:', err);
         }
       }
 
-      // Phase 14: Suspend parent dialog until all Type C responses are received
-      if (typeCCallIds.length > 0) {
-        dlg.suspendForSubdialogResponses(typeCCallIds);
+      if (subdialogsCreated.length > 0) {
         suspend = true;
       }
     }

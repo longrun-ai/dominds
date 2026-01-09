@@ -148,7 +148,7 @@ export class DiskFileDialogStore extends DialogStore {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string },
+    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; topicId?: string },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     // For subdialogs, use the supdialog's root dialog ID as the root
@@ -156,12 +156,20 @@ export class DiskFileDialogStore extends DialogStore {
 
     // Prepare subdialog store
     const subdialogStore = new DiskFileDialogStore(subdialogId);
-    const subdialog = new SubDialog(supdialog, supdialog.taskDocPath, subdialogId, targetAgentId, {
-      headLine,
-      callBody,
-      originRole: options?.originRole ?? 'assistant',
-      originMemberId: options?.originMemberId,
-    });
+    const subdialog = new SubDialog(
+      subdialogStore,
+      supdialog,
+      supdialog.taskDocPath,
+      subdialogId,
+      targetAgentId,
+      options?.topicId,
+      {
+        headLine,
+        callBody,
+        originRole: options?.originRole ?? 'assistant',
+        originMemberId: options?.originMemberId,
+      },
+    );
 
     // Initialize subdialog's msgs array with the assignment message as the first user message
     // This ensures mockdb lookups succeed and the message appears in the dialog container
@@ -438,30 +446,45 @@ export class DiskFileDialogStore extends DialogStore {
     result: string,
     status: 'completed' | 'failed',
     calleeDialogId?: DialogID,
+    options?: {
+      summary?: string;
+      agentId?: string;
+      callId?: string;
+    },
   ): Promise<void> {
     const round = dialog.currentRound;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
+    const calleeDialogSelfId = calleeDialogId ? calleeDialogId.selfId : undefined;
+    const summary = options ? options.summary : undefined;
+    const agentId = options ? options.agentId : undefined;
+    const callId = options ? options.callId : undefined;
     const ev: TeammateResponseRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'teammate_response_record',
       responderId,
-      calleeDialogId: calleeDialogId?.selfId,
+      calleeDialogId: calleeDialogSelfId,
       headLine,
       status,
       result,
       calling_genseq,
+      summary,
+      agentId,
+      callId,
     };
     await this.appendEvent(round, ev);
 
     const teammateResponseEvt: TeammateResponseEvent = {
       type: 'teammate_response_evt',
       responderId,
-      calleeDialogId: calleeDialogId?.selfId,
+      calleeDialogId: calleeDialogSelfId,
       headLine,
       status,
       result,
       round,
       calling_genseq,
+      summary,
+      agentId,
+      callId,
     };
     postDialogEvent(dialog, teammateResponseEvt);
   }
@@ -1689,6 +1712,9 @@ export class DiskFileDialogStore extends DialogStore {
           headLine: event.headLine,
           status: event.status,
           result: event.result,
+          summary: event.summary,
+          agentId: event.agentId,
+          callId: event.callId,
           round,
           calling_genseq: event.calling_genseq,
           dialog: {
@@ -3154,32 +3180,15 @@ export class DialogPersistence {
   // === REGISTRY PERSISTENCE ===
 
   /**
-   * Serializable registry entry for YAML storage.
-   * Phase 13 CORRECTED: Uses locked boolean instead of status string.
+   * Save subdialog registry (TYPE B entries).
    */
-  private static registryFileEntries: Array<{
-    key: string;
-    subdialogId: string;
-    createdAt: string;
-    lastAccessedAt: string;
-    locked: boolean;
-  }> = [];
-
-  /**
-   * Save the subdialog mutex registry to registry.yaml file.
-   * CORRECTED: Uses locked field instead of status.
-   * @param rootDialogId - The root dialog ID
-   * @param entries - Array of mutex entries to save
-   * @param status - Dialog status (running/completed/archived)
-   */
-  static async saveRegistry(
+  static async saveSubdialogRegistry(
     rootDialogId: DialogID,
     entries: Array<{
       key: string;
       subdialogId: DialogID;
-      createdAt: string;
-      lastAccessedAt: string;
-      locked: boolean;
+      agentId: string;
+      topicId?: string;
     }>,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
@@ -3187,46 +3196,37 @@ export class DialogPersistence {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const registryFilePath = path.join(dialogPath, 'registry.yaml');
 
-      // Ensure directory exists
       await fs.promises.mkdir(dialogPath, { recursive: true });
 
-      // Convert to serializable format
       const serializableEntries = entries.map((entry) => ({
         key: entry.key,
-        subdialogId: entry.subdialogId.valueOf(),
-        createdAt: entry.createdAt,
-        lastAccessedAt: entry.lastAccessedAt,
-        locked: entry.locked,
+        subdialogId: entry.subdialogId.selfId,
+        agentId: entry.agentId,
+        topicId: entry.topicId,
       }));
 
-      // Atomic write operation
       const tempFile = registryFilePath + '.tmp';
       const yamlContent = yaml.stringify({ entries: serializableEntries });
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
       await fs.promises.rename(tempFile, registryFilePath);
     } catch (error) {
-      log.error(`Failed to save registry for dialog ${rootDialogId}:`, error);
+      log.error(`Failed to save subdialog registry for dialog ${rootDialogId}:`, error);
       throw error;
     }
   }
 
   /**
-   * Load the subdialog mutex registry from registry.yaml file.
-   * CORRECTED: Uses locked field instead of status.
-   * @param rootDialogId - The root dialog ID
-   * @param status - Dialog status (running/completed/archived)
-   * @returns Array of mutex entries, or empty array if file doesn't exist
+   * Load subdialog registry.
    */
-  static async loadRegistry(
+  static async loadSubdialogRegistry(
     rootDialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<
     Array<{
       key: string;
       subdialogId: DialogID;
-      createdAt: string;
-      lastAccessedAt: string;
-      locked: boolean;
+      agentId: string;
+      topicId?: string;
     }>
   > {
     try {
@@ -3236,7 +3236,6 @@ export class DialogPersistence {
       const content = await fs.promises.readFile(registryFilePath, 'utf-8');
       const parsed: unknown = yaml.parse(content);
 
-      // Validate structure
       if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
         log.warn(`Invalid registry.yaml format for dialog ${rootDialogId}`);
         return [];
@@ -3248,20 +3247,18 @@ export class DialogPersistence {
         }
         return {
           key: entry.key as string,
-          subdialogId: new DialogID(entry.subdialogId as string),
-          createdAt: entry.createdAt as string,
-          lastAccessedAt: entry.lastAccessedAt as string,
-          locked: entry.locked as boolean,
+          subdialogId: new DialogID(entry.subdialogId as string, rootDialogId.rootId),
+          agentId: entry.agentId as string,
+          topicId: entry.topicId as string | undefined,
         };
       });
 
       return entries;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
-        // Registry file doesn't exist - return empty array
         return [];
       }
-      log.error(`Failed to load registry for dialog ${rootDialogId}:`, error);
+      log.error(`Failed to load subdialog registry for dialog ${rootDialogId}:`, error);
       return [];
     }
   }

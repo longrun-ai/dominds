@@ -54,6 +54,7 @@ export class DomindsApp extends HTMLElement {
   private _wsEventCancel?: () => void;
   private _connStateCancel?: () => void;
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
+  private subdialogHierarchyRefreshTokens = new Map<string, number>();
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -2890,8 +2891,16 @@ export class DomindsApp extends HTMLElement {
             );
           }
 
+          const refreshToken = (this.subdialogHierarchyRefreshTokens.get(rootId) || 0) + 1;
+          this.subdialogHierarchyRefreshTokens.set(rootId, refreshToken);
           try {
             const resp = await this.apiClient.getDialogHierarchy(rootId);
+            if (this.subdialogHierarchyRefreshTokens.get(rootId) !== refreshToken) {
+              console.warn(
+                `Skipping stale dialog hierarchy response for root ${rootId} (token ${refreshToken})`,
+              );
+              break;
+            }
             if (resp.success && resp.data) {
               // resp.data is ApiDialogHierarchyResponse['hierarchy'] which is {root, subdialogs}
               const h = resp.data;
@@ -2928,6 +2937,12 @@ export class DomindsApp extends HTMLElement {
               this.dialogs.push(...entries);
               // FIXED: Use surgical update instead of full render to preserve dialog container state
               this.updateDialogList();
+              if (this.currentDialog && this.currentDialog.rootId === rootId && this.shadowRoot) {
+                const dialogList = this.shadowRoot.querySelector('#dialog-list');
+                if (dialogList instanceof DomindsDialogList) {
+                  dialogList.expandMainDialog(rootId, false);
+                }
+              }
               this.bumpDialogLastModified(
                 rootId,
                 root.lastModified || (message as TypedDialogEvent).timestamp,

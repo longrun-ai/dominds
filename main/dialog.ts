@@ -13,7 +13,6 @@
  * - `SubDialog` - Subdialog with reference to parent RootDialog
  */
 import { inspect } from 'util';
-import { SubdialogMutex, type MutexEntry } from './dialog-registry';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
@@ -124,6 +123,26 @@ export interface SubdialogResponse {
 }
 
 /**
+ * Simple mutex implementation for per-dialog locking.
+ * Used internally by Dialog.acquire()/release().
+ */
+class DialogMutex {
+  private _locked: boolean = false;
+
+  acquire(): void {
+    this._locked = true;
+  }
+
+  release(): void {
+    this._locked = false;
+  }
+
+  isLocked(): boolean {
+    return this._locked;
+  }
+}
+
+/**
  * Common dialog initialization parameters (shared between RootDialog and SubDialog)
  */
 export interface DialogInitParams {
@@ -188,6 +207,16 @@ export abstract class Dialog {
   // This enables detached subdialog driving where summaries are deferred
   protected _pendingSubdialogSummaries: PendingSubdialogSummary[] = [];
 
+  // Per-dialog mutex with FIFO wait queue
+  private _mutex: DialogMutex = new DialogMutex();
+  private _waitingPromises: Array<{
+    resolve: (release: () => void) => void;
+    reject: (error: Error) => void;
+  }> = [];
+
+  // Pending subdialog IDs (for auto-revive tracking)
+  protected _pendingSubdialogIds: DialogID[] = [];
+
   // Phase 11: Suspension state for Type A subdialog mechanism
   // Tracks whether this dialog is in normal state, suspended, or resuming from suspension
   protected _suspensionState: 'active' | 'suspended' | 'resumed' = 'active';
@@ -198,10 +227,6 @@ export abstract class Dialog {
   // - Enables frontend to attach result INLINE to the calling section
   // - NOT used for teammate calls (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
-
-  // Phase 14: Type C Subdialog suspension state
-  protected _isSuspendedForSubdialogs: boolean = false;
-  protected _pendingSubdialogCallIds: Set<string> = new Set();
 
   constructor(
     dlgStore: DialogStore,
@@ -277,24 +302,131 @@ export abstract class Dialog {
     this._currentCallId = null;
   }
 
-  // Phase 14: Type C Subdialog suspension methods
+  /**
+   * Acquire the dialog mutex. Returns a release callback.
+   * FIFO queue ensures fairness when multiple callers wait.
+   */
+  public async acquire(): Promise<() => void> {
+    if (!this._mutex.isLocked()) {
+      this._mutex.acquire();
+      return () => this.release();
+    }
 
-  public get isSuspendedForSubdialogs(): boolean {
-    return this._isSuspendedForSubdialogs;
+    return new Promise((resolve, reject) => {
+      this._waitingPromises.push({ resolve, reject });
+    });
   }
 
-  public suspendForSubdialogResponses(callIds: string[]): void {
-    this._pendingSubdialogCallIds = new Set(callIds);
-    this._isSuspendedForSubdialogs = true;
+  /**
+   * Release the dialog mutex and wake the next waiter if any.
+   */
+  public release(): void {
+    if (!this._mutex.isLocked()) {
+      return;
+    }
+
+    const next = this._waitingPromises.shift();
+    if (next) {
+      next.resolve(() => this.release());
+      return;
+    }
+
+    this._mutex.release();
   }
 
-  public markSubdialogResponseReceived(callId: string): boolean {
-    this._pendingSubdialogCallIds.delete(callId);
-    if (this._pendingSubdialogCallIds.size === 0) {
-      this._isSuspendedForSubdialogs = false;
+  /**
+   * Check if the dialog mutex is currently locked.
+   */
+  public isLocked(): boolean {
+    return this._mutex.isLocked();
+  }
+
+  /**
+   * Check if dialog has pending Q4H questions.
+   * Queries persistence for current questions4Human state.
+   */
+  public async hasPendingQ4H(): Promise<boolean> {
+    try {
+      const { DialogPersistence } = await import('./persistence');
+      const questions = await DialogPersistence.loadQuestions4HumanState(this.id);
+      return questions.length > 0;
+    } catch (err) {
+      log.warn('Failed to load Q4H state for pending check', {
+        dialogId: this.id.selfId,
+        error: err,
+      });
       return true;
     }
-    return false;
+  }
+
+  /**
+   * Check if dialog has pending subdialogs.
+   */
+  public hasPendingSubdialogs(): boolean {
+    return this._pendingSubdialogIds.length > 0;
+  }
+
+  /**
+   * Check if dialog can be driven (not suspended for Q4H or subdialogs).
+   */
+  public async canDrive(): Promise<boolean> {
+    const hasQ4H = await this.hasPendingQ4H();
+    const hasSubdialogs = this.hasPendingSubdialogs();
+    return !hasQ4H && !hasSubdialogs;
+  }
+
+  /**
+   * Get suspension status for logging/debugging.
+   */
+  public async getSuspensionStatus(): Promise<{
+    q4h: boolean;
+    subdialogs: boolean;
+    canDrive: boolean;
+  }> {
+    const hasQ4H = await this.hasPendingQ4H();
+    const hasSubdialogs = this.hasPendingSubdialogs();
+    return {
+      q4h: hasQ4H,
+      subdialogs: hasSubdialogs,
+      canDrive: !hasQ4H && !hasSubdialogs,
+    };
+  }
+
+  public get pendingSubdialogIds(): ReadonlyArray<DialogID> {
+    return this._pendingSubdialogIds;
+  }
+
+  public addPendingSubdialogs(ids: DialogID[]): void {
+    this._pendingSubdialogIds.push(...ids);
+  }
+
+  public removePendingSubdialog(id: DialogID): void {
+    this._pendingSubdialogIds = this._pendingSubdialogIds.filter(
+      (pending) => pending.selfId !== id.selfId,
+    );
+  }
+
+  public clearPendingSubdialogs(): void {
+    this._pendingSubdialogIds = [];
+  }
+
+  /**
+   * Load pending subdialogs from persistence into memory.
+   * Used during crash recovery to restore suspension state.
+   */
+  public async loadPendingSubdialogsFromPersistence(): Promise<void> {
+    try {
+      const { DialogPersistence } = await import('./persistence');
+      const pending = await DialogPersistence.loadPendingSubdialogs(this.id);
+      this._pendingSubdialogIds = pending.map(
+        (record) => new DialogID(record.subdialogId, this.id.rootId),
+      );
+    } catch (err) {
+      log.warn('Failed to load pending subdialogs from persistence', {
+        dialogId: this.id.selfId,
+        error: err,
+      });
+    }
   }
 
   /**
@@ -305,7 +437,12 @@ export abstract class Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; callId?: string },
+    options?: {
+      originRole: 'user' | 'assistant';
+      originMemberId?: string;
+      callId?: string;
+      topicId?: string;
+    },
   ): Promise<SubDialog>;
 
   /**
@@ -845,6 +982,11 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     result: string,
     status: 'completed' | 'failed',
     subdialogId?: DialogID,
+    options?: {
+      summary?: string;
+      agentId?: string;
+      callId?: string;
+    },
   ): Promise<void> {
     return await this.dlgStore.receiveTeammateResponse(
       this,
@@ -853,6 +995,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       result,
       status,
       subdialogId,
+      options,
     );
   }
 
@@ -892,6 +1035,23 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     callId?: string,
   ): Promise<void> {
     try {
+      let responderId = subdialogId.rootId;
+      let responderAgentId: string | undefined;
+      try {
+        const { DialogPersistence } = await import('./persistence');
+        const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
+        if (metadata?.agentId) {
+          responderId = metadata.agentId;
+          responderAgentId = metadata.agentId;
+        }
+      } catch (err) {
+        log.warn('Failed to load subdialog metadata for response labeling', {
+          dialogId: this.id.selfId,
+          subdialogId: subdialogId.selfId,
+          error: err,
+        });
+      }
+
       // NO WAIT - emit immediately with virtual gen markers
 
       // Emit virtual generating_start_evt for subdialog response bubble
@@ -900,28 +1060,20 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       // Emit TeammateResponseEvent
       const evt: TeammateResponseEvent = {
         type: 'teammate_response_evt',
-        responderId: subdialogId.rootId,
+        responderId,
         calleeDialogId: subdialogId.selfId,
         headLine: summary.slice(0, 100) + (summary.length > 100 ? '...' : ''),
         status: 'completed',
         result: summary,
         round: this.currentRound,
         summary,
-        agentId: subdialogId.rootId,
+        agentId: responderAgentId,
         callId: callId ?? undefined,
       };
       postDialogEvent(this, evt);
 
       // Emit virtual generating_finish_evt
       await this.notifyGeneratingFinish();
-
-      // Check if parent is suspended waiting for Type C responses
-      if (this._isSuspendedForSubdialogs && callId) {
-        const shouldResume = this.markSubdialogResponseReceived(callId);
-        if (shouldResume) {
-          log.info(`All Type C responses received for dialog ${this.id.selfId}, resuming...`);
-        }
-      }
     } catch (err) {
       log.warn('Failed to post teammate_response_evt event', undefined, {
         error: err,
@@ -940,16 +1092,19 @@ export class SubDialog extends Dialog {
   public readonly topicId?: string;
 
   constructor(
+    dlgStore: DialogStore,
     supdialog: RootDialog,
     taskDocPath: string,
     id: DialogID | undefined,
     agentId: string,
+    topicId?: string,
     assignmentFromSup?: AssignmentFromSup,
     initialState?: DialogInitParams['initialState'],
   ) {
-    super(supdialog.dlgStore, taskDocPath, id, agentId, supdialog, assignmentFromSup, initialState);
+    super(dlgStore, taskDocPath, id, agentId, supdialog, assignmentFromSup, initialState);
     this.supdialog = supdialog;
-    // topicId is optional - can be used to track specific conversation topics
+    this.topicId = topicId;
+    supdialog.registerDialog(this);
   }
 
   /**
@@ -960,7 +1115,11 @@ export class SubDialog extends Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string },
+    options?: {
+      originRole: 'user' | 'assistant';
+      originMemberId?: string;
+      topicId?: string;
+    },
   ): Promise<SubDialog> {
     return await this.supdialog.createSubDialog(targetAgentId, headLine, callBody, options);
   }
@@ -968,12 +1127,13 @@ export class SubDialog extends Dialog {
 
 /**
  * RootDialog - The main/root dialog that can create and manage subdialogs.
- * Uses SubdialogMutex for tracking subdialogs by agentId and topicId.
+ * Uses in-memory registries for O(1) dialog and Type B lookup.
  */
 export class RootDialog extends Dialog {
-  // Phase 13: SubdialogMutex for tracking subdialogs by agentId and topicId.
-  // This is the single source of truth for subdialog registry.
-  private readonly _subdialogMutex: SubdialogMutex = new SubdialogMutex();
+  // Tracks all dialogs in this dialog tree for O(1) lookup
+  private _localRegistry: Map<string, Dialog> = new Map();
+  // Tracks TYPE B registered subdialogs by agentId!topicId
+  private _subdialogRegistry: Map<string, SubDialog> = new Map();
 
   constructor(
     dlgStore: DialogStore,
@@ -983,111 +1143,150 @@ export class RootDialog extends Dialog {
     initialState?: DialogInitParams['initialState'],
   ) {
     super(dlgStore, taskDocPath, id, agentId, undefined, undefined, initialState);
+    this.registerDialog(this);
   }
 
   /**
-   * Get the Phase 13 SubdialogMutex for agentId/topicId based tracking.
-   * This is the single source of truth for subdialog registry.
+   * Register a dialog (self or subdialog) in the local registry.
    */
-  get subdialogMutex(): SubdialogMutex {
-    return this._subdialogMutex;
+  registerDialog(dialog: Dialog): void {
+    this._localRegistry.set(dialog.id.selfId, dialog);
   }
 
   /**
-   * Register a subdialog in the Phase 13 SubdialogMutex by agentId and topicId.
-   * Uses lock() to acquire mutex when subdialog starts being driven.
-   * @param agentId - The agent ID
-   * @param topicId - The topic ID
-   * @param subdialogId - The DialogID of the subdialog
-   * @returns The created MutexEntry
+   * Lookup a dialog by selfId in the local registry.
    */
-  registerSubdialogByTopic(agentId: string, topicId: string, subdialogId: DialogID): MutexEntry {
-    return this._subdialogMutex.lock(agentId, topicId, subdialogId);
+  lookupDialog(selfId: string): Dialog | undefined {
+    return this._localRegistry.get(selfId);
   }
 
   /**
-   * Lookup a subdialog by agentId and topicId using the Phase 13 SubdialogMutex.
-   * @param agentId - The agent ID
-   * @param topicId - The topic ID
-   * @returns The MutexEntry if found, null otherwise
+   * Get all registered dialogs in this dialog tree.
    */
-  lookupSubdialogByTopic(agentId: string, topicId: string): MutexEntry | null {
-    return this._subdialogMutex.lookup(agentId, topicId);
+  getAllDialogs(): Dialog[] {
+    return Array.from(this._localRegistry.values());
   }
 
   /**
-   * Release mutex lock when subdialog completes LLM generation.
-   * Uses unlock() instead of markDone().
-   * @param agentId - The agent ID
-   * @param topicId - The topic ID
-   * @returns True if mutex was released, false if entry not found
+   * Remove a dialog from the local registry.
    */
-  unlockMutexByTopic(agentId: string, topicId: string): boolean {
-    return this._subdialogMutex.unlock(agentId, topicId);
+  unregisterDialog(selfId: string): void {
+    this._localRegistry.delete(selfId);
   }
 
   /**
-   * Remove a subdialog entry from the mutex registry.
-   * @param agentId - The agent ID
-   * @param topicId - The topic ID
-   * @returns True if an entry was removed
+   * Generate a registry key from agentId and topicId.
    */
-  removeSubdialogByTopic(agentId: string, topicId: string): boolean {
-    return this._subdialogMutex.remove(agentId, topicId);
+  static makeSubdialogKey(agentId: string, topicId: string): string {
+    return `${agentId}!${topicId}`;
+  }
+
+  /**
+   * Register a TYPE B subdialog for resumption.
+   */
+  registerSubdialog(subdialog: SubDialog): void {
+    if (!subdialog.topicId) {
+      return;
+    }
+    const key = RootDialog.makeSubdialogKey(subdialog.agentId, subdialog.topicId);
+    this._subdialogRegistry.set(key, subdialog);
+    this.registerDialog(subdialog);
+  }
+
+  /**
+   * Lookup a TYPE B subdialog by agentId and topicId.
+   */
+  lookupSubdialog(agentId: string, topicId: string): SubDialog | undefined {
+    const key = RootDialog.makeSubdialogKey(agentId, topicId);
+    return this._subdialogRegistry.get(key);
+  }
+
+  /**
+   * Remove a TYPE B subdialog from registry.
+   */
+  unregisterSubdialog(agentId: string, topicId: string): boolean {
+    const key = RootDialog.makeSubdialogKey(agentId, topicId);
+    const subdialog = this._subdialogRegistry.get(key);
+    if (subdialog) {
+      this._localRegistry.delete(subdialog.id.selfId);
+      return this._subdialogRegistry.delete(key);
+    }
+    return false;
+  }
+
+  /**
+   * Get all registered subdialogs.
+   */
+  getRegisteredSubdialogs(): SubDialog[] {
+    return Array.from(this._subdialogRegistry.values());
   }
 
   /**
    * Create a new subdialog for autonomous teammate calls.
-   * Note: Registration in SubdialogMutex is handled by the driver when subdialog starts being driven.
    */
   async createSubDialog(
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; callId?: string },
+    options?: {
+      originRole: 'user' | 'assistant';
+      originMemberId?: string;
+      callId?: string;
+      topicId?: string;
+    },
   ): Promise<SubDialog> {
     return await this.dlgStore.createSubDialog(this, targetAgentId, headLine, callBody, options);
   }
 
   /**
-   * Save the subdialog mutex registry to disk.
-   * Uses DialogPersistence to persist the registry to registry.yaml.
-   * CORRECTED: Uses 'locked' field instead of 'status'.
+   * Save subdialog registry to disk (registry.yaml).
    */
-  async saveRegistry(): Promise<void> {
+  async saveSubdialogRegistry(): Promise<void> {
     const { DialogPersistence } = await import('./persistence');
-    const entries = this._subdialogMutex.getAll();
-    // Convert to mutable array for persistence
-    const serializableEntries = entries.map((entry) => ({
-      key: entry.key,
-      subdialogId: entry.subdialogId,
-      createdAt: entry.createdAt,
-      lastAccessedAt: entry.lastAccessedAt,
-      locked: entry.locked,
+    const entries = Array.from(this._subdialogRegistry.entries()).map(([key, subdialog]) => ({
+      key,
+      subdialogId: subdialog.id,
+      agentId: subdialog.agentId,
+      topicId: subdialog.topicId,
     }));
-    await DialogPersistence.saveRegistry(this.id, serializableEntries);
+    await DialogPersistence.saveSubdialogRegistry(this.id, entries);
   }
 
   /**
-   * Restore the subdialog mutex registry from disk.
-   * Uses DialogPersistence to load the registry from registry.yaml.
-   * Called when a RootDialog is loaded from persistence.
-   * CORRECTED: Uses 'locked' field and unlock() instead of 'status' and markDone().
+   * Load subdialog registry from disk (registry.yaml).
    */
-  async restoreRegistry(): Promise<void> {
-    const { DialogPersistence } = await import('./persistence');
-    const entries = await DialogPersistence.loadRegistry(this.id);
+  async loadSubdialogRegistry(): Promise<void> {
+    const { DialogPersistence, DiskFileDialogStore } = await import('./persistence');
+    const entries = await DialogPersistence.loadSubdialogRegistry(this.id);
 
     for (const entry of entries) {
-      this._subdialogMutex.lock(
-        entry.key.split('!')[0] ?? '',
-        entry.key.split('!')[1] ?? '',
-        entry.subdialogId,
-      );
-      // Unlock if entry was not locked
-      if (!entry.locked) {
-        this._subdialogMutex.unlock(entry.key.split('!')[0] ?? '', entry.key.split('!')[1] ?? '');
+      if (!entry.topicId) {
+        continue;
       }
+      const subdialogState = await DialogPersistence.restoreDialog(entry.subdialogId, 'running');
+      if (!subdialogState) {
+        continue;
+      }
+
+      const subdialogStore = new DiskFileDialogStore(entry.subdialogId);
+      const subdialog = new SubDialog(
+        subdialogStore,
+        this,
+        subdialogState.metadata.taskDocPath,
+        new DialogID(entry.subdialogId.selfId, this.id.rootId),
+        subdialogState.metadata.agentId,
+        entry.topicId,
+        subdialogState.metadata.assignmentFromSup,
+        {
+          messages: subdialogState.messages,
+          reminders: subdialogState.reminders,
+          currentRound: subdialogState.currentRound,
+        },
+      );
+      this._subdialogRegistry.set(
+        RootDialog.makeSubdialogKey(entry.agentId, entry.topicId),
+        subdialog,
+      );
     }
   }
 }
@@ -1112,17 +1311,30 @@ export abstract class DialogStore {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; callId?: string },
+    options?: {
+      originRole: 'user' | 'assistant';
+      originMemberId?: string;
+      callId?: string;
+      topicId?: string;
+    },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     // For subdialogs, use the supdialog's root dialog ID as the root
     const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
-    return new SubDialog(supdialog, supdialog.taskDocPath, subdialogId, targetAgentId, {
-      headLine,
-      callBody,
-      originRole: options?.originRole ?? 'assistant',
-      originMemberId: options?.originMemberId,
-    });
+    return new SubDialog(
+      this,
+      supdialog,
+      supdialog.taskDocPath,
+      subdialogId,
+      targetAgentId,
+      options?.topicId,
+      {
+        headLine,
+        callBody,
+        originRole: options?.originRole ?? 'assistant',
+        originMemberId: options?.originMemberId,
+      },
+    );
   }
 
   /**
@@ -1184,6 +1396,11 @@ export abstract class DialogStore {
     _result: string,
     _status: 'completed' | 'failed',
     _subdialogId?: DialogID,
+    _options?: {
+      summary?: string;
+      agentId?: string;
+      callId?: string;
+    },
   ): Promise<void> {}
 
   public async updateQuestions4Human(_dialog: Dialog, _questions: HumanQuestion[]): Promise<void> {}

@@ -27,11 +27,19 @@ class MockDialogStore implements Dialog['dlgStore'] {
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
-    const subdialog = new SubDialog(supdialog, supdialog.taskDocPath, subdialogId, targetAgentId, {
-      headLine,
-      callBody,
-      originRole: 'assistant',
-    });
+    const subdialog = new SubDialog(
+      this,
+      supdialog,
+      supdialog.taskDocPath,
+      subdialogId,
+      targetAgentId,
+      undefined,
+      {
+        headLine,
+        callBody,
+        originRole: 'assistant',
+      },
+    );
     return subdialog;
   }
 
@@ -221,10 +229,18 @@ runTest('SubDialog with supdialog reference', () => {
   const rootDialog = new RootDialog(mockStore, 'test-task.md', rootDialogId, 'agent-1');
 
   const subdialogId = new DialogID(generateDialogID(), rootDialogId.rootId);
-  const subdialog = new SubDialog(rootDialog, 'test-task.md', subdialogId, 'agent-2', {
-    headLine: 'Subtask',
-    callBody: 'Do work',
-  });
+  const subdialog = new SubDialog(
+    mockStore,
+    rootDialog,
+    'test-task.md',
+    subdialogId,
+    'agent-2',
+    undefined,
+    {
+      headLine: 'Subtask',
+      callBody: 'Do work',
+    },
+  );
 
   assertTrue(subdialog instanceof SubDialog, 'Should create SubDialog');
   assertTrue(subdialog.supdialog === rootDialog, 'Subdialog should reference supdialog');

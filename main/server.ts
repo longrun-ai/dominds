@@ -10,6 +10,7 @@
  */
 import * as path from 'path';
 import { WebSocket } from 'ws';
+import { runBackendDriver } from './llm/driver';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
 import { createHttpServer, ServerConfig } from './server/server-core';
@@ -98,6 +99,9 @@ export async function startServer(opts: ServerOptions = {}) {
 
   // Setup WebSocket server
   setupWebSocketServer(httpServer.getHttpServer(), clients);
+
+  // Start backend driver loop (non-blocking)
+  void runBackendDriver();
 
   // Start listening
   await httpServer.start();
