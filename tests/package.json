@@ -1,0 +1,27 @@
+{
+  "name": "@dominds/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Dominds test scripts",
+  "scripts": {
+    "parsing": "tsx texting/parsing.ts",
+    "mentionx": "tsx texting/mentionx.ts",
+    "realtime": "tsx texting/realtime.ts",
+    "func-call": "tsx provider/func-call.ts",
+    "stream-func-call": "tsx provider/stream-func-call.ts",
+    "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
+    "toolset-registry": "tsx toolsets/registry.ts",
+    "dialog-driving": "tsx driving/dialog-driving.ts",
+    "type-a-flow": "tsx driving/type-a-flow.ts",
+    "type-b-flow": "tsx driving/type-b-flow.ts",
+    "type-c-flow": "tsx driving/type-c-flow.ts",
+    "revival-flow": "tsx driving/revival-flow.ts",
+    "llm-streaming": "tsx driving/llm-streaming.ts",
+    "teammate-call-parse": "tsx driving/teammate-call-parse.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

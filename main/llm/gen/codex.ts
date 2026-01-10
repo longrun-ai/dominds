@@ -15,6 +15,9 @@ import type {
   ChatGptResponsesStreamEvent,
   ChatGptTextControls,
 } from '@dominds/codex-auth';
+import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { createLogger } from '../../log';
 import type { Team } from '../../team';
 import type { FuncTool, JsonSchema, JsonSchemaProperty } from '../../tool';
@@ -22,6 +25,90 @@ import type { ChatMessage, ProviderConfig } from '../client';
 import type { LlmGenerator, LlmStreamReceiver } from '../gen';
 
 const log = createLogger('llm/codex');
+const require = createRequire(__filename);
+const codexPromptCache = new Map<string, string>();
+const codexFallbackInstructions = 'You are Codex CLI.';
+
+function resolvePromptFilename(model: string): string {
+  if (model.startsWith('gpt-5.2-codex') || model.startsWith('bengalfox')) {
+    return 'gpt-5.2-codex_prompt.md';
+  }
+  if (model.startsWith('gpt-5.1-codex-max')) {
+    return 'gpt-5.1-codex-max_prompt.md';
+  }
+  if (
+    (model.startsWith('gpt-5-codex') ||
+      model.startsWith('gpt-5.1-codex') ||
+      model.startsWith('codex-')) &&
+    !model.includes('-mini')
+  ) {
+    return 'gpt_5_codex_prompt.md';
+  }
+  if (model.startsWith('codex-mini-latest')) {
+    return 'prompt_with_apply_patch_instructions.md';
+  }
+  if (model.startsWith('gpt-5.2')) {
+    return 'gpt_5_2_prompt.md';
+  }
+  if (model.startsWith('gpt-5.1')) {
+    return 'gpt_5_1_prompt.md';
+  }
+  return 'prompt.md';
+}
+
+async function loadCodexPrompt(model: string): Promise<string | null> {
+  const cached = codexPromptCache.get(model);
+  if (cached) {
+    return cached;
+  }
+
+  let pkgRoot: string;
+  try {
+    const entryPath = require.resolve('@dominds/codex-auth');
+    pkgRoot = path.resolve(path.dirname(entryPath), '..');
+  } catch (error: unknown) {
+    log.warn('Failed to resolve @dominds/codex-auth prompt directory', error);
+    return null;
+  }
+
+  const filename = resolvePromptFilename(model);
+  const candidates = [
+    path.join(pkgRoot, 'prompts', filename),
+    path.join(pkgRoot, 'prompts', 'prompt.md'),
+  ];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const prompt = await fs.readFile(candidate, 'utf8');
+      codexPromptCache.set(model, prompt);
+      return prompt;
+    } catch (error: unknown) {
+      lastError = error;
+    }
+  }
+
+  log.warn(`Failed to read Codex prompt for model '${model}'`, lastError);
+  return null;
+}
+
+async function resolveCodexInstructions(
+  model: string,
+  systemPrompt: string,
+): Promise<{ instructions: string; assistantPrelude: string | null }> {
+  const basePrompt = await loadCodexPrompt(model);
+  const trimmedSystemPrompt = systemPrompt.trim();
+  if (!basePrompt) {
+    return {
+      instructions: trimmedSystemPrompt.length > 0 ? systemPrompt : codexFallbackInstructions,
+      assistantPrelude: null,
+    };
+  }
+  return {
+    instructions: basePrompt,
+    assistantPrelude: trimmedSystemPrompt.length > 0 ? trimmedSystemPrompt : null,
+  };
+}
 
 function jsonSchemaPropertyToCodex(schema: JsonSchemaProperty): ChatGptJsonSchema {
   switch (schema.type) {
@@ -164,7 +251,8 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
 
 function buildCodexRequest(
   agent: Team.Member,
-  systemPrompt: string,
+  instructions: string,
+  assistantPrelude: string | null,
   funcTools: FuncTool[],
   context: ChatMessage[],
 ): ChatGptResponsesRequest {
@@ -173,6 +261,10 @@ function buildCodexRequest(
   }
 
   const input: ChatGptResponseItem[] = [];
+  if (assistantPrelude) {
+    // Codex backend rejects system messages; pass extra instructions as prior assistant context.
+    input.push(messageItem('assistant', assistantPrelude));
+  }
   for (const msg of context) {
     const items = chatMessageToCodexItems(msg);
     for (const item of items) {
@@ -198,7 +290,7 @@ function buildCodexRequest(
 
   return {
     model: agent.model,
-    instructions: systemPrompt,
+    instructions,
     input,
     tools: funcTools.map(funcToolToCodex),
     tool_choice: 'auto',
@@ -231,7 +323,17 @@ export class CodexGen implements LlmGenerator {
       baseUrl: providerConfig.baseUrl,
     });
 
-    const payload = buildCodexRequest(agent, systemPrompt, funcTools, context);
+    if (!agent.model) {
+      throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
+    }
+    const resolvedInstructions = await resolveCodexInstructions(agent.model, systemPrompt);
+    const payload = buildCodexRequest(
+      agent,
+      resolvedInstructions.instructions,
+      resolvedInstructions.assistantPrelude,
+      funcTools,
+      context,
+    );
 
     let sayingStarted = false;
     let thinkingStarted = false;

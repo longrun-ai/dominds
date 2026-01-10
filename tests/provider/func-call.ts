@@ -13,12 +13,12 @@
  * - Checks exact argument matching against expected values
  * - Provides detailed failure analysis and debugging information
  *
- * Usage: pnpm tsx tests/provider/func-call.ts --provider <provider> --model <model>
+ * Usage: pnpm -C tests run func-call -- --provider <provider> --model <model>
  *
  * Examples:
- *   pnpm tsx tests/provider/func-call.ts --provider iflow.cn --model kimi-k2-0905
- *   pnpm tsx tests/provider/func-call.ts --provider minimaxi.com-coding-plan --model MiniMax-M2
- *   pnpm tsx tests/provider/func-call.ts --provider bigmodel --model glm-4.6
+ *   pnpm -C tests run func-call -- --provider iflow.cn --model kimi-k2-0905
+ *   pnpm -C tests run func-call -- --provider minimaxi.com-coding-plan --model MiniMax-M2
+ *   pnpm -C tests run func-call -- --provider bigmodel --model glm-4.6
  *
  * Validation includes:
  * - Required argument presence checks
@@ -27,48 +27,105 @@
  * - Exact value matching against expected arguments
  */
 
-import { ChatMessage, FuncCallMsg, LlmConfig } from 'dominds/llm/client';
+import type { Dialog } from 'dominds/dialog';
+import { ChatMessage, FuncCallMsg, LlmConfig, type ProviderConfig } from 'dominds/llm/client';
+import type { LlmGenerator } from 'dominds/llm/gen';
 import { generatorsRegistry } from 'dominds/llm/gen/registry';
 import { Team } from 'dominds/team';
+import type { FuncTool, JsonObject, ToolArguments } from 'dominds/tool';
+
+type ArgValidationResult = { valid: boolean; error?: string };
 
 interface TestScenario {
   name: string;
   description: string;
   prompt: string;
   expectedFunctionCall: string;
-  expectedArgs?: Record<string, any>;
-  argValidation?: (args: Record<string, any>) => { valid: boolean; error?: string };
+  expectedArgs?: JsonObject;
+  argValidation?: (args: JsonObject) => ArgValidationResult;
+}
+
+type ParsedArgsResult = { ok: true; value: JsonObject } | { ok: false; error: string };
+
+function isJsonObject(value: unknown): value is JsonObject {
+  // LLM function args are untrusted JSON; validate shape before using properties.
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonObject(raw: string): ParsedArgsResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: message };
+  }
+  if (!isJsonObject(parsed)) {
+    return { ok: false, error: 'Function arguments must be a JSON object' };
+  }
+  return { ok: true, value: parsed };
+}
+
+function summarizeMessage(msg: ChatMessage): {
+  type: ChatMessage['type'];
+  role: ChatMessage['role'];
+  name?: string;
+} {
+  switch (msg.type) {
+    case 'func_call_msg':
+    case 'func_result_msg':
+      return { type: msg.type, role: msg.role, name: msg.name };
+    default:
+      return { type: msg.type, role: msg.role };
+  }
 }
 
 class FunctionCallTester {
   private provider: string;
   private model: string;
-  private llmConfig: LlmConfig;
-  private providerConfig: any;
-  private generator: any;
-  private agent: Team.Member;
+  private llmConfig: LlmConfig | null = null;
+  private providerConfig: ProviderConfig | null = null;
+  private generator: LlmGenerator | null = null;
+  private agent: Team.Member | null = null;
 
   constructor(provider: string, model: string) {
     this.provider = provider;
     this.model = model;
   }
 
+  private getInitializedState(): {
+    providerConfig: ProviderConfig;
+    generator: LlmGenerator;
+    agent: Team.Member;
+  } {
+    if (!this.providerConfig || !this.generator || !this.agent) {
+      throw new Error('FunctionCallTester is not initialized');
+    }
+    return {
+      providerConfig: this.providerConfig,
+      generator: this.generator,
+      agent: this.agent,
+    };
+  }
+
   async initialize(): Promise<void> {
     console.log(`🔧 Initializing function call test for ${this.provider}:${this.model}`);
 
     // Load LLM configuration
-    this.llmConfig = await LlmConfig.load();
-    this.providerConfig = this.llmConfig.getProvider(this.provider);
+    const llmConfig = await LlmConfig.load();
+    this.llmConfig = llmConfig;
+    const providerConfig = llmConfig.getProvider(this.provider);
 
-    if (!this.providerConfig) {
+    if (!providerConfig) {
       throw new Error(`Provider '${this.provider}' not found in configuration`);
     }
+    this.providerConfig = providerConfig;
 
     // Check if API key is available
-    const apiKey = process.env[this.providerConfig.apiKeyEnvVar];
+    const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) {
       console.warn(
-        `⚠️  Warning: API key environment variable '${this.providerConfig.apiKeyEnvVar}' is not set`,
+        `⚠️  Warning: API key environment variable '${providerConfig.apiKeyEnvVar}' is not set`,
       );
       console.warn(
         `   Running in diagnostic mode - function calls will be detected but not executed`,
@@ -76,10 +133,11 @@ class FunctionCallTester {
     }
 
     // Get the appropriate generator
-    this.generator = generatorsRegistry.get(this.providerConfig.apiType);
-    if (!this.generator) {
-      throw new Error(`Generator for '${this.providerConfig.apiType}' not found`);
+    const generator = generatorsRegistry.get(providerConfig.apiType);
+    if (!generator) {
+      throw new Error(`Generator for '${providerConfig.apiType}' not found`);
     }
+    this.generator = generator;
 
     // Create @cmdr agent with shell command tools
     this.agent = new Team.Member({
@@ -108,38 +166,49 @@ When given instructions:
 Remember: You are operating in workspace ${process.cwd()}`;
   }
 
-  private getFunctionTools(): any[] {
-    // Return tool schemas for function calling (tools will be provided by the system)
-    return [
-      {
-        name: 'shell_cmd',
-        description: 'Execute shell commands',
-        parameters: {
-          type: 'object',
-          properties: {
-            command: {
-              type: 'string',
-              description: 'The shell command to execute',
-            },
+  private getFunctionTools(): FuncTool[] {
+    // Return tool schemas for function calling (execution is not needed for this test).
+    const shellCmdTool: FuncTool = {
+      type: 'func',
+      name: 'shell_cmd',
+      description: 'Execute shell commands',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'The shell command to execute',
           },
-          required: ['command'],
         },
+        required: ['command'],
+        additionalProperties: false,
       },
-      {
-        name: 'stop_daemon',
-        description: 'Stop a daemon process',
-        parameters: {
-          type: 'object',
-          properties: {
-            pid: {
-              type: 'number',
-              description: 'Process ID of the daemon to stop',
-            },
+      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments): Promise<string> => {
+        return 'shell_cmd execution skipped in test';
+      },
+    };
+
+    const stopDaemonTool: FuncTool = {
+      type: 'func',
+      name: 'stop_daemon',
+      description: 'Stop a daemon process',
+      parameters: {
+        type: 'object',
+        properties: {
+          pid: {
+            type: 'number',
+            description: 'Process ID of the daemon to stop',
           },
-          required: ['pid'],
         },
+        required: ['pid'],
+        additionalProperties: false,
       },
-    ];
+      call: async (_dlg: Dialog, _caller: Team.Member, _args: ToolArguments): Promise<string> => {
+        return 'stop_daemon execution skipped in test';
+      },
+    };
+
+    return [shellCmdTool, stopDaemonTool];
   }
 
   async testFunctionCall(
@@ -149,16 +218,20 @@ Remember: You are operating in workspace ${process.cwd()}`;
     console.log(`📝 Prompt: ${scenario.prompt}`);
 
     try {
+      const genseq = 1;
       const context: ChatMessage[] = [
         {
-          type: 'text',
+          type: 'prompting_msg',
           role: 'user',
+          genseq,
+          msgId: `func-call-${scenario.name}`,
           content: scenario.prompt,
         },
       ];
 
       const functionTools = this.getFunctionTools();
       const systemPrompt = this.getSystemPrompt();
+      const { providerConfig, generator, agent } = this.getInitializedState();
 
       console.log(`🎯 Expected function call: ${scenario.expectedFunctionCall}`);
       if (scenario.expectedArgs) {
@@ -170,19 +243,22 @@ Remember: You are operating in workspace ${process.cwd()}`;
       console.log(`🔄 Starting LLM non-streaming processing...`);
 
       // Use non-streaming mode for function call verification
-      const messages = await this.generator.genMoreMessages(
-        this.providerConfig,
-        this.agent,
+      const messages = await generator.genMoreMessages(
+        providerConfig,
+        agent,
         systemPrompt,
         functionTools,
         context,
-        1,
+        genseq,
       );
 
       console.log(`📊 Non-streaming processing complete: ${messages.length} messages returned`);
 
       // Find the first function call in the returned messages
-      functionCall = messages.find((msg) => msg.type === 'func_call_msg') as FuncCallMsg;
+      const maybeFunctionCall = messages.find(
+        (msg): msg is FuncCallMsg => msg.type === 'func_call_msg',
+      );
+      functionCall = maybeFunctionCall ?? null;
 
       if (functionCall) {
         console.log(`📞 Function call detected: ${functionCall.name}`);
@@ -192,7 +268,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
         console.log(`❌ No function call found in returned messages`);
         console.log(
           `📝 Returned messages:`,
-          messages.map((m) => ({ type: m.type, role: (m as any).role, name: (m as any).name })),
+          messages.map((m) => summarizeMessage(m)),
         );
         return { success: false, error: 'No function call was made' };
       }
@@ -211,18 +287,20 @@ Remember: You are operating in workspace ${process.cwd()}`;
       }
 
       // Step 2: Parse and validate arguments
-      let parsedArgs: Record<string, any> = {};
-      try {
-        parsedArgs = functionCall.arguments ? JSON.parse(functionCall.arguments) : {};
-        console.log(`📋 Parsed arguments:`, JSON.stringify(parsedArgs, null, 2));
-      } catch (parseError) {
-        console.log(`❌ Failed to parse function arguments as JSON:`, functionCall.arguments);
-        return {
-          success: false,
-          error: `Function arguments are not valid JSON: ${functionCall.arguments}`,
-          functionCall,
-        };
+      let parsedArgs: JsonObject = {};
+      if (functionCall.arguments) {
+        const parsedResult = parseJsonObject(functionCall.arguments);
+        if (!parsedResult.ok) {
+          console.log(`❌ Failed to parse function arguments as JSON:`, functionCall.arguments);
+          return {
+            success: false,
+            error: `Function arguments are not valid JSON: ${parsedResult.error}`,
+            functionCall,
+          };
+        }
+        parsedArgs = parsedResult.value;
       }
+      console.log(`📋 Parsed arguments:`, JSON.stringify(parsedArgs, null, 2));
 
       // Step 3: Validate required arguments
       const requiredArgs = scenario.expectedArgs ? Object.keys(scenario.expectedArgs) : [];
@@ -318,9 +396,10 @@ Remember: You are operating in workspace ${process.cwd()}`;
           functionCall,
         };
       }
-    } catch (error: any) {
-      console.error(`💥 Test error: ${error.message}`);
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`💥 Test error: ${message}`);
+      return { success: false, error: message };
     }
   }
 
@@ -337,16 +416,14 @@ Remember: You are operating in workspace ${process.cwd()}`;
         expectedFunctionCall: 'shell_cmd',
         expectedArgs: { command: 'ls -la' },
         argValidation: (args) => {
-          if (!args.command) {
-            return { valid: false, error: 'Missing required command argument' };
-          }
-          if (typeof args.command !== 'string') {
+          const commandValue = args.command;
+          if (typeof commandValue !== 'string') {
             return { valid: false, error: 'Command argument must be a string' };
           }
-          if (!args.command.includes('ls')) {
+          if (!commandValue.includes('ls')) {
             return { valid: false, error: 'Command should contain ls' };
           }
-          if (!args.command.includes('-la')) {
+          if (!commandValue.includes('-la')) {
             return { valid: false, error: 'Command should include -la flag for detailed listing' };
           }
           return { valid: true };
@@ -360,16 +437,14 @@ Remember: You are operating in workspace ${process.cwd()}`;
         expectedFunctionCall: 'shell_cmd',
         expectedArgs: { command: 'find . -name "*.ts"' },
         argValidation: (args) => {
-          if (!args.command) {
-            return { valid: false, error: 'Missing required command argument' };
-          }
-          if (typeof args.command !== 'string') {
+          const commandValue = args.command;
+          if (typeof commandValue !== 'string') {
             return { valid: false, error: 'Command argument must be a string' };
           }
-          if (!args.command.includes('find')) {
+          if (!commandValue.includes('find')) {
             return { valid: false, error: 'Command should contain find' };
           }
-          if (!args.command.includes('.ts')) {
+          if (!commandValue.includes('.ts')) {
             return { valid: false, error: 'Command should search for .ts files' };
           }
           return { valid: true };
@@ -383,19 +458,17 @@ Remember: You are operating in workspace ${process.cwd()}`;
         expectedFunctionCall: 'shell_cmd',
         expectedArgs: { command: 'grep -r "shell_cmd" . --include="*.ts"' },
         argValidation: (args) => {
-          if (!args.command) {
-            return { valid: false, error: 'Missing required command argument' };
-          }
-          if (typeof args.command !== 'string') {
+          const commandValue = args.command;
+          if (typeof commandValue !== 'string') {
             return { valid: false, error: 'Command argument must be a string' };
           }
-          if (!args.command.includes('grep')) {
+          if (!commandValue.includes('grep')) {
             return { valid: false, error: 'Command should contain grep' };
           }
-          if (!args.command.includes('shell_cmd')) {
+          if (!commandValue.includes('shell_cmd')) {
             return { valid: false, error: 'Command should search for "shell_cmd"' };
           }
-          if (!args.command.includes('.ts')) {
+          if (!commandValue.includes('.ts')) {
             return { valid: false, error: 'Command should include TypeScript files' };
           }
           return { valid: true };
@@ -409,16 +482,14 @@ Remember: You are operating in workspace ${process.cwd()}`;
         expectedFunctionCall: 'shell_cmd',
         expectedArgs: { command: 'echo "test" > /tmp/test.txt && tail -f /tmp/test.txt' },
         argValidation: (args) => {
-          if (!args.command) {
-            return { valid: false, error: 'Missing required command argument' };
-          }
-          if (typeof args.command !== 'string') {
+          const commandValue = args.command;
+          if (typeof commandValue !== 'string') {
             return { valid: false, error: 'Command argument must be a string' };
           }
-          if (!args.command.includes('tail') || !args.command.includes('-f')) {
+          if (!commandValue.includes('tail') || !commandValue.includes('-f')) {
             return { valid: false, error: 'Command should include tail -f for daemon process' };
           }
-          if (!args.command.includes('/tmp/')) {
+          if (!commandValue.includes('/tmp/')) {
             return { valid: false, error: 'Command should use /tmp/ path for daemon' };
           }
           return { valid: true };
@@ -431,13 +502,11 @@ Remember: You are operating in workspace ${process.cwd()}`;
         expectedFunctionCall: 'stop_daemon',
         expectedArgs: { pid: 12345 },
         argValidation: (args) => {
-          if (!args.pid) {
-            return { valid: false, error: 'Missing required pid argument' };
-          }
-          if (typeof args.pid !== 'number') {
+          const pidValue = args.pid;
+          if (typeof pidValue !== 'number') {
             return { valid: false, error: 'PID argument must be a number' };
           }
-          if (args.pid <= 0) {
+          if (pidValue <= 0) {
             return { valid: false, error: 'PID must be a positive number' };
           }
           return { valid: true };
@@ -457,7 +526,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
       success: boolean;
       error?: string;
       functionName?: string;
-      parsedArgs?: any;
+      parsedArgs?: JsonObject | null;
     }> = [];
 
     for (const scenario of scenarios) {
@@ -486,14 +555,16 @@ Remember: You are operating in workspace ${process.cwd()}`;
       }
 
       // Store detailed results for reporting
+      const parsedArgsResult = testResult.functionCall?.arguments
+        ? parseJsonObject(testResult.functionCall.arguments)
+        : null;
+
       detailedResults.push({
         scenario: scenario.name,
         success: testResult.success,
         error: testResult.error,
         functionName: testResult.functionCall?.name,
-        parsedArgs: testResult.functionCall?.arguments
-          ? JSON.parse(testResult.functionCall.arguments)
-          : null,
+        parsedArgs: parsedArgsResult && parsedArgsResult.ok ? parsedArgsResult.value : null,
       });
 
       console.log(`📊 Progress: ${passedTests}/${totalTests} tests passed`);
@@ -575,12 +646,11 @@ function parseArgs(): { provider: string; model: string } {
     // Load and display available configurations
     LlmConfig.load()
       .then((cfg) => {
-        for (const [name, provider] of Object.entries((cfg as any).providers || {})) {
+        for (const [name, provider] of Object.entries(cfg.providers)) {
           console.log(`\n${name}:`);
-          if (provider.models) {
-            provider.models.forEach((model: string) => {
-              console.log(`  - ${model}`);
-            });
+          const modelNames = Object.keys(provider.models);
+          for (const modelName of modelNames) {
+            console.log(`  - ${modelName}`);
           }
         }
       })
@@ -606,8 +676,9 @@ async function main() {
     await tester.runAllTests();
 
     console.log(`\n🏁 Test completed at: ${new Date().toISOString()}`);
-  } catch (error: any) {
-    console.error(`💥 Fatal error: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`💥 Fatal error: ${message}`);
     process.exit(1);
   }
 }

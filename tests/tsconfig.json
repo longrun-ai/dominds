@@ -1,5 +1,5 @@
 {
-  "extends": "../main/tsconfig.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": ".",
     "noEmit": true,
@@ -7,5 +7,7 @@
       "dominds": ["../main/index.ts"],
       "dominds/*": ["../main/*.ts"]
     }
-  }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules"]
 }

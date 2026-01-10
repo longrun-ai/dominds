@@ -2,3 +2,4 @@ packages:
   - "."
   - "webapp"
   - "codex-auth"
+  - "tests"
