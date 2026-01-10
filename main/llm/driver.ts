@@ -20,7 +20,12 @@ import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { HumanQuestion } from '../shared/types/storage';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import { CollectedTextingCall, TextingEventsReceiver, TextingStreamParser } from '../texting';
+import {
+  CollectedTextingCall,
+  TextingEventsReceiver,
+  TextingStreamParser,
+  extractMentions,
+} from '../texting';
 import type { ToolArguments } from '../tool';
 import { FuncTool, TextingTool, Tool, validateArgs } from '../tool';
 import { getTool } from '../tools/registry';
@@ -508,47 +513,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             suspendForHuman = true;
           }
 
-          // Fallback: Check for @teammate patterns in user message that TextingStreamParser might miss
-          // If no subdialogs were created but the message contains @teammate requests, create them now
-          if (userResult.subdialogsCreated.length === 0) {
-            const team = await Team.load();
-            const mentionPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/g;
-            const mentions: string[] = [];
-            let match;
-            while ((match = mentionPattern.exec(promptContent)) !== null) {
-              mentions.push(match[1]);
-            }
-            // Filter to only valid team members
-            const teammateTargets = mentions.filter((m) => team.getMember(m));
-            if (teammateTargets.length > 0) {
-              for (const tgt of teammateTargets) {
-                try {
-                  const sub = await dlg.createSubDialog(tgt, promptContent, '', {
-                    originRole: 'user',
-                    originMemberId: 'human',
-                  });
-                  // Drive the subdialog (fire and forget - parent is suspended)
-                  void (async () => {
-                    try {
-                      await driveDialogStream(sub);
-                      // Extract summary and store in parent's pending summaries
-                      const summary = await extractSubdialogSummary(sub.id);
-                      // Note: We need access to parent dialog here - pass parent reference
-                      // The parent dialog is available as 'dlg' in the outer scope
-                      await supplyResponseToSupdialog(dlg, sub.id, summary, 'C');
-                    } catch (err) {
-                      log.warn('Subdialog processing error for user request:', err);
-                    }
-                  })();
-                  userResult.subdialogsCreated.push(sub.id);
-                  // Suspend the parent dialog when a subdialog is created via user @mention
-                  userResult.suspend = true;
-                } catch (err) {
-                  log.warn('Failed to create subdialog for @teammate in user message:', err);
-                }
-              }
-            }
-          }
+          // No teammate-call fallback here: rely exclusively on TextingStreamParser.
 
           if (userResult.subdialogsCreated.length > 0) {
             dlg.addPendingSubdialogs(userResult.subdialogsCreated);
@@ -1263,7 +1228,7 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
  * Result of parsing a teammate call pattern.
  * Three types based on the call syntax:
  * - Type A: @<supdialogAgentId> - subdialog calling its direct parent (supdialog suspension)
- * - Type B: @<agentId> !<topicId> - creates/resumes registered subdialog
+ * - Type B: @<agentId> !topic <topicId> - creates/resumes registered subdialog
  * - Type C: @<agentId> - creates transient unregistered subdialog
  */
 export type TeammateCallParseResult = TeammateCallTypeA | TeammateCallTypeB | TeammateCallTypeC;
@@ -1300,17 +1265,23 @@ export interface TeammateCallTypeC {
   agentId: string;
 }
 
-function extractTeammateCallPrefix(headLine: string, firstMention: string): string {
+function isValidTopicId(topicId: string): boolean {
+  const segments = topicId.split('.');
+  if (segments.length === 0) return false;
+  return segments.every((segment) => /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(segment));
+}
+
+function extractTopicIdFromHeadline(headLine: string, firstMention: string): string | null {
   const mentionToken = `@${firstMention}`;
   const mentionIndex = headLine.indexOf(mentionToken);
-  const slice = mentionIndex >= 0 ? headLine.slice(mentionIndex) : mentionToken;
-  const pattern = new RegExp(`^@${firstMention}(?:\\s+!topic\\s+([a-zA-Z][a-zA-Z0-9_-]*))?`);
-  const match = slice.match(pattern);
-  if (!match) {
-    return mentionToken;
-  }
-  const topicId = match[1];
-  return topicId ? `${mentionToken} !topic ${topicId}` : mentionToken;
+  if (mentionIndex < 0) return null;
+  const afterMention = headLine.slice(mentionIndex + mentionToken.length);
+  const trimmed = afterMention.trimStart();
+  if (!trimmed.startsWith('!topic')) return null;
+  const rest = trimmed.slice('!topic'.length).trimStart();
+  if (!rest) return null;
+  const topicId = rest.split(/\s+/)[0] ?? '';
+  return isValidTopicId(topicId) ? topicId : null;
 }
 
 /**
@@ -1321,52 +1292,46 @@ function extractTeammateCallPrefix(headLine: string, firstMention: string): stri
  * - @<agentId> !topic <topicId> → Type B (registered subdialog)
  * - @<agentId> → Type C (transient subdialog)
  *
- * @param text The text containing the teammate call (e.g., "@cmdr !topic code-review" or "@cmdr")
+ * @param firstMention The first teammate mention extracted by the streaming parser (e.g., "cmdr")
+ * @param headLine The full headline text from the streaming parser
  * @param currentDialog Optional current dialog context to detect Type A (subdialog calling parent)
  * @returns The parsed TeammateCallParseResult
  */
-export function parseTeammateCall(text: string, currentDialog?: Dialog): TeammateCallParseResult {
-  // Match @agentId !topic <topicId> pattern (Type B)
-  // topicId format uses the same schema as agentId (e.g., "!topic env-check" -> topicId = "env-check")
-  const typeBPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)\s+!topic\s+([a-zA-Z][a-zA-Z0-9_-]*)/;
-  const typeBMatch = text.match(typeBPattern);
-
-  if (typeBMatch) {
+export function parseTeammateCall(
+  firstMention: string,
+  headLine: string,
+  currentDialog?: Dialog,
+): TeammateCallParseResult {
+  const topicId = extractTopicIdFromHeadline(headLine, firstMention);
+  if (topicId) {
     return {
       type: 'B',
-      agentId: typeBMatch[1],
-      topicId: typeBMatch[2],
+      agentId: firstMention,
+      topicId,
     };
   }
 
-  // Match @agentId pattern
-  const typeAPattern = /@([a-zA-Z][a-zA-Z0-9_-]*)/;
-  const typeAMatch = text.match(typeAPattern);
-
-  if (typeAMatch) {
-    const agentId = typeAMatch[1];
-
-    // Phase 11: Check if this is a Type A call (subdialog calling its direct parent)
-    // Type A only applies when:
-    // 1. A current dialog context is provided
-    // 2. The current dialog is a SubDialog (has a supdialog)
-    // 3. The @agentId matches the supdialog's agentId
-    if (currentDialog && currentDialog.supdialog && agentId === currentDialog.supdialog.agentId) {
-      return {
-        type: 'A',
-        agentId,
-      };
-    }
-
-    // Type C: Any @agentId is a transient subdialog call
+  // Phase 11: Check if this is a Type A call (subdialog calling its direct parent)
+  // Type A only applies when:
+  // 1. A current dialog context is provided
+  // 2. The current dialog is a SubDialog (has a supdialog)
+  // 3. The @agentId matches the supdialog's agentId
+  if (
+    currentDialog &&
+    currentDialog.supdialog &&
+    firstMention === currentDialog.supdialog.agentId
+  ) {
     return {
-      type: 'C',
-      agentId,
+      type: 'A',
+      agentId: firstMention,
     };
   }
 
-  // No match - should not happen if called correctly
-  throw new Error(`Invalid teammate call pattern: ${text}`);
+  // Type C: Any @agentId is a transient subdialog call
+  return {
+    type: 'C',
+    agentId: firstMention,
+  };
 }
 
 // === CONVENIENCE METHODS USING SINGLE RESTORATION API ===
@@ -1585,7 +1550,7 @@ export async function createSubdialogForSupdialog(
  * Create a Type B registered subdialog with registry lookup/register.
  * Creates or resumes a registered subdialog tracked in registry.yaml.
  *
- * Type B: @<agentId> !<topicId> - Creates/resumes registered subdialog.
+ * Type B: @<agentId> !topic <topicId> - Creates/resumes registered subdialog.
  *
  * @param rootDialog The root dialog making the call
  * @param agentId The agent to handle the subdialog
@@ -1917,8 +1882,7 @@ async function executeTextingCall(
   if (member) {
     // This is a teammate call - parse using Phase 5 taxonomy
     // Parse the call text to determine type A/B/C
-    const callText = extractTeammateCallPrefix(headLine, firstMention);
-    const parseResult = parseTeammateCall(callText, dlg);
+    const parseResult = parseTeammateCall(firstMention, headLine, dlg);
 
     // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
     // This suspends the subdialog, drives the supdialog for one round, then returns to subdialog
@@ -2079,12 +2043,7 @@ ${showErrorToAi(err)}`,
 
     // Type C: Transient subdialog (unregistered)
     if (parseResult.type === 'C') {
-      const mentions: string[] = [];
-      const lines = headLine.split('\n');
-      for (const ln of lines) {
-        const mm = ln.match(/@([^\s]+)/);
-        if (mm) mentions.push(mm[1]);
-      }
+      const mentions = extractMentions(headLine);
       const targets = mentions.filter((m) => !!team.getMember(m));
 
       for (const tgt of targets) {

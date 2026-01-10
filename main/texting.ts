@@ -18,6 +18,7 @@
  *    - Syntax: `@mention command arguments`
  *    - **Mention Syntax**: `@` followed by mention name
  *      - **Valid characters**: Alphanumeric (a-z, A-Z, 0-9), Unicode letters/digits, underscore (`_`), hyphen (`-`), dot (`.`) for namespace separation
+ *      - **Invalid form**: mention IDs must NOT end with a dot (`.`)
  *      - **Invalid characters** (mention ends when encountered): space, newline, tab, colon (`:`), and any other non-valid character
  *      - Examples: `@tool1`, `@user1`, `@namespace.tool1`, `@user_name`, `@user-name`
  *    - First mention determines the target
@@ -301,9 +302,20 @@ export class TextingStreamParser {
     this.downstream.callFinish(done.callId);
   }
 
-  private abortCallToMarkdown(): void {
+  private appendInvalidMentionError(mentionToken: string): void {
+    const msg = `Invalid mention \`${mentionToken}\`: trailing '.' is not allowed.`;
+    if (this.markdownChunkBuffer && !/\s$/.test(this.markdownChunkBuffer)) {
+      this.markdownChunkBuffer += ' ';
+    }
+    this.markdownChunkBuffer += msg;
+  }
+
+  private abortCallToMarkdown(invalidMention?: string): void {
     if (this.headlineBuffer) {
       this.markdownChunkBuffer += this.headlineBuffer;
+    }
+    if (invalidMention) {
+      this.appendInvalidMentionError(invalidMention);
     }
     this.headlineBuffer = '';
     this.firstMentionAccumulator = '';
@@ -318,6 +330,10 @@ export class TextingStreamParser {
     this.pendingAtTermination = false;
     this.headlineHasContent = false;
     this.mode = ParserMode.FREE_TEXT;
+  }
+
+  private mentionHasTrailingDot(mentionToken: string): boolean {
+    return mentionToken.length > 1 && mentionToken.endsWith('.');
   }
 
   public takeUpstreamChunk(chunk: string): number {
@@ -387,7 +403,13 @@ export class TextingStreamParser {
         this.headlineBuffer = '';
         this.mode = ParserMode.FREE_TEXT;
       }
-      if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+      if (
+        !this.callStartEmitted &&
+        this.firstMentionAccumulator.length > 1 &&
+        this.mentionHasTrailingDot(this.firstMentionAccumulator)
+      ) {
+        this.abortCallToMarkdown(this.firstMentionAccumulator);
+      } else if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
         this.abortCallToMarkdown();
       } else {
         if (this.firstMentionAccumulator.length > 1) {
@@ -614,6 +636,14 @@ export class TextingStreamParser {
     }
 
     if (charType === CharType.NEWLINE) {
+      if (
+        !this.callStartEmitted &&
+        this.firstMentionAccumulator.length > 1 &&
+        this.mentionHasTrailingDot(this.firstMentionAccumulator)
+      ) {
+        this.abortCallToMarkdown(this.firstMentionAccumulator);
+        return position;
+      }
       if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
         this.abortCallToMarkdown();
         return position;
@@ -744,6 +774,15 @@ export class TextingStreamParser {
         this.firstMentionAccumulator = '@';
         this.headlineBuffer += '@';
         return position + 1;
+      }
+
+      if (
+        !this.callStartEmitted &&
+        this.firstMentionAccumulator.length > 1 &&
+        this.mentionHasTrailingDot(this.firstMentionAccumulator)
+      ) {
+        this.abortCallToMarkdown(this.firstMentionAccumulator);
+        return position;
       }
 
       if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
@@ -1428,6 +1467,7 @@ export class TextingStreamParser {
  *   - Underscore (`_`) and hyphen (`-`)
  *   - Dot (`.`) for namespace separation
  * - Mention ends when invalid character encountered: space, newline, tab, colon (`:`), etc.
+ * - Mention IDs may include dots for namespaces, but must not end with a dot.
  *
  * Respects backtick quoting - mentions inside backtick-quoted content are ignored.
  */
@@ -1506,7 +1546,7 @@ export function extractMentions(text: string): string[] {
         j++;
       }
 
-      if (mention.length > 0) {
+      if (mention.length > 0 && !mention.endsWith('.')) {
         mentions.push(mention);
       }
 
