@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   AuthDotJson,
@@ -22,6 +22,7 @@ import {
   type ChatGptResponsesRequest,
   type ChatGptResponsesStreamEvent,
 } from '../llm/chatgpt.js';
+import { loadCodexPromptSync } from '../prompts.js';
 import { tryRefreshToken } from '../oauth/refresh.js';
 import { parseIdToken } from '../oauth/tokenParsing.js';
 
@@ -219,44 +220,8 @@ function extractModelFromToml(raw: string): string | undefined {
   return undefined;
 }
 
-function resolvePromptFilename(model: string): string {
-  if (model.startsWith('gpt-5.2-codex') || model.startsWith('bengalfox')) {
-    return 'gpt-5.2-codex_prompt.md';
-  }
-  if (model.startsWith('gpt-5.1-codex-max')) {
-    return 'gpt-5.1-codex-max_prompt.md';
-  }
-  if (
-    (model.startsWith('gpt-5-codex') ||
-      model.startsWith('gpt-5.1-codex') ||
-      model.startsWith('codex-')) &&
-    !model.includes('-mini')
-  ) {
-    return 'gpt_5_codex_prompt.md';
-  }
-  if (model.startsWith('codex-mini-latest')) {
-    return 'prompt_with_apply_patch_instructions.md';
-  }
-  if (model.startsWith('gpt-5.2')) {
-    return 'gpt_5_2_prompt.md';
-  }
-  if (model.startsWith('gpt-5.1')) {
-    return 'gpt_5_1_prompt.md';
-  }
-  return 'prompt.md';
-}
-
 function resolveLocalInstructions(model: string): string | undefined {
-  const filename = resolvePromptFilename(model);
-  const candidate = new URL(`../../prompts/${filename}`, import.meta.url);
-  if (existsSync(candidate)) {
-    return readFileSync(candidate, 'utf8');
-  }
-  const fallback = new URL('../../prompts/prompt.md', import.meta.url);
-  if (existsSync(fallback)) {
-    return readFileSync(fallback, 'utf8');
-  }
-  return undefined;
+  return loadCodexPromptSync(model) ?? undefined;
 }
 
 function summarizeErrorBody(body: string): string {

@@ -10,3 +10,4 @@ export * from './oauth/tokenExchange.js';
 export * from './oauth/tokenParsing.js';
 
 export * from './llm/chatgpt.js';
+export * from './prompts.js';
