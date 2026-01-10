@@ -619,13 +619,28 @@ export class ChatGptClient {
     receiver: ChatGptEventReceiver,
     init: ChatGptRequestInit = {},
   ): Promise<number> {
-    const response = await this.responses(payload, init);
+    const response = await this.responsesWithRetry(payload, init);
     if (!response.ok) {
       const body = await response.text();
       throw new ChatGptTriggerError(response.status, body, response.statusText);
     }
     await emitChatGptEvents(response, receiver);
     return response.status;
+  }
+
+  private async responsesWithRetry(
+    payload: ChatGptResponsesRequest,
+    init: ChatGptRequestInit,
+  ): Promise<ChatGptResponsesStreamResponse> {
+    try {
+      return await this.responses(payload, init);
+    } catch (err: unknown) {
+      if (!isRetriableFetchError(err)) {
+        throw err;
+      }
+      await delay(250);
+      return await this.responses(payload, init);
+    }
   }
 
   private async requestAtBase(
@@ -656,6 +671,15 @@ export class ChatGptClient {
       dispatcher: this.dispatcher,
     });
   }
+}
+
+function isRetriableFetchError(err: unknown): err is TypeError {
+  if (!(err instanceof TypeError)) return false;
+  return err.message.toLowerCase().includes('fetch failed');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function credentialsFromAuthState(auth: AuthState): ChatGptCredentials {
