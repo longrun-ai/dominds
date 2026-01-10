@@ -138,6 +138,14 @@ runTest('Type B with whitespace variations', () => {
   }
 });
 
+// Test 6: Type B with trailing punctuation after topic
+runTest('Type B with trailing punctuation after topic', () => {
+  const result = parseFromHeadline('@cmdr !topic env-check. Please confirm.');
+  assertTrue(result.type === 'B', 'Should be Type B');
+  assertEqual((result as TeammateCallTypeB).agentId, 'cmdr', 'AgentId should be cmdr');
+  assertEqual((result as TeammateCallTypeB).topicId, 'env-check', 'TopicId should be env-check');
+});
+
 // Test 6: Type B pattern takes precedence (explicit topic wins)
 runTest('Type B pattern takes precedence over Type C', () => {
   // When both patterns could match, Type B should be returned

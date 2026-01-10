@@ -1280,7 +1280,9 @@ function extractTopicIdFromHeadline(headLine: string, firstMention: string): str
   if (!trimmed.startsWith('!topic')) return null;
   const rest = trimmed.slice('!topic'.length).trimStart();
   if (!rest) return null;
-  const topicId = rest.split(/\s+/)[0] ?? '';
+  const match = rest.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]+)*)/);
+  if (!match) return null;
+  const topicId = match[1] ?? '';
   return isValidTopicId(topicId) ? topicId : null;
 }
 
@@ -1387,99 +1389,97 @@ export async function continueRootDialog(
 
 /**
  * Unified function to extract the last assistant message from an array of messages.
- * Prefers saying_msg over thinking_msg, truncates to 500 chars with "...".
+ * Prefers saying_msg over thinking_msg, returns full content without truncation.
  *
  * @param messages Array of chat messages to search
  * @param defaultMessage Default message if no assistant message found
  * @returns The extracted message content or default
  */
-function extractLastAssistantMessage(
+function extractLastAssistantResponse(
   messages: Array<{ type: string; content?: string }>,
   defaultMessage: string,
 ): string {
-  let summary = '';
+  let responseText = '';
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg.type === 'saying_msg' && typeof msg.content === 'string') {
-      summary = msg.content;
+      responseText = msg.content;
       break;
     }
     if (msg.type === 'thinking_msg' && typeof msg.content === 'string') {
-      summary = msg.content;
+      responseText = msg.content;
       // Keep looking for a saying_msg which is more complete
     }
   }
 
   // If no assistant message found, use the default
-  if (!summary) {
-    summary = defaultMessage;
+  if (!responseText) {
+    responseText = defaultMessage;
   }
 
-  // Truncate summary if too long (max 500 characters)
-  if (summary.length > 500) {
-    summary = summary.substring(0, 497) + '...';
-  }
-
-  return summary;
+  return responseText;
 }
 
 /**
- * Extract summary from a completed subdialog's messages
- * Looks for the last assistant message (saying_msg preferred over thinking_msg)
+ * Extract response from a completed subdialog's messages.
+ * Returns the full last assistant message (saying_msg preferred over thinking_msg).
  */
-async function extractSubdialogSummary(subdialogId: DialogID): Promise<string> {
+async function extractSubdialogResponse(subdialogId: DialogID): Promise<string> {
   try {
     const subdialogState = await DialogPersistence.restoreDialog(subdialogId, 'running');
     if (!subdialogState) {
-      log.warn('Could not restore subdialog for summary extraction', {
+      log.warn('Could not restore subdialog for response extraction', {
         subdialogId: subdialogId.key(),
       });
       return 'Subdialog completed without producing output.';
     }
 
-    return extractLastAssistantMessage(
+    return extractLastAssistantResponse(
       subdialogState.messages,
       'Subdialog completed without producing output.',
     );
   } catch (err) {
-    log.warn('Failed to extract subdialog summary', { subdialogId: subdialogId.key(), error: err });
+    log.warn('Failed to extract subdialog response', {
+      subdialogId: subdialogId.key(),
+      error: err,
+    });
     return 'Subdialog completed with errors.';
   }
 }
 
 /**
- * Helper function to drive a subdialog to completion and extract summary.
+ * Helper function to drive a subdialog to completion and extract response.
  *
  * @param parentDialog The parent dialog that created/owns the subdialog
  * @param subdialog The subdialog to drive
- * @returns The summary string from the subdialog
+ * @returns The response string from the subdialog
  */
 async function driveSubdialogToCompletion(
   subdialog: SubDialog,
   humanPrompt?: HumanPrompt,
 ): Promise<string> {
   await driveDialogStream(subdialog, humanPrompt);
-  const summary = await extractSubdialogSummary(subdialog.id);
-  return summary;
+  const responseText = await extractSubdialogResponse(subdialog.id);
+  return responseText;
 }
 
 /**
- * Phase 11: Extract summary from supdialog's current messages for Type A mechanism.
+ * Phase 11: Extract response from supdialog's current messages for Type A mechanism.
  * Used when a subdialog calls its parent (supdialog) and needs the parent's response.
- * Unlike extractSubdialogSummary which reads from persistence, this reads from the
+ * Unlike extractSubdialogResponse which reads from persistence, this reads from the
  * in-memory dialog object which contains the latest messages after driving.
  *
  * @param supdialog The supdialog that was just driven
- * @returns The summary text from the supdialog's last assistant message
+ * @returns The response text from the supdialog's last assistant message
  */
-async function extractSupdialogSummaryForTypeA(supdialog: Dialog): Promise<string> {
+async function extractSupdialogResponseForTypeA(supdialog: Dialog): Promise<string> {
   try {
-    return extractLastAssistantMessage(
+    return extractLastAssistantResponse(
       supdialog.msgs,
       'Supdialog completed without producing output.',
     );
   } catch (err) {
-    log.warn('Failed to extract supdialog summary for Type A', { error: err });
+    log.warn('Failed to extract supdialog response for Type A', { error: err });
     return 'Supdialog completed with errors.';
   }
 }
@@ -1530,8 +1530,8 @@ export async function createSubdialogForSupdialog(
     void (async () => {
       try {
         await driveDialogStream(subdialog);
-        const summary = await extractSubdialogSummary(subdialog.id);
-        await supplyResponseToSupdialog(supdialog, subdialog.id, summary, 'A');
+        const responseText = await extractSubdialogResponse(subdialog.id);
+        await supplyResponseToSupdialog(supdialog, subdialog.id, responseText, 'A');
       } catch (err) {
         log.warn('Type A subdialog processing error:', err);
       }
@@ -1566,21 +1566,21 @@ export async function createSubdialogForSupdialog(
  *
  * @param parentDialog The parent dialog that created the subdialog
  * @param subdialogId The ID of the completed subdialog
- * @param summary The summary text from the subdialog
+ * @param responseText The full response text from the subdialog
  * @param callType The call type ('A', 'B', or 'C')
  * @param callId Optional callId for Type C subdialog tracking
  */
 export async function supplyResponseToSupdialog(
   parentDialog: Dialog,
   subdialogId: DialogID,
-  summary: string,
+  responseText: string,
   callType: 'A' | 'B' | 'C',
   callId?: string,
 ): Promise<void> {
   try {
     const response = {
       subdialogId: subdialogId.selfId,
-      summary,
+      summary: responseText,
       completedAt: formatUnifiedTimestamp(new Date()),
       callType,
     };
@@ -1604,7 +1604,7 @@ export async function supplyResponseToSupdialog(
 
     let responderId = subdialogId.rootId;
     let responderAgentId: string | undefined;
-    let headLine = summary;
+    let headLine = responseText;
 
     if (pendingRecord) {
       responderId = pendingRecord.targetAgentId;
@@ -1635,10 +1635,10 @@ export async function supplyResponseToSupdialog(
     }
 
     if (headLine.trim() === '') {
-      headLine = summary.slice(0, 100) + (summary.length > 100 ? '...' : '');
+      headLine = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
     }
 
-    const responseContent = `Teammate response received from @${responderId} (call complete). Do not re-issue this call unless asked.\n\n${summary}`;
+    const responseContent = `Teammate response received from @${responderId} (call complete). Do not re-issue this call unless asked.\n\n${responseText}`;
     const resultMsg: TextingCallResultMsg = {
       type: 'call_result_msg',
       role: 'tool',
@@ -1656,7 +1656,7 @@ export async function supplyResponseToSupdialog(
       'completed',
       subdialogId,
       {
-        summary,
+        summary: responseText,
         agentId: responderAgentId,
         callId,
       },
@@ -1721,7 +1721,7 @@ export async function areAllSubdialogsSatisfied(rootDialogId: DialogID): Promise
  *
  * @param rootDialog The root dialog to resume
  * @returns Promise<Array<{ subdialogId: string; summary: string; callType: 'A' | 'B' | 'C' }>>
- *   Array of incorporated responses
+ *   Array of incorporated responses (summary holds full response text)
  */
 export async function incorporateSubdialogResponses(rootDialog: RootDialog): Promise<
   Array<{
@@ -1740,7 +1740,7 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
       // Add to parent's pending summaries
       rootDialog.addPendingSubdialogSummary(subdialogId, response.summary);
 
-      // Emit subdialog summary event
+      // Emit subdialog summary event (payload contains full response text)
       await rootDialog.postSubdialogSummary(subdialogId, response.summary);
     }
 
@@ -1898,8 +1898,8 @@ async function executeTextingCall(
           // Drive the supdialog for one round
           await driveDialogStream(supdialog);
 
-          // Extract summary from supdialog's last assistant message
-          const summary = await extractSupdialogSummaryForTypeA(supdialog);
+          // Extract response from supdialog's last assistant message
+          const responseText = await extractSupdialogResponseForTypeA(supdialog);
 
           // Resume the subdialog with the supdialog's response
           dlg.setSuspensionState('resumed');
@@ -1910,7 +1910,7 @@ async function executeTextingCall(
             role: 'user',
             content: `🔄 **Response from @${parseResult.agentId}:**
 
-${summary}`,
+${responseText}`,
           });
         } catch (err) {
           log.warn('Type A supdialog processing error:', err);
@@ -1959,8 +1959,11 @@ ${showErrorToAi(err)}`,
 
           const task = (async () => {
             try {
-              const summary = await driveSubdialogToCompletion(existingSubdialog, resumePrompt);
-              await supplyResponseToSupdialog(rootDialog, existingSubdialog.id, summary, 'B');
+              const responseText = await driveSubdialogToCompletion(
+                existingSubdialog,
+                resumePrompt,
+              );
+              await supplyResponseToSupdialog(rootDialog, existingSubdialog.id, responseText, 'B');
             } catch (err) {
               log.warn('Type B registered subdialog resumption error:', err);
             }
@@ -1992,8 +1995,8 @@ ${showErrorToAi(err)}`,
 
           const task = (async () => {
             try {
-              const summary = await driveSubdialogToCompletion(sub);
-              await supplyResponseToSupdialog(rootDialog, sub.id, summary, 'B');
+              const responseText = await driveSubdialogToCompletion(sub);
+              await supplyResponseToSupdialog(rootDialog, sub.id, responseText, 'B');
             } catch (err) {
               log.warn('Type B subdialog processing error:', err);
             }
@@ -2026,8 +2029,8 @@ ${showErrorToAi(err)}`,
 
           const task = (async () => {
             try {
-              const summary = await driveSubdialogToCompletion(sub);
-              await supplyResponseToSupdialog(dlg, sub.id, summary, 'B');
+              const responseText = await driveSubdialogToCompletion(sub);
+              await supplyResponseToSupdialog(dlg, sub.id, responseText, 'B');
             } catch (err) {
               log.warn('Type B→C fallback subdialog processing error:', err);
             }
@@ -2043,7 +2046,7 @@ ${showErrorToAi(err)}`,
 
     // Type C: Transient subdialog (unregistered)
     if (parseResult.type === 'C') {
-      const mentions = extractMentions(headLine);
+      const mentions = Array.from(new Set(extractMentions(headLine)));
       const targets = mentions.filter((m) => !!team.getMember(m));
 
       for (const tgt of targets) {
@@ -2065,8 +2068,8 @@ ${showErrorToAi(err)}`,
 
           const task = (async () => {
             try {
-              const summary = await driveSubdialogToCompletion(sub);
-              await supplyResponseToSupdialog(dlg, sub.id, summary, 'C', callId);
+              const responseText = await driveSubdialogToCompletion(sub);
+              await supplyResponseToSupdialog(dlg, sub.id, responseText, 'C', callId);
               // Type C: Move to done/ on completion (handled by subdialog completion)
             } catch (err) {
               log.warn('Type C subdialog processing error:', err);
