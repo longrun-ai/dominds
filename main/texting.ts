@@ -264,6 +264,18 @@ export class TextingStreamParser {
       );
     }
     call.firstMention = firstMention;
+    if (this.markdownChunkBuffer) {
+      if (!this.markdownStarted) {
+        this.downstream.markdownStart();
+        this.markdownStarted = true;
+      }
+      this.downstream.markdownChunk(this.markdownChunkBuffer);
+      this.markdownChunkBuffer = '';
+    }
+    if (this.markdownStarted) {
+      this.downstream.markdownFinish();
+      this.markdownStarted = false;
+    }
     // callId will be computed at emitCallFinish using content-hash
     // This ensures replay generates the same callId for correlation
     this.downstream.callStart(firstMention);
@@ -271,24 +283,40 @@ export class TextingStreamParser {
   }
 
   private emitCallFinish(): void {
+    const hadCallStart = this.callStartEmitted;
     this.callStartEmitted = false;
-    if (!this.currentCall) {
-      this.downstream.callFinish('');
+    if (!this.currentCall || !hadCallStart || !this.currentCall.firstMention) {
+      this.currentCall = null;
       return;
     }
     const done = this.currentCall;
     this.currentCall = null;
-    if (done.firstMention) {
-      // Compute callId using content-hash for deterministic replay correlation
-      const content = `${done.firstMention}\n${done.headLine}\n${done.body}`;
-      this.callCounter++;
-      done.callId = generateContentHash(content, this.callCounter);
-      this.currentCallId = done.callId;
-      this.collectedCalls.push(done);
-      this.downstream.callFinish(done.callId);
-    } else {
-      this.downstream.callFinish('');
+    // Compute callId using content-hash for deterministic replay correlation
+    const content = `${done.firstMention}\n${done.headLine}\n${done.body}`;
+    this.callCounter++;
+    done.callId = generateContentHash(content, this.callCounter);
+    this.currentCallId = done.callId;
+    this.collectedCalls.push(done);
+    this.downstream.callFinish(done.callId);
+  }
+
+  private abortCallToMarkdown(): void {
+    if (this.headlineBuffer) {
+      this.markdownChunkBuffer += this.headlineBuffer;
     }
+    this.headlineBuffer = '';
+    this.firstMentionAccumulator = '';
+    this.headlineFinished = false;
+    this.expectingFirstMention = true;
+    this.callStartEmitted = false;
+    this.currentCall = null;
+    this.hasBody = false;
+    this.isTripleQuotedBody = false;
+    this.tripleQuotedBodyOpen = false;
+    this.bodyChunkBuffer = '';
+    this.pendingAtTermination = false;
+    this.headlineHasContent = false;
+    this.mode = ParserMode.FREE_TEXT;
   }
 
   public takeUpstreamChunk(chunk: string): number {
@@ -356,19 +384,23 @@ export class TextingStreamParser {
         this.headlineBuffer = '';
         this.mode = ParserMode.FREE_TEXT;
       }
-      if (this.firstMentionAccumulator !== '') {
-        const firstMention = this.firstMentionAccumulator.substring(1);
-        this.emitCallStart(firstMention);
-        this.firstMentionAccumulator = '';
-        this.expectingFirstMention = false;
-      }
-      this.flushHeadlineBuffer();
-      this.downstream.callHeadLineFinish();
-      this.headlineFinished = true;
+      if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+        this.abortCallToMarkdown();
+      } else {
+        if (this.firstMentionAccumulator.length > 1) {
+          const firstMention = this.firstMentionAccumulator.substring(1);
+          this.emitCallStart(firstMention);
+          this.firstMentionAccumulator = '';
+          this.expectingFirstMention = false;
+        }
+        this.flushHeadlineBuffer();
+        this.downstream.callHeadLineFinish();
+        this.headlineFinished = true;
 
-      // Only emit callFinish if a call was actually started (currentCall has firstMention)
-      if (this.currentCall?.firstMention) {
-        this.emitCallFinish();
+        // Only emit callFinish if a call was actually started (currentCall has firstMention)
+        if (this.currentCall?.firstMention) {
+          this.emitCallFinish();
+        }
       }
     } else if (this.mode === ParserMode.TEXTING_CALL_BEFORE_BODY) {
       // Only emit callFinish if a call was actually started (this.currentCall exists)
@@ -383,6 +415,15 @@ export class TextingStreamParser {
       if (this.currentCall) {
         this.emitCallFinish();
       }
+    }
+
+    if (this.markdownChunkBuffer) {
+      if (!this.markdownStarted) {
+        this.downstream.markdownStart();
+        this.markdownStarted = true;
+      }
+      this.downstream.markdownChunk(this.markdownChunkBuffer);
+      this.markdownChunkBuffer = '';
     }
 
     if (this.markdownStarted) {
@@ -450,8 +491,6 @@ export class TextingStreamParser {
             this.markdownChunkBuffer = '';
             this.downstream.markdownFinish();
             this.markdownStarted = false;
-          } else {
-            this.markdownChunkBuffer = '';
           }
         }
 
@@ -566,6 +605,10 @@ export class TextingStreamParser {
     }
 
     if (charType === CharType.NEWLINE) {
+      if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+        this.abortCallToMarkdown();
+        return position;
+      }
       // Update backtick state for newline character
       this.updateBacktickState(charType);
 
@@ -588,7 +631,7 @@ export class TextingStreamParser {
             // Found triple backticks - this is a wholly triple quoted body
 
             // Ensure callStart is called before finishing
-            if (this.firstMentionAccumulator !== '') {
+            if (this.firstMentionAccumulator.length > 1) {
               const firstMention = this.firstMentionAccumulator.substring(1);
               this.emitCallStart(firstMention);
               this.firstMentionAccumulator = '';
@@ -618,7 +661,7 @@ export class TextingStreamParser {
         const nextChar = chunk[aheadPos];
         if (nextChar === '@') {
           if (sawExtraNewline) {
-            if (this.firstMentionAccumulator !== '') {
+            if (this.firstMentionAccumulator.length > 1) {
               const firstMention = this.firstMentionAccumulator.substring(1);
               this.emitCallStart(firstMention);
               this.firstMentionAccumulator = '';
@@ -655,7 +698,7 @@ export class TextingStreamParser {
       if (foundNonWhitespace || aheadPos >= chunk.length) {
         // End of headline, start of body
         // Ensure callStart is called before finishing
-        if (this.firstMentionAccumulator !== '') {
+        if (this.firstMentionAccumulator.length > 1) {
           const firstMention = this.firstMentionAccumulator.substring(1);
           this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
@@ -669,7 +712,7 @@ export class TextingStreamParser {
         return position + 1;
       } else {
         // End of chunk, finalize headline to allow body detection in the next chunk
-        if (this.firstMentionAccumulator !== '') {
+        if (this.firstMentionAccumulator.length > 1) {
           const firstMention = this.firstMentionAccumulator.substring(1);
           this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
@@ -692,6 +735,11 @@ export class TextingStreamParser {
         this.firstMentionAccumulator = '@';
         this.headlineBuffer += '@';
         return position + 1;
+      }
+
+      if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+        this.abortCallToMarkdown();
+        return position;
       }
 
       // Only trigger callStart if we have a non-empty first mention AND haven't already emitted it

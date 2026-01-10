@@ -669,6 +669,16 @@ Would you like me to reach out to \`@dijiang\` instead?`,
     ),
   );
 
+  // Test 15: Stray @ should remain free text (no call events)
+  await runTest(
+    'Stray @ should not start a call',
+    'Please avoid the @ symbol in responses.\nThanks.',
+    buildFreeTextEvents(
+      'Please avoid the @ symbol in responses.\nThanks.',
+      'Please avoid the @ symbol in responses.\nThanks.',
+    ),
+  );
+
   if (failedCnt <= 0) {
     console.log(`\n🎉 All ${totalCnt} tests passed!`);
   } else {
