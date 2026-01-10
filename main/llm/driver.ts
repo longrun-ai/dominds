@@ -168,6 +168,15 @@ function formatSubdialogUserPrompt(headLine: string, callBody: string): string {
   return formatAssignmentVerbatim(headLine, callBody);
 }
 
+function formatSupdialogCallPrompt(
+  subdialogAgentId: string,
+  headLine: string,
+  callBody: string,
+): string {
+  const assignment = formatAssignmentVerbatim(headLine, callBody);
+  return `Subdialog @${subdialogAgentId} requests:\n${assignment}`;
+}
+
 // === UNIFIED STREAMING HANDLERS ===
 
 /**
@@ -1457,8 +1466,9 @@ async function extractSubdialogResponse(subdialogId: DialogID): Promise<string> 
 async function driveSubdialogToCompletion(
   subdialog: SubDialog,
   humanPrompt?: HumanPrompt,
+  waitInQue: boolean = true,
 ): Promise<string> {
-  await driveDialogStream(subdialog, humanPrompt);
+  await driveDialogStream(subdialog, humanPrompt, waitInQue);
   const responseText = await extractSubdialogResponse(subdialog.id);
   return responseText;
 }
@@ -1529,7 +1539,7 @@ export async function createSubdialogForSupdialog(
     // Drive the subdialog asynchronously
     void (async () => {
       try {
-        await driveDialogStream(subdialog);
+        await driveDialogStream(subdialog, undefined, true);
         const responseText = await extractSubdialogResponse(subdialog.id);
         await supplyResponseToSupdialog(supdialog, subdialog.id, responseText, 'A');
       } catch (err) {
@@ -1895,34 +1905,68 @@ async function executeTextingCall(
         dlg.setSuspensionState('suspended');
 
         try {
-          // Drive the supdialog for one round
-          await driveDialogStream(supdialog);
+          const supPrompt: HumanPrompt = {
+            content: formatSupdialogCallPrompt(dlg.agentId, headLine, body),
+            msgId: generateDialogID(),
+            skipTextingParse: true,
+          };
+          // Drive the supdialog for one round (queue if already driving)
+          await driveDialogStream(supdialog, supPrompt, true);
 
           // Extract response from supdialog's last assistant message
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
+          const responseContent = `Teammate response received from @${parseResult.agentId} (call complete). Do not re-issue this call unless asked.\n\n${responseText}`;
 
           // Resume the subdialog with the supdialog's response
           dlg.setSuspensionState('resumed');
 
-          // Add the response as a tool output
-          toolOutputs.push({
-            type: 'environment_msg',
-            role: 'user',
-            content: `🔄 **Response from @${parseResult.agentId}:**
-
-${responseText}`,
-          });
+          const resultMsg: TextingCallResultMsg = {
+            type: 'call_result_msg',
+            role: 'tool',
+            responderId: parseResult.agentId,
+            headLine,
+            status: 'completed',
+            content: responseContent,
+          };
+          toolOutputs.push(resultMsg);
+          await dlg.receiveTeammateResponse(
+            parseResult.agentId,
+            headLine,
+            responseContent,
+            'completed',
+            supdialog.id,
+            {
+              summary: responseText,
+              agentId: parseResult.agentId,
+              callId,
+            },
+          );
         } catch (err) {
           log.warn('Type A supdialog processing error:', err);
           // Resume the subdialog even on error
           dlg.setSuspensionState('resumed');
-          toolOutputs.push({
-            type: 'environment_msg',
-            role: 'user',
-            content: `❌ **Error processing request to @${parseResult.agentId}:**
-
-${showErrorToAi(err)}`,
-          });
+          const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
+          const resultMsg: TextingCallResultMsg = {
+            type: 'call_result_msg',
+            role: 'tool',
+            responderId: parseResult.agentId,
+            headLine,
+            status: 'failed',
+            content: errorText,
+          };
+          toolOutputs.push(resultMsg);
+          await dlg.receiveTeammateResponse(
+            parseResult.agentId,
+            headLine,
+            errorText,
+            'failed',
+            supdialog.id,
+            {
+              summary: errorText,
+              agentId: parseResult.agentId,
+              callId,
+            },
+          );
         }
       } else {
         log.warn('Type A call on dialog without supdialog, falling back to Type C', {
