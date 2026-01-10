@@ -5,6 +5,7 @@
  */
 import { LlmGenerator } from '../gen';
 import { AnthropicGen } from './anthropic';
+import { CodexGen } from './codex';
 import { MockGen } from './mock';
 
 export const generatorsRegistry: Map<string, LlmGenerator> = new Map<string, LlmGenerator>();
@@ -23,5 +24,6 @@ export function getLlmGenerator(apiType: string): LlmGenerator | undefined {
 
 (function initializeBuiltins() {
   registerLlmGenerator(new AnthropicGen());
+  registerLlmGenerator(new CodexGen());
   registerLlmGenerator(new MockGen());
 })();

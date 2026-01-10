@@ -39,6 +39,26 @@ Common defaults are already supplied:
 
 ```yaml
 providers:
+  codex:
+    name: Codex (ChatGPT)
+    apiType: codex
+    baseUrl: https://chatgpt.com/backend-api/
+    apiKeyEnvVar: CODEX_HOME
+    tech_spec_url: https://platform.openai.com/docs/api-reference/responses
+    api_mgmt_url: https://chatgpt.com/
+    models:
+      gpt-5.2-codex:
+        name: GPT-5.2 Codex
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
+      gpt-5.2:
+        name: GPT-5.2
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
   minimaxi.com-coding-plan:
     name: MiniMax CN Coding Plan
     apiType: anthropic

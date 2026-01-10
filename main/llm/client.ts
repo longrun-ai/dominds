@@ -91,7 +91,7 @@ export interface ModelInfo {
 
 export type ProviderConfig = {
   name: string;
-  apiType: 'openai' | 'anthropic' | 'mock';
+  apiType: 'codex' | 'anthropic' | 'mock' | 'openai';
   baseUrl: string;
   apiKeyEnvVar: string;
   tech_spec_url?: string;

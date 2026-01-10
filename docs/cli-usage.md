@@ -41,13 +41,13 @@ The `dominds` package provides a unified CLI with subcommands:
 
 ```bash
 # Installation
-npm install -g dominds
+pnpm add -g dominds
 
-# For development/testing (using npm link)
+# For development/testing (using pnpm link)
 cd /path/to/dominds
-npm install
-npm run build
-npm link
+pnpm install
+pnpm run build
+pnpm link --global
 # Now 'dominds' command is available globally
 
 # Web UI - Graphical interface in browser (default)

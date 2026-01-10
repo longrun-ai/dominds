@@ -43,14 +43,15 @@ dominds is an AI-powered DevOps framework that creates autonomous development te
 
 ### Prerequisites
 
-- **Node.js**: Version 22.x or later (to make `npx` command available on PATH)
+- **Node.js**: Version 22.x or later
+- **pnpm**: Version 9.x or later (workspace package manager)
 - **API Keys**: One or more API keys, for OpenAI, Anthropic, or other compatible LLM providers
 
 ### Install dominds
 
 ```bash
 # Global installation (recommended)
-npm install -g dominds
+pnpm add -g dominds
 
 # Verify installation
 dominds --help
@@ -64,13 +65,13 @@ git clone https://github.com/longrun-ai/dominds.git
 cd dominds
 
 # Install dependencies
-npm install
+pnpm install
 
 # Build the project
-npm run build
+pnpm run build
 
-# Use npm link for development (recommended)
-npm link
+# Use pnpm link for development (recommended)
+pnpm link --global
 # Now you can use 'dominds' command globally during development
 
 # Or run from local build
@@ -83,14 +84,14 @@ node dist/cli.js --help
 
 ```bash
 # Preferred: Use scaffold templates with pre-configured teams
-npx dominds/init web-scaffold my-project
+pnpm dlx dominds init web-scaffold my-project
 cd my-project
 
 # Fallback: Basic team configurations for existing projects
-npx dominds/init --1ma       # One Man Army - do what's on the only agent's first thoughts
-npx dominds/init --fbr       # Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
-npx dominds/init --pnx       # Plan and Execution - two agents with basic division of work
-npx dominds/init --igx       # Inteligence Guarded Execution - one more differently-minded criticist agent
+pnpm dlx dominds init --1ma       # One Man Army - do what's on the only agent's first thoughts
+pnpm dlx dominds init --fbr       # Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
+pnpm dlx dominds init --pnx       # Plan and Execution - two agents with basic division of work
+pnpm dlx dominds init --igx       # Inteligence Guarded Execution - one more differently-minded criticist agent
 ```
 
 For more initialization options and available scaffold templates, see the [CLI Usage Guide](docs/cli-usage.md#initialize-a-dominds-workspace).

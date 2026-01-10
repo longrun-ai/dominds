@@ -8,13 +8,13 @@ From the `dominds` project root:
 
 ```bash
 cd tests
-npx tsx texting/parsing.ts
+pnpm tsx texting/parsing.ts
 ```
 
 Or directly from this directory:
 
 ```bash
-npx tsx texting/parsing.ts
+pnpm tsx texting/parsing.ts
 ```
 
 ## Why CWD matters?

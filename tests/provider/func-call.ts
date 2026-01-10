@@ -13,12 +13,12 @@
  * - Checks exact argument matching against expected values
  * - Provides detailed failure analysis and debugging information
  *
- * Usage: npx tsx tests/provider/func-call.ts --provider <provider> --model <model>
+ * Usage: pnpm tsx tests/provider/func-call.ts --provider <provider> --model <model>
  *
  * Examples:
- *   npx tsx tests/provider/func-call.ts --provider iflow.cn --model kimi-k2-0905
- *   npx tsx tests/provider/func-call.ts --provider minimaxi.com-coding-plan --model MiniMax-M2
- *   npx tsx tests/provider/func-call.ts --provider bigmodel --model glm-4.6
+ *   pnpm tsx tests/provider/func-call.ts --provider iflow.cn --model kimi-k2-0905
+ *   pnpm tsx tests/provider/func-call.ts --provider minimaxi.com-coding-plan --model MiniMax-M2
+ *   pnpm tsx tests/provider/func-call.ts --provider bigmodel --model glm-4.6
  *
  * Validation includes:
  * - Required argument presence checks
@@ -568,7 +568,7 @@ function parseArgs(): { provider: string; model: string } {
 
   if (!provider || !model) {
     console.error(
-      'Usage: npx tsx tests/provider/func-call.ts --provider <provider> --model <model>',
+      'Usage: pnpm tsx tests/provider/func-call.ts --provider <provider> --model <model>',
     );
     console.error('\nAvailable providers and models:');
 

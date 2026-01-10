@@ -14,7 +14,7 @@
  *   help     - Show help
  *
  * Global installation:
- *   npm install -g dominds
+ *   pnpm add -g dominds
  *   dominds webui
  */
 
@@ -43,7 +43,7 @@ Examples:
   dominds read               # Read team configuration
 
 Installation:
-  npm install -g dominds
+  pnpm add -g dominds
 
 For detailed help on a specific subcommand:
   dominds <subcommand> --help

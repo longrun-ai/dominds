@@ -1,0 +1,40 @@
+{
+  "name": "@dominds/codex-auth",
+  "version": "0.1.0",
+  "description": "ChatGPT OAuth helpers compatible with Codex auth.json",
+  "license": "LGPL-3.0-or-later",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "codex-auth": "dist/bin/auth-doctor.js"
+  },
+  "files": [
+    "dist",
+    "prompts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "doctor": "node dist/bin/auth-doctor.js",
+    "format": "prettier --write \"src/**/*\" \"docs/**/*\" README.md"
+  },
+  "dependencies": {
+    "undici": "^6.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "prettier": "^3.2.5",
+    "prettier-plugin-organize-imports": "^3.2.4",
+    "typescript": "^5.4.5"
+  }
+}
