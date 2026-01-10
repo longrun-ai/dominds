@@ -53,6 +53,7 @@ Path aliases in `tests/tsconfig.json`:
 | func-call           | `provider/func-call.ts` (non-streaming function calls)    |
 | stream-func-call    | `provider/stream-func-call.ts` (streaming function calls) |
 | anthropic-streaming | `provider/anthropic-streaming.ts` (streaming smoke test)  |
+| codex-streaming     | `provider/codex-streaming.ts` (streaming smoke test)      |
 | toolset-registry    | `toolsets/registry.ts` (tool registry checks)             |
 | dialog-driving      | `driving/dialog-driving.ts` (dialog event driving)        |
 | type-a-flow         | `driving/type-a-flow.ts`                                  |

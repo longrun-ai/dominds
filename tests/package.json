@@ -11,6 +11,7 @@
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
+    "codex-streaming": "tsx provider/codex-streaming.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
     "dialog-driving": "tsx driving/dialog-driving.ts",
     "type-a-flow": "tsx driving/type-a-flow.ts",
