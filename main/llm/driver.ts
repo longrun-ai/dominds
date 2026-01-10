@@ -129,23 +129,9 @@ function showErrorToAi(err: unknown): string {
 
 /**
  * Validate streaming configuration for a team member.
- * Reports error if streaming=true but member has function tools.
+ * Streaming supports function tools; no restrictions to enforce here.
  */
-function validateStreamingConfiguration(agent: Team.Member, agentTools: Tool[]): void {
-  if (agent.streaming === true) {
-    const hasFunctionTools = agentTools.some((tool) => tool.type === 'func');
-    if (hasFunctionTools) {
-      const functionToolNames = agentTools
-        .filter((tool) => tool.type === 'func')
-        .map((tool) => tool.name)
-        .join(', ');
-      throw new Error(
-        `Member '${agent.id}': Function tools (${functionToolNames}) require streaming=false. ` +
-          'Only texting tools support streaming=true.',
-      );
-    }
-  }
-}
+function validateStreamingConfiguration(_agent: Team.Member, _agentTools: Tool[]): void {}
 
 function formatAssignmentVerbatim(headLine: string, callBody: string): string {
   const hasHead = headLine.trim() !== '';
@@ -863,6 +849,7 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
         continue;
       } else {
         const newMsgs: ChatMessage[] = [];
+        const streamedFuncCalls: FuncCallMsg[] = [];
 
         // Track thinking content for signature extraction during streaming
         let currentThinkingContent = '';
@@ -939,6 +926,20 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
 
                 await dlg.sayingFinish();
               },
+              funcCall: async (callId: string, name: string, args: string) => {
+                const genseq = dlg.activeGenSeq;
+                if (genseq === undefined) {
+                  return;
+                }
+                streamedFuncCalls.push({
+                  type: 'func_call_msg',
+                  role: 'assistant',
+                  genseq,
+                  id: callId,
+                  name,
+                  arguments: args,
+                });
+              },
             },
             dlg.activeGenSeq,
           );
@@ -988,7 +989,114 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
           }
         }
 
-        // note: no function calls happen in streaming mode
+        const funcResults: FuncResultMsg[] = [];
+        if (streamedFuncCalls.length > 0) {
+          const functionPromises = streamedFuncCalls.map(async (func) => {
+            // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
+            // This is critical for correct grouping in reconstructAnthropicContext()
+            const callGenseq = func.genseq;
+            // Use the LLM-allocated unique id for tracking
+            // This id comes from func_call_msg and is the proper unique identifier
+            const callId = func.id;
+
+            // argsStr is still needed for UI event (funcCallRequested)
+            const argsStr =
+              typeof func.arguments === 'string'
+                ? func.arguments
+                : JSON.stringify(func.arguments ?? {});
+
+            const tool = agentTools.find(
+              (t): t is FuncTool => t.type === 'func' && t.name === func.name,
+            );
+            if (!tool) {
+              const errorResult: FuncResultMsg = {
+                type: 'func_result_msg',
+                id: func.id,
+                name: func.name,
+                content: `Tool '${func.name}' not found`,
+                role: 'tool',
+                genseq: callGenseq,
+              };
+              await dlg.receiveFuncResult(errorResult);
+              return;
+            }
+
+            let rawArgs: unknown = {};
+            if (typeof func.arguments === 'string' && func.arguments.trim()) {
+              try {
+                rawArgs = JSON.parse(func.arguments);
+              } catch (parseErr) {
+                rawArgs = null;
+                log.warn('Failed to parse function arguments as JSON', {
+                  funcName: func.name,
+                  arguments: func.arguments,
+                  error: parseErr,
+                });
+              }
+            }
+
+            const validation = validateArgs(tool.parameters, rawArgs);
+            let result: FuncResultMsg;
+            if (validation.ok) {
+              const argsObj = rawArgs as ToolArguments;
+
+              // Emit func_call_requested event to build the func-call section UI
+              try {
+                await dlg.funcCallRequested(func.id, func.name, argsStr);
+              } catch (err) {
+                log.warn('Failed to emit func_call_requested event', err);
+              }
+
+              try {
+                await dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
+              } catch (err) {
+                log.warn('Failed to persist function call', err);
+              }
+
+              try {
+                const content = await tool.call(dlg, agent, argsObj);
+                result = {
+                  type: 'func_result_msg',
+                  id: func.id,
+                  name: func.name,
+                  content: String(content),
+                  role: 'tool',
+                  genseq: callGenseq,
+                };
+              } catch (err) {
+                result = {
+                  type: 'func_result_msg',
+                  id: func.id,
+                  name: func.name,
+                  content: `Function '${func.name}' execution failed: ${showErrorToAi(err)}`,
+                  role: 'tool',
+                  genseq: callGenseq,
+                };
+              }
+            } else {
+              result = {
+                type: 'func_result_msg',
+                id: func.id,
+                name: func.name,
+                content: `Invalid arguments: ${validation.error}`,
+                role: 'tool',
+                genseq: callGenseq,
+              };
+            }
+
+            await dlg.receiveFuncResult(result);
+            funcResults.push(result);
+          });
+
+          await Promise.all(functionPromises);
+        }
+
+        if (streamedFuncCalls.length > 0) {
+          newMsgs.push(...streamedFuncCalls);
+        }
+        if (funcResults.length > 0) {
+          newMsgs.push(...funcResults);
+        }
 
         await dlg.addChatMessages(...newMsgs);
 
@@ -1009,7 +1117,9 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
           break;
         }
 
-        if (toolOutputsCount === 0) {
+        const shouldContinue =
+          toolOutputsCount > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
+        if (!shouldContinue) {
           break;
         }
       }

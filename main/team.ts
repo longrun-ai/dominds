@@ -242,7 +242,6 @@ export namespace Team {
             name: 'Commander',
             provider,
             model,
-            streaming: false,
             toolsets: ['os'],
           }),
         },

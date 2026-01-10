@@ -14,7 +14,6 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages';
 
 import { createLogger } from '../../log';
-import { EndOfStream, PubChan } from '../../shared/evt';
 import type { Team } from '../../team';
 import type { FuncTool, JsonSchema } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
@@ -30,6 +29,13 @@ interface AnthropicCompatibleSchema extends JsonSchema {
 type AnthropicMessageContent = Exclude<MessageParam['content'], string>;
 
 type AnthropicContentBlock = AnthropicMessageContent[number];
+
+type ActiveToolUse = {
+  id: string;
+  name: string;
+  inputParts: string[];
+  initialInput: unknown;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -407,8 +413,8 @@ export class AnthropicGen implements LlmGenerator {
     } satisfies MessageCreateParamsStreaming);
 
     // Stream lifecycle management using SDK start/stop events
-    let currentContentBlock: { type: string } | null = null;
-    let inputJsonChan: PubChan<string> | undefined;
+    let currentContentBlock: AnthropicMessageContent[number] | null = null;
+    let currentToolUse: ActiveToolUse | null = null;
     let sayingStarted = false;
     let thinkingStarted = false;
 
@@ -417,21 +423,14 @@ export class AnthropicGen implements LlmGenerator {
         case 'content_block_start': {
           const contentBlock = event.content_block;
 
-          // Handle tool use incident - should not happen in streaming mode
+          // Track tool use so we can emit function calls once JSON is complete
           if (contentBlock.type === 'tool_use') {
-            log.error(
-              'ANTH streaming incident: tool_use during streaming',
-              new Error('Tool call encountered in streaming mode'),
-              {
-                toolName: contentBlock.name,
-                toolId: contentBlock.id,
-              },
-            );
-            throw new Error(
-              `Tool call "${contentBlock.name}" (${contentBlock.id}) encountered during streaming mode. ` +
-                `Tool calls should not occur in streaming generation. ` +
-                `Please check the agent configuration or prompt to ensure streaming compatibility.`,
-            );
+            currentToolUse = {
+              id: contentBlock.id,
+              name: contentBlock.name,
+              inputParts: [],
+              initialInput: contentBlock.input,
+            };
           }
 
           // Create and yield appropriate stream based on content block type
@@ -445,12 +444,8 @@ export class AnthropicGen implements LlmGenerator {
               thinkingStarted = true;
               await receiver.thinkingStart();
             }
-          } else if (
-            contentBlock.type === 'server_tool_use' ||
-            contentBlock.type === 'web_search_tool_result'
-          ) {
-            // Tool results can contain partial JSON during streaming
-            inputJsonChan = new PubChan<string>();
+          } else if (contentBlock.type === 'tool_use') {
+            // Tool use has no streaming text output
           } else {
             // Unexpected content block type
             log.warn(
@@ -502,18 +497,18 @@ export class AnthropicGen implements LlmGenerator {
           } else if (delta.type === 'signature_delta') {
             // Handle SignatureDelta - typically just logging for now
           } else if (delta.type === 'input_json_delta') {
-            // Handle InputJSONDelta - for function calling, log the JSON input
             const partialJson = delta.partial_json;
-            if (inputJsonChan && partialJson) {
-              inputJsonChan.write(partialJson);
-            } else if (partialJson) {
+            if (currentToolUse) {
+              if (partialJson.length > 0) {
+                currentToolUse.inputParts.push(partialJson);
+              }
+            } else if (partialJson.length > 0) {
               log.warn(
-                'ANTH input_json_delta without active input_json channel',
-                new Error('Input JSON delta received but no input_json channel'),
+                'ANTH input_json_delta without active tool_use',
+                new Error('Input JSON delta received without active tool_use block'),
                 {
-                  hasCurrentBlock: !!currentContentBlock,
-                  blockType: currentContentBlock?.type,
-                  hasInputJsonChan: !!inputJsonChan,
+                  hasCurrentBlock: currentContentBlock !== null,
+                  blockType: currentContentBlock ? currentContentBlock.type : 'none',
                 },
               );
             }
@@ -525,14 +520,6 @@ export class AnthropicGen implements LlmGenerator {
           if (!currentContentBlock) {
             break;
           }
-          if (
-            currentContentBlock.type === 'server_tool_use' ||
-            currentContentBlock.type === 'web_search_tool_result'
-          ) {
-            inputJsonChan?.write(EndOfStream);
-            inputJsonChan = undefined;
-          }
-
           if (currentContentBlock.type === 'thinking') {
             await receiver.thinkingFinish();
             thinkingStarted = false;
@@ -540,6 +527,25 @@ export class AnthropicGen implements LlmGenerator {
           if (currentContentBlock.type === 'text') {
             await receiver.sayingFinish();
             sayingStarted = false;
+          }
+          if (currentContentBlock.type === 'tool_use') {
+            if (!currentToolUse) {
+              log.warn(
+                'ANTH tool_use stop without active tool_use',
+                new Error('Tool_use block stopped without active tool tracking'),
+              );
+            } else {
+              let argsJson = '';
+              if (currentToolUse.inputParts.length > 0) {
+                argsJson = currentToolUse.inputParts.join('');
+              } else {
+                const stringified = JSON.stringify(currentToolUse.initialInput);
+                argsJson =
+                  typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
+              }
+              await receiver.funcCall(currentToolUse.id, currentToolUse.name, argsJson);
+            }
+            currentToolUse = null;
           }
 
           currentContentBlock = null;
@@ -557,13 +563,10 @@ export class AnthropicGen implements LlmGenerator {
         }
 
         case 'message_stop': {
-          inputJsonChan?.write(EndOfStream);
-
-          inputJsonChan = undefined;
           currentContentBlock = null;
+          currentToolUse = null;
 
-          // Note: thinking_finish and saying_finish are handled by the driver
-          // based on the EndOfStream signals from the streams
+          // Note: thinking_finish and saying_finish are handled via content_block_stop events
           break;
         }
 
@@ -583,8 +586,6 @@ export class AnthropicGen implements LlmGenerator {
         }
       }
     }
-
-    inputJsonChan?.write(EndOfStream);
   }
 
   async genMoreMessages(

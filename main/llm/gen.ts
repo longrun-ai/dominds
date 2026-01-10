@@ -9,6 +9,7 @@ export interface LlmStreamReceiver {
   sayingStart: () => Promise<void>;
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;
+  funcCall: (callId: string, name: string, args: string) => Promise<void>;
 }
 
 export interface LlmGenerator {
