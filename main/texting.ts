@@ -228,6 +228,7 @@ export class TextingStreamParser {
 
   // Code block state
   private codeBlockChunkBuffer = '';
+  private prevCharIsWhitespace = true;
   private codeBlockInfoAccumulator = '';
 
   // Call collection
@@ -354,6 +355,8 @@ export class TextingStreamParser {
         // Mode changed, restart the loop to process remaining characters with new mode
         continue;
       }
+
+      this.prevCharIsWhitespace = charType === CharType.SPACE || charType === CharType.NEWLINE;
     }
 
     this.flushAtUpstreamChunkEnd();
@@ -477,6 +480,12 @@ export class TextingStreamParser {
       this.updateBacktickState(charType);
 
       if (!this.inSingleBacktick) {
+        const canStartMention = this.isAtLineStart || this.prevCharIsWhitespace;
+        if (!canStartMention) {
+          this.markdownChunkBuffer += char;
+          this.isAtLineStart = false;
+          return position + 1;
+        }
         if (position + 1 < chunk.length && chunk[position + 1] === '/') {
           this.markdownChunkBuffer += '@/';
           return position + 2;
