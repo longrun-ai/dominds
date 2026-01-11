@@ -679,16 +679,12 @@ Would you like me to reach out to \`@dijiang\` instead?`,
     ),
   );
 
-  // Test 16: Mention ending with dot should be a syntax error (no call events)
-  await runTest('Trailing dot mention should be syntax error', '@cmdr.\nNext line.', [
-    { type: 'markdownStart', data: null },
-    {
-      type: 'markdownChunk',
-      data: "@cmdr. Invalid mention `@cmdr.`: trailing '.' is not allowed.\nNex",
-    },
-    { type: 'markdownChunk', data: 't line.' },
-    { type: 'markdownFinish', data: null },
-  ]);
+  // Test 16: Mention ending with dot should be parsed (trailing dot ignored)
+  await runTest(
+    'Trailing dot mention should be parsed',
+    '@cmdr.\nNext line.',
+    buildBasicCallEvents('cmdr', '@cmdr.', 'Next line.', '@cmdr.\nNext line.'),
+  );
 
   if (failedCnt <= 0) {
     console.log(`\n🎉 All ${totalCnt} tests passed!`);

@@ -60,7 +60,9 @@ import type {
   ProviderData,
   Questions4HumanFile,
   ReminderStateFile,
+  RootDialogMetadataFile,
   DialogMetadataFile as StorageDialogMetadataFile,
+  SubdialogMetadataFile,
   TeammateResponseRecord,
   ToolArguments,
   ToolCallResultRecord,
@@ -84,14 +86,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isDialogMetadataFile(value: unknown): value is DialogMetadataFile {
+function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['assignmentFromSup'] {
   if (!isRecord(value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.agentId === 'string' &&
-    typeof value.taskDocPath === 'string' &&
-    typeof value.createdAt === 'string'
-  );
+  if (typeof value.headLine !== 'string') return false;
+  if (typeof value.callBody !== 'string') return false;
+  if (value.originRole !== 'user' && value.originRole !== 'assistant') return false;
+  if (typeof value.originMemberId !== 'string') return false;
+  if (typeof value.callerDialogId !== 'string') return false;
+  if (typeof value.callId !== 'string') return false;
+  return true;
+}
+
+function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFile {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string') return false;
+  if (typeof value.agentId !== 'string') return false;
+  if (typeof value.taskDocPath !== 'string') return false;
+  if (typeof value.createdAt !== 'string') return false;
+  if (value.supdialogId !== undefined) return false;
+  if (value.topicId !== undefined) return false;
+  if (value.assignmentFromSup !== undefined) return false;
+  return true;
+}
+
+function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string') return false;
+  if (typeof value.agentId !== 'string') return false;
+  if (typeof value.taskDocPath !== 'string') return false;
+  if (typeof value.createdAt !== 'string') return false;
+  if (typeof value.supdialogId !== 'string') return false;
+  if (value.topicId !== undefined && typeof value.topicId !== 'string') return false;
+  if (!isAssignmentFromSup(value.assignmentFromSup)) return false;
+  return true;
+}
+
+function isDialogMetadataFile(value: unknown): value is DialogMetadataFile {
+  return isRootDialogMetadataFile(value) || isSubdialogMetadataFile(value);
 }
 
 function isDialogLatestFile(value: unknown): value is DialogLatestFile {
@@ -148,7 +179,13 @@ export class DiskFileDialogStore extends DialogStore {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; topicId?: string },
+    options: {
+      originRole: 'user' | 'assistant';
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
+      topicId?: string;
+    },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     // For subdialogs, use the supdialog's root dialog ID as the root
@@ -162,73 +199,37 @@ export class DiskFileDialogStore extends DialogStore {
       supdialog.taskDocPath,
       subdialogId,
       targetAgentId,
-      options?.topicId,
+      options.topicId,
       {
         headLine,
         callBody,
-        originRole: options?.originRole ?? 'assistant',
-        originMemberId: options?.originMemberId,
+        originRole: options.originRole,
+        originMemberId: options.originMemberId,
+        callerDialogId: options.callerDialogId,
+        callId: options.callId,
       },
     );
 
-    // Initialize subdialog's msgs array with the assignment message as the first user message
-    // This ensures mockdb lookups succeed and the message appears in the dialog container
-    function formatAssignmentVerbatim(headLine: string, callBody: string): string {
-      const hasHead = headLine.trim() !== '';
-      const hasBody = callBody.trim() !== '';
-      if (hasHead && hasBody) {
-        return `${headLine}\n\n${callBody}`;
-      }
-      if (hasHead) {
-        return headLine;
-      }
-      return callBody;
-    }
-
-    function formatSubdialogInitialContent(headLine: string, callBody: string): string {
-      return formatAssignmentVerbatim(headLine, callBody);
-    }
-
-    const assignmentMsgContent = formatSubdialogInitialContent(headLine, callBody);
-    subdialog.msgs.push({
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 1,
-      msgId: generatedId,
-      content: assignmentMsgContent,
-    });
-
-    // Persist the first user message to round-001.jsonl
-    // This is critical for subdialog UI to show the user message bubble
-    try {
-      const subRound = 1; // First round of subdialog
-      const assignmentRecord: HumanTextRecord = {
-        ts: formatUnifiedTimestamp(new Date()),
-        type: 'human_text_record',
-        genseq: 1, // First generation sequence for the user message
-        content: assignmentMsgContent,
-        msgId: generatedId,
-      };
-      await DialogPersistence.appendEvent(subdialogId, subRound, assignmentRecord);
-    } catch (err) {
-      log.warn('Failed to persist subdialog initial user message', err);
-    }
+    // Initial subdialog user prompt is now persisted at first drive (driver.ts)
 
     // Ensure subdialog directory and persist metadata under supdialog/.subdialogs/
     await this.ensureSubdialogDirectory(subdialogId);
-    const metadata = {
+    const metadata: SubdialogMetadataFile = {
       id: subdialogId.selfId,
       agentId: targetAgentId,
       taskDocPath: supdialog.taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
       supdialogId: supdialog.id.selfId,
+      topicId: options.topicId,
       assignmentFromSup: {
         headLine,
         callBody,
-        originRole: options?.originRole ?? 'assistant',
-        originMemberId: options?.originMemberId,
+        originRole: options.originRole,
+        originMemberId: options.originMemberId,
+        callerDialogId: options.callerDialogId,
+        callId: options.callId,
       },
-    } as DialogMetadataFile;
+    };
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
     await DialogPersistence.saveDialogMetadata(subdialogId, metadata);
 
@@ -268,27 +269,6 @@ export class DiskFileDialogStore extends DialogStore {
     // Post subdialog_created_evt to PARENT's PubChan so frontend can receive it
     // The frontend subscribes to the parent's events, not the subdialog's
     postDialogEvent(supdialog, subdialogCreatedEvt);
-
-    try {
-      const subRound = await DialogPersistence.getCurrentRoundNumber(subdialogId);
-      const assignmentContent = formatAssignmentVerbatim(headLine, callBody);
-      const starterContent = `🔰 Subdialog started by ${
-        options?.originMemberId ? `@${options.originMemberId}` : 'human'
-      } (${options?.originRole ?? 'assistant'})\n\nTask:\n${assignmentContent}`;
-      const genseq = supdialog.activeGenSeq;
-      if (!genseq) {
-        throw new Error('Missing activeGenSeq for subdialog starter message');
-      }
-      const firstSubMsg: AgentWordsRecord = {
-        ts: formatUnifiedTimestamp(new Date()),
-        type: 'agent_words_record',
-        genseq,
-        content: starterContent,
-      };
-      await DialogPersistence.appendEvent(subdialogId, subRound, firstSubMsg);
-    } catch (err) {
-      log.warn('Failed to append subdialog starter message event', err);
-    }
 
     return subdialog;
   }
@@ -450,19 +430,23 @@ export class DiskFileDialogStore extends DialogStore {
     headLine: string,
     result: string,
     status: 'completed' | 'failed',
-    calleeDialogId?: DialogID,
-    options?: {
-      summary?: string;
-      agentId?: string;
-      callId?: string;
+    calleeDialogId: DialogID | undefined,
+    options: {
+      response: string;
+      agentId: string;
+      callId: string;
+      originRole: 'user' | 'assistant';
+      originMemberId: string;
     },
   ): Promise<void> {
     const round = dialog.currentRound;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     const calleeDialogSelfId = calleeDialogId ? calleeDialogId.selfId : undefined;
-    const summary = options ? options.summary : undefined;
-    const agentId = options ? options.agentId : undefined;
-    const callId = options ? options.callId : undefined;
+    const response = options.response;
+    const agentId = options.agentId;
+    const callId = options.callId;
+    const originRole = options.originRole;
+    const originMemberId = options.originMemberId;
     const ev: TeammateResponseRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'teammate_response_record',
@@ -472,9 +456,11 @@ export class DiskFileDialogStore extends DialogStore {
       status,
       result,
       calling_genseq,
-      summary,
+      response,
       agentId,
       callId,
+      originRole,
+      originMemberId,
     };
     await this.appendEvent(round, ev);
 
@@ -487,9 +473,11 @@ export class DiskFileDialogStore extends DialogStore {
       result,
       round,
       calling_genseq,
-      summary,
+      response,
       agentId,
       callId,
+      originRole,
+      originMemberId,
     };
     postDialogEvent(dialog, teammateResponseEvt);
   }
@@ -1717,9 +1705,11 @@ export class DiskFileDialogStore extends DialogStore {
           headLine: event.headLine,
           status: event.status,
           result: event.result,
-          summary: event.summary,
+          response: event.response,
           agentId: event.agentId,
           callId: event.callId,
+          originRole: event.originRole,
+          originMemberId: event.originMemberId,
           round,
           calling_genseq: event.calling_genseq,
           dialog: {
@@ -2590,7 +2580,7 @@ export class DialogPersistence {
    */
   static async saveRootDialogMetadata(
     dialogId: DialogID,
-    metadata: DialogMetadataFile,
+    metadata: RootDialogMetadataFile,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
@@ -2620,10 +2610,16 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     if (dialogId.rootId === dialogId.selfId) {
+      if (!isRootDialogMetadataFile(metadata)) {
+        throw new Error(`Expected root dialog metadata for ${dialogId.selfId}`);
+      }
       return this.saveRootDialogMetadata(dialogId, metadata, status);
     }
 
     // For subdialogs, delegate to saveSubdialogMetadata
+    if (!isSubdialogMetadataFile(metadata)) {
+      throw new Error(`Expected subdialog metadata for ${dialogId.selfId}`);
+    }
     return this.saveSubdialogMetadata(dialogId, metadata, status);
   }
 
@@ -2633,7 +2629,7 @@ export class DialogPersistence {
    */
   static async _saveDialogMetadata(
     dialogId: DialogID,
-    metadata: DialogMetadataFile,
+    metadata: RootDialogMetadataFile,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     return this.saveRootDialogMetadata(dialogId, metadata, status);
@@ -2644,7 +2640,7 @@ export class DialogPersistence {
    */
   static async saveSubdialogMetadata(
     dialogId: DialogID,
-    metadata: DialogMetadataFile,
+    metadata: SubdialogMetadataFile,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
@@ -2664,6 +2660,30 @@ export class DialogPersistence {
       );
       throw error;
     }
+  }
+
+  /**
+   * Update assignmentFromSup for an existing subdialog.
+   * Persists both subdialog metadata locations for consistency.
+   */
+  static async updateSubdialogAssignment(
+    dialogId: DialogID,
+    assignment: SubdialogMetadataFile['assignmentFromSup'],
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    if (dialogId.rootId === dialogId.selfId) {
+      throw new Error('updateSubdialogAssignment expects a subdialog id');
+    }
+    const metadata = await this.loadDialogMetadata(dialogId, status);
+    if (!metadata || !isSubdialogMetadataFile(metadata)) {
+      throw new Error(`Missing dialog metadata for subdialog ${dialogId.selfId}`);
+    }
+    const next: SubdialogMetadataFile = {
+      ...metadata,
+      assignmentFromSup: assignment,
+    };
+    await this.saveSubdialogMetadata(dialogId, next, status);
+    await this.saveDialogMetadata(dialogId, next, status);
   }
 
   /**

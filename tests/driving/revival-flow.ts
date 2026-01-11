@@ -9,7 +9,19 @@ import { Dialog, DialogID, RootDialog } from 'dominds/dialog';
 import { generateDialogID } from 'dominds/utils/id';
 
 class MockDialogStore implements Dialog['dlgStore'] {
-  async createSubDialog(): Promise<never> {
+  async createSubDialog(
+    _supdialog: RootDialog,
+    _targetAgentId: string,
+    _headLine: string,
+    _callBody: string,
+    _options: {
+      originRole: 'user' | 'assistant';
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
+      topicId?: string;
+    },
+  ): Promise<never> {
     throw new Error('Not implemented for this test');
   }
 

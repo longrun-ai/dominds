@@ -239,6 +239,16 @@ headline text is ignored for topic ID parsing.
 5. Subdialog response flows back to parent
 6. Parent **resumes** with subdialog's response
 
+**Current Caller Tracking (important for reuse):**
+
+When a registered subdialog is called again (same `agentId!topicId`), the caller can be a **different
+dialog** (root or another subdialog). On every Type B call, the subdialog’s metadata is updated with:
+
+- The **current caller dialog ID** (so responses route back to the _latest_ caller)
+- The **call info** (headline/body, origin role, origin member, callId)
+
+This makes Type B subdialogs reusable across multiple call sites without losing correct response routing.
+
 **Call Context on Resume**:
 
 - On every TYPE B call (new or resumed), the parent-provided `headLine`/`callBody`
@@ -389,7 +399,7 @@ The Dominds dialog system is built on four interconnected core mechanisms that w
 
 4. **UI Renders Q4H Like Teammate Calls**: The UI treats Q4H similarly to other teammate calls - with navigation linking to the call site in the dialog conversation. The user answers inline using the same input textarea used for regular messages.
 
-5. **Subdialog Response Supply**: Subdialogs write their responses to the supdialog's context via persistence, not callbacks. This enables detached operation and crash recovery.
+5. **Subdialog Response Supply**: Subdialogs write their responses to the _current caller’s_ context via persistence (not callbacks). For TYPE B, each call updates the subdialog’s `assignmentFromSup` with the latest caller + callInfo, so the response is routed to the most recent caller (root or subdialog). This enables detached operation, reuse, and crash recovery.
 
 6. **Subdialog Registry**: Registered subdialogs (TYPE B calls) are tracked in a root-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on root load.
 
@@ -1282,7 +1292,7 @@ interface RegistryMethods {
 **Upward Communication**: Subdialogs communicate results, questions, and escalations to their supdialogs.
 
 - **Clarification Requests (TYPE A)**: A subdialog may call its supdialog to request clarification while working on its subtask. The supdialog provides guidance, and the subdialog continues with updated context.
-- **Subtask Response**: When a subdialog has generated no pending Q4H and produces a "saying" content block, that message is considered the subdialog's response to the supdialog for its subtask assignment. The supdialog receives this response and can continue its own work.
+- **Subtask Response**: When a subdialog produces a final "saying" content block (no pending Q4H), that message is treated as the response to the **current caller** recorded in `assignmentFromSup` (root or another subdialog). This keeps responses aligned with the most recent call site.
 - **Q4H Escalation**: If a subdialog has Q4H, it suspends. The user can answer via the UI, which triggers continuation of the subdialog only.
 - **Registered Subdialogs (TYPE B)**: A parent can resume a previously created registered subdialog, enabling ongoing task continuation.
 - **Transient Subdialogs (TYPE C)**: A parent can spawn a one-off subdialog for independent tasks that don't require persistence.
@@ -1910,7 +1920,7 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 ### Class Responsibility
 
 - **RootDialog**: Manages registry, can make all three teammate call types
-- **SubDialog**: Has supdialog reference, can make all three teammate call types, NO registry access
+- **SubDialog**: Has supdialog reference, can make TYPE A and TYPE C directly; TYPE B routes through the root registry and updates caller context on each call
 
 ### Persistence Guarantees
 

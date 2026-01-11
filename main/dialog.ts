@@ -164,7 +164,9 @@ export interface AssignmentFromSup {
   headLine: string;
   callBody: string;
   originRole: 'user' | 'assistant';
-  originMemberId?: string;
+  originMemberId: string;
+  callerDialogId: string;
+  callId: string;
 }
 
 /**
@@ -184,7 +186,7 @@ export abstract class Dialog {
   readonly msgs: ChatMessage[];
   readonly supdialog?: Dialog;
   // present if this is a subdialog created by an autonomous teammate call from a supdialog
-  readonly assignmentFromSup?: AssignmentFromSup;
+  public assignmentFromSup?: AssignmentFromSup;
 
   // Persistence state
   protected _currentRound: number = 1;
@@ -257,8 +259,10 @@ export abstract class Dialog {
       ? {
           headLine: assignmentFromSup.headLine,
           callBody: assignmentFromSup.callBody,
-          originRole: assignmentFromSup.originRole ?? 'assistant',
+          originRole: assignmentFromSup.originRole,
           originMemberId: assignmentFromSup.originMemberId,
+          callerDialogId: assignmentFromSup.callerDialogId,
+          callId: assignmentFromSup.callId,
         }
       : undefined;
 
@@ -437,10 +441,11 @@ export abstract class Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: {
+    options: {
       originRole: 'user' | 'assistant';
-      originMemberId?: string;
-      callId?: string;
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
       topicId?: string;
     },
   ): Promise<SubDialog>;
@@ -981,11 +986,13 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     headLine: string,
     result: string,
     status: 'completed' | 'failed',
-    subdialogId?: DialogID,
-    options?: {
-      summary?: string;
-      agentId?: string;
-      callId?: string;
+    subdialogId: DialogID | undefined,
+    options: {
+      response: string;
+      agentId: string;
+      callId: string;
+      originRole: 'user' | 'assistant';
+      originMemberId: string;
     },
   ): Promise<void> {
     return await this.dlgStore.receiveTeammateResponse(
@@ -1026,23 +1033,32 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   }
 
   /**
-   * Post subdialog completion summary to this dialog
+   * Post subdialog completion response to this dialog.
    * Phase 14: No wait - emit immediately with virtual gen markers for Type C subdialogs
    */
-  public async postSubdialogSummary(
-    subdialogId: DialogID,
-    summary: string,
-    callId?: string,
-  ): Promise<void> {
+  public async postSubdialogSummary(subdialogId: DialogID, response: string): Promise<void> {
     try {
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
+      let headLine = response;
+      let originRole: 'user' | 'assistant' = 'assistant';
+      let originMemberId = responderId;
+      let callId = '';
       try {
         const { DialogPersistence } = await import('./persistence');
         const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
-        if (metadata?.agentId) {
-          responderId = metadata.agentId;
-          responderAgentId = metadata.agentId;
+        if (metadata) {
+          if (metadata.agentId) {
+            responderId = metadata.agentId;
+            responderAgentId = metadata.agentId;
+            originMemberId = metadata.agentId;
+          }
+          if (metadata.assignmentFromSup) {
+            headLine = metadata.assignmentFromSup.headLine;
+            originRole = metadata.assignmentFromSup.originRole;
+            originMemberId = metadata.assignmentFromSup.originMemberId;
+            callId = metadata.assignmentFromSup.callId;
+          }
         }
       } catch (err) {
         log.warn('Failed to load subdialog metadata for response labeling', {
@@ -1050,6 +1066,15 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
           subdialogId: subdialogId.selfId,
           error: err,
         });
+      }
+      if (callId.trim() === '') {
+        log.warn('Missing callId for subdialog response', undefined, {
+          dialogId: this.id.selfId,
+          subdialogId: subdialogId.selfId,
+        });
+      }
+      if (headLine.trim() === '') {
+        headLine = response;
       }
 
       // NO WAIT - emit immediately with virtual gen markers
@@ -1062,13 +1087,15 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
         type: 'teammate_response_evt',
         responderId,
         calleeDialogId: subdialogId.selfId,
-        headLine: summary.slice(0, 100) + (summary.length > 100 ? '...' : ''),
+        headLine,
         status: 'completed',
-        result: summary,
+        result: response,
         round: this.currentRound,
-        summary,
-        agentId: responderAgentId,
-        callId: callId ?? undefined,
+        response,
+        agentId: responderAgentId ?? responderId,
+        callId,
+        originRole,
+        originMemberId,
       };
       postDialogEvent(this, evt);
 
@@ -1115,9 +1142,11 @@ export class SubDialog extends Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: {
+    options: {
       originRole: 'user' | 'assistant';
-      originMemberId?: string;
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
       topicId?: string;
     },
   ): Promise<SubDialog> {
@@ -1228,10 +1257,11 @@ export class RootDialog extends Dialog {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: {
+    options: {
       originRole: 'user' | 'assistant';
-      originMemberId?: string;
-      callId?: string;
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
       topicId?: string;
     },
   ): Promise<SubDialog> {
@@ -1311,10 +1341,11 @@ export abstract class DialogStore {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: {
+    options: {
       originRole: 'user' | 'assistant';
-      originMemberId?: string;
-      callId?: string;
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
       topicId?: string;
     },
   ): Promise<SubDialog> {
@@ -1327,12 +1358,14 @@ export abstract class DialogStore {
       supdialog.taskDocPath,
       subdialogId,
       targetAgentId,
-      options?.topicId,
+      options.topicId,
       {
         headLine,
         callBody,
-        originRole: options?.originRole ?? 'assistant',
-        originMemberId: options?.originMemberId,
+        originRole: options.originRole,
+        originMemberId: options.originMemberId,
+        callerDialogId: options.callerDialogId,
+        callId: options.callId,
       },
     );
   }
@@ -1395,11 +1428,13 @@ export abstract class DialogStore {
     _headLine: string,
     _result: string,
     _status: 'completed' | 'failed',
-    _subdialogId?: DialogID,
-    _options?: {
-      summary?: string;
-      agentId?: string;
-      callId?: string;
+    _subdialogId: DialogID | undefined,
+    _options: {
+      response: string;
+      agentId: string;
+      callId: string;
+      originRole: 'user' | 'assistant';
+      originMemberId: string;
     },
   ): Promise<void> {}
 

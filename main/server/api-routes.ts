@@ -338,6 +338,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       currentRound: number;
       createdAt: string;
       lastModified: string;
+      topicId?: string;
     }> = [];
 
     // Recursively find all subdialog directories (handles nested paths like c1/78/4c3d759a)
@@ -400,6 +401,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
             currentRound: subLatest?.currentRound || 1,
             createdAt: meta.createdAt,
             lastModified: subLatest?.lastModified || meta.createdAt,
+            topicId: meta.topicId,
           });
         }
       }

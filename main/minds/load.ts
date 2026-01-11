@@ -159,7 +159,7 @@ You interact using a simple headline/body grammar with both teammates and "texti
 - A headline at column 0 starting with \`@<name>\` opens a call. The input body continues until a standalone \`@/\` or the next headline.
 - Blank line rule: only a blank line immediately following the headline ends the call with an empty body. Blank lines after at least one body line are part of the input body.
 - First mention decides call type: the first \`@<name>\` determines whether it is a tool call or a teammates call.
-- Mention IDs may include dots for namespacing (e.g., \`@team.lead\`), but must not end with a dot (\`@team.\` is invalid).
+- Mention IDs may include dots for namespacing (e.g., \`@team.lead\`). A trailing dot is treated as punctuation and ignored (e.g., \`@team.lead.\` still targets \`@team.lead\`).
 - Safety: wrap literal \`@\` in backticks to avoid accidental calls.
 
 ### Teammate Calls

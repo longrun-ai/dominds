@@ -378,7 +378,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
         metadata.taskDocPath,
         dialogIdObj,
         metadata.agentId,
-        undefined,
+        metadata.topicId,
         metadata.assignmentFromSup,
       );
     } else {
@@ -424,6 +424,9 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       },
       agentId: metadata.agentId,
       taskDocPath: metadata.taskDocPath,
+      supdialogId: metadata.supdialogId,
+      topicId: metadata.topicId,
+      assignmentFromSup: metadata.assignmentFromSup,
     };
     ws.send(JSON.stringify(dialogReadyResponse));
 
@@ -604,7 +607,7 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
           metadata.taskDocPath,
           dialogId,
           metadata.agentId,
-          undefined,
+          metadata.topicId,
           metadata.assignmentFromSup,
         );
       } else {
@@ -748,7 +751,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
           metadata.taskDocPath,
           dialogIdObj,
           metadata.agentId,
-          undefined,
+          metadata.topicId,
           metadata.assignmentFromSup,
           {
             messages: dialogState.messages,
@@ -963,7 +966,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         metadata.taskDocPath,
         dialogIdObj,
         metadata.agentId,
-        undefined,
+        metadata.topicId,
         metadata.assignmentFromSup,
       );
     } else {
@@ -1034,7 +1037,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         metadata.taskDocPath,
         restoredDialogIdObj,
         metadata.agentId,
-        undefined,
+        metadata.topicId,
         metadata.assignmentFromSup,
         {
           messages: dialogState.messages,

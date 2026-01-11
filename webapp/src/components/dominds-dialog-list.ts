@@ -383,6 +383,8 @@ export class DomindsDialogList extends HTMLElement {
       agentId: dialog.agentId,
       agentName: '',
       taskDocPath: dialog.taskDocPath || '',
+      supdialogId: dialog.supdialogId,
+      topicId: dialog.topicId,
     };
     this.setCurrentDialog(dialogInfo);
     return true;
@@ -573,7 +575,7 @@ export class DomindsDialogList extends HTMLElement {
         cursor: pointer;
         transition: all var(--transition-fast);
         font-weight: 500;
-        text-transform: uppercase;
+        text-transform: none;
         letter-spacing: 0.05em;
       }
 
@@ -822,7 +824,7 @@ export class DomindsDialogList extends HTMLElement {
         border-radius: 8px;
         font-size: 9px;
         font-weight: 500;
-        text-transform: uppercase;
+        text-transform: none;
         letter-spacing: 0.5px;
       }
 
@@ -1311,6 +1313,8 @@ export class DomindsDialogList extends HTMLElement {
     const isActive = false; // Active state handled by DOM selection
     const statusClass = `status-${dialog.status}`;
     const compactClass = this.props.compact ? 'compact' : '';
+    const topicBadge =
+      dialog.topicId && dialog.topicId.trim() !== '' ? dialog.topicId : 'Subdialog';
 
     // Only show subdialogs if parent task is not collapsed
     const isTaskCollapsed = this.collapsedTasks.has(dialog.taskDocPath);
@@ -1323,9 +1327,11 @@ export class DomindsDialogList extends HTMLElement {
            data-dialog-id="${dialog.selfId || dialog.rootId}"
            data-root-id="${dialog.rootId}"
            data-self-id="${dialog.selfId || ''}"
+           data-supdialog-id="${dialog.supdialogId || ''}"
            data-teammate-id="${dialog.agentId}"
            data-teammate-name="${this.getAgentDisplayName(dialog.agentId)}"
            data-task-doc-path="${dialog.taskDocPath}"
+           data-topic-id="${dialog.topicId || ''}"
            data-level="3">
         <div class="dialog-header">
           <div class="dialog-title">${this.formatTitleText(dialog.agentId, dialog.selfId || dialog.rootId)}</div>
@@ -1333,7 +1339,7 @@ export class DomindsDialogList extends HTMLElement {
         </div>
         <div class="dialog-meta">
           <span class="dialog-timestamp">${dialog.lastModified || ''}</span>
-          <span class="subdialog-badge">Subdialog</span>
+          <span class="subdialog-badge">${topicBadge}</span>
         </div>
 
       </div>
@@ -1523,12 +1529,16 @@ export class DomindsDialogList extends HTMLElement {
         const dialogId = dialogItem.getAttribute('data-dialog-id');
         const rootId = dialogItem.getAttribute('data-root-id') || dialogId;
         const selfId = dialogItem.getAttribute('data-self-id') || undefined;
+        const supdialogIdRaw = dialogItem.getAttribute('data-supdialog-id') || '';
         const teammateId = dialogItem.getAttribute('data-teammate-id');
         const teammateName = dialogItem.getAttribute('data-teammate-name');
         const taskDocPath = dialogItem.getAttribute('data-task-doc-path');
         const dialogTitle = dialogItem.getAttribute('data-dialog-title');
         const dataLevel = dialogItem.getAttribute('data-level');
         const dataType = dialogItem.getAttribute('data-type');
+        const topicIdRaw = dialogItem.getAttribute('data-topic-id') || '';
+        const supdialogId = supdialogIdRaw.trim() !== '' ? supdialogIdRaw : undefined;
+        const topicId = topicIdRaw.trim() !== '' ? topicIdRaw : undefined;
 
         // Only trigger selection for actual dialog items, not toggles
         if (dialogId && dataType !== 'task-toggle' && dataType !== 'main-dialog-toggle') {
@@ -1541,6 +1551,8 @@ export class DomindsDialogList extends HTMLElement {
             agentId: teammateId || 'unknown', // Ensure agentId is always set (type uses agentId)
             agentName: teammateName || this.getAgentDisplayName(teammateId || 'unknown'), // Generate default if missing
             taskDocPath: taskDocPath || 'no-task', // Ensure taskDocPath is always set
+            supdialogId,
+            topicId,
           };
 
           this.handleDialogSelection(dialogInfo);

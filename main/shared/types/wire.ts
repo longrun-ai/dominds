@@ -9,6 +9,15 @@ export interface DialogIdent {
   rootId: string;
 }
 
+export interface AssignmentFromSup {
+  headLine: string;
+  callBody: string;
+  originRole: 'user' | 'assistant';
+  originMemberId: string;
+  callerDialogId: string;
+  callId: string;
+}
+
 // Utility function to create DialogIdent from various formats
 export function createDialogIdent(selfId: string, rootId?: string): DialogIdent {
   return {
@@ -107,4 +116,7 @@ export interface DialogReadyMessage {
   dialog: DialogIdent;
   agentId: string;
   taskDocPath: string;
+  supdialogId?: string;
+  topicId?: string;
+  assignmentFromSup?: AssignmentFromSup;
 }

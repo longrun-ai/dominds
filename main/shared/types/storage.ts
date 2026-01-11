@@ -19,7 +19,30 @@ export type ProviderData = JsonObject;
 
 export type ToolArguments = JsonObject;
 
-export interface DialogMetadataFile {
+export interface RootDialogMetadataFile {
+  /** Unique dialog identifier (selfDlgId only) */
+  id: string;
+
+  /** Agent responsible for this dialog */
+  agentId: string;
+
+  /** Path to the task document associated with this dialog */
+  taskDocPath: string;
+
+  /** ISO timestamp when dialog was created */
+  createdAt: string;
+
+  /** Root dialogs have no parent */
+  supdialogId?: undefined;
+
+  /** Root dialogs do not have a topic */
+  topicId?: undefined;
+
+  /** Root dialogs have no assignment */
+  assignmentFromSup?: undefined;
+}
+
+export interface SubdialogMetadataFile {
   /** Unique dialog identifier (selfDlgId only) */
   id: string;
 
@@ -33,16 +56,23 @@ export interface DialogMetadataFile {
   createdAt: string;
 
   /** Parent dialog ID for subdialogs */
-  supdialogId?: string;
+  supdialogId: string;
+
+  /** Topic identifier for registered subdialogs (Type B) */
+  topicId?: string;
 
   /** Assignment context from parent dialog for subdialogs */
-  assignmentFromSup?: {
+  assignmentFromSup: {
     headLine: string;
     callBody: string;
     originRole: 'user' | 'assistant';
-    originMemberId?: string;
+    originMemberId: string;
+    callerDialogId: string;
+    callId: string;
   };
 }
+
+export type DialogMetadataFile = RootDialogMetadataFile | SubdialogMetadataFile;
 
 // === LATEST STATUS STORAGE (latest.yaml) ===
 
@@ -183,9 +213,11 @@ export interface TeammateResponseRecord {
   headLine: string;
   status: 'completed' | 'failed';
   result: string;
-  summary?: string; // merged from subdialog_final_summary_evt
-  agentId?: string; // merged from subdialog_final_summary_evt
-  callId?: string; // For navigation from response back to call site
+  response: string; // full subdialog response text (no truncation)
+  agentId: string;
+  callId: string; // For navigation from response back to call site
+  originRole: 'user' | 'assistant';
+  originMemberId: string;
 }
 
 export interface GenStartRecord {
@@ -298,11 +330,15 @@ export interface DialogListItem {
 
   /** Parent dialog info for subdialogs */
   supdialogId?: string;
+  /** Topic identifier for registered subdialogs (Type B) */
+  topicId?: string;
   assignmentFromSup?: {
     headLine: string;
     callBody: string;
     originRole: 'user' | 'assistant';
-    originMemberId?: string;
+    originMemberId: string;
+    callerDialogId: string;
+    callId: string;
   };
 }
 

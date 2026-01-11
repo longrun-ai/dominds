@@ -14,7 +14,13 @@ class MockDialogStore implements Dialog['dlgStore'] {
     targetAgentId: string,
     headLine: string,
     callBody: string,
-    options?: { originRole: 'user' | 'assistant'; originMemberId?: string; topicId?: string },
+    options: {
+      originRole: 'user' | 'assistant';
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
+      topicId?: string;
+    },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
     const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
@@ -24,12 +30,14 @@ class MockDialogStore implements Dialog['dlgStore'] {
       supdialog.taskDocPath,
       subdialogId,
       targetAgentId,
-      options?.topicId,
+      options.topicId,
       {
         headLine,
         callBody,
-        originRole: options?.originRole ?? 'assistant',
-        originMemberId: options?.originMemberId,
+        originRole: options.originRole,
+        originMemberId: options.originMemberId,
+        callerDialogId: options.callerDialogId,
+        callId: options.callId,
       },
     );
   }
@@ -140,6 +148,9 @@ runTest('register/lookup/unregister', () => {
       headLine: 'Test',
       callBody: 'Body',
       originRole: 'assistant',
+      originMemberId: rootDialog.agentId,
+      callerDialogId: rootDialog.id.selfId,
+      callId: 'call-1',
     },
   );
 

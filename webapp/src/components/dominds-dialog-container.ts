@@ -18,16 +18,23 @@ import type {
   ToolCallStartEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
-import type { DialogIdent } from '../shared/types/wire';
+import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
 import { DomindsCodeBlock } from './dominds-code-block';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 
+type DialogContext = DialogIdent & {
+  agentId?: string;
+  supdialogId?: string;
+  topicId?: string;
+  assignmentFromSup?: AssignmentFromSup;
+};
+
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
-  private currentDialog?: DialogIdent & { agentId?: string };
+  private currentDialog?: DialogContext;
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
-  private previousDialog?: DialogIdent & { agentId?: string };
+  private previousDialog?: DialogContext;
 
   // State tracking
   private currentRound?: number;
@@ -119,7 +126,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  public async setDialog(dialog: DialogIdent & { agentId?: string }): Promise<void> {
+  public async setDialog(dialog: DialogContext): Promise<void> {
     // Save current dialog as previous before cleanup
     // This allows events for the "old" dialog to be processed during navigation race conditions
     if (this.currentDialog) {
@@ -136,8 +143,25 @@ export class DomindsDialogContainer extends HTMLElement {
     this.render();
   }
 
-  public getCurrentDialog(): (DialogIdent & { agentId?: string }) | undefined {
+  public getCurrentDialog(): DialogContext | undefined {
     return this.currentDialog;
+  }
+
+  public updateDialogContext(dialog: DialogContext): void {
+    const current = this.currentDialog;
+    if (!current) {
+      this.currentDialog = dialog;
+      return;
+    }
+    if (current.selfId !== dialog.selfId || current.rootId !== dialog.rootId) {
+      return;
+    }
+    const merged: DialogContext = { ...current, ...dialog };
+    if (!dialog.assignmentFromSup && current.assignmentFromSup) {
+      merged.assignmentFromSup = current.assignmentFromSup;
+    }
+    this.currentDialog = merged;
+    this.refreshCallContextHeaders();
   }
 
   public async setCurrentRound(round: number): Promise<void> {
@@ -585,10 +609,7 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.className = 'bubble generation-bubble';
       bubble.innerHTML = `
         <div class="bubble-content">
-          <div class="bubble-header">
-            <div class="bubble-author">${this.getAuthorLabel('assistant', this.currentDialog?.agentId)}</div>
-            <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-          </div>
+          ${this.buildGenerationBubbleHeaderHtml()}
           <div class="bubble-body"></div>
         </div>
       `;
@@ -712,10 +733,7 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.className = 'bubble generation-bubble';
       bubble.innerHTML = `
         <div class="bubble-content">
-          <div class="bubble-header">
-            <div class="bubble-author">${this.getAuthorLabel('assistant', this.currentDialog?.agentId)}</div>
-            <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-          </div>
+          ${this.buildGenerationBubbleHeaderHtml()}
           <div class="bubble-body"></div>
         </div>
       `;
@@ -1013,7 +1031,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === TEAMMATE RESPONSE HANDLER ===
   // Handles responses for @agentName calls - displays result in SEPARATE bubble
-  // Now includes summary and agentId merged from subdialog_final_summary_evt
+  // Now includes full response and agentId from subdialog completion
   //
   // Call Type Distinction:
   // - Texting Tool Call: @tool_name (e.g., @add_reminder)
@@ -1045,8 +1063,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // - A subdialog (for @agentName calls from parent)
     // - A supdialog (for @parentAgentId calls from subdialog)
 
-    // Use summary if available (merged from subdialog_final_summary_evt), otherwise use result
-    const content = event.summary || `@${event.responderId}: ${event.result}`;
+    const content = `**Call:** ${event.headLine}\n\n${event.response}`;
 
     // Determine agentId for the bubble (use event.agentId if available, otherwise responderId)
     const agentId = event.agentId || event.responderId;
@@ -1092,6 +1109,8 @@ export class DomindsDialogContainer extends HTMLElement {
       content,
       event.calling_genseq,
       event.callId,
+      event.originRole,
+      event.originMemberId,
     );
 
     const container = this.shadowRoot?.querySelector('.messages');
@@ -1139,9 +1158,11 @@ export class DomindsDialogContainer extends HTMLElement {
   private createTeammateBubble(
     calleeDialogId: string,
     agentId: string | undefined,
-    summary: string,
+    response: string,
     callSiteId?: number,
     callId?: string,
+    originRole?: 'user' | 'assistant',
+    originMemberId?: string,
   ): HTMLElement {
     const el = document.createElement('div');
     el.className = 'message teammate';
@@ -1153,11 +1174,22 @@ export class DomindsDialogContainer extends HTMLElement {
       el.setAttribute('data-call-id', callId);
     }
     const callsign = agentId ? `@${agentId}` : 'Teammate';
+    const callContext = this.getTeammateCallContext(agentId, originRole, originMemberId);
+    const callContextHtml = callContext ? `<div class="call-context">${callContext}</div>` : '';
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
-          <span class="author-name">${callsign}</span><span class="response-indicator">Response</span>
-          ${callId ? `<a href="#" class="response-call-site-link" data-call-id="${callId}">← Call site</a>` : ''}
+          <div class="bubble-title">
+            <div class="title-row">
+              <span class="author-name">${callsign}</span><span class="response-indicator">Response</span>
+            </div>
+            ${callContextHtml}
+          </div>
+          ${
+            callId
+              ? `<a href="#" class="response-call-site-link" data-call-id="${callId}">← Call site</a>`
+              : ''
+          }
         </div>
         <div class="bubble-body">
           <div class="teammate-content"></div>
@@ -1165,7 +1197,7 @@ export class DomindsDialogContainer extends HTMLElement {
       </div>
     `;
     const md = this.createMarkdownSection();
-    md.setRawMarkdown(summary);
+    md.setRawMarkdown(response);
     el.querySelector('.teammate-content')?.appendChild(md);
     // Add click handler for call site link
     const responseCallSiteLink = el.querySelector(
@@ -1200,6 +1232,106 @@ export class DomindsDialogContainer extends HTMLElement {
     );
   }
 
+  private formatAgentLabel(agentId: string): string {
+    if (agentId === 'human' || agentId === '@human') {
+      return 'Human';
+    }
+    return agentId.startsWith('@') ? agentId : `@${agentId}`;
+  }
+
+  private formatCallerLabel(assignment: AssignmentFromSup): string {
+    if (assignment.originRole === 'user') {
+      return 'Human';
+    }
+    const originMemberId = assignment.originMemberId;
+    if (originMemberId && originMemberId.trim() !== '') {
+      if (originMemberId === 'human') {
+        return 'Human';
+      }
+      return this.formatAgentLabel(originMemberId);
+    }
+    return 'Assistant';
+  }
+
+  private getSubdialogCallContext(): string | null {
+    const dialog = this.currentDialog;
+    if (!dialog) {
+      return null;
+    }
+    const assignment = dialog.assignmentFromSup;
+    if (!assignment) {
+      return null;
+    }
+    const agentId = dialog.agentId;
+    if (!agentId) {
+      return null;
+    }
+    const caller = this.formatCallerLabel(assignment);
+    const callee = this.formatAgentLabel(agentId);
+    return `Call: ${caller} → ${callee}`;
+  }
+
+  private getTeammateCallContext(
+    responderId?: string,
+    originRole?: 'user' | 'assistant',
+    originMemberId?: string,
+  ): string | null {
+    const dialog = this.currentDialog;
+    if (!dialog || !dialog.agentId || !responderId) {
+      return null;
+    }
+    let caller = this.formatAgentLabel(dialog.agentId);
+    if (originRole === 'user' || originMemberId === 'human') {
+      caller = 'Human';
+    } else if (originMemberId && originMemberId.trim() !== '') {
+      caller = this.formatAgentLabel(originMemberId);
+    }
+    const callee = this.formatAgentLabel(responderId);
+    return `Call: ${caller} → ${callee}`;
+  }
+
+  private buildGenerationBubbleHeaderHtml(): string {
+    const agentId = this.currentDialog ? this.currentDialog.agentId : undefined;
+    const authorLabel = this.getAuthorLabel('assistant', agentId);
+    const callContext = this.getSubdialogCallContext();
+    const callContextHtml = callContext ? `<div class="call-context">${callContext}</div>` : '';
+    return `
+      <div class="bubble-header">
+        <div class="bubble-title">
+          <div class="bubble-author">${authorLabel}</div>
+          ${callContextHtml}
+        </div>
+        <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+      </div>
+    `;
+  }
+
+  private refreshCallContextHeaders(): void {
+    const callContext = this.getSubdialogCallContext();
+    if (!callContext) {
+      return;
+    }
+    const root = this.shadowRoot;
+    if (!root) {
+      return;
+    }
+    const headers = root.querySelectorAll('.generation-bubble .bubble-header');
+    for (const header of Array.from(headers)) {
+      const existing = header.querySelector('.call-context');
+      if (existing) {
+        continue;
+      }
+      const title = header.querySelector('.bubble-title');
+      if (!title) {
+        continue;
+      }
+      const contextEl = document.createElement('div');
+      contextEl.className = 'call-context';
+      contextEl.textContent = callContext;
+      title.appendChild(contextEl);
+    }
+  }
+
   // === DOM HELPERS ===
 
   // Create unified generation bubble
@@ -1210,10 +1342,7 @@ export class DomindsDialogContainer extends HTMLElement {
     el.setAttribute('data-finalized', 'false');
     el.innerHTML = `
       <div class="bubble-content">
-        <div class="bubble-header">
-          <div class="bubble-author">${this.getAuthorLabel('assistant', this.currentDialog?.agentId)}</div>
-          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
+        ${this.buildGenerationBubbleHeaderHtml()}
         <div class="bubble-body">
           <!-- User message parsed events and AI content will be inserted here -->
         </div>
@@ -1504,6 +1633,25 @@ export class DomindsDialogContainer extends HTMLElement {
       .bubble-author { 
         font-weight: 600; 
         color: var(--dominds-fg, var(--color-fg-primary, #333)); 
+      }
+
+      .bubble-title {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .title-row {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .call-context {
+        font-size: 11px;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
       }
       
       .bubble-header { 

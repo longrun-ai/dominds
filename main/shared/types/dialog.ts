@@ -185,7 +185,6 @@ export interface FullRemindersEvent {
 
 // Teammate response event - separate bubble for @teammate calls
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
-// summary and agentId merged from SubdialogSummaryEvent
 export interface TeammateResponseEvent {
   type: 'teammate_response_evt';
   round: number;
@@ -195,9 +194,11 @@ export interface TeammateResponseEvent {
   headLine: string;
   status: 'completed' | 'failed';
   result: string;
-  summary?: string; // merged from subdialog_final_summary_evt
-  agentId?: string; // merged from subdialog_final_summary_evt
-  callId?: string; // For navigation from response back to call site
+  response: string; // full subdialog response text (no truncation)
+  agentId: string;
+  callId: string; // For navigation from response back to call site
+  originRole: 'user' | 'assistant';
+  originMemberId: string;
 }
 
 // End of user saying event - emitted after user texting calls are parsed/executed

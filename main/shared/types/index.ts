@@ -4,12 +4,17 @@ export * from './wire';
 
 export * from './dialog';
 
+import type { AssignmentFromSup } from './wire';
+
 export interface DialogInfo {
   selfId: string;
   rootId: string;
   agentId: string;
   agentName: string;
   taskDocPath: string;
+  supdialogId?: string;
+  topicId?: string;
+  assignmentFromSup?: AssignmentFromSup;
 }
 
 // API response types for dialogs from server
@@ -23,6 +28,7 @@ export interface ApiRootDialogResponse {
   createdAt: string;
   lastModified: string;
   supdialogId?: string; // Optional: parent dialog ID for subdialogs in flattened lists
+  topicId?: string;
   subdialogCount?: number; // Number of subdialogs (only present in root dialog responses)
 }
 
@@ -35,6 +41,7 @@ export interface ApiSubdialogResponse {
   currentRound: number;
   createdAt: string;
   lastModified: string;
+  topicId?: string;
 }
 
 export interface ApiDialogHierarchyResponse {

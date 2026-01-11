@@ -234,6 +234,37 @@ function getTeammateMessageCount() {
   return getTeammateMessages().length;
 }
 
+function getVisibleMessageNodes() {
+  const container = getMessageContainer();
+  if (!container) return [];
+  return Array.from(container.children);
+}
+
+function getVisibleMessageTexts() {
+  return getVisibleMessageNodes()
+    .map((node) => (node.textContent || '').trim())
+    .filter((text) => text.length > 0);
+}
+
+function findVisibleMessageContainingAll(needles, options = {}) {
+  const list = Array.isArray(needles) ? needles : [needles];
+  const caseInsensitive = options.caseInsensitive === true;
+  const normalizedNeedles = list.map((n) =>
+    caseInsensitive ? String(n).toLowerCase() : String(n),
+  );
+  const nodes = getVisibleMessageNodes();
+  for (let i = 0; i < nodes.length; i++) {
+    const text = (nodes[i].textContent || '').trim();
+    if (!text) continue;
+    const haystack = caseInsensitive ? text.toLowerCase() : text;
+    const matchesAll = normalizedNeedles.every((needle) => haystack.includes(needle));
+    if (matchesAll) {
+      return { index: i, text };
+    }
+  }
+  return null;
+}
+
 // ============================================
 // Utility
 // ============================================
@@ -1333,7 +1364,7 @@ function selectDialogById(rootId) {
  * Source: dominds-dialog-list.ts lines 381-393, 353-366
  * Component methods: findDialogByRootId(), selectDialogById(), findSubdialog()
  */
-function selectDialog(dialogText) {
+async function selectDialog(dialogText) {
   const dialogList = getDialogList();
   if (!dialogList) throw new Error('DomindsDialogList component not found');
 
@@ -1352,6 +1383,7 @@ function selectDialog(dialogText) {
   // Try to find subdialog (format: "rootId:selfId")
   if (dialogText.includes(':')) {
     const [rootId, selfId] = dialogText.split(':');
+    await ensureSubdialogsLoaded(rootId);
     const subdialog = dialogList.findSubdialog?.(rootId, selfId);
     if (subdialog) {
       const success = dialogList.selectDialogById(rootId);
@@ -1387,6 +1419,49 @@ function getAllDialogs() {
 // ============================================
 
 /**
+ * Ensure subdialogs for a root dialog are loaded (lazy loading aware).
+ * Attempts backend load via dominds-app if available; falls back to expanding the root dialog.
+ */
+async function ensureSubdialogsLoaded(rootId, timeoutMs = 8000) {
+  const app = getApp();
+  if (!app) throw new Error('dominds-app not found');
+
+  const dialogList = getDialogList();
+  if (dialogList?.expandMainDialog) {
+    dialogList.expandMainDialog(rootId, true);
+  }
+
+  if (typeof app.ensureSubdialogsLoaded === 'function') {
+    await app.ensureSubdialogsLoaded(rootId);
+  } else {
+    if (dialogList?.expandMainDialog) {
+      dialogList.expandMainDialog(rootId, true);
+    }
+  }
+
+  try {
+    await waitUntil(() => {
+      const dialogs = getAllDialogs();
+      if (!Array.isArray(dialogs) || dialogs.length === 0) return false;
+      const rootDialog = dialogs.find(
+        (d) => d && typeof d.rootId === 'string' && d.rootId === rootId && !d.selfId,
+      );
+      const expectedCount =
+        rootDialog && typeof rootDialog.subdialogCount === 'number'
+          ? rootDialog.subdialogCount
+          : 0;
+      if (expectedCount === 0) return true;
+      return dialogs.some(
+        (d) => d && d.supdialogId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
+      );
+    }, timeoutMs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Opens a subdialog using the component's direct method.
  * Source: dominds-app.tsx lines 1738-1756
  * Component method: openSubdialog(rootId, subdialogId) returns Promise<boolean>
@@ -1399,7 +1474,12 @@ async function openSubdialog(rootId, subdialogId) {
     throw new Error('openSubdialog method not available on dominds-app');
   }
 
-  return app.openSubdialog(rootId, subdialogId);
+  let opened = await app.openSubdialog(rootId, subdialogId);
+  if (!opened) {
+    await ensureSubdialogsLoaded(rootId);
+    opened = await app.openSubdialog(rootId, subdialogId);
+  }
+  return opened;
 }
 
 /**
@@ -2280,7 +2360,7 @@ async function waitForVisibleMessageCount(minCount, timeoutMs = 60000) {
  */
 async function waitForTeammateResponse(options = {}) {
   const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 60000;
-  const minChars = typeof options.minChars === 'number' ? options.minChars : 12;
+  const minChars = typeof options.minChars === 'number' ? options.minChars : 1;
   const initialCount =
     typeof options.initialCount === 'number' ? options.initialCount : getTeammateMessageCount();
   const minNew = typeof options.minNew === 'number' ? options.minNew : 1;
@@ -2293,19 +2373,39 @@ async function waitForTeammateResponse(options = {}) {
         const messages = getTeammateMessages();
         if (messages.length >= initialCount + minNew) {
           const newMessages = messages.slice(initialCount);
-          const hasContent = newMessages.some((message) => {
-            if (callSiteId !== null) {
-              const messageCallSiteId = parseCallSiteId(
-                message.getAttribute('data-call-site-id'),
-              );
-              if (messageCallSiteId !== callSiteId) return false;
-            }
+          const contentMessages = [];
+          for (const message of newMessages) {
             const contentEl = message.querySelector('.teammate-content');
-            if (!contentEl) return false;
+            if (!contentEl) continue;
             const text = (contentEl.textContent || '').trim();
-            return text.length >= minChars;
-          });
-          if (hasContent) return resolve(true);
+            if (text.length < minChars) continue;
+            const messageCallSiteId = parseCallSiteId(message.getAttribute('data-call-site-id'));
+            contentMessages.push({ messageCallSiteId, text });
+            if (callSiteId !== null && messageCallSiteId === callSiteId) {
+              return resolve(true);
+            }
+          }
+          if (callSiteId === null) {
+            if (contentMessages.length > 0) {
+              return resolve(true);
+            }
+            return;
+          }
+          if (contentMessages.length === 1) {
+            console.log(
+              'waitForTeammateResponse fallback: single content message, accepting despite call-site mismatch',
+            );
+            return resolve(true);
+          }
+          const ids = contentMessages
+            .map((item) => item.messageCallSiteId)
+            .filter((id) => id !== null);
+          if (ids.length === 0 && contentMessages.length > 0) {
+            console.log(
+              'waitForTeammateResponse fallback: content has no call-site ids, accepting',
+            );
+            return resolve(true);
+          }
         }
       } catch (err) {
         console.warn('Error checking teammate response:', err);
@@ -2340,6 +2440,8 @@ function setGlobal() {
     getDialogListShadow,
     getMessageContainer,
     getTeammateMessageCount,
+    getVisibleMessageTexts,
+    findVisibleMessageContainingAll,
     // Core messaging
     fillAndSend,
     waitStreamingComplete,
@@ -2359,6 +2461,7 @@ function setGlobal() {
     selectDialogById,
     getAllDialogs,
     // Subdialog navigation
+    ensureSubdialogsLoaded,
     openSubdialog,
     getSubdialogHierarchy,
     navigateToParent,

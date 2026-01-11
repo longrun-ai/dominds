@@ -9,6 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { AssignmentFromSup } from '../dialog';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 
 import { inspect } from 'util';
@@ -152,20 +153,30 @@ function formatAssignmentVerbatim(headLine: string, callBody: string): string {
 
 function formatSubdialogAssignmentForModel(
   supdialogAgentId: string,
-  subdialogAgentId: string,
   headLine: string,
   callBody: string,
 ): string {
-  const assignment = formatAssignmentVerbatim(headLine, callBody);
-  return `Parent dialog agent: ${supdialogAgentId}
-You are: ${subdialogAgentId}
-
-Assignment (verbatim):
-${assignment}`;
+  const trimmedHead = headLine.trim();
+  const trimmedBody = callBody.trim();
+  const intro = `@${supdialogAgentId} is asking you`;
+  if (trimmedHead !== '' && trimmedBody !== '') {
+    return `${intro}, ${headLine}\n\n${callBody}`;
+  }
+  if (trimmedHead !== '') {
+    return `${intro}, ${headLine}`;
+  }
+  if (trimmedBody !== '') {
+    return `${intro}:\n${callBody}`;
+  }
+  return `${intro}.`;
 }
 
-function formatSubdialogUserPrompt(headLine: string, callBody: string): string {
-  return formatAssignmentVerbatim(headLine, callBody);
+function formatSubdialogUserPrompt(
+  supdialogAgentId: string,
+  headLine: string,
+  callBody: string,
+): string {
+  return formatSubdialogAssignmentForModel(supdialogAgentId, headLine, callBody);
 }
 
 function formatSupdialogCallPrompt(
@@ -314,7 +325,15 @@ export async function driveDialogStream(
 
   const release = await dlg.acquire();
   try {
+    const shouldReportToCaller =
+      dlg instanceof SubDialog &&
+      humanPrompt !== undefined &&
+      humanPrompt.skipTextingParse !== true;
+    const before = shouldReportToCaller ? getLastAssistantMessage(dlg.msgs) : null;
     await _driveDialogStream(dlg, humanPrompt);
+    if (shouldReportToCaller) {
+      await reportSubdialogResponseToCaller(dlg, before);
+    }
   } finally {
     release();
   }
@@ -556,19 +575,24 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       const taskDocMsg: ChatMessage | undefined = dlg.taskDocPath
         ? await formatTaskDocContent(dlg.taskDocPath)
         : undefined;
-      const assignmentFromSupMsg: ChatMessage | undefined =
-        dlg.supdialog && dlg.assignmentFromSup
-          ? {
-              type: 'environment_msg',
-              role: 'user',
-              content: formatSubdialogAssignmentForModel(
-                dlg.supdialog.agentId,
-                dlg.agentId,
-                dlg.assignmentFromSup.headLine,
-                dlg.assignmentFromSup.callBody,
-              ),
-            }
-          : undefined;
+      let assignmentFromSupMsg: ChatMessage | undefined;
+      if (dlg instanceof SubDialog && dlg.assignmentFromSup) {
+        const assignment = dlg.assignmentFromSup;
+        const callerDialog = resolveCallerDialog(dlg, assignment);
+        const callerAgentId =
+          callerDialog && callerDialog.agentId ? callerDialog.agentId : dlg.supdialog?.agentId;
+        if (callerAgentId) {
+          assignmentFromSupMsg = {
+            type: 'environment_msg',
+            role: 'user',
+            content: formatSubdialogAssignmentForModel(
+              callerAgentId,
+              assignment.headLine,
+              assignment.callBody,
+            ),
+          };
+        }
+      }
 
       const ctxMsgs: ChatMessage[] = [
         ...memories,
@@ -1191,7 +1215,7 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
           subdialogState.metadata.taskDocPath,
           restoredSubdialogId,
           subdialogState.metadata.agentId,
-          undefined,
+          subdialogState.metadata.topicId,
           subdialogState.metadata.assignmentFromSup,
           {
             messages: subdialogState.messages,
@@ -1494,6 +1518,91 @@ async function extractSupdialogResponseForTypeA(supdialog: Dialog): Promise<stri
   }
 }
 
+type LastAssistantMessage = {
+  content: string;
+  genseq: number;
+};
+
+function getLastAssistantMessage(messages: ChatMessage[]): LastAssistantMessage | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (
+      (msg.type === 'saying_msg' || msg.type === 'thinking_msg') &&
+      typeof msg.content === 'string'
+    ) {
+      return { content: msg.content, genseq: msg.genseq };
+    }
+  }
+  return null;
+}
+
+function resolveCallerDialog(subdialog: SubDialog, assignment?: AssignmentFromSup): Dialog | null {
+  const rootDialog = subdialog.supdialog instanceof RootDialog ? subdialog.supdialog : undefined;
+  if (!rootDialog) {
+    return null;
+  }
+  const callerDialogId = assignment?.callerDialogId;
+  if (callerDialogId) {
+    const candidate = rootDialog.lookupDialog(callerDialogId);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return rootDialog;
+}
+
+async function updateSubdialogAssignment(
+  subdialog: SubDialog,
+  assignment: AssignmentFromSup,
+): Promise<void> {
+  subdialog.assignmentFromSup = assignment;
+  await DialogPersistence.updateSubdialogAssignment(subdialog.id, assignment);
+}
+
+async function reportSubdialogResponseToCaller(
+  subdialog: SubDialog,
+  before: LastAssistantMessage | null,
+): Promise<void> {
+  const assignment = subdialog.assignmentFromSup;
+  if (!assignment) {
+    return;
+  }
+  const callerDialog = resolveCallerDialog(subdialog, assignment);
+  if (!callerDialog) {
+    return;
+  }
+  const after = getLastAssistantMessage(subdialog.msgs);
+  if (!after) {
+    return;
+  }
+  if (before && before.genseq === after.genseq && before.content === after.content) {
+    return;
+  }
+  const responseText = after.content;
+  const headLine =
+    assignment.headLine && assignment.headLine.trim() !== ''
+      ? assignment.headLine
+      : 'Subdialog response';
+  const responseContent = `Teammate response received from @${subdialog.agentId} for call "${headLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
+  const originRole = assignment.originRole;
+  const originMemberId = assignment.originMemberId;
+
+  await callerDialog.receiveTeammateResponse(
+    subdialog.agentId,
+    headLine,
+    responseContent,
+    'completed',
+    subdialog.id,
+    {
+      response: responseText,
+      agentId: subdialog.agentId,
+      callId: assignment.callId,
+      originRole,
+      originMemberId,
+    },
+  );
+}
+
 // === PHASE 6: SUBDIALOG SUPPLY MECHANISM ===
 
 /**
@@ -1513,12 +1622,15 @@ export async function createSubdialogForSupdialog(
   targetAgentId: string,
   headLine: string,
   callBody: string,
+  callId: string,
 ): Promise<void> {
   try {
     // Create the subdialog
     const subdialog = await supdialog.createSubDialog(targetAgentId, headLine, callBody, {
       originRole: 'assistant',
       originMemberId: supdialog.agentId,
+      callerDialogId: supdialog.id.selfId,
+      callId,
     });
     supdialog.addPendingSubdialogs([subdialog.id]);
 
@@ -1539,7 +1651,12 @@ export async function createSubdialogForSupdialog(
     // Drive the subdialog asynchronously
     void (async () => {
       try {
-        await driveDialogStream(subdialog, undefined, true);
+        const initPrompt: HumanPrompt = {
+          content: formatSubdialogUserPrompt(supdialog.agentId, headLine, callBody),
+          msgId: generateDialogID(),
+          skipTextingParse: true,
+        };
+        await driveDialogStream(subdialog, initPrompt, true);
         const responseText = await extractSubdialogResponse(subdialog.id);
         await supplyResponseToSupdialog(supdialog, subdialog.id, responseText, 'A');
       } catch (err) {
@@ -1615,40 +1732,53 @@ export async function supplyResponseToSupdialog(
     let responderId = subdialogId.rootId;
     let responderAgentId: string | undefined;
     let headLine = responseText;
+    let originRole: 'user' | 'assistant' = 'assistant';
+    let originMemberId: string | undefined;
+
+    try {
+      let metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
+      if (!metadata) {
+        metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'completed');
+      }
+      if (metadata?.assignmentFromSup) {
+        originRole = metadata.assignmentFromSup.originRole;
+        originMemberId = metadata.assignmentFromSup.originMemberId;
+        if (!pendingRecord) {
+          const assignmentHead = metadata.assignmentFromSup.headLine;
+          if (typeof assignmentHead === 'string' && assignmentHead.trim() !== '') {
+            headLine = assignmentHead;
+          }
+        }
+      }
+      if (!pendingRecord && metadata && typeof metadata.agentId === 'string') {
+        if (metadata.agentId.trim() !== '') {
+          responderId = metadata.agentId;
+          responderAgentId = metadata.agentId;
+        }
+      }
+    } catch (err) {
+      log.warn('Failed to load subdialog metadata for response record', {
+        parentId: parentDialog.id.selfId,
+        subdialogId: subdialogId.selfId,
+        error: err,
+      });
+    }
+
+    if (!originMemberId) {
+      originMemberId = originRole === 'assistant' ? parentDialog.agentId : 'human';
+    }
 
     if (pendingRecord) {
       responderId = pendingRecord.targetAgentId;
       responderAgentId = pendingRecord.targetAgentId;
       headLine = pendingRecord.headLine;
-    } else {
-      try {
-        const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
-        if (metadata && typeof metadata.agentId === 'string' && metadata.agentId.trim() !== '') {
-          responderId = metadata.agentId;
-          responderAgentId = metadata.agentId;
-        }
-        if (
-          metadata &&
-          metadata.assignmentFromSup &&
-          typeof metadata.assignmentFromSup.headLine === 'string' &&
-          metadata.assignmentFromSup.headLine.trim() !== ''
-        ) {
-          headLine = metadata.assignmentFromSup.headLine;
-        }
-      } catch (err) {
-        log.warn('Failed to load subdialog metadata for response record', {
-          parentId: parentDialog.id.selfId,
-          subdialogId: subdialogId.selfId,
-          error: err,
-        });
-      }
     }
 
     if (headLine.trim() === '') {
       headLine = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
     }
 
-    const responseContent = `Teammate response received from @${responderId} (call complete). Do not re-issue this call unless asked.\n\n${responseText}`;
+    const responseContent = `Teammate response received from @${responderId} for call "${headLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
     const resultMsg: TextingCallResultMsg = {
       type: 'call_result_msg',
       role: 'tool',
@@ -1659,6 +1789,11 @@ export async function supplyResponseToSupdialog(
     };
     await parentDialog.addChatMessages(resultMsg);
 
+    const resolvedAgentId = responderAgentId ?? responderId;
+    const resolvedOriginMemberId =
+      originMemberId ?? (originRole === 'assistant' ? parentDialog.agentId : 'human');
+    const resolvedCallId = callId ?? '';
+
     await parentDialog.receiveTeammateResponse(
       responderId,
       headLine,
@@ -1666,9 +1801,11 @@ export async function supplyResponseToSupdialog(
       'completed',
       subdialogId,
       {
-        summary: responseText,
-        agentId: responderAgentId,
-        callId,
+        response: responseText,
+        agentId: resolvedAgentId,
+        callId: resolvedCallId,
+        originRole,
+        originMemberId: resolvedOriginMemberId,
       },
     );
 
@@ -1678,10 +1815,15 @@ export async function supplyResponseToSupdialog(
     // Auto-revive when pending list is empty
     if (!parentDialog.hasPendingSubdialogs()) {
       parentDialog.clearPendingSubdialogs();
-      globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId);
       log.info(
         `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} auto-reviving`,
       );
+      const resumePrompt: HumanPrompt = {
+        content: responseContent,
+        msgId: generateDialogID(),
+        skipTextingParse: true,
+      };
+      void driveDialogStream(parentDialog, resumePrompt, true);
     }
   } catch (error) {
     log.error('Failed to supply subdialog response', {
@@ -1915,7 +2057,7 @@ async function executeTextingCall(
 
           // Extract response from supdialog's last assistant message
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
-          const responseContent = `Teammate response received from @${parseResult.agentId} (call complete). Do not re-issue this call unless asked.\n\n${responseText}`;
+          const responseContent = `Teammate response received from @${parseResult.agentId} for call "${headLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
 
           // Resume the subdialog with the supdialog's response
           dlg.setSuspensionState('resumed');
@@ -1936,9 +2078,11 @@ async function executeTextingCall(
             'completed',
             supdialog.id,
             {
-              summary: responseText,
+              response: responseText,
               agentId: parseResult.agentId,
               callId,
+              originRole,
+              originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
             },
           );
         } catch (err) {
@@ -1962,9 +2106,11 @@ async function executeTextingCall(
             'failed',
             supdialog.id,
             {
-              summary: errorText,
+              response: errorText,
               agentId: parseResult.agentId,
               callId,
+              originRole,
+              originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
             },
           );
         }
@@ -1975,20 +2121,89 @@ async function executeTextingCall(
         // Fall through to Type C handling
       }
     } else if (parseResult.type === 'B') {
-      // Type B: Registered subdialog with topic
-      if (dlg instanceof RootDialog) {
-        const rootDialog = dlg;
+      // Type B: Registered subdialog with topic (root registry, caller can be root or subdialog)
+      const callerDialog = dlg;
+      const rootDialog =
+        dlg instanceof RootDialog
+          ? dlg
+          : dlg.supdialog instanceof RootDialog
+            ? dlg.supdialog
+            : undefined;
+
+      if (!rootDialog) {
+        log.warn('Type B call without root dialog, falling back to Type C', {
+          dialogId: dlg.id.selfId,
+        });
+        try {
+          const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+            originRole,
+            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            callerDialogId: callerDialog.id.selfId,
+            callId,
+            topicId: parseResult.topicId,
+          });
+
+          const pendingRecord: PendingSubdialogRecordType = {
+            subdialogId: sub.id.selfId,
+            createdAt: formatUnifiedTimestamp(new Date()),
+            headLine,
+            targetAgentId: parseResult.agentId,
+            callType: 'C',
+            topicId: parseResult.topicId,
+          };
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
+          existingPending.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
+
+          const task = (async () => {
+            try {
+              const initPrompt: HumanPrompt = {
+                content: formatSubdialogUserPrompt(dlg.agentId, headLine, body),
+                msgId: generateDialogID(),
+                skipTextingParse: true,
+              };
+              const responseText = await driveSubdialogToCompletion(sub, initPrompt);
+              await supplyResponseToSupdialog(dlg, sub.id, responseText, 'C', callId);
+            } catch (err) {
+              log.warn('Type B fallback subdialog processing error:', err);
+            }
+          })();
+          void task;
+          subdialogsCreated.push(sub.id);
+          suspend = true;
+        } catch (err) {
+          log.warn('Type B fallback subdialog creation error:', err);
+        }
+      } else {
+        const originMemberId = originRole === 'assistant' ? dlg.agentId : 'human';
+        const assignment: AssignmentFromSup = {
+          headLine,
+          callBody: body,
+          originRole,
+          originMemberId,
+          callerDialogId: callerDialog.id.selfId,
+          callId,
+        };
+
         const existingSubdialog = rootDialog.lookupSubdialog(
           parseResult.agentId,
           parseResult.topicId,
         );
 
+        const pendingOwner = callerDialog;
+
         if (existingSubdialog) {
           const resumePrompt: HumanPrompt = {
-            content: formatSubdialogUserPrompt(headLine, body),
+            content: formatSubdialogUserPrompt(callerDialog.agentId, headLine, body),
             msgId: generateDialogID(),
             skipTextingParse: true,
           };
+          try {
+            await updateSubdialogAssignment(existingSubdialog, assignment);
+          } catch (err) {
+            log.warn('Failed to update registered subdialog assignment', err);
+          }
+
           const pendingRecord: PendingSubdialogRecordType = {
             subdialogId: existingSubdialog.id.selfId,
             createdAt: formatUnifiedTimestamp(new Date()),
@@ -1997,9 +2212,9 @@ async function executeTextingCall(
             callType: 'B',
             topicId: parseResult.topicId,
           };
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
           existingPending.push(pendingRecord);
-          await DialogPersistence.savePendingSubdialogs(rootDialog.id, existingPending);
+          await DialogPersistence.savePendingSubdialogs(pendingOwner.id, existingPending);
 
           const task = (async () => {
             try {
@@ -2007,7 +2222,13 @@ async function executeTextingCall(
                 existingSubdialog,
                 resumePrompt,
               );
-              await supplyResponseToSupdialog(rootDialog, existingSubdialog.id, responseText, 'B');
+              await supplyResponseToSupdialog(
+                pendingOwner,
+                existingSubdialog.id,
+                responseText,
+                'B',
+                callId,
+              );
             } catch (err) {
               log.warn('Type B registered subdialog resumption error:', err);
             }
@@ -2018,7 +2239,8 @@ async function executeTextingCall(
         } else {
           const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
             originRole,
-            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            originMemberId,
+            callerDialogId: callerDialog.id.selfId,
             callId,
             topicId: parseResult.topicId,
           });
@@ -2033,14 +2255,19 @@ async function executeTextingCall(
             callType: 'B',
             topicId: parseResult.topicId,
           };
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(rootDialog.id);
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
           existingPending.push(pendingRecord);
-          await DialogPersistence.savePendingSubdialogs(rootDialog.id, existingPending);
+          await DialogPersistence.savePendingSubdialogs(pendingOwner.id, existingPending);
 
           const task = (async () => {
             try {
-              const responseText = await driveSubdialogToCompletion(sub);
-              await supplyResponseToSupdialog(rootDialog, sub.id, responseText, 'B');
+              const initPrompt: HumanPrompt = {
+                content: formatSubdialogUserPrompt(callerDialog.agentId, headLine, body),
+                msgId: generateDialogID(),
+                skipTextingParse: true,
+              };
+              const responseText = await driveSubdialogToCompletion(sub, initPrompt);
+              await supplyResponseToSupdialog(pendingOwner, sub.id, responseText, 'B', callId);
             } catch (err) {
               log.warn('Type B subdialog processing error:', err);
             }
@@ -2048,42 +2275,6 @@ async function executeTextingCall(
           void task;
           subdialogsCreated.push(sub.id);
           suspend = true;
-        }
-      } else {
-        // If not a RootDialog, fall back to Type C behavior (transient subdialog)
-        try {
-          const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
-            originRole,
-            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
-            callId,
-            topicId: parseResult.topicId,
-          });
-
-          const pendingRecord: PendingSubdialogRecordType = {
-            subdialogId: sub.id.selfId,
-            createdAt: formatUnifiedTimestamp(new Date()),
-            headLine,
-            targetAgentId: parseResult.agentId,
-            callType: 'B',
-            topicId: parseResult.topicId,
-          };
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
-          existingPending.push(pendingRecord);
-          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
-
-          const task = (async () => {
-            try {
-              const responseText = await driveSubdialogToCompletion(sub);
-              await supplyResponseToSupdialog(dlg, sub.id, responseText, 'B');
-            } catch (err) {
-              log.warn('Type B→C fallback subdialog processing error:', err);
-            }
-          })();
-          void task;
-          subdialogsCreated.push(sub.id);
-          suspend = true;
-        } catch (err) {
-          log.warn('Type B→C fallback subdialog creation error:', err);
         }
       }
     }
@@ -2098,6 +2289,8 @@ async function executeTextingCall(
           const sub = await dlg.createSubDialog(tgt, headLine, body, {
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            callerDialogId: dlg.id.selfId,
+            callId,
           });
           const pendingRecord: PendingSubdialogRecordType = {
             subdialogId: sub.id.selfId,
@@ -2112,7 +2305,12 @@ async function executeTextingCall(
 
           const task = (async () => {
             try {
-              const responseText = await driveSubdialogToCompletion(sub);
+              const initPrompt: HumanPrompt = {
+                content: formatSubdialogUserPrompt(dlg.agentId, headLine, body),
+                msgId: generateDialogID(),
+                skipTextingParse: true,
+              };
+              const responseText = await driveSubdialogToCompletion(sub, initPrompt);
               await supplyResponseToSupdialog(dlg, sub.id, responseText, 'C', callId);
               // Type C: Move to done/ on completion (handled by subdialog completion)
             } catch (err) {

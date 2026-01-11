@@ -18,7 +18,7 @@
  *    - Syntax: `@mention command arguments`
  *    - **Mention Syntax**: `@` followed by mention name
  *      - **Valid characters**: Alphanumeric (a-z, A-Z, 0-9), Unicode letters/digits, underscore (`_`), hyphen (`-`), dot (`.`) for namespace separation
- *      - **Invalid form**: mention IDs must NOT end with a dot (`.`)
+ *      - **Trailing dot**: a trailing `.` is treated as punctuation and ignored for mention parsing
  *      - **Invalid characters** (mention ends when encountered): space, newline, tab, colon (`:`), and any other non-valid character
  *      - Examples: `@tool1`, `@user1`, `@namespace.tool1`, `@user_name`, `@user-name`
  *    - First mention determines the target
@@ -302,20 +302,9 @@ export class TextingStreamParser {
     this.downstream.callFinish(done.callId);
   }
 
-  private appendInvalidMentionError(mentionToken: string): void {
-    const msg = `Invalid mention \`${mentionToken}\`: trailing '.' is not allowed.`;
-    if (this.markdownChunkBuffer && !/\s$/.test(this.markdownChunkBuffer)) {
-      this.markdownChunkBuffer += ' ';
-    }
-    this.markdownChunkBuffer += msg;
-  }
-
-  private abortCallToMarkdown(invalidMention?: string): void {
+  private abortCallToMarkdown(): void {
     if (this.headlineBuffer) {
       this.markdownChunkBuffer += this.headlineBuffer;
-    }
-    if (invalidMention) {
-      this.appendInvalidMentionError(invalidMention);
     }
     this.headlineBuffer = '';
     this.firstMentionAccumulator = '';
@@ -332,8 +321,14 @@ export class TextingStreamParser {
     this.mode = ParserMode.FREE_TEXT;
   }
 
-  private mentionHasTrailingDot(mentionToken: string): boolean {
-    return mentionToken.length > 1 && mentionToken.endsWith('.');
+  private normalizeFirstMentionAccumulator(): void {
+    while (this.firstMentionAccumulator.length > 1 && this.firstMentionAccumulator.endsWith('.')) {
+      this.firstMentionAccumulator = this.firstMentionAccumulator.slice(0, -1);
+    }
+  }
+
+  private hasValidFirstMention(): boolean {
+    return this.firstMentionAccumulator.length > 1;
   }
 
   public takeUpstreamChunk(chunk: string): number {
@@ -403,16 +398,13 @@ export class TextingStreamParser {
         this.headlineBuffer = '';
         this.mode = ParserMode.FREE_TEXT;
       }
-      if (
-        !this.callStartEmitted &&
-        this.firstMentionAccumulator.length > 1 &&
-        this.mentionHasTrailingDot(this.firstMentionAccumulator)
-      ) {
-        this.abortCallToMarkdown(this.firstMentionAccumulator);
-      } else if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+      if (!this.callStartEmitted) {
+        this.normalizeFirstMentionAccumulator();
+      }
+      if (!this.callStartEmitted && !this.hasValidFirstMention()) {
         this.abortCallToMarkdown();
       } else {
-        if (this.firstMentionAccumulator.length > 1) {
+        if (this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
           this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
@@ -636,15 +628,10 @@ export class TextingStreamParser {
     }
 
     if (charType === CharType.NEWLINE) {
-      if (
-        !this.callStartEmitted &&
-        this.firstMentionAccumulator.length > 1 &&
-        this.mentionHasTrailingDot(this.firstMentionAccumulator)
-      ) {
-        this.abortCallToMarkdown(this.firstMentionAccumulator);
-        return position;
+      if (!this.callStartEmitted) {
+        this.normalizeFirstMentionAccumulator();
       }
-      if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+      if (!this.callStartEmitted && !this.hasValidFirstMention()) {
         this.abortCallToMarkdown();
         return position;
       }
@@ -670,7 +657,7 @@ export class TextingStreamParser {
             // Found triple backticks - this is a wholly triple quoted body
 
             // Ensure callStart is called before finishing
-            if (this.firstMentionAccumulator.length > 1) {
+            if (this.hasValidFirstMention()) {
               const firstMention = this.firstMentionAccumulator.substring(1);
               this.emitCallStart(firstMention);
               this.firstMentionAccumulator = '';
@@ -700,7 +687,7 @@ export class TextingStreamParser {
         const nextChar = chunk[aheadPos];
         if (nextChar === '@') {
           if (sawExtraNewline) {
-            if (this.firstMentionAccumulator.length > 1) {
+            if (this.hasValidFirstMention()) {
               const firstMention = this.firstMentionAccumulator.substring(1);
               this.emitCallStart(firstMention);
               this.firstMentionAccumulator = '';
@@ -737,7 +724,7 @@ export class TextingStreamParser {
       if (foundNonWhitespace || aheadPos >= chunk.length) {
         // End of headline, start of body
         // Ensure callStart is called before finishing
-        if (this.firstMentionAccumulator.length > 1) {
+        if (this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
           this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
@@ -751,7 +738,7 @@ export class TextingStreamParser {
         return position + 1;
       } else {
         // End of chunk, finalize headline to allow body detection in the next chunk
-        if (this.firstMentionAccumulator.length > 1) {
+        if (this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
           this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
@@ -776,22 +763,16 @@ export class TextingStreamParser {
         return position + 1;
       }
 
-      if (
-        !this.callStartEmitted &&
-        this.firstMentionAccumulator.length > 1 &&
-        this.mentionHasTrailingDot(this.firstMentionAccumulator)
-      ) {
-        this.abortCallToMarkdown(this.firstMentionAccumulator);
-        return position;
+      if (!this.callStartEmitted) {
+        this.normalizeFirstMentionAccumulator();
       }
-
-      if (!this.callStartEmitted && this.firstMentionAccumulator.length <= 1) {
+      if (!this.callStartEmitted && !this.hasValidFirstMention()) {
         this.abortCallToMarkdown();
         return position;
       }
 
       // Only trigger callStart if we have a non-empty first mention AND haven't already emitted it
-      if (this.firstMentionAccumulator.length > 1 && !this.callStartEmitted) {
+      if (this.hasValidFirstMention() && !this.callStartEmitted) {
         // More than just '@'
         // Start the call with the first mention (remove @ prefix)
         const firstMention = this.firstMentionAccumulator.substring(1); // Remove '@'
@@ -1467,7 +1448,7 @@ export class TextingStreamParser {
  *   - Underscore (`_`) and hyphen (`-`)
  *   - Dot (`.`) for namespace separation
  * - Mention ends when invalid character encountered: space, newline, tab, colon (`:`), etc.
- * - Mention IDs may include dots for namespaces, but must not end with a dot.
+ * - Mention IDs may include dots for namespaces; a trailing dot is treated as punctuation and ignored.
  *
  * Respects backtick quoting - mentions inside backtick-quoted content are ignored.
  */
@@ -1546,8 +1527,14 @@ export function extractMentions(text: string): string[] {
         j++;
       }
 
-      if (mention.length > 0 && !mention.endsWith('.')) {
-        mentions.push(mention);
+      if (mention.length > 0) {
+        let trimmed = mention;
+        while (trimmed.endsWith('.')) {
+          trimmed = trimmed.slice(0, -1);
+        }
+        if (trimmed.length > 0) {
+          mentions.push(trimmed);
+        }
       }
 
       // Skip to the end of the mention

@@ -1588,6 +1588,7 @@ export class DomindsApp extends HTMLElement {
                 createdAt: subdialog.createdAt,
                 lastModified: subdialog.lastModified,
                 supdialogId: rootId, // Link to parent
+                topicId: subdialog.topicId,
               });
             }
           }
@@ -1901,7 +1902,12 @@ export class DomindsApp extends HTMLElement {
    * @returns Promise that resolves when navigation is complete
    */
   public async openSubdialog(rootId: string, subdialogId: string): Promise<boolean> {
-    const subdialog = this.dialogs.find((d) => d.rootId === rootId && d.selfId === subdialogId);
+    let subdialog = this.dialogs.find((d) => d.rootId === rootId && d.selfId === subdialogId);
+
+    if (!subdialog) {
+      await this.ensureSubdialogsLoaded(rootId);
+      subdialog = this.dialogs.find((d) => d.rootId === rootId && d.selfId === subdialogId);
+    }
 
     if (!subdialog) {
       console.warn(`Subdialog not found: ${rootId}:${subdialogId}`);
@@ -1917,6 +1923,25 @@ export class DomindsApp extends HTMLElement {
     });
 
     return true;
+  }
+
+  /**
+   * Ensure subdialogs for a root dialog are loaded (for E2E testing + lazy loading).
+   */
+  public async ensureSubdialogsLoaded(rootId: string): Promise<boolean> {
+    if (!rootId) return false;
+    const rootDialog = this.dialogs.find((d) => d.rootId === rootId && !d.selfId);
+    const expectedCount =
+      typeof rootDialog?.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
+    if (expectedCount === 0) return true;
+    const alreadyLoaded = this.dialogs.some(
+      (d) => d.supdialogId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
+    );
+    if (alreadyLoaded) return true;
+    await this.loadSubdialogsForRoot(rootId);
+    return this.dialogs.some(
+      (d) => d.supdialogId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
+    );
   }
 
   private handleConnectionStateChange(state: ConnectionState): void {
@@ -2796,7 +2821,14 @@ export class DomindsApp extends HTMLElement {
           agentId: readyMsg.agentId,
           agentName: readyMsg.agentId, // agentId serves as the name for display
           taskDocPath: readyMsg.taskDocPath,
+          supdialogId: readyMsg.supdialogId,
+          topicId: readyMsg.topicId,
+          assignmentFromSup: readyMsg.assignmentFromSup,
         };
+        const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
+        if (dialogContainer instanceof DomindsDialogContainer) {
+          dialogContainer.updateDialogContext(this.currentDialog);
+        }
         // Update q4h-input with the active dialog ID
         if (this.q4hInput && typeof this.q4hInput.setDialog === 'function') {
           this.q4hInput.setDialog(this.currentDialog);
@@ -2928,6 +2960,7 @@ export class DomindsApp extends HTMLElement {
                   createdAt: sd.createdAt,
                   lastModified: sd.lastModified,
                   supdialogId: root.id,
+                  topicId: sd.topicId,
                 });
               }
               // Merge into existing dialogs: replace any entries under this root
