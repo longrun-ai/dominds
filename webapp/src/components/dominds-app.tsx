@@ -26,11 +26,18 @@ import type {
 } from '../shared/types/wire';
 import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
-import './dominds-dialog-list.js';
-import { DomindsDialogList } from './dominds-dialog-list.js';
 import './dominds-q4h-input';
 import './dominds-team-members.js';
 import { DomindsTeamMembers } from './dominds-team-members.js';
+import './running-dialog-list.js';
+import { RunningDialogList } from './running-dialog-list.js';
+
+type ActivityView =
+  | { kind: 'running' }
+  | { kind: 'done' }
+  | { kind: 'archived' }
+  | { kind: 'search' }
+  | { kind: 'team-members' };
 
 export class DomindsApp extends HTMLElement {
   private wsManager = getWebSocketManager();
@@ -50,6 +57,7 @@ export class DomindsApp extends HTMLElement {
   private remindersWidgetVisible: boolean = false;
   private remindersWidgetX: number = 12;
   private remindersWidgetY: number = 120;
+  private activityView: ActivityView = { kind: 'running' };
   private _wsEventCancel?: () => void;
   private _connStateCancel?: () => void;
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
@@ -259,11 +267,10 @@ export class DomindsApp extends HTMLElement {
 
     // Initialize child components with current state
     const dialogList = this.shadowRoot.querySelector('#dialog-list');
-    if (dialogList instanceof DomindsDialogList) {
+    if (dialogList instanceof RunningDialogList) {
       dialogList.setDialogs(this.dialogs);
       const onSelect = (dialog: DialogInfo) => this.selectDialog(dialog);
-      const onSearch = (query: string) => this.handleDialogSearch(query);
-      dialogList.setProps({ onSelect, onSearch });
+      dialogList.setProps({ onSelect });
     }
     const teamMembers = this.shadowRoot.querySelector('#team-members');
     if (teamMembers instanceof DomindsTeamMembers) {
@@ -271,6 +278,7 @@ export class DomindsApp extends HTMLElement {
     }
 
     this.updateThemeToggle();
+    this.updateActivityView();
   }
 
   /**
@@ -279,9 +287,35 @@ export class DomindsApp extends HTMLElement {
    */
   private updateDialogList(): void {
     const dialogList = this.shadowRoot?.querySelector('#dialog-list');
-    if (dialogList instanceof DomindsDialogList) {
+    if (dialogList instanceof RunningDialogList) {
       dialogList.setDialogs(this.dialogs);
     }
+  }
+
+  private updateActivityView(): void {
+    if (!this.shadowRoot) return;
+
+    const activeKind = this.activityView.kind;
+    const activityButtons = this.shadowRoot.querySelectorAll<HTMLElement>('[data-activity]');
+    activityButtons.forEach((button) => {
+      const kind = button.getAttribute('data-activity');
+      const isActive = kind === activeKind;
+      if (isActive) {
+        button.setAttribute('aria-pressed', 'true');
+      } else {
+        button.setAttribute('aria-pressed', 'false');
+      }
+    });
+
+    const activityViews = this.shadowRoot.querySelectorAll<HTMLElement>('[data-activity-view]');
+    activityViews.forEach((view) => {
+      const kind = view.getAttribute('data-activity-view');
+      if (kind === activeKind) {
+        view.classList.remove('hidden');
+      } else {
+        view.classList.add('hidden');
+      }
+    });
   }
 
   /**
@@ -450,21 +484,74 @@ export class DomindsApp extends HTMLElement {
         position: relative;
       }
 
-      .sidebar-header {
-        padding: 12px 16px;
+      .activity-bar {
+        padding: 8px 10px;
         border-bottom: 1px solid var(--dominds-border);
         flex-shrink: 0;
         display: flex;
         flex-direction: row;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
+      }
+
+      .activity-button {
+        position: relative;
+      }
+
+      .activity-button[aria-pressed="true"] {
+        background: var(--dominds-hover, #f0f0f0);
+        color: var(--dominds-primary, #007acc);
+        box-shadow: inset 0 0 0 1px var(--dominds-border, #e0e0e0);
+      }
+
+      .activity-spacer {
+        flex: 1;
       }
 
       .sidebar-content {
         flex: 1;
-        overflow-y: auto;
-        padding: 8px 0;
+        overflow: hidden;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
       }
+
+      .activity-view {
+        flex: 1;
+        overflow: hidden;
+        padding: 8px 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .activity-placeholder {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--dominds-muted, #666666);
+      }
+
+      .activity-placeholder-title {
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .activity-placeholder-text {
+        line-height: 1.4;
+      }
+
+      .activity-placeholder dominds-team-members {
+        margin-top: 6px;
+      }
+
+      .activity-view running-dialog-list {
+        flex: 1;
+        min-height: 0;
+      }
+
       .hidden { display: none; }
 
       .content-area {
@@ -483,6 +570,13 @@ export class DomindsApp extends HTMLElement {
         border-bottom: 1px solid var(--dominds-border, #e0e0e0);
         flex-shrink: 0;
         position: relative;
+      }
+
+      .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
       }
 
       #round-nav {
@@ -1111,25 +1205,67 @@ export class DomindsApp extends HTMLElement {
 
         <div class="main-content">
           <aside class="sidebar">
-            <div class="sidebar-header">
-              <button class="icon-button" id="new-dialog-btn" title="New Dialog">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <div class="activity-bar" role="toolbar" aria-label="Activity Bar">
+              <button class="activity-button icon-button" data-activity="running" aria-label="Running" aria-pressed="true" title="Running">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
               </button>
-              <dominds-team-members id="team-members" show-actions="true" style="margin-left: auto;"></dominds-team-members>
+              <button class="activity-button icon-button" data-activity="done" aria-label="Done" aria-pressed="false" title="Done">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14 9 11"></polyline></svg>
+              </button>
+              <button class="activity-button icon-button" data-activity="archived" aria-label="Archived" aria-pressed="false" title="Archived">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+              </button>
+              <div class="activity-spacer" aria-hidden="true"></div>
+              <button class="activity-button icon-button" data-activity="search" aria-label="Search" aria-pressed="false" title="Search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              </button>
+              <button class="activity-button icon-button" data-activity="team-members" aria-label="Team Members" aria-pressed="false" title="Team Members">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"></path><path d="M7 21v-2a4 4 0 0 1 3-3.87"></path><circle cx="12" cy="7" r="4"></circle><path d="M18 8a3 3 0 1 0 0-6"></path><path d="M6 8a3 3 0 1 1 0-6"></path></svg>
+              </button>
             </div>
             <div class="sidebar-content">
-              <dominds-dialog-list 
-                id="dialog-list"
-                show-search="true"
-                show-filters="true"
-                max-height="calc(100vh - 200px)"
-              ></dominds-dialog-list>
+              <div class="activity-view" data-activity-view="running">
+                <running-dialog-list 
+                  id="dialog-list"
+                  max-height="calc(100vh - 200px)"
+                ></running-dialog-list>
+              </div>
+              <div class="activity-view hidden" data-activity-view="done">
+                <div class="activity-placeholder">
+                  <div class="activity-placeholder-title">Done</div>
+                  <div class="activity-placeholder-text">Placeholder view for completed dialogs.</div>
+                </div>
+              </div>
+              <div class="activity-view hidden" data-activity-view="archived">
+                <div class="activity-placeholder">
+                  <div class="activity-placeholder-title">Archived</div>
+                  <div class="activity-placeholder-text">Placeholder view for archived dialogs.</div>
+                </div>
+              </div>
+              <div class="activity-view hidden" data-activity-view="search">
+                <div class="activity-placeholder">
+                  <div class="activity-placeholder-title">Search</div>
+                  <div class="activity-placeholder-text">Search panel placeholder.</div>
+                </div>
+              </div>
+              <div class="activity-view hidden" data-activity-view="team-members">
+                <div class="activity-placeholder">
+                  <div class="activity-placeholder-title">Team Members</div>
+                  <div class="activity-placeholder-text">Placeholder view for team member controls.</div>
+                  <dominds-team-members id="team-members" show-actions="true"></dominds-team-members>
+                </div>
+              </div>
             </div>
           </aside>
 
           <main class="content-area">
             <div class="toolbar">
-              <div id="current-dialog-title">Select or create a dialog to start</div>
+              <div class="toolbar-left">
+                <button class="icon-button" id="new-dialog-btn" title="New Dialog">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+                <div id="current-dialog-title">Select or create a dialog to start</div>
+              </div>
               <div style="flex: 1;"></div>
               <div id="round-nav">
                 <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentRound > 1 ? '' : 'disabled'} aria-label="Previous Round">
@@ -1252,6 +1388,33 @@ export class DomindsApp extends HTMLElement {
       if (target.id === 'new-dialog-btn' || target.closest('#new-dialog-btn')) {
         this.handleNewDialog();
         return;
+      }
+
+      const activityButton = target.closest('[data-activity]');
+      if (activityButton instanceof HTMLElement) {
+        const selected = activityButton.getAttribute('data-activity');
+        switch (selected) {
+          case 'running':
+            this.activityView = { kind: 'running' };
+            this.updateActivityView();
+            return;
+          case 'done':
+            this.activityView = { kind: 'done' };
+            this.updateActivityView();
+            return;
+          case 'archived':
+            this.activityView = { kind: 'archived' };
+            this.updateActivityView();
+            return;
+          case 'search':
+            this.activityView = { kind: 'search' };
+            this.updateActivityView();
+            return;
+          case 'team-members':
+            this.activityView = { kind: 'team-members' };
+            this.updateActivityView();
+            return;
+        }
       }
 
       // Toolbar navigation
@@ -1622,7 +1785,7 @@ export class DomindsApp extends HTMLElement {
     // Use the enhanced dialog list component with proper deduplication
     const dialogList = this.shadowRoot.querySelector('#dialog-list');
 
-    if (dialogList instanceof DomindsDialogList) {
+    if (dialogList instanceof RunningDialogList) {
       // Use setDialogs which properly deduplicates by rootId:selfId
       dialogList.setDialogs(this.dialogs);
 
@@ -1712,7 +1875,7 @@ export class DomindsApp extends HTMLElement {
 
       // Update the dialog list to show current selection
       const dialogList = this.shadowRoot?.querySelector('#dialog-list');
-      if (dialogList instanceof DomindsDialogList) {
+      if (dialogList instanceof RunningDialogList) {
         dialogList.setCurrentDialog(normalizedDialog);
       }
 
@@ -2365,11 +2528,6 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private handleDialogSearch(query: string): void {
-    // Handle dialog search if needed
-    console.info('(To be implemented) Searching dialogs:', query);
-  }
-
   private showError(message: string, type: 'error' | 'warning' | 'info' = 'error'): void {
     console.error(`[${type.toUpperCase()}] ${message}`);
 
@@ -2803,12 +2961,6 @@ export class DomindsApp extends HTMLElement {
               this.dialogs.push(...entries);
               // FIXED: Use surgical update instead of full render to preserve dialog container state
               this.updateDialogList();
-              if (this.currentDialog && this.currentDialog.rootId === rootId && this.shadowRoot) {
-                const dialogList = this.shadowRoot.querySelector('#dialog-list');
-                if (dialogList instanceof DomindsDialogList) {
-                  dialogList.expandMainDialog(rootId, false);
-                }
-              }
               this.bumpDialogLastModified(
                 rootId,
                 root.lastModified || (message as TypedDialogEvent).timestamp,

@@ -1,0 +1,729 @@
+/**
+ * Running dialog list (minimal UI)
+ */
+
+import type { ApiRootDialogResponse, DialogInfo } from '../shared/types';
+
+export interface RunningDialogListProps {
+  dialogs: ApiRootDialogResponse[];
+  maxHeight?: string;
+  onSelect?: (dialog: DialogInfo) => void;
+}
+
+type RootGroup = {
+  rootId: string;
+  sortKey: number;
+  root: ApiRootDialogResponse | null;
+  subdialogs: ApiRootDialogResponse[];
+};
+
+type TaskGroup = {
+  taskDocPath: string;
+  sortKey: number;
+  roots: RootGroup[];
+};
+
+type ListState = { kind: 'empty' } | { kind: 'ready'; groups: TaskGroup[] };
+
+type SelectionState =
+  | { kind: 'none' }
+  | { kind: 'selected'; rootId: string; selfId: string; isRoot: boolean };
+
+export class RunningDialogList extends HTMLElement {
+  private props: RunningDialogListProps = {
+    dialogs: [],
+    maxHeight: 'none',
+  };
+  private listState: ListState = { kind: 'empty' };
+  private selectionState: SelectionState = { kind: 'none' };
+  private listEl: HTMLElement | null = null;
+  private rootIndex: Map<string, ApiRootDialogResponse> = new Map();
+  private subIndex: Map<string, Map<string, ApiRootDialogResponse>> = new Map();
+  private collapsedTasks: Set<string> = new Set();
+  private collapsedRoots: Set<string> = new Set();
+  private knownRootIds: Set<string> = new Set();
+  private requestedSubdialogRoots: Set<string> = new Set();
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+  }
+
+  connectedCallback(): void {
+    this.updateListState(this.props.dialogs);
+    this.render();
+  }
+
+  public setProps(props: Partial<RunningDialogListProps>): void {
+    this.props = { ...this.props, ...props };
+    this.updateListState(this.props.dialogs);
+    this.render();
+  }
+
+  public setDialogs(dialogs: ApiRootDialogResponse[]): void {
+    this.props = { ...this.props, dialogs };
+    this.updateListState(dialogs);
+    this.renderList();
+  }
+
+  public setCurrentDialog(dialog: DialogInfo): void {
+    const isRoot = dialog.selfId === dialog.rootId;
+    const match = this.findDialogByIds(dialog.rootId, dialog.selfId, isRoot);
+    if (!match) {
+      this.selectionState = { kind: 'none' };
+      this.renderList();
+      return;
+    }
+    this.applySelection(match);
+  }
+
+  public getSelectedDialogId(): string | null {
+    if (this.selectionState.kind === 'selected') {
+      return this.selectionState.rootId;
+    }
+    return null;
+  }
+
+  public getAllDialogs(): ApiRootDialogResponse[] {
+    return [...this.props.dialogs];
+  }
+
+  public findDialogByRootId(rootId: string): ApiRootDialogResponse | undefined {
+    return this.props.dialogs.find((d) => d.rootId === rootId && !d.selfId);
+  }
+
+  public findSubdialog(rootId: string, selfId: string): ApiRootDialogResponse | undefined {
+    return this.props.dialogs.find((d) => d.rootId === rootId && d.selfId === selfId);
+  }
+
+  public selectDialogById(rootId: string): boolean {
+    const dialog = this.findDialogByRootId(rootId);
+    if (!dialog) return false;
+    this.applySelection(dialog);
+    this.notifySelection(dialog);
+    return true;
+  }
+
+  private updateListState(dialogs: ApiRootDialogResponse[]): void {
+    const validated = this.validateDialogs(dialogs);
+    const groups = this.buildGroups(validated);
+    const rootIds = new Set<string>(validated.map((dialog) => dialog.rootId));
+    for (const rootId of rootIds) {
+      if (!this.knownRootIds.has(rootId)) {
+        this.knownRootIds.add(rootId);
+        this.collapsedRoots.add(rootId);
+      }
+    }
+    for (const existing of Array.from(this.knownRootIds)) {
+      if (!rootIds.has(existing)) {
+        this.knownRootIds.delete(existing);
+        this.collapsedRoots.delete(existing);
+        this.requestedSubdialogRoots.delete(existing);
+      }
+    }
+    const taskPaths = new Set<string>(groups.map((group) => group.taskDocPath));
+    for (const existing of Array.from(this.collapsedTasks)) {
+      if (!taskPaths.has(existing)) {
+        this.collapsedTasks.delete(existing);
+      }
+    }
+    if (groups.length === 0) {
+      this.listState = { kind: 'empty' };
+    } else {
+      this.listState = { kind: 'ready', groups };
+    }
+    const selection = this.selectionState;
+    if (selection.kind === 'selected') {
+      const hasSelection = validated.some((dialog) => this.isSelectedDialog(dialog, selection));
+      if (!hasSelection) {
+        this.selectionState = { kind: 'none' };
+      }
+    }
+  }
+
+  private validateDialogs(dialogs: ApiRootDialogResponse[]): ApiRootDialogResponse[] {
+    const seenRoots = new Set<string>();
+    const seenSubs = new Map<string, Set<string>>();
+    const validated: ApiRootDialogResponse[] = [];
+    for (const dialog of dialogs) {
+      if (!dialog.rootId) {
+        throw new Error('Dialog missing rootId.');
+      }
+      if (!dialog.agentId) {
+        throw new Error(`Dialog ${dialog.rootId} missing agentId.`);
+      }
+      if (dialog.status !== 'running') {
+        throw new Error(
+          `Dialog ${dialog.rootId}${dialog.selfId ? `:${dialog.selfId}` : ''} is not running.`,
+        );
+      }
+      if (dialog.selfId) {
+        let subs = seenSubs.get(dialog.rootId);
+        if (!subs) {
+          subs = new Set<string>();
+          seenSubs.set(dialog.rootId, subs);
+        }
+        if (subs.has(dialog.selfId)) {
+          throw new Error(
+            `Duplicate subdialog detected for root ${dialog.rootId} and self ${dialog.selfId}.`,
+          );
+        }
+        subs.add(dialog.selfId);
+      } else {
+        if (seenRoots.has(dialog.rootId)) {
+          throw new Error(`Duplicate root dialog detected: ${dialog.rootId}`);
+        }
+        seenRoots.add(dialog.rootId);
+      }
+      validated.push(dialog);
+    }
+    return validated;
+  }
+
+  private buildGroups(dialogs: ApiRootDialogResponse[]): TaskGroup[] {
+    const taskMap = new Map<string, { taskDocPath: string; roots: Map<string, RootGroup> }>();
+
+    for (const dialog of dialogs) {
+      const taskDocPath = dialog.taskDocPath;
+      if (!taskDocPath) continue;
+      const taskKey = taskDocPath.trim();
+      if (!taskKey) continue;
+
+      let taskGroup = taskMap.get(taskKey);
+      if (!taskGroup) {
+        taskGroup = { taskDocPath: taskKey, roots: new Map() };
+        taskMap.set(taskKey, taskGroup);
+      }
+
+      const rootId = dialog.rootId;
+      if (!rootId) continue;
+      let rootGroup = taskGroup.roots.get(rootId);
+      if (!rootGroup) {
+        rootGroup = { rootId, sortKey: 0, root: null, subdialogs: [] };
+        taskGroup.roots.set(rootId, rootGroup);
+      }
+
+      const updatedAt = this.parseTimestamp(dialog.lastModified);
+      if (updatedAt > rootGroup.sortKey) {
+        rootGroup.sortKey = updatedAt;
+      }
+
+      if (dialog.selfId) {
+        rootGroup.subdialogs.push(dialog);
+      } else {
+        rootGroup.root = dialog;
+      }
+    }
+
+    const groups: TaskGroup[] = [];
+    for (const taskGroup of taskMap.values()) {
+      const roots: RootGroup[] = [];
+      for (const rootGroup of taskGroup.roots.values()) {
+        const rootUpdated = rootGroup.root ? this.parseTimestamp(rootGroup.root.lastModified) : 0;
+        const subUpdated = this.maxUpdatedAt(rootGroup.subdialogs);
+        const sortKey = Math.max(rootUpdated, subUpdated, rootGroup.sortKey);
+        const subdialogs = [...rootGroup.subdialogs].sort((a, b) => {
+          const delta = this.parseTimestamp(b.lastModified) - this.parseTimestamp(a.lastModified);
+          if (delta !== 0) return delta;
+          const aId = a.selfId ?? '';
+          const bId = b.selfId ?? '';
+          return aId.localeCompare(bId);
+        });
+        roots.push({
+          rootId: rootGroup.rootId,
+          sortKey,
+          root: rootGroup.root,
+          subdialogs,
+        });
+      }
+
+      roots.sort((a, b) => {
+        const delta = b.sortKey - a.sortKey;
+        if (delta !== 0) return delta;
+        return a.rootId.localeCompare(b.rootId);
+      });
+
+      const groupSortKey = roots.reduce((max, root) => Math.max(max, root.sortKey), 0);
+      groups.push({ taskDocPath: taskGroup.taskDocPath, sortKey: groupSortKey, roots });
+    }
+
+    groups.sort((a, b) => {
+      const delta = b.sortKey - a.sortKey;
+      if (delta !== 0) return delta;
+      return a.taskDocPath.localeCompare(b.taskDocPath);
+    });
+
+    return groups;
+  }
+
+  private parseTimestamp(value: string): number {
+    const ms = Date.parse(value);
+    if (Number.isNaN(ms)) return 0;
+    return ms;
+  }
+
+  private maxUpdatedAt(dialogs: ApiRootDialogResponse[]): number {
+    let max = 0;
+    for (const dialog of dialogs) {
+      const ts = this.parseTimestamp(dialog.lastModified);
+      if (ts > max) max = ts;
+    }
+    return max;
+  }
+
+  private render(): void {
+    if (!this.shadowRoot) return;
+
+    const style = this.getStyles();
+    this.shadowRoot.innerHTML = `
+      <style>${style}</style>
+      <div class="running-dialog-list" id="running-dialog-list"></div>
+    `;
+
+    this.listEl = this.shadowRoot.querySelector('#running-dialog-list');
+    if (this.listEl) {
+      this.listEl.addEventListener('click', this.handleClick);
+    }
+    this.renderList();
+  }
+
+  private renderList(): void {
+    if (!this.listEl) return;
+
+    this.rootIndex.clear();
+    this.subIndex.clear();
+
+    switch (this.listState.kind) {
+      case 'empty': {
+        this.listEl.innerHTML = `
+          <div class="empty">No dialogs yet.</div>
+        `;
+        return;
+      }
+      case 'ready': {
+        const html = this.listState.groups
+          .map((group) => {
+            const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
+            const taskToggle = taskCollapsed ? '&#9654;' : '&#9660;';
+            const rootRows = group.roots
+              .map((rootGroup) => {
+                const rootDialog = rootGroup.root;
+                const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
+                const rootToggle = rootCollapsed ? '&#9654;' : '&#9660;';
+                const rootRow = rootDialog
+                  ? this.renderRootRow(rootDialog, rootToggle, rootGroup.subdialogs.length)
+                  : `
+                    <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
+                      <div class="dialog-row">
+                        <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button">${rootToggle}</button>
+                        <span class="dialog-title">Missing root</span>
+                        <span class="dialog-meta-right">
+                          <span class="dialog-count">${rootGroup.subdialogs.length}</span>
+                          <span class="dialog-status">${rootGroup.rootId}</span>
+                        </span>
+                      </div>
+                    </div>
+                  `;
+                const subRows =
+                  taskCollapsed || rootCollapsed
+                    ? ''
+                    : rootGroup.subdialogs
+                        .map((subdialog) => this.renderDialogRow(subdialog, 'sub'))
+                        .join('');
+                return `${rootRow}${subRows}`;
+              })
+              .join('');
+            return `
+              <div class="task-group">
+                <div class="task-title" data-task-path="${group.taskDocPath}">
+                  <div class="task-title-left">
+                    <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button">${taskToggle}</button>
+                    <span>${group.taskDocPath}</span>
+                  </div>
+                  <span class="dialog-count">${group.roots.length}</span>
+                </div>
+                <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">${taskCollapsed ? '' : rootRows}</div>
+              </div>
+            `;
+          })
+          .join('');
+        this.listEl.innerHTML = html;
+        return;
+      }
+    }
+  }
+
+  private renderRootRow(
+    dialog: ApiRootDialogResponse,
+    toggleIcon: string,
+    subdialogCount: number,
+  ): string {
+    this.indexDialog(dialog);
+    const isSelected = this.isSelectedDialog(dialog, this.selectionState);
+    const dialogId = dialog.rootId;
+    const updatedAt = dialog.lastModified || '';
+
+    return `
+      <div
+        class="dialog-item root-dialog${isSelected ? ' selected' : ''}"
+        data-root-id="${dialog.rootId}"
+        data-self-id=""
+      >
+        <div class="dialog-row">
+          <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button">${toggleIcon}</button>
+          <span class="dialog-title">@${dialog.agentId}</span>
+          <span class="dialog-meta-right">
+            <span class="dialog-count">${subdialogCount}</span>
+          </span>
+        </div>
+        <div class="dialog-row dialog-submeta">
+          <span class="dialog-meta-right">
+            <span class="dialog-status">${dialogId}</span>
+            <span class="dialog-time">${updatedAt}</span>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderDialogRow(dialog: ApiRootDialogResponse, kind: 'root' | 'sub'): string {
+    this.indexDialog(dialog);
+    const isSelected = this.isSelectedDialog(dialog, this.selectionState);
+    const dialogId =
+      kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
+    const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
+    const updatedAt = dialog.lastModified || '';
+    const topicId = dialog.topicId ?? 'n/a';
+
+    if (kind === 'sub') {
+      return `
+        <div
+          class="${rowClass}${isSelected ? ' selected' : ''}"
+          data-root-id="${dialog.rootId}"
+          data-self-id="${dialog.selfId ?? ''}"
+        >
+          <div class="dialog-row dialog-subrow">
+            <span class="dialog-title">@${dialog.agentId}</span>
+            <span class="dialog-meta-right">
+              <span class="dialog-topic">${topicId}</span>
+            </span>
+          </div>
+          <div class="dialog-row dialog-submeta">
+            <span class="dialog-meta-right">
+              <span class="dialog-status">${dialogId}</span>
+              <span class="dialog-time">${updatedAt}</span>
+            </span>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div
+        class="${rowClass}${isSelected ? ' selected' : ''}"
+        data-root-id="${dialog.rootId}"
+        data-self-id="${dialog.selfId ?? ''}"
+      >
+        <div class="dialog-row">
+          <span class="dialog-title">@${dialog.agentId}</span>
+          <span class="dialog-meta-right">
+            <span class="dialog-status">${dialogId}</span>
+            <span class="dialog-time">${updatedAt}</span>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  private handleClick = (event: Event): void => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const actionEl = target.closest('[data-action]') as HTMLElement | null;
+    if (actionEl) {
+      const action = actionEl.getAttribute('data-action');
+      if (action === 'toggle-task') {
+        const taskPath = actionEl.getAttribute('data-task-path');
+        if (taskPath) {
+          this.toggleTask(taskPath);
+        }
+        return;
+      }
+      if (action === 'toggle-root') {
+        const rootId = actionEl.getAttribute('data-root-id');
+        if (rootId) {
+          this.toggleRoot(rootId);
+        }
+        return;
+      }
+    }
+    const item = target.closest('[data-root-id]') as HTMLElement | null;
+    if (!item) return;
+    const rootId = item.getAttribute('data-root-id');
+    if (!rootId) return;
+    const selfId = item.getAttribute('data-self-id') || '';
+    const isRoot = selfId === '';
+    const dialog = this.findDialogByIds(rootId, selfId, isRoot);
+    if (!dialog) return;
+    this.applySelection(dialog);
+    this.notifySelection(dialog);
+  };
+
+  private applySelection(dialog: ApiRootDialogResponse): void {
+    const isRoot = !dialog.selfId;
+    this.selectionState = {
+      kind: 'selected',
+      rootId: dialog.rootId,
+      selfId: dialog.selfId ?? dialog.rootId,
+      isRoot,
+    };
+    this.collapsedTasks.delete(dialog.taskDocPath);
+    this.collapsedRoots.delete(dialog.rootId);
+    this.renderList();
+  }
+
+  private indexDialog(dialog: ApiRootDialogResponse): void {
+    if (dialog.selfId) {
+      let subs = this.subIndex.get(dialog.rootId);
+      if (!subs) {
+        subs = new Map<string, ApiRootDialogResponse>();
+        this.subIndex.set(dialog.rootId, subs);
+      }
+      subs.set(dialog.selfId, dialog);
+      return;
+    }
+    this.rootIndex.set(dialog.rootId, dialog);
+  }
+
+  private findDialogByIds(
+    rootId: string,
+    selfId: string,
+    isRoot: boolean,
+  ): ApiRootDialogResponse | undefined {
+    if (isRoot) {
+      const rootDialog = this.rootIndex.get(rootId);
+      if (rootDialog) return rootDialog;
+      return this.props.dialogs.find((dialog) => dialog.rootId === rootId && !dialog.selfId);
+    }
+    const subs = this.subIndex.get(rootId);
+    const subDialog = subs?.get(selfId);
+    if (subDialog) return subDialog;
+    return this.props.dialogs.find(
+      (dialog) => dialog.rootId === rootId && dialog.selfId === selfId,
+    );
+  }
+
+  private isSelectedDialog(dialog: ApiRootDialogResponse, selection: SelectionState): boolean {
+    if (selection.kind !== 'selected') return false;
+    if (selection.rootId !== dialog.rootId) return false;
+    if (selection.isRoot) {
+      return !dialog.selfId;
+    }
+    return dialog.selfId === selection.selfId;
+  }
+
+  private toggleTask(taskPath: string): void {
+    if (this.collapsedTasks.has(taskPath)) {
+      this.collapsedTasks.delete(taskPath);
+    } else {
+      this.collapsedTasks.add(taskPath);
+    }
+    this.renderList();
+  }
+
+  private toggleRoot(rootId: string): void {
+    if (this.collapsedRoots.has(rootId)) {
+      this.collapsedRoots.delete(rootId);
+      if (!this.requestedSubdialogRoots.has(rootId) && !this.hasSubdialogsLoaded(rootId)) {
+        this.requestedSubdialogRoots.add(rootId);
+        this.dispatchEvent(
+          new CustomEvent('dialog-expand', {
+            detail: { rootId },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
+    } else {
+      this.collapsedRoots.add(rootId);
+    }
+    this.renderList();
+  }
+
+  private hasSubdialogsLoaded(rootId: string): boolean {
+    return this.props.dialogs.some((dialog) => dialog.rootId === rootId && !!dialog.selfId);
+  }
+
+  private notifySelection(dialog: ApiRootDialogResponse): void {
+    if (!this.props.onSelect) return;
+
+    const dialogInfo: DialogInfo = {
+      rootId: dialog.rootId,
+      selfId: dialog.selfId ?? dialog.rootId,
+      agentId: dialog.agentId,
+      agentName: '',
+      taskDocPath: dialog.taskDocPath,
+      supdialogId: dialog.supdialogId,
+      topicId: dialog.topicId,
+    };
+
+    this.props.onSelect(dialogInfo);
+  }
+
+  private getStyles(): string {
+    const maxHeight = this.props.maxHeight ?? 'none';
+    return `
+      :host {
+        display: block;
+        height: 100%;
+        width: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: var(--dominds-fg, #333333);
+        background: var(--dominds-sidebar-bg, #ffffff);
+      }
+
+      .running-dialog-list {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        max-height: ${maxHeight};
+        min-height: 0;
+      }
+
+      .task-group {
+        display: flex;
+        flex-direction: column;
+        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
+      }
+
+      .task-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--dominds-muted, #666666);
+        letter-spacing: 0.02em;
+        background: var(--dominds-hover, #f7f7f7);
+      }
+
+      .task-title-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .task-rows {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .dialog-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+
+      .root-dialog {
+        padding-left: 12px;
+        border-top: 1px solid var(--dominds-border, #e0e0e0);
+      }
+
+      .sub-dialog {
+        padding-left: 28px;
+      }
+
+      .dialog-item.missing {
+        cursor: default;
+        color: var(--dominds-muted, #999999);
+      }
+
+      .dialog-item.missing:hover {
+        background: transparent;
+      }
+
+      .dialog-item:hover {
+        background: var(--dominds-hover, #f5f5f5);
+      }
+
+      .dialog-item.selected {
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, transparent);
+      }
+
+      .toggle {
+        border: none;
+        background: transparent;
+        padding: 0;
+        margin-right: 6px;
+        color: var(--dominds-muted, #666666);
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .toggle:focus-visible {
+        outline: 1px solid var(--dominds-primary, #007acc);
+        outline-offset: 2px;
+      }
+
+      .dialog-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .dialog-meta-right {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+      }
+
+      .dialog-status {
+        font-size: 11px;
+        color: var(--dominds-muted, #666666);
+        letter-spacing: 0.02em;
+      }
+
+      .dialog-count {
+        font-size: 11px;
+        color: var(--dominds-muted, #666666);
+        letter-spacing: 0.02em;
+      }
+
+      .dialog-topic {
+        font-size: 11px;
+        color: var(--dominds-muted, #666666);
+        letter-spacing: 0.02em;
+      }
+
+      .dialog-time {
+        font-size: 11px;
+        color: var(--dominds-muted, #888888);
+      }
+
+      .dialog-subrow {
+        font-size: 13px;
+      }
+
+      .dialog-submeta {
+        justify-content: flex-end;
+      }
+
+      .empty {
+        padding: 16px;
+        font-size: 13px;
+        color: var(--dominds-muted, #666666);
+      }
+    `;
+  }
+}
+
+if (!customElements.get('running-dialog-list')) {
+  customElements.define('running-dialog-list', RunningDialogList);
+}
