@@ -162,6 +162,13 @@ You interact using a simple headline/body grammar with both teammates and "texti
 - Mention IDs may include dots for namespacing (e.g., \`@team.lead\`). A trailing dot is treated as punctuation and ignored (e.g., \`@team.lead.\` still targets \`@team.lead\`).
 - Safety: wrap literal \`@\` in backticks to avoid accidental calls.
 
+### Teammate Call Anti-Patterns (Do NOT)
+- Do NOT wrap callsigns in markdown (e.g., \`**@cmdr**\`, \`_@cmdr_\`, or \`\`@cmdr\`\`); callsigns must be plain text.
+- Do NOT prefix calls with bullets, blockquotes, numbering, or indentation (e.g., \`- @cmdr\`, \`> @cmdr\`, \`1. @cmdr\`).
+- Do NOT include punctuation inside the callsign (e.g., \`@cmdr:\`); put punctuation after a space in the body.
+- Do NOT place call headlines inside paragraphs or code blocks; the call must be a standalone line at column 0.
+- When mentioning a callsign without making a call, wrap it in backticks and keep it off column 0.
+
 ### Teammate Calls
 - Prefer multi-teammate calls for parallel expertise. Keep requests specific and role-aware.
 
