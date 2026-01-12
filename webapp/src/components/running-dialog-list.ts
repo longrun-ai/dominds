@@ -304,12 +304,12 @@ export class RunningDialogList extends HTMLElement {
         const html = this.listState.groups
           .map((group) => {
             const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
-            const taskToggle = taskCollapsed ? '&#9654;' : '&#9660;';
+            const taskToggle = this.renderToggleIcon(taskCollapsed);
             const rootRows = group.roots
               .map((rootGroup) => {
                 const rootDialog = rootGroup.root;
                 const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
-                const rootToggle = rootCollapsed ? '&#9654;' : '&#9660;';
+                const rootToggle = this.renderToggleIcon(rootCollapsed);
                 const rootRow = rootDialog
                   ? this.renderRootRow(rootDialog, rootToggle, rootGroup.subdialogs.length)
                   : `
@@ -351,6 +351,15 @@ export class RunningDialogList extends HTMLElement {
         return;
       }
     }
+  }
+
+  private renderToggleIcon(collapsed: boolean): string {
+    const rotation = collapsed ? '0deg' : '90deg';
+    return `
+      <svg class="q4h-toggle-arrow" style="transform: rotate(${rotation})" viewBox="0 0 8 10" aria-hidden="true" focusable="false">
+        <path d="M1 1 L7 5 L1 9 Z" fill="currentColor"></path>
+      </svg>
+    `;
   }
 
   private renderRootRow(
@@ -661,11 +670,25 @@ export class RunningDialogList extends HTMLElement {
         font-size: 11px;
         line-height: 1;
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
       }
 
       .toggle:focus-visible {
         outline: 1px solid var(--dominds-primary, #007acc);
         outline-offset: 2px;
+      }
+
+      .toggle .q4h-toggle-arrow {
+        width: 8px;
+        height: 10px;
+        color: currentColor;
+        transition: transform 0.2s ease;
+        transform-origin: center;
+        display: block;
       }
 
       .dialog-row {

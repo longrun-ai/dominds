@@ -827,8 +827,14 @@ function captureChatState(shadow) {
       const markdownSections = Array.from(node.querySelectorAll('.markdown-section'))
         .map((section) => section.textContent?.trim() || '')
         .filter((text) => text.length > 0);
-      const content =
-        markdownSections.length > 0 ? markdownSections[markdownSections.length - 1] : '';
+      let content = '';
+      if (markdownSections.length === 1) {
+        content = markdownSections[0];
+      } else if (markdownSections.length > 1) {
+        const first = markdownSections[0];
+        const last = markdownSections[markdownSections.length - 1];
+        content = first === last ? first : `${first}\n${last}`;
+      }
       return {
         // Treat generation bubbles as assistant messages for scenario-level checks.
         type: 'assistant',
@@ -861,9 +867,24 @@ function captureChatState(shadow) {
         node.querySelector('.content') ||
         node.querySelector('.bubble-body') ||
         node;
-      const contentText = contentEl?.textContent?.trim() || '';
+      let contentText = contentEl?.innerText?.trim() || contentEl?.textContent?.trim() || '';
+      const nodeText = node.innerText?.trim() || node.textContent?.trim() || '';
+      if (nodeText.length > contentText.length + 20) {
+        contentText = nodeText;
+      }
+      if (contentText.length > 80) {
+        contentText = contentText.replace(/(\.(?:md|txt|rst))(?!\s|$)/g, '$1\n');
+      }
       let previewText = contentText;
       if (type === 'teammate') {
+        const lines = contentText
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+        if (lines.length > 1) {
+          previewText = `${lines[0]}\n${lines[lines.length - 1]}`;
+        }
+      } else if (type === 'assistant') {
         const lines = contentText
           .split('\n')
           .map((line) => line.trim())

@@ -161,7 +161,6 @@ export class DomindsDialogContainer extends HTMLElement {
       merged.assignmentFromSup = current.assignmentFromSup;
     }
     this.currentDialog = merged;
-    this.refreshCallContextHeaders();
   }
 
   public async setCurrentRound(round: number): Promise<void> {
@@ -1067,8 +1066,6 @@ export class DomindsDialogContainer extends HTMLElement {
     // - A subdialog (for @agentName calls from parent)
     // - A supdialog (for @parentAgentId calls from subdialog)
 
-    const content = `**Call:** ${event.headLine}\n\n${event.response}`;
-
     // Determine agentId for the bubble (use event.agentId if available, otherwise responderId)
     const agentId = event.agentId || event.responderId;
 
@@ -1110,7 +1107,8 @@ export class DomindsDialogContainer extends HTMLElement {
     const messageEl = this.createTeammateBubble(
       event.calleeDialogId,
       agentId,
-      content,
+      event.headLine,
+      event.response,
       event.calling_genseq,
       event.callId,
       event.originMemberId,
@@ -1161,6 +1159,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private createTeammateBubble(
     calleeDialogId: string,
     agentId: string | undefined,
+    headLine: string,
     response: string,
     callSiteId?: number,
     callId?: string,
@@ -1187,7 +1186,7 @@ export class DomindsDialogContainer extends HTMLElement {
           </div>
           ${
             callId
-              ? `<a href="#" class="response-call-site-link" data-call-id="${callId}">← Call site</a>`
+              ? `<a href="#" class="response-call-site-link" data-call-id="${callId}">Call site ↗</a>`
               : ''
           }
         </div>
@@ -1196,9 +1195,24 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
       </div>
     `;
-    const md = this.createMarkdownSection();
-    md.setRawMarkdown(response);
-    el.querySelector('.teammate-content')?.appendChild(md);
+    const contentEl = el.querySelector('.teammate-content');
+    if (contentEl) {
+      const trimmedHead = headLine.trim();
+      if (trimmedHead !== '') {
+        const headBlock = document.createElement('blockquote');
+        headBlock.className = 'teammate-headline';
+        headBlock.textContent = trimmedHead;
+        contentEl.appendChild(headBlock);
+
+        const divider = document.createElement('hr');
+        divider.className = 'teammate-response-divider';
+        contentEl.appendChild(divider);
+      }
+
+      const md = this.createMarkdownSection();
+      md.setRawMarkdown(response);
+      contentEl.appendChild(md);
+    }
     // Add click handler for call site link
     const responseCallSiteLink = el.querySelector(
       '.response-call-site-link',
@@ -1250,24 +1264,6 @@ export class DomindsDialogContainer extends HTMLElement {
     return 'Assistant';
   }
 
-  private getSubdialogCallContext(): string | null {
-    const dialog = this.currentDialog;
-    if (!dialog) {
-      return null;
-    }
-    const assignment = dialog.assignmentFromSup;
-    if (!assignment) {
-      return null;
-    }
-    const agentId = dialog.agentId;
-    if (!agentId) {
-      return null;
-    }
-    const caller = this.formatCallerLabel(assignment);
-    const callee = this.formatAgentLabel(agentId);
-    return `Call: ${caller} → ${callee}`;
-  }
-
   private getTeammateResponseIndicator(responderId?: string, originMemberId?: string): string {
     const dialog = this.currentDialog;
     if (!dialog || !dialog.agentId || !responderId) {
@@ -1279,49 +1275,19 @@ export class DomindsDialogContainer extends HTMLElement {
     } else if (originMemberId && originMemberId.trim() !== '') {
       caller = this.formatAgentLabel(originMemberId);
     }
-    return `Response <- ${caller}`;
+    return `Response → ${caller}`;
   }
 
   private buildGenerationBubbleHeaderHtml(): string {
-    const agentId = this.currentDialog ? this.currentDialog.agentId : undefined;
-    const authorLabel = this.getAuthorLabel('assistant', agentId);
-    const callContext = this.getSubdialogCallContext();
-    const callContextHtml = callContext ? `<div class="call-context">${callContext}</div>` : '';
+    const authorLabel = this.getAuthorLabel('assistant');
     return `
       <div class="bubble-header">
         <div class="bubble-title">
           <div class="bubble-author">${authorLabel}</div>
-          ${callContextHtml}
         </div>
         <div class="timestamp">${new Date().toLocaleTimeString()}</div>
       </div>
     `;
-  }
-
-  private refreshCallContextHeaders(): void {
-    const callContext = this.getSubdialogCallContext();
-    if (!callContext) {
-      return;
-    }
-    const root = this.shadowRoot;
-    if (!root) {
-      return;
-    }
-    const headers = root.querySelectorAll('.generation-bubble .bubble-header');
-    for (const header of Array.from(headers)) {
-      const existing = header.querySelector('.call-context');
-      if (existing) {
-        continue;
-      }
-      const title = header.querySelector('.bubble-title');
-      if (!title) {
-        continue;
-      }
-      const contextEl = document.createElement('div');
-      contextEl.className = 'call-context';
-      contextEl.textContent = callContext;
-      title.appendChild(contextEl);
-    }
   }
 
   // === DOM HELPERS ===
@@ -2168,6 +2134,20 @@ export class DomindsDialogContainer extends HTMLElement {
         margin-top: 12px;
         color: var(--dominds-fg, var(--color-fg-primary, #333));
         line-height: 1.6;
+      }
+
+      .teammate-headline {
+        margin: 0 0 8px 0;
+        padding-left: 12px;
+        border-left: 3px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        color: var(--dominds-text-secondary, #475569);
+        font-size: 0.95em;
+      }
+
+      .teammate-response-divider {
+        border: 0;
+        border-top: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        margin: 8px 0 10px 0;
       }
 
       /* Highlight animation for call site navigation */
