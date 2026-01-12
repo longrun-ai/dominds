@@ -178,7 +178,7 @@ export abstract class Dialog {
 
   // relative path to a specific workspace (usually .md) file,
   // used as mission/plan/progress doc of a round of a dialog
-  public taskDocPath: string; // Task document is mandatory for all dialogs
+  public readonly taskDocPath: string; // Task document path is immutable for the dialog lifecycle
 
   readonly id: DialogID;
   readonly agentId: string; // team member id

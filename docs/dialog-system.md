@@ -939,6 +939,7 @@ AFTER @clear_mind:
 **Behavior**:
 
 - Updates the workspace task document file (e.g., `tasks/feature-auth.md`) with new content
+- **Does not change the task document path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
 - Clears all chat messages in the current dialog
 - Preserves all reminders
@@ -978,6 +979,7 @@ AFTER @change_mind:
 - Multiple dialog trees working on the same task document receive the updates simultaneously
 - Hierarchical relationships and contexts are preserved
 - The task document file persists beyond individual conversations and team changes
+- `dlg.taskDocPath` is readonly after dialog creation; @change_mind only overwrites the file contents at that path
 - **Q4H is cleared** - new direction means new questions
 - **Registry is preserved** - registered subdialogs remain registered
 - After updating the task document, calls `Dialog.startNewRound()` for all clearing and round management
@@ -1261,7 +1263,7 @@ interface RegistryMethods {
 
 **Context Inheritance**: New subdialogs automatically receive:
 
-- Reference to the same workspace task document file (e.g., `tasks/feature-auth.md`)
+- Reference to the same workspace task document file (e.g., `tasks/feature-auth.md`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
 - Supdialog texting call context (headLine + callBody) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories

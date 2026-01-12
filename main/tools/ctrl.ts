@@ -206,14 +206,13 @@ export const clearMindTool: TextingTool = {
 
 /**
  * Change mind - start new round, drop all messages, overwrite task doc with call body
- * Usage: @change_mind [<new-task-doc-path>]
- * <new-task-doc-content> - required, overwrites task doc file
+ * Usage: @change_mind
+ * <new-task-doc-content> - required, overwrites current task doc file
  */
 export const changeMindTool: TextingTool = {
   type: 'texter',
   name: 'change_mind',
-  usageDescription:
-    'Change mind and start new round: @change_mind [<new-task-doc-path>]\\n<new-task-doc-content>',
+  usageDescription: 'Change mind and start new round: @change_mind\\n<new-task-doc-content>',
   backfeeding: false,
   async call(
     dlg: Dialog,
@@ -221,15 +220,14 @@ export const changeMindTool: TextingTool = {
     headLine: string,
     inputBody: string,
   ): Promise<TextingToolCallResult> {
-    const taskDocMatch = headLine.match(/@change_mind(?:\s+(.+))?/);
-    if (!taskDocMatch) {
+    const trimmedHeadLine = headLine.trim();
+    if (!/^@change_mind(?:\s*:\s*.*)?$/.test(trimmedHeadLine)) {
       return fail(
-        'Error: Invalid format. Use: @change_mind [<new-task-doc-path>]',
-        env('Error: Invalid format. Use: @change_mind [<new-task-doc-path>]'),
+        'Error: Invalid format. Use: @change_mind',
+        env('Error: Invalid format. Use: @change_mind'),
       );
     }
 
-    const newTaskDocPath = taskDocMatch[1]?.trim();
     const newTaskDocContent = inputBody.trim();
 
     if (!newTaskDocContent) {
@@ -239,18 +237,13 @@ export const changeMindTool: TextingTool = {
       );
     }
 
-    // Determine task doc path
-    const taskDocPath = newTaskDocPath || dlg.taskDocPath;
+    // Task doc path is immutable for the dialog lifecycle.
+    const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) {
       return fail(
-        'Error: No task doc path specified and no current task doc exists',
-        env('Error: No task doc path specified and no current task doc exists'),
+        'Error: No task doc path configured for this dialog',
+        env('Error: No task doc path configured for this dialog'),
       );
-    }
-
-    // Update task doc path if new one provided
-    if (newTaskDocPath) {
-      dlg.taskDocPath = newTaskDocPath;
     }
 
     // Write new task doc content

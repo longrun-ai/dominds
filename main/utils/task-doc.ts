@@ -103,7 +103,7 @@ Directive: Do not invoke \`@read_file\` for this exact path. Coordinate to obtai
 ${content}
 ---
 
-*Use \`@change_mind\` to update this document or switch to a different task.*
+*Use \`@change_mind\` to update this document's content.*
 
 Directive: Do not invoke \`@read_file\` for this exact path. This injected content is authoritative within the current round context; if updates are needed, they will be reflected by the system in subsequent rounds.`,
     };
@@ -120,7 +120,7 @@ Directive: Do not invoke \`@read_file\` for this exact path. This injected conte
         content: `**Task Document:** \`${taskDocPath}\`
 ❌ **Error:** File not found
 
-*Use \`@change_mind\` to create a new task document or specify a different path.*`,
+*Use \`@change_mind\` to create this task document at the configured path.*`,
       };
     }
 
