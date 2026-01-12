@@ -1,6 +1,6 @@
 /**
  * E2E Test Helper - DEFINITIVE IMPLEMENTATIONS
- * Source: dominds-app.tsx, dominds-dialog-list.ts, dominds-dialog-container.ts, dominds-q4h-input.ts
+ * Source: dominds-app.tsx, running-dialog-list.ts, dominds-dialog-container.ts, dominds-q4h-input.ts
  *
  * PRINCIPLE: Use component public methods where available, otherwise use exact ID-based selectors.
  */
@@ -43,9 +43,9 @@ const sel = {
   createBtn: '#create-dialog-btn',
   dialogModal: '.create-dialog-modal',
 
-  // Dialog list (dominds-dialog-list.ts)
+  // Dialog list (running-dialog-list.ts)
   sidebar: '.sidebar',
-  dialogList: 'dominds-dialog-list',
+  dialogList: 'running-dialog-list',
   dialogListContainer: '#dialog-list',
   dialogItem: '.dialog-item',
 
@@ -210,7 +210,7 @@ function getDialogContainer() {
 }
 
 function getDialogList() {
-  return document.querySelector('dominds-app')?.shadowRoot?.querySelector('dominds-dialog-list');
+  return document.querySelector('dominds-app')?.shadowRoot?.querySelector('running-dialog-list');
 }
 
 function getDialogListShadow() {
@@ -287,6 +287,13 @@ async function waitUntil(fn, timeoutMs = 15000, intervalMs = 100) {
 
 function isElementVisible(el) {
   return !!(el && el.offsetParent !== null);
+}
+
+function escapeCssValue(value) {
+  if (window.CSS && typeof window.CSS.escape === 'function') {
+    return window.CSS.escape(String(value));
+  }
+  return String(value).replace(/["\\]/g, '\\$&');
 }
 
 // ============================================
@@ -626,28 +633,34 @@ function captureSidebarState(shadow) {
     };
   }
 
-  // Capture dialog tree structure from the dialog list shadow DOM
+  // Capture dialog tree structure from the running dialog list shadow DOM
   const allDialogItems = Array.from(listShadow.querySelectorAll('.dialog-item') || []);
-  const allTaskGroups = Array.from(listShadow.querySelectorAll('.task-group-item') || []);
+  const allTaskGroups = Array.from(listShadow.querySelectorAll('.task-group') || []);
   const dialogItems = allDialogItems.filter((item) => isElementVisible(item));
-  const taskGroups = allTaskGroups.filter((group) => isElementVisible(group));
+  const taskGroups = allTaskGroups.filter((group) => {
+    const title = group.querySelector('.task-title');
+    return title ? isElementVisible(title) : isElementVisible(group);
+  });
 
   const dialogs = dialogItems.map((item) => {
-    const toggle = item.querySelector('.dialog-toggle');
+    const toggle = item.querySelector('[data-action="toggle-root"]');
     const title = item.querySelector('.dialog-title');
     const status = item.querySelector('.dialog-status');
-    const timestamp = item.querySelector('.dialog-timestamp');
+    const timestamp = item.querySelector('.dialog-time');
     const subdialogCount = item.querySelector('.dialog-count');
     const toggleText = toggle?.textContent?.trim() || '';
-    const level = item.getAttribute('data-level') || '';
+    const isSubdialog = item.classList.contains('sub-dialog');
+    const level = isSubdialog ? '3' : '2';
+    const countText = subdialogCount?.textContent?.trim() || '';
+    const countValue = Number(countText);
 
     return {
       title: title?.textContent?.trim() || '',
       status: status?.textContent?.trim() || '',
       timestamp: timestamp?.textContent?.trim() || '',
-      subdialogs: subdialogCount?.textContent?.trim() || '',
-      expanded: toggleText === '▼',
-      hasSubdialogs: toggleText !== '' && toggleText !== '•',
+      subdialogs: countText,
+      expanded: !isSubdialog && toggleText === '▼',
+      hasSubdialogs: !isSubdialog && Number.isFinite(countValue) ? countValue > 0 : false,
       level,
       rootId: item.getAttribute('data-root-id') || '',
       selfId: item.getAttribute('data-self-id') || '',
@@ -655,30 +668,29 @@ function captureSidebarState(shadow) {
   });
 
   const taskGroupsInfo = taskGroups.map((group) => {
-    const text = group.querySelector('.task-group-text');
-    const count = group.querySelector('.task-group-count');
-    const toggle = group.querySelector('.task-group-toggle');
+    const title = group.querySelector('.task-title');
+    const text = title?.querySelector('.task-title-left span');
+    const count = title?.querySelector('.dialog-count');
+    const toggle = title?.querySelector('[data-action="toggle-task"]');
 
     return {
-      path: text?.textContent?.trim() || '',
+      path: title?.getAttribute('data-task-path') || text?.textContent?.trim() || '',
       count: count?.textContent?.trim() || '',
-      expanded: toggle?.textContent?.includes('▼') || false,
+      expanded: toggle?.textContent?.trim() === '▼',
     };
   });
 
-  const orderedNodes = Array.from(
-    listShadow.querySelectorAll('.task-group-item, .dialog-item') || [],
-  );
+  const orderedNodes = Array.from(listShadow.querySelectorAll('.task-title, .dialog-item') || []);
   const visibleNodeTitles = orderedNodes
     .filter((node) => isElementVisible(node))
     .map((node) => {
-      if (node.classList.contains('task-group-item')) {
-        const text = node.querySelector('.task-group-text')?.textContent?.trim() || '';
+      if (node.classList.contains('task-title')) {
+        const text = node.getAttribute('data-task-path') || node.textContent?.trim() || '';
         return text ? `Task: ${text}` : 'Task: (unnamed)';
       }
       const title = node.querySelector('.dialog-title')?.textContent?.trim() || '';
-      const level = node.getAttribute('data-level');
-      const prefix = level === '3' ? 'Subdialog' : 'Dialog';
+      const isSubdialog = node.classList.contains('sub-dialog');
+      const prefix = isSubdialog ? 'Subdialog' : 'Dialog';
       return title ? `${prefix}: ${title}` : `${prefix}: (untitled)`;
     });
 
@@ -1345,15 +1357,15 @@ async function createDialog(taskDocPath, callsign) {
 
 /**
  * Selects a dialog from the sidebar by ID.
- * Source: dominds-dialog-list.ts lines 353-366
+ * Source: running-dialog-list.ts
  * Component method: selectDialogById(rootId) returns boolean
  */
 function selectDialogById(rootId) {
   const dialogList = getDialogList();
-  if (!dialogList) throw new Error('DomindsDialogList component not found');
+  if (!dialogList) throw new Error('RunningDialogList component not found');
 
   if (typeof dialogList.selectDialogById !== 'function') {
-    throw new Error('selectDialogById method not available on DomindsDialogList');
+    throw new Error('selectDialogById method not available on RunningDialogList');
   }
 
   return dialogList.selectDialogById(rootId);
@@ -1361,15 +1373,15 @@ function selectDialogById(rootId) {
 
 /**
  * Selects a dialog from the sidebar using component methods.
- * Source: dominds-dialog-list.ts lines 381-393, 353-366
+ * Source: running-dialog-list.ts, dominds-app.tsx
  * Component methods: findDialogByRootId(), selectDialogById(), findSubdialog()
  */
 async function selectDialog(dialogText) {
   const dialogList = getDialogList();
-  if (!dialogList) throw new Error('DomindsDialogList component not found');
+  if (!dialogList) throw new Error('RunningDialogList component not found');
 
   if (typeof dialogList.selectDialogById !== 'function') {
-    throw new Error('selectDialogById method not available on DomindsDialogList');
+    throw new Error('selectDialogById method not available on RunningDialogList');
   }
 
   // Try to find by root ID first
@@ -1386,8 +1398,8 @@ async function selectDialog(dialogText) {
     await ensureSubdialogsLoaded(rootId);
     const subdialog = dialogList.findSubdialog?.(rootId, selfId);
     if (subdialog) {
-      const success = dialogList.selectDialogById(rootId);
-      if (!success) throw new Error(`selectDialogById failed for subdialog "${dialogText}"`);
+      const opened = await openSubdialog(rootId, selfId);
+      if (!opened) throw new Error(`openSubdialog failed for "${dialogText}"`);
       return true;
     }
   }
@@ -1397,7 +1409,7 @@ async function selectDialog(dialogText) {
 
 /**
  * Gets all dialogs from the sidebar.
- * Source: dominds-dialog-list.ts lines 372-374
+ * Source: running-dialog-list.ts
  * Component method: getAllDialogs() returns ApiRootDialogResponse[]
  */
 function getAllDialogs() {
@@ -1427,15 +1439,33 @@ async function ensureSubdialogsLoaded(rootId, timeoutMs = 8000) {
   if (!app) throw new Error('dominds-app not found');
 
   const dialogList = getDialogList();
-  if (dialogList?.expandMainDialog) {
-    dialogList.expandMainDialog(rootId, true);
-  }
-
   if (typeof app.ensureSubdialogsLoaded === 'function') {
     await app.ensureSubdialogsLoaded(rootId);
-  } else {
-    if (dialogList?.expandMainDialog) {
-      dialogList.expandMainDialog(rootId, true);
+  }
+
+  // Ensure task group + root are expanded in the UI so subdialogs are visible.
+  const listShadow = getDialogListShadow();
+  if (listShadow) {
+    const rootDialogData = Array.isArray(app.dialogs)
+      ? app.dialogs.find((d) => d.rootId === rootId && !d.selfId)
+      : null;
+    const taskPath = rootDialogData?.taskDocPath;
+    if (taskPath) {
+      const taskTitle = listShadow.querySelector(
+        `.task-title[data-task-path="${escapeCssValue(taskPath)}"]`,
+      );
+      const taskToggle = taskTitle?.querySelector('[data-action="toggle-task"]');
+      if (taskToggle && taskToggle.textContent?.trim() === '▶') {
+        taskToggle.click();
+      }
+    }
+
+    const rootItem = listShadow.querySelector(
+      `.dialog-item.root-dialog[data-root-id="${escapeCssValue(rootId)}"]`,
+    );
+    const rootToggle = rootItem?.querySelector('[data-action="toggle-root"]');
+    if (rootToggle && rootToggle.textContent?.trim() === '▶') {
+      rootToggle.click();
     }
   }
 
@@ -1447,9 +1477,7 @@ async function ensureSubdialogsLoaded(rootId, timeoutMs = 8000) {
         (d) => d && typeof d.rootId === 'string' && d.rootId === rootId && !d.selfId,
       );
       const expectedCount =
-        rootDialog && typeof rootDialog.subdialogCount === 'number'
-          ? rootDialog.subdialogCount
-          : 0;
+        rootDialog && typeof rootDialog.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
       if (expectedCount === 0) return true;
       return dialogs.some(
         (d) => d && d.supdialogId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
