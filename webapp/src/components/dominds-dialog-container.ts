@@ -238,6 +238,18 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     switch (event.type) {
+      case 'user_text_evt':
+        if (
+          typeof event.round !== 'number' ||
+          typeof event.genseq !== 'number' ||
+          typeof event.content !== 'string' ||
+          typeof event.msgId !== 'string'
+        ) {
+          this.handleProtocolError('user_text_evt missing required fields');
+          break;
+        }
+        this.handleUserText(event.content, event.msgId, event.genseq);
+        break;
       case 'end_of_user_saying_evt':
         {
           // Render <hr/> separator between user content and AI response
@@ -1370,6 +1382,31 @@ export class DomindsDialogContainer extends HTMLElement {
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
     body.appendChild(divider);
+    this.scrollToBottom();
+  }
+
+  private handleUserText(content: string, msgId: string, genseq?: number): void {
+    const trimmed = content.trim();
+    if (trimmed === '') return;
+
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (!container) return;
+
+    const existing = container.querySelector(`[data-user-msg-id="${msgId}"]`);
+    if (existing) return;
+
+    const messageEl = this.createMessageElement(trimmed, 'user', msgId);
+    if (typeof genseq === 'number') {
+      const bubble = container.querySelector(
+        `.generation-bubble[data-seq="${genseq}"]`,
+      ) as HTMLElement | null;
+      if (bubble) {
+        container.insertBefore(messageEl, bubble);
+        this.scrollToBottom();
+        return;
+      }
+    }
+    container.appendChild(messageEl);
     this.scrollToBottom();
   }
 

@@ -60,6 +60,12 @@ export type SayingFinishEvent = LlmGenDlgEvent & {
   type: 'saying_finish_evt';
 };
 
+export type UserTextEvent = LlmGenDlgEvent & {
+  type: 'user_text_evt';
+  content: string;
+  msgId: string;
+};
+
 export type MarkdownStartEvent = LlmGenDlgEvent & {
   type: 'markdown_start_evt';
 };
@@ -277,6 +283,8 @@ export type TypedDialogEvent = DialogEvent & DialogEventBase;
 
 // Union type for all dialog events
 export type DialogEvent =
+  // User prompt
+  | UserTextEvent
   // Generation lifecycle
   | GeneratingStartEvent
   | GeneratingFinishEvent

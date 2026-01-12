@@ -1541,7 +1541,22 @@ async function navigateToParent() {
     throw new Error('navigateToParent method not available on dominds-app');
   }
 
-  return app.navigateToParent();
+  const navigated = await app.navigateToParent();
+  if (!navigated) return false;
+
+  // Allow time for dialog history to stream in after navigation.
+  try {
+    await waitUntil(() => {
+      const shadow = getAppShadow();
+      if (!shadow) return false;
+      const chat = captureChatState(shadow);
+      return typeof chat.visibleMessageCount === 'number' && chat.visibleMessageCount > 0;
+    }, 5000);
+  } catch (_err) {
+    // Non-fatal: some dialogs legitimately have no messages.
+  }
+
+  return true;
 }
 
 /**

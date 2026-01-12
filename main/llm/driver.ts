@@ -179,6 +179,16 @@ function formatSubdialogUserPrompt(
   return formatSubdialogAssignmentForModel(supdialogAgentId, headLine, callBody);
 }
 
+function resolveCallerLabel(assignment: AssignmentFromSup, callerDialog?: Dialog): string {
+  if (assignment.originRole === 'user') {
+    return assignment.originMemberId;
+  }
+  if (callerDialog) {
+    return callerDialog.agentId;
+  }
+  return assignment.originMemberId;
+}
+
 function formatSupdialogCallPrompt(
   subdialogAgentId: string,
   headLine: string,
@@ -579,19 +589,16 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       if (dlg instanceof SubDialog && dlg.assignmentFromSup) {
         const assignment = dlg.assignmentFromSup;
         const callerDialog = resolveCallerDialog(dlg, assignment);
-        const callerAgentId =
-          callerDialog && callerDialog.agentId ? callerDialog.agentId : dlg.supdialog?.agentId;
-        if (callerAgentId) {
-          assignmentFromSupMsg = {
-            type: 'environment_msg',
-            role: 'user',
-            content: formatSubdialogAssignmentForModel(
-              callerAgentId,
-              assignment.headLine,
-              assignment.callBody,
-            ),
-          };
-        }
+        const callerLabel = resolveCallerLabel(assignment, callerDialog ?? undefined);
+        assignmentFromSupMsg = {
+          type: 'environment_msg',
+          role: 'user',
+          content: formatSubdialogAssignmentForModel(
+            callerLabel,
+            assignment.headLine,
+            assignment.callBody,
+          ),
+        };
       }
 
       const ctxMsgs: ChatMessage[] = [
@@ -1658,7 +1665,7 @@ export async function createSubdialogForSupdialog(
         };
         await driveDialogStream(subdialog, initPrompt, true);
         const responseText = await extractSubdialogResponse(subdialog.id);
-        await supplyResponseToSupdialog(supdialog, subdialog.id, responseText, 'A');
+        await supplyResponseToSupdialog(supdialog, subdialog.id, responseText, 'A', callId);
       } catch (err) {
         log.warn('Type A subdialog processing error:', err);
       }
@@ -2135,6 +2142,7 @@ async function executeTextingCall(
           dialogId: dlg.id.selfId,
         });
         try {
+          const callerLabel = originRole === 'assistant' ? dlg.agentId : 'human';
           const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
             originRole,
             originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
@@ -2158,7 +2166,7 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(dlg.agentId, headLine, body),
+                content: formatSubdialogUserPrompt(callerLabel, headLine, body),
                 msgId: generateDialogID(),
                 skipTextingParse: true,
               };
@@ -2176,6 +2184,7 @@ async function executeTextingCall(
         }
       } else {
         const originMemberId = originRole === 'assistant' ? dlg.agentId : 'human';
+        const callerLabel = originMemberId;
         const assignment: AssignmentFromSup = {
           headLine,
           callBody: body,
@@ -2194,7 +2203,7 @@ async function executeTextingCall(
 
         if (existingSubdialog) {
           const resumePrompt: HumanPrompt = {
-            content: formatSubdialogUserPrompt(callerDialog.agentId, headLine, body),
+            content: formatSubdialogUserPrompt(callerLabel, headLine, body),
             msgId: generateDialogID(),
             skipTextingParse: true,
           };
@@ -2262,7 +2271,7 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(callerDialog.agentId, headLine, body),
+                content: formatSubdialogUserPrompt(callerLabel, headLine, body),
                 msgId: generateDialogID(),
                 skipTextingParse: true,
               };
@@ -2283,6 +2292,7 @@ async function executeTextingCall(
     if (parseResult.type === 'C') {
       const mentions = Array.from(new Set(extractMentions(headLine)));
       const targets = mentions.filter((m) => !!team.getMember(m));
+      const callerLabel = originRole === 'assistant' ? dlg.agentId : 'human';
 
       for (const tgt of targets) {
         try {
@@ -2306,7 +2316,7 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(dlg.agentId, headLine, body),
+                content: formatSubdialogUserPrompt(callerLabel, headLine, body),
                 msgId: generateDialogID(),
                 skipTextingParse: true,
               };

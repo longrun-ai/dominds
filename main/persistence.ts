@@ -47,6 +47,7 @@ import type {
   ToolCallHeadlineFinishEvent,
   ToolCallResponseEvent,
   ToolCallStartEvent,
+  UserTextEvent,
 } from './shared/types/dialog';
 import type {
   AgentThoughtRecord,
@@ -844,6 +845,15 @@ export class DiskFileDialogStore extends DialogStore {
     };
     await this.appendEvent(round, humanEv);
 
+    const userTextEvt: UserTextEvent = {
+      type: 'user_text_evt',
+      round,
+      genseq,
+      content: humanEv.content,
+      msgId: humanEv.msgId,
+    };
+    postDialogEvent(dialog, userTextEvt);
+
     // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after texting calls complete
   }
 
@@ -1061,6 +1071,20 @@ export class DiskFileDialogStore extends DialogStore {
       case 'human_text_record': {
         const genseq = event.genseq;
         const content = event.content || '';
+
+        if (content.trim() !== '' && ws.readyState === 1) {
+          ws.send(
+            JSON.stringify({
+              type: 'user_text_evt',
+              round,
+              genseq,
+              content,
+              msgId: event.msgId,
+              dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+              timestamp: event.ts,
+            }),
+          );
+        }
 
         // Parse user content and emit individual events (same as live mode)
         // Use TextingStreamParser to emit @mentions, codeblocks, etc.
