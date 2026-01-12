@@ -861,24 +861,23 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ## Mental Clarity Tools
 
-**Implementation**: Both `@clear_mind` and `@change_mind` delegate to `Dialog.startNewRound()`, which:
+**Implementation**: Both `@clear_mind` and `@change_mind` delegate to `Dialog.startNewRound(newRoundPrompt)`, which:
 
 1. Clears all chat messages
 2. Clears all Q4H questions
 3. Increments the round counter
 4. Updates the dialog's timestamp
+5. Queues `newRoundPrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next round
 
 ### @clear_mind
 
 **Purpose**: Achieve mental clarity by clearing conversational noise while preserving essential context.
 
-**Texting Call Syntax** (unchanged):
+**Texting Call Syntax**:
 
 ```
-@clear_mind: <headLine>
-<callBody (optional)>
-
-<restContent - becomes first user message in new round>
+@clear_mind
+<reminder-content (optional)>
 ```
 
 **Behavior**:
@@ -889,21 +888,19 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 - Preserves subdialog registry (root dialog only)
 - Has no effect on supdialog
 - Redirects attention to task document
-- The text AFTER the complete `@clear_mind:` call section becomes the **first `role=user` message** in the new round
+- A system-generated new-round prompt is queued and used as the **first `role=user` message** in the new round
 - Starts a new conversation round
 
 **Message Flow**:
 
 ```
 BEFORE (LLM output):
-@clear_mind: I want mental clarity
+@clear_mind
 The conversation has too much debug output
-
-Actually, let's focus on Z instead
 
 AFTER @clear_mind:
 [new round starts]
-[msg1: user, "Actually, let's focus on Z instead"]  <-- restContent
+[msg1: user, "This is round #<n> of the dialog, you just cleared your minds and please proceed with the task."]  <-- newRoundPrompt
 ```
 
 **Use Cases**:
@@ -921,19 +918,18 @@ AFTER @clear_mind:
 - Reminders provide continuity bridge across the clarity operation
 - **Q4H is cleared** - user can ask new questions if needed
 - **Registry is preserved** - registered subdialogs remain registered
-- Internally calls `Dialog.startNewRound()` for all clearing and round management
+- Tools are `backfeeding: false`; the new-round prompt is applied by the driver in the follow-up coroutine
+- Internally calls `Dialog.startNewRound(newRoundPrompt)` for all clearing, prompt queueing, and round management
 
 ### @change_mind
 
 **Purpose**: Fundamentally shift task direction by updating the workspace task document file that all dialogs reference.
 
-**Texting Call Syntax** (unchanged):
+**Texting Call Syntax**:
 
 ```
-@change_mind: <headLine>
-<callBody (optional)>
-
-<restContent - becomes first user message in new round>
+@change_mind
+<new-task-doc-content>
 ```
 
 **Behavior**:
@@ -947,21 +943,19 @@ AFTER @clear_mind:
 - Preserves subdialog registry (root dialog only)
 - Has no effect on supdialog
 - Affects all participant agents (main and subdialogs) referencing the same task document
-- The text AFTER the complete `@change_mind:` call section becomes the **first `role=user` message** in the new round
+- A system-generated new-round prompt is queued and used as the **first `role=user` message** in the new round
 - Starts new conversation round for current dialog
 
 **Message Flow**:
 
 ```
 BEFORE (LLM output):
-@change_mind: Requirements changed
+@change_mind
 The client wants reporting instead of auth
-
-Actually, let's build the reporting module first
 
 AFTER @change_mind:
 [new round starts]
-[msg1: user, "Actually, let's build the reporting module first"]  <-- restContent
+[msg1: user, "This is round #<n> of the dialog, you just changed your minds and please proceed with the task."]  <-- newRoundPrompt
 ```
 
 **Use Cases**:
@@ -982,7 +976,8 @@ AFTER @change_mind:
 - `dlg.taskDocPath` is readonly after dialog creation; @change_mind only overwrites the file contents at that path
 - **Q4H is cleared** - new direction means new questions
 - **Registry is preserved** - registered subdialogs remain registered
-- After updating the task document, calls `Dialog.startNewRound()` for all clearing and round management
+- Tools are `backfeeding: false`; the new-round prompt is applied by the driver in the follow-up coroutine
+- After updating the task document, calls `Dialog.startNewRound(newRoundPrompt)` for all clearing, prompt queueing, and round management
 
 ---
 
@@ -1202,7 +1197,7 @@ The complete Dialog class implementation with all methods, properties, and detai
 
 - **Hierarchy Support**: Parent-child relationships for subdialog management
 - **Memory Management**: Persistent reminders and ephemeral chat messages
-- **Mental Clarity Operations**: `startNewRound()` method (clears messages, Q4H, and increments round)
+- **Mental Clarity Operations**: `startNewRound(newRoundPrompt)` method (clears messages, clears Q4H, increments round, queues new round prompt for the next drive)
 - **Subdialog Management**: Creation and coordination of specialized subtasks
 - **Q4H Management**: `updateQuestions4Human()` method for question tracking
 - **Memory Access**: Integration with task documents and team/agent memories
@@ -1470,7 +1465,7 @@ interface RegistryMethods {
 │  - COMPLETED: Task finished, no further generation                           │
 │                                                                              │
 │  TRANSITIONS:                                                                │
-│  - startNewRound() / createSubdialog(): CREATED -> ACTIVE                   │
+│  - startNewRound(newRoundPrompt) / createSubdialog(): CREATED -> ACTIVE     │
 │  - @human teammate call: ACTIVE -> AWAITING_Q4H                             │
 │  - Q4H answered: AWAITING_Q4H -> ACTIVE                                     │
 │  - createSubdialog() / teammate call: ACTIVE -> AWAITING_SUBDLG (parent)    │

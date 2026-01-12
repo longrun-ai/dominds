@@ -795,7 +795,7 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Start new round (append-only JSONL + exceptional reminder persistence)
    */
-  public async startNewRound(dialog: Dialog): Promise<void> {
+  public async startNewRound(dialog: Dialog, _newRoundPrompt: string): Promise<void> {
     const previousRound = dialog.currentRound;
     const newRound = previousRound + 1;
 

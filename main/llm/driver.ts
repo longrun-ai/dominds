@@ -51,6 +51,8 @@ export interface HumanPrompt {
   skipTextingParse?: boolean;
 }
 
+type UpNextPrompt = { prompt: string; msgId: string };
+
 // === SUSPENSION AND RESUMPTION INTERFACES ===
 
 export interface DialogSuspension {
@@ -287,6 +289,30 @@ export async function emitSayingEvents(
   return parser.getCollectedCalls();
 }
 
+function resolveUpNextPrompt(dlg: Dialog, humanPrompt?: HumanPrompt): HumanPrompt | undefined {
+  if (humanPrompt) {
+    return humanPrompt;
+  }
+  const upNext = dlg.takeUpNext();
+  if (!upNext) {
+    return undefined;
+  }
+  return {
+    content: upNext.prompt,
+    msgId: upNext.msgId,
+    skipTextingParse: true,
+  };
+}
+
+function scheduleUpNextDrive(dlg: Dialog, upNext: UpNextPrompt): void {
+  const prompt: HumanPrompt = {
+    content: upNext.prompt,
+    msgId: upNext.msgId,
+    skipTextingParse: true,
+  };
+  void driveDialogStream(dlg, prompt, true);
+}
+
 // TODO: certain scenarios should pass `waitInQue=true`:
 //        - supdialog call for clarification
 /**
@@ -334,18 +360,24 @@ export async function driveDialogStream(
   }
 
   const release = await dlg.acquire();
+  let followUp: UpNextPrompt | undefined;
   try {
+    const effectivePrompt = resolveUpNextPrompt(dlg, humanPrompt);
     const shouldReportToCaller =
       dlg instanceof SubDialog &&
-      humanPrompt !== undefined &&
-      humanPrompt.skipTextingParse !== true;
+      effectivePrompt !== undefined &&
+      effectivePrompt.skipTextingParse !== true;
     const before = shouldReportToCaller ? getLastAssistantMessage(dlg.msgs) : null;
-    await _driveDialogStream(dlg, humanPrompt);
+    await _driveDialogStream(dlg, effectivePrompt);
     if (shouldReportToCaller) {
       await reportSubdialogResponseToCaller(dlg, before);
     }
+    followUp = dlg.takeUpNext();
   } finally {
     release();
+    if (followUp) {
+      scheduleUpNextDrive(dlg, followUp);
+    }
   }
 }
 
@@ -365,6 +397,10 @@ export async function runBackendDriver(): Promise<void> {
             const release = await rootDialog.acquire();
             try {
               await driveDialogToSuspension(rootDialog);
+
+              if (rootDialog.hasUpNext()) {
+                globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
+              }
 
               const status = await rootDialog.getSuspensionStatus();
               if (status.subdialogs) {
@@ -398,7 +434,8 @@ export async function runBackendDriver(): Promise<void> {
  */
 async function driveDialogToSuspension(dlg: Dialog): Promise<void> {
   try {
-    await _driveDialogStream(dlg);
+    const effectivePrompt = resolveUpNextPrompt(dlg);
+    await _driveDialogStream(dlg, effectivePrompt);
   } catch (err) {
     log.warn(`Error in driveDialogToSuspension for ${dlg.id.selfId}:`, err);
     throw err;
@@ -543,6 +580,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             collectedUserCalls,
             'user',
           );
+
+          if (dlg.hasUpNext()) {
+            return;
+          }
 
           if (userResult.toolOutputs.length > 0) {
             await dlg.addChatMessages(...userResult.toolOutputs);
@@ -710,6 +751,9 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
             collectedAssistantCalls,
             'assistant',
           );
+          if (dlg.hasUpNext()) {
+            return;
+          }
           assistantToolOutputsCount = assistantResult.toolOutputs.length;
           if (assistantResult.toolOutputs.length > 0) {
             await dlg.addChatMessages(...assistantResult.toolOutputs);
@@ -981,6 +1025,10 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
             ),
           ),
         );
+
+        if (dlg.hasUpNext()) {
+          return;
+        }
 
         // Combine results from all concurrent calls and track tool outputs for termination logic
         let toolOutputsCount = 0;

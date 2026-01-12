@@ -196,6 +196,8 @@ export abstract class Dialog {
   protected _createdAt: string;
   protected _updatedAt: string;
   protected _unsavedMessages: ChatMessage[] = [];
+  // Prompt queued for the next round drive (set by startNewRound).
+  protected _upNext?: { prompt: string; msgId: string };
   public subChan?: SubChan<DialogEvent>;
   // Track whether the current round's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_summary_evt arrives
@@ -790,11 +792,35 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     return this._updatedAt;
   }
 
+  private setUpNextPrompt(prompt: string): void {
+    const trimmed = prompt.trim();
+    if (!trimmed) {
+      throw new Error('newRoundPrompt is required to start a new round');
+    }
+    this._upNext = { prompt: trimmed, msgId: generateDialogID() };
+  }
+
+  public hasUpNext(): boolean {
+    return this._upNext !== undefined;
+  }
+
+  public takeUpNext(): { prompt: string; msgId: string } | undefined {
+    const next = this._upNext;
+    this._upNext = undefined;
+    return next;
+  }
+
   /**
    * Start a new round - clears conversational noise, Q4H, and increments round counter.
+   * Queues a new-round prompt for the driver to consume on the next drive cycle.
    * This is the single entry point for mental clarity operations (@clear_mind, @change_mind).
    */
-  public async startNewRound(): Promise<void> {
+  public async startNewRound(newRoundPrompt: string): Promise<void> {
+    const trimmedPrompt = newRoundPrompt.trim();
+    if (!trimmedPrompt) {
+      throw new Error('newRoundPrompt is required to start a new round');
+    }
+
     // Clear all messages and Q4H questions for mental clarity
     this.msgs.length = 0;
     this._unsavedMessages.length = 0;
@@ -802,7 +828,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 
     // Delegate to DialogStore for round start persistence
     if (this.dlgStore) {
-      await this.dlgStore.startNewRound(this);
+      await this.dlgStore.startNewRound(this, trimmedPrompt);
     }
 
     const storeRound = this.dlgStore
@@ -810,6 +836,8 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       : this._currentRound + 1;
     this._currentRound = storeRound;
     this._updatedAt = formatUnifiedTimestamp(new Date());
+
+    this.setUpNextPrompt(trimmedPrompt);
   }
 
   // Proxy methods for DialogStore - route calls through dialog object instead of direct dlgStore access
@@ -1531,7 +1559,7 @@ export abstract class DialogStore {
   /**
    * Start a new round in storage
    */
-  public async startNewRound(_dialog: Dialog): Promise<void> {}
+  public async startNewRound(_dialog: Dialog, _newRoundPrompt: string): Promise<void> {}
 
   /**
    * Handle stream error

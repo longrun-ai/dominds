@@ -39,10 +39,6 @@ function env(content: string): ChatMessage[] {
   return [{ type: 'environment_msg', role: 'user', content }] satisfies ChatMessage[];
 }
 
-function guide(content: string): ChatMessage[] {
-  return [{ type: 'transient_guide_msg', role: 'assistant', content }] satisfies ChatMessage[];
-}
-
 function ok(result?: string, messages?: ChatMessage[]): TextingToolCallResult {
   return { status: 'completed', result, messages };
 }
@@ -196,11 +192,10 @@ export const clearMindTool: TextingTool = {
     if (reminderContent) {
       dlg.addReminder(reminderContent);
     }
-    await dlg.startNewRound();
-    return ok(
-      'Mind cleared',
-      guide('Mind cleared. Continue with a fresh response in the new round.'),
+    await dlg.startNewRound(
+      `This is round #${dlg.currentRound + 1} of the dialog, you just cleared your mind and please proceed with the task.`,
     );
+    return ok('Mind cleared');
   },
 };
 
@@ -251,10 +246,9 @@ export const changeMindTool: TextingTool = {
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.promises.writeFile(fullPath, newTaskDocContent, 'utf8');
 
-    await dlg.startNewRound();
-    return ok(
-      'Mind changed',
-      guide('Mind changed. Continue with a fresh response in the new round.'),
+    await dlg.startNewRound(
+      `This is round #${dlg.currentRound + 1} of the dialog, you just changed your mind and please proceed with the task.`,
     );
+    return ok('Mind changed');
   },
 };
