@@ -18,7 +18,7 @@ import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
-import type { HumanQuestion } from '../shared/types/storage';
+import type { HumanQuestion, UserTextGrammar } from '../shared/types/storage';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import {
@@ -48,7 +48,7 @@ import { getLlmGenerator } from './gen/registry';
 export interface HumanPrompt {
   content: string;
   msgId: string; // Message ID for tracking and error recovery (required for all human text)
-  skipTextingParse?: boolean;
+  grammar: UserTextGrammar;
 }
 
 type UpNextPrompt = { prompt: string; msgId: string };
@@ -155,12 +155,13 @@ function formatAssignmentVerbatim(headLine: string, callBody: string): string {
 
 function formatSubdialogAssignmentForModel(
   supdialogAgentId: string,
+  subdialogAgentId: string,
   headLine: string,
   callBody: string,
 ): string {
   const trimmedHead = headLine.trim();
   const trimmedBody = callBody.trim();
-  const intro = `@${supdialogAgentId} is asking you`;
+  const intro = `Hi @${subdialogAgentId}, @${supdialogAgentId} is asking you`;
   if (trimmedHead !== '' && trimmedBody !== '') {
     return `${intro}, ${headLine}\n\n${callBody}`;
   }
@@ -175,29 +176,45 @@ function formatSubdialogAssignmentForModel(
 
 function formatSubdialogUserPrompt(
   supdialogAgentId: string,
-  headLine: string,
-  callBody: string,
-): string {
-  return formatSubdialogAssignmentForModel(supdialogAgentId, headLine, callBody);
-}
-
-function resolveCallerLabel(assignment: AssignmentFromSup, callerDialog?: Dialog): string {
-  if (assignment.originRole === 'user') {
-    return assignment.originMemberId;
-  }
-  if (callerDialog) {
-    return callerDialog.agentId;
-  }
-  return assignment.originMemberId;
-}
-
-function formatSupdialogCallPrompt(
   subdialogAgentId: string,
   headLine: string,
   callBody: string,
 ): string {
-  const assignment = formatAssignmentVerbatim(headLine, callBody);
-  return `Subdialog @${subdialogAgentId} requests:\n${assignment}`;
+  return formatSubdialogAssignmentForModel(supdialogAgentId, subdialogAgentId, headLine, callBody);
+}
+
+function formatSupdialogCallPrompt(
+  supdialogAgentId: string,
+  subdialogAgentId: string,
+  headLine: string,
+  callBody: string,
+  assignmentHeadLine: string,
+): string {
+  const trimmedBody = callBody.trim();
+  const trimmedAssignment = assignmentHeadLine.trim();
+  const resolvedAssignment =
+    trimmedAssignment !== '' ? trimmedAssignment : '(no headline provided)';
+  const trimmedQuestion = headLine.trim();
+  const resolvedQuestion = trimmedQuestion !== '' ? trimmedQuestion : '(no question provided)';
+  const intro = `Hi @${supdialogAgentId}, during processing your assignment:`;
+  const quoteLine = resolvedAssignment
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n');
+  const askLine = `@${subdialogAgentId} is asking you, @${supdialogAgentId}: ${resolvedQuestion}`;
+  if (trimmedBody !== '') {
+    return `${intro}\n${quoteLine}\n${askLine}\n${callBody}`;
+  }
+  return `${intro}\n${quoteLine}\n${askLine}`;
+}
+
+function formatTeammateResponseContent(
+  responderId: string,
+  headLine: string,
+  responseText: string,
+): string {
+  const resolvedHeadLine = headLine.trim() !== '' ? headLine : 'Subdialog response';
+  return `Teammate response received from @${responderId} for call "${resolvedHeadLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
 }
 
 // === UNIFIED STREAMING HANDLERS ===
@@ -289,6 +306,15 @@ export async function emitSayingEvents(
   return parser.getCollectedCalls();
 }
 
+async function emitUserMarkdown(dlg: Dialog, content: string): Promise<void> {
+  if (!content.trim()) {
+    return;
+  }
+  await dlg.markdownStart();
+  await dlg.markdownChunk(content);
+  await dlg.markdownFinish();
+}
+
 function resolveUpNextPrompt(dlg: Dialog, humanPrompt?: HumanPrompt): HumanPrompt | undefined {
   if (humanPrompt) {
     return humanPrompt;
@@ -300,7 +326,7 @@ function resolveUpNextPrompt(dlg: Dialog, humanPrompt?: HumanPrompt): HumanPromp
   return {
     content: upNext.prompt,
     msgId: upNext.msgId,
-    skipTextingParse: true,
+    grammar: 'markdown',
   };
 }
 
@@ -308,7 +334,7 @@ function scheduleUpNextDrive(dlg: Dialog, upNext: UpNextPrompt): void {
   const prompt: HumanPrompt = {
     content: upNext.prompt,
     msgId: upNext.msgId,
-    skipTextingParse: true,
+    grammar: 'markdown',
   };
   void driveDialogStream(dlg, prompt, true);
 }
@@ -366,7 +392,7 @@ export async function driveDialogStream(
     const shouldReportToCaller =
       dlg instanceof SubDialog &&
       effectivePrompt !== undefined &&
-      effectivePrompt.skipTextingParse !== true;
+      effectivePrompt.grammar === 'texting';
     const before = shouldReportToCaller ? getLastAssistantMessage(dlg.msgs) : null;
     await _driveDialogStream(dlg, effectivePrompt);
     if (shouldReportToCaller) {
@@ -556,6 +582,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       if (humanPrompt && genIterNo == 1) {
         promptContent = humanPrompt.content;
         const msgId = humanPrompt.msgId;
+        const promptGrammar = humanPrompt.grammar;
 
         await dlg.addChatMessages({
           type: 'prompting_msg',
@@ -563,12 +590,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           genseq: dlg.activeGenSeq,
           content: promptContent,
           msgId: msgId,
+          grammar: promptGrammar,
         });
         // Persist user message to storage FIRST
-        // This emits user_text event immediately for proper frontend ordering
-        await dlg.persistUserMessage(promptContent, msgId);
+        await dlg.persistUserMessage(promptContent, msgId, promptGrammar);
 
-        if (!humanPrompt.skipTextingParse) {
+        if (promptGrammar === 'texting') {
           // Collect and execute texting calls from user text using streaming parser
           // Combine agent texting tools with intrinsic reminder tools
           const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
@@ -578,7 +605,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             agent,
             allTextingTools,
             collectedUserCalls,
-            'user',
           );
 
           if (dlg.hasUpNext()) {
@@ -597,6 +623,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           if (userResult.subdialogsCreated.length > 0) {
             dlg.addPendingSubdialogs(userResult.subdialogsCreated);
           }
+        } else {
+          await emitUserMarkdown(dlg, promptContent);
         }
 
         try {
@@ -605,6 +633,9 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             type: 'end_of_user_saying_evt',
             round: dlg.currentRound,
             genseq: dlg.activeGenSeq,
+            msgId,
+            content: promptContent,
+            grammar: promptGrammar,
           });
         } catch (err) {
           log.warn('Failed to emit end_of_user_saying_evt', err);
@@ -629,13 +660,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       let assignmentFromSupMsg: ChatMessage | undefined;
       if (dlg instanceof SubDialog && dlg.assignmentFromSup) {
         const assignment = dlg.assignmentFromSup;
-        const callerDialog = resolveCallerDialog(dlg, assignment);
-        const callerLabel = resolveCallerLabel(assignment, callerDialog ?? undefined);
         assignmentFromSupMsg = {
           type: 'environment_msg',
           role: 'user',
           content: formatSubdialogAssignmentForModel(
-            callerLabel,
+            dlg.supdialog.agentId,
+            dlg.agentId,
             assignment.headLine,
             assignment.callBody,
           ),
@@ -749,7 +779,6 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
             agent,
             allTextingTools,
             collectedAssistantCalls,
-            'assistant',
           );
           if (dlg.hasUpNext()) {
             return;
@@ -1020,7 +1049,6 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
               call.firstMention,
               call.headLine,
               call.body,
-              'assistant',
               call.callId,
             ),
           ),
@@ -1538,7 +1566,7 @@ async function extractSubdialogResponse(subdialogId: DialogID): Promise<string> 
 /**
  * Helper function to drive a subdialog to completion and extract response.
  *
- * @param parentDialog The parent dialog that created/owns the subdialog
+ * @param parentDialog The supdialog that created/owns the subdialog
  * @param subdialog The subdialog to drive
  * @returns The response string from the subdialog
  */
@@ -1591,21 +1619,6 @@ function getLastAssistantMessage(messages: ChatMessage[]): LastAssistantMessage 
   return null;
 }
 
-function resolveCallerDialog(subdialog: SubDialog, assignment?: AssignmentFromSup): Dialog | null {
-  const rootDialog = subdialog.supdialog instanceof RootDialog ? subdialog.supdialog : undefined;
-  if (!rootDialog) {
-    return null;
-  }
-  const callerDialogId = assignment?.callerDialogId;
-  if (callerDialogId) {
-    const candidate = rootDialog.lookupDialog(callerDialogId);
-    if (candidate) {
-      return candidate;
-    }
-  }
-  return rootDialog;
-}
-
 async function updateSubdialogAssignment(
   subdialog: SubDialog,
   assignment: AssignmentFromSup,
@@ -1622,10 +1635,7 @@ async function reportSubdialogResponseToCaller(
   if (!assignment) {
     return;
   }
-  const callerDialog = resolveCallerDialog(subdialog, assignment);
-  if (!callerDialog) {
-    return;
-  }
+  const callerDialog = subdialog.supdialog;
   const after = getLastAssistantMessage(subdialog.msgs);
   if (!after) {
     return;
@@ -1638,8 +1648,7 @@ async function reportSubdialogResponseToCaller(
     assignment.headLine && assignment.headLine.trim() !== ''
       ? assignment.headLine
       : 'Subdialog response';
-  const responseContent = `Teammate response received from @${subdialog.agentId} for call "${headLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
-  const originRole = assignment.originRole;
+  const responseContent = formatTeammateResponseContent(subdialog.agentId, headLine, responseText);
   const originMemberId = assignment.originMemberId;
 
   await callerDialog.receiveTeammateResponse(
@@ -1652,7 +1661,6 @@ async function reportSubdialogResponseToCaller(
       response: responseText,
       agentId: subdialog.agentId,
       callId: assignment.callId,
-      originRole,
       originMemberId,
     },
   );
@@ -1666,7 +1674,7 @@ async function reportSubdialogResponseToCaller(
  *
  * Type A: Supdialog suspension call where subdialog calls parent and parent suspends.
  *
- * @param supdialog The parent dialog making the call
+ * @param supdialog The supdialog making the call
  * @param targetAgentId The agent to handle the subdialog
  * @param headLine The headline for the subdialog
  * @param callBody The body content for the subdialog
@@ -1682,7 +1690,6 @@ export async function createSubdialogForSupdialog(
   try {
     // Create the subdialog
     const subdialog = await supdialog.createSubDialog(targetAgentId, headLine, callBody, {
-      originRole: 'assistant',
       originMemberId: supdialog.agentId,
       callerDialogId: supdialog.id.selfId,
       callId,
@@ -1707,9 +1714,14 @@ export async function createSubdialogForSupdialog(
     void (async () => {
       try {
         const initPrompt: HumanPrompt = {
-          content: formatSubdialogUserPrompt(supdialog.agentId, headLine, callBody),
+          content: formatSubdialogUserPrompt(
+            supdialog.agentId,
+            subdialog.agentId,
+            headLine,
+            callBody,
+          ),
           msgId: generateDialogID(),
-          skipTextingParse: true,
+          grammar: 'markdown',
         };
         await driveDialogStream(subdialog, initPrompt, true);
         const responseText = await extractSubdialogResponse(subdialog.id);
@@ -1739,14 +1751,13 @@ export async function createSubdialogForSupdialog(
  * @param topicId The topic identifier for registry lookup
  * @param headLine The headline for the subdialog
  * @param callBody The body content for the subdialog
- * @param originRole Origin role for the subdialog
  * @returns Promise resolving when subdialog is created/registered
  */
 /**
- * Supply a response from a completed subdialog to the parent dialog.
+ * Supply a response from a completed subdialog to the supdialog.
  * Writes the response to persistence for later incorporation.
  *
- * @param parentDialog The parent dialog that created the subdialog
+ * @param parentDialog The supdialog that created the subdialog
  * @param subdialogId The ID of the completed subdialog
  * @param responseText The full response text from the subdialog
  * @param callType The call type ('A', 'B', or 'C')
@@ -1762,7 +1773,7 @@ export async function supplyResponseToSupdialog(
   try {
     const response = {
       subdialogId: subdialogId.selfId,
-      summary: responseText,
+      response: responseText,
       completedAt: formatUnifiedTimestamp(new Date()),
       callType,
     };
@@ -1787,7 +1798,6 @@ export async function supplyResponseToSupdialog(
     let responderId = subdialogId.rootId;
     let responderAgentId: string | undefined;
     let headLine = responseText;
-    let originRole: 'user' | 'assistant' = 'assistant';
     let originMemberId: string | undefined;
 
     try {
@@ -1796,7 +1806,6 @@ export async function supplyResponseToSupdialog(
         metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'completed');
       }
       if (metadata?.assignmentFromSup) {
-        originRole = metadata.assignmentFromSup.originRole;
         originMemberId = metadata.assignmentFromSup.originMemberId;
         if (!pendingRecord) {
           const assignmentHead = metadata.assignmentFromSup.headLine;
@@ -1820,7 +1829,7 @@ export async function supplyResponseToSupdialog(
     }
 
     if (!originMemberId) {
-      originMemberId = originRole === 'assistant' ? parentDialog.agentId : 'human';
+      originMemberId = parentDialog.agentId;
     }
 
     if (pendingRecord) {
@@ -1833,7 +1842,7 @@ export async function supplyResponseToSupdialog(
       headLine = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
     }
 
-    const responseContent = `Teammate response received from @${responderId} for call "${headLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
+    const responseContent = formatTeammateResponseContent(responderId, headLine, responseText);
     const resultMsg: TextingCallResultMsg = {
       type: 'call_result_msg',
       role: 'tool',
@@ -1845,8 +1854,7 @@ export async function supplyResponseToSupdialog(
     await parentDialog.addChatMessages(resultMsg);
 
     const resolvedAgentId = responderAgentId ?? responderId;
-    const resolvedOriginMemberId =
-      originMemberId ?? (originRole === 'assistant' ? parentDialog.agentId : 'human');
+    const resolvedOriginMemberId = originMemberId ?? parentDialog.agentId;
     const resolvedCallId = callId ?? '';
 
     await parentDialog.receiveTeammateResponse(
@@ -1859,7 +1867,6 @@ export async function supplyResponseToSupdialog(
         response: responseText,
         agentId: resolvedAgentId,
         callId: resolvedCallId,
-        originRole,
         originMemberId: resolvedOriginMemberId,
       },
     );
@@ -1876,7 +1883,7 @@ export async function supplyResponseToSupdialog(
       const resumePrompt: HumanPrompt = {
         content: responseContent,
         msgId: generateDialogID(),
-        skipTextingParse: true,
+        grammar: 'markdown',
       };
       void driveDialogStream(parentDialog, resumePrompt, true);
     }
@@ -1923,17 +1930,17 @@ export async function areAllSubdialogsSatisfied(rootDialogId: DialogID): Promise
 }
 
 /**
- * Incorporate subdialog responses into the parent dialog and resume.
+ * Incorporate subdialog responses into the supdialog and resume.
  * Reads responses from persistence and clears them after incorporation.
  *
  * @param rootDialog The root dialog to resume
- * @returns Promise<Array<{ subdialogId: string; summary: string; callType: 'A' | 'B' | 'C' }>>
- *   Array of incorporated responses (summary holds full response text)
+ * @returns Promise<Array<{ subdialogId: string; response: string; callType: 'A' | 'B' | 'C' }>>
+ *   Array of incorporated responses (response holds full response text)
  */
 export async function incorporateSubdialogResponses(rootDialog: RootDialog): Promise<
   Array<{
     subdialogId: string;
-    summary: string;
+    response: string;
     callType: 'A' | 'B' | 'C';
   }>
 > {
@@ -1944,11 +1951,8 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
     for (const response of responses) {
       const subdialogId = new DialogID(response.subdialogId, rootDialog.id.rootId);
 
-      // Add to parent's pending summaries
-      rootDialog.addPendingSubdialogSummary(subdialogId, response.summary);
-
-      // Emit subdialog summary event (payload contains full response text)
-      await rootDialog.postSubdialogSummary(subdialogId, response.summary);
+      // Emit subdialog response event (payload contains full response text)
+      await rootDialog.postSubdialogResponse(subdialogId, response.response);
     }
 
     // Clear responses after incorporation
@@ -1978,7 +1982,6 @@ async function executeTextingCalls(
   agent: Team.Member,
   textingTools: TextingTool[],
   collectedCalls: CollectedTextingCall[],
-  originRole: 'user' | 'assistant',
 ): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: DialogID[] }> {
   // Execute collected calls concurrently
   const results = await Promise.all(
@@ -1990,7 +1993,6 @@ async function executeTextingCalls(
         call.firstMention,
         call.headLine,
         call.body,
-        originRole,
         call.callId,
       ),
     ),
@@ -2015,7 +2017,6 @@ async function executeTextingCall(
   firstMention: string,
   headLine: string,
   body: string,
-  originRole: 'user' | 'assistant',
   callId: string,
 ): Promise<{
   toolOutputs: ChatMessage[];
@@ -2102,17 +2103,32 @@ async function executeTextingCall(
         dlg.setSuspensionState('suspended');
 
         try {
+          const assignment = dlg.assignmentFromSup;
+          if (!assignment) {
+            // Type A supcall requires the original assignment context to reference the parent call.
+            throw new Error('Type A supcall is missing assignmentFromSup on subdialog.');
+          }
           const supPrompt: HumanPrompt = {
-            content: formatSupdialogCallPrompt(dlg.agentId, headLine, body),
+            content: formatSupdialogCallPrompt(
+              supdialog.agentId,
+              dlg.agentId,
+              headLine,
+              body,
+              assignment.headLine,
+            ),
             msgId: generateDialogID(),
-            skipTextingParse: true,
+            grammar: 'markdown',
           };
           // Drive the supdialog for one round (queue if already driving)
           await driveDialogStream(supdialog, supPrompt, true);
 
           // Extract response from supdialog's last assistant message
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
-          const responseContent = `Teammate response received from @${parseResult.agentId} for call "${headLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
+          const responseContent = formatTeammateResponseContent(
+            parseResult.agentId,
+            headLine,
+            responseText,
+          );
 
           // Resume the subdialog with the supdialog's response
           dlg.setSuspensionState('resumed');
@@ -2136,8 +2152,7 @@ async function executeTextingCall(
               response: responseText,
               agentId: parseResult.agentId,
               callId,
-              originRole,
-              originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+              originMemberId: dlg.agentId,
             },
           );
         } catch (err) {
@@ -2164,8 +2179,7 @@ async function executeTextingCall(
               response: errorText,
               agentId: parseResult.agentId,
               callId,
-              originRole,
-              originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+              originMemberId: dlg.agentId,
             },
           );
         }
@@ -2178,22 +2192,20 @@ async function executeTextingCall(
     } else if (parseResult.type === 'B') {
       // Type B: Registered subdialog with topic (root registry, caller can be root or subdialog)
       const callerDialog = dlg;
-      const rootDialog =
-        dlg instanceof RootDialog
-          ? dlg
-          : dlg.supdialog instanceof RootDialog
-            ? dlg.supdialog
-            : undefined;
+      let rootDialog: RootDialog | undefined;
+      if (dlg instanceof RootDialog) {
+        rootDialog = dlg;
+      } else if (dlg instanceof SubDialog) {
+        rootDialog = dlg.rootDialog;
+      }
 
       if (!rootDialog) {
         log.warn('Type B call without root dialog, falling back to Type C', {
           dialogId: dlg.id.selfId,
         });
         try {
-          const callerLabel = originRole === 'assistant' ? dlg.agentId : 'human';
           const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
-            originRole,
-            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            originMemberId: dlg.agentId,
             callerDialogId: callerDialog.id.selfId,
             callId,
             topicId: parseResult.topicId,
@@ -2214,9 +2226,9 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(callerLabel, headLine, body),
+                content: formatSubdialogUserPrompt(dlg.agentId, sub.agentId, headLine, body),
                 msgId: generateDialogID(),
-                skipTextingParse: true,
+                grammar: 'markdown',
               };
               const responseText = await driveSubdialogToCompletion(sub, initPrompt);
               await supplyResponseToSupdialog(dlg, sub.id, responseText, 'C', callId);
@@ -2231,12 +2243,10 @@ async function executeTextingCall(
           log.warn('Type B fallback subdialog creation error:', err);
         }
       } else {
-        const originMemberId = originRole === 'assistant' ? dlg.agentId : 'human';
-        const callerLabel = originMemberId;
+        const originMemberId = dlg.agentId;
         const assignment: AssignmentFromSup = {
           headLine,
           callBody: body,
-          originRole,
           originMemberId,
           callerDialogId: callerDialog.id.selfId,
           callId,
@@ -2251,9 +2261,14 @@ async function executeTextingCall(
 
         if (existingSubdialog) {
           const resumePrompt: HumanPrompt = {
-            content: formatSubdialogUserPrompt(callerLabel, headLine, body),
+            content: formatSubdialogUserPrompt(
+              dlg.agentId,
+              existingSubdialog.agentId,
+              headLine,
+              body,
+            ),
             msgId: generateDialogID(),
-            skipTextingParse: true,
+            grammar: 'markdown',
           };
           try {
             await updateSubdialogAssignment(existingSubdialog, assignment);
@@ -2295,7 +2310,6 @@ async function executeTextingCall(
           suspend = true;
         } else {
           const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
-            originRole,
             originMemberId,
             callerDialogId: callerDialog.id.selfId,
             callId,
@@ -2319,9 +2333,9 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(callerLabel, headLine, body),
+                content: formatSubdialogUserPrompt(rootDialog.agentId, sub.agentId, headLine, body),
                 msgId: generateDialogID(),
-                skipTextingParse: true,
+                grammar: 'markdown',
               };
               const responseText = await driveSubdialogToCompletion(sub, initPrompt);
               await supplyResponseToSupdialog(pendingOwner, sub.id, responseText, 'B', callId);
@@ -2340,13 +2354,11 @@ async function executeTextingCall(
     if (parseResult.type === 'C') {
       const mentions = Array.from(new Set(extractMentions(headLine)));
       const targets = mentions.filter((m) => !!team.getMember(m));
-      const callerLabel = originRole === 'assistant' ? dlg.agentId : 'human';
 
       for (const tgt of targets) {
         try {
           const sub = await dlg.createSubDialog(tgt, headLine, body, {
-            originRole,
-            originMemberId: originRole === 'assistant' ? dlg.agentId : 'human',
+            originMemberId: dlg.agentId,
             callerDialogId: dlg.id.selfId,
             callId,
           });
@@ -2364,9 +2376,9 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(callerLabel, headLine, body),
+                content: formatSubdialogUserPrompt(dlg.agentId, sub.agentId, headLine, body),
                 msgId: generateDialogID(),
-                skipTextingParse: true,
+                grammar: 'markdown',
               };
               const responseText = await driveSubdialogToCompletion(sub, initPrompt);
               await supplyResponseToSupdialog(dlg, sub.id, responseText, 'C', callId);

@@ -15,7 +15,6 @@ class MockDialogStore implements Dialog['dlgStore'] {
     _headLine: string,
     _callBody: string,
     _options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;

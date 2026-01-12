@@ -9,14 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import * as yaml from 'yaml';
-import {
-  Dialog,
-  DialogID,
-  DialogStore,
-  PendingSubdialogSummary,
-  RootDialog,
-  SubDialog,
-} from './dialog';
+import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
@@ -47,7 +40,6 @@ import type {
   ToolCallHeadlineFinishEvent,
   ToolCallResponseEvent,
   ToolCallStartEvent,
-  UserTextEvent,
 } from './shared/types/dialog';
 import type {
   AgentThoughtRecord,
@@ -67,6 +59,7 @@ import type {
   TeammateResponseRecord,
   ToolArguments,
   ToolCallResultRecord,
+  UserTextGrammar,
 } from './shared/types/storage';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonObject, JsonValue } from './tool';
@@ -91,7 +84,6 @@ function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['as
   if (!isRecord(value)) return false;
   if (typeof value.headLine !== 'string') return false;
   if (typeof value.callBody !== 'string') return false;
-  if (value.originRole !== 'user' && value.originRole !== 'assistant') return false;
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callerDialogId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
@@ -181,7 +173,6 @@ export class DiskFileDialogStore extends DialogStore {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -204,7 +195,6 @@ export class DiskFileDialogStore extends DialogStore {
       {
         headLine,
         callBody,
-        originRole: options.originRole,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -225,7 +215,6 @@ export class DiskFileDialogStore extends DialogStore {
       assignmentFromSup: {
         headLine,
         callBody,
-        originRole: options.originRole,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -436,7 +425,6 @@ export class DiskFileDialogStore extends DialogStore {
       response: string;
       agentId: string;
       callId: string;
-      originRole: 'user' | 'assistant';
       originMemberId: string;
     },
   ): Promise<void> {
@@ -446,7 +434,6 @@ export class DiskFileDialogStore extends DialogStore {
     const response = options.response;
     const agentId = options.agentId;
     const callId = options.callId;
-    const originRole = options.originRole;
     const originMemberId = options.originMemberId;
     const ev: TeammateResponseRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -460,7 +447,6 @@ export class DiskFileDialogStore extends DialogStore {
       response,
       agentId,
       callId,
-      originRole,
       originMemberId,
     };
     await this.appendEvent(round, ev);
@@ -477,7 +463,6 @@ export class DiskFileDialogStore extends DialogStore {
       response,
       agentId,
       callId,
-      originRole,
       originMemberId,
     };
     postDialogEvent(dialog, teammateResponseEvt);
@@ -828,10 +813,15 @@ export class DiskFileDialogStore extends DialogStore {
 
   /**
    * Persist a user message to storage
-   * Note: The end_of_user_saying_evt is emitted by the driver after texting calls
-   * are parsed/executed - see llm/driver.ts after executeTextingCalls()
+   * Note: The end_of_user_saying_evt is emitted by the driver after user content
+   * is rendered and any texting calls are parsed/executed.
    */
-  public async persistUserMessage(dialog: Dialog, content: string, msgId: string): Promise<void> {
+  public async persistUserMessage(
+    dialog: Dialog,
+    content: string,
+    msgId: string,
+    grammar: UserTextGrammar,
+  ): Promise<void> {
     const round = dialog.currentRound;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
     const genseq = dialog.activeGenSeqOrUndefined ?? 1;
@@ -842,17 +832,9 @@ export class DiskFileDialogStore extends DialogStore {
       genseq: genseq,
       content: String(content || ''),
       msgId: msgId,
+      grammar,
     };
     await this.appendEvent(round, humanEv);
-
-    const userTextEvt: UserTextEvent = {
-      type: 'user_text_evt',
-      round,
-      genseq,
-      content: humanEv.content,
-      msgId: humanEv.msgId,
-    };
-    postDialogEvent(dialog, userTextEvt);
 
     // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after texting calls complete
   }
@@ -960,30 +942,6 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Persist pending subdialog summaries to storage
-   */
-  public async persistPendingSubdialogSummaries(
-    dialog: Dialog,
-    summaries: PendingSubdialogSummary[],
-  ): Promise<void> {
-    await DialogPersistence._savePendingSubdialogSummaries(this.dialogId, summaries);
-  }
-
-  /**
-   * Load pending subdialog summaries from storage
-   */
-  public async loadPendingSubdialogSummaries(dialog: Dialog): Promise<PendingSubdialogSummary[]> {
-    return await DialogPersistence.loadPendingSubdialogSummaries(dialog.id);
-  }
-
-  /**
-   * Clear persisted pending subdialog summaries
-   */
-  public async clearPendingSubdialogSummaries(dialog: Dialog): Promise<void> {
-    await DialogPersistence._savePendingSubdialogSummaries(dialog.id, []);
-  }
-
-  /**
    * Load current round number from persisted metadata
    */
   public async loadCurrentRound(dialogId: DialogID): Promise<number> {
@@ -1071,209 +1029,227 @@ export class DiskFileDialogStore extends DialogStore {
       case 'human_text_record': {
         const genseq = event.genseq;
         const content = event.content || '';
+        const grammar: UserTextGrammar = event.grammar ?? 'texting';
 
-        if (content.trim() !== '' && ws.readyState === 1) {
-          ws.send(
-            JSON.stringify({
-              type: 'user_text_evt',
-              round,
-              genseq,
-              content,
-              msgId: event.msgId,
-              dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-              timestamp: event.ts,
-            }),
-          );
-        }
-
-        // Parse user content and emit individual events (same as live mode)
-        // Use TextingStreamParser to emit @mentions, codeblocks, etc.
         if (content) {
-          const receiver: TextingEventsReceiver = {
-            markdownStart: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'markdown_start_evt',
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            markdownChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'markdown_chunk_evt',
-                    chunk,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            markdownFinish: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'markdown_finish_evt',
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callStart: async (first: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_start_evt',
-                    firstMention: first,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callHeadLineChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_headline_chunk_evt',
-                    chunk,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callHeadLineFinish: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_headline_finish_evt',
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callBodyStart: async (infoLine?: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_body_start_evt',
-                    infoLine,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callBodyChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_body_chunk_evt',
-                    chunk,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callBodyFinish: async (endQuote?: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_body_finish_evt',
-                    endQuote,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callFinish: async (_callId: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'tool_call_finish_evt',
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            codeBlockStart: async (infoLine: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'codeblock_start_evt',
-                    infoLine,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            codeBlockChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'codeblock_chunk_evt',
-                    chunk,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            codeBlockFinish: async (endQuote: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'codeblock_finish_evt',
-                    endQuote,
-                    round,
-                    genseq,
-                    dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-          };
+          if (grammar === 'texting') {
+            const receiver: TextingEventsReceiver = {
+              markdownStart: async () => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'markdown_start_evt',
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              markdownChunk: async (chunk: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'markdown_chunk_evt',
+                      chunk,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              markdownFinish: async () => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'markdown_finish_evt',
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callStart: async (first: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_start_evt',
+                      firstMention: first,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callHeadLineChunk: async (chunk: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_headline_chunk_evt',
+                      chunk,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callHeadLineFinish: async () => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_headline_finish_evt',
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callBodyStart: async (infoLine?: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_body_start_evt',
+                      infoLine,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callBodyChunk: async (chunk: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_body_chunk_evt',
+                      chunk,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callBodyFinish: async (endQuote?: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_body_finish_evt',
+                      endQuote,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              callFinish: async (_callId: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'tool_call_finish_evt',
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              codeBlockStart: async (infoLine: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'codeblock_start_evt',
+                      infoLine,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              codeBlockChunk: async (chunk: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'codeblock_chunk_evt',
+                      chunk,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+              codeBlockFinish: async (endQuote: string) => {
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'codeblock_finish_evt',
+                      endQuote,
+                      round,
+                      genseq,
+                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                      timestamp: event.ts,
+                    }),
+                  );
+                }
+              },
+            };
 
-          // Parse user content through TextingStreamParser (same as live mode)
-          const streamingParser = new TextingStreamParser(receiver);
-          streamingParser.takeUpstreamChunk(content);
-          streamingParser.finalize();
+            // Parse user content through TextingStreamParser (same as live mode)
+            const streamingParser = new TextingStreamParser(receiver);
+            streamingParser.takeUpstreamChunk(content);
+            streamingParser.finalize();
+          } else {
+            if (ws.readyState === 1) {
+              ws.send(
+                JSON.stringify({
+                  type: 'markdown_start_evt',
+                  round,
+                  genseq,
+                  dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                  timestamp: event.ts,
+                }),
+              );
+              ws.send(
+                JSON.stringify({
+                  type: 'markdown_chunk_evt',
+                  chunk: content,
+                  round,
+                  genseq,
+                  dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                  timestamp: event.ts,
+                }),
+              );
+              ws.send(
+                JSON.stringify({
+                  type: 'markdown_finish_evt',
+                  round,
+                  genseq,
+                  dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                  timestamp: event.ts,
+                }),
+              );
+            }
+          }
         }
 
         // Emit end_of_user_saying_evt to signal frontend to render <hr/> separator
@@ -1283,6 +1259,9 @@ export class DiskFileDialogStore extends DialogStore {
               type: 'end_of_user_saying_evt',
               round,
               genseq,
+              msgId: event.msgId,
+              content,
+              grammar,
               dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
               timestamp: event.ts,
             }),
@@ -1732,7 +1711,6 @@ export class DiskFileDialogStore extends DialogStore {
           response: event.response,
           agentId: event.agentId,
           callId: event.callId,
-          originRole: event.originRole,
           originMemberId: event.originMemberId,
           round,
           calling_genseq: event.calling_genseq,
@@ -2377,77 +2355,6 @@ export class DialogPersistence {
     }
   }
 
-  /**
-   * Save pending subdialog summaries (internal use only)
-   */
-  public static async _savePendingSubdialogSummaries(
-    dialogId: DialogID,
-    summaries: PendingSubdialogSummary[],
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<void> {
-    try {
-      const dialogPath = this.getDialogEventsPath(dialogId, status);
-      await fs.promises.mkdir(dialogPath, { recursive: true });
-      const summariesFilePath = path.join(dialogPath, 'pending-subdialog-summaries.json');
-
-      // Serialize summaries with serializable format (DialogID -> string)
-      const serializableSummaries = summaries.map((s) => ({
-        subdialogId: s.subdialogId.valueOf(),
-        summary: s.summary,
-        completedAt: s.completedAt,
-      }));
-
-      // Atomic write operation
-      const tempFile = summariesFilePath + '.tmp';
-      await fs.promises.writeFile(
-        tempFile,
-        JSON.stringify(serializableSummaries, null, 2),
-        'utf-8',
-      );
-      await fs.promises.rename(tempFile, summariesFilePath);
-    } catch (error) {
-      log.error(`Failed to save pending subdialog summaries for dialog ${dialogId}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Load pending subdialog summaries from storage
-   */
-  static async loadPendingSubdialogSummaries(
-    dialogId: DialogID,
-    status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<PendingSubdialogSummary[]> {
-    try {
-      const dialogPath = this.getDialogEventsPath(dialogId, status);
-      const summariesFilePath = path.join(dialogPath, 'pending-subdialog-summaries.json');
-
-      try {
-        const content = await fs.promises.readFile(summariesFilePath, 'utf-8');
-        const serializableSummaries: Array<{
-          subdialogId: string;
-          summary: string;
-          completedAt: string;
-        }> = JSON.parse(content);
-
-        return serializableSummaries.map((s) => ({
-          subdialogId: new DialogID(s.subdialogId),
-          summary: s.summary,
-          completedAt: s.completedAt,
-        }));
-      } catch (error) {
-        if (getErrorCode(error) === 'ENOENT') {
-          // File doesn't exist - return empty array
-          return [];
-        }
-        throw error;
-      }
-    } catch (error) {
-      log.error(`Failed to load pending subdialog summaries for dialog ${dialogId}:`, error);
-      return [];
-    }
-  }
-
   // === PHASE 6: SUBDIALOG SUPPLY PERSISTENCE ===
 
   /**
@@ -2545,7 +2452,7 @@ export class DialogPersistence {
     rootDialogId: DialogID,
     responses: Array<{
       subdialogId: string;
-      summary: string;
+      response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
     }>,
@@ -2575,7 +2482,7 @@ export class DialogPersistence {
   ): Promise<
     Array<{
       subdialogId: string;
-      summary: string;
+      response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
     }>
@@ -2660,7 +2567,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Save subdialog metadata under the parent dialog's .subdialogs directory
+   * Save subdialog metadata under the supdialog's .subdialogs directory
    */
   static async saveSubdialogMetadata(
     dialogId: DialogID,
@@ -3102,6 +3009,7 @@ export class DialogPersistence {
             genseq: event.genseq,
             msgId: event.msgId,
             content: event.content,
+            grammar: event.grammar ?? 'texting',
           });
           break;
         }

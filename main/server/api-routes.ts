@@ -394,7 +394,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
 
           subdialogs.push({
             selfId: meta.id,
-            rootId: rootId, // For subdialogs, rootId is the parent dialog's ID
+            rootId: rootId, // For subdialogs, rootId is the supdialog's ID
             agentId: meta.agentId,
             taskDocPath: meta.taskDocPath,
             status: foundStatus,

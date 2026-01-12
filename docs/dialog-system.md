@@ -26,7 +26,7 @@ This document provides detailed implementation specifications for the Dominds di
 
 ### Supdialog
 
-A **supdialog** (short for "super dialog") is the parent dialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
+A **supdialog** (short for "super dialog") is the supdialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
 
 A supdialog may receive **supdialog calls** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can call back to the supdialog, which provides responses that feed back into the subdialog's context.
 
@@ -46,7 +46,7 @@ A **Q4H** is a pending question raised by a dialog (main or subdialog) that requ
 
 ### Subdialog Index (subdlg.yaml)
 
-A **subdlg.yaml** file indexes pending subdialogs that a parent dialog is waiting for. Like `q4h.yaml`, it is an index file, not the source of truth:
+A **subdlg.yaml** file indexes pending subdialogs that a supdialog is waiting for. Like `q4h.yaml`, it is an index file, not the source of truth:
 
 - The index tracks which subdialog IDs the parent is waiting for
 - Actual subdialog state is verified from disk (done/ directory)

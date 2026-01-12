@@ -38,7 +38,6 @@ export class DialogFactory {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -59,7 +58,6 @@ export class DialogFactory {
       {
         headLine,
         callBody,
-        originRole: options.originRole,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,

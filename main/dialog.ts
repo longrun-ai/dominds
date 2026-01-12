@@ -10,7 +10,7 @@
  * Architecture (Phase 2):
  * - `Dialog` - Abstract base class for all dialogs
  * - `RootDialog` - Root dialog with subdialog registry
- * - `SubDialog` - Subdialog with reference to parent RootDialog
+ * - `SubDialog` - Subdialog with root dialog reference and dynamic supdialog resolution
  */
 import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
@@ -27,6 +27,7 @@ import type {
   HumanQuestion,
   ProviderData,
   ToolArguments as StoredToolArguments,
+  UserTextGrammar,
 } from './shared/types/storage';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
@@ -90,15 +91,6 @@ export class DialogID {
 }
 
 /**
- * Represents a pending subdialog summary waiting to be processed when parent dialog resumes
- */
-export interface PendingSubdialogSummary {
-  subdialogId: DialogID;
-  summary: string;
-  completedAt: string;
-}
-
-/**
  * Phase 6: Pending subdialog record for Type A subdialog supply mechanism.
  * Tracks a subdialog that was created but not yet completed.
  */
@@ -117,7 +109,7 @@ export interface PendingSubdialog {
  */
 export interface SubdialogResponse {
   subdialogId: DialogID;
-  summary: string;
+  response: string;
   completedAt: string;
   callType: 'A' | 'B' | 'C';
 }
@@ -158,12 +150,11 @@ export interface DialogInitParams {
 }
 
 /**
- * Assignment from parent dialog for subdialogs
+ * Assignment from supdialog for subdialogs
  */
 export interface AssignmentFromSup {
   headLine: string;
   callBody: string;
-  originRole: 'user' | 'assistant';
   originMemberId: string;
   callerDialogId: string;
   callId: string;
@@ -184,7 +175,7 @@ export abstract class Dialog {
   readonly agentId: string; // team member id
   readonly reminders: Reminder[];
   readonly msgs: ChatMessage[];
-  readonly supdialog?: Dialog;
+  protected readonly _supdialog?: Dialog;
   // present if this is a subdialog created by an autonomous teammate call from a supdialog
   public assignmentFromSup?: AssignmentFromSup;
 
@@ -200,16 +191,12 @@ export abstract class Dialog {
   protected _upNext?: { prompt: string; msgId: string };
   public subChan?: SubChan<DialogEvent>;
   // Track whether the current round's initial events (user_text, generating_start)
-  // have been fully processed. Used to ensure subdialog_final_summary_evt arrives
+  // have been fully processed. Used to ensure subdialog_final_response_evt arrives
   // only after parent events are emitted.
   protected _generationStarted: boolean = false;
   // Track the generation sequence when _generationStarted was set
   // Used to ensure proper ordering when multiple generations occur
   protected _generationStartedGenseq: number = 0;
-
-  // Pending subdialog summaries - stored until parent dialog resumes
-  // This enables detached subdialog driving where summaries are deferred
-  protected _pendingSubdialogSummaries: PendingSubdialogSummary[] = [];
 
   // Per-dialog mutex with FIFO wait queue
   private _mutex: DialogMutex = new DialogMutex();
@@ -256,12 +243,11 @@ export abstract class Dialog {
     this.agentId = agentId;
     this.reminders = initialState?.reminders || [];
     this.msgs = initialState?.messages || [];
-    this.supdialog = supdialog;
+    this._supdialog = supdialog;
     this.assignmentFromSup = assignmentFromSup
       ? {
           headLine: assignmentFromSup.headLine,
           callBody: assignmentFromSup.callBody,
-          originRole: assignmentFromSup.originRole,
           originMemberId: assignmentFromSup.originMemberId,
           callerDialogId: assignmentFromSup.callerDialogId,
           callId: assignmentFromSup.callId,
@@ -277,6 +263,10 @@ export abstract class Dialog {
 
   public get remindersVer() {
     return this._remindersVer;
+  }
+
+  public get supdialog(): Dialog | undefined {
+    return this._supdialog;
   }
 
   /**
@@ -444,7 +434,6 @@ export abstract class Dialog {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -712,7 +701,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 
   /**
    * Check if generation has started for the current round.
-   * Used to ensure subdialog_final_summary_evt arrives after parent events.
+   * Used to ensure subdialog_final_response_evt arrives after parent events.
    */
   public get generationStarted(): boolean {
     return this._generationStarted;
@@ -720,7 +709,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 
   /**
    * Mark generation as started (after user_text event has been emitted).
-   * This ensures subdialog_final_summary_evt waits for this signal.
+   * This ensures subdialog_final_response_evt waits for this signal.
    * @param genseq The generation sequence number when this flag is set
    */
   public markGenerationStarted(genseq?: number): void {
@@ -733,38 +722,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
    */
   public get generationStartedGenseq(): number {
     return this._generationStartedGenseq;
-  }
-
-  /**
-   * Add a pending subdialog summary to be processed when parent dialog resumes
-   * @param subdialogId The ID of the completed subdialog
-   * @param summary The summary text from the subdialog
-   */
-  public addPendingSubdialogSummary(subdialogId: DialogID, summary: string): void {
-    this._pendingSubdialogSummaries.push({
-      subdialogId,
-      summary,
-      completedAt: formatUnifiedTimestamp(new Date()),
-    });
-  }
-
-  /**
-   * Take all pending subdialog summaries and clear the queue
-   * Used when parent dialog resumes to process all accumulated summaries
-   * @returns Array of pending subdialog summaries
-   */
-  public takePendingSubdialogSummaries(): PendingSubdialogSummary[] {
-    const taken = [...this._pendingSubdialogSummaries];
-    this._pendingSubdialogSummaries = [];
-    return taken;
-  }
-
-  /**
-   * Get pending subdialog summaries without clearing the queue
-   * @returns Array of pending subdialog summaries
-   */
-  public getPendingSubdialogSummaries(): PendingSubdialogSummary[] {
-    return [...this._pendingSubdialogSummaries];
   }
 
   /**
@@ -855,7 +812,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     }
 
     // Mark generation as started with the actual genseq
-    // This ensures subdialog_final_summary_evt waits for both user_text and generating_start_evt
+    // This ensures subdialog_final_response_evt waits for both user_text and generating_start_evt
     this.markGenerationStarted();
 
     await this.dlgStore.notifyGeneratingStart(this);
@@ -1019,7 +976,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       response: string;
       agentId: string;
       callId: string;
-      originRole: 'user' | 'assistant';
       originMemberId: string;
     },
   ): Promise<void> {
@@ -1038,8 +994,12 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     return await this.dlgStore.updateQuestions4Human(this, questions);
   }
 
-  public async persistUserMessage(content: string, msgId: string): Promise<void> {
-    return await this.dlgStore.persistUserMessage(this, content, msgId);
+  public async persistUserMessage(
+    content: string,
+    msgId: string,
+    grammar: UserTextGrammar,
+  ): Promise<void> {
+    return await this.dlgStore.persistUserMessage(this, content, msgId, grammar);
   }
 
   public async persistAgentMessage(
@@ -1064,12 +1024,11 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
    * Post subdialog completion response to this dialog.
    * Phase 14: No wait - emit immediately with virtual gen markers for Type C subdialogs
    */
-  public async postSubdialogSummary(subdialogId: DialogID, response: string): Promise<void> {
+  public async postSubdialogResponse(subdialogId: DialogID, response: string): Promise<void> {
     try {
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
       let headLine = response;
-      let originRole: 'user' | 'assistant' = 'assistant';
       let originMemberId = responderId;
       let callId = '';
       try {
@@ -1083,7 +1042,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
           }
           if (metadata.assignmentFromSup) {
             headLine = metadata.assignmentFromSup.headLine;
-            originRole = metadata.assignmentFromSup.originRole;
             originMemberId = metadata.assignmentFromSup.originMemberId;
             callId = metadata.assignmentFromSup.callId;
           }
@@ -1122,7 +1080,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
         response,
         agentId: responderAgentId ?? responderId,
         callId,
-        originRole,
         originMemberId,
       };
       postDialogEvent(this, evt);
@@ -1140,15 +1097,15 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 
 /**
  * SubDialog - A subdialog created by a RootDialog for autonomous teammate calls.
- * Contains a reference to its parent RootDialog for registry and completion reporting.
+ * Stores the root dialog for registry and lookup, and resolves its effective supdialog dynamically.
  */
 export class SubDialog extends Dialog {
-  public readonly supdialog: RootDialog;
+  public readonly rootDialog: RootDialog;
   public readonly topicId?: string;
 
   constructor(
     dlgStore: DialogStore,
-    supdialog: RootDialog,
+    rootDialog: RootDialog,
     taskDocPath: string,
     id: DialogID | undefined,
     agentId: string,
@@ -1156,10 +1113,21 @@ export class SubDialog extends Dialog {
     assignmentFromSup?: AssignmentFromSup,
     initialState?: DialogInitParams['initialState'],
   ) {
-    super(dlgStore, taskDocPath, id, agentId, supdialog, assignmentFromSup, initialState);
-    this.supdialog = supdialog;
+    super(dlgStore, taskDocPath, id, agentId, undefined, assignmentFromSup, initialState);
+    this.rootDialog = rootDialog;
     this.topicId = topicId;
-    supdialog.registerDialog(this);
+    this.rootDialog.registerDialog(this);
+  }
+
+  public override get supdialog(): Dialog {
+    const assignment = this.assignmentFromSup;
+    if (assignment) {
+      const candidate = this.rootDialog.lookupDialog(assignment.callerDialogId);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return this.rootDialog;
   }
 
   /**
@@ -1171,7 +1139,6 @@ export class SubDialog extends Dialog {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -1286,7 +1253,6 @@ export class RootDialog extends Dialog {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -1370,7 +1336,6 @@ export abstract class DialogStore {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -1390,7 +1355,6 @@ export abstract class DialogStore {
       {
         headLine,
         callBody,
-        originRole: options.originRole,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -1461,7 +1425,6 @@ export abstract class DialogStore {
       response: string;
       agentId: string;
       callId: string;
-      originRole: 'user' | 'assistant';
       originMemberId: string;
     },
   ): Promise<void> {}
@@ -1532,6 +1495,7 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _content: string,
     _msgId: string,
+    _grammar: UserTextGrammar,
   ): Promise<void> {}
 
   /**
@@ -1565,24 +1529,4 @@ export abstract class DialogStore {
    * Handle stream error
    */
   public async streamError(_dialog: Dialog, _error: string): Promise<void> {}
-
-  /**
-   * Persist pending subdialog summaries to storage
-   */
-  public async persistPendingSubdialogSummaries(
-    _dialog: Dialog,
-    _summaries: PendingSubdialogSummary[],
-  ): Promise<void> {}
-
-  /**
-   * Load pending subdialog summaries from storage
-   */
-  public async loadPendingSubdialogSummaries(_dialog: Dialog): Promise<PendingSubdialogSummary[]> {
-    return [];
-  }
-
-  /**
-   * Clear persisted pending subdialog summaries
-   */
-  public async clearPendingSubdialogSummaries(_dialog: Dialog): Promise<void> {}
 }

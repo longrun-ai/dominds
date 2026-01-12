@@ -27,7 +27,7 @@ export interface ApiRootDialogResponse {
   currentRound: number;
   createdAt: string;
   lastModified: string;
-  supdialogId?: string; // Optional: parent dialog ID for subdialogs in flattened lists
+  supdialogId?: string; // Optional: supdialog ID for subdialogs in flattened lists
   topicId?: string;
   subdialogCount?: number; // Number of subdialogs (only present in root dialog responses)
 }

@@ -260,7 +260,6 @@ supdialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
 assignmentFromSup: # Assignment context from parent
   headLine: 'Implement user authentication'
   callBody: 'Create secure login system with JWT tokens'
-  originRole: 'assistant'
   originMemberId: 'alice'
 ```
 
@@ -454,7 +453,7 @@ The following operations are implemented.
 1. Generate unique subdialog ID using `generateDialogID()`
 2. Create `DialogID` instance with:
    - `selfDlgId`: the newly generated subdialog ID
-   - `rootDlgId`: inherited from the parent dialog's `rootDlgId`
+   - `rootDlgId`: inherited from the supdialog's `rootDlgId`
 3. Create subdialog directory under parent's `subdialogs/` (using only `selfDlgId` for directory name)
 4. Set task document file path reference from parent
 5. Set parent call context in metadata

@@ -238,18 +238,6 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     switch (event.type) {
-      case 'user_text_evt':
-        if (
-          typeof event.round !== 'number' ||
-          typeof event.genseq !== 'number' ||
-          typeof event.content !== 'string' ||
-          typeof event.msgId !== 'string'
-        ) {
-          this.handleProtocolError('user_text_evt missing required fields');
-          break;
-        }
-        this.handleUserText(event.content, event.msgId, event.genseq);
-        break;
       case 'end_of_user_saying_evt':
         {
           // Render <hr/> separator between user content and AI response
@@ -258,7 +246,11 @@ export class DomindsDialogContainer extends HTMLElement {
             this.handleProtocolError('end_of_user_saying_evt missing required fields');
             break;
           }
-          this.handleEndOfUserSaying();
+          if (typeof ev.msgId !== 'string' || typeof ev.content !== 'string') {
+            this.handleProtocolError('end_of_user_saying_evt missing required fields');
+            break;
+          }
+          this.handleEndOfUserSaying(ev);
         }
         break;
 
@@ -1121,7 +1113,6 @@ export class DomindsDialogContainer extends HTMLElement {
       content,
       event.calling_genseq,
       event.callId,
-      event.originRole,
       event.originMemberId,
     );
 
@@ -1173,7 +1164,6 @@ export class DomindsDialogContainer extends HTMLElement {
     response: string,
     callSiteId?: number,
     callId?: string,
-    originRole?: 'user' | 'assistant',
     originMemberId?: string,
   ): HTMLElement {
     const el = document.createElement('div');
@@ -1186,16 +1176,14 @@ export class DomindsDialogContainer extends HTMLElement {
       el.setAttribute('data-call-id', callId);
     }
     const callsign = agentId ? `@${agentId}` : 'Teammate';
-    const callContext = this.getTeammateCallContext(agentId, originRole, originMemberId);
-    const callContextHtml = callContext ? `<div class="call-context">${callContext}</div>` : '';
+    const responseIndicator = this.getTeammateResponseIndicator(agentId, originMemberId);
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
           <div class="bubble-title">
             <div class="title-row">
-              <span class="author-name">${callsign}</span><span class="response-indicator">Response</span>
+              <span class="author-name">${callsign}</span><span class="response-indicator">${responseIndicator}</span>
             </div>
-            ${callContextHtml}
           </div>
           ${
             callId
@@ -1252,9 +1240,6 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private formatCallerLabel(assignment: AssignmentFromSup): string {
-    if (assignment.originRole === 'user') {
-      return 'Human';
-    }
     const originMemberId = assignment.originMemberId;
     if (originMemberId && originMemberId.trim() !== '') {
       if (originMemberId === 'human') {
@@ -1283,23 +1268,18 @@ export class DomindsDialogContainer extends HTMLElement {
     return `Call: ${caller} → ${callee}`;
   }
 
-  private getTeammateCallContext(
-    responderId?: string,
-    originRole?: 'user' | 'assistant',
-    originMemberId?: string,
-  ): string | null {
+  private getTeammateResponseIndicator(responderId?: string, originMemberId?: string): string {
     const dialog = this.currentDialog;
     if (!dialog || !dialog.agentId || !responderId) {
-      return null;
+      return 'Response';
     }
     let caller = this.formatAgentLabel(dialog.agentId);
-    if (originRole === 'user' || originMemberId === 'human') {
+    if (originMemberId === 'human') {
       caller = 'Human';
     } else if (originMemberId && originMemberId.trim() !== '') {
       caller = this.formatAgentLabel(originMemberId);
     }
-    const callee = this.formatAgentLabel(responderId);
-    return `Call: ${caller} → ${callee}`;
+    return `Response <- ${caller}`;
   }
 
   private buildGenerationBubbleHeaderHtml(): string {
@@ -1365,8 +1345,19 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Render <hr/> separator between user content and AI response
   // Called when end_of_user_saying_evt is received
-  private handleEndOfUserSaying(): void {
-    const bubble = this.generationBubble;
+  private handleEndOfUserSaying(event: EndOfUserSayingEvent): void {
+    let bubble = this.generationBubble;
+    if (bubble && bubble.getAttribute('data-seq') !== String(event.genseq)) {
+      bubble = undefined;
+    }
+    if (!bubble) {
+      const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | undefined;
+      bubble = container
+        ? (container.querySelector(`.generation-bubble[data-seq="${event.genseq}"]`) as
+            | HTMLElement
+            | undefined)
+        : undefined;
+    }
     if (!bubble) {
       console.warn('handleEndOfUserSaying called but no generation bubble exists');
       return;
@@ -1382,31 +1373,8 @@ export class DomindsDialogContainer extends HTMLElement {
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
     body.appendChild(divider);
-    this.scrollToBottom();
-  }
-
-  private handleUserText(content: string, msgId: string, genseq?: number): void {
-    const trimmed = content.trim();
-    if (trimmed === '') return;
-
-    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
-    if (!container) return;
-
-    const existing = container.querySelector(`[data-user-msg-id="${msgId}"]`);
-    if (existing) return;
-
-    const messageEl = this.createMessageElement(trimmed, 'user', msgId);
-    if (typeof genseq === 'number') {
-      const bubble = container.querySelector(
-        `.generation-bubble[data-seq="${genseq}"]`,
-      ) as HTMLElement | null;
-      if (bubble) {
-        container.insertBefore(messageEl, bubble);
-        this.scrollToBottom();
-        return;
-      }
-    }
-    container.appendChild(messageEl);
+    bubble.setAttribute('data-user-msg-id', event.msgId);
+    bubble.setAttribute('data-raw-user-msg', event.content);
     this.scrollToBottom();
   }
 

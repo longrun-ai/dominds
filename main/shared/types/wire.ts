@@ -12,7 +12,6 @@ export interface DialogIdent {
 export interface AssignmentFromSup {
   headLine: string;
   callBody: string;
-  originRole: 'user' | 'assistant';
   originMemberId: string;
   callerDialogId: string;
   callId: string;

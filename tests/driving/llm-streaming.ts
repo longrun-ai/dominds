@@ -37,6 +37,7 @@ async function main() {
       genseq: 1,
       msgId: 'test-user-msg',
       content: userText,
+      grammar: 'texting',
     },
   ];
   console.log(

@@ -355,7 +355,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       try {
         supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId);
       } catch (err) {
-        log.warn('Failed to restore parent dialog for display_dialog', undefined, {
+        log.warn('Failed to restore supdialog for display_dialog', undefined, {
           subdialogId: dialogId,
           parentId: metadata.supdialogId,
           error: err,
@@ -403,17 +403,6 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
 
     // Setup WebSocket subscription for real-time events (live generation only)
     await setupWebSocketSubscription(ws, dialog);
-
-    // Process any pending subdialog summaries
-    try {
-      const summaries = await dialog.dlgStore.loadPendingSubdialogSummaries(dialog);
-      for (const s of summaries) {
-        await dialog.postSubdialogSummary(s.subdialogId, s.summary);
-      }
-      await dialog.dlgStore.clearPendingSubdialogSummaries(dialog);
-    } catch (err) {
-      log.warn('Failed to process pending subdialog summaries during display_dialog', err);
-    }
 
     // Send dialog_ready with full info so frontend knows the current dialog ID
     const dialogReadyResponse: DialogReadyMessage = {
@@ -584,7 +573,7 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
         try {
           supdialog = await restoreParentDialog(metadata.supdialogId, dialogId.rootId);
         } catch (err) {
-          log.warn('Failed to restore parent dialog for display_round', undefined, {
+          log.warn('Failed to restore supdialog for display_round', undefined, {
             dialogId: dialogId.selfId,
             parentId: metadata.supdialogId,
             error: err,
@@ -673,7 +662,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       existingDialog.id.selfId === dialogId &&
       existingDialog.id.rootId === rootDialogId
     ) {
-      await driveDialogStream(existingDialog, { content, msgId }, true);
+      await driveDialogStream(existingDialog, { content, msgId, grammar: 'texting' }, true);
       return;
     }
 
@@ -727,7 +716,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         try {
           supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId);
         } catch (err) {
-          log.warn('Failed to restore parent dialog for subdialog', undefined, {
+          log.warn('Failed to restore supdialog for subdialog', undefined, {
             subdialogId: dialogId,
             parentId: metadata.supdialogId,
             error: err,
@@ -773,21 +762,6 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         await rootDialog.loadPendingSubdialogsFromPersistence();
       }
 
-      // Process pending subdialog summaries from in-memory state first
-      const inMemorySummaries = dialog.takePendingSubdialogSummaries();
-      for (const s of inMemorySummaries) {
-        await dialog.postSubdialogSummary(s.subdialogId, s.summary);
-      }
-
-      // Also load and process any persisted summaries from storage
-      const persistedSummaries = await dialog.dlgStore.loadPendingSubdialogSummaries(dialog);
-      for (const s of persistedSummaries) {
-        await dialog.postSubdialogSummary(s.subdialogId, s.summary);
-      }
-
-      // Clear persisted summaries after processing
-      await dialog.dlgStore.clearPendingSubdialogSummaries(dialog);
-
       // Check if this is a parent-call (message targeting root dialog's agent from subdialog)
       // If so, route to root dialog instead of creating a new subdialog
       if (supdialog && content.includes(`@${supdialog.agentId}`)) {
@@ -817,7 +791,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       }
 
       // Normal flow: emit events for user message
-      await driveDialogStream(dialog, { content, msgId }, true);
+      await driveDialogStream(dialog, { content, msgId, grammar: 'texting' }, true);
       return;
     } catch (restoreError) {
       log.warn('Failed to restore dialog for message:', restoreError);
@@ -1064,21 +1038,9 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       await restoredRootDialog.loadPendingSubdialogsFromPersistence();
     }
 
-    // Process any pending subdialog summaries
-    const inMemorySummaries = restoredDialog.takePendingSubdialogSummaries();
-    for (const s of inMemorySummaries) {
-      await restoredDialog.postSubdialogSummary(s.subdialogId, s.summary);
-    }
-    const persistedSummaries =
-      await restoredDialog.dlgStore.loadPendingSubdialogSummaries(restoredDialog);
-    for (const s of persistedSummaries) {
-      await restoredDialog.postSubdialogSummary(s.subdialogId, s.summary);
-    }
-    await restoredDialog.dlgStore.clearPendingSubdialogSummaries(restoredDialog);
-
     // Resume the dialog with the user's answer
     wsLiveDlg.set(ws, restoredDialog);
-    await driveDialogStream(restoredDialog, { content, msgId }, true);
+    await driveDialogStream(restoredDialog, { content, msgId, grammar: 'texting' }, true);
   } catch (error) {
     log.error('Error processing Q4H user answer:', error);
     ws.send(

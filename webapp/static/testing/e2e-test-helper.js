@@ -20,7 +20,7 @@ const sel = {
 
   // Dialog container (dominds-dialog-container.ts)
   dialogHost: '#dialog-container',
-  userMsg: '.user-message',
+  userMsg: '.generation-bubble[data-user-msg-id]',
   genBubble: '.generation-bubble',
   genCompleted: '.generation-bubble.completed',
   genNotCompleted: '.generation-bubble:not(.completed)',
@@ -368,6 +368,10 @@ async function waitStreamingComplete(msgId, timeoutMs = 60000) {
         return true;
       }
     }
+    const userBubble = shadow.querySelector(`.generation-bubble[data-user-msg-id="${msgId}"]`);
+    if (userBubble && userBubble.classList.contains('completed')) {
+      return true;
+    }
 
     // Fallback: check for any completed bubble with no incomplete ones
     const completedBubble = shadow.querySelector(sel.genCompleted);
@@ -396,7 +400,29 @@ function latestUserText() {
 
   const nodes = Array.from(shadow.querySelectorAll(sel.userMsg));
   const n = nodes.length > 0 ? nodes[nodes.length - 1] : null;
-  return n ? (n.textContent || '').trim() : '';
+  if (!n) {
+    return '';
+  }
+  const raw = n.getAttribute ? n.getAttribute('data-raw-user-msg') : null;
+  if (raw) {
+    return raw.trim();
+  }
+  if (n.classList?.contains('generation-bubble')) {
+    const body = n.querySelector('.bubble-body');
+    if (!body) return '';
+    const parts = [];
+    for (const child of Array.from(body.children)) {
+      if (child.classList.contains('user-response-divider')) {
+        break;
+      }
+      const text = child.textContent?.trim() || '';
+      if (text) {
+        parts.push(text);
+      }
+    }
+    return parts.join('\n').trim();
+  }
+  return (n.textContent || '').trim();
 }
 
 /**
@@ -757,7 +783,10 @@ function captureChatState(shadow) {
   const bubbles = containerShadow.querySelectorAll('.generation-bubble') || [];
   const messageContainer = containerShadow.querySelector('.messages');
   const messageNodes = messageContainer ? Array.from(messageContainer.children) : [];
-  const userMessages = containerShadow.querySelectorAll('.user-message, .message.user') || [];
+  const userMessages =
+    containerShadow.querySelectorAll(
+      '.user-message, .message.user, .generation-bubble[data-user-msg-id]',
+    ) || [];
 
   const messages = Array.from(bubbles).map((bubble) => {
     const author = bubble.querySelector('.bubble-author')?.textContent?.trim() || '';
@@ -795,9 +824,14 @@ function captureChatState(shadow) {
   const visibleMessages = messageNodes.map((node) => {
     if (node.classList.contains('generation-bubble')) {
       const author = node.querySelector('.bubble-author')?.textContent?.trim() || '';
-      const content = node.querySelector('.markdown-section')?.textContent?.trim() || '';
+      const markdownSections = Array.from(node.querySelectorAll('.markdown-section'))
+        .map((section) => section.textContent?.trim() || '')
+        .filter((text) => text.length > 0);
+      const content =
+        markdownSections.length > 0 ? markdownSections[markdownSections.length - 1] : '';
       return {
-        type: 'generation',
+        // Treat generation bubbles as assistant messages for scenario-level checks.
+        type: 'assistant',
         author,
         preview: content.slice(0, 120) + (content.length > 120 ? '...' : ''),
       };
@@ -828,10 +862,20 @@ function captureChatState(shadow) {
         node.querySelector('.bubble-body') ||
         node;
       const contentText = contentEl?.textContent?.trim() || '';
+      let previewText = contentText;
+      if (type === 'teammate') {
+        const lines = contentText
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+        if (lines.length > 1) {
+          previewText = `${lines[0]}\n${lines[lines.length - 1]}`;
+        }
+      }
       return {
         type,
         author,
-        preview: contentText.slice(0, 120) + (contentText.length > 120 ? '...' : ''),
+        preview: previewText.length > 200 ? previewText.slice(0, 200) + '...' : previewText,
       };
     }
     const text = node.textContent?.trim() || '';
@@ -1557,7 +1601,7 @@ function getSubdialogHierarchy() {
 }
 
 /**
- * Navigates from a subdialog back to its parent dialog.
+ * Navigates from a subdialog back to its supdialog.
  * Source: dominds-app.tsx lines 1712-1736
  * Component method: navigateToParent() returns Promise<boolean>
  */

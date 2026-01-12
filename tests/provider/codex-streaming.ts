@@ -48,6 +48,7 @@ async function main(): Promise<void> {
       genseq: 1,
       msgId: 'codex-streaming-test',
       content: 'Say hello in 3 words.',
+      grammar: 'texting',
     },
   ];
 

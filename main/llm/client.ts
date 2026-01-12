@@ -3,7 +3,7 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { log } from '../log';
-import type { ProviderData } from '../shared/types/storage';
+import type { ProviderData, UserTextGrammar } from '../shared/types/storage';
 
 export type EnvironmentMsg = {
   type: 'environment_msg';
@@ -23,6 +23,7 @@ export type PromptingMsg = {
   genseq: number;
   msgId: string;
   content: string;
+  grammar: UserTextGrammar;
 };
 
 export type SayingMsg = {

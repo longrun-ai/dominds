@@ -19,6 +19,8 @@ export type ProviderData = JsonObject;
 
 export type ToolArguments = JsonObject;
 
+export type UserTextGrammar = 'texting' | 'markdown';
+
 export interface RootDialogMetadataFile {
   /** Unique dialog identifier (selfDlgId only) */
   id: string;
@@ -61,11 +63,10 @@ export interface SubdialogMetadataFile {
   /** Topic identifier for registered subdialogs (Type B) */
   topicId?: string;
 
-  /** Assignment context from parent dialog for subdialogs */
+  /** Assignment context from supdialog for subdialogs */
   assignmentFromSup: {
     headLine: string;
     callBody: string;
-    originRole: 'user' | 'assistant';
     originMemberId: string;
     callerDialogId: string;
     callId: string;
@@ -171,6 +172,7 @@ export interface HumanTextRecord {
   genseq: number;
   msgId: string;
   content: string;
+  grammar: UserTextGrammar;
 }
 
 export interface FuncResultRecord {
@@ -216,7 +218,6 @@ export interface TeammateResponseRecord {
   response: string; // full subdialog response text (no truncation)
   agentId: string;
   callId: string; // For navigation from response back to call site
-  originRole: 'user' | 'assistant';
   originMemberId: string;
 }
 
@@ -335,7 +336,6 @@ export interface DialogListItem {
   assignmentFromSup?: {
     headLine: string;
     callBody: string;
-    originRole: 'user' | 'assistant';
     originMemberId: string;
     callerDialogId: string;
     callId: string;

@@ -15,7 +15,6 @@ class MockDialogStore implements Dialog['dlgStore'] {
     headLine: string,
     callBody: string,
     options: {
-      originRole: 'user' | 'assistant';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -34,7 +33,6 @@ class MockDialogStore implements Dialog['dlgStore'] {
       {
         headLine,
         callBody,
-        originRole: options.originRole,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -136,7 +134,6 @@ runTest('Type C subdialogs are not registered', () => {
     {
       headLine: 'Transient',
       callBody: 'Body',
-      originRole: 'assistant',
       originMemberId: rootDialog.agentId,
       callerDialogId: rootDialog.id.selfId,
       callId: 'call-1',

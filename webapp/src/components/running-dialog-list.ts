@@ -393,7 +393,7 @@ export class RunningDialogList extends HTMLElement {
       kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
     const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
     const updatedAt = dialog.lastModified || '';
-    const topicId = dialog.topicId ?? 'n/a';
+    const topicMark = dialog.topicId ?? '';
 
     if (kind === 'sub') {
       return `
@@ -405,7 +405,7 @@ export class RunningDialogList extends HTMLElement {
           <div class="dialog-row dialog-subrow">
             <span class="dialog-title">@${dialog.agentId}</span>
             <span class="dialog-meta-right">
-              <span class="dialog-topic">${topicId}</span>
+              <span class="dialog-topic">${topicMark}</span>
             </span>
           </div>
           <div class="dialog-row dialog-submeta">

@@ -6,6 +6,7 @@
  */
 
 // === DIALOG EVENT TYPE DEFINITIONS ===
+import type { UserTextGrammar } from './storage';
 
 export interface SubdialogEvent extends DialogEventBase {
   type: 'subdialog_created_evt';
@@ -58,12 +59,6 @@ export type SayingStartEvent = LlmGenDlgEvent & {
 
 export type SayingFinishEvent = LlmGenDlgEvent & {
   type: 'saying_finish_evt';
-};
-
-export type UserTextEvent = LlmGenDlgEvent & {
-  type: 'user_text_evt';
-  content: string;
-  msgId: string;
 };
 
 export type MarkdownStartEvent = LlmGenDlgEvent & {
@@ -203,7 +198,6 @@ export interface TeammateResponseEvent {
   response: string; // full subdialog response text (no truncation)
   agentId: string;
   callId: string; // For navigation from response back to call site
-  originRole: 'user' | 'assistant';
   originMemberId: string;
 }
 
@@ -213,6 +207,9 @@ export interface EndOfUserSayingEvent {
   type: 'end_of_user_saying_evt';
   round: number;
   genseq: number;
+  msgId: string;
+  content: string;
+  grammar: UserTextGrammar;
 }
 
 export type CodeBlockStartEvent = LlmGenDlgEvent & {
@@ -283,8 +280,6 @@ export type TypedDialogEvent = DialogEvent & DialogEventBase;
 
 // Union type for all dialog events
 export type DialogEvent =
-  // User prompt
-  | UserTextEvent
   // Generation lifecycle
   | GeneratingStartEvent
   | GeneratingFinishEvent
