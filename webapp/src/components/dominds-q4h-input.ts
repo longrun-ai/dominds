@@ -849,8 +849,7 @@ export class DomindsQ4HInput extends HTMLElement {
         width: 100%;
         min-height: 0;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        --dominds-primary: #6366f1;
-        color-scheme: light dark;
+        color-scheme: inherit;
       }
 
       /* Main container */
@@ -948,12 +947,12 @@ export class DomindsQ4HInput extends HTMLElement {
         min-width: 20px;
         height: 20px;
         padding: 0 6px;
-        background: var(--dominds-primary, #6366f1);
+        background: var(--dominds-primary, #007acc);
         color: white;
         font-size: 12px;
         font-weight: 600;
         border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+        box-shadow: 0 2px 4px color-mix(in srgb, var(--dominds-primary, #007acc) 30%, transparent);
       }
 
       .q4h-count-badge.bump {
@@ -977,20 +976,20 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .q4h-question-card:hover {
-        border-color: var(--color-accent-primary, #3b82f6);
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        border-color: var(--color-accent-primary, #007acc);
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent-primary, #007acc) 15%, transparent);
       }
 
-      /* Selected state - purple background */
+      /* Selected state - accent background */
       .q4h-question-card.selected {
-        border-color: var(--dominds-primary, #6366f1);
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 12%, var(--color-bg-secondary, #ffffff));
+        border-color: var(--dominds-primary, #007acc);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 25%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--color-bg-secondary, #ffffff));
       }
 
       .q4h-question-card.selected:hover {
-        border-color: var(--dominds-primary, #6366f1);
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        border-color: var(--dominds-primary, #007acc);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
       }
 
       .q4h-question-header {
@@ -1028,7 +1027,7 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .q4h-external-link:hover {
-        color: var(--dominds-primary, #6366f1);
+        color: var(--dominds-primary, #007acc);
       }
 
       .q4h-question-card.expanded .q4h-expand-icon {
@@ -1049,8 +1048,8 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .q4h-question-card.selected .q4h-checkbox {
-        background: var(--dominds-primary, #6366f1);
-        border-color: var(--dominds-primary, #6366f1);
+        background: var(--dominds-primary, #007acc);
+        border-color: var(--dominds-primary, #007acc);
       }
 
       .q4h-checkbox-check {
@@ -1099,7 +1098,7 @@ export class DomindsQ4HInput extends HTMLElement {
       .q4h-goto-site-btn {
         margin-top: 12px;
         padding: 8px 14px;
-        background: var(--color-accent-primary, #3b82f6);
+        background: var(--color-accent-primary, #007acc);
         color: white;
         border: none;
         border-radius: 6px;
@@ -1110,7 +1109,7 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .q4h-goto-site-btn:hover {
-        background: color-mix(in srgb, var(--color-accent-primary, #3b82f6) 85%, black);
+        background: color-mix(in srgb, var(--color-accent-primary, #007acc) 85%, black);
       }
 
       /* Input section */
@@ -1173,28 +1172,28 @@ export class DomindsQ4HInput extends HTMLElement {
         font-weight: bold;
       }
 
-      /* Q4H active state - purple background, no top border */
+      /* Q4H active state - accent background, no top border */
       .input-wrapper.q4h-active {
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 12%, var(--color-bg-secondary, #ffffff));
-        border-color: var(--dominds-primary, #6366f1);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--color-bg-secondary, #ffffff));
+        border-color: var(--dominds-primary, #007acc);
         border-top-color: transparent; /* Remove top border when Q4H selected */
         border-radius: 0 0 24px 24px; /* Remove top rounded corners when Q4H selected */
       }
 
       .input-wrapper.q4h-active:focus-within {
-        border-color: var(--dominds-primary, #6366f1);
+        border-color: var(--dominds-primary, #007acc);
         border-top-color: transparent;
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-primary, #007acc) 20%, transparent);
       }
 
       .input-wrapper:focus-within {
         border-color: var(--dominds-focus, #007acc);
-        box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.1);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-focus, #007acc) 20%, transparent);
       }
 
       .input-wrapper.disabled {
         opacity: 0.6;
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 3%, var(--color-bg-secondary, #f8f9fa));
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 3%, var(--color-bg-secondary, #f8f9fa));
         border-color: var(--dominds-border, #e0e0e0);
       }
 
@@ -1232,7 +1231,7 @@ export class DomindsQ4HInput extends HTMLElement {
         height: 40px;
         border: none;
         border-radius: 50%;
-        background: var(--dominds-primary, #6366f1);
+        background: var(--dominds-primary, #007acc);
         color: white;
         cursor: pointer;
         transition: all 0.2s ease;
@@ -1241,7 +1240,7 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .send-button:hover:not(:disabled) {
-        background: var(--dominds-primary-hover, #4f46e5);
+        background: var(--dominds-primary-hover, #005ea6);
         transform: scale(1.05);
       }
 
@@ -1262,92 +1261,6 @@ export class DomindsQ4HInput extends HTMLElement {
         height: 16px;
       }
 
-      /* Dark theme */
-      :host(.dark) {
-        color-scheme: dark;
-        --dominds-bg: #2d2d2d;
-        --dominds-fg: #ffffff;
-        --dominds-border: #404040;
-        --dominds-muted: #9ca3af;
-        --dominds-primary: #6366f1;
-        --dominds-primary-hover: #4f46e5;
-        --dominds-disabled-bg: #2d2d2d;
-      }
-
-      :host(.dark) .q4h-input-container {
-        background: var(--dominds-bg, #0f172a);
-        border-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .question-footer {
-        background: var(--color-bg-tertiary, #1e293b);
-        border-top-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .question-footer-label {
-        color: var(--color-fg-secondary, #cbd5e1);
-      }
-
-      :host(.dark) .q4h-question-card {
-        background: var(--color-bg-secondary, #1e293b);
-        border-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .q4h-question-header:hover {
-        background: var(--color-bg-tertiary, #334155);
-      }
-
-      :host(.dark) .q4h-question-headline {
-        color: var(--color-fg-primary, #f8fafc);
-      }
-
-      :host(.dark) .q4h-question-body {
-        border-top-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .q4h-question-content {
-        color: var(--color-fg-secondary, #cbd5e1);
-      }
-
-      :host(.dark) .q4h-question-timestamp {
-        color: var(--color-fg-tertiary, #94a3b8);
-      }
-
-      :host(.dark) .q4h-external-link {
-        color: var(--color-fg-tertiary, #94a3b8);
-      }
-
-      :host(.dark) .q4h-external-link:hover {
-        color: var(--dominds-primary, #818cf8);
-      }
-
-      :host(.dark) .q4h-question-card.selected {
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 20%, var(--color-bg-secondary, #1e293b));
-      }
-
-      :host(.dark) .input-wrapper {
-        background: var(--dominds-input-bg, #1e293b);
-      }
-
-      :host(.dark) .input-wrapper.q4h-active {
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 15%, var(--color-bg-secondary, #1e293b));
-        border-top-color: transparent; /* Remove top border when Q4H selected */
-        border-radius: 0 0 24px 24px; /* Remove top rounded corners when Q4H selected */
-      }
-
-      :host(.dark) .input-wrapper.disabled {
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 4%, var(--color-bg-secondary, #1e293b));
-        border-color: var(--dominds-border, #404040);
-      }
-
-      :host(.dark) .message-input {
-        color: var(--dominds-fg, #ffffff);
-        background: transparent;
-      }
-
-      :host(.dark) .message-input::placeholder {
-        color: var(--dominds-muted, #9ca3af);
-      }
     `;
   }
 

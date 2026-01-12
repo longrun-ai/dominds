@@ -147,7 +147,7 @@ export function setCurrentRootDialogId(
 /**
  * Get theme from DOM
  */
-export function getTheme(element: Element = document.body): 'light' | 'dark' | 'auto' {
+export function getTheme(element: Element = document.documentElement): 'light' | 'dark' | 'auto' {
   const theme = getDomData(element, DOM_STATE_KEYS.THEME);
   return (theme as 'light' | 'dark' | 'auto') || 'auto';
 }
@@ -155,6 +155,9 @@ export function getTheme(element: Element = document.body): 'light' | 'dark' | '
 /**
  * Set theme in DOM
  */
-export function setTheme(theme: 'light' | 'dark' | 'auto', element: Element = document.body): void {
+export function setTheme(
+  theme: 'light' | 'dark' | 'auto',
+  element: Element = document.documentElement,
+): void {
   setDomData(element, DOM_STATE_KEYS.THEME, theme);
 }

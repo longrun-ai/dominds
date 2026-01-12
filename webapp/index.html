@@ -1,11 +1,25 @@
 <!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Dominds - AI Dialog Management System" />
     <link rel="icon" type="image/svg+xml" href="src/assets/favicon.svg" />
     <title>Dominds - DevOps Mindsets</title>
+    <script>
+      (() => {
+        try {
+          const storedTheme = localStorage.getItem('dominds-theme');
+          if (storedTheme === 'light' || storedTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', storedTheme);
+          }
+        } catch {
+          // Ignore storage access errors (privacy mode, blocked storage, etc.).
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/assets/tokens.css" />
+    <link rel="stylesheet" href="/src/assets/base.css" />
     <style>
       /* Immediate theme styling to prevent flash on page load */
       html,
@@ -13,14 +27,14 @@
         margin: 0;
         padding: 0;
         height: 100%;
-        background: rgb(248, 249, 250);
-        color: #333333;
+        background: var(--color-bg-primary, rgb(248, 249, 250));
+        color: var(--color-fg-primary, #333333);
       }
 
-      /* Dark theme fallback */
+      /* Dark theme fallback if tokens are not yet available */
       @media (prefers-color-scheme: dark) {
-        html,
-        body {
+        html:not([data-theme]),
+        html:not([data-theme]) body {
           background: #2d2d2d;
           color: #ffffff;
         }
@@ -33,8 +47,8 @@
         align-items: center;
         justify-content: center;
         height: 100vh;
-        background: rgb(248, 249, 250);
-        color: #333333;
+        background: var(--color-bg-primary, rgb(248, 249, 250));
+        color: var(--color-fg-primary, #333333);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         text-align: center;
         padding: 20px;

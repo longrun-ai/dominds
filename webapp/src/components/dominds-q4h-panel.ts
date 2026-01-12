@@ -262,20 +262,20 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-question-card:hover {
-        border-color: var(--color-accent-primary, #3b82f6);
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        border-color: var(--color-accent-primary, #007acc);
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent-primary, #007acc) 15%, transparent);
       }
 
       /* Selected state for question card */
       .q4h-question-card.selected {
-        border-color: var(--dominds-primary, #6366f1);
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 12%, var(--color-bg-secondary, #ffffff));
+        border-color: var(--dominds-primary, #007acc);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 25%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--color-bg-secondary, #ffffff));
       }
 
       .q4h-question-card.selected:hover {
-        border-color: var(--dominds-primary, #6366f1);
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        border-color: var(--dominds-primary, #007acc);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
       }
 
       .q4h-question-header {
@@ -316,8 +316,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-question-card.selected .q4h-checkbox {
-        background: var(--dominds-primary, #6366f1);
-        border-color: var(--dominds-primary, #6366f1);
+        background: var(--dominds-primary, #007acc);
+        border-color: var(--dominds-primary, #007acc);
       }
 
       .q4h-checkbox-check {
@@ -378,7 +378,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-goto-site-btn {
         margin-top: 12px;
         padding: 8px 14px;
-        background: var(--color-accent-primary, #3b82f6);
+        background: var(--color-accent-primary, #007acc);
         color: white;
         border: none;
         border-radius: 6px;
@@ -389,56 +389,9 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-goto-site-btn:hover {
-        background: color-mix(in srgb, var(--color-accent-primary, #3b82f6) 85%, black);
+        background: color-mix(in srgb, var(--color-accent-primary, #007acc) 85%, black);
       }
 
-      /* Dark theme */
-      :host(.dark) {
-        background: var(--color-bg-primary, #0f172a);
-        border-top-color: var(--color-border-primary, #334155);
-        --dominds-primary: #6366f1;
-      }
-
-      :host(.dark) .q4h-dialog-header {
-        color: var(--color-fg-secondary, #cbd5e1);
-        border-bottom-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .q4h-question-card {
-        background: var(--color-bg-secondary, #1e293b);
-        border-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .q4h-question-header:hover {
-        background: var(--color-bg-tertiary, #334155);
-      }
-
-      :host(.dark) .q4h-question-headline {
-        color: var(--color-fg-primary, #f8fafc);
-      }
-
-      :host(.dark) .q4h-question-body {
-        border-top-color: var(--color-border-primary, #334155);
-      }
-
-      :host(.dark) .q4h-question-content {
-        color: var(--color-fg-secondary, #cbd5e1);
-      }
-
-      :host(.dark) .q4h-question-timestamp {
-        color: var(--color-fg-tertiary, #94a3b8);
-      }
-
-      :host(.dark) .q4h-question-card.selected {
-        background: color-mix(in srgb, var(--dominds-primary, #6366f1) 20%, var(--color-bg-secondary, #1e293b));
-      }
-
-      :host(.dark) .q4h-dialog-name {
-        color: var(--color-fg-secondary, #cbd5e1);
-      }
-        background: var(--color-bg-tertiary, #334155);
-        color: var(--color-fg-tertiary, #94a3b8);
-      }
     `;
   }
 

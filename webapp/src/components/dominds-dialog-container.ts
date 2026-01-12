@@ -1638,12 +1638,12 @@ export class DomindsDialogContainer extends HTMLElement {
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         transition: all 0.2s ease;
       }
-      .message.thinking { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #3b82f6)); }
+      .message.thinking { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); }
       .message.assistant { border-left: 4px solid var(--dominds-success, var(--color-success, #10b981)); }
       .message.tool { border-left: 4px solid var(--dominds-warning, var(--color-warning, #f59e0b)); }
       .message.calling { border-left: 4px solid var(--dominds-info, var(--color-info, #06b6d4)); }
-      .message.system { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #8b5cf6)); background: var(--color-bg-tertiary, #f5f3ff); }
-      .message.subdialog { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #8b5cf6)); background: var(--color-bg-tertiary, #f5f3ff); }
+      .message.system { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
+      .message.subdialog { border-left: 4px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); background: var(--color-bg-tertiary, #f1f5f9); }
       
       /* New generation bubble styles */
       .generation-bubble { 
@@ -1710,12 +1710,12 @@ export class DomindsDialogContainer extends HTMLElement {
 
       @keyframes breath-glow {
         0%, 100% {
-          box-shadow: 0 0 5px rgba(59, 130, 246, 0.3);
-          border-color: rgba(59, 130, 246, 0.2);
+          box-shadow: 0 0 5px color-mix(in srgb, var(--dominds-primary, #007acc) 30%, transparent);
+          border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 20%, transparent);
         }
         50% {
-          box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.2);
-          border-color: rgba(59, 130, 246, 0.5);
+          box-shadow: 0 0 20px color-mix(in srgb, var(--dominds-primary, #007acc) 60%, transparent), 0 0 40px color-mix(in srgb, var(--dominds-primary, #007acc) 25%, transparent);
+          border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 50%, transparent);
         }
       }
 
@@ -1764,7 +1764,7 @@ export class DomindsDialogContainer extends HTMLElement {
         padding: 12px; 
         border-radius: 8px; 
         background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9)); 
-        border-left: 3px solid var(--dominds-primary, var(--color-accent-primary, #3b82f6)); 
+        border-left: 3px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); 
         display: block;
         width: 100%;
         max-width: 100%;
@@ -1913,7 +1913,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .calling-icon.teammate-icon .calling-img {
         width: 24px;
         height: 24px;
-        color: var(--dominds-primary, #6366f1);
+        color: var(--dominds-primary, #007acc);
       }
 
       .calling-headline {
@@ -1972,28 +1972,6 @@ export class DomindsDialogContainer extends HTMLElement {
       
       .calling-body.completed {
         opacity: 0.8;
-      }
-
-      :host(.dark) .calling-section {
-        background: var(--color-bg-secondary, #0f172a);
-        border-left-color: var(--color-info, #06b6d4);
-      }
-
-      :host(.dark) .calling-section.failed {
-        border-left-color: var(--color-danger, #ef4444);
-        background: rgba(239, 68, 68, 0.14);
-      }
-
-      :host(.dark) .calling-result {
-        background: rgba(2, 6, 23, 0.6);
-        border-color: rgba(148, 163, 184, 0.25);
-        color: var(--color-fg-secondary, #e2e8f0);
-      }
-      :host(.dark) .subdialog-arrow {
-        color: var(--color-info, #22d3ee);
-      }
-      :host(.dark) .calling-body {
-        color: var(--color-fg-secondary, #e2e8f0);
       }
 
       /* Function call section styles (nested inside markdown) - non-streaming mode */
@@ -2063,32 +2041,6 @@ export class DomindsDialogContainer extends HTMLElement {
         opacity: 0.9;
       }
 
-      :host(.dark) .func-call-section {
-        background: var(--color-bg-secondary, #0f172a);
-        border-left-color: var(--color-warning, #f59e0b);
-      }
-
-      :host(.dark) .func-call-section.failed {
-        border-left-color: var(--color-danger, #ef4444);
-        background: rgba(239, 68, 68, 0.14);
-      }
-
-      :host(.dark) .func-call-result {
-        background: rgba(2, 6, 23, 0.6);
-        border-color: rgba(148, 163, 184, 0.25);
-        color: var(--color-fg-secondary, #e2e8f0);
-      }
-
-      :host(.dark) .func-call-title {
-        color: var(--color-warning, #fbbf24);
-      }
-
-      :host(.dark) .func-call-arguments {
-        background: rgba(2, 6, 23, 0.6);
-        border-color: rgba(148, 163, 184, 0.25);
-        color: var(--color-fg-secondary, #e2e8f0);
-      }
-
       /* Code block section styles (nested inside markdown) */
       .codeblock-section { 
         margin: 0; 
@@ -2153,31 +2105,6 @@ export class DomindsDialogContainer extends HTMLElement {
         background: transparent;
       }
 
-      /* Themed code block colors */
-      :host(.dark) .codeblock-section {
-        background: var(--color-bg-secondary);
-        border-color: var(--color-border-primary);
-      }
-      :host(.dark) .codeblock-header {
-        background: var(--color-bg-tertiary);
-        border-bottom-color: var(--color-border-primary);
-      }
-      :host(.dark) .codeblock-title { color: var(--color-fg-secondary); }
-      :host(.dark) .codeblock-wrapper pre { background: var(--color-bg-primary); color: var(--color-fg-primary); }
-      :host(.dark) .codeblock-wrapper pre > code.codeblock-content { color: var(--color-fg-primary); }
-
-      :host(.light) .codeblock-section {
-        background: var(--color-bg-secondary);
-        border-color: var(--color-border-primary);
-      }
-      :host(.light) .codeblock-header {
-        background: var(--color-bg-tertiary);
-        border-bottom-color: var(--color-border-primary);
-      }
-      :host(.light) .codeblock-title { color: var(--color-fg-secondary); }
-      :host(.light) .codeblock-wrapper pre { background: var(--color-bg-primary); color: var(--color-fg-primary); }
-      :host(.light) .codeblock-wrapper pre > code.codeblock-content { color: var(--color-fg-primary); }
-      
       .codeblock-section.completed {
         opacity: 0.9;
       }
@@ -2222,12 +2149,12 @@ export class DomindsDialogContainer extends HTMLElement {
         background: var(--color-bg-secondary, #f7fafc);
         border-radius: 12px;
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        border-left: 4px solid var(--dominds-primary, #6366f1);
+        border-left: 4px solid var(--dominds-primary, #007acc);
       }
 
       .author-name {
         font-weight: 600;
-        color: var(--dominds-primary, #6366f1);
+        color: var(--dominds-primary, #007acc);
       }
 
       .response-indicator {
@@ -2238,16 +2165,16 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .teammate-call-pending {
         animation: pending-glow 2s ease-in-out infinite;
-        border-left-color: var(--dominds-primary, #6366f1);
+        border-left-color: var(--dominds-primary, #007acc);
       }
 
       @keyframes pending-glow {
-        0%, 100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.3); }
-        50% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.5); }
+        0%, 100% { box-shadow: 0 0 5px color-mix(in srgb, var(--dominds-primary, #007acc) 30%, transparent); }
+        50% { box-shadow: 0 0 15px color-mix(in srgb, var(--dominds-primary, #007acc) 50%, transparent); }
       }
 
       .call-site-link {
-        color: var(--dominds-primary, #6366f1);
+        color: var(--dominds-primary, #007acc);
         text-decoration: none;
         font-size: 12px;
         margin-left: auto;
@@ -2258,7 +2185,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .response-call-site-link {
-        color: var(--dominds-primary, #6366f1);
+        color: var(--dominds-primary, #007acc);
         text-decoration: none;
         font-size: 12px;
         margin-left: 8px;
@@ -2286,20 +2213,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
       @keyframes highlight-pulse {
         0%, 100% {
-          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+          box-shadow: 0 0 0 0 color-mix(in srgb, var(--dominds-primary, #007acc) 40%, transparent);
         }
         50% {
-          box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+          box-shadow: 0 0 0 8px transparent;
         }
       }
 
-      :host(.dark) .message.teammate {
-        background: var(--color-bg-secondary, #1a202c);
-      }
-
-      :host(.dark) .teammate-content {
-        color: var(--color-fg-primary, #f7fafc);
-      }
     `;
   }
 

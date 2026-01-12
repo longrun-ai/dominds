@@ -66,11 +66,10 @@ export class MarkdownRenderer {
    * Get current theme for Mermaid
    */
   private getCurrentTheme(): 'base' | 'dark' | 'default' | 'forest' | 'neutral' | 'null' {
-    // Check for dark theme
+    const theme = document.documentElement.getAttribute('data-theme');
     const isDark =
-      document.documentElement.getAttribute('data-theme') === 'dark' ||
-      document.body.classList.contains('dark') ||
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
+      theme === 'dark' ||
+      (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
     return isDark ? 'dark' : 'default';
   }

@@ -50,7 +50,6 @@ export class DomindsApp extends HTMLElement {
   private remindersWidgetVisible: boolean = false;
   private remindersWidgetX: number = 12;
   private remindersWidgetY: number = 120;
-  private _bodyObserver: MutationObserver | null = null;
   private _wsEventCancel?: () => void;
   private _connStateCancel?: () => void;
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
@@ -209,8 +208,7 @@ export class DomindsApp extends HTMLElement {
     }
   }
   connectedCallback(): void {
-    // Apply theme immediately before any rendering to prevent flash
-    this.applyTheme(this.currentTheme);
+    this.initializeTheme();
     this.initialRender();
     this.setupEventListeners();
     this.loadInitialData();
@@ -223,18 +221,6 @@ export class DomindsApp extends HTMLElement {
         this.handleConnectionStateChange(state);
       }
     })();
-
-    // Ensure document body stays consistent
-    this.ensureDocumentThemeConsistency();
-
-    // Watch for document body style changes to maintain theme consistency
-    this.observeDocumentBodyChanges();
-
-    // Sync theme with child components immediately and with timeout for robustness
-    this.syncThemeWithChildComponents(this.currentTheme);
-    setTimeout(() => {
-      this.syncThemeWithChildComponents(this.currentTheme);
-    }, 100);
   }
 
   disconnectedCallback(): void {
@@ -250,11 +236,6 @@ export class DomindsApp extends HTMLElement {
     if (this._connStateCancel) {
       this._connStateCancel();
       this._connStateCancel = undefined;
-    }
-
-    // Clean up MutationObserver
-    if (this._bodyObserver) {
-      this._bodyObserver.disconnect();
     }
   }
 
@@ -289,8 +270,7 @@ export class DomindsApp extends HTMLElement {
       teamMembers.setMembers(this.teamMembers);
     }
 
-    // Sync theme with child components after render
-    this.syncThemeWithChildComponents(this.currentTheme);
+    this.updateThemeToggle();
   }
 
   /**
@@ -343,6 +323,7 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
         overflow: hidden;
+        color-scheme: inherit;
       }
 
       .app-container {
@@ -352,66 +333,6 @@ export class DomindsApp extends HTMLElement {
         width: 100%;
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
-      }
-
-      /* Theme CSS custom properties */
-      :host(.dark) {
-        --dominds-bg: #2d2d2d;
-        --dominds-fg: #ffffff;
-        --dominds-border: #404040;
-        --dominds-header-bg: #2d2d2d;
-        --dominds-sidebar-bg: #2d2d2d;
-        --dominds-toolbar-bg: #2d2d2d;
-        --dominds-hover: #3a3a3a;
-        --dominds-muted: #9ca3af;
-        --dominds-disabled: #2d2d2d;
-        --dominds-primary: #5b8def;
-        --dominds-primary-hover: #4a7bdb;
-        --dominds-secondary: #5a6268;
-        --dominds-secondary-hover: #4a5156;
-        --dominds-success: #28a745;
-        --dominds-warning: #ffc107;
-        --dominds-danger: #dc3545;
-        --dominds-success-bg: #1e3a1e;
-        --dominds-warning-bg: #3a2a1e;
-        --dominds-danger-bg: #3a1e1e;
-        
-        /* Standard color variables for child components */
-        --color-bg-primary: #0f172a;
-        --color-bg-secondary: #1e293b;
-        --color-bg-tertiary: #334155;
-        --color-fg-primary: #f8fafc;
-        --color-fg-secondary: #cbd5e1;
-        --color-fg-tertiary: #94a3b8;
-        --color-accent-primary: #60a5fa;
-        --color-border-primary: #334155;
-        --color-error: #ef4444;
-        --error-bg: #7f1d1d;
-        --success-bg: #14532d;
-      }
-
-      :host(.light) {
-        --dominds-bg: rgb(248, 249, 250);
-        --dominds-fg: #333333;
-        --dominds-border: #e0e0e0;
-        --dominds-header-bg: #f8f9fa;
-        --dominds-sidebar-bg: #f8f9fa;
-        --dominds-toolbar-bg: #f8f9fa;
-        --dominds-hover: #f8f9fa;
-        --dominds-muted: #666666;
-        
-        /* Standard color variables for child components */
-        --color-bg-primary: #ffffff;
-        --color-bg-secondary: #f8fafc;
-        --color-bg-tertiary: #f1f5f9;
-        --color-fg-primary: #0f172a;
-        --color-fg-secondary: #475569;
-        --color-fg-tertiary: #64748b;
-        --color-accent-primary: #3b82f6;
-        --color-border-primary: #e2e8f0;
-        --color-error: #ef4444;
-        --error-bg: #fee2e2;
-        --success-bg: #dcfce7;
       }
 
       .header {
@@ -667,7 +588,7 @@ export class DomindsApp extends HTMLElement {
 
       .resize-handle:hover::after,
       .resize-handle.resizing::after {
-        background: var(--dominds-primary, #6366f1);
+        background: var(--dominds-primary, #007acc);
       }
 
       .resize-handle.resizing {
@@ -919,7 +840,7 @@ export class DomindsApp extends HTMLElement {
       .teammate-dropdown:focus {
         outline: none;
         border-color: var(--dominds-primary, #007acc);
-        box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.1);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-focus, #007acc) 20%, transparent);
       }
 
       .teammate-info {
@@ -952,7 +873,7 @@ export class DomindsApp extends HTMLElement {
       .task-doc-input:focus {
         outline: none;
         border-color: var(--dominds-primary, #007acc);
-        box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.1);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-focus, #007acc) 20%, transparent);
       }
 
       .task-doc-suggestions {
@@ -2602,167 +2523,79 @@ export class DomindsApp extends HTMLElement {
     this.showError(message, 'info');
   }
 
+  private getExplicitThemeFromDom(): 'light' | 'dark' | null {
+    const theme = document.documentElement.getAttribute('data-theme');
+    if (theme === 'light' || theme === 'dark') {
+      return theme;
+    }
+    return null;
+  }
+
+  private getStoredTheme(): 'light' | 'dark' | null {
+    try {
+      const stored = localStorage.getItem('dominds-theme');
+      if (stored === 'light' || stored === 'dark') {
+        return stored;
+      }
+    } catch (error: unknown) {
+      console.warn('Failed to read theme preference from localStorage', error);
+      return null;
+    }
+    return null;
+  }
+
+  private getSystemTheme(): 'light' | 'dark' {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
   private getCurrentTheme(): 'light' | 'dark' {
-    const stored = localStorage.getItem('dominds-theme');
-    if (stored === 'light' || stored === 'dark') {
-      return stored;
+    const explicitTheme = this.getExplicitThemeFromDom();
+    if (explicitTheme) {
+      return explicitTheme;
     }
 
-    // Check system preference
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const storedTheme = this.getStoredTheme();
+    if (storedTheme) {
+      return storedTheme;
+    }
+
+    return this.getSystemTheme();
+  }
+
+  private initializeTheme(): void {
+    const explicitTheme = this.getExplicitThemeFromDom();
+    if (explicitTheme) {
+      this.currentTheme = explicitTheme;
+      return;
+    }
+
+    const storedTheme = this.getStoredTheme();
+    if (storedTheme) {
+      document.documentElement.setAttribute('data-theme', storedTheme);
+      this.currentTheme = storedTheme;
+      return;
+    }
+
+    document.documentElement.removeAttribute('data-theme');
+    this.currentTheme = this.getSystemTheme();
   }
 
   private applyTheme(theme: 'light' | 'dark'): void {
     this.currentTheme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
 
-    // Apply theme to main app host
-    if (theme === 'dark') {
-      this.classList.add('dark');
-      this.classList.remove('light');
-    } else {
-      this.classList.add('light');
-      this.classList.remove('dark');
+    try {
+      localStorage.setItem('dominds-theme', theme);
+    } catch (error: unknown) {
+      console.warn('Failed to persist theme preference to localStorage', error);
     }
 
-    // Apply consistent theme to document body to prevent flash
-    if (theme === 'dark') {
-      document.body.classList.add('dark');
-      document.body.classList.remove('light');
-      // Use consistent dark background
-      document.body.style.background = '#2d2d2d';
-      document.body.style.backgroundColor = '#2d2d2d';
-      document.body.style.color = '#ffffff';
-    } else {
-      document.body.classList.add('light');
-      document.body.classList.remove('dark');
-      // Use consistent light background matching main app: rgb(248, 249, 250)
-      document.body.style.background = 'rgb(248, 249, 250)';
-      document.body.style.backgroundColor = 'rgb(248, 249, 250)';
-      document.body.style.color = '#333333';
-    }
-
-    // Store in localStorage
-    localStorage.setItem('dominds-theme', theme);
-
-    // Ensure document body stays consistent with theme
-    this.ensureDocumentThemeConsistency();
-
-    // Sync theme properties with child components
-    this.syncThemeWithChildComponents(theme);
-
-    // Update theme toggle button if it exists
     this.updateThemeToggle();
-  }
-
-  /**
-   * Sync theme CSS custom properties with child Shadow DOM components
-   */
-  private syncThemeWithChildComponents(theme: 'light' | 'dark'): void {
-    const dialogContainer = this.shadowRoot?.querySelector(
-      'dominds-dialog-container',
-    ) as HTMLElement;
-    const q4hInput = this.shadowRoot?.querySelector('#q4h-input') as HTMLElement;
-
-    // Apply host theme class to child components
-    const components = [dialogContainer, q4hInput].filter(Boolean) as HTMLElement[];
-    components.forEach((el) => {
-      if (theme === 'dark') {
-        el.classList.add('dark');
-        el.classList.remove('light');
-      } else {
-        el.classList.add('light');
-        el.classList.remove('dark');
-      }
-    });
-
-    if (components.length === 0) return;
-
-    if (theme === 'dark') {
-      // Use main app's actual background color (#2d2d2d = rgb(45, 45, 45))
-      const props = {
-        '--color-bg-primary': '#2d2d2d',
-        '--color-bg-secondary': '#3a3a3a',
-        '--color-bg-tertiary': '#4a4a4a',
-        '--color-fg-primary': '#ffffff',
-        '--color-fg-secondary': '#cbd5e1',
-        '--color-fg-tertiary': '#94a3b8',
-        '--color-accent-primary': '#60a5fa',
-        '--color-border-primary': '#404040',
-        '--color-error': '#ef4444',
-        '--error-bg': '#7f1d1d',
-        '--success-bg': '#14532d',
-      };
-      components.forEach((el) => {
-        Object.entries(props).forEach(([prop, val]) => el.style.setProperty(prop, val));
-      });
-    } else {
-      // Use main app's actual background color for exact match
-      const mainAppBg = window.getComputedStyle(this).backgroundColor;
-      const props = {
-        '--color-bg-primary': mainAppBg,
-        '--color-bg-secondary': '#f8fafc',
-        '--color-bg-tertiary': '#f1f5f9',
-        '--color-fg-primary': '#0f172a',
-        '--color-fg-secondary': '#475569',
-        '--color-fg-tertiary': '#64748b',
-        '--color-accent-primary': '#3b82f6',
-        '--color-border-primary': '#e2e8f0',
-        '--color-error': '#ef4444',
-        '--error-bg': '#fee2e2',
-        '--success-bg': '#dcfce7',
-      };
-      components.forEach((el) => {
-        Object.entries(props).forEach(([prop, val]) => el.style.setProperty(prop, val));
-      });
-    }
-    // Q4H input component handles its own theme via Shadow DOM
   }
 
   private toggleTheme(): void {
     const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
     this.applyTheme(newTheme);
-  }
-
-  /**
-   * Ensure document body theme stays consistent with app theme
-   */
-  private ensureDocumentThemeConsistency(): void {
-    if (this.currentTheme === 'dark') {
-      if (document.body.style.backgroundColor !== '#2d2d2d') {
-        document.body.style.background = '#2d2d2d';
-        document.body.style.backgroundColor = '#2d2d2d';
-        document.body.style.color = '#ffffff';
-      }
-    } else {
-      if (document.body.style.backgroundColor !== 'rgb(248, 249, 250)') {
-        document.body.style.background = 'rgb(248, 249, 250)';
-        document.body.style.backgroundColor = 'rgb(248, 249, 250)';
-        document.body.style.color = '#333333';
-      }
-    }
-  }
-
-  /**
-   * Observe document body changes to maintain theme consistency
-   */
-  private observeDocumentBodyChanges(): void {
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-          // Document body style changed, ensure theme consistency
-          this.ensureDocumentThemeConsistency();
-        }
-      });
-    });
-
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['style'],
-      attributeOldValue: true,
-    });
-
-    // Store observer reference for cleanup
-    this._bodyObserver = observer;
   }
 
   private updateThemeToggle(): void {

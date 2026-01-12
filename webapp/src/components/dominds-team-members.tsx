@@ -132,7 +132,7 @@ export class DomindsTeamMembers extends HTMLElement {
       }
 
       .modal-content {
-        background: var(--dominds-bg, #ffffff);
+        background: var(--dominds-bg-secondary, var(--dominds-bg, #ffffff));
         color: var(--dominds-fg, #333333);
         border-radius: 12px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -398,28 +398,6 @@ export class DomindsTeamMembers extends HTMLElement {
         }
       }
 
-      /* Dark theme adjustments */
-      [data-theme="dark"] .modal-content {
-        background: var(--dominds-bg-secondary, #1e293b);
-        color: var(--dominds-fg, #f1f5f9);
-      }
-
-      [data-theme="dark"] .modal-header {
-        background: var(--dominds-header-bg, #374151);
-        border-color: var(--dominds-border, #4b5563);
-      }
-
-      [data-theme="dark"] .member-item {
-        border-bottom-color: var(--dominds-border, #4b5563);
-      }
-
-      [data-theme="dark"] .member-item:hover {
-        background: var(--dominds-hover, #374151);
-      }
-
-      [data-theme="dark"] .modal-close:hover {
-        background: var(--dominds-hover, #374151);
-      }
     `;
   }
 
