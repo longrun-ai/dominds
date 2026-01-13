@@ -15,7 +15,7 @@
  *    - Content is buffered and emitted in chunks via `markdownChunk()`
  *
  * 2. **Texting Calls** - Tool/agent invocation commands
- *    - Syntax: `@mention command arguments`
+ *    - Syntax: `@mention command arguments` at the start of a line (leading spaces allowed)
  *    - **Mention Syntax**: `@` followed by mention name
  *      - **Valid characters**: Alphanumeric (a-z, A-Z, 0-9), Unicode letters/digits, underscore (`_`), hyphen (`-`), dot (`.`) for namespace separation
  *      - **Trailing dot**: a trailing `.` is treated as punctuation and ignored for mention parsing
@@ -229,7 +229,6 @@ export class TextingStreamParser {
 
   // Code block state
   private codeBlockChunkBuffer = '';
-  private prevCharIsWhitespace = true;
   private codeBlockInfoAccumulator = '';
 
   // Call collection
@@ -366,8 +365,6 @@ export class TextingStreamParser {
         // Mode changed, restart the loop to process remaining characters with new mode
         continue;
       }
-
-      this.prevCharIsWhitespace = charType === CharType.SPACE || charType === CharType.NEWLINE;
     }
 
     this.flushAtUpstreamChunkEnd();
@@ -494,7 +491,7 @@ export class TextingStreamParser {
       this.updateBacktickState(charType);
 
       if (!this.inSingleBacktick) {
-        const canStartMention = this.isAtLineStart || this.prevCharIsWhitespace;
+        const canStartMention = this.isAtLineStart;
         if (!canStartMention) {
           this.markdownChunkBuffer += char;
           this.isAtLineStart = false;

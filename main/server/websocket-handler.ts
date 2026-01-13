@@ -25,7 +25,6 @@ import type {
   WebSocketMessage,
 } from '../shared/types';
 import type { Q4HAnsweredEvent } from '../shared/types/dialog';
-import { generateShortId } from '../shared/utils/id';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { generateDialogID } from '../utils/id';
@@ -45,7 +44,7 @@ function getErrorCode(error: unknown): string | undefined {
 
 /**
  * Restores the parent (supdialog) dialog from persistence.
- * Used when a subdialog needs access to its parent for parent-call detection.
+ * Used when a subdialog needs access to its parent for metadata or registry operations.
  */
 async function restoreParentDialog(
   subdialogSelfId: string,
@@ -760,34 +759,6 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         // Restore TYPE B subdialog registry from disk
         await rootDialog.loadSubdialogRegistry();
         await rootDialog.loadPendingSubdialogsFromPersistence();
-      }
-
-      // Check if this is a parent-call (message targeting root dialog's agent from subdialog)
-      // If so, route to root dialog instead of creating a new subdialog
-      if (supdialog && content.includes(`@${supdialog.agentId}`)) {
-        // DIRECT FIX: Call receiveTextingResponse directly instead of driveDialogStream
-        // This prevents the root dialog from treating the message as a new user message
-        const parentDialog = supdialog;
-
-        // Extract the response body - content after the @mention
-        const mentionPattern = `@${parentDialog.agentId}`;
-        const responseBody = content.includes(mentionPattern)
-          ? content.substring(content.indexOf(mentionPattern) + mentionPattern.length).trim()
-          : content;
-
-        // Emit tool response event to parent (root) dialog with callId for inline correlation
-        // This is a parent-call: subdialog responds to @parentAgentId mention from within subdialog
-        // The response should appear INLINE in the parent's bubble (not separate bubble)
-        const parentCallId = generateShortId();
-        await parentDialog.receiveToolResponse(
-          metadata.agentId, // responderId = subdialog's agent
-          'Parent call response', // headLine
-          responseBody, // result = actual response content
-          'completed',
-          parentCallId, // callId enables frontend to find calling section and attach result inline
-        );
-
-        return;
       }
 
       // Normal flow: emit events for user message
