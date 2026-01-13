@@ -308,6 +308,32 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       return;
     }
 
+    // IMPORTANT: cancel any existing event forwarder before emitting restoration events.
+    // Otherwise, the same client can receive overlapping "replay" and "live" streams,
+    // which surfaces as duplicate generation lifecycle events on the frontend.
+    const existing = wsLiveDlg.get(ws);
+    if (existing && existing.subChan) {
+      const existingId = existing.id;
+      const isSameDialog = existingId.selfId === dialogId && existingId.rootId === rootDialogId;
+      if (isSameDialog) {
+        log.warn(
+          'display_dialog: refreshing the same dialog; cancelling existing subscription to prevent duplicate stream events',
+          undefined,
+          { dialogId, rootDialogId },
+        );
+      } else {
+        log.debug(
+          'display_dialog: switching dialogs; cancelling previous subscription',
+          undefined,
+          {
+            previousDialogId: existingId.valueOf(),
+            nextDialogId: new DialogID(dialogId, rootDialogId).valueOf(),
+          },
+        );
+      }
+      cleanupWsClient(ws);
+    }
+
     // Use DialogPersistence to load dialog from file system
     // CRITICAL FIX: Use dialogId (not rootDialogId) to load the correct dialog/subdialog events
     // For subdialogs, this ensures we load events from subdialog's own round file, not parent's

@@ -127,6 +127,30 @@ function isDialogLatestFile(value: unknown): value is DialogLatestFile {
   );
 }
 
+function isSubdialogResponseRecord(value: unknown): value is {
+  responseId: string;
+  subdialogId: string;
+  response: string;
+  completedAt: string;
+  callType: 'A' | 'B' | 'C';
+  headLine: string;
+  responderId: string;
+  originMemberId: string;
+  callId: string;
+} {
+  if (!isRecord(value)) return false;
+  if (typeof value.responseId !== 'string') return false;
+  if (typeof value.subdialogId !== 'string') return false;
+  if (typeof value.response !== 'string') return false;
+  if (typeof value.completedAt !== 'string') return false;
+  if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
+  if (typeof value.headLine !== 'string') return false;
+  if (typeof value.responderId !== 'string') return false;
+  if (typeof value.originMemberId !== 'string') return false;
+  if (typeof value.callId !== 'string') return false;
+  return true;
+}
+
 export interface DialogPersistenceState {
   metadata: DialogMetadataFile;
   currentRound: number;
@@ -2451,10 +2475,15 @@ export class DialogPersistence {
   static async saveSubdialogResponses(
     rootDialogId: DialogID,
     responses: Array<{
+      responseId: string;
       subdialogId: string;
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
+      headLine: string;
+      responderId: string;
+      originMemberId: string;
+      callId: string;
     }>,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
@@ -2481,19 +2510,62 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<
     Array<{
+      responseId: string;
       subdialogId: string;
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
+      headLine: string;
+      responderId: string;
+      originMemberId: string;
+      callId: string;
     }>
   > {
     try {
       const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
+      const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
 
       try {
-        const content = await fs.promises.readFile(filePath, 'utf-8');
-        return JSON.parse(content);
+        const results: Array<{
+          responseId: string;
+          subdialogId: string;
+          response: string;
+          completedAt: string;
+          callType: 'A' | 'B' | 'C';
+          headLine: string;
+          responderId: string;
+          originMemberId: string;
+          callId: string;
+        }> = [];
+
+        const tryReadArray = async (p: string): Promise<unknown[]> => {
+          try {
+            const content = await fs.promises.readFile(p, 'utf-8');
+            const parsed: unknown = JSON.parse(content);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch (error) {
+            if (getErrorCode(error) === 'ENOENT') {
+              return [];
+            }
+            throw error;
+          }
+        };
+
+        const primary = await tryReadArray(filePath);
+        const inflight = await tryReadArray(inflightPath);
+        for (const item of [...primary, ...inflight]) {
+          if (isSubdialogResponseRecord(item)) {
+            results.push(item);
+          }
+        }
+
+        // Deduplicate by responseId (primary wins over inflight order is irrelevant)
+        const byId = new Map<string, (typeof results)[number]>();
+        for (const r of results) {
+          byId.set(r.responseId, r);
+        }
+        return Array.from(byId.values());
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
           return [];
@@ -2504,6 +2576,168 @@ export class DialogPersistence {
       log.error(`Failed to load subdialog responses for dialog ${rootDialogId}:`, error);
       return [];
     }
+  }
+
+  static async loadSubdialogResponsesQueue(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<
+    Array<{
+      responseId: string;
+      subdialogId: string;
+      response: string;
+      completedAt: string;
+      callType: 'A' | 'B' | 'C';
+      headLine: string;
+      responderId: string;
+      originMemberId: string;
+      callId: string;
+    }>
+  > {
+    try {
+      const dialogPath = this.getDialogResponsesPath(dialogId, status);
+      const filePath = path.join(dialogPath, 'subdialog-responses.json');
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      const parsed: unknown = JSON.parse(content);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.filter(isSubdialogResponseRecord);
+    } catch (error) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  static async appendSubdialogResponse(
+    dialogId: DialogID,
+    response: {
+      responseId: string;
+      subdialogId: string;
+      response: string;
+      completedAt: string;
+      callType: 'A' | 'B' | 'C';
+      headLine: string;
+      responderId: string;
+      originMemberId: string;
+      callId: string;
+    },
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    const existing = await this.loadSubdialogResponsesQueue(dialogId, status);
+    existing.push(response);
+    await this.saveSubdialogResponses(dialogId, existing, status);
+  }
+
+  static async takeSubdialogResponses(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<
+    Array<{
+      responseId: string;
+      subdialogId: string;
+      response: string;
+      completedAt: string;
+      callType: 'A' | 'B' | 'C';
+      headLine: string;
+      responderId: string;
+      originMemberId: string;
+      callId: string;
+    }>
+  > {
+    const dialogPath = this.getDialogResponsesPath(dialogId, status);
+    await fs.promises.mkdir(dialogPath, { recursive: true });
+
+    const filePath = path.join(dialogPath, 'subdialog-responses.json');
+    const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+
+    // If a previous processing file exists, merge it back so it will be re-processed.
+    try {
+      await fs.promises.access(inflightPath);
+      await this.rollbackTakenSubdialogResponses(dialogId, status);
+    } catch {
+      // no-op
+    }
+
+    try {
+      await fs.promises.rename(filePath, inflightPath);
+    } catch (error) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+
+    try {
+      const raw = await fs.promises.readFile(inflightPath, 'utf-8');
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.filter(isSubdialogResponseRecord);
+    } catch (error) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  static async commitTakenSubdialogResponses(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    const dialogPath = this.getDialogResponsesPath(dialogId, status);
+    const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+    await fs.promises.rm(inflightPath, { force: true });
+  }
+
+  static async rollbackTakenSubdialogResponses(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    const dialogPath = this.getDialogResponsesPath(dialogId, status);
+    await fs.promises.mkdir(dialogPath, { recursive: true });
+
+    const filePath = path.join(dialogPath, 'subdialog-responses.json');
+    const inflightPath = path.join(dialogPath, 'subdialog-responses.processing.json');
+
+    let inflight: unknown[] = [];
+    try {
+      const raw = await fs.promises.readFile(inflightPath, 'utf-8');
+      const parsed: unknown = JSON.parse(raw);
+      inflight = Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return;
+      }
+      throw error;
+    }
+
+    let primary: unknown[] = [];
+    try {
+      const raw = await fs.promises.readFile(filePath, 'utf-8');
+      const parsed: unknown = JSON.parse(raw);
+      primary = Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      if (getErrorCode(error) !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    const merged = [...inflight, ...primary].filter(isSubdialogResponseRecord);
+    const byId = new Map<string, (typeof merged)[number]>();
+    for (const r of merged) {
+      byId.set(r.responseId, r);
+    }
+    const result = Array.from(byId.values());
+
+    const tempFile = filePath + '.tmp';
+    await fs.promises.writeFile(tempFile, JSON.stringify(result, null, 2), 'utf-8');
+    await fs.promises.rename(tempFile, filePath);
+    await fs.promises.rm(inflightPath, { force: true });
   }
 
   /**
@@ -2807,6 +3041,22 @@ export class DialogPersistence {
 
     await this.saveDialogLatest(dialogId, updated, status);
     return updated;
+  }
+
+  static async setNeedsDrive(
+    dialogId: DialogID,
+    needsDrive: boolean,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.updateDialogLatest(dialogId, { needsDrive }, status);
+  }
+
+  static async getNeedsDrive(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<boolean> {
+    const latest = await this.loadDialogLatest(dialogId, status);
+    return latest?.needsDrive === true;
   }
 
   // === FILE SYSTEM UTILITIES ===

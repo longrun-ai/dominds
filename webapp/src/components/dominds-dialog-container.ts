@@ -19,10 +19,7 @@ import type {
   TypedDialogEvent,
 } from '../shared/types/dialog';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
-import {
-  formatTeammateResponseContent,
-  formatTeammateResponseNarrative,
-} from '../shared/utils/inter-dialog-format';
+import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
 import { DomindsCodeBlock } from './dominds-code-block';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 
@@ -287,13 +284,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // Thinking stream
       case 'thinking_start_evt':
-        this.handleThinkingStart();
+        this.handleThinkingStart(event.genseq);
         break;
       case 'thinking_chunk_evt':
-        this.handleThinkingChunk(event.chunk);
+        this.handleThinkingChunk(event.genseq, event.chunk);
         break;
       case 'thinking_finish_evt':
-        this.handleThinkingFinish();
+        this.handleThinkingFinish(event.genseq);
         break;
 
       // Saying events, delimit substreams (markdown/codeblock/calling) derived from the same saying stream
@@ -304,13 +301,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // Markdown stream
       case 'markdown_start_evt':
-        this.handleMarkdownStart();
+        this.handleMarkdownStart(event.genseq);
         break;
       case 'markdown_chunk_evt':
-        this.handleMarkdownChunk(event.chunk);
+        this.handleMarkdownChunk(event.genseq, event.chunk);
         break;
       case 'markdown_finish_evt':
-        this.handleMarkdownFinish();
+        this.handleMarkdownFinish(event.genseq);
         break;
 
       // === TOOL CALL EVENTS (streaming mode - @tool_name calls) ===
@@ -446,12 +443,27 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
   private handleGeneratingStart(seq: number): void {
-    this.activeGenSeq = seq; // Ensure activeGenSeq is always set
-    // Guard against duplicate bubble creation from multiple event loops
-    if (this.generationBubble && this.activeGenSeq === seq) {
-      console.warn('Duplicate generating_start_evt detected, skipping bubble creation');
-      return;
+    const existingBubble = this.generationBubble;
+    if (existingBubble) {
+      const existingSeq = existingBubble.getAttribute('data-seq');
+      if (existingSeq === String(seq)) {
+        console.warn('Duplicate generating_start_evt detected, skipping bubble creation');
+        return;
+      }
+
+      // If a new generation starts before we saw finish for the prior bubble,
+      // finalize the old bubble to avoid mixing streams across seq values.
+      existingBubble.classList.remove('generating');
+      existingBubble.classList.add('completed');
+      existingBubble.setAttribute('data-finalized', 'true');
+      this.thinkingSection = undefined;
+      this.markdownSection = undefined;
+      this.callingSection = undefined;
+      this.codeblockSection = undefined;
+      this.generationBubble = undefined;
     }
+
+    this.activeGenSeq = seq;
 
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
 
@@ -462,6 +474,26 @@ export class DomindsDialogContainer extends HTMLElement {
       container.appendChild(bubble);
     }
     this.generationBubble = bubble;
+  }
+
+  private ensureGenerationBubbleForSeq(seq: number): HTMLElement | null {
+    const currentBubble = this.generationBubble;
+    if (currentBubble && currentBubble.getAttribute('data-seq') === String(seq)) {
+      return currentBubble;
+    }
+
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    const existing = container
+      ? (container.querySelector(`.generation-bubble[data-seq="${seq}"]`) as HTMLElement | null)
+      : null;
+    if (existing) {
+      this.generationBubble = existing;
+      this.activeGenSeq = seq;
+      return existing;
+    }
+
+    this.handleGeneratingStart(seq);
+    return this.generationBubble ?? null;
   }
 
   private handleGeneratingFinish(seq: number): void {
@@ -505,31 +537,34 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === THINKING EVENTS (Inside Generation Bubble) ===
-  private handleThinkingStart(): void {
-    // Guard: ensure generation bubble exists before appending
-    if (!this.generationBubble) {
+  private handleThinkingStart(genseq: number): void {
+    const bubble = this.ensureGenerationBubbleForSeq(genseq);
+    if (!bubble) {
       console.warn('thinking_start_evt received without generation bubble, skipping');
       return;
     }
     // Always create new thinking section - no existing check logic
     const thinkingSection = this.createThinkingSection();
-    const body = this.generationBubble.querySelector('.bubble-body');
-    (body || this.generationBubble).appendChild(thinkingSection);
+    const body = bubble.querySelector('.bubble-body');
+    (body || bubble).appendChild(thinkingSection);
     this.thinkingSection = thinkingSection;
     this.scrollToBottom();
   }
-  private handleThinkingChunk(chunk: string): void {
+  private handleThinkingChunk(genseq: number, chunk: string): void {
     const thinkingSection = this.thinkingSection;
     if (!thinkingSection) {
       // Gracefully handle orphan chunk - auto-create thinking section if needed
-      if (!this.generationBubble) {
+      if (
+        !this.generationBubble ||
+        this.generationBubble.getAttribute('data-seq') !== String(genseq)
+      ) {
         console.warn(
           'thinking_chunk_evt received without generation bubble, creating minimal state',
         );
-        this.handleGeneratingStart(0);
+        this.handleGeneratingStart(genseq);
       }
       console.warn('thinking_chunk_evt received without thinking section, auto-creating');
-      this.handleThinkingStart();
+      this.handleThinkingStart(genseq);
     }
     const section = this.thinkingSection!;
     const contentEl = section.querySelector('.thinking-content') as HTMLElement;
@@ -538,7 +573,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.scrollToBottom();
     }
   }
-  private handleThinkingFinish(): void {
+  private handleThinkingFinish(_genseq: number): void {
     const thinkingSection = this.thinkingSection;
     if (!thinkingSection) {
       // Gracefully handle orphan finish - no active thinking section to complete
@@ -550,20 +585,24 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === MARKDOWN EVENTS (Inside Generation Bubble) ===
-  private handleMarkdownStart(): void {
-    // Guard: ensure generation bubble exists before appending
-    if (!this.generationBubble) {
+  private handleMarkdownStart(genseq: number): void {
+    const bubble = this.ensureGenerationBubbleForSeq(genseq);
+    if (!bubble) {
       console.warn('markdown_start_evt received without generation bubble, skipping');
       return;
     }
     // Create and append markdown section directly
     const markdownSection = this.createMarkdownSection();
-    const body = this.generationBubble.querySelector('.bubble-body');
-    (body || this.generationBubble).appendChild(markdownSection);
+    const body = bubble.querySelector('.bubble-body');
+    (body || bubble).appendChild(markdownSection);
     this.markdownSection = markdownSection;
     this.scrollToBottom();
   }
-  private handleMarkdownChunk(chunk: string): void {
+  private handleMarkdownChunk(genseq: number, chunk: string): void {
+    if (!this.markdownSection) {
+      // Attempt to recover by creating a markdown section (and bubble if needed).
+      this.handleMarkdownStart(genseq);
+    }
     if (!this.markdownSection) {
       console.warn('markdown_chunk_evt received without markdown section, skipping');
       return;
@@ -573,7 +612,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.markdownSection.appendChunk(chunk);
     this.scrollToBottom();
   }
-  private handleMarkdownFinish(): void {
+  private handleMarkdownFinish(_genseq: number): void {
     if (!this.markdownSection) {
       // Gracefully handle orphan finish - no active markdown section to complete
       console.warn('markdown_finish_evt received without active markdown section, skipping');
@@ -1082,7 +1121,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const expectedResult = formatTeammateResponseContent({
       responderId: event.responderId,
       requesterId,
-      callHeadLine: event.headLine,
+      originalCallHeadLine: event.headLine,
       responseBody: event.response,
     });
     if (event.result !== expectedResult) {
@@ -1090,12 +1129,12 @@ export class DomindsDialogContainer extends HTMLElement {
         `handleTeammateResponse: Response formatting mismatch. Expected "${expectedResult}" but received "${event.result}".`,
       );
     }
-    const narrative = formatTeammateResponseNarrative(
-      event.responderId,
-      requesterId,
-      event.headLine,
-    );
-    const responseBody = `${narrative}\n\n${event.response}`;
+    const responseNarr = formatTeammateResponseContent({
+      responderId: event.responderId,
+      requesterId: requesterId,
+      originalCallHeadLine: event.headLine,
+      responseBody: event.response,
+    });
 
     // If callId is provided, find the calling section and set its data-call-id attribute
     // and show the "Jump to response" link
@@ -1135,8 +1174,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const messageEl = this.createTeammateBubble(
       event.calleeDialogId,
       agentId,
-      event.headLine,
-      responseBody,
+      responseNarr,
       event.calling_genseq,
       event.callId,
       event.originMemberId,
@@ -1187,8 +1225,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private createTeammateBubble(
     calleeDialogId: string,
     agentId: string | undefined,
-    headLine: string,
-    response: string,
+    responseNarr: string,
     callSiteId?: number,
     callId?: string,
     originMemberId?: string,
@@ -1225,20 +1262,8 @@ export class DomindsDialogContainer extends HTMLElement {
     `;
     const contentEl = el.querySelector('.teammate-content');
     if (contentEl) {
-      const trimmedHead = headLine.trim();
-      if (trimmedHead !== '') {
-        const headBlock = document.createElement('blockquote');
-        headBlock.className = 'teammate-headline';
-        headBlock.textContent = trimmedHead;
-        contentEl.appendChild(headBlock);
-
-        const divider = document.createElement('hr');
-        divider.className = 'teammate-response-divider';
-        contentEl.appendChild(divider);
-      }
-
       const md = this.createMarkdownSection();
-      md.setRawMarkdown(response);
+      md.setRawMarkdown(responseNarr);
       contentEl.appendChild(md);
     }
     // Add click handler for call site link

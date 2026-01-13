@@ -187,7 +187,6 @@ export abstract class Dialog {
   protected _status: 'running' | 'completed' | 'archived' = 'running';
   protected _createdAt: string;
   protected _updatedAt: string;
-  protected _unsavedMessages: ChatMessage[] = [];
   // Prompt queued for the next round drive (set by startNewRound).
   protected _upNext?: { prompt: string; msgId: string };
   public subChan?: SubChan<DialogEvent>;
@@ -359,8 +358,18 @@ export abstract class Dialog {
   /**
    * Check if dialog has pending subdialogs.
    */
-  public hasPendingSubdialogs(): boolean {
-    return this._pendingSubdialogIds.length > 0;
+  public async hasPendingSubdialogs(): Promise<boolean> {
+    try {
+      const { DialogPersistence } = await import('./persistence');
+      const pending = await DialogPersistence.loadPendingSubdialogs(this.id);
+      return pending.length > 0;
+    } catch (err) {
+      log.warn('Failed to load pending subdialogs for pending check', {
+        dialogId: this.id.selfId,
+        error: err,
+      });
+      return true;
+    }
   }
 
   /**
@@ -368,7 +377,7 @@ export abstract class Dialog {
    */
   public async canDrive(): Promise<boolean> {
     const hasQ4H = await this.hasPendingQ4H();
-    const hasSubdialogs = this.hasPendingSubdialogs();
+    const hasSubdialogs = await this.hasPendingSubdialogs();
     return !hasQ4H && !hasSubdialogs;
   }
 
@@ -381,7 +390,7 @@ export abstract class Dialog {
     canDrive: boolean;
   }> {
     const hasQ4H = await this.hasPendingQ4H();
-    const hasSubdialogs = this.hasPendingSubdialogs();
+    const hasSubdialogs = await this.hasPendingSubdialogs();
     return {
       q4h: hasQ4H,
       subdialogs: hasSubdialogs,
@@ -780,8 +789,10 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     }
 
     // Clear all messages and Q4H questions for mental clarity
+    // TODO: restore assignmentFromSup as first role=user msg in ctx, if this is subdlg
+    //       maybe define overridable method to "reset" ctx msgs?
     this.msgs.length = 0;
-    this._unsavedMessages.length = 0;
+
     await this.dlgStore.clearQuestions4Human(this);
 
     // Delegate to DialogStore for round start persistence

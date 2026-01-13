@@ -259,9 +259,6 @@ function getTeammateResponseDetails() {
       throw new Error('getTeammateResponseDetails: Missing requester label in response indicator');
     }
     const bubbleHeadLine = node.querySelector(sel.teammateHeadline)?.textContent?.trim() || '';
-    if (!bubbleHeadLine) {
-      throw new Error('getTeammateResponseDetails: Missing teammate bubble headline');
-    }
     const callSiteId = parseCallSiteId(node.getAttribute('data-call-site-id'));
     const callId = node.getAttribute('data-call-id') || '';
     const calleeDialogId = node.getAttribute('data-callee-dialog-id') || '';
@@ -284,16 +281,32 @@ function getTeammateResponseDetails() {
       throw new Error('getTeammateResponseDetails: Missing narrative line');
     }
     const narrativeLine = rawLines[narrativeIndex].trim();
-    if (!narrativeLine.startsWith('Response:')) {
+    if (!narrativeLine.startsWith('Hi @') || !narrativeLine.includes('provided response')) {
       throw new Error(
         `getTeammateResponseDetails: Narrative line malformed "${narrativeLine}"`,
       );
     }
-    const responseBody = rawLines.slice(narrativeIndex + 1).join('\n').trim();
-    if (!responseBody) {
-      throw new Error('getTeammateResponseDetails: Missing response body');
+    const originalCallMarker = 'to your original call:';
+    const markerIndex = rawLines.findIndex((line) => line.trim() === originalCallMarker);
+    if (markerIndex < 0) {
+      throw new Error('getTeammateResponseDetails: Missing original call marker');
     }
-    const callHeadLine = bubbleHeadLine;
+    const stripQuotePrefix = (line) => (line.startsWith('> ') ? line.slice(2) : line);
+    const responseLines = rawLines
+      .slice(narrativeIndex + 1, markerIndex)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim() !== '')
+      .map((line) => stripQuotePrefix(line.trim()));
+    if (responseLines.length === 0) {
+      throw new Error('getTeammateResponseDetails: Missing response body section');
+    }
+    const responseBody = responseLines.join('\n');
+    const callLines = rawLines
+      .slice(markerIndex + 1)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim() !== '')
+      .map((line) => stripQuotePrefix(line.trim()));
+    const callHeadLine = callLines.join('\n').trim() || bubbleHeadLine;
     return {
       index,
       authorName,

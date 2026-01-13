@@ -98,6 +98,13 @@ export interface DialogLatestFile {
 
   /** Whether LLM generation is currently active */
   generating?: boolean;
+
+  /**
+   * Whether the backend driver should attempt to drive this dialog.
+   * This is persisted to survive process restarts and is treated as the source of truth
+   * for background revival scheduling.
+   */
+  needsDrive?: boolean;
 }
 
 // === ROUND TRACKING ===

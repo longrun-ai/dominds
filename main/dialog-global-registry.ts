@@ -18,6 +18,17 @@ class GlobalDialogRegistry {
 
   register(rootDialog: RootDialog): void {
     this.entries.set(rootDialog.id.rootId, { rootDialog, needsDrive: false });
+    void (async () => {
+      try {
+        const { DialogPersistence } = await import('./persistence');
+        const needsDrive = await DialogPersistence.getNeedsDrive(rootDialog.id);
+        if (needsDrive) {
+          this.markNeedsDrive(rootDialog.id.rootId);
+        }
+      } catch {
+        // Best-effort hydration; backend driver will still function for runtime-triggered drives.
+      }
+    })();
   }
 
   unregister(rootId: string): void {

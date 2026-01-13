@@ -20,9 +20,11 @@
  * - Include the original call headline in the narrative for clarity.
  */
 
+import { markdownQuote } from './fmt';
+
 export type InterDialogCallContent = {
   headLine: string;
-  body: string;
+  callBody: string;
 };
 
 export type InterDialogParticipants = {
@@ -35,14 +37,14 @@ export type SubdialogAssignmentFormatInput = InterDialogParticipants & InterDial
 export type SupdialogCallPromptInput = {
   fromAgentId: string;
   toAgentId: string;
-  request: InterDialogCallContent;
-  assignment: InterDialogCallContent;
+  subdialogRequest: InterDialogCallContent;
+  supdialogAssignment: InterDialogCallContent;
 };
 
 export type TeammateResponseFormatInput = {
   responderId: string;
   requesterId: string;
-  callHeadLine: string;
+  originalCallHeadLine: string;
   responseBody: string;
 };
 
@@ -53,72 +55,34 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
   return value;
 }
 
-export function formatInterDialogCallMarkdown(content: InterDialogCallContent): string {
-  const headLine = requireNonEmpty(content.headLine, 'call headLine');
-  const body = content.body;
-  if (body.trim() === '') {
-    return headLine;
-  }
-  return `${headLine}\n\n${body}`;
-}
+export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
+  return `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} is asking you:
 
-export function formatInterDialogResponseMarkdown(
-  callHeadLine: string,
-  responseBody: string,
-): string {
-  const headLine = requireNonEmpty(callHeadLine, 'call headLine');
-  const body = requireNonEmpty(responseBody, 'responseBody');
-  return `> ${headLine}\n---\n${body}`;
-}
-
-function formatParticipantLine(fromAgentId: string, toAgentId: string): string {
-  const from = requireNonEmpty(fromAgentId, 'fromAgentId');
-  const to = requireNonEmpty(toAgentId, 'toAgentId');
-  return `@${from} -> @${to}`;
-}
-
-export function formatSubdialogAssignmentForModel(input: SubdialogAssignmentFormatInput): string {
-  const headerLine = formatParticipantLine(input.fromAgentId, input.toAgentId);
-  const headLine = requireNonEmpty(input.headLine, 'call headLine');
-  const narrative = `Request: @${input.fromAgentId} (requester) asked @${input.toAgentId} (assignee) to handle "${headLine}".`;
-  const record = formatInterDialogCallMarkdown({
-    headLine: input.headLine,
-    body: input.body,
-  });
-  return `${headerLine}\n${narrative}\n${record}`;
-}
-
-export function formatSubdialogUserPrompt(input: SubdialogAssignmentFormatInput): string {
-  return formatSubdialogAssignmentForModel(input);
+${markdownQuote(requireNonEmpty(input.headLine, 'headLine'))}
+${markdownQuote(input.callBody)}
+`;
 }
 
 export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {
-  const headerLine = formatParticipantLine(input.fromAgentId, input.toAgentId);
-  const requestHeadLine = requireNonEmpty(input.request.headLine, 'request headLine');
-  const assignmentHeadLine = requireNonEmpty(input.assignment.headLine, 'assignment headLine');
-  const requestNarrative = `Request: @${input.fromAgentId} (requester) asked @${input.toAgentId} (responder) "${requestHeadLine}".`;
-  const assignmentNarrative = `Assignment context: @${input.toAgentId} (requester) previously asked @${input.fromAgentId} (assignee) "${assignmentHeadLine}".`;
-  const request = formatInterDialogCallMarkdown(input.request);
-  const assignment = formatInterDialogCallMarkdown(input.assignment);
-  return `${headerLine}\n${requestNarrative}\n${request}\n---\n${assignmentNarrative}\n${assignment}`;
-}
+  return `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, during processing your original assignment:
 
-export function formatTeammateResponseNarrative(
-  responderId: string,
-  requesterId: string,
-  callHeadLine: string,
-): string {
-  const responder = requireNonEmpty(responderId, 'responderId');
-  const requester = requireNonEmpty(requesterId, 'requesterId');
-  const headLine = requireNonEmpty(callHeadLine, 'call headLine');
-  return `Response: @${responder} (responder) replied to @${requester} (requester) about "${headLine}".`;
+${markdownQuote(requireNonEmpty(input.supdialogAssignment.headLine, 'assignmentHeadLine'))}
+${markdownQuote(input.supdialogAssignment.callBody)}
+
+\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` is asking you:
+
+${markdownQuote(requireNonEmpty(input.subdialogRequest.headLine, 'requestHeadLine'))}
+${markdownQuote(input.subdialogRequest.callBody)}
+`;
 }
 
 export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {
-  const responderId = requireNonEmpty(input.responderId, 'responderId');
-  const requesterId = requireNonEmpty(input.requesterId, 'requesterId');
-  const headerLine = `@${responderId}`;
-  const narrative = formatTeammateResponseNarrative(responderId, requesterId, input.callHeadLine);
-  const record = formatInterDialogResponseMarkdown(input.callHeadLine, input.responseBody);
-  return `${headerLine}\n${narrative}\n${record}`;
+  return `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:
+
+${markdownQuote(input.responseBody)}
+
+to your original call:
+
+${markdownQuote(requireNonEmpty(input.originalCallHeadLine, 'originalCallHeadLine'))}
+`;
 }
