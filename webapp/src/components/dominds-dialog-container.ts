@@ -19,6 +19,10 @@ import type {
   TypedDialogEvent,
 } from '../shared/types/dialog';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
+import {
+  formatTeammateResponseContent,
+  formatTeammateResponseNarrative,
+} from '../shared/utils/inter-dialog-format';
 import { DomindsCodeBlock } from './dominds-code-block';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 
@@ -1068,6 +1072,30 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Determine agentId for the bubble (use event.agentId if available, otherwise responderId)
     const agentId = event.agentId || event.responderId;
+    const requesterId = event.originMemberId;
+    if (!requesterId || requesterId.trim() === '') {
+      throw new Error('handleTeammateResponse: Missing originMemberId (requesterId)');
+    }
+    if (typeof event.result !== 'string') {
+      throw new Error('handleTeammateResponse: Missing result payload for formatting verification');
+    }
+    const expectedResult = formatTeammateResponseContent({
+      responderId: event.responderId,
+      requesterId,
+      callHeadLine: event.headLine,
+      responseBody: event.response,
+    });
+    if (event.result !== expectedResult) {
+      throw new Error(
+        `handleTeammateResponse: Response formatting mismatch. Expected "${expectedResult}" but received "${event.result}".`,
+      );
+    }
+    const narrative = formatTeammateResponseNarrative(
+      event.responderId,
+      requesterId,
+      event.headLine,
+    );
+    const responseBody = `${narrative}\n\n${event.response}`;
 
     // If callId is provided, find the calling section and set its data-call-id attribute
     // and show the "Jump to response" link
@@ -1108,7 +1136,7 @@ export class DomindsDialogContainer extends HTMLElement {
       event.calleeDialogId,
       agentId,
       event.headLine,
-      event.response,
+      responseBody,
       event.calling_genseq,
       event.callId,
       event.originMemberId,

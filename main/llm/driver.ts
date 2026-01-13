@@ -19,6 +19,12 @@ import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { HumanQuestion, UserTextGrammar } from '../shared/types/storage';
+import {
+  formatSubdialogAssignmentForModel,
+  formatSubdialogUserPrompt,
+  formatSupdialogCallPrompt,
+  formatTeammateResponseContent,
+} from '../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import {
@@ -140,82 +146,6 @@ function showErrorToAi(err: unknown): string {
  * Streaming supports function tools; no restrictions to enforce here.
  */
 function validateStreamingConfiguration(_agent: Team.Member, _agentTools: Tool[]): void {}
-
-function formatAssignmentVerbatim(headLine: string, callBody: string): string {
-  const hasHead = headLine.trim() !== '';
-  const hasBody = callBody.trim() !== '';
-  if (hasHead && hasBody) {
-    return `${headLine}\n\n${callBody}`;
-  }
-  if (hasHead) {
-    return headLine;
-  }
-  return callBody;
-}
-
-function formatSubdialogAssignmentForModel(
-  supdialogAgentId: string,
-  subdialogAgentId: string,
-  headLine: string,
-  callBody: string,
-): string {
-  const trimmedHead = headLine.trim();
-  const trimmedBody = callBody.trim();
-  const intro = `Hi @${subdialogAgentId}, @${supdialogAgentId} is asking you`;
-  if (trimmedHead !== '' && trimmedBody !== '') {
-    return `${intro}, ${headLine}\n\n${callBody}`;
-  }
-  if (trimmedHead !== '') {
-    return `${intro}, ${headLine}`;
-  }
-  if (trimmedBody !== '') {
-    return `${intro}:\n${callBody}`;
-  }
-  return `${intro}.`;
-}
-
-function formatSubdialogUserPrompt(
-  supdialogAgentId: string,
-  subdialogAgentId: string,
-  headLine: string,
-  callBody: string,
-): string {
-  return formatSubdialogAssignmentForModel(supdialogAgentId, subdialogAgentId, headLine, callBody);
-}
-
-function formatSupdialogCallPrompt(
-  supdialogAgentId: string,
-  subdialogAgentId: string,
-  headLine: string,
-  callBody: string,
-  assignmentHeadLine: string,
-): string {
-  const trimmedBody = callBody.trim();
-  const trimmedAssignment = assignmentHeadLine.trim();
-  const resolvedAssignment =
-    trimmedAssignment !== '' ? trimmedAssignment : '(no headline provided)';
-  const trimmedQuestion = headLine.trim();
-  const resolvedQuestion = trimmedQuestion !== '' ? trimmedQuestion : '(no question provided)';
-  const intro = `Hi @${supdialogAgentId}, during processing your assignment:`;
-  const quoteLine = resolvedAssignment
-    .split('\n')
-    .map((line) => `> ${line}`)
-    .join('\n');
-  const askLine = `@${subdialogAgentId} is asking you, @${supdialogAgentId}: ${resolvedQuestion}`;
-  if (trimmedBody !== '') {
-    return `${intro}\n${quoteLine}\n${askLine}\n${callBody}`;
-  }
-  return `${intro}\n${quoteLine}\n${askLine}`;
-}
-
-function formatTeammateResponseContent(
-  responderId: string,
-  headLine: string,
-  responseText: string,
-): string {
-  const resolvedHeadLine = headLine.trim() !== '' ? headLine : 'Subdialog response';
-  return `Teammate response received from @${responderId} for call "${resolvedHeadLine}". Do not re-issue this call unless asked.\n\n${responseText}`;
-}
 
 // === UNIFIED STREAMING HANDLERS ===
 
@@ -663,12 +593,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         assignmentFromSupMsg = {
           type: 'environment_msg',
           role: 'user',
-          content: formatSubdialogAssignmentForModel(
-            dlg.supdialog.agentId,
-            dlg.agentId,
-            assignment.headLine,
-            assignment.callBody,
-          ),
+          content: formatSubdialogAssignmentForModel({
+            fromAgentId: dlg.supdialog.agentId,
+            toAgentId: dlg.agentId,
+            headLine: assignment.headLine,
+            body: assignment.callBody,
+          }),
         };
       }
 
@@ -1648,7 +1578,12 @@ async function reportSubdialogResponseToCaller(
     assignment.headLine && assignment.headLine.trim() !== ''
       ? assignment.headLine
       : 'Subdialog response';
-  const responseContent = formatTeammateResponseContent(subdialog.agentId, headLine, responseText);
+  const responseContent = formatTeammateResponseContent({
+    responderId: subdialog.agentId,
+    requesterId: assignment.originMemberId,
+    callHeadLine: headLine,
+    responseBody: responseText,
+  });
   const originMemberId = assignment.originMemberId;
 
   await callerDialog.receiveTeammateResponse(
@@ -1714,12 +1649,12 @@ export async function createSubdialogForSupdialog(
     void (async () => {
       try {
         const initPrompt: HumanPrompt = {
-          content: formatSubdialogUserPrompt(
-            supdialog.agentId,
-            subdialog.agentId,
+          content: formatSubdialogUserPrompt({
+            fromAgentId: supdialog.agentId,
+            toAgentId: subdialog.agentId,
             headLine,
-            callBody,
-          ),
+            body: callBody,
+          }),
           msgId: generateDialogID(),
           grammar: 'markdown',
         };
@@ -1842,7 +1777,12 @@ export async function supplyResponseToSupdialog(
       headLine = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
     }
 
-    const responseContent = formatTeammateResponseContent(responderId, headLine, responseText);
+    const responseContent = formatTeammateResponseContent({
+      responderId,
+      requesterId: originMemberId,
+      callHeadLine: headLine,
+      responseBody: responseText,
+    });
     const resultMsg: TextingCallResultMsg = {
       type: 'call_result_msg',
       role: 'tool',
@@ -2109,13 +2049,18 @@ async function executeTextingCall(
             throw new Error('Type A supcall is missing assignmentFromSup on subdialog.');
           }
           const supPrompt: HumanPrompt = {
-            content: formatSupdialogCallPrompt(
-              supdialog.agentId,
-              dlg.agentId,
-              headLine,
-              body,
-              assignment.headLine,
-            ),
+            content: formatSupdialogCallPrompt({
+              fromAgentId: dlg.agentId,
+              toAgentId: supdialog.agentId,
+              request: {
+                headLine,
+                body,
+              },
+              assignment: {
+                headLine: assignment.headLine,
+                body: assignment.callBody,
+              },
+            }),
             msgId: generateDialogID(),
             grammar: 'markdown',
           };
@@ -2124,11 +2069,12 @@ async function executeTextingCall(
 
           // Extract response from supdialog's last assistant message
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
-          const responseContent = formatTeammateResponseContent(
-            parseResult.agentId,
-            headLine,
-            responseText,
-          );
+          const responseContent = formatTeammateResponseContent({
+            responderId: parseResult.agentId,
+            requesterId: dlg.agentId,
+            callHeadLine: headLine,
+            responseBody: responseText,
+          });
 
           // Resume the subdialog with the supdialog's response
           dlg.setSuspensionState('resumed');
@@ -2226,7 +2172,12 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(dlg.agentId, sub.agentId, headLine, body),
+                content: formatSubdialogUserPrompt({
+                  fromAgentId: dlg.agentId,
+                  toAgentId: sub.agentId,
+                  headLine,
+                  body,
+                }),
                 msgId: generateDialogID(),
                 grammar: 'markdown',
               };
@@ -2261,12 +2212,12 @@ async function executeTextingCall(
 
         if (existingSubdialog) {
           const resumePrompt: HumanPrompt = {
-            content: formatSubdialogUserPrompt(
-              dlg.agentId,
-              existingSubdialog.agentId,
+            content: formatSubdialogUserPrompt({
+              fromAgentId: dlg.agentId,
+              toAgentId: existingSubdialog.agentId,
               headLine,
               body,
-            ),
+            }),
             msgId: generateDialogID(),
             grammar: 'markdown',
           };
@@ -2333,7 +2284,12 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(rootDialog.agentId, sub.agentId, headLine, body),
+                content: formatSubdialogUserPrompt({
+                  fromAgentId: rootDialog.agentId,
+                  toAgentId: sub.agentId,
+                  headLine,
+                  body,
+                }),
                 msgId: generateDialogID(),
                 grammar: 'markdown',
               };
@@ -2376,7 +2332,12 @@ async function executeTextingCall(
           const task = (async () => {
             try {
               const initPrompt: HumanPrompt = {
-                content: formatSubdialogUserPrompt(dlg.agentId, sub.agentId, headLine, body),
+                content: formatSubdialogUserPrompt({
+                  fromAgentId: dlg.agentId,
+                  toAgentId: sub.agentId,
+                  headLine,
+                  body,
+                }),
                 msgId: generateDialogID(),
                 grammar: 'markdown',
               };

@@ -27,6 +27,11 @@ const sel = {
   teammateBubble: '.message.teammate',
   teammateContent: '.teammate-content',
   teammateLabel: '.teammate-label',
+  teammateHeadline: '.teammate-headline',
+  teammateDivider: '.teammate-response-divider',
+  teammateIndicator: '.response-indicator',
+  markdownSection: 'dominds-markdown-section',
+  markdownContent: '.markdown-content',
   author: '.bubble-author, .author',
   thinkingCompleted: '.thinking-section.completed',
   markdownCompleted: '.markdown-section.completed',
@@ -232,6 +237,84 @@ function getTeammateMessages() {
 
 function getTeammateMessageCount() {
   return getTeammateMessages().length;
+}
+
+function getTeammateResponseDetails() {
+  return getTeammateMessages().map((node, index) => {
+    const authorName =
+      node.querySelector('.author-name')?.textContent?.trim() ||
+      node.querySelector('.author')?.textContent?.trim() ||
+      '';
+    if (!authorName) {
+      throw new Error('getTeammateResponseDetails: Missing teammate author name');
+    }
+    const responseIndicator = node.querySelector(sel.teammateIndicator)?.textContent?.trim() || '';
+    if (!responseIndicator || !responseIndicator.includes('→')) {
+      throw new Error(
+        `getTeammateResponseDetails: Unexpected response indicator "${responseIndicator}"`,
+      );
+    }
+    const requesterLabel = responseIndicator.split('→')[1]?.trim() || '';
+    if (!requesterLabel) {
+      throw new Error('getTeammateResponseDetails: Missing requester label in response indicator');
+    }
+    const bubbleHeadLine = node.querySelector(sel.teammateHeadline)?.textContent?.trim() || '';
+    if (!bubbleHeadLine) {
+      throw new Error('getTeammateResponseDetails: Missing teammate bubble headline');
+    }
+    const callSiteId = parseCallSiteId(node.getAttribute('data-call-site-id'));
+    const callId = node.getAttribute('data-call-id') || '';
+    const calleeDialogId = node.getAttribute('data-callee-dialog-id') || '';
+    const markdownSection = node.querySelector(sel.markdownSection);
+    const markdownContent = markdownSection?.querySelector(sel.markdownContent);
+    const rawMarkdown = markdownContent?.getAttribute('data-raw-md') || '';
+    const renderedText = markdownContent?.innerText?.trim() || '';
+    if (!rawMarkdown.trim()) {
+      throw new Error('getTeammateResponseDetails: Missing response markdown content');
+    }
+    const rawLines = rawMarkdown.split('\n');
+    let narrativeIndex = -1;
+    for (let i = 0; i < rawLines.length; i += 1) {
+      if (rawLines[i].trim() !== '') {
+        narrativeIndex = i;
+        break;
+      }
+    }
+    if (narrativeIndex < 0) {
+      throw new Error('getTeammateResponseDetails: Missing narrative line');
+    }
+    const narrativeLine = rawLines[narrativeIndex].trim();
+    if (!narrativeLine.startsWith('Response:')) {
+      throw new Error(
+        `getTeammateResponseDetails: Narrative line malformed "${narrativeLine}"`,
+      );
+    }
+    const responseBody = rawLines.slice(narrativeIndex + 1).join('\n').trim();
+    if (!responseBody) {
+      throw new Error('getTeammateResponseDetails: Missing response body');
+    }
+    const callHeadLine = bubbleHeadLine;
+    return {
+      index,
+      authorName,
+      responseIndicator,
+      requesterLabel,
+      bubbleHeadLine,
+      callHeadLine,
+      narrativeLine,
+      responseBody,
+      rawMarkdown,
+      renderedText,
+      callSiteId,
+      callId,
+      calleeDialogId,
+    };
+  });
+}
+
+function getLatestTeammateResponseDetails() {
+  const all = getTeammateResponseDetails();
+  return all.length > 0 ? all[all.length - 1] : null;
 }
 
 function getVisibleMessageNodes() {
@@ -2548,6 +2631,8 @@ function setGlobal() {
     getDialogListShadow,
     getMessageContainer,
     getTeammateMessageCount,
+    getTeammateResponseDetails,
+    getLatestTeammateResponseDetails,
     getVisibleMessageTexts,
     findVisibleMessageContainingAll,
     // Core messaging
