@@ -3,6 +3,7 @@ import { dialogEventRegistry } from 'dominds/evt-registry';
 import { driveDialogStream } from 'dominds/llm/driver';
 import { DiskFileDialogStore } from 'dominds/persistence';
 import type { TypedDialogEvent } from 'dominds/shared/types/dialog';
+import { generateShortId } from 'dominds/shared/utils/id';
 import { Team } from 'dominds/team';
 import { generateDialogID } from 'dominds/utils/id';
 import path from 'path';
@@ -58,7 +59,7 @@ async function main() {
 
   const producer = driveDialogStream(dialog, {
     content: prompt,
-    msgId: generateDialogID(),
+    msgId: generateShortId(),
   }).catch((e: unknown) => {
     driveError = String(e instanceof Error ? e.message : e);
     console.error(

@@ -19,6 +19,7 @@ import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { HumanQuestion, UserTextGrammar } from '../shared/types/storage';
+import { generateShortId } from '../shared/utils/id';
 import {
   formatSubdialogAssignmentForModel,
   formatSubdialogUserPrompt,
@@ -1655,7 +1656,7 @@ export async function createSubdialogForSupdialog(
             headLine,
             body: callBody,
           }),
-          msgId: generateDialogID(),
+          msgId: generateShortId(),
           grammar: 'markdown',
         };
         await driveDialogStream(subdialog, initPrompt, true);
@@ -1822,7 +1823,7 @@ export async function supplyResponseToSupdialog(
       );
       const resumePrompt: HumanPrompt = {
         content: responseContent,
-        msgId: generateDialogID(),
+        msgId: generateShortId(),
         grammar: 'markdown',
       };
       void driveDialogStream(parentDialog, resumePrompt, true);
@@ -2061,7 +2062,7 @@ async function executeTextingCall(
                 body: assignment.callBody,
               },
             }),
-            msgId: generateDialogID(),
+            msgId: generateShortId(),
             grammar: 'markdown',
           };
           // Drive the supdialog for one round (queue if already driving)
@@ -2178,7 +2179,7 @@ async function executeTextingCall(
                   headLine,
                   body,
                 }),
-                msgId: generateDialogID(),
+                msgId: generateShortId(),
                 grammar: 'markdown',
               };
               const responseText = await driveSubdialogToCompletion(sub, initPrompt);
@@ -2218,7 +2219,7 @@ async function executeTextingCall(
               headLine,
               body,
             }),
-            msgId: generateDialogID(),
+            msgId: generateShortId(),
             grammar: 'markdown',
           };
           try {
@@ -2290,7 +2291,7 @@ async function executeTextingCall(
                   headLine,
                   body,
                 }),
-                msgId: generateDialogID(),
+                msgId: generateShortId(),
                 grammar: 'markdown',
               };
               const responseText = await driveSubdialogToCompletion(sub, initPrompt);
@@ -2338,7 +2339,7 @@ async function executeTextingCall(
                   headLine,
                   body,
                 }),
-                msgId: generateDialogID(),
+                msgId: generateShortId(),
                 grammar: 'markdown',
               };
               const responseText = await driveSubdialogToCompletion(sub, initPrompt);

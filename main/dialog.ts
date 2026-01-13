@@ -29,6 +29,7 @@ import type {
   ToolArguments as StoredToolArguments,
   UserTextGrammar,
 } from './shared/types/storage';
+import { generateShortId } from './shared/utils/id';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
 import { Reminder, ReminderOwner, TextingTool } from './tool';
@@ -754,7 +755,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     if (!trimmed) {
       throw new Error('newRoundPrompt is required to start a new round');
     }
-    this._upNext = { prompt: trimmed, msgId: generateDialogID() };
+    this._upNext = { prompt: trimmed, msgId: generateShortId() };
   }
 
   public hasUpNext(): boolean {
