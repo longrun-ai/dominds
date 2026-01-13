@@ -8,18 +8,12 @@
     "parsing": "tsx texting/parsing.ts",
     "mentionx": "tsx texting/mentionx.ts",
     "realtime": "tsx texting/realtime.ts",
+    "teammate-call-parse": "tsx texting/teammate-call-parse.ts",
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
-    "toolset-registry": "tsx toolsets/registry.ts",
-    "dialog-driving": "tsx driving/dialog-driving.ts",
-    "type-a-flow": "tsx driving/type-a-flow.ts",
-    "type-b-flow": "tsx driving/type-b-flow.ts",
-    "type-c-flow": "tsx driving/type-c-flow.ts",
-    "revival-flow": "tsx driving/revival-flow.ts",
-    "llm-streaming": "tsx driving/llm-streaming.ts",
-    "teammate-call-parse": "tsx driving/teammate-call-parse.ts"
+    "toolset-registry": "tsx toolsets/registry.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

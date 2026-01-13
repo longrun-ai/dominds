@@ -30,6 +30,7 @@ import type {
   UserTextGrammar,
 } from './shared/types/storage';
 import { generateShortId } from './shared/utils/id';
+import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
 import { Reminder, ReminderOwner, TextingTool } from './tool';
@@ -176,14 +177,12 @@ export abstract class Dialog {
   readonly agentId: string; // team member id
   readonly reminders: Reminder[];
   readonly msgs: ChatMessage[];
-  protected readonly _supdialog?: Dialog;
-  // present if this is a subdialog created by an autonomous teammate call from a supdialog
-  public assignmentFromSup?: AssignmentFromSup;
 
   // Persistence state
   protected _currentRound: number = 1;
   protected _remindersVer: number = 0;
   protected _activeGenSeq?: number;
+  protected _activeGenRound?: number;
   protected _status: 'running' | 'completed' | 'archived' = 'running';
   protected _createdAt: string;
   protected _updatedAt: string;
@@ -224,8 +223,6 @@ export abstract class Dialog {
     taskDocPath: string,
     id: DialogID | undefined,
     agentId: string,
-    supdialog?: Dialog,
-    assignmentFromSup?: AssignmentFromSup,
     initialState?: DialogInitParams['initialState'],
   ) {
     // Validate required parameters
@@ -243,16 +240,6 @@ export abstract class Dialog {
     this.agentId = agentId;
     this.reminders = initialState?.reminders || [];
     this.msgs = initialState?.messages || [];
-    this._supdialog = supdialog;
-    this.assignmentFromSup = assignmentFromSup
-      ? {
-          headLine: assignmentFromSup.headLine,
-          callBody: assignmentFromSup.callBody,
-          originMemberId: assignmentFromSup.originMemberId,
-          callerDialogId: assignmentFromSup.callerDialogId,
-          callId: assignmentFromSup.callId,
-        }
-      : undefined;
 
     // Initialize persistence state
     const now = formatUnifiedTimestamp(new Date());
@@ -266,7 +253,7 @@ export abstract class Dialog {
   }
 
   public get supdialog(): Dialog | undefined {
-    return this._supdialog;
+    return undefined;
   }
 
   /**
@@ -709,6 +696,10 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     return this._activeGenSeq;
   }
 
+  public get activeGenRoundOrUndefined(): number | undefined {
+    return this._activeGenRound;
+  }
+
   /**
    * Check if generation has started for the current round.
    * Used to ensure subdialog_final_response_evt arrives after parent events.
@@ -789,8 +780,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     }
 
     // Clear all messages and Q4H questions for mental clarity
-    // TODO: restore assignmentFromSup as first role=user msg in ctx, if this is subdlg
-    //       maybe define overridable method to "reset" ctx msgs?
     this.msgs.length = 0;
 
     await this.dlgStore.clearQuestions4Human(this);
@@ -806,7 +795,19 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     this._currentRound = storeRound;
     this._updatedAt = formatUnifiedTimestamp(new Date());
 
-    this.setUpNextPrompt(trimmedPrompt);
+    // Principle: user should see what the model sees.
+    // For subdialogs, include the original supdialog assignment together with the new-round prompt
+    // as the first user message in the new round (persisted by the driver).
+    const combinedPrompt =
+      this instanceof SubDialog
+        ? `${formatAssignmentFromSupdialog({
+            fromAgentId: this.assignmentFromSup.originMemberId,
+            toAgentId: this.agentId,
+            headLine: this.assignmentFromSup.headLine,
+            callBody: this.assignmentFromSup.callBody,
+          })}\n---\n${trimmedPrompt}`
+        : trimmedPrompt;
+    this.setUpNextPrompt(combinedPrompt);
   }
 
   // Proxy methods for DialogStore - route calls through dialog object instead of direct dlgStore access
@@ -815,6 +816,10 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   }
 
   public async notifyGeneratingStart(): Promise<void> {
+    // Capture the generation's starting round so any events emitted during this generation
+    // remain attributed to the correct round even if a tool mutates dialog.currentRound
+    // mid-generation (e.g., @clear_mind / @change_mind).
+    this._activeGenRound = this.currentRound;
     if (typeof this._activeGenSeq === 'number') {
       this._activeGenSeq++;
     } else {
@@ -843,6 +848,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     // Reset generation tracking for the next round
     this._generationStarted = false;
     this._generationStartedGenseq = 0;
+    this._activeGenRound = undefined;
   }
 
   public async streamError(error: string): Promise<void> {
@@ -1114,6 +1120,8 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 export class SubDialog extends Dialog {
   public readonly rootDialog: RootDialog;
   public readonly topicId?: string;
+  public assignmentFromSup: AssignmentFromSup;
+  protected readonly _supdialog: Dialog;
 
   constructor(
     dlgStore: DialogStore,
@@ -1121,30 +1129,49 @@ export class SubDialog extends Dialog {
     taskDocPath: string,
     id: DialogID | undefined,
     agentId: string,
+    assignmentFromSup: AssignmentFromSup,
     topicId?: string,
-    assignmentFromSup?: AssignmentFromSup,
     initialState?: DialogInitParams['initialState'],
   ) {
-    super(dlgStore, taskDocPath, id, agentId, undefined, assignmentFromSup, initialState);
+    super(dlgStore, taskDocPath, id, agentId, initialState);
     this.rootDialog = rootDialog;
     this.topicId = topicId;
+    this.assignmentFromSup = assignmentFromSup;
+    const resolvedSupdialog = rootDialog.lookupDialog(assignmentFromSup.callerDialogId);
+    if (resolvedSupdialog && resolvedSupdialog.id.selfId === this.id.selfId) {
+      log.warn(
+        'SubDialog assignmentFromSup.callerDialogId resolved to self; falling back to root',
+        {
+          dialogId: this.id.selfId,
+          callerDialogId: assignmentFromSup.callerDialogId,
+        },
+      );
+      this._supdialog = rootDialog;
+    } else if (resolvedSupdialog) {
+      this._supdialog = resolvedSupdialog;
+    } else {
+      // If we can't resolve the caller dialog in the in-memory registry, fall back to root.
+      // This can happen when restoring a dialog tree without restoring the full parent chain.
+      log.warn(
+        'SubDialog failed to resolve callerDialogId in root registry; falling back to root',
+        {
+          dialogId: this.id.selfId,
+          callerDialogId: assignmentFromSup.callerDialogId,
+          rootId: rootDialog.id.rootId,
+        },
+      );
+      this._supdialog = rootDialog;
+    }
     this.rootDialog.registerDialog(this);
   }
 
   public override get supdialog(): Dialog {
-    const assignment = this.assignmentFromSup;
-    if (assignment) {
-      const candidate = this.rootDialog.lookupDialog(assignment.callerDialogId);
-      if (candidate) {
-        return candidate;
-      }
-    }
-    return this.rootDialog;
+    return this._supdialog;
   }
 
   /**
-   * Create a subdialog - subdialogs cannot create other subdialogs.
-   * This delegates to the parent RootDialog.
+   * Create a subdialog under the same root dialog tree.
+   * The new subdialog's effective supdialog is resolved via AssignmentFromSup.callerDialogId.
    */
   async createSubDialog(
     targetAgentId: string,
@@ -1157,7 +1184,7 @@ export class SubDialog extends Dialog {
       topicId?: string;
     },
   ): Promise<SubDialog> {
-    return await this.supdialog.createSubDialog(targetAgentId, headLine, callBody, options);
+    return await this.rootDialog.createSubDialog(targetAgentId, headLine, callBody, options);
   }
 }
 
@@ -1178,7 +1205,7 @@ export class RootDialog extends Dialog {
     agentId: string,
     initialState?: DialogInitParams['initialState'],
   ) {
-    super(dlgStore, taskDocPath, id, agentId, undefined, undefined, initialState);
+    super(dlgStore, taskDocPath, id, agentId, initialState);
     this.registerDialog(this);
   }
 
@@ -1305,14 +1332,18 @@ export class RootDialog extends Dialog {
       }
 
       const subdialogStore = new DiskFileDialogStore(entry.subdialogId);
+      const assignmentFromSup = subdialogState.metadata.assignmentFromSup;
+      if (!assignmentFromSup) {
+        continue;
+      }
       const subdialog = new SubDialog(
         subdialogStore,
         this,
         subdialogState.metadata.taskDocPath,
         new DialogID(entry.subdialogId.selfId, this.id.rootId),
         subdialogState.metadata.agentId,
+        assignmentFromSup,
         entry.topicId,
-        subdialogState.metadata.assignmentFromSup,
         {
           messages: subdialogState.messages,
           reminders: subdialogState.reminders,
@@ -1363,7 +1394,6 @@ export abstract class DialogStore {
       supdialog.taskDocPath,
       subdialogId,
       targetAgentId,
-      options.topicId,
       {
         headLine,
         callBody,
@@ -1371,6 +1401,7 @@ export abstract class DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
       },
+      options.topicId,
     );
   }
 

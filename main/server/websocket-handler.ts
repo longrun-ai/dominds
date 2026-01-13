@@ -7,7 +7,7 @@ import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
-import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
+import { dialogEventRegistry } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -397,14 +397,22 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     let rootDialog: RootDialog | undefined;
     if (!isRoot && supdialog) {
       // This is a subdialog
+      const assignmentFromSup = metadata.assignmentFromSup;
+      if (!assignmentFromSup) {
+        log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
+          dialogId: dialogIdObj.selfId,
+          rootId: dialogIdObj.rootId,
+        });
+        return;
+      }
       dialog = new SubDialog(
         store,
         supdialog,
         metadata.taskDocPath,
         dialogIdObj,
         metadata.agentId,
+        assignmentFromSup,
         metadata.topicId,
-        metadata.assignmentFromSup,
       );
     } else {
       // This is a root dialog (or fallback if parent restore failed)
@@ -421,7 +429,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     // This bypasses PubChan to ensure only the requesting session receives restoration events
     // Pass decidedRound explicitly since dialog.currentRound defaults to 1 for new Dialog objects
     try {
-      await store.sendDialogEventsDirectly(ws, dialog, decidedRound);
+      await store.sendDialogEventsDirectly(ws, dialog, decidedRound, decidedRound);
     } catch (err) {
       log.warn(`Failed to send dialog events directly for ${dialogId}:`, err);
     }
@@ -615,14 +623,22 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
       let rootDialog: RootDialog | undefined;
       if (!isRoot && supdialog) {
         // This is a subdialog
+        const assignmentFromSup = metadata.assignmentFromSup;
+        if (!assignmentFromSup) {
+          log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
+            dialogId: dialogId.selfId,
+            rootId: dialogId.rootId,
+          });
+          return;
+        }
         dialog = new SubDialog(
           dialogUI,
           supdialog,
           metadata.taskDocPath,
           dialogId,
           metadata.agentId,
+          assignmentFromSup,
           metadata.topicId,
-          metadata.assignmentFromSup,
         );
       } else {
         // This is a root dialog (or fallback if parent restore failed)
@@ -633,13 +649,11 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
         await rootDialog.loadSubdialogRegistry();
         await rootDialog.loadPendingSubdialogsFromPersistence();
       }
-      postDialogEvent(dialog, {
-        type: 'round_update',
-        round: round,
-        totalRounds,
-      });
+      // Send the requested round's persisted events directly to this WebSocket.
+      // This is a UI navigation operation; do not emit via PubChan.
+      await dialogUI.sendDialogEventsDirectly(ws, dialog, round, totalRounds);
     } catch (err) {
-      log.warn('Failed to emit round_update for display_round', err);
+      log.warn('Failed to send dialog events for display_round', err);
     }
   } catch (error) {
     log.warn('Failed to handle display_round', error);
@@ -759,14 +773,22 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       let rootDialog: RootDialog | undefined;
       if (!isRoot && supdialog) {
         // This is a subdialog
+        const assignmentFromSup = metadata.assignmentFromSup;
+        if (!assignmentFromSup) {
+          log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
+            dialogId: dialogIdObj.selfId,
+            rootId: dialogIdObj.rootId,
+          });
+          return;
+        }
         dialog = new SubDialog(
           store,
           supdialog,
           metadata.taskDocPath,
           dialogIdObj,
           metadata.agentId,
+          assignmentFromSup,
           metadata.topicId,
-          metadata.assignmentFromSup,
           {
             messages: dialogState.messages,
             reminders: dialogState.reminders,
@@ -931,14 +953,22 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     let dialog: Dialog;
     let rootDialog: RootDialog | undefined;
     if (!isRoot && supdialog) {
+      const assignmentFromSup = metadata.assignmentFromSup;
+      if (!assignmentFromSup) {
+        log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
+          dialogId: dialogIdObj.selfId,
+          rootId: dialogIdObj.rootId,
+        });
+        return;
+      }
       dialog = new SubDialog(
         store,
         supdialog,
         metadata.taskDocPath,
         dialogIdObj,
         metadata.agentId,
+        assignmentFromSup,
         metadata.topicId,
-        metadata.assignmentFromSup,
       );
     } else {
       rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId);
@@ -1002,14 +1032,22 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     let restoredDialog: Dialog;
     let restoredRootDialog: RootDialog | undefined;
     if (!isRoot && restoredSupdialog) {
+      const assignmentFromSup = metadata.assignmentFromSup;
+      if (!assignmentFromSup) {
+        log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
+          dialogId: restoredDialogIdObj.selfId,
+          rootId: restoredDialogIdObj.rootId,
+        });
+        return;
+      }
       restoredDialog = new SubDialog(
         restoredStore,
         restoredSupdialog,
         metadata.taskDocPath,
         restoredDialogIdObj,
         metadata.agentId,
+        assignmentFromSup,
         metadata.topicId,
-        metadata.assignmentFromSup,
         {
           messages: dialogState.messages,
           reminders: dialogState.reminders,

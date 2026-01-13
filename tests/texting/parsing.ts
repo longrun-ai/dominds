@@ -81,11 +81,11 @@ async function runTest(
   // Process the input in chunks to test streaming behavior
   for (let i = 0; i < input.length; i += STREAM_CHUNK) {
     const chunk = input.substring(i, i + STREAM_CHUNK);
-    parser.takeUpstreamChunk(chunk);
+    await parser.takeUpstreamChunk(chunk);
   }
 
   // Finalize the parser
-  parser.finalize();
+  await parser.finalize();
 
   const collectCallsFromEvents = (
     events: RecordedEvent[],

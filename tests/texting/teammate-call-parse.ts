@@ -162,8 +162,7 @@ runTest('Type C without topic marker', () => {
   assertTrue(result.type === 'C', 'Should be Type C when no !topicId');
 
   // Verify no topicId in Type C
-  const typeC = result as TeammateCallTypeC;
-  assertTrue(typeC.topicId === undefined, 'Type C should not have topicId');
+  assertTrue((result as any).topicId === undefined, 'Type C should not have topicId');
 });
 
 // Test 8: Type discrimination

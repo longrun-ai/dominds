@@ -176,6 +176,31 @@ export class DomindsDialogContainer extends HTMLElement {
     this.render();
   }
 
+  /**
+   * Reset the dialog container for an in-place round transition (new round started).
+   * This clears all bubbles/sections from the previous round so the UI only shows the new round.
+   *
+   * Unlike setCurrentRound(), this does NOT request a round replay from the backend;
+   * it relies on live events that follow the round_update event.
+   */
+  public resetForRound(round: number): void {
+    // Reset per-round rendering state, but keep currentDialog/previousDialog intact.
+    this.generationBubble = undefined;
+    this.thinkingSection = undefined;
+    this.markdownSection = undefined;
+    this.callingSection = undefined;
+    this.codeblockSection = undefined;
+    this.currentRound = round;
+    this.activeGenSeq = undefined;
+    this.callingSectionByKey.clear();
+    this.callingSectionByCallId.clear();
+
+    const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (messages) {
+      messages.innerHTML = '';
+    }
+  }
+
   // Clean up current state and DOM content
   private cleanup(): void {
     this.previousDialog = undefined;
@@ -233,6 +258,21 @@ export class DomindsDialogContainer extends HTMLElement {
           currentDialog: this.currentDialog,
           previousDialog: this.previousDialog,
         });
+        return;
+      }
+    }
+
+    const currentRound = this.currentRound;
+    if (
+      currentRound !== undefined &&
+      event.type !== 'full_reminders_update' &&
+      event.type !== 'new_q4h_asked' &&
+      event.type !== 'q4h_answered'
+    ) {
+      // After a round transition (round_update -> resetForRound), the backend can still emit
+      // late events from the previous round. The UX rule is "one round in the timeline",
+      // so we must drop out-of-round events instead of trying to attach them to missing bubbles.
+      if (event.round !== currentRound) {
         return;
       }
     }

@@ -280,8 +280,8 @@ async function runChunkPreservationTest(scenario: ChunkPreservationTestScenario)
       `  Chunk ${chunkIndex}: "${chunk.substring(0, 30)}${chunk.length > 30 ? '...' : ''}"`,
     );
     receiver.recordUpstreamChunkSize(chunk.length);
-    const processed = parser.takeUpstreamChunk(chunk);
-    totalProcessed += processed;
+    await parser.takeUpstreamChunk(chunk);
+    totalProcessed += chunk.length;
     chunkIndex++;
     actualChunkBoundaries.push({
       position: totalProcessed,
@@ -292,7 +292,7 @@ async function runChunkPreservationTest(scenario: ChunkPreservationTestScenario)
 
   // Finalize the parser
   console.log('\n🔚 Finalizing parser...');
-  parser.finalize();
+  await parser.finalize();
 
   console.log(`\n📈 Results:`);
   console.log(`  Actual chunk boundaries: ${actualChunkBoundaries.length}`);

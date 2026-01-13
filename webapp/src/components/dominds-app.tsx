@@ -2897,6 +2897,15 @@ export class DomindsApp extends HTMLElement {
           if (input && typeof input.setDisabled === 'function') {
             input.setDisabled(this.toolbarCurrentRound !== latest);
           }
+          // UX principle: the user should only see one round at a time in the chat timeline.
+          // When the round changes (either via new round start or explicit round navigation),
+          // clear the dialog container so it can be refilled with bubbles for that round only.
+          const dc = this.shadowRoot?.querySelector(
+            '#dialog-container',
+          ) as DomindsDialogContainer | null;
+          if (dc && typeof dc.resetForRound === 'function') {
+            dc.resetForRound(message.round);
+          }
           this.bumpDialogLastModified(dialog.rootId, (message as TypedDialogEvent).timestamp);
           break;
         }

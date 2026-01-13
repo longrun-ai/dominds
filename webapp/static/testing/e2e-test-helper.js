@@ -282,9 +282,7 @@ function getTeammateResponseDetails() {
     }
     const narrativeLine = rawLines[narrativeIndex].trim();
     if (!narrativeLine.startsWith('Hi @') || !narrativeLine.includes('provided response')) {
-      throw new Error(
-        `getTeammateResponseDetails: Narrative line malformed "${narrativeLine}"`,
-      );
+      throw new Error(`getTeammateResponseDetails: Narrative line malformed "${narrativeLine}"`);
     }
     const originalCallMarker = 'to your original call:';
     const markerIndex = rawLines.findIndex((line) => line.trim() === originalCallMarker);
@@ -2709,6 +2707,18 @@ function setGlobal() {
     waitForTeammateResponse,
   };
   window.__e2e__ = g;
+
+  // Expose commonly used helpers as globals so ux-stories snippets can call them
+  const names = Object.keys(g);
+  for (const name of names) {
+    if (name === '__consoleErrors__') continue; // keep as window.__e2e__.__consoleErrors__ accessor only
+    const value = g[name];
+    const shouldExpose = typeof value === 'function' || name === 'sel' || name === 'DomindsUI';
+    if (!shouldExpose) continue;
+    if (Object.prototype.hasOwnProperty.call(window, name)) continue;
+    window[name] = value;
+  }
+
   return g;
 }
 

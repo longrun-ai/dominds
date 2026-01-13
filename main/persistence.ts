@@ -215,7 +215,6 @@ export class DiskFileDialogStore extends DialogStore {
       supdialog.taskDocPath,
       subdialogId,
       targetAgentId,
-      options.topicId,
       {
         headLine,
         callBody,
@@ -223,6 +222,7 @@ export class DiskFileDialogStore extends DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
       },
+      options.topicId,
     );
 
     // Initial subdialog user prompt is now persisted at first drive (driver.ts)
@@ -291,6 +291,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle function call results (includes logging)
    */
   public async receiveFuncResult(dialog: Dialog, funcResult: FuncResultMsg): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     // Persist function result record
     const funcResultRecord: FuncResultRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -300,7 +301,7 @@ export class DiskFileDialogStore extends DialogStore {
       content: funcResult.content,
       genseq: dialog.activeGenSeq,
     };
-    await this.appendEvent(dialog.currentRound, funcResultRecord);
+    await this.appendEvent(round, funcResultRecord);
 
     // Send event to frontend
     const funcResultEvt: FunctionResultEvent = {
@@ -308,7 +309,7 @@ export class DiskFileDialogStore extends DialogStore {
       id: funcResult.id,
       name: funcResult.name,
       content: funcResult.content,
-      round: dialog.currentRound,
+      round,
     };
     postDialogEvent(dialog, funcResultEvt);
   }
@@ -330,7 +331,7 @@ export class DiskFileDialogStore extends DialogStore {
     status: 'completed' | 'failed',
     _subdialogId?: DialogID,
   ): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     // Use activeGenSeqOrUndefined to avoid throwing when called outside generation context
     // (e.g., from WebSocket handler for parent-calls)
     const calling_genseq = dialog.activeGenSeqOrUndefined;
@@ -388,7 +389,7 @@ export class DiskFileDialogStore extends DialogStore {
     status: 'completed' | 'failed',
     callId: string,
   ): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     // Persist record WITH callId for replay correlation
     const ev: ToolCallResultRecord = {
@@ -452,7 +453,7 @@ export class DiskFileDialogStore extends DialogStore {
       originMemberId: string;
     },
   ): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     const calleeDialogSelfId = calleeDialogId ? calleeDialogId.selfId : undefined;
     const response = options.response;
@@ -512,7 +513,7 @@ export class DiskFileDialogStore extends DialogStore {
    * to ensure proper event ordering on the frontend.
    */
   public async notifyGeneratingStart(dialog: Dialog): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const genseq = dialog.activeGenSeq;
     try {
       const ev: PersistedDialogRecord = {
@@ -544,7 +545,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Notify end of LLM generation for frontend bubble management
    */
   public async notifyGeneratingFinish(dialog: Dialog): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const genseq = dialog.activeGenSeq;
     if (genseq === undefined) {
       throw new Error('Missing active genseq for notifyGeneratingFinish');
@@ -586,6 +587,7 @@ export class DiskFileDialogStore extends DialogStore {
     this.sayingContent += chunk;
   }
   public async sayingFinish(dialog: Dialog): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const sayingContent = this.sayingContent.trim();
     // Persist saying content as a message event
     if (sayingContent) {
@@ -595,32 +597,35 @@ export class DiskFileDialogStore extends DialogStore {
         genseq: dialog.activeGenSeq,
         content: sayingContent,
       };
-      await this.appendEvent(dialog.currentRound, sayingMessageEvent);
+      await this.appendEvent(round, sayingMessageEvent);
     }
   }
 
   public async thinkingStart(dialog: Dialog): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     // Reset thinking content tracker
     this.thinkingContent = '';
     const thinkingStartEvt: ThinkingStartEvent = {
       type: 'thinking_start_evt',
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, thinkingStartEvt);
   }
   public async thinkingChunk(dialog: Dialog, chunk: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     // Collect thinking content for persistence
     this.thinkingContent += chunk;
     const thinkingChunkEvt: ThinkingChunkEvent = {
       type: 'thinking_chunk_evt',
       chunk,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, thinkingChunkEvt);
   }
   public async thinkingFinish(dialog: Dialog): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     // Persist thinking content as a message event
     if (this.thinkingContent.trim()) {
       const thinkingMessageEvent: AgentThoughtRecord = {
@@ -629,65 +634,71 @@ export class DiskFileDialogStore extends DialogStore {
         genseq: dialog.activeGenSeq,
         content: this.thinkingContent.trim(),
       };
-      await this.appendEvent(dialog.currentRound, thinkingMessageEvent);
+      await this.appendEvent(round, thinkingMessageEvent);
     }
     const thinkingFinishEvt: ThinkingFinishEvent = {
       type: 'thinking_finish_evt',
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, thinkingFinishEvt);
   }
 
   public async markdownStart(dialog: Dialog): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const markdownStartEvt: MarkdownStartEvent = {
       type: 'markdown_start_evt',
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, markdownStartEvt);
   }
   public async markdownChunk(dialog: Dialog, chunk: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: MarkdownChunkEvent = {
       type: 'markdown_chunk_evt',
       chunk,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
   public async markdownFinish(dialog: Dialog): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: MarkdownFinishEvent = {
       type: 'markdown_finish_evt',
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async codeBlockStart(dialog: Dialog, infoLine?: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: CodeBlockStartEvent = {
       type: 'codeblock_start_evt',
       infoLine,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
   public async codeBlockChunk(dialog: Dialog, chunk: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const codeBlockChunkEvt: CodeBlockChunkEvent = {
       type: 'codeblock_chunk_evt',
       chunk,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, codeBlockChunkEvt);
   }
   public async codeBlockFinish(dialog: Dialog, endQuote?: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const codeBlockFinishEvt: CodeBlockFinishEvent = {
       type: 'codeblock_finish_evt',
       endQuote,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, codeBlockFinishEvt);
@@ -695,69 +706,76 @@ export class DiskFileDialogStore extends DialogStore {
 
   // Tool call streaming methods (renamed from calling to tool_call)
   public async callingStart(dialog: Dialog, firstMention: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallStartEvent = {
       type: 'tool_call_start_evt',
       firstMention,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingHeadlineChunk(dialog: Dialog, chunk: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallHeadlineChunkEvent = {
       type: 'tool_call_headline_chunk_evt',
       chunk,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingHeadlineFinish(dialog: Dialog): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallHeadlineFinishEvent = {
       type: 'tool_call_headline_finish_evt',
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingBodyStart(dialog: Dialog, infoLine?: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallBodyStartEvent = {
       type: 'tool_call_body_start_evt',
       infoLine,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingBodyChunk(dialog: Dialog, chunk: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallBodyChunkEvent = {
       type: 'tool_call_body_chunk_evt',
       chunk,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingBodyFinish(dialog: Dialog, endQuote?: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallBodyFinishEvent = {
       type: 'tool_call_body_finish_evt',
       endQuote,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingFinish(dialog: Dialog, callId: string): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallFinishEvent = {
       type: 'tool_call_finish_evt',
       callId,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
@@ -770,12 +788,13 @@ export class DiskFileDialogStore extends DialogStore {
     funcName: string,
     argumentsStr: string,
   ): Promise<void> {
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const funcCallEvt: FuncCallStartEvent = {
       type: 'func_call_requested_evt',
       funcId,
       funcName,
       arguments: argumentsStr,
-      round: dialog.currentRound,
+      round,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, funcCallEvt);
@@ -787,7 +806,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async streamError(dialog: Dialog, error: string): Promise<void> {
     log.error(`Dialog stream error '${error}'`, new Error(), { dialog });
 
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const genseq = typeof dialog.activeGenSeq === 'number' ? dialog.activeGenSeq : undefined;
 
     // Enhanced stream error event with better error classification
@@ -873,7 +892,7 @@ export class DiskFileDialogStore extends DialogStore {
     type: 'thinking_msg' | 'saying_msg',
     provider_data?: ProviderData,
   ): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
 
     const event: AgentThoughtRecord | AgentWordsRecord =
       type === 'thinking_msg'
@@ -904,7 +923,7 @@ export class DiskFileDialogStore extends DialogStore {
     arguments_: ToolArguments,
     genseq: number,
   ): Promise<void> {
-    const round = dialog.currentRound;
+    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
 
     const funcCallEvent: FuncCallRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -986,15 +1005,18 @@ export class DiskFileDialogStore extends DialogStore {
    * @param ws - WebSocket connection to send events to
    * @param dialog - Dialog object containing metadata
    * @param round - Optional round number (uses dialog.currentRound if not provided)
+   * @param totalRounds - Optional total rounds count (defaults to round/currentRound)
    */
   public async sendDialogEventsDirectly(
     ws: WebSocket,
     dialog: Dialog,
     round?: number,
+    totalRounds?: number,
   ): Promise<void> {
     try {
       // Use provided round or fallback to dialog.currentRound (which may be stale for new Dialog objects)
       const currentRound = round ?? dialog.currentRound;
+      const effectiveTotalRounds = totalRounds ?? currentRound;
       const persistenceEvents = await DialogPersistence.readRoundEvents(
         dialog.id,
         currentRound,
@@ -1010,7 +1032,7 @@ export class DiskFileDialogStore extends DialogStore {
             rootId: dialog.id.rootId,
           },
           round: currentRound,
-          totalRounds: currentRound,
+          totalRounds: effectiveTotalRounds,
         }),
       );
 
@@ -1018,7 +1040,7 @@ export class DiskFileDialogStore extends DialogStore {
 
       // Send each persistence event directly to the requesting WebSocket
       for (const event of persistenceEvents) {
-        await this.sendEventDirectlyToWebSocket(ws, dialog, event);
+        await this.sendEventDirectlyToWebSocket(ws, dialog, currentRound, event);
       }
 
       // Rehydrate reminders from dialog state
@@ -1045,10 +1067,9 @@ export class DiskFileDialogStore extends DialogStore {
   private async sendEventDirectlyToWebSocket(
     ws: WebSocket,
     dialog: Dialog,
+    round: number,
     event: PersistedDialogRecord,
   ): Promise<void> {
-    const round = dialog.currentRound;
-
     switch (event.type) {
       case 'human_text_record': {
         const genseq = event.genseq;
@@ -1240,8 +1261,8 @@ export class DiskFileDialogStore extends DialogStore {
 
             // Parse user content through TextingStreamParser (same as live mode)
             const streamingParser = new TextingStreamParser(receiver);
-            streamingParser.takeUpstreamChunk(content);
-            streamingParser.finalize();
+            await streamingParser.takeUpstreamChunk(content);
+            await streamingParser.finalize();
           } else {
             if (ws.readyState === 1) {
               ws.send(
@@ -1620,8 +1641,8 @@ export class DiskFileDialogStore extends DialogStore {
           const streamingParser = new TextingStreamParser(receiver);
 
           // Stream the content through the parser to ensure consistent event emission
-          streamingParser.takeUpstreamChunk(content);
-          streamingParser.finalize();
+          await streamingParser.takeUpstreamChunk(content);
+          await streamingParser.finalize();
         }
         break;
       }

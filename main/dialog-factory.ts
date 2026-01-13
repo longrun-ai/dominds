@@ -54,7 +54,6 @@ export class DialogFactory {
       taskDocPath,
       subdialogId,
       targetAgentId,
-      options.topicId,
       {
         headLine,
         callBody,
@@ -62,6 +61,7 @@ export class DialogFactory {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
       },
+      options.topicId,
       initialState,
     );
   }

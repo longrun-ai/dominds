@@ -230,8 +230,8 @@ export async function emitSayingEvents(
 
   const receiver = createSayingEventsReceiver(dlg);
   const parser = new TextingStreamParser(receiver);
-  parser.takeUpstreamChunk(content);
-  parser.finalize();
+  await parser.takeUpstreamChunk(content);
+  await parser.finalize();
 
   return parser.getCollectedCalls();
 }
@@ -998,12 +998,12 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
                 },
                 sayingChunk: async (chunk: string) => {
                   currentSayingContent += chunk;
-                  parser.takeUpstreamChunk(chunk);
+                  await parser.takeUpstreamChunk(chunk);
                   // Dialog store handles persistence - maintain ordering guarantee
                   await dlg.sayingChunk(chunk);
                 },
                 sayingFinish: async () => {
-                  parser.finalize();
+                  await parser.finalize();
 
                   const sayingMessage: SayingMsg = {
                     type: 'saying_msg',
@@ -1323,14 +1323,18 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
         // Create DialogID for subdialog: parent ID is the root dialog ID
         const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
         const subdialogStore = new DiskFileDialogStore(restoredSubdialogId);
+        const assignmentFromSup = subdialogState.metadata.assignmentFromSup;
+        if (!assignmentFromSup) {
+          continue;
+        }
         const subdialog = new SubDialog(
           subdialogStore,
           rootDialog,
           subdialogState.metadata.taskDocPath,
           restoredSubdialogId,
           subdialogState.metadata.agentId,
+          assignmentFromSup,
           subdialogState.metadata.topicId,
-          subdialogState.metadata.assignmentFromSup,
           {
             messages: subdialogState.messages,
             reminders: subdialogState.reminders,
@@ -1757,7 +1761,7 @@ export async function supplyResponseToSupdialog(
         if (!metadata) {
           metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'completed');
         }
-        if (metadata?.assignmentFromSup) {
+        if (metadata && metadata.assignmentFromSup) {
           originMemberId = metadata.assignmentFromSup.originMemberId;
           if (!pendingRecord) {
             const assignmentHead = metadata.assignmentFromSup.headLine;
@@ -2070,8 +2074,8 @@ async function executeTextingCall(
     // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
     // This suspends the subdialog, drives the supdialog for one round, then returns to subdialog
     if (parseResult.type === 'A') {
-      // Verify this is a subdialog with a supdialog
-      if (dlg.supdialog) {
+      // Type A is only valid from a subdialog (calling back to its supdialog).
+      if (dlg instanceof SubDialog) {
         const supdialog = dlg.supdialog;
 
         // Suspend the subdialog
@@ -2079,10 +2083,6 @@ async function executeTextingCall(
 
         try {
           const assignment = dlg.assignmentFromSup;
-          if (!assignment) {
-            // Type A supcall requires the original assignment context to reference the parent call.
-            throw new Error('Type A supcall is missing assignmentFromSup on subdialog.');
-          }
           const supPrompt: HumanPrompt = {
             content: formatSupdialogCallPrompt({
               fromAgentId: dlg.agentId,

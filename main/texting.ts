@@ -195,6 +195,7 @@ export class TextingStreamParser {
   constructor(downstream: TextingEventsReceiver) {
     this.downstream = downstream;
   }
+
   private readonly CHUNK_THRESHOLD = 10;
   private markdownStarted = false;
 
@@ -257,7 +258,7 @@ export class TextingStreamParser {
     return this.currentCall;
   }
 
-  private emitCallStart(firstMention: string): void {
+  private async emitCallStart(firstMention: string): Promise<void> {
     const call = this.ensureCurrentCall();
     if (call.firstMention && call.firstMention !== firstMention) {
       throw new Error(
@@ -267,23 +268,23 @@ export class TextingStreamParser {
     call.firstMention = firstMention;
     if (this.markdownChunkBuffer) {
       if (!this.markdownStarted) {
-        this.downstream.markdownStart();
+        await this.downstream.markdownStart();
         this.markdownStarted = true;
       }
-      this.downstream.markdownChunk(this.markdownChunkBuffer);
+      await this.downstream.markdownChunk(this.markdownChunkBuffer);
       this.markdownChunkBuffer = '';
     }
     if (this.markdownStarted) {
-      this.downstream.markdownFinish();
+      await this.downstream.markdownFinish();
       this.markdownStarted = false;
     }
     // callId will be computed at emitCallFinish using content-hash
     // This ensures replay generates the same callId for correlation
-    this.downstream.callStart(firstMention);
+    await this.downstream.callStart(firstMention);
     this.callStartEmitted = true;
   }
 
-  private emitCallFinish(): void {
+  private async emitCallFinish(): Promise<void> {
     const hadCallStart = this.callStartEmitted;
     this.callStartEmitted = false;
     if (!this.currentCall || !hadCallStart || !this.currentCall.firstMention) {
@@ -298,7 +299,7 @@ export class TextingStreamParser {
     done.callId = generateContentHash(content, this.callCounter);
     this.currentCallId = done.callId;
     this.collectedCalls.push(done);
-    this.downstream.callFinish(done.callId);
+    await this.downstream.callFinish(done.callId);
   }
 
   private abortCallToMarkdown(): void {
@@ -330,7 +331,7 @@ export class TextingStreamParser {
     return this.firstMentionAccumulator.length > 1;
   }
 
-  public takeUpstreamChunk(chunk: string): number {
+  public async takeUpstreamChunk(chunk: string): Promise<void> {
     let position = 0;
 
     while (position < chunk.length) {
@@ -340,22 +341,22 @@ export class TextingStreamParser {
 
       switch (this.mode) {
         case ParserMode.FREE_TEXT:
-          position = this.processFreeTextChunk(chunk, position, char, charType);
+          position = await this.processFreeTextChunk(chunk, position, char, charType);
           break;
         case ParserMode.TEXTING_CALL_HEADLINE:
-          position = this.processTextingCallHeadlineChunk(chunk, position, char, charType);
+          position = await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
           break;
         case ParserMode.TEXTING_CALL_BEFORE_BODY:
-          position = this.processTextingCallBeforeBodyChunk(chunk, position, char, charType);
+          position = await this.processTextingCallBeforeBodyChunk(chunk, position, char, charType);
           break;
         case ParserMode.TEXTING_CALL_BODY:
-          position = this.processTextingCallBodyChunk(chunk, position, char, charType);
+          position = await this.processTextingCallBodyChunk(chunk, position, char, charType);
           break;
         case ParserMode.CODE_BLOCK_INFO:
-          position = this.processCodeBlockInfoChar(chunk, position, char, charType);
+          position = await this.processCodeBlockInfoChar(chunk, position, char, charType);
           break;
         case ParserMode.CODE_BLOCK_CONTENT:
-          position = this.processCodeBlockContentChunk(chunk, position, char, charType);
+          position = await this.processCodeBlockContentChunk(chunk, position, char, charType);
           break;
       }
 
@@ -367,26 +368,25 @@ export class TextingStreamParser {
       }
     }
 
-    this.flushAtUpstreamChunkEnd();
-    return position;
+    await this.flushAtUpstreamChunkEnd();
   }
 
-  public finalize(): void {
+  public async finalize(): Promise<void> {
     if (this.markdownChunkBuffer) {
       if (!this.markdownStarted) {
-        this.downstream.markdownStart();
+        await this.downstream.markdownStart();
         this.markdownStarted = true;
       }
-      this.downstream.markdownChunk(this.markdownChunkBuffer);
+      await this.downstream.markdownChunk(this.markdownChunkBuffer);
       this.markdownChunkBuffer = '';
     }
 
     if (this.codeBlockChunkBuffer) {
-      this.flushCodeBlockBuffer();
+      await this.flushCodeBlockBuffer();
     }
 
     if (this.mode === ParserMode.CODE_BLOCK_CONTENT) {
-      this.downstream.codeBlockFinish('');
+      await this.downstream.codeBlockFinish('');
       this.mode = ParserMode.FREE_TEXT;
     }
 
@@ -403,45 +403,45 @@ export class TextingStreamParser {
       } else {
         if (this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
-          this.emitCallStart(firstMention);
+          await this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
           this.expectingFirstMention = false;
         }
-        this.flushHeadlineBuffer();
-        this.downstream.callHeadLineFinish();
+        await this.flushHeadlineBuffer();
+        await this.downstream.callHeadLineFinish();
         this.headlineFinished = true;
 
         // Only emit callFinish if a call was actually started (currentCall has firstMention)
         if (this.currentCall?.firstMention) {
-          this.emitCallFinish();
+          await this.emitCallFinish();
         }
       }
     } else if (this.mode === ParserMode.TEXTING_CALL_BEFORE_BODY) {
       // Only emit callFinish if a call was actually started (this.currentCall exists)
       if (this.currentCall) {
-        this.emitCallFinish();
+        await this.emitCallFinish();
       }
     } else if (this.mode === ParserMode.TEXTING_CALL_BODY) {
-      this.flushBodyBuffer();
-      this.downstream.callBodyFinish(this.isTripleQuotedBody ? '```' : undefined);
+      await this.flushBodyBuffer();
+      await this.downstream.callBodyFinish(this.isTripleQuotedBody ? '```' : undefined);
 
       // Only emit callFinish if a call was actually started (this.currentCall exists)
       if (this.currentCall) {
-        this.emitCallFinish();
+        await this.emitCallFinish();
       }
     }
 
     if (this.markdownChunkBuffer) {
       if (!this.markdownStarted) {
-        this.downstream.markdownStart();
+        await this.downstream.markdownStart();
         this.markdownStarted = true;
       }
-      this.downstream.markdownChunk(this.markdownChunkBuffer);
+      await this.downstream.markdownChunk(this.markdownChunkBuffer);
       this.markdownChunkBuffer = '';
     }
 
     if (this.markdownStarted) {
-      this.downstream.markdownFinish();
+      await this.downstream.markdownFinish();
       this.markdownStarted = false;
     }
   }
@@ -478,12 +478,12 @@ export class TextingStreamParser {
   }
 
   // Free text processing
-  private processFreeTextChunk(
+  private async processFreeTextChunk(
     chunk: string,
     position: number,
     char: string,
     charType: CharType,
-  ): number {
+  ): Promise<number> {
     // Check for @ mentions anywhere in free text
     if (charType === CharType.AT) {
       // Update backtick state for @ character - this handles toggling inSingleBacktick
@@ -504,12 +504,12 @@ export class TextingStreamParser {
         if (this.markdownChunkBuffer) {
           if (this.isAtLineStart) {
             if (!this.markdownStarted) {
-              this.downstream.markdownStart();
+              await this.downstream.markdownStart();
               this.markdownStarted = true;
             }
-            this.downstream.markdownChunk(this.markdownChunkBuffer);
+            await this.downstream.markdownChunk(this.markdownChunkBuffer);
             this.markdownChunkBuffer = '';
-            this.downstream.markdownFinish();
+            await this.downstream.markdownFinish();
             this.markdownStarted = false;
           }
         }
@@ -547,11 +547,11 @@ export class TextingStreamParser {
         if (cleanBuffer && cleanBuffer.trim()) {
           // Only emit markdown events if there's actual content to finish
           if (!this.markdownStarted) {
-            this.downstream.markdownStart();
+            await this.downstream.markdownStart();
             this.markdownStarted = true;
           }
-          this.downstream.markdownChunk(cleanBuffer);
-          this.downstream.markdownFinish();
+          await this.downstream.markdownChunk(cleanBuffer);
+          await this.downstream.markdownFinish();
           this.markdownStarted = false;
         }
         this.markdownChunkBuffer = '';
@@ -582,12 +582,12 @@ export class TextingStreamParser {
   }
 
   // Call headline processing
-  private processTextingCallHeadlineChunk(
+  private async processTextingCallHeadlineChunk(
     chunk: string,
     position: number,
     char: string,
     charType: CharType,
-  ): number {
+  ): Promise<number> {
     this.ensureCurrentCall();
 
     if (charType === CharType.AT) {
@@ -656,20 +656,20 @@ export class TextingStreamParser {
             // Ensure callStart is called before finishing
             if (this.hasValidFirstMention()) {
               const firstMention = this.firstMentionAccumulator.substring(1);
-              this.emitCallStart(firstMention);
+              await this.emitCallStart(firstMention);
               this.firstMentionAccumulator = '';
               this.expectingFirstMention = false;
             }
 
-            this.flushHeadlineBuffer();
-            this.downstream.callHeadLineFinish();
+            await this.flushHeadlineBuffer();
+            await this.downstream.callHeadLineFinish();
             this.headlineFinished = true;
 
             // Start triple quoted body
             this.hasBody = true;
             this.isTripleQuotedBody = true;
             this.tripleQuotedBodyOpen = true;
-            this.downstream.callBodyStart('```');
+            await this.downstream.callBodyStart('```');
             this.bodyChunkBuffer = '```';
             this.mode = ParserMode.TEXTING_CALL_BODY;
             return checkPos;
@@ -686,15 +686,15 @@ export class TextingStreamParser {
           if (sawExtraNewline) {
             if (this.hasValidFirstMention()) {
               const firstMention = this.firstMentionAccumulator.substring(1);
-              this.emitCallStart(firstMention);
+              await this.emitCallStart(firstMention);
               this.firstMentionAccumulator = '';
               this.expectingFirstMention = false;
             }
-            this.flushHeadlineBuffer();
-            this.downstream.callHeadLineFinish();
+            await this.flushHeadlineBuffer();
+            await this.downstream.callHeadLineFinish();
             this.headlineFinished = true;
             this.mode = ParserMode.TEXTING_CALL_BEFORE_BODY;
-            this.emitCallFinish();
+            await this.emitCallFinish();
             this.mode = ParserMode.TEXTING_CALL_HEADLINE;
             this.firstMentionAccumulator = '';
             this.headlineBuffer = '';
@@ -723,13 +723,13 @@ export class TextingStreamParser {
         // Ensure callStart is called before finishing
         if (this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
-          this.emitCallStart(firstMention);
+          await this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
           this.expectingFirstMention = false;
         }
 
-        this.flushHeadlineBuffer();
-        this.downstream.callHeadLineFinish();
+        await this.flushHeadlineBuffer();
+        await this.downstream.callHeadLineFinish();
         this.headlineFinished = true;
         this.mode = ParserMode.TEXTING_CALL_BEFORE_BODY;
         return position + 1;
@@ -737,12 +737,12 @@ export class TextingStreamParser {
         // End of chunk, finalize headline to allow body detection in the next chunk
         if (this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
-          this.emitCallStart(firstMention);
+          await this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
           this.expectingFirstMention = false;
         }
-        this.flushHeadlineBuffer();
-        this.downstream.callHeadLineFinish();
+        await this.flushHeadlineBuffer();
+        await this.downstream.callHeadLineFinish();
         this.headlineFinished = true;
         this.mode = ParserMode.TEXTING_CALL_BEFORE_BODY;
         return position + 1;
@@ -773,7 +773,7 @@ export class TextingStreamParser {
         // More than just '@'
         // Start the call with the first mention (remove @ prefix)
         const firstMention = this.firstMentionAccumulator.substring(1); // Remove '@'
-        this.emitCallStart(firstMention);
+        await this.emitCallStart(firstMention);
       }
 
       // Clear first mention since we're now in headline content
@@ -813,7 +813,7 @@ export class TextingStreamParser {
         if (this.firstMentionAccumulator.length > 1 && !this.callStartEmitted) {
           // More than just '@'
           const firstMention = this.firstMentionAccumulator.substring(1); // Remove '@'
-          this.emitCallStart(firstMention);
+          await this.emitCallStart(firstMention);
         }
         this.firstMentionAccumulator = '';
         this.expectingFirstMention = false;
@@ -827,28 +827,28 @@ export class TextingStreamParser {
   }
 
   // Call before body processing
-  private processTextingCallBeforeBodyChunk(
+  private async processTextingCallBeforeBodyChunk(
     chunk: string,
     position: number,
     char: string,
     charType: CharType,
-  ): number {
+  ): Promise<number> {
     // Handle @/ termination marker
     if (this.pendingAtTermination && char === '/') {
       this.pendingAtTermination = false;
       // Finish headline first if we haven't already
       if (this.headlineBuffer && !this.headlineFinished) {
-        this.downstream.callHeadLineFinish();
+        await this.downstream.callHeadLineFinish();
         this.headlineFinished = true;
       }
       // Emit callBodyStart for empty body (needed for proper event sequencing)
       if (!this.hasBody) {
         this.hasBody = true;
-        this.downstream.callBodyStart();
+        await this.downstream.callBodyStart();
         this.bodyChunkBuffer = '';
       }
       // Now finish the call
-      this.emitCallFinish();
+      await this.emitCallFinish();
 
       // Handle newline at chunk boundary in BEFORE_BODY mode
       // This ensures callStart is emitted when next @ is processed
@@ -887,14 +887,14 @@ export class TextingStreamParser {
             this.hasBody = true;
             this.isTripleQuotedBody = true;
             this.tripleQuotedBodyOpen = true;
-            this.downstream.callBodyStart('```');
+            await this.downstream.callBodyStart('```');
             this.bodyChunkBuffer = '```';
             this.mode = ParserMode.TEXTING_CALL_BODY;
             return aheadPos + 3;
           }
         }
         if (nextType === CharType.AT) {
-          this.emitCallFinish();
+          await this.emitCallFinish();
           this.mode = ParserMode.TEXTING_CALL_HEADLINE;
           this.firstMentionAccumulator = '';
           this.headlineBuffer = '';
@@ -907,7 +907,7 @@ export class TextingStreamParser {
           continue;
         }
         this.hasBody = true;
-        this.downstream.callBodyStart();
+        await this.downstream.callBodyStart();
         this.mode = ParserMode.TEXTING_CALL_BODY;
         this.bodyChunkBuffer = '';
         return position + 1;
@@ -925,7 +925,7 @@ export class TextingStreamParser {
         this.hasBody = true;
         this.isTripleQuotedBody = true;
         this.tripleQuotedBodyOpen = true;
-        this.downstream.callBodyStart('```');
+        await this.downstream.callBodyStart('```');
         // Include the opening triple backticks in the body content
         this.bodyChunkBuffer = '```';
         this.pendingInitialBackticks = 0;
@@ -963,7 +963,7 @@ export class TextingStreamParser {
             this.hasBody = true;
             this.isTripleQuotedBody = true;
             this.tripleQuotedBodyOpen = true;
-            this.downstream.callBodyStart('```');
+            await this.downstream.callBodyStart('```');
             this.bodyChunkBuffer = '```';
             this.mode = ParserMode.TEXTING_CALL_BODY;
             return aheadPos + 3;
@@ -990,10 +990,10 @@ export class TextingStreamParser {
               this.hasBody = false;
               // Emit headline finish before call finish
               if (this.headlineBuffer) {
-                this.downstream.callHeadLineFinish();
+                await this.downstream.callHeadLineFinish();
               }
               this.headlineFinished = true;
-              this.emitCallFinish();
+              await this.emitCallFinish();
 
               // Switch to free text mode - @/ terminates the call, doesn't start a new one
               this.mode = ParserMode.FREE_TEXT;
@@ -1004,10 +1004,10 @@ export class TextingStreamParser {
             this.hasBody = false;
             // Emit headline finish before call finish
             if (this.headlineBuffer) {
-              this.downstream.callHeadLineFinish();
+              await this.downstream.callHeadLineFinish();
             }
             this.headlineFinished = true;
-            this.emitCallFinish();
+            await this.emitCallFinish();
 
             // Start processing as new call
             this.mode = ParserMode.TEXTING_CALL_HEADLINE;
@@ -1020,11 +1020,11 @@ export class TextingStreamParser {
             // @ is not at line start, treat as body content
             // Emit headline finish before body start
             if (this.headlineBuffer) {
-              this.downstream.callHeadLineFinish();
+              await this.downstream.callHeadLineFinish();
             }
             this.headlineFinished = true;
             this.hasBody = true;
-            this.downstream.callBodyStart();
+            await this.downstream.callBodyStart();
             this.mode = ParserMode.TEXTING_CALL_BODY;
             this.bodyChunkBuffer = '';
             return position + 1;
@@ -1034,7 +1034,7 @@ export class TextingStreamParser {
         } else {
           // Found actual content - this is a body
           this.hasBody = true;
-          this.downstream.callBodyStart();
+          await this.downstream.callBodyStart();
           this.mode = ParserMode.TEXTING_CALL_BODY;
           this.bodyChunkBuffer = '';
           return position + 1;
@@ -1051,13 +1051,13 @@ export class TextingStreamParser {
         return position + 1;
       }
       if (position + 1 < chunk.length && chunk[position + 1] === '/') {
-        this.emitCallFinish();
+        await this.emitCallFinish();
         this.mode = ParserMode.FREE_TEXT;
         return position + 2;
       }
-      this.downstream.markdownStart();
-      this.downstream.markdownFinish();
-      this.emitCallFinish();
+      await this.downstream.markdownStart();
+      await this.downstream.markdownFinish();
+      await this.emitCallFinish();
       let mention = '';
       let i = position + 1;
       while (i < chunk.length) {
@@ -1080,7 +1080,7 @@ export class TextingStreamParser {
         i++;
       }
       if (mention) {
-        this.emitCallStart(mention);
+        await this.emitCallStart(mention);
         this.firstMentionAccumulator = '';
         this.expectingFirstMention = false;
       } else {
@@ -1093,11 +1093,11 @@ export class TextingStreamParser {
       this.headlineFinished = false;
 
       // Process this @ character in the new call context
-      return this.processTextingCallHeadlineChunk(chunk, position, char, charType);
+      return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
     }
 
     // Any other character means there IS a body - start processing it
-    this.downstream.callBodyStart();
+    await this.downstream.callBodyStart();
     this.mode = ParserMode.TEXTING_CALL_BODY;
     // Seed body buffer with any pending initial backticks, then reprocess current char
     if (this.pendingInitialBackticks > 0) {
@@ -1112,19 +1112,19 @@ export class TextingStreamParser {
   }
 
   // Call body processing
-  private processTextingCallBodyChunk(
+  private async processTextingCallBodyChunk(
     chunk: string,
     position: number,
     char: string,
     charType: CharType,
-  ): number {
+  ): Promise<number> {
     // Handle @/ termination for streaming calls (this should always work)
     // Check for @/ in current chunk first
     if (char === '@' && position + 1 < chunk.length && chunk[position + 1] === '/') {
       // End the call here
-      this.flushBodyBuffer();
-      this.downstream.callBodyFinish();
-      this.emitCallFinish();
+      await this.flushBodyBuffer();
+      await this.downstream.callBodyFinish();
+      await this.emitCallFinish();
 
       // Switch to free text for remaining content
       this.mode = ParserMode.FREE_TEXT;
@@ -1135,7 +1135,7 @@ export class TextingStreamParser {
       // Only start markdown if we actually have content to process
       if (hasMarkdownContent) {
         this.markdownStarted = true;
-        this.downstream.markdownStart();
+        await this.downstream.markdownStart();
       } else {
         this.markdownStarted = false; // Ensure we don't have stale state
       }
@@ -1154,9 +1154,9 @@ export class TextingStreamParser {
     if (this.pendingAtTermination && char === '/') {
       this.pendingAtTermination = false;
       // Don't add @ or / to body buffer
-      this.flushBodyBuffer();
-      this.downstream.callBodyFinish();
-      this.emitCallFinish();
+      await this.flushBodyBuffer();
+      await this.downstream.callBodyFinish();
+      await this.emitCallFinish();
 
       // Switch to free text for remaining content
       this.mode = ParserMode.FREE_TEXT;
@@ -1167,7 +1167,7 @@ export class TextingStreamParser {
       // Only start markdown if we actually have content to process
       if (hasMarkdownContent) {
         this.markdownStarted = true;
-        this.downstream.markdownStart();
+        await this.downstream.markdownStart();
       } else {
         this.markdownStarted = false; // Ensure we don't have stale state
       }
@@ -1193,9 +1193,9 @@ export class TextingStreamParser {
       // 2. AND we're not currently processing triple backticks (backtickState is NONE)
       if (!hasTripleBackticks && this.backtickState === BacktickState.NONE) {
         // Not a wholly triple quoted body - @ at line start indicates new call
-        this.flushBodyBuffer();
-        this.downstream.callBodyFinish();
-        this.emitCallFinish();
+        await this.flushBodyBuffer();
+        await this.downstream.callBodyFinish();
+        await this.emitCallFinish();
 
         // Start processing as new call
         this.mode = ParserMode.TEXTING_CALL_HEADLINE;
@@ -1205,7 +1205,7 @@ export class TextingStreamParser {
         this.expectingFirstMention = true;
 
         // Process this @ character in the new call context
-        return this.processTextingCallHeadlineChunk(chunk, position, char, charType);
+        return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
       }
       // If hasTripleBackticks is true or we're processing backticks, treat @ as literal content and don't end the call
     }
@@ -1226,9 +1226,9 @@ export class TextingStreamParser {
       // Check if this is followed by a newline or end of input
       const nextChar = position + 1 < chunk.length ? chunk[position + 1] : null;
       if (nextChar === '\n' || nextChar === null) {
-        this.flushBodyBuffer();
-        this.downstream.callBodyFinish('```');
-        this.emitCallFinish();
+        await this.flushBodyBuffer();
+        await this.downstream.callBodyFinish('```');
+        await this.emitCallFinish();
 
         // Switch to free text for remaining content
         this.mode = ParserMode.FREE_TEXT;
@@ -1237,7 +1237,7 @@ export class TextingStreamParser {
 
         if (hasMarkdownContent) {
           this.markdownStarted = true;
-          this.downstream.markdownStart();
+          await this.downstream.markdownStart();
         } else {
           this.markdownStarted = false;
         }
@@ -1263,15 +1263,15 @@ export class TextingStreamParser {
   }
 
   // Code block info processing
-  private processCodeBlockInfoChar(
+  private async processCodeBlockInfoChar(
     chunk: string,
     position: number,
     char: string,
     charType: CharType,
-  ): number {
+  ): Promise<number> {
     if (charType === CharType.NEWLINE) {
       // Info line complete, start content
-      this.downstream.codeBlockStart(this.codeBlockInfoAccumulator);
+      await this.downstream.codeBlockStart(this.codeBlockInfoAccumulator);
       this.mode = ParserMode.CODE_BLOCK_CONTENT;
       this.codeBlockInfoAccumulator = '';
       // The newline becomes part of content buffer
@@ -1286,12 +1286,12 @@ export class TextingStreamParser {
   }
 
   // Code block content processing
-  private processCodeBlockContentChunk(
+  private async processCodeBlockContentChunk(
     chunk: string,
     position: number,
     char: string,
     charType: CharType,
-  ): number {
+  ): Promise<number> {
     // Check for closing triple backticks
     if (charType === CharType.BACKTICK) {
       this.backtickCount++;
@@ -1309,12 +1309,12 @@ export class TextingStreamParser {
 
         // Flush any remaining content
         if (this.codeBlockChunkBuffer) {
-          this.downstream.codeBlockChunk(this.codeBlockChunkBuffer);
+          await this.downstream.codeBlockChunk(this.codeBlockChunkBuffer);
           this.codeBlockChunkBuffer = '';
         }
 
         // End the code block
-        this.downstream.codeBlockFinish('');
+        await this.downstream.codeBlockFinish('');
 
         // Switch to free text (don't automatically start markdown unless there's content)
         this.mode = ParserMode.FREE_TEXT;
@@ -1365,7 +1365,7 @@ export class TextingStreamParser {
   }
 
   // Buffer flushing methods
-  private flushHeadlineBuffer(): void {
+  private async flushHeadlineBuffer(): Promise<void> {
     if (this.headlineBuffer) {
       if (!this.callStartEmitted) {
         // Don't emit chunks before start event - buffer them
@@ -1373,62 +1373,62 @@ export class TextingStreamParser {
       }
       const call = this.ensureCurrentCall();
       call.headLine += this.headlineBuffer;
-      this.downstream.callHeadLineChunk(this.headlineBuffer);
+      await this.downstream.callHeadLineChunk(this.headlineBuffer);
       this.headlineBuffer = '';
     }
   }
 
-  private flushHeadlineBufferInChunks(): void {
+  private async flushHeadlineBufferInChunks(): Promise<void> {
     // Flush buffer in chunks of CHUNK_THRESHOLD size
     while (this.headlineBuffer.length >= this.CHUNK_THRESHOLD) {
       const chunk = this.headlineBuffer.substring(0, this.CHUNK_THRESHOLD);
       const call = this.ensureCurrentCall();
       call.headLine += chunk;
-      this.downstream.callHeadLineChunk(chunk);
+      await this.downstream.callHeadLineChunk(chunk);
       this.headlineBuffer = this.headlineBuffer.substring(this.CHUNK_THRESHOLD);
     }
   }
 
-  private flushBodyBuffer(): void {
+  private async flushBodyBuffer(): Promise<void> {
     if (this.bodyChunkBuffer) {
       const call = this.ensureCurrentCall();
       call.body += this.bodyChunkBuffer;
-      this.downstream.callBodyChunk(this.bodyChunkBuffer);
+      await this.downstream.callBodyChunk(this.bodyChunkBuffer);
       this.bodyChunkBuffer = '';
     }
   }
 
-  private flushCodeBlockBuffer(): void {
+  private async flushCodeBlockBuffer(): Promise<void> {
     if (this.codeBlockChunkBuffer) {
-      this.downstream.codeBlockChunk(this.codeBlockChunkBuffer);
+      await this.downstream.codeBlockChunk(this.codeBlockChunkBuffer);
       this.codeBlockChunkBuffer = '';
     }
   }
 
-  private flushAtUpstreamChunkEnd(): void {
+  private async flushAtUpstreamChunkEnd(): Promise<void> {
     switch (this.mode) {
       case ParserMode.FREE_TEXT:
         if (this.markdownChunkBuffer) {
           if (!this.markdownStarted) {
-            this.downstream.markdownStart();
+            await this.downstream.markdownStart();
             this.markdownStarted = true;
           }
-          this.downstream.markdownChunk(this.markdownChunkBuffer);
+          await this.downstream.markdownChunk(this.markdownChunkBuffer);
           this.markdownChunkBuffer = '';
         }
         break;
       case ParserMode.TEXTING_CALL_HEADLINE:
-        this.flushHeadlineBuffer();
+        await this.flushHeadlineBuffer();
         break;
       case ParserMode.TEXTING_CALL_BEFORE_BODY:
         break;
       case ParserMode.TEXTING_CALL_BODY:
-        this.flushBodyBuffer();
+        await this.flushBodyBuffer();
         break;
       case ParserMode.CODE_BLOCK_INFO:
         break;
       case ParserMode.CODE_BLOCK_CONTENT:
-        this.flushCodeBlockBuffer();
+        await this.flushCodeBlockBuffer();
         break;
     }
   }
