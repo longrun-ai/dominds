@@ -117,23 +117,52 @@ export interface SubdialogResponse {
 }
 
 /**
- * Simple mutex implementation for per-dialog locking.
- * Used internally by Dialog.acquire()/release().
+ * Async FIFO mutex for per-dialog locking.
+ *
+ * IMPORTANT: This lock must be keyed by dialog ID (not by Dialog instance),
+ * because the same dialog can be represented by multiple in-memory objects
+ * (e.g., live registry vs. restored-from-disk instance). If locking were
+ * instance-local, concurrent drives could corrupt persistence (e.g., latest.yaml)
+ * and break round-control invariants.
  */
-class DialogMutex {
-  private _locked: boolean = false;
+class AsyncFifoMutex {
+  private locked = false;
+  private readonly waiters: Array<() => void> = [];
 
-  acquire(): void {
-    this._locked = true;
-  }
-
-  release(): void {
-    this._locked = false;
+  async acquire(): Promise<() => void> {
+    if (!this.locked) {
+      this.locked = true;
+      return () => this.release();
+    }
+    await new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+    return () => this.release();
   }
 
   isLocked(): boolean {
-    return this._locked;
+    return this.locked;
   }
+
+  private release(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      next();
+      return;
+    }
+    this.locked = false;
+  }
+}
+
+const globalDialogMutexes: Map<string, AsyncFifoMutex> = new Map();
+
+function getGlobalDialogMutex(dialogId: DialogID): AsyncFifoMutex {
+  const key = dialogId.key();
+  const existing = globalDialogMutexes.get(key);
+  if (existing) return existing;
+  const created = new AsyncFifoMutex();
+  globalDialogMutexes.set(key, created);
+  return created;
 }
 
 /**
@@ -196,13 +225,6 @@ export abstract class Dialog {
   // Track the generation sequence when _generationStarted was set
   // Used to ensure proper ordering when multiple generations occur
   protected _generationStartedGenseq: number = 0;
-
-  // Per-dialog mutex with FIFO wait queue
-  private _mutex: DialogMutex = new DialogMutex();
-  private _waitingPromises: Array<{
-    resolve: (release: () => void) => void;
-    reject: (error: Error) => void;
-  }> = [];
 
   // Pending subdialog IDs (for auto-revive tracking)
   protected _pendingSubdialogIds: DialogID[] = [];
@@ -290,38 +312,14 @@ export abstract class Dialog {
    * FIFO queue ensures fairness when multiple callers wait.
    */
   public async acquire(): Promise<() => void> {
-    if (!this._mutex.isLocked()) {
-      this._mutex.acquire();
-      return () => this.release();
-    }
-
-    return new Promise((resolve, reject) => {
-      this._waitingPromises.push({ resolve, reject });
-    });
-  }
-
-  /**
-   * Release the dialog mutex and wake the next waiter if any.
-   */
-  public release(): void {
-    if (!this._mutex.isLocked()) {
-      return;
-    }
-
-    const next = this._waitingPromises.shift();
-    if (next) {
-      next.resolve(() => this.release());
-      return;
-    }
-
-    this._mutex.release();
+    return await getGlobalDialogMutex(this.id).acquire();
   }
 
   /**
    * Check if the dialog mutex is currently locked.
    */
   public isLocked(): boolean {
-    return this._mutex.isLocked();
+    return getGlobalDialogMutex(this.id).isLocked();
   }
 
   /**

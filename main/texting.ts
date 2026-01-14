@@ -293,8 +293,13 @@ export class TextingStreamParser {
     }
     const done = this.currentCall;
     this.currentCall = null;
-    // Compute callId using content-hash for deterministic replay correlation
-    const content = `${done.firstMention}\n${done.headLine}\n${done.body}`;
+    // Compute callId using content-hash for deterministic replay correlation.
+    //
+    // IMPORTANT: Normalize line endings and trim trailing whitespace so callId remains stable
+    // across (a) streaming chunk boundaries and (b) persistence/replay, which may not preserve
+    // trailing newlines verbatim in agent_words_record content.
+    const normalizeForHash = (value: string): string => value.replace(/\r\n/g, '\n').trimEnd();
+    const content = `${normalizeForHash(done.firstMention.trim())}\n${normalizeForHash(done.headLine)}\n${normalizeForHash(done.body)}`;
     this.callCounter++;
     done.callId = generateContentHash(content, this.callCounter);
     this.currentCallId = done.callId;

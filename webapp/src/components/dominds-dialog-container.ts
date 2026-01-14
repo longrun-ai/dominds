@@ -1102,6 +1102,13 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses callId for correlation
   //   - Uses this handler (handleToolCallResponse)
   private handleToolCallResponse(event: ToolCallResponseEvent): void {
+    // Ignore late tool responses for a different round than the one currently displayed.
+    // This can happen when a tool (e.g., @clear_mind / @change_mind) triggers a round transition
+    // and the UI clears the previous round before the response event arrives.
+    if (typeof this.currentRound === 'number' && event.round !== this.currentRound) {
+      return;
+    }
+
     const callId = String(event.callId || '').trim();
     if (!callId) {
       this.handleProtocolError(
