@@ -257,8 +257,12 @@ export class CodexGen implements LlmGenerator {
     receiver: LlmStreamReceiver,
     _genseq: number,
   ): Promise<void> {
+    const codexHomeValue = process.env[providerConfig.apiKeyEnvVar];
+    const codexHome = codexHomeValue?.startsWith('~')
+      ? process.env['HOME'] + codexHomeValue.substring(1)
+      : codexHomeValue;
     const codexAuth: typeof import('@dominds/codex-auth') = await import('@dominds/codex-auth');
-    const manager = new codexAuth.AuthManager();
+    const manager = new codexAuth.AuthManager({ codexHome });
     const client = await codexAuth.createChatGptClientFromManager(manager, {
       baseUrl: providerConfig.baseUrl,
     });
