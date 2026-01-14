@@ -1207,6 +1207,7 @@ export class DiskFileDialogStore extends DialogStore {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_finish_evt',
+                      callId: _callId,
                       round,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },

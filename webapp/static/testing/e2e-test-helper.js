@@ -2422,6 +2422,68 @@ function isTeammateMention(firstMention) {
   return getTeamMemberIds().includes(normalized);
 }
 
+function getToolCallingSections() {
+  const dialogContainer = getDialogContainer();
+  const shadow = dialogContainer?.shadowRoot;
+  if (!shadow) return [];
+  const sections = shadow.querySelectorAll('.calling-section');
+  return Array.from(sections).filter((el) => {
+    const firstMention = el.getAttribute('data-first-mention') || '';
+    const isTeammate = el.classList.contains('teammate-call') || isTeammateMention(firstMention);
+    return !isTeammate;
+  });
+}
+
+/**
+ * Detects if the last calling section is a TEXTING TOOL call (e.g. @clear_mind, @change_mind).
+ * This is NOT the same as a function call (.func-call-section).
+ *
+ * @param {string} [toolName] - Optional tool name to check for (e.g., 'clear_mind')
+ * @returns {Object} Result with hasToolCall (boolean) and call details (object)
+ */
+function detectToolCall(toolName) {
+  const toolSections = getToolCallingSections();
+  if (toolSections.length === 0) {
+    return { hasToolCall: false, toolName: null, index: -1 };
+  }
+
+  const lastIndex = toolSections.length - 1;
+  const lastSection = toolSections[lastIndex];
+  const firstMention = lastSection.getAttribute('data-first-mention') || '';
+  const headLineEl = lastSection.querySelector('.calling-headline');
+  const headLineText = headLineEl ? (headLineEl.textContent || '').trim() : '';
+  const bodyEl = lastSection.querySelector('.calling-body');
+  const bodyText = bodyEl ? (bodyEl.textContent || '').trim() : '';
+  const resultEl = lastSection.querySelector('.calling-result');
+  const resultText =
+    resultEl && resultEl.style.display !== 'none' ? (resultEl.textContent || '').trim() : '';
+
+  if (toolName) {
+    const expected = normalizeMention(toolName);
+    const actual = normalizeMention(firstMention);
+    const hasTool = expected !== '' && actual === expected;
+    return {
+      hasToolCall: hasTool,
+      toolName: hasTool ? actual : null,
+      index: hasTool ? lastIndex : -1,
+      firstMention: hasTool ? actual : null,
+      headLine: hasTool ? headLineText : null,
+      body: hasTool ? bodyText : null,
+      result: hasTool ? resultText : null,
+    };
+  }
+
+  return {
+    hasToolCall: true,
+    toolName: normalizeMention(firstMention) || null,
+    index: lastIndex,
+    firstMention,
+    headLine: headLineText,
+    body: bodyText,
+    result: resultText,
+  };
+}
+
 function extractCallSiteIdFromSection(el) {
   const callSiteId = parseCallSiteId(el.getAttribute('data-call-site-id'));
   if (callSiteId !== null) return callSiteId;
@@ -2658,6 +2720,9 @@ function setGlobal() {
     waitUntil,
     // Function call detection
     detectFuncCall,
+    // Texting tool-call detection (e.g. @clear_mind)
+    getToolCallingSections,
+    detectToolCall,
     // Dialog creation
     createDialog,
     // Dialog selection

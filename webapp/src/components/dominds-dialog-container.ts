@@ -48,7 +48,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private callingSection?: HTMLElement;
   private codeblockSection?: DomindsCodeBlock;
 
-  private callingSectionByKey = new Map<string, HTMLElement>();
   // Track calling sections by callId for direct lookup (tool calls only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
 
@@ -192,7 +191,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.codeblockSection = undefined;
     this.currentRound = round;
     this.activeGenSeq = undefined;
-    this.callingSectionByKey.clear();
     this.callingSectionByCallId.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -211,7 +209,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.codeblockSection = undefined;
     this.currentRound = undefined;
     this.activeGenSeq = undefined;
-    this.callingSectionByKey.clear();
     this.callingSectionByCallId.clear();
 
     // Clear all DOM messages when switching dialogs
@@ -219,24 +216,6 @@ export class DomindsDialogContainer extends HTMLElement {
     if (messages) {
       messages.innerHTML = '';
     }
-  }
-
-  private hashKey(input: string): string {
-    let h = 5381;
-    for (let i = 0; i < input.length; i++) {
-      h = ((h << 5) + h) ^ input.charCodeAt(i);
-    }
-    return (h >>> 0).toString(36);
-  }
-
-  private callingKey(
-    callingGenseq: number | undefined,
-    firstMention: string,
-    headLine: string,
-  ): string {
-    // For parent-calls from WebSocket handler, callingGenseq is undefined
-    const genseqStr = callingGenseq !== undefined ? String(callingGenseq) : 'parent-call';
-    return `${genseqStr}:${this.hashKey(`${firstMention}\n${headLine}`)}`;
   }
 
   public async handleDialogEvent(event: TypedDialogEvent): Promise<void> {
@@ -357,19 +336,19 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleToolCallStart(event);
         break;
       case 'tool_call_headline_chunk_evt':
-        this.handleToolCallHeadlineChunk(event.chunk);
+        this.handleToolCallHeadlineChunk(event.genseq, event.chunk);
         break;
       case 'tool_call_headline_finish_evt':
-        this.handleToolCallHeadlineFinish();
+        this.handleToolCallHeadlineFinish(event.genseq);
         break;
       case 'tool_call_body_start_evt':
-        this.handleToolCallBodyStart(event.infoLine);
+        this.handleToolCallBodyStart(event.genseq, event.infoLine);
         break;
       case 'tool_call_body_chunk_evt':
-        this.handleToolCallBodyChunk(event.chunk);
+        this.handleToolCallBodyChunk(event.genseq, event.chunk);
         break;
       case 'tool_call_body_finish_evt':
-        this.handleToolCallBodyFinish(event.endQuote);
+        this.handleToolCallBodyFinish(event.genseq, event.endQuote);
         break;
       case 'tool_call_finish_evt':
         this.handleToolCallFinish(event);
@@ -381,19 +360,19 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleTeammateCallStart(event);
         break;
       case 'teammate_call_headline_chunk_evt':
-        this.handleTeammateCallHeadlineChunk(event.chunk);
+        this.handleTeammateCallHeadlineChunk(event.genseq, event.chunk);
         break;
       case 'teammate_call_headline_finish_evt':
-        this.handleTeammateCallHeadlineFinish();
+        this.handleTeammateCallHeadlineFinish(event.genseq);
         break;
       case 'teammate_call_body_start_evt':
-        this.handleTeammateCallBodyStart(event.infoLine);
+        this.handleTeammateCallBodyStart(event.genseq, event.infoLine);
         break;
       case 'teammate_call_body_chunk_evt':
-        this.handleTeammateCallBodyChunk(event.chunk);
+        this.handleTeammateCallBodyChunk(event.genseq, event.chunk);
         break;
       case 'teammate_call_body_finish_evt':
-        this.handleTeammateCallBodyFinish(event.endQuote);
+        this.handleTeammateCallBodyFinish(event.genseq, event.endQuote);
         break;
       case 'teammate_call_finish_evt':
         this.handleTeammateCallFinish();
@@ -683,6 +662,32 @@ export class DomindsDialogContainer extends HTMLElement {
   // === TEXTING CALL EVENTS (Streaming mode - @tool_name calls) ===
   // Renamed from handleCall* to handleToolCall* for clarity
   // callId is now set at finish event (not start) - content-hash based
+  private findInFlightToolCallingSectionForGenseq(genseq: number): HTMLElement | undefined {
+    const sr = this.shadowRoot;
+    if (!sr) return undefined;
+    const selector = `.calling-section:not(.teammate-call)[data-genseq="${String(genseq)}"]:not(.completed)`;
+    const nodes = sr.querySelectorAll(selector);
+    if (nodes.length < 1) return undefined;
+    const last = nodes.item(nodes.length - 1);
+    return last instanceof HTMLElement ? last : undefined;
+  }
+
+  private getActiveToolCallingSection(genseq: number): HTMLElement | undefined {
+    const current = this.callingSection;
+    if (current && !current.classList.contains('teammate-call')) {
+      const seqAttr = current.getAttribute('data-genseq');
+      if (seqAttr === String(genseq)) {
+        return current;
+      }
+    }
+    const recovered = this.findInFlightToolCallingSectionForGenseq(genseq);
+    if (recovered) {
+      this.callingSection = recovered;
+      return recovered;
+    }
+    return undefined;
+  }
+
   private handleToolCallStart(event: ToolCallStartEvent): void {
     const firstMention = event.firstMention;
     const genseq = event.genseq;
@@ -718,11 +723,15 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleToolCallHeadlineChunk(chunk: string): void {
-    const callingSection = this.callingSection;
+  private handleToolCallHeadlineChunk(genseq: number, chunk: string): void {
+    const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      const error = 'tool_call_headline_chunk_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `tool_call_headline_chunk_evt received without calling section ${JSON.stringify({
+          genseq,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const headlineEl = callingSection.querySelector('.calling-headline') as HTMLElement;
@@ -730,33 +739,45 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleToolCallHeadlineFinish(): void {
-    const callingSection = this.callingSection;
+  private handleToolCallHeadlineFinish(genseq: number): void {
+    const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      const error = 'tool_call_headline_finish_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `tool_call_headline_finish_evt received without calling section ${JSON.stringify({
+          genseq,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const headlineEl = callingSection.querySelector('.calling-headline') as HTMLElement;
     if (headlineEl) headlineEl.classList.add('completed');
   }
 
-  private handleToolCallBodyStart(infoLine?: string): void {
-    const callingSection = this.callingSection;
+  private handleToolCallBodyStart(genseq: number, _infoLine?: string): void {
+    const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      const error = 'tool_call_body_start_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `tool_call_body_start_evt received without calling section ${JSON.stringify({
+          genseq,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     // Body section is already created in DOM structure
     this.scrollToBottom();
   }
 
-  private handleToolCallBodyChunk(chunk: string): void {
-    const callingSection = this.callingSection;
+  private handleToolCallBodyChunk(genseq: number, chunk: string): void {
+    const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      const error = 'tool_call_body_chunk_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `tool_call_body_chunk_evt received without calling section ${JSON.stringify({
+          genseq,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement;
@@ -764,11 +785,15 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleToolCallBodyFinish(endQuote?: string): void {
-    const callingSection = this.callingSection;
+  private handleToolCallBodyFinish(genseq: number, _endQuote?: string): void {
+    const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      const error = 'tool_call_body_finish_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `tool_call_body_finish_evt received without calling section ${JSON.stringify({
+          genseq,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement;
@@ -776,30 +801,26 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private handleToolCallFinish(event: ToolCallFinishEvent): void {
-    const currentSection = this.callingSection;
+    const currentSection = this.getActiveToolCallingSection(event.genseq);
     if (!currentSection) {
-      const error = 'tool_call_finish_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `tool_call_finish_evt received without calling section ${JSON.stringify({
+          genseq: event.genseq,
+          round: this.currentRound,
+          callId: event.callId,
+        })}`,
+      );
       return;
     }
-    const headLine =
-      (currentSection.querySelector('.calling-headline') as HTMLElement | null)?.textContent || '';
-    const firstMention = currentSection.getAttribute('data-first-mention') || '';
-    const genseqAttr = currentSection.getAttribute('data-genseq');
-    const callingGenseq = genseqAttr ? Number(genseqAttr) : undefined;
-    if (typeof callingGenseq !== 'number' || Number.isNaN(callingGenseq)) {
-      const error = 'tool_call_finish_evt missing calling genseq on section';
-      this.handleProtocolError(error);
+    const callId = String(event.callId || '').trim();
+    if (!callId) {
+      this.handleProtocolError(
+        `tool_call_finish_evt missing callId ${JSON.stringify({ genseq: event.genseq })}`,
+      );
       return;
     }
-    const key = this.callingKey(callingGenseq, firstMention, headLine);
-    currentSection.setAttribute('data-call-key', key);
-    this.callingSectionByKey.set(key, currentSection);
-    // NOW set data-call-id at finish event (content-hash based)
-    if (event.callId) {
-      currentSection.setAttribute('data-call-id', event.callId);
-      this.callingSectionByCallId.set(event.callId, currentSection);
-    }
+    currentSection.setAttribute('data-call-id', callId);
+    this.callingSectionByCallId.set(callId, currentSection);
     currentSection.classList.add('completed');
     this.callingSection = undefined;
   }
@@ -841,11 +862,43 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleTeammateCallHeadlineChunk(chunk: string): void {
-    const callingSection = this.callingSection;
+  private findInFlightTeammateCallingSectionForCallSiteId(
+    callSiteId: number,
+  ): HTMLElement | undefined {
+    const sr = this.shadowRoot;
+    if (!sr) return undefined;
+    const selector = `.calling-section.teammate-call[data-call-site-id="${String(callSiteId)}"]:not(.completed)`;
+    const nodes = sr.querySelectorAll(selector);
+    if (nodes.length < 1) return undefined;
+    const last = nodes.item(nodes.length - 1);
+    return last instanceof HTMLElement ? last : undefined;
+  }
+
+  private getActiveTeammateCallingSection(callSiteId: number): HTMLElement | undefined {
+    const current = this.callingSection;
+    if (current && current.classList.contains('teammate-call')) {
+      const idAttr = current.getAttribute('data-call-site-id');
+      if (idAttr === String(callSiteId)) {
+        return current;
+      }
+    }
+    const recovered = this.findInFlightTeammateCallingSectionForCallSiteId(callSiteId);
+    if (recovered) {
+      this.callingSection = recovered;
+      return recovered;
+    }
+    return undefined;
+  }
+
+  private handleTeammateCallHeadlineChunk(callSiteId: number, chunk: string): void {
+    const callingSection = this.getActiveTeammateCallingSection(callSiteId);
     if (!callingSection) {
-      const error = 'teammate_call_headline_chunk_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `teammate_call_headline_chunk_evt received without calling section ${JSON.stringify({
+          callSiteId,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const headlineEl = callingSection.querySelector('.calling-headline') as HTMLElement;
@@ -853,32 +906,44 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleTeammateCallHeadlineFinish(): void {
-    const callingSection = this.callingSection;
+  private handleTeammateCallHeadlineFinish(callSiteId: number): void {
+    const callingSection = this.getActiveTeammateCallingSection(callSiteId);
     if (!callingSection) {
-      const error = 'teammate_call_headline_finish_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `teammate_call_headline_finish_evt received without calling section ${JSON.stringify({
+          callSiteId,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const headlineEl = callingSection.querySelector('.calling-headline') as HTMLElement;
     if (headlineEl) headlineEl.classList.add('completed');
   }
 
-  private handleTeammateCallBodyStart(infoLine?: string): void {
-    const callingSection = this.callingSection;
+  private handleTeammateCallBodyStart(callSiteId: number, _infoLine?: string): void {
+    const callingSection = this.getActiveTeammateCallingSection(callSiteId);
     if (!callingSection) {
-      const error = 'teammate_call_body_start_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `teammate_call_body_start_evt received without calling section ${JSON.stringify({
+          callSiteId,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     this.scrollToBottom();
   }
 
-  private handleTeammateCallBodyChunk(chunk: string): void {
-    const callingSection = this.callingSection;
+  private handleTeammateCallBodyChunk(callSiteId: number, chunk: string): void {
+    const callingSection = this.getActiveTeammateCallingSection(callSiteId);
     if (!callingSection) {
-      const error = 'teammate_call_body_chunk_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `teammate_call_body_chunk_evt received without calling section ${JSON.stringify({
+          callSiteId,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement;
@@ -886,11 +951,15 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
-  private handleTeammateCallBodyFinish(endQuote?: string): void {
-    const callingSection = this.callingSection;
+  private handleTeammateCallBodyFinish(callSiteId: number, _endQuote?: string): void {
+    const callingSection = this.getActiveTeammateCallingSection(callSiteId);
     if (!callingSection) {
-      const error = 'teammate_call_body_finish_evt received without active calling section';
-      this.handleProtocolError(error);
+      this.handleProtocolError(
+        `teammate_call_body_finish_evt received without calling section ${JSON.stringify({
+          callSiteId,
+          round: this.currentRound,
+        })}`,
+      );
       return;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement;
@@ -1055,48 +1124,43 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses callId for correlation
   //   - Uses this handler (handleToolCallResponse)
   private handleToolCallResponse(event: ToolCallResponseEvent): void {
-    // First try to find by callId (TEXTING TOOL CALL with correlation ID)
-    // This is the PRIMARY lookup path - fast and reliable
-    let callingSection: HTMLElement | undefined;
-    if (event.callId) {
-      callingSection = this.callingSectionByCallId.get(event.callId);
-    }
-
-    // Fallback to key-based lookup for legacy events or timing edge cases
-    // Only used when callId is empty (legacy backend path)
-    if (!callingSection) {
-      const responderId = String(event.responderId || '').trim();
-      const headLine = String(event.headLine || '');
-      const key = this.callingKey(event.calling_genseq, responderId, headLine);
-      callingSection = this.callingSectionByKey.get(key);
-    }
-
-    if (callingSection) {
-      // Found the calling section - attach result INLINE
-      this.attachResultInline(callingSection, event.result, event.status);
-      if (event.status === 'failed') {
-        const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
-        host?.dispatchEvent(
-          new CustomEvent('ui-toast', {
-            detail: { message: String(event.result || 'Tool call failed'), kind: 'error' },
-            bubbles: true,
-            composed: true,
-          }),
-        );
-      }
+    const callId = String(event.callId || '').trim();
+    if (!callId) {
+      this.handleProtocolError(
+        `tool_call_response_evt missing callId ${JSON.stringify({
+          responderId: event.responderId,
+          headLine: event.headLine,
+          calling_genseq: event.calling_genseq,
+        })}`,
+      );
       return;
     }
 
-    // No matching calling section found
-    // This indicates either:
-    // 1. Legacy backend path (receiveTextingResponse with empty callId) - SHOULD NOT HAPPEN NOW
-    // 2. Race condition where response arrived before call_start_evt
-    // 3. Timing issue in frontend correlation
-    console.warn('Texting response: calling section not found (tool call, result not displayed)', {
-      callId: event.callId,
-      responderId: event.responderId,
-      headLine: event.headLine,
-    });
+    const callingSection = this.callingSectionByCallId.get(callId);
+    if (!callingSection) {
+      this.handleProtocolError(
+        `tool_call_response_evt received without calling section ${JSON.stringify({
+          callId,
+          responderId: event.responderId,
+          headLine: event.headLine,
+          calling_genseq: event.calling_genseq,
+          round: this.currentRound,
+        })}`,
+      );
+      return;
+    }
+
+    this.attachResultInline(callingSection, event.result, event.status);
+    if (event.status === 'failed') {
+      const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
+      host?.dispatchEvent(
+        new CustomEvent('ui-toast', {
+          detail: { message: String(event.result || 'Tool call failed'), kind: 'error' },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
   }
 
   // Attach result inline to calling section (TEXTING TOOL CALLS only)

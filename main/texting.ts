@@ -703,6 +703,28 @@ export class TextingStreamParser {
             this.headlineHasContent = false;
             return aheadPos;
           } else {
+            // Special case: a standalone call terminator line (`@/`) must not be treated as
+            // a headline continuation. Without this, `@/` can be swallowed into the headline
+            // and the call never terminates, producing malformed event sequences downstream.
+            if (aheadPos + 1 < chunk.length && chunk[aheadPos + 1] === '/') {
+              // End headline, then terminate the call (no body).
+              if (this.hasValidFirstMention()) {
+                const firstMention = this.firstMentionAccumulator.substring(1);
+                await this.emitCallStart(firstMention);
+                this.firstMentionAccumulator = '';
+                this.expectingFirstMention = false;
+              }
+
+              await this.flushHeadlineBuffer();
+              await this.downstream.callHeadLineFinish();
+              this.headlineFinished = true;
+              this.hasBody = false;
+              await this.emitCallFinish();
+
+              this.mode = ParserMode.FREE_TEXT;
+              return aheadPos + 2; // Skip past @/
+            }
+
             this.expectingFirstMention = false;
             this.headlineBuffer += char;
             this.isAtLineStart = true;
