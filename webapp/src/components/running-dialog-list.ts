@@ -305,7 +305,7 @@ export class RunningDialogList extends HTMLElement {
           .map((group) => {
             const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
             const taskToggle = this.renderToggleIcon(taskCollapsed);
-            const rootRows = group.roots
+            const rootNodes = group.roots
               .map((rootGroup) => {
                 const rootDialog = rootGroup.root;
                 const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
@@ -324,17 +324,20 @@ export class RunningDialogList extends HTMLElement {
                       </div>
                     </div>
                   `;
-                const subRows =
-                  taskCollapsed || rootCollapsed
-                    ? ''
-                    : rootGroup.subdialogs
-                        .map((subdialog) => this.renderDialogRow(subdialog, 'sub'))
-                        .join('');
-                return `${rootRow}${subRows}`;
+                const subNodes = rootGroup.subdialogs
+                  .map((subdialog) => this.renderDialogRow(subdialog, 'sub'))
+                  .join('');
+                const subCollapsed = taskCollapsed || rootCollapsed;
+                return `
+                  <div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}">
+                    ${rootRow}
+                    <div class="sdlg-children ${subCollapsed ? 'collapsed' : ''}">${subNodes}</div>
+                  </div>
+                `;
               })
               .join('');
             return `
-              <div class="task-group">
+              <div class="task-group task-node">
                 <div class="task-title" data-task-path="${group.taskDocPath}">
                   <div class="task-title-left">
                     <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button">${taskToggle}</button>
@@ -342,7 +345,7 @@ export class RunningDialogList extends HTMLElement {
                   </div>
                   <span class="dialog-count">${group.roots.length}</span>
                 </div>
-                <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">${taskCollapsed ? '' : rootRows}</div>
+                <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">${rootNodes}</div>
               </div>
             `;
           })
@@ -407,7 +410,7 @@ export class RunningDialogList extends HTMLElement {
     if (kind === 'sub') {
       return `
         <div
-          class="${rowClass}${isSelected ? ' selected' : ''}"
+          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}"
           data-root-id="${dialog.rootId}"
           data-self-id="${dialog.selfId ?? ''}"
         >
@@ -625,6 +628,24 @@ export class RunningDialogList extends HTMLElement {
       .task-rows {
         display: flex;
         flex-direction: column;
+      }
+
+      .task-rows.collapsed {
+        display: none;
+      }
+
+      .rdlg-node {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sdlg-children {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sdlg-children.collapsed {
+        display: none;
       }
 
       .dialog-item {
