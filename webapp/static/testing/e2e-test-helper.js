@@ -1669,6 +1669,161 @@ async function openSubdialog(rootId, subdialogId) {
   return opened;
 }
 
+function dialogInfoMatches(info, expected) {
+  if (!expected) return true;
+  if (!info) return false;
+  if (expected.rootId && String(info.rootId || '') !== String(expected.rootId)) return false;
+  if (expected.selfId && String(info.selfId || '') !== String(expected.selfId)) return false;
+  if (expected.agentId && normalizeMention(info.agentId) !== normalizeMention(expected.agentId))
+    return false;
+  return true;
+}
+
+async function waitForDialogSelected(expected, timeoutMs = 15000) {
+  await waitUntil(() => {
+    const info = getCurrentDialogInfo();
+    return dialogInfoMatches(info, expected);
+  }, timeoutMs);
+  return true;
+}
+
+async function waitForRoundNavMatch(pattern, timeoutMs = 15000) {
+  const toRegex = (p) => {
+    if (p instanceof RegExp) return p;
+    return new RegExp(String(p));
+  };
+  const re = toRegex(pattern);
+  await waitUntil(() => {
+    const snap = snapshotDomindsUI();
+    const text = snap.currentDialog?.round || '';
+    return typeof text === 'string' && re.test(text);
+  }, timeoutMs);
+  return true;
+}
+
+async function waitForInputEnabledState(enabled, timeoutMs = 15000) {
+  await waitUntil(() => {
+    const snap = snapshotDomindsUI();
+    return snap.input?.textareaEnabled === enabled;
+  }, timeoutMs);
+  return true;
+}
+
+/**
+ * Wait until the UI is "idle" enough for deterministic scripted interaction.
+ *
+ * Defaults are chosen for ux-stories stability:
+ * - No incomplete generation bubbles
+ * - No pending teammate calls
+ *
+ * Options:
+ * - requireInputEnabled: boolean | null
+ * - requireNoLingering: boolean
+ * - requireNoPendingTeammateCalls: boolean
+ */
+async function waitForDialogIdle(options = {}) {
+  const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 60000;
+  const requireInputEnabled =
+    typeof options.requireInputEnabled === 'boolean' ? options.requireInputEnabled : null;
+  const requireNoLingering =
+    typeof options.requireNoLingering === 'boolean' ? options.requireNoLingering : true;
+  const requireNoPendingTeammateCalls =
+    typeof options.requireNoPendingTeammateCalls === 'boolean'
+      ? options.requireNoPendingTeammateCalls
+      : true;
+
+  await waitUntil(() => {
+    if (requireNoLingering && !noLingering()) return false;
+    const snap = snapshotDomindsUI();
+    if (requireNoPendingTeammateCalls && (snap.chat?.pendingTeammateCalls || 0) !== 0) return false;
+    if (requireInputEnabled !== null && snap.input?.textareaEnabled !== requireInputEnabled)
+      return false;
+    return true;
+  }, timeoutMs);
+  return true;
+}
+
+/**
+ * Open a subdialog and wait until the UI has actually switched to it and become idle.
+ * This is a stricter variant of openSubdialog() intended for E2E scripting.
+ */
+async function openSubdialogAndWait(rootId, subdialogId, options = {}) {
+  const opened = await openSubdialog(rootId, subdialogId);
+  if (!opened) return false;
+  await waitForDialogSelected({ rootId, selfId: subdialogId }, options.timeoutMs || 15000);
+  // Wait for toolbar/title to reflect the selected dialog.
+  // This avoids races where app state flips before DOM updates (common under fast timing).
+  await waitUntil(() => getCurrentDialogTitle().includes(String(subdialogId)), options.timeoutMs || 15000);
+  await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
+  if (typeof options.requireInputEnabled === 'boolean') {
+    await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
+  }
+  if (typeof options.minVisibleMessages === 'number') {
+    await waitForVisibleMessageCount(options.minVisibleMessages, options.timeoutMs || 60000);
+  }
+  await waitForDialogIdle(options);
+  return true;
+}
+
+/**
+ * Navigate from a subdialog back to its parent and wait for the UI to settle.
+ */
+async function navigateToParentAndWait(options = {}) {
+  const before = getSubdialogHierarchy();
+  const ok = await navigateToParent();
+  if (!ok) return false;
+  await waitUntil(() => {
+    const after = getSubdialogHierarchy();
+    return Array.isArray(after) && after.length < before.length;
+  }, options.timeoutMs || 15000);
+  const expectedParent = before.length >= 2 ? before[before.length - 2] : null;
+  if (expectedParent?.selfId) {
+    await waitUntil(
+      () => getCurrentDialogTitle().includes(String(expectedParent.selfId)),
+      options.timeoutMs || 15000,
+    );
+  }
+  await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
+  if (typeof options.requireInputEnabled === 'boolean') {
+    await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
+  }
+  if (typeof options.minVisibleMessages === 'number') {
+    await waitForVisibleMessageCount(options.minVisibleMessages, options.timeoutMs || 60000);
+  }
+  await waitForDialogIdle(options);
+  return true;
+}
+
+/**
+ * Select a dialog (root or subdialog) and wait for the UI to settle.
+ *
+ * Supported formats:
+ * - rootId
+ * - rootId:selfId
+ */
+async function selectDialogAndWait(dialogText, options = {}) {
+  if (typeof dialogText !== 'string' || dialogText.trim() === '') {
+    throw new Error('selectDialogAndWait: dialogText must be a non-empty string');
+  }
+  if (dialogText.includes(':')) {
+    const [rootId, selfId] = dialogText.split(':');
+    return await openSubdialogAndWait(rootId, selfId, options);
+  }
+  const ok = selectDialogById(dialogText);
+  if (!ok) throw new Error(`selectDialogAndWait: selectDialogById failed for "${dialogText}"`);
+  await waitForDialogSelected({ rootId: dialogText, selfId: dialogText }, options.timeoutMs || 15000);
+  await waitUntil(() => getCurrentDialogTitle().includes(String(dialogText)), options.timeoutMs || 15000);
+  await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
+  if (typeof options.requireInputEnabled === 'boolean') {
+    await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
+  }
+  if (typeof options.minVisibleMessages === 'number') {
+    await waitForVisibleMessageCount(options.minVisibleMessages, options.timeoutMs || 60000);
+  }
+  await waitForDialogIdle(options);
+  return true;
+}
+
 /**
  * Gets the subdialog hierarchy from parent to current.
  * Source: dominds-app.tsx lines 1666-1709, 1712-1736
@@ -2732,8 +2887,15 @@ function setGlobal() {
     // Subdialog navigation
     ensureSubdialogsLoaded,
     openSubdialog,
+    openSubdialogAndWait,
+    waitForDialogSelected,
+    waitForRoundNavMatch,
+    waitForInputEnabledState,
+    waitForDialogIdle,
     getSubdialogHierarchy,
     navigateToParent,
+    navigateToParentAndWait,
+    selectDialogAndWait,
     getCurrentDialogInfo,
     getCurrentDialogTitle,
     // Reminders widget

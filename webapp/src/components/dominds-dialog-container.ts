@@ -34,6 +34,10 @@ export class DomindsDialogContainer extends HTMLElement {
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
 
+  // During dialog/round navigation, we intentionally clear the DOM. Late streaming events can still
+  // arrive during that window; suppress them to avoid protocol errors from missing sections.
+  private suppressEvents = false;
+
   // State tracking
   private currentRound?: number;
   private activeGenSeq?: number;
@@ -47,6 +51,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Track calling sections by callId for direct lookup (tool calls only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
+  // Tool call responses can arrive before the corresponding calling section has finished streaming
+  // (and therefore before tool_call_finish_evt sets data-call-id + populates callingSectionByCallId).
+  // Buffer by callId and attach when the calling section is finalized.
+  private pendingToolCallResponsesByCallId = new Map<string, ToolCallResponseEvent>();
 
   // Team configuration for dynamic agent labels and icons
   private teamConfiguration: {
@@ -124,6 +132,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   public async setDialog(dialog: DialogContext): Promise<void> {
+    this.suppressEvents = true;
     // Save current dialog as previous before cleanup
     // This allows events for the "old" dialog to be processed during navigation race conditions
     if (this.currentDialog) {
@@ -133,11 +142,13 @@ export class DomindsDialogContainer extends HTMLElement {
     if (typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
       this.handleProtocolError('Invalid dialog id: selfId/rootId must be strings');
       console.error('Invalid DialogIdent', dialog);
+      this.suppressEvents = false;
       return;
     }
     this.currentDialog = dialog;
 
     this.render();
+    this.suppressEvents = false;
   }
 
   public getCurrentDialog(): DialogContext | undefined {
@@ -162,6 +173,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   public async setCurrentRound(round: number): Promise<void> {
     if (!this.currentDialog) return;
+    this.suppressEvents = true;
     this.cleanup();
     this.currentRound = round;
     this.wsManager.sendRaw({
@@ -170,6 +182,7 @@ export class DomindsDialogContainer extends HTMLElement {
       round: round,
     });
     this.render();
+    this.suppressEvents = false;
   }
 
   /**
@@ -189,6 +202,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentRound = round;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
+    this.pendingToolCallResponsesByCallId.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -207,6 +221,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentRound = undefined;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
+    this.pendingToolCallResponsesByCallId.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -236,6 +251,15 @@ export class DomindsDialogContainer extends HTMLElement {
         });
         return;
       }
+    }
+
+    if (
+      this.suppressEvents &&
+      event.type !== 'full_reminders_update' &&
+      event.type !== 'new_q4h_asked' &&
+      event.type !== 'q4h_answered'
+    ) {
+      return;
     }
 
     const currentRound = this.currentRound;
@@ -813,6 +837,12 @@ export class DomindsDialogContainer extends HTMLElement {
     this.callingSectionByCallId.set(callId, currentSection);
     currentSection.classList.add('completed');
     this.callingSection = undefined;
+
+    const pending = this.pendingToolCallResponsesByCallId.get(callId);
+    if (pending) {
+      this.pendingToolCallResponsesByCallId.delete(callId);
+      this.attachResultInline(currentSection, pending.result, pending.status);
+    }
   }
 
   // === TEAMMATE CALL EVENTS (Streaming mode - @agentName and @human calls) ===
@@ -1123,19 +1153,14 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const callingSection = this.callingSectionByCallId.get(callId);
     if (!callingSection) {
-      this.handleProtocolError(
-        `tool_call_response_evt received without calling section ${JSON.stringify({
-          callId,
-          responderId: event.responderId,
-          headLine: event.headLine,
-          calling_genseq: event.calling_genseq,
-          round: this.currentRound,
-        })}`,
-      );
+      // Normal race: tool result can arrive before tool_call_finish_evt registers the callId.
+      // Buffer and attach when the calling section is finalized.
+      this.pendingToolCallResponsesByCallId.set(callId, event);
       return;
     }
 
     this.attachResultInline(callingSection, event.result, event.status);
+    this.pendingToolCallResponsesByCallId.delete(callId);
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       host?.dispatchEvent(
