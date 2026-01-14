@@ -6,6 +6,7 @@
   "description": "Dominds test scripts",
   "scripts": {
     "parsing": "tsx texting/parsing.ts",
+    "auth": "tsx auth.ts",
     "mentionx": "tsx texting/mentionx.ts",
     "realtime": "tsx texting/realtime.ts",
     "teammate-call-parse": "tsx texting/teammate-call-parse.ts",

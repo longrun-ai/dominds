@@ -6,6 +6,13 @@ import type { ConnectionState } from '@/services/store';
 import faviconUrl from '../assets/favicon.svg';
 import type { FrontendTeamMember } from '../services/api';
 import { getApiClient } from '../services/api';
+import {
+  makeWebSocketAuthProtocols,
+  readAuthKeyFromLocalStorage,
+  readAuthKeyFromUrl,
+  removeAuthKeyFromUrl,
+  writeAuthKeyToLocalStorage,
+} from '../services/auth';
 import { getWebSocketManager } from '../services/websocket.js';
 import type { ApiRootDialogResponse, DialogInfo } from '../shared/types';
 import type {
@@ -39,10 +46,18 @@ type ActivityView =
   | { kind: 'search' }
   | { kind: 'team-members' };
 
+type AuthState =
+  | { kind: 'uninitialized' }
+  | { kind: 'none' }
+  | { kind: 'active'; source: 'url' | 'localStorage' | 'manual'; key: string }
+  | { kind: 'prompt'; reason: 'missing' | 'rejected' | 'ws_rejected'; hadUrlAuth: boolean };
+
 export class DomindsApp extends HTMLElement {
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
   private connectionState: ConnectionState = this.wsManager.getConnectionState();
+  private authState: AuthState = { kind: 'uninitialized' };
+  private urlAuthPresent: boolean = false;
   private dialogs: ApiRootDialogResponse[] = [];
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private teamMembers: FrontendTeamMember[] = [];
@@ -62,6 +77,7 @@ export class DomindsApp extends HTMLElement {
   private _connStateCancel?: () => void;
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private subdialogHierarchyRefreshTokens = new Map<string, number>();
+  private authModal: HTMLElement | null = null;
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -98,24 +114,19 @@ export class DomindsApp extends HTMLElement {
   private hasDialogContext(
     message: WebSocketMessage,
   ): message is WebSocketMessage & { dialog: { selfId: string; rootId: string } } {
-    // Check for standard dialog field
-    if (
-      'dialog' in message &&
-      typeof (message as any).dialog === 'object' &&
-      typeof (message as any).dialog.selfId === 'string' &&
-      typeof (message as any).dialog.rootId === 'string'
-    ) {
-      return true;
+    const msg = message as unknown as { dialog?: unknown; parentDialog?: unknown };
+    const dialog = msg.dialog;
+    if (typeof dialog === 'object' && dialog !== null) {
+      const d = dialog as Record<string, unknown>;
+      if (typeof d.selfId === 'string' && typeof d.rootId === 'string') return true;
     }
-    // Check for subdialog events (have parentDialog/subDialog instead)
-    if (
-      'parentDialog' in message &&
-      typeof (message as any).parentDialog === 'object' &&
-      typeof (message as any).parentDialog.selfId === 'string' &&
-      typeof (message as any).parentDialog.rootId === 'string'
-    ) {
-      return true;
+
+    const parentDialog = msg.parentDialog;
+    if (typeof parentDialog === 'object' && parentDialog !== null) {
+      const pd = parentDialog as Record<string, unknown>;
+      if (typeof pd.selfId === 'string' && typeof pd.rootId === 'string') return true;
     }
+
     return false;
   }
 
@@ -219,6 +230,7 @@ export class DomindsApp extends HTMLElement {
     this.initializeTheme();
     this.initialRender();
     this.setupEventListeners();
+    this.initializeAuth();
     this.loadInitialData();
 
     // Subscribe to connection state changes for Q4H loading
@@ -1436,7 +1448,9 @@ export class DomindsApp extends HTMLElement {
       const nextBtn = target.closest('#toolbar-next') as HTMLButtonElement | null;
       if (nextBtn) {
         if (this.toolbarCurrentRound < this.toolbarTotalRounds) {
-          const dc = this.shadowRoot?.querySelector('#dialog-container') as any;
+          const dc = this.shadowRoot?.querySelector(
+            '#dialog-container',
+          ) as DomindsDialogContainer | null;
           if (dc && typeof dc.setCurrentRound === 'function') {
             await dc.setCurrentRound(this.toolbarCurrentRound + 1);
           }
@@ -1625,6 +1639,150 @@ export class DomindsApp extends HTMLElement {
     ]);
   }
 
+  private initializeAuth(): void {
+    const urlKey = readAuthKeyFromUrl();
+    if (urlKey) {
+      this.urlAuthPresent = true;
+      this.setAuthActive('url', urlKey);
+      return;
+    }
+
+    this.urlAuthPresent = false;
+    const localKey = readAuthKeyFromLocalStorage();
+    if (localKey) {
+      this.setAuthActive('localStorage', localKey);
+      return;
+    }
+
+    this.setAuthNone();
+  }
+
+  private setAuthActive(source: 'url' | 'localStorage' | 'manual', key: string): void {
+    this.authState = { kind: 'active', source, key };
+    this.apiClient.setAuthToken(key);
+    this.wsManager.setProtocols(makeWebSocketAuthProtocols(key));
+  }
+
+  private setAuthNone(): void {
+    this.authState = { kind: 'none' };
+    this.apiClient.clearAuthToken();
+    this.wsManager.setProtocols(undefined);
+  }
+
+  private onAuthRejected(origin: 'api' | 'ws'): void {
+    if (this.authState.kind === 'prompt') {
+      this.showAuthModal();
+      return;
+    }
+    const hadUrlAuth = this.urlAuthPresent;
+
+    if (this.authState.kind === 'active' && this.authState.source === 'url') {
+      // URL-auth must not persist; on failure, remove from address bar then go interactive.
+      removeAuthKeyFromUrl();
+      this.urlAuthPresent = false;
+    }
+
+    // Stop using the rejected key.
+    this.setAuthNone();
+    this.wsManager.disconnect();
+
+    this.authState =
+      origin === 'ws'
+        ? { kind: 'prompt', reason: 'ws_rejected', hadUrlAuth }
+        : { kind: 'prompt', reason: 'rejected', hadUrlAuth };
+
+    this.showAuthModal();
+  }
+
+  private showAuthModal(): void {
+    if (this.authModal) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'create-dialog-modal';
+    modal.innerHTML = `
+      <div class="modal-backdrop"></div>
+      <div class="modal-content" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
+        <div class="modal-header">
+          <h3 id="auth-modal-title">Authentication Required</h3>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Enter the Dominds auth key to connect.
+          </p>
+          <div class="form-group">
+            <label for="auth-key-input">Auth key</label>
+            <input type="password" id="auth-key-input" class="task-doc-input" placeholder="Paste auth key..." autocomplete="off">
+          </div>
+          <div class="form-group" id="auth-modal-error" style="display:none;color:var(--dominds-danger,#dc3545);font-size:13px;"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="auth-submit-btn">Connect</button>
+        </div>
+      </div>
+    `;
+
+    const submitBtn = modal.querySelector('#auth-submit-btn') as HTMLButtonElement | null;
+    const input = modal.querySelector('#auth-key-input') as HTMLInputElement | null;
+    const errorEl = modal.querySelector('#auth-modal-error') as HTMLElement | null;
+
+    const setError = (msg: string) => {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    };
+
+    const doSubmit = async () => {
+      const key = input?.value ?? '';
+      if (!key) {
+        setError('Auth key is required.');
+        return;
+      }
+
+      // Try the provided key immediately.
+      this.setAuthActive('manual', key);
+
+      const probe = await this.apiClient.getHealth();
+      if (!probe.success) {
+        this.setAuthNone();
+        if (probe.status === 401) {
+          setError('Auth failed. Please check the key and try again.');
+          return;
+        }
+        setError(probe.error || 'Failed to connect.');
+        return;
+      }
+
+      // Persist only when not in URL-auth mode.
+      writeAuthKeyToLocalStorage(key);
+
+      // Close modal and resume normal loading.
+      modal.remove();
+      this.authModal = null;
+      this.authState = { kind: 'active', source: 'manual', key };
+
+      // Reconnect websocket and refresh data.
+      void this.loadInitialData();
+    };
+
+    submitBtn?.addEventListener('click', () => void doSubmit());
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void doSubmit();
+      }
+    });
+
+    // Focus input after append.
+    const root = this.shadowRoot;
+    if (root) {
+      root.appendChild(modal);
+    } else {
+      document.body.appendChild(modal);
+    }
+    this.authModal = modal;
+    setTimeout(() => input?.focus(), 0);
+  }
+
   private async loadDialogs(): Promise<void> {
     try {
       const api = getApiClient();
@@ -1636,6 +1794,10 @@ export class DomindsApp extends HTMLElement {
         this.dialogs = resp.data;
         this.renderDialogList();
       } else {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
         console.warn('Failed to load dialogs via API', resp.error);
       }
     } catch (error) {
@@ -1652,6 +1814,13 @@ export class DomindsApp extends HTMLElement {
     try {
       const api = getApiClient();
       const hierarchyResp = await api.getDialogHierarchy(rootId);
+
+      if (!hierarchyResp.success) {
+        if (hierarchyResp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+      }
 
       if (hierarchyResp.success && hierarchyResp.data) {
         const h = hierarchyResp.data;
@@ -1703,18 +1872,25 @@ export class DomindsApp extends HTMLElement {
     try {
       const api = getApiClient();
       const resp = await api.getTeamConfig();
-      if (resp.success && resp.data && (resp.data as any).configuration) {
-        const cfg = (resp.data as any).configuration;
-        const md = cfg.memberDefaults;
-        const membersRec = cfg.members || {};
-        Object.keys(membersRec).forEach((id) => {
-          const m = membersRec[id];
-          Object.setPrototypeOf(m, md);
-        });
-        this.teamMembers = Object.values(membersRec) as FrontendTeamMember[];
-        const def = cfg.defaultResponder;
-        this.defaultResponder = typeof def === 'string' ? def : null;
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        console.warn('Failed to load team config via API', resp.error);
+        return;
       }
+      const cfg = resp.data?.configuration;
+      if (!cfg) return;
+
+      const md = cfg.memberDefaults;
+      const membersRec = cfg.members || {};
+      for (const m of Object.values(membersRec)) {
+        Object.setPrototypeOf(m, md);
+      }
+      this.teamMembers = Object.values(membersRec);
+      const def = cfg.defaultResponder;
+      this.defaultResponder = typeof def === 'string' ? def : null;
 
       const teamMembersComponent = this.shadowRoot?.querySelector(
         '#team-members',
@@ -1736,13 +1912,17 @@ export class DomindsApp extends HTMLElement {
 
   private async loadTaskDocuments(): Promise<void> {
     try {
-      const response = await fetch('/api/task-documents');
-      const data = (await response.json()) as {
-        success: boolean;
-        taskDocuments?: Array<{ path: string; relativePath: string; name: string }>;
-      };
-
-      if (data.success && data.taskDocuments) {
+      const api = getApiClient();
+      const resp = await api.getTaskDocuments();
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        return;
+      }
+      const data = resp.data;
+      if (data && data.success && data.taskDocuments) {
         this.taskDocuments = data.taskDocuments.map((doc) => ({
           path: doc.path,
           relativePath: doc.relativePath,
@@ -1756,13 +1936,20 @@ export class DomindsApp extends HTMLElement {
 
   private async loadWorkspaceInfo(): Promise<void> {
     try {
-      const response = await fetch('/api/health');
-      const data = await response.json();
-
-      if (data.workspace) {
-        this.backendWorkspace = data.workspace;
-        this.updateWorkspaceInfo();
+      const api = getApiClient();
+      const resp = await api.getHealth();
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        throw new Error(resp.error || 'Failed to load workspace info');
       }
+      const data = resp.data;
+      if (data && data.workspace) {
+        this.backendWorkspace = data.workspace;
+      }
+      this.updateWorkspaceInfo();
     } catch (error) {
       console.error('Failed to load workspace info:', error);
       this.backendWorkspace = 'Unknown workspace';
@@ -2040,6 +2227,10 @@ export class DomindsApp extends HTMLElement {
         type: 'get_q4h_state',
       });
     } else if (state.status === 'error') {
+      if (state.error === 'Unauthorized') {
+        this.onAuthRejected('ws');
+        return;
+      }
       this.showError(state.error || 'Connection error');
     }
   }
@@ -2153,7 +2344,7 @@ export class DomindsApp extends HTMLElement {
               ${this.teamMembers
                 .map((member) => {
                   const isDefault = member.id === this.defaultResponder;
-                  const emoji = this.getAgentEmoji(member.id, (member as any).icon);
+                  const emoji = this.getAgentEmoji(member.id, member.icon);
                   return `<option value="${member.id}" ${isDefault ? 'selected' : ''}>
                   ${emoji} ${member.name} (@${member.id})${isDefault ? ' • Default' : ''}
                 </option>`;
@@ -2231,7 +2422,7 @@ export class DomindsApp extends HTMLElement {
       if (agentId) {
         const member = this.teamMembers.find((m) => m.id === agentId);
         if (member) {
-          const emoji = this.getAgentEmoji(member.id, (member as any).icon);
+          const emoji = this.getAgentEmoji(member.id, member.icon);
           const isDefault = member.id === this.defaultResponder;
           teammateInfo.innerHTML = `
             <div class="teammate-details">
@@ -2486,17 +2677,26 @@ export class DomindsApp extends HTMLElement {
       const resp = await api.createDialog(fallbackAgent, taskDocPath);
       // Accept either {selfId, rootId} or legacy {dialogId}
       if (!resp.success || !resp.data) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+        }
         throw new Error(resp.error || 'Dialog creation failed');
       }
-      const payload = (resp.data as any) || {};
-      const selfId = payload.selfId || payload.dialogId;
-      const rootId = payload.rootId || payload.dialogId || selfId;
-      if (!selfId || !rootId) {
-        throw new Error('Dialog creation failed: invalid identifiers in response');
+      const payload = resp.data as unknown;
+      if (typeof payload !== 'object' || payload === null) {
+        throw new Error('Dialog creation failed: invalid response payload');
       }
-      if (typeof selfId !== 'string' || typeof rootId !== 'string') {
+      const rec = payload as Record<string, unknown>;
+      const selfIdRaw = rec.selfId ?? rec.dialogId;
+      const rootIdRaw = rec.rootId ?? rec.dialogId ?? selfIdRaw;
+      if (typeof selfIdRaw !== 'string' || typeof rootIdRaw !== 'string') {
         this.showError('Invalid dialog identifiers in createDialog response', 'error');
         throw new Error('Invalid dialog identifiers');
+      }
+      const selfId = selfIdRaw;
+      const rootId = rootIdRaw;
+      if (!selfId || !rootId) {
+        throw new Error('Dialog creation failed: invalid identifiers in response');
       }
       this.showSuccess(`Dialog created @${fallbackAgent} with task: ${taskDocPath}`);
       await this.loadDialogs();
@@ -3094,8 +3294,8 @@ export class DomindsApp extends HTMLElement {
     if (!isoTs) return;
     const ts = isoTs;
     let updated = false;
-    this.dialogs = (this.dialogs || []).map((d: any) => {
-      if ((d && d.rootId && d.rootId === rootId) || (d && d.id && d.id === rootId)) {
+    this.dialogs = (this.dialogs || []).map((d) => {
+      if (d.rootId === rootId) {
         updated = true;
         return { ...d, lastModified: ts };
       }
@@ -3512,9 +3712,7 @@ export class DomindsApp extends HTMLElement {
     ) as DomindsDialogContainer | null;
     if (dialogContainer) {
       // Navigate to the round if needed
-      if (typeof (dialogContainer as any).setCurrentRound === 'function') {
-        (dialogContainer as any).setCurrentRound(round);
-      }
+      void dialogContainer.setCurrentRound(round);
       // Scroll to call site - dispatch event for dialog container to handle
       dialogContainer.dispatchEvent(
         new CustomEvent('scroll-to-call-site', {

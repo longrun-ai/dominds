@@ -40,6 +40,10 @@ export class WebSocketManager {
     this.generateMessageId = this.generateMessageId.bind(this);
   }
 
+  public setProtocols(protocols?: string[]): void {
+    this.config.protocols = protocols;
+  }
+
   /**
    * Connect to WebSocket server
    */
@@ -171,6 +175,11 @@ export class WebSocketManager {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+
+    if (event.code === 4401 || event.reason === 'unauthorized') {
+      this.updateConnectionState({ status: 'error', error: 'Unauthorized' });
+      return;
     }
 
     this.updateConnectionState({ status: 'disconnected' });

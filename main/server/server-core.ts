@@ -11,6 +11,8 @@ import * as url from 'url';
 import type { WebSocket } from 'ws';
 import { createLogger } from '../log';
 import { ApiRouteContext, handleApiRoute } from './api-routes';
+import type { AuthConfig } from './auth';
+import { getHttpAuthCheck } from './auth';
 import { serveStatic } from './static-server';
 
 const log = createLogger('server-core');
@@ -22,6 +24,7 @@ export interface ServerConfig {
   clients?: Set<WebSocket>;
   staticRoot?: string;
   enableLiveReload?: boolean;
+  auth?: AuthConfig;
 }
 
 export interface RequestHandler {
@@ -83,6 +86,12 @@ export class HttpServerCore {
 
       // Handle API routes
       if (pathname.startsWith('/api/')) {
+        const authCheck = getHttpAuthCheck(req, this.config.auth ?? { kind: 'disabled' });
+        if (authCheck.kind !== 'ok') {
+          this.sendUnauthorized(res);
+          return;
+        }
+
         const apiContext: ApiRouteContext = {
           clients: this.config.clients,
           mode: this.config.mode,
@@ -129,6 +138,15 @@ export class HttpServerCore {
     }
   }
 
+  private sendUnauthorized(res: ServerResponse): void {
+    if (res.headersSent) return;
+    res.writeHead(401, {
+      'Content-Type': 'application/json',
+      'WWW-Authenticate': 'Bearer',
+    });
+    res.end(JSON.stringify({ error: 'unauthorized' }));
+  }
+
   /**
    * Start the server - NO PORT FALLBACK, enforce specific port
    */
@@ -139,7 +157,7 @@ export class HttpServerCore {
       });
 
       this.server.listen(this.config.port, this.config.host, () => {
-        log.info(`Server listening on http://${this.config.host}:${this.config.port}`);
+        log.debug(`Server listening on http://${this.config.host}:${this.config.port}`);
         resolve();
       });
     });
@@ -184,8 +202,8 @@ export function createHttpServer(config: ServerConfig): HttpServerCore {
 /**
  * Utility function to parse request body as JSON
  */
-export function parseJsonBody(req: IncomingMessage): Promise<any> {
-  return new Promise((resolve, reject) => {
+export function parseJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
     let body = '';
 
     req.on('data', (chunk) => {

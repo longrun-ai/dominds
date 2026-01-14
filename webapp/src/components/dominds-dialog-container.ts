@@ -4,6 +4,7 @@
 
 import mannedToolIcon from '../assets/manned-tool.svg';
 import walkieTalkieIcon from '../assets/walkie-talkie.svg';
+import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
 import type {
   EndOfUserSayingEvent,
@@ -114,13 +115,18 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private async loadTeamConfiguration(): Promise<void> {
     try {
-      const response = await fetch('/api/team/config');
-      if (!response.ok) {
-        throw new Error(`Failed to load team config: ${response.statusText}`);
+      const api = getApiClient();
+      const resp = await api.getTeamConfig();
+      if (!resp.success || !resp.data) {
+        throw new Error(resp.error || 'Failed to load team config');
       }
-
-      const data = await response.json();
-      this.teamConfiguration = data.configuration;
+      const cfg = resp.data.configuration;
+      this.teamConfiguration = {
+        memberDefaults: { icon: cfg.memberDefaults.icon, name: cfg.memberDefaults.name },
+        members: Object.fromEntries(
+          Object.entries(cfg.members).map(([id, m]) => [id, { icon: m.icon, name: m.name }]),
+        ),
+      };
     } catch (error) {
       console.warn('Failed to load team configuration, using defaults:', error);
       // Fallback to basic configuration if API fails

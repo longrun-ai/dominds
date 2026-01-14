@@ -47,6 +47,7 @@ Path aliases in `tests/tsconfig.json`:
 
 | Script              | Runs                                                      |
 | ------------------- | --------------------------------------------------------- |
+| auth                | `auth.ts` (auth key/env/header parsing)                   |
 | parsing             | `texting/parsing.ts` (headline/body parser)               |
 | mentionx            | `texting/mentionx.ts` (extractMentions tests)             |
 | realtime            | `texting/realtime.ts` (streaming parser boundaries)       |

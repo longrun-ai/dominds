@@ -28,6 +28,8 @@ import type { Q4HAnsweredEvent } from '../shared/types/dialog';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { generateDialogID } from '../utils/id';
+import type { AuthConfig } from './auth';
+import { getWebSocketAuthCheck } from './auth';
 
 const log = createLogger('websocket-handler');
 
@@ -1090,10 +1092,20 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
 /**
  * Setup WebSocket server with dialog handling
  */
-export function setupWebSocketServer(httpServer: Server, clients: Set<WebSocket>): WebSocketServer {
+export function setupWebSocketServer(
+  httpServer: Server,
+  clients: Set<WebSocket>,
+  auth: AuthConfig,
+): WebSocketServer {
   const wss = new WebSocketServer({ server: httpServer });
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', (ws: WebSocket, req) => {
+    const authCheck = getWebSocketAuthCheck(req, auth);
+    if (authCheck.kind !== 'ok') {
+      ws.close(4401, 'unauthorized');
+      return;
+    }
+
     clients.add(ws);
 
     // Send welcome message

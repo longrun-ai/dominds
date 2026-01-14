@@ -66,7 +66,6 @@ async function main(): Promise<void> {
 
   // Handle no arguments - default to webui
   if (args.length === 0) {
-    console.log('Starting WebUI server (default)...');
     await runSubcommand('webui', []);
     return;
   }

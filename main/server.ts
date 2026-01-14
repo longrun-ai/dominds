@@ -13,6 +13,7 @@ import { WebSocket } from 'ws';
 import { runBackendDriver } from './llm/driver';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
+import { computeAuthConfig } from './server/auth';
 import { createHttpServer, ServerConfig } from './server/server-core';
 import { setupWebSocketServer } from './server/websocket-handler';
 
@@ -92,13 +93,17 @@ export async function startServer(opts: ServerOptions = {}) {
     host,
     port,
     clients,
+    auth: computeAuthConfig({
+      mode: mode === 'dev' ? 'development' : 'production',
+      env: process.env,
+    }),
   };
 
   // Create HTTP server
   const httpServer = createHttpServer(config);
 
   // Setup WebSocket server
-  setupWebSocketServer(httpServer.getHttpServer(), clients);
+  setupWebSocketServer(httpServer.getHttpServer(), clients, config.auth ?? { kind: 'disabled' });
 
   // Start backend driver loop (non-blocking)
   void runBackendDriver();

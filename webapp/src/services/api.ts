@@ -30,6 +30,7 @@ export interface FrontendTeam {
 
 export interface ApiResponse<T> {
   success: boolean;
+  status?: number;
   data?: T;
   error?: string;
   message?: string;
@@ -74,17 +75,30 @@ export class ApiClient {
 
     const url = `${this.baseURL}${endpoint}`;
 
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+    const mergedHeaders: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...headers,
+    };
+    if (isFormData) {
+      // Let the browser set multipart boundary.
+      delete mergedHeaders['Content-Type'];
+    }
+
     const config: RequestInit = {
       method,
       headers: {
-        ...this.defaultHeaders,
-        ...headers,
+        ...mergedHeaders,
       },
       signal: AbortSignal.timeout(timeout),
     };
 
     if (body && method !== 'GET') {
-      config.body = typeof body === 'string' ? body : JSON.stringify(body);
+      if (isFormData) {
+        config.body = body;
+      } else {
+        config.body = typeof body === 'string' ? body : JSON.stringify(body);
+      }
     }
 
     try {
@@ -107,6 +121,7 @@ export class ApiClient {
 
       return {
         success: true,
+        status: response.status,
         data: data as T,
         timestamp: formatUnifiedTimestamp(new Date()),
       };
@@ -122,6 +137,7 @@ export class ApiClient {
 
       return {
         success: false,
+        status: apiError.status,
         error: apiError.message,
         timestamp: formatUnifiedTimestamp(new Date()),
       };
@@ -133,6 +149,19 @@ export class ApiClient {
    */
   async healthCheck(): Promise<ApiResponse<{ status: string; uptime: number; timestamp: string }>> {
     return this.request('/api/live-reload');
+  }
+
+  async getHealth(): Promise<
+    ApiResponse<{
+      ok: boolean;
+      timestamp: string;
+      server: string;
+      version: string;
+      workspace: string;
+      mode: string;
+    }>
+  > {
+    return this.request('/api/health');
   }
 
   /**
@@ -158,6 +187,7 @@ export class ApiClient {
           : [];
       return {
         success: true,
+        status: response.status,
         data: dialogs,
         timestamp: response.timestamp,
       };
@@ -197,7 +227,12 @@ export class ApiClient {
       // Unwrap to get just the hierarchy object
       const payload = response.data as { hierarchy: ApiDialogHierarchyResponse['hierarchy'] };
       if (payload && payload.hierarchy) {
-        return { success: true, data: payload.hierarchy, timestamp: response.timestamp };
+        return {
+          success: true,
+          status: response.status,
+          data: payload.hierarchy,
+          timestamp: response.timestamp,
+        };
       }
     }
     return response as ApiResponse<ApiDialogHierarchyResponse['hierarchy']>;
@@ -257,7 +292,7 @@ export class ApiClient {
     selfDialogId?: string,
     limit?: number,
     offset?: number,
-  ): Promise<ApiResponse<any[]>> {
+  ): Promise<ApiResponse<unknown[]>> {
     const params = new URLSearchParams();
     if (limit) params.append('limit', limit.toString());
     if (offset) params.append('offset', offset.toString());
@@ -271,11 +306,12 @@ export class ApiClient {
     if (response.success && response.data) {
       return {
         success: true,
+        status: response.status,
         data: Array.isArray(response.data) ? response.data : [],
         timestamp: response.timestamp,
       };
     }
-    return response as ApiResponse<any[]>;
+    return response as ApiResponse<unknown[]>;
   }
 
   /**
@@ -285,7 +321,7 @@ export class ApiClient {
     rootDialogId: string,
     selfDialogId: string | undefined,
     content: string,
-  ): Promise<ApiResponse<any>> {
+  ): Promise<ApiResponse<unknown>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
     return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}/messages`, {
       method: 'POST',
@@ -305,12 +341,21 @@ export class ApiClient {
     return this.request('/api/team/config');
   }
 
+  async getTaskDocuments(): Promise<
+    ApiResponse<{
+      success: boolean;
+      taskDocuments?: Array<{ path: string; relativePath: string; name: string }>;
+    }>
+  > {
+    return this.request('/api/task-documents');
+  }
+
   /**
    * Upload file for processing
    */
   async uploadFile(
     file: File,
-    metadata?: Record<string, any>,
+    metadata?: Record<string, unknown>,
   ): Promise<ApiResponse<{ fileId: string; filename: string; size: number; url: string }>> {
     const formData = new FormData();
     formData.append('file', file);
@@ -335,6 +380,7 @@ export class ApiClient {
   async downloadFile(fileId: string): Promise<ApiResponse<Blob>> {
     const response = await fetch(`${this.baseURL}/api/files/${encodeURIComponent(fileId)}`, {
       signal: AbortSignal.timeout(this.timeout),
+      headers: { ...this.defaultHeaders },
     });
 
     if (!response.ok) {
@@ -344,6 +390,7 @@ export class ApiClient {
     const blob = await response.blob();
     return {
       success: true,
+      status: response.status,
       data: blob,
       timestamp: formatUnifiedTimestamp(new Date()),
     };
@@ -407,6 +454,7 @@ export class ApiClient {
 
     const response = await fetch(`${this.baseURL}/api/export?${params.toString()}`, {
       signal: AbortSignal.timeout(this.timeout),
+      headers: { ...this.defaultHeaders },
     });
 
     if (!response.ok) {
@@ -416,6 +464,7 @@ export class ApiClient {
     const blob = await response.blob();
     return {
       success: true,
+      status: response.status,
       data: blob,
       timestamp: formatUnifiedTimestamp(new Date()),
     };
