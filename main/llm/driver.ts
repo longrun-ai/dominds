@@ -1455,6 +1455,28 @@ export function parseTeammateCall(
   headLine: string,
   currentDialog?: Dialog,
 ): TeammateCallParseResult {
+  // Fresh Boots Reasoning (FBR) syntax sugar:
+  // `@self` always targets the current dialog's agentId (same persona/config).
+  //
+  // This avoids ambiguous `@cmdr`-to-`@cmdr` self-calls which can also be produced accidentally
+  // by echoing/quoting an assignment headline. We keep parsing behavior the same for all other
+  // mentions.
+  if (firstMention === 'self') {
+    const agentId = currentDialog?.agentId ?? 'self';
+    const topicId = extractTopicIdFromHeadline(headLine, 'self');
+    if (topicId) {
+      return {
+        type: 'B',
+        agentId,
+        topicId,
+      };
+    }
+    return {
+      type: 'C',
+      agentId,
+    };
+  }
+
   const topicId = extractTopicIdFromHeadline(headLine, firstMention);
   if (topicId) {
     return {
@@ -2008,7 +2030,9 @@ async function executeTextingCall(
 
   const team = await Team.load();
   const intrinsicTools = dlg.getIntrinsicTools();
-  const member = team.getMember(firstMention);
+  const isSelfAlias = firstMention === 'self';
+  const isSuperAlias = firstMention === 'super';
+  const member = isSelfAlias ? team.getMember(dlg.agentId) : team.getMember(firstMention);
 
   // === Q4H: Handle @human teammate calls (Questions for Human) ===
   // Q4H works for both user-initiated and assistant-initiated @human calls
@@ -2066,10 +2090,100 @@ async function executeTextingCall(
     }
   }
 
-  if (member) {
+  if (member || isSelfAlias || isSuperAlias) {
     // This is a teammate call - parse using Phase 5 taxonomy
     // Parse the call text to determine type A/B/C
-    const parseResult = parseTeammateCall(firstMention, headLine, dlg);
+    if (isSuperAlias && !(dlg instanceof SubDialog)) {
+      const response =
+        'Dominds note: `@super` is only valid inside a subdialog and calls the direct parent (supdialog). ' +
+        'You are currently not in a subdialog, so there is no parent to call.';
+      const result = formatTeammateResponseContent({
+        responderId: 'dominds',
+        requesterId: dlg.agentId,
+        originalCallHeadLine: headLine,
+        responseBody: response,
+      });
+      try {
+        await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
+          response,
+          agentId: 'dominds',
+          callId,
+          originMemberId: dlg.agentId,
+        });
+      } catch (err) {
+        log.warn('Failed to emit @super misuse response', err, {
+          dialogId: dlg.id.selfId,
+          agentId: dlg.agentId,
+        });
+      }
+      return { toolOutputs, suspend: false, subdialogsCreated: [] };
+    }
+
+    if (isSuperAlias) {
+      const topicId = extractTopicIdFromHeadline(headLine, 'super');
+      if (topicId) {
+        const response =
+          'Dominds note: `@super` is a Type A supdialog call and does not accept `!topic`. ' +
+          'Use `@super` with NO `!topic`, or use `@self !topic <topicId>` / `@<agentId> !topic <topicId>` for Type B.';
+        const result = formatTeammateResponseContent({
+          responderId: 'dominds',
+          requesterId: dlg.agentId,
+          originalCallHeadLine: headLine,
+          responseBody: response,
+        });
+        try {
+          await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
+            response,
+            agentId: 'dominds',
+            callId,
+            originMemberId: dlg.agentId,
+          });
+        } catch (err) {
+          log.warn('Failed to emit @super !topic syntax error response', err, {
+            dialogId: dlg.id.selfId,
+            agentId: dlg.agentId,
+          });
+        }
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
+    }
+
+    const parseResult: TeammateCallParseResult = isSuperAlias
+      ? {
+          type: 'A',
+          agentId: (dlg as SubDialog).supdialog.agentId,
+        }
+      : parseTeammateCall(firstMention, headLine, dlg);
+
+    // If the agent calls itself via `@<agentId>` (instead of `@self`), allow it to proceed
+    // (self-calls are useful for FBR), but emit a correction bubble so the user can distinguish
+    // intentional self-FBR from accidental echo/quote triggers.
+    const isDirectSelfCall = !isSelfAlias && !isSuperAlias && parseResult.agentId === dlg.agentId;
+    if (isDirectSelfCall) {
+      const response =
+        'Dominds note: This call targets the current agent (self-call). ' +
+        'Fresh Boots Reasoning should usually use `@self` (no `!topic`) for an ephemeral fresh boots session; use ' +
+        '`@self !topic <topicId>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.';
+      const result = formatTeammateResponseContent({
+        responderId: 'dominds',
+        requesterId: dlg.agentId,
+        originalCallHeadLine: headLine,
+        responseBody: response,
+      });
+      try {
+        await dlg.receiveTeammateResponse('dominds', headLine, result, 'completed', dlg.id, {
+          response,
+          agentId: 'dominds',
+          callId,
+          originMemberId: dlg.agentId,
+        });
+      } catch (err) {
+        log.warn('Failed to emit self-call correction response', err, {
+          dialogId: dlg.id.selfId,
+          agentId: dlg.agentId,
+        });
+      }
+    }
 
     // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
     // This suspends the subdialog, drives the supdialog for one round, then returns to subdialog
@@ -2082,13 +2196,17 @@ async function executeTextingCall(
         dlg.setSuspensionState('suspended');
 
         try {
+          const headLineForSupdialog =
+            isSuperAlias && headLine.startsWith('@super')
+              ? `@${supdialog.agentId}${headLine.slice('@super'.length)}`
+              : headLine;
           const assignment = dlg.assignmentFromSup;
           const supPrompt: HumanPrompt = {
             content: formatSupdialogCallPrompt({
               fromAgentId: dlg.agentId,
               toAgentId: supdialog.agentId,
               subdialogRequest: {
-                headLine,
+                headLine: headLineForSupdialog,
                 callBody: body,
               },
               supdialogAssignment: {
@@ -2337,8 +2455,9 @@ async function executeTextingCall(
 
     // Type C: Transient subdialog (unregistered)
     if (parseResult.type === 'C') {
-      const mentions = Array.from(new Set(extractMentions(headLine)));
-      const targets = mentions.filter((m) => !!team.getMember(m));
+      const targets = isSelfAlias
+        ? [parseResult.agentId]
+        : Array.from(new Set(extractMentions(headLine))).filter((m) => !!team.getMember(m));
 
       for (const tgt of targets) {
         try {

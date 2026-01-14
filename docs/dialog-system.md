@@ -190,7 +190,9 @@ This section documents the three distinct types of teammate calls in the Dominds
 
 ### TYPE A: Supdialog Call
 
-**Syntax**: `@<supdialogAgentId>` (NO `!topic`)
+**Primary syntax**: `@super` (NO `!topic`) — `@super !topic ...` is a **syntax error**
+
+**Tolerated fallback**: `@<supdialogAgentId>` (NO `!topic`)
 
 **Behavior**:
 
@@ -204,6 +206,10 @@ This section documents the three distinct types of teammate calls in the Dominds
 - Uses `subdialog.supdialog` reference (no registry lookup)
 - No registration - supdialog relationship is inherent
 - Supdialog is always the direct parent in the hierarchy
+- `@super` is the **canonical** Type A syntax: it always resolves to the direct parent, even if the parent's `agentId`
+  is identical to the subdialog's `agentId` (common for Fresh Boots Reasoning self-subdialogs).
+- The explicit `@<supdialogAgentId>` form is accepted as a semantic fallback for backwards compatibility, but is more
+  error-prone in FBR/self-subdialog cases.
 
 **Example**:
 
@@ -223,6 +229,15 @@ Result:
 ### TYPE B: Registered Subdialog Call
 
 **Syntax**: `@<anyAgentId> !topic <topic-id>` (note the space before `!topic`)
+
+**Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `@self !topic <topic-id>`
+
+- `@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
+- This is an **unambiguous** syntax for self-calls and helps avoid accidental `@cmdr`→`@cmdr` self-calls caused by
+  echoing/quoting prior call headlines.
+- **FBR itself should be common**, but the `!topic`-addressed variant should be rare. Prefer `@self` (TYPE C, transient)
+  for most FBR usage. Use `@self !topic ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
+  for a multi-step sub-problem.
 
 **Topic ID Schema**: `<topic-id>` uses the same identifier schema as `<mention-id>`:
 `[a-zA-Z][a-zA-Z0-9_-]*`. Parsing stops at whitespace or punctuation; any trailing
@@ -294,6 +309,11 @@ Result (second call):
 ### TYPE C: Transient Subdialog Call
 
 **Syntax**: `@<nonSupdialogAgentId>` (NO `!topic`)
+
+**Fresh Boots Reasoning (FBR) self-call syntax (default; most common)**: `@self`
+
+- `@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** with the same persona/config.
+- Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
 
 **Behavior**:
 

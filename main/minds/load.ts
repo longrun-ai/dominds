@@ -172,6 +172,12 @@ You interact using a simple headline/body grammar with both teammates and "texti
 ### Teammate Calls
 - Prefer multi-teammate calls for parallel expertise. Keep requests specific and role-aware.
 
+### Special Teammate Aliases
+- \`@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog agentId and creates a NEW ephemeral subdialog (default; most common).
+- \`@self !topic <topicId>\`: FBR self-call with a registered topic (rare). Use only when you explicitly want a resumable long-lived fresh-boots workspace.
+- \`@super\`: Supdialog call (Type A) **primary syntax**. Only valid inside a subdialog; calls the direct parent dialog (supdialog), suspending this subdialog temporarily and then resuming with the parent's response. Must be used with NO \`!topic\`.
+  - \`@<supdialogAgentId>\` (no \`!topic\`) is a tolerated semantic fallback, but prefer \`@super\` especially when IDs might be identical (e.g., FBR self-subdialogs), to avoid ambiguity and accidental self-call confusion.
+
 ### Texting Tools
 
 ${toolUsageText}${

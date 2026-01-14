@@ -156,6 +156,13 @@ TASK_DOC Structure:
 
 **Core Principle**: Put a "fresh copy" of yourself into the same boots (task context) with a clean mental slate, specifically focused on one aspect of the problem.
 
+**In dominds (recommended syntax)**
+
+- Fresh Boots Reasoning (FBR) is **common**, and should usually be done via **transient self-subdialogs**.
+- Use `@self` (no `!topic`) for the default “fresh boots” session: isolate one sub-problem, answer, and return.
+- Use `@self !topic <topic-id>` **rarely**, only when you explicitly want a **resumable** long-lived fresh-boots workspace
+  for a multi-step sub-problem.
+
 **Traditional vs. Fresh Boots Approach**
 
 **Traditional Problem-Solving:**
