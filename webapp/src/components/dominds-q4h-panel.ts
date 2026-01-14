@@ -5,7 +5,6 @@
  */
 
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
-import { formatRelativeTime } from '../utils/time.js';
 
 interface Q4HPanelProps {
   /** Total question count */
@@ -122,32 +121,47 @@ export class DomindsQ4HPanel extends HTMLElement {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         const card = el.closest('.q4h-question-card');
-        if (card) {
-          const questionId = card.getAttribute('data-question-id');
-          const dialogId = card.getAttribute('data-dialog-id');
-          const rootId = card.getAttribute('data-root-id');
-          const headlineEl = card.querySelector('.q4h-question-headline');
-          const bodyEl = card.querySelector('.q4h-question-content');
-          const headLine = headlineEl?.textContent || '';
-          const bodyContent = bodyEl?.textContent || '';
+        if (!card) return;
 
-          const question: HumanQuestion = {
-            id: questionId || '',
-            headLine,
-            bodyContent,
-            askedAt: new Date().toISOString(),
-            callSiteRef: { round: 1, messageIndex: 0 },
-          };
-          const dialogContext: Q4HDialogContext = {
-            selfId: dialogId || '',
-            rootId: rootId || '',
-            agentId: '',
-            taskDocPath: '',
-            questions: [],
-          };
+        const questionId = card.getAttribute('data-question-id');
+        const dialogId = card.getAttribute('data-dialog-id');
+        const rootId = card.getAttribute('data-root-id');
 
-          this.selectQuestion(question, dialogContext);
+        if (!questionId || !dialogId || !rootId) {
+          console.error('Q4H select: missing card identifiers', { questionId, dialogId, rootId });
+          return;
         }
+
+        const dialogContexts = this.props.dialogContexts;
+        let dialogContext: Q4HDialogContext | undefined;
+        for (const ctx of dialogContexts) {
+          if (ctx.selfId === dialogId && ctx.rootId === rootId) {
+            dialogContext = ctx;
+            break;
+          }
+        }
+        if (!dialogContext) {
+          console.error('Q4H select: dialogContext not found', { questionId, dialogId, rootId });
+          return;
+        }
+
+        let question: HumanQuestion | undefined;
+        for (const q of dialogContext.questions) {
+          if (q.id === questionId) {
+            question = q;
+            break;
+          }
+        }
+        if (!question) {
+          console.error('Q4H select: question not found in dialogContext', {
+            questionId,
+            dialogId,
+            rootId,
+          });
+          return;
+        }
+
+        this.selectQuestion(question, dialogContext);
       });
     });
 
@@ -434,7 +448,6 @@ export class DomindsQ4HPanel extends HTMLElement {
   private renderQuestionCard(question: HumanQuestion, dialogContext: Q4HDialogContext): string {
     const isExpanded = this.expandedQuestions.has(question.id);
     const isSelected = this.selectedQuestionId === question.id;
-    const relativeTime = formatRelativeTime(question.askedAt);
     const expandedClass = isExpanded ? 'expanded' : '';
     const selectedClass = isSelected ? 'selected' : '';
 
@@ -449,7 +462,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         </div>
         <div class="q4h-question-body">
           <div class="q4h-question-content">${this.escapeHtml(question.bodyContent)}</div>
-          <div class="q4h-question-timestamp">Asked: ${relativeTime}</div>
+          <div class="q4h-question-timestamp">Asked: ${question.askedAt}</div>
           <button
             class="q4h-goto-site-btn"
             data-question-id="${question.id}"

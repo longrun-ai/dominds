@@ -8,7 +8,6 @@ import { getWebSocketManager } from '../services/websocket.js';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogIdent } from '../shared/types/wire.js';
 import { generateShortId } from '../shared/utils/id.js';
-import { formatRelativeTime } from '../utils/time.js';
 
 /**
  * Q4H Question interface for the input component
@@ -1271,7 +1270,6 @@ export class DomindsQ4HInput extends HTMLElement {
   private renderQuestionCard(question: Q4HQuestion): string {
     const isExpanded = this.expandedQuestions.has(question.id);
     const isSelected = this.selectedQuestionId === question.id;
-    const relativeTime = formatRelativeTime(question.askedAt);
     const expandedClass = isExpanded ? 'expanded' : '';
     const selectedClass = isSelected ? 'selected' : '';
 
@@ -1287,7 +1285,7 @@ export class DomindsQ4HInput extends HTMLElement {
         </div>
         <div class="q4h-question-body">
           <div class="q4h-question-content">${this.escapeHtml(question.bodyContent)}</div>
-          <div class="q4h-question-timestamp">Asked: ${relativeTime}</div>
+          <div class="q4h-question-timestamp">Asked: ${question.askedAt}</div>
         </div>
       </div>
     `;

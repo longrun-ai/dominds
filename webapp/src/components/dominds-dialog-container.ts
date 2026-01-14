@@ -9,13 +9,10 @@ import type {
   EndOfUserSayingEvent,
   FullRemindersEvent,
   FuncCallStartEvent,
-  FunctionResultEvent,
   SubdialogEvent,
-  TeammateCallStartEvent,
   TeammateResponseEvent,
   ToolCallFinishEvent,
   ToolCallResponseEvent,
-  ToolCallStartEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
@@ -284,7 +281,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.currentRound = event.round;
         this.activeGenSeq = event.genseq;
         // Mark generation as started - this ensures substreams arrive in correct order
-        this.handleGeneratingStart(event.genseq);
+        this.handleGeneratingStart(event.genseq, event.timestamp);
         break;
       case 'generating_finish_evt':
         {
@@ -303,10 +300,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // Thinking stream
       case 'thinking_start_evt':
-        this.handleThinkingStart(event.genseq);
+        this.handleThinkingStart(event.genseq, event.timestamp);
         break;
       case 'thinking_chunk_evt':
-        this.handleThinkingChunk(event.genseq, event.chunk);
+        this.handleThinkingChunk(event.genseq, event.chunk, event.timestamp);
         break;
       case 'thinking_finish_evt':
         this.handleThinkingFinish(event.genseq);
@@ -320,10 +317,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // Markdown stream
       case 'markdown_start_evt':
-        this.handleMarkdownStart(event.genseq);
+        this.handleMarkdownStart(event.genseq, event.timestamp);
         break;
       case 'markdown_chunk_evt':
-        this.handleMarkdownChunk(event.genseq, event.chunk);
+        this.handleMarkdownChunk(event.genseq, event.chunk, event.timestamp);
         break;
       case 'markdown_finish_evt':
         this.handleMarkdownFinish(event.genseq);
@@ -461,12 +458,17 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
-  private handleGeneratingStart(seq: number): void {
+  private handleGeneratingStart(seq: number, timestamp: string): void {
     const existingBubble = this.generationBubble;
     if (existingBubble) {
       const existingSeq = existingBubble.getAttribute('data-seq');
       if (existingSeq === String(seq)) {
-        console.warn('Duplicate generating_start_evt detected, skipping bubble creation');
+        // Generation bubble was created earlier (out-of-order event recovery).
+        // Still ensure the bubble is in "generating" state and the timestamp is correct.
+        existingBubble.classList.add('generating');
+        existingBubble.setAttribute('data-finalized', 'false');
+        this.setBubbleTimestamp(existingBubble, timestamp);
+        this.activeGenSeq = seq;
         return;
       }
 
@@ -486,7 +488,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
 
-    const bubble = this.createGenerationBubble();
+    const bubble = this.createGenerationBubble(timestamp);
     bubble.setAttribute('data-seq', String(seq));
     bubble.classList.add('generating'); // Start breathing glow animation
     if (container) {
@@ -495,7 +497,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.generationBubble = bubble;
   }
 
-  private ensureGenerationBubbleForSeq(seq: number): HTMLElement | null {
+  private ensureGenerationBubbleForSeq(seq: number, timestamp: string): HTMLElement | null {
     const currentBubble = this.generationBubble;
     if (currentBubble && currentBubble.getAttribute('data-seq') === String(seq)) {
       return currentBubble;
@@ -511,7 +513,7 @@ export class DomindsDialogContainer extends HTMLElement {
       return existing;
     }
 
-    this.handleGeneratingStart(seq);
+    this.handleGeneratingStart(seq, timestamp);
     return this.generationBubble ?? null;
   }
 
@@ -556,8 +558,8 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === THINKING EVENTS (Inside Generation Bubble) ===
-  private handleThinkingStart(genseq: number): void {
-    const bubble = this.ensureGenerationBubbleForSeq(genseq);
+  private handleThinkingStart(genseq: number, timestamp: string): void {
+    const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
     if (!bubble) {
       console.warn('thinking_start_evt received without generation bubble, skipping');
       return;
@@ -569,7 +571,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.thinkingSection = thinkingSection;
     this.scrollToBottom();
   }
-  private handleThinkingChunk(genseq: number, chunk: string): void {
+  private handleThinkingChunk(genseq: number, chunk: string, timestamp: string): void {
     const thinkingSection = this.thinkingSection;
     if (!thinkingSection) {
       // Gracefully handle orphan chunk - auto-create thinking section if needed
@@ -580,10 +582,10 @@ export class DomindsDialogContainer extends HTMLElement {
         console.warn(
           'thinking_chunk_evt received without generation bubble, creating minimal state',
         );
-        this.handleGeneratingStart(genseq);
+        this.handleGeneratingStart(genseq, timestamp);
       }
       console.warn('thinking_chunk_evt received without thinking section, auto-creating');
-      this.handleThinkingStart(genseq);
+      this.handleThinkingStart(genseq, timestamp);
     }
     const section = this.thinkingSection!;
     const contentEl = section.querySelector('.thinking-content') as HTMLElement;
@@ -604,8 +606,8 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === MARKDOWN EVENTS (Inside Generation Bubble) ===
-  private handleMarkdownStart(genseq: number): void {
-    const bubble = this.ensureGenerationBubbleForSeq(genseq);
+  private handleMarkdownStart(genseq: number, timestamp: string): void {
+    const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
     if (!bubble) {
       console.warn('markdown_start_evt received without generation bubble, skipping');
       return;
@@ -617,10 +619,10 @@ export class DomindsDialogContainer extends HTMLElement {
     this.markdownSection = markdownSection;
     this.scrollToBottom();
   }
-  private handleMarkdownChunk(genseq: number, chunk: string): void {
+  private handleMarkdownChunk(genseq: number, chunk: string, timestamp: string): void {
     if (!this.markdownSection) {
       // Attempt to recover by creating a markdown section (and bubble if needed).
-      this.handleMarkdownStart(genseq);
+      this.handleMarkdownStart(genseq, timestamp);
     }
     if (!this.markdownSection) {
       console.warn('markdown_chunk_evt received without markdown section, skipping');
@@ -688,29 +690,17 @@ export class DomindsDialogContainer extends HTMLElement {
     return undefined;
   }
 
-  private handleToolCallStart(event: ToolCallStartEvent): void {
+  private handleToolCallStart(
+    event: Extract<TypedDialogEvent, { type: 'tool_call_start_evt' }>,
+  ): void {
     const firstMention = event.firstMention;
     const genseq = event.genseq;
 
-    let bubble = this.generationBubble;
+    const bubble = this.ensureGenerationBubbleForSeq(genseq, event.timestamp);
     if (!bubble) {
-      // Create placeholder generation bubble since none exists
-      console.warn('[ToolCallStart] No generation bubble, creating placeholder');
-      bubble = document.createElement('div');
-      bubble.className = 'bubble generation-bubble';
-      bubble.innerHTML = `
-        <div class="bubble-content">
-          ${this.buildGenerationBubbleHeaderHtml()}
-          <div class="bubble-body"></div>
-        </div>
-      `;
-      const container = this.shadowRoot?.querySelector('.messages');
-      if (container) {
-        container.insertBefore(bubble, container.firstChild);
-      }
-      this.generationBubble = bubble;
+      console.warn('[ToolCallStart] No generation bubble, skipping');
+      return;
     }
-
     const body = bubble.querySelector('.bubble-body');
 
     const callingSection = this.createCallingSection(firstMention);
@@ -827,30 +817,18 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === TEAMMATE CALL EVENTS (Streaming mode - @agentName and @human calls) ===
   // Q4H (Quest for Human) support: @human uses calleeDialogId="human" (no subdialog)
-  private handleTeammateCallStart(event: TeammateCallStartEvent): void {
+  private handleTeammateCallStart(
+    event: Extract<TypedDialogEvent, { type: 'teammate_call_start_evt' }>,
+  ): void {
     const firstMention = event.firstMention;
     const calleeDialogId = event.calleeDialogId;
     const isHuman = calleeDialogId === 'human';
 
-    let bubble = this.generationBubble;
+    const bubble = this.ensureGenerationBubbleForSeq(event.genseq, event.timestamp);
     if (!bubble) {
-      // Create placeholder generation bubble since none exists
-      console.warn('[TeammateCallStart] No generation bubble, creating placeholder');
-      bubble = document.createElement('div');
-      bubble.className = 'bubble generation-bubble';
-      bubble.innerHTML = `
-        <div class="bubble-content">
-          ${this.buildGenerationBubbleHeaderHtml()}
-          <div class="bubble-body"></div>
-        </div>
-      `;
-      const container = this.shadowRoot?.querySelector('.messages');
-      if (container) {
-        container.insertBefore(bubble, container.firstChild);
-      }
-      this.generationBubble = bubble;
+      console.warn('[TeammateCallStart] No generation bubble, skipping');
+      return;
     }
-
     const body = bubble.querySelector('.bubble-body');
 
     // Create teammate calling section with Q4H awareness
@@ -1073,7 +1051,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === FUNCTION RESULTS ===
-  private handleFuncResult(event: FunctionResultEvent): void {
+  private handleFuncResult(event: Extract<TypedDialogEvent, { type: 'func_result_evt' }>): void {
     // Try to find the func-call section this result belongs to by funcId
     if (event.id) {
       const funcCallSection = this.generationBubble?.querySelector(
@@ -1096,7 +1074,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // Fallback: If no matching func-call section found, create a separate message
     // This handles historical results or subdialog results
     const content = `**Function Result: ${event.name}**\n\n${event.content}`;
-    const messageEl = this.createMessageElement(content, 'tool');
+    const messageEl = this.createMessageElement(content, 'tool', event.timestamp);
     const container = this.shadowRoot?.querySelector('.messages');
     if (container) {
       container.appendChild(messageEl);
@@ -1435,14 +1413,14 @@ export class DomindsDialogContainer extends HTMLElement {
     return `Response → ${caller}`;
   }
 
-  private buildGenerationBubbleHeaderHtml(): string {
+  private buildGenerationBubbleHeaderHtml(timestamp: string): string {
     const authorLabel = this.getAuthorLabel('assistant');
     return `
       <div class="bubble-header">
         <div class="bubble-title">
           <div class="bubble-author">${authorLabel}</div>
         </div>
-        <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+        <div class="timestamp">${timestamp}</div>
       </div>
     `;
   }
@@ -1450,14 +1428,14 @@ export class DomindsDialogContainer extends HTMLElement {
   // === DOM HELPERS ===
 
   // Create unified generation bubble
-  private createGenerationBubble(): HTMLElement {
+  private createGenerationBubble(timestamp: string): HTMLElement {
     const el = document.createElement('div');
     el.className = 'generation-bubble';
     el.setAttribute('data-testid', 'message-bubble');
     el.setAttribute('data-finalized', 'false');
     el.innerHTML = `
       <div class="bubble-content">
-        ${this.buildGenerationBubbleHeaderHtml()}
+        ${this.buildGenerationBubbleHeaderHtml(timestamp)}
         <div class="bubble-body">
           <!-- User message parsed events and AI content will be inserted here -->
         </div>
@@ -1644,7 +1622,12 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // Create message element for non-generation messages (tool results, etc.)
-  private createMessageElement(content: string, role: string, msgId?: string): HTMLElement {
+  private createMessageElement(
+    content: string,
+    role: string,
+    timestamp: string,
+    msgId?: string,
+  ): HTMLElement {
     const el = document.createElement('div');
     el.className = `message ${role}`;
     el.setAttribute('data-testid', 'message-bubble');
@@ -1661,7 +1644,7 @@ export class DomindsDialogContainer extends HTMLElement {
       <div class="content-area">
         <div class="bubble-header">
           <div class="author">${this.getAuthorLabel(role)}</div>
-          <div class="timestamp">${new Date().toLocaleTimeString()}</div>
+          <div class="timestamp">${timestamp}</div>
         </div>
         <div class="content"></div>
         <div class="status"></div>
@@ -1669,8 +1652,17 @@ export class DomindsDialogContainer extends HTMLElement {
     `;
     const md = this.createMarkdownSection();
     md.setRawMarkdown(content);
-    el.querySelector('.content')?.appendChild(md);
+    const contentHost = el.querySelector('.content');
+    if (contentHost) {
+      contentHost.appendChild(md);
+    }
     return el;
+  }
+
+  private setBubbleTimestamp(bubble: HTMLElement, timestamp: string): void {
+    const timestampEl = bubble.querySelector('.timestamp') as HTMLElement | null;
+    if (!timestampEl) return;
+    timestampEl.textContent = timestamp;
   }
 
   // === PUBLIC API FOR USER MESSAGE ===
