@@ -3428,6 +3428,60 @@ export class DialogPersistence {
     }
   }
 
+  /**
+   * Find the current persistence status directory for a root dialog.
+   * Root dialogs are stored under exactly one of: run/ | done/ | archive/
+   */
+  static async findRootDialogStatus(
+    rootDialogId: DialogID,
+  ): Promise<'running' | 'completed' | 'archived' | null> {
+    if (rootDialogId.selfId !== rootDialogId.rootId) {
+      throw new Error('Expected root dialog id (selfId must equal rootId)');
+    }
+
+    const candidates: Array<{ status: 'running' | 'completed' | 'archived'; dirName: string }> = [
+      { status: 'running', dirName: this.RUN_DIR },
+      { status: 'completed', dirName: this.DONE_DIR },
+      { status: 'archived', dirName: this.ARCHIVE_DIR },
+    ];
+
+    for (const candidate of candidates) {
+      const candidatePath = path.join(
+        this.getDialogsRootDir(),
+        candidate.dirName,
+        rootDialogId.selfId,
+      );
+      try {
+        const st = await fs.promises.stat(candidatePath);
+        if (st.isDirectory()) {
+          return candidate.status;
+        }
+      } catch (error: unknown) {
+        if (getErrorCode(error) === 'ENOENT') {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Delete a root dialog directory (including subdialogs) from disk.
+   * Returns the status directory the dialog was deleted from, or null if not found.
+   */
+  static async deleteRootDialog(
+    rootDialogId: DialogID,
+  ): Promise<'running' | 'completed' | 'archived' | null> {
+    const status = await this.findRootDialogStatus(rootDialogId);
+    if (!status) return null;
+
+    const rootPath = this.getRootDialogPath(rootDialogId, status);
+    await fs.promises.rm(rootPath, { recursive: true, force: true });
+    return status;
+  }
+
   // === REGISTRY PERSISTENCE ===
 
   /**

@@ -64,6 +64,9 @@ export type UiStrings = {
   dialogActionArchiveAll: string;
   dialogActionRevive: string;
   dialogActionReviveAll: string;
+  dialogActionDelete: string;
+  confirmDeleteDialog: string;
+  dialogDeletedToast: string;
 
   readOnlyDialogInputDisabled: string;
 
@@ -177,6 +180,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       dialogActionArchiveAll: '将此任务下全部对话归档',
       dialogActionRevive: '恢复到运行中',
       dialogActionReviveAll: '将此任务下全部对话恢复到运行中',
+      dialogActionDelete: '删除',
+      confirmDeleteDialog: '删除此对话？此操作不可撤销。',
+      dialogDeletedToast: '已删除对话。',
 
       readOnlyDialogInputDisabled: '此对话已完成或已归档，输入已禁用。',
 
@@ -289,6 +295,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     dialogActionArchiveAll: 'Archive all',
     dialogActionRevive: 'Revive',
     dialogActionReviveAll: 'Revive all',
+    dialogActionDelete: 'Delete',
+    confirmDeleteDialog: 'Delete this dialog? This cannot be undone.',
+    dialogDeletedToast: 'Dialog deleted.',
 
     readOnlyDialogInputDisabled: 'This dialog is done or archived; input is disabled.',
 

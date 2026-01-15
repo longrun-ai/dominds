@@ -3,7 +3,12 @@
  */
 
 import { getUiStrings } from '../i18n/ui';
-import type { ApiMoveDialogsRequest, ApiRootDialogResponse, DialogInfo } from '../shared/types';
+import type {
+  ApiMoveDialogsRequest,
+  ApiRootDialogResponse,
+  DialogInfo,
+  DialogStatusKind,
+} from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 
 export interface DoneDialogListProps {
@@ -12,6 +17,12 @@ export interface DoneDialogListProps {
   onSelect?: (dialog: DialogInfo) => void;
   uiLanguage: LanguageCode;
 }
+
+type DialogDeleteAction = {
+  kind: 'root';
+  rootId: string;
+  fromStatus: DialogStatusKind;
+};
 
 type RootGroup = {
   rootId: string;
@@ -373,6 +384,18 @@ export class DoneDialogList extends HTMLElement {
     `;
   }
 
+  private renderDeleteIcon(): string {
+    return `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6l-1 14H6L5 6"></path>
+        <path d="M10 11v6"></path>
+        <path d="M14 11v6"></path>
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+      </svg>
+    `;
+  }
+
   private renderRootRow(
     dialog: ApiRootDialogResponse,
     toggleIcon: string,
@@ -399,6 +422,9 @@ export class DoneDialogList extends HTMLElement {
             </button>
             <button class="action icon-button" data-action="root-archive" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionArchive}" aria-label="${t.dialogActionArchive}">
               ${this.renderArchiveIcon()}
+            </button>
+            <button class="action icon-button" data-action="root-delete" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionDelete}" aria-label="${t.dialogActionDelete}">
+              ${this.renderDeleteIcon()}
             </button>
             <span class="dialog-count">${subdialogCount}</span>
           </span>
@@ -510,6 +536,13 @@ export class DoneDialogList extends HTMLElement {
         }
         return;
       }
+      if (action === 'root-delete') {
+        const rootId = actionEl.getAttribute('data-root-id');
+        if (rootId) {
+          this.emitDeleteAction({ kind: 'root', rootId, fromStatus: 'completed' });
+        }
+        return;
+      }
     }
 
     const item = target.closest('[data-root-id]') as HTMLElement | null;
@@ -610,6 +643,16 @@ export class DoneDialogList extends HTMLElement {
   private emitStatusAction(detail: ApiMoveDialogsRequest): void {
     this.dispatchEvent(
       new CustomEvent('dialog-status-action', {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private emitDeleteAction(detail: DialogDeleteAction): void {
+    this.dispatchEvent(
+      new CustomEvent('dialog-delete-action', {
         detail,
         bubbles: true,
         composed: true,

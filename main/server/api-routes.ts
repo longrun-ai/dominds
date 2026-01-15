@@ -69,6 +69,24 @@ export async function handleApiRoute(
       return await handleMoveDialogs(req, res, context);
     }
 
+    // Delete a dialog (root dialogs only for now)
+    if (
+      pathname.startsWith('/api/dialogs/') &&
+      !pathname.endsWith('/hierarchy') &&
+      req.method === 'DELETE'
+    ) {
+      const parts = pathname.split('/');
+      const rawRoot = parts[3];
+      if (!rawRoot) {
+        respondJson(res, 400, { error: 'Missing root dialog id' });
+        return true;
+      }
+      const rawSelf = parts[4];
+      const rootId = rawRoot.replace(/%2F/g, '/');
+      const selfId = (rawSelf || rawRoot).replace(/%2F/g, '/');
+      return await handleDeleteDialog(res, { rootId, selfId }, context);
+    }
+
     // Get full hierarchy for a single root dialog
     if (
       pathname.startsWith('/api/dialogs/') &&
@@ -651,6 +669,72 @@ function broadcastDialogMoves(
     if (ws.readyState === 1) {
       ws.send(data);
     }
+  }
+}
+
+function broadcastDialogDeletes(
+  clients: Set<WebSocket> | undefined,
+  message: {
+    type: 'dialogs_deleted';
+    scope: { kind: 'root'; rootId: string } | { kind: 'task'; taskDocPath: string };
+    fromStatus: 'running' | 'completed' | 'archived';
+    deletedRootIds: string[];
+    timestamp: string;
+  },
+): void {
+  if (!clients) return;
+  if (message.deletedRootIds.length === 0) return;
+  const data = JSON.stringify(message);
+  for (const ws of clients) {
+    if (ws.readyState === 1) {
+      ws.send(data);
+    }
+  }
+}
+
+async function handleDeleteDialog(
+  res: ServerResponse,
+  dialog: { rootId: string; selfId: string },
+  context: ApiRouteContext,
+): Promise<boolean> {
+  try {
+    const { rootId, selfId } = dialog;
+    if (typeof rootId !== 'string' || rootId.trim() === '') {
+      respondJson(res, 400, { error: 'Invalid root dialog id' });
+      return true;
+    }
+    if (typeof selfId !== 'string' || selfId.trim() === '') {
+      respondJson(res, 400, { error: 'Invalid dialog id' });
+      return true;
+    }
+    if (selfId !== rootId) {
+      respondJson(res, 400, {
+        error: 'Only root dialog deletion is supported (use /api/dialogs/:root)',
+      });
+      return true;
+    }
+
+    const fromStatus = await DialogPersistence.deleteRootDialog(new DialogID(rootId));
+    if (!fromStatus) {
+      respondJson(res, 404, { error: 'Dialog not found' });
+      return true;
+    }
+
+    globalDialogRegistry.unregister(rootId);
+
+    respondJson(res, 200, { deleted: true, fromStatus });
+    broadcastDialogDeletes(context.clients, {
+      type: 'dialogs_deleted',
+      scope: { kind: 'root', rootId },
+      fromStatus,
+      deletedRootIds: [rootId],
+      timestamp: formatUnifiedTimestamp(new Date()),
+    });
+    return true;
+  } catch (error) {
+    log.error('Error deleting dialog:', error);
+    respondJson(res, 500, { error: 'Failed to delete dialog' });
+    return true;
   }
 }
 

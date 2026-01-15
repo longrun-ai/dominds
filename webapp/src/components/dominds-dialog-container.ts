@@ -184,6 +184,14 @@ export class DomindsDialogContainer extends HTMLElement {
     this.suppressEvents = false;
   }
 
+  public clearDialog(): void {
+    this.suppressEvents = true;
+    this.cleanup();
+    this.currentDialog = undefined;
+    this.render();
+    this.suppressEvents = false;
+  }
+
   public getCurrentDialog(): DialogContext | undefined {
     return this.currentDialog;
   }

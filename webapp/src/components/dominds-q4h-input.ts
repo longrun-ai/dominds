@@ -310,6 +310,12 @@ export class DomindsQ4HInput extends HTMLElement {
     this.updateUI();
   }
 
+  public clearDialog(): void {
+    this.currentDialog = null;
+    this.runState = null;
+    this.updateUI();
+  }
+
   /**
    * Set the authoritative dialog run state (Send ↔ Stop).
    */

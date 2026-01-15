@@ -39,6 +39,7 @@ export type WebSocketMessage =
   | GetQ4HStateRequest
   | Q4HStateResponse
   | DialogsMovedMessage
+  | DialogsDeletedMessage
   | InterruptDialogRequest
   | EmergencyStopRequest
   | ResumeDialogRequest
@@ -163,6 +164,18 @@ export interface DialogsMovedMessage {
   fromStatus: DialogStatusKind;
   toStatus: DialogStatusKind;
   movedRootIds: string[];
+  timestamp: string;
+}
+
+export type DialogsDeletedScope =
+  | { kind: 'root'; rootId: string }
+  | { kind: 'task'; taskDocPath: string };
+
+export interface DialogsDeletedMessage {
+  type: 'dialogs_deleted';
+  scope: DialogsDeletedScope;
+  fromStatus: DialogStatusKind;
+  deletedRootIds: string[];
   timestamp: string;
 }
 

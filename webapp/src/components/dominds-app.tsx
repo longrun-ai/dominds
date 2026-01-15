@@ -2113,6 +2113,12 @@ export class DomindsApp extends HTMLElement {
       void this.handleDialogStatusAction(ce.detail);
     }) as EventListener);
 
+    // Dialog deletion actions (delete root dialogs) across done/archived list views
+    this.shadowRoot.addEventListener('dialog-delete-action', ((event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      void this.handleDialogDeleteAction(ce.detail);
+    }) as EventListener);
+
     // ========== Q4H Event Handlers ==========
     // Q4H navigate to call site event - delegated to q4h-input component
     this.shadowRoot.addEventListener('q4h-navigate-call-site', (event: Event) => {
@@ -2629,12 +2635,17 @@ export class DomindsApp extends HTMLElement {
           }
         }
         this.recomputeRunControlCounts();
-        this.renderDialogList();
         if (this.currentDialog) {
-          this.currentDialogStatus = this.resolveDialogStatus(this.currentDialog);
+          const status = this.resolveDialogStatus(this.currentDialog);
+          if (status === null) {
+            this.clearCurrentDialogSelection();
+          } else {
+            this.currentDialogStatus = status;
+          }
         } else {
           this.currentDialogStatus = null;
         }
+        this.renderDialogList();
         this.updateInputPanelVisibility();
       } else {
         if (resp.status === 401) {
@@ -2648,6 +2659,60 @@ export class DomindsApp extends HTMLElement {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showError(`Failed to load dialogs: ${message}`, 'error');
     }
+  }
+
+  private clearCurrentDialogSelection(): void {
+    this.currentDialog = null;
+    this.currentDialogStatus = null;
+
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const t = getUiStrings(this.uiLanguage);
+    const dialogTitle = root.querySelector('#current-dialog-title');
+    if (dialogTitle instanceof HTMLElement) {
+      dialogTitle.textContent = t.currentDialogPlaceholder;
+    }
+
+    const dialogContainer = root.querySelector('#dialog-container');
+    if (dialogContainer instanceof DomindsDialogContainer) {
+      dialogContainer.clearDialog();
+    }
+
+    if (this.q4hInput) {
+      this.q4hInput.clearDialog();
+      this.q4hInput.setRunState(null);
+    }
+  }
+
+  private async handleDialogDeleteAction(detail: unknown): Promise<void> {
+    if (typeof detail !== 'object' || detail === null) return;
+
+    const kind = (detail as { kind?: unknown }).kind;
+    if (kind !== 'root') return;
+
+    const rootId = (detail as { rootId?: unknown }).rootId;
+    if (typeof rootId !== 'string' || rootId.trim() === '') return;
+
+    const fromStatus = (detail as { fromStatus?: unknown }).fromStatus;
+    if (fromStatus !== 'completed' && fromStatus !== 'archived') return;
+
+    const t = getUiStrings(this.uiLanguage);
+    const confirmed = window.confirm(t.confirmDeleteDialog);
+    if (!confirmed) return;
+
+    const resp = await this.apiClient.deleteDialog(rootId);
+    if (!resp.success) {
+      if (resp.status === 401) {
+        this.onAuthRejected('api');
+        return;
+      }
+      this.showToast(resp.error || 'Failed to delete dialog', 'error');
+      return;
+    }
+
+    this.showToast(t.dialogDeletedToast, 'info');
+    void this.loadDialogs();
   }
 
   private async handleDialogStatusAction(detail: unknown): Promise<void> {
@@ -4047,6 +4112,11 @@ export class DomindsApp extends HTMLElement {
       case 'dialogs_moved': {
         // Another client moved dialogs between running/done/archived - refresh lists.
         // This ensures multi-tab/multi-browser updates stay consistent without polling.
+        void this.loadDialogs();
+        return true;
+      }
+      case 'dialogs_deleted': {
+        // Another client deleted dialogs - refresh lists and clear selection if needed.
         void this.loadDialogs();
         return true;
       }

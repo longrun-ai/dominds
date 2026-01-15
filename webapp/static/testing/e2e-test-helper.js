@@ -888,14 +888,15 @@ function captureCurrentDialogState(shadow, app) {
   const nextBtn = shadow.querySelector('#toolbar-next');
   const roundText = shadow.querySelector('#round-nav span');
 
-  // Check if dialog is actually loaded (not placeholder)
-  const hasRealDialog = titleText !== '' && titleText !== 'Select or create a dialog to start';
+  // Check if a dialog is actually selected (language-agnostic).
+  // Title-based placeholder checks are not stable across UI languages.
+  const hasRealDialog = dialogInfo !== null;
 
   return {
     exists: true,
     title: titleText,
     hasRealDialog,
-    placeholder: titleText === 'Select or create a dialog to start',
+    placeholder: dialogInfo === null,
     dialogInfo,
     round: roundText?.textContent?.trim() || '',
     prevEnabled: !prevBtn?.hasAttribute?.('disabled'),
