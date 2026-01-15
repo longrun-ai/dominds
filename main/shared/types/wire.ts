@@ -4,6 +4,8 @@
 import type { TypedDialogEvent } from './dialog';
 import type { LanguageCode } from './language';
 
+export type DialogStatusKind = 'running' | 'completed' | 'archived';
+
 // Dialog Identification Structure
 export interface DialogIdent {
   selfId: string;
@@ -36,6 +38,7 @@ export type WebSocketMessage =
   | DisplayDialogRequest
   | GetQ4HStateRequest
   | Q4HStateResponse
+  | DialogsMovedMessage
   | DisplayRemindersRequest
   | DisplayRoundRequest
   | DriveDialogRequest
@@ -126,6 +129,19 @@ export interface Q4HStateResponse {
       messageIndex: number;
     };
   }>;
+}
+
+export type DialogsMovedScope =
+  | { kind: 'root'; rootId: string }
+  | { kind: 'task'; taskDocPath: string };
+
+export interface DialogsMovedMessage {
+  type: 'dialogs_moved';
+  scope: DialogsMovedScope;
+  fromStatus: DialogStatusKind;
+  toStatus: DialogStatusKind;
+  movedRootIds: string[];
+  timestamp: string;
 }
 
 export interface DialogReadyMessage {

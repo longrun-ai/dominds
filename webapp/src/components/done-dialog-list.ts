@@ -1,12 +1,12 @@
 /**
- * Running dialog list (minimal UI)
+ * Completed ("done") dialog list (minimal UI)
  */
 
 import { getUiStrings } from '../i18n/ui';
 import type { ApiMoveDialogsRequest, ApiRootDialogResponse, DialogInfo } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 
-export interface RunningDialogListProps {
+export interface DoneDialogListProps {
   dialogs: ApiRootDialogResponse[];
   maxHeight?: string;
   onSelect?: (dialog: DialogInfo) => void;
@@ -32,8 +32,8 @@ type SelectionState =
   | { kind: 'none' }
   | { kind: 'selected'; rootId: string; selfId: string; isRoot: boolean };
 
-export class RunningDialogList extends HTMLElement {
-  private props: RunningDialogListProps = {
+export class DoneDialogList extends HTMLElement {
+  private props: DoneDialogListProps = {
     dialogs: [],
     maxHeight: 'none',
     uiLanguage: 'en',
@@ -58,7 +58,7 @@ export class RunningDialogList extends HTMLElement {
     this.render();
   }
 
-  public setProps(props: Partial<RunningDialogListProps>): void {
+  public setProps(props: Partial<DoneDialogListProps>): void {
     this.props = { ...this.props, ...props };
     this.updateListState(this.props.dialogs);
     this.render();
@@ -79,33 +79,6 @@ export class RunningDialogList extends HTMLElement {
       return;
     }
     this.applySelection(match);
-  }
-
-  public getSelectedDialogId(): string | null {
-    if (this.selectionState.kind === 'selected') {
-      return this.selectionState.rootId;
-    }
-    return null;
-  }
-
-  public getAllDialogs(): ApiRootDialogResponse[] {
-    return [...this.props.dialogs];
-  }
-
-  public findDialogByRootId(rootId: string): ApiRootDialogResponse | undefined {
-    return this.props.dialogs.find((d) => d.rootId === rootId && !d.selfId);
-  }
-
-  public findSubdialog(rootId: string, selfId: string): ApiRootDialogResponse | undefined {
-    return this.props.dialogs.find((d) => d.rootId === rootId && d.selfId === selfId);
-  }
-
-  public selectDialogById(rootId: string): boolean {
-    const dialog = this.findDialogByRootId(rootId);
-    if (!dialog) return false;
-    this.applySelection(dialog);
-    this.notifySelection(dialog);
-    return true;
   }
 
   private updateListState(dialogs: ApiRootDialogResponse[]): void {
@@ -156,9 +129,9 @@ export class RunningDialogList extends HTMLElement {
       if (!dialog.agentId) {
         throw new Error(`Dialog ${dialog.rootId} missing agentId.`);
       }
-      if (dialog.status !== 'running') {
+      if (dialog.status !== 'completed') {
         throw new Error(
-          `Dialog ${dialog.rootId}${dialog.selfId ? `:${dialog.selfId}` : ''} is not running.`,
+          `Dialog ${dialog.rootId}${dialog.selfId ? `:${dialog.selfId}` : ''} is not completed.`,
         );
       }
       if (dialog.selfId) {
@@ -281,10 +254,10 @@ export class RunningDialogList extends HTMLElement {
     const style = this.getStyles();
     this.shadowRoot.innerHTML = `
       <style>${style}</style>
-      <div class="running-dialog-list" id="running-dialog-list"></div>
+      <div class="done-dialog-list" id="done-dialog-list"></div>
     `;
 
-    this.listEl = this.shadowRoot.querySelector('#running-dialog-list');
+    this.listEl = this.shadowRoot.querySelector('#done-dialog-list');
     if (this.listEl) {
       this.listEl.addEventListener('click', this.handleClick);
     }
@@ -302,7 +275,7 @@ export class RunningDialogList extends HTMLElement {
     switch (this.listState.kind) {
       case 'empty': {
         this.listEl.innerHTML = `
-          <div class="empty">${t.noDialogsYet}</div>
+          <div class="empty">${t.noDoneDialogs}</div>
         `;
         return;
       }
@@ -331,7 +304,7 @@ export class RunningDialogList extends HTMLElement {
                     </div>
                   `;
                 const subNodes = rootGroup.subdialogs
-                  .map((subdialog) => this.renderDialogRow(subdialog, 'sub'))
+                  .map((subdialog) => this.renderDialogRow(subdialog))
                   .join('');
                 const subCollapsed = taskCollapsed || rootCollapsed;
                 return `
@@ -350,8 +323,8 @@ export class RunningDialogList extends HTMLElement {
                     <span>${group.taskDocPath}</span>
                   </div>
                   <div class="task-title-right">
-                    <button class="action icon-button" data-action="task-mark-done" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionMarkAllDone}" aria-label="${t.dialogActionMarkAllDone}">
-                      ${this.renderDoneIcon()}
+                    <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
+                      ${this.renderReviveIcon()}
                     </button>
                     <button class="action icon-button" data-action="task-archive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionArchiveAll}" aria-label="${t.dialogActionArchiveAll}">
                       ${this.renderArchiveIcon()}
@@ -379,21 +352,23 @@ export class RunningDialogList extends HTMLElement {
     `;
   }
 
-  private renderDoneIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-        <polyline points="22 4 12 14 9 11"></polyline>
-      </svg>
-    `;
-  }
-
   private renderArchiveIcon(): string {
     return `
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
         <polyline points="21 8 21 21 3 21 3 8"></polyline>
         <rect x="1" y="3" width="22" height="5"></rect>
         <line x1="10" y1="12" x2="14" y2="12"></line>
+      </svg>
+    `;
+  }
+
+  private renderReviveIcon(): string {
+    return `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <polyline points="1 4 1 10 7 10"></polyline>
+        <polyline points="23 20 23 14 17 14"></polyline>
+        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"></path>
+        <path d="M3.51 15A9 9 0 0 0 18.36 18.36L23 14"></path>
       </svg>
     `;
   }
@@ -419,8 +394,8 @@ export class RunningDialogList extends HTMLElement {
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button">${toggleIcon}</button>
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
-            <button class="action icon-button" data-action="root-mark-done" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionMarkDone}" aria-label="${t.dialogActionMarkDone}">
-              ${this.renderDoneIcon()}
+            <button class="action icon-button" data-action="root-revive" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionRevive}" aria-label="${t.dialogActionRevive}">
+              ${this.renderReviveIcon()}
             </button>
             <button class="action icon-button" data-action="root-archive" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionArchive}" aria-label="${t.dialogActionArchive}">
               ${this.renderArchiveIcon()}
@@ -438,46 +413,26 @@ export class RunningDialogList extends HTMLElement {
     `;
   }
 
-  private renderDialogRow(dialog: ApiRootDialogResponse, kind: 'root' | 'sub'): string {
+  private renderDialogRow(dialog: ApiRootDialogResponse): string {
     this.indexDialog(dialog);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const dialogId =
-      kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
-    const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
+    const dialogId = dialog.selfId ?? dialog.rootId;
     const updatedAt = dialog.lastModified || '';
     const topicMark = dialog.topicId ?? '';
 
-    if (kind === 'sub') {
-      return `
-        <div
-          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}"
-          data-root-id="${dialog.rootId}"
-          data-self-id="${dialog.selfId ?? ''}"
-        >
-          <div class="dialog-row dialog-subrow">
-            <span class="dialog-title">@${dialog.agentId}</span>
-            <span class="dialog-meta-right">
-              <span class="dialog-topic">${topicMark}</span>
-            </span>
-          </div>
-          <div class="dialog-row dialog-submeta">
-            <span class="dialog-meta-right">
-              <span class="dialog-status">${dialogId}</span>
-              <span class="dialog-time">${updatedAt}</span>
-            </span>
-          </div>
-        </div>
-      `;
-    }
-
     return `
       <div
-        class="${rowClass}${isSelected ? ' selected' : ''}"
+        class="dialog-item sub-dialog sdlg-node${isSelected ? ' selected' : ''}"
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
       >
-        <div class="dialog-row">
+        <div class="dialog-row dialog-subrow">
           <span class="dialog-title">@${dialog.agentId}</span>
+          <span class="dialog-meta-right">
+            <span class="dialog-topic">${topicMark}</span>
+          </span>
+        </div>
+        <div class="dialog-row dialog-submeta">
           <span class="dialog-meta-right">
             <span class="dialog-status">${dialogId}</span>
             <span class="dialog-time">${updatedAt}</span>
@@ -500,14 +455,14 @@ export class RunningDialogList extends HTMLElement {
         }
         return;
       }
-      if (action === 'task-mark-done') {
+      if (action === 'task-revive') {
         const taskDocPath = actionEl.getAttribute('data-task-path');
         if (taskDocPath) {
           this.emitStatusAction({
             kind: 'task',
             taskDocPath,
-            fromStatus: 'running',
-            toStatus: 'completed',
+            fromStatus: 'completed',
+            toStatus: 'running',
           });
         }
         return;
@@ -518,7 +473,7 @@ export class RunningDialogList extends HTMLElement {
           this.emitStatusAction({
             kind: 'task',
             taskDocPath,
-            fromStatus: 'running',
+            fromStatus: 'completed',
             toStatus: 'archived',
           });
         }
@@ -531,14 +486,14 @@ export class RunningDialogList extends HTMLElement {
         }
         return;
       }
-      if (action === 'root-mark-done') {
+      if (action === 'root-revive') {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
           this.emitStatusAction({
             kind: 'root',
             rootId,
-            fromStatus: 'running',
-            toStatus: 'completed',
+            fromStatus: 'completed',
+            toStatus: 'running',
           });
         }
         return;
@@ -549,13 +504,14 @@ export class RunningDialogList extends HTMLElement {
           this.emitStatusAction({
             kind: 'root',
             rootId,
-            fromStatus: 'running',
+            fromStatus: 'completed',
             toStatus: 'archived',
           });
         }
         return;
       }
     }
+
     const item = target.closest('[data-root-id]') as HTMLElement | null;
     if (!item) return;
     const rootId = item.getAttribute('data-root-id');
@@ -693,7 +649,7 @@ export class RunningDialogList extends HTMLElement {
         background: var(--dominds-sidebar-bg, #ffffff);
       }
 
-      .running-dialog-list {
+      .done-dialog-list {
         display: flex;
         flex-direction: column;
         overflow-y: auto;
@@ -848,26 +804,42 @@ export class RunningDialogList extends HTMLElement {
         font-weight: 600;
       }
 
+      .dialog-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .dialog-meta-right {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        font-weight: 500;
-      }
-
-      .dialog-status {
-        font-size: 11px;
-        color: var(--dominds-muted, #666666);
-        letter-spacing: 0.02em;
+        flex: none;
       }
 
       .dialog-count {
         font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: var(--dominds-border, #e0e0e0);
         color: var(--dominds-muted, #666666);
-        letter-spacing: 0.02em;
+        flex: none;
       }
 
-      .dialog-topic {
+      .dialog-submeta {
+        justify-content: flex-end;
+      }
+
+      .dialog-subrow {
+        font-size: 13px;
+      }
+
+      .dialog-status {
         font-size: 11px;
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
@@ -878,12 +850,9 @@ export class RunningDialogList extends HTMLElement {
         color: var(--dominds-muted, #888888);
       }
 
-      .dialog-subrow {
-        font-size: 13px;
-      }
-
-      .dialog-submeta {
-        justify-content: flex-end;
+      .dialog-topic {
+        font-size: 11px;
+        color: var(--dominds-muted, #888888);
       }
 
       .empty {
@@ -895,6 +864,6 @@ export class RunningDialogList extends HTMLElement {
   }
 }
 
-if (!customElements.get('running-dialog-list')) {
-  customElements.define('running-dialog-list', RunningDialogList);
+if (!customElements.get('done-dialog-list')) {
+  customElements.define('done-dialog-list', DoneDialogList);
 }

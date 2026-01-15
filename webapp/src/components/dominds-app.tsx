@@ -21,7 +21,12 @@ import {
   writeAuthKeyToLocalStorage,
 } from '../services/auth';
 import { getWebSocketManager } from '../services/websocket.js';
-import type { ApiRootDialogResponse, DialogInfo } from '../shared/types';
+import type {
+  ApiMoveDialogsRequest,
+  ApiRootDialogResponse,
+  DialogInfo,
+  DialogStatusKind,
+} from '../shared/types';
 import type {
   FullRemindersEvent,
   NewQ4HAskedEvent,
@@ -45,11 +50,15 @@ import type {
   WelcomeMessage,
 } from '../shared/types/wire';
 import { marked } from '../utils/markdownRenderer';
+import './archived-dialog-list.js';
+import { ArchivedDialogList } from './archived-dialog-list.js';
 import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-q4h-input';
 import './dominds-team-members.js';
 import { DomindsTeamMembers } from './dominds-team-members.js';
+import './done-dialog-list.js';
+import { DoneDialogList } from './done-dialog-list.js';
 import './running-dialog-list.js';
 import { RunningDialogList } from './running-dialog-list.js';
 
@@ -74,6 +83,7 @@ export class DomindsApp extends HTMLElement {
   private urlAuthPresent: boolean = false;
   private dialogs: ApiRootDialogResponse[] = [];
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
+  private currentDialogStatus: DialogStatusKind | null = null;
   private teamMembers: FrontendTeamMember[] = [];
   private defaultResponder: string | null = null;
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
@@ -233,9 +243,19 @@ export class DomindsApp extends HTMLElement {
     const conn = this.shadowRoot.querySelector('dominds-connection-status') as HTMLElement | null;
     if (conn) conn.setAttribute('ui-language', this.uiLanguage);
 
-    const dialogList = this.shadowRoot.querySelector('#dialog-list');
-    if (dialogList instanceof RunningDialogList) {
-      dialogList.setProps({ uiLanguage: this.uiLanguage });
+    const runningList = this.shadowRoot.querySelector('#running-dialog-list');
+    if (runningList instanceof RunningDialogList) {
+      runningList.setProps({ uiLanguage: this.uiLanguage });
+    }
+
+    const doneList = this.shadowRoot.querySelector('#done-dialog-list');
+    if (doneList instanceof DoneDialogList) {
+      doneList.setProps({ uiLanguage: this.uiLanguage });
+    }
+
+    const archivedList = this.shadowRoot.querySelector('#archived-dialog-list');
+    if (archivedList instanceof ArchivedDialogList) {
+      archivedList.setProps({ uiLanguage: this.uiLanguage });
     }
 
     const teamMembers = this.shadowRoot.querySelector('#team-members');
@@ -630,12 +650,23 @@ export class DomindsApp extends HTMLElement {
     this.setupElementEventListeners();
 
     // Initialize child components with current state
-    const dialogList = this.shadowRoot.querySelector('#dialog-list');
-    if (dialogList instanceof RunningDialogList) {
-      dialogList.setDialogs(this.dialogs);
-      const onSelect = (dialog: DialogInfo) => this.selectDialog(dialog);
-      dialogList.setProps({ onSelect, uiLanguage: this.uiLanguage });
+    const onSelect = (dialog: DialogInfo) => this.selectDialog(dialog);
+
+    const runningList = this.shadowRoot.querySelector('#running-dialog-list');
+    if (runningList instanceof RunningDialogList) {
+      runningList.setProps({ onSelect, uiLanguage: this.uiLanguage });
     }
+
+    const doneList = this.shadowRoot.querySelector('#done-dialog-list');
+    if (doneList instanceof DoneDialogList) {
+      doneList.setProps({ onSelect, uiLanguage: this.uiLanguage });
+    }
+
+    const archivedList = this.shadowRoot.querySelector('#archived-dialog-list');
+    if (archivedList instanceof ArchivedDialogList) {
+      archivedList.setProps({ onSelect, uiLanguage: this.uiLanguage });
+    }
+
     const teamMembers = this.shadowRoot.querySelector('#team-members');
     if (teamMembers instanceof DomindsTeamMembers) {
       teamMembers.setMembers(this.teamMembers);
@@ -644,6 +675,7 @@ export class DomindsApp extends HTMLElement {
 
     this.updateThemeToggle();
     this.updateActivityView();
+    this.renderDialogList();
     this.applyUiLanguageToDom();
   }
 
@@ -652,10 +684,7 @@ export class DomindsApp extends HTMLElement {
    * Use this after dialog list changes (e.g., subdialog creation, dialog loading).
    */
   private updateDialogList(): void {
-    const dialogList = this.shadowRoot?.querySelector('#dialog-list');
-    if (dialogList instanceof RunningDialogList) {
-      dialogList.setDialogs(this.dialogs);
-    }
+    this.renderDialogList();
   }
 
   private updateActivityView(): void {
@@ -1031,7 +1060,9 @@ export class DomindsApp extends HTMLElement {
         margin-top: 6px;
       }
 
-      .activity-view running-dialog-list {
+      .activity-view running-dialog-list,
+      .activity-view done-dialog-list,
+      .activity-view archived-dialog-list {
         flex: 1;
         min-height: 0;
       }
@@ -1130,6 +1161,20 @@ export class DomindsApp extends HTMLElement {
 
       .q4h-input-section {
         transition: height 0.3s ease-out, max-height 0.3s ease-out;
+      }
+
+      .q4h-input-wrap {
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .q4h-readonly-banner {
+        padding: 10px 12px;
+        border-top: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-toolbar-bg, #f8f9fa);
+        color: var(--dominds-muted, #666666);
+        font-size: 13px;
       }
 
       .resizing .conversation-scroll-area,
@@ -1756,21 +1801,21 @@ export class DomindsApp extends HTMLElement {
             <div class="sidebar-content">
               <div class="activity-view" data-activity-view="running">
                 <running-dialog-list 
-                  id="dialog-list"
+                  id="running-dialog-list"
                   max-height="calc(100vh - 200px)"
                 ></running-dialog-list>
               </div>
               <div class="activity-view hidden" data-activity-view="done">
-                <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">${t.placeholderDoneTitle}</div>
-                  <div class="activity-placeholder-text">${t.placeholderDoneText}</div>
-                </div>
+                <done-dialog-list
+                  id="done-dialog-list"
+                  max-height="calc(100vh - 200px)"
+                ></done-dialog-list>
               </div>
               <div class="activity-view hidden" data-activity-view="archived">
-                <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">${t.placeholderArchivedTitle}</div>
-                  <div class="activity-placeholder-text">${t.placeholderArchivedText}</div>
-                </div>
+                <archived-dialog-list
+                  id="archived-dialog-list"
+                  max-height="calc(100vh - 200px)"
+                ></archived-dialog-list>
               </div>
               <div class="activity-view hidden" data-activity-view="search">
                 <div class="activity-placeholder">
@@ -1846,10 +1891,13 @@ export class DomindsApp extends HTMLElement {
                 <dominds-dialog-container id="dialog-container"></dominds-dialog-container>
               </div>
               <div class="resize-handle" id="resize-handle"></div>
-              <dominds-q4h-input
-                id="q4h-input"
-                class="q4h-input-section"
-              ></dominds-q4h-input>
+              <div class="q4h-input-wrap">
+                <div id="q4h-readonly-banner" class="q4h-readonly-banner hidden">${t.readOnlyDialogInputDisabled}</div>
+                <dominds-q4h-input
+                  id="q4h-input"
+                  class="q4h-input-section"
+                ></dominds-q4h-input>
+              </div>
             </div>
           </main>
         </div>
@@ -1892,6 +1940,21 @@ export class DomindsApp extends HTMLElement {
       this.toolbarReminders[ce.detail.index] = { content: ce.detail.content };
       this.updateRemindersWidget();
     });
+
+    // Dialog list expand (lazy subdialog loading) across all list views
+    this.shadowRoot.addEventListener('dialog-expand', ((event: Event) => {
+      const ce = event as CustomEvent<{ rootId?: string }>;
+      const rootId = ce.detail ? ce.detail.rootId : undefined;
+      if (typeof rootId === 'string' && rootId) {
+        void this.loadSubdialogsForRoot(rootId);
+      }
+    }) as EventListener);
+
+    // Dialog status actions (mark done/archive/revive) across all list views
+    this.shadowRoot.addEventListener('dialog-status-action', ((event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      void this.handleDialogStatusAction(ce.detail);
+    }) as EventListener);
 
     // ========== Q4H Event Handlers ==========
     // Q4H navigate to call site event - delegated to q4h-input component
@@ -2380,6 +2443,12 @@ export class DomindsApp extends HTMLElement {
         // Subdialogs will be loaded lazily when user expands a root dialog
         this.dialogs = resp.data;
         this.renderDialogList();
+        if (this.currentDialog) {
+          this.currentDialogStatus = this.resolveDialogStatus(this.currentDialog);
+        } else {
+          this.currentDialogStatus = null;
+        }
+        this.updateInputPanelVisibility();
       } else {
         if (resp.status === 401) {
           this.onAuthRejected('api');
@@ -2391,6 +2460,74 @@ export class DomindsApp extends HTMLElement {
       console.error('Error in loadDialogs:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showError(`Failed to load dialogs: ${message}`, 'error');
+    }
+  }
+
+  private async handleDialogStatusAction(detail: unknown): Promise<void> {
+    if (typeof detail !== 'object' || detail === null) return;
+
+    const kind = (detail as { kind?: unknown }).kind;
+    if (kind !== 'root' && kind !== 'task') return;
+
+    const fromStatus = (detail as { fromStatus?: unknown }).fromStatus;
+    const toStatus = (detail as { toStatus?: unknown }).toStatus;
+    const fromOk =
+      fromStatus === 'running' || fromStatus === 'completed' || fromStatus === 'archived';
+    const toOk = toStatus === 'running' || toStatus === 'completed' || toStatus === 'archived';
+    if (!fromOk || !toOk) return;
+    if (fromStatus === toStatus) return;
+
+    let request: ApiMoveDialogsRequest;
+    if (kind === 'root') {
+      const rootId = (detail as { rootId?: unknown }).rootId;
+      if (typeof rootId !== 'string' || rootId.trim() === '') return;
+      request = {
+        kind: 'root',
+        rootId,
+        fromStatus: fromStatus as DialogStatusKind,
+        toStatus: toStatus as DialogStatusKind,
+      };
+    } else {
+      const taskDocPath = (detail as { taskDocPath?: unknown }).taskDocPath;
+      if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') return;
+      request = {
+        kind: 'task',
+        taskDocPath,
+        fromStatus: fromStatus as DialogStatusKind,
+        toStatus: toStatus as DialogStatusKind,
+      };
+    }
+
+    try {
+      const resp = await this.apiClient.moveDialogs(request);
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        this.showToast(resp.error || 'Failed to move dialogs', 'error');
+        return;
+      }
+      const payload = resp.data;
+      if (!payload || !payload.success) {
+        const msg = payload && payload.error ? payload.error : 'Failed to move dialogs';
+        this.showToast(msg, 'error');
+        return;
+      }
+
+      const movedCount = Array.isArray(payload.movedRootIds) ? payload.movedRootIds.length : 0;
+      this.showToast(`Moved ${movedCount} dialog(s).`, 'info');
+
+      await this.loadDialogs();
+      if (this.currentDialog) {
+        this.currentDialogStatus = this.resolveDialogStatus(this.currentDialog);
+      } else {
+        this.currentDialogStatus = null;
+      }
+      this.updateInputPanelVisibility();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.showToast(`Failed to move dialogs: ${message}`, 'error');
     }
   }
 
@@ -2556,20 +2693,63 @@ export class DomindsApp extends HTMLElement {
       }
     });
 
-    // Use the enhanced dialog list component with proper deduplication
-    const dialogList = this.shadowRoot.querySelector('#dialog-list');
+    const runningDialogs = this.dialogs.filter((d) => d.status === 'running');
+    const doneDialogs = this.dialogs.filter((d) => d.status === 'completed');
+    const archivedDialogs = this.dialogs.filter((d) => d.status === 'archived');
 
-    if (dialogList instanceof RunningDialogList) {
-      // Use setDialogs which properly deduplicates by rootId:selfId
-      dialogList.setDialogs(this.dialogs);
+    const runningList = this.shadowRoot.querySelector('#running-dialog-list');
+    if (runningList instanceof RunningDialogList) {
+      runningList.setDialogs(runningDialogs);
+      if (this.currentDialog) runningList.setCurrentDialog(this.currentDialog);
+    }
 
-      // Add event listener for dialog expand (lazy subdialog loading)
-      dialogList.addEventListener('dialog-expand', ((event: CustomEvent) => {
-        const { rootId } = event.detail;
-        if (rootId) {
-          this.loadSubdialogsForRoot(rootId);
-        }
-      }) as EventListener);
+    const doneList = this.shadowRoot.querySelector('#done-dialog-list');
+    if (doneList instanceof DoneDialogList) {
+      doneList.setDialogs(doneDialogs);
+      if (this.currentDialog) doneList.setCurrentDialog(this.currentDialog);
+    }
+
+    const archivedList = this.shadowRoot.querySelector('#archived-dialog-list');
+    if (archivedList instanceof ArchivedDialogList) {
+      archivedList.setDialogs(archivedDialogs);
+      if (this.currentDialog) archivedList.setCurrentDialog(this.currentDialog);
+    }
+  }
+
+  private resolveDialogStatus(dialog: DialogInfo): DialogStatusKind | null {
+    const isRoot = dialog.selfId === dialog.rootId;
+    if (isRoot) {
+      const match = this.dialogs.find((d) => d.rootId === dialog.rootId && !d.selfId);
+      return match ? match.status : null;
+    }
+    const match = this.dialogs.find(
+      (d) => d.rootId === dialog.rootId && d.selfId === dialog.selfId,
+    );
+    if (match) return match.status;
+    // Subdialogs always share the same persistence status directory as their root dialog.
+    const rootMatch = this.dialogs.find((d) => d.rootId === dialog.rootId && !d.selfId);
+    return rootMatch ? rootMatch.status : null;
+  }
+
+  private updateInputPanelVisibility(): void {
+    const readOnly =
+      this.currentDialogStatus === 'completed' || this.currentDialogStatus === 'archived';
+
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const banner = root.querySelector('#q4h-readonly-banner');
+    if (banner instanceof HTMLElement) {
+      banner.classList.toggle('hidden', !readOnly);
+    }
+
+    const inputEl = root.querySelector('#q4h-input');
+    if (inputEl instanceof HTMLElement) {
+      inputEl.classList.toggle('hidden', readOnly);
+    }
+
+    if (this.q4hInput) {
+      this.q4hInput.setDisabled(readOnly);
     }
   }
 
@@ -2592,6 +2772,8 @@ export class DomindsApp extends HTMLElement {
 
     // Store current dialog for refresh functionality
     this.currentDialog = normalizedDialog;
+    this.currentDialogStatus = this.resolveDialogStatus(normalizedDialog);
+    this.updateInputPanelVisibility();
 
     try {
       // Send the display_dialog message with error handling
@@ -2633,24 +2815,40 @@ export class DomindsApp extends HTMLElement {
       if (this.q4hInput) {
         this.q4hInput.setDialog(normalizedDialog);
 
-        // Enable input immediately after successful dialog selection
-        // (dialog_ready event will handle re-enabling if needed)
-        setTimeout(() => {
-          this.q4hInput?.setDisabled(false);
-        }, 500); // Small delay to ensure setDialog completes
+        const status = this.currentDialogStatus;
+        const isReadOnly = status === 'completed' || status === 'archived';
 
-        // Auto-focus the input after dialog selection
-        setTimeout(() => {
-          this.q4hInput?.focusInput();
-        }, 100);
+        if (!isReadOnly) {
+          // Enable input immediately after successful dialog selection
+          // (dialog_ready event will handle re-enabling if needed)
+          setTimeout(() => {
+            const input = this.q4hInput;
+            if (input) input.setDisabled(false);
+          }, 500); // Small delay to ensure setDialog completes
+
+          // Auto-focus the input after dialog selection
+          setTimeout(() => {
+            const input = this.q4hInput;
+            if (input) input.focusInput();
+          }, 100);
+        } else {
+          this.q4hInput.setDisabled(true);
+        }
       } else {
         console.warn('❌ Auto-focus: No q4h-input component found after dialog selection');
       }
 
       // Update the dialog list to show current selection
-      const dialogList = this.shadowRoot?.querySelector('#dialog-list');
-      if (dialogList instanceof RunningDialogList) {
-        dialogList.setCurrentDialog(normalizedDialog);
+      const sr = this.shadowRoot;
+      if (sr) {
+        const runningList = sr.querySelector('#running-dialog-list');
+        if (runningList instanceof RunningDialogList)
+          runningList.setCurrentDialog(normalizedDialog);
+        const doneList = sr.querySelector('#done-dialog-list');
+        if (doneList instanceof DoneDialogList) doneList.setCurrentDialog(normalizedDialog);
+        const archivedList = sr.querySelector('#archived-dialog-list');
+        if (archivedList instanceof ArchivedDialogList)
+          archivedList.setCurrentDialog(normalizedDialog);
       }
 
       // Reset reminder operation count for new dialog
@@ -3649,6 +3847,12 @@ export class DomindsApp extends HTMLElement {
         // Handle initial Q4H state response (all questions at once)
         const event: Q4HStateResponse = message;
         this.handleQ4HStateResponse(event);
+        return true;
+      }
+      case 'dialogs_moved': {
+        // Another client moved dialogs between running/done/archived - refresh lists.
+        // This ensures multi-tab/multi-browser updates stay consistent without polling.
+        void this.loadDialogs();
         return true;
       }
       default: {

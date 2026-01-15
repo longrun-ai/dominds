@@ -5,6 +5,8 @@
 
 import {
   ApiDialogHierarchyResponse,
+  ApiMoveDialogsRequest,
+  ApiMoveDialogsResponse,
   ApiRootDialogResponse,
   ApiSubdialogResponse,
 } from '../shared/types';
@@ -253,6 +255,16 @@ export class ApiClient {
         agentId,
         taskDocPath,
       },
+    });
+  }
+
+  /**
+   * Move dialogs between status directories (running/completed/archived).
+   */
+  async moveDialogs(request: ApiMoveDialogsRequest): Promise<ApiResponse<ApiMoveDialogsResponse>> {
+    return this.request('/api/dialogs/move', {
+      method: 'POST',
+      body: request,
     });
   }
 

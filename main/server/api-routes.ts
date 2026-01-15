@@ -12,6 +12,7 @@ import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import type { ApiMoveDialogsRequest } from '../shared/types';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -61,6 +62,11 @@ export async function handleApiRoute(
     // Create dialog endpoint
     if (pathname === '/api/dialogs' && req.method === 'POST') {
       return await handleCreateDialog(req, res, context);
+    }
+
+    // Move dialogs between status directories (running/completed/archived)
+    if (pathname === '/api/dialogs/move' && req.method === 'POST') {
+      return await handleMoveDialogs(req, res, context);
     }
 
     // Get full hierarchy for a single root dialog
@@ -502,6 +508,131 @@ async function handleCreateDialog(
     log.error('Error creating dialog:', error);
     respondJson(res, 500, { success: false, error: 'Failed to create dialog' });
     return true;
+  }
+}
+
+async function handleMoveDialogs(
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: ApiRouteContext,
+): Promise<boolean> {
+  try {
+    const body = await readRequestBody(req);
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed !== 'object' || parsed === null) {
+      respondJson(res, 400, { success: false, error: 'Invalid JSON body' });
+      return true;
+    }
+
+    const kind = (parsed as { kind?: unknown }).kind;
+    if (kind !== 'root' && kind !== 'task') {
+      respondJson(res, 400, { success: false, error: 'Invalid move request kind' });
+      return true;
+    }
+
+    const fromStatus = (parsed as { fromStatus?: unknown }).fromStatus;
+    const toStatus = (parsed as { toStatus?: unknown }).toStatus;
+    const fromOk =
+      fromStatus === 'running' || fromStatus === 'completed' || fromStatus === 'archived';
+    const toOk = toStatus === 'running' || toStatus === 'completed' || toStatus === 'archived';
+    if (!fromOk || !toOk) {
+      respondJson(res, 400, { success: false, error: 'Invalid fromStatus/toStatus' });
+      return true;
+    }
+    if (fromStatus === toStatus) {
+      respondJson(res, 400, { success: false, error: 'fromStatus and toStatus must differ' });
+      return true;
+    }
+
+    const request = parsed as ApiMoveDialogsRequest;
+    const movedRootIds: string[] = [];
+    const scope =
+      request.kind === 'root'
+        ? { kind: 'root' as const, rootId: request.rootId }
+        : { kind: 'task' as const, taskDocPath: request.taskDocPath };
+
+    if (request.kind === 'root') {
+      const rootId = request.rootId;
+      if (typeof rootId !== 'string' || rootId.trim() === '') {
+        respondJson(res, 400, { success: false, error: 'rootId must be a non-empty string' });
+        return true;
+      }
+
+      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(rootId), fromStatus);
+      if (!meta) {
+        respondJson(res, 404, {
+          success: false,
+          error: `Root dialog ${rootId} not found in ${fromStatus}`,
+        });
+        return true;
+      }
+
+      await DialogPersistence.moveDialogStatus(new DialogID(rootId), fromStatus, toStatus);
+      movedRootIds.push(rootId);
+
+      respondJson(res, 200, { success: true, movedRootIds });
+      broadcastDialogMoves(context.clients, {
+        type: 'dialogs_moved',
+        scope,
+        fromStatus,
+        toStatus,
+        movedRootIds,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      });
+      return true;
+    }
+
+    const taskDocPath = request.taskDocPath;
+    if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') {
+      respondJson(res, 400, { success: false, error: 'taskDocPath must be a non-empty string' });
+      return true;
+    }
+
+    const ids = await DialogPersistence.listDialogs(fromStatus);
+    for (const id of ids) {
+      if (typeof id !== 'string' || id.trim() === '') continue;
+      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(id), fromStatus);
+      if (!meta) continue;
+      if (meta.taskDocPath !== taskDocPath) continue;
+      await DialogPersistence.moveDialogStatus(new DialogID(id), fromStatus, toStatus);
+      movedRootIds.push(id);
+    }
+
+    respondJson(res, 200, { success: true, movedRootIds });
+    broadcastDialogMoves(context.clients, {
+      type: 'dialogs_moved',
+      scope,
+      fromStatus,
+      toStatus,
+      movedRootIds,
+      timestamp: formatUnifiedTimestamp(new Date()),
+    });
+    return true;
+  } catch (error) {
+    log.error('Error moving dialogs:', error);
+    respondJson(res, 500, { success: false, error: 'Failed to move dialogs' });
+    return true;
+  }
+}
+
+function broadcastDialogMoves(
+  clients: Set<WebSocket> | undefined,
+  message: {
+    type: 'dialogs_moved';
+    scope: { kind: 'root'; rootId: string } | { kind: 'task'; taskDocPath: string };
+    fromStatus: 'running' | 'completed' | 'archived';
+    toStatus: 'running' | 'completed' | 'archived';
+    movedRootIds: string[];
+    timestamp: string;
+  },
+): void {
+  if (!clients) return;
+  if (message.movedRootIds.length === 0) return;
+  const data = JSON.stringify(message);
+  for (const ws of clients) {
+    if (ws.readyState === 1) {
+      ws.send(data);
+    }
   }
 }
 

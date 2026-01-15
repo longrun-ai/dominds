@@ -1015,6 +1015,7 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     round?: number,
     totalRounds?: number,
+    status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
       // Use provided round or fallback to dialog.currentRound (which may be stale for new Dialog objects)
@@ -1023,7 +1024,7 @@ export class DiskFileDialogStore extends DialogStore {
       const persistenceEvents = await DialogPersistence.readRoundEvents(
         dialog.id,
         currentRound,
-        'running',
+        status,
       );
 
       // Send round_update event directly to this WebSocket only
@@ -1047,7 +1048,7 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       // Rehydrate reminders from dialog state
-      const dialogState = await DialogPersistence.restoreDialog(dialog.id, 'running');
+      const dialogState = await DialogPersistence.restoreDialog(dialog.id, status);
       const rehydrated: Reminder[] = (dialogState?.reminders ?? []).map((r) => {
         const ownerName =
           r.owner?.name ??

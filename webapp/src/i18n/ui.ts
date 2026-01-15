@@ -54,7 +54,18 @@ export type UiStrings = {
   connect: string;
 
   noDialogsYet: string;
+  noDoneDialogs: string;
+  noArchivedDialogs: string;
   missingRoot: string;
+
+  dialogActionMarkDone: string;
+  dialogActionMarkAllDone: string;
+  dialogActionArchive: string;
+  dialogActionArchiveAll: string;
+  dialogActionRevive: string;
+  dialogActionReviveAll: string;
+
+  readOnlyDialogInputDisabled: string;
 
   q4hNoPending: string;
   q4hPendingQuestions: string;
@@ -139,7 +150,18 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       connect: '连接',
 
       noDialogsYet: '还没有对话。',
+      noDoneDialogs: '还没有已完成的对话。',
+      noArchivedDialogs: '还没有已归档的对话。',
       missingRoot: '缺失的根对话',
+
+      dialogActionMarkDone: '标记为已完成',
+      dialogActionMarkAllDone: '将此任务下全部对话标记为已完成',
+      dialogActionArchive: '归档',
+      dialogActionArchiveAll: '将此任务下全部对话归档',
+      dialogActionRevive: '恢复到运行中',
+      dialogActionReviveAll: '将此任务下全部对话恢复到运行中',
+
+      readOnlyDialogInputDisabled: '此对话已完成或已归档，输入已禁用。',
 
       q4hNoPending: '暂无待处理问题',
       q4hPendingQuestions: '待处理问题',
@@ -223,7 +245,18 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     connect: 'Connect',
 
     noDialogsYet: 'No dialogs yet.',
+    noDoneDialogs: 'No done dialogs yet.',
+    noArchivedDialogs: 'No archived dialogs yet.',
     missingRoot: 'Missing root',
+
+    dialogActionMarkDone: 'Mark done',
+    dialogActionMarkAllDone: 'Mark all done',
+    dialogActionArchive: 'Archive',
+    dialogActionArchiveAll: 'Archive all',
+    dialogActionRevive: 'Revive',
+    dialogActionReviveAll: 'Revive all',
+
+    readOnlyDialogInputDisabled: 'This dialog is done or archived; input is disabled.',
 
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',

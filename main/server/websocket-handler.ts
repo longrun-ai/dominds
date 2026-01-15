@@ -76,16 +76,18 @@ function getErrorCode(error: unknown): string | undefined {
 async function restoreParentDialog(
   subdialogSelfId: string,
   rootDialogId: string,
+  status: 'running' | 'completed' | 'archived',
+  enableLive: boolean,
 ): Promise<RootDialog | undefined> {
   const parentIdObj = new DialogID(subdialogSelfId, rootDialogId);
 
-  const parentMetadata = await DialogPersistence.loadDialogMetadata(parentIdObj, 'running');
+  const parentMetadata = await DialogPersistence.loadDialogMetadata(parentIdObj, status);
   if (!parentMetadata) {
     log.debug('Parent dialog metadata not found', undefined, { parentId: subdialogSelfId });
     return undefined;
   }
 
-  const parentState = await DialogPersistence.restoreDialog(parentIdObj, 'running');
+  const parentState = await DialogPersistence.restoreDialog(parentIdObj, status);
   if (!parentState) {
     log.debug('Parent dialog state not found', undefined, { parentId: subdialogSelfId });
     return undefined;
@@ -103,10 +105,12 @@ async function restoreParentDialog(
       currentRound: parentState.currentRound,
     },
   );
-  globalDialogRegistry.register(parentDialog);
-  // Restore TYPE B subdialog registry from disk for parent-call detection
-  await parentDialog.loadSubdialogRegistry();
-  await parentDialog.loadPendingSubdialogsFromPersistence();
+  if (enableLive) {
+    globalDialogRegistry.register(parentDialog);
+    // Restore TYPE B subdialog registry from disk for parent-call detection
+    await parentDialog.loadSubdialogRegistry();
+    await parentDialog.loadPendingSubdialogsFromPersistence();
+  }
   return parentDialog;
 }
 
@@ -375,7 +379,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     // Otherwise, the same client can receive overlapping "replay" and "live" streams,
     // which surfaces as duplicate generation lifecycle events on the frontend.
     const existing = wsLiveDlg.get(ws);
-    if (existing && existing.subChan) {
+    if (existing) {
       const existingId = existing.id;
       const isSameDialog = existingId.selfId === dialogId && existingId.rootId === rootDialogId;
       if (isSameDialog) {
@@ -397,40 +401,39 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       cleanupWsClient(ws);
     }
 
-    // Use DialogPersistence to load dialog from file system
-    // CRITICAL FIX: Use dialogId (not rootDialogId) to load the correct dialog/subdialog events
-    // For subdialogs, this ensures we load events from subdialog's own round file, not parent's
-    const dialogState = await DialogPersistence.restoreDialog(
-      new DialogID(dialogId, rootDialogId),
+    const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const statuses: Array<'running' | 'completed' | 'archived'> = [
       'running',
-    );
+      'completed',
+      'archived',
+    ];
+    let foundStatus: 'running' | 'completed' | 'archived' | null = null;
+    let dialogState: Awaited<ReturnType<typeof DialogPersistence.restoreDialog>> | null = null;
+    let metadata: Awaited<ReturnType<typeof DialogPersistence.loadDialogMetadata>> | null = null;
+    for (const status of statuses) {
+      const state = await DialogPersistence.restoreDialog(dialogIdObj, status);
+      if (!state) continue;
+      const meta = await DialogPersistence.loadDialogMetadata(dialogIdObj, status);
+      if (!meta) continue;
+      foundStatus = status;
+      dialogState = state;
+      metadata = meta;
+      break;
+    }
 
-    if (!dialogState) {
+    if (!foundStatus || !dialogState || !metadata) {
       throw new Error('Dialog not found');
     }
 
-    // Load metadata
-    const metadata = await DialogPersistence.loadDialogMetadata(
-      new DialogID(dialogId, rootDialogId),
-      'running',
-    );
-    if (!metadata) {
-      throw new Error('Dialog metadata not found');
-    }
-
     const decidedRound =
-      (await DialogPersistence.getCurrentRoundNumber(
-        new DialogID(dialogId, rootDialogId),
-        'running',
-      )) ||
+      (await DialogPersistence.getCurrentRoundNumber(dialogIdObj, foundStatus)) ||
       (dialogState.currentRound ?? 1);
 
-    // Create the actual dialog object and store it in wsLiveDlg
-    const dialogIdObj = new DialogID(dialogId, rootDialogId);
     const store = new DiskFileDialogStore(dialogIdObj);
 
     // Whether it's a root dialog is decided by selfId and rootId
     const isRoot = dialogIdObj.selfId === dialogIdObj.rootId;
+    const enableLive = foundStatus === 'running';
     let supdialog: RootDialog | undefined;
 
     if (metadata.supdialogId) {
@@ -441,7 +444,12 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
         });
       }
       try {
-        supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId);
+        supdialog = await restoreParentDialog(
+          metadata.supdialogId,
+          rootDialogId,
+          foundStatus,
+          enableLive,
+        );
       } catch (err) {
         log.warn('Failed to restore supdialog for display_dialog', undefined, {
           subdialogId: dialogId,
@@ -481,24 +489,30 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       // This is a root dialog (or fallback if parent restore failed)
       rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId);
       dialog = rootDialog;
-      globalDialogRegistry.register(rootDialog);
+      if (enableLive) {
+        globalDialogRegistry.register(rootDialog);
 
-      // Restore TYPE B subdialog registry BEFORE sending events (which may trigger teammate calls)
-      await rootDialog.loadSubdialogRegistry();
-      await rootDialog.loadPendingSubdialogsFromPersistence();
+        // Restore TYPE B subdialog registry BEFORE sending events (which may trigger teammate calls)
+        await rootDialog.loadSubdialogRegistry();
+        await rootDialog.loadPendingSubdialogsFromPersistence();
+      }
     }
 
     // CRITICAL FIX: Send dialog events directly to requesting WebSocket only
     // This bypasses PubChan to ensure only the requesting session receives restoration events
     // Pass decidedRound explicitly since dialog.currentRound defaults to 1 for new Dialog objects
     try {
-      await store.sendDialogEventsDirectly(ws, dialog, decidedRound, decidedRound);
+      await store.sendDialogEventsDirectly(ws, dialog, decidedRound, decidedRound, foundStatus);
     } catch (err) {
       log.warn(`Failed to send dialog events directly for ${dialogId}:`, err);
     }
 
-    // Setup WebSocket subscription for real-time events (live generation only)
-    await setupWebSocketSubscription(ws, dialog);
+    if (enableLive) {
+      // Setup WebSocket subscription for real-time events (live generation only)
+      await setupWebSocketSubscription(ws, dialog);
+    } else {
+      wsLiveDlg.set(ws, dialog);
+    }
 
     // Send dialog_ready with full info so frontend knows the current dialog ID
     const dialogReadyResponse: DialogReadyMessage = {
@@ -641,17 +655,29 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
 
     const dialogId = new DialogID(dialogIdStr, rootDialogIdStr);
 
-    const totalRounds =
-      (await DialogPersistence.getCurrentRoundNumber(dialogId, 'running')) || round;
-
     try {
-      const metadata = await DialogPersistence.loadDialogMetadata(dialogId, 'running');
-      if (!metadata) {
-        log.warn('Metadata not found for display_round', undefined, {
-          dialogId: dialogId.selfId,
-        });
+      const statuses: Array<'running' | 'completed' | 'archived'> = [
+        'running',
+        'completed',
+        'archived',
+      ];
+      let foundStatus: 'running' | 'completed' | 'archived' | null = null;
+      let metadata: Awaited<ReturnType<typeof DialogPersistence.loadDialogMetadata>> | null = null;
+      for (const status of statuses) {
+        const meta = await DialogPersistence.loadDialogMetadata(dialogId, status);
+        if (!meta) continue;
+        foundStatus = status;
+        metadata = meta;
+        break;
+      }
+
+      if (!foundStatus || !metadata) {
+        log.warn('Metadata not found for display_round', undefined, { dialogId: dialogId.selfId });
         return;
       }
+
+      const totalRounds =
+        (await DialogPersistence.getCurrentRoundNumber(dialogId, foundStatus)) || round;
 
       const dialogUI = new DiskFileDialogStore(dialogId);
 
@@ -667,7 +693,12 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
           });
         }
         try {
-          supdialog = await restoreParentDialog(metadata.supdialogId, dialogId.rootId);
+          supdialog = await restoreParentDialog(
+            metadata.supdialogId,
+            dialogId.rootId,
+            foundStatus,
+            false,
+          );
         } catch (err) {
           log.warn('Failed to restore supdialog for display_round', undefined, {
             dialogId: dialogId.selfId,
@@ -707,14 +738,10 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
         // This is a root dialog (or fallback if parent restore failed)
         rootDialog = new RootDialog(dialogUI, metadata.taskDocPath, dialogId, metadata.agentId);
         dialog = rootDialog;
-        globalDialogRegistry.register(rootDialog);
-        // Restore TYPE B subdialog registry from disk
-        await rootDialog.loadSubdialogRegistry();
-        await rootDialog.loadPendingSubdialogsFromPersistence();
       }
       // Send the requested round's persisted events directly to this WebSocket.
       // This is a UI navigation operation; do not emit via PubChan.
-      await dialogUI.sendDialogEventsDirectly(ws, dialog, round, totalRounds);
+      await dialogUI.sendDialogEventsDirectly(ws, dialog, round, totalRounds, foundStatus);
     } catch (err) {
       log.warn('Failed to send dialog events for display_round', err);
     }
@@ -824,7 +851,12 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
           });
         }
         try {
-          supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId);
+          supdialog = await restoreParentDialog(
+            metadata.supdialogId,
+            rootDialogId,
+            'running',
+            true,
+          );
         } catch (err) {
           log.warn('Failed to restore supdialog for subdialog', undefined, {
             subdialogId: dialogId,
@@ -1018,7 +1050,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         });
       }
       try {
-        supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId);
+        supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId, 'running', true);
       } catch (err) {
         log.warn('Failed to restore parent for Q4H event', err);
       }
@@ -1097,7 +1129,12 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         });
       }
       try {
-        restoredSupdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId);
+        restoredSupdialog = await restoreParentDialog(
+          metadata.supdialogId,
+          rootDialogId,
+          'running',
+          true,
+        );
       } catch (err) {
         log.warn('Failed to restore parent for dialog resumption', err);
       }

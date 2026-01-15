@@ -5,7 +5,7 @@ export * from './wire';
 
 export * from './dialog';
 
-import type { AssignmentFromSup } from './wire';
+import type { AssignmentFromSup, DialogStatusKind } from './wire';
 
 export interface DialogInfo {
   selfId: string;
@@ -64,4 +64,24 @@ export interface ApiDialogHierarchyResponse {
 export interface ApiDialogListResponse {
   success: boolean;
   dialogs: ApiRootDialogResponse[];
+}
+
+export type ApiMoveDialogsRequest =
+  | {
+      kind: 'root';
+      rootId: string;
+      fromStatus: DialogStatusKind;
+      toStatus: DialogStatusKind;
+    }
+  | {
+      kind: 'task';
+      taskDocPath: string;
+      fromStatus: DialogStatusKind;
+      toStatus: DialogStatusKind;
+    };
+
+export interface ApiMoveDialogsResponse {
+  success: boolean;
+  movedRootIds?: string[];
+  error?: string;
 }
