@@ -524,6 +524,10 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       }
     }
 
+    // Mark dialog persistence status so downstream logic can distinguish view-only dialogs
+    // (completed/archived) from runnable dialogs (running).
+    dialog.setPersistenceStatus(foundStatus);
+
     // CRITICAL FIX: Send dialog events directly to requesting WebSocket only
     // This bypasses PubChan to ensure only the requesting session receives restoration events
     // Pass decidedRound explicitly since dialog.currentRound defaults to 1 for new Dialog objects
@@ -533,12 +537,9 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       log.warn(`Failed to send dialog events directly for ${dialogId}:`, err);
     }
 
-    if (enableLive) {
-      // Setup WebSocket subscription for real-time events (live generation only)
-      await setupWebSocketSubscription(ws, dialog);
-    } else {
-      wsLiveDlg.set(ws, dialog);
-    }
+    // Always subscribe for future realtime events (including cross-client revival + continued drive).
+    // Live generation is still gated by dialog.status ('running') in drive handlers.
+    await setupWebSocketSubscription(ws, dialog);
 
     // Send dialog_ready with full info so frontend knows the current dialog ID
     const dialogReadyResponse: DialogReadyMessage = {
@@ -833,12 +834,22 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
-    // Check if dialog is already in wsLiveDlg and properly initialized
+    // If the dialog is already active for this WebSocket, runnable (status === 'running'),
+    // and has an event forwarder (subChan),
+    // drive it directly to preserve in-memory state (pending subdialogs, teammate call tracking, etc).
+    //
+    // IMPORTANT: do not drive a view-only dialog instance here. When users browse a completed/archived
+    // dialog, handleDisplayDialog restores it with dialog.status set to completed/archived. If that
+    // dialog is later revived to running by another client, the UI may re-enable input without
+    // re-issuing display_dialog. In that case, we must restore from running rather than driving the
+    // cached view-only dialog (stale state, wrong hydration, etc).
     const existingDialog = wsLiveDlg.get(ws);
     if (
       existingDialog &&
       existingDialog.id.selfId === dialogId &&
-      existingDialog.id.rootId === rootDialogId
+      existingDialog.id.rootId === rootDialogId &&
+      existingDialog.status === 'running' &&
+      existingDialog.subChan
     ) {
       await driveDialogStream(
         existingDialog,
@@ -956,6 +967,11 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         await rootDialog.loadSubdialogRegistry();
         await rootDialog.loadPendingSubdialogsFromPersistence();
       }
+
+      // Ensure this websocket receives streamed events for the driven dialog.
+      // This is necessary when reviving a dialog across clients and also for cases where the drive
+      // is issued for a dialog that wasn't currently subscribed on this WebSocket.
+      await setupWebSocketSubscription(ws, dialog);
 
       // Normal flow: emit events for user message
       await driveDialogStream(

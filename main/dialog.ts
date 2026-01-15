@@ -696,6 +696,16 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   }
 
   /**
+   * Set current persistence status.
+   *
+   * Note: this is used by server-side restoration paths (e.g. UI browsing a completed/archived
+   * dialog) so that downstream logic can distinguish view-only dialogs from runnable dialogs.
+   */
+  public setPersistenceStatus(status: 'running' | 'completed' | 'archived'): void {
+    this._status = status;
+  }
+
+  /**
    * Get current round number
    */
   public get currentRound(): number {
