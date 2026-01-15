@@ -9,7 +9,6 @@
  * Options:
  *   -p, --port <port>    Port to listen on (default: 5666)
  *   -h, --host <host>    Host to bind to (default: localhost)
- *   -C, --cwd <dir>      Change to workspace directory
  *   --nobrowser          Do not open a browser (opt-out)
  *   -h, --help           Show help
  */
@@ -35,17 +34,18 @@ WebUI Server for dominds
 Usage:
   dominds webui [options]
 
+Note:
+  Workspace directory is \`process.cwd()\`. Use 'dominds -C <dir> webui' to run in another workspace.
+
 Options:
   -p, --port <port>    Port to listen on (default: 5666)
   -h, --host <host>    Host to bind to (default: localhost)
-  -C, --cwd <dir>      Change to workspace directory before starting
   --nobrowser          Do not open a browser (opt-out)
   --help               Show this help message
 
 Examples:
   dominds webui                   # Start on default port 5666
   dominds webui -p 8888           # Start on port 8888
-  dominds webui -C ./my-workspace # Start in specific workspace
   dominds webui --nobrowser       # Start without opening a browser
 `);
 }
@@ -69,7 +69,6 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let port = 5666;
   let host = 'localhost';
-  let cwd: string | undefined;
   let shouldOpen = true;
 
   for (let i = 0; i < args.length; i++) {
@@ -92,15 +91,6 @@ async function main(): Promise<void> {
       }
       host = next;
       i++;
-    } else if (arg === '-C' || arg === '--cwd') {
-      const next = args[i + 1];
-      if (!next) {
-        console.error('Error: -C requires a directory path');
-        printHelp();
-        process.exit(1);
-      }
-      cwd = next;
-      i++;
     } else if (arg === '--nobrowser') {
       shouldOpen = false;
     } else if (arg === '--help') {
@@ -109,17 +99,6 @@ async function main(): Promise<void> {
     } else {
       console.error(`Error: Unknown option '${arg}'`);
       printHelp();
-      process.exit(1);
-    }
-  }
-
-  // Change to workspace directory if specified
-  if (cwd) {
-    try {
-      process.chdir(cwd);
-      log.debug(`Changed to workspace directory: ${cwd}`);
-    } catch (err) {
-      console.error(`Error: failed to change directory to '${cwd}':`, err);
       process.exit(1);
     }
   }

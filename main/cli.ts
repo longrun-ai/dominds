@@ -21,12 +21,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { loadRtwsDotenv } from './shared/dotenv';
+import { extractGlobalRtwsChdir } from './shared/rtws-cli';
+
 function printHelp(): void {
   console.log(`
 Dominds CLI - AI-driven DevOps framework with persistent memory
 
 Usage:
-  dominds [subcommand] [options]
+  dominds [-C <dir>] [subcommand] [options]
+
+Global Options:
+  -C <dir>            Change to workspace directory (rtws) before running
 
 Subcommands:
   webui [options]    Start WebUI server (default)
@@ -38,6 +44,7 @@ Subcommands:
 Examples:
   dominds                    # Start WebUI server (default)
   dominds webui              # Start WebUI server
+  dominds -C ./my-ws webui   # Start in specific workspace
   dominds tui --help         # Show TUI help
   dominds run task.md        # Run task dialog
   dominds read               # Read team configuration
@@ -62,10 +69,28 @@ function printVersion(): void {
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const baseCwd = process.cwd();
+  let parsed: { chdir?: string; argv: ReadonlyArray<string> };
+  try {
+    parsed = extractGlobalRtwsChdir({ argv: process.argv.slice(2), baseCwd });
+  } catch (err) {
+    console.error('Error:', err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  const args = parsed.argv;
 
   // Handle no arguments - default to webui
   if (args.length === 0) {
+    if (parsed.chdir) {
+      try {
+        process.chdir(parsed.chdir);
+      } catch (err) {
+        console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
+        process.exit(1);
+      }
+    }
+    loadRtwsDotenv({ cwd: process.cwd() });
     await runSubcommand('webui', []);
     return;
   }
@@ -82,6 +107,28 @@ async function main(): Promise<void> {
   if (subcommand === '-v' || subcommand === '--version') {
     printVersion();
     process.exit(0);
+  }
+
+  const shouldSkipRtwsSetup =
+    subcommandArgs.includes('--help') ||
+    (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
+    (subcommand === 'run' && subcommandArgs.includes('-h')) ||
+    (subcommand === 'read' && subcommandArgs.includes('-h'));
+
+  if (!shouldSkipRtwsSetup) {
+    if (parsed.chdir) {
+      try {
+        process.chdir(parsed.chdir);
+      } catch (err) {
+        console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
+        process.exit(1);
+      }
+    }
+
+    // Load runtime workspace env files into process.env once, in the main entry.
+    // Precedence: `.env` then `.env.local` (later overwrites earlier), and both
+    // overwrite any existing process.env values.
+    loadRtwsDotenv({ cwd: process.cwd() });
   }
 
   // Route to appropriate subcommand

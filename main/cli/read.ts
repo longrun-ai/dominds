@@ -7,7 +7,6 @@
  *   dominds read [options] [<member-id>]
  *
  * Options:
- *   -C, --cwd <dir>      Change to workspace directory
  *   --no-hints           Don't show hints
  *   --only-prompt        Show only system prompt
  *   --only-mem           Show only memories
@@ -17,39 +16,30 @@
 import { loadAgentMinds } from '../minds/load';
 
 function printUsage(): void {
-  console.log(
-    'Usage: dominds read [-C <dir>] [<member-id>] [--no-hints] [--only-prompt|--only-mem]',
-  );
+  console.log('Usage: dominds read [<member-id>] [--no-hints] [--only-prompt|--only-mem]');
   console.log('');
   console.log('Print agent system prompt and memories with filtering flags.');
+  console.log('');
+  console.log(
+    "Note: Workspace directory is `process.cwd()`. Use 'dominds -C <dir> read' to run in another workspace.",
+  );
   console.log('');
   console.log('Examples:');
   console.log('  dominds read                    # Read all team members');
   console.log('  dominds read developer          # Read specific member');
-  console.log('  dominds read -C ./workspace     # Read from specific workspace');
   console.log('  dominds read --only-prompt      # Show only system prompts');
   console.log('  dominds read --only-mem         # Show only memories');
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  let chdir: string | undefined;
   let memberId: string | undefined;
   let onlyPrompt = false;
   let onlyMem = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '-C' || arg === '--cwd') {
-      const next = args[i + 1];
-      if (!next) {
-        console.error('Error: -C requires a directory path');
-        printUsage();
-        process.exit(1);
-      }
-      chdir = next;
-      i++;
-    } else if (arg === '--only-prompt') {
+    if (arg === '--only-prompt') {
       onlyPrompt = true;
     } else if (arg === '--only-mem') {
       onlyMem = true;
@@ -66,15 +56,6 @@ async function main(): Promise<void> {
       printUsage();
       process.exit(1);
     }
-  }
-
-  try {
-    if (chdir) {
-      process.chdir(chdir);
-    }
-  } catch (err) {
-    console.error(`Error: failed to change directory to '${chdir}':`, err);
-    process.exit(1);
   }
 
   try {

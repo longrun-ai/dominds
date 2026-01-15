@@ -8,7 +8,6 @@
  *   dominds run [options] <task-doc-path> [prompts...]
  *
  * Options:
- *   -C, --chdir <dir>: Change cwd to target workspace before execution
  *   -m, --member <id>: Specify team member ID to use as agent
  *   -i, --id <dialog-id>: Resume existing dialog or use custom dialog ID
  *   --list: List all dialogs (running, completed, archived)
@@ -44,12 +43,15 @@ function showHelp() {
   console.log('');
   console.log('Start or continue a dialog with an AI team member using a task document.');
   console.log('');
+  console.log(
+    "Note: Workspace directory is `process.cwd()`. Use 'dominds -C <dir> tui ...' to run in another workspace.",
+  );
+  console.log('');
   console.log('Arguments:');
   console.log('  <task-doc-path>    Path to task document (required for dialog)');
   console.log('  [prompts...]       Optional initial prompts');
   console.log('');
   console.log('Options:');
-  console.log('  -C <dir>               Change to directory before running');
   console.log('  -m <member>            Specify team member');
   console.log('  -i <dialog-id>         Resume dialog with specified ID');
   console.log('  -p, --print-only       Non-interactive mode (for automated testing)');
@@ -59,7 +61,6 @@ function showHelp() {
   console.log('');
   console.log('Examples:');
   console.log('  dominds tui task.md "implement feature"');
-  console.log('  dominds tui -C /path/to/project task.md');
   console.log('  dominds tui -i abc123');
   console.log('  dominds tui --list');
   console.log('  dominds tui --version');
@@ -70,7 +71,6 @@ function showHelp() {
 
 function parseArgs(argv: string[]) {
   const out: {
-    C?: string;
     member?: string;
     taskDocPath?: string;
     dialogId?: string;
@@ -90,15 +90,6 @@ function parseArgs(argv: string[]) {
     if (inOptions) {
       if (a === '--') {
         inOptions = false;
-        continue;
-      }
-      if (a === '-C' || a === '--chdir') {
-        const next = argv[i + 1];
-        if (next == null) {
-          throw new Error(`${a} requires a directory argument`);
-        }
-        out.C = next;
-        i++;
         continue;
       }
       if (a === '-m' || a === '--member') {
@@ -164,11 +155,6 @@ function parseArgs(argv: string[]) {
 async function main() {
   try {
     const args = parseArgs(process.argv.slice(2));
-
-    // Handle change directory first
-    if (args.C) {
-      process.chdir(args.C);
-    }
 
     // Handle version flag
     if (args.version) {

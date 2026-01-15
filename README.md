@@ -99,7 +99,8 @@ For more initialization options and available scaffold templates, see the [CLI U
 2. **Set up environment variables**:
 
 ```bash
-# Add to your .env or shell profile
+# Dominds CLI loads `.env` then `.env.local` from your workspace root (rtws).
+# `.env.local` overwrites `.env`, and both overwrite existing `process.env`.
 export OPENAI_API_KEY="your-openai-api-key"
 export ANTHROPIC_API_KEY="your-anthropic-api-key"  # Optional
 ```
