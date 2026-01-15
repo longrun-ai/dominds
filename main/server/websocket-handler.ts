@@ -5,8 +5,9 @@
  */
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
+import { Dialog, DialogID, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
+import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
   requestEmergencyStopAll,
   requestInterruptDialog,
@@ -16,7 +17,7 @@ import { dialogEventRegistry } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
-import { EndOfStream } from '../shared/evt';
+import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
   CreateDialogRequest,
@@ -34,7 +35,7 @@ import type {
   ResumeDialogRequest,
   WebSocketMessage,
 } from '../shared/types';
-import type { Q4HAnsweredEvent } from '../shared/types/dialog';
+import type { DialogEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
 import {
   normalizeLanguageCode,
   supportedLanguageCodes,
@@ -50,6 +51,7 @@ import { getWebSocketAuthCheck } from './auth';
 const log = createLogger('websocket-handler');
 
 const wsLiveDlg = new WeakMap<WebSocket, Dialog>();
+const wsSub = new WeakMap<WebSocket, { dialogKey: string; subChan: SubChan<DialogEvent> }>();
 const wsUiLanguage = new WeakMap<WebSocket, LanguageCode>();
 
 function resolveUserLanguageCode(
@@ -79,63 +81,19 @@ function getErrorCode(error: unknown): string | undefined {
 }
 
 /**
- * Restores the parent (supdialog) dialog from persistence.
- * Used when a subdialog needs access to its parent for metadata or registry operations.
- */
-async function restoreParentDialog(
-  subdialogSelfId: string,
-  rootDialogId: string,
-  status: 'running' | 'completed' | 'archived',
-  enableLive: boolean,
-): Promise<RootDialog | undefined> {
-  const parentIdObj = new DialogID(subdialogSelfId, rootDialogId);
-
-  const parentMetadata = await DialogPersistence.loadDialogMetadata(parentIdObj, status);
-  if (!parentMetadata) {
-    log.debug('Parent dialog metadata not found', undefined, { parentId: subdialogSelfId });
-    return undefined;
-  }
-
-  const parentState = await DialogPersistence.restoreDialog(parentIdObj, status);
-  if (!parentState) {
-    log.debug('Parent dialog state not found', undefined, { parentId: subdialogSelfId });
-    return undefined;
-  }
-
-  const parentStore = new DiskFileDialogStore(parentIdObj);
-  const parentDialog = new RootDialog(
-    parentStore,
-    parentMetadata.taskDocPath,
-    parentIdObj,
-    parentMetadata.agentId,
-    {
-      messages: parentState.messages,
-      reminders: parentState.reminders,
-      currentRound: parentState.currentRound,
-    },
-  );
-  if (enableLive) {
-    globalDialogRegistry.register(parentDialog);
-    // Restore TYPE B subdialog registry from disk for parent-call detection
-    await parentDialog.loadSubdialogRegistry();
-    await parentDialog.loadPendingSubdialogsFromPersistence();
-  }
-  return parentDialog;
-}
-
-/**
  * Cleanup WebSocket client: cancel active forwarder and clear live dialog state
  */
 function cleanupWsClient(ws: WebSocket): void {
-  const live = wsLiveDlg.get(ws);
-  if (live) {
+  const existingSub = wsSub.get(ws);
+  if (existingSub) {
     try {
-      live.subChan?.cancel();
+      existingSub.subChan.cancel();
     } catch (err) {
       log.warn('Failed to cancel forwarder on cleanupWsClient', err);
     }
-    wsLiveDlg.delete(ws);
+    wsSub.delete(ws);
   }
+  wsLiveDlg.delete(ws);
   wsUiLanguage.delete(ws);
 }
 
@@ -145,10 +103,10 @@ function cleanupWsClient(ws: WebSocket): void {
  */
 async function setupWebSocketSubscription(ws: WebSocket, dialog: Dialog): Promise<void> {
   // Cancel any existing subscription
-  const existingDialog = wsLiveDlg.get(ws);
-  if (existingDialog && existingDialog.subChan) {
+  const existingSub = wsSub.get(ws);
+  if (existingSub) {
     try {
-      existingDialog.subChan.cancel();
+      existingSub.subChan.cancel();
     } catch (err) {
       log.warn('Failed to cancel existing subscription', undefined, err);
     }
@@ -159,7 +117,7 @@ async function setupWebSocketSubscription(ws: WebSocket, dialog: Dialog): Promis
 
   // Create new subscription for real-time events
   const subChan = dialogEventRegistry.createSubChan(dialog.id);
-  dialog.subChan = subChan;
+  wsSub.set(ws, { dialogKey: dialog.id.valueOf(), subChan });
 
   // Forward events from SubChan to WebSocket
   (async () => {
@@ -455,84 +413,42 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       (await DialogPersistence.getCurrentRoundNumber(dialogIdObj, foundStatus)) ||
       (dialogState.currentRound ?? 1);
 
-    const store = new DiskFileDialogStore(dialogIdObj);
-
-    // Whether it's a root dialog is decided by selfId and rootId
-    const isRoot = dialogIdObj.selfId === dialogIdObj.rootId;
     const enableLive = foundStatus === 'running';
-    let supdialog: RootDialog | undefined;
-
-    if (metadata.supdialogId) {
-      if (isRoot) {
-        log.warn('Root dialog has supdialogId in metadata', undefined, {
-          dialogId: dialogIdObj.selfId,
-          supdialogId: metadata.supdialogId,
-        });
-      }
-      try {
-        supdialog = await restoreParentDialog(
-          metadata.supdialogId,
-          rootDialogId,
-          foundStatus,
-          enableLive,
-        );
-      } catch (err) {
-        log.warn('Failed to restore supdialog for display_dialog', undefined, {
-          subdialogId: dialogId,
-          parentId: metadata.supdialogId,
-          error: err,
-        });
-      }
-    } else if (!isRoot) {
-      log.error('Subdialog missing supdialogId in metadata', undefined, {
-        dialogId: dialogIdObj.selfId,
-        rootId: dialogIdObj.rootId,
-      });
+    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, foundStatus);
+    if (!rootDialog) {
+      throw new Error('Root dialog not found');
+    }
+    if (enableLive) {
+      globalDialogRegistry.register(rootDialog);
     }
 
     let dialog: Dialog;
-    let rootDialog: RootDialog | undefined;
-    if (!isRoot && supdialog) {
-      // This is a subdialog
-      const assignmentFromSup = metadata.assignmentFromSup;
-      if (!assignmentFromSup) {
-        log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
-          dialogId: dialogIdObj.selfId,
-          rootId: dialogIdObj.rootId,
-        });
-        return;
-      }
-      dialog = new SubDialog(
-        store,
-        supdialog,
-        metadata.taskDocPath,
-        dialogIdObj,
-        metadata.agentId,
-        assignmentFromSup,
-        metadata.topicId,
-      );
-    } else {
-      // This is a root dialog (or fallback if parent restore failed)
-      rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId);
+    if (dialogIdObj.selfId === dialogIdObj.rootId) {
       dialog = rootDialog;
-      if (enableLive) {
-        globalDialogRegistry.register(rootDialog);
-
-        // Restore TYPE B subdialog registry BEFORE sending events (which may trigger teammate calls)
-        await rootDialog.loadSubdialogRegistry();
-        await rootDialog.loadPendingSubdialogsFromPersistence();
+    } else {
+      const loaded = await ensureDialogLoaded(rootDialog, dialogIdObj, foundStatus);
+      if (!loaded) {
+        throw new Error('Dialog not found');
       }
+      dialog = loaded;
     }
-
-    // Mark dialog persistence status so downstream logic can distinguish view-only dialogs
-    // (completed/archived) from runnable dialogs (running).
-    dialog.setPersistenceStatus(foundStatus);
 
     // CRITICAL FIX: Send dialog events directly to requesting WebSocket only
     // This bypasses PubChan to ensure only the requesting session receives restoration events
     // Pass decidedRound explicitly since dialog.currentRound defaults to 1 for new Dialog objects
     try {
-      await store.sendDialogEventsDirectly(ws, dialog, decidedRound, decidedRound, foundStatus);
+      const dialogStore = dialog.dlgStore;
+      if (dialogStore instanceof DiskFileDialogStore) {
+        await dialogStore.sendDialogEventsDirectly(
+          ws,
+          dialog,
+          decidedRound,
+          decidedRound,
+          foundStatus,
+        );
+      } else {
+        throw new Error('Unexpected dialog store type for sendDialogEventsDirectly');
+      }
     } catch (err) {
       log.warn(`Failed to send dialog events directly for ${dialogId}:`, err);
     }
@@ -725,69 +641,22 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
       const totalRounds =
         (await DialogPersistence.getCurrentRoundNumber(dialogId, foundStatus)) || round;
 
-      const dialogUI = new DiskFileDialogStore(dialogId);
+      const rootDialog = await getOrRestoreRootDialog(dialogId.rootId, foundStatus);
+      if (!rootDialog) return;
 
-      // Whether it's a root dialog is decided by selfId and rootId
-      const isRoot = dialogId.selfId === dialogId.rootId;
-      let supdialog: RootDialog | undefined;
+      const dialog =
+        dialogId.selfId === dialogId.rootId
+          ? rootDialog
+          : await ensureDialogLoaded(rootDialog, dialogId, foundStatus);
+      if (!dialog) return;
 
-      if (metadata.supdialogId) {
-        if (isRoot) {
-          log.warn('Root dialog has supdialogId in metadata', undefined, {
-            dialogId: dialogId.selfId,
-            supdialogId: metadata.supdialogId,
-          });
-        }
-        try {
-          supdialog = await restoreParentDialog(
-            metadata.supdialogId,
-            dialogId.rootId,
-            foundStatus,
-            false,
-          );
-        } catch (err) {
-          log.warn('Failed to restore supdialog for display_round', undefined, {
-            dialogId: dialogId.selfId,
-            parentId: metadata.supdialogId,
-            error: err,
-          });
-        }
-      } else if (!isRoot) {
-        log.error('Subdialog missing supdialogId in metadata', undefined, {
-          dialogId: dialogId.selfId,
-          rootId: dialogId.rootId,
-        });
-      }
-
-      let dialog: Dialog;
-      let rootDialog: RootDialog | undefined;
-      if (!isRoot && supdialog) {
-        // This is a subdialog
-        const assignmentFromSup = metadata.assignmentFromSup;
-        if (!assignmentFromSup) {
-          log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
-            dialogId: dialogId.selfId,
-            rootId: dialogId.rootId,
-          });
-          return;
-        }
-        dialog = new SubDialog(
-          dialogUI,
-          supdialog,
-          metadata.taskDocPath,
-          dialogId,
-          metadata.agentId,
-          assignmentFromSup,
-          metadata.topicId,
-        );
-      } else {
-        // This is a root dialog (or fallback if parent restore failed)
-        rootDialog = new RootDialog(dialogUI, metadata.taskDocPath, dialogId, metadata.agentId);
-        dialog = rootDialog;
+      const store = dialog.dlgStore;
+      if (!(store instanceof DiskFileDialogStore)) {
+        throw new Error('Unexpected dialog store type for display_round');
       }
       // Send the requested round's persisted events directly to this WebSocket.
       // This is a UI navigation operation; do not emit via PubChan.
-      await dialogUI.sendDialogEventsDirectly(ws, dialog, round, totalRounds, foundStatus);
+      await store.sendDialogEventsDirectly(ws, dialog, round, totalRounds, foundStatus);
     } catch (err) {
       log.warn('Failed to send dialog events for display_round', err);
     }
@@ -844,12 +713,14 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     // re-issuing display_dialog. In that case, we must restore from running rather than driving the
     // cached view-only dialog (stale state, wrong hydration, etc).
     const existingDialog = wsLiveDlg.get(ws);
+    const existingSub = wsSub.get(ws);
     if (
       existingDialog &&
       existingDialog.id.selfId === dialogId &&
       existingDialog.id.rootId === rootDialogId &&
       existingDialog.status === 'running' &&
-      existingDialog.subChan
+      existingSub &&
+      existingSub.dialogKey === existingDialog.id.valueOf()
     ) {
       await driveDialogStream(
         existingDialog,
@@ -859,121 +730,27 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
-    // Dialog not found in wsLiveDlg - try to restore from disk
-    // This enables sending messages to subdialogs and dialogs that aren't currently active
+    // Dialog not found in wsLiveDlg - drive using the canonical root/subdialog instances.
+    // This supports driving subdialogs and cross-client revival without creating duplicate dialog objects.
     try {
-      const metadata = await DialogPersistence.loadDialogMetadata(
-        new DialogID(dialogId, rootDialogId),
-        'running',
-      );
-      if (!metadata) {
-        ws.send(
-          JSON.stringify({
-            type: 'error',
-            message: `Dialog ${dialogId} not found`,
-          }),
-        );
-        return;
-      }
-
-      // Load dialog state from disk
-      const dialogState = await DialogPersistence.restoreDialog(
-        new DialogID(dialogId, rootDialogId),
-        'running',
-      );
-      if (!dialogState) {
-        ws.send(
-          JSON.stringify({
-            type: 'error',
-            message: `Failed to restore dialog state for ${dialogId}`,
-          }),
-        );
-        return;
-      }
-
-      // Create DialogID and store for the target dialog
       const dialogIdObj = new DialogID(dialogId, rootDialogId);
-      const store = new DiskFileDialogStore(dialogIdObj);
+      const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, 'running');
+      if (!rootDialog) {
+        ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
+        return;
+      }
+      globalDialogRegistry.register(rootDialog);
 
-      // Whether it's a root dialog is decided by selfId and rootId
-      const isRoot = dialogIdObj.selfId === dialogIdObj.rootId;
-      let supdialog: RootDialog | undefined;
-
-      if (metadata.supdialogId) {
-        if (isRoot) {
-          log.warn('Root dialog has supdialogId in metadata', undefined, {
-            dialogId: dialogIdObj.selfId,
-            supdialogId: metadata.supdialogId,
-          });
-        }
-        try {
-          supdialog = await restoreParentDialog(
-            metadata.supdialogId,
-            rootDialogId,
-            'running',
-            true,
-          );
-        } catch (err) {
-          log.warn('Failed to restore supdialog for subdialog', undefined, {
-            subdialogId: dialogId,
-            parentId: metadata.supdialogId,
-            error: err,
-          });
-          // Continue without parent - parent-call detection will not work but dialog will function
-        }
-      } else if (!isRoot) {
-        log.error('Subdialog missing supdialogId in metadata', undefined, {
-          dialogId: dialogIdObj.selfId,
-          rootId: dialogIdObj.rootId,
-        });
+      const dialog =
+        dialogIdObj.selfId === dialogIdObj.rootId
+          ? rootDialog
+          : await ensureDialogLoaded(rootDialog, dialogIdObj, 'running');
+      if (!dialog) {
+        ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
+        return;
       }
 
-      let dialog: Dialog;
-      let rootDialog: RootDialog | undefined;
-      if (!isRoot && supdialog) {
-        // This is a subdialog
-        const assignmentFromSup = metadata.assignmentFromSup;
-        if (!assignmentFromSup) {
-          log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
-            dialogId: dialogIdObj.selfId,
-            rootId: dialogIdObj.rootId,
-          });
-          return;
-        }
-        dialog = new SubDialog(
-          store,
-          supdialog,
-          metadata.taskDocPath,
-          dialogIdObj,
-          metadata.agentId,
-          assignmentFromSup,
-          metadata.topicId,
-          {
-            messages: dialogState.messages,
-            reminders: dialogState.reminders,
-            currentRound: dialogState.currentRound,
-          },
-        );
-      } else {
-        // This is a root dialog (or fallback if parent restore failed)
-        rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId, {
-          messages: dialogState.messages,
-          reminders: dialogState.reminders,
-          currentRound: dialogState.currentRound,
-        });
-        dialog = rootDialog;
-        globalDialogRegistry.register(rootDialog);
-        // Restore TYPE B subdialog registry from disk
-        await rootDialog.loadSubdialogRegistry();
-        await rootDialog.loadPendingSubdialogsFromPersistence();
-      }
-
-      // Ensure this websocket receives streamed events for the driven dialog.
-      // This is necessary when reviving a dialog across clients and also for cases where the drive
-      // is issued for a dialog that wasn't currently subscribed on this WebSocket.
       await setupWebSocketSubscription(ws, dialog);
-
-      // Normal flow: emit events for user message
       await driveDialogStream(
         dialog,
         { content, msgId, grammar: 'texting', userLanguageCode },
@@ -1008,65 +785,21 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 }
 
 async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): Promise<Dialog> {
-  const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, status);
-  if (!metadata) {
+  const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, status);
+  if (!rootDialog) {
     throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
   }
-
-  const dialogState = await DialogPersistence.restoreDialog(dialogIdObj, status);
-  if (!dialogState) {
-    throw new Error(`Failed to restore dialog state for ${dialogIdObj.valueOf()}`);
-  }
-
-  const store = new DiskFileDialogStore(dialogIdObj);
-  const isRoot = dialogIdObj.selfId === dialogIdObj.rootId;
-  let supdialog: RootDialog | undefined;
-
-  if (metadata.supdialogId) {
-    if (isRoot) {
-      log.warn('Root dialog has supdialogId in metadata', undefined, {
-        dialogId: dialogIdObj.selfId,
-        supdialogId: metadata.supdialogId,
-      });
-    }
-    supdialog = await restoreParentDialog(metadata.supdialogId, dialogIdObj.rootId, status, true);
-  } else if (!isRoot) {
-    log.error('Subdialog missing supdialogId in metadata', undefined, {
-      dialogId: dialogIdObj.selfId,
-      rootId: dialogIdObj.rootId,
-    });
-  }
-
-  if (!isRoot && supdialog) {
-    const assignmentFromSup = metadata.assignmentFromSup;
-    if (!assignmentFromSup) {
-      throw new Error(`Subdialog ${dialogIdObj.valueOf()} missing assignmentFromSup`);
-    }
-    return new SubDialog(
-      store,
-      supdialog,
-      metadata.taskDocPath,
-      dialogIdObj,
-      metadata.agentId,
-      assignmentFromSup,
-      metadata.topicId,
-      {
-        messages: dialogState.messages,
-        reminders: dialogState.reminders,
-        currentRound: dialogState.currentRound,
-      },
-    );
-  }
-
-  const rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId, {
-    messages: dialogState.messages,
-    reminders: dialogState.reminders,
-    currentRound: dialogState.currentRound,
-  });
   globalDialogRegistry.register(rootDialog);
-  await rootDialog.loadSubdialogRegistry();
-  await rootDialog.loadPendingSubdialogsFromPersistence();
-  return rootDialog;
+
+  if (dialogIdObj.selfId === dialogIdObj.rootId) {
+    return rootDialog;
+  }
+
+  const sub = await ensureDialogLoaded(rootDialog, dialogIdObj, status);
+  if (!sub) {
+    throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
+  }
+  return sub;
 }
 
 async function handleInterruptDialog(ws: WebSocket, packet: InterruptDialogRequest): Promise<void> {
@@ -1181,25 +914,10 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       return;
     }
 
-    // Load dialog metadata
-    const metadata = await DialogPersistence.loadDialogMetadata(
-      new DialogID(dialogId, rootDialogId),
-      'running',
-    );
-    if (!metadata) {
-      ws.send(
-        JSON.stringify({
-          type: 'error',
-          message: `Dialog ${dialogId} not found`,
-        }),
-      );
-      return;
-    }
+    const dialogIdObj = new DialogID(dialogId, rootDialogId);
 
     // Load current questions from q4h.yaml
-    const questions = await DialogPersistence.loadQuestions4HumanState(
-      new DialogID(dialogId, rootDialogId),
-    );
+    const questions = await DialogPersistence.loadQuestions4HumanState(dialogIdObj);
 
     // Validate questionId exists
     const questionIndex = questions.findIndex((q) => q.id === questionId);
@@ -1218,73 +936,31 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
 
     // Save updated questions to q4h.yaml
     if (questions.length > 0) {
-      await DialogPersistence._saveQuestions4HumanState(
-        new DialogID(dialogId, rootDialogId),
-        questions,
-      );
+      await DialogPersistence._saveQuestions4HumanState(dialogIdObj, questions);
     } else {
       // No more questions - remove the q4h.yaml file
-      await DialogPersistence.clearQuestions4HumanState(new DialogID(dialogId, rootDialogId));
+      await DialogPersistence.clearQuestions4HumanState(dialogIdObj);
     }
 
-    // Emit questions_count_update event with updated count
-    const { postDialogEvent } = await import('../evt-registry');
+    // Restore the canonical dialog instances (root + subdialogs) to avoid duplicates.
+    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, 'running');
+    if (!rootDialog) {
+      ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
+      return;
+    }
+    globalDialogRegistry.register(rootDialog);
 
-    // Create a temporary dialog object for event emission
-    const dialogIdObj = new DialogID(dialogId, rootDialogId);
-    const store = new DiskFileDialogStore(dialogIdObj);
-
-    // Whether it's a root dialog is decided by selfId and rootId
-    const isRoot = dialogIdObj.selfId === dialogIdObj.rootId;
-    let supdialog: RootDialog | undefined;
-
-    if (metadata.supdialogId) {
-      if (isRoot) {
-        log.warn('Root dialog has supdialogId in metadata', undefined, {
-          dialogId: dialogIdObj.selfId,
-          supdialogId: metadata.supdialogId,
-        });
-      }
-      try {
-        supdialog = await restoreParentDialog(metadata.supdialogId, rootDialogId, 'running', true);
-      } catch (err) {
-        log.warn('Failed to restore parent for Q4H event', err);
-      }
-    } else if (!isRoot) {
-      log.error('Subdialog missing supdialogId in metadata', undefined, {
-        dialogId: dialogIdObj.selfId,
-        rootId: dialogIdObj.rootId,
-      });
+    const dialog =
+      dialogIdObj.selfId === dialogIdObj.rootId
+        ? rootDialog
+        : await ensureDialogLoaded(rootDialog, dialogIdObj, 'running');
+    if (!dialog) {
+      ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
+      return;
     }
 
-    let dialog: Dialog;
-    let rootDialog: RootDialog | undefined;
-    if (!isRoot && supdialog) {
-      const assignmentFromSup = metadata.assignmentFromSup;
-      if (!assignmentFromSup) {
-        log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
-          dialogId: dialogIdObj.selfId,
-          rootId: dialogIdObj.rootId,
-        });
-        return;
-      }
-      dialog = new SubDialog(
-        store,
-        supdialog,
-        metadata.taskDocPath,
-        dialogIdObj,
-        metadata.agentId,
-        assignmentFromSup,
-        metadata.topicId,
-      );
-    } else {
-      rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId);
-      dialog = rootDialog;
-      globalDialogRegistry.register(rootDialog);
-      // Restore TYPE B subdialog registry from disk
-      await rootDialog.loadSubdialogRegistry();
-      await rootDialog.loadPendingSubdialogsFromPersistence();
-    }
+    // Ensure the requesting WebSocket receives q4h_answered and subsequent resume stream events.
+    await setupWebSocketSubscription(ws, dialog);
 
     // Emit q4h_answered event for answered question
     const answeredEvent: Q4HAnsweredEvent = {
@@ -1292,106 +968,11 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       questionId,
       dialogId,
     };
+    const { postDialogEvent } = await import('../evt-registry');
     postDialogEvent(dialog, answeredEvent);
 
-    // Now resume the dialog with the user's answer using handleUserMsg2Dlg pattern
-    // This will process the answer and continue the dialog
-    const dialogState = await DialogPersistence.restoreDialog(
-      new DialogID(dialogId, rootDialogId),
-      'running',
-    );
-    if (!dialogState) {
-      ws.send(
-        JSON.stringify({
-          type: 'error',
-          message: `Failed to restore dialog state for ${dialogId}`,
-        }),
-      );
-      return;
-    }
-
-    // Create the dialog object
-    const restoredDialogIdObj = new DialogID(dialogId, rootDialogId);
-    const restoredStore = new DiskFileDialogStore(restoredDialogIdObj);
-
-    // Use already calculated isRoot
-    let restoredSupdialog: RootDialog | undefined;
-
-    if (metadata.supdialogId) {
-      if (isRoot) {
-        log.warn('Root dialog has supdialogId in metadata', undefined, {
-          dialogId: restoredDialogIdObj.selfId,
-          supdialogId: metadata.supdialogId,
-        });
-      }
-      try {
-        restoredSupdialog = await restoreParentDialog(
-          metadata.supdialogId,
-          rootDialogId,
-          'running',
-          true,
-        );
-      } catch (err) {
-        log.warn('Failed to restore parent for dialog resumption', err);
-      }
-    } else if (!isRoot) {
-      log.error('Subdialog missing supdialogId in metadata', undefined, {
-        dialogId: restoredDialogIdObj.selfId,
-        rootId: restoredDialogIdObj.rootId,
-      });
-    }
-
-    let restoredDialog: Dialog;
-    let restoredRootDialog: RootDialog | undefined;
-    if (!isRoot && restoredSupdialog) {
-      const assignmentFromSup = metadata.assignmentFromSup;
-      if (!assignmentFromSup) {
-        log.error('Subdialog missing assignmentFromSup in metadata', undefined, {
-          dialogId: restoredDialogIdObj.selfId,
-          rootId: restoredDialogIdObj.rootId,
-        });
-        return;
-      }
-      restoredDialog = new SubDialog(
-        restoredStore,
-        restoredSupdialog,
-        metadata.taskDocPath,
-        restoredDialogIdObj,
-        metadata.agentId,
-        assignmentFromSup,
-        metadata.topicId,
-        {
-          messages: dialogState.messages,
-          reminders: dialogState.reminders,
-          currentRound: dialogState.currentRound,
-        },
-      );
-    } else {
-      restoredRootDialog = new RootDialog(
-        restoredStore,
-        metadata.taskDocPath,
-        restoredDialogIdObj,
-        metadata.agentId,
-        {
-          messages: dialogState.messages,
-          reminders: dialogState.reminders,
-          currentRound: dialogState.currentRound,
-        },
-      );
-      restoredDialog = restoredRootDialog;
-      globalDialogRegistry.register(restoredRootDialog);
-      // Restore TYPE B subdialog registry from disk
-      await restoredRootDialog.loadSubdialogRegistry();
-      await restoredRootDialog.loadPendingSubdialogsFromPersistence();
-    }
-
-    // Resume the dialog with the user's answer
-    wsLiveDlg.set(ws, restoredDialog);
-    await driveDialogStream(
-      restoredDialog,
-      { content, msgId, grammar: 'texting', userLanguageCode },
-      true,
-    );
+    // Resume the dialog with the user's answer.
+    await driveDialogStream(dialog, { content, msgId, grammar: 'texting', userLanguageCode }, true);
   } catch (error) {
     log.error('Error processing Q4H user answer:', error);
     ws.send(

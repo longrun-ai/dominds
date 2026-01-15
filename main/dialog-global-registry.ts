@@ -16,7 +16,20 @@ class GlobalDialogRegistry {
     return GlobalDialogRegistry.instance;
   }
 
+  get(rootId: string): RootDialog | undefined {
+    return this.entries.get(rootId)?.rootDialog;
+  }
+
   register(rootDialog: RootDialog): void {
+    // This registry is keyed by the *tree root id*.
+    // Only the canonical root dialog (selfId === rootId) should be stored here.
+    if (rootDialog.id.selfId !== rootDialog.id.rootId) {
+      return;
+    }
+    const existing = this.entries.get(rootDialog.id.rootId);
+    if (existing) {
+      return;
+    }
     this.entries.set(rootDialog.id.rootId, { rootDialog, needsDrive: false });
     void (async () => {
       try {

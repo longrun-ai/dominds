@@ -16,7 +16,7 @@ import { inspect } from 'util';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
-import type { SubChan } from './shared/evt';
+import { AsyncFifoMutex } from './shared/async-fifo-mutex';
 import { getWorkLanguage } from './shared/runtime-language';
 import type {
   DialogEvent,
@@ -118,44 +118,6 @@ export interface SubdialogResponse {
   callType: 'A' | 'B' | 'C';
 }
 
-/**
- * Async FIFO mutex for per-dialog locking.
- *
- * IMPORTANT: This lock must be keyed by dialog ID (not by Dialog instance),
- * because the same dialog can be represented by multiple in-memory objects
- * (e.g., live registry vs. restored-from-disk instance). If locking were
- * instance-local, concurrent drives could corrupt persistence (e.g., latest.yaml)
- * and break round-control invariants.
- */
-class AsyncFifoMutex {
-  private locked = false;
-  private readonly waiters: Array<() => void> = [];
-
-  async acquire(): Promise<() => void> {
-    if (!this.locked) {
-      this.locked = true;
-      return () => this.release();
-    }
-    await new Promise<void>((resolve) => {
-      this.waiters.push(resolve);
-    });
-    return () => this.release();
-  }
-
-  isLocked(): boolean {
-    return this.locked;
-  }
-
-  private release(): void {
-    const next = this.waiters.shift();
-    if (next) {
-      next();
-      return;
-    }
-    this.locked = false;
-  }
-}
-
 const globalDialogMutexes: Map<string, AsyncFifoMutex> = new Map();
 
 function getGlobalDialogMutex(dialogId: DialogID): AsyncFifoMutex {
@@ -214,14 +176,12 @@ export abstract class Dialog {
   protected _remindersVer: number = 0;
   protected _activeGenSeq?: number;
   protected _activeGenRound?: number;
-  protected _status: 'running' | 'completed' | 'archived' = 'running';
   protected _createdAt: string;
   protected _updatedAt: string;
   protected _uiLanguage: LanguageCode;
   protected _lastUserLanguageCode: LanguageCode;
   // Prompt queued for the next round drive (set by startNewRound).
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
-  public subChan?: SubChan<DialogEvent>;
   // Track whether the current round's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_response_evt arrives
   // only after parent events are emitted.
@@ -236,6 +196,8 @@ export abstract class Dialog {
   // Phase 11: Suspension state for Type A subdialog mechanism
   // Tracks whether this dialog is in normal state, suspended, or resuming from suspension
   protected _suspensionState: 'active' | 'suspended' | 'resumed' = 'active';
+
+  private readonly _mutex: AsyncFifoMutex;
 
   // Current callId for TEXTING TOOL CALL correlation
   // - Set during call_start_evt (from TextingEventsReceiver)
@@ -263,6 +225,7 @@ export abstract class Dialog {
       id = new DialogID(generatedId);
     }
     this.id = id;
+    this._mutex = getGlobalDialogMutex(this.id);
     this.agentId = agentId;
     this.reminders = initialState?.reminders || [];
     this.msgs = initialState?.messages || [];
@@ -334,14 +297,14 @@ export abstract class Dialog {
    * FIFO queue ensures fairness when multiple callers wait.
    */
   public async acquire(): Promise<() => void> {
-    return await getGlobalDialogMutex(this.id).acquire();
+    return await this._mutex.acquire();
   }
 
   /**
    * Check if the dialog mutex is currently locked.
    */
   public isLocked(): boolean {
-    return getGlobalDialogMutex(this.id).isLocked();
+    return this._mutex.isLocked();
   }
 
   /**
@@ -351,7 +314,7 @@ export abstract class Dialog {
   public async hasPendingQ4H(): Promise<boolean> {
     try {
       const { DialogPersistence } = await import('./persistence');
-      const questions = await DialogPersistence.loadQuestions4HumanState(this.id);
+      const questions = await DialogPersistence.loadQuestions4HumanState(this.id, this.status);
       return questions.length > 0;
     } catch (err) {
       log.warn('Failed to load Q4H state for pending check', {
@@ -368,7 +331,7 @@ export abstract class Dialog {
   public async hasPendingSubdialogs(): Promise<boolean> {
     try {
       const { DialogPersistence } = await import('./persistence');
-      const pending = await DialogPersistence.loadPendingSubdialogs(this.id);
+      const pending = await DialogPersistence.loadPendingSubdialogs(this.id, this.status);
       return pending.length > 0;
     } catch (err) {
       log.warn('Failed to load pending subdialogs for pending check', {
@@ -430,7 +393,7 @@ export abstract class Dialog {
   public async loadPendingSubdialogsFromPersistence(): Promise<void> {
     try {
       const { DialogPersistence } = await import('./persistence');
-      const pending = await DialogPersistence.loadPendingSubdialogs(this.id);
+      const pending = await DialogPersistence.loadPendingSubdialogs(this.id, this.status);
       this._pendingSubdialogIds = pending.map(
         (record) => new DialogID(record.subdialogId, this.id.rootId),
       );
@@ -691,19 +654,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   /**
    * Get current persistence status
    */
-  public get status(): 'running' | 'completed' | 'archived' {
-    return this._status;
-  }
-
-  /**
-   * Set current persistence status.
-   *
-   * Note: this is used by server-side restoration paths (e.g. UI browsing a completed/archived
-   * dialog) so that downstream logic can distinguish view-only dialogs from runnable dialogs.
-   */
-  public setPersistenceStatus(status: 'running' | 'completed' | 'archived'): void {
-    this._status = status;
-  }
+  public abstract get status(): 'running' | 'completed' | 'archived';
 
   /**
    * Get current round number
@@ -1190,6 +1141,10 @@ export class SubDialog extends Dialog {
     return this._supdialog;
   }
 
+  public override get status(): 'running' | 'completed' | 'archived' {
+    return this.rootDialog.status;
+  }
+
   /**
    * Create a subdialog under the same root dialog tree.
    * The new subdialog's effective supdialog is resolved via AssignmentFromSup.callerDialogId.
@@ -1214,6 +1169,8 @@ export class SubDialog extends Dialog {
  * Uses in-memory registries for O(1) dialog and Type B lookup.
  */
 export class RootDialog extends Dialog {
+  private _status: 'running' | 'completed' | 'archived' = 'running';
+
   // Tracks all dialogs in this dialog tree for O(1) lookup
   private _localRegistry: Map<string, Dialog> = new Map();
   // Tracks TYPE B registered subdialogs by agentId!topicId
@@ -1228,6 +1185,14 @@ export class RootDialog extends Dialog {
   ) {
     super(dlgStore, taskDocPath, id, agentId, initialState);
     this.registerDialog(this);
+  }
+
+  public override get status(): 'running' | 'completed' | 'archived' {
+    return this._status;
+  }
+
+  public setPersistenceStatus(status: 'running' | 'completed' | 'archived'): void {
+    this._status = status;
   }
 
   /**
@@ -1333,7 +1298,7 @@ export class RootDialog extends Dialog {
       agentId: subdialog.agentId,
       topicId: subdialog.topicId,
     }));
-    await DialogPersistence.saveSubdialogRegistry(this.id, entries);
+    await DialogPersistence.saveSubdialogRegistry(this.id, entries, this.status);
   }
 
   /**
@@ -1341,13 +1306,23 @@ export class RootDialog extends Dialog {
    */
   async loadSubdialogRegistry(): Promise<void> {
     const { DialogPersistence, DiskFileDialogStore } = await import('./persistence');
-    const entries = await DialogPersistence.loadSubdialogRegistry(this.id);
+    const entries = await DialogPersistence.loadSubdialogRegistry(this.id, this.status);
 
     for (const entry of entries) {
       if (!entry.topicId) {
         continue;
       }
-      const subdialogState = await DialogPersistence.restoreDialog(entry.subdialogId, 'running');
+      const existing = this.lookupDialog(entry.subdialogId.selfId);
+      if (existing) {
+        if (existing instanceof SubDialog && existing.topicId) {
+          this._subdialogRegistry.set(
+            RootDialog.makeSubdialogKey(entry.agentId, entry.topicId),
+            existing,
+          );
+        }
+        continue;
+      }
+      const subdialogState = await DialogPersistence.restoreDialog(entry.subdialogId, this.status);
       if (!subdialogState) {
         continue;
       }

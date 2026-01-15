@@ -576,6 +576,11 @@ async function handleMoveDialogs(
       await DialogPersistence.moveDialogStatus(new DialogID(rootId), fromStatus, toStatus);
       movedRootIds.push(rootId);
 
+      const live = globalDialogRegistry.get(rootId);
+      if (live) {
+        live.setPersistenceStatus(toStatus);
+      }
+
       respondJson(res, 200, { success: true, movedRootIds });
       broadcastDialogMoves(context.clients, {
         type: 'dialogs_moved',
@@ -602,6 +607,13 @@ async function handleMoveDialogs(
       if (meta.taskDocPath !== taskDocPath) continue;
       await DialogPersistence.moveDialogStatus(new DialogID(id), fromStatus, toStatus);
       movedRootIds.push(id);
+    }
+
+    for (const rootId of movedRootIds) {
+      const live = globalDialogRegistry.get(rootId);
+      if (live) {
+        live.setPersistenceStatus(toStatus);
+      }
     }
 
     respondJson(res, 200, { success: true, movedRootIds });

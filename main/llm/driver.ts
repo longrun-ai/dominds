@@ -14,6 +14,7 @@ import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 
 import { inspect } from 'util';
 import { globalDialogRegistry } from '../dialog-global-registry';
+import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
   broadcastRunStateMarker,
   clearActiveRun,
@@ -24,7 +25,8 @@ import {
 } from '../dialog-run-state';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
-import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import { DialogPersistence } from '../persistence';
+import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import {
   formatDomindsNoteDirectSelfCall,
   formatDomindsNoteSuperNoTopic,
@@ -311,31 +313,6 @@ function scheduleUpNextDrive(dlg: Dialog, upNext: UpNextPrompt): void {
     userLanguageCode: upNext.userLanguageCode,
   };
   void driveDialogStream(dlg, prompt, true);
-}
-
-class AsyncFifoMutex {
-  private locked = false;
-  private readonly waiters: Array<() => void> = [];
-
-  async acquire(): Promise<() => void> {
-    if (!this.locked) {
-      this.locked = true;
-      return () => this.release();
-    }
-    await new Promise<void>((resolve) => {
-      this.waiters.push(resolve);
-    });
-    return () => this.release();
-  }
-
-  private release(): void {
-    const next = this.waiters.shift();
-    if (next) {
-      next();
-      return;
-    }
-    this.locked = false;
-  }
 }
 
 const suspensionStateMutexes: Map<string, AsyncFifoMutex> = new Map();
@@ -1429,103 +1406,71 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
   };
 }> {
   try {
-    // Required modules are already imported statically
-
-    // Load metadata to determine if this is a subdialog
-    const metadata = await DialogPersistence.loadRootDialogMetadata(
+    // Assert that the ID refers to a root dialog, not a subdialog selfId.
+    const rootMeta = await DialogPersistence.loadRootDialogMetadata(
       new DialogID(rootDialogId),
       'running',
     );
-
-    // Assert that the loaded metadata matches the expected root dialog
-    if (metadata?.supdialogId) {
+    if (rootMeta?.supdialogId) {
       throw new Error(
-        `Expected root dialog ${rootDialogId} but found subdialog metadata with supdialogId: ${metadata.supdialogId}`,
+        `Expected root dialog ${rootDialogId} but found subdialog metadata with supdialogId: ${rootMeta.supdialogId}`,
       );
     }
 
-    // Create DialogID: for root dialog, use dialogId as both self and root
-    const restoredRootDialogId = new DialogID(rootDialogId);
-
-    // Restore the full dialog tree
-    const dialogTree = await DialogPersistence.restoreDialogTree(new DialogID(rootDialogId));
-    if (!dialogTree) {
+    const rootDialog = await getOrRestoreRootDialog(rootDialogId, 'running');
+    if (!rootDialog) {
       throw new Error(`Failed to restore dialog hierarchy for ${rootDialogId}`);
     }
-
-    // Create all dialog instances with proper relationships
-    const rootStore = new DiskFileDialogStore(restoredRootDialogId);
-    const rootDialog = new RootDialog(
-      rootStore,
-      dialogTree.metadata.taskDocPath,
-      restoredRootDialogId,
-      dialogTree.metadata.agentId,
-      {
-        messages: dialogTree.messages,
-        reminders: dialogTree.reminders,
-        currentRound: dialogTree.currentRound,
-      },
-    );
     globalDialogRegistry.register(rootDialog);
-    await rootDialog.loadPendingSubdialogsFromPersistence();
 
-    // Restore all subdialogs in the hierarchy
+    // Restore all subdialogs under this root by reading the persisted subdialogs directory,
+    // then ensuring each subdialog is loaded into the root dialog's local registry.
     const subdialogs = new Map<string, Dialog>();
-    const allSubdialogIds = await (async () => {
-      const rootPath = DialogPersistence.getRootDialogPath(restoredRootDialogId, 'running');
-      const subPath = path.join(rootPath, DialogPersistence['SUBDIALOGS_DIR']);
-      try {
-        const entries = await fs.promises.readdir(subPath, { withFileTypes: true });
-        return entries.filter((e) => e.isDirectory()).map((e) => e.name);
-      } catch {
-        log.warn(`Failed to read subdialogs directory: ${subPath}, returning empty array`);
-        return [];
+
+    const rootPath = DialogPersistence.getRootDialogPath(new DialogID(rootDialogId), 'running');
+    const subPath = path.join(
+      rootPath,
+      (DialogPersistence as unknown as { SUBDIALOGS_DIR: string }).SUBDIALOGS_DIR,
+    );
+
+    let allSubdialogIds: string[] = [];
+    try {
+      const entries = await fs.promises.readdir(subPath, { withFileTypes: true });
+      allSubdialogIds = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch (err: unknown) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? (err as { code?: unknown }).code
+          : undefined;
+      if (code !== 'ENOENT') {
+        log.warn(`Failed to read subdialogs directory: ${subPath}, returning empty array`, err);
       }
-    })();
+      allSubdialogIds = [];
+    }
 
     for (const subdialogId of allSubdialogIds) {
-      const subdialogState = await DialogPersistence.restoreDialog(
-        new DialogID(subdialogId, restoredRootDialogId.rootId),
-      );
-      if (subdialogState) {
-        // Create DialogID for subdialog: parent ID is the root dialog ID
-        const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
-        const subdialogStore = new DiskFileDialogStore(restoredSubdialogId);
-        const assignmentFromSup = subdialogState.metadata.assignmentFromSup;
-        if (!assignmentFromSup) {
-          continue;
-        }
-        const subdialog = new SubDialog(
-          subdialogStore,
-          rootDialog,
-          subdialogState.metadata.taskDocPath,
-          restoredSubdialogId,
-          subdialogState.metadata.agentId,
-          assignmentFromSup,
-          subdialogState.metadata.topicId,
-          {
-            messages: subdialogState.messages,
-            reminders: subdialogState.reminders,
-            currentRound: subdialogState.currentRound,
-          },
-        );
-
-        subdialogs.set(subdialogId, subdialog);
+      const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
+      const dialog = await ensureDialogLoaded(rootDialog, restoredSubdialogId, 'running');
+      if (dialog && dialog.id.selfId !== dialog.id.rootId) {
+        subdialogs.set(subdialogId, dialog);
       }
     }
 
     // Calculate summary statistics
+    let totalMessages = rootDialog.msgs.length;
+    let totalRounds = rootDialog.currentRound;
+    for (const dlg of subdialogs.values()) {
+      totalMessages += dlg.msgs.length;
+      if (dlg.currentRound > totalRounds) totalRounds = dlg.currentRound;
+    }
+
     const summary: {
       totalMessages: number;
       totalRounds: number;
       completionStatus: 'failed' | 'incomplete' | 'complete';
     } = {
-      totalMessages:
-        dialogTree.messages.length +
-        Array.from(subdialogs.values()).reduce((sum, d) => sum + d.msgs.length, 0),
-      totalRounds:
-        dialogTree.currentRound +
-        Math.max(...Array.from(subdialogs.values()).map((d) => d.currentRound), 0),
+      totalMessages,
+      totalRounds,
       completionStatus: 'incomplete',
     };
 
