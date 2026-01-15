@@ -662,7 +662,7 @@ You're operating in a subdialog, which means you're focused on a specific subtas
       // Main dialog capabilities
       instructions += `
 - @clear_mind: Restart the conversation with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders.
-- @change_mind: Fundamentally shift the task direction by updating the task document with new content. This affects all participant agents (yourself and any subdialog agents), giving everyone a refreshed focus while preserving their reminders and supdialog-call information. Use when requirements change or you need to pivot strategy.
+- @change_mind: Update the shared task document content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For task packages (\`*.tsk/\`), you MUST target exactly one section: \`@change_mind !goals\` / \`!constraints\` / \`!progress\`.
 
 **Main Dialog Responsibilities:**
 You're the primary dialog agent. You can create subdialogs for specialized tasks, manage the overall conversation flow, and make high-level decisions about task direction and approach.`;
@@ -673,10 +673,10 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
 **Best Practices:**
 - **Maintain Mental Clarity:** When conversations become cluttered with debugging, repeated failures, or tangential discussions, use @clear_mind to refocus on what matters
 - **Strategic Reminders:** Capture key insights, decisions, and next steps in reminders before clearing your mind - they'll persist and guide your refreshed focus
-- **Task Document Focus:** Both @clear_mind and @change_mind redirect attention to the task document (goals, progress, gotchas), ensuring you stay aligned with objectives
+- **Task Document Focus:** Keep the task document authoritative (goals / constraints / progress). Use @change_mind to update it explicitly; use @clear_mind when you need a new round.
 - **Proactive Clarity:** Don't wait for conversations to become overwhelming - clear your mind proactively when you sense attention fragmentation
 - **Context Preservation:** Remember that clearing your mind preserves reminders and (for subdialogs) supdialog-call information - you lose chat noise, not important context
-- **Strategic Pivots:** Use @change_mind when user requirements evolve or you need to fundamentally shift approach - it updates the task document for all agents to restart with refreshed focus`;
+- **Strategic Pivots:** Use @change_mind when requirements evolve or you need to adjust constraints/progress; it updates the shared task document for all agents immediately.`;
 
     return instructions;
   }
@@ -845,7 +845,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   public async notifyGeneratingStart(): Promise<void> {
     // Capture the generation's starting round so any events emitted during this generation
     // remain attributed to the correct round even if a tool mutates dialog.currentRound
-    // mid-generation (e.g., @clear_mind / @change_mind).
+    // mid-generation (e.g., @clear_mind).
     this._activeGenRound = this.currentRound;
     if (typeof this._activeGenSeq === 'number') {
       this._activeGenSeq++;

@@ -148,28 +148,36 @@ dominds init https://github.com/myorg/custom-template.git my-project
 Once installed and configured, you can start using dominds immediately:
 
 ```bash
-# Create a task document for your project
-echo "# User Authentication
-## Objective
-Implement secure user authentication system with JWT tokens.
+# Create a task doc package for your project (recommended: `*.tsk/`)
+mkdir -p tasks/auth.tsk
+cat > tasks/auth.tsk/goals.md << 'EOF'
+# User Authentication
 
-## Requirements
+Implement secure user authentication system with JWT tokens.
+EOF
+
+cat > tasks/auth.tsk/constraints.md << 'EOF'
 - Login/logout endpoints
 - Password hashing
 - JWT token generation
-- Session management" > tasks/auth.md
+- Session management
+EOF
+
+cat > tasks/auth.tsk/progress.md << 'EOF'
+- Not started yet
+EOF
 
 # Start a new dialog with your task (TUI)
-dominds tui tasks/auth.md "Implement user authentication system"
+dominds tui tasks/auth.tsk "Implement user authentication system"
 
 # Or use the 'run' alias
-dominds run tasks/auth.md "Implement user authentication system"
+dominds run tasks/auth.tsk "Implement user authentication system"
 
 # List all active dialogs
 dominds tui --list
 
 # Resume an existing dialog (use actual dialog ID from --list)
-dominds tui -i aa/bb/12345678 tasks/auth.md "Continue working on auth"
+dominds tui -i aa/bb/12345678 tasks/auth.tsk "Continue working on auth"
 
 # Read team configuration
 dominds read  # Show all team members

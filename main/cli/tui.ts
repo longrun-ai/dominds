@@ -60,7 +60,7 @@ function showHelp() {
   console.log('  --help                 Show this help message');
   console.log('');
   console.log('Examples:');
-  console.log('  dominds tui task.md "implement feature"');
+  console.log('  dominds tui task.tsk "implement feature"');
   console.log('  dominds tui -i abc123');
   console.log('  dominds tui --list');
   console.log('  dominds tui --version');
@@ -166,6 +166,15 @@ async function main() {
     if (args.help) {
       showHelp();
       return;
+    }
+
+    if (args.taskDocPath && !args.list) {
+      const normalized = args.taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '');
+      if (!normalized.endsWith('.tsk')) {
+        throw new Error(
+          `task-doc-path must be an encapsulated task package directory ending in '.tsk/' (got: '${args.taskDocPath}')`,
+        );
+      }
     }
 
     console.log(`Dominds TUI not implemented yet.`);

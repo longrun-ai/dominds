@@ -46,7 +46,7 @@ Examples:
   dominds webui              # Start WebUI server
   dominds -C ./my-ws webui   # Start in specific workspace
   dominds tui --help         # Show TUI help
-  dominds run task.md        # Run task dialog
+  dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
 
 Installation:

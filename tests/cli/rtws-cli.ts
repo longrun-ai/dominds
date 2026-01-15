@@ -17,11 +17,11 @@ function main(): void {
 
   {
     const parsed = extractGlobalRtwsChdir({
-      argv: ['-C', '/abs/ws', 'tui', 'task.md'],
+      argv: ['-C', '/abs/ws', 'tui', 'task.tsk'],
       baseCwd,
     });
     assert.equal(parsed.chdir, '/abs/ws');
-    assert.deepEqual(parsed.argv, ['tui', 'task.md']);
+    assert.deepEqual(parsed.argv, ['tui', 'task.tsk']);
   }
 
   {

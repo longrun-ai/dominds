@@ -13,7 +13,7 @@
  * - @delete_reminder: Remove specific reminders by number
  * - @update_reminder: Modify existing reminder content
  * - @clear_mind: Drop all messages, start new round, optionally add reminder from call body
- * - @change_mind: Drop all messages, start new round, overwrite task doc with call body
+ * - @change_mind: Update a `.tsk/` task doc section without starting a new round
  *
  * USAGE CONTEXT:
  * Can both be triggered by an agent autonomously, or by human with role='user' msg,
@@ -28,13 +28,18 @@
  * with doc-path (relative to workspace root) as the link text
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import type { Team } from '../team';
 import { TextingTool, TextingToolCallResult } from '../tool';
+import {
+  isTaskPackagePath,
+  taskPackageSectionFromSelector,
+  updateTaskPackageSection,
+  type TaskPackageSection,
+} from '../utils/task-package';
 
 function env(content: string): ChatMessage[] {
   return [{ type: 'environment_msg', role: 'user', content }] satisfies ChatMessage[];
@@ -208,19 +213,32 @@ export const clearMindTool: TextingTool = {
 export const changeMindTool: TextingTool = {
   type: 'texter',
   name: 'change_mind',
-  usageDescription: 'Change mind and start new round: @change_mind\\n<new-task-doc-content>',
+  usageDescription:
+    'Update task document content (no round reset).\n' +
+    'Task package: @change_mind !goals|!constraints|!progress\\n<new-section-content>',
   backfeeding: false,
   async call(
     dlg: Dialog,
-    _caller: Team.Member,
+    caller: Team.Member,
     headLine: string,
     inputBody: string,
   ): Promise<TextingToolCallResult> {
     const trimmedHeadLine = headLine.trim();
-    if (!/^@change_mind(?:\s*:\s*.*)?$/.test(trimmedHeadLine)) {
+    if (!trimmedHeadLine.startsWith('@change_mind')) {
       return fail(
-        'Error: Invalid format. Use: @change_mind',
-        env('Error: Invalid format. Use: @change_mind'),
+        'Error: Invalid format. Use: @change_mind [!goals|!constraints|!progress]',
+        env('Error: Invalid format. Use: @change_mind [!goals|!constraints|!progress]'),
+      );
+    }
+
+    const headBeforeColon = trimmedHeadLine.split(':', 1)[0] || trimmedHeadLine;
+    const tokens = headBeforeColon.trim().split(/\s+/);
+    const selector = tokens.length >= 2 ? tokens[1] : undefined;
+    const extraToken = tokens.length >= 3 ? tokens[2] : undefined;
+    if (extraToken) {
+      return fail(
+        'Error: Too many arguments. Use: @change_mind [!goals|!constraints|!progress]',
+        env('Error: Too many arguments. Use: @change_mind [!goals|!constraints|!progress]'),
       );
     }
 
@@ -242,14 +260,44 @@ export const changeMindTool: TextingTool = {
       );
     }
 
-    // Write new task doc content
-    const fullPath = path.resolve(taskDocPath);
-    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-    await fs.promises.writeFile(fullPath, newTaskDocContent, 'utf8');
+    const workspaceRoot = path.resolve(process.cwd());
+    const fullPath = path.resolve(workspaceRoot, taskDocPath);
+    if (!fullPath.startsWith(workspaceRoot)) {
+      return fail(
+        'Error: Path must be within workspace',
+        env('Error: Path must be within workspace'),
+      );
+    }
 
-    await dlg.startNewRound(
-      `This is round #${dlg.currentRound + 1} of the dialog, you just changed your mind and please proceed with the task.`,
-    );
+    if (!isTaskPackagePath(taskDocPath)) {
+      return fail(
+        `Error: This dialog uses a legacy task doc '${taskDocPath}'. Only \`*.tsk/\` task packages are supported.`,
+        env(
+          `Error: This dialog uses a legacy task doc '${taskDocPath}'. Only \`*.tsk/\` task packages are supported.`,
+        ),
+      );
+    }
+
+    if (!selector) {
+      return fail(
+        'Error: Task packages require a target selector: !goals | !constraints | !progress',
+        env('Error: Task packages require a target selector: !goals | !constraints | !progress'),
+      );
+    }
+    const section: TaskPackageSection | null = taskPackageSectionFromSelector(selector);
+    if (!section) {
+      return fail(
+        `Error: Invalid selector '${selector}'. Use: !goals | !constraints | !progress`,
+        env(`Error: Invalid selector '${selector}'. Use: !goals | !constraints | !progress`),
+      );
+    }
+
+    await updateTaskPackageSection({
+      taskPackageDirFullPath: fullPath,
+      section,
+      content: newTaskDocContent,
+      updatedBy: caller.id,
+    });
     return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'mindChanged'));
   },
 };

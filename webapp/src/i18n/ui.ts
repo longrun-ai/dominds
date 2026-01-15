@@ -206,9 +206,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     cancel: 'Cancel',
     createDialog: 'Create Dialog',
     taskDocumentLabel: 'Task Document:',
-    taskDocumentPlaceholder: 'Type to search task documents...',
+    taskDocumentPlaceholder: 'Type to search task docs (*.tsk required)...',
     taskDocumentHelp:
-      'Select from existing documents or enter a custom path. Required field. Tab completes common prefix, Enter selects highlighted item.',
+      'Select from existing task docs or enter a custom path. Required format: `*.tsk/` task packages. Tab completes common prefix; Enter selects highlighted item.',
     teammateLabel: 'Teammate:',
     defaultMarker: ' • Default',
 

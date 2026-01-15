@@ -17,6 +17,7 @@ import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { generateDialogID } from '../utils/id';
+import { isTaskPackagePath } from '../utils/task-package';
 
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
 
@@ -449,6 +450,17 @@ async function handleCreateDialog(
       respondJson(res, 400, { success: false, error: 'agentId is required' });
       return true;
     }
+    if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') {
+      respondJson(res, 400, { success: false, error: 'taskDocPath is required' });
+      return true;
+    }
+    if (!isTaskPackagePath(taskDocPath)) {
+      respondJson(res, 400, {
+        success: false,
+        error: `taskDocPath must be a task package directory ending in '.tsk/' (got: '${taskDocPath}')`,
+      });
+      return true;
+    }
 
     // Generate dialog ID
     const generatedId = generateDialogID();
@@ -600,14 +612,11 @@ async function listTaskDocuments(): Promise<{
       lastModified: string;
     }> = [];
 
-    // File extensions that are considered task documents
-    const taskExtensions = ['.md', '.txt', '.yaml', '.yml'];
-
     // Load ignore patterns from .minds/task-ignore if it exists
     const ignorePatterns = await loadTaskIgnorePatterns();
 
     // Start recursive search from current directory
-    await scanDirectory('.', taskDocuments, taskExtensions, ignorePatterns);
+    await scanDirectory('.', taskDocuments, ignorePatterns);
 
     // Sort by path for consistent ordering
     taskDocuments.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
@@ -700,7 +709,6 @@ async function scanDirectory(
     size: number;
     lastModified: string;
   }>,
-  taskExtensions: string[],
   ignorePatterns: string[],
 ): Promise<void> {
   try {
@@ -715,26 +723,44 @@ async function scanDirectory(
         continue;
       }
 
-      if (entry.isFile()) {
-        // Check if file matches task document extensions
-        const ext = path.extname(entry.name).toLowerCase();
-        if (taskExtensions.includes(ext)) {
+      if (entry.isDirectory()) {
+        // Treat `*.tsk/` as a single encapsulated task document (do NOT recurse into it).
+        if (entry.name.toLowerCase().endsWith('.tsk')) {
           try {
-            const stats = fs.statSync(fullPath);
+            const dirStats = fs.statSync(fullPath);
+            let totalSize = 0;
+            let lastModified = dirStats.mtime;
+            const sectionFiles = [
+              'goals.md',
+              'constraints.md',
+              'progress.md',
+              'meta.json',
+            ] as const;
+            for (const filename of sectionFiles) {
+              try {
+                const sectionPath = path.join(fullPath, filename);
+                const s = fs.statSync(sectionPath);
+                totalSize += s.size;
+                if (s.mtime > lastModified) lastModified = s.mtime;
+              } catch {
+                // Missing files are allowed; package may be created lazily.
+              }
+            }
             taskDocuments.push({
               path: fullPath,
               relativePath: relativePath.replace(/\\/g, '/'),
               name: entry.name,
-              size: stats.size,
-              lastModified: formatUnifiedTimestamp(stats.mtime),
+              size: totalSize,
+              lastModified: formatUnifiedTimestamp(lastModified),
             });
           } catch (statError) {
-            log.debug(`Failed to get stats for file: ${fullPath}`, statError);
+            log.debug(`Failed to get stats for task package: ${fullPath}`, statError);
           }
+          continue;
         }
-      } else if (entry.isDirectory()) {
+
         // Recursively scan subdirectories
-        await scanDirectory(fullPath, taskDocuments, taskExtensions, ignorePatterns);
+        await scanDirectory(fullPath, taskDocuments, ignorePatterns);
       }
     }
   } catch (error) {

@@ -132,10 +132,10 @@ Start a new dialog or continue an existing one with the specified task document.
 
 ```bash
 # Start a new dialog with a task document
-dominds tui task.md "Implement user authentication"
+dominds tui task.tsk "Implement user authentication"
 
 # Use the run alias
-dominds run task.md "Implement user authentication"
+dominds run task.tsk "Implement user authentication"
 
 # Start with multiple prompts
 dominds tui project-plan.md "Review the architecture" "Suggest improvements"
@@ -400,7 +400,7 @@ Change to the specified workspace before executing the command.
 **Example:**
 
 ```bash
-dominds tui -C /path/to/project task.md "Start working on feature"
+dominds tui -C /path/to/project task.tsk "Start working on feature"
 ```
 
 ### Specify Team Member
@@ -415,7 +415,7 @@ Use a specific team member as the agent for this dialog.
 **Example:**
 
 ```bash
-dominds tui -m alice task.md "Review the code"
+dominds tui -m alice task.tsk "Review the code"
 dominds tui --member bob architecture.md "Design the new system"
 ```
 
@@ -432,10 +432,10 @@ Resume an existing dialog or start a new dialog with a specific ID.
 
 ```bash
 # Resume an existing dialog
-dominds tui -i aa/bb/12345678 task.md "Continue where we left off"
+dominds tui -i aa/bb/12345678 task.tsk "Continue where we left off"
 
 # Start with a custom dialog ID
-dominds tui --id my/custom/id task.md "New task with custom ID"
+dominds tui --id my/custom/id task.tsk "New task with custom ID"
 ```
 
 ## Usage Examples
@@ -470,7 +470,7 @@ dominds tui -m alice architecture.md "Design the system architecture"
 dominds  # Opens browser interface, select dialog and team member
 
 # Charlie implements using TUI in different directory
-dominds tui -C /path/to/project -m charlie task.md "Implement the API"
+dominds tui -C /path/to/project -m charlie task.tsk "Implement the API"
 
 # Validate team configuration
 dominds read /path/to/project/.minds --verbose
@@ -487,11 +487,11 @@ cd my-project
 dominds read --validate
 
 # Start development with specific configuration
-dominds tui -C /workspace -m alice -i custom/dialog/id task.md "Initial prompt" "Additional context"
+dominds tui -C /workspace -m alice -i custom/dialog/id task.tsk "Initial prompt" "Additional context"
 
 # Monitor via Web UI while working in TUI
 dominds &  # Start Web UI in background
-dominds tui task.md "Continue development"
+dominds tui task.tsk "Continue development"
 
 # Quick help for any command
 dominds tui --help

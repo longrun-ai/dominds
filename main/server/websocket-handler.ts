@@ -34,6 +34,7 @@ import {
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { generateDialogID } from '../utils/id';
+import { isTaskPackagePath } from '../utils/task-package';
 import type { AuthConfig } from './auth';
 import { getWebSocketAuthCheck } from './auth';
 
@@ -264,6 +265,11 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     // Validate that taskDocPath is provided (it's now mandatory)
     if (!taskDocPath || taskDocPath.trim() === '') {
       throw new Error('Task document path is required for creating a dialog');
+    }
+    if (!isTaskPackagePath(taskDocPath)) {
+      throw new Error(
+        `Task document must be a task package directory ending in '.tsk/' (got: '${taskDocPath}')`,
+      );
     }
 
     // Auto-fill default_responder if no agentId provided

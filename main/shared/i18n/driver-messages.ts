@@ -44,7 +44,7 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
 - @update_reminder <number>\n<new content>
 - @delete_reminder <number>
 
-使用 @clear_mind 或 @change_mind 会开启新一轮对话——这有助于保持思路清晰，同时提醒会把重要信息带到新一轮中。
+使用 @clear_mind 会开启新一轮对话——这有助于保持思路清晰，同时提醒会把重要信息带到新一轮中。使用 @change_mind 只会更新任务文档内容（不进入新一轮）。
 
 提示：我可以带正文地使用 @clear_mind，该正文会被追加为新的提醒；同时我会进入新一轮对话，不再包含旧消息。`;
   }
@@ -57,7 +57,7 @@ I can manage these anytime to maintain context across dialog rounds:
 - @update_reminder <number>\n<new content>
 - @delete_reminder <number>
 
-Using @clear_mind or @change_mind would start a new round of dialog - this helps me keep my mindset clear while reminders carry important info to new rounds.
+Using @clear_mind starts a new dialog round (good for clearing noise) while reminders carry important info forward. Using @change_mind only updates the task document content (no round reset).
 
 Tip: I can use @clear_mind with a body, and that body will be added as a new reminder, while I'm in a new dialog round without old messages.`;
 }

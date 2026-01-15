@@ -97,6 +97,9 @@ export const listDirTool: TextingTool = {
   usageDescription: `List directory contents relative to workspace with detailed information.
 Usage: @list_dir [path]
 
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including listing).
+
 Features:
 - Shows file sizes for all entries
 - Shows line count for text files
@@ -245,6 +248,9 @@ export const rmDirTool: TextingTool = {
   usageDescription: `Remove a directory relative to workspace.
 Usage: @rm_dir <path> [options]
 
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+
 Options:
   !recursive [true|false]  - Remove directory and all contents (default: false)
 
@@ -342,6 +348,9 @@ export const rmFileTool: TextingTool = {
   backfeeding: true,
   usageDescription: `Remove a file relative to workspace.
 Usage: @rm_file <path>
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
 
 Example:
   @rm_file temp/old-file.txt`,

@@ -42,7 +42,7 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `@clear_mind` and `@change_mind` operations**. The actual question content is stored in the dialog's conversation messages where `@human` was called.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `@clear_mind` operations**. The actual question content is stored in the dialog's conversation messages where `@human` was called.
 
 ### Subdialog Index (subdlg.yaml)
 
@@ -329,14 +329,14 @@ flowchart TD
   UI --> Ans[User answers Q4H<br/>(drive_dialog_by_user_answer)]
   Ans --> Q
 
-  Clarity[@clear_mind / @change_mind] -->|clears| Q
+  Clarity[@clear_mind] -->|clears| Q
   Clarity -->|preserves| R[Reminders]
   Clarity -->|preserves| Reg[Registry (root only)]
 ```
 
 ### Key Design Principles
 
-1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `@human` call was made. They do not survive `@clear_mind` or `@change_mind`.
+1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `@human` call was made. They do not survive `@clear_mind`.
 
 2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
 
@@ -349,7 +349,7 @@ flowchart TD
 6. **Subdialog Registry**: Registered subdialogs (TYPE B calls) are tracked in a root-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on root load.
 
 7. **State Preservation Contract**:
-   - `@clear_mind`/`@change_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
+   - `@clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
    - Subdialog completion: Writes response to supdialog, removes from pending list (registry unchanged)
    - Q4H answer: Clears the answered question from index, continues the dialog
 
@@ -559,11 +559,11 @@ sequenceDiagram
 
 ### Q4H and Mental Clarity Operations
 
-**Critical Design Decision**: Q4H questions are **CLEARED** by `@clear_mind` and `@change_mind` operations.
+**Critical Design Decision**: Q4H questions are **CLEARED** by `@clear_mind` operations.
 
 ```mermaid
 flowchart LR
-  Before[Before clarity<br/>Messages present<br/>Reminders present<br/>Q4H present] --> Op[@clear_mind / @change_mind]
+  Before[Before clarity<br/>Messages present<br/>Reminders present<br/>Q4H present] --> Op[@clear_mind]
   Op --> After[After clarity<br/>Messages cleared<br/>Reminders preserved<br/>Q4H cleared]
 ```
 
@@ -652,7 +652,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ## Mental Clarity Tools
 
-**Implementation**: Both `@clear_mind` and `@change_mind` delegate to `Dialog.startNewRound(newRoundPrompt)`, which:
+**Implementation**: `@clear_mind` delegates to `Dialog.startNewRound(newRoundPrompt)`, which:
 
 1. Clears all chat messages
 2. Clears all Q4H questions
@@ -714,7 +714,7 @@ AFTER @clear_mind:
 
 ### @change_mind
 
-**Purpose**: Fundamentally shift task direction by updating the workspace task document file that all dialogs reference.
+**Purpose**: Update the shared task document content that all dialogs in the dialog tree reference.
 
 **Texting Call Syntax**:
 
@@ -723,31 +723,29 @@ AFTER @clear_mind:
 <new-task-doc-content>
 ```
 
+For encapsulated task packages (`*.tsk/`), a target selector is required:
+
+```
+@change_mind !goals
+<new-goals-content>
+```
+
+Supported selectors:
+
+- `!goals`
+- `!constraints`
+- `!progress`
+
 **Behavior**:
 
-- Updates the workspace task document file (e.g., `tasks/feature-auth.md`) with new content
+- Updates the workspace task document content (exactly one section file in a `*.tsk/` package)
 - **Does not change the task document path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
-- Clears all chat messages in the current dialog
-- Preserves all reminders
-- **Clears all Q4H questions** (critical!)
-- Preserves subdialog registry (root dialog only)
-- Has no effect on supdialog
+- **Does not start a new dialog round.** If a round reset is desired, use `@clear_mind` separately.
+- Does not clear messages, reminders, Q4H, or registry by itself
 - Affects all participant agents (main and subdialogs) referencing the same task document
-- A system-generated new-round prompt is queued and used as the **first `role=user` message** in the new round
-- Starts new conversation round for current dialog
 
-**Message Flow**:
-
-```
-BEFORE (LLM output):
-@change_mind
-The client wants reporting instead of auth
-
-AFTER @change_mind:
-[new round starts]
-[msg1: user, "This is round #<n> of the dialog, you just changed your minds and please proceed with the task."]  <-- newRoundPrompt
-```
+**Message Flow**: `@change_mind` is an in-place task-doc update; no new-round prompt is generated.
 
 **Use Cases**:
 
@@ -765,10 +763,7 @@ AFTER @change_mind:
 - Hierarchical relationships and contexts are preserved
 - The task document file persists beyond individual conversations and team changes
 - `dlg.taskDocPath` is readonly after dialog creation; @change_mind only overwrites the file contents at that path
-- **Q4H is cleared** - new direction means new questions
-- **Registry is preserved** - registered subdialogs remain registered
-- Tools are `backfeeding: false`; the new-round prompt is applied by the driver in the follow-up coroutine
-- After updating the task document, calls `Dialog.startNewRound(newRoundPrompt)` for all clearing, prompt queueing, and round management
+- For `*.tsk/` packages, the task doc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`
 
 ---
 
@@ -911,7 +906,7 @@ For subdialogs needing to communicate with the main dialog (root dialog), see th
 The persistence layer handles:
 
 - **Dialog Storage**: `dominds/main/persistence.ts`
-- **Q4H Storage**: `q4h.yaml` per dialog (cleared by @clear_mind/@change_mind)
+- **Q4H Storage**: `q4h.yaml` per dialog (cleared by @clear_mind)
 - **Reminder Storage**: `reminders.json` per dialog
 - **Event Persistence**: Round-based JSONL files
 - **Registry Storage**: `registry.yaml` per root dialog
@@ -957,7 +952,7 @@ interface RegistryMethods {
 
 **Context Inheritance**: New subdialogs automatically receive:
 
-- Reference to the same workspace task document file (e.g., `tasks/feature-auth.md`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
+- Reference to the same workspace task doc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
 - Supdialog texting call context (headLine + callBody) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories
@@ -1027,7 +1022,7 @@ interface RegistryMethods {
 
 **Memory Updates**: Team and agent memories are updated asynchronously and eventually consistent across all dialogs.
 
-**Q4H Persistence**: Q4H questions are persisted when created and cleared atomically when answered or when @clear_mind/@change_mind is called.
+**Q4H Persistence**: Q4H questions are persisted when created and cleared atomically when answered or when @clear_mind is called.
 
 **Registry Persistence**: Registry is persisted after each modification and restored on root dialog load.
 
@@ -1048,7 +1043,7 @@ interface RegistryMethods {
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — per-subdialog Q4H index (cleared by clarity)
 
-**Task Document Storage**: Task documents are regular workspace files (typically `.md` files) that exist independently and are referenced by dialogs through file paths.
+**Task Doc Storage**: Task docs are workspace artifacts referenced by dialogs through paths. Task docs MUST be encapsulated `*.tsk/` task packages.
 
 **Memory Storage**: Team and agent memories are stored in dedicated files within the workspace.
 
@@ -1182,7 +1177,7 @@ flowchart TD
   C --> D[UI shows Q4H badge / list]
   D --> E{How is it cleared?}
   E -->|User answers (drive_dialog_by_user_answer)| F[Remove question from q4h.yaml\\n(delete file if empty)]
-  E -->|@clear_mind / @change_mind| G[Clear q4h.yaml (all questions)]
+  E -->|@clear_mind| G[Clear q4h.yaml (all questions)]
   F --> H[Dialog may become driveable again]
   G --> H
 ```
@@ -1291,12 +1286,14 @@ sequenceDiagram
 
 ### 4. Clarity Operations Preserve Registry
 
-| State Element | Effect of `@clear_mind` / `@change_mind`    |
+| State Element | Effect of `@clear_mind`                     |
 | ------------- | ------------------------------------------- |
 | Messages      | Cleared (new round / fresh message context) |
 | Q4H           | Cleared                                     |
 | Reminders     | Preserved                                   |
 | Registry      | Preserved                                   |
+
+`@change_mind` is not a clarity operation; it updates task document content in-place and does not clear messages/Q4H/reminders/registry.
 
 ---
 
@@ -1336,13 +1333,13 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 
 ### Four Core Mechanisms
 
-| Mechanism              | Purpose                       | Survives Clarity | Cleared By                |
-| ---------------------- | ----------------------------- | ---------------- | ------------------------- |
-| **Dialog Hierarchy**   | Parent-child task delegation  | N/A              | N/A                       |
-| **Q4H**                | Human input requests          | No               | @clear_mind, @change_mind |
-| **Mental Clarity**     | Context reset tools           | N/A              | N/A                       |
-| **Reminders**          | Persistent working memory     | Yes              | N/A                       |
-| **Subdialog Registry** | Registered subdialog tracking | Yes              | Never deleted             |
+| Mechanism              | Purpose                       | Survives Clarity | Cleared By    |
+| ---------------------- | ----------------------------- | ---------------- | ------------- |
+| **Dialog Hierarchy**   | Parent-child task delegation  | N/A              | N/A           |
+| **Q4H**                | Human input requests          | No               | @clear_mind   |
+| **Mental Clarity**     | Context reset tools           | N/A              | N/A           |
+| **Reminders**          | Persistent working memory     | Yes              | N/A           |
+| **Subdialog Registry** | Registered subdialog tracking | Yes              | Never deleted |
 
 ### Three Types of Teammate Calls
 

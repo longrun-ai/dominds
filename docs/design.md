@@ -336,18 +336,18 @@ Agent: [Clean mental state + Task doc only] + Specific sub-problem
 
 ```
 Main Dialog (Root Dialog)
-├── Task Document Reference → tasks/feature-auth.md (Workspace File)
+├── Task Document Reference → tasks/feature-auth.tsk/ (Workspace Task Package)
 ├── Reminders (Working Memory)
 ├── Chat Messages (Ephemeral)
 └── Subdialogs (Tree-Structured, Stored Flat Under Main Dialog)
     ├── Specialized Agent A
-    │   ├── Task Document Reference → tasks/feature-auth.md (Same File)
+    │   ├── Task Document Reference → tasks/feature-auth.tsk/ (Same Package)
     │   ├── Parent Call Context
     │   ├── Local Reminders
     │   └── Local Chat Messages
     │       └── Sub-Subdialogs (Further Nesting Possible)
     └── Specialized Agent B
-        ├── Task Document Reference → tasks/feature-auth.md (Same File)
+        ├── Task Document Reference → tasks/feature-auth.tsk/ (Same Package)
         ├── Parent Call Context
         ├── Local Reminders
         └── Local Chat Messages
@@ -355,8 +355,7 @@ Main Dialog (Root Dialog)
 
 **Key Properties**:
 
-- All dialogs reference the same workspace task document file (e.g., `tasks/feature-auth.md`)
-- Task documents are regular `.md` files that exist independently in the workspace
+- All dialogs reference the same workspace task doc (a `*.tsk/` task package, e.g. `tasks/feature-auth.tsk/`)
 - Multiple dialog trees can reference the same task document for collaborative work
 - Task documents persist beyond individual conversations and survive team changes
 - Subdialogs can be tree-structured with unlimited nesting depth
@@ -367,8 +366,8 @@ Main Dialog (Root Dialog)
 
 #### Dialog-Scoped Memory (Per Conversation)
 
-1. **Task Document Reference**: Points to a regular workspace file (`.md`) tracking a specific DevOps assignment
-   - The actual task document is a persistent workspace file that exists independently of any dialog
+1. **Task Document Reference**: Points to a workspace task doc tracking a specific DevOps assignment
+   - `*.tsk/` task packages (`goals.md`, `constraints.md`, `progress.md`)
    - Multiple dialogs can reference the same task document for collaborative work
    - Task documents persist throughout the entire product lifecycle, spanning multiple conversations and team changes
    - Can link to other product documentation and evolve as project requirements change
@@ -516,58 +515,20 @@ The implementation emphasizes autonomous agent operation, enabling agents to ind
 
 ### Example Task Document Structure
 
-A typical task document is a regular workspace `.md` file that tracks a specific DevOps assignment:
+A task doc is an encapsulated `*.tsk/` package that tracks a specific DevOps assignment:
 
-```markdown
-# Feature: User Authentication System
-
-## Objective
-
-Implement secure user authentication with JWT tokens and role-based access control.
-
-## Current Status
-
-- [x] Database schema design
-- [x] User model implementation
-- [ ] JWT token service
-- [ ] Login/logout endpoints
-- [ ] Role-based middleware
-- [ ] Frontend integration
-
-## Requirements
-
-- Support email/password authentication
-- Implement JWT token refresh mechanism
-- Add role-based permissions (admin, user, guest)
-- Integrate with existing user management system
-
-## Related Documentation
-
-- [API Design Spec](../specs/api-design.md)
-- [Security Guidelines](../docs/security.md)
-- [Database Schema](../db/schema.md)
-
-## Implementation Notes
-
-- Use bcrypt for password hashing
-- JWT tokens expire after 1 hour
-- Refresh tokens valid for 30 days
-- Admin role required for user management endpoints
-
-## Testing Strategy
-
-- Unit tests for authentication service
-- Integration tests for API endpoints
-- Security testing for token validation
-- Load testing for login performance
-
-## Deployment Checklist
-
-- [ ] Environment variables configured
-- [ ] Database migrations applied
-- [ ] Security headers configured
-- [ ] Monitoring alerts set up
 ```
+tasks/auth-system.tsk/
+├── goals.md
+├── constraints.md
+└── progress.md
+```
+
+Example contents:
+
+- `goals.md`: “Implement secure user authentication with JWT tokens and role-based access control.”
+- `constraints.md`: “MUST support email/password auth; MUST implement JWT refresh; MUST add role-based permissions…”
+- `progress.md`: checklist/status notes (fast-changing).
 
 ### Task Document Lifecycle
 
@@ -576,10 +537,11 @@ Implement secure user authentication with JWT tokens and role-based access contr
 ```bash
 # Create new task document
 mkdir -p tasks
-echo "# Feature: User Authentication" > tasks/auth-system.md
+mkdir -p tasks/auth-system.tsk
+echo "# Feature: User Authentication" > tasks/auth-system.tsk/goals.md
 
 # Start dialog referencing the task document
-dominds dialog start --task-doc-path tasks/auth-system.md
+dominds dialog start --task-doc-path tasks/auth-system.tsk
 ```
 
 **Development Phase**:
@@ -593,15 +555,15 @@ dominds dialog start --task-doc-path tasks/auth-system.md
 
 ```yaml
 # Dialog A (Backend specialist)
-task_document: "tasks/auth-system.md"
+task_document: "tasks/auth-system.tsk"
 focus: "JWT token service implementation"
 
 # Dialog B (Frontend specialist)
-task_document: "tasks/auth-system.md"
+task_document: "tasks/auth-system.tsk"
 focus: "Login UI integration"
 
 # Dialog C (DevOps specialist)
-task_document: "tasks/auth-system.md"
+task_document: "tasks/auth-system.tsk"
 focus: "Deployment and monitoring setup"
 ```
 
@@ -618,10 +580,10 @@ focus: "Deployment and monitoring setup"
 ```
 workspace/
 ├── tasks/
-│   ├── auth-system.md          # Authentication feature
-│   ├── payment-integration.md  # Payment processing
-│   ├── mobile-app.md          # Mobile application
-│   └── performance-opt.md     # Performance optimization
+│   ├── auth-system.tsk/          # Authentication feature
+│   ├── payment-integration.tsk/  # Payment processing
+│   ├── mobile-app.tsk/           # Mobile application
+│   └── performance-opt.tsk/      # Performance optimization
 ├── specs/
 │   ├── api-design.md
 │   └── ui-mockups.md
@@ -630,7 +592,7 @@ workspace/
     └── deployment.md
 ```
 
-Each task document represents an independent DevOps assignment that can be worked on in parallel, with multiple dialog trees collaborating on the same objectives while maintaining their own conversation contexts.
+Each task doc represents an independent DevOps assignment that can be worked on in parallel, with multiple dialog trees collaborating on the same objectives while maintaining their own conversation contexts.
 
 ---
 

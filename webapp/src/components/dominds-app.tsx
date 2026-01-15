@@ -3237,7 +3237,14 @@ export class DomindsApp extends HTMLElement {
 
       // Validate that task document is provided
       if (!taskDocPath) {
-        taskDocPath = 'socializing.md';
+        taskDocPath = 'socializing.tsk';
+      }
+      if (!taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '').endsWith('.tsk')) {
+        this.showError(
+          `Task doc must be an encapsulated task package directory ending in '.tsk/' (got: '${taskDocPath}')`,
+          'error',
+        );
+        return;
       }
 
       const selectedAgentId = select.value || undefined; // undefined means use default

@@ -168,6 +168,9 @@ export const readFileTool: TextingTool = {
   usageDescription: `Read a text file (bounded) relative to workspace. 
 Usage: @read_file [options] <path>
 
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+
 Options:
   !decorate-linenos [true|false]  - Add line numbers (default: true)
   !range <range>                  - Show specific line range
@@ -253,6 +256,9 @@ export const overwriteFileTool: TextingTool = {
   usageDescription: `Overwrite a file with new content. Usage: @overwrite_file <path>
 <file content in body>
 
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+
 Examples:
   @overwrite_file src/config.ts
   export const config = { version: '1.0' };
@@ -329,6 +335,9 @@ export const patchFileTool: TextingTool = {
   backfeeding: true,
   usageDescription: `Apply a simple patch to a single file. Usage: @patch_file <path>
 <patch content in body>
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
 
 Patch format:
   @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
@@ -485,7 +494,9 @@ export const applyPatchTool: TextingTool = {
   type: 'texter',
   name: 'apply_patch',
   usageDescription:
-    'Apply a unified git diff patch to the workspace. Usage: @apply_patch\n<diff content in body>',
+    'Apply a unified git diff patch to the workspace.\n' +
+    'Note: Paths under `*.tsk/` are encapsulated task packages and are NOT accessible via file tools.\n' +
+    'Usage: @apply_patch\n<diff content in body>',
   backfeeding: true,
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     if (!inputBody || inputBody.trim() === '') {

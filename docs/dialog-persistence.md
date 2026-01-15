@@ -244,7 +244,7 @@ Modern strongly-typed dialog metadata using TypeScript interfaces:
 ```yaml
 id: 'aa/bb/cccccccc' # Unique dialog identifier (selfDlgId only)
 agentId: 'alice' # Agent responsible for this dialog
-taskDocPath: 'task.md' # Path to the task document
+taskDocPath: 'task.tsk' # Path to the task doc package directory
 createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 # No parent fields for root dialogs
 ```
@@ -254,7 +254,7 @@ createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 ```yaml
 id: 'dd/ee/ffffffff' # Unique dialog identifier (selfDlgId only)
 agentId: 'bob' # Agent responsible for this dialog
-taskDocPath: 'task.md' # Path to task document (inherited from parent)
+taskDocPath: 'task.tsk' # Path to task doc package directory (inherited from parent)
 createdAt: '2024-01-15T10:35:00Z' # ISO timestamp when created
 supdialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
 assignmentFromSup: # Assignment context from parent
@@ -386,19 +386,20 @@ status: 'completed'
 
 ### Task Document Storage
 
-Task documents are regular workspace files (typically `.md` files) that exist independently and are referenced by dialogs through file paths:
+Task docs are workspace artifacts that exist independently and are referenced by dialogs through paths.
+Task docs MUST be encapsulated task packages (`*.tsk/`).
 
 ```yaml
 # In dialog.yaml
-task_document: 'tasks/user-auth.md' # Path to workspace file
+task_document: 'tasks/user-auth.tsk' # Path to workspace task package directory
 task_document_version: 5
 task_document_checksum: 'sha256:abc123...'
 ```
 
 **Key Properties**:
 
-- Task documents are standard workspace files, not dialog-specific storage
-- Multiple dialogs can reference the same task document file for collaborative work
+- Task docs are standard workspace artifacts, not dialog-specific storage
+- Multiple dialogs can reference the same task doc for collaborative work
 - Task documents persist throughout the DevOps lifecycle, beyond individual conversations
 - Changes to task document files are immediately visible to all referencing dialogs
 

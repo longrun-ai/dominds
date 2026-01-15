@@ -10,6 +10,12 @@ import path from 'path';
 import { log } from './log';
 import { Team } from './team';
 
+function isEncapsulatedTaskPath(targetPath: string): boolean {
+  const normalized = targetPath.replace(/\\/g, '/');
+  // Matches: "foo.tsk", "foo.tsk/", "a/b/foo.tsk/x", etc.
+  return /(^|\/)[^/]+\.tsk(\/|$)/.test(normalized);
+}
+
 /**
  * Directory-specific pattern matching for access control.
  * This function determines if a target path (file or directory) should be controlled
@@ -144,6 +150,11 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
   // Get relative path from workspace root
   const relativePath = path.relative(cwd, resolvedPath);
 
+  // Encapsulated task packages (`*.tsk/`) are forbidden to all general file tools.
+  if (isEncapsulatedTaskPath(relativePath)) {
+    return false;
+  }
+
   // Check blacklist first (no_read_dirs)
   const blacklist = member.no_read_dirs || [];
   for (const pattern of blacklist) {
@@ -193,6 +204,11 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
   // Get relative path from workspace root
   const relativePath = path.relative(cwd, resolvedPath);
 
+  // Encapsulated task packages (`*.tsk/`) are forbidden to all general file tools.
+  if (isEncapsulatedTaskPath(relativePath)) {
+    return false;
+  }
+
   // Check blacklist first (no_write_dirs)
   const blacklist = member.no_write_dirs || [];
   for (const pattern of blacklist) {
@@ -224,11 +240,23 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
  * Get an access denied error message for a specific operation and path.
  */
 export function getAccessDeniedMessage(operation: 'read' | 'write', targetPath: string): string {
-  return [
+  const lines = [
     '❌ **Access Denied**',
     '',
     `- Operation: \`${operation}\``,
     `- Path: \`${targetPath}\``,
     `- Code: \`ACCESS_DENIED\``,
-  ].join('\n');
+  ];
+
+  if (isEncapsulatedTaskPath(targetPath)) {
+    lines.push('');
+    lines.push(
+      `- Note: \`*.tsk/\` is an encapsulated task package. General file tools must not read/write/list/delete it.`,
+    );
+    lines.push(
+      `- Hint: Use \`@change_mind !goals\` / \`@change_mind !constraints\` / \`@change_mind !progress\` to update task sections.`,
+    );
+  }
+
+  return lines.join('\n');
 }
