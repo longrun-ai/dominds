@@ -264,29 +264,29 @@ export function formatTeamMembersTitle(language: LanguageCode, count: number): s
 
 export type UiLanguageMatchState =
   | { kind: 'unknown' }
-  | { kind: 'match'; serverWorkingLanguage: LanguageCode }
-  | { kind: 'mismatch'; serverWorkingLanguage: LanguageCode };
+  | { kind: 'match'; serverWorkLanguage: LanguageCode }
+  | { kind: 'mismatch'; serverWorkLanguage: LanguageCode };
 
 export function getUiLanguageMatchState(args: {
   uiLanguage: LanguageCode;
-  serverWorkingLanguage: LanguageCode | null;
+  serverWorkLanguage: LanguageCode | null;
 }): UiLanguageMatchState {
-  const { uiLanguage, serverWorkingLanguage } = args;
-  if (serverWorkingLanguage === null) return { kind: 'unknown' };
-  if (uiLanguage === serverWorkingLanguage) {
-    return { kind: 'match', serverWorkingLanguage };
+  const { uiLanguage, serverWorkLanguage } = args;
+  if (serverWorkLanguage === null) return { kind: 'unknown' };
+  if (uiLanguage === serverWorkLanguage) {
+    return { kind: 'match', serverWorkLanguage };
   }
-  return { kind: 'mismatch', serverWorkingLanguage };
+  return { kind: 'mismatch', serverWorkLanguage };
 }
 
 export function formatUiLanguageOptionLabel(args: {
   optionLanguage: LanguageCode;
-  serverWorkingLanguage: LanguageCode | null;
+  serverWorkLanguage: LanguageCode | null;
 }): string {
   const name = formatLanguageName(args.optionLanguage, args.optionLanguage);
   const match = getUiLanguageMatchState({
     uiLanguage: args.optionLanguage,
-    serverWorkingLanguage: args.serverWorkingLanguage,
+    serverWorkLanguage: args.serverWorkLanguage,
   });
 
   switch (match.kind) {
@@ -316,12 +316,12 @@ export function formatUiLanguageTooltip(args: {
    * The UI language being described (current selection or a candidate option).
    */
   describedUiLanguage: LanguageCode;
-  serverWorkingLanguage: LanguageCode | null;
+  serverWorkLanguage: LanguageCode | null;
 }): string {
   const uiName = formatLanguageName(args.describedUiLanguage, args.inLanguage);
   const match = getUiLanguageMatchState({
     uiLanguage: args.describedUiLanguage,
-    serverWorkingLanguage: args.serverWorkingLanguage,
+    serverWorkLanguage: args.serverWorkLanguage,
   });
 
   switch (args.inLanguage) {
@@ -336,7 +336,7 @@ export function formatUiLanguageTooltip(args: {
           );
         }
         case 'match': {
-          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          const serverName = formatLanguageName(match.serverWorkLanguage, args.inLanguage);
           return (
             `界面语言：${uiName}（工作语言）\n` +
             `- 影响：WebUI 界面文案 + 本客户端希望 agent 用 ${uiName} 回复。\n` +
@@ -344,7 +344,7 @@ export function formatUiLanguageTooltip(args: {
           );
         }
         case 'mismatch': {
-          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          const serverName = formatLanguageName(match.serverWorkLanguage, args.inLanguage);
           return (
             `界面语言：${uiName}（非工作语言）\n` +
             `- 影响：WebUI 界面文案 + 本客户端希望 agent 用 ${uiName} 回复。\n` +
@@ -368,7 +368,7 @@ export function formatUiLanguageTooltip(args: {
           );
         }
         case 'match': {
-          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          const serverName = formatLanguageName(match.serverWorkLanguage, args.inLanguage);
           return (
             `UI language: ${uiName} (the work language)\n` +
             `- Affects: WebUI copy + this client’s preferred language for agent replies (${uiName}).\n` +
@@ -376,7 +376,7 @@ export function formatUiLanguageTooltip(args: {
           );
         }
         case 'mismatch': {
-          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          const serverName = formatLanguageName(match.serverWorkLanguage, args.inLanguage);
           return (
             `UI language: ${uiName} (not work language)\n` +
             `- Affects: WebUI copy + this client’s preferred language for agent replies (${uiName}).\n` +

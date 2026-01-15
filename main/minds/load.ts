@@ -10,7 +10,7 @@ import path from 'path';
 import { Dialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
-import { getWorkingLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { FuncTool, TextingTool, Tool } from '../tool';
@@ -74,7 +74,7 @@ export async function loadAgentMinds(
   agentTools: Tool[];
   textingTools: TextingTool[];
 }> {
-  const workingLanguage = getWorkingLanguage();
+  const workingLanguage = getWorkLanguage();
   let team = await Team.load();
   const agent = agentId === undefined ? team.getDefaultResponder() : team.getMember(agentId);
   if (!agent) throw new Error(`No such agent in team: '${agentId}'`);

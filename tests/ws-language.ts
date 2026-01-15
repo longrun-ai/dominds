@@ -49,7 +49,7 @@ async function run(): Promise<void> {
     const msg = await waitForMessage(ws);
     assert.equal(msg.type, 'welcome');
     const welcome = msg as WelcomeMessage;
-    assert.equal(welcome.serverWorkingLanguage, 'zh');
+    assert.equal(welcome.serverWorkLanguage, 'zh');
     assert.ok(Array.isArray(welcome.supportedLanguageCodes));
     assert.ok(welcome.supportedLanguageCodes.includes('en'));
     assert.ok(welcome.supportedLanguageCodes.includes('zh'));

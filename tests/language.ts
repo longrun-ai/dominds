@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { detectOsDefaultWorkingLanguage } from '../main/shared/runtime-language';
+import { detectOsDefaultWorkLanguage } from '../main/shared/runtime-language';
 import { normalizeLanguageCode } from '../main/shared/types/language';
 import { formatTeammateResponseContent } from '../main/shared/utils/inter-dialog-format';
 
@@ -9,8 +9,8 @@ function run(): void {
   assert.equal(normalizeLanguageCode('zh'), 'zh');
   assert.equal(normalizeLanguageCode('zh-CN'), 'zh');
 
-  assert.equal(detectOsDefaultWorkingLanguage({ LANG: 'en_US.UTF-8' }), 'en');
-  assert.equal(detectOsDefaultWorkingLanguage({ LANG: 'zh_CN.UTF-8' }), 'zh');
+  assert.equal(detectOsDefaultWorkLanguage({ LANG: 'en_US.UTF-8' }), 'en');
+  assert.equal(detectOsDefaultWorkLanguage({ LANG: 'zh_CN.UTF-8' }), 'zh');
 
   {
     const actual = formatTeammateResponseContent({

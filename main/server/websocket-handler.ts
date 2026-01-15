@@ -12,7 +12,7 @@ import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { EndOfStream } from '../shared/evt';
-import { getWorkingLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../shared/runtime-language';
 import type {
   CreateDialogRequest,
   DialogReadyMessage,
@@ -56,7 +56,7 @@ function resolveUserLanguageCode(
   if (fromWs) return fromWs;
 
   if (fallbackDialog) return fallbackDialog.getLastUserLanguageCode();
-  return getWorkingLanguage();
+  return getWorkLanguage();
 }
 
 /**
@@ -1171,7 +1171,7 @@ export function setupWebSocketServer(
   httpServer: Server,
   clients: Set<WebSocket>,
   auth: AuthConfig,
-  serverWorkingLanguage: LanguageCode,
+  serverWorkLanguage: LanguageCode,
 ): WebSocketServer {
   const wss = new WebSocketServer({ server: httpServer });
 
@@ -1183,14 +1183,14 @@ export function setupWebSocketServer(
     }
 
     clients.add(ws);
-    wsUiLanguage.set(ws, serverWorkingLanguage);
+    wsUiLanguage.set(ws, serverWorkLanguage);
 
     // Send welcome message
     ws.send(
       JSON.stringify({
         type: 'welcome',
         message: 'Connected to dialog server',
-        serverWorkingLanguage,
+        serverWorkLanguage,
         supportedLanguageCodes: [...supportedLanguageCodes],
         timestamp: formatUnifiedTimestamp(new Date()),
       }),

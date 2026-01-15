@@ -25,7 +25,7 @@ import {
   formatReminderItemGuide,
   formatUserFacingLanguageGuide,
 } from '../shared/i18n/driver-messages';
-import { getWorkingLanguage } from '../shared/runtime-language';
+import { getWorkLanguage } from '../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
 import type { HumanQuestion, UserTextGrammar } from '../shared/types/storage';
@@ -701,7 +701,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 requesterId: response.originMemberId,
                 originalCallHeadLine: response.headLine,
                 responseBody: response.response,
-                language: getWorkingLanguage(),
+                language: getWorkLanguage(),
               }),
             });
           }
@@ -719,7 +719,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     type: 'transient_guide_msg',
                     role: 'assistant',
                     content: formatReminderItemGuide(
-                      getWorkingLanguage(),
+                      getWorkLanguage(),
                       index + 1,
                       reminder.content,
                     ),
@@ -731,7 +731,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         const reminderIntro: ChatMessage = {
           type: 'transient_guide_msg',
           role: 'assistant',
-          content: formatReminderIntro(getWorkingLanguage(), dlg.reminders.length),
+          content: formatReminderIntro(getWorkLanguage(), dlg.reminders.length),
         };
 
         if (renderedReminders.length > 0 || dlg.reminders.length === 0) {
@@ -756,7 +756,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
         {
           const uiLanguage = dlg.getLastUserLanguageCode();
-          const workingLanguage = getWorkingLanguage();
+          const workingLanguage = getWorkLanguage();
           const guideMsg: ChatMessage = {
             type: 'transient_guide_msg',
             role: 'assistant',
@@ -1759,7 +1759,7 @@ export async function createSubdialogForSupdialog(
             toAgentId: subdialog.agentId,
             headLine,
             callBody: callBody,
-            language: getWorkingLanguage(),
+            language: getWorkLanguage(),
           }),
           msgId: generateShortId(),
           grammar: 'markdown',
@@ -1874,7 +1874,7 @@ export async function supplyResponseToSupdialog(
         requesterId: originMemberId,
         originalCallHeadLine: headLine,
         responseBody: responseText,
-        language: getWorkingLanguage(),
+        language: getWorkLanguage(),
       });
 
       const completedAt = formatUnifiedTimestamp(new Date());
@@ -2144,13 +2144,13 @@ async function executeTextingCall(
     // This is a teammate call - parse using Phase 5 taxonomy
     // Parse the call text to determine type A/B/C
     if (isSuperAlias && !(dlg instanceof SubDialog)) {
-      const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkingLanguage());
+      const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkLanguage());
       const result = formatTeammateResponseContent({
         responderId: 'dominds',
         requesterId: dlg.agentId,
         originalCallHeadLine: headLine,
         responseBody: response,
-        language: getWorkingLanguage(),
+        language: getWorkLanguage(),
       });
       try {
         await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
@@ -2171,13 +2171,13 @@ async function executeTextingCall(
     if (isSuperAlias) {
       const topicId = extractTopicIdFromHeadline(headLine, 'super');
       if (topicId) {
-        const response = formatDomindsNoteSuperNoTopic(getWorkingLanguage());
+        const response = formatDomindsNoteSuperNoTopic(getWorkLanguage());
         const result = formatTeammateResponseContent({
           responderId: 'dominds',
           requesterId: dlg.agentId,
           originalCallHeadLine: headLine,
           responseBody: response,
-          language: getWorkingLanguage(),
+          language: getWorkLanguage(),
         });
         try {
           await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
@@ -2208,13 +2208,13 @@ async function executeTextingCall(
     // intentional self-FBR from accidental echo/quote triggers.
     const isDirectSelfCall = !isSelfAlias && !isSuperAlias && parseResult.agentId === dlg.agentId;
     if (isDirectSelfCall) {
-      const response = formatDomindsNoteDirectSelfCall(getWorkingLanguage());
+      const response = formatDomindsNoteDirectSelfCall(getWorkLanguage());
       const result = formatTeammateResponseContent({
         responderId: 'dominds',
         requesterId: dlg.agentId,
         originalCallHeadLine: headLine,
         responseBody: response,
-        language: getWorkingLanguage(),
+        language: getWorkLanguage(),
       });
       try {
         await dlg.receiveTeammateResponse('dominds', headLine, result, 'completed', dlg.id, {
@@ -2259,7 +2259,7 @@ async function executeTextingCall(
                 headLine: assignment.headLine,
                 callBody: assignment.callBody,
               },
-              language: getWorkingLanguage(),
+              language: getWorkLanguage(),
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
@@ -2274,7 +2274,7 @@ async function executeTextingCall(
             requesterId: dlg.agentId,
             originalCallHeadLine: headLine,
             responseBody: responseText,
-            language: getWorkingLanguage(),
+            language: getWorkLanguage(),
           });
 
           // Resume the subdialog with the supdialog's response
@@ -2380,7 +2380,7 @@ async function executeTextingCall(
                   toAgentId: sub.agentId,
                   headLine,
                   callBody: body,
-                  language: getWorkingLanguage(),
+                  language: getWorkLanguage(),
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -2420,7 +2420,7 @@ async function executeTextingCall(
               toAgentId: existingSubdialog.agentId,
               headLine,
               callBody: body,
-              language: getWorkingLanguage(),
+              language: getWorkLanguage(),
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
@@ -2487,7 +2487,7 @@ async function executeTextingCall(
                   toAgentId: sub.agentId,
                   headLine,
                   callBody: body,
-                  language: getWorkingLanguage(),
+                  language: getWorkLanguage(),
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -2538,7 +2538,7 @@ async function executeTextingCall(
                   toAgentId: sub.agentId,
                   headLine,
                   callBody: body,
-                  language: getWorkingLanguage(),
+                  language: getWorkLanguage(),
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',

@@ -34,7 +34,7 @@ type DialogContext = DialogIdent & {
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
-  private serverWorkingLanguage: LanguageCode = 'en';
+  private serverWorkLanguage: LanguageCode = 'en';
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
@@ -43,8 +43,8 @@ export class DomindsDialogContainer extends HTMLElement {
   // arrive during that window; suppress them to avoid protocol errors from missing sections.
   private suppressEvents = false;
 
-  public setServerWorkingLanguage(language: LanguageCode): void {
-    this.serverWorkingLanguage = language;
+  public setServerWorkLanguage(language: LanguageCode): void {
+    this.serverWorkLanguage = language;
   }
 
   // State tracking
@@ -1295,7 +1295,7 @@ export class DomindsDialogContainer extends HTMLElement {
       requesterId,
       originalCallHeadLine: event.headLine,
       responseBody: event.response,
-      language: this.serverWorkingLanguage,
+      language: this.serverWorkLanguage,
     });
     if (event.result !== expectedResult) {
       throw new Error(
@@ -1307,7 +1307,7 @@ export class DomindsDialogContainer extends HTMLElement {
       requesterId: requesterId,
       originalCallHeadLine: event.headLine,
       responseBody: event.response,
-      language: this.serverWorkingLanguage,
+      language: this.serverWorkLanguage,
     });
 
     // If callId is provided, find the calling section and set its data-call-id attribute

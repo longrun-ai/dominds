@@ -17,7 +17,7 @@ import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import type { SubChan } from './shared/evt';
-import { getWorkingLanguage } from './shared/runtime-language';
+import { getWorkLanguage } from './shared/runtime-language';
 import type {
   DialogEvent,
   FullRemindersEvent,
@@ -272,8 +272,8 @@ export abstract class Dialog {
     this._createdAt = initialState?.createdAt || now;
     this._updatedAt = initialState?.updatedAt || now;
     this._currentRound = initialState?.currentRound || 1;
-    this._uiLanguage = getWorkingLanguage();
-    this._lastUserLanguageCode = getWorkingLanguage();
+    this._uiLanguage = getWorkLanguage();
+    this._lastUserLanguageCode = getWorkLanguage();
   }
 
   public get remindersVer() {
@@ -831,7 +831,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
             toAgentId: this.agentId,
             headLine: this.assignmentFromSup.headLine,
             callBody: this.assignmentFromSup.callBody,
-            language: getWorkingLanguage(),
+            language: getWorkLanguage(),
           })}\n---\n${trimmedPrompt}`
         : trimmedPrompt;
     this.setUpNextPrompt(combinedPrompt);

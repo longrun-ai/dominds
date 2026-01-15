@@ -731,7 +731,7 @@ function captureHeaderState(shadow) {
     exists: !!header,
     workspace: header?.querySelector('.workspace-indicator')?.textContent?.trim() || null,
     uiLanguage: app?.uiLanguage || null,
-    serverWorkingLanguage: app?.serverWorkingLanguage || null,
+    serverWorkLanguage: app?.serverWorkLanguage || null,
     themeToggle: header?.querySelector('#theme-toggle-btn')?.textContent?.trim() || null,
   };
 }

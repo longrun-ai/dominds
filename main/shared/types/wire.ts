@@ -47,7 +47,7 @@ export type WebSocketMessage =
 export interface WelcomeMessage {
   type: 'welcome';
   message: string;
-  serverWorkingLanguage: LanguageCode;
+  serverWorkLanguage: LanguageCode;
   supportedLanguageCodes: LanguageCode[];
   timestamp: string;
 }

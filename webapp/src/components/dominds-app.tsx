@@ -93,7 +93,7 @@ export class DomindsApp extends HTMLElement {
   private subdialogHierarchyRefreshTokens = new Map<string, number>();
   private authModal: HTMLElement | null = null;
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
-  private serverWorkingLanguage: LanguageCode | null = null;
+  private serverWorkLanguage: LanguageCode | null = null;
   private uiLanguageMenuOpen: boolean = false;
   private _uiLanguageMenuGlobalCancel?: () => void;
 
@@ -264,7 +264,7 @@ export class DomindsApp extends HTMLElement {
 
     const matchState = getUiLanguageMatchState({
       uiLanguage: this.uiLanguage,
-      serverWorkingLanguage: this.serverWorkingLanguage,
+      serverWorkLanguage: this.serverWorkLanguage,
     });
     button.dataset.langMatch = matchState.kind;
     button.dataset.uiLanguage = this.uiLanguage;
@@ -277,7 +277,7 @@ export class DomindsApp extends HTMLElement {
     }
     button.title = `${t.uiLanguageSelectTitle}\n${formatUiLanguageOptionLabel({
       optionLanguage: this.uiLanguage,
-      serverWorkingLanguage: this.serverWorkingLanguage,
+      serverWorkLanguage: this.serverWorkLanguage,
     })}`;
 
     for (const optionLanguage of supportedLanguageCodes) {
@@ -286,7 +286,7 @@ export class DomindsApp extends HTMLElement {
 
       const itemMatch = getUiLanguageMatchState({
         uiLanguage: optionLanguage,
-        serverWorkingLanguage: this.serverWorkingLanguage,
+        serverWorkLanguage: this.serverWorkLanguage,
       });
       item.dataset.langMatch = itemMatch.kind;
 
@@ -294,7 +294,7 @@ export class DomindsApp extends HTMLElement {
       if (label instanceof HTMLElement) {
         label.textContent = formatUiLanguageOptionLabel({
           optionLanguage,
-          serverWorkingLanguage: this.serverWorkingLanguage,
+          serverWorkLanguage: this.serverWorkLanguage,
         });
       }
 
@@ -303,7 +303,7 @@ export class DomindsApp extends HTMLElement {
         const tipMarkdown = formatUiLanguageTooltip({
           inLanguage: optionLanguage,
           describedUiLanguage: optionLanguage,
-          serverWorkingLanguage: this.serverWorkingLanguage,
+          serverWorkLanguage: this.serverWorkLanguage,
         });
         tip.innerHTML = marked.parse(tipMarkdown) as string;
       }
@@ -1672,27 +1672,27 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const uiLanguageMatch = getUiLanguageMatchState({
       uiLanguage: this.uiLanguage,
-      serverWorkingLanguage: this.serverWorkingLanguage,
+      serverWorkLanguage: this.serverWorkLanguage,
     });
     const uiLanguageButtonLabel = formatLanguageName(this.uiLanguage, this.uiLanguage);
     const uiLanguageButtonTooltip = formatUiLanguageOptionLabel({
       optionLanguage: this.uiLanguage,
-      serverWorkingLanguage: this.serverWorkingLanguage,
+      serverWorkLanguage: this.serverWorkLanguage,
     });
     const uiLanguageMenuItems = supportedLanguageCodes
       .map((optionLanguage) => {
         const optionMatch = getUiLanguageMatchState({
           uiLanguage: optionLanguage,
-          serverWorkingLanguage: this.serverWorkingLanguage,
+          serverWorkLanguage: this.serverWorkLanguage,
         });
         const label = formatUiLanguageOptionLabel({
           optionLanguage,
-          serverWorkingLanguage: this.serverWorkingLanguage,
+          serverWorkLanguage: this.serverWorkLanguage,
         });
         const tipMarkdown = formatUiLanguageTooltip({
           inLanguage: optionLanguage,
           describedUiLanguage: optionLanguage,
-          serverWorkingLanguage: this.serverWorkingLanguage,
+          serverWorkLanguage: this.serverWorkLanguage,
         });
         const tipHtml = marked.parse(tipMarkdown) as string;
         const selected = optionLanguage === this.uiLanguage;
@@ -3587,10 +3587,10 @@ export class DomindsApp extends HTMLElement {
     switch (message.type) {
       case 'welcome': {
         const welcome = message as WelcomeMessage;
-        this.serverWorkingLanguage = welcome.serverWorkingLanguage;
+        this.serverWorkLanguage = welcome.serverWorkLanguage;
         const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
         if (dialogContainer instanceof DomindsDialogContainer) {
-          dialogContainer.setServerWorkingLanguage(welcome.serverWorkingLanguage);
+          dialogContainer.setServerWorkLanguage(welcome.serverWorkLanguage);
         }
         this.applyUiLanguageToDom();
         return true;

@@ -3,13 +3,13 @@ import { normalizeLanguageCode } from './types/language';
 
 let workingLanguage: LanguageCode = 'en';
 
-export type WorkingLanguageSource = 'os' | 'default';
+export type WorkLanguageSource = 'os' | 'default';
 
-export function getWorkingLanguage(): LanguageCode {
+export function getWorkLanguage(): LanguageCode {
   return workingLanguage;
 }
 
-export function setWorkingLanguage(language: LanguageCode): void {
+export function setWorkLanguage(language: LanguageCode): void {
   workingLanguage = language;
 }
 
@@ -19,7 +19,7 @@ function normalizeLocaleLike(value: string): string {
   return stripped.replace(/_/g, '-');
 }
 
-export function detectOsDefaultWorkingLanguage(env: NodeJS.ProcessEnv): LanguageCode | null {
+export function detectOsDefaultWorkLanguage(env: NodeJS.ProcessEnv): LanguageCode | null {
   const candidates: string[] = [];
 
   const lang = env.LANG;
@@ -42,11 +42,11 @@ export function detectOsDefaultWorkingLanguage(env: NodeJS.ProcessEnv): Language
   return null;
 }
 
-export function resolveWorkingLanguage(options: { env: NodeJS.ProcessEnv }): {
+export function resolveWorkLanguage(options: { env: NodeJS.ProcessEnv }): {
   language: LanguageCode;
-  source: WorkingLanguageSource;
+  source: WorkLanguageSource;
 } {
-  const detected = detectOsDefaultWorkingLanguage(options.env);
+  const detected = detectOsDefaultWorkLanguage(options.env);
   if (detected) return { language: detected, source: 'os' };
 
   return { language: 'en', source: 'default' };
