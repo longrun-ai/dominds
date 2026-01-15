@@ -257,8 +257,8 @@ export class CodexGen implements LlmGenerator {
     receiver: LlmStreamReceiver,
     _genseq: number,
   ): Promise<void> {
-    const codexHomeValue = process.env[providerConfig.apiKeyEnvVar];
-    const codexHome = codexHomeValue?.startsWith('~')
+    const codexHomeValue: string = process.env[providerConfig.apiKeyEnvVar] || '~/.codex';
+    const codexHome = codexHomeValue.startsWith('~')
       ? process.env['HOME'] + codexHomeValue.substring(1)
       : codexHomeValue;
     const codexAuth: typeof import('@dominds/codex-auth') = await import('@dominds/codex-auth');
