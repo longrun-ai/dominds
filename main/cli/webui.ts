@@ -20,6 +20,11 @@ import { createLogger } from '../log';
 import { computeAuthConfig, formatAutoAuthUrl } from '../server/auth';
 import { createHttpServer } from '../server/server-core';
 import { setupWebSocketServer } from '../server/websocket-handler';
+import {
+  getWorkingLanguage,
+  resolveWorkingLanguage,
+  setWorkingLanguage,
+} from '../shared/runtime-language';
 
 const log = createLogger('webui');
 
@@ -122,6 +127,10 @@ async function main(): Promise<void> {
   log.info('Starting Dominds WebUI…');
 
   try {
+    const { language: resolvedLanguage, source } = resolveWorkingLanguage({ env: process.env });
+    setWorkingLanguage(resolvedLanguage);
+    log.info(`working language: ${getWorkingLanguage()} (source: ${source})`);
+
     const auth = computeAuthConfig({ mode: 'production', env: process.env });
 
     const httpServer = createHttpServer({
@@ -134,7 +143,7 @@ async function main(): Promise<void> {
 
     // Setup WebSocket server
     const clients = new Set<WebSocket>();
-    setupWebSocketServer(httpServer.getHttpServer(), clients, auth);
+    setupWebSocketServer(httpServer.getHttpServer(), clients, auth, getWorkingLanguage());
 
     await httpServer.start();
 

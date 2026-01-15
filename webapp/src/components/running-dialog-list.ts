@@ -2,12 +2,15 @@
  * Running dialog list (minimal UI)
  */
 
+import { getUiStrings } from '../i18n/ui';
 import type { ApiRootDialogResponse, DialogInfo } from '../shared/types';
+import type { LanguageCode } from '../shared/types/language';
 
 export interface RunningDialogListProps {
   dialogs: ApiRootDialogResponse[];
   maxHeight?: string;
   onSelect?: (dialog: DialogInfo) => void;
+  uiLanguage: LanguageCode;
 }
 
 type RootGroup = {
@@ -33,6 +36,7 @@ export class RunningDialogList extends HTMLElement {
   private props: RunningDialogListProps = {
     dialogs: [],
     maxHeight: 'none',
+    uiLanguage: 'en',
   };
   private listState: ListState = { kind: 'empty' };
   private selectionState: SelectionState = { kind: 'none' };
@@ -290,13 +294,15 @@ export class RunningDialogList extends HTMLElement {
   private renderList(): void {
     if (!this.listEl) return;
 
+    const t = getUiStrings(this.props.uiLanguage);
+
     this.rootIndex.clear();
     this.subIndex.clear();
 
     switch (this.listState.kind) {
       case 'empty': {
         this.listEl.innerHTML = `
-          <div class="empty">No dialogs yet.</div>
+          <div class="empty">${t.noDialogsYet}</div>
         `;
         return;
       }
@@ -316,7 +322,7 @@ export class RunningDialogList extends HTMLElement {
                     <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
                       <div class="dialog-row">
                         <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button">${rootToggle}</button>
-                        <span class="dialog-title">Missing root</span>
+                        <span class="dialog-title">${t.missingRoot}</span>
                         <span class="dialog-meta-right">
                           <span class="dialog-count">${rootGroup.subdialogs.length}</span>
                           <span class="dialog-status">${rootGroup.rootId}</span>

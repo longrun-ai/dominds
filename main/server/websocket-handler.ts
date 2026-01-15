@@ -12,6 +12,7 @@ import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { EndOfStream } from '../shared/evt';
+import { getWorkingLanguage } from '../shared/runtime-language';
 import type {
   CreateDialogRequest,
   DialogReadyMessage,
@@ -25,6 +26,11 @@ import type {
   WebSocketMessage,
 } from '../shared/types';
 import type { Q4HAnsweredEvent } from '../shared/types/dialog';
+import {
+  normalizeLanguageCode,
+  supportedLanguageCodes,
+  type LanguageCode,
+} from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { generateDialogID } from '../utils/id';
@@ -34,6 +40,24 @@ import { getWebSocketAuthCheck } from './auth';
 const log = createLogger('websocket-handler');
 
 const wsLiveDlg = new WeakMap<WebSocket, Dialog>();
+const wsUiLanguage = new WeakMap<WebSocket, LanguageCode>();
+
+function resolveUserLanguageCode(
+  ws: WebSocket,
+  raw: unknown,
+  fallbackDialog?: Dialog,
+): LanguageCode {
+  if (typeof raw === 'string') {
+    const parsed = normalizeLanguageCode(raw);
+    if (parsed) return parsed;
+  }
+
+  const fromWs = wsUiLanguage.get(ws);
+  if (fromWs) return fromWs;
+
+  if (fallbackDialog) return fallbackDialog.getLastUserLanguageCode();
+  return getWorkingLanguage();
+}
 
 /**
  * Get error code from unknown error
@@ -98,6 +122,7 @@ function cleanupWsClient(ws: WebSocket): void {
     }
     wsLiveDlg.delete(ws);
   }
+  wsUiLanguage.delete(ws);
 }
 
 /**
@@ -151,6 +176,10 @@ export async function handleWebSocketMessage(
 ): Promise<void> {
   try {
     switch (packet.type) {
+      case 'set_ui_language':
+        await handleSetUiLanguage(ws, packet);
+        break;
+
       case 'create_dialog':
         await handleCreateDialog(ws, packet);
         break;
@@ -184,7 +213,7 @@ export async function handleWebSocketMessage(
         ws.send(
           JSON.stringify({
             type: 'error',
-            error: `Unknown packet type: ${packet.type}`,
+            message: `Unknown packet type: ${packet.type}`,
           }),
         );
     }
@@ -193,10 +222,36 @@ export async function handleWebSocketMessage(
     ws.send(
       JSON.stringify({
         type: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : 'Unknown error',
       }),
     );
   }
+}
+
+async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Promise<void> {
+  if (packet.type !== 'set_ui_language') {
+    throw new Error('Internal error: handleSetUiLanguage called with non set_ui_language packet');
+  }
+
+  const raw = (packet as { uiLanguage?: unknown }).uiLanguage;
+  if (typeof raw !== 'string') {
+    ws.send(JSON.stringify({ type: 'error', message: 'uiLanguage must be a string' }));
+    return;
+  }
+
+  const parsed = normalizeLanguageCode(raw);
+  if (!parsed) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: `Unsupported uiLanguage '${raw}'. Supported: ${supportedLanguageCodes.join(', ')}`,
+      }),
+    );
+    return;
+  }
+
+  wsUiLanguage.set(ws, parsed);
+  ws.send(JSON.stringify({ type: 'ui_language_set', uiLanguage: parsed }));
 }
 
 /**
@@ -278,7 +333,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     ws.send(
       JSON.stringify({
         type: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error creating dialog',
+        message: error instanceof Error ? error.message : 'Unknown error creating dialog',
       }),
     );
   }
@@ -304,7 +359,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: 'Invalid dialog identifiers for display_dialog: selfId/rootId must be strings',
+          message: 'Invalid dialog identifiers for display_dialog: selfId/rootId must be strings',
         }),
       );
       return;
@@ -524,7 +579,7 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
     ws.send(
       JSON.stringify({
         type: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error getting Q4H state',
+        message: error instanceof Error ? error.message : 'Unknown error getting Q4H state',
       }),
     );
   }
@@ -572,7 +627,7 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: 'Invalid dialog identifiers for display_round: selfId/rootId must be strings',
+          message: 'Invalid dialog identifiers for display_round: selfId/rootId must be strings',
         }),
       );
       return;
@@ -668,13 +723,17 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
 async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Promise<void> {
   try {
     const { dialog: dialogIdent, content, msgId } = packet;
+    const userLanguageCode = resolveUserLanguageCode(
+      ws,
+      (packet as unknown as { userLanguageCode?: unknown }).userLanguageCode,
+    );
 
     // Basic validation
     if (!dialogIdent || !content || !msgId) {
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: 'dialog, content, and msgId are required',
+          message: 'dialog, content, and msgId are required',
         }),
       );
       return;
@@ -689,7 +748,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       ws.send(
         JSON.stringify({
           type: 'error',
-          error:
+          message:
             'Invalid dialog identifiers for drive_dlg_by_user_msg: selfId/rootId must be strings',
         }),
       );
@@ -703,7 +762,11 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       existingDialog.id.selfId === dialogId &&
       existingDialog.id.rootId === rootDialogId
     ) {
-      await driveDialogStream(existingDialog, { content, msgId, grammar: 'texting' }, true);
+      await driveDialogStream(
+        existingDialog,
+        { content, msgId, grammar: 'texting', userLanguageCode },
+        true,
+      );
       return;
     }
 
@@ -718,7 +781,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         ws.send(
           JSON.stringify({
             type: 'error',
-            error: `Dialog ${dialogId} not found`,
+            message: `Dialog ${dialogId} not found`,
           }),
         );
         return;
@@ -733,7 +796,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
         ws.send(
           JSON.stringify({
             type: 'error',
-            error: `Failed to restore dialog state for ${dialogId}`,
+            message: `Failed to restore dialog state for ${dialogId}`,
           }),
         );
         return;
@@ -812,14 +875,18 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       }
 
       // Normal flow: emit events for user message
-      await driveDialogStream(dialog, { content, msgId, grammar: 'texting' }, true);
+      await driveDialogStream(
+        dialog,
+        { content, msgId, grammar: 'texting', userLanguageCode },
+        true,
+      );
       return;
     } catch (restoreError) {
       log.warn('Failed to restore dialog for message:', restoreError);
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: `Cannot send message to dialog ${dialogId}: dialog is not the currently active dialog and could not be restored`,
+          message: `Cannot send message to dialog ${dialogId}: dialog is not the currently active dialog and could not be restored`,
         }),
       );
       return;
@@ -835,7 +902,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     ws.send(
       JSON.stringify({
         type: 'error',
-        error: `Failed to process message: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to process message: ${error instanceof Error ? error.message : 'Unknown error'}`,
       }),
     );
   }
@@ -848,13 +915,17 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnswer): Promise<void> {
   try {
     const { dialog: dialogIdent, content, msgId, questionId } = packet;
+    const userLanguageCode = resolveUserLanguageCode(
+      ws,
+      (packet as unknown as { userLanguageCode?: unknown }).userLanguageCode,
+    );
 
     // Basic validation
     if (!dialogIdent || !content || !msgId || !questionId) {
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: 'dialog, content, msgId, and questionId are required',
+          message: 'dialog, content, msgId, and questionId are required',
         }),
       );
       return;
@@ -869,7 +940,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       ws.send(
         JSON.stringify({
           type: 'error',
-          error:
+          message:
             'Invalid dialog identifiers for drive_dialog_by_user_answer: selfId/rootId must be strings',
         }),
       );
@@ -885,7 +956,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: `Dialog ${dialogId} not found`,
+          message: `Dialog ${dialogId} not found`,
         }),
       );
       return;
@@ -902,7 +973,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: `Question ${questionId} not found in dialog ${dialogId}`,
+          message: `Question ${questionId} not found in dialog ${dialogId}`,
         }),
       );
       return;
@@ -999,7 +1070,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       ws.send(
         JSON.stringify({
           type: 'error',
-          error: `Failed to restore dialog state for ${dialogId}`,
+          message: `Failed to restore dialog state for ${dialogId}`,
         }),
       );
       return;
@@ -1077,13 +1148,17 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
 
     // Resume the dialog with the user's answer
     wsLiveDlg.set(ws, restoredDialog);
-    await driveDialogStream(restoredDialog, { content, msgId, grammar: 'texting' }, true);
+    await driveDialogStream(
+      restoredDialog,
+      { content, msgId, grammar: 'texting', userLanguageCode },
+      true,
+    );
   } catch (error) {
     log.error('Error processing Q4H user answer:', error);
     ws.send(
       JSON.stringify({
         type: 'error',
-        error: `Failed to process Q4H answer: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to process Q4H answer: ${error instanceof Error ? error.message : 'Unknown error'}`,
       }),
     );
   }
@@ -1096,6 +1171,7 @@ export function setupWebSocketServer(
   httpServer: Server,
   clients: Set<WebSocket>,
   auth: AuthConfig,
+  serverWorkingLanguage: LanguageCode,
 ): WebSocketServer {
   const wss = new WebSocketServer({ server: httpServer });
 
@@ -1107,12 +1183,15 @@ export function setupWebSocketServer(
     }
 
     clients.add(ws);
+    wsUiLanguage.set(ws, serverWorkingLanguage);
 
     // Send welcome message
     ws.send(
       JSON.stringify({
         type: 'welcome',
         message: 'Connected to dialog server',
+        serverWorkingLanguage,
+        supportedLanguageCodes: [...supportedLanguageCodes],
         timestamp: formatUnifiedTimestamp(new Date()),
       }),
     );
@@ -1129,8 +1208,7 @@ export function setupWebSocketServer(
         ws.send(
           JSON.stringify({
             type: 'error',
-            packet: 'Invalid packet format',
-            timestamp: formatUnifiedTimestamp(new Date()),
+            message: 'Invalid packet format',
           }),
         );
       }

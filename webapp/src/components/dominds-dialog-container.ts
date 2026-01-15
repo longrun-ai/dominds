@@ -4,6 +4,7 @@
 
 import mannedToolIcon from '../assets/manned-tool.svg';
 import walkieTalkieIcon from '../assets/walkie-talkie.svg';
+import { formatToolCallErrorInline, parseToolCallError } from '../i18n/tool-call-errors';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
 import type {
@@ -16,6 +17,8 @@ import type {
   ToolCallResponseEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
+import type { LanguageCode } from '../shared/types/language';
+import { normalizeLanguageCode } from '../shared/types/language';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
 import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
 import { DomindsCodeBlock } from './dominds-code-block';
@@ -31,6 +34,7 @@ type DialogContext = DialogIdent & {
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
+  private serverWorkingLanguage: LanguageCode = 'en';
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
@@ -38,6 +42,10 @@ export class DomindsDialogContainer extends HTMLElement {
   // During dialog/round navigation, we intentionally clear the DOM. Late streaming events can still
   // arrive during that window; suppress them to avoid protocol errors from missing sections.
   private suppressEvents = false;
+
+  public setServerWorkingLanguage(language: LanguageCode): void {
+    this.serverWorkingLanguage = language;
+  }
 
   // State tracking
   private currentRound?: number;
@@ -847,7 +855,8 @@ export class DomindsDialogContainer extends HTMLElement {
     const pending = this.pendingToolCallResponsesByCallId.get(callId);
     if (pending) {
       this.pendingToolCallResponsesByCallId.delete(callId);
-      this.attachResultInline(currentSection, pending.result, pending.status);
+      const display = this.formatToolCallResultForSection(currentSection, pending);
+      this.attachResultInline(currentSection, display, pending.status);
     }
   }
 
@@ -1165,18 +1174,61 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    this.attachResultInline(callingSection, event.result, event.status);
+    const display = this.formatToolCallResultForSection(callingSection, event);
+    this.attachResultInline(callingSection, display, event.status);
     this.pendingToolCallResponsesByCallId.delete(callId);
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       host?.dispatchEvent(
         new CustomEvent('ui-toast', {
-          detail: { message: String(event.result || 'Tool call failed'), kind: 'error' },
+          detail: { message: String(display || 'Tool call failed'), kind: 'error' },
           bubbles: true,
           composed: true,
         }),
       );
     }
+  }
+
+  private resolvePreferredLanguageForSection(section: HTMLElement): LanguageCode {
+    const bubble = section.closest('.generation-bubble');
+    if (bubble instanceof HTMLElement) {
+      const raw = bubble.getAttribute('data-user-language-code');
+      if (typeof raw === 'string') {
+        const parsed = normalizeLanguageCode(raw);
+        if (parsed) return parsed;
+      }
+    }
+
+    try {
+      const stored = localStorage.getItem('dominds-ui-language');
+      if (stored) {
+        const parsed = normalizeLanguageCode(stored);
+        if (parsed) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+
+    return 'en';
+  }
+
+  private formatToolCallResultForSection(
+    section: HTMLElement,
+    event: ToolCallResponseEvent,
+  ): string {
+    const rawResult = String(event.result || '');
+    if (event.status !== 'failed') return rawResult;
+
+    const parsed = parseToolCallError(rawResult);
+    if (!parsed) return rawResult;
+
+    const language = this.resolvePreferredLanguageForSection(section);
+    return formatToolCallErrorInline({
+      language,
+      responderId: String(event.responderId || ''),
+      headLine: String(event.headLine || ''),
+      parsed,
+    });
   }
 
   // Attach result inline to calling section (TEXTING TOOL CALLS only)
@@ -1243,6 +1295,7 @@ export class DomindsDialogContainer extends HTMLElement {
       requesterId,
       originalCallHeadLine: event.headLine,
       responseBody: event.response,
+      language: this.serverWorkingLanguage,
     });
     if (event.result !== expectedResult) {
       throw new Error(
@@ -1254,6 +1307,7 @@ export class DomindsDialogContainer extends HTMLElement {
       requesterId: requesterId,
       originalCallHeadLine: event.headLine,
       responseBody: event.response,
+      language: this.serverWorkingLanguage,
     });
 
     // If callId is provided, find the calling section and set its data-call-id attribute
@@ -1514,6 +1568,11 @@ export class DomindsDialogContainer extends HTMLElement {
     body.appendChild(divider);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
+    if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
+      bubble.setAttribute('data-user-language-code', event.userLanguageCode);
+    } else {
+      bubble.removeAttribute('data-user-language-code');
+    }
     this.scrollToBottom();
   }
 

@@ -13,15 +13,17 @@ import './components/dominds-connection-status.tsx';
 document.addEventListener('DOMContentLoaded', async () => {
   // Load E2E test helper in development mode
   if (import.meta.env.DEV) {
+    // Cache-bust publicDir scripts so iterative test-helper changes show up without manual cache clearing.
+    const cacheBust = `t=${Date.now()}`;
     // Load DOM observation utilities first (required dependency)
     // Chain loading: load e2e-test-helper.js INSIDE obsScript.onload callback
     const obsScript = document.createElement('script');
-    obsScript.src = '/testing/dom-observation-utils.js';
+    obsScript.src = `/testing/dom-observation-utils.js?${cacheBust}`;
     obsScript.onload = () => {
       console.log('DOM observation utilities loaded');
       // NOW load E2E test helper - inside the callback to ensure dependency order
       const script = document.createElement('script');
-      script.src = '/testing/e2e-test-helper.js';
+      script.src = `/testing/e2e-test-helper.js?${cacheBust}`;
       script.type = 'module';
       script.onload = () => console.log('E2E test helper loaded');
       script.onerror = () => console.error('Failed to load E2E test helper');

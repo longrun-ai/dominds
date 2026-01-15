@@ -16,6 +16,11 @@ import { DialogPersistence } from './persistence';
 import { computeAuthConfig } from './server/auth';
 import { createHttpServer, ServerConfig } from './server/server-core';
 import { setupWebSocketServer } from './server/websocket-handler';
+import {
+  getWorkingLanguage,
+  resolveWorkingLanguage,
+  setWorkingLanguage,
+} from './shared/runtime-language';
 
 const log = createLogger('server');
 
@@ -76,12 +81,17 @@ export type ServerOptions = {
 };
 
 export async function startServer(opts: ServerOptions = {}) {
+  const { language: resolvedLanguage, source } = resolveWorkingLanguage({ env: process.env });
+  setWorkingLanguage(resolvedLanguage);
+
   // Get port and host from options
   const port = opts.port || (opts.mode === 'dev' ? 5556 : 5666);
   const host = opts.host || '127.0.0.1';
   const mode = opts.mode || 'prod';
 
-  log.info(`Starting server in ${mode} mode on ${host}:${port}`);
+  log.info(
+    `Starting server in ${mode} mode on ${host}:${port} (working language: ${getWorkingLanguage()} from ${source})`,
+  );
 
   // WebSocket clients set
   const clients = new Set<WebSocket>();
@@ -103,7 +113,12 @@ export async function startServer(opts: ServerOptions = {}) {
   const httpServer = createHttpServer(config);
 
   // Setup WebSocket server
-  setupWebSocketServer(httpServer.getHttpServer(), clients, config.auth ?? { kind: 'disabled' });
+  setupWebSocketServer(
+    httpServer.getHttpServer(),
+    clients,
+    config.auth ?? { kind: 'disabled' },
+    getWorkingLanguage(),
+  );
 
   // Start backend driver loop (non-blocking)
   void runBackendDriver();

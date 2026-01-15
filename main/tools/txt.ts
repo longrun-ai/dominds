@@ -11,9 +11,11 @@ import os from 'os';
 import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
+import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
+import type { LanguageCode } from '../shared/types/language';
 import { TextingTool, TextingToolCallResult } from '../tool';
 
-function wrapTextingResult(messages: ChatMessage[]): TextingToolCallResult {
+function wrapTextingResult(language: LanguageCode, messages: ChatMessage[]): TextingToolCallResult {
   const first = messages[0];
   const text =
     first && 'content' in first && typeof first.content === 'string' ? first.content : '';
@@ -25,7 +27,7 @@ function wrapTextingResult(messages: ChatMessage[]): TextingToolCallResult {
     text.includes('Path must be within workspace');
   return {
     status: failed ? 'failed' : 'completed',
-    result: text || (failed ? 'Error' : 'OK'),
+    result: text || (failed ? formatToolError(language) : formatToolOk(language)),
     messages,
   };
 }
@@ -184,14 +186,16 @@ Examples:
   @read_file !max-lines 100 !range 1~200 src/main.ts
   @read_file !range 300~ src/main.ts
   @read_file !range ~20 src/main.ts`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     try {
       const { path: rel, options } = parseReadFileOptions(headLine);
 
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
         const content = getAccessDeniedMessage('read', rel);
-        return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+          { type: 'environment_msg', role: 'user', content },
+        ]);
       }
 
       const file = ensureInsideWorkspace(rel);
@@ -229,11 +233,15 @@ Examples:
       ) {
         const content =
           'Please use the correct format for reading files.\n\n**Expected format:** `@read_file [options] <path>`\n\n**Examples:**\n```\n@read_file src/main.ts\n@read_file !range 10~50 src/main.ts\n@read_file !range 300~ src/main.ts\n```';
-        return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+          { type: 'environment_msg', role: 'user', content },
+        ]);
       }
 
       const content = `❌ **Error**\n\nFailed to read file: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
   },
 };
@@ -252,36 +260,46 @@ Examples:
   @overwrite_file README.md
   # My Project
   This is a sample project.`,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@overwrite_file')) {
       const content = 'Error: Invalid format. Use @overwrite_file <path>';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     const afterToolName = trimmed.slice('@overwrite_file'.length).trim();
     if (!afterToolName) {
       const content = 'Error: File path is required.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
 
     if (!filePath) {
       const content = 'Error: File path is required.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     // Check write access
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath);
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     if (!inputBody) {
       const content = 'Error: File content is required in the body.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     try {
@@ -298,7 +316,9 @@ Examples:
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       const content = `Error overwriting file: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
   },
 };
@@ -323,34 +343,44 @@ Example:
      version: '1.0',
   +  debug: true,
    };`,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     if (!inputBody || inputBody.trim() === '') {
       const content = 'Error: Patch content is required in the body.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@patch_file')) {
       const content = 'Error: Invalid format. Use @patch_file <path>';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     const afterToolName = trimmed.slice('@patch_file'.length).trim();
     if (!afterToolName) {
       const content = 'Error: File path is required.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
       const content = 'Error: File path is required.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     // Check write access
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath);
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     try {
@@ -359,7 +389,9 @@ Example:
       // Check if file exists
       if (!fsSync.existsSync(fullPath)) {
         const content = `Error: File '${filePath}' does not exist.`;
-        return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+          { type: 'environment_msg', role: 'user', content },
+        ]);
       }
 
       // Read current file content
@@ -381,7 +413,9 @@ Example:
 
       if (hunkHeaderIndex === -1) {
         const content = 'Error: Invalid patch format. Missing @@ hunk header.';
-        return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+          { type: 'environment_msg', role: 'user', content },
+        ]);
       }
 
       // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
@@ -389,7 +423,9 @@ Example:
       const hunkMatch = hunkHeader.match(/^@@\s*-(\d+),(\d+)\s*\+(\d+),(\d+)\s*@@/);
       if (!hunkMatch) {
         const content = 'Error: Invalid hunk header format.';
-        return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+          { type: 'environment_msg', role: 'user', content },
+        ]);
       }
 
       const oldStart = parseInt(hunkMatch[1]) - 1; // Convert to 0-based
@@ -438,7 +474,9 @@ Example:
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       const content = `Error applying patch: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
   },
 };
@@ -449,10 +487,12 @@ export const applyPatchTool: TextingTool = {
   usageDescription:
     'Apply a unified git diff patch to the workspace. Usage: @apply_patch\n<diff content in body>',
   backfeeding: true,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     if (!inputBody || inputBody.trim() === '') {
       const content = 'Error: Patch content is required in the body.';
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
 
     const diffContent = inputBody.trim();
@@ -477,7 +517,9 @@ export const applyPatchTool: TextingTool = {
     for (const filePath of affectedFiles) {
       if (!hasWriteAccess(caller, filePath)) {
         const content = getAccessDeniedMessage('write', filePath);
-        return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+          { type: 'environment_msg', role: 'user', content },
+        ]);
       }
     }
 
@@ -499,7 +541,9 @@ export const applyPatchTool: TextingTool = {
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       const content = `Error applying patch: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult([{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
+        { type: 'environment_msg', role: 'user', content },
+      ]);
     }
   },
 };

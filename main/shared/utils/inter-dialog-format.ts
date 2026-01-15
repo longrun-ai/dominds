@@ -20,6 +20,7 @@
  * - Include the original call headline in the narrative for clarity.
  */
 
+import type { LanguageCode } from '../types/language';
 import { markdownQuote } from './fmt';
 
 export type InterDialogCallContent = {
@@ -32,13 +33,15 @@ export type InterDialogParticipants = {
   toAgentId: string;
 };
 
-export type SubdialogAssignmentFormatInput = InterDialogParticipants & InterDialogCallContent;
+export type SubdialogAssignmentFormatInput = InterDialogParticipants &
+  InterDialogCallContent & { language?: LanguageCode };
 
 export type SupdialogCallPromptInput = {
   fromAgentId: string;
   toAgentId: string;
   subdialogRequest: InterDialogCallContent;
   supdialogAssignment: InterDialogCallContent;
+  language?: LanguageCode;
 };
 
 export type TeammateResponseFormatInput = {
@@ -46,6 +49,7 @@ export type TeammateResponseFormatInput = {
   requesterId: string;
   originalCallHeadLine: string;
   responseBody: string;
+  language?: LanguageCode;
 };
 
 function requireNonEmpty(value: string, fieldLabel: string): string {
@@ -56,7 +60,13 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
 }
 
 export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
-  return `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} is asking you:
+  const language: LanguageCode = input.language ?? 'en';
+  const greeting =
+    language === 'zh'
+      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，@${requireNonEmpty(input.fromAgentId, 'fromAgentId')} 请求你：`
+      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} is asking you:`;
+
+  return `${greeting}
 
 ${markdownQuote(requireNonEmpty(input.headLine, 'headLine'))}
 ${markdownQuote(input.callBody)}
@@ -64,12 +74,22 @@ ${markdownQuote(input.callBody)}
 }
 
 export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {
-  return `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, during processing your original assignment:
+  const language: LanguageCode = input.language ?? 'en';
+  const hello =
+    language === 'zh'
+      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理你原始任务期间：`
+      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, during processing your original assignment:`;
+  const asking =
+    language === 'zh'
+      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 请求你：`
+      : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` is asking you:`;
+
+  return `${hello}
 
 ${markdownQuote(requireNonEmpty(input.supdialogAssignment.headLine, 'assignmentHeadLine'))}
 ${markdownQuote(input.supdialogAssignment.callBody)}
 
-\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` is asking you:
+${asking}
 
 ${markdownQuote(requireNonEmpty(input.subdialogRequest.headLine, 'requestHeadLine'))}
 ${markdownQuote(input.subdialogRequest.callBody)}
@@ -77,11 +97,18 @@ ${markdownQuote(input.subdialogRequest.callBody)}
 }
 
 export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {
-  return `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:
+  const language: LanguageCode = input.language ?? 'en';
+  const hello =
+    language === 'zh'
+      ? `你好 @${requireNonEmpty(input.requesterId, 'toAgentId')}，@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
+      : `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
+  const tail = language === 'zh' ? '针对你原始的呼叫：' : 'to your original call:';
+
+  return `${hello}
 
 ${markdownQuote(input.responseBody)}
 
-to your original call:
+${tail}
 
 ${markdownQuote(requireNonEmpty(input.originalCallHeadLine, 'originalCallHeadLine'))}
 `;

@@ -3,12 +3,15 @@
  * AI agent team display with provider, model, and capabilities
  */
 
+import { formatTeamMembersTitle, getUiStrings } from '../i18n/ui';
 import type { FrontendTeamMember } from '../services/api';
+import type { LanguageCode } from '../shared/types/language';
 
 export interface TeamMembersProps {
   members: FrontendTeamMember[];
   compact?: boolean;
   showActions?: boolean;
+  uiLanguage: LanguageCode;
   onMemberSelect?: (member: FrontendTeamMember) => void;
   onMemberEdit?: (member: FrontendTeamMember) => void;
 }
@@ -18,6 +21,7 @@ export class DomindsTeamMembers extends HTMLElement {
     members: [],
     compact: false,
     showActions: false,
+    uiLanguage: 'en',
   };
   private isModalOpen = false;
   private modal: HTMLElement | null = null;
@@ -44,7 +48,9 @@ export class DomindsTeamMembers extends HTMLElement {
     this.props.members = members;
     if (this.isModalOpen) {
       this.updateModalContent();
+      this.updateModalHeader();
     }
+    this.updateIconButtonTitle();
   }
 
   /**
@@ -54,7 +60,9 @@ export class DomindsTeamMembers extends HTMLElement {
     this.props = { ...this.props, ...props };
     if (this.isModalOpen) {
       this.updateModalContent();
+      this.updateModalHeader();
     }
+    this.updateIconButtonTitle();
   }
 
   /**
@@ -403,9 +411,10 @@ export class DomindsTeamMembers extends HTMLElement {
 
   public getHTML(): string {
     const memberCount = this.props.members.length;
+    const t = getUiStrings(this.props.uiLanguage);
 
     return `
-      <button class="icon-button" type="button" title="Team Members" ${memberCount === 0 ? 'disabled' : ''}>
+      <button class="icon-button" type="button" title="${t.teamMembersTitle}" ${memberCount === 0 ? 'disabled' : ''}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"></path><path d="M7 21v-2a4 4 0 0 1 3-3.87"></path><circle cx="12" cy="7" r="4"></circle><path d="M18 8a3 3 0 1 0 0-6"></path><path d="M6 8a3 3 0 1 1 0-6"></path></svg>
       </button>
     `;
@@ -441,15 +450,25 @@ export class DomindsTeamMembers extends HTMLElement {
     });
   }
 
+  private updateIconButtonTitle(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const btn = root.querySelector('button.icon-button') as HTMLButtonElement | null;
+    if (!btn) return;
+    const t = getUiStrings(this.props.uiLanguage);
+    btn.title = t.teamMembersTitle;
+  }
+
   private createModalHeader(): HTMLElement {
     const header = document.createElement('div');
     header.className = 'modal-header';
+    const t = getUiStrings(this.props.uiLanguage);
 
     header.innerHTML = `
       <h3 class="modal-title">
-        👥 Team Members (${this.props.members.length})
+        ${formatTeamMembersTitle(this.props.uiLanguage, this.props.members.length)}
       </h3>
-      <button class="modal-close" type="button" title="Close">×</button>
+      <button class="modal-close" type="button" title="${t.close}">×</button>
     `;
 
     return header;
@@ -458,14 +477,15 @@ export class DomindsTeamMembers extends HTMLElement {
   private createModalBody(): HTMLElement {
     const body = document.createElement('div');
     body.className = 'modal-body';
+    const t = getUiStrings(this.props.uiLanguage);
 
     if (this.props.members.length === 0) {
       body.innerHTML = `
         <div class="empty-state">
           <div class="empty-content">
             <div class="empty-icon">👥</div>
-            <div class="empty-title">No team members</div>
-            <div class="empty-text">Team members will appear here once configured.</div>
+            <div class="empty-title">${t.noTeamMembers}</div>
+            <div class="empty-text">${t.teamMembersWillAppear}</div>
           </div>
         </div>
       `;
@@ -498,17 +518,18 @@ export class DomindsTeamMembers extends HTMLElement {
           <div class="member-provider">${member.provider} - ${member.model}</div>
         </div>
       </div>
-      ${this.props.showActions ? this.createMemberActions(member) : ''}
+      ${this.props.showActions ? this.createMemberActions() : ''}
     `;
 
     return item;
   }
 
-  private createMemberActions(member: FrontendTeamMember): string {
+  private createMemberActions(): string {
+    const t = getUiStrings(this.props.uiLanguage);
     return `
       <div class="member-actions">
-        <button class="member-action" title="Select member" data-action="select">👤</button>
-        <button class="member-action" title="Edit member" data-action="edit">⚙️</button>
+        <button class="member-action" title="${t.selectMemberTitle}" data-action="select">👤</button>
+        <button class="member-action" title="${t.editMemberTitle}" data-action="edit">⚙️</button>
       </div>
     `;
   }
@@ -596,7 +617,7 @@ export class DomindsTeamMembers extends HTMLElement {
     // Update header count
     const title = this.modal.querySelector('.modal-title');
     if (title) {
-      title.textContent = `👥 Team Members (${this.props.members.length})`;
+      title.textContent = formatTeamMembersTitle(this.props.uiLanguage, this.props.members.length);
     }
   }
 
@@ -607,7 +628,7 @@ export class DomindsTeamMembers extends HTMLElement {
 
     if (this.modal && this.modal.parentNode) {
       this.modal.parentNode.removeChild(this.modal);
-      this.modal = null as any;
+      this.modal = null;
     }
   }
 }

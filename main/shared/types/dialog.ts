@@ -6,6 +6,7 @@
  */
 
 // === DIALOG EVENT TYPE DEFINITIONS ===
+import type { LanguageCode } from './language';
 import type { UserTextGrammar } from './storage';
 
 export interface SubdialogEvent extends DialogEventBase {
@@ -210,6 +211,7 @@ export interface EndOfUserSayingEvent {
   msgId: string;
   content: string;
   grammar: UserTextGrammar;
+  userLanguageCode?: LanguageCode;
 }
 
 export type CodeBlockStartEvent = LlmGenDlgEvent & {

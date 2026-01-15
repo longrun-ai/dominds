@@ -4,11 +4,14 @@
  */
 
 import type { ConnectionStatus } from '@/services/store';
+import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
+import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
 
 export class DomindsConnectionStatus extends HTMLElement {
   private wsManager = getWebSocketManager();
   private reconnectButton: HTMLButtonElement | null = null;
+  private uiLanguage: LanguageCode = 'en';
 
   constructor() {
     super();
@@ -18,6 +21,9 @@ export class DomindsConnectionStatus extends HTMLElement {
   connectedCallback(): void {
     this.render();
     this.setupEventListeners();
+    const raw = this.getAttribute('ui-language') || '';
+    const parsed = normalizeLanguageCode(raw);
+    this.uiLanguage = parsed ?? 'en';
     this.updateDisplay();
     const initial = this.wsManager.getConnectionState();
     this.setAttribute('status', initial.status);
@@ -37,11 +43,15 @@ export class DomindsConnectionStatus extends HTMLElement {
   }
 
   static get observedAttributes(): string[] {
-    return ['status', 'error'];
+    return ['status', 'error', 'ui-language'];
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
     if (oldValue !== newValue && this.shadowRoot) {
+      if (name === 'ui-language') {
+        const parsed = normalizeLanguageCode(newValue || '');
+        this.uiLanguage = parsed ?? 'en';
+      }
       this.updateDisplay();
     }
   }
@@ -280,6 +290,8 @@ export class DomindsConnectionStatus extends HTMLElement {
 
     // Update reconnect button visibility and state
     if (this.reconnectButton) {
+      const t = getUiStrings(this.uiLanguage);
+      this.reconnectButton.title = t.connectionReconnectToServerTitle;
       this.reconnectButton.style.display =
         status === 'error' || status === 'disconnected' ? 'inline-flex' : 'none';
       this.reconnectButton.disabled = status === 'connecting' || status === 'reconnecting';
@@ -298,30 +310,31 @@ export class DomindsConnectionStatus extends HTMLElement {
   }
 
   private getStatusInfo(status: ConnectionStatus): { text: string; details: string } {
+    const t = getUiStrings(this.uiLanguage);
     switch (status) {
       case 'connected':
         return {
-          text: 'Connected',
+          text: t.connectionConnected,
           details: '',
         };
       case 'connecting':
         return {
-          text: 'Connecting',
+          text: t.connectionConnecting,
           details: '...',
         };
       case 'disconnected':
         return {
-          text: 'Disconnected',
+          text: t.connectionDisconnected,
           details: '',
         };
       case 'error':
         return {
-          text: 'Error',
-          details: 'connection failed',
+          text: t.connectionError,
+          details: t.connectionFailedDetails,
         };
       case 'reconnecting':
         return {
-          text: 'Reconnecting',
+          text: t.connectionReconnecting,
           details: `(${this.getReconnectAttempts()}/5)`,
         };
       default:

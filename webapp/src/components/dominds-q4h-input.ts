@@ -4,7 +4,9 @@
  * Displays pending questions and handles user answers via WebSocket
  */
 
+import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
+import type { LanguageCode } from '../shared/types/language';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogIdent } from '../shared/types/wire.js';
 import { generateShortId } from '../shared/utils/id.js';
@@ -32,6 +34,7 @@ interface Q4HInputProps {
 
 export class DomindsQ4HInput extends HTMLElement {
   private wsManager = getWebSocketManager();
+  private uiLanguage: LanguageCode = 'en';
 
   // Internal state
   private questions: Q4HQuestion[] = [];
@@ -66,6 +69,36 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   // ==================== Public API Methods ====================
+
+  public setUiLanguage(language: LanguageCode): void {
+    this.uiLanguage = language;
+    const t = getUiStrings(language);
+    this.props.placeholder = t.q4hInputPlaceholder;
+    if (this.textInput) {
+      this.textInput.placeholder = t.q4hInputPlaceholder;
+    }
+
+    // Update empty-state text if present
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const empty = root.querySelector('.empty-state') as HTMLElement | null;
+    if (empty) empty.textContent = t.q4hNoPending;
+
+    // Update footer label (preserve badge)
+    const label = root.querySelector('.question-footer-label') as HTMLElement | null;
+    if (label) {
+      const badge = label.querySelector('.q4h-count-badge');
+      label.textContent = '';
+      label.append(document.createTextNode(`${t.q4hPendingQuestions} `));
+      if (badge) label.appendChild(badge);
+    }
+
+    const toggle = root.querySelector('.send-on-enter-toggle') as HTMLButtonElement | null;
+    if (toggle) {
+      toggle.title = this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle;
+    }
+  }
 
   /**
    * Full replace - used only for initial page load when backend sends all questions at once
@@ -507,9 +540,10 @@ export class DomindsQ4HInput extends HTMLElement {
     if (hasQuestions && emptyState) {
       emptyState.remove();
     } else if (!hasQuestions && !emptyState) {
+      const t = getUiStrings(this.uiLanguage);
       const emptyDiv = document.createElement('div');
       emptyDiv.className = 'empty-state';
-      emptyDiv.textContent = 'No pending questions';
+      emptyDiv.textContent = t.q4hNoPending;
       this.questionListContainer.appendChild(emptyDiv);
     }
   }
@@ -677,6 +711,7 @@ export class DomindsQ4HInput extends HTMLElement {
           msgId,
           questionId: this.selectedQuestionId,
           continuationType: 'answer',
+          userLanguageCode: this.uiLanguage,
         });
       } else {
         // Send as regular message
@@ -685,6 +720,7 @@ export class DomindsQ4HInput extends HTMLElement {
           dialog: this.currentDialog,
           content,
           msgId,
+          userLanguageCode: this.uiLanguage,
         });
       }
 
@@ -792,17 +828,22 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   private getComponentHTML(): string {
+    const t = getUiStrings(this.uiLanguage);
     const questionCount = this.questions.length;
     return `
       <div class="q4h-input-container">
         <div class="question-list ${this.isListExpanded ? '' : 'collapsed'}">
-          ${questionCount > 0 ? this.renderQuestions() : '<div class="empty-state">No pending questions</div>'}
+          ${
+            questionCount > 0
+              ? this.renderQuestions()
+              : `<div class="empty-state">${t.q4hNoPending}</div>`
+          }
         </div>
         <div class="question-footer">
           <div class="question-footer-content">
             <span class="q4h-toggle-arrow" style="transform: ${this.isListExpanded ? 'rotate(-90deg)' : 'rotate(0deg)'}"></span>
             <span class="question-footer-label">
-              Pending Questions
+              ${t.q4hPendingQuestions}
               <span class="q4h-count-badge">
                 ${questionCount}
               </span>
@@ -822,7 +863,7 @@ export class DomindsQ4HInput extends HTMLElement {
               <button
                 class="send-on-enter-toggle ${this.sendOnEnter ? 'active' : ''}"
                 type="button"
-                title="${this.sendOnEnter ? 'Enter to send (Cmd/Ctrl+Enter for newline)' : 'Cmd/Ctrl+Enter to send (Enter for newline)'}"
+                title="${this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle}"
               >
                 ${this.sendOnEnter ? '⏎' : '⌘'}
               </button>

@@ -10,9 +10,29 @@ import path from 'path';
 import { Dialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
+import { getWorkingLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { FuncTool, TextingTool, Tool } from '../tool';
+import {
+  defaultPersonaText,
+  funcToolRulesText as formatFuncToolRulesText,
+  funcToolUsageLabels,
+  memoriesSummaryLinePersonal,
+  memoriesSummaryLineShared,
+  memoriesSummarySectionPersonal,
+  memoriesSummarySectionShared,
+  memoriesSummaryTitle,
+  memoryPreambleLabels,
+  noTextingToolsText,
+  noneRequiredFieldsText,
+  noneText,
+  personalMemoriesHeader,
+  personalScopeLabel,
+  sharedMemoriesHeader,
+  sharedScopeLabel,
+} from './minds-i18n';
+import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 
 async function readAgentMind(id: string, fn: string, noFileDefault: string = '') {
   const mindFn = path.join('.minds', 'team', id, fn);
@@ -54,28 +74,26 @@ export async function loadAgentMinds(
   agentTools: Tool[];
   textingTools: TextingTool[];
 }> {
+  const workingLanguage = getWorkingLanguage();
   let team = await Team.load();
   const agent = agentId === undefined ? team.getDefaultResponder() : team.getMember(agentId);
   if (!agent) throw new Error(`No such agent in team: '${agentId}'`);
 
   // read disk file afresh, in case the contents have changed by human or ai meanwhile
-  const personaRaw = await readAgentMind(agent.id, 'persona.md', 'You are a helpful assistant.');
+  const personaRaw = await readAgentMind(
+    agent.id,
+    'persona.md',
+    defaultPersonaText(workingLanguage),
+  );
   const knowledgeRaw = await readAgentMind(agent.id, 'knowledge.md');
   const lessonsRaw = await readAgentMind(agent.id, 'lessons.md');
-  const persona = personaRaw && personaRaw.trim() !== '' ? personaRaw : 'None.';
-  const knowledge = knowledgeRaw && knowledgeRaw.trim() !== '' ? knowledgeRaw : 'None.';
-  const lessons = lessonsRaw && lessonsRaw.trim() !== '' ? lessonsRaw : 'None.';
+  const none = noneText(workingLanguage);
+  const persona = personaRaw && personaRaw.trim() !== '' ? personaRaw : none;
+  const knowledge = knowledgeRaw && knowledgeRaw.trim() !== '' ? knowledgeRaw : none;
+  const lessons = lessonsRaw && lessonsRaw.trim() !== '' ? lessonsRaw : none;
 
   // Introduction of all team members (mark "(self)" for the current agent)
-  const teamIntro = Object.values(team.members)
-    .map((m) => {
-      const isSelf = m.id === agent.id ? ' (self)' : '';
-      const goforList =
-        Array.isArray(m.gofor) && m.gofor.length ? m.gofor.map((t) => `    - ${t}`).join('\n') : '';
-      const gofor = goforList ? `\n  - Focus:\n${goforList}` : '';
-      return `- Call Sign: @${m.id}${isSelf} - ${m.name}${gofor}`;
-    })
-    .join('\n');
+  const teamIntro = formatTeamIntro(team, agent.id, workingLanguage);
 
   // Compose tool list from member's resolved toolsets and tools + built-in human tool
   // Get base tools from agent (excluding intrinsic tools which are now managed by Dialog)
@@ -97,18 +115,20 @@ export async function loadAgentMinds(
   toolUsageText =
     textingTools.length > 0
       ? textingTools.map((tool) => `#### @${tool.name}\n\n${tool.usageDescription}\n`).join('\n')
-      : 'No texting tools available.';
+      : noTextingToolsText(workingLanguage);
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools
       .map((tool) => {
-        const req = (tool.parameters.required ?? []).join(', ') || 'None';
+        const req =
+          (tool.parameters.required ?? []).join(', ') || noneRequiredFieldsText(workingLanguage);
         const props = Object.entries(tool.parameters.properties ?? {})
           .map(([k, v]) => `- ${k}: ${v.description ?? 'parameter'}`)
           .join('\n');
-        return `#### Function Tool: ${tool.name}\n\n${tool.description || ''}\n\n- Invocation: native function calling with strict JSON arguments\n- Required fields: ${req}\n- Parameters:\n${props}`.trim();
+        const labels = funcToolUsageLabels(workingLanguage);
+        return `#### ${labels.toolLabel}: ${tool.name}\n\n${tool.description || ''}\n\n- ${labels.invocationLabel}: ${labels.invocationBody}\n- ${labels.requiredLabel}: ${req}\n- ${labels.parametersLabel}:\n${props}`.trim();
       })
       .join('\n\n');
-    funcToolRulesText = `\n- Use native function-calling for all function tools listed; do not attempt texting headlines (e.g., \`@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
+    funcToolRulesText = formatFuncToolRulesText(workingLanguage);
   }
 
   // Intrinsic tools (from dialog, if available)
@@ -116,109 +136,18 @@ export async function loadAgentMinds(
     intrinsicToolInstructions = dialog.getIntrinsicToolInstructions();
   }
 
-  // asembly the full system prompt
-  const systemPrompt = `
-# Agent System Prompt
-
-## Identity
-- Member ID: \`${agent.id}\`
-- Full Name: ${agent.name}
-
-## Persona
-${persona}
-
-## Knowledge
-${knowledge}
-
-## Lessons
-${lessons}
-
-## Team Directory
-You collaborate with the following teammates. Use their call signs to address them.
-
-${teamIntro}
-
-## Interaction Abilities
-You interact using a simple headline/body grammar with both teammates and "texting" tools.
-
-### Tools vs Teammates
-- Tools: trigger with headlines like \`@<tool>\`. Headlines follow strict syntax; bodies are concise and structured. One headline targets one tool.
-- Teammates: use natural-language headlines. Bodies can be freeform. Include brief identifiers in headlines for correlation. You can address multiple teammates in one headline.
-
-  ### Function Tools
-  - You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments that strictly matches the tool schema (no extra fields, include all required fields).${funcToolRulesText}
-  
-  ${funcToolUsageText || 'No function tools available.'}
-
-  ### Function Calling vs Texting
-  - Do not use native LLM function-calling for teammates or "texting" tools.
-  - Use texting tools via headlines that start with \`@<tool>\` at column 0, followed by an optional body; close with \`@/\` when needed.
-  - For dialog control (e.g., reminders), use the provided texting tools via headlines; never emit function calls for these.
-
-### Grammar Basics
-- A headline at column 0 starting with \`@<name>\` opens a call. The input body continues until a standalone \`@/\` or the next headline.
-- Blank line rule: only a blank line immediately following the headline ends the call with an empty body. Blank lines after at least one body line are part of the input body.
-- First mention decides call type: the first \`@<name>\` determines whether it is a tool call or a teammates call.
-- Mention IDs may include dots for namespacing (e.g., \`@team.lead\`). A trailing dot is treated as punctuation and ignored (e.g., \`@team.lead.\` still targets \`@team.lead\`).
-- Safety: wrap literal \`@\` in backticks to avoid accidental calls.
-
-### Teammate Call Anti-Patterns (Do NOT)
-- Do NOT wrap callsigns in markdown (e.g., \`**@cmdr**\`, \`_@cmdr_\`, or \`\`@cmdr\`\`); callsigns must be plain text.
-- Do NOT prefix calls with bullets, blockquotes, numbering, or indentation (e.g., \`- @cmdr\`, \`> @cmdr\`, \`1. @cmdr\`).
-- Do NOT include punctuation inside the callsign (e.g., \`@cmdr:\`); put punctuation after a space in the body.
-- Do NOT place call headlines inside paragraphs or code blocks; the call must be a standalone line at column 0.
-- When mentioning a callsign without making a call, wrap it in backticks and keep it off column 0.
-
-### Teammate Calls
-- Prefer multi-teammate calls for parallel expertise. Keep requests specific and role-aware.
-
-### Special Teammate Aliases
-- \`@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog agentId and creates a NEW ephemeral subdialog (default; most common).
-- \`@self !topic <topicId>\`: FBR self-call with a registered topic (rare). Use only when you explicitly want a resumable long-lived fresh-boots workspace.
-- \`@super\`: Supdialog call (Type A) **primary syntax**. Only valid inside a subdialog; calls the direct parent dialog (supdialog), suspending this subdialog temporarily and then resuming with the parent's response. Must be used with NO \`!topic\`.
-  - \`@<supdialogAgentId>\` (no \`!topic\`) is a tolerated semantic fallback, but prefer \`@super\` especially when IDs might be identical (e.g., FBR self-subdialogs), to avoid ambiguity and accidental self-call confusion.
-
-### Texting Tools
-
-${toolUsageText}${
-    intrinsicToolInstructions
-      ? `\n### Dialog Control Tools
-${intrinsicToolInstructions}`
-      : '\n'
-  }
-### Examples
-- Single tool call (no body)
-\`\`\`plain-text
-@read_file ~50 logs/error.log
-\`\`\`
-
-- Close explicitly
-\`\`\`plain-text
-@overwrite_file logs/error.log
-Log reset.
-@/
-\`\`\`
-
-- Multi-call (separate)
-\`\`\`plain-text
-@add_memory caveats/stdio-mcp-console-usage.md
-# DON'Ts
-- Do NOT write to stdout when using MCP stdio transport.
-@/
-
-@read_file !range 235~ logs/error.log
-\`\`\`
-
-### Concurrency & Orchestration
-- All calls in one response run concurrently; they cannot see each other's outputs in the same turn.
-- Design each call to be self-sufficient.
-- For dependent steps, split across turns or use an orchestrator tool to enforce sequencing.
-
-### Safety Against Accidental Mentions
-- Only lines beginning with \`@\` at column 0 start calls.
-- Inline \`@\` has no special meaning.
-- When in doubt, wrap text in backticks.
-`;
+  const systemPrompt = buildSystemPrompt({
+    language: workingLanguage,
+    agent,
+    persona,
+    knowledge,
+    lessons,
+    teamIntro,
+    toolUsageText,
+    intrinsicToolInstructions,
+    funcToolUsageText,
+    funcToolRulesText,
+  });
 
   // composite this list by reading:
   //   - .minds/memory/team_shared/**/*.md
@@ -285,9 +214,10 @@ Log reset.
 
     const readMemFiles = async (
       files: MemoryFile[],
+      scopeKind: 'shared' | 'personal',
       scopeLabel: string,
       relevantToolNames: string[],
-    ) => {
+    ): Promise<void> => {
       for (const file of files) {
         try {
           const content = await readFile(file.absolutePath, 'utf-8');
@@ -295,7 +225,8 @@ Log reset.
           const lastModified = formatUnifiedTimestamp(new Date(s.mtimeMs));
           const byteSize = s.size;
           const wordCount = countWords(content);
-          let preamble = `### ${scopeLabel}\n- Path: \`${file.relativePath}\`\n- Last modified: ${lastModified}\n- Size: ${byteSize} bytes\n- Words: ${wordCount}`;
+          const labels = memoryPreambleLabels(workingLanguage);
+          let preamble = `### ${scopeLabel}\n- ${labels.pathLabel}: \`${file.relativePath}\`\n- ${labels.lastModifiedLabel}: ${lastModified}\n- ${labels.sizeLabel}: ${byteSize} ${labels.bytesUnit}\n- ${labels.wordsLabel}: ${wordCount}`;
 
           // Add tool usage hints if relevant memory tools are available
           const availableTools = agentTools.map((tool) => tool.name).filter(Boolean);
@@ -308,7 +239,7 @@ Log reset.
               (toolName) => `@${toolName} ${file.relativePath}`,
             );
             const nestedHints = toolHints.map((h) => `  - ${h}`).join('\n');
-            preamble += `\n- Manage with:\n${nestedHints}`;
+            preamble += `\n- ${labels.manageWithLabel}:\n${nestedHints}`;
           }
 
           const memMsg: ChatMessage = {
@@ -316,7 +247,7 @@ Log reset.
             role: 'assistant',
             content: `${preamble}\n---\n${content.trim()}\n`,
           };
-          if (scopeLabel.startsWith('Shared')) {
+          if (scopeKind === 'shared') {
             groupedMemories.shared.push(memMsg);
           } else {
             groupedMemories.personal.push(memMsg);
@@ -328,11 +259,14 @@ Log reset.
       }
     };
 
-    await readMemFiles(sharedFiles, 'Team Shared Memory', [
+    const sharedScopeLabelText = sharedScopeLabel(workingLanguage);
+    const personalScopeLabelText = personalScopeLabel(workingLanguage, agent.id);
+
+    await readMemFiles(sharedFiles, 'shared', sharedScopeLabelText, [
       'replace_team_memory',
       'drop_team_memory',
     ]);
-    await readMemFiles(personalFiles, `Personal Memory (@${agent.id})`, [
+    await readMemFiles(personalFiles, 'personal', personalScopeLabelText, [
       'replace_memory',
       'drop_memory',
     ]);
@@ -346,21 +280,21 @@ Log reset.
     groupedOutput.push({
       type: 'transient_guide_msg',
       role: 'assistant',
-      content: '## Memories Summary\n',
+      content: memoriesSummaryTitle(workingLanguage),
     });
     if (groupedMemories.shared.length > 0) {
       const summaryShared = groupedMemories.shared
         .filter((m): m is ChatMessage & { content: string } => 'content' in m)
         .map((m) => {
-          const match = m.content.match(/- Path: `([^`]+)`/);
+          const match = m.content.match(/- (?:Path|路径): `([^`]+)`/);
           const p = match ? match[1] : '';
-          return `- Shared: ${p}`;
+          return memoriesSummaryLineShared(workingLanguage, p);
         })
         .join('\n');
       groupedOutput.push({
         type: 'transient_guide_msg',
         role: 'assistant',
-        content: '### Shared',
+        content: memoriesSummarySectionShared(workingLanguage),
       });
       groupedOutput.push({
         type: 'transient_guide_msg',
@@ -372,15 +306,15 @@ Log reset.
       const summaryPersonal = groupedMemories.personal
         .filter((m): m is ChatMessage & { content: string } => 'content' in m)
         .map((m) => {
-          const match = m.content.match(/- Path: `([^`]+)`/);
+          const match = m.content.match(/- (?:Path|路径): `([^`]+)`/);
           const p = match ? match[1] : '';
-          return `- Personal: ${p}`;
+          return memoriesSummaryLinePersonal(workingLanguage, p);
         })
         .join('\n');
       groupedOutput.push({
         type: 'transient_guide_msg',
         role: 'assistant',
-        content: '### Personal\n',
+        content: memoriesSummarySectionPersonal(workingLanguage),
       });
       groupedOutput.push({
         type: 'transient_guide_msg',
@@ -393,7 +327,7 @@ Log reset.
     groupedOutput.push({
       type: 'transient_guide_msg',
       role: 'assistant',
-      content: '## Shared Memories',
+      content: sharedMemoriesHeader(workingLanguage),
     });
     groupedOutput.push(...groupedMemories.shared);
   }
@@ -401,7 +335,7 @@ Log reset.
     groupedOutput.push({
       type: 'transient_guide_msg',
       role: 'assistant',
-      content: '## Personal Memories\n',
+      content: personalMemoriesHeader(workingLanguage),
     });
     groupedOutput.push(...groupedMemories.personal);
   }

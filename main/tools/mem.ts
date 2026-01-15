@@ -7,7 +7,9 @@
 import fs from 'fs';
 import path from 'path';
 import { getAccessDeniedMessage, hasWriteAccess } from '../access-control';
+import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
+import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import type { Team } from '../team';
 import { TextingTool, TextingToolCallResult } from '../tool';
 
@@ -54,7 +56,7 @@ Examples:
   ## Current Focus Areas
   - Feature implementation
   - Bug fixes`,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@add_memory')) {
@@ -93,7 +95,7 @@ Examples:
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok('Added');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'added'));
   },
 };
 
@@ -107,7 +109,7 @@ Usage: @drop_memory <relative-file-path.md>
 Examples:
   @drop_memory notes/old-ideas.md
   @drop_memory tasks/completed-task.md`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@drop_memory')) {
@@ -138,7 +140,7 @@ Examples:
 
     fs.unlinkSync(fullPath);
 
-    return ok('Deleted');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'deleted'));
   },
 };
 
@@ -154,7 +156,7 @@ Examples:
   @replace_memory notes/project-status.md
   # Updated Project Status
   Current progress and next steps...`,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@replace_memory')) {
@@ -189,7 +191,7 @@ Examples:
 
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok('Updated');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'updated'));
   },
 };
 
@@ -201,7 +203,7 @@ export const clearMemoryTool: TextingTool = {
 Usage: @clear_memory
 
 This will remove all files in my personal memory directory.`,
-  async call(_dlg, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const memoryDir = path.join('.minds/memory/individual', caller.id);
 
     if (!hasWriteAccess(caller, memoryDir)) {
@@ -217,7 +219,7 @@ This will remove all files in my personal memory directory.`,
     fs.rmSync(fullPath, { recursive: true, force: true });
     fs.mkdirSync(fullPath, { recursive: true });
 
-    return ok('Cleared');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'cleared'));
   },
 };
 
@@ -237,7 +239,7 @@ Examples:
   @add_team_memory team/decisions.md
   ## Team Decisions
   Important decisions made by the team...`,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@add_team_memory')) {
@@ -276,7 +278,7 @@ Examples:
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok('Added');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'added'));
   },
 };
 
@@ -290,7 +292,7 @@ Usage: @drop_team_memory <relative-file-path.md>
 Examples:
   @drop_team_memory project/old-requirements.md
   @drop_team_memory team/outdated-decisions.md`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@drop_team_memory')) {
@@ -321,7 +323,7 @@ Examples:
 
     fs.unlinkSync(fullPath);
 
-    return ok('Deleted');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'deleted'));
   },
 };
 
@@ -337,7 +339,7 @@ Examples:
   @replace_team_memory project/requirements.md
   # Updated Project Requirements
   Revised requirements based on feedback...`,
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@replace_team_memory')) {
@@ -374,7 +376,7 @@ Examples:
 
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok('Updated');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'updated'));
   },
 };
 
@@ -386,7 +388,7 @@ export const clearSharedMemoryTool: TextingTool = {
 Usage: @clear_team_memory
 
 This will remove all files in the shared memory directory.`,
-  async call(_dlg, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const memoryDir = '.minds/memory/team_shared';
 
     if (!hasWriteAccess(caller, memoryDir)) {
@@ -402,6 +404,6 @@ This will remove all files in the shared memory directory.`,
     fs.rmSync(fullPath, { recursive: true, force: true });
     fs.mkdirSync(fullPath, { recursive: true });
 
-    return ok('Cleared');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'cleared'));
   },
 };

@@ -32,6 +32,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
+import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import type { Team } from '../team';
 import { TextingTool, TextingToolCallResult } from '../tool';
 
@@ -77,7 +78,7 @@ export const deleteReminderTool: TextingTool = {
     }
 
     dlg.deleteReminder(reminderNo);
-    return ok('Deleted');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'deleted'));
   },
 };
 
@@ -125,7 +126,7 @@ export const addReminderTool: TextingTool = {
     }
 
     dlg.addReminder(reminderContent, undefined, undefined, insertIndex);
-    return ok('Added');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'added'));
   },
 };
 
@@ -168,7 +169,7 @@ export const updateReminderTool: TextingTool = {
     }
 
     dlg.updateReminder(reminderNo, reminderContent);
-    return ok('Updated');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'updated'));
   },
 };
 
@@ -195,7 +196,7 @@ export const clearMindTool: TextingTool = {
     await dlg.startNewRound(
       `This is round #${dlg.currentRound + 1} of the dialog, you just cleared your mind and please proceed with the task.`,
     );
-    return ok('Mind cleared');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'mindCleared'));
   },
 };
 
@@ -249,6 +250,6 @@ export const changeMindTool: TextingTool = {
     await dlg.startNewRound(
       `This is round #${dlg.currentRound + 1} of the dialog, you just changed your mind and please proceed with the task.`,
     );
-    return ok('Mind changed');
+    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'mindChanged'));
   },
 };

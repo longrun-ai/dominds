@@ -5,6 +5,8 @@
  * Uses modern TypeScript patterns for statically verifiable field access.
  */
 
+import type { LanguageCode } from './language';
+
 // === DIALOG METADATA STORAGE ===
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -180,6 +182,7 @@ export interface HumanTextRecord {
   msgId: string;
   content: string;
   grammar: UserTextGrammar;
+  userLanguageCode?: LanguageCode;
 }
 
 export interface FuncResultRecord {

@@ -725,10 +725,13 @@ function snapshotDomindsUI() {
 function captureHeaderState(shadow) {
   if (!shadow) return { exists: false };
 
+  const app = getApp();
   const header = shadow.querySelector('.header');
   return {
     exists: !!header,
     workspace: header?.querySelector('.workspace-indicator')?.textContent?.trim() || null,
+    uiLanguage: header?.querySelector('#ui-language-select')?.value || null,
+    serverWorkingLanguage: app?.serverWorkingLanguage || null,
     themeToggle: header?.querySelector('#theme-toggle-btn')?.textContent?.trim() || null,
   };
 }
@@ -1753,7 +1756,10 @@ async function openSubdialogAndWait(rootId, subdialogId, options = {}) {
   await waitForDialogSelected({ rootId, selfId: subdialogId }, options.timeoutMs || 15000);
   // Wait for toolbar/title to reflect the selected dialog.
   // This avoids races where app state flips before DOM updates (common under fast timing).
-  await waitUntil(() => getCurrentDialogTitle().includes(String(subdialogId)), options.timeoutMs || 15000);
+  await waitUntil(
+    () => getCurrentDialogTitle().includes(String(subdialogId)),
+    options.timeoutMs || 15000,
+  );
   await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
   if (typeof options.requireInputEnabled === 'boolean') {
     await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
@@ -1811,8 +1817,14 @@ async function selectDialogAndWait(dialogText, options = {}) {
   }
   const ok = selectDialogById(dialogText);
   if (!ok) throw new Error(`selectDialogAndWait: selectDialogById failed for "${dialogText}"`);
-  await waitForDialogSelected({ rootId: dialogText, selfId: dialogText }, options.timeoutMs || 15000);
-  await waitUntil(() => getCurrentDialogTitle().includes(String(dialogText)), options.timeoutMs || 15000);
+  await waitForDialogSelected(
+    { rootId: dialogText, selfId: dialogText },
+    options.timeoutMs || 15000,
+  );
+  await waitUntil(
+    () => getCurrentDialogTitle().includes(String(dialogText)),
+    options.timeoutMs || 15000,
+  );
   await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
   if (typeof options.requireInputEnabled === 'boolean') {
     await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);

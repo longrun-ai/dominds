@@ -7,6 +7,7 @@
 import type { ConnectionState } from '@/services/store';
 import { createPubChan, createSubChan, PubChan, SubChan } from '../shared/evt';
 import type { ErrorMessage, WebSocketMessage } from '../shared/types';
+import type { LanguageCode } from '../shared/types/language';
 import { getWebSocketUrl } from '../utils';
 // StreamHandler removed - streaming is now handled directly by event type matching
 
@@ -22,6 +23,7 @@ export interface WebSocketConfig {
 export class WebSocketManager {
   private ws: WebSocket | null = null;
   private config: WebSocketConfig;
+  private uiLanguage: LanguageCode | null = null;
   private connectionState: ConnectionState = {
     status: 'disconnected',
     reconnectAttempts: 0,
@@ -139,6 +141,14 @@ export class WebSocketManager {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  public setUiLanguage(uiLanguage: LanguageCode): void {
+    this.uiLanguage = uiLanguage;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.sendRaw({ type: 'set_ui_language', uiLanguage });
+  }
+
   // (Pub/Sub)Chan Management
 
   /**
@@ -160,6 +170,10 @@ export class WebSocketManager {
       lastConnected: new Date(),
       reconnectAttempts: 0,
     });
+
+    if (this.uiLanguage) {
+      this.sendRaw({ type: 'set_ui_language', uiLanguage: this.uiLanguage });
+    }
   }
 
   private handleMessage(event: MessageEvent): void {
@@ -213,6 +227,9 @@ export class WebSocketManager {
     switch (message.type) {
       case 'welcome':
         console.debug('Server welcome:', message.message);
+        // The welcome payload carries server capabilities (e.g., language support).
+        // Distribute it so the app can react (E2E relies on this wiring).
+        this.distributeMessage(message);
         break;
 
       case 'error':

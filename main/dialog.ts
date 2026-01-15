@@ -17,12 +17,14 @@ import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import type { SubChan } from './shared/evt';
+import { getWorkingLanguage } from './shared/runtime-language';
 import type {
   DialogEvent,
   FullRemindersEvent,
   ReminderContent,
   TeammateResponseEvent,
 } from './shared/types/dialog';
+import type { LanguageCode } from './shared/types/language';
 import type {
   HumanQuestion,
   ProviderData,
@@ -215,8 +217,10 @@ export abstract class Dialog {
   protected _status: 'running' | 'completed' | 'archived' = 'running';
   protected _createdAt: string;
   protected _updatedAt: string;
+  protected _uiLanguage: LanguageCode;
+  protected _lastUserLanguageCode: LanguageCode;
   // Prompt queued for the next round drive (set by startNewRound).
-  protected _upNext?: { prompt: string; msgId: string };
+  protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
   public subChan?: SubChan<DialogEvent>;
   // Track whether the current round's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_response_evt arrives
@@ -268,6 +272,8 @@ export abstract class Dialog {
     this._createdAt = initialState?.createdAt || now;
     this._updatedAt = initialState?.updatedAt || now;
     this._currentRound = initialState?.currentRound || 1;
+    this._uiLanguage = getWorkingLanguage();
+    this._lastUserLanguageCode = getWorkingLanguage();
   }
 
   public get remindersVer() {
@@ -276,6 +282,22 @@ export abstract class Dialog {
 
   public get supdialog(): Dialog | undefined {
     return undefined;
+  }
+
+  public getUiLanguage(): LanguageCode {
+    return this._uiLanguage;
+  }
+
+  public setUiLanguage(language: LanguageCode): void {
+    this._uiLanguage = language;
+  }
+
+  public getLastUserLanguageCode(): LanguageCode {
+    return this._lastUserLanguageCode;
+  }
+
+  public setLastUserLanguageCode(language: LanguageCode): void {
+    this._lastUserLanguageCode = language;
   }
 
   /**
@@ -753,14 +775,20 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     if (!trimmed) {
       throw new Error('newRoundPrompt is required to start a new round');
     }
-    this._upNext = { prompt: trimmed, msgId: generateShortId() };
+    this._upNext = {
+      prompt: trimmed,
+      msgId: generateShortId(),
+      userLanguageCode: this._lastUserLanguageCode,
+    };
   }
 
   public hasUpNext(): boolean {
     return this._upNext !== undefined;
   }
 
-  public takeUpNext(): { prompt: string; msgId: string } | undefined {
+  public takeUpNext():
+    | { prompt: string; msgId: string; userLanguageCode?: LanguageCode }
+    | undefined {
     const next = this._upNext;
     this._upNext = undefined;
     return next;
@@ -803,6 +831,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
             toAgentId: this.agentId,
             headLine: this.assignmentFromSup.headLine,
             callBody: this.assignmentFromSup.callBody,
+            language: getWorkingLanguage(),
           })}\n---\n${trimmedPrompt}`
         : trimmedPrompt;
     this.setUpNextPrompt(combinedPrompt);
@@ -1014,8 +1043,9 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     content: string,
     msgId: string,
     grammar: UserTextGrammar,
+    userLanguageCode?: LanguageCode,
   ): Promise<void> {
-    return await this.dlgStore.persistUserMessage(this, content, msgId, grammar);
+    return await this.dlgStore.persistUserMessage(this, content, msgId, grammar, userLanguageCode);
   }
 
   public async persistAgentMessage(
@@ -1537,6 +1567,7 @@ export abstract class DialogStore {
     _content: string,
     _msgId: string,
     _grammar: UserTextGrammar,
+    _userLanguageCode?: LanguageCode,
   ): Promise<void> {}
 
   /**

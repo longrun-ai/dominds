@@ -2,6 +2,7 @@
 // Network communication protocols and message definitions
 
 import type { TypedDialogEvent } from './dialog';
+import type { LanguageCode } from './language';
 
 // Dialog Identification Structure
 export interface DialogIdent {
@@ -29,6 +30,8 @@ export function createDialogIdent(selfId: string, rootId?: string): DialogIdent 
 export type WebSocketMessage =
   | WelcomeMessage
   | ErrorMessage
+  | SetUiLanguageRequest
+  | UiLanguageSetMessage
   | CreateDialogRequest
   | DisplayDialogRequest
   | GetQ4HStateRequest
@@ -44,11 +47,24 @@ export type WebSocketMessage =
 export interface WelcomeMessage {
   type: 'welcome';
   message: string;
+  serverWorkingLanguage: LanguageCode;
+  supportedLanguageCodes: LanguageCode[];
+  timestamp: string;
 }
 
 export interface ErrorMessage {
   type: 'error';
   message: string;
+}
+
+export interface SetUiLanguageRequest {
+  type: 'set_ui_language';
+  uiLanguage: LanguageCode;
+}
+
+export interface UiLanguageSetMessage {
+  type: 'ui_language_set';
+  uiLanguage: LanguageCode;
 }
 
 // Team and Dialog Management Messages
@@ -69,6 +85,7 @@ export interface DriveDialogRequest {
   dialog: DialogIdent;
   content: string;
   msgId: string; // Message ID for tracking and error recovery (mandatory)
+  userLanguageCode: LanguageCode;
 }
 
 export interface DriveDialogByUserAnswer {
@@ -78,6 +95,7 @@ export interface DriveDialogByUserAnswer {
   msgId: string;
   questionId: string;
   continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
+  userLanguageCode: LanguageCode;
 }
 
 export interface DisplayRemindersRequest {

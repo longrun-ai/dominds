@@ -1,5 +1,6 @@
 // Shared types for frontend and backend
 
+export * from './language';
 export * from './wire';
 
 export * from './dialog';

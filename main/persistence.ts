@@ -41,6 +41,7 @@ import type {
   ToolCallResponseEvent,
   ToolCallStartEvent,
 } from './shared/types/dialog';
+import type { LanguageCode } from './shared/types/language';
 import type {
   AgentThoughtRecord,
   AgentWordsRecord,
@@ -864,6 +865,7 @@ export class DiskFileDialogStore extends DialogStore {
     content: string,
     msgId: string,
     grammar: UserTextGrammar,
+    userLanguageCode?: LanguageCode,
   ): Promise<void> {
     const round = dialog.currentRound;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
@@ -876,6 +878,7 @@ export class DiskFileDialogStore extends DialogStore {
       content: String(content || ''),
       msgId: msgId,
       grammar,
+      userLanguageCode,
     };
     await this.appendEvent(round, humanEv);
 
@@ -1075,6 +1078,7 @@ export class DiskFileDialogStore extends DialogStore {
         const genseq = event.genseq;
         const content = event.content || '';
         const grammar: UserTextGrammar = event.grammar ?? 'texting';
+        const userLanguageCode = event.userLanguageCode;
 
         if (content) {
           if (grammar === 'texting') {
@@ -1308,6 +1312,7 @@ export class DiskFileDialogStore extends DialogStore {
               msgId: event.msgId,
               content,
               grammar,
+              userLanguageCode,
               dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
               timestamp: event.ts,
             }),

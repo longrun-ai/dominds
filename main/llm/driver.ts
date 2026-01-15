@@ -17,7 +17,17 @@ import { globalDialogRegistry } from '../dialog-global-registry';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import {
+  formatDomindsNoteDirectSelfCall,
+  formatDomindsNoteSuperNoTopic,
+  formatDomindsNoteSuperOnlyInSubdialog,
+  formatReminderIntro,
+  formatReminderItemGuide,
+  formatUserFacingLanguageGuide,
+} from '../shared/i18n/driver-messages';
+import { getWorkingLanguage } from '../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
+import type { LanguageCode } from '../shared/types/language';
 import type { HumanQuestion, UserTextGrammar } from '../shared/types/storage';
 import { generateShortId } from '../shared/utils/id';
 import {
@@ -55,9 +65,10 @@ export interface HumanPrompt {
   content: string;
   msgId: string; // Message ID for tracking and error recovery (required for all human text)
   grammar: UserTextGrammar;
+  userLanguageCode?: LanguageCode;
 }
 
-type UpNextPrompt = { prompt: string; msgId: string };
+type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
 
 // === SUSPENSION AND RESUMPTION INTERFACES ===
 
@@ -257,6 +268,7 @@ function resolveUpNextPrompt(dlg: Dialog, humanPrompt?: HumanPrompt): HumanPromp
     content: upNext.prompt,
     msgId: upNext.msgId,
     grammar: 'markdown',
+    userLanguageCode: upNext.userLanguageCode,
   };
 }
 
@@ -265,6 +277,7 @@ function scheduleUpNextDrive(dlg: Dialog, upNext: UpNextPrompt): void {
     content: upNext.prompt,
     msgId: upNext.msgId,
     grammar: 'markdown',
+    userLanguageCode: upNext.userLanguageCode,
   };
   void driveDialogStream(dlg, prompt, true);
 }
@@ -361,6 +374,9 @@ export async function driveDialogStream(
   let generatedAssistantResponse: string | null = null;
   try {
     const effectivePrompt = resolveUpNextPrompt(dlg, humanPrompt);
+    if (effectivePrompt && effectivePrompt.userLanguageCode) {
+      dlg.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
+    }
     generatedAssistantResponse = await _driveDialogStream(dlg, effectivePrompt);
     followUp = dlg.takeUpNext();
   } finally {
@@ -434,6 +450,9 @@ export async function runBackendDriver(): Promise<void> {
 async function driveDialogToSuspension(dlg: Dialog): Promise<void> {
   try {
     const effectivePrompt = resolveUpNextPrompt(dlg);
+    if (effectivePrompt && effectivePrompt.userLanguageCode) {
+      dlg.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
+    }
     await _driveDialogStream(dlg, effectivePrompt);
   } catch (err) {
     log.warn(`Error in driveDialogToSuspension for ${dlg.id.selfId}:`, err);
@@ -567,6 +586,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           promptContent = humanPrompt.content;
           const msgId = humanPrompt.msgId;
           const promptGrammar = humanPrompt.grammar;
+          const persistedUserLanguageCode =
+            humanPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
 
           await dlg.addChatMessages({
             type: 'prompting_msg',
@@ -577,7 +598,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             grammar: promptGrammar,
           });
           // Persist user message to storage FIRST
-          await dlg.persistUserMessage(promptContent, msgId, promptGrammar);
+          await dlg.persistUserMessage(
+            promptContent,
+            msgId,
+            promptGrammar,
+            persistedUserLanguageCode,
+          );
 
           if (promptGrammar === 'texting') {
             // Collect and execute texting calls from user text using streaming parser
@@ -618,6 +644,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               msgId,
               content: promptContent,
               grammar: promptGrammar,
+              userLanguageCode: persistedUserLanguageCode,
             });
           } catch (err) {
             log.warn('Failed to emit end_of_user_saying_evt', err);
@@ -674,6 +701,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 requesterId: response.originMemberId,
                 originalCallHeadLine: response.headLine,
                 responseBody: response.response,
+                language: getWorkingLanguage(),
               }),
             });
           }
@@ -690,9 +718,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   return {
                     type: 'transient_guide_msg',
                     role: 'assistant',
-                    content: `Here I have reminder #${index + 1}, I should assess whether it's still relevant and issue \`@delete_reminder ${index + 1}\` immediately if deemed not.
----
-${reminder.content}`,
+                    content: formatReminderItemGuide(
+                      getWorkingLanguage(),
+                      index + 1,
+                      reminder.content,
+                    ),
                   };
                 }),
               )
@@ -701,16 +731,7 @@ ${reminder.content}`,
         const reminderIntro: ChatMessage = {
           type: 'transient_guide_msg',
           role: 'assistant',
-          content: `I have ${dlg.reminders.length} reminder${dlg.reminders.length > 1 ? 's' : ''} available for my memory management.
-
-I can manage these anytime to maintain context across dialog rounds:
-- @add_reminder [<position>]\n<content>
-- @update_reminder <number>\n<new content>
-- @delete_reminder <number>
-
-Using @clear_mind or @change_mind would start a new round of dialog - this helps me keep my mindset clear while reminders carry important info to new rounds.
-
-Tip: I can use @clear_mind with a body, and that body will be added as a new reminder, while I'm in a new dialog round without old messages.`,
+          content: formatReminderIntro(getWorkingLanguage(), dlg.reminders.length),
         };
 
         if (renderedReminders.length > 0 || dlg.reminders.length === 0) {
@@ -730,6 +751,33 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
             ctxMsgs.splice(insertIndex, 0, reminderIntro, ...renderedReminders);
           } else {
             ctxMsgs.push(reminderIntro, ...renderedReminders);
+          }
+        }
+
+        {
+          const uiLanguage = dlg.getLastUserLanguageCode();
+          const workingLanguage = getWorkingLanguage();
+          const guideMsg: ChatMessage = {
+            type: 'transient_guide_msg',
+            role: 'assistant',
+            content: formatUserFacingLanguageGuide(workingLanguage, uiLanguage),
+          };
+          let insertIndex = -1;
+          for (let i = ctxMsgs.length - 1; i >= 0; i--) {
+            const m = ctxMsgs[i];
+            if (
+              m &&
+              (m.type === 'prompting_msg' || m.type === 'environment_msg') &&
+              m.role === 'user'
+            ) {
+              insertIndex = i;
+              break;
+            }
+          }
+          if (insertIndex >= 0) {
+            ctxMsgs.splice(insertIndex, 0, guideMsg);
+          } else {
+            ctxMsgs.push(guideMsg);
           }
         }
 
@@ -1711,6 +1759,7 @@ export async function createSubdialogForSupdialog(
             toAgentId: subdialog.agentId,
             headLine,
             callBody: callBody,
+            language: getWorkingLanguage(),
           }),
           msgId: generateShortId(),
           grammar: 'markdown',
@@ -1825,6 +1874,7 @@ export async function supplyResponseToSupdialog(
         requesterId: originMemberId,
         originalCallHeadLine: headLine,
         responseBody: responseText,
+        language: getWorkingLanguage(),
       });
 
       const completedAt = formatUnifiedTimestamp(new Date());
@@ -2094,14 +2144,13 @@ async function executeTextingCall(
     // This is a teammate call - parse using Phase 5 taxonomy
     // Parse the call text to determine type A/B/C
     if (isSuperAlias && !(dlg instanceof SubDialog)) {
-      const response =
-        'Dominds note: `@super` is only valid inside a subdialog and calls the direct parent (supdialog). ' +
-        'You are currently not in a subdialog, so there is no parent to call.';
+      const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkingLanguage());
       const result = formatTeammateResponseContent({
         responderId: 'dominds',
         requesterId: dlg.agentId,
         originalCallHeadLine: headLine,
         responseBody: response,
+        language: getWorkingLanguage(),
       });
       try {
         await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
@@ -2122,14 +2171,13 @@ async function executeTextingCall(
     if (isSuperAlias) {
       const topicId = extractTopicIdFromHeadline(headLine, 'super');
       if (topicId) {
-        const response =
-          'Dominds note: `@super` is a Type A supdialog call and does not accept `!topic`. ' +
-          'Use `@super` with NO `!topic`, or use `@self !topic <topicId>` / `@<agentId> !topic <topicId>` for Type B.';
+        const response = formatDomindsNoteSuperNoTopic(getWorkingLanguage());
         const result = formatTeammateResponseContent({
           responderId: 'dominds',
           requesterId: dlg.agentId,
           originalCallHeadLine: headLine,
           responseBody: response,
+          language: getWorkingLanguage(),
         });
         try {
           await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
@@ -2160,15 +2208,13 @@ async function executeTextingCall(
     // intentional self-FBR from accidental echo/quote triggers.
     const isDirectSelfCall = !isSelfAlias && !isSuperAlias && parseResult.agentId === dlg.agentId;
     if (isDirectSelfCall) {
-      const response =
-        'Dominds note: This call targets the current agent (self-call). ' +
-        'Fresh Boots Reasoning should usually use `@self` (no `!topic`) for an ephemeral fresh boots session; use ' +
-        '`@self !topic <topicId>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.';
+      const response = formatDomindsNoteDirectSelfCall(getWorkingLanguage());
       const result = formatTeammateResponseContent({
         responderId: 'dominds',
         requesterId: dlg.agentId,
         originalCallHeadLine: headLine,
         responseBody: response,
+        language: getWorkingLanguage(),
       });
       try {
         await dlg.receiveTeammateResponse('dominds', headLine, result, 'completed', dlg.id, {
@@ -2213,6 +2259,7 @@ async function executeTextingCall(
                 headLine: assignment.headLine,
                 callBody: assignment.callBody,
               },
+              language: getWorkingLanguage(),
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
@@ -2227,6 +2274,7 @@ async function executeTextingCall(
             requesterId: dlg.agentId,
             originalCallHeadLine: headLine,
             responseBody: responseText,
+            language: getWorkingLanguage(),
           });
 
           // Resume the subdialog with the supdialog's response
@@ -2332,6 +2380,7 @@ async function executeTextingCall(
                   toAgentId: sub.agentId,
                   headLine,
                   callBody: body,
+                  language: getWorkingLanguage(),
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -2371,6 +2420,7 @@ async function executeTextingCall(
               toAgentId: existingSubdialog.agentId,
               headLine,
               callBody: body,
+              language: getWorkingLanguage(),
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
@@ -2437,6 +2487,7 @@ async function executeTextingCall(
                   toAgentId: sub.agentId,
                   headLine,
                   callBody: body,
+                  language: getWorkingLanguage(),
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -2487,6 +2538,7 @@ async function executeTextingCall(
                   toAgentId: sub.agentId,
                   headLine,
                   callBody: body,
+                  language: getWorkingLanguage(),
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -2538,10 +2590,11 @@ async function executeTextingCall(
         }
 
         // Emit tool response with callId (inline bubble) - callId is for UI correlation only
+        const defaultOk = 'OK';
         await dlg.receiveToolResponse(
           firstMention,
           headLine,
-          raw.status === 'completed' ? (raw.result ?? 'OK') : raw.result,
+          raw.status === 'completed' ? (raw.result ?? defaultOk) : raw.result,
           raw.status,
           callId,
         );
@@ -2557,7 +2610,7 @@ async function executeTextingCall(
           );
         }
       } catch (e) {
-        const msg = `❌ **Error executing @${firstMention}**\n\n- Head: ${headLine}\n- Detail: ${showErrorToAi(e)}\n\n**Body**\n\n\`\`\`\n${body}\n\`\`\``;
+        const msg = `ERR_TOOL_EXECUTION\n${showErrorToAi(e)}`;
         toolOutputs.push({
           type: 'environment_msg',
           role: 'user',
@@ -2582,7 +2635,7 @@ async function executeTextingCall(
         dlg.clearCurrentCallId();
       }
     } else {
-      const msg = `❌ **Unknown call** \`@${firstMention}\`\n- Head: ${headLine}`;
+      const msg = 'ERR_UNKNOWN_CALL';
       toolOutputs.push({
         type: 'environment_msg',
         role: 'user',
@@ -2600,14 +2653,10 @@ async function executeTextingCall(
       };
       toolOutputs.push(errorMsg);
 
-      // Generate synthetic callId for unknown call (no actual call was made)
-      const unknownCallId = `unknown:${firstMention}:${headLine}`;
-      dlg.setCurrentCallId(unknownCallId);
+      // Emit tool response with the parser-provided callId so the UI can attach inline.
+      await dlg.receiveToolResponse(firstMention, headLine, msg, 'failed', callId);
 
-      // Emit tool response with callId for inline display (like tool failures)
-      await dlg.receiveToolResponse(firstMention, headLine, msg, 'failed', unknownCallId);
-
-      // Clear synthetic callId after response
+      // Clear callId after response
       dlg.clearCurrentCallId();
       log.warn(`Unknown call @${firstMention} | Head: ${headLine}`);
     }

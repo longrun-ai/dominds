@@ -4,6 +4,7 @@
 
 import type { ConnectionState } from '@/services/store';
 import faviconUrl from '../assets/favicon.svg';
+import { formatRemindersTitle, getUiStrings } from '../i18n/ui';
 import type { FrontendTeamMember } from '../services/api';
 import { getApiClient } from '../services/api';
 import {
@@ -23,6 +24,7 @@ import type {
   SubdialogEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
+import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
 import type {
   DialogReadyMessage,
@@ -78,6 +80,8 @@ export class DomindsApp extends HTMLElement {
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private subdialogHierarchyRefreshTokens = new Map<string, number>();
   private authModal: HTMLElement | null = null;
+  private uiLanguage: LanguageCode = this.getInitialUiLanguage();
+  private serverWorkingLanguage: LanguageCode | null = null;
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -107,6 +111,218 @@ export class DomindsApp extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+  }
+
+  private applyUiLanguageToDom(): void {
+    if (!this.shadowRoot) return;
+
+    const t = getUiStrings(this.uiLanguage);
+
+    // Header + toolbar
+    const workspace = this.shadowRoot.querySelector('.workspace-indicator') as HTMLElement | null;
+    if (workspace) workspace.title = t.backendWorkspaceTitle;
+
+    const langSelect = this.shadowRoot.querySelector('#ui-language-select') as HTMLSelectElement;
+    if (langSelect) langSelect.title = t.uiLanguageSelectTitle;
+
+    const themeBtn = this.shadowRoot.querySelector('#theme-toggle-btn') as HTMLButtonElement | null;
+    if (themeBtn) themeBtn.title = t.themeToggleTitle;
+
+    const activityBar = this.shadowRoot.querySelector('.activity-bar') as HTMLElement | null;
+    if (activityBar) activityBar.setAttribute('aria-label', t.activityBarAriaLabel);
+
+    const activityButtons = this.shadowRoot.querySelectorAll<HTMLButtonElement>('[data-activity]');
+    activityButtons.forEach((btn) => {
+      const kind = btn.getAttribute('data-activity');
+      if (kind === 'running') {
+        btn.setAttribute('aria-label', t.activityRunning);
+        btn.title = t.activityRunning;
+      } else if (kind === 'done') {
+        btn.setAttribute('aria-label', t.activityDone);
+        btn.title = t.activityDone;
+      } else if (kind === 'archived') {
+        btn.setAttribute('aria-label', t.activityArchived);
+        btn.title = t.activityArchived;
+      } else if (kind === 'search') {
+        btn.setAttribute('aria-label', t.activitySearch);
+        btn.title = t.activitySearch;
+      } else if (kind === 'team-members') {
+        btn.setAttribute('aria-label', t.activityTeamMembers);
+        btn.title = t.activityTeamMembers;
+      }
+    });
+
+    // Placeholder titles/texts
+    const doneTitle = this.shadowRoot.querySelector(
+      '[data-activity-view="done"] .activity-placeholder-title',
+    ) as HTMLElement | null;
+    if (doneTitle) doneTitle.textContent = t.placeholderDoneTitle;
+    const doneText = this.shadowRoot.querySelector(
+      '[data-activity-view="done"] .activity-placeholder-text',
+    ) as HTMLElement | null;
+    if (doneText) doneText.textContent = t.placeholderDoneText;
+
+    const archTitle = this.shadowRoot.querySelector(
+      '[data-activity-view="archived"] .activity-placeholder-title',
+    ) as HTMLElement | null;
+    if (archTitle) archTitle.textContent = t.placeholderArchivedTitle;
+    const archText = this.shadowRoot.querySelector(
+      '[data-activity-view="archived"] .activity-placeholder-text',
+    ) as HTMLElement | null;
+    if (archText) archText.textContent = t.placeholderArchivedText;
+
+    const searchTitle = this.shadowRoot.querySelector(
+      '[data-activity-view="search"] .activity-placeholder-title',
+    ) as HTMLElement | null;
+    if (searchTitle) searchTitle.textContent = t.placeholderSearchTitle;
+    const searchText = this.shadowRoot.querySelector(
+      '[data-activity-view="search"] .activity-placeholder-text',
+    ) as HTMLElement | null;
+    if (searchText) searchText.textContent = t.placeholderSearchText;
+
+    const tmTitle = this.shadowRoot.querySelector(
+      '[data-activity-view="team-members"] .activity-placeholder-title',
+    ) as HTMLElement | null;
+    if (tmTitle) tmTitle.textContent = t.placeholderTeamMembersTitle;
+    const tmText = this.shadowRoot.querySelector(
+      '[data-activity-view="team-members"] .activity-placeholder-text',
+    ) as HTMLElement | null;
+    if (tmText) tmText.textContent = t.placeholderTeamMembersText;
+
+    const newDialogBtn = this.shadowRoot.querySelector('#new-dialog-btn') as HTMLButtonElement;
+    if (newDialogBtn) newDialogBtn.title = t.newDialogTitle;
+
+    const dialogTitle = this.shadowRoot.querySelector(
+      '#current-dialog-title',
+    ) as HTMLElement | null;
+    if (dialogTitle && this.currentDialog === null) {
+      dialogTitle.textContent = t.currentDialogPlaceholder;
+    }
+
+    const prev = this.shadowRoot.querySelector('#toolbar-prev') as HTMLButtonElement | null;
+    if (prev) prev.setAttribute('aria-label', t.previousRound);
+    const next = this.shadowRoot.querySelector('#toolbar-next') as HTMLButtonElement | null;
+    if (next) next.setAttribute('aria-label', t.nextRound);
+
+    const remToggle = this.shadowRoot.querySelector(
+      '#toolbar-reminders-toggle',
+    ) as HTMLButtonElement | null;
+    if (remToggle) remToggle.setAttribute('aria-label', t.reminders);
+    const remRefresh = this.shadowRoot.querySelector(
+      '#toolbar-reminders-refresh',
+    ) as HTMLButtonElement | null;
+    if (remRefresh) {
+      remRefresh.setAttribute('aria-label', t.refreshReminders);
+      remRefresh.title = t.refreshReminders;
+    }
+
+    // Propagate to child components
+    const conn = this.shadowRoot.querySelector('dominds-connection-status') as HTMLElement | null;
+    if (conn) conn.setAttribute('ui-language', this.uiLanguage);
+
+    const dialogList = this.shadowRoot.querySelector('#dialog-list');
+    if (dialogList instanceof RunningDialogList) {
+      dialogList.setProps({ uiLanguage: this.uiLanguage });
+    }
+
+    const teamMembers = this.shadowRoot.querySelector('#team-members');
+    if (teamMembers instanceof DomindsTeamMembers) {
+      teamMembers.setProps({ uiLanguage: this.uiLanguage });
+    }
+
+    if (this.q4hInput) this.q4hInput.setUiLanguage(this.uiLanguage);
+
+    // Any open overlays should re-render to refresh static text.
+    if (this.remindersWidgetVisible) {
+      this.renderRemindersWidget();
+      this.setupRemindersWidgetDrag();
+    }
+    this.updateCreateDialogModalText();
+    this.updateAuthModalText();
+  }
+
+  private updateCreateDialogModalText(): void {
+    if (!this.shadowRoot) return;
+    const modal = this.shadowRoot.querySelector('.create-dialog-modal') as HTMLElement | null;
+    if (!modal) return;
+    const t = getUiStrings(this.uiLanguage);
+
+    const title = modal.querySelector('#modal-title') as HTMLElement | null;
+    if (title) title.textContent = t.createNewDialogTitle;
+
+    const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement | null;
+    if (closeBtn) closeBtn.setAttribute('aria-label', t.close);
+
+    const taskLabel = modal.querySelector('label[for="task-doc-input"]') as HTMLElement | null;
+    if (taskLabel) taskLabel.textContent = t.taskDocumentLabel;
+
+    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement | null;
+    if (taskInput) taskInput.placeholder = t.taskDocumentPlaceholder;
+
+    const help = modal.querySelector('.form-help') as HTMLElement | null;
+    if (help) help.textContent = t.taskDocumentHelp;
+
+    const teammateLabel = modal.querySelector('label[for="teammate-select"]') as HTMLElement | null;
+    if (teammateLabel) teammateLabel.textContent = t.teammateLabel;
+
+    const cancel = modal.querySelector('#modal-cancel-btn') as HTMLButtonElement | null;
+    if (cancel) cancel.textContent = t.cancel;
+    const create = modal.querySelector('#create-dialog-btn') as HTMLButtonElement | null;
+    if (create) create.textContent = t.createDialog;
+  }
+
+  private updateAuthModalText(): void {
+    const modal = this.authModal;
+    if (!modal) return;
+    const t = getUiStrings(this.uiLanguage);
+
+    const title = modal.querySelector('#auth-modal-title') as HTMLElement | null;
+    if (title) title.textContent = t.authRequiredTitle;
+
+    const desc = modal.querySelector('.modal-description') as HTMLElement | null;
+    if (desc) {
+      desc.textContent = t.authDescription;
+    }
+
+    const label = modal.querySelector('label[for="auth-key-input"]') as HTMLElement | null;
+    if (label) label.textContent = t.authKeyLabel;
+
+    const input = modal.querySelector('#auth-key-input') as HTMLInputElement | null;
+    if (input) input.placeholder = t.authKeyPlaceholder;
+
+    const submitBtn = modal.querySelector('#auth-submit-btn') as HTMLButtonElement | null;
+    if (submitBtn) submitBtn.textContent = t.connect;
+  }
+
+  private getStoredUiLanguage(): LanguageCode | null {
+    try {
+      const stored = localStorage.getItem('dominds-ui-language');
+      if (!stored) return null;
+      return normalizeLanguageCode(stored);
+    } catch (error) {
+      console.warn('Failed to read ui language from localStorage', error);
+      return null;
+    }
+  }
+
+  private getBrowserPreferredUiLanguage(): LanguageCode {
+    const raw = typeof navigator.language === 'string' ? navigator.language : '';
+    const parsed = normalizeLanguageCode(raw);
+    return parsed ?? 'en';
+  }
+
+  private getInitialUiLanguage(): LanguageCode {
+    const stored = this.getStoredUiLanguage();
+    if (stored) return stored;
+    return this.getBrowserPreferredUiLanguage();
+  }
+
+  private persistUiLanguage(uiLanguage: LanguageCode): void {
+    try {
+      localStorage.setItem('dominds-ui-language', uiLanguage);
+    } catch (error) {
+      console.warn('Failed to persist ui language preference', error);
+    }
   }
 
   // Type guard to check if WebSocketMessage has dialog context
@@ -282,15 +498,17 @@ export class DomindsApp extends HTMLElement {
     if (dialogList instanceof RunningDialogList) {
       dialogList.setDialogs(this.dialogs);
       const onSelect = (dialog: DialogInfo) => this.selectDialog(dialog);
-      dialogList.setProps({ onSelect });
+      dialogList.setProps({ onSelect, uiLanguage: this.uiLanguage });
     }
     const teamMembers = this.shadowRoot.querySelector('#team-members');
     if (teamMembers instanceof DomindsTeamMembers) {
       teamMembers.setMembers(this.teamMembers);
+      teamMembers.setProps({ uiLanguage: this.uiLanguage });
     }
 
     this.updateThemeToggle();
     this.updateActivityView();
+    this.applyUiLanguageToDom();
   }
 
   /**
@@ -451,6 +669,17 @@ export class DomindsApp extends HTMLElement {
         align-items: center;
         gap: 12px;
         margin-left: 16px;
+      }
+
+      .lang-select {
+        height: 36px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 8px;
+        background: var(--dominds-sidebar-bg, #f8f9fa);
+        color: var(--dominds-fg, #333333);
+        padding: 0 10px;
+        font-size: 12px;
+        cursor: pointer;
       }
 
       .theme-toggle {
@@ -1197,6 +1426,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   public getHTML(): string {
+    const t = getUiStrings(this.uiLanguage);
     return `
       <div class="app-container">
         <header class="header">
@@ -1204,12 +1434,16 @@ export class DomindsApp extends HTMLElement {
             <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
             <span>Dominds</span>
           </div>
-          <div class="workspace-indicator" title="Backend Runtime Workspace">
-            📁 ${this.backendWorkspace || 'Loading...'}
+          <div class="workspace-indicator" title="${t.backendWorkspaceTitle}">
+            📁 ${this.backendWorkspace || t.backendWorkspaceLoading}
           </div>
           <div class="header-actions">
-            <dominds-connection-status status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
-            <button id="theme-toggle-btn" class="theme-toggle" title="Switch theme">
+            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
+            <select id="ui-language-select" class="lang-select" title="${t.uiLanguageSelectTitle}">
+              <option value="en" ${this.uiLanguage === 'en' ? 'selected' : ''}>English</option>
+              <option value="zh" ${this.uiLanguage === 'zh' ? 'selected' : ''}>简体中文</option>
+            </select>
+            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}">
               ${this.currentTheme === 'light' ? '🌙' : '☀️'}
             </button>
           </div>
@@ -1217,21 +1451,21 @@ export class DomindsApp extends HTMLElement {
 
         <div class="main-content">
           <aside class="sidebar">
-            <div class="activity-bar" role="toolbar" aria-label="Activity Bar">
-              <button class="activity-button icon-button" data-activity="running" aria-label="Running" aria-pressed="true" title="Running">
+            <div class="activity-bar" role="toolbar" aria-label="${t.activityBarAriaLabel}">
+              <button class="activity-button icon-button" data-activity="running" aria-label="${t.activityRunning}" aria-pressed="true" title="${t.activityRunning}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
               </button>
-              <button class="activity-button icon-button" data-activity="done" aria-label="Done" aria-pressed="false" title="Done">
+              <button class="activity-button icon-button" data-activity="done" aria-label="${t.activityDone}" aria-pressed="false" title="${t.activityDone}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14 9 11"></polyline></svg>
               </button>
-              <button class="activity-button icon-button" data-activity="archived" aria-label="Archived" aria-pressed="false" title="Archived">
+              <button class="activity-button icon-button" data-activity="archived" aria-label="${t.activityArchived}" aria-pressed="false" title="${t.activityArchived}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
               </button>
               <div class="activity-spacer" aria-hidden="true"></div>
-              <button class="activity-button icon-button" data-activity="search" aria-label="Search" aria-pressed="false" title="Search">
+              <button class="activity-button icon-button" data-activity="search" aria-label="${t.activitySearch}" aria-pressed="false" title="${t.activitySearch}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               </button>
-              <button class="activity-button icon-button" data-activity="team-members" aria-label="Team Members" aria-pressed="false" title="Team Members">
+              <button class="activity-button icon-button" data-activity="team-members" aria-label="${t.activityTeamMembers}" aria-pressed="false" title="${t.activityTeamMembers}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"></path><path d="M7 21v-2a4 4 0 0 1 3-3.87"></path><circle cx="12" cy="7" r="4"></circle><path d="M18 8a3 3 0 1 0 0-6"></path><path d="M6 8a3 3 0 1 1 0-6"></path></svg>
               </button>
             </div>
@@ -1244,26 +1478,26 @@ export class DomindsApp extends HTMLElement {
               </div>
               <div class="activity-view hidden" data-activity-view="done">
                 <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">Done</div>
-                  <div class="activity-placeholder-text">Placeholder view for completed dialogs.</div>
+                  <div class="activity-placeholder-title">${t.placeholderDoneTitle}</div>
+                  <div class="activity-placeholder-text">${t.placeholderDoneText}</div>
                 </div>
               </div>
               <div class="activity-view hidden" data-activity-view="archived">
                 <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">Archived</div>
-                  <div class="activity-placeholder-text">Placeholder view for archived dialogs.</div>
+                  <div class="activity-placeholder-title">${t.placeholderArchivedTitle}</div>
+                  <div class="activity-placeholder-text">${t.placeholderArchivedText}</div>
                 </div>
               </div>
               <div class="activity-view hidden" data-activity-view="search">
                 <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">Search</div>
-                  <div class="activity-placeholder-text">Search panel placeholder.</div>
+                  <div class="activity-placeholder-title">${t.placeholderSearchTitle}</div>
+                  <div class="activity-placeholder-text">${t.placeholderSearchText}</div>
                 </div>
               </div>
               <div class="activity-view hidden" data-activity-view="team-members">
                 <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">Team Members</div>
-                  <div class="activity-placeholder-text">Placeholder view for team member controls.</div>
+                  <div class="activity-placeholder-title">${t.placeholderTeamMembersTitle}</div>
+                  <div class="activity-placeholder-text">${t.placeholderTeamMembersText}</div>
                   <dominds-team-members id="team-members" show-actions="true"></dominds-team-members>
                 </div>
               </div>
@@ -1273,27 +1507,27 @@ export class DomindsApp extends HTMLElement {
           <main class="content-area">
             <div class="toolbar">
               <div class="toolbar-left">
-                <button class="icon-button" id="new-dialog-btn" title="New Dialog">
+                <button class="icon-button" id="new-dialog-btn" title="${t.newDialogTitle}">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-                <div id="current-dialog-title">Select or create a dialog to start</div>
+                <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div style="flex: 1;"></div>
               <div id="round-nav">
-                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentRound > 1 ? '' : 'disabled'} aria-label="Previous Round">
+                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentRound > 1 ? '' : 'disabled'} aria-label="${t.previousRound}">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 </button>
               <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">R ${this.toolbarCurrentRound}</span>
-              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentRound < this.toolbarTotalRounds ? '' : 'disabled'} aria-label="Next Round">
+              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentRound < this.toolbarTotalRounds ? '' : 'disabled'} aria-label="${t.nextRound}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
               </button>
             </div>
           <div id="reminders-callout" style="position: relative; margin-left: 12px;">
-            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="Reminders">
+            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
               <span>${String(this.toolbarReminders.length)}</span>
             </button>
-            <button class="icon-button" id="toolbar-reminders-refresh" title="Refresh Reminders" aria-label="Refresh Reminders" style="margin-left:6px;">
+            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
             </button>
           </div>
@@ -1305,16 +1539,16 @@ export class DomindsApp extends HTMLElement {
               <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
                 <div style="display:flex; align-items:center; gap:8px;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-                  <span>Reminders (${String(this.toolbarReminders.length)})</span>
+                  <span>${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
                 </div>
-                <button id="reminders-widget-close" class="icon-button" aria-label="Close">
+                <button id="reminders-widget-close" class="icon-button" aria-label="${t.close}">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
               </div>
               <div id="reminders-widget-content" style="padding:8px 10px;">
                 ${
                   this.toolbarReminders.length === 0
-                    ? '<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">No reminders</div>'
+                    ? `<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">${t.noReminders}</div>`
                     : '<div class="reminders-widget-content"></div>'
                 }
               </div>
@@ -1552,6 +1786,26 @@ export class DomindsApp extends HTMLElement {
     }
 
     // Theme toggle button
+    const uiLanguageSelect = this.shadowRoot.querySelector(
+      '#ui-language-select',
+    ) as HTMLSelectElement | null;
+    if (uiLanguageSelect) {
+      uiLanguageSelect.addEventListener('change', () => {
+        const selected = uiLanguageSelect.value;
+        const parsed = normalizeLanguageCode(selected);
+        if (!parsed) {
+          console.warn(`Ignoring unsupported ui language selection: '${selected}'`);
+          uiLanguageSelect.value = this.uiLanguage;
+          return;
+        }
+        this.uiLanguage = parsed;
+        this.persistUiLanguage(parsed);
+        this.wsManager.setUiLanguage(parsed);
+        this.applyUiLanguageToDom();
+      });
+    }
+
+    // Theme toggle button
     const themeToggleBtn = this.shadowRoot.querySelector('#theme-toggle-btn');
     if (themeToggleBtn) {
       themeToggleBtn.addEventListener('click', (e) => {
@@ -1697,26 +1951,28 @@ export class DomindsApp extends HTMLElement {
   private showAuthModal(): void {
     if (this.authModal) return;
 
+    const t = getUiStrings(this.uiLanguage);
+
     const modal = document.createElement('div');
     modal.className = 'create-dialog-modal';
     modal.innerHTML = `
       <div class="modal-backdrop"></div>
       <div class="modal-content" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
         <div class="modal-header">
-          <h3 id="auth-modal-title">Authentication Required</h3>
+          <h3 id="auth-modal-title">${t.authRequiredTitle}</h3>
         </div>
         <div class="modal-body">
           <p class="modal-description">
-            Enter the Dominds auth key to connect.
+            ${t.authDescription}
           </p>
           <div class="form-group">
-            <label for="auth-key-input">Auth key</label>
-            <input type="password" id="auth-key-input" class="task-doc-input" placeholder="Paste auth key..." autocomplete="off">
+            <label for="auth-key-input">${t.authKeyLabel}</label>
+            <input type="password" id="auth-key-input" class="task-doc-input" placeholder="${t.authKeyPlaceholder}" autocomplete="off">
           </div>
           <div class="form-group" id="auth-modal-error" style="display:none;color:var(--dominds-danger,#dc3545);font-size:13px;"></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" id="auth-submit-btn">Connect</button>
+          <button class="btn btn-primary" id="auth-submit-btn">${t.connect}</button>
         </div>
       </div>
     `;
@@ -1734,7 +1990,7 @@ export class DomindsApp extends HTMLElement {
     const doSubmit = async () => {
       const key = input?.value ?? '';
       if (!key) {
-        setError('Auth key is required.');
+        setError(t.authKeyRequired);
         return;
       }
 
@@ -1745,10 +2001,10 @@ export class DomindsApp extends HTMLElement {
       if (!probe.success) {
         this.setAuthNone();
         if (probe.status === 401) {
-          setError('Auth failed. Please check the key and try again.');
+          setError(t.authFailed);
           return;
         }
-        setError(probe.error || 'Failed to connect.');
+        setError(probe.error || t.failedToConnect);
         return;
       }
 
@@ -2221,6 +2477,8 @@ export class DomindsApp extends HTMLElement {
 
     // Update UI based on connection state
     if (state.status === 'connected') {
+      this.wsManager.setUiLanguage(this.uiLanguage);
+
       // Fetch Q4H state from ALL running dialogs for global display
       // This ensures all pending Q4H questions are shown regardless of which dialog is selected
       this.wsManager.sendRaw({
@@ -2317,36 +2575,37 @@ export class DomindsApp extends HTMLElement {
   }
 
   private showCreateDialogModal(): void {
+    const t = getUiStrings(this.uiLanguage);
     const modal = document.createElement('div');
     modal.className = 'create-dialog-modal';
     modal.innerHTML = `
       <div class="modal-backdrop"></div>
       <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
         <div class="modal-header">
-          <h3 id="modal-title">Create New Dialog</h3>
-          <button class="modal-close" aria-label="Close">
+          <h3 id="modal-title">${t.createNewDialogTitle}</h3>
+          <button class="modal-close" aria-label="${t.close}">
             ✕
           </button>
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="task-doc-input">Task Document:</label>
+            <label for="task-doc-input">${t.taskDocumentLabel}</label>
             <div class="task-doc-container">
-              <input type="text" id="task-doc-input" class="task-doc-input" placeholder="Type to search task documents..." autocomplete="off">
+              <input type="text" id="task-doc-input" class="task-doc-input" placeholder="${t.taskDocumentPlaceholder}" autocomplete="off">
               <div id="task-doc-suggestions" class="task-doc-suggestions"></div>
             </div>
-            <small class="form-help">Select from existing documents or enter a custom path. Required field. Tab completes common prefix, Enter selects highlighted item.</small>
+            <small class="form-help">${t.taskDocumentHelp}</small>
           </div>
 
           <div class="form-group">
-            <label for="teammate-select">Teammate:</label>
+            <label for="teammate-select">${t.teammateLabel}</label>
             <select id="teammate-select" class="teammate-dropdown">
               ${this.teamMembers
                 .map((member) => {
                   const isDefault = member.id === this.defaultResponder;
                   const emoji = this.getAgentEmoji(member.id, member.icon);
                   return `<option value="${member.id}" ${isDefault ? 'selected' : ''}>
-                  ${emoji} ${member.name} (@${member.id})${isDefault ? ' • Default' : ''}
+                  ${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}
                 </option>`;
                 })
                 .join('')}
@@ -2359,10 +2618,10 @@ export class DomindsApp extends HTMLElement {
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="modal-cancel-btn">
-            Cancel
+            ${t.cancel}
           </button>
           <button class="btn btn-primary" id="create-dialog-btn">
-            Create Dialog
+            ${t.createDialog}
           </button>
         </div>
       </div>
@@ -2996,6 +3255,15 @@ export class DomindsApp extends HTMLElement {
     // Handle global events that don't need dialog filtering using discriminated unions
     switch (message.type) {
       case 'welcome': {
+        const welcome = message as WelcomeMessage;
+        this.serverWorkingLanguage = welcome.serverWorkingLanguage;
+        const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
+        if (dialogContainer instanceof DomindsDialogContainer) {
+          dialogContainer.setServerWorkingLanguage(welcome.serverWorkingLanguage);
+        }
+        return true;
+      }
+      case 'ui_language_set': {
         return true;
       }
       case 'error': {
@@ -3326,7 +3594,7 @@ export class DomindsApp extends HTMLElement {
       );
       if (widgetHeaders && widgetHeaders.length > 0) {
         widgetHeaders.forEach((header) => {
-          header.textContent = `Reminders (${this.toolbarReminders.length})`;
+          header.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
         });
       }
 
@@ -3362,6 +3630,8 @@ export class DomindsApp extends HTMLElement {
   }
 
   private toggleRemindersWidget(): void {
+    const t = getUiStrings(this.uiLanguage);
+
     // Guard against accessing reminders before dialog is fully activated
     if (!this.currentDialog || !this.currentDialog.selfId || !this.currentDialog.rootId) {
       console.warn('Cannot access reminders: no active dialog');
@@ -3393,9 +3663,9 @@ export class DomindsApp extends HTMLElement {
           <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
             <div style="display:flex; align-items:center; gap:8px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-              <span>Reminders (${String(this.toolbarReminders.length)})</span>
+              <span>${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
             </div>
-            <button id="reminders-widget-close" class="icon-button" aria-label="Close">
+            <button id="reminders-widget-close" class="icon-button" aria-label="${t.close}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
@@ -3434,20 +3704,21 @@ export class DomindsApp extends HTMLElement {
     // Always update ALL widget header counts first to ensure synchronization
     if (widgetHeaders && widgetHeaders.length > 0) {
       widgetHeaders.forEach((header) => {
-        header.textContent = `Reminders (${this.toolbarReminders.length})`;
+        header.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
       });
     }
 
     // Generate content HTML once
     let contentHTML = '';
     if (this.toolbarReminders.length === 0) {
-      contentHTML =
-        '<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">No reminders</div>';
+      const t = getUiStrings(this.uiLanguage);
+      contentHTML = `<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">${t.noReminders}</div>`;
     } else {
+      const t = getUiStrings(this.uiLanguage);
       const items = this.toolbarReminders
         .map((r, i) => {
           if (!r || !r.content) {
-            return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content" style="color: var(--dominds-muted); font-style: italic;">Loading...</div></div>`;
+            return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content" style="color: var(--dominds-muted); font-style: italic;">${t.loading}</div></div>`;
           }
 
           // Format reminder content with metadata display if available
@@ -3463,8 +3734,8 @@ export class DomindsApp extends HTMLElement {
             // If this is a daemon type reminder with PID, show enhanced display
             if (metaType === 'daemon' && metaPid) {
               const pidStr = String(metaPid);
-              const commandStr = metaCommand || 'unknown command';
-              displayContent = `🔄 Daemon (PID: ${pidStr})\nCommand: ${commandStr}`;
+              const commandStr = metaCommand || t.unknownCommand;
+              displayContent = `🔄 ${t.daemonLabel} (PID: ${pidStr})\n${t.commandLabel}: ${commandStr}`;
             }
           }
 
