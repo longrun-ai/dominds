@@ -16,7 +16,7 @@ export function formatUserFacingLanguageGuide(
   if (uiLanguage === workingLanguage) {
     return `User-visible response language: ${uiName}.`;
   }
-  return `User-visible response language: ${uiName}. Internal working language remains: ${workingName} (system prompt, teammate comms, tool calls).`;
+  return `User-visible response language: ${uiName}. Internal work language remains: ${workingName} (system prompt, teammate comms, tool calls).`;
 }
 
 export function formatReminderItemGuide(

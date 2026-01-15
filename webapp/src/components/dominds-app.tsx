@@ -4,7 +4,13 @@
 
 import type { ConnectionState } from '@/services/store';
 import faviconUrl from '../assets/favicon.svg';
-import { formatRemindersTitle, getUiStrings } from '../i18n/ui';
+import {
+  formatRemindersTitle,
+  formatUiLanguageOptionLabel,
+  formatUiLanguageTooltip,
+  getUiLanguageMatchState,
+  getUiStrings,
+} from '../i18n/ui';
 import type { FrontendTeamMember } from '../services/api';
 import { getApiClient } from '../services/api';
 import {
@@ -24,7 +30,12 @@ import type {
   SubdialogEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
-import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
+import {
+  formatLanguageName,
+  normalizeLanguageCode,
+  supportedLanguageCodes,
+  type LanguageCode,
+} from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
 import type {
   DialogReadyMessage,
@@ -33,6 +44,7 @@ import type {
   WebSocketMessage,
   WelcomeMessage,
 } from '../shared/types/wire';
+import { marked } from '../utils/markdownRenderer';
 import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-q4h-input';
@@ -82,6 +94,8 @@ export class DomindsApp extends HTMLElement {
   private authModal: HTMLElement | null = null;
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
   private serverWorkingLanguage: LanguageCode | null = null;
+  private uiLanguageMenuOpen: boolean = false;
+  private _uiLanguageMenuGlobalCancel?: () => void;
 
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
@@ -122,8 +136,7 @@ export class DomindsApp extends HTMLElement {
     const workspace = this.shadowRoot.querySelector('.workspace-indicator') as HTMLElement | null;
     if (workspace) workspace.title = t.backendWorkspaceTitle;
 
-    const langSelect = this.shadowRoot.querySelector('#ui-language-select') as HTMLSelectElement;
-    if (langSelect) langSelect.title = t.uiLanguageSelectTitle;
+    this.applyUiLanguageSelectDecorations(t);
 
     const themeBtn = this.shadowRoot.querySelector('#theme-toggle-btn') as HTMLButtonElement | null;
     if (themeBtn) themeBtn.title = t.themeToggleTitle;
@@ -239,6 +252,124 @@ export class DomindsApp extends HTMLElement {
     }
     this.updateCreateDialogModalText();
     this.updateAuthModalText();
+  }
+
+  private applyUiLanguageSelectDecorations(t: ReturnType<typeof getUiStrings>): void {
+    if (!this.shadowRoot) return;
+
+    const button = this.shadowRoot.querySelector('#ui-language-menu-button');
+    if (!(button instanceof HTMLButtonElement)) return;
+    const menu = this.shadowRoot.querySelector('#ui-language-menu');
+    if (!(menu instanceof HTMLElement)) return;
+
+    const matchState = getUiLanguageMatchState({
+      uiLanguage: this.uiLanguage,
+      serverWorkingLanguage: this.serverWorkingLanguage,
+    });
+    button.dataset.langMatch = matchState.kind;
+    button.dataset.uiLanguage = this.uiLanguage;
+
+    const buttonLabel = this.shadowRoot.querySelector(
+      '#ui-language-menu-button-label',
+    ) as HTMLElement | null;
+    if (buttonLabel) {
+      buttonLabel.textContent = formatLanguageName(this.uiLanguage, this.uiLanguage);
+    }
+    button.title = `${t.uiLanguageSelectTitle}\n${formatUiLanguageOptionLabel({
+      optionLanguage: this.uiLanguage,
+      serverWorkingLanguage: this.serverWorkingLanguage,
+    })}`;
+
+    for (const optionLanguage of supportedLanguageCodes) {
+      const item = menu.querySelector(`button[data-language="${optionLanguage}"]`);
+      if (!(item instanceof HTMLButtonElement)) continue;
+
+      const itemMatch = getUiLanguageMatchState({
+        uiLanguage: optionLanguage,
+        serverWorkingLanguage: this.serverWorkingLanguage,
+      });
+      item.dataset.langMatch = itemMatch.kind;
+
+      const label = item.querySelector('.ui-language-menu-item-label');
+      if (label instanceof HTMLElement) {
+        label.textContent = formatUiLanguageOptionLabel({
+          optionLanguage,
+          serverWorkingLanguage: this.serverWorkingLanguage,
+        });
+      }
+
+      const tip = item.querySelector('.ui-language-menu-item-tip');
+      if (tip instanceof HTMLElement) {
+        const tipMarkdown = formatUiLanguageTooltip({
+          inLanguage: optionLanguage,
+          describedUiLanguage: optionLanguage,
+          serverWorkingLanguage: this.serverWorkingLanguage,
+        });
+        tip.innerHTML = marked.parse(tipMarkdown) as string;
+      }
+
+      if (optionLanguage === this.uiLanguage) {
+        item.dataset.selected = 'true';
+        item.setAttribute('aria-current', 'true');
+      } else {
+        item.dataset.selected = 'false';
+        item.removeAttribute('aria-current');
+      }
+    }
+  }
+
+  private setUiLanguageMenuOpen(open: boolean): void {
+    if (!this.shadowRoot) return;
+    this.uiLanguageMenuOpen = open;
+
+    const button = this.shadowRoot.querySelector('#ui-language-menu-button');
+    const menu = this.shadowRoot.querySelector('#ui-language-menu');
+    if (!(button instanceof HTMLButtonElement)) return;
+    if (!(menu instanceof HTMLElement)) return;
+
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    menu.hidden = !open;
+
+    if (open) {
+      const selected = menu.querySelector(`button[data-language="${this.uiLanguage}"]`);
+      if (selected instanceof HTMLButtonElement) {
+        selected.focus();
+      }
+    } else {
+      button.focus();
+    }
+  }
+
+  private ensureUiLanguageMenuGlobalListeners(): void {
+    if (this._uiLanguageMenuGlobalCancel) return;
+
+    const onPointerDown = (e: MouseEvent): void => {
+      if (!this.uiLanguageMenuOpen) return;
+
+      const path = e.composedPath();
+      for (const p of path) {
+        if (p instanceof Element) {
+          if (p.id === 'ui-language-menu-button') return;
+          if (p.id === 'ui-language-menu') return;
+        }
+      }
+      this.setUiLanguageMenuOpen(false);
+    };
+
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!this.uiLanguageMenuOpen) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.setUiLanguageMenuOpen(false);
+      }
+    };
+
+    this.ownerDocument.addEventListener('mousedown', onPointerDown, true);
+    this.ownerDocument.addEventListener('keydown', onKeyDown, true);
+    this._uiLanguageMenuGlobalCancel = () => {
+      this.ownerDocument.removeEventListener('mousedown', onPointerDown, true);
+      this.ownerDocument.removeEventListener('keydown', onKeyDown, true);
+    };
   }
 
   private updateCreateDialogModalText(): void {
@@ -473,6 +604,11 @@ export class DomindsApp extends HTMLElement {
       this._connStateCancel();
       this._connStateCancel = undefined;
     }
+
+    if (this._uiLanguageMenuGlobalCancel) {
+      this._uiLanguageMenuGlobalCancel();
+      this._uiLanguageMenuGlobalCancel = undefined;
+    }
   }
 
   /**
@@ -680,6 +816,113 @@ export class DomindsApp extends HTMLElement {
         padding: 0 10px;
         font-size: 12px;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        white-space: nowrap;
+      }
+
+      .lang-select[data-lang-match='match'] {
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 70%, white 30%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 18%, transparent);
+      }
+
+      .lang-select[data-lang-match='mismatch'] {
+        border-color: color-mix(in srgb, #d97706 70%, white 30%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, #d97706 18%, transparent);
+      }
+
+      .lang-select[data-lang-match='unknown'] {
+        border-style: dashed;
+      }
+
+      .ui-language-menu {
+        position: relative;
+      }
+
+      .ui-language-menu-popover {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        min-width: 320px;
+        max-width: 420px;
+        background: var(--dominds-sidebar-bg, #f8f9fa);
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 10px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        padding: 6px;
+        z-index: 1000;
+      }
+
+      .ui-language-menu-item {
+        width: 100%;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--dominds-fg, #333333);
+        cursor: pointer;
+        text-align: left;
+        padding: 10px 10px;
+        border-radius: 8px;
+      }
+
+      .ui-language-menu-item:hover {
+        background: color-mix(in srgb, var(--dominds-hover) 80%, var(--dominds-fg) 20%);
+      }
+
+      .ui-language-menu-item[data-lang-match='match'] {
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 70%, white 30%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 18%, transparent);
+      }
+
+      .ui-language-menu-item[data-lang-match='mismatch'] {
+        border-color: color-mix(in srgb, #d97706 70%, white 30%);
+        box-shadow: 0 0 0 2px color-mix(in srgb, #d97706 18%, transparent);
+      }
+
+      .ui-language-menu-item[data-lang-match='unknown'] {
+        border-style: dashed;
+        border-color: var(--dominds-border, #e0e0e0);
+      }
+
+      .ui-language-menu-item[data-selected='true'] .ui-language-menu-item-label {
+        font-weight: 600;
+        color: var(--dominds-primary, #007acc);
+      }
+
+      .ui-language-menu-item-label {
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .ui-language-menu-item-tip {
+        margin-top: 6px;
+        margin-left: 12px;
+        padding-left: 10px;
+        border-left: 2px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
+        color: var(--dominds-muted, #666666);
+        font-size: 11px;
+        line-height: 1.4;
+        white-space: normal;
+      }
+
+      .ui-language-menu-item-tip p {
+        margin: 0;
+      }
+
+      .ui-language-menu-item-tip ul,
+      .ui-language-menu-item-tip ol {
+        margin: 6px 0 0 0;
+        padding-left: 18px;
+      }
+
+      .ui-language-menu-item-tip li {
+        margin: 2px 0 0 0;
+      }
+
+      .ui-language-menu-button-caret {
+        font-size: 10px;
+        opacity: 0.7;
       }
 
       .theme-toggle {
@@ -1427,6 +1670,42 @@ export class DomindsApp extends HTMLElement {
 
   public getHTML(): string {
     const t = getUiStrings(this.uiLanguage);
+    const uiLanguageMatch = getUiLanguageMatchState({
+      uiLanguage: this.uiLanguage,
+      serverWorkingLanguage: this.serverWorkingLanguage,
+    });
+    const uiLanguageButtonLabel = formatLanguageName(this.uiLanguage, this.uiLanguage);
+    const uiLanguageButtonTooltip = formatUiLanguageOptionLabel({
+      optionLanguage: this.uiLanguage,
+      serverWorkingLanguage: this.serverWorkingLanguage,
+    });
+    const uiLanguageMenuItems = supportedLanguageCodes
+      .map((optionLanguage) => {
+        const optionMatch = getUiLanguageMatchState({
+          uiLanguage: optionLanguage,
+          serverWorkingLanguage: this.serverWorkingLanguage,
+        });
+        const label = formatUiLanguageOptionLabel({
+          optionLanguage,
+          serverWorkingLanguage: this.serverWorkingLanguage,
+        });
+        const tipMarkdown = formatUiLanguageTooltip({
+          inLanguage: optionLanguage,
+          describedUiLanguage: optionLanguage,
+          serverWorkingLanguage: this.serverWorkingLanguage,
+        });
+        const tipHtml = marked.parse(tipMarkdown) as string;
+        const selected = optionLanguage === this.uiLanguage;
+        return `
+          <button type="button" class="ui-language-menu-item" data-language="${optionLanguage}" data-lang-match="${optionMatch.kind}" data-selected="${
+            selected ? 'true' : 'false'
+          }" ${selected ? 'aria-current="true"' : ''}>
+            <div class="ui-language-menu-item-label">${label}</div>
+            <div class="ui-language-menu-item-tip">${tipHtml}</div>
+          </button>
+        `;
+      })
+      .join('');
     return `
       <div class="app-container">
         <header class="header">
@@ -1439,10 +1718,15 @@ export class DomindsApp extends HTMLElement {
           </div>
           <div class="header-actions">
             <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
-            <select id="ui-language-select" class="lang-select" title="${t.uiLanguageSelectTitle}">
-              <option value="en" ${this.uiLanguage === 'en' ? 'selected' : ''}>English</option>
-              <option value="zh" ${this.uiLanguage === 'zh' ? 'selected' : ''}>简体中文</option>
-            </select>
+            <div class="ui-language-menu">
+              <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
+                <span id="ui-language-menu-button-label">${uiLanguageButtonLabel}</span>
+                <span class="ui-language-menu-button-caret">▾</span>
+              </button>
+              <div id="ui-language-menu" class="ui-language-menu-popover" role="menu" hidden>
+                ${uiLanguageMenuItems}
+              </div>
+            </div>
             <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}">
               ${this.currentTheme === 'light' ? '🌙' : '☀️'}
             </button>
@@ -1785,23 +2069,70 @@ export class DomindsApp extends HTMLElement {
       });
     }
 
-    // Theme toggle button
-    const uiLanguageSelect = this.shadowRoot.querySelector(
-      '#ui-language-select',
-    ) as HTMLSelectElement | null;
-    if (uiLanguageSelect) {
-      uiLanguageSelect.addEventListener('change', () => {
-        const selected = uiLanguageSelect.value;
-        const parsed = normalizeLanguageCode(selected);
+    // UI language menu (custom dropdown)
+    const uiLangButton = this.shadowRoot.querySelector('#ui-language-menu-button');
+    const uiLangMenu = this.shadowRoot.querySelector('#ui-language-menu');
+
+    if (uiLangButton instanceof HTMLButtonElement && uiLangMenu instanceof HTMLElement) {
+      this.ensureUiLanguageMenuGlobalListeners();
+
+      uiLangButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.setUiLanguageMenuOpen(!this.uiLanguageMenuOpen);
+      });
+
+      uiLangButton.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this.setUiLanguageMenuOpen(true);
+        }
+      });
+
+      uiLangMenu.addEventListener('click', (e: Event) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const item = target.closest('button.ui-language-menu-item');
+        if (!(item instanceof HTMLButtonElement)) return;
+
+        const raw = item.dataset.language;
+        if (typeof raw !== 'string') return;
+        const parsed = normalizeLanguageCode(raw);
         if (!parsed) {
-          console.warn(`Ignoring unsupported ui language selection: '${selected}'`);
-          uiLanguageSelect.value = this.uiLanguage;
+          console.warn(`Ignoring unsupported ui language selection: '${raw}'`);
           return;
         }
         this.uiLanguage = parsed;
         this.persistUiLanguage(parsed);
         this.wsManager.setUiLanguage(parsed);
         this.applyUiLanguageToDom();
+        this.setUiLanguageMenuOpen(false);
+      });
+
+      uiLangMenu.addEventListener('keydown', (e: KeyboardEvent) => {
+        const items = Array.from(
+          uiLangMenu.querySelectorAll<HTMLButtonElement>('button.ui-language-menu-item'),
+        );
+        if (items.length === 0) return;
+
+        const currentIndex = items.findIndex((b) => b === this.ownerDocument.activeElement);
+        const activeIndex = currentIndex >= 0 ? currentIndex : 0;
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const next = items[(activeIndex + 1) % items.length];
+          next?.focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prev = items[(activeIndex - 1 + items.length) % items.length];
+          prev?.focus();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const btn = items[activeIndex];
+          btn?.click();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.setUiLanguageMenuOpen(false);
+        }
       });
     }
 
@@ -3261,6 +3592,7 @@ export class DomindsApp extends HTMLElement {
         if (dialogContainer instanceof DomindsDialogContainer) {
           dialogContainer.setServerWorkingLanguage(welcome.serverWorkingLanguage);
         }
+        this.applyUiLanguageToDom();
         return true;
       }
       case 'ui_language_set': {

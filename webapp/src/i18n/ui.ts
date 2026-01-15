@@ -1,4 +1,4 @@
-import type { LanguageCode } from '../shared/types/language';
+import { formatLanguageName, type LanguageCode } from '../shared/types/language';
 
 export type UiStrings = {
   backendWorkspaceTitle: string;
@@ -108,7 +108,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       placeholderTeamMembersText: '团队成员控制的占位视图。',
 
       newDialogTitle: '新建对话',
-      currentDialogPlaceholder: '选择或创建一个对话以开始',
+      currentDialogPlaceholder: '从选择或创建一个对话开始',
 
       previousRound: '上一轮',
       nextRound: '下一轮',
@@ -260,4 +260,138 @@ export function formatRemindersTitle(language: LanguageCode, count: number): str
 export function formatTeamMembersTitle(language: LanguageCode, count: number): string {
   const t = getUiStrings(language);
   return `👥 ${t.teamMembersTitle} (${count})`;
+}
+
+export type UiLanguageMatchState =
+  | { kind: 'unknown' }
+  | { kind: 'match'; serverWorkingLanguage: LanguageCode }
+  | { kind: 'mismatch'; serverWorkingLanguage: LanguageCode };
+
+export function getUiLanguageMatchState(args: {
+  uiLanguage: LanguageCode;
+  serverWorkingLanguage: LanguageCode | null;
+}): UiLanguageMatchState {
+  const { uiLanguage, serverWorkingLanguage } = args;
+  if (serverWorkingLanguage === null) return { kind: 'unknown' };
+  if (uiLanguage === serverWorkingLanguage) {
+    return { kind: 'match', serverWorkingLanguage };
+  }
+  return { kind: 'mismatch', serverWorkingLanguage };
+}
+
+export function formatUiLanguageOptionLabel(args: {
+  optionLanguage: LanguageCode;
+  serverWorkingLanguage: LanguageCode | null;
+}): string {
+  const name = formatLanguageName(args.optionLanguage, args.optionLanguage);
+  const match = getUiLanguageMatchState({
+    uiLanguage: args.optionLanguage,
+    serverWorkingLanguage: args.serverWorkingLanguage,
+  });
+
+  switch (match.kind) {
+    case 'unknown': {
+      return args.optionLanguage === 'zh' ? `${name}（工作语言?）` : `${name} (Work Language?)`;
+    }
+    case 'match': {
+      return args.optionLanguage === 'zh' ? `${name}（是工作语言）` : `${name} (The Work Language)`;
+    }
+    case 'mismatch': {
+      return args.optionLanguage === 'zh' ? `${name}（非工作语言）` : `${name} (Not Work Language)`;
+    }
+    default: {
+      const _exhaustive: never = match;
+      throw new Error(`Unhandled UiLanguageMatchState: ${_exhaustive}`);
+    }
+  }
+}
+
+export function formatUiLanguageTooltip(args: {
+  /**
+   * Tooltip copy language.
+   * For dropdown options, this should be the option's language ("associated language").
+   */
+  inLanguage: LanguageCode;
+  /**
+   * The UI language being described (current selection or a candidate option).
+   */
+  describedUiLanguage: LanguageCode;
+  serverWorkingLanguage: LanguageCode | null;
+}): string {
+  const uiName = formatLanguageName(args.describedUiLanguage, args.inLanguage);
+  const match = getUiLanguageMatchState({
+    uiLanguage: args.describedUiLanguage,
+    serverWorkingLanguage: args.serverWorkingLanguage,
+  });
+
+  switch (args.inLanguage) {
+    case 'zh': {
+      switch (match.kind) {
+        case 'unknown': {
+          return (
+            `界面语言：${uiName}。\n` +
+            `- 影响：WebUI 界面文案 + 本客户端希望 agent 用该语言回复。\n` +
+            `- 不影响：agent 的内部工作语言 / 系统提示 / 队友（子对话）叙事格式。\n` +
+            `工作语言尚未知（需先连接）。`
+          );
+        }
+        case 'match': {
+          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          return (
+            `界面语言：${uiName}（工作语言）\n` +
+            `- 影响：WebUI 界面文案 + 本客户端希望 agent 用 ${uiName} 回复。\n` +
+            `- 不影响：无（内部工作语言也为 ${serverName}）。`
+          );
+        }
+        case 'mismatch': {
+          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          return (
+            `界面语言：${uiName}（非工作语言）\n` +
+            `- 影响：WebUI 界面文案 + 本客户端希望 agent 用 ${uiName} 回复。\n` +
+            `- 不影响：内部工作语言仍为 ${serverName}（系统提示、队友/子对话叙事格式、内部引导信息）。`
+          );
+        }
+        default: {
+          const _exhaustive: never = match;
+          throw new Error(`Unhandled UiLanguageMatchState: ${_exhaustive}`);
+        }
+      }
+    }
+    case 'en': {
+      switch (match.kind) {
+        case 'unknown': {
+          return (
+            `UI language: ${uiName}\n` +
+            `- Affects: WebUI copy + this client’s preferred language for agent replies.\n` +
+            `- Does NOT affect: the agent’s internal work language, system prompts, or teammate/subdialog narrative formatting.\n` +
+            `Work language is not known yet (connect first).`
+          );
+        }
+        case 'match': {
+          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          return (
+            `UI language: ${uiName} (the work language)\n` +
+            `- Affects: WebUI copy + this client’s preferred language for agent replies (${uiName}).\n` +
+            `- Does NOT affect: nothing (internal work language is also ${serverName}).`
+          );
+        }
+        case 'mismatch': {
+          const serverName = formatLanguageName(match.serverWorkingLanguage, args.inLanguage);
+          return (
+            `UI language: ${uiName} (not work language)\n` +
+            `- Affects: WebUI copy + this client’s preferred language for agent replies (${uiName}).\n` +
+            `- Does NOT affect: internal work language remains ${serverName} (system prompts, teammate/subdialog narrative formatting, internal guide messages).`
+          );
+        }
+        default: {
+          const _exhaustive: never = match;
+          throw new Error(`Unhandled UiLanguageMatchState: ${_exhaustive}`);
+        }
+      }
+    }
+    default: {
+      const _exhaustive: never = args.inLanguage;
+      throw new Error(`Unsupported inLanguage: ${_exhaustive}`);
+    }
+  }
 }

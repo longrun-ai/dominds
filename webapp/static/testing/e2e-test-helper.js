@@ -730,7 +730,7 @@ function captureHeaderState(shadow) {
   return {
     exists: !!header,
     workspace: header?.querySelector('.workspace-indicator')?.textContent?.trim() || null,
-    uiLanguage: header?.querySelector('#ui-language-select')?.value || null,
+    uiLanguage: app?.uiLanguage || null,
     serverWorkingLanguage: app?.serverWorkingLanguage || null,
     themeToggle: header?.querySelector('#theme-toggle-btn')?.textContent?.trim() || null,
   };
