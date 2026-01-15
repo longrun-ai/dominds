@@ -366,6 +366,7 @@ export class AnthropicGen implements LlmGenerator {
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
@@ -407,10 +408,15 @@ export class AnthropicGen implements LlmGenerator {
       }),
     };
 
-    const stream: AsyncIterable<MessageStreamEvent> = client.messages.stream({
+    const streamParams: MessageCreateParamsStreaming & { signal?: AbortSignal } = {
       ...baseParams,
       stream: true,
-    } satisfies MessageCreateParamsStreaming);
+      ...(abortSignal ? { signal: abortSignal } : {}),
+    };
+
+    const stream: AsyncIterable<MessageStreamEvent> = client.messages.stream(
+      streamParams as unknown as MessageCreateParamsStreaming,
+    );
 
     // Stream lifecycle management using SDK start/stop events
     let currentContentBlock: AnthropicMessageContent[number] | null = null;
@@ -419,6 +425,9 @@ export class AnthropicGen implements LlmGenerator {
     let thinkingStarted = false;
 
     for await (const event of stream) {
+      if (abortSignal?.aborted) {
+        throw new Error('AbortError');
+      }
       switch (event.type) {
         case 'content_block_start': {
           const contentBlock = event.content_block;
@@ -595,6 +604,7 @@ export class AnthropicGen implements LlmGenerator {
     funcTools: FuncTool[],
     context: ChatMessage[],
     genseq: number,
+    abortSignal?: AbortSignal,
   ): Promise<ChatMessage[]> {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
@@ -633,10 +643,13 @@ export class AnthropicGen implements LlmGenerator {
       }),
     };
 
-    const response = await client.messages.create({
+    const createParams: MessageCreateParams & { signal?: AbortSignal } = {
       ...baseParams,
       stream: false,
-    } satisfies MessageCreateParams);
+      ...(abortSignal ? { signal: abortSignal } : {}),
+    };
+
+    const response = await client.messages.create(createParams as unknown as MessageCreateParams);
 
     if (!response) {
       throw new Error('No response from Anthropic API');

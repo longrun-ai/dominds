@@ -19,6 +19,7 @@ import type {
 } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
+import type { DialogRunState } from '../shared/types/run-state';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
 import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
 import { DomindsCodeBlock } from './dominds-code-block';
@@ -35,6 +36,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
   private serverWorkLanguage: LanguageCode = 'en';
+  private runState: DialogRunState | null = null;
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
@@ -227,6 +229,7 @@ export class DomindsDialogContainer extends HTMLElement {
   // Clean up current state and DOM content
   private cleanup(): void {
     this.previousDialog = undefined;
+    this.runState = null;
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
@@ -277,21 +280,51 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const currentRound = this.currentRound;
-    if (
-      currentRound !== undefined &&
-      event.type !== 'full_reminders_update' &&
-      event.type !== 'new_q4h_asked' &&
-      event.type !== 'q4h_answered'
-    ) {
+    if (currentRound !== undefined) {
       // After a round transition (round_update -> resetForRound), the backend can still emit
       // late events from the previous round. The UX rule is "one round in the timeline",
       // so we must drop out-of-round events instead of trying to attach them to missing bubbles.
-      if (event.round !== currentRound) {
-        return;
+      if ('round' in event && typeof (event as { round?: unknown }).round === 'number') {
+        const round = (event as { round: number }).round;
+        if (round !== currentRound) {
+          return;
+        }
       }
     }
 
     switch (event.type) {
+      case 'dlg_run_state_evt':
+        this.runState = event.runState;
+        this.updateResumePanel();
+        break;
+
+      case 'dlg_run_state_marker_evt': {
+        let reasonText: string | undefined;
+        const reason = event.reason;
+        if (reason) {
+          switch (reason.kind) {
+            case 'user_stop':
+              reasonText = 'Stopped by you';
+              break;
+            case 'emergency_stop':
+              reasonText = 'Stopped by emergency stop';
+              break;
+            case 'server_restart':
+              reasonText = 'Interrupted by server restart';
+              break;
+            case 'system_stop':
+              reasonText = reason.detail;
+              break;
+            default: {
+              const _exhaustive: never = reason;
+              reasonText = String(_exhaustive);
+            }
+          }
+        }
+        this.appendRunStateMarker({ kind: event.kind, reason: reasonText });
+        break;
+      }
+
       case 'end_of_user_saying_evt':
         {
           // Render <hr/> separator between user content and AI response
@@ -1797,15 +1830,139 @@ export class DomindsDialogContainer extends HTMLElement {
       <style>${this.getStyles()}</style>
       <div class="container">
         <div class="messages"></div>
+        <div id="resume-panel" class="resume-panel hidden">
+          <div class="resume-text">
+            <div class="resume-title">Continue</div>
+            <div id="resume-reason" class="resume-reason"></div>
+          </div>
+          <div class="resume-actions">
+            <button id="resume-btn" class="resume-btn" type="button">Continue</button>
+          </div>
+        </div>
       </div>
     `;
+
+    const btn = this.shadowRoot.querySelector('#resume-btn') as HTMLButtonElement | null;
+    if (btn) {
+      btn.onclick = () => {
+        const dialog = this.currentDialog;
+        if (!dialog) return;
+        this.wsManager.sendRaw({ type: 'resume_dialog', dialog });
+      };
+    }
+    this.updateResumePanel();
+  }
+
+  private updateResumePanel(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const panel = root.querySelector('#resume-panel') as HTMLElement | null;
+    const reasonEl = root.querySelector('#resume-reason') as HTMLElement | null;
+    const btn = root.querySelector('#resume-btn') as HTMLButtonElement | null;
+    if (!panel || !reasonEl || !btn) return;
+
+    const state = this.runState;
+    const canShow = !!this.currentDialog && state !== null && state.kind === 'interrupted';
+    panel.classList.toggle('hidden', !canShow);
+
+    if (!canShow) {
+      reasonEl.textContent = '';
+      btn.disabled = true;
+      return;
+    }
+
+    btn.disabled = false;
+
+    const reason = state.reason;
+    switch (reason.kind) {
+      case 'user_stop':
+        reasonEl.textContent = 'Stopped by you';
+        break;
+      case 'emergency_stop':
+        reasonEl.textContent = 'Stopped by emergency stop';
+        break;
+      case 'server_restart':
+        reasonEl.textContent = 'Interrupted by server restart';
+        break;
+      case 'system_stop':
+        reasonEl.textContent = reason.detail;
+        break;
+      default: {
+        const _exhaustive: never = reason;
+        reasonEl.textContent = String(_exhaustive);
+      }
+    }
+  }
+
+  private appendRunStateMarker(marker: { kind: 'interrupted' | 'resumed'; reason?: string }): void {
+    const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (!messages) return;
+
+    const el = document.createElement('div');
+    el.className = 'message system run-marker';
+    const label = marker.kind === 'resumed' ? 'Resumed' : 'Interrupted';
+    const reason = marker.reason ? ` • ${marker.reason}` : '';
+    el.innerHTML = `<div class="content"><div class="system-marker">${label}${reason}</div></div>`;
+    messages.appendChild(el);
   }
 
   private getStyles(): string {
     return `
       :host { display: block; height: 100%; }
       .container { height: 100%; background: var(--dominds-bg, var(--color-bg-primary, #ffffff)); }
-      .messages { box-sizing: border-box; padding: 16px; min-height: 100%; }
+      .messages { box-sizing: border-box; padding: 16px; }
+
+      .resume-panel {
+        margin: 0 16px 16px 16px;
+        padding: 12px 12px;
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        border-radius: 10px;
+        background: var(--dominds-bg, var(--color-bg-secondary, #ffffff));
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .resume-panel.hidden {
+        display: none;
+      }
+
+      .resume-title {
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
+      }
+
+      .resume-reason {
+        font-size: 12px;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        margin-top: 2px;
+      }
+
+      .resume-btn {
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        background: var(--dominds-primary, var(--color-accent-primary, #007acc));
+        color: white;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      .resume-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .run-marker {
+        padding: 10px 12px;
+      }
+
+      .system-marker {
+        font-size: 12px;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+      }
       
       /* Message styles for tool results and other content */
       .message {

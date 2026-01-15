@@ -72,6 +72,11 @@ export type UiStrings = {
   q4hInputPlaceholder: string;
   q4hEnterToSendTitle: string;
   q4hCtrlEnterToSendTitle: string;
+  send: string;
+  stop: string;
+  stopping: string;
+  emergencyStop: string;
+  resumeAll: string;
 
   connectionConnected: string;
   connectionConnecting: string;
@@ -168,6 +173,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hInputPlaceholder: '输入你的回答…',
       q4hEnterToSendTitle: '按 Enter 发送（Cmd/Ctrl+Enter 换行）',
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
+      send: '发送',
+      stop: '停止',
+      stopping: '停止中…',
+      emergencyStop: '紧急停止',
+      resumeAll: '全部继续',
 
       connectionConnected: '已连接',
       connectionConnecting: '连接中',
@@ -263,6 +273,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hInputPlaceholder: 'Type your answer...',
     q4hEnterToSendTitle: 'Enter to send (Cmd/Ctrl+Enter for newline)',
     q4hCtrlEnterToSendTitle: 'Cmd/Ctrl+Enter to send (Enter for newline)',
+    send: 'Send',
+    stop: 'Stop',
+    stopping: 'Stopping…',
+    emergencyStop: 'Emergency stop',
+    resumeAll: 'Resume all',
 
     connectionConnected: 'Connected',
     connectionConnecting: 'Connecting',

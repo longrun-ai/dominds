@@ -7,7 +7,19 @@
 
 // === DIALOG EVENT TYPE DEFINITIONS ===
 import type { LanguageCode } from './language';
+import type { DialogInterruptionReason, DialogRunState } from './run-state';
 import type { UserTextGrammar } from './storage';
+
+export interface DialogRunStateEvent {
+  type: 'dlg_run_state_evt';
+  runState: DialogRunState;
+}
+
+export interface DialogRunStateMarkerEvent {
+  type: 'dlg_run_state_marker_evt';
+  kind: 'interrupted' | 'resumed';
+  reason?: DialogInterruptionReason;
+}
 
 export interface SubdialogEvent extends DialogEventBase {
   type: 'subdialog_created_evt';
@@ -285,6 +297,9 @@ export type DialogEvent =
   // Generation lifecycle
   | GeneratingStartEvent
   | GeneratingFinishEvent
+  // Run state
+  | DialogRunStateEvent
+  | DialogRunStateMarkerEvent
   // Thinking stream
   | ThinkingStartEvent
   | ThinkingChunkEvent

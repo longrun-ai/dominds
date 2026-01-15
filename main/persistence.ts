@@ -256,6 +256,7 @@ export class DiskFileDialogStore extends DialogStore {
       messageCount: 0,
       functionCallCount: 0,
       subdialogCount: 0,
+      runState: { kind: 'idle_waiting_user' },
     });
 
     // Supdialog clarification context is persisted in subdialog metadata (supdialogCall)
@@ -2080,6 +2081,72 @@ export class DialogPersistence {
       log.error('Failed to list dialogs:', error);
       return [];
     }
+  }
+
+  /**
+   * List all dialog IDs (root + subdialogs) together with their root IDs.
+   * This is the only safe way to enumerate subdialogs because their directory names
+   * are not guaranteed to be their selfId.
+   */
+  static async listAllDialogIds(
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<DialogID[]> {
+    const statusDir = this.getDialogsRootDir();
+    const specificDir = path.join(
+      statusDir,
+      status === 'running'
+        ? this.RUN_DIR
+        : status === 'completed'
+          ? this.DONE_DIR
+          : this.ARCHIVE_DIR,
+    );
+
+    const result: DialogID[] = [];
+
+    const findDialogYamls = async (dirPath: string, relativePath: string = ''): Promise<void> => {
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      } catch (err) {
+        log.warn(`🔍 listAllDialogIds: Error reading directory ${dirPath}:`, err);
+        return;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
+
+        if (entry.isDirectory()) {
+          await findDialogYamls(fullPath, entryRelativePath);
+          continue;
+        }
+        if (entry.name !== 'dialog.yaml') continue;
+
+        const segments = entryRelativePath.split(path.sep);
+        const rootId = segments.length > 0 ? segments[0] : undefined;
+        if (!rootId || rootId.trim() === '') continue;
+
+        try {
+          const content = await fs.promises.readFile(fullPath, 'utf-8');
+          const parsed: unknown = yaml.parse(content);
+          if (typeof parsed !== 'object' || parsed === null) continue;
+          const idValue = (parsed as { id?: unknown }).id;
+          if (typeof idValue !== 'string' || idValue.trim() === '') continue;
+          result.push(new DialogID(idValue, rootId));
+        } catch (yamlError) {
+          log.warn(`🔍 listAllDialogIds: Failed to parse dialog.yaml at ${fullPath}:`, yamlError);
+        }
+      }
+    };
+
+    const dirExists = await fs.promises
+      .stat(specificDir)
+      .then(() => true)
+      .catch(() => false);
+    if (!dirExists) return [];
+
+    await findDialogYamls(specificDir);
+    return result;
   }
 
   // === NEW JSONL ROUND-BASED METHODS ===

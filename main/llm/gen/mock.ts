@@ -200,6 +200,7 @@ responses:
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     const dbPath = providerConfig.baseUrl;
     if (!agent.model) {
@@ -210,6 +211,10 @@ responses:
     const lastMsg = context[context.length - 1];
     const content = lastMsg && 'content' in lastMsg ? (lastMsg as { content: string }).content : '';
     const role = lastMsg?.role ?? '';
+
+    if (abortSignal?.aborted) {
+      throw new Error('AbortError');
+    }
 
     await receiver.thinkingStart();
     await receiver.thinkingChunk(`[${modelName}] `);
@@ -229,6 +234,9 @@ responses:
     await receiver.sayingStart();
     const words = responseText.split(/(\s+)/);
     for (const word of words) {
+      if (abortSignal?.aborted) {
+        throw new Error('AbortError');
+      }
       await receiver.sayingChunk(word);
     }
     await receiver.sayingFinish();
@@ -241,7 +249,11 @@ responses:
     _funcTools: FuncTool[],
     context: ChatMessage[],
     genseq: number,
+    abortSignal?: AbortSignal,
   ): Promise<ChatMessage[]> {
+    if (abortSignal?.aborted) {
+      throw new Error('AbortError');
+    }
     const dbPath = providerConfig.baseUrl;
     if (!agent.model) {
       throw new Error('Model undefined for agent: ' + agent.id);

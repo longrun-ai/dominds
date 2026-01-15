@@ -4,7 +4,9 @@ export * from './language';
 export * from './wire';
 
 export * from './dialog';
+export * from './run-state';
 
+import type { DialogRunState } from './run-state';
 import type { AssignmentFromSup, DialogStatusKind } from './wire';
 
 export interface DialogInfo {
@@ -28,6 +30,7 @@ export interface ApiRootDialogResponse {
   currentRound: number;
   createdAt: string;
   lastModified: string;
+  runState?: DialogRunState;
   supdialogId?: string; // Optional: supdialog ID for subdialogs in flattened lists
   topicId?: string;
   subdialogCount?: number; // Number of subdialogs (only present in root dialog responses)
@@ -42,6 +45,7 @@ export interface ApiSubdialogResponse {
   currentRound: number;
   createdAt: string;
   lastModified: string;
+  runState?: DialogRunState;
   topicId?: string;
 }
 
@@ -56,6 +60,7 @@ export interface ApiDialogHierarchyResponse {
       currentRound: number;
       createdAt: string;
       lastModified: string;
+      runState?: DialogRunState;
     };
     subdialogs: ApiSubdialogResponse[];
   };

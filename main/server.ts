@@ -10,6 +10,7 @@
  */
 import * as path from 'path';
 import { WebSocket } from 'ws';
+import { reconcileRunStatesAfterRestart } from './dialog-run-state';
 import { runBackendDriver } from './llm/driver';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
@@ -115,6 +116,9 @@ export async function startServer(opts: ServerOptions = {}) {
     config.auth ?? { kind: 'disabled' },
     getWorkLanguage(),
   );
+
+  // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
+  await reconcileRunStatesAfterRestart();
 
   // Start backend driver loop (non-blocking)
   void runBackendDriver();

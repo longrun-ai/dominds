@@ -7,6 +7,11 @@ import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
+import {
+  requestEmergencyStopAll,
+  requestInterruptDialog,
+  setRunStateBroadcaster,
+} from '../dialog-run-state';
 import { dialogEventRegistry } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
@@ -21,8 +26,12 @@ import type {
   DisplayRoundRequest,
   DriveDialogByUserAnswer,
   DriveDialogRequest,
+  EmergencyStopRequest,
   GetQ4HStateRequest,
+  InterruptDialogRequest,
   Q4HStateResponse,
+  ResumeAllRequest,
+  ResumeDialogRequest,
   WebSocketMessage,
 } from '../shared/types';
 import type { Q4HAnsweredEvent } from '../shared/types/dialog';
@@ -213,6 +222,22 @@ export async function handleWebSocketMessage(
         await handleUserAnswer2Q4H(ws, packet);
         break;
 
+      case 'interrupt_dialog':
+        await handleInterruptDialog(ws, packet);
+        break;
+
+      case 'emergency_stop':
+        await handleEmergencyStop(ws, packet);
+        break;
+
+      case 'resume_dialog':
+        await handleResumeDialog(ws, packet);
+        break;
+
+      case 'resume_all':
+        await handleResumeAll(ws, packet);
+        break;
+
       default:
         log.warn('Unknown WebSocket packet type:', undefined, packet.type);
         ws.send(
@@ -325,6 +350,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       messageCount: 0,
       functionCallCount: 0,
       subdialogCount: 0,
+      runState: { kind: 'idle_waiting_user' },
     });
 
     // Send dialog_ready with full info so frontend can track the active dialog
@@ -528,6 +554,25 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       assignmentFromSup: metadata.assignmentFromSup,
     };
     ws.send(JSON.stringify(dialogReadyResponse));
+
+    // Send authoritative run state for this dialog so the client can render Send↔Stop and Continue.
+    try {
+      const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, foundStatus);
+      const runState =
+        latest?.runState ??
+        (foundStatus === 'running'
+          ? { kind: 'idle_waiting_user' }
+          : foundStatus === 'completed'
+            ? { kind: 'terminal', status: 'completed' }
+            : { kind: 'terminal', status: 'archived' });
+      const runStateEvt = dialogEventRegistry.createTypedEvent(dialogIdObj, {
+        type: 'dlg_run_state_evt',
+        runState,
+      });
+      ws.send(JSON.stringify(runStateEvt));
+    } catch (err) {
+      log.warn(`Failed to send dlg_run_state_evt for ${dialogIdObj.valueOf()}:`, err);
+    }
 
     // Emit Q4H state to ensure frontend has current questions count
     // Load Q4H from ALL running dialogs for global display (not just this dialog)
@@ -946,6 +991,141 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
   }
 }
 
+async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): Promise<Dialog> {
+  const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, status);
+  if (!metadata) {
+    throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
+  }
+
+  const dialogState = await DialogPersistence.restoreDialog(dialogIdObj, status);
+  if (!dialogState) {
+    throw new Error(`Failed to restore dialog state for ${dialogIdObj.valueOf()}`);
+  }
+
+  const store = new DiskFileDialogStore(dialogIdObj);
+  const isRoot = dialogIdObj.selfId === dialogIdObj.rootId;
+  let supdialog: RootDialog | undefined;
+
+  if (metadata.supdialogId) {
+    if (isRoot) {
+      log.warn('Root dialog has supdialogId in metadata', undefined, {
+        dialogId: dialogIdObj.selfId,
+        supdialogId: metadata.supdialogId,
+      });
+    }
+    supdialog = await restoreParentDialog(metadata.supdialogId, dialogIdObj.rootId, status, true);
+  } else if (!isRoot) {
+    log.error('Subdialog missing supdialogId in metadata', undefined, {
+      dialogId: dialogIdObj.selfId,
+      rootId: dialogIdObj.rootId,
+    });
+  }
+
+  if (!isRoot && supdialog) {
+    const assignmentFromSup = metadata.assignmentFromSup;
+    if (!assignmentFromSup) {
+      throw new Error(`Subdialog ${dialogIdObj.valueOf()} missing assignmentFromSup`);
+    }
+    return new SubDialog(
+      store,
+      supdialog,
+      metadata.taskDocPath,
+      dialogIdObj,
+      metadata.agentId,
+      assignmentFromSup,
+      metadata.topicId,
+      {
+        messages: dialogState.messages,
+        reminders: dialogState.reminders,
+        currentRound: dialogState.currentRound,
+      },
+    );
+  }
+
+  const rootDialog = new RootDialog(store, metadata.taskDocPath, dialogIdObj, metadata.agentId, {
+    messages: dialogState.messages,
+    reminders: dialogState.reminders,
+    currentRound: dialogState.currentRound,
+  });
+  globalDialogRegistry.register(rootDialog);
+  await rootDialog.loadSubdialogRegistry();
+  await rootDialog.loadPendingSubdialogsFromPersistence();
+  return rootDialog;
+}
+
+async function handleInterruptDialog(ws: WebSocket, packet: InterruptDialogRequest): Promise<void> {
+  if (packet.type !== 'interrupt_dialog') {
+    throw new Error(
+      'Internal error: handleInterruptDialog called with non interrupt_dialog packet',
+    );
+  }
+  const dialog = packet.dialog;
+  if (!dialog || typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
+    ws.send(
+      JSON.stringify({ type: 'error', message: 'interrupt_dialog requires dialog.selfId/rootId' }),
+    );
+    return;
+  }
+  const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
+  const res = await requestInterruptDialog(dialogIdObj, 'user_stop');
+  if (!res.applied) {
+    ws.send(
+      JSON.stringify({ type: 'error', message: 'Dialog is not proceeding (nothing to stop).' }),
+    );
+  }
+}
+
+async function handleEmergencyStop(ws: WebSocket, packet: EmergencyStopRequest): Promise<void> {
+  if (packet.type !== 'emergency_stop') {
+    throw new Error('Internal error: handleEmergencyStop called with non emergency_stop packet');
+  }
+  await requestEmergencyStopAll();
+}
+
+async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): Promise<void> {
+  if (packet.type !== 'resume_dialog') {
+    throw new Error('Internal error: handleResumeDialog called with non resume_dialog packet');
+  }
+  const dialog = packet.dialog;
+  if (!dialog || typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
+    ws.send(
+      JSON.stringify({ type: 'error', message: 'resume_dialog requires dialog.selfId/rootId' }),
+    );
+    return;
+  }
+  const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
+  const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
+  const runState = latest?.runState;
+
+  if (!runState || runState.kind !== 'interrupted') {
+    ws.send(JSON.stringify({ type: 'error', message: 'Dialog is not eligible for resumption.' }));
+    return;
+  }
+
+  const restored = await restoreDialogForDrive(dialogIdObj, 'running');
+  await driveDialogStream(restored, undefined, true);
+}
+
+async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise<void> {
+  if (packet.type !== 'resume_all') {
+    throw new Error('Internal error: handleResumeAll called with non resume_all packet');
+  }
+  const dialogIds = await DialogPersistence.listAllDialogIds('running');
+  for (const id of dialogIds) {
+    const latest = await DialogPersistence.loadDialogLatest(id, 'running');
+    const runState = latest?.runState;
+    if (!runState || runState.kind !== 'interrupted') continue;
+    void (async () => {
+      try {
+        const dlg = await restoreDialogForDrive(id, 'running');
+        await driveDialogStream(dlg, undefined, true);
+      } catch (err) {
+        log.warn('resume_all: failed to resume dialog', err, { dialogId: id.valueOf() });
+      }
+    })();
+  }
+}
+
 /**
  * Handle user answer to a Q4H (Questions for Human) question
  * Validates questionId, clears q4h.yaml entry, and resumes dialog with user's answer
@@ -1217,6 +1397,16 @@ export function setupWebSocketServer(
   serverWorkLanguage: LanguageCode,
 ): WebSocketServer {
   const wss = new WebSocketServer({ server: httpServer });
+
+  // Broadcast dialog run-state changes to all connected clients so multi-tab views converge.
+  setRunStateBroadcaster((msg: WebSocketMessage) => {
+    const data = JSON.stringify(msg);
+    for (const ws of clients) {
+      if (ws.readyState === 1) {
+        ws.send(data);
+      }
+    }
+  });
 
   wss.on('connection', (ws: WebSocket, req) => {
     const authCheck = getWebSocketAuthCheck(req, auth);

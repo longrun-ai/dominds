@@ -256,6 +256,7 @@ export class CodexGen implements LlmGenerator {
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     const codexHomeValue: string = process.env[providerConfig.apiKeyEnvVar] || '~/.codex';
     const codexHome = codexHomeValue.startsWith('~')
@@ -423,7 +424,7 @@ export class CodexGen implements LlmGenerator {
     };
 
     try {
-      await client.trigger(payload, eventReceiver);
+      await client.trigger(payload, eventReceiver, abortSignal ? { signal: abortSignal } : {});
     } catch (error: unknown) {
       log.warn('CODEX streaming error', error);
       throw error;

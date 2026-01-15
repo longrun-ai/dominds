@@ -219,6 +219,7 @@ async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
       currentRound: number;
       createdAt: string;
       lastModified: string;
+      runState?: DialogLatestFile['runState'];
       subdialogCount: number;
     }> = [];
 
@@ -244,6 +245,7 @@ async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
           currentRound: latest?.currentRound || 1,
           createdAt: meta.createdAt,
           lastModified: latest?.lastModified || meta.createdAt,
+          runState: latest?.runState,
           subdialogCount,
         });
       }
@@ -330,6 +332,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       currentRound: rootLatest?.currentRound || 1,
       createdAt: rootMeta.createdAt,
       lastModified: rootLatest?.lastModified || rootMeta.createdAt,
+      runState: rootLatest?.runState,
     };
 
     // Enumerate subdialogs under this root
@@ -345,6 +348,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       currentRound: number;
       createdAt: string;
       lastModified: string;
+      runState?: DialogLatestFile['runState'];
       topicId?: string;
     }> = [];
 
@@ -408,6 +412,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
             currentRound: subLatest?.currentRound || 1,
             createdAt: meta.createdAt,
             lastModified: subLatest?.lastModified || meta.createdAt,
+            runState: subLatest?.runState,
             topicId: meta.topicId,
           });
         }
@@ -497,6 +502,7 @@ async function handleCreateDialog(
       messageCount: 0,
       functionCallCount: 0,
       subdialogCount: 0,
+      runState: { kind: 'idle_waiting_user' },
     });
 
     // Dialog is registered with the global registry on creation

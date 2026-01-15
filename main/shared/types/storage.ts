@@ -6,6 +6,7 @@
  */
 
 import type { LanguageCode } from './language';
+import type { DialogRunState } from './run-state';
 
 // === DIALOG METADATA STORAGE ===
 
@@ -107,6 +108,12 @@ export interface DialogLatestFile {
    * for background revival scheduling.
    */
   needsDrive?: boolean;
+
+  /**
+   * Authoritative dialog run state for WebUI controls (Send↔Stop, Continue, etc.).
+   * Persisted to survive process restarts.
+   */
+  runState?: DialogRunState;
 }
 
 // === ROUND TRACKING ===

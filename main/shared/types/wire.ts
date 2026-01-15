@@ -39,6 +39,10 @@ export type WebSocketMessage =
   | GetQ4HStateRequest
   | Q4HStateResponse
   | DialogsMovedMessage
+  | InterruptDialogRequest
+  | EmergencyStopRequest
+  | ResumeDialogRequest
+  | ResumeAllRequest
   | DisplayRemindersRequest
   | DisplayRoundRequest
   | DriveDialogRequest
@@ -99,6 +103,24 @@ export interface DriveDialogByUserAnswer {
   questionId: string;
   continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
   userLanguageCode: LanguageCode;
+}
+
+export interface InterruptDialogRequest {
+  type: 'interrupt_dialog';
+  dialog: DialogIdent;
+}
+
+export interface EmergencyStopRequest {
+  type: 'emergency_stop';
+}
+
+export interface ResumeDialogRequest {
+  type: 'resume_dialog';
+  dialog: DialogIdent;
+}
+
+export interface ResumeAllRequest {
+  type: 'resume_all';
 }
 
 export interface DisplayRemindersRequest {

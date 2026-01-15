@@ -14,6 +14,14 @@ import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 
 import { inspect } from 'util';
 import { globalDialogRegistry } from '../dialog-global-registry';
+import {
+  broadcastRunStateMarker,
+  clearActiveRun,
+  computeIdleRunState,
+  createActiveRun,
+  getStopRequestedReason,
+  setDialogRunState,
+} from '../dialog-run-state';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -28,6 +36,7 @@ import {
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
+import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import type { HumanQuestion, UserTextGrammar } from '../shared/types/storage';
 import { generateShortId } from '../shared/utils/id';
 import {
@@ -150,6 +159,28 @@ function showErrorToAi(err: unknown): string {
   } catch (fallbackErr) {
     return `Unknown error of type ${typeof err}`;
   }
+}
+
+class DialogInterruptedError extends Error {
+  public readonly reason: DialogInterruptionReason;
+
+  constructor(reason: DialogInterruptionReason) {
+    super('Dialog interrupted');
+    this.reason = reason;
+  }
+}
+
+function throwIfAborted(abortSignal: AbortSignal | undefined, dlgId: DialogID): void {
+  if (!abortSignal?.aborted) return;
+
+  const stopRequested = getStopRequestedReason(dlgId);
+  if (stopRequested === 'emergency_stop') {
+    throw new DialogInterruptedError({ kind: 'emergency_stop' });
+  }
+  if (stopRequested === 'user_stop') {
+    throw new DialogInterruptedError({ kind: 'user_stop' });
+  }
+  throw new DialogInterruptedError({ kind: 'system_stop', detail: 'Aborted.' });
 }
 
 /**
@@ -504,6 +535,27 @@ async function checkQ4HAnswered(dialogId: DialogID): Promise<boolean> {
 }
 
 async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promise<string | null> {
+  const abortSignal = createActiveRun(dlg.id);
+  let finalRunState: DialogRunState | undefined;
+  let shouldEmitResumedMarker = false;
+  if (!humanPrompt) {
+    try {
+      const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
+      shouldEmitResumedMarker =
+        latest?.runState !== undefined && latest.runState.kind === 'interrupted';
+    } catch (err) {
+      log.warn('Failed to load latest.yaml for resumption marker', err, {
+        dialogId: dlg.id.valueOf(),
+      });
+    }
+  }
+
+  if (shouldEmitResumedMarker) {
+    broadcastRunStateMarker(dlg.id, { kind: 'resumed' });
+  }
+
+  await setDialogRunState(dlg.id, { kind: 'proceeding' });
+
   let pubRemindersVer = dlg.remindersVer;
   let lastAssistantSayingContent: string | null = null;
   let generationHadError = false;
@@ -518,6 +570,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
   try {
     while (true) {
       genIterNo++;
+      throwIfAborted(abortSignal, dlg.id);
 
       // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
       const { team, agent, systemPrompt, memories, agentTools, textingTools } =
@@ -580,6 +633,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       let promptContent = '';
 
       try {
+        throwIfAborted(abortSignal, dlg.id);
         await dlg.notifyGeneratingStart();
 
         if (humanPrompt && genIterNo === 1) {
@@ -609,7 +663,9 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             // Collect and execute texting calls from user text using streaming parser
             // Combine agent texting tools with intrinsic reminder tools
             const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+            throwIfAborted(abortSignal, dlg.id);
             const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
+            throwIfAborted(abortSignal, dlg.id);
             const userResult = await executeTextingCalls(
               dlg,
               agent,
@@ -784,6 +840,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         if (agent.streaming === false) {
           let nonStreamMsgs: ChatMessage[];
           try {
+            throwIfAborted(abortSignal, dlg.id);
             nonStreamMsgs = await llmGen.genMoreMessages(
               providerCfg,
               agent,
@@ -791,8 +848,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               funcTools,
               ctxMsgs,
               dlg.activeGenSeq,
+              abortSignal,
             );
           } catch (err) {
+            if (abortSignal.aborted) {
+              throwIfAborted(abortSignal, dlg.id);
+            }
             generationHadError = true;
             throw err;
           }
@@ -834,6 +895,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           let assistantToolOutputsCount = 0;
           if (collectedAssistantCalls.length > 0) {
             const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+            throwIfAborted(abortSignal, dlg.id);
             const assistantResult = await executeTextingCalls(
               dlg,
               agent,
@@ -858,6 +920,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const funcResults: FuncResultMsg[] = [];
 
           const functionPromises = funcCalls.map(async (func) => {
+            throwIfAborted(abortSignal, dlg.id);
             // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
             // This is critical for correct grouping in reconstructAnthropicContext()
             const callGenseq = func.genseq;
@@ -920,6 +983,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               }
 
               try {
+                throwIfAborted(abortSignal, dlg.id);
                 const content = await tool.call(dlg, agent, argsObj);
                 result = {
                   type: 'func_result_msg',
@@ -1008,11 +1072,13 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               ctxMsgs,
               {
                 thinkingStart: async () => {
+                  throwIfAborted(abortSignal, dlg.id);
                   currentThinkingContent = '';
                   currentThinkingSignature = '';
                   await dlg.thinkingStart();
                 },
                 thinkingChunk: async (chunk: string) => {
+                  throwIfAborted(abortSignal, dlg.id);
                   currentThinkingContent += chunk;
                   // Extract Anthropic thinking signature from content
                   const signatureMatch = currentThinkingContent.match(
@@ -1024,6 +1090,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   await dlg.thinkingChunk(chunk);
                 },
                 thinkingFinish: async () => {
+                  throwIfAborted(abortSignal, dlg.id);
                   // Create thinking message with genseq and signature
                   const genseq = dlg.activeGenSeq;
                   if (genseq) {
@@ -1041,16 +1108,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   await dlg.thinkingFinish();
                 },
                 sayingStart: async () => {
+                  throwIfAborted(abortSignal, dlg.id);
                   currentSayingContent = '';
                   await dlg.sayingStart();
                 },
                 sayingChunk: async (chunk: string) => {
+                  throwIfAborted(abortSignal, dlg.id);
                   currentSayingContent += chunk;
                   await parser.takeUpstreamChunk(chunk);
                   // Dialog store handles persistence - maintain ordering guarantee
                   await dlg.sayingChunk(chunk);
                 },
                 sayingFinish: async () => {
+                  throwIfAborted(abortSignal, dlg.id);
                   await parser.finalize();
 
                   const sayingMessage: SayingMsg = {
@@ -1065,6 +1135,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   await dlg.sayingFinish();
                 },
                 funcCall: async (callId: string, name: string, args: string) => {
+                  throwIfAborted(abortSignal, dlg.id);
                   const genseq = dlg.activeGenSeq;
                   if (genseq === undefined) {
                     return;
@@ -1080,8 +1151,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 },
               },
               dlg.activeGenSeq,
+              abortSignal,
             );
           } catch (err) {
+            if (abortSignal.aborted) {
+              throwIfAborted(abortSignal, dlg.id);
+            }
             generationHadError = true;
             log.error(`LLM gen error:`, err);
             const errText = extractErrorDetails(err).message;
@@ -1101,6 +1176,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             );
           }
 
+          throwIfAborted(abortSignal, dlg.id);
           const results = await Promise.all(
             collectedCalls.map((call) =>
               executeTextingCall(
@@ -1134,6 +1210,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const funcResults: FuncResultMsg[] = [];
           if (streamedFuncCalls.length > 0) {
             const functionPromises = streamedFuncCalls.map(async (func) => {
+              throwIfAborted(abortSignal, dlg.id);
               // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
               // This is critical for correct grouping in reconstructAnthropicContext()
               const callGenseq = func.genseq;
@@ -1196,6 +1273,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 }
 
                 try {
+                  throwIfAborted(abortSignal, dlg.id);
                   const content = await tool.call(dlg, agent, argsObj);
                   result = {
                     type: 'func_result_msg',
@@ -1270,8 +1348,50 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       }
     }
 
+    finalRunState = await computeIdleRunState(dlg);
     return lastAssistantSayingContent;
+  } catch (err) {
+    const stopRequested = getStopRequestedReason(dlg.id);
+    const interruptedReason: DialogInterruptionReason | undefined =
+      err instanceof DialogInterruptedError
+        ? err.reason
+        : abortSignal.aborted
+          ? stopRequested === 'emergency_stop'
+            ? { kind: 'emergency_stop' }
+            : stopRequested === 'user_stop'
+              ? { kind: 'user_stop' }
+              : { kind: 'system_stop', detail: 'Aborted.' }
+          : undefined;
+
+    if (interruptedReason) {
+      finalRunState = { kind: 'interrupted', reason: interruptedReason };
+      broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
+      return null;
+    }
+
+    const detail = showErrorToAi(err);
+    finalRunState = { kind: 'interrupted', reason: { kind: 'system_stop', detail } };
+    broadcastRunStateMarker(dlg.id, {
+      kind: 'interrupted',
+      reason: { kind: 'system_stop', detail },
+    });
+    throw err;
   } finally {
+    clearActiveRun(dlg.id);
+
+    if (!finalRunState) {
+      try {
+        finalRunState = await computeIdleRunState(dlg);
+      } catch (stateErr) {
+        log.warn('Failed to compute final run state; falling back to idle', stateErr, {
+          dialogId: dlg.id.valueOf(),
+        });
+        finalRunState = { kind: 'idle_waiting_user' };
+      }
+    }
+
+    await setDialogRunState(dlg.id, finalRunState);
+
     if (tookSubdialogResponses) {
       try {
         await withSuspensionStateLock(dlg.id, async () => {
@@ -1281,10 +1401,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             await DialogPersistence.commitTakenSubdialogResponses(dlg.id);
           }
         });
-      } catch (err) {
+      } catch (err2) {
         log.warn('Failed to finalize subdialog response queue after drive', {
           dialogId: dlg.id.selfId,
-          error: err,
+          error: err2,
         });
       }
     }

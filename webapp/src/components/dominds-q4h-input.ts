@@ -8,6 +8,7 @@ import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
 import type { LanguageCode } from '../shared/types/language';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
+import type { DialogRunState } from '../shared/types/run-state.js';
 import type { DialogIdent } from '../shared/types/wire.js';
 import { generateShortId } from '../shared/utils/id.js';
 
@@ -49,6 +50,7 @@ export class DomindsQ4HInput extends HTMLElement {
     maxLength: 4000,
   };
   private currentDialog: DialogIdent | null = null;
+  private runState: DialogRunState | null = null;
 
   // DOM elements (initialized after render)
   private textInput!: HTMLTextAreaElement;
@@ -306,6 +308,15 @@ export class DomindsQ4HInput extends HTMLElement {
     }
     this.currentDialog = dialog;
     this.updateUI();
+  }
+
+  /**
+   * Set the authoritative dialog run state (Send ↔ Stop).
+   */
+  public setRunState(runState: DialogRunState | null): void {
+    this.runState = runState;
+    this.updateSendButton();
+    this.safeRender();
   }
 
   /**
@@ -599,7 +610,7 @@ export class DomindsQ4HInput extends HTMLElement {
           // Send on Enter (unless modifier keys are pressed)
           if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
-            this.sendMessage();
+            void this.handlePrimaryAction();
           } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             // Manually insert newline for Ctrl+Enter or Cmd+Enter as Chrome doesn't by default
             e.preventDefault();
@@ -610,7 +621,7 @@ export class DomindsQ4HInput extends HTMLElement {
           // Send on Ctrl+Enter or Cmd+Enter
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            this.sendMessage();
+            void this.handlePrimaryAction();
           }
           // Enter and Shift+Enter work natively to create new line
         }
@@ -630,7 +641,7 @@ export class DomindsQ4HInput extends HTMLElement {
     // Send button handler
     if (this.sendButton) {
       this.sendButton.addEventListener('click', () => {
-        this.sendMessage();
+        void this.handlePrimaryAction();
       });
     }
 
@@ -679,6 +690,36 @@ export class DomindsQ4HInput extends HTMLElement {
       (arrow as HTMLElement).style.transform = this.isListExpanded
         ? 'rotate(-90deg)'
         : 'rotate(0deg)';
+    }
+  }
+
+  private async requestStop(): Promise<void> {
+    if (!this.currentDialog) {
+      throw new Error('No active dialog');
+    }
+
+    if (this.props.disabled) {
+      throw new Error('Input is disabled');
+    }
+
+    this.wsManager.sendRaw({ type: 'interrupt_dialog', dialog: this.currentDialog });
+  }
+
+  private async handlePrimaryAction(): Promise<void> {
+    try {
+      const state = this.runState;
+      if (state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')) {
+        if (state.kind === 'proceeding_stop_requested') {
+          return;
+        }
+        await this.requestStop();
+        return;
+      }
+      await this.sendMessage();
+    } catch (error) {
+      console.error('Primary action failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Action failed';
+      this.showError(errorMessage);
     }
   }
 
@@ -745,6 +786,13 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private updateSendButton(): void {
     if (!this.sendButton || !this.textInput) return;
+
+    const state = this.runState;
+    if (state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')) {
+      const canStop = !this.props.disabled && !!this.currentDialog;
+      this.sendButton.disabled = state.kind === 'proceeding_stop_requested' || !canStop;
+      return;
+    }
 
     const hasContent = this.textInput.value.trim().length > 0;
     const canSend = hasContent && !this.props.disabled && !!this.currentDialog;
@@ -830,6 +878,12 @@ export class DomindsQ4HInput extends HTMLElement {
   private getComponentHTML(): string {
     const t = getUiStrings(this.uiLanguage);
     const questionCount = this.questions.length;
+    const state = this.runState;
+    const isProceeding =
+      state !== null && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested');
+    const isStopping = state !== null && state.kind === 'proceeding_stop_requested';
+    const primaryTitle = isProceeding ? (isStopping ? t.stopping : t.stop) : t.send;
+    const primaryClass = isProceeding ? 'send-button stop' : 'send-button';
     return `
       <div class="q4h-input-container">
         <div class="question-list ${this.isListExpanded ? '' : 'collapsed'}">
@@ -867,12 +921,18 @@ export class DomindsQ4HInput extends HTMLElement {
               >
                 ${this.sendOnEnter ? '⏎' : '⌘'}
               </button>
-              <button class="send-button" type="button" disabled>
-                <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
-                  <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
-                  <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
-                </svg>
+              <button class="${primaryClass}" type="button" disabled title="${primaryTitle}" aria-label="${primaryTitle}">
+                ${
+                  isProceeding
+                    ? `<svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect>
+                      </svg>`
+                    : `<svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
+                      </svg>`
+                }
               </button>
             </div>
           </div>
@@ -1279,9 +1339,17 @@ export class DomindsQ4HInput extends HTMLElement {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
       }
 
+      .send-button.stop {
+        background: var(--dominds-danger, #dc3545);
+      }
+
       .send-button:hover:not(:disabled) {
         background: var(--dominds-primary-hover, #005ea6);
         transform: scale(1.05);
+      }
+
+      .send-button.stop:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--dominds-danger, #dc3545) 85%, black);
       }
 
       .send-button:active:not(:disabled) {
@@ -1297,6 +1365,11 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .send-icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      .stop-icon {
         width: 16px;
         height: 16px;
       }

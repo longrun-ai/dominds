@@ -42,6 +42,7 @@ import {
   type LanguageCode,
 } from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
+import type { DialogRunState } from '../shared/types/run-state';
 import type {
   DialogReadyMessage,
   ErrorMessage,
@@ -82,6 +83,9 @@ export class DomindsApp extends HTMLElement {
   private authState: AuthState = { kind: 'uninitialized' };
   private urlAuthPresent: boolean = false;
   private dialogs: ApiRootDialogResponse[] = [];
+  private dialogRunStatesByKey = new Map<string, DialogRunState>();
+  private proceedingDialogsCount: number = 0;
+  private resumableDialogsCount: number = 0;
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
   private teamMembers: FrontendTeamMember[] = [];
@@ -735,11 +739,54 @@ export class DomindsApp extends HTMLElement {
       '#toolbar-reminders-toggle span',
     ) as HTMLElement | null;
     const roundLabel = this.shadowRoot?.querySelector('#round-nav span') as HTMLElement | null;
+    const stopCount = this.shadowRoot?.querySelector(
+      '#toolbar-emergency-stop span',
+    ) as HTMLElement | null;
+    const resumeCount = this.shadowRoot?.querySelector(
+      '#toolbar-resume-all span',
+    ) as HTMLElement | null;
+    const stopBtn = this.shadowRoot?.querySelector(
+      '#toolbar-emergency-stop',
+    ) as HTMLButtonElement | null;
+    const resumeBtn = this.shadowRoot?.querySelector(
+      '#toolbar-resume-all',
+    ) as HTMLButtonElement | null;
 
     if (prevBtn) prevBtn.disabled = this.toolbarCurrentRound <= 1;
     if (nextBtn) nextBtn.disabled = this.toolbarCurrentRound >= this.toolbarTotalRounds;
     if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
     if (roundLabel) roundLabel.textContent = `R ${this.toolbarCurrentRound}`;
+    if (stopCount) stopCount.textContent = String(this.proceedingDialogsCount);
+    if (resumeCount) resumeCount.textContent = String(this.resumableDialogsCount);
+    if (stopBtn) stopBtn.disabled = this.proceedingDialogsCount === 0;
+    if (resumeBtn) resumeBtn.disabled = this.resumableDialogsCount === 0;
+  }
+
+  private dialogKey(rootId: string, selfId: string): string {
+    return selfId === rootId ? rootId : `${rootId}#${selfId}`;
+  }
+
+  private recomputeRunControlCounts(): void {
+    let proceeding = 0;
+    let resumable = 0;
+
+    for (const d of this.dialogs) {
+      if (d.status !== 'running') continue;
+      const selfId = d.selfId ? d.selfId : d.rootId;
+      const key = this.dialogKey(d.rootId, selfId);
+      const state = this.dialogRunStatesByKey.get(key) ?? d.runState;
+      if (!state) continue;
+
+      if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
+        proceeding++;
+      } else if (state.kind === 'interrupted') {
+        resumable++;
+      }
+    }
+
+    this.proceedingDialogsCount = proceeding;
+    this.resumableDialogsCount = resumable;
+    this.updateToolbarDisplay();
   }
 
   public getStyles(): string {
@@ -1137,9 +1184,22 @@ export class DomindsApp extends HTMLElement {
         transition: all 0.2s ease;
       }
 
-      .badge-button:hover {
+      .badge-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .badge-button.danger {
+        border-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 35%, var(--dominds-border, #e0e0e0));
+      }
+
+      .badge-button:hover:not(:disabled) {
         background: var(--dominds-hover, #f0f0f0);
         border-color: var(--dominds-primary, #007acc);
+      }
+
+      .badge-button.danger:hover:not(:disabled) {
+        border-color: var(--dominds-danger, #dc3545);
       }
 
       .dialog-section {
@@ -1852,6 +1912,16 @@ export class DomindsApp extends HTMLElement {
               </button>
             </div>
           <div id="reminders-callout" style="position: relative; margin-left: 12px;">
+          <div id="run-ctrl-callout" style="position: relative; margin-left: 12px; display:flex; gap: 6px; align-items: center;">
+            <button class="badge-button danger" id="toolbar-emergency-stop" title="${t.emergencyStop}" aria-label="${t.emergencyStop}" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>
+              <span>${String(this.proceedingDialogsCount)}</span>
+            </button>
+            <button class="badge-button" id="toolbar-resume-all" title="${t.resumeAll}" aria-label="${t.resumeAll}" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+              <span>${String(this.resumableDialogsCount)}</span>
+            </button>
+          </div>
             <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
               <span>${String(this.toolbarReminders.length)}</span>
@@ -2059,6 +2129,28 @@ export class DomindsApp extends HTMLElement {
             type: 'display_reminders',
             dialog: this.currentDialog,
           });
+        }
+        return;
+      }
+
+      // Global run controls
+      const emergencyStop = target.closest('#toolbar-emergency-stop') as HTMLButtonElement | null;
+      if (emergencyStop) {
+        if (this.proceedingDialogsCount > 0) {
+          const ok = window.confirm(
+            `${getUiStrings(this.uiLanguage).emergencyStop} (${this.proceedingDialogsCount})?`,
+          );
+          if (ok) {
+            this.wsManager.sendRaw({ type: 'emergency_stop' });
+          }
+        }
+        return;
+      }
+
+      const resumeAll = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
+      if (resumeAll) {
+        if (this.resumableDialogsCount > 0) {
+          this.wsManager.sendRaw({ type: 'resume_all' });
         }
         return;
       }
@@ -2442,6 +2534,14 @@ export class DomindsApp extends HTMLElement {
         // Store root dialogs with their subdialog counts
         // Subdialogs will be loaded lazily when user expands a root dialog
         this.dialogs = resp.data;
+        this.dialogRunStatesByKey.clear();
+        for (const d of this.dialogs) {
+          const selfId = d.selfId ? d.selfId : d.rootId;
+          if (d.runState) {
+            this.dialogRunStatesByKey.set(this.dialogKey(d.rootId, selfId), d.runState);
+          }
+        }
+        this.recomputeRunControlCounts();
         this.renderDialogList();
         if (this.currentDialog) {
           this.currentDialogStatus = this.resolveDialogStatus(this.currentDialog);
@@ -2814,6 +2914,14 @@ export class DomindsApp extends HTMLElement {
       // Set the dialog ID for the q4h-input and focus it
       if (this.q4hInput) {
         this.q4hInput.setDialog(normalizedDialog);
+        const key = this.dialogKey(normalizedDialog.rootId, normalizedDialog.selfId);
+        const runState = this.dialogRunStatesByKey.get(key) ?? null;
+        const input = this.q4hInput as HTMLElement & {
+          setRunState?: (state: DialogRunState | null) => void;
+        };
+        if (input && typeof input.setRunState === 'function') {
+          input.setRunState(runState);
+        }
 
         const status = this.currentDialogStatus;
         const isReadOnly = status === 'completed' || status === 'archived';
@@ -4042,6 +4150,59 @@ export class DomindsApp extends HTMLElement {
           await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
           const ts = (message as TypedDialogEvent).timestamp;
           this.bumpDialogLastModified(dialog.rootId, typeof ts === 'string' ? ts : undefined);
+          break;
+        }
+
+        case 'dlg_run_state_evt': {
+          const runState = (message as { runState?: unknown }).runState;
+          if (typeof runState !== 'object' || runState === null || !('kind' in runState)) {
+            console.warn('Invalid dlg_run_state_evt payload', message);
+            break;
+          }
+
+          const selfId = dialog.selfId;
+          const rootId = dialog.rootId;
+          const key = this.dialogKey(rootId, selfId);
+          this.dialogRunStatesByKey.set(key, runState as DialogRunState);
+
+          // Update dialog list entry if present
+          this.dialogs = (this.dialogs || []).map((d) => {
+            const dSelf = d.selfId ? d.selfId : d.rootId;
+            if (d.rootId === rootId && dSelf === selfId) {
+              return { ...d, runState: runState as DialogRunState };
+            }
+            return d;
+          });
+
+          // Update input primary action for the active dialog
+          if (
+            this.currentDialog &&
+            this.currentDialog.rootId === rootId &&
+            this.currentDialog.selfId === selfId
+          ) {
+            const input = this.q4hInput as HTMLElement & {
+              setRunState?: (state: DialogRunState | null) => void;
+            };
+            if (input && typeof input.setRunState === 'function') {
+              input.setRunState(runState as DialogRunState);
+            }
+          }
+
+          this.recomputeRunControlCounts();
+
+          // Forward to dialog container if this event targets it
+          const dialogContainer = this.getDialogContainerForEvent(message);
+          if (dialogContainer) {
+            await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          }
+          break;
+        }
+
+        case 'dlg_run_state_marker_evt': {
+          const dialogContainer = this.getDialogContainerForEvent(message);
+          if (dialogContainer) {
+            await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          }
           break;
         }
 

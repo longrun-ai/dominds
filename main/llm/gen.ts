@@ -23,6 +23,7 @@ export interface LlmGenerator {
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     genseq: number,
+    abortSignal?: AbortSignal,
   ) => Promise<void>;
 
   genMoreMessages: (
@@ -32,5 +33,6 @@ export interface LlmGenerator {
     funcTools: FuncTool[],
     context: ChatMessage[],
     genseq: number,
+    abortSignal?: AbortSignal,
   ) => Promise<ChatMessage[]>;
 }
