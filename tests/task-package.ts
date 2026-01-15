@@ -51,7 +51,6 @@ async function main(): Promise<void> {
     assert.ok(await pathExists(path.join(taskDir, 'goals.md')));
     assert.ok(await pathExists(path.join(taskDir, 'constraints.md')));
     assert.ok(await pathExists(path.join(taskDir, 'progress.md')));
-    assert.ok(await pathExists(path.join(taskDir, 'meta.json')));
 
     // 2) Section updates should overwrite the target file and be reflected in effective doc.
     const newGoals = ['- Ship v1', '- Zero regressions'].join('\n');

@@ -97,22 +97,18 @@ The key design requirement: a client should not need to infer proceeding/idle fr
 Each dlg is always in exactly one of these user-relevant run states:
 
 1. **Idle (waiting for user)**
-
    - User can Send.
    - Not eligible for resumption (there is nothing in progress to continue).
 
 2. **Proceeding**
-
    - Primary control becomes Stop.
    - Not eligible for resumption (because it is already running).
 
 3. **Interrupted (resumable)**
-
    - Proceeding has stopped mid-run.
    - Continue may be offered (if eligible).
 
 4. **Blocked (needs user action)**
-
    - The dlg is not proceeding, but cannot continue without a specific user action (e.g., answering a pending question).
    - Continue is not offered; instead the UI should guide the required action.
 
@@ -149,11 +145,9 @@ This model is intentionally minimal: it matches what the user needs to decide �
 A dlg is **eligible for resumption** when all of the following are true:
 
 1. **Not currently proceeding**
-
    - If it is proceeding, it is already running; Stop is the relevant action.
 
 2. **Has an interrupted in-progress run**
-
    - The most recent run ended due to interruption rather than cleanly reaching “waiting for user”.
    - Typical interruption reasons that can be eligible:
      - Manual Stop (per-dlg)
@@ -162,12 +156,10 @@ A dlg is **eligible for resumption** when all of the following are true:
      - Resource protection stop (operator/system)
 
 3. **No required user input is pending**
-
    - If the dlg is blocked waiting for a user response to a question, it is **not** eligible.
    - The appropriate action is the required user input, not Continue.
 
 4. **Resumption target is well-defined**
-
    - The system can identify what it is trying to finish (e.g., completing the pending assistant turn or completing the interrupted step).
    - If the system cannot define a safe/clear resumption target, the dlg is not eligible (or Continue must become a guided “resolve first” flow).
 

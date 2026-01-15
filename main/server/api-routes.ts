@@ -867,12 +867,7 @@ async function scanDirectory(
             const dirStats = fs.statSync(fullPath);
             let totalSize = 0;
             let lastModified = dirStats.mtime;
-            const sectionFiles = [
-              'goals.md',
-              'constraints.md',
-              'progress.md',
-              'meta.json',
-            ] as const;
+            const sectionFiles = ['goals.md', 'constraints.md', 'progress.md'] as const;
             for (const filename of sectionFiles) {
               try {
                 const sectionPath = path.join(fullPath, filename);

@@ -61,7 +61,7 @@ Current status, decisions made, and what remains.
 
 ### Additional files (app-specific)
 
-The runtime MAY store additional files inside the task package for internal needs (examples: `meta.json`,
+The runtime MAY store additional files inside the task package for internal needs (examples:
 `snapshots/`, `attachments-index.md`).
 
 Design constraints:
