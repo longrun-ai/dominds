@@ -77,6 +77,18 @@ export type UiStrings = {
   stopping: string;
   emergencyStop: string;
   resumeAll: string;
+  continueLabel: string;
+
+  stoppedByYou: string;
+  stoppedByEmergencyStop: string;
+  interruptedByServerRestart: string;
+  runMarkerResumed: string;
+  runMarkerInterrupted: string;
+  runBadgeInterruptedTitle: string;
+  runBadgeWaitingHumanTitle: string;
+  runBadgeWaitingSubdialogsTitle: string;
+  runBadgeWaitingBothTitle: string;
+  runBadgeGeneratingTitle: string;
 
   connectionConnected: string;
   connectionConnecting: string;
@@ -178,6 +190,18 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       stopping: '停止中…',
       emergencyStop: '紧急停止',
       resumeAll: '全部继续',
+      continueLabel: '继续',
+
+      stoppedByYou: '已由你停止',
+      stoppedByEmergencyStop: '已被紧急停止终止',
+      interruptedByServerRestart: '因服务器重启而中断',
+      runMarkerResumed: '已继续',
+      runMarkerInterrupted: '已中断',
+      runBadgeInterruptedTitle: '对话已中断（可继续）',
+      runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
+      runBadgeWaitingSubdialogsTitle: '等待子对话完成',
+      runBadgeWaitingBothTitle: '等待你的输入和子对话',
+      runBadgeGeneratingTitle: '生成中…',
 
       connectionConnected: '已连接',
       connectionConnecting: '连接中',
@@ -278,6 +302,18 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     stopping: 'Stopping…',
     emergencyStop: 'Emergency stop',
     resumeAll: 'Resume all',
+    continueLabel: 'Continue',
+
+    stoppedByYou: 'Stopped by you',
+    stoppedByEmergencyStop: 'Stopped by emergency stop',
+    interruptedByServerRestart: 'Interrupted by server restart',
+    runMarkerResumed: 'Resumed',
+    runMarkerInterrupted: 'Interrupted',
+    runBadgeInterruptedTitle: 'Interrupted (resumable)',
+    runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
+    runBadgeWaitingSubdialogsTitle: 'Waiting for subdialogs',
+    runBadgeWaitingBothTitle: 'Waiting for human + subdialogs',
+    runBadgeGeneratingTitle: 'Generating…',
 
     connectionConnected: 'Connected',
     connectionConnecting: 'Connecting',

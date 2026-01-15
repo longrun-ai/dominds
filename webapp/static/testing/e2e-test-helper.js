@@ -624,11 +624,29 @@ ${formatFullState(this)}`;
       if (c.path === 'currentDialog.title') {
         return `  • Dialog title: "${c.previous}" → "${c.current}"`;
       }
+      if (c.path === 'header.runControls.emergencyStop.count') {
+        return `  • Proceeding (header): ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'header.runControls.emergencyStop.disabled') {
+        return `  • Emergency stop: ${c.current ? 'disabled' : 'enabled'}`;
+      }
+      if (c.path === 'header.runControls.resumeAll.count') {
+        return `  • Resumable (header): ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'header.runControls.resumeAll.disabled') {
+        return `  • Resume all: ${c.current ? 'disabled' : 'enabled'}`;
+      }
       if (c.path === 'chat.messageCount') {
         return `  • Messages: ${c.previous} → ${c.current}`;
       }
       if (c.path === 'chat.visibleMessageCount') {
         return `  • Visible messages: ${c.previous} → ${c.current}`;
+      }
+      if (c.path === 'chat.resumePanel.visible') {
+        return `  • Continue panel: ${c.previous ? 'VISIBLE' : 'hidden'} → ${c.current ? 'VISIBLE' : 'hidden'}`;
+      }
+      if (c.path === 'chat.resumePanel.reasonText') {
+        return `  • Continue reason: "${c.previous || ''}" → "${c.current || ''}"`;
       }
       if (c.path === 'q4h.count') {
         return `  • Q4H questions: ${c.previous} → ${c.current}`;
@@ -727,12 +745,34 @@ function captureHeaderState(shadow) {
 
   const app = getApp();
   const header = shadow.querySelector('.header');
+  const stopBtn = header?.querySelector('#toolbar-emergency-stop');
+  const resumeAllBtn = header?.querySelector('#toolbar-resume-all');
+
+  const parseBadgeCount = (btn) => {
+    const raw = btn?.querySelector('span')?.textContent?.trim() || '0';
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const emergencyStop =
+    stopBtn instanceof HTMLButtonElement
+      ? { exists: true, disabled: stopBtn.disabled, count: parseBadgeCount(stopBtn) }
+      : { exists: false, disabled: true, count: 0 };
+  const resumeAll =
+    resumeAllBtn instanceof HTMLButtonElement
+      ? { exists: true, disabled: resumeAllBtn.disabled, count: parseBadgeCount(resumeAllBtn) }
+      : { exists: false, disabled: true, count: 0 };
+
   return {
     exists: !!header,
     workspace: header?.querySelector('.workspace-indicator')?.textContent?.trim() || null,
     uiLanguage: app?.uiLanguage || null,
     serverWorkLanguage: app?.serverWorkLanguage || null,
     themeToggle: header?.querySelector('#theme-toggle-btn')?.textContent?.trim() || null,
+    runControls: {
+      emergencyStop,
+      resumeAll,
+    },
   };
 }
 
@@ -877,6 +917,17 @@ function captureChatState(shadow) {
     };
   }
 
+  const resumePanel = containerShadow.querySelector('#resume-panel');
+  const resumeBtn = containerShadow.querySelector('#resume-btn');
+  const resumeReason = containerShadow.querySelector('#resume-reason');
+
+  const resumePanelState = {
+    exists: !!resumePanel,
+    visible: resumePanel instanceof HTMLElement ? !resumePanel.classList.contains('hidden') : false,
+    btnEnabled: resumeBtn instanceof HTMLButtonElement ? !resumeBtn.disabled : false,
+    reasonText: resumeReason?.textContent?.trim() || '',
+  };
+
   const bubbles = containerShadow.querySelectorAll('.generation-bubble') || [];
   const messageContainer = containerShadow.querySelector('.messages');
   const messageNodes = messageContainer ? Array.from(messageContainer.children) : [];
@@ -1013,6 +1064,7 @@ function captureChatState(shadow) {
     pendingTeammateCalls: getPendingTeammateCalls().length,
     visibleMessageCount: messageNodes.length,
     visibleMessages,
+    resumePanel: resumePanelState,
   };
 }
 
@@ -1364,6 +1416,34 @@ function formatFullState(state) {
   // Input state
   const inputStatus = state.input?.textareaEnabled ? 'enabled' : 'disabled';
   lines.push(`  ✏️  Input: ${inputStatus}`);
+
+  // Run controls (header)
+  const run = state.header?.runControls || null;
+  const stopCount =
+    run && run.emergencyStop && typeof run.emergencyStop.count === 'number'
+      ? run.emergencyStop.count
+      : 0;
+  const resumeCount =
+    run && run.resumeAll && typeof run.resumeAll.count === 'number' ? run.resumeAll.count : 0;
+  const stopDisabled =
+    !!(run && run.emergencyStop && typeof run.emergencyStop.disabled === 'boolean'
+      ? run.emergencyStop.disabled
+      : true);
+  const resumeDisabled =
+    !!(run && run.resumeAll && typeof run.resumeAll.disabled === 'boolean'
+      ? run.resumeAll.disabled
+      : true);
+  lines.push(
+    `  🛑 Run controls: proceeding=${stopCount} (${stopDisabled ? 'stop disabled' : 'stop enabled'}), resumable=${resumeCount} (${resumeDisabled ? 'resume disabled' : 'resume enabled'})`,
+  );
+
+  // Continue panel (per-dlg resume)
+  const resumePanel = state.chat?.resumePanel || null;
+  if (resumePanel && resumePanel.visible) {
+    lines.push(`  ▶️ Continue: VISIBLE (${resumePanel.reasonText || 'no reason'})`);
+  } else {
+    lines.push(`  ▶️ Continue: hidden`);
+  }
 
   // Q4H
   if (state.q4h?.count > 0) {

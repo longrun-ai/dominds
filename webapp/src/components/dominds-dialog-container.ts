@@ -5,6 +5,7 @@
 import mannedToolIcon from '../assets/manned-tool.svg';
 import walkieTalkieIcon from '../assets/walkie-talkie.svg';
 import { formatToolCallErrorInline, parseToolCallError } from '../i18n/tool-call-errors';
+import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
 import type {
@@ -19,7 +20,7 @@ import type {
 } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
-import type { DialogRunState } from '../shared/types/run-state';
+import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
 import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
 import { DomindsCodeBlock } from './dominds-code-block';
@@ -35,8 +36,10 @@ type DialogContext = DialogIdent & {
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
+  private uiLanguage: LanguageCode = 'en';
   private serverWorkLanguage: LanguageCode = 'en';
   private runState: DialogRunState | null = null;
+  private activeGeneratingDialog?: DialogIdent;
   // Track previous dialog to handle race conditions during navigation
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
@@ -78,7 +81,21 @@ export class DomindsDialogContainer extends HTMLElement {
     this.attachShadow({ mode: 'open' });
   }
 
+  static get observedAttributes(): string[] {
+    return ['ui-language'];
+  }
+
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+    if (oldValue === newValue) return;
+    if (name !== 'ui-language') return;
+    const parsed = normalizeLanguageCode(newValue || '');
+    this.uiLanguage = parsed ?? 'en';
+    this.updateResumePanel();
+  }
+
   async connectedCallback(): Promise<void> {
+    const parsed = normalizeLanguageCode(this.getAttribute('ui-language') || '');
+    this.uiLanguage = parsed ?? 'en';
     this.render();
     await this.loadTeamConfiguration();
     const sr = this.shadowRoot;
@@ -209,6 +226,7 @@ export class DomindsDialogContainer extends HTMLElement {
    * it relies on live events that follow the round_update event.
    */
   public resetForRound(round: number): void {
+    this.clearGenerationGlow();
     // Reset per-round rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
@@ -228,6 +246,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Clean up current state and DOM content
   private cleanup(): void {
+    this.clearGenerationGlow();
     this.previousDialog = undefined;
     this.runState = null;
     this.generationBubble = undefined;
@@ -245,6 +264,33 @@ export class DomindsDialogContainer extends HTMLElement {
     if (messages) {
       messages.innerHTML = '';
     }
+  }
+
+  private clearGenerationGlow(): void {
+    const active = this.activeGeneratingDialog;
+    if (!active) return;
+    this.dispatchEvent(
+      new CustomEvent('dlg-generation-state', {
+        detail: { rootId: active.rootId, selfId: active.selfId, active: false },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    this.activeGeneratingDialog = undefined;
+  }
+
+  private setGenerationGlowActive(active: boolean): void {
+    const dialog = this.currentDialog;
+    if (!dialog) return;
+    const ident: DialogIdent = { rootId: dialog.rootId, selfId: dialog.selfId };
+    this.activeGeneratingDialog = active ? ident : undefined;
+    this.dispatchEvent(
+      new CustomEvent('dlg-generation-state', {
+        detail: { rootId: ident.rootId, selfId: ident.selfId, active },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   public async handleDialogEvent(event: TypedDialogEvent): Promise<void> {
@@ -302,24 +348,7 @@ export class DomindsDialogContainer extends HTMLElement {
         let reasonText: string | undefined;
         const reason = event.reason;
         if (reason) {
-          switch (reason.kind) {
-            case 'user_stop':
-              reasonText = 'Stopped by you';
-              break;
-            case 'emergency_stop':
-              reasonText = 'Stopped by emergency stop';
-              break;
-            case 'server_restart':
-              reasonText = 'Interrupted by server restart';
-              break;
-            case 'system_stop':
-              reasonText = reason.detail;
-              break;
-            default: {
-              const _exhaustive: never = reason;
-              reasonText = String(_exhaustive);
-            }
-          }
+          reasonText = this.formatInterruptionReason(reason);
         }
         this.appendRunStateMarker({ kind: event.kind, reason: reasonText });
         break;
@@ -351,6 +380,7 @@ export class DomindsDialogContainer extends HTMLElement {
         }
         this.currentRound = event.round;
         this.activeGenSeq = event.genseq;
+        this.setGenerationGlowActive(true);
         // Mark generation as started - this ensures substreams arrive in correct order
         this.handleGeneratingStart(event.genseq, event.timestamp);
         break;
@@ -366,6 +396,7 @@ export class DomindsDialogContainer extends HTMLElement {
           // - valid case: completes the bubble
           this.handleGeneratingFinish(event.genseq);
           this.activeGenSeq = undefined;
+          this.clearGenerationGlow();
         }
         break;
 
@@ -1826,17 +1857,18 @@ export class DomindsDialogContainer extends HTMLElement {
   private render(): void {
     if (!this.shadowRoot) return;
 
+    const t = getUiStrings(this.uiLanguage);
     this.shadowRoot!.innerHTML = `
       <style>${this.getStyles()}</style>
       <div class="container">
         <div class="messages"></div>
         <div id="resume-panel" class="resume-panel hidden">
           <div class="resume-text">
-            <div class="resume-title">Continue</div>
+            <div class="resume-title">${t.continueLabel}</div>
             <div id="resume-reason" class="resume-reason"></div>
           </div>
           <div class="resume-actions">
-            <button id="resume-btn" class="resume-btn" type="button">Continue</button>
+            <button id="resume-btn" class="resume-btn" type="button">${t.continueLabel}</button>
           </div>
         </div>
       </div>
@@ -1859,7 +1891,12 @@ export class DomindsDialogContainer extends HTMLElement {
     const panel = root.querySelector('#resume-panel') as HTMLElement | null;
     const reasonEl = root.querySelector('#resume-reason') as HTMLElement | null;
     const btn = root.querySelector('#resume-btn') as HTMLButtonElement | null;
+    const titleEl = root.querySelector('.resume-title') as HTMLElement | null;
     if (!panel || !reasonEl || !btn) return;
+
+    const t = getUiStrings(this.uiLanguage);
+    if (titleEl) titleEl.textContent = t.continueLabel;
+    btn.textContent = t.continueLabel;
 
     const state = this.runState;
     const canShow = !!this.currentDialog && state !== null && state.kind === 'interrupted';
@@ -1876,13 +1913,13 @@ export class DomindsDialogContainer extends HTMLElement {
     const reason = state.reason;
     switch (reason.kind) {
       case 'user_stop':
-        reasonEl.textContent = 'Stopped by you';
+        reasonEl.textContent = t.stoppedByYou;
         break;
       case 'emergency_stop':
-        reasonEl.textContent = 'Stopped by emergency stop';
+        reasonEl.textContent = t.stoppedByEmergencyStop;
         break;
       case 'server_restart':
-        reasonEl.textContent = 'Interrupted by server restart';
+        reasonEl.textContent = t.interruptedByServerRestart;
         break;
       case 'system_stop':
         reasonEl.textContent = reason.detail;
@@ -1894,13 +1931,32 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
+  private formatInterruptionReason(reason: DialogInterruptionReason): string {
+    const t = getUiStrings(this.uiLanguage);
+    switch (reason.kind) {
+      case 'user_stop':
+        return t.stoppedByYou;
+      case 'emergency_stop':
+        return t.stoppedByEmergencyStop;
+      case 'server_restart':
+        return t.interruptedByServerRestart;
+      case 'system_stop':
+        return reason.detail;
+      default: {
+        const _exhaustive: never = reason;
+        return String(_exhaustive);
+      }
+    }
+  }
+
   private appendRunStateMarker(marker: { kind: 'interrupted' | 'resumed'; reason?: string }): void {
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (!messages) return;
 
     const el = document.createElement('div');
     el.className = 'message system run-marker';
-    const label = marker.kind === 'resumed' ? 'Resumed' : 'Interrupted';
+    const t = getUiStrings(this.uiLanguage);
+    const label = marker.kind === 'resumed' ? t.runMarkerResumed : t.runMarkerInterrupted;
     const reason = marker.reason ? ` • ${marker.reason}` : '';
     el.innerHTML = `<div class="content"><div class="system-marker">${label}${reason}</div></div>`;
     messages.appendChild(el);

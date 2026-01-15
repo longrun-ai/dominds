@@ -5,12 +5,14 @@
 import { getUiStrings } from '../i18n/ui';
 import type { ApiMoveDialogsRequest, ApiRootDialogResponse, DialogInfo } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
+import type { DialogRunState } from '../shared/types/run-state';
 
 export interface RunningDialogListProps {
   dialogs: ApiRootDialogResponse[];
   maxHeight?: string;
   onSelect?: (dialog: DialogInfo) => void;
   uiLanguage: LanguageCode;
+  generatingDialogKeys: ReadonlySet<string>;
 }
 
 type RootGroup = {
@@ -32,11 +34,19 @@ type SelectionState =
   | { kind: 'none' }
   | { kind: 'selected'; rootId: string; selfId: string; isRoot: boolean };
 
+type RunControlVisualState =
+  | { kind: 'none' }
+  | { kind: 'interrupted' }
+  | { kind: 'blocked_q4h' }
+  | { kind: 'blocked_subdialogs' }
+  | { kind: 'blocked_both' };
+
 export class RunningDialogList extends HTMLElement {
   private props: RunningDialogListProps = {
     dialogs: [],
     maxHeight: 'none',
     uiLanguage: 'en',
+    generatingDialogKeys: new Set(),
   };
   private listState: ListState = { kind: 'empty' };
   private selectionState: SelectionState = { kind: 'none' };
@@ -106,6 +116,116 @@ export class RunningDialogList extends HTMLElement {
     this.applySelection(dialog);
     this.notifySelection(dialog);
     return true;
+  }
+
+  private dialogKey(rootId: string, selfId: string): string {
+    return selfId === rootId ? rootId : `${rootId}#${selfId}`;
+  }
+
+  private getDialogKey(dialog: ApiRootDialogResponse): string {
+    const rootId = dialog.rootId;
+    const selfId = dialog.selfId ? dialog.selfId : dialog.rootId;
+    return this.dialogKey(rootId, selfId);
+  }
+
+  private isGenerating(dialog: ApiRootDialogResponse): boolean {
+    const key = this.getDialogKey(dialog);
+    return this.props.generatingDialogKeys.has(key);
+  }
+
+  private getRunControlVisualState(runState: DialogRunState | undefined): RunControlVisualState {
+    if (!runState) return { kind: 'none' };
+    switch (runState.kind) {
+      case 'interrupted':
+        return { kind: 'interrupted' };
+      case 'blocked': {
+        switch (runState.reason.kind) {
+          case 'needs_human_input':
+            return { kind: 'blocked_q4h' };
+          case 'waiting_for_subdialogs':
+            return { kind: 'blocked_subdialogs' };
+          case 'needs_human_input_and_subdialogs':
+            return { kind: 'blocked_both' };
+          default: {
+            const _exhaustive: never = runState.reason;
+            return { kind: 'none' };
+          }
+        }
+      }
+      case 'idle_waiting_user':
+      case 'proceeding':
+      case 'proceeding_stop_requested':
+      case 'terminal':
+        return { kind: 'none' };
+      default: {
+        const _exhaustive: never = runState;
+        return { kind: 'none' };
+      }
+    }
+  }
+
+  private renderRunBadges(dialog: ApiRootDialogResponse): string {
+    const t = getUiStrings(this.props.uiLanguage);
+    const visualState = this.getRunControlVisualState(dialog.runState);
+    const badges: string[] = [];
+
+    switch (visualState.kind) {
+      case 'none':
+        break;
+      case 'interrupted':
+        badges.push(
+          `<span class="run-badge interrupted" title="${t.runBadgeInterruptedTitle}">INT</span>`,
+        );
+        break;
+      case 'blocked_q4h':
+        badges.push(
+          `<span class="run-badge blocked blocked-q4h" title="${t.runBadgeWaitingHumanTitle}">Q4H</span>`,
+        );
+        break;
+      case 'blocked_subdialogs':
+        badges.push(
+          `<span class="run-badge blocked blocked-subdialogs" title="${t.runBadgeWaitingSubdialogsTitle}">SUB</span>`,
+        );
+        break;
+      case 'blocked_both':
+        badges.push(
+          `<span class="run-badge blocked blocked-both" title="${t.runBadgeWaitingBothTitle}">Q4H+SUB</span>`,
+        );
+        break;
+      default: {
+        const _exhaustive: never = visualState;
+        throw new Error(`Unhandled RunControlVisualState: ${String(_exhaustive)}`);
+      }
+    }
+
+    if (this.isGenerating(dialog)) {
+      badges.push(
+        `<span class="run-badge generating" title="${t.runBadgeGeneratingTitle}">GEN</span>`,
+      );
+    }
+
+    if (badges.length === 0) return '';
+    return `<span class="run-badges">${badges.join('')}</span>`;
+  }
+
+  private getRunStateClass(dialog: ApiRootDialogResponse): string {
+    const visualState = this.getRunControlVisualState(dialog.runState);
+    switch (visualState.kind) {
+      case 'none':
+        return '';
+      case 'interrupted':
+        return ' state-interrupted';
+      case 'blocked_q4h':
+        return ' state-blocked-q4h';
+      case 'blocked_subdialogs':
+        return ' state-blocked-subdialogs';
+      case 'blocked_both':
+        return ' state-blocked-both';
+      default: {
+        const _exhaustive: never = visualState;
+        return String(_exhaustive);
+      }
+    }
   }
 
   private updateListState(dialogs: ApiRootDialogResponse[]): void {
@@ -406,12 +526,15 @@ export class RunningDialogList extends HTMLElement {
     this.indexDialog(dialog);
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
+    const isGenerating = this.isGenerating(dialog);
+    const runStateClass = this.getRunStateClass(dialog);
+    const badges = this.renderRunBadges(dialog);
     const dialogId = dialog.rootId;
     const updatedAt = dialog.lastModified || '';
 
     return `
       <div
-        class="dialog-item root-dialog${isSelected ? ' selected' : ''}"
+        class="dialog-item root-dialog${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id=""
       >
@@ -419,6 +542,7 @@ export class RunningDialogList extends HTMLElement {
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button">${toggleIcon}</button>
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
+            ${badges}
             <button class="action icon-button" data-action="root-mark-done" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionMarkDone}" aria-label="${t.dialogActionMarkDone}">
               ${this.renderDoneIcon()}
             </button>
@@ -441,6 +565,9 @@ export class RunningDialogList extends HTMLElement {
   private renderDialogRow(dialog: ApiRootDialogResponse, kind: 'root' | 'sub'): string {
     this.indexDialog(dialog);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
+    const isGenerating = this.isGenerating(dialog);
+    const runStateClass = this.getRunStateClass(dialog);
+    const badges = this.renderRunBadges(dialog);
     const dialogId =
       kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
     const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
@@ -450,13 +577,14 @@ export class RunningDialogList extends HTMLElement {
     if (kind === 'sub') {
       return `
         <div
-          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}"
+          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
           data-root-id="${dialog.rootId}"
           data-self-id="${dialog.selfId ?? ''}"
         >
           <div class="dialog-row dialog-subrow">
             <span class="dialog-title">@${dialog.agentId}</span>
             <span class="dialog-meta-right">
+              ${badges}
               <span class="dialog-topic">${topicMark}</span>
             </span>
           </div>
@@ -472,13 +600,14 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="${rowClass}${isSelected ? ' selected' : ''}"
+        class="${rowClass}${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
       >
         <div class="dialog-row">
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
+            ${badges}
             <span class="dialog-status">${dialogId}</span>
             <span class="dialog-time">${updatedAt}</span>
           </span>
@@ -760,6 +889,7 @@ export class RunningDialogList extends HTMLElement {
         gap: 4px;
         padding: 10px 12px;
         cursor: pointer;
+        border-left: 3px solid transparent;
       }
 
       .root-dialog {
@@ -786,6 +916,95 @@ export class RunningDialogList extends HTMLElement {
 
       .dialog-item.selected {
         background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, transparent);
+      }
+
+      .dialog-item.state-interrupted {
+        border-left-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 55%, transparent);
+        background: color-mix(in srgb, var(--dominds-danger, #dc3545) 10%, transparent);
+      }
+
+      .dialog-item.state-blocked-q4h {
+        border-left-color: color-mix(in srgb, #7c3aed 60%, transparent);
+        background: color-mix(in srgb, #7c3aed 9%, transparent);
+      }
+
+      .dialog-item.state-blocked-subdialogs {
+        border-left-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 7%, transparent);
+      }
+
+      .dialog-item.state-blocked-both {
+        border-left-color: color-mix(in srgb, #7c3aed 40%, var(--dominds-primary, #007acc) 40%);
+        background: color-mix(in srgb, #7c3aed 6%, var(--dominds-primary, #007acc) 5%);
+      }
+
+      @keyframes dialogGlowPulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
+        }
+        40% {
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-primary, #007acc) 30%, transparent);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
+        }
+      }
+
+      .dialog-item.gen-active {
+        position: relative;
+        animation: dialogGlowPulse 1.3s ease-in-out infinite;
+      }
+
+      .run-badges {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .run-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-muted, #666666);
+        user-select: none;
+      }
+
+      .run-badge.interrupted {
+        background: color-mix(in srgb, var(--dominds-danger-bg, #f8d7da) 70%, white 30%);
+        border-color: color-mix(in srgb, var(--dominds-danger, #dc3545) 30%, transparent);
+        color: var(--dominds-danger, #721c24);
+      }
+
+      .run-badge.blocked-q4h {
+        background: color-mix(in srgb, #ede9fe 70%, white 30%);
+        border-color: color-mix(in srgb, #7c3aed 35%, transparent);
+        color: #5b21b6;
+      }
+
+      .run-badge.blocked-subdialogs {
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 10%, white 90%);
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
+        color: var(--dominds-primary, #007acc);
+      }
+
+      .run-badge.blocked-both {
+        background: color-mix(in srgb, #ede9fe 45%, var(--dominds-primary, #007acc) 9%, white 46%);
+        border-color: color-mix(in srgb, #7c3aed 25%, var(--dominds-primary, #007acc) 25%);
+        color: #5b21b6;
+      }
+
+      .run-badge.generating {
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 14%, white 86%);
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
+        color: var(--dominds-primary, #007acc);
       }
 
       .toggle {

@@ -57,6 +57,7 @@ Design intent: “Stop” is the fastest, most discoverable control and must be 
 
 The WebUI provides global controls (typically in a header/toolbar) that act across all dlgs:
 
+- Placement: Put **Emergency stop** and **Resume all** in the top header, immediately to the left of the connection status indicator, so they remain visible regardless of which dlg is open.
 - **Emergency stop:** Requests interruption of _all_ proceeding dlgs backend-wide.
   - Intended for runaway output, resource protection, or operator intervention.
   - Should be visually distinct from per-dlg Stop (more “danger” affordance).

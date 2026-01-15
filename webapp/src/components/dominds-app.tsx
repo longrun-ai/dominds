@@ -86,6 +86,7 @@ export class DomindsApp extends HTMLElement {
   private dialogRunStatesByKey = new Map<string, DialogRunState>();
   private proceedingDialogsCount: number = 0;
   private resumableDialogsCount: number = 0;
+  private generatingDialogKeys = new Set<string>();
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
   private teamMembers: FrontendTeamMember[] = [];
@@ -246,6 +247,11 @@ export class DomindsApp extends HTMLElement {
     // Propagate to child components
     const conn = this.shadowRoot.querySelector('dominds-connection-status') as HTMLElement | null;
     if (conn) conn.setAttribute('ui-language', this.uiLanguage);
+
+    const dialogContainer = this.shadowRoot.querySelector(
+      '#dialog-container',
+    ) as HTMLElement | null;
+    if (dialogContainer) dialogContainer.setAttribute('ui-language', this.uiLanguage);
 
     const runningList = this.shadowRoot.querySelector('#running-dialog-list');
     if (runningList instanceof RunningDialogList) {
@@ -658,7 +664,11 @@ export class DomindsApp extends HTMLElement {
 
     const runningList = this.shadowRoot.querySelector('#running-dialog-list');
     if (runningList instanceof RunningDialogList) {
-      runningList.setProps({ onSelect, uiLanguage: this.uiLanguage });
+      runningList.setProps({
+        onSelect,
+        uiLanguage: this.uiLanguage,
+        generatingDialogKeys: this.generatingDialogKeys,
+      });
     }
 
     const doneList = this.shadowRoot.querySelector('#done-dialog-list');
@@ -881,6 +891,58 @@ export class DomindsApp extends HTMLElement {
         align-items: center;
         gap: 12px;
         margin-left: 16px;
+      }
+
+      .header-run-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .header-pill-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 500;
+        user-select: none;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-fg, #333333);
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .header-pill-button:hover:not(:disabled) {
+        border-color: var(--dominds-primary, #007acc);
+        background: var(--dominds-hover, #f0f0f0);
+      }
+
+      .header-pill-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .header-pill-button.danger {
+        background: var(--dominds-danger-bg, #f8d7da);
+        color: var(--dominds-danger, #721c24);
+        border-color: var(--dominds-danger-border, #f5c6cb);
+      }
+
+      .header-pill-button.danger:hover:not(:disabled) {
+        border-color: var(--dominds-danger, #dc3545);
+      }
+
+      .header-pill-button.success {
+        background: var(--dominds-success-bg, #d4edda);
+        color: var(--dominds-success, #155724);
+        border-color: var(--dominds-success-border, #c3e6cb);
+      }
+
+      .header-pill-button.success:hover:not(:disabled) {
+        border-color: var(--dominds-success, #28a745);
       }
 
       .lang-select {
@@ -1822,6 +1884,16 @@ export class DomindsApp extends HTMLElement {
             📁 ${this.backendWorkspace || t.backendWorkspaceLoading}
           </div>
           <div class="header-actions">
+            <div class="header-run-controls">
+              <button class="header-pill-button danger" id="toolbar-emergency-stop" title="${t.emergencyStop}" aria-label="${t.emergencyStop}" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+                <span>${String(this.proceedingDialogsCount)}</span>
+              </button>
+              <button class="header-pill-button success" id="toolbar-resume-all" title="${t.resumeAll}" aria-label="${t.resumeAll}" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 3v18l17-9z"></path></svg>
+                <span>${String(this.resumableDialogsCount)}</span>
+              </button>
+            </div>
             <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
             <div class="ui-language-menu">
               <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
@@ -1910,23 +1982,13 @@ export class DomindsApp extends HTMLElement {
               <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentRound < this.toolbarTotalRounds ? '' : 'disabled'} aria-label="${t.nextRound}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
               </button>
-            </div>
-          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
-          <div id="run-ctrl-callout" style="position: relative; margin-left: 12px; display:flex; gap: 6px; align-items: center;">
-            <button class="badge-button danger" id="toolbar-emergency-stop" title="${t.emergencyStop}" aria-label="${t.emergencyStop}" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>
-              <span>${String(this.proceedingDialogsCount)}</span>
-            </button>
-            <button class="badge-button" id="toolbar-resume-all" title="${t.resumeAll}" aria-label="${t.resumeAll}" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
-              <span>${String(this.resumableDialogsCount)}</span>
-            </button>
-          </div>
-            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-              <span>${String(this.toolbarReminders.length)}</span>
-            </button>
-            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
+	            </div>
+	          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
+	            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
+	              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+	              <span>${String(this.toolbarReminders.length)}</span>
+	            </button>
+	            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
             </button>
           </div>
@@ -1958,7 +2020,7 @@ export class DomindsApp extends HTMLElement {
 
             <div class="dialog-section q4h-collapsed">
               <div class="conversation-scroll-area">
-                <dominds-dialog-container id="dialog-container"></dominds-dialog-container>
+                <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
               </div>
               <div class="resize-handle" id="resize-handle"></div>
               <div class="q4h-input-wrap">
@@ -2019,6 +2081,31 @@ export class DomindsApp extends HTMLElement {
         void this.loadSubdialogsForRoot(rootId);
       }
     }) as EventListener);
+
+    // Highlight dialogs under active LLM generation (streaming) in the running list.
+    this.shadowRoot.addEventListener('dlg-generation-state', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail = ce.detail as { rootId?: unknown; selfId?: unknown; active?: unknown } | null;
+
+      const rootId = detail && typeof detail.rootId === 'string' ? detail.rootId : '';
+      const selfId = detail && typeof detail.selfId === 'string' ? detail.selfId : '';
+      const active = detail && typeof detail.active === 'boolean' ? detail.active : false;
+      if (!rootId || !selfId) return;
+
+      const key = this.dialogKey(rootId, selfId);
+      if (active) {
+        this.generatingDialogKeys.add(key);
+      } else {
+        this.generatingDialogKeys.delete(key);
+      }
+
+      const sr = this.shadowRoot;
+      if (!sr) return;
+      const runningList = sr.querySelector('#running-dialog-list');
+      if (runningList instanceof RunningDialogList) {
+        runningList.setProps({ generatingDialogKeys: this.generatingDialogKeys });
+      }
+    });
 
     // Dialog status actions (mark done/archive/revive) across all list views
     this.shadowRoot.addEventListener('dialog-status-action', ((event: Event) => {
