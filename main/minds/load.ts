@@ -34,7 +34,9 @@ import {
 } from './minds-i18n';
 import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 
-async function readAgentMind(id: string, fn: string, noFileDefault: string = '') {
+type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
+
+async function readAgentMindResult(id: string, fn: string): Promise<ReadAgentMindResult> {
   const mindFn = path.join('.minds', 'team', id, fn);
   try {
     await access(mindFn);
@@ -42,13 +44,24 @@ async function readAgentMind(id: string, fn: string, noFileDefault: string = '')
     // no rtws mindset file, attempt builtin minds
     const builtinMindFn = path.join(__dirname, 'builtin', id, fn);
     try {
-      return await readFile(builtinMindFn, 'utf-8');
-    } catch {
-      // no builtin mindset file, fallthrough to trigger direct reading path
+      const text = await readFile(builtinMindFn, 'utf-8');
+      return { kind: 'found', text };
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return { kind: 'missing' };
+      }
+      log.warn(`Failed reading file '${builtinMindFn}':`, error);
+      return { kind: 'missing' };
     }
   }
   try {
-    return await readFile(mindFn, 'utf-8');
+    const text = await readFile(mindFn, 'utf-8');
+    return { kind: 'found', text };
   } catch (error: unknown) {
     if (
       typeof error === 'object' &&
@@ -56,11 +69,23 @@ async function readAgentMind(id: string, fn: string, noFileDefault: string = '')
       'code' in error &&
       (error as { code?: unknown }).code === 'ENOENT'
     ) {
-      return noFileDefault;
+      return { kind: 'missing' };
     }
     log.warn(`Failed reading file '${mindFn}':`, error);
+    return { kind: 'missing' };
   }
-  return noFileDefault;
+}
+
+async function readAgentMindPreferred(options: {
+  id: string;
+  preferredFilenames: readonly string[];
+  noFileDefault: string;
+}): Promise<string> {
+  for (const fn of options.preferredFilenames) {
+    const result = await readAgentMindResult(options.id, fn);
+    if (result.kind === 'found') return result.text;
+  }
+  return options.noFileDefault;
 }
 
 export async function loadAgentMinds(
@@ -80,13 +105,21 @@ export async function loadAgentMinds(
   if (!agent) throw new Error(`No such agent in team: '${agentId}'`);
 
   // read disk file afresh, in case the contents have changed by human or ai meanwhile
-  const personaRaw = await readAgentMind(
-    agent.id,
-    'persona.md',
-    defaultPersonaText(workingLanguage),
-  );
-  const knowledgeRaw = await readAgentMind(agent.id, 'knowledge.md');
-  const lessonsRaw = await readAgentMind(agent.id, 'lessons.md');
+  const personaRaw = await readAgentMindPreferred({
+    id: agent.id,
+    preferredFilenames: [`persona.${workingLanguage}.md`, 'persona.md'],
+    noFileDefault: defaultPersonaText(workingLanguage),
+  });
+  const knowledgeRaw = await readAgentMindPreferred({
+    id: agent.id,
+    preferredFilenames: [`knowledge.${workingLanguage}.md`, 'knowledge.md'],
+    noFileDefault: '',
+  });
+  const lessonsRaw = await readAgentMindPreferred({
+    id: agent.id,
+    preferredFilenames: [`lessons.${workingLanguage}.md`, 'lessons.md'],
+    noFileDefault: '',
+  });
   const none = noneText(workingLanguage);
   const persona = personaRaw && personaRaw.trim() !== '' ? personaRaw : none;
   const knowledge = knowledgeRaw && knowledgeRaw.trim() !== '' ? knowledgeRaw : none;

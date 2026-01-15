@@ -7,6 +7,7 @@
   "scripts": {
     "parsing": "tsx texting/parsing.ts",
     "auth": "tsx auth.ts",
+    "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "mentionx": "tsx texting/mentionx.ts",
     "realtime": "tsx texting/realtime.ts",
     "teammate-call-parse": "tsx texting/teammate-call-parse.ts",
