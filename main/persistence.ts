@@ -46,6 +46,7 @@ import type {
   AgentThoughtRecord,
   AgentWordsRecord,
   DialogLatestFile,
+  DialogMetadataFile,
   FuncCallRecord,
   FuncResultRecord,
   HumanQuestion,
@@ -55,7 +56,6 @@ import type {
   Questions4HumanFile,
   ReminderStateFile,
   RootDialogMetadataFile,
-  DialogMetadataFile as StorageDialogMetadataFile,
   SubdialogMetadataFile,
   TeammateResponseRecord,
   ToolArguments,
@@ -167,11 +167,6 @@ export interface Questions4Human {
 }
 
 // Remove old type definitions - now using shared/types/storage.ts
-
-// Re-export the storage types for backward compatibility
-// Re-export the storage types for backward compatibility
-export type DialogMetadataFile = StorageDialogMetadataFile;
-export type { PersistedDialogRecord } from './shared/types/storage';
 
 import { TextingEventsReceiver, TextingStreamParser } from './texting';
 import { generateDialogID } from './utils/id';
@@ -314,52 +309,6 @@ export class DiskFileDialogStore extends DialogStore {
       round,
     };
     postDialogEvent(dialog, funcResultEvt);
-  }
-
-  /**
-   * LEGACY METHOD: Receive and handle responses from other agents via texting (deprecated)
-   *
-   * NOTE: This method sends empty callId, which breaks frontend correlation.
-   *       Results will NOT display inline. Use receiveToolResponse() instead.
-   *
-   * @deprecated Use receiveToolResponse() for inline result display
-   * @deprecated This method is kept for backward compatibility only
-   */
-  public async receiveTextingResponse(
-    dialog: Dialog,
-    responderId: string,
-    headLine: string,
-    result: string,
-    status: 'completed' | 'failed',
-    _subdialogId?: DialogID,
-  ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
-    // Use activeGenSeqOrUndefined to avoid throwing when called outside generation context
-    // (e.g., from WebSocket handler for parent-calls)
-    const calling_genseq = dialog.activeGenSeqOrUndefined;
-    const ev: ToolCallResultRecord = {
-      ts: formatUnifiedTimestamp(new Date()),
-      type: 'tool_call_result_record',
-      responderId,
-      headLine,
-      status,
-      result,
-      calling_genseq,
-      callId: '', // callId will be set by caller via receiveToolResponse
-    };
-    await this.appendEvent(round, ev);
-
-    const textingResponseEvt: ToolCallResponseEvent = {
-      type: 'tool_call_response_evt',
-      responderId,
-      headLine,
-      status,
-      result,
-      round,
-      calling_genseq,
-      callId: '', // LEGACY: Empty callId - frontend cannot correlate, result won't display
-    };
-    postDialogEvent(dialog, textingResponseEvt);
   }
 
   /**

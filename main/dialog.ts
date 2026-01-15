@@ -981,23 +981,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     await this.dlgStore.callingFinish(this, callId);
   }
 
-  public async receiveTextingResponse(
-    responderId: string,
-    headLine: string,
-    result: string,
-    status: 'completed' | 'failed',
-    subdialogId?: DialogID,
-  ): Promise<void> {
-    return await this.dlgStore.receiveTextingResponse(
-      this,
-      responderId,
-      headLine,
-      result,
-      status,
-      subdialogId,
-    );
-  }
-
   /**
    * Receive tool response with callId for inline correlation
    */
@@ -1471,14 +1454,6 @@ export abstract class DialogStore {
   public sayingFinish(_dialog: Dialog): void {}
 
   public async receiveFuncResult(_dialog: Dialog, _funcResult: FuncResultMsg): Promise<void> {}
-  public async receiveTextingResponse(
-    _dialog: Dialog,
-    _responderId: string,
-    _headLine: string,
-    _result: string,
-    _status: 'completed' | 'failed',
-    _subdialogId?: DialogID,
-  ): Promise<void> {}
 
   /**
    * Receive tool response with callId for inline correlation
