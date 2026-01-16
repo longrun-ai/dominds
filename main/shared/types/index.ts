@@ -1,9 +1,9 @@
 // Shared types for frontend and backend
 
 export * from './language';
-export * from './wire';
 export * from './problems';
 export * from './tools-registry';
+export * from './wire';
 
 export * from './dialog';
 export * from './run-state';

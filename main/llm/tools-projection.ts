@@ -1,5 +1,5 @@
-import type { FuncTool } from '../tool';
 import type { WorkspaceProblem } from '../shared/types/problems';
+import type { FuncTool } from '../tool';
 
 export type ProviderToolProjectionResult = {
   tools: FuncTool[];
@@ -18,4 +18,3 @@ export function projectFuncToolsForProvider(
 ): ProviderToolProjectionResult {
   return { tools: funcTools, problems: [] };
 }
-

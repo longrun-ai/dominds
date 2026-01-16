@@ -178,11 +178,7 @@ export class McpStdioClient {
     const all: McpListedTool[] = [];
     let cursor: string | undefined;
     for (let i = 0; i < 50; i++) {
-      const res = await this.request(
-        'tools/list',
-        cursor ? { cursor } : {},
-        timeoutMs,
-      );
+      const res = await this.request('tools/list', cursor ? { cursor } : {}, timeoutMs);
       const parsed = parseToolsListResult(res);
       all.push(...parsed.tools);
       cursor = parsed.nextCursor;
@@ -268,7 +264,9 @@ function parseToolsListResult(value: unknown): { tools: McpListedTool[]; nextCur
   }
 
   const nextCursor =
-    typeof obj.nextCursor === 'string' && obj.nextCursor.trim() ? (obj.nextCursor as string) : undefined;
+    typeof obj.nextCursor === 'string' && obj.nextCursor.trim()
+      ? (obj.nextCursor as string)
+      : undefined;
 
   return { tools, nextCursor };
 }
@@ -318,4 +316,3 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
-

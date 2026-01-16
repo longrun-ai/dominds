@@ -164,7 +164,8 @@ export async function loadAgentMinds(
           Array.isArray(requiredValue) && requiredValue.every((v) => typeof v === 'string')
             ? requiredValue
             : [];
-        const req = required.length > 0 ? required.join(', ') : noneRequiredFieldsText(workingLanguage);
+        const req =
+          required.length > 0 ? required.join(', ') : noneRequiredFieldsText(workingLanguage);
 
         const propsValue = schema['properties'];
         const propsRecord = isRecord(propsValue) ? propsValue : {};

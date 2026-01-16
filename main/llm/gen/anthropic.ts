@@ -15,7 +15,7 @@ import type {
 
 import { createLogger } from '../../log';
 import type { Team } from '../../team';
-import type { FuncTool, JsonSchema } from '../../tool';
+import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
 import type { LlmGenerator, LlmStreamReceiver } from '../gen';
 

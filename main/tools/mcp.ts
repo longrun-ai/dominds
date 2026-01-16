@@ -55,4 +55,3 @@ export const mcpRestartTool: FuncTool = {
     return `ok: restarted ${parsed.serverId}`;
   },
 };
-

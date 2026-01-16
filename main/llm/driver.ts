@@ -25,8 +25,8 @@ import {
 } from '../dialog-run-state';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
-import { removeProblem, upsertProblem } from '../problems';
 import { DialogPersistence } from '../persistence';
+import { removeProblem, upsertProblem } from '../problems';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import {
   formatDomindsNoteDirectSelfCall,

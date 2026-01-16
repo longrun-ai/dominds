@@ -206,7 +206,10 @@ async function restartServerNow(
 
   const serverCfg = parsed.config.servers[serverId];
   if (!serverCfg) {
-    return { ok: false, errorText: `MCP server '${serverId}' is not configured in ${MCP_YAML_PATH}` };
+    return {
+      ok: false,
+      errorText: `MCP server '${serverId}' is not configured in ${MCP_YAML_PATH}`,
+    };
   }
 
   const desiredToolsetName = `mcp_${serverId}`;
@@ -502,7 +505,10 @@ function buildToolsForServer(
     const originalName = tool.name;
 
     if (!isValidProviderToolName(originalName)) {
-      log.warn(`Rejecting MCP tool with invalid name`, undefined, { serverId, toolName: originalName });
+      log.warn(`Rejecting MCP tool with invalid name`, undefined, {
+        serverId,
+        toolName: originalName,
+      });
       problems.push({
         kind: 'mcp_tool_invalid_name',
         source: 'mcp',
@@ -517,7 +523,10 @@ function buildToolsForServer(
 
     const exposure = decideToolExposure(originalName, cfg.tools);
     if (exposure.kind === 'blacklisted') {
-      log.warn(`MCP tool not registered (blacklisted)`, undefined, { serverId, toolName: originalName });
+      log.warn(`MCP tool not registered (blacklisted)`, undefined, {
+        serverId,
+        toolName: originalName,
+      });
       problems.push({
         kind: 'mcp_tool_blacklisted',
         source: 'mcp',
@@ -530,11 +539,10 @@ function buildToolsForServer(
       continue;
     }
     if (exposure.kind === 'not_whitelisted') {
-      log.warn(
-        `MCP tool not registered (not whitelisted)`,
-        undefined,
-        { serverId, toolName: originalName },
-      );
+      log.warn(`MCP tool not registered (not whitelisted)`, undefined, {
+        serverId,
+        toolName: originalName,
+      });
       problems.push({
         kind: 'mcp_tool_not_whitelisted',
         source: 'mcp',
@@ -549,11 +557,11 @@ function buildToolsForServer(
 
     const domindsName = applyToolNameTransforms(originalName, cfg.transform);
     if (!isValidProviderToolName(domindsName)) {
-      log.warn(
-        `Rejecting MCP tool after transforms due to invalid Dominds tool name`,
-        undefined,
-        { serverId, toolName: originalName, domindsToolName: domindsName },
-      );
+      log.warn(`Rejecting MCP tool after transforms due to invalid Dominds tool name`, undefined, {
+        serverId,
+        toolName: originalName,
+        domindsToolName: domindsName,
+      });
       problems.push({
         kind: 'mcp_tool_invalid_name',
         source: 'mcp',
@@ -567,11 +575,11 @@ function buildToolsForServer(
     }
 
     if (seenDomindsNames.has(domindsName)) {
-      log.warn(
-        `Skipping MCP tool due to within-server name collision`,
-        undefined,
-        { serverId, toolName: originalName, domindsToolName: domindsName },
-      );
+      log.warn(`Skipping MCP tool due to within-server name collision`, undefined, {
+        serverId,
+        toolName: originalName,
+        domindsToolName: domindsName,
+      });
       problems.push({
         kind: 'mcp_tool_collision',
         source: 'mcp',
@@ -588,11 +596,11 @@ function buildToolsForServer(
     const existingOwner = toolOwnerByName.get(domindsName);
     const canReplace = existingOwner?.serverId === serverId;
     if (existingTool && !canReplace) {
-      log.warn(
-        `Skipping MCP tool due to global name collision`,
-        undefined,
-        { serverId, toolName: originalName, domindsToolName: domindsName },
-      );
+      log.warn(`Skipping MCP tool due to global name collision`, undefined, {
+        serverId,
+        toolName: originalName,
+        domindsToolName: domindsName,
+      });
       problems.push({
         kind: 'mcp_tool_collision',
         source: 'mcp',

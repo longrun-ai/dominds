@@ -16,8 +16,8 @@ import {
 import { dialogEventRegistry } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
-import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {

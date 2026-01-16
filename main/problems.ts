@@ -1,5 +1,4 @@
-import type { WorkspaceProblem } from './shared/types/problems';
-import type { ProblemsSnapshotMessage } from './shared/types/problems';
+import type { ProblemsSnapshotMessage, WorkspaceProblem } from './shared/types/problems';
 import type { WebSocketMessage } from './shared/types/wire';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 

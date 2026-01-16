@@ -112,4 +112,3 @@ export interface ProblemsSnapshotMessage {
   problems: WorkspaceProblem[];
   timestamp: string;
 }
-

@@ -135,9 +135,9 @@ async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
     });
     res.end(
       JSON.stringify({
-      success: true,
-      toolsets: snapshot.toolsets,
-      timestamp: snapshot.timestamp,
+        success: true,
+        toolsets: snapshot.toolsets,
+        timestamp: snapshot.timestamp,
       }),
     );
     return true;

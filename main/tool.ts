@@ -105,9 +105,7 @@ export function validateArgs(
 
   const propertiesValue =
     isRecord(schema) && 'properties' in schema ? schema.properties : undefined;
-  const properties = isRecord(propertiesValue)
-    ? (propertiesValue as Record<string, unknown>)
-    : {};
+  const properties = isRecord(propertiesValue) ? (propertiesValue as Record<string, unknown>) : {};
 
   const requiredValue = isRecord(schema) && 'required' in schema ? schema.required : undefined;
   const required =

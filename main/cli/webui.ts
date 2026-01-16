@@ -15,8 +15,8 @@
 
 import { spawn } from 'child_process';
 import { createLogger } from '../log';
-import { formatAutoAuthUrl } from '../server/auth';
 import { startServer } from '../server';
+import { formatAutoAuthUrl } from '../server/auth';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from '../shared/runtime-language';
 
 const log = createLogger('webui');
