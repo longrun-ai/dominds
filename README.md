@@ -218,7 +218,7 @@ Why it matters
 
 ## 2) Tools with intent: safe by design
 
-> Powerful tools (for example, shells or other side‑effectful interfaces) are hard to fully audit without compromising usefulness. Do not rely on vague “be careful” instructions.
+> Powerful tools (for example, shells or other side‑effectful interfaces) are hard to fully audit without compromising usefulness. But do micro-auditing by yourself? Or rely on vague “be careful” instructions? Big NO with dominds!
 
 Principles
 
@@ -258,4 +258,4 @@ Practices
 
 ---
 
-**License:** MIT | **Repository:** [github.com/longrun-ai/dominds](https://github.com/longrun-ai/dominds)
+**License:** LGPL | **Repository:** [github.com/longrun-ai/dominds](https://github.com/longrun-ai/dominds)
