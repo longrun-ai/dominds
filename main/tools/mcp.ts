@@ -41,6 +41,10 @@ export const mcpRestartTool: FuncTool = {
   name: 'mcp_restart',
   description:
     'Restart a configured MCP server using the current `.minds/mcp.yaml` config (best-effort).',
+  descriptionI18n: {
+    en: 'Restart a configured MCP server using the current `.minds/mcp.yaml` config (best-effort).',
+    zh: '使用当前的 `.minds/mcp.yaml` 配置重启指定的 MCP 服务器（尽力而为）。',
+  },
   parameters: mcpRestartSchema,
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {

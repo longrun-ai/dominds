@@ -15,6 +15,8 @@ import type {
   ChatGptTextControls,
 } from '@dominds/codex-auth';
 import { createLogger } from '../../log';
+import { getTextForLanguage } from '../../shared/i18n/text';
+import { getWorkLanguage } from '../../shared/runtime-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
@@ -48,10 +50,14 @@ function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
   // MCP schemas are passed through to providers. Codex tool schema types are narrower; runtime
   // validation is handled by provider rejection + the driver stop policy.
   const parameters = funcTool.parameters as unknown as ChatGptFunctionTool['parameters'];
+  const description = getTextForLanguage(
+    { i18n: funcTool.descriptionI18n, fallback: funcTool.description },
+    getWorkLanguage(),
+  );
   return {
     type: 'function',
     name: funcTool.name,
-    description: funcTool.description ?? '',
+    description,
     strict: false,
     parameters,
   };

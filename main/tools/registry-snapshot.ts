@@ -1,7 +1,7 @@
 import type { ToolInfo, ToolsetInfo } from '../shared/types/tools-registry';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool } from '../tool';
-import { toolsetsRegistry } from './registry';
+import { getToolsetMeta, toolsetsRegistry } from './registry';
 
 export type ToolsRegistrySnapshot = {
   toolsets: ToolsetInfo[];
@@ -11,7 +11,13 @@ export type ToolsRegistrySnapshot = {
 export function createToolsRegistrySnapshot(): ToolsRegistrySnapshot {
   const toolsets: ToolsetInfo[] = [];
   for (const [toolsetName, tools] of toolsetsRegistry.entries()) {
-    toolsets.push({ name: toolsetName, tools: tools.map(toolToInfo) });
+    const meta = getToolsetMeta(toolsetName);
+    const descriptionI18n = meta ? meta.descriptionI18n : undefined;
+    toolsets.push({
+      name: toolsetName,
+      descriptionI18n,
+      tools: tools.map(toolToInfo),
+    });
   }
 
   return {
@@ -27,12 +33,14 @@ function toolToInfo(tool: Tool): ToolInfo {
         name: tool.name,
         kind: 'func',
         description: tool.description,
+        descriptionI18n: tool.descriptionI18n,
       };
     case 'texter':
       return {
         name: tool.name,
         kind: 'texter',
         description: tool.usageDescription,
+        descriptionI18n: tool.usageDescriptionI18n,
       };
     default: {
       const _exhaustive: never = tool;

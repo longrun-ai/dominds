@@ -56,6 +56,34 @@ Examples:
   ## Current Focus Areas
   - Feature implementation
   - Bug fixes`,
+  usageDescriptionI18n: {
+    en: `I can add new memory content to my personal memory store.
+Usage: @add_memory <relative-file-path.md>
+<memory content in body>
+
+Examples:
+  @add_memory notes/project-insights.md
+  # Project Insights
+  Key findings from today's work...
+  
+  @add_memory tasks/current-focus.md
+  ## Current Focus Areas
+  - Feature implementation
+  - Bug fixes`,
+    zh: `我可以将新的记忆内容写入个人记忆库。
+用法：@add_memory <relative-file-path.md>
+<正文中提供记忆内容>
+
+示例：
+  @add_memory notes/project-insights.md
+  # Project Insights
+  Key findings from today's work...
+  
+  @add_memory tasks/current-focus.md
+  ## Current Focus Areas
+  - Feature implementation
+  - Bug fixes`,
+  },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -109,6 +137,20 @@ Usage: @drop_memory <relative-file-path.md>
 Examples:
   @drop_memory notes/old-ideas.md
   @drop_memory tasks/completed-task.md`,
+  usageDescriptionI18n: {
+    en: `I can remove a memory file from my personal memory store.
+Usage: @drop_memory <relative-file-path.md>
+
+Examples:
+  @drop_memory notes/old-ideas.md
+  @drop_memory tasks/completed-task.md`,
+    zh: `我可以从个人记忆库中删除一个记忆文件。
+用法：@drop_memory <relative-file-path.md>
+
+示例：
+  @drop_memory notes/old-ideas.md
+  @drop_memory tasks/completed-task.md`,
+  },
   async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -156,6 +198,24 @@ Examples:
   @replace_memory notes/project-status.md
   # Updated Project Status
   Current progress and next steps...`,
+  usageDescriptionI18n: {
+    en: `I can replace the content of an existing memory file in my personal memory store.
+Usage: @replace_memory <relative-file-path.md>
+<new memory content in body>
+
+Examples:
+  @replace_memory notes/project-status.md
+  # Updated Project Status
+  Current progress and next steps...`,
+    zh: `我可以替换个人记忆库中某个已存在记忆文件的内容。
+用法：@replace_memory <relative-file-path.md>
+<正文中提供新的记忆内容>
+
+示例：
+  @replace_memory notes/project-status.md
+  # Updated Project Status
+  Current progress and next steps...`,
+  },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -203,6 +263,16 @@ export const clearMemoryTool: TextingTool = {
 Usage: @clear_memory
 
 This will remove all files in my personal memory directory.`,
+  usageDescriptionI18n: {
+    en: `I can clear all memory files from my personal memory store.
+Usage: @clear_memory
+
+This will remove all files in my personal memory directory.`,
+    zh: `我可以清空个人记忆库中的所有记忆文件。
+用法：@clear_memory
+
+这会删除个人记忆目录下的所有文件。`,
+  },
   async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const memoryDir = path.join('.minds/memory/individual', caller.id);
 
@@ -239,6 +309,32 @@ Examples:
   @add_team_memory team/decisions.md
   ## Team Decisions
   Important decisions made by the team...`,
+  usageDescriptionI18n: {
+    en: `I can add new content to the shared memory store accessible by all team members.
+Usage: @add_team_memory <relative-file-path.md>
+<shared memory content in body>
+
+Examples:
+  @add_team_memory project/requirements.md
+  # Project Requirements
+  Core requirements for the project...
+  
+  @add_team_memory team/decisions.md
+  ## Team Decisions
+  Important decisions made by the team...`,
+    zh: `我可以向所有团队成员可访问的共享记忆库添加新内容。
+用法：@add_team_memory <relative-file-path.md>
+<正文中提供共享记忆内容>
+
+示例：
+  @add_team_memory project/requirements.md
+  # Project Requirements
+  Core requirements for the project...
+  
+  @add_team_memory team/decisions.md
+  ## Team Decisions
+  Important decisions made by the team...`,
+  },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -292,6 +388,20 @@ Usage: @drop_team_memory <relative-file-path.md>
 Examples:
   @drop_team_memory project/old-requirements.md
   @drop_team_memory team/outdated-decisions.md`,
+  usageDescriptionI18n: {
+    en: `I can remove a file from the shared memory store.
+Usage: @drop_team_memory <relative-file-path.md>
+
+Examples:
+  @drop_team_memory project/old-requirements.md
+  @drop_team_memory team/outdated-decisions.md`,
+    zh: `我可以从共享记忆库中删除一个文件。
+用法：@drop_team_memory <relative-file-path.md>
+
+示例：
+  @drop_team_memory project/old-requirements.md
+  @drop_team_memory team/outdated-decisions.md`,
+  },
   async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -339,6 +449,24 @@ Examples:
   @replace_team_memory project/requirements.md
   # Updated Project Requirements
   Revised requirements based on feedback...`,
+  usageDescriptionI18n: {
+    en: `I can replace the content of an existing shared memory file.
+Usage: @replace_team_memory <relative-file-path.md>
+<new shared memory content in body>
+
+Examples:
+  @replace_team_memory project/requirements.md
+  # Updated Project Requirements
+  Revised requirements based on feedback...`,
+    zh: `我可以替换共享记忆库中某个已存在记忆文件的内容。
+用法：@replace_team_memory <relative-file-path.md>
+<正文中提供新的共享记忆内容>
+
+示例：
+  @replace_team_memory project/requirements.md
+  # Updated Project Requirements
+  Revised requirements based on feedback...`,
+  },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -388,6 +516,16 @@ export const clearSharedMemoryTool: TextingTool = {
 Usage: @clear_team_memory
 
 This will remove all files in the shared memory directory.`,
+  usageDescriptionI18n: {
+    en: `I can clear all files from the shared memory store.
+Usage: @clear_team_memory
+
+This will remove all files in the shared memory directory.`,
+    zh: `我可以清空共享记忆库中的所有文件。
+用法：@clear_team_memory
+
+这会删除共享记忆目录下的所有文件。`,
+  },
   async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const memoryDir = '.minds/memory/team_shared';
 

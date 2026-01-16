@@ -6,6 +6,7 @@
  */
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
+import type { I18nText } from './shared/types/i18n';
 import { Team } from './team';
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -26,6 +27,7 @@ export interface FuncTool {
   readonly type: 'func';
   readonly name: string;
   readonly description?: string;
+  readonly descriptionI18n?: I18nText;
   // JSON Schema for parameters of this tool
   readonly parameters: JsonSchema;
   // How the driver validates tool-call arguments before invoking the tool.
@@ -40,6 +42,7 @@ export interface TextingTool {
   readonly type: 'texter';
   readonly name: string;
   readonly usageDescription: string;
+  readonly usageDescriptionI18n?: I18nText;
   call(
     dlg: Dialog,
     caller: Team.Member,

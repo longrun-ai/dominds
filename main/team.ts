@@ -263,7 +263,7 @@ export namespace Team {
       }
 
       // Ad-hoc team grants all currently-registered toolsets to dijiang (for UX/e2e),
-      // and env toolset to cmdr.
+      // and os toolset to cmdr.
       // Use `*` to include toolsets registered later (e.g., hot-reloaded MCP toolsets).
       const allToolsets = ['*'];
 
@@ -286,7 +286,7 @@ export namespace Team {
             name: 'Commander',
             provider,
             model,
-            toolsets: ['os', 'env'],
+            toolsets: ['os'],
           }),
         },
       });

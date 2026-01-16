@@ -108,6 +108,36 @@ Features:
 
 Example:
 @list_dir src/tools`,
+  usageDescriptionI18n: {
+    en: `List directory contents relative to workspace with detailed information.
+Usage: @list_dir [path]
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including listing).
+
+Features:
+- Shows file sizes for all entries
+- Shows line count for text files
+- Shows symbolic link targets
+- Categorizes entries by type (dir, file, symlink, other)
+
+Example:
+@list_dir src/tools`,
+    zh: `列出工作区内目录内容（包含详细信息）。
+用法：@list_dir [path]
+
+注意：
+  \`*.tsk/\` 下的路径属于封装任务包，文件工具（包括列目录）不可访问。
+
+功能：
+- 显示每个条目的文件大小
+- 对文本文件显示行数
+- 显示符号链接目标
+- 按类型分类（dir、file、symlink、other）
+
+示例：
+@list_dir src/tools`,
+  },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     // Parse path from headLine - expect format "@list_dir [path]"
     const trimmed = headLine.trim();
@@ -257,6 +287,32 @@ Options:
 Examples:
   @rm_dir temp
   @rm_dir build !recursive true`,
+  usageDescriptionI18n: {
+    en: `Remove a directory relative to workspace.
+Usage: @rm_dir <path> [options]
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+
+Options:
+  !recursive [true|false]  - Remove directory and all contents (default: false)
+
+Examples:
+  @rm_dir temp
+  @rm_dir build !recursive true`,
+    zh: `删除工作区内的目录。
+用法：@rm_dir <path> [options]
+
+注意：
+  \`*.tsk/\` 下的路径属于封装任务包，文件工具（包括删除）不可访问。
+
+选项：
+  !recursive [true|false]  - 递归删除目录及其内容（默认：false）
+
+示例：
+  @rm_dir temp
+  @rm_dir build !recursive true`,
+  },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     // Parse path and options from headLine
     const trimmed = headLine.trim();
@@ -354,6 +410,24 @@ Note:
 
 Example:
   @rm_file temp/old-file.txt`,
+  usageDescriptionI18n: {
+    en: `Remove a file relative to workspace.
+Usage: @rm_file <path>
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+
+Example:
+  @rm_file temp/old-file.txt`,
+    zh: `删除工作区内的文件。
+用法：@rm_file <path>
+
+注意：
+  \`*.tsk/\` 下的路径属于封装任务包，文件工具（包括删除）不可访问。
+
+示例：
+  @rm_file temp/old-file.txt`,
+  },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     // Parse path from headLine
     const trimmed = headLine.trim();

@@ -137,6 +137,10 @@ export const envGetTool: FuncTool = {
   type: 'func',
   name: 'env_get',
   description: 'Get an environment variable from the Dominds server process (local testing only).',
+  descriptionI18n: {
+    en: 'Get an environment variable from the Dominds server process (local testing only).',
+    zh: '读取 Dominds 服务进程的环境变量（仅用于本地测试）。',
+  },
   parameters: envGetSchema,
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
@@ -159,6 +163,10 @@ export const envSetTool: FuncTool = {
   type: 'func',
   name: 'env_set',
   description: 'Set an environment variable in the Dominds server process (local testing only).',
+  descriptionI18n: {
+    en: 'Set an environment variable in the Dominds server process (local testing only).',
+    zh: '设置 Dominds 服务进程的环境变量（仅用于本地测试）。',
+  },
   parameters: envSetSchema,
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
@@ -190,6 +198,10 @@ export const envUnsetTool: FuncTool = {
   type: 'func',
   name: 'env_unset',
   description: 'Unset an environment variable in the Dominds server process (local testing only).',
+  descriptionI18n: {
+    en: 'Unset an environment variable in the Dominds server process (local testing only).',
+    zh: '删除 Dominds 服务进程的环境变量（仅用于本地测试）。',
+  },
   parameters: envUnsetSchema,
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {

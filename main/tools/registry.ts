@@ -3,6 +3,7 @@
  *
  * Global registries for tools and toolsets with helpers and built-in initialization.
  */
+import type { I18nText } from '../shared/types/i18n';
 import type { ReminderOwner, Tool } from '../tool';
 import {
   addReminderTool,
@@ -32,6 +33,12 @@ export const toolsRegistry: Map<string, Tool> = new Map<string, Tool>();
 
 // Global public registry of toolsets, shared across the application
 export const toolsetsRegistry: Map<string, Tool[]> = new Map<string, Tool[]>();
+
+export type ToolsetMeta = {
+  descriptionI18n?: I18nText;
+};
+
+export const toolsetMetaRegistry: Map<string, ToolsetMeta> = new Map<string, ToolsetMeta>();
 
 // Global public registry of ReminderOwner instances, shared across the application
 export const reminderOwnersRegistry: Map<string, ReminderOwner> = new Map<string, ReminderOwner>();
@@ -64,6 +71,15 @@ export function registerToolset(name: string, tools: Tool[]): void {
 // Unregister a toolset by name
 export function unregisterToolset(name: string): void {
   toolsetsRegistry.delete(name);
+  toolsetMetaRegistry.delete(name);
+}
+
+export function setToolsetMeta(name: string, meta: ToolsetMeta): void {
+  toolsetMetaRegistry.set(name, meta);
+}
+
+export function getToolsetMeta(name: string): ToolsetMeta | undefined {
+  return toolsetMetaRegistry.get(name);
 }
 
 // Retrieve a toolset by name (returns array of tool objects)
@@ -142,12 +158,18 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
 
   // Register well-known toolsets
   registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, clearMemoryTool]);
+  setToolsetMeta('memory', {
+    descriptionI18n: { en: 'Personal memory tools', zh: '个人记忆工具' },
+  });
   registerToolset('team_memory', [
     addSharedMemoryTool,
     dropSharedMemoryTool,
     replaceSharedMemoryTool,
     clearSharedMemoryTool,
   ]);
+  setToolsetMeta('team_memory', {
+    descriptionI18n: { en: 'Shared team memory tools', zh: '团队共享记忆工具' },
+  });
   registerToolset('control', [
     addReminderTool,
     deleteReminderTool,
@@ -155,10 +177,28 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
     clearMindTool,
     changeMindTool,
   ]);
-  registerToolset('os', [shellCmdTool, stopDaemonTool, getDaemonOutputTool]);
-  registerToolset('env', [envGetTool, envSetTool, envUnsetTool]);
-  registerToolset('mcp_admin', [mcpRestartTool]);
+  setToolsetMeta('control', {
+    descriptionI18n: { en: 'Dialog control tools', zh: '对话控制工具' },
+  });
+  registerToolset('os', [
+    shellCmdTool,
+    stopDaemonTool,
+    getDaemonOutputTool,
+    envGetTool,
+    envSetTool,
+    envUnsetTool,
+  ]);
+  setToolsetMeta('os', {
+    descriptionI18n: { en: 'Shell and process tools', zh: '命令行与进程工具' },
+  });
+  registerToolset('mcp_admin', [mcpRestartTool, envGetTool, envSetTool, envUnsetTool]);
+  setToolsetMeta('mcp_admin', {
+    descriptionI18n: { en: 'MCP administration tools', zh: 'MCP 管理工具' },
+  });
   registerToolset('ws_read', [listDirTool, readFileTool]);
+  setToolsetMeta('ws_read', {
+    descriptionI18n: { en: 'Workspace read-only tools', zh: '工作区只读工具' },
+  });
   registerToolset('ws_mod', [
     listDirTool,
     rmDirTool,
@@ -168,10 +208,9 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
     patchFileTool,
     applyPatchTool,
   ]);
-
-  // Register common aliases for backward compatibility
-  registerToolset('fs', [listDirTool, rmDirTool, rmFileTool, readFileTool]);
-  registerToolset('txt', [readFileTool, overwriteFileTool, patchFileTool, applyPatchTool]);
+  setToolsetMeta('ws_mod', {
+    descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
+  });
 
   // Register ReminderOwners
   registerReminderOwner(shellCmdReminderOwner);

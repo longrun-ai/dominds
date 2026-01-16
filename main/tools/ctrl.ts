@@ -61,6 +61,10 @@ export const deleteReminderTool: TextingTool = {
   type: 'texter',
   name: 'delete_reminder',
   usageDescription: 'Delete a reminder by number: @delete_reminder <reminder-no>',
+  usageDescriptionI18n: {
+    en: 'Delete a reminder by number: @delete_reminder <reminder-no>',
+    zh: '按编号删除提醒：@delete_reminder <reminder-no>',
+  },
   backfeeding: false,
   async call(
     dlg: Dialog,
@@ -96,6 +100,10 @@ export const addReminderTool: TextingTool = {
   type: 'texter',
   name: 'add_reminder',
   usageDescription: 'Add a reminder: @add_reminder [<reminder-no>]\n<reminder-content>',
+  usageDescriptionI18n: {
+    en: 'Add a reminder: @add_reminder [<reminder-no>]\n<reminder-content>',
+    zh: '添加提醒：@add_reminder [<reminder-no>]\n<reminder-content>',
+  },
   backfeeding: false,
   async call(
     dlg: Dialog,
@@ -144,6 +152,10 @@ export const updateReminderTool: TextingTool = {
   type: 'texter',
   name: 'update_reminder',
   usageDescription: 'Update a reminder: @update_reminder <reminder-no>\n<reminder-content>',
+  usageDescriptionI18n: {
+    en: 'Update a reminder: @update_reminder <reminder-no>\n<reminder-content>',
+    zh: '更新提醒：@update_reminder <reminder-no>\n<reminder-content>',
+  },
   backfeeding: false,
   async call(
     dlg: Dialog,
@@ -187,6 +199,10 @@ export const clearMindTool: TextingTool = {
   type: 'texter',
   name: 'clear_mind',
   usageDescription: 'Clear mind and start new round: @clear_mind\\n<reminder-content>',
+  usageDescriptionI18n: {
+    en: 'Clear mind and start new round: @clear_mind\\n<reminder-content>',
+    zh: '清空思维并开始新一轮：@clear_mind\\n<reminder-content>',
+  },
   backfeeding: false,
   async call(
     dlg: Dialog,
@@ -216,6 +232,14 @@ export const changeMindTool: TextingTool = {
   usageDescription:
     'Update task document content (no round reset).\n' +
     'Task package: @change_mind !goals|!constraints|!progress\\n<new-section-content>',
+  usageDescriptionI18n: {
+    en:
+      'Update task document content (no round reset).\n' +
+      'Task package: @change_mind !goals|!constraints|!progress\\n<new-section-content>',
+    zh:
+      '更新任务文档内容（不重置轮次）。\n' +
+      '任务包：@change_mind !goals|!constraints|!progress\\n<new-section-content>',
+  },
   backfeeding: false,
   async call(
     dlg: Dialog,

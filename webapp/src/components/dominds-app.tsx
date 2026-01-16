@@ -1472,6 +1472,20 @@ export class DomindsApp extends HTMLElement {
         content: "▾";
       }
 
+      summary.toolset-title[data-desc]::after {
+        content: attr(data-desc);
+        display: block;
+        margin-left: 20px;
+        margin-top: 2px;
+        font-weight: 400;
+        color: var(--dominds-muted, #666666);
+        font-size: 12px;
+        line-height: 1.3;
+        text-transform: none;
+        letter-spacing: normal;
+        white-space: normal;
+      }
+
       .toolset-tools {
         margin-top: 6px;
         display: flex;
@@ -4538,12 +4552,16 @@ export class DomindsApp extends HTMLElement {
       kindLabel: string,
     ): string => {
       const title = `${ts.name} (${tools.length})`;
+      const toolsetDesc = ts.descriptionI18n ? ts.descriptionI18n[this.uiLanguage] : '';
       const toolsHtml =
         tools.length === 0
           ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
           : tools
               .map((tool) => {
-                const desc = tool.description ? this.escapeHtml(tool.description) : '';
+                const toolDesc = tool.descriptionI18n
+                  ? tool.descriptionI18n[this.uiLanguage]
+                  : (tool.description ?? '');
+                const desc = toolDesc ? this.escapeHtml(toolDesc) : '';
                 return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
                   <div class="tool-main">
                     <span class="tool-kind">${this.escapeHtml(kindLabel)}</span>
@@ -4554,8 +4572,9 @@ export class DomindsApp extends HTMLElement {
               })
               .join('');
 
+      const toolsetDescAttr = toolsetDesc ? ` data-desc="${this.escapeHtml(toolsetDesc)}"` : '';
       return `<details class="toolset">
-        <summary class="toolset-title">${this.escapeHtml(title)}</summary>
+        <summary class="toolset-title"${toolsetDescAttr}>${this.escapeHtml(title)}</summary>
         <div class="toolset-tools">${toolsHtml}</div>
       </details>`;
     };
@@ -4585,8 +4604,8 @@ export class DomindsApp extends HTMLElement {
     };
 
     return [
-      renderSectionHtml('Texting Tools', 'texter', '@'),
-      renderSectionHtml('Function Tools', 'func', 'ƒ'),
+      renderSectionHtml(t.toolsSectionTexting, 'texter', '@'),
+      renderSectionHtml(t.toolsSectionFunction, 'func', 'ƒ'),
     ].join('');
   }
 

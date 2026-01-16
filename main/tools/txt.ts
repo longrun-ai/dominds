@@ -189,6 +189,56 @@ Examples:
   @read_file !max-lines 100 !range 1~200 src/main.ts
   @read_file !range 300~ src/main.ts
   @read_file !range ~20 src/main.ts`,
+  usageDescriptionI18n: {
+    en: `Read a text file (bounded) relative to workspace.
+Usage: @read_file [options] <path>
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+
+Options:
+  !decorate-linenos [true|false]  - Add line numbers (default: true)
+  !range <range>                  - Show specific line range
+  !max-lines <number>             - Limit max lines shown (default: 2000)
+
+Range formats:
+  10~50     - Lines 10 to 50
+  300~      - From line 300 to end
+  ~20       - From start to line 20
+  ~         - No range limit (entire file)
+
+Examples:
+  @read_file src/main.ts
+  @read_file !decorate-linenos false src/main.ts
+  @read_file !range 10~50 src/main.ts
+  @read_file !max-lines 100 !range 1~200 src/main.ts
+  @read_file !range 300~ src/main.ts
+  @read_file !range ~20 src/main.ts`,
+    zh: `读取工作区内的文本文件（有上限/可截断）。
+用法：@read_file [options] <path>
+
+注意：
+  \`*.tsk/\` 下的路径属于封装任务包，文件工具不可访问。
+
+选项：
+  !decorate-linenos [true|false]  - 显示行号（默认：true）
+  !range <range>                  - 读取指定行范围
+  !max-lines <number>             - 最多显示行数（默认：2000）
+
+范围格式：
+  10~50     - 第 10 行到第 50 行
+  300~      - 从第 300 行到文件末尾
+  ~20       - 从开头到第 20 行
+  ~         - 不限制范围（整文件）
+
+示例：
+  @read_file src/main.ts
+  @read_file !decorate-linenos false src/main.ts
+  @read_file !range 10~50 src/main.ts
+  @read_file !max-lines 100 !range 1~200 src/main.ts
+  @read_file !range 300~ src/main.ts
+  @read_file !range ~20 src/main.ts`,
+  },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     try {
       const { path: rel, options } = parseReadFileOptions(headLine);
@@ -266,6 +316,34 @@ Examples:
   @overwrite_file README.md
   # My Project
   This is a sample project.`,
+  usageDescriptionI18n: {
+    en: `Overwrite a file with new content. Usage: @overwrite_file <path>
+<file content in body>
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+
+Examples:
+  @overwrite_file src/config.ts
+  export const config = { version: '1.0' };
+  
+  @overwrite_file README.md
+  # My Project
+  This is a sample project.`,
+    zh: `用新内容覆盖写入一个文件。用法：@overwrite_file <path>
+<文件内容写在正文里>
+
+注意：
+  \`*.tsk/\` 下的路径属于封装任务包，文件工具不可访问。
+
+示例：
+  @overwrite_file src/config.ts
+  export const config = { version: '1.0' };
+  
+  @overwrite_file README.md
+  # My Project
+  This is a sample project.`,
+  },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const trimmed = headLine.trim();
 
@@ -352,6 +430,46 @@ Example:
      version: '1.0',
   +  debug: true,
    };`,
+  usageDescriptionI18n: {
+    en: `Apply a simple patch to a single file. Usage: @patch_file <path>
+<patch content in body>
+
+Note:
+  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+
+Patch format:
+  @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
+  -removed line
+  +added line
+   unchanged line
+
+Example:
+  @patch_file src/config.ts
+  @@ -5,3 +5,4 @@
+   export const config = {
+     version: '1.0',
+  +  debug: true,
+   };`,
+    zh: `对单个文件应用简单补丁。用法：@patch_file <path>
+<补丁内容写在正文里>
+
+注意：
+  \`*.tsk/\` 下的路径属于封装任务包，文件工具不可访问。
+
+补丁格式：
+  @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
+  -删除的行
+  +新增的行
+   未改变的行
+
+示例：
+  @patch_file src/config.ts
+  @@ -5,3 +5,4 @@
+   export const config = {
+     version: '1.0',
+  +  debug: true,
+   };`,
+  },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     if (!inputBody || inputBody.trim() === '') {
       const content = 'Error: Patch content is required in the body.';
@@ -497,6 +615,16 @@ export const applyPatchTool: TextingTool = {
     'Apply a unified git diff patch to the workspace.\n' +
     'Note: Paths under `*.tsk/` are encapsulated task packages and are NOT accessible via file tools.\n' +
     'Usage: @apply_patch\n<diff content in body>',
+  usageDescriptionI18n: {
+    en:
+      'Apply a unified git diff patch to the workspace.\n' +
+      'Note: Paths under `*.tsk/` are encapsulated task packages and are NOT accessible via file tools.\n' +
+      'Usage: @apply_patch\n<diff content in body>',
+    zh:
+      '对工作区应用 unified git diff 补丁。\n' +
+      '注意：`*.tsk/` 下的路径属于封装任务包，文件工具不可访问。\n' +
+      '用法：@apply_patch\n<diff 内容写在正文里>',
+  },
   backfeeding: true,
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     if (!inputBody || inputBody.trim() === '') {

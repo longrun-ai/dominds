@@ -379,6 +379,10 @@ export const shellCmdTool: FuncTool = {
   name: 'shell_cmd',
   description:
     'Execute shell commands with optional timeout. If timeoutSeconds > 0 and command runs longer, it becomes a tracked daemon process. Daemons persist across messages and require explicit stop_daemon or get_daemon_output calls.',
+  descriptionI18n: {
+    en: 'Execute shell commands with optional timeout. If timeoutSeconds > 0 and command runs longer, it becomes a tracked daemon process. Daemons persist across messages and require explicit stop_daemon or get_daemon_output calls.',
+    zh: '执行 shell 命令（支持超时）。如果 timeoutSeconds > 0 且命令运行时间超过超时，将转为可追踪的后台守护进程。守护进程会跨消息持续存在，需要显式调用 stop_daemon 或 get_daemon_output 来管理与查看输出。',
+  },
   parameters: shellCmdSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
     const parsedArgs = parseShellCmdArgs(args);
@@ -482,6 +486,10 @@ export const stopDaemonTool: FuncTool = {
   name: 'stop_daemon',
   description:
     'Terminate a running daemon process by PID. Use this after checking daemon output with get_daemon_output when monitoring is complete. Removes the daemon from tracking.',
+  descriptionI18n: {
+    en: 'Terminate a running daemon process by PID. Use this after checking daemon output with get_daemon_output when monitoring is complete. Removes the daemon from tracking.',
+    zh: '根据 PID 终止正在运行的守护进程。通常在使用 get_daemon_output 检查输出并确认无需继续监控后调用。该操作会停止进程并移除追踪。',
+  },
   parameters: stopDaemonSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
     const { pid } = parseStopDaemonArgs(args);
@@ -545,6 +553,10 @@ export const getDaemonOutputTool: FuncTool = {
   name: 'get_daemon_output',
   description:
     'Retrieve captured stdout/stderr output from a tracked daemon process by PID. Call this to check what a daemon has logged since it started. Returns (no output) if nothing has been written yet.',
+  descriptionI18n: {
+    en: 'Retrieve captured stdout/stderr output from a tracked daemon process by PID. Call this to check what a daemon has logged since it started. Returns (no output) if nothing has been written yet.',
+    zh: '根据 PID 获取已追踪守护进程的 stdout/stderr 输出。用于查看守护进程自启动以来产生的日志；如果尚无输出则返回 (no output)。',
+  },
   parameters: getDaemonOutputSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
     const { pid, stream = 'stdout' } = parseGetDaemonOutputArgs(args);

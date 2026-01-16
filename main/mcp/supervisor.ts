@@ -8,6 +8,7 @@ import type { Tool } from '../tool';
 import {
   registerTool,
   registerToolset,
+  setToolsetMeta,
   toolsetsRegistry,
   toolsRegistry,
   unregisterTool,
@@ -431,6 +432,12 @@ function registerServer(state: ServerState): void {
     toolOwnerByName.set(t.name, { kind: 'mcp', serverId: state.serverId });
   }
   registerToolset(state.toolsetName, state.tools);
+  setToolsetMeta(state.toolsetName, {
+    descriptionI18n: {
+      en: `MCP server: ${state.serverId}`,
+      zh: `MCP 服务器：${state.serverId}`,
+    },
+  });
   toolsetOwnerByName.set(state.toolsetName, { kind: 'mcp', serverId: state.serverId });
 }
 

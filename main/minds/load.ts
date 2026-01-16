@@ -10,6 +10,7 @@ import path from 'path';
 import { Dialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
+import { getTextForLanguage } from '../shared/i18n/text';
 import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
@@ -147,7 +148,15 @@ export async function loadAgentMinds(
   // Regular tools (from agent)
   toolUsageText =
     textingTools.length > 0
-      ? textingTools.map((tool) => `#### @${tool.name}\n\n${tool.usageDescription}\n`).join('\n')
+      ? textingTools
+          .map((tool) => {
+            const usage = getTextForLanguage(
+              { i18n: tool.usageDescriptionI18n, fallback: tool.usageDescription },
+              workingLanguage,
+            );
+            return `#### @${tool.name}\n\n${usage}\n`;
+          })
+          .join('\n')
       : noTextingToolsText(workingLanguage);
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools
@@ -179,7 +188,11 @@ export async function loadAgentMinds(
           })
           .join('\n');
         const labels = funcToolUsageLabels(workingLanguage);
-        return `#### ${labels.toolLabel}: ${tool.name}\n\n${tool.description || ''}\n\n- ${labels.invocationLabel}: ${labels.invocationBody}\n- ${labels.requiredLabel}: ${req}\n- ${labels.parametersLabel}:\n${props}`.trim();
+        const toolDesc = getTextForLanguage(
+          { i18n: tool.descriptionI18n, fallback: tool.description },
+          workingLanguage,
+        );
+        return `#### ${labels.toolLabel}: ${tool.name}\n\n${toolDesc}\n\n- ${labels.invocationLabel}: ${labels.invocationBody}\n- ${labels.requiredLabel}: ${req}\n- ${labels.parametersLabel}:\n${props}`.trim();
       })
       .join('\n\n');
     funcToolRulesText = formatFuncToolRulesText(workingLanguage);

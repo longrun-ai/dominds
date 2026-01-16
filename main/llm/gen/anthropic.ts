@@ -14,6 +14,8 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages';
 
 import { createLogger } from '../../log';
+import { getTextForLanguage } from '../../shared/i18n/text';
+import { getWorkLanguage } from '../../shared/runtime-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
@@ -49,9 +51,13 @@ function funcToolToAnthropic(funcTool: FuncTool): Tool {
   // MCP schemas are passed through to providers. Anthropic's SDK types expect a narrower schema
   // shape; runtime compatibility is handled by provider validation + the driver stop policy.
   const input_schema = funcTool.parameters as unknown as Tool['input_schema'];
+  const description = getTextForLanguage(
+    { i18n: funcTool.descriptionI18n, fallback: funcTool.description },
+    getWorkLanguage(),
+  );
   return {
     name: funcTool.name,
-    description: funcTool.description || '',
+    description,
     input_schema,
   };
 }
