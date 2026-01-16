@@ -1,7 +1,7 @@
 import type { ToolInfo, ToolsetInfo } from '../shared/types/tools-registry';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import type { Tool } from '../tool';
-import { listToolsets } from './registry';
+import { toolsetsRegistry } from './registry';
 
 export type ToolsRegistrySnapshot = {
   toolsets: ToolsetInfo[];
@@ -9,18 +9,10 @@ export type ToolsRegistrySnapshot = {
 };
 
 export function createToolsRegistrySnapshot(): ToolsRegistrySnapshot {
-  const toolsetsRecord = listToolsets();
-  const toolsets: ToolsetInfo[] = Object.keys(toolsetsRecord)
-    .sort((a, b) => a.localeCompare(b))
-    .map((toolsetName) => {
-      const tools = toolsetsRecord[toolsetName] ?? [];
-      return {
-        name: toolsetName,
-        tools: tools
-          .map(toolToInfo)
-          .sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind)),
-      };
-    });
+  const toolsets: ToolsetInfo[] = [];
+  for (const [toolsetName, tools] of toolsetsRegistry.entries()) {
+    toolsets.push({ name: toolsetName, tools: tools.map(toolToInfo) });
+  }
 
   return {
     toolsets,

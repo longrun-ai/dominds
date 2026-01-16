@@ -147,7 +147,13 @@ async function reloadNow(reason: string): Promise<void> {
     const code = isRecord(err) && 'code' in err ? err.code : undefined;
     if (code === 'ENOENT') {
       // Deletion is treated as empty config.
-      await applyWorkspaceConfig({ version: 1, servers: {} }, [], `missing file (${reason})`);
+      await applyWorkspaceConfig(
+        { version: 1, servers: {} },
+        [],
+        [],
+        [],
+        `missing file (${reason})`,
+      );
       clearWorkspaceConfigProblem();
       return;
     }
@@ -162,7 +168,13 @@ async function reloadNow(reason: string): Promise<void> {
   }
 
   clearWorkspaceConfigProblem();
-  await applyWorkspaceConfig(parsed.config, parsed.invalidServers, reason);
+  await applyWorkspaceConfig(
+    parsed.config,
+    parsed.invalidServers,
+    parsed.serverIdsInYamlOrder,
+    parsed.validServerIdsInYamlOrder,
+    reason,
+  );
 }
 
 async function restartServerNow(
@@ -240,6 +252,7 @@ async function restartServerNow(
   registerServer(res.state);
   serverStateById.set(serverId, res.state);
   reconcileProblemsByPrefix(problemPrefixForServer(serverId), res.state.problems);
+  reorderMcpToolsetsInRegistry(parsed.serverIdsInYamlOrder);
   return { ok: true };
 }
 
@@ -262,6 +275,8 @@ function clearWorkspaceConfigProblem(): void {
 async function applyWorkspaceConfig(
   config: McpWorkspaceConfig,
   invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>,
+  serverIdsInYamlOrder: ReadonlyArray<string>,
+  validServerIdsInYamlOrder: ReadonlyArray<string>,
   reason: string,
 ): Promise<void> {
   log.info(`Applying MCP workspace config (${reason})`);
@@ -292,8 +307,7 @@ async function applyWorkspaceConfig(
   }
 
   // Apply desired servers independently (deterministic order).
-  const serverIds = Object.keys(config.servers).sort((a, b) => a.localeCompare(b));
-  for (const serverId of serverIds) {
+  for (const serverId of validServerIdsInYamlOrder) {
     const serverCfg = config.servers[serverId];
     if (!serverCfg) continue;
 
@@ -357,9 +371,11 @@ async function applyWorkspaceConfig(
   // Second pass: after all adds/updates, re-run collision resolution so earlier servers can pick up
   // tools that become available due to later server changes in the same reload cycle.
   for (let i = 0; i < 2; i++) {
-    const changed = reconcileCollisionDependentRegistrations(config, serverIds);
+    const changed = reconcileCollisionDependentRegistrations(config, validServerIdsInYamlOrder);
     if (!changed) break;
   }
+
+  reorderMcpToolsetsInRegistry(serverIdsInYamlOrder);
 }
 
 function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
@@ -428,6 +444,47 @@ function unregisterServer(state: ServerState): void {
     if (toolOwnerByName.get(toolName)?.serverId !== state.serverId) continue;
     unregisterTool(toolName);
     toolOwnerByName.delete(toolName);
+  }
+}
+
+function reorderMcpToolsetsInRegistry(serverIdsInYamlOrder: ReadonlyArray<string>): void {
+  const desiredToolsetNames = serverIdsInYamlOrder.map((serverId) => `mcp_${serverId}`);
+
+  const currentEntries = Array.from(toolsetsRegistry.entries());
+  const nonMcpEntries: Array<[string, Tool[]]> = [];
+  const mcpToolsetsByName = new Map<string, Tool[]>();
+  const mcpToolsetNamesInCurrentOrder: string[] = [];
+
+  for (const [toolsetName, tools] of currentEntries) {
+    const owner = toolsetOwnerByName.get(toolsetName);
+    if (owner?.kind === 'mcp') {
+      mcpToolsetsByName.set(toolsetName, tools);
+      mcpToolsetNamesInCurrentOrder.push(toolsetName);
+      continue;
+    }
+    nonMcpEntries.push([toolsetName, tools]);
+  }
+
+  const reordered: Array<[string, Tool[]]> = [...nonMcpEntries];
+  const placed = new Set<string>();
+
+  for (const toolsetName of desiredToolsetNames) {
+    const tools = mcpToolsetsByName.get(toolsetName);
+    if (!tools) continue;
+    reordered.push([toolsetName, tools]);
+    placed.add(toolsetName);
+  }
+
+  for (const toolsetName of mcpToolsetNamesInCurrentOrder) {
+    if (placed.has(toolsetName)) continue;
+    const tools = mcpToolsetsByName.get(toolsetName);
+    if (!tools) continue;
+    reordered.push([toolsetName, tools]);
+  }
+
+  toolsetsRegistry.clear();
+  for (const [toolsetName, tools] of reordered) {
+    toolsetsRegistry.set(toolsetName, tools);
   }
 }
 

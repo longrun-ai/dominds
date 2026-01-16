@@ -45,6 +45,8 @@ export type McpConfigLoadResult =
       ok: true;
       config: McpWorkspaceConfig;
       invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>;
+      serverIdsInYamlOrder: ReadonlyArray<string>;
+      validServerIdsInYamlOrder: ReadonlyArray<string>;
       rawText: string;
     }
   | { ok: false; errorText: string; rawText?: string };
@@ -63,7 +65,14 @@ export function parseMcpYaml(rawText: string): McpConfigLoadResult {
   const parsed: unknown = doc.toJS();
   try {
     const res = parseWorkspaceConfig(parsed);
-    return { ok: true, config: res.config, invalidServers: res.invalidServers, rawText };
+    return {
+      ok: true,
+      config: res.config,
+      invalidServers: res.invalidServers,
+      serverIdsInYamlOrder: res.serverIdsInYamlOrder,
+      validServerIdsInYamlOrder: res.validServerIdsInYamlOrder,
+      rawText,
+    };
   } catch (err) {
     return { ok: false, errorText: err instanceof Error ? err.message : String(err), rawText };
   }
@@ -72,6 +81,8 @@ export function parseMcpYaml(rawText: string): McpConfigLoadResult {
 function parseWorkspaceConfig(value: unknown): {
   config: McpWorkspaceConfig;
   invalidServers: ReadonlyArray<{ serverId: string; errorText: string }>;
+  serverIdsInYamlOrder: ReadonlyArray<string>;
+  validServerIdsInYamlOrder: ReadonlyArray<string>;
 } {
   const root = asRecord(value, 'mcp.yaml root');
 
@@ -84,10 +95,14 @@ function parseWorkspaceConfig(value: unknown): {
   const serversRecord = serversVal === undefined ? {} : asRecord(serversVal, 'servers');
   const servers: Record<string, McpServerConfig> = {};
   const invalidServers: Array<{ serverId: string; errorText: string }> = [];
+  const serverIdsInYamlOrder: string[] = [];
+  const validServerIdsInYamlOrder: string[] = [];
 
   for (const [serverId, serverRaw] of Object.entries(serversRecord)) {
+    serverIdsInYamlOrder.push(serverId);
     try {
       servers[serverId] = parseServerConfig(serverId, serverRaw);
+      validServerIdsInYamlOrder.push(serverId);
     } catch (err) {
       invalidServers.push({
         serverId,
@@ -96,7 +111,12 @@ function parseWorkspaceConfig(value: unknown): {
     }
   }
 
-  return { config: { version: 1, servers }, invalidServers };
+  return {
+    config: { version: 1, servers },
+    invalidServers,
+    serverIdsInYamlOrder,
+    validServerIdsInYamlOrder,
+  };
 }
 
 function parseServerConfig(serverId: string, value: unknown): McpServerConfig {

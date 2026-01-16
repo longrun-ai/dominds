@@ -239,15 +239,6 @@ export class DomindsApp extends HTMLElement {
     ) as HTMLElement | null;
     if (tmText) tmText.textContent = t.placeholderTeamMembersText;
 
-    const toolsTitle = this.shadowRoot.querySelector(
-      '[data-activity-view="tools"] .activity-placeholder-title',
-    ) as HTMLElement | null;
-    if (toolsTitle) toolsTitle.textContent = t.placeholderToolsTitle;
-    const toolsText = this.shadowRoot.querySelector(
-      '[data-activity-view="tools"] .activity-placeholder-text',
-    ) as HTMLElement | null;
-    if (toolsText) toolsText.textContent = t.placeholderToolsText;
-
     const newDialogBtn = this.shadowRoot.querySelector('#new-dialog-btn') as HTMLButtonElement;
     if (newDialogBtn) newDialogBtn.title = t.newDialogTitle;
 
@@ -1336,15 +1327,20 @@ export class DomindsApp extends HTMLElement {
         margin-top: 6px;
       }
 
+      .tools-registry {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        min-height: 0;
+      }
+
       .tools-registry-header {
-        margin-top: 8px;
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 8px;
         padding: 8px 10px;
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 10px;
         background: var(--dominds-bg, #ffffff);
       }
 
@@ -1352,6 +1348,16 @@ export class DomindsApp extends HTMLElement {
         font-size: 13px;
         font-weight: 600;
         color: var(--dominds-fg, #333333);
+      }
+
+      .tools-registry-timestamp {
+        flex: 1;
+        text-align: center;
+        font-size: 12px;
+        color: var(--dominds-muted, #666666);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .tools-registry-actions button {
@@ -1368,18 +1374,65 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-primary, #007acc);
       }
 
-      .tools-registry-meta {
-        margin-top: 6px;
-        font-size: 12px;
+      .tools-registry-list {
+        overflow: auto;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-bg, #ffffff);
+        padding: 8px;
+      }
+
+      .tools-section {
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
+        background: var(--dominds-bg-secondary, #ffffff);
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+
+      .tools-section:last-child {
+        margin-bottom: 0;
+      }
+
+      .tools-section-title {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        padding: 6px 10px;
+        background: color-mix(in srgb, var(--dominds-fg, #333333) 4%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
+        font-weight: 600;
+        color: var(--dominds-muted, #666666);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        list-style: none;
+        user-select: none;
+      }
+
+      .tools-section-title::-webkit-details-marker {
+        display: none;
+      }
+
+      details.tools-section:not([open]) > summary.tools-section-title {
+        border-bottom: none;
+      }
+
+      .tools-section-title:hover {
+        background: var(--dominds-hover, #f0f0f0);
+      }
+
+      details.tools-section > summary.tools-section-title::before {
+        content: "▾";
+        display: inline-block;
+        width: 14px;
+        margin-right: 6px;
         color: var(--dominds-muted, #666666);
       }
 
-      .tools-registry-list {
-        margin-top: 8px;
-        overflow: auto;
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 10px;
-        background: var(--dominds-bg, #ffffff);
+      details.tools-section:not([open]) > summary.tools-section-title::before {
+        content: "▸";
+      }
+
+      .tools-section-toolsets {
         padding: 8px;
       }
 
@@ -1405,6 +1458,18 @@ export class DomindsApp extends HTMLElement {
 
       .toolset-title::-webkit-details-marker {
         display: none;
+      }
+
+      details.toolset > summary.toolset-title::before {
+        content: "▸";
+        display: inline-block;
+        width: 14px;
+        margin-right: 6px;
+        color: var(--dominds-muted, #666666);
+      }
+
+      details.toolset[open] > summary.toolset-title::before {
+        content: "▾";
       }
 
       .toolset-tools {
@@ -2275,17 +2340,13 @@ export class DomindsApp extends HTMLElement {
                 </div>
               </div>
               <div class="activity-view hidden" data-activity-view="tools">
-                <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">${t.placeholderToolsTitle}</div>
-                  <div class="activity-placeholder-text">${t.placeholderToolsText}</div>
+                <div class="tools-registry">
                   <div class="tools-registry-header">
                     <div class="tools-registry-title">${t.toolsTitle}</div>
+                    <span id="tools-registry-timestamp" class="tools-registry-timestamp"></span>
                     <div class="tools-registry-actions">
                       <button type="button" id="tools-registry-refresh" title="${t.toolsRefresh}">↻</button>
                     </div>
-                  </div>
-                  <div class="tools-registry-meta">
-                    <span id="tools-registry-timestamp"></span>
                   </div>
                   <div id="tools-registry-list" class="tools-registry-list"></div>
                 </div>
@@ -4469,34 +4530,64 @@ export class DomindsApp extends HTMLElement {
       return `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`;
     }
 
-    const toolsets = [...this.toolsRegistryToolsets].sort((a, b) => a.name.localeCompare(b.name));
-    return toolsets
-      .map((ts) => {
-        const title = `${ts.name} (${ts.tools.length})`;
-        const tools = ts.tools.slice().sort((a, b) => a.name.localeCompare(b.name));
-        const toolsHtml =
-          tools.length === 0
-            ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
-            : tools
-                .map((tool) => {
-                  const kindLabel = tool.kind === 'texter' ? '@' : 'ƒ';
-                  const desc = tool.description ? this.escapeHtml(tool.description) : '';
-                  return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
-                    <div class="tool-main">
-                      <span class="tool-kind">${kindLabel}</span>
-                      <span class="tool-name">${this.escapeHtml(tool.name)}</span>
-                    </div>
-                    ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
-                  </div>`;
-                })
-                .join('');
+    const toolsets = this.toolsRegistryToolsets;
 
-        return `<details class="toolset" open>
-          <summary class="toolset-title">${this.escapeHtml(title)}</summary>
-          <div class="toolset-tools">${toolsHtml}</div>
-        </details>`;
-      })
-      .join('');
+    const renderToolsetHtml = (
+      ts: ToolsetInfo,
+      tools: ToolsetInfo['tools'],
+      kindLabel: string,
+    ): string => {
+      const title = `${ts.name} (${tools.length})`;
+      const toolsHtml =
+        tools.length === 0
+          ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
+          : tools
+              .map((tool) => {
+                const desc = tool.description ? this.escapeHtml(tool.description) : '';
+                return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
+                  <div class="tool-main">
+                    <span class="tool-kind">${this.escapeHtml(kindLabel)}</span>
+                    <span class="tool-name">${this.escapeHtml(tool.name)}</span>
+                  </div>
+                  ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
+                </div>`;
+              })
+              .join('');
+
+      return `<details class="toolset">
+        <summary class="toolset-title">${this.escapeHtml(title)}</summary>
+        <div class="toolset-tools">${toolsHtml}</div>
+      </details>`;
+    };
+
+    const renderSectionHtml = (
+      sectionTitle: string,
+      kind: 'texter' | 'func',
+      kindLabel: string,
+    ): string => {
+      const sectionToolsetsHtml = toolsets
+        .map((ts) => {
+          const toolsOfKind = ts.tools.filter((tool) => tool.kind === kind);
+          if (toolsOfKind.length === 0) return '';
+          return renderToolsetHtml(ts, toolsOfKind, kindLabel);
+        })
+        .join('');
+
+      const body =
+        sectionToolsetsHtml.trim().length === 0
+          ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
+          : sectionToolsetsHtml;
+
+      return `<details class="tools-section" open>
+        <summary class="tools-section-title">${this.escapeHtml(sectionTitle)}</summary>
+        <div class="tools-section-toolsets">${body}</div>
+      </details>`;
+    };
+
+    return [
+      renderSectionHtml('Texting Tools', 'texter', '@'),
+      renderSectionHtml('Function Tools', 'func', 'ƒ'),
+    ].join('');
   }
 
   private updateToolsRegistryUi(): void {
