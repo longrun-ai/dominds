@@ -68,30 +68,7 @@ export type ChatGptInclude = 'reasoning.encrypted_content';
 
 export type ChatGptToolChoice = 'auto';
 
-export type ChatGptJsonSchema =
-  | {
-      type: 'boolean';
-      description?: string;
-    }
-  | {
-      type: 'string';
-      description?: string;
-    }
-  | {
-      type: 'number' | 'integer';
-      description?: string;
-    }
-  | {
-      type: 'array';
-      items: ChatGptJsonSchema;
-      description?: string;
-    }
-  | {
-      type: 'object';
-      properties: Record<string, ChatGptJsonSchema>;
-      required?: string[];
-      additionalProperties?: boolean | ChatGptJsonSchema;
-    };
+export type ChatGptJsonSchema = Record<string, unknown>;
 
 export interface ChatGptFunctionTool {
   type: 'function';

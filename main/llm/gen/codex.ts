@@ -6,7 +6,6 @@
 import type {
   ChatGptEventReceiver,
   ChatGptFunctionTool,
-  ChatGptJsonSchema,
   ChatGptMessageItem,
   ChatGptMessageRole,
   ChatGptReasoning,
@@ -17,7 +16,7 @@ import type {
 } from '@dominds/codex-auth';
 import { createLogger } from '../../log';
 import type { Team } from '../../team';
-import type { FuncTool, JsonSchema, JsonSchemaProperty } from '../../tool';
+import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
 import type { LlmGenerator, LlmStreamReceiver } from '../gen';
 
@@ -45,97 +44,15 @@ async function resolveCodexInstructions(
   };
 }
 
-function jsonSchemaPropertyToCodex(schema: JsonSchemaProperty): ChatGptJsonSchema {
-  switch (schema.type) {
-    case 'string': {
-      const result: ChatGptJsonSchema = { type: 'string' };
-      if (schema.description) {
-        result.description = schema.description;
-      }
-      return result;
-    }
-    case 'number': {
-      const result: ChatGptJsonSchema = { type: 'number' };
-      if (schema.description) {
-        result.description = schema.description;
-      }
-      return result;
-    }
-    case 'boolean': {
-      const result: ChatGptJsonSchema = { type: 'boolean' };
-      if (schema.description) {
-        result.description = schema.description;
-      }
-      return result;
-    }
-    case 'array': {
-      if (!schema.items) {
-        throw new Error('Array schema is missing items definition.');
-      }
-      const result: ChatGptJsonSchema = {
-        type: 'array',
-        items: jsonSchemaPropertyToCodex(schema.items),
-      };
-      if (schema.description) {
-        result.description = schema.description;
-      }
-      return result;
-    }
-    case 'object': {
-      const rawProperties = schema.properties ? schema.properties : {};
-      const properties: Record<string, ChatGptJsonSchema> = {};
-      for (const [key, value] of Object.entries(rawProperties)) {
-        properties[key] = jsonSchemaPropertyToCodex(value);
-      }
-      const result: ChatGptJsonSchema = {
-        type: 'object',
-        properties,
-      };
-      if (schema.required) {
-        result.required = schema.required;
-      }
-      if (schema.additionalProperties !== undefined) {
-        result.additionalProperties = schema.additionalProperties;
-      }
-      return result;
-    }
-    default: {
-      const _exhaustive: never = schema.type;
-      throw new Error(`Unsupported schema type: ${_exhaustive}`);
-    }
-  }
-}
-
-function jsonSchemaToCodex(schema: JsonSchema): ChatGptJsonSchema {
-  const properties: Record<string, ChatGptJsonSchema> = {};
-  for (const [key, value] of Object.entries(schema.properties)) {
-    properties[key] = jsonSchemaPropertyToCodex(value);
-  }
-
-  const result: ChatGptJsonSchema = {
-    type: 'object',
-    properties,
-  };
-  if (schema.required) {
-    result.required = schema.required;
-  }
-  if (schema.additionalProperties !== undefined) {
-    result.additionalProperties = schema.additionalProperties;
-  }
-  return result;
-}
-
 function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
-  // Codex strict mode matches codex-rs behavior: all top-level properties must be required.
-  const parameters = jsonSchemaToCodex(funcTool.parameters);
-  if (parameters.type === 'object') {
-    parameters.required = Object.keys(parameters.properties ?? {});
-  }
+  // MCP schemas are passed through to providers. Codex tool schema types are narrower; runtime
+  // validation is handled by provider rejection + the driver stop policy.
+  const parameters = funcTool.parameters as unknown as ChatGptFunctionTool['parameters'];
   return {
     type: 'function',
     name: funcTool.name,
     description: funcTool.description ?? '',
-    strict: true,
+    strict: false,
     parameters,
   };
 }

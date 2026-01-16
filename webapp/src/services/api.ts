@@ -9,6 +9,7 @@ import {
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
   ApiSubdialogResponse,
+  ToolsetInfo,
 } from '../shared/types';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 
@@ -360,6 +361,16 @@ export class ApiClient {
     }>
   > {
     return this.request('/api/task-documents');
+  }
+
+  async getToolsRegistry(): Promise<
+    ApiResponse<{
+      toolsets: ToolsetInfo[];
+      timestamp: string;
+    }>
+  > {
+    // Cache-bust to avoid stale registry results across rapid UI toggles.
+    return this.request(`/api/tools-registry?ts=${Date.now()}`);
   }
 
   /**

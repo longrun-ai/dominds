@@ -13,9 +13,9 @@ import { WebSocket } from 'ws';
 import { reconcileRunStatesAfterRestart } from './dialog-run-state';
 import { runBackendDriver } from './llm/driver';
 import { createLogger } from './log';
-import { DialogPersistence } from './persistence';
-import { computeAuthConfig } from './server/auth';
-import { createHttpServer, ServerConfig } from './server/server-core';
+import { startMcpSupervisor } from './mcp/supervisor';
+import { AuthConfig, computeAuthConfig } from './server/auth';
+import { createHttpServer, HttpServerCore, ServerConfig } from './server/server-core';
 import { setupWebSocketServer } from './server/websocket-handler';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './shared/runtime-language';
 
@@ -77,7 +77,15 @@ export type ServerOptions = {
   mode?: 'dev' | 'prod';
 };
 
-export async function startServer(opts: ServerOptions = {}) {
+export type StartedServer = {
+  httpServer: HttpServerCore;
+  auth: AuthConfig;
+  host: string;
+  port: number;
+  mode: 'dev' | 'prod';
+};
+
+export async function startServer(opts: ServerOptions = {}): Promise<StartedServer> {
   const { language: resolvedLanguage, source } = resolveWorkLanguage({ env: process.env });
   setWorkLanguage(resolvedLanguage);
 
@@ -105,6 +113,7 @@ export async function startServer(opts: ServerOptions = {}) {
       env: process.env,
     }),
   };
+  const auth = config.auth ?? { kind: 'disabled' };
 
   // Create HTTP server
   const httpServer = createHttpServer(config);
@@ -117,6 +126,9 @@ export async function startServer(opts: ServerOptions = {}) {
     getWorkLanguage(),
   );
 
+  // MCP is best-effort: startup must not be blocked by MCP config/server issues.
+  startMcpSupervisor();
+
   // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
   await reconcileRunStatesAfterRestart();
 
@@ -126,7 +138,7 @@ export async function startServer(opts: ServerOptions = {}) {
   // Start listening
   await httpServer.start();
 
-  return httpServer.getHttpServer();
+  return { httpServer, auth, host, port, mode };
 }
 
 // Main function for CLI execution
@@ -143,11 +155,6 @@ async function main() {
     } catch (err) {
       log.warn(`Failed to change working directory to ${wsDir}:`, err);
     }
-    // Set workspace root for persistence modules (uses absolute path)
-    DialogPersistence.setWorkspaceRoot(absoluteWsDir);
-  } else {
-    // Still set workspace root even without -C flag for consistency
-    DialogPersistence.setWorkspaceRoot(process.cwd());
   }
 
   // Get port, host, and mode from CLI args

@@ -14,11 +14,9 @@
  */
 
 import { spawn } from 'child_process';
-import { WebSocket } from 'ws';
 import { createLogger } from '../log';
-import { computeAuthConfig, formatAutoAuthUrl } from '../server/auth';
-import { createHttpServer } from '../server/server-core';
-import { setupWebSocketServer } from '../server/websocket-handler';
+import { formatAutoAuthUrl } from '../server/auth';
+import { startServer } from '../server';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from '../shared/runtime-language';
 
 const log = createLogger('webui');
@@ -36,12 +34,14 @@ Note:
 Options:
   -p, --port <port>    Port to listen on (default: 5666)
   -h, --host <host>    Host to bind to (default: localhost)
+  --mode <dev|prod>    Server mode (default: prod; dev if NODE_ENV=dev)
   --nobrowser          Do not open a browser (opt-out)
   --help               Show this help message
 
 Examples:
   dominds webui                   # Start on default port 5666
   dominds webui -p 8888           # Start on port 8888
+  dominds webui --mode dev        # Start in dev mode
   dominds webui --nobrowser       # Start without opening a browser
 `);
 }
@@ -65,6 +65,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let port = 5666;
   let host = 'localhost';
+  let mode: 'dev' | 'prod' = process.env.NODE_ENV === 'dev' ? 'dev' : 'prod';
   let shouldOpen = true;
 
   for (let i = 0; i < args.length; i++) {
@@ -87,6 +88,15 @@ async function main(): Promise<void> {
       }
       host = next;
       i++;
+    } else if (arg === '--mode') {
+      const next = args[i + 1];
+      if (next !== 'dev' && next !== 'prod') {
+        console.error(`Error: --mode must be 'dev' or 'prod'`);
+        printHelp();
+        process.exit(1);
+      }
+      mode = next;
+      i++;
     } else if (arg === '--nobrowser') {
       shouldOpen = false;
     } else if (arg === '--help') {
@@ -106,28 +116,20 @@ async function main(): Promise<void> {
     setWorkLanguage(resolvedLanguage);
     log.info(`working language: ${getWorkLanguage()} (source: ${source})`);
 
-    const auth = computeAuthConfig({ mode: 'production', env: process.env });
+    const started = await startServer({ port, host, mode });
+    const httpServer = started.httpServer;
+    const auth = started.auth;
 
-    const httpServer = createHttpServer({
-      port,
-      host,
-      mode: 'production',
-      staticRoot: process.env.NODE_ENV === 'dev' ? undefined : 'dist/static',
-      auth,
-    });
-
-    // Setup WebSocket server
-    const clients = new Set<WebSocket>();
-    setupWebSocketServer(httpServer.getHttpServer(), clients, auth, getWorkLanguage());
-
-    await httpServer.start();
-
-    const baseUrl = `http://${host}:${port}`;
+    const baseUrl = `http://${started.host}:${started.port}`;
     log.info(`WebUI ready: ${baseUrl}`);
-    log.debug(`WebSocket endpoint: ws://${host}:${port}/ws`);
+    log.debug(`WebSocket endpoint: ws://${started.host}:${started.port}/ws`);
 
     if (auth.kind === 'enabled') {
-      const autoAuthUrl = formatAutoAuthUrl({ host, port, authKey: auth.key });
+      const autoAuthUrl = formatAutoAuthUrl({
+        host: started.host,
+        port: started.port,
+        authKey: auth.key,
+      });
       log.info(`auto auth url (sensitive): ${autoAuthUrl}`);
       if (shouldOpen) {
         log.debug(`Opening browser: ${autoAuthUrl}`);

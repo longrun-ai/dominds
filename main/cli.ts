@@ -84,7 +84,10 @@ async function main(): Promise<void> {
   if (args.length === 0) {
     if (parsed.chdir) {
       try {
-        process.chdir(parsed.chdir);
+        const absoluteRtwsRoot = path.isAbsolute(parsed.chdir)
+          ? parsed.chdir
+          : path.resolve(baseCwd, parsed.chdir);
+        process.chdir(absoluteRtwsRoot);
       } catch (err) {
         console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
         process.exit(1);
@@ -118,7 +121,10 @@ async function main(): Promise<void> {
   if (!shouldSkipRtwsSetup) {
     if (parsed.chdir) {
       try {
-        process.chdir(parsed.chdir);
+        const absoluteRtwsRoot = path.isAbsolute(parsed.chdir)
+          ? parsed.chdir
+          : path.resolve(baseCwd, parsed.chdir);
+        process.chdir(absoluteRtwsRoot);
       } catch (err) {
         console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
         process.exit(1);

@@ -11,7 +11,9 @@ import {
   deleteReminderTool,
   updateReminderTool,
 } from './ctrl';
+import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, rmDirTool, rmFileTool } from './fs';
+import { mcpRestartTool } from './mcp';
 import {
   addMemoryTool,
   addSharedMemoryTool,
@@ -113,6 +115,14 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
   registerTool(stopDaemonTool);
   registerTool(getDaemonOutputTool);
 
+  // Env tools (local testing)
+  registerTool(envGetTool);
+  registerTool(envSetTool);
+  registerTool(envUnsetTool);
+
+  // MCP tools (local testing/ops)
+  registerTool(mcpRestartTool);
+
   // Memory tools
   registerTool(addMemoryTool);
   registerTool(dropMemoryTool);
@@ -146,6 +156,8 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
     changeMindTool,
   ]);
   registerToolset('os', [shellCmdTool, stopDaemonTool, getDaemonOutputTool]);
+  registerToolset('env', [envGetTool, envSetTool, envUnsetTool]);
+  registerToolset('mcp_admin', [mcpRestartTool]);
   registerToolset('ws_read', [listDirTool, readFileTool]);
   registerToolset('ws_mod', [
     listDirTool,

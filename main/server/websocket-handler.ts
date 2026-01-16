@@ -16,6 +16,7 @@ import {
 import { dialogEventRegistry } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
+import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
@@ -28,6 +29,7 @@ import type {
   DriveDialogByUserAnswer,
   DriveDialogRequest,
   EmergencyStopRequest,
+  GetProblemsRequest,
   GetQ4HStateRequest,
   InterruptDialogRequest,
   Q4HStateResponse,
@@ -152,6 +154,10 @@ export async function handleWebSocketMessage(
         await handleSetUiLanguage(ws, packet);
         break;
 
+      case 'get_problems':
+        await handleGetProblems(ws, packet);
+        break;
+
       case 'create_dialog':
         await handleCreateDialog(ws, packet);
         break;
@@ -214,6 +220,14 @@ export async function handleWebSocketMessage(
       }),
     );
   }
+}
+
+async function handleGetProblems(ws: WebSocket, packet: WebSocketMessage): Promise<void> {
+  if (packet.type !== 'get_problems') {
+    throw new Error('Internal error: handleGetProblems called with non get_problems packet');
+  }
+  const _req: GetProblemsRequest = packet;
+  ws.send(JSON.stringify(createProblemsSnapshotMessage()));
 }
 
 async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Promise<void> {
@@ -1005,6 +1019,16 @@ export function setupWebSocketServer(
     }
   });
 
+  // Broadcast workspace Problems snapshots to all connected clients.
+  setProblemsBroadcaster((msg: WebSocketMessage) => {
+    const data = JSON.stringify(msg);
+    for (const ws of clients) {
+      if (ws.readyState === 1) {
+        ws.send(data);
+      }
+    }
+  });
+
   wss.on('connection', (ws: WebSocket, req) => {
     const authCheck = getWebSocketAuthCheck(req, auth);
     if (authCheck.kind !== 'ok') {
@@ -1025,6 +1049,9 @@ export function setupWebSocketServer(
         timestamp: formatUnifiedTimestamp(new Date()),
       }),
     );
+
+    // Send an initial snapshot so the UI can render a stable Problems indicator immediately.
+    ws.send(JSON.stringify(createProblemsSnapshotMessage()));
 
     ws.on('message', async (data: Buffer) => {
       try {

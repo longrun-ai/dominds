@@ -152,10 +152,30 @@ export async function loadAgentMinds(
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools
       .map((tool) => {
-        const req =
-          (tool.parameters.required ?? []).join(', ') || noneRequiredFieldsText(workingLanguage);
-        const props = Object.entries(tool.parameters.properties ?? {})
-          .map(([k, v]) => `- ${k}: ${v.description ?? 'parameter'}`)
+        // NOTE: Function-tool schemas may come from MCP and are treated as passthrough JSON Schema.
+        // Runtime inspection is unavoidable here because this is purely for human-readable help text.
+        const schema = tool.parameters;
+
+        const isRecord = (value: unknown): value is Record<string, unknown> =>
+          typeof value === 'object' && value !== null && !Array.isArray(value);
+
+        const requiredValue = schema['required'];
+        const required =
+          Array.isArray(requiredValue) && requiredValue.every((v) => typeof v === 'string')
+            ? requiredValue
+            : [];
+        const req = required.length > 0 ? required.join(', ') : noneRequiredFieldsText(workingLanguage);
+
+        const propsValue = schema['properties'];
+        const propsRecord = isRecord(propsValue) ? propsValue : {};
+        const props = Object.entries(propsRecord)
+          .map(([k, v]) => {
+            const desc =
+              isRecord(v) && 'description' in v && typeof v.description === 'string'
+                ? v.description
+                : 'parameter';
+            return `- ${k}: ${desc}`;
+          })
           .join('\n');
         const labels = funcToolUsageLabels(workingLanguage);
         return `#### ${labels.toolLabel}: ${tool.name}\n\n${tool.description || ''}\n\n- ${labels.invocationLabel}: ${labels.invocationBody}\n- ${labels.requiredLabel}: ${req}\n- ${labels.parametersLabel}:\n${props}`.trim();

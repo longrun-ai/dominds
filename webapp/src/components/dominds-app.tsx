@@ -26,6 +26,8 @@ import type {
   ApiRootDialogResponse,
   DialogInfo,
   DialogStatusKind,
+  ToolsetInfo,
+  WorkspaceProblem,
 } from '../shared/types';
 import type {
   FullRemindersEvent,
@@ -46,6 +48,7 @@ import type { DialogRunState } from '../shared/types/run-state';
 import type {
   DialogReadyMessage,
   ErrorMessage,
+  ProblemsSnapshotMessage,
   Q4HStateResponse,
   WebSocketMessage,
   WelcomeMessage,
@@ -68,7 +71,8 @@ type ActivityView =
   | { kind: 'done' }
   | { kind: 'archived' }
   | { kind: 'search' }
-  | { kind: 'team-members' };
+  | { kind: 'team-members' }
+  | { kind: 'tools' };
 
 type AuthState =
   | { kind: 'uninitialized' }
@@ -112,6 +116,15 @@ export class DomindsApp extends HTMLElement {
   private uiLanguageMenuOpen: boolean = false;
   private _uiLanguageMenuGlobalCancel?: () => void;
 
+  // Workspace Problems
+  private problemsVersion: number = 0;
+  private problems: WorkspaceProblem[] = [];
+  private problemsPanelOpen: boolean = false;
+
+  // Tools Registry (snapshot)
+  private toolsRegistryTimestamp: string = '';
+  private toolsRegistryToolsets: ToolsetInfo[] = [];
+
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
   private q4hQuestions: HumanQuestion[] = [];
@@ -148,6 +161,12 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
 
     // Header + toolbar
+    const logo = this.shadowRoot.querySelector('.logo') as HTMLAnchorElement | null;
+    if (logo) {
+      logo.title = t.logoGitHubTitle;
+      logo.setAttribute('aria-label', t.logoGitHubTitle);
+    }
+
     const workspace = this.shadowRoot.querySelector('.workspace-indicator') as HTMLElement | null;
     if (workspace) workspace.title = t.backendWorkspaceTitle;
 
@@ -177,6 +196,9 @@ export class DomindsApp extends HTMLElement {
       } else if (kind === 'team-members') {
         btn.setAttribute('aria-label', t.activityTeamMembers);
         btn.title = t.activityTeamMembers;
+      } else if (kind === 'tools') {
+        btn.setAttribute('aria-label', t.activityTools);
+        btn.title = t.activityTools;
       }
     });
 
@@ -217,6 +239,15 @@ export class DomindsApp extends HTMLElement {
     ) as HTMLElement | null;
     if (tmText) tmText.textContent = t.placeholderTeamMembersText;
 
+    const toolsTitle = this.shadowRoot.querySelector(
+      '[data-activity-view="tools"] .activity-placeholder-title',
+    ) as HTMLElement | null;
+    if (toolsTitle) toolsTitle.textContent = t.placeholderToolsTitle;
+    const toolsText = this.shadowRoot.querySelector(
+      '[data-activity-view="tools"] .activity-placeholder-text',
+    ) as HTMLElement | null;
+    if (toolsText) toolsText.textContent = t.placeholderToolsText;
+
     const newDialogBtn = this.shadowRoot.querySelector('#new-dialog-btn') as HTMLButtonElement;
     if (newDialogBtn) newDialogBtn.title = t.newDialogTitle;
 
@@ -242,6 +273,14 @@ export class DomindsApp extends HTMLElement {
     if (remRefresh) {
       remRefresh.setAttribute('aria-label', t.refreshReminders);
       remRefresh.title = t.refreshReminders;
+    }
+
+    const toolsRefresh = this.shadowRoot.querySelector(
+      '#tools-registry-refresh',
+    ) as HTMLButtonElement | null;
+    if (toolsRefresh) {
+      toolsRefresh.setAttribute('aria-label', t.toolsRefresh);
+      toolsRefresh.title = t.toolsRefresh;
     }
 
     // Propagate to child components
@@ -282,6 +321,7 @@ export class DomindsApp extends HTMLElement {
     }
     this.updateCreateDialogModalText();
     this.updateAuthModalText();
+    this.updateToolsRegistryUi();
   }
 
   private applyUiLanguageSelectDecorations(t: ReturnType<typeof getUiStrings>): void {
@@ -691,6 +731,8 @@ export class DomindsApp extends HTMLElement {
     this.updateActivityView();
     this.renderDialogList();
     this.applyUiLanguageToDom();
+    this.updateProblemsUi();
+    this.updateToolsRegistryUi();
   }
 
   /**
@@ -821,50 +863,53 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
       }
 
-      .header {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        padding: 12px 16px;
-        background: var(--dominds-header-bg);
-        border-bottom: 1px solid var(--dominds-border);
-        flex-shrink: 0;
-      }
+	      .header {
+	        display: flex;
+	        align-items: flex-end;
+	        justify-content: flex-start;
+	        gap: 16px;
+	        padding: 12px 16px;
+	        background: var(--dominds-header-bg);
+	        border-bottom: 1px solid var(--dominds-border);
+	        flex-shrink: 0;
+	      }
 
-      .logo {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-weight: 600;
-        font-size: 18px;
-        color: var(--dominds-primary, #007acc);
-        flex: none;
-        min-width: auto;
-        width: auto;
-        margin-right: 16px;
-      }
+	      .logo {
+	        display: flex;
+	        align-items: center;
+	        gap: 12px;
+	        font-weight: 600;
+	        font-size: 18px;
+	        color: var(--dominds-primary, #007acc);
+	        flex: none;
+	        min-width: auto;
+	        width: auto;
+	        margin-right: 0;
+	        text-decoration: none;
+	      }
 
-      .workspace-indicator {
-        font-size: 11px;
-        color: var(--dominds-muted, #666666);
-        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-        background: var(--dominds-hover, #f8f9fa);
-        padding: 1px 8px;
-        border-radius: 4px;
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        flex: 1;
-        min-width: 0;
-        height: calc(1em * 1.4 * 0.85);
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        margin-left: 24px;
-        margin-right: 24px;
-        overflow-x: auto;
-        overflow-y: hidden;
-        white-space: nowrap;
-        scrollbar-width: thin;
-        scrollbar-color: var(--dominds-muted, #666666) var(--dominds-hover, #f8f9fa);
+	      .workspace-indicator {
+	        font-size: 11px;
+	        color: var(--dominds-muted, #666666);
+	        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+	        background: var(--dominds-hover, #f8f9fa);
+	        padding: 1px 8px;
+	        border-radius: 4px;
+	        border: 1px solid var(--dominds-border, #e0e0e0);
+	        flex: 1;
+	        max-width: 50%;
+	        min-width: 0;
+	        height: calc(1em * 1.4 * 0.85);
+	        display: flex;
+	        align-items: center;
+	        justify-content: flex-start;
+	        margin-left: 0;
+	        margin-right: 0;
+	        overflow-x: auto;
+	        overflow-y: hidden;
+	        white-space: nowrap;
+	        scrollbar-width: thin;
+	        scrollbar-color: var(--dominds-muted, #666666) var(--dominds-hover, #f8f9fa);
       }
 
       
@@ -886,12 +931,12 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-fg, #333333);
       }
 
-      .header-actions {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-left: 16px;
-      }
+	      .header-actions {
+	        display: flex;
+	        align-items: center;
+	        gap: 12px;
+	        margin-left: auto;
+	      }
 
       .header-run-controls {
         display: inline-flex;
@@ -943,6 +988,128 @@ export class DomindsApp extends HTMLElement {
 
       .header-pill-button.success:hover:not(:disabled) {
         border-color: var(--dominds-success, #28a745);
+      }
+
+      .header-pill-button.problems[data-severity='info'] {
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-fg, #333333);
+      }
+
+      .header-pill-button.problems[data-severity='warning'] {
+        background: color-mix(in srgb, #f59e0b 14%, var(--dominds-bg, #ffffff));
+        border-color: color-mix(in srgb, #f59e0b 35%, var(--dominds-border, #e0e0e0));
+        color: color-mix(in srgb, #b45309 85%, var(--dominds-fg, #333333));
+      }
+
+      .header-pill-button.problems[data-severity='error'] {
+        background: var(--dominds-danger-bg, #f8d7da);
+        border-color: var(--dominds-danger-border, #f5c6cb);
+        color: var(--dominds-danger, #721c24);
+      }
+
+      .problems-panel {
+        position: fixed;
+        top: 68px;
+        right: 12px;
+        width: min(520px, calc(100vw - 24px));
+        max-height: calc(100vh - 92px);
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 10px;
+        background: var(--dominds-bg, #ffffff);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+        overflow: hidden;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .problems-panel.hidden {
+        display: none;
+      }
+
+      .problems-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-sidebar-bg, #f8f9fa);
+      }
+
+      .problems-panel-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .problems-panel-actions {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .problems-panel-actions button {
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-fg, #333333);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .problems-panel-actions button:hover {
+        border-color: var(--dominds-primary, #007acc);
+      }
+
+      .problems-list {
+        padding: 10px 12px;
+        overflow: auto;
+      }
+
+      .problem-item {
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        background: var(--dominds-bg, #ffffff);
+      }
+
+      .problem-item[data-severity='warning'] {
+        border-color: color-mix(in srgb, #f59e0b 40%, var(--dominds-border, #e0e0e0));
+      }
+
+      .problem-item[data-severity='error'] {
+        border-color: var(--dominds-danger-border, #f5c6cb);
+        background: color-mix(in srgb, var(--dominds-danger-bg, #f8d7da) 35%, var(--dominds-bg, #ffffff));
+      }
+
+      .problem-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .problem-message {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .problem-meta {
+        font-size: 12px;
+        color: var(--dominds-muted, #666666);
+        white-space: nowrap;
+      }
+
+      .problem-detail {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--dominds-muted, #666666);
+        white-space: pre-wrap;
+        word-break: break-word;
       }
 
       .lang-select {
@@ -1167,6 +1334,131 @@ export class DomindsApp extends HTMLElement {
 
       .activity-placeholder dominds-team-members {
         margin-top: 6px;
+      }
+
+      .tools-registry-header {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 10px;
+        background: var(--dominds-bg, #ffffff);
+      }
+
+      .tools-registry-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .tools-registry-actions button {
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-fg, #333333);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .tools-registry-actions button:hover {
+        border-color: var(--dominds-primary, #007acc);
+      }
+
+      .tools-registry-meta {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--dominds-muted, #666666);
+      }
+
+      .tools-registry-list {
+        margin-top: 8px;
+        overflow: auto;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 10px;
+        background: var(--dominds-bg, #ffffff);
+        padding: 8px;
+      }
+
+      .toolset {
+        border-bottom: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 60%, transparent);
+        padding-bottom: 8px;
+        margin-bottom: 8px;
+      }
+
+      .toolset:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 0;
+      }
+
+      .toolset-title {
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--dominds-fg, #333333);
+        font-size: 12.5px;
+        list-style: none;
+      }
+
+      .toolset-title::-webkit-details-marker {
+        display: none;
+      }
+
+      .toolset-tools {
+        margin-top: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .tool-item {
+        border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: var(--dominds-bg, #ffffff);
+      }
+
+      .tool-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .tool-kind {
+        width: 18px;
+        height: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        color: var(--dominds-muted, #666666);
+        font-size: 11px;
+        flex-shrink: 0;
+      }
+
+      .tool-name {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        color: var(--dominds-fg, #333333);
+      }
+
+      .tool-desc {
+        margin-top: 4px;
+        color: var(--dominds-muted, #666666);
+        font-size: 12px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .tools-empty {
+        padding: 8px 10px;
+        color: var(--dominds-muted, #666666);
+        font-size: 12px;
       }
 
       .activity-view running-dialog-list,
@@ -1875,15 +2167,15 @@ export class DomindsApp extends HTMLElement {
       .join('');
     return `
       <div class="app-container">
-        <header class="header">
-          <div class="logo">
-            <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
-            <span>Dominds</span>
-          </div>
-          <div class="workspace-indicator" title="${t.backendWorkspaceTitle}">
-            📁 ${this.backendWorkspace || t.backendWorkspaceLoading}
-          </div>
-          <div class="header-actions">
+	        <header class="header">
+	          <a class="logo" href="https://github.com/longrun-ai/dominds" target="_blank" rel="noopener noreferrer" title="${t.logoGitHubTitle}" aria-label="${t.logoGitHubTitle}">
+	            <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
+	            <span>Dominds</span>
+	          </a>
+	          <div class="workspace-indicator" title="${t.backendWorkspaceTitle}">
+	            📁 ${this.backendWorkspace || t.backendWorkspaceLoading}
+	          </div>
+	          <div class="header-actions">
             <div class="header-run-controls">
               <button class="header-pill-button danger" id="toolbar-emergency-stop" title="${t.emergencyStop}" aria-label="${t.emergencyStop}" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
@@ -1894,6 +2186,10 @@ export class DomindsApp extends HTMLElement {
                 <span>${String(this.resumableDialogsCount)}</span>
               </button>
             </div>
+            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
+              <span>${String(this.problems.length)}</span>
+            </button>
             <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
             <div class="ui-language-menu">
               <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
@@ -1909,6 +2205,19 @@ export class DomindsApp extends HTMLElement {
             </button>
           </div>
         </header>
+
+        <div id="problems-panel" class="problems-panel ${this.problemsPanelOpen ? '' : 'hidden'}" role="dialog" aria-label="${t.problemsTitle}">
+          <div class="problems-panel-header">
+            <div class="problems-panel-title">${t.problemsTitle}</div>
+            <div class="problems-panel-actions">
+              <button type="button" id="problems-refresh" title="Refresh">↻</button>
+              <button type="button" id="problems-close" title="${t.close}">✕</button>
+            </div>
+          </div>
+          <div id="problems-list" class="problems-list">
+            ${this.renderProblemsListHtml()}
+          </div>
+        </div>
 
         <div class="main-content">
           <aside class="sidebar">
@@ -1928,6 +2237,9 @@ export class DomindsApp extends HTMLElement {
               </button>
               <button class="activity-button icon-button" data-activity="team-members" aria-label="${t.activityTeamMembers}" aria-pressed="false" title="${t.activityTeamMembers}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"></path><path d="M7 21v-2a4 4 0 0 1 3-3.87"></path><circle cx="12" cy="7" r="4"></circle><path d="M18 8a3 3 0 1 0 0-6"></path><path d="M6 8a3 3 0 1 1 0-6"></path></svg>
+              </button>
+              <button class="activity-button icon-button" data-activity="tools" aria-label="${t.activityTools}" aria-pressed="false" title="${t.activityTools}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4.5 4.5 0 0 0 5.4-5.4l-2.2 2.2-2.2-2.2 2.4-2.4z"></path></svg>
               </button>
             </div>
             <div class="sidebar-content">
@@ -1960,6 +2272,22 @@ export class DomindsApp extends HTMLElement {
                   <div class="activity-placeholder-title">${t.placeholderTeamMembersTitle}</div>
                   <div class="activity-placeholder-text">${t.placeholderTeamMembersText}</div>
                   <dominds-team-members id="team-members" show-actions="true"></dominds-team-members>
+                </div>
+              </div>
+              <div class="activity-view hidden" data-activity-view="tools">
+                <div class="activity-placeholder">
+                  <div class="activity-placeholder-title">${t.placeholderToolsTitle}</div>
+                  <div class="activity-placeholder-text">${t.placeholderToolsText}</div>
+                  <div class="tools-registry-header">
+                    <div class="tools-registry-title">${t.toolsTitle}</div>
+                    <div class="tools-registry-actions">
+                      <button type="button" id="tools-registry-refresh" title="${t.toolsRefresh}">↻</button>
+                    </div>
+                  </div>
+                  <div class="tools-registry-meta">
+                    <span id="tools-registry-timestamp"></span>
+                  </div>
+                  <div id="tools-registry-list" class="tools-registry-list"></div>
                 </div>
               </div>
             </div>
@@ -2170,7 +2498,25 @@ export class DomindsApp extends HTMLElement {
             this.activityView = { kind: 'team-members' };
             this.updateActivityView();
             return;
+          case 'tools':
+            this.activityView = { kind: 'tools' };
+            this.updateActivityView();
+            // Clear cached view so we don't show stale tools while fetching.
+            this.toolsRegistryToolsets = [];
+            this.toolsRegistryTimestamp = '';
+            this.updateToolsRegistryUi();
+            void this.loadToolsRegistry();
+            return;
         }
+      }
+
+      const toolsRefresh = target.closest('#tools-registry-refresh') as HTMLButtonElement | null;
+      if (toolsRefresh) {
+        this.toolsRegistryToolsets = [];
+        this.toolsRegistryTimestamp = '';
+        this.updateToolsRegistryUi();
+        void this.loadToolsRegistry();
+        return;
       }
 
       // Toolbar navigation
@@ -2204,6 +2550,29 @@ export class DomindsApp extends HTMLElement {
           );
           this.updateToolbarRoundDisplay();
         }
+        return;
+      }
+
+      const problemsToggle = target.closest('#toolbar-problems-toggle') as HTMLButtonElement | null;
+      if (problemsToggle) {
+        this.problemsPanelOpen = !this.problemsPanelOpen;
+        if (this.problemsPanelOpen) {
+          this.wsManager.sendRaw({ type: 'get_problems' });
+        }
+        this.updateProblemsUi();
+        return;
+      }
+
+      const problemsClose = target.closest('#problems-close') as HTMLButtonElement | null;
+      if (problemsClose) {
+        this.problemsPanelOpen = false;
+        this.updateProblemsUi();
+        return;
+      }
+
+      const problemsRefresh = target.closest('#problems-refresh') as HTMLButtonElement | null;
+      if (problemsRefresh) {
+        this.wsManager.sendRaw({ type: 'get_problems' });
         return;
       }
 
@@ -4024,6 +4393,137 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  private getProblemsTopSeverity(): 'info' | 'warning' | 'error' {
+    let sawWarning = false;
+    for (const p of this.problems) {
+      if (p.severity === 'error') {
+        return 'error';
+      }
+      if (p.severity === 'warning') {
+        sawWarning = true;
+      }
+    }
+    return sawWarning ? 'warning' : 'info';
+  }
+
+  private renderProblemsListHtml(): string {
+    const t = getUiStrings(this.uiLanguage);
+    if (this.problems.length === 0) {
+      return `<div class="problem-meta">${this.escapeHtml(t.problemsEmpty)}</div>`;
+    }
+    const items = this.problems
+      .slice()
+      .sort((a, b) => {
+        const sa = a.severity === 'error' ? 3 : a.severity === 'warning' ? 2 : 1;
+        const sb = b.severity === 'error' ? 3 : b.severity === 'warning' ? 2 : 1;
+        if (sa !== sb) return sb - sa;
+        return b.timestamp.localeCompare(a.timestamp);
+      })
+      .map((p) => {
+        const detailText = JSON.stringify(p.detail, null, 2);
+        return `
+          <div class="problem-item" data-severity="${p.severity}">
+            <div class="problem-head">
+              <div class="problem-message">${this.escapeHtml(p.message)}</div>
+              <div class="problem-meta">${this.escapeHtml(p.timestamp)}</div>
+            </div>
+            <div class="problem-detail">${this.escapeHtml(detailText)}</div>
+          </div>
+        `;
+      })
+      .join('');
+    return items;
+  }
+
+  private updateProblemsUi(): void {
+    const sr = this.shadowRoot;
+    if (!sr) return;
+    const btn = sr.querySelector('#toolbar-problems-toggle') as HTMLButtonElement | null;
+    if (btn) {
+      btn.setAttribute('data-severity', this.getProblemsTopSeverity());
+      const count = btn.querySelector('span');
+      if (count) {
+        count.textContent = String(this.problems.length);
+      }
+    }
+
+    const panel = sr.querySelector('#problems-panel') as HTMLElement | null;
+    if (panel) {
+      panel.classList.toggle('hidden', !this.problemsPanelOpen);
+    }
+    const list = sr.querySelector('#problems-list') as HTMLElement | null;
+    if (list) {
+      list.innerHTML = this.renderProblemsListHtml();
+    }
+  }
+
+  private renderToolsRegistryListHtml(): string {
+    const t = getUiStrings(this.uiLanguage);
+    if (!this.toolsRegistryToolsets || this.toolsRegistryToolsets.length === 0) {
+      return `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`;
+    }
+
+    const toolsets = [...this.toolsRegistryToolsets].sort((a, b) => a.name.localeCompare(b.name));
+    return toolsets
+      .map((ts) => {
+        const title = `${ts.name} (${ts.tools.length})`;
+        const tools = ts.tools.slice().sort((a, b) => a.name.localeCompare(b.name));
+        const toolsHtml =
+          tools.length === 0
+            ? `<div class="tools-empty">${this.escapeHtml(t.toolsEmpty)}</div>`
+            : tools
+                .map((tool) => {
+                  const kindLabel = tool.kind === 'texter' ? '@' : 'ƒ';
+                  const desc = tool.description ? this.escapeHtml(tool.description) : '';
+                  return `<div class="tool-item" data-kind="${this.escapeHtml(tool.kind)}">
+                    <div class="tool-main">
+                      <span class="tool-kind">${kindLabel}</span>
+                      <span class="tool-name">${this.escapeHtml(tool.name)}</span>
+                    </div>
+                    ${desc ? `<div class="tool-desc">${desc}</div>` : ''}
+                  </div>`;
+                })
+                .join('');
+
+        return `<details class="toolset" open>
+          <summary class="toolset-title">${this.escapeHtml(title)}</summary>
+          <div class="toolset-tools">${toolsHtml}</div>
+        </details>`;
+      })
+      .join('');
+  }
+
+  private updateToolsRegistryUi(): void {
+    const sr = this.shadowRoot;
+    if (!sr) return;
+    const list = sr.querySelector('#tools-registry-list') as HTMLElement | null;
+    if (list) {
+      list.innerHTML = this.renderToolsRegistryListHtml();
+    }
+    const ts = sr.querySelector('#tools-registry-timestamp') as HTMLElement | null;
+    if (ts) {
+      ts.textContent = this.toolsRegistryTimestamp ? this.toolsRegistryTimestamp : '';
+    }
+  }
+
+  private async loadToolsRegistry(): Promise<void> {
+    const res = await this.apiClient.getToolsRegistry();
+    if (!res.success || !res.data) {
+      const message = res.error || 'Failed to load tools registry';
+      this.showToast(message, 'warning');
+      return;
+    }
+    this.toolsRegistryToolsets = res.data.toolsets;
+    this.toolsRegistryTimestamp = res.data.timestamp;
+    this.updateToolsRegistryUi();
+  }
+
   private setupWebSocketEventHandlers(): void {
     // Cancel any previous subscription to prevent duplicate event processing
     if (this._wsEventCancel) {
@@ -4061,6 +4561,13 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'ui_language_set': {
+        return true;
+      }
+      case 'problems_snapshot': {
+        const snap = message as ProblemsSnapshotMessage;
+        this.problemsVersion = snap.version;
+        this.problems = snap.problems;
+        this.updateProblemsUi();
         return true;
       }
       case 'error': {

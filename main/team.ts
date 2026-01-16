@@ -12,7 +12,7 @@ import YAML from 'yaml';
 import { LlmConfig } from './llm/client';
 import { log } from './log';
 import type { Tool } from './tool';
-import { getTool, getToolset } from './tools/registry';
+import { getTool, getToolset, listToolsets } from './tools/registry';
 
 export class Team {
   readonly memberDefaults: Team.Member;
@@ -137,6 +137,29 @@ export namespace Team {
       if (params.no_write_dirs !== undefined) this.no_write_dirs = params.no_write_dirs;
       if (params.icon !== undefined) this.icon = params.icon;
       if (params.streaming !== undefined) this.streaming = params.streaming;
+
+      // TypeScript class-field initialization may define optional fields as own-properties with
+      // `undefined`, which breaks prototype-chain defaults. Clean them up.
+      const self = this as unknown as Record<string, unknown>;
+      const unsettableKeys = [
+        'provider',
+        'model',
+        'gofor',
+        'toolsets',
+        'tools',
+        'model_params',
+        'read_dirs',
+        'write_dirs',
+        'no_read_dirs',
+        'no_write_dirs',
+        'icon',
+        'streaming',
+      ] as const;
+      for (const key of unsettableKeys) {
+        if (Object.prototype.hasOwnProperty.call(self, key) && self[key] === undefined) {
+          delete self[key];
+        }
+      }
     }
 
     /**
@@ -151,25 +174,32 @@ export namespace Team {
       // Process toolsets (in declaration order)
       if (this.toolsets) {
         for (const toolsetName of this.toolsets) {
-          const tools = getToolset(toolsetName);
-          if (!tools) {
-            log.warn(`Toolset '${toolsetName}' not found in registry for member '${this.id}'`);
-            continue;
-          }
+          const toolsetNames =
+            toolsetName === '*' ? Object.keys(listToolsets()) : ([toolsetName] as const);
 
-          for (const tool of tools) {
-            if (seenNames.has(tool.name)) {
-              const existingTool = toolMap.get(tool.name);
-              if (existingTool && existingTool !== tool) {
-                log.warn(
-                  `Tool name '${tool.name}' resolves to different Tool objects for member '${this.id}'. Using first occurrence.`,
-                );
-              }
-              continue; // Skip duplicate
+          for (const resolvedToolsetName of toolsetNames) {
+            const tools = getToolset(resolvedToolsetName);
+            if (!tools) {
+              log.warn(
+                `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
+              );
+              continue;
             }
 
-            toolMap.set(tool.name, tool);
-            seenNames.add(tool.name);
+            for (const tool of tools) {
+              if (seenNames.has(tool.name)) {
+                const existingTool = toolMap.get(tool.name);
+                if (existingTool && existingTool !== tool) {
+                  log.warn(
+                    `Tool name '${tool.name}' resolves to different Tool objects for member '${this.id}'. Using first occurrence.`,
+                  );
+                }
+                continue; // Skip duplicate
+              }
+
+              toolMap.set(tool.name, tool);
+              seenNames.add(tool.name);
+            }
           }
         }
       }
@@ -213,23 +243,37 @@ export namespace Team {
       const llmCfg = await LlmConfig.load();
       let provider = '';
       let model = '';
-      for (const [key, providerConfig] of Object.entries(llmCfg.providers)) {
-        if (providerConfig.apiKeyEnvVar && process.env[providerConfig.apiKeyEnvVar]) {
-          provider = key;
-          const modelKeys = Object.keys(providerConfig.models);
-          if (modelKeys.length > 0) {
-            model = modelKeys[0];
-          }
+      const providerEntries = Object.entries(llmCfg.providers);
+      const pickProvider = (key: string): void => {
+        provider = key;
+        const modelKeys = Object.keys(llmCfg.providers[key]?.models ?? {});
+        if (modelKeys.length > 0) model = modelKeys[0];
+      };
+
+      // Prefer a provider with an available API key env var.
+      for (const [key, providerConfig] of providerEntries) {
+        if (process.env[providerConfig.apiKeyEnvVar]) {
+          pickProvider(key);
           break;
         }
       }
+      // Fall back to the first configured provider.
+      if (!provider && providerEntries.length > 0) {
+        pickProvider(providerEntries[0][0]);
+      }
+
+      // Ad-hoc team grants all currently-registered toolsets to dijiang (for UX/e2e),
+      // and env toolset to cmdr.
+      // Use `*` to include toolsets registered later (e.g., hot-reloaded MCP toolsets).
+      const allToolsets = ['*'];
+
       const dijiang = new Team.Member({
         id: 'dijiang',
         icon: '💥',
         name: 'Dijiang',
         provider,
         model,
-        toolsets: ['ws_mod'],
+        toolsets: allToolsets,
       });
       const team: Team = new Team({
         memberDefaults: dijiang,
@@ -242,7 +286,7 @@ export namespace Team {
             name: 'Commander',
             provider,
             model,
-            toolsets: ['os'],
+            toolsets: ['os', 'env'],
           }),
         },
       });

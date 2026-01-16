@@ -3,6 +3,9 @@
 
 import type { TypedDialogEvent } from './dialog';
 import type { LanguageCode } from './language';
+import type { GetProblemsRequest, ProblemsSnapshotMessage } from './problems';
+
+export type { GetProblemsRequest, ProblemsSnapshotMessage } from './problems';
 
 export type DialogStatusKind = 'running' | 'completed' | 'archived';
 
@@ -34,6 +37,8 @@ export type WebSocketMessage =
   | ErrorMessage
   | SetUiLanguageRequest
   | UiLanguageSetMessage
+  | GetProblemsRequest
+  | ProblemsSnapshotMessage
   | CreateDialogRequest
   | DisplayDialogRequest
   | GetQ4HStateRequest

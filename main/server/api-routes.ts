@@ -17,6 +17,7 @@ import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/stora
 import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
+import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
 
@@ -112,10 +113,41 @@ export async function handleApiRoute(
       return await handleGetTaskDocuments(res);
     }
 
+    // Tools registry endpoint (snapshot)
+    if (pathname === '/api/tools-registry' && req.method === 'GET') {
+      return await handleGetToolsRegistry(res);
+    }
+
     return false; // Route not handled
   } catch (error) {
     log.error('Error handling API route:', error);
     respondJson(res, 500, { error: 'Internal server error' });
+    return true;
+  }
+}
+
+async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
+  try {
+    const snapshot = createToolsRegistrySnapshot();
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    });
+    res.end(
+      JSON.stringify({
+      success: true,
+      toolsets: snapshot.toolsets,
+      timestamp: snapshot.timestamp,
+      }),
+    );
+    return true;
+  } catch (error) {
+    log.error('Error getting tools registry snapshot:', error);
+    res.writeHead(500, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ success: false, error: 'Failed to get tools registry' }));
     return true;
   }
 }

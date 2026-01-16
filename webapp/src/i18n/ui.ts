@@ -1,11 +1,15 @@
 import { formatLanguageName, type LanguageCode } from '../shared/types/language';
 
 export type UiStrings = {
+  logoGitHubTitle: string;
   backendWorkspaceTitle: string;
   backendWorkspaceLoading: string;
   loading: string;
   uiLanguageSelectTitle: string;
   themeToggleTitle: string;
+  problemsButtonTitle: string;
+  problemsTitle: string;
+  problemsEmpty: string;
 
   activityBarAriaLabel: string;
   activityRunning: string;
@@ -13,6 +17,7 @@ export type UiStrings = {
   activityArchived: string;
   activitySearch: string;
   activityTeamMembers: string;
+  activityTools: string;
 
   placeholderDoneTitle: string;
   placeholderDoneText: string;
@@ -22,6 +27,8 @@ export type UiStrings = {
   placeholderSearchText: string;
   placeholderTeamMembersTitle: string;
   placeholderTeamMembersText: string;
+  placeholderToolsTitle: string;
+  placeholderToolsText: string;
 
   newDialogTitle: string;
   currentDialogPlaceholder: string;
@@ -108,6 +115,10 @@ export type UiStrings = {
   selectMemberTitle: string;
   editMemberTitle: string;
 
+  toolsTitle: string;
+  toolsEmpty: string;
+  toolsRefresh: string;
+
   daemonLabel: string;
   commandLabel: string;
   unknownCommand: string;
@@ -116,11 +127,15 @@ export type UiStrings = {
 export function getUiStrings(language: LanguageCode): UiStrings {
   if (language === 'zh') {
     return {
+      logoGitHubTitle: '在新窗口打开 Dominds 的 GitHub 仓库',
       backendWorkspaceTitle: '后端运行时工作区',
       backendWorkspaceLoading: '加载中…',
       loading: '加载中…',
       uiLanguageSelectTitle: '界面语言（也用于提示 agent 用该语言回复）',
       themeToggleTitle: '切换主题',
+      problemsButtonTitle: '问题（Problems）',
+      problemsTitle: '问题',
+      problemsEmpty: '暂无问题',
 
       activityBarAriaLabel: '活动栏',
       activityRunning: '运行中',
@@ -128,6 +143,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       activityArchived: '已归档',
       activitySearch: '搜索',
       activityTeamMembers: '团队成员',
+      activityTools: '工具',
 
       placeholderDoneTitle: '已完成',
       placeholderDoneText: '已完成对话的占位视图。',
@@ -137,6 +153,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       placeholderSearchText: '搜索面板占位视图。',
       placeholderTeamMembersTitle: '团队成员',
       placeholderTeamMembersText: '团队成员控制的占位视图。',
+      placeholderToolsTitle: '工具',
+      placeholderToolsText: '按 toolset 分组展示当前已注册工具。',
 
       newDialogTitle: '新建对话',
       currentDialogPlaceholder: '从选择或创建一个对话开始',
@@ -224,6 +242,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       selectMemberTitle: '选择成员',
       editMemberTitle: '编辑成员',
 
+      toolsTitle: '工具',
+      toolsEmpty: '暂无工具',
+      toolsRefresh: '刷新',
+
       daemonLabel: '守护进程',
       commandLabel: '命令',
       unknownCommand: '未知命令',
@@ -231,11 +253,15 @@ export function getUiStrings(language: LanguageCode): UiStrings {
   }
 
   return {
+    logoGitHubTitle: 'Open Dominds on GitHub (new window)',
     backendWorkspaceTitle: 'Backend Runtime Workspace',
     backendWorkspaceLoading: 'Loading...',
     loading: 'Loading...',
     uiLanguageSelectTitle: 'UI language (also used to prompt agent replies)',
     themeToggleTitle: 'Switch theme',
+    problemsButtonTitle: 'Problems',
+    problemsTitle: 'Problems',
+    problemsEmpty: 'No problems',
 
     activityBarAriaLabel: 'Activity Bar',
     activityRunning: 'Running',
@@ -243,6 +269,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     activityArchived: 'Archived',
     activitySearch: 'Search',
     activityTeamMembers: 'Team Members',
+    activityTools: 'Tools',
 
     placeholderDoneTitle: 'Done',
     placeholderDoneText: 'Placeholder view for completed dialogs.',
@@ -252,6 +279,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     placeholderSearchText: 'Search panel placeholder.',
     placeholderTeamMembersTitle: 'Team Members',
     placeholderTeamMembersText: 'Placeholder view for team member controls.',
+    placeholderToolsTitle: 'Tools',
+    placeholderToolsText: 'Currently registered tools, grouped by toolset.',
 
     newDialogTitle: 'New Dialog',
     currentDialogPlaceholder: 'Select or create a dialog to start',
@@ -338,6 +367,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     teamMembersWillAppear: 'Team members will appear here once configured.',
     selectMemberTitle: 'Select member',
     editMemberTitle: 'Edit member',
+
+    toolsTitle: 'Tools',
+    toolsEmpty: 'No tools',
+    toolsRefresh: 'Refresh',
 
     daemonLabel: 'Daemon',
     commandLabel: 'Command',

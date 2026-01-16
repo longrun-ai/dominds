@@ -25,6 +25,7 @@ import {
 } from '../dialog-run-state';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
+import { removeProblem, upsertProblem } from '../problems';
 import { DialogPersistence } from '../persistence';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import {
@@ -69,6 +70,7 @@ import {
   ThinkingMsg,
 } from './client';
 import { getLlmGenerator } from './gen/registry';
+import { projectFuncToolsForProvider } from './tools-projection';
 
 // === HUMAN PROMPT TYPE ===
 
@@ -190,6 +192,190 @@ function throwIfAborted(abortSignal: AbortSignal | undefined, dlgId: DialogID): 
  * Streaming supports function tools; no restrictions to enforce here.
  */
 function validateStreamingConfiguration(_agent: Team.Member, _agentTools: Tool[]): void {}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validateFuncToolArguments(
+  tool: FuncTool,
+  rawArgs: unknown,
+): { ok: true; args: ToolArguments } | { ok: false; error: string } {
+  if (!isPlainObject(rawArgs)) {
+    return { ok: false, error: 'Arguments must be an object' };
+  }
+  if (tool.argsValidation === 'passthrough') {
+    return { ok: true, args: rawArgs as ToolArguments };
+  }
+  const validation = validateArgs(tool.parameters, rawArgs);
+  return validation.ok
+    ? { ok: true, args: rawArgs as ToolArguments }
+    : { ok: false, error: validation.error };
+}
+
+type LlmFailureKind = 'retriable' | 'rejected' | 'fatal';
+
+type ClassifiedLlmFailure = {
+  kind: LlmFailureKind;
+  message: string;
+  status?: number;
+  code?: string;
+};
+
+function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
+  const fallbackMessage =
+    err instanceof Error
+      ? err.message || err.name
+      : typeof err === 'string'
+        ? err
+        : JSON.stringify(err);
+
+  if (err instanceof Error && err.message === 'AbortError') {
+    return { kind: 'fatal', message: 'Aborted.' };
+  }
+
+  if (isPlainObject(err)) {
+    const status =
+      'status' in err && typeof err.status === 'number'
+        ? err.status
+        : 'statusCode' in err && typeof err.statusCode === 'number'
+          ? err.statusCode
+          : undefined;
+
+    const code =
+      'code' in err && typeof err.code === 'string'
+        ? err.code
+        : 'errno' in err && typeof err.errno === 'string'
+          ? err.errno
+          : undefined;
+
+    const msg =
+      'message' in err && typeof err.message === 'string' && err.message.length > 0
+        ? err.message
+        : fallbackMessage;
+
+    if (typeof status === 'number') {
+      if (status === 408 || status === 429 || status >= 500) {
+        return { kind: 'retriable', status, message: msg };
+      }
+      if (status >= 400 && status < 500) {
+        return { kind: 'rejected', status, message: msg };
+      }
+    }
+
+    if (typeof code === 'string') {
+      const retriableCodes = new Set<string>([
+        'ETIMEDOUT',
+        'ECONNRESET',
+        'ECONNREFUSED',
+        'EAI_AGAIN',
+        'ENOTFOUND',
+        'ENETUNREACH',
+        'EHOSTUNREACH',
+      ]);
+      if (retriableCodes.has(code)) {
+        return { kind: 'retriable', code, message: msg };
+      }
+    }
+
+    const lower = msg.toLowerCase();
+    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('rate limit')) {
+      return { kind: 'retriable', message: msg };
+    }
+  }
+
+  return { kind: 'fatal', message: fallbackMessage };
+}
+
+async function sleepWithAbort(ms: number, abortSignal?: AbortSignal): Promise<void> {
+  if (abortSignal?.aborted) {
+    throw new Error('AbortError');
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  if (abortSignal?.aborted) {
+    throw new Error('AbortError');
+  }
+}
+
+async function runLlmRequestWithRetry<T>(params: {
+  dlg: Dialog;
+  provider: string;
+  abortSignal?: AbortSignal;
+  maxRetries: number;
+  canRetry: () => boolean;
+  doRequest: () => Promise<T>;
+}): Promise<T> {
+  const providerProblemId = `llm/provider_rejected/${params.dlg.id.valueOf()}`;
+
+  for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
+    try {
+      const res = await params.doRequest();
+      removeProblem(providerProblemId);
+      return res;
+    } catch (err) {
+      if (params.abortSignal?.aborted) {
+        throw err;
+      }
+
+      const failure = classifyLlmFailure(err);
+      const detail = extractErrorDetails(err).message;
+
+      if (failure.kind === 'rejected') {
+        upsertProblem({
+          kind: 'llm_provider_rejected_request',
+          source: 'llm',
+          id: providerProblemId,
+          severity: 'error',
+          timestamp: formatUnifiedTimestamp(new Date()),
+          message: `LLM provider rejected the request`,
+          detail: {
+            dialogId: params.dlg.id.valueOf(),
+            provider: params.provider,
+            errorText: detail,
+          },
+        });
+        try {
+          await params.dlg.streamError(detail);
+        } catch (_emitErr) {
+          // best-effort
+        }
+        throw new DialogInterruptedError({
+          kind: 'system_stop',
+          detail: `Provider '${params.provider}' rejected the request: ${failure.message}`,
+        });
+      }
+
+      const canRetry = failure.kind === 'retriable' && params.canRetry();
+      const isLastAttempt = attempt >= params.maxRetries;
+      if (!canRetry || isLastAttempt) {
+        try {
+          await params.dlg.streamError(detail);
+        } catch (_emitErr) {
+          // best-effort
+        }
+        throw new DialogInterruptedError({
+          kind: 'system_stop',
+          detail: canRetry
+            ? `LLM failed after retries: ${failure.message}`
+            : `LLM failed: ${failure.message}`,
+        });
+      }
+
+      // Exponential backoff with cap. (No jitter for determinism.)
+      const backoffMs = Math.min(5000, 500 * 2 ** attempt);
+      log.warn(`Retrying LLM request after retriable error`, {
+        provider: params.provider,
+        attempt: attempt + 1,
+        backoffMs,
+        failure,
+      });
+      await sleepWithAbort(backoffMs, params.abortSignal);
+      continue;
+    }
+  }
+
+  throw new DialogInterruptedError({ kind: 'system_stop', detail: 'LLM failed.' });
+}
 
 // === UNIFIED STREAMING HANDLERS ===
 
@@ -604,7 +790,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         throw error;
       }
 
-      const funcTools: FuncTool[] = agentTools.filter((t): t is FuncTool => t.type === 'func');
+      const canonicalFuncTools: FuncTool[] = agentTools.filter(
+        (t): t is FuncTool => t.type === 'func',
+      );
+      const projected = projectFuncToolsForProvider(providerCfg.apiType, canonicalFuncTools);
+      const funcTools = projected.tools;
 
       let suspendForHuman = false;
       let promptContent = '';
@@ -818,15 +1008,24 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           let nonStreamMsgs: ChatMessage[];
           try {
             throwIfAborted(abortSignal, dlg.id);
-            nonStreamMsgs = await llmGen.genMoreMessages(
-              providerCfg,
-              agent,
-              systemPrompt,
-              funcTools,
-              ctxMsgs,
-              dlg.activeGenSeq,
+            nonStreamMsgs = await runLlmRequestWithRetry({
+              dlg,
+              provider,
               abortSignal,
-            );
+              maxRetries: 3,
+              canRetry: () => true,
+              doRequest: async () => {
+                return await llmGen.genMoreMessages(
+                  providerCfg,
+                  agent,
+                  systemPrompt,
+                  funcTools,
+                  ctxMsgs,
+                  dlg.activeGenSeq,
+                  abortSignal,
+                );
+              },
+            });
           } catch (err) {
             if (abortSignal.aborted) {
               throwIfAborted(abortSignal, dlg.id);
@@ -941,10 +1140,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               }
             }
 
-            const validation = validateArgs(tool.parameters, rawArgs);
             let result: FuncResultMsg;
-            if (validation.ok) {
-              const argsObj = rawArgs as ToolArguments;
+            const argsValidation = validateFuncToolArguments(tool, rawArgs);
+            if (argsValidation.ok) {
+              const argsObj = argsValidation.args;
 
               // Emit func_call_requested event to build the func-call section UI
               try {
@@ -985,7 +1184,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 type: 'func_result_msg',
                 id: func.id,
                 name: func.name,
-                content: `Invalid arguments: ${validation.error}`,
+                content: `Invalid arguments: ${argsValidation.error}`,
                 role: 'tool',
                 genseq: callGenseq,
               };
@@ -1033,6 +1232,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           let currentThinkingContent = '';
           let currentThinkingSignature = '';
           let currentSayingContent = '';
+          let sawAnyStreamContent = false;
 
           // Create receiver using shared helper (unified TextingStreamParser integration)
           const receiver = createSayingEventsReceiver(dlg);
@@ -1041,107 +1241,116 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const parser = new TextingStreamParser(receiver);
 
           try {
-            await llmGen.genToReceiver(
-              providerCfg,
-              agent,
-              systemPrompt,
-              funcTools,
-              ctxMsgs,
-              {
-                thinkingStart: async () => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  currentThinkingContent = '';
-                  currentThinkingSignature = '';
-                  await dlg.thinkingStart();
-                },
-                thinkingChunk: async (chunk: string) => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  currentThinkingContent += chunk;
-                  // Extract Anthropic thinking signature from content
-                  const signatureMatch = currentThinkingContent.match(
-                    /<thinking[^>]*>(.*?)<\/thinking>/s,
-                  );
-                  if (signatureMatch && signatureMatch[1]) {
-                    currentThinkingSignature = signatureMatch[1].trim();
-                  }
-                  await dlg.thinkingChunk(chunk);
-                },
-                thinkingFinish: async () => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  // Create thinking message with genseq and signature
-                  const genseq = dlg.activeGenSeq;
-                  if (genseq) {
-                    const thinkingMessage: ThinkingMsg = {
-                      type: 'thinking_msg',
-                      role: 'assistant',
-                      genseq,
-                      content: currentThinkingContent,
-                      provider_data: currentThinkingSignature
-                        ? { signature: currentThinkingSignature }
-                        : undefined,
-                    };
-                    newMsgs.push(thinkingMessage);
-                  }
-                  await dlg.thinkingFinish();
-                },
-                sayingStart: async () => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  currentSayingContent = '';
-                  await dlg.sayingStart();
-                },
-                sayingChunk: async (chunk: string) => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  currentSayingContent += chunk;
-                  await parser.takeUpstreamChunk(chunk);
-                  // Dialog store handles persistence - maintain ordering guarantee
-                  await dlg.sayingChunk(chunk);
-                },
-                sayingFinish: async () => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  await parser.finalize();
-
-                  const sayingMessage: SayingMsg = {
-                    type: 'saying_msg',
-                    role: 'assistant',
-                    genseq: dlg.activeGenSeq,
-                    content: currentSayingContent,
-                  };
-                  newMsgs.push(sayingMessage);
-                  lastAssistantSayingContent = currentSayingContent;
-
-                  await dlg.sayingFinish();
-                },
-                funcCall: async (callId: string, name: string, args: string) => {
-                  throwIfAborted(abortSignal, dlg.id);
-                  const genseq = dlg.activeGenSeq;
-                  if (genseq === undefined) {
-                    return;
-                  }
-                  streamedFuncCalls.push({
-                    type: 'func_call_msg',
-                    role: 'assistant',
-                    genseq,
-                    id: callId,
-                    name,
-                    arguments: args,
-                  });
-                },
-              },
-              dlg.activeGenSeq,
+            await runLlmRequestWithRetry({
+              dlg,
+              provider,
               abortSignal,
-            );
+              maxRetries: 2,
+              canRetry: () => !sawAnyStreamContent,
+              doRequest: async () => {
+                await llmGen.genToReceiver(
+                  providerCfg,
+                  agent,
+                  systemPrompt,
+                  funcTools,
+                  ctxMsgs,
+                  {
+                    thinkingStart: async () => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
+                      currentThinkingContent = '';
+                      currentThinkingSignature = '';
+                      await dlg.thinkingStart();
+                    },
+                    thinkingChunk: async (chunk: string) => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
+                      currentThinkingContent += chunk;
+                      // Extract Anthropic thinking signature from content
+                      const signatureMatch = currentThinkingContent.match(
+                        /<thinking[^>]*>(.*?)<\/thinking>/s,
+                      );
+                      if (signatureMatch && signatureMatch[1]) {
+                        currentThinkingSignature = signatureMatch[1].trim();
+                      }
+                      await dlg.thinkingChunk(chunk);
+                    },
+                    thinkingFinish: async () => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      // Create thinking message with genseq and signature
+                      const genseq = dlg.activeGenSeq;
+                      if (genseq) {
+                        const thinkingMessage: ThinkingMsg = {
+                          type: 'thinking_msg',
+                          role: 'assistant',
+                          genseq,
+                          content: currentThinkingContent,
+                          provider_data: currentThinkingSignature
+                            ? { signature: currentThinkingSignature }
+                            : undefined,
+                        };
+                        newMsgs.push(thinkingMessage);
+                      }
+                      await dlg.thinkingFinish();
+                    },
+                    sayingStart: async () => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
+                      currentSayingContent = '';
+                      await dlg.sayingStart();
+                    },
+                    sayingChunk: async (chunk: string) => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
+                      currentSayingContent += chunk;
+                      await parser.takeUpstreamChunk(chunk);
+                      // Dialog store handles persistence - maintain ordering guarantee
+                      await dlg.sayingChunk(chunk);
+                    },
+                    sayingFinish: async () => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      await parser.finalize();
+
+                      const sayingMessage: SayingMsg = {
+                        type: 'saying_msg',
+                        role: 'assistant',
+                        genseq: dlg.activeGenSeq,
+                        content: currentSayingContent,
+                      };
+                      newMsgs.push(sayingMessage);
+                      lastAssistantSayingContent = currentSayingContent;
+
+                      await dlg.sayingFinish();
+                    },
+                    funcCall: async (callId: string, name: string, args: string) => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
+                      const genseq = dlg.activeGenSeq;
+                      if (genseq === undefined) {
+                        return;
+                      }
+                      streamedFuncCalls.push({
+                        type: 'func_call_msg',
+                        role: 'assistant',
+                        genseq,
+                        id: callId,
+                        name,
+                        arguments: args,
+                      });
+                    },
+                  },
+                  dlg.activeGenSeq,
+                  abortSignal,
+                );
+              },
+            });
           } catch (err) {
             if (abortSignal.aborted) {
               throwIfAborted(abortSignal, dlg.id);
             }
             generationHadError = true;
             log.error(`LLM gen error:`, err);
-            const errText = extractErrorDetails(err).message;
-            try {
-              await dlg.streamError(errText);
-            } catch (emitErr) {
-              log.warn('Failed to emit stream_error_evt via dlg.streamError', emitErr);
-            }
+            throw err;
           }
 
           // Execute collected calls concurrently after streaming completes
@@ -1231,10 +1440,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 }
               }
 
-              const validation = validateArgs(tool.parameters, rawArgs);
               let result: FuncResultMsg;
-              if (validation.ok) {
-                const argsObj = rawArgs as ToolArguments;
+              const argsValidation = validateFuncToolArguments(tool, rawArgs);
+              if (argsValidation.ok) {
+                const argsObj = argsValidation.args;
 
                 // Emit func_call_requested event to build the func-call section UI
                 try {
@@ -1275,7 +1484,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   type: 'func_result_msg',
                   id: func.id,
                   name: func.name,
-                  content: `Invalid arguments: ${validation.error}`,
+                  content: `Invalid arguments: ${argsValidation.error}`,
                   role: 'tool',
                   genseq: callGenseq,
                 };
@@ -1346,13 +1555,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       return null;
     }
 
-    const detail = showErrorToAi(err);
-    finalRunState = { kind: 'interrupted', reason: { kind: 'system_stop', detail } };
+    generationHadError = true;
+    const errText = extractErrorDetails(err).message;
+    try {
+      await dlg.streamError(errText);
+    } catch (_emitErr) {
+      // best-effort
+    }
+    finalRunState = { kind: 'interrupted', reason: { kind: 'system_stop', detail: errText } };
     broadcastRunStateMarker(dlg.id, {
       kind: 'interrupted',
-      reason: { kind: 'system_stop', detail },
+      reason: { kind: 'system_stop', detail: errText },
     });
-    throw err;
+    return null;
   } finally {
     clearActiveRun(dlg.id);
 

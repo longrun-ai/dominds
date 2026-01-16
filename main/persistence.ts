@@ -1767,28 +1767,11 @@ export class DialogPersistence {
   private static readonly ARCHIVE_DIR = 'archive';
   private static readonly SUBDIALOGS_DIR = 'subdialogs';
 
-  // Workspace directory from -C flag, defaults to process.cwd() if not set
-  private static _workspaceRoot: string | undefined;
-
-  /**
-   * Set the workspace root directory (called during server startup with -C flag)
-   */
-  static setWorkspaceRoot(dir: string): void {
-    this._workspaceRoot = dir;
-  }
-
-  /**
-   * Get the workspace root directory
-   */
-  static getWorkspaceRoot(): string {
-    return this._workspaceRoot ?? process.cwd();
-  }
-
   /**
    * Get the base dialogs directory path
    */
   static getDialogsRootDir(): string {
-    return path.join(this.getWorkspaceRoot(), this.DIALOGS_DIR);
+    return path.join(process.cwd(), this.DIALOGS_DIR);
   }
 
   /**

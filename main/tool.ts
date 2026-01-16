@@ -18,21 +18,9 @@ export type JsonArray = JsonValue[];
 
 export type ToolArguments = JsonObject;
 
-export interface JsonSchemaProperty {
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
-  description?: string;
-  items?: JsonSchemaProperty; // for arrays
-  properties?: Record<string, JsonSchemaProperty>; // for objects
-  required?: string[]; // for nested objects
-  additionalProperties?: boolean;
-}
-
-export interface JsonSchema {
-  type: 'object';
-  properties: Record<string, JsonSchemaProperty>;
-  required?: string[];
-  additionalProperties?: boolean;
-}
+// Full JSON Schema (passthrough) shape used by MCP tools and supported LLM providers.
+// Dominds does not attempt to statically model every JSON Schema keyword at the type level.
+export type JsonSchema = Record<string, unknown>;
 
 export interface FuncTool {
   readonly type: 'func';
@@ -40,6 +28,10 @@ export interface FuncTool {
   readonly description?: string;
   // JSON Schema for parameters of this tool
   readonly parameters: JsonSchema;
+  // How the driver validates tool-call arguments before invoking the tool.
+  // - 'dominds': validate using Dominds' built-in minimal validator (best-effort).
+  // - 'passthrough': accept any JSON object (used by MCP tools).
+  readonly argsValidation?: 'dominds' | 'passthrough';
   // args is a structured object adhering to parameters schema
   call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string>;
 }
@@ -98,9 +90,6 @@ export function validateArgs(
   schema: JsonSchema,
   args: unknown,
 ): { ok: true } | { ok: false; error: string } {
-  if (schema.type !== 'object') {
-    return { ok: false, error: 'Schema root must be an object' };
-  }
   if (!isRecord(args)) {
     return { ok: false, error: 'Arguments must be an object' };
   }
@@ -109,9 +98,31 @@ export function validateArgs(
     return { ok: false, error: 'Arguments must be an object' };
   }
 
-  const properties = schema.properties || {};
-  const required = new Set(schema.required || []);
-  const allowAdditional = schema.additionalProperties !== false; // default allow
+  const schemaType = isRecord(schema) && 'type' in schema ? schema.type : undefined;
+  if (schemaType !== undefined && schemaType !== 'object') {
+    return { ok: false, error: 'Schema root must be an object' };
+  }
+
+  const propertiesValue =
+    isRecord(schema) && 'properties' in schema ? schema.properties : undefined;
+  const properties = isRecord(propertiesValue)
+    ? (propertiesValue as Record<string, unknown>)
+    : {};
+
+  const requiredValue = isRecord(schema) && 'required' in schema ? schema.required : undefined;
+  const required =
+    Array.isArray(requiredValue) && requiredValue.every((v) => typeof v === 'string')
+      ? new Set(requiredValue)
+      : new Set<string>();
+
+  const additionalPropertiesValue =
+    isRecord(schema) && 'additionalProperties' in schema ? schema.additionalProperties : undefined;
+  const allowAdditional =
+    additionalPropertiesValue === false
+      ? false
+      : additionalPropertiesValue === true || additionalPropertiesValue === undefined
+        ? true
+        : true; // schema additionalProperties is allowed (not deeply validated)
 
   // required fields
   for (const key of required) {
@@ -120,14 +131,14 @@ export function validateArgs(
 
   // validate each provided field
   for (const [key, value] of Object.entries(args)) {
-    const propSchema = properties[key];
-    if (!propSchema) {
+    const propSchemaUnknown = properties[key];
+    if (propSchemaUnknown === undefined) {
       if (!allowAdditional) {
         return { ok: false, error: `Unexpected field: ${key}` };
       }
       continue;
     }
-    const res = validateValue(propSchema, value, key);
+    const res = validateValue(propSchemaUnknown, value, key);
     if (!res.ok) return res;
   }
 
@@ -135,55 +146,110 @@ export function validateArgs(
 }
 
 function validateValue(
-  schema: JsonSchemaProperty,
+  schema: unknown,
   value: unknown,
   path: string,
 ): { ok: true } | { ok: false; error: string } {
-  switch (schema.type) {
-    case 'string':
-      if (typeof value !== 'string') return { ok: false, error: `Field ${path} must be a string` };
-      return { ok: true };
-    case 'number':
-      if (typeof value !== 'number') return { ok: false, error: `Field ${path} must be a number` };
-      return { ok: true };
-    case 'boolean':
-      if (typeof value !== 'boolean')
-        return { ok: false, error: `Field ${path} must be a boolean` };
-      return { ok: true };
-    case 'array':
-      if (!Array.isArray(value)) return { ok: false, error: `Field ${path} must be an array` };
-      if (schema.items) {
-        for (let i = 0; i < value.length; i++) {
-          const r = validateValue(schema.items, value[i], `${path}[${i}]`);
-          if (!r.ok) return r;
-        }
-      }
-      return { ok: true };
-    case 'object':
-      if (!isRecord(value) || Array.isArray(value)) {
-        return { ok: false, error: `Field ${path} must be an object` };
-      }
-      const props = schema.properties || {};
-      const required = new Set(schema.required || []);
-      const allowAdditional = schema.additionalProperties !== false; // default allow
-      for (const key of required) {
-        if (!(key in value)) {
-          return { ok: false, error: `Missing required field: ${path}.${key}` };
-        }
-      }
-      for (const [k, v] of Object.entries(value)) {
-        const subSchema = props[k];
-        if (!subSchema) {
-          if (!allowAdditional) return { ok: false, error: `Unexpected field: ${path}.${k}` };
-          continue;
-        }
-        const r = validateValue(subSchema, v, `${path}.${k}`);
-        if (!r.ok) return r;
-      }
-      return { ok: true };
-    default:
-      return { ok: false, error: `Unsupported schema type at ${path}` };
+  if (!isRecord(schema)) {
+    // Unknown schema shape: don't block execution.
+    return { ok: true };
   }
+
+  const typeValue = 'type' in schema ? schema.type : undefined;
+  const schemaType =
+    typeof typeValue === 'string'
+      ? typeValue
+      : Array.isArray(typeValue) && typeValue.every((t) => typeof t === 'string')
+        ? typeValue
+        : undefined;
+
+  if (schemaType === undefined) {
+    // Unknown/omitted type: permissive.
+    return { ok: true };
+  }
+
+  const acceptsType = (t: string): boolean => {
+    switch (t) {
+      case 'string':
+        return typeof value === 'string';
+      case 'number':
+        return typeof value === 'number';
+      case 'integer':
+        return typeof value === 'number' && Number.isInteger(value);
+      case 'boolean':
+        return typeof value === 'boolean';
+      case 'null':
+        return value === null;
+      case 'array': {
+        if (!Array.isArray(value)) return false;
+        if (!('items' in schema)) return true;
+        const itemsSchema = schema.items;
+        if (itemsSchema === undefined) return true;
+        if (Array.isArray(itemsSchema)) {
+          // Tuple validation: validate corresponding indices when schema exists.
+          for (let i = 0; i < Math.min(itemsSchema.length, value.length); i++) {
+            const r = validateValue(itemsSchema[i], value[i], `${path}[${i}]`);
+            if (!r.ok) return false;
+          }
+          return true;
+        }
+        for (let i = 0; i < value.length; i++) {
+          const r = validateValue(itemsSchema, value[i], `${path}[${i}]`);
+          if (!r.ok) return false;
+        }
+        return true;
+      }
+      case 'object': {
+        if (!isRecord(value) || Array.isArray(value)) return false;
+        const propsValue = 'properties' in schema ? schema.properties : undefined;
+        const props = isRecord(propsValue) ? (propsValue as Record<string, unknown>) : {};
+        const requiredValue = 'required' in schema ? schema.required : undefined;
+        const required =
+          Array.isArray(requiredValue) && requiredValue.every((v) => typeof v === 'string')
+            ? new Set(requiredValue)
+            : new Set<string>();
+        const additionalPropertiesValue =
+          'additionalProperties' in schema ? schema.additionalProperties : undefined;
+        const allowAdditional =
+          additionalPropertiesValue === false
+            ? false
+            : additionalPropertiesValue === true || additionalPropertiesValue === undefined
+              ? true
+              : true;
+        for (const key of required) {
+          if (!(key in value)) {
+            return false;
+          }
+        }
+        for (const [k, v] of Object.entries(value)) {
+          const subSchema = props[k];
+          if (subSchema === undefined) {
+            if (!allowAdditional) return false;
+            continue;
+          }
+          const r = validateValue(subSchema, v, `${path}.${k}`);
+          if (!r.ok) return false;
+        }
+        return true;
+      }
+      default:
+        return true;
+    }
+  };
+
+  if (Array.isArray(schemaType)) {
+    for (const t of schemaType) {
+      if (acceptsType(t)) {
+        return { ok: true };
+      }
+    }
+    return { ok: false, error: `Field ${path} does not match expected type` };
+  }
+
+  if (!acceptsType(schemaType)) {
+    return { ok: false, error: `Field ${path} does not match expected type` };
+  }
+  return { ok: true };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -21,11 +21,6 @@ import type { LlmGenerator, LlmStreamReceiver } from '../gen';
 
 const log = createLogger('llm/anthropic');
 
-// Modern TypeScript: Schema adaptation with proper typing
-interface AnthropicCompatibleSchema extends JsonSchema {
-  [key: string]: unknown;
-}
-
 type AnthropicMessageContent = Exclude<MessageParam['content'], string>;
 
 type AnthropicContentBlock = AnthropicMessageContent[number];
@@ -51,9 +46,9 @@ function isToolUseBlock(value: unknown): value is ToolUseBlock {
 }
 
 function funcToolToAnthropic(funcTool: FuncTool): Tool {
-  const input_schema: AnthropicCompatibleSchema = {
-    ...funcTool.parameters,
-  };
+  // MCP schemas are passed through to providers. Anthropic's SDK types expect a narrower schema
+  // shape; runtime compatibility is handled by provider validation + the driver stop policy.
+  const input_schema = funcTool.parameters as unknown as Tool['input_schema'];
   return {
     name: funcTool.name,
     description: funcTool.description || '',
