@@ -1488,7 +1488,7 @@ function formatFullState(state) {
  * 4. Click "Create Dialog" button
  *
  * @param {string} taskDocPath - Path to the task document (e.g., 'cmds-test.md')
- * @param {string} [callsign] - Optional teammate callsign (e.g., '@cmdr', '@dijiang').
+ * @param {string} [callsign] - Optional teammate callsign (e.g., '@pangu', '@fuxi').
  *                             If omitted, uses the rt team's default responder.
  * @returns {Promise<{callsign: string, taskDocPath: string, dialogId: string, rootId: string, created: boolean}>}
  *
@@ -1513,7 +1513,7 @@ async function createDialog(taskDocPath, callsign) {
     throw new Error('dominds-app shadowRoot not found');
   }
 
-  // Extract agentId from callsign if provided (e.g., '@cmdr' -> 'cmdr')
+  // Extract agentId from callsign if provided (e.g., '@pangu' -> 'pangu')
   const agentId = callsign ? callsign.replace(/^@/, '') : null;
 
   // Capture original title
@@ -2035,7 +2035,7 @@ function getCurrentDialogInfo() {
 /**
  * Gets the current dialog title text from #current-dialog-title element.
  * Element is in app's Shadow DOM.
- * @returns {string} The dialog title text (e.g., "@cmdr - task-name")
+ * @returns {string} The dialog title text (e.g., "@pangu - task-name")
  */
 function getCurrentDialogTitle() {
   const shadow = getAppShadow();
@@ -2801,7 +2801,7 @@ function getLatestTeammateCallSiteId() {
  * @param {Object} options - Options object
  * @param {number} [options.timeoutMs=60000] - Maximum wait time
  * @param {number} [options.after] - Only return call sites with ID > after
- * @param {string} [options.firstMention] - Optional filter for @mention (e.g., "@cmdr")
+ * @param {string} [options.firstMention] - Optional filter for @mention (e.g., "@pangu")
  * @returns {Promise<number | null>} Call-site ID, or null on timeout
  */
 async function waitForTeammateCallSiteId(options = {}) {

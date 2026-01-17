@@ -4,7 +4,7 @@
  * Drives dialog streaming end-to-end:
  * - Loads minds/tools, selects generator, streams outputs
  * - Parses texting/code blocks, executes tools, handles human prompts
- * - Supports autonomous teammate calls: when an agent mentions a teammate (e.g., @cmdr), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
+ * - Supports autonomous teammate calls: when an agent mentions a teammate (e.g., @teammate), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
  */
 
 import * as fs from 'fs';
@@ -1773,7 +1773,7 @@ function extractTopicIdFromHeadline(headLine: string, firstMention: string): str
  * - @<agentId> !topic <topicId> → Type B (registered subdialog)
  * - @<agentId> → Type C (transient subdialog)
  *
- * @param firstMention The first teammate mention extracted by the streaming parser (e.g., "cmdr")
+ * @param firstMention The first teammate mention extracted by the streaming parser (e.g., "teammate")
  * @param headLine The full headline text from the streaming parser
  * @param currentDialog Optional current dialog context to detect Type A (subdialog calling parent)
  * @returns The parsed TeammateCallParseResult
@@ -1786,7 +1786,7 @@ export function parseTeammateCall(
   // Fresh Boots Reasoning (FBR) syntax sugar:
   // `@self` always targets the current dialog's agentId (same persona/config).
   //
-  // This avoids ambiguous `@cmdr`-to-`@cmdr` self-calls which can also be produced accidentally
+  // This avoids ambiguous `@teammate`-to-`@teammate` self-calls which can also be produced accidentally
   // by echoing/quoting an assignment headline. We keep parsing behavior the same for all other
   // mentions.
   if (firstMention === 'self') {

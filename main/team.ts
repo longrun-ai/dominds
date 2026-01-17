@@ -311,6 +311,8 @@ export namespace Team {
         icon: '🛠',
         hidden: true,
         toolsets: ['*', '!team-mgmt'],
+        no_read_dirs: ['.minds/**'],
+        no_write_dirs: ['.minds/**'],
       });
       Object.setPrototypeOf(pangu, md);
 
@@ -349,6 +351,19 @@ export namespace Team {
     team.members['fuxi'] = fuxi;
 
     const panguExisting = team.members['pangu'];
+    const panguExistingNoRead = Array.isArray(panguExisting?.no_read_dirs)
+      ? panguExisting.no_read_dirs
+      : [];
+    const panguExistingNoWrite = Array.isArray(panguExisting?.no_write_dirs)
+      ? panguExisting.no_write_dirs
+      : [];
+    const mindDeny = '.minds/**';
+    const mergedNoRead = panguExistingNoRead.includes(mindDeny)
+      ? panguExistingNoRead
+      : [...panguExistingNoRead, mindDeny];
+    const mergedNoWrite = panguExistingNoWrite.includes(mindDeny)
+      ? panguExistingNoWrite
+      : [...panguExistingNoWrite, mindDeny];
     const pangu = new Team.Member({
       id: 'pangu',
       name: panguExisting ? panguExisting.name : 'Pangu',
@@ -360,8 +375,8 @@ export namespace Team {
       model_params: panguExisting ? panguExisting.model_params : undefined,
       read_dirs: panguExisting ? panguExisting.read_dirs : undefined,
       write_dirs: panguExisting ? panguExisting.write_dirs : undefined,
-      no_read_dirs: panguExisting ? panguExisting.no_read_dirs : undefined,
-      no_write_dirs: panguExisting ? panguExisting.no_write_dirs : undefined,
+      no_read_dirs: mergedNoRead,
+      no_write_dirs: mergedNoWrite,
       streaming: panguExisting ? panguExisting.streaming : undefined,
       hidden: true,
       toolsets: ['*', '!team-mgmt'],

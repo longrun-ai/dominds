@@ -652,20 +652,20 @@ Done.`,
   );
 
   // Test 14: @ in body should NOT trigger calls - only @ at line start triggers calls
-  // This tests the scenario where assistant mentions @types in text, then @dijiang in text
+  // This tests the scenario where assistant mentions @types in text, then @fuxi in text
   // Neither should trigger calls since they're in body text, not at line start
   await runTest(
     '@ in body text should not trigger calls',
     `I don't see a teammate named \`@types\` in my directory. Here's who I have available:
 
 **Team:**
-- \`@dijiang\` - Dijiang
-- \`@cmdr\` (self) - Commander (that's me!)
+- \`@fuxi\` - Fuxi
+- \`@pangu\` (self) - Pangu (that's me!)
 
-Would you like me to reach out to \`@dijiang\` instead?`,
+Would you like me to reach out to \`@fuxi\` instead?`,
     buildFreeTextEvents(
-      `I don't see a teammate named \`@types\` in my directory. Here's who I have available:\n\n**Team:**\n- \`@dijiang\` - Dijiang\n- \`@cmdr\` (self) - Commander (that's me!)\n\nWould you like me to reach out to \`@dijiang\` instead?`,
-      `I don't see a teammate named \`@types\` in my directory. Here's who I have available:\n\n**Team:**\n- \`@dijiang\` - Dijiang\n- \`@cmdr\` (self) - Commander (that's me!)\n\nWould you like me to reach out to \`@dijiang\` instead?`,
+      `I don't see a teammate named \`@types\` in my directory. Here's who I have available:\n\n**Team:**\n- \`@fuxi\` - Fuxi\n- \`@pangu\` (self) - Pangu (that's me!)\n\nWould you like me to reach out to \`@fuxi\` instead?`,
+      `I don't see a teammate named \`@types\` in my directory. Here's who I have available:\n\n**Team:**\n- \`@fuxi\` - Fuxi\n- \`@pangu\` (self) - Pangu (that's me!)\n\nWould you like me to reach out to \`@fuxi\` instead?`,
     ),
   );
 
@@ -682,8 +682,8 @@ Would you like me to reach out to \`@dijiang\` instead?`,
   // Test 16: Mention ending with dot should be parsed (trailing dot ignored)
   await runTest(
     'Trailing dot mention should be parsed',
-    '@cmdr.\nNext line.',
-    buildBasicCallEvents('cmdr', '@cmdr.', 'Next line.', '@cmdr.\nNext line.'),
+    '@pangu.\nNext line.',
+    buildBasicCallEvents('pangu', '@pangu.', 'Next line.', '@pangu.\nNext line.'),
   );
 
   if (failedCnt <= 0) {

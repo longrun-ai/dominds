@@ -273,22 +273,22 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       );
     }
 
-	    // Auto-fill default_responder if no agentId provided
-	    let finalAgentId = agentId;
-	    if (!finalAgentId) {
-	      try {
-	        const teamConfig = await Team.load();
-	        const def = teamConfig.getDefaultResponder();
-	        finalAgentId = def ? def.id : undefined;
-	      } catch (error) {
-	        throw new Error(
-	          `Failed to load team configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
-	        );
-	      }
-	    }
-	    if (!finalAgentId) {
-	      throw new Error('No team members available to create a dialog');
-	    }
+    // Auto-fill default_responder if no agentId provided
+    let finalAgentId = agentId;
+    if (!finalAgentId) {
+      try {
+        const teamConfig = await Team.load();
+        const def = teamConfig.getDefaultResponder();
+        finalAgentId = def ? def.id : undefined;
+      } catch (error) {
+        throw new Error(
+          `Failed to load team configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
+    if (!finalAgentId) {
+      throw new Error('No team members available to create a dialog');
+    }
 
     const generatedId = generateDialogID();
     // For root dialogs, self and root are the same

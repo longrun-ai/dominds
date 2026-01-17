@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Function Call Test Script for @cmdr Agent
+ * Function Call Test Script for @operator Agent
  *
  * Tests LLM function calling capability with comprehensive argument validation
  * using shell command tools with scenarios from docs/e2e-story-test/basics/cmds.md
@@ -139,18 +139,18 @@ class FunctionCallTester {
     }
     this.generator = generator;
 
-    // Create @cmdr agent with shell command tools
+    // Create @operator agent with shell command tools
     this.agent = new Team.Member({
-      id: 'cmdr',
-      name: 'Commander',
+      id: 'operator',
+      name: 'Operator',
       model: this.model,
     });
 
-    console.log(`✅ Initialized ${this.provider}:${this.model} with @cmdr agent`);
+    console.log(`✅ Initialized ${this.provider}:${this.model} with @operator agent`);
   }
 
   private getSystemPrompt(): string {
-    return `You are @cmdr, the Commander agent responsible for shell command execution.
+    return `You are @operator, an agent responsible for shell command execution.
 
 Your capabilities:
 - Execute shell commands using the shell_cmd function

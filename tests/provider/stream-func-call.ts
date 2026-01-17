@@ -168,17 +168,17 @@ class StreamingFunctionCallTester {
     }
 
     const agent = new Team.Member({
-      id: 'cmdr',
-      name: 'Commander',
+      id: 'operator',
+      name: 'Operator',
       model: this.model,
     });
 
     this.state = { status: 'ready', providerConfig, generator, agent };
-    console.log(`Initialized ${this.provider}:${this.model} with @cmdr agent`);
+    console.log(`Initialized ${this.provider}:${this.model} with @operator agent`);
   }
 
   private getSystemPrompt(): string {
-    return `You are @cmdr, the Commander agent responsible for shell command execution.
+    return `You are @operator, an agent responsible for shell command execution.
 
 Your capabilities:
 - Execute shell commands using the shell_cmd function

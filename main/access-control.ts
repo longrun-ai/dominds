@@ -34,7 +34,13 @@ function isEncapsulatedTaskPath(targetPath: string): boolean {
 export function matchesPattern(targetPath: string, dirPattern: string): boolean {
   // Normalize paths - remove leading/trailing slashes, convert to forward slashes, handle empty paths
   const normalizedTarget = targetPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || '.';
-  const normalizedDirPattern = dirPattern.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || '.';
+  let normalizedDirPattern = dirPattern.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || '.';
+
+  // Patterns ending in `/**` represent a directory scope and should match the directory itself too.
+  // Example: `.minds/**` must match both `.minds` and `.minds/team.yaml`.
+  while (normalizedDirPattern.endsWith('/**')) {
+    normalizedDirPattern = normalizedDirPattern.slice(0, -3) || '.';
+  }
 
   // Handle root directory pattern
   if (normalizedDirPattern === '.' || normalizedDirPattern === '') {

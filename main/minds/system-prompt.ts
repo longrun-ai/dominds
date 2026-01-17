@@ -87,9 +87,9 @@ ${input.teamIntro}
 - 安全：将字面量 \`@\` 放入反引号中，避免意外触发呼叫。
 
 ### 队友呼叫反模式（不要这样做）
-- 不要把呼号放进 markdown（例如 \`**@cmdr**\`、\`_@cmdr_\` 或 \`\`@cmdr\`\`）；呼号必须是纯文本。
-- 不要在呼叫前加项目符号、引用、编号或缩进（例如 \`- @cmdr\`、\`> @cmdr\`、\`1. @cmdr\`）。
-- 不要把标点放进呼号里（例如 \`@cmdr:\`）；把标点放在正文里并与呼号隔开一个空格。
+- 不要把呼号放进 markdown（例如 \`**@teammate**\`、\`_@teammate_\` 或 \`\`@teammate\`\`）；呼号必须是纯文本。
+- 不要在呼叫前加项目符号、引用、编号或缩进（例如 \`- @teammate\`、\`> @teammate\`、\`1. @teammate\`）。
+- 不要把标点放进呼号里（例如 \`@teammate:\`）；把标点放在正文里并与呼号隔开一个空格。
 - 不要把呼叫标题放在段落或代码块里；呼叫必须是第 0 列的一行独立文本。
 - 当你只是提到呼号而不是发起呼叫时，把它放入反引号并且不要放在第 0 列。
 
@@ -194,9 +194,9 @@ You interact using a simple headline/body grammar with both teammates and "texti
 - Safety: wrap literal \`@\` in backticks to avoid accidental calls.
 
 ### Teammate Call Anti-Patterns (Do NOT)
-- Do NOT wrap callsigns in markdown (e.g., \`**@cmdr**\`, \`_@cmdr_\`, or \`\`@cmdr\`\`); callsigns must be plain text.
-- Do NOT prefix calls with bullets, blockquotes, numbering, or indentation (e.g., \`- @cmdr\`, \`> @cmdr\`, \`1. @cmdr\`).
-- Do NOT include punctuation inside the callsign (e.g., \`@cmdr:\`); put punctuation after a space in the body.
+- Do NOT wrap callsigns in markdown (e.g., \`**@teammate**\`, \`_@teammate_\`, or \`\`@teammate\`\`); callsigns must be plain text.
+- Do NOT prefix calls with bullets, blockquotes, numbering, or indentation (e.g., \`- @teammate\`, \`> @teammate\`, \`1. @teammate\`).
+- Do NOT include punctuation inside the callsign (e.g., \`@teammate:\`); put punctuation after a space in the body.
 - Do NOT place call headlines inside paragraphs or code blocks; the call must be a standalone line at column 0.
 - When mentioning a callsign without making a call, wrap it in backticks and keep it off column 0.
 

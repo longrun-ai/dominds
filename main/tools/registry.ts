@@ -26,6 +26,7 @@ import {
   replaceSharedMemoryTool,
 } from './mem';
 import { getDaemonOutputTool, shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from './os';
+import { teamMgmtTools } from './team-mgmt';
 import { applyPatchTool, overwriteFileTool, patchFileTool, readFileTool } from './txt';
 
 // Global public registry of tools, shared across the application
@@ -156,6 +157,11 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
   registerTool(clearMindTool);
   registerTool(changeMindTool);
 
+  // Team management tools (scoped to `.minds/**`)
+  for (const tool of teamMgmtTools) {
+    registerTool(tool);
+  }
+
   // Register well-known toolsets
   registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, clearMemoryTool]);
   setToolsetMeta('memory', {
@@ -199,23 +205,23 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
   setToolsetMeta('ws_read', {
     descriptionI18n: { en: 'Workspace read-only tools', zh: '工作区只读工具' },
   });
-	  registerToolset('ws_mod', [
-	    listDirTool,
-	    rmDirTool,
-	    rmFileTool,
-	    readFileTool,
-	    overwriteFileTool,
-	    patchFileTool,
-	    applyPatchTool,
-	  ]);
-	  setToolsetMeta('ws_mod', {
-	    descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
-	  });
-	  registerToolset('team-mgmt', []);
-	  setToolsetMeta('team-mgmt', {
-	    descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
-	  });
+  registerToolset('ws_mod', [
+    listDirTool,
+    rmDirTool,
+    rmFileTool,
+    readFileTool,
+    overwriteFileTool,
+    patchFileTool,
+    applyPatchTool,
+  ]);
+  setToolsetMeta('ws_mod', {
+    descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
+  });
+  registerToolset('team-mgmt', [...teamMgmtTools]);
+  setToolsetMeta('team-mgmt', {
+    descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
+  });
 
-	  // Register ReminderOwners
-	  registerReminderOwner(shellCmdReminderOwner);
-	})();
+  // Register ReminderOwners
+  registerReminderOwner(shellCmdReminderOwner);
+})();

@@ -179,7 +179,7 @@ Result:
 **Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `@self !topic <topic-id>`
 
 - `@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
-- This is an **unambiguous** syntax for self-calls and helps avoid accidental `@cmdr`→`@cmdr` self-calls caused by
+- This is an **unambiguous** syntax for self-calls and helps avoid accidental `@teammate`→`@teammate` self-calls caused by
   echoing/quoting prior call headlines.
 - **FBR itself should be common**, but the `!topic`-addressed variant should be rare. Prefer `@self` (TYPE C, transient)
   for most FBR usage. Use `@self !topic ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”

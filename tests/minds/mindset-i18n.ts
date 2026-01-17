@@ -26,8 +26,6 @@ async function main(): Promise<void> {
         'members:',
         '  alice:',
         '    name: Alice',
-        '  dijiang:',
-        '    name: Dijiang',
         'default_responder: alice',
         '',
       ].join('\n'),
@@ -64,16 +62,18 @@ async function main(): Promise<void> {
     // Builtin minds are also language-specific (no .minds/team/<id> overrides required).
     setWorkLanguage('en');
     {
-      const { systemPrompt } = await loadAgentMinds('dijiang');
-      assert.ok(systemPrompt.includes('hundun (chaos) itself'));
-      assert.ok(systemPrompt.includes('## Team Definition'));
+      const { systemPrompt } = await loadAgentMinds('fuxi');
+      assert.ok(systemPrompt.includes('Fuxi @fuxi'));
+      assert.ok(systemPrompt.includes('team management'));
+      assert.ok(systemPrompt.includes('team_mgmt'));
     }
 
     setWorkLanguage('zh');
     {
-      const { systemPrompt } = await loadAgentMinds('dijiang');
-      assert.ok(systemPrompt.includes('混沌本身'));
-      assert.ok(systemPrompt.includes('## 团队定义'));
+      const { systemPrompt } = await loadAgentMinds('fuxi');
+      assert.ok(systemPrompt.includes('伏羲'));
+      assert.ok(systemPrompt.includes('team_mgmt'));
+      assert.ok(systemPrompt.includes('团队管理'));
     }
 
     console.log('✅ mindset-i18n tests: ok');
