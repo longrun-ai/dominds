@@ -117,6 +117,29 @@ export type UiStrings = {
   teamMembersWillAppear: string;
   selectMemberTitle: string;
   editMemberTitle: string;
+  teamMembersRefresh: string;
+  teamMembersSearchPlaceholder: string;
+  teamMembersShowHidden: string;
+  teamMembersVisibleSection: string;
+  teamMembersHiddenSection: string;
+  teamMembersDefaultBadge: string;
+  teamMembersHiddenBadge: string;
+  teamMembersMention: string;
+  teamMembersCopyMention: string;
+  teamMembersCopiedPrefix: string;
+  teamMembersCopyFailedPrefix: string;
+  teamMembersUnknownProvider: string;
+  teamMembersUnknownModel: string;
+  teamMembersProviderLabel: string;
+  teamMembersModelLabel: string;
+  teamMembersStreamingLabel: string;
+  teamMembersSpecializesLabel: string;
+  teamMembersToolsetsLabel: string;
+  teamMembersToolsLabel: string;
+  teamMembersYes: string;
+  teamMembersNo: string;
+  teamMembersNoMatches: string;
+  teamMembersNoMatchesHint: string;
 
   toolsTitle: string;
   toolsEmpty: string;
@@ -249,6 +272,29 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       teamMembersWillAppear: '配置完成后，团队成员会显示在这里。',
       selectMemberTitle: '选择成员',
       editMemberTitle: '编辑成员',
+      teamMembersRefresh: '刷新',
+      teamMembersSearchPlaceholder: '搜索名称、@id、provider、model…',
+      teamMembersShowHidden: '显示隐藏成员',
+      teamMembersVisibleSection: '可见',
+      teamMembersHiddenSection: '隐藏',
+      teamMembersDefaultBadge: '默认',
+      teamMembersHiddenBadge: '隐藏',
+      teamMembersMention: '插入 @mention',
+      teamMembersCopyMention: '复制 @mention',
+      teamMembersCopiedPrefix: '已复制：',
+      teamMembersCopyFailedPrefix: '复制失败：',
+      teamMembersUnknownProvider: '未知 provider',
+      teamMembersUnknownModel: '未知 model',
+      teamMembersProviderLabel: 'Provider',
+      teamMembersModelLabel: 'Model',
+      teamMembersStreamingLabel: 'Streaming',
+      teamMembersSpecializesLabel: '擅长',
+      teamMembersToolsetsLabel: 'Toolsets',
+      teamMembersToolsLabel: 'Tools',
+      teamMembersYes: '是',
+      teamMembersNo: '否',
+      teamMembersNoMatches: '没有匹配结果',
+      teamMembersNoMatchesHint: '尝试更换关键词，或启用“显示隐藏成员”。',
 
       toolsTitle: '工具',
       toolsEmpty: '暂无工具',
@@ -380,6 +426,29 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     teamMembersWillAppear: 'Team members will appear here once configured.',
     selectMemberTitle: 'Select member',
     editMemberTitle: 'Edit member',
+    teamMembersRefresh: 'Refresh',
+    teamMembersSearchPlaceholder: 'Search name, @id, provider, model…',
+    teamMembersShowHidden: 'Show hidden members',
+    teamMembersVisibleSection: 'Visible',
+    teamMembersHiddenSection: 'Hidden',
+    teamMembersDefaultBadge: 'Default',
+    teamMembersHiddenBadge: 'Hidden',
+    teamMembersMention: 'Insert @mention',
+    teamMembersCopyMention: 'Copy @mention',
+    teamMembersCopiedPrefix: 'Copied: ',
+    teamMembersCopyFailedPrefix: 'Copy failed: ',
+    teamMembersUnknownProvider: 'Unknown provider',
+    teamMembersUnknownModel: 'Unknown model',
+    teamMembersProviderLabel: 'Provider',
+    teamMembersModelLabel: 'Model',
+    teamMembersStreamingLabel: 'Streaming',
+    teamMembersSpecializesLabel: 'Specializes',
+    teamMembersToolsetsLabel: 'Toolsets',
+    teamMembersToolsLabel: 'Tools',
+    teamMembersYes: 'Yes',
+    teamMembersNo: 'No',
+    teamMembersNoMatches: 'No matches',
+    teamMembersNoMatchesHint: 'Try a different query, or enable “Show hidden members”.',
 
     toolsTitle: 'Tools',
     toolsEmpty: 'No tools',

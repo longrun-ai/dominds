@@ -4,6 +4,40 @@ This document specifies the WebUI experience for inspecting what **tools** and *
 available to team members, including dynamic MCP-derived tools and any tool-related Problems
 reported by the backend.
 
+## Sidebar: Team Members Activity
+
+The Team Members view is an **activity** in the left sidebar.
+
+- The activity bar contains a Team Members button.
+- Selecting Team Members shows the Team Members activity view (and hides other activity views).
+
+### Team Members Panel (Team Roster Snapshot)
+
+The Team Members activity view renders the current team roster derived from backend
+`/api/team/config` so operators can verify agent IDs, default responder, and high-level
+capabilities.
+
+#### UX
+
+- The view supports **Refresh** to re-fetch team configuration.
+- A **Search** field filters by name, `@id`, provider/model, and any configured capability fields
+  (`gofor`, `toolsets`, `tools`).
+- A **Show hidden members** toggle includes members with `hidden: true`.
+- The list is grouped into:
+  - **Visible** (members with `hidden !== true`)
+  - **Hidden** (members with `hidden === true`, shown only when toggled on)
+- Selecting a member row reveals a details panel (provider/model/streaming + configured toolsets,
+  etc.).
+- Quick actions:
+  - **Insert @mention**: inserts `@<memberId>` into the Q4H input and focuses the input.
+  - **Copy @mention**: copies `@<memberId>` to clipboard and shows a toast.
+
+#### Transport
+
+- Team configuration is loaded via HTTP (REST) from `GET /api/team/config`.
+- UI requests refresh via a local custom event (`team-members-refresh`) handled by the app shell,
+  which then re-calls the endpoint.
+
 ## Sidebar: Tools Activity
 
 The Tools view is an **activity** in the left sidebar.
@@ -87,6 +121,22 @@ Problems should be kept in memory on the server as the current active set.
 ## Stable DOM Hooks (E2E Contract)
 
 These identifiers are treated as a stability contract for browser automation / E2E helpers.
+
+### Team Members activity
+
+Note: Team members UI lives inside the `dominds-team-members#team-members` custom element (shadow
+DOM). E2E helpers should pierce the shadow root when selecting the inner controls.
+
+- Sidebar activity button: `.activity-button[data-activity="team-members"]`
+- Activity view container: `.activity-view[data-activity-view="team-members"]`
+- Component host: `dominds-team-members#team-members`
+- Refresh button (shadow): `#team-members-refresh`
+- Search input (shadow): `#team-members-search`
+- Show hidden toggle (shadow): `#team-members-show-hidden`
+- List container (shadow): `#team-members-list`
+- Member row (shadow): `.member-row[data-member-id]` with `aria-pressed="true|false"`
+- Details container (shadow): `#team-member-details`
+- Details actions (shadow): `#team-members-details-mention` and `#team-members-details-copy`
 
 ### Tools activity
 

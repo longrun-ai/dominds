@@ -63,7 +63,7 @@ import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-q4h-input';
 import './dominds-team-members.js';
-import { DomindsTeamMembers } from './dominds-team-members.js';
+import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './dominds-team-members.js';
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
 import './running-dialog-list.js';
@@ -234,15 +234,6 @@ export class DomindsApp extends HTMLElement {
       '[data-activity-view="search"] .activity-placeholder-text',
     ) as HTMLElement | null;
     if (searchText) searchText.textContent = t.placeholderSearchText;
-
-    const tmTitle = this.shadowRoot.querySelector(
-      '[data-activity-view="team-members"] .activity-placeholder-title',
-    ) as HTMLElement | null;
-    if (tmTitle) tmTitle.textContent = t.placeholderTeamMembersTitle;
-    const tmText = this.shadowRoot.querySelector(
-      '[data-activity-view="team-members"] .activity-placeholder-text',
-    ) as HTMLElement | null;
-    if (tmText) tmText.textContent = t.placeholderTeamMembersText;
 
     const newDialogBtn = this.shadowRoot.querySelector('#new-dialog-btn') as HTMLButtonElement;
     if (newDialogBtn) newDialogBtn.title = t.newDialogTitle;
@@ -726,6 +717,8 @@ export class DomindsApp extends HTMLElement {
     const teamMembers = this.shadowRoot.querySelector('#team-members');
     if (teamMembers instanceof DomindsTeamMembers) {
       teamMembers.setMembers(this.teamMembers);
+      teamMembers.setDefaultResponder(this.defaultResponder);
+      teamMembers.setLoading(false);
       teamMembers.setProps({ uiLanguage: this.uiLanguage });
     }
 
@@ -2525,11 +2518,7 @@ export class DomindsApp extends HTMLElement {
                 </div>
               </div>
               <div class="activity-view hidden" data-activity-view="team-members">
-                <div class="activity-placeholder">
-                  <div class="activity-placeholder-title">${t.placeholderTeamMembersTitle}</div>
-                  <div class="activity-placeholder-text">${t.placeholderTeamMembersText}</div>
-                  <dominds-team-members id="team-members" show-actions="true"></dominds-team-members>
-                </div>
+                <dominds-team-members id="team-members"></dominds-team-members>
               </div>
               <div class="activity-view hidden" data-activity-view="tools">
                 <div class="tools-registry">
@@ -2663,6 +2652,30 @@ export class DomindsApp extends HTMLElement {
         void this.loadSubdialogsForRoot(rootId);
       }
     }) as EventListener);
+
+    // Team members events from dominds-team-members (sidebar activity)
+    this.shadowRoot.addEventListener('team-members-refresh', () => {
+      void this.loadTeamMembers();
+    });
+
+    this.shadowRoot.addEventListener('team-member-mention', (event: Event) => {
+      const ce = event as CustomEvent<TeamMembersMentionEventDetail>;
+      const detail = ce.detail;
+      const mention = detail && typeof detail.mention === 'string' ? detail.mention : '';
+      if (!mention) return;
+
+      const input = this.q4hInput;
+      if (!input) {
+        this.showToast('Input not available', 'warning');
+        return;
+      }
+
+      const current = input.getValue();
+      const needsSpace = current.length > 0 && !/\s$/.test(current);
+      const mentionWithSpace = mention.endsWith(' ') ? mention : `${mention} `;
+      input.setValue(`${current}${needsSpace ? ' ' : ''}${mentionWithSpace}`);
+      input.focusInput();
+    });
 
     // Highlight dialogs under active LLM generation (streaming) in the running list.
     this.shadowRoot.addEventListener('dlg-generation-state', (event: Event) => {
@@ -3468,6 +3481,10 @@ export class DomindsApp extends HTMLElement {
   }
 
   private async loadTeamMembers(): Promise<void> {
+    const teamMembersEl = this.shadowRoot ? this.shadowRoot.querySelector('#team-members') : null;
+    const teamMembersComponent =
+      teamMembersEl instanceof DomindsTeamMembers ? teamMembersEl : null;
+    if (teamMembersComponent) teamMembersComponent.setLoading(true);
     try {
       const api = getApiClient();
       const resp = await api.getTeamConfig();
@@ -3491,13 +3508,9 @@ export class DomindsApp extends HTMLElement {
       const def = cfg.defaultResponder;
       this.defaultResponder = typeof def === 'string' ? def : null;
 
-      const teamMembersComponent = this.shadowRoot?.querySelector(
-        '#team-members',
-      ) as HTMLElement & {
-        setMembers?: (members: FrontendTeamMember[]) => void;
-      };
-      if (teamMembersComponent && teamMembersComponent.setMembers) {
+      if (teamMembersComponent) {
         teamMembersComponent.setMembers(this.teamMembers);
+        teamMembersComponent.setDefaultResponder(this.defaultResponder);
       }
 
       if (this.teamMembers.length === 0) {
@@ -3506,6 +3519,8 @@ export class DomindsApp extends HTMLElement {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showError(`Failed to load team members: ${message}`, 'warning');
+    } finally {
+      if (teamMembersComponent) teamMembersComponent.setLoading(false);
     }
   }
 
