@@ -232,6 +232,7 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
       tools: m.tools,
       icon: m.icon,
       streaming: m.streaming,
+      hidden: m.hidden,
     });
 
     const memberDefaults = toFrontendMember(team.memberDefaults);
@@ -240,10 +241,11 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
       members[id] = toFrontendMember(member);
     }
 
+    const def = team.getDefaultResponder();
     respondJson(res, 200, {
       configuration: {
         memberDefaults,
-        defaultResponder: team.defaultResponder,
+        defaultResponder: def ? def.id : undefined,
         members,
       },
     });

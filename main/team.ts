@@ -16,7 +16,7 @@ import { getTool, getToolset, listToolsets } from './tools/registry';
 
 export class Team {
   readonly memberDefaults: Team.Member;
-  readonly defaultResponder?: string;
+  defaultResponder?: string;
   readonly members: Record<string, Team.Member>;
 
   constructor(params: {
@@ -35,7 +35,16 @@ export class Team {
   }
 
   getDefaultResponder(): Team.Member | undefined {
-    return this.getMember(this.defaultResponder);
+    const explicit = this.getMember(this.defaultResponder);
+    if (explicit) return explicit;
+
+    // Fallback: pick the first visible member, else any member.
+    const all = Object.values(this.members);
+    const visible = all.find((m) => m.hidden !== true);
+    if (visible) return visible;
+    const pangu = this.getMember('pangu');
+    if (pangu) return pangu;
+    return all.length > 0 ? all[0] : undefined;
   }
 
   getMember(id: string | undefined): Team.Member | undefined {
@@ -104,6 +113,7 @@ export namespace Team {
     readonly no_write_dirs?: string[];
     readonly icon?: string;
     readonly streaming?: boolean;
+    readonly hidden?: boolean;
 
     constructor(params: {
       id: string;
@@ -120,6 +130,7 @@ export namespace Team {
       no_write_dirs?: string[];
       icon?: string;
       streaming?: boolean;
+      hidden?: boolean;
     }) {
       this.id = params.id;
       this.name = params.name;
@@ -137,6 +148,7 @@ export namespace Team {
       if (params.no_write_dirs !== undefined) this.no_write_dirs = params.no_write_dirs;
       if (params.icon !== undefined) this.icon = params.icon;
       if (params.streaming !== undefined) this.streaming = params.streaming;
+      if (params.hidden !== undefined) this.hidden = params.hidden;
 
       // TypeScript class-field initialization may define optional fields as own-properties with
       // `undefined`, which breaks prototype-chain defaults. Clean them up.
@@ -154,6 +166,7 @@ export namespace Team {
         'no_write_dirs',
         'icon',
         'streaming',
+        'hidden',
       ] as const;
       for (const key of unsettableKeys) {
         if (Object.prototype.hasOwnProperty.call(self, key) && self[key] === undefined) {
@@ -173,9 +186,21 @@ export namespace Team {
 
       // Process toolsets (in declaration order)
       if (this.toolsets) {
+        const excludedToolsets = new Set<string>();
+        for (const entry of this.toolsets) {
+          if (entry.startsWith('!') && entry.length > 1) {
+            excludedToolsets.add(entry.slice(1));
+          }
+        }
+
         for (const toolsetName of this.toolsets) {
+          if (toolsetName.startsWith('!')) continue;
           const toolsetNames =
-            toolsetName === '*' ? Object.keys(listToolsets()) : ([toolsetName] as const);
+            toolsetName === '*'
+              ? Object.keys(listToolsets()).filter((n) => !excludedToolsets.has(n))
+              : excludedToolsets.has(toolsetName)
+                ? []
+                : [toolsetName];
 
           for (const resolvedToolsetName of toolsetNames) {
             const tools = getToolset(resolvedToolsetName);
@@ -238,8 +263,8 @@ export namespace Team {
     try {
       await fs.access(teamPath);
     } catch {
-      // when rtws doesn't have team definition, construct it with 帝江,
-      // with first(default) model from first provider configured (by env var)
+      // When rtws doesn't have a team definition, construct a minimal team with
+      // shadow/hidden members for bootstrap.
       const llmCfg = await LlmConfig.load();
       let provider = '';
       let model = '';
@@ -262,39 +287,92 @@ export namespace Team {
         pickProvider(providerEntries[0][0]);
       }
 
-      // Ad-hoc team grants all currently-registered toolsets to dijiang (for UX/e2e),
-      // and os toolset to cmdr.
-      // Use `*` to include toolsets registered later (e.g., hot-reloaded MCP toolsets).
-      const allToolsets = ['*'];
-
-      const dijiang = new Team.Member({
-        id: 'dijiang',
-        icon: '💥',
-        name: 'Dijiang',
+      const md = new Team.Member({
+        id: 'defaulter',
+        name: 'Defaulter',
         provider,
         model,
-        toolsets: allToolsets,
       });
-      const team: Team = new Team({
-        memberDefaults: dijiang,
-        defaultResponder: 'dijiang',
-        members: {
-          dijiang,
-          cmdr: new Team.Member({
-            id: 'cmdr',
-            icon: 'ᯓ★',
-            name: 'Commander',
-            provider,
-            model,
-            toolsets: ['os'],
-          }),
-        },
+
+      const fuxi = new Team.Member({
+        id: 'fuxi',
+        name: 'Fuxi',
+        icon: '🧭',
+        hidden: true,
+        toolsets: ['team-mgmt'],
       });
-      return team;
+      Object.setPrototypeOf(fuxi, md);
+
+      // Use `*` to include toolsets registered later (e.g., hot-reloaded MCP toolsets),
+      // and exclude the team-management toolset.
+      const pangu = new Team.Member({
+        id: 'pangu',
+        name: 'Pangu',
+        icon: '🛠',
+        hidden: true,
+        toolsets: ['*', '!team-mgmt'],
+      });
+      Object.setPrototypeOf(pangu, md);
+
+      return new Team({
+        memberDefaults: md,
+        defaultResponder: 'pangu',
+        members: { fuxi, pangu },
+      });
     }
     const raw = await fs.readFile(teamPath, 'utf-8');
     const parsed: unknown = YAML.parse(raw);
     const team = fromYamlObject(parsed);
+
+    // Always include fuxi + pangu as shadow members, even if team.yaml exists.
+    const md = team.memberDefaults;
+
+    const fuxiExisting = team.members['fuxi'];
+    const fuxi = new Team.Member({
+      id: 'fuxi',
+      name: fuxiExisting ? fuxiExisting.name : 'Fuxi',
+      icon: fuxiExisting ? fuxiExisting.icon : '🧭',
+      provider: fuxiExisting ? fuxiExisting.provider : undefined,
+      model: fuxiExisting ? fuxiExisting.model : undefined,
+      gofor: fuxiExisting ? fuxiExisting.gofor : undefined,
+      tools: fuxiExisting ? fuxiExisting.tools : undefined,
+      model_params: fuxiExisting ? fuxiExisting.model_params : undefined,
+      read_dirs: fuxiExisting ? fuxiExisting.read_dirs : undefined,
+      write_dirs: fuxiExisting ? fuxiExisting.write_dirs : undefined,
+      no_read_dirs: fuxiExisting ? fuxiExisting.no_read_dirs : undefined,
+      no_write_dirs: fuxiExisting ? fuxiExisting.no_write_dirs : undefined,
+      streaming: fuxiExisting ? fuxiExisting.streaming : undefined,
+      hidden: true,
+      toolsets: ['team-mgmt'],
+    });
+    Object.setPrototypeOf(fuxi, md);
+    team.members['fuxi'] = fuxi;
+
+    const panguExisting = team.members['pangu'];
+    const pangu = new Team.Member({
+      id: 'pangu',
+      name: panguExisting ? panguExisting.name : 'Pangu',
+      icon: panguExisting ? panguExisting.icon : '🛠',
+      provider: panguExisting ? panguExisting.provider : undefined,
+      model: panguExisting ? panguExisting.model : undefined,
+      gofor: panguExisting ? panguExisting.gofor : undefined,
+      tools: panguExisting ? panguExisting.tools : undefined,
+      model_params: panguExisting ? panguExisting.model_params : undefined,
+      read_dirs: panguExisting ? panguExisting.read_dirs : undefined,
+      write_dirs: panguExisting ? panguExisting.write_dirs : undefined,
+      no_read_dirs: panguExisting ? panguExisting.no_read_dirs : undefined,
+      no_write_dirs: panguExisting ? panguExisting.no_write_dirs : undefined,
+      streaming: panguExisting ? panguExisting.streaming : undefined,
+      hidden: true,
+      toolsets: ['*', '!team-mgmt'],
+    });
+    Object.setPrototypeOf(pangu, md);
+    team.members['pangu'] = pangu;
+
+    // Normalize default responder (even if team.yaml omitted it).
+    const def = team.getDefaultResponder();
+    team.defaultResponder = def ? def.id : 'pangu';
+
     return team;
   }
 
@@ -343,6 +421,7 @@ export namespace Team {
         no_write_dirs: asOptionalStringArray(rv.no_write_dirs, `members.${id}.no_write_dirs`),
         icon: asOptionalString(rv.icon, `members.${id}.icon`),
         streaming: asOptionalBoolean(rv.streaming, `members.${id}.streaming`),
+        hidden: asOptionalBoolean(rv.hidden, `members.${id}.hidden`),
       });
       Object.setPrototypeOf(m, md);
       membersRec[id] = m;

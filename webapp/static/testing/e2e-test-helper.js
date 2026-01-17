@@ -1504,7 +1504,7 @@ async function createDialog(taskDocPath, callsign) {
     await waitUntil(() => Array.isArray(app.teamMembers) && app.teamMembers.length > 0, 7000);
   } catch {
     throw new Error(
-      'No team members available. If .minds/team.yaml is missing, ensure an LLM provider API key env var is set so the adhoc team can be created.',
+      'No team members available. Ensure an LLM provider API key env var is set so the default shadow team members can be created.',
     );
   }
 
@@ -1552,8 +1552,30 @@ async function createDialog(taskDocPath, callsign) {
     if (!teammateSelect) {
       throw new Error('Teammate select (#teammate-select) not found');
     }
-    teammateSelect.value = agentId;
-    teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const hasDirectOption = teammateSelect.querySelector(`option[value="${agentId}"]`) !== null;
+    if (hasDirectOption) {
+      teammateSelect.value = agentId;
+      teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      const shadowOption = teammateSelect.querySelector(`option[value="__shadow__"]`);
+      if (!shadowOption) {
+        throw new Error(
+          `Agent '${agentId}' is not in the visible teammate list, and the shadow-members option is missing.`,
+        );
+      }
+      teammateSelect.value = '__shadow__';
+      teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      const shadowSelect = shadow.querySelector('#shadow-teammate-select');
+      if (!(shadowSelect instanceof HTMLSelectElement)) {
+        throw new Error('Shadow teammate select (#shadow-teammate-select) not found');
+      }
+      if (shadowSelect.querySelector(`option[value="${agentId}"]`) === null) {
+        throw new Error(`Shadow teammate '${agentId}' not found in shadow select`);
+      }
+      shadowSelect.value = agentId;
+      shadowSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
 
   // Step 5: Click "Create Dialog" button

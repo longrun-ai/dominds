@@ -454,8 +454,13 @@ export class DomindsApp extends HTMLElement {
     const help = modal.querySelector('.form-help') as HTMLElement | null;
     if (help) help.textContent = t.taskDocumentHelp;
 
-    const teammateLabel = modal.querySelector('label[for="teammate-select"]') as HTMLElement | null;
-    if (teammateLabel) teammateLabel.textContent = t.teammateLabel;
+	    const teammateLabel = modal.querySelector('label[for="teammate-select"]') as HTMLElement | null;
+	    if (teammateLabel) teammateLabel.textContent = t.teammateLabel;
+	
+	    const shadowLabel = modal.querySelector(
+	      'label[for="shadow-teammate-select"]',
+	    ) as HTMLElement | null;
+	    if (shadowLabel) shadowLabel.textContent = t.shadowMembersLabel;
 
     const cancel = modal.querySelector('#modal-cancel-btn') as HTMLButtonElement | null;
     if (cancel) cancel.textContent = t.cancel;
@@ -3807,13 +3812,26 @@ export class DomindsApp extends HTMLElement {
     return commonPrefix;
   }
 
-  private showCreateDialogModal(): void {
-    const t = getUiStrings(this.uiLanguage);
-    const modal = document.createElement('div');
-    modal.className = 'create-dialog-modal';
-    modal.innerHTML = `
-      <div class="modal-backdrop"></div>
-      <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+	  private showCreateDialogModal(): void {
+	    const t = getUiStrings(this.uiLanguage);
+	    const visibleMembers = this.teamMembers.filter((m) => m.hidden !== true);
+	    const shadowMembers = this.teamMembers.filter((m) => m.hidden === true);
+
+	    const defaultIsVisible =
+	      typeof this.defaultResponder === 'string' &&
+	      visibleMembers.some((m) => m.id === this.defaultResponder);
+	    const defaultIsShadow =
+	      typeof this.defaultResponder === 'string' &&
+	      shadowMembers.some((m) => m.id === this.defaultResponder);
+	    const initialPickShadow =
+	      shadowMembers.length > 0 && (defaultIsShadow || (!defaultIsVisible && visibleMembers.length === 0));
+	    const firstShadowId = shadowMembers.length > 0 ? shadowMembers[0].id : '';
+
+	    const modal = document.createElement('div');
+	    modal.className = 'create-dialog-modal';
+	    modal.innerHTML = `
+	      <div class="modal-backdrop"></div>
+	      <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
         <div class="modal-header">
           <h3 id="modal-title">${t.createNewDialogTitle}</h3>
           <button class="modal-close" aria-label="${t.close}">
@@ -3829,26 +3847,47 @@ export class DomindsApp extends HTMLElement {
             </div>
             <small class="form-help">${t.taskDocumentHelp}</small>
           </div>
-
-          <div class="form-group">
-            <label for="teammate-select">${t.teammateLabel}</label>
-            <select id="teammate-select" class="teammate-dropdown">
-              ${this.teamMembers
-                .map((member) => {
-                  const isDefault = member.id === this.defaultResponder;
-                  const emoji = this.getAgentEmoji(member.id, member.icon);
-                  return `<option value="${member.id}" ${isDefault ? 'selected' : ''}>
-                  ${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}
-                </option>`;
-                })
-                .join('')}
-            </select>
-          </div>
-
-          <div class="teammate-info" id="teammate-info">
-            <!-- Agent details will be shown here when selection changes -->
-          </div>
-        </div>
+	
+	          <div class="form-group">
+	            <label for="teammate-select">${t.teammateLabel}</label>
+	            <select id="teammate-select" class="teammate-dropdown">
+	              ${visibleMembers
+	                .map((member) => {
+	                  const isDefault = member.id === this.defaultResponder;
+	                  const emoji = this.getAgentEmoji(member.id, member.icon);
+	                  return `<option value="${member.id}" ${isDefault ? 'selected' : ''}>
+	                  ${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}
+	                </option>`;
+	                })
+	                .join('')}
+	              ${
+	                shadowMembers.length > 0
+	                  ? `<option value="__shadow__" ${initialPickShadow ? 'selected' : ''}>${t.shadowMembersOption}</option>`
+	                  : ''
+	              }
+	            </select>
+	          </div>
+	
+	          <div class="form-group shadow-members-group" id="shadow-members-group" style="${initialPickShadow ? '' : 'display:none;'}">
+	            <label for="shadow-teammate-select">${t.shadowMembersLabel}</label>
+	            <select id="shadow-teammate-select" class="teammate-dropdown">
+	              ${shadowMembers
+	                .map((member) => {
+	                  const isDefault = member.id === this.defaultResponder;
+	                  const emoji = this.getAgentEmoji(member.id, member.icon);
+	                  const selected = isDefault || (!defaultIsShadow && firstShadowId === member.id);
+	                  return `<option value="${member.id}" ${selected ? 'selected' : ''}>
+	                  ${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}
+	                </option>`;
+	                })
+	                .join('')}
+	            </select>
+	          </div>
+	
+	          <div class="teammate-info" id="teammate-info">
+	            <!-- Agent details will be shown here when selection changes -->
+	          </div>
+	        </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="modal-cancel-btn">
             ${t.cancel}
@@ -3871,12 +3910,14 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private setupDialogModalEvents(modal: HTMLElement): void {
-    const select = modal.querySelector('#teammate-select') as HTMLSelectElement;
-    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement;
-    const suggestions = modal.querySelector('#task-doc-suggestions') as HTMLElement;
-    const createBtn = modal.querySelector('#create-dialog-btn') as HTMLButtonElement;
-    const teammateInfo = modal.querySelector('#teammate-info') as HTMLElement;
+	  private setupDialogModalEvents(modal: HTMLElement): void {
+	    const select = modal.querySelector('#teammate-select') as HTMLSelectElement;
+	    const shadowGroup = modal.querySelector('#shadow-members-group') as HTMLElement | null;
+	    const shadowSelect = modal.querySelector('#shadow-teammate-select') as HTMLSelectElement | null;
+	    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement;
+	    const suggestions = modal.querySelector('#task-doc-suggestions') as HTMLElement;
+	    const createBtn = modal.querySelector('#create-dialog-btn') as HTMLButtonElement;
+	    const teammateInfo = modal.querySelector('#teammate-info') as HTMLElement;
 
     // Modal close event listeners
     const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement;
@@ -3909,40 +3950,57 @@ export class DomindsApp extends HTMLElement {
     closeBtn?.addEventListener('click', closeModal);
     cancelBtn?.addEventListener('click', closeModal);
 
-    // Function to show teammate info
-    const showTeammateInfo = (agentId: string) => {
-      if (agentId) {
-        const member = this.teamMembers.find((m) => m.id === agentId);
-        if (member) {
-          const emoji = this.getAgentEmoji(member.id, member.icon);
-          const isDefault = member.id === this.defaultResponder;
-          teammateInfo.innerHTML = `
-            <div class="teammate-details">
-              <h4>${emoji} ${member.name}${isDefault ? ' • Default' : ''}</h4>
-              <p><strong>Call Sign:</strong> @${member.id}</p>
-              <p><strong>Provider:</strong> ${member.provider || 'Not specified'}</p>
-              <p><strong>Model:</strong> ${member.model || 'Not specified'}</p>
-              ${
-                member.gofor && member.gofor.length > 0
-                  ? `<p><strong>Specializes in:</strong> ${member.gofor.join(', ')}</p>`
-                  : ''
-              }
-            </div>
-          `;
-          teammateInfo.style.display = 'block';
-        }
-      } else {
-        teammateInfo.style.display = 'none';
-      }
-    };
+	    // Function to show teammate info
+	    const showTeammateInfo = (agentId: string) => {
+	      let resolvedAgentId = agentId;
+	      if (agentId === '__shadow__') {
+	        resolvedAgentId = shadowSelect ? shadowSelect.value : '';
+	      }
 
-    // Show teammate info when selection changes
-    select.addEventListener('change', () => {
-      showTeammateInfo(select.value);
-    });
+	      if (resolvedAgentId) {
+	        const member = this.teamMembers.find((m) => m.id === resolvedAgentId);
+	        if (member) {
+	          const emoji = this.getAgentEmoji(member.id, member.icon);
+	          const isDefault = member.id === this.defaultResponder;
+	          teammateInfo.innerHTML = `
+	            <div class="teammate-details">
+	              <h4>${emoji} ${member.name}${isDefault ? ' • Default' : ''}</h4>
+	              <p><strong>Call Sign:</strong> @${member.id}</p>
+	              <p><strong>Provider:</strong> ${member.provider || 'Not specified'}</p>
+	              <p><strong>Model:</strong> ${member.model || 'Not specified'}</p>
+	              ${
+	                member.gofor && member.gofor.length > 0
+	                  ? `<p><strong>Specializes in:</strong> ${member.gofor.join(', ')}</p>`
+	                  : ''
+	              }
+	            </div>
+	          `;
+	          teammateInfo.style.display = 'block';
+	        } else {
+	          teammateInfo.style.display = 'none';
+	        }
+	      } else {
+	        teammateInfo.style.display = 'none';
+	      }
+	    };
 
-    // Show teammate info for initially selected agent
-    showTeammateInfo(select.value);
+	    // Show teammate info when selection changes
+	    select.addEventListener('change', () => {
+	      const isShadow = select.value === '__shadow__';
+	      if (shadowGroup) {
+	        shadowGroup.style.display = isShadow ? 'block' : 'none';
+	      }
+	      showTeammateInfo(select.value);
+	    });
+
+	    if (shadowSelect) {
+	      shadowSelect.addEventListener('change', () => {
+	        showTeammateInfo('__shadow__');
+	      });
+	    }
+
+	    // Show teammate info for initially selected agent
+	    showTeammateInfo(select.value);
 
     // Task document autocomplete functionality
     let selectedSuggestionIndex = -1;
@@ -4134,8 +4192,8 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Handle dialog creation
-    createBtn.addEventListener('click', async () => {
-      let taskDocPath = taskInput.value.trim();
+	    createBtn.addEventListener('click', async () => {
+	      let taskDocPath = taskInput.value.trim();
 
       // Validate that task document is provided
       if (!taskDocPath) {
@@ -4149,10 +4207,24 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const selectedAgentId = select.value || undefined; // undefined means use default
-      await this.createDialog(selectedAgentId, taskDocPath);
-      modal.remove();
-    });
+	      let selectedAgentId: string | undefined;
+	      if (!select.value) {
+	        selectedAgentId = undefined; // undefined means use default
+	      } else if (select.value === '__shadow__') {
+	        const shadowId = shadowSelect ? shadowSelect.value : '';
+	        if (!shadowId) {
+	          const t = getUiStrings(this.uiLanguage);
+	          this.showError(t.shadowMembersSelectRequired, 'error');
+	          return;
+	        }
+	        selectedAgentId = shadowId;
+	      } else {
+	        selectedAgentId = select.value;
+	      }
+
+	      await this.createDialog(selectedAgentId, taskDocPath);
+	      modal.remove();
+	    });
 
     // Handle Enter key in modal
     modal.addEventListener('keydown', (e) => {

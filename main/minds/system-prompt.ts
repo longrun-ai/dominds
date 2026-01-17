@@ -6,7 +6,12 @@ export function formatTeamIntro(team: Team, selfAgentId: string, language: Langu
   const selfSuffix = language === 'zh' ? '（本人）' : ' (self)';
   const focusLabel = language === 'zh' ? '关注' : 'Focus';
 
-  return Object.values(team.members)
+  const visibleMembers = Object.values(team.members).filter((m) => m.hidden !== true);
+  if (visibleMembers.length === 0) {
+    return language === 'zh' ? '-（无可见队友）' : '- (no visible teammates)';
+  }
+
+  return visibleMembers
     .map((m) => {
       const isSelf = m.id === selfAgentId ? selfSuffix : '';
       const goforList =

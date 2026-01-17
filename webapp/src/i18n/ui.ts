@@ -48,6 +48,9 @@ export type UiStrings = {
   taskDocumentPlaceholder: string;
   taskDocumentHelp: string;
   teammateLabel: string;
+  shadowMembersOption: string;
+  shadowMembersLabel: string;
+  shadowMembersSelectRequired: string;
   defaultMarker: string;
 
   authRequiredTitle: string;
@@ -177,6 +180,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       taskDocumentHelp:
         '从已有文档中选择，或输入自定义路径。必填项。Tab 补全公共前缀；Enter 选择高亮项。',
       teammateLabel: '队友：',
+      shadowMembersOption: '影子成员…',
+      shadowMembersLabel: '影子成员：',
+      shadowMembersSelectRequired: '请选择影子成员。',
       defaultMarker: ' • 默认',
 
       authRequiredTitle: '需要认证',
@@ -305,6 +311,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     taskDocumentHelp:
       'Select from existing task docs or enter a custom path. Required format: `*.tsk/` task packages. Tab completes common prefix; Enter selects highlighted item.',
     teammateLabel: 'Teammate:',
+    shadowMembersOption: 'Shadow Members…',
+    shadowMembersLabel: 'Shadow Members:',
+    shadowMembersSelectRequired: 'Please select a shadow member.',
     defaultMarker: ' • Default',
 
     authRequiredTitle: 'Authentication Required',

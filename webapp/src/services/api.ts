@@ -23,6 +23,7 @@ export interface FrontendTeamMember {
   tools?: string[];
   icon?: string;
   streaming?: boolean;
+  hidden?: boolean;
 }
 
 export interface FrontendTeam {
