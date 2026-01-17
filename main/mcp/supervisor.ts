@@ -225,7 +225,7 @@ async function restartServerNow(
     };
   }
 
-  const desiredToolsetName = `mcp_${serverId}`;
+  const desiredToolsetName = serverId;
   const fingerprint = fingerprintServerConfig(serverCfg);
   const existing = serverStateById.get(serverId);
 
@@ -312,7 +312,7 @@ async function applyWorkspaceConfig(
     const serverCfg = config.servers[serverId];
     if (!serverCfg) continue;
 
-    const desiredToolsetName = `mcp_${serverId}`;
+    const desiredToolsetName = serverId;
     const fingerprint = fingerprintServerConfig(serverCfg);
     const existing = serverStateById.get(serverId);
 
@@ -455,7 +455,7 @@ function unregisterServer(state: ServerState): void {
 }
 
 function reorderMcpToolsetsInRegistry(serverIdsInYamlOrder: ReadonlyArray<string>): void {
-  const desiredToolsetNames = serverIdsInYamlOrder.map((serverId) => `mcp_${serverId}`);
+  const desiredToolsetNames = serverIdsInYamlOrder;
 
   const currentEntries = Array.from(toolsetsRegistry.entries());
   const nonMcpEntries: Array<[string, Tool[]]> = [];

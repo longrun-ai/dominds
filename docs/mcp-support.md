@@ -60,7 +60,7 @@ system:
 
 Each configured MCP server is mapped to:
 
-- A Dominds toolset named `mcp_<serverId>` (e.g. `mcp_playwright`).
+- A Dominds toolset named `<serverId>` (e.g. `playwright`).
 - A set of Dominds tools registered into the global tool registry (tool names must be globally
   unique across all toolsets).
 
@@ -361,7 +361,7 @@ servers:
       - prefix: 'playwright_'
 ```
 
-With the example above, the server registers toolset `mcp_playwright`, and exposes tools like:
+With the example above, the server registers toolset `playwright`, and exposes tools like:
 
 - `playwright_browser_click`
 - `playwright_browser_snapshot`
@@ -375,7 +375,7 @@ members:
   alice:
     toolsets:
       - ws_read
-      - mcp_playwright
+      - playwright
 ```
 
 ## Loading / Reloading
@@ -493,7 +493,7 @@ If reload fails (invalid YAML, missing env var, server spawn fails, tool schema 
 
 ### Interaction with `team.yaml` during reload
 
-If a member references a toolset that disappears (e.g. `mcp_playwright` removed), then
+If a member references a toolset that disappears (e.g. `playwright` removed), then
 `Team.Member.listTools()` will warn “Toolset not found” and the agent simply won’t have those tools
 in that round. This is acceptable; a separate UX improvement can surface the missing toolset in UI.
 
