@@ -91,6 +91,47 @@ export interface ModelInfo {
   [key: string]: unknown;
 }
 
+export type ModelParamOption =
+  | {
+      type: 'number';
+      description: string;
+      min?: number;
+      max?: number;
+    }
+  | {
+      type: 'integer';
+      description: string;
+      min?: number;
+      max?: number;
+    }
+  | {
+      type: 'boolean';
+      description: string;
+    }
+  | {
+      type: 'string';
+      description: string;
+    }
+  | {
+      type: 'string_array';
+      description: string;
+    }
+  | {
+      type: 'record_number';
+      description: string;
+    }
+  | {
+      type: 'enum';
+      description: string;
+      values: string[];
+    };
+
+export type ProviderModelParamOptions = {
+  general?: Record<string, ModelParamOption>;
+  openai?: Record<string, ModelParamOption>;
+  anthropic?: Record<string, ModelParamOption>;
+};
+
 export type ProviderConfig = {
   name: string;
   apiType: 'codex' | 'anthropic' | 'mock' | 'openai';
@@ -98,6 +139,7 @@ export type ProviderConfig = {
   apiKeyEnvVar: string;
   tech_spec_url?: string;
   api_mgmt_url?: string;
+  model_param_options?: ProviderModelParamOptions;
   models: Record<string, ModelInfo>;
 };
 

@@ -6,6 +6,46 @@ providers:
     apiKeyEnvVar: CODEX_HOME
     tech_spec_url: https://platform.openai.com/docs/api-reference/responses
     api_mgmt_url: https://chatgpt.com/
+    # `model_param_options` documents common `.minds/team.yaml` `model_params` fields
+    # that this provider supports (as of this defaults.yaml).
+    #
+    # These are documentation hints for humans/agents; they are not auto-applied.
+    model_param_options:
+      general:
+        max_tokens:
+          # Provider-agnostic cap on generated tokens.
+          type: integer
+          min: 1
+          description: Maximum tokens to generate (provider-agnostic override).
+      openai:
+        reasoning_effort:
+          # Trade latency/cost for quality on reasoning-capable models.
+          # Allowed: minimal | low | medium | high
+          type: enum
+          values: [minimal, low, medium, high]
+          description: Reasoning effort level (when supported by the model).
+        verbosity:
+          # Control response detail level on GPT-5 series models.
+          # Allowed: low | medium | high
+          type: enum
+          values: [low, medium, high]
+          description: Response verbosity/detail level (GPT-5 series).
+        temperature:
+          # Randomness; use 0–0.2 for tool-calling / deterministic behavior.
+          type: number
+          min: 0
+          max: 2
+          description: Sampling temperature (0–2).
+        top_p:
+          # Nucleus sampling; usually leave unset if using temperature.
+          type: number
+          min: 0
+          max: 1
+          description: Nucleus sampling probability (0–1).
+        max_tokens:
+          type: integer
+          min: 1
+          description: Provider-specific max tokens override.
     models:
       gpt-5.2-codex:
         name: GPT-5.2 Codex
@@ -203,6 +243,38 @@ providers:
     apiKeyEnvVar: ANTHROPIC_API_KEY
     tech_spec_url: https://docs.anthropic.com/en/docs
     api_mgmt_url: https://console.anthropic.com/
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Maximum tokens to generate (provider-agnostic override).
+      anthropic:
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          description: Sampling temperature (0–1).
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Nucleus sampling probability (0–1).
+        top_k:
+          type: integer
+          min: 0
+          description: Top-k sampling (0 disables).
+        max_tokens:
+          type: integer
+          min: 1
+          description: Provider-specific max tokens override.
+        stop_sequences:
+          type: string_array
+          description: Stop sequences (array of strings).
+        reasoning_split:
+          # If supported, streams a separated "thinking/reasoning" channel.
+          type: boolean
+          description: Enable separated reasoning stream (when supported).
     models:
       claude-opus-4.5:
         name: Claude Opus 4.5
@@ -229,6 +301,35 @@ providers:
     apiKeyEnvVar: OPENAI_API_KEY
     tech_spec_url: https://platform.openai.com/docs
     api_mgmt_url: https://platform.openai.com/api-keys
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Maximum tokens to generate (provider-agnostic override).
+      openai:
+        reasoning_effort:
+          type: enum
+          values: [minimal, low, medium, high]
+          description: Reasoning effort level (when supported by the model).
+        verbosity:
+          type: enum
+          values: [low, medium, high]
+          description: Response verbosity/detail level (GPT-5 series).
+        temperature:
+          type: number
+          min: 0
+          max: 2
+          description: Sampling temperature (0–2).
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Nucleus sampling probability (0–1).
+        max_tokens:
+          type: integer
+          min: 1
+          description: Provider-specific max tokens override.
     models:
       gpt-5.2:
         name: GPT-5.2

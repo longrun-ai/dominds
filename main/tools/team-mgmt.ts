@@ -473,6 +473,7 @@ export const teamMgmtMovePathTool: TextingTool = {
 type ManualTopic =
   | 'topics'
   | 'llm'
+  | 'model-params'
   | 'mcp'
   | 'team'
   | 'minds'
@@ -495,6 +496,7 @@ function parseManualTopics(headLine: string): ManualTopic[] {
     switch (v) {
       case 'topics':
       case 'llm':
+      case 'model-params':
       case 'mcp':
       case 'team':
       case 'minds':
@@ -547,6 +549,73 @@ async function loadBuiltinLlmDefaultsText(): Promise<string> {
     );
   }
   return lines.join('\n');
+}
+
+async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
+  const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
+  const raw = await fs.readFile(defaultsPath, 'utf-8');
+  const parsed: unknown = YAML.parse(raw);
+  if (typeof parsed !== 'object' || parsed === null) {
+    return 'Invalid defaults.yaml';
+  }
+  const rec = parsed as Record<string, unknown>;
+  const providersUnknown = rec['providers'];
+  if (typeof providersUnknown !== 'object' || providersUnknown === null) {
+    return 'Invalid defaults.yaml (missing providers)';
+  }
+
+  const providers = providersUnknown as Record<string, unknown>;
+  const lines: string[] = [];
+
+  const summarizeSection = (section: Record<string, unknown>): string => {
+    const parts: string[] = [];
+    for (const [paramName, paramUnknown] of Object.entries(section)) {
+      if (typeof paramUnknown !== 'object' || paramUnknown === null) continue;
+      const opt = paramUnknown as Record<string, unknown>;
+      const typeUnknown = opt['type'];
+      const type = typeof typeUnknown === 'string' ? typeUnknown : undefined;
+      const valuesUnknown = opt['values'];
+      const values =
+        Array.isArray(valuesUnknown) && valuesUnknown.every((v) => typeof v === 'string')
+          ? (valuesUnknown as string[])
+          : undefined;
+      const minUnknown = opt['min'];
+      const min = typeof minUnknown === 'number' ? minUnknown : undefined;
+      const maxUnknown = opt['max'];
+      const max = typeof maxUnknown === 'number' ? maxUnknown : undefined;
+
+      const extras: string[] = [];
+      if (type) extras.push(type);
+      if (values && values.length > 0) extras.push(values.join('|'));
+      if (min !== undefined || max !== undefined) {
+        extras.push(`${min !== undefined ? min : ''}..${max !== undefined ? max : ''}`.trim());
+      }
+
+      parts.push(extras.length > 0 ? `${paramName} (${extras.join(', ')})` : paramName);
+    }
+    return parts.join(', ');
+  };
+
+  for (const [providerId, providerUnknown] of Object.entries(providers)) {
+    if (typeof providerUnknown !== 'object' || providerUnknown === null) continue;
+    const provider = providerUnknown as Record<string, unknown>;
+    const mpoUnknown = provider['model_param_options'];
+    if (typeof mpoUnknown !== 'object' || mpoUnknown === null) continue;
+    const mpo = mpoUnknown as Record<string, unknown>;
+
+    const sections: string[] = [];
+    for (const [sectionName, sectionUnknown] of Object.entries(mpo)) {
+      if (typeof sectionUnknown !== 'object' || sectionUnknown === null) continue;
+      const section = sectionUnknown as Record<string, unknown>;
+      const summary = summarizeSection(section);
+      if (!summary) continue;
+      sections.push(`${sectionName}: ${summary}`);
+    }
+    if (sections.length === 0) continue;
+    lines.push(`- ${providerId}: ${sections.join(' | ')}`);
+  }
+
+  return lines.length > 0 ? lines.join('\n') : '- (none)';
 }
 
 function renderMemberProperties(language: LanguageCode): string {
@@ -748,6 +817,64 @@ function renderTroubleshooting(language: LanguageCode): string {
   );
 }
 
+async function renderModelParamsManual(language: LanguageCode): Promise<string> {
+  const header =
+    language === 'zh'
+      ? fmtHeader('model_params（成员模型参数）')
+      : fmtHeader('model_params (member model parameters)');
+  const summary = await loadBuiltinLlmModelParamOptionsText();
+
+  if (language === 'zh') {
+    return (
+      header +
+      fmtList([
+        '`model_params` 写在 `.minds/team.yaml` 的 `member_defaults` 或 `members.<id>` 下，用来控制采样/推理/输出风格。',
+        'OpenAI/Codex 常用：`openai.reasoning_effort`（minimal/low/medium/high）、`openai.verbosity`（low/medium/high）。',
+        '工具调用/可重复输出：倾向 `openai.temperature: 0` 或较低（0–0.2）。',
+      ]) +
+      '\n' +
+      '示例：\n' +
+      '```yaml\n' +
+      'members:\n' +
+      '  pangu:\n' +
+      '    model_params:\n' +
+      '      openai:\n' +
+      '        reasoning_effort: medium\n' +
+      '        verbosity: low\n' +
+      '        temperature: 0\n' +
+      '```\n' +
+      '\n' +
+      '内置 provider 的 `model_param_options` 摘要（来自 `dominds/main/llm/defaults.yaml`）：\n' +
+      summary +
+      '\n'
+    );
+  }
+
+  return (
+    header +
+    fmtList([
+      '`model_params` lives in `.minds/team.yaml` under `member_defaults` or `members.<id>` to control sampling/reasoning/output style.',
+      'Common OpenAI/Codex knobs: `openai.reasoning_effort` (minimal/low/medium/high), `openai.verbosity` (low/medium/high).',
+      'For tool-calling and repeatability: prefer `openai.temperature: 0` or low (0–0.2).',
+    ]) +
+    '\n' +
+    'Example:\n' +
+    '```yaml\n' +
+    'members:\n' +
+    '  pangu:\n' +
+    '    model_params:\n' +
+    '      openai:\n' +
+    '        reasoning_effort: medium\n' +
+    '        verbosity: low\n' +
+    '        temperature: 0\n' +
+    '```\n' +
+    '\n' +
+    'Built-in provider `model_param_options` summary (from `dominds/main/llm/defaults.yaml`):\n' +
+    summary +
+    '\n'
+  );
+}
+
 async function renderToolsets(language: LanguageCode): Promise<string> {
   const registry = await import('./registry');
   const ids = Object.keys(registry.listToolsets());
@@ -776,7 +903,8 @@ export const teamMgmtManualTool: TextingTool = {
     `@team_mgmt_manual\n` +
     `@team_mgmt_manual !topics\n` +
     `@team_mgmt_manual !team !member-properties\n` +
-    `@team_mgmt_manual !llm !builtin-defaults\n`,
+    `@team_mgmt_manual !llm !builtin-defaults\n` +
+    `@team_mgmt_manual !llm !model-params\n`,
   usageDescriptionI18n: {
     en:
       `Team management manual for ${MINDS_DIR}/.\n` +
@@ -785,7 +913,8 @@ export const teamMgmtManualTool: TextingTool = {
       `@team_mgmt_manual\n` +
       `@team_mgmt_manual !topics\n` +
       `@team_mgmt_manual !team !member-properties\n` +
-      `@team_mgmt_manual !llm !builtin-defaults\n`,
+      `@team_mgmt_manual !llm !builtin-defaults\n` +
+      `@team_mgmt_manual !llm !model-params\n`,
     zh:
       `${MINDS_DIR}/ 的团队管理手册。\n` +
       `用法：@team_mgmt_manual [!topic ...]\n\n` +
@@ -793,7 +922,8 @@ export const teamMgmtManualTool: TextingTool = {
       `@team_mgmt_manual\n` +
       `@team_mgmt_manual !topics\n` +
       `@team_mgmt_manual !team !member-properties\n` +
-      `@team_mgmt_manual !llm !builtin-defaults\n`,
+      `@team_mgmt_manual !llm !builtin-defaults\n` +
+      `@team_mgmt_manual !llm !model-params\n`,
   },
   async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
@@ -814,6 +944,7 @@ export const teamMgmtManualTool: TextingTool = {
             '`@team_mgmt_manual !team !member-properties`：成员字段表',
             '`@team_mgmt_manual !llm`：.minds/llm.yaml',
             '`@team_mgmt_manual !llm !builtin-defaults`：内置 provider/model 摘要',
+            '`@team_mgmt_manual !llm !model-params`：模型参数（model_params）参考',
             '`@team_mgmt_manual !mcp`：.minds/mcp.yaml',
             '`@team_mgmt_manual !minds`：.minds/team/<id>/*',
             '`@team_mgmt_manual !permissions`：目录权限',
@@ -831,6 +962,7 @@ export const teamMgmtManualTool: TextingTool = {
           '`@team_mgmt_manual !team !member-properties`: member field reference',
           '`@team_mgmt_manual !llm`: .minds/llm.yaml',
           '`@team_mgmt_manual !llm !builtin-defaults`: built-in provider/model summary',
+          '`@team_mgmt_manual !llm !model-params`: `model_params` reference',
           '`@team_mgmt_manual !mcp`: .minds/mcp.yaml',
           '`@team_mgmt_manual !minds`: .minds/team/<id>/*',
           '`@team_mgmt_manual !permissions`: directory permissions',
@@ -863,6 +995,10 @@ export const teamMgmtManualTool: TextingTool = {
         const content = await renderBuiltinDefaults(language);
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
+      if (want('llm') && want('model-params')) {
+        const content = await renderModelParamsManual(language);
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
       if (want('llm')) {
         const llmText =
           language === 'zh'
@@ -871,12 +1007,14 @@ export const teamMgmtManualTool: TextingTool = {
                 '定义 provider→model 映射（覆盖内置 defaults）。',
                 '不要在文件里存 API key，使用环境变量（apiKeyEnvVar）。',
                 'member_defaults.provider/model 需要引用这里的 key。',
+                '`model_param_options` 可选：用于记录该 provider 支持的 `.minds/team.yaml model_params` 选项（文档用途）。',
               ])
             : fmtHeader('.minds/llm.yaml') +
               fmtList([
                 'Defines provider→model map (overrides built-in defaults).',
                 'Do not store API keys in the file; use env vars via apiKeyEnvVar.',
                 'member_defaults.provider/model must reference these keys.',
+                'Optional: `model_param_options` documents `.minds/team.yaml model_params` knobs (documentation only).',
               ]);
         return ok(llmText, [{ type: 'environment_msg', role: 'user', content: llmText }]);
       }
