@@ -51,7 +51,8 @@ dominds is an AI-powered DevOps framework that creates autonomous development te
 
 ```bash
 # Global installation (recommended)
-pnpm add -g dominds
+npm install -g dominds
+# (or) pnpm add -g dominds
 
 # Verify installation
 dominds --help
@@ -60,22 +61,21 @@ dominds --help
 For development or testing:
 
 ```bash
-# Clone the repository
-git clone https://github.com/longrun-ai/dominds.git
-cd dominds
+# Official dev workflow (recommended for PRs)
+# Use the in-tree dev wrapper workspace:
+# https://github.com/longrun-ai/dominds-feat-dev
+# - Clone dominds-feat-dev
+# - Clone your dominds fork into dominds-feat-dev/dominds/
+# - Open PRs against longrun-ai/dominds from that inner repo
 
-# Install dependencies
-pnpm install
-
-# Build the project
-pnpm run build
-
-# Use pnpm link for development (recommended)
-pnpm link --global
-# Now you can use 'dominds' command globally during development
-
-# Or run from local build
-node dist/cli.js --help
+# Recommended: keep using the released `dominds` CLI (stable) while developing dominds.
+#
+# Emergency only: if the released CLI has a blocking bug, link a clean checkout of `main`
+# from a different directory (do NOT link the same dominds checkout you are editing for PRs).
+git clone https://github.com/longrun-ai/dominds.git ~/src/dominds-main
+pnpm -C ~/src/dominds-main install
+pnpm -C ~/src/dominds-main run build:backend
+pnpm -C ~/src/dominds-main link --global
 ```
 
 ### Workspace Setup
