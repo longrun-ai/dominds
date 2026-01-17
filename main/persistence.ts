@@ -13,10 +13,12 @@ import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
+import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
   CodeBlockChunkEvent,
   CodeBlockFinishEvent,
   CodeBlockStartEvent,
+  ContextHealthEvent,
   FuncCallStartEvent,
   FunctionResultEvent,
   GeneratingFinishEvent,
@@ -157,6 +159,7 @@ export interface DialogPersistenceState {
   currentRound: number;
   messages: ChatMessage[];
   reminders: Reminder[];
+  contextHealth?: ContextHealthSnapshot;
 }
 
 export interface Questions4Human {
@@ -495,7 +498,10 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Notify end of LLM generation for frontend bubble management
    */
-  public async notifyGeneratingFinish(dialog: Dialog): Promise<void> {
+  public async notifyGeneratingFinish(
+    dialog: Dialog,
+    contextHealth?: ContextHealthSnapshot,
+  ): Promise<void> {
     const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const genseq = dialog.activeGenSeq;
     if (genseq === undefined) {
@@ -506,6 +512,7 @@ export class DiskFileDialogStore extends DialogStore {
         ts: formatUnifiedTimestamp(new Date()),
         type: 'gen_finish_record',
         genseq: genseq,
+        contextHealth,
       };
       await this.appendEvent(round, ev);
 
@@ -516,6 +523,16 @@ export class DiskFileDialogStore extends DialogStore {
         genseq: genseq,
       };
       postDialogEvent(dialog, genFinishEvt);
+
+      if (contextHealth) {
+        const ctxEvt: ContextHealthEvent = {
+          type: 'context_health_evt',
+          round,
+          genseq,
+          contextHealth,
+        };
+        postDialogEvent(dialog, ctxEvt);
+      }
 
       // Update generating flag in latest.yaml
       await DialogPersistence.updateDialogLatest(this.dialogId, { generating: false });
@@ -1308,6 +1325,23 @@ export class DiskFileDialogStore extends DialogStore {
         // Send directly to WebSocket (NO PubChan emission)
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(genFinishWireEvent));
+        }
+
+        if (event.contextHealth) {
+          const ctxWireEvent = {
+            type: 'context_health_evt',
+            round,
+            genseq: event.genseq,
+            contextHealth: event.contextHealth,
+            dialog: {
+              selfId: dialog.id.selfId,
+              rootId: dialog.id.rootId,
+            },
+            timestamp: event.ts,
+          };
+          if (ws.readyState === 1) {
+            ws.send(JSON.stringify(ctxWireEvent));
+          }
         }
         break;
       }
@@ -2215,7 +2249,7 @@ export class DialogPersistence {
       };
 
       // Atomic write operation
-      const tempFile = remindersFilePath + '.tmp';
+      const tempFile = `${remindersFilePath}.${process.pid}.${Date.now()}.tmp`;
       await fs.promises.writeFile(tempFile, JSON.stringify(reminderState, null, 2), 'utf-8');
       await fs.promises.rename(tempFile, remindersFilePath);
     } catch (error) {
@@ -3251,6 +3285,7 @@ export class DialogPersistence {
   ): Promise<DialogPersistenceState> {
     // Events are already in chronological order from JSONL file (append-only pattern)
     const messages: ChatMessage[] = [];
+    let contextHealth: ContextHealthSnapshot | undefined;
 
     // Simple, straightforward mapping to reconstruct messages from persisted events
     for (const event of events) {
@@ -3347,7 +3382,12 @@ export class DialogPersistence {
         // gen_start_record and gen_finish_record are control events, not message content
         // They don't need to be converted to ChatMessage objects
         case 'gen_start_record':
+          break;
         case 'gen_finish_record':
+          if (event.contextHealth) {
+            contextHealth = event.contextHealth;
+          }
+          break;
         case 'quest_for_sup_record':
           // These events are handled separately in dialog restoration
           // Skip them for message reconstruction
@@ -3364,6 +3404,7 @@ export class DialogPersistence {
       currentRound,
       messages,
       reminders,
+      contextHealth,
     };
   }
 

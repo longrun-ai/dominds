@@ -6,6 +6,7 @@
  */
 
 // === DIALOG EVENT TYPE DEFINITIONS ===
+import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogInterruptionReason, DialogRunState } from './run-state';
 import type { UserTextGrammar } from './storage';
@@ -51,6 +52,11 @@ export type GeneratingStartEvent = LlmGenDlgEvent & {
 
 export type GeneratingFinishEvent = LlmGenDlgEvent & {
   type: 'generating_finish_evt';
+};
+
+export type ContextHealthEvent = LlmGenDlgEvent & {
+  type: 'context_health_evt';
+  contextHealth: ContextHealthSnapshot;
 };
 
 export type ThinkingStartEvent = LlmGenDlgEvent & {
@@ -297,6 +303,7 @@ export type DialogEvent =
   // Generation lifecycle
   | GeneratingStartEvent
   | GeneratingFinishEvent
+  | ContextHealthEvent
   // Run state
   | DialogRunStateEvent
   | DialogRunStateMarkerEvent

@@ -17,10 +17,11 @@ import type {
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
-import type { LlmGenerator, LlmStreamReceiver } from '../gen';
+import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
@@ -180,7 +181,7 @@ export class CodexGen implements LlmGenerator {
     receiver: LlmStreamReceiver,
     _genseq: number,
     abortSignal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<LlmStreamResult> {
     const codexHomeValue: string = process.env[providerConfig.apiKeyEnvVar] || '~/.codex';
     const codexHome = codexHomeValue.startsWith('~')
       ? process.env['HOME'] + codexHomeValue.substring(1)
@@ -210,6 +211,7 @@ export class CodexGen implements LlmGenerator {
     let sayingStarted = false;
     let thinkingStarted = false;
     let sawOutputText = false;
+    let usage: LlmUsageStats = { kind: 'unavailable' };
 
     const eventReceiver: ChatGptEventReceiver = {
       onEvent: async (event: ChatGptResponsesStreamEvent) => {
@@ -336,6 +338,22 @@ export class CodexGen implements LlmGenerator {
               await receiver.thinkingFinish();
               thinkingStarted = false;
             }
+            const responseUsage = event.response.usage;
+            if (
+              responseUsage &&
+              typeof responseUsage.input_tokens === 'number' &&
+              typeof responseUsage.output_tokens === 'number'
+            ) {
+              usage = {
+                kind: 'available',
+                promptTokens: responseUsage.input_tokens,
+                completionTokens: responseUsage.output_tokens,
+                totalTokens:
+                  typeof responseUsage.total_tokens === 'number'
+                    ? responseUsage.total_tokens
+                    : responseUsage.input_tokens + responseUsage.output_tokens,
+              };
+            }
             return;
           }
           default: {
@@ -359,6 +377,8 @@ export class CodexGen implements LlmGenerator {
         await receiver.thinkingFinish();
       }
     }
+
+    return { usage };
   }
 
   async genMoreMessages(
@@ -368,7 +388,7 @@ export class CodexGen implements LlmGenerator {
     _funcTools: FuncTool[],
     _context: ChatMessage[],
     _genseq: number,
-  ): Promise<ChatMessage[]> {
+  ): Promise<LlmBatchResult> {
     throw new Error('Codex generator only supports streaming mode.');
   }
 }

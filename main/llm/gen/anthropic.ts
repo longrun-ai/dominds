@@ -5,7 +5,7 @@
  */
 import { Anthropic } from '@anthropic-ai/sdk';
 import type {
-  MessageCreateParams,
+  MessageCreateParamsNonStreaming,
   MessageCreateParamsStreaming,
   MessageParam,
   MessageStreamEvent,
@@ -16,10 +16,11 @@ import type {
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig } from '../client';
-import type { LlmGenerator, LlmStreamReceiver } from '../gen';
+import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 const log = createLogger('llm/anthropic');
 
@@ -368,7 +369,7 @@ export class AnthropicGen implements LlmGenerator {
     receiver: LlmStreamReceiver,
     _genseq: number,
     abortSignal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<LlmStreamResult> {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
 
@@ -424,6 +425,7 @@ export class AnthropicGen implements LlmGenerator {
     let currentToolUse: ActiveToolUse | null = null;
     let sayingStarted = false;
     let thinkingStarted = false;
+    let usage: LlmUsageStats = { kind: 'unavailable' };
 
     for await (const event of stream) {
       if (abortSignal?.aborted) {
@@ -563,12 +565,58 @@ export class AnthropicGen implements LlmGenerator {
         }
 
         case 'message_start': {
-          // Usage info captured but not currently used
+          const startUsage = event.message.usage;
+          const cacheCreation =
+            typeof startUsage.cache_creation_input_tokens === 'number'
+              ? startUsage.cache_creation_input_tokens
+              : 0;
+          const cacheRead =
+            typeof startUsage.cache_read_input_tokens === 'number'
+              ? startUsage.cache_read_input_tokens
+              : 0;
+          const promptTokens = startUsage.input_tokens + cacheCreation + cacheRead;
+          const completionTokens = startUsage.output_tokens;
+          usage = {
+            kind: 'available',
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+          };
           break;
         }
 
         case 'message_delta': {
-          // Usage info captured but not currently used
+          const deltaUsage = event.usage;
+          const inputTokens =
+            typeof deltaUsage.input_tokens === 'number' ? deltaUsage.input_tokens : null;
+          const cacheCreation =
+            typeof deltaUsage.cache_creation_input_tokens === 'number'
+              ? deltaUsage.cache_creation_input_tokens
+              : 0;
+          const cacheRead =
+            typeof deltaUsage.cache_read_input_tokens === 'number'
+              ? deltaUsage.cache_read_input_tokens
+              : 0;
+          if (usage.kind === 'available') {
+            const promptTokens: number =
+              inputTokens !== null ? inputTokens + cacheCreation + cacheRead : usage.promptTokens;
+            const completionTokens = deltaUsage.output_tokens;
+            usage = {
+              kind: 'available',
+              promptTokens,
+              completionTokens,
+              totalTokens: promptTokens + completionTokens,
+            };
+          } else if (inputTokens !== null) {
+            const promptTokens: number = inputTokens + cacheCreation + cacheRead;
+            const completionTokens = deltaUsage.output_tokens;
+            usage = {
+              kind: 'available',
+              promptTokens,
+              completionTokens,
+              totalTokens: promptTokens + completionTokens,
+            };
+          }
           break;
         }
 
@@ -596,6 +644,8 @@ export class AnthropicGen implements LlmGenerator {
         }
       }
     }
+
+    return { usage };
   }
 
   async genMoreMessages(
@@ -606,7 +656,7 @@ export class AnthropicGen implements LlmGenerator {
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
-  ): Promise<ChatMessage[]> {
+  ): Promise<LlmBatchResult> {
     const apiKey = process.env[providerConfig.apiKeyEnvVar];
     if (!apiKey) throw new Error(`Missing API key env var ${providerConfig.apiKeyEnvVar}`);
 
@@ -644,18 +694,37 @@ export class AnthropicGen implements LlmGenerator {
       }),
     };
 
-    const createParams: MessageCreateParams & { signal?: AbortSignal } = {
+    const createParams: MessageCreateParamsNonStreaming & { signal?: AbortSignal } = {
       ...baseParams,
       stream: false,
       ...(abortSignal ? { signal: abortSignal } : {}),
     };
 
-    const response = await client.messages.create(createParams as unknown as MessageCreateParams);
+    const response = await client.messages.create(createParams);
 
     if (!response) {
       throw new Error('No response from Anthropic API');
     }
 
-    return anthropicToChatMessages(response, genseq);
+    const responseUsage = response.usage;
+    const cacheCreation =
+      typeof responseUsage.cache_creation_input_tokens === 'number'
+        ? responseUsage.cache_creation_input_tokens
+        : 0;
+    const cacheRead =
+      typeof responseUsage.cache_read_input_tokens === 'number'
+        ? responseUsage.cache_read_input_tokens
+        : 0;
+    const promptTokens = responseUsage.input_tokens + cacheCreation + cacheRead;
+    const completionTokens = responseUsage.output_tokens;
+
+    const usage: LlmUsageStats = {
+      kind: 'available',
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+    };
+
+    return { messages: anthropicToChatMessages(response, genseq), usage };
   }
 }

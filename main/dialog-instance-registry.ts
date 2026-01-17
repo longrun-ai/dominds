@@ -30,6 +30,7 @@ export async function getOrRestoreRootDialog(
       messages: rootState.messages,
       reminders: rootState.reminders,
       currentRound: rootState.currentRound,
+      contextHealth: rootState.contextHealth,
     },
   );
   rootDialog.setPersistenceStatus(status);
@@ -102,6 +103,7 @@ export async function ensureDialogLoaded(
       messages: state.messages,
       reminders: state.reminders,
       currentRound: state.currentRound,
+      contextHealth: state.contextHealth,
     },
   );
   if (subdialog.topicId) {

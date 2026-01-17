@@ -5,6 +5,7 @@
  * Uses modern TypeScript patterns for statically verifiable field access.
  */
 
+import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogRunState } from './run-state';
 
@@ -248,6 +249,7 @@ export interface GenFinishRecord {
   ts: string;
   type: 'gen_finish_record';
   genseq: number;
+  contextHealth?: ContextHealthSnapshot;
 }
 
 // === REMINDER AND QUESTIONS STORAGE ===

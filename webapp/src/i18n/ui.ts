@@ -403,6 +403,56 @@ export function formatTeamMembersTitle(language: LanguageCode, count: number): s
   return `👥 ${t.teamMembersTitle} (${count})`;
 }
 
+export type ContextUsageTitleArgs =
+  | { kind: 'unknown' }
+  | {
+      kind: 'known';
+      promptTokens: number;
+      hardPercentText: string;
+      modelContextLimitTokens: number;
+      overOptimal: boolean;
+    };
+
+export function formatContextUsageTitle(
+  language: LanguageCode,
+  args: ContextUsageTitleArgs,
+): string {
+  switch (language) {
+    case 'zh': {
+      switch (args.kind) {
+        case 'unknown':
+          return '上下文占用：未知';
+        case 'known': {
+          const suffix = args.overOptimal ? ' • 超过最佳值' : '';
+          return `上下文占用：${args.promptTokens}（${args.hardPercentText} / ${args.modelContextLimitTokens}）${suffix}`;
+        }
+        default: {
+          const _exhaustive: never = args;
+          throw new Error(`Unhandled ContextUsageTitleArgs: ${_exhaustive}`);
+        }
+      }
+    }
+    case 'en': {
+      switch (args.kind) {
+        case 'unknown':
+          return 'Context usage: unknown';
+        case 'known': {
+          const suffix = args.overOptimal ? ' • over optimal' : '';
+          return `Context usage: ${args.promptTokens} (${args.hardPercentText} of ${args.modelContextLimitTokens})${suffix}`;
+        }
+        default: {
+          const _exhaustive: never = args;
+          throw new Error(`Unhandled ContextUsageTitleArgs: ${_exhaustive}`);
+        }
+      }
+    }
+    default: {
+      const _exhaustive: never = language;
+      throw new Error(`Unhandled LanguageCode: ${_exhaustive}`);
+    }
+  }
+}
+
 export type UiLanguageMatchState =
   | { kind: 'unknown' }
   | { kind: 'match'; serverWorkLanguage: LanguageCode }

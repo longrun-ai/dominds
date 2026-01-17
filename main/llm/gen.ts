@@ -1,6 +1,16 @@
+import type { LlmUsageStats } from '../shared/types/context-health';
 import { Team } from '../team';
 import { FuncTool } from '../tool';
 import { ChatMessage, ProviderConfig } from './client';
+
+export interface LlmStreamResult {
+  usage: LlmUsageStats;
+}
+
+export interface LlmBatchResult {
+  messages: ChatMessage[];
+  usage: LlmUsageStats;
+}
 
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;
@@ -24,7 +34,7 @@ export interface LlmGenerator {
     receiver: LlmStreamReceiver,
     genseq: number,
     abortSignal?: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<LlmStreamResult>;
 
   genMoreMessages: (
     providerConfig: ProviderConfig,
@@ -34,5 +44,5 @@ export interface LlmGenerator {
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
-  ) => Promise<ChatMessage[]>;
+  ) => Promise<LlmBatchResult>;
 }

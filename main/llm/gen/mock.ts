@@ -54,10 +54,11 @@ import path from 'path';
 import yaml from 'yaml';
 
 import { log } from '../../log';
+import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, ProviderConfig, SayingMsg } from '../client';
-import type { LlmGenerator, LlmStreamReceiver } from '../gen';
+import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 interface MockResponse {
   /** The input message to match (required) */
@@ -71,6 +72,22 @@ interface MockResponse {
 
   /** If set, throws error instead of returning response */
   streamError?: string;
+
+  /**
+   * When true, the mock generator reports usage as unavailable.
+   * Used to validate the UI "unknown usage" path without external APIs.
+   */
+  usageUnavailable?: boolean;
+
+  /**
+   * When set, overrides the usage stats reported by the mock generator.
+   * Used to validate context-health behavior deterministically.
+   */
+  usage?: {
+    promptTokens: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
 }
 
 interface MockDatabase {
@@ -195,13 +212,13 @@ responses:
   async genToReceiver(
     providerConfig: ProviderConfig,
     agent: Team.Member,
-    _systemPrompt: string,
+    systemPrompt: string,
     _funcTools: FuncTool[],
     context: ChatMessage[],
     receiver: LlmStreamReceiver,
     _genseq: number,
     abortSignal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<LlmStreamResult> {
     const dbPath = providerConfig.baseUrl;
     if (!agent.model) {
       throw new Error('Model undefined for agent: ' + agent.id);
@@ -231,6 +248,54 @@ responses:
     const responseText =
       matched?.response ?? this.makeFallbackResponse(dbPath, content, role, modelName);
 
+    let usage: LlmUsageStats = { kind: 'unavailable' };
+    if (matched && matched.usageUnavailable === true) {
+      usage = { kind: 'unavailable' };
+    } else if (matched && matched.usage) {
+      const promptTokens = matched.usage.promptTokens;
+      const completionTokens =
+        typeof matched.usage.completionTokens === 'number' ? matched.usage.completionTokens : 0;
+      const totalTokens =
+        typeof matched.usage.totalTokens === 'number'
+          ? matched.usage.totalTokens
+          : promptTokens + completionTokens;
+      usage = {
+        kind: 'available',
+        promptTokens,
+        completionTokens,
+        totalTokens,
+      };
+    } else {
+      const promptChars =
+        systemPrompt.length +
+        context.reduce((acc, msg) => {
+          switch (msg.type) {
+            case 'environment_msg':
+            case 'transient_guide_msg':
+            case 'prompting_msg':
+            case 'saying_msg':
+            case 'thinking_msg':
+            case 'func_result_msg':
+            case 'call_result_msg':
+              return acc + msg.content.length;
+            case 'func_call_msg':
+              return acc + msg.name.length + msg.arguments.length;
+            default: {
+              const _exhaustive: never = msg;
+              throw new Error(`Unsupported chat message: ${_exhaustive}`);
+            }
+          }
+        }, 0);
+      const promptTokens = Math.ceil(promptChars / 4);
+      const completionTokens = Math.ceil(responseText.length / 4);
+      usage = {
+        kind: 'available',
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+      };
+    }
+
     await receiver.sayingStart();
     const words = responseText.split(/(\s+)/);
     for (const word of words) {
@@ -240,17 +305,19 @@ responses:
       await receiver.sayingChunk(word);
     }
     await receiver.sayingFinish();
+
+    return { usage };
   }
 
   async genMoreMessages(
     providerConfig: ProviderConfig,
     agent: Team.Member,
-    _systemPrompt: string,
+    systemPrompt: string,
     _funcTools: FuncTool[],
     context: ChatMessage[],
     genseq: number,
     abortSignal?: AbortSignal,
-  ): Promise<ChatMessage[]> {
+  ): Promise<LlmBatchResult> {
     if (abortSignal?.aborted) {
       throw new Error('AbortError');
     }
@@ -285,7 +352,55 @@ responses:
         content: matched?.streamError ? `❌ Mock Error: ${matched.streamError}` : responseText,
       };
 
-      return [thinking, saying];
+      let usage: LlmUsageStats = { kind: 'unavailable' };
+      if (matched && matched.usageUnavailable === true) {
+        usage = { kind: 'unavailable' };
+      } else if (matched && matched.usage) {
+        const promptTokens = matched.usage.promptTokens;
+        const completionTokens =
+          typeof matched.usage.completionTokens === 'number' ? matched.usage.completionTokens : 0;
+        const totalTokens =
+          typeof matched.usage.totalTokens === 'number'
+            ? matched.usage.totalTokens
+            : promptTokens + completionTokens;
+        usage = {
+          kind: 'available',
+          promptTokens,
+          completionTokens,
+          totalTokens,
+        };
+      } else {
+        const promptChars =
+          systemPrompt.length +
+          context.reduce((acc, msg) => {
+            switch (msg.type) {
+              case 'environment_msg':
+              case 'transient_guide_msg':
+              case 'prompting_msg':
+              case 'saying_msg':
+              case 'thinking_msg':
+              case 'func_result_msg':
+              case 'call_result_msg':
+                return acc + msg.content.length;
+              case 'func_call_msg':
+                return acc + msg.name.length + msg.arguments.length;
+              default: {
+                const _exhaustive: never = msg;
+                throw new Error(`Unsupported chat message: ${_exhaustive}`);
+              }
+            }
+          }, 0);
+        const promptTokens = Math.ceil(promptChars / 4);
+        const completionTokens = Math.ceil(responseText.length / 4);
+        usage = {
+          kind: 'available',
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+        };
+      }
+
+      return { messages: [thinking, saying], usage };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const saying: SayingMsg = {
@@ -301,7 +416,7 @@ responses:
         content: `[${modelName}] error: ${errMsg}`,
         genseq,
       };
-      return [thinking, saying];
+      return { messages: [thinking, saying], usage: { kind: 'unavailable' } };
     }
   }
 }

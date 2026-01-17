@@ -35,6 +35,43 @@ ${content}`;
 ${content}`;
 }
 
+export type ContextHealthReminderTextArgs =
+  | {
+      kind: 'usage_unknown';
+    }
+  | {
+      kind: 'over_optimal';
+    };
+
+export function formatContextHealthReminderText(
+  language: LanguageCode,
+  args: ContextHealthReminderTextArgs,
+): string {
+  if (language === 'zh') {
+    switch (args.kind) {
+      case 'usage_unknown':
+        return '上下文健康：上一轮生成的 token 使用量未知。如果你感觉性能下降，把重要事实/决策提炼到任务文档和/或提醒里，然后使用 @clear_mind 以精简上下文开启新的对话回合。';
+      case 'over_optimal':
+        return '上下文健康：对话上下文已偏大。Dominds 不会自动压缩上下文——把重要事实/决策提炼到任务文档和/或提醒里，然后使用 @clear_mind 以精简上下文开启新的对话回合。';
+      default: {
+        const _exhaustiveCheck: never = args;
+        return _exhaustiveCheck;
+      }
+    }
+  }
+
+  switch (args.kind) {
+    case 'usage_unknown':
+      return 'Context health: unknown for the last generation. If you feel degraded performance, distill the important facts/decisions into the task doc and/or reminders, then use @clear_mind to start a new round of the dialog with concise context.';
+    case 'over_optimal':
+      return 'Context health: your dialog context is getting large. Dominds does not auto-compact context — distill the important facts/decisions into the task doc and/or reminders, then use @clear_mind to start a new round of the dialog with concise context.';
+    default: {
+      const _exhaustiveCheck: never = args;
+      return _exhaustiveCheck;
+    }
+  }
+}
+
 export function formatReminderIntro(language: LanguageCode, count: number): string {
   if (language === 'zh') {
     return `我有 ${count} 条提醒可用于记忆管理。

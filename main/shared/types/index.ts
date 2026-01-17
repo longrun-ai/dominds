@@ -5,6 +5,7 @@ export * from './problems';
 export * from './tools-registry';
 export * from './wire';
 
+export * from './context-health';
 export * from './dialog';
 export * from './run-state';
 

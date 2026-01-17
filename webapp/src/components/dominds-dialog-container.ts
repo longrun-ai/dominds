@@ -407,6 +407,9 @@ export class DomindsDialogContainer extends HTMLElement {
           this.clearGenerationGlow();
         }
         break;
+      case 'context_health_evt':
+        // Handled at the app toolbar layer; ignore in dialog timeline.
+        break;
 
       // Thinking stream
       case 'thinking_start_evt':

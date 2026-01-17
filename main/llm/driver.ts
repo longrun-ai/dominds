@@ -37,6 +37,7 @@ import {
   formatUserFacingLanguageGuide,
 } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
+import type { ContextHealthSnapshot, LlmUsageStats } from '../shared/types/context-health';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
@@ -57,6 +58,7 @@ import {
 } from '../texting';
 import type { ToolArguments } from '../tool';
 import { FuncTool, TextingTool, Tool, validateArgs } from '../tool';
+import { contextHealthReminderOwner } from '../tools/context-health';
 import { getTool } from '../tools/registry';
 import { generateDialogID } from '../utils/id';
 import { formatTaskDocContent } from '../utils/task-doc';
@@ -65,6 +67,8 @@ import {
   FuncCallMsg,
   FuncResultMsg,
   LlmConfig,
+  type ModelInfo,
+  type ProviderConfig,
   SayingMsg,
   TextingCallResultMsg,
   ThinkingMsg,
@@ -375,6 +379,123 @@ async function runLlmRequestWithRetry<T>(params: {
   }
 
   throw new DialogInterruptedError({ kind: 'system_stop', detail: 'LLM failed.' });
+}
+
+function resolveModelContextLimitTokens(modelInfo: ModelInfo | undefined): number | null {
+  if (
+    modelInfo &&
+    typeof modelInfo.context_length === 'number' &&
+    Number.isFinite(modelInfo.context_length)
+  ) {
+    const n = Math.floor(modelInfo.context_length);
+    return n > 0 ? n : null;
+  }
+  if (
+    modelInfo &&
+    typeof modelInfo.input_length === 'number' &&
+    Number.isFinite(modelInfo.input_length)
+  ) {
+    const n = Math.floor(modelInfo.input_length);
+    return n > 0 ? n : null;
+  }
+  return null;
+}
+
+function resolveEffectiveOptimalMaxTokens(args: {
+  modelInfo: ModelInfo | undefined;
+  modelContextLimitTokens: number;
+}): { effectiveOptimalMaxTokens: number; optimalMaxTokensConfigured?: number } {
+  const configured =
+    args.modelInfo &&
+    typeof args.modelInfo.optimal_max_tokens === 'number' &&
+    Number.isFinite(args.modelInfo.optimal_max_tokens)
+      ? Math.floor(args.modelInfo.optimal_max_tokens)
+      : undefined;
+  const configuredClamped = configured !== undefined && configured > 0 ? configured : undefined;
+  const defaultOptimal = Math.max(1, Math.floor(args.modelContextLimitTokens * 0.5));
+  const effectiveOptimalMaxTokens =
+    configuredClamped !== undefined ? configuredClamped : defaultOptimal;
+  return {
+    effectiveOptimalMaxTokens,
+    optimalMaxTokensConfigured: configuredClamped,
+  };
+}
+
+function computeContextHealthSnapshot(args: {
+  providerCfg: ProviderConfig;
+  model: string;
+  usage: LlmUsageStats;
+}): ContextHealthSnapshot {
+  const modelInfo: ModelInfo | undefined = args.providerCfg.models[args.model];
+  const modelContextLimitTokens = resolveModelContextLimitTokens(modelInfo);
+  if (modelContextLimitTokens === null) {
+    return { kind: 'unavailable', reason: 'model_limit_unavailable' };
+  }
+
+  const { effectiveOptimalMaxTokens, optimalMaxTokensConfigured } =
+    resolveEffectiveOptimalMaxTokens({
+      modelInfo,
+      modelContextLimitTokens,
+    });
+
+  if (args.usage.kind !== 'available') {
+    return {
+      kind: 'unavailable',
+      reason: 'usage_unavailable',
+      modelContextLimitTokens,
+      effectiveOptimalMaxTokens,
+      optimalMaxTokensConfigured,
+    };
+  }
+
+  const hardUtil = args.usage.promptTokens / modelContextLimitTokens;
+  const optimalUtil = args.usage.promptTokens / effectiveOptimalMaxTokens;
+  const level = hardUtil <= 0.5 ? 'healthy' : hardUtil <= 0.75 ? 'caution' : 'critical';
+
+  return {
+    kind: 'available',
+    promptTokens: args.usage.promptTokens,
+    completionTokens: args.usage.completionTokens,
+    totalTokens: args.usage.totalTokens,
+    modelContextLimitTokens,
+    effectiveOptimalMaxTokens,
+    optimalMaxTokensConfigured,
+    hardUtil,
+    optimalUtil,
+    level,
+  };
+}
+
+async function applyContextHealthMonitor(
+  dlg: Dialog,
+  snapshot: ContextHealthSnapshot,
+): Promise<void> {
+  let hasContextHealthReminder = false;
+  for (const reminder of dlg.reminders) {
+    if (reminder.owner && reminder.owner.name === contextHealthReminderOwner.name) {
+      hasContextHealthReminder = true;
+      break;
+    }
+  }
+
+  if (snapshot.kind !== 'available') {
+    if (hasContextHealthReminder) {
+      await dlg.processReminderUpdates();
+    }
+    return;
+  }
+
+  const shouldRemind =
+    snapshot.hardUtil > 0.5 || snapshot.promptTokens > snapshot.effectiveOptimalMaxTokens;
+
+  if (shouldRemind && !hasContextHealthReminder) {
+    dlg.addReminder('Context health reminder', contextHealthReminderOwner);
+    hasContextHealthReminder = true;
+  }
+
+  if (hasContextHealthReminder) {
+    await dlg.processReminderUpdates();
+  }
 }
 
 // === UNIFIED STREAMING HANDLERS ===
@@ -798,6 +919,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
       let suspendForHuman = false;
       let promptContent = '';
+      let contextHealthForGen: ContextHealthSnapshot | undefined;
 
       try {
         throwIfAborted(abortSignal, dlg.id);
@@ -1005,10 +1127,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         }
 
         if (agent.streaming === false) {
-          let nonStreamMsgs: ChatMessage[];
+          let nonStreamResult: { messages: ChatMessage[]; usage: LlmUsageStats };
           try {
             throwIfAborted(abortSignal, dlg.id);
-            nonStreamMsgs = await runLlmRequestWithRetry({
+            nonStreamResult = await runLlmRequestWithRetry({
               dlg,
               provider,
               abortSignal,
@@ -1033,6 +1155,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             generationHadError = true;
             throw err;
           }
+
+          if (!agent.model) {
+            throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
+          }
+          contextHealthForGen = computeContextHealthSnapshot({
+            providerCfg,
+            model: agent.model,
+            usage: nonStreamResult.usage,
+          });
+          dlg.setLastContextHealth(contextHealthForGen);
+          await applyContextHealthMonitor(dlg, contextHealthForGen);
+
+          const nonStreamMsgs = nonStreamResult.messages;
           const assistantMsgs = nonStreamMsgs.filter(
             (m): m is SayingMsg | ThinkingMsg =>
               m.type === 'saying_msg' || m.type === 'thinking_msg',
@@ -1240,15 +1375,16 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           // Direct streaming parser that forwards events without state tracking
           const parser = new TextingStreamParser(receiver);
 
+          let streamResult: { usage: LlmUsageStats } | undefined;
           try {
-            await runLlmRequestWithRetry({
+            streamResult = await runLlmRequestWithRetry({
               dlg,
               provider,
               abortSignal,
               maxRetries: 2,
               canRetry: () => !sawAnyStreamContent,
               doRequest: async () => {
-                await llmGen.genToReceiver(
+                return await llmGen.genToReceiver(
                   providerCfg,
                   agent,
                   systemPrompt,
@@ -1352,6 +1488,20 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             log.error(`LLM gen error:`, err);
             throw err;
           }
+
+          if (!streamResult) {
+            throw new Error('Internal error: missing stream result after successful generation');
+          }
+          if (!agent.model) {
+            throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
+          }
+          contextHealthForGen = computeContextHealthSnapshot({
+            providerCfg,
+            model: agent.model,
+            usage: streamResult.usage,
+          });
+          dlg.setLastContextHealth(contextHealthForGen);
+          await applyContextHealthMonitor(dlg, contextHealthForGen);
 
           // Execute collected calls concurrently after streaming completes
           const collectedCalls = parser.getCollectedCalls();
@@ -1530,7 +1680,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
         }
       } finally {
-        await dlg.notifyGeneratingFinish();
+        await dlg.notifyGeneratingFinish(contextHealthForGen);
       }
     }
 

@@ -5,6 +5,7 @@
  */
 import type { I18nText } from '../shared/types/i18n';
 import type { ReminderOwner, Tool } from '../tool';
+import { contextHealthReminderOwner } from './context-health';
 import {
   addReminderTool,
   changeMindTool,
@@ -224,4 +225,5 @@ export function listReminderOwners(): Map<string, ReminderOwner> {
 
   // Register ReminderOwners
   registerReminderOwner(shellCmdReminderOwner);
+  registerReminderOwner(contextHealthReminderOwner);
 })();

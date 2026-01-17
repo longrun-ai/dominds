@@ -5,6 +5,7 @@
 import type { ConnectionState } from '@/services/store';
 import faviconUrl from '../assets/favicon.svg';
 import {
+  formatContextUsageTitle,
   formatRemindersTitle,
   formatUiLanguageOptionLabel,
   formatUiLanguageTooltip,
@@ -29,7 +30,9 @@ import type {
   ToolsetInfo,
   WorkspaceProblem,
 } from '../shared/types';
+import type { ContextHealthSnapshot } from '../shared/types/context-health';
 import type {
+  ContextHealthEvent,
   FullRemindersEvent,
   NewQ4HAskedEvent,
   Q4HAnsweredEvent,
@@ -102,6 +105,8 @@ export class DomindsApp extends HTMLElement {
   private toolbarTotalRounds: number = 1;
   private toolbarReminders: ReminderContent[] = [];
   private toolbarRemindersCollapsed: boolean = true;
+  private contextHealthByDialogKey = new Map<string, ContextHealthSnapshot>();
+  private toolbarContextHealth: ContextHealthSnapshot | null = null;
   private remindersWidgetVisible: boolean = false;
   private remindersWidgetX: number = 12;
   private remindersWidgetY: number = 120;
@@ -313,6 +318,7 @@ export class DomindsApp extends HTMLElement {
     this.updateCreateDialogModalText();
     this.updateAuthModalText();
     this.updateToolsRegistryUi();
+    this.updateContextHealthUi();
   }
 
   private applyUiLanguageSelectDecorations(t: ReturnType<typeof getUiStrings>): void {
@@ -808,6 +814,109 @@ export class DomindsApp extends HTMLElement {
     if (resumeCount) resumeCount.textContent = String(this.resumableDialogsCount);
     if (stopBtn) stopBtn.disabled = this.proceedingDialogsCount === 0;
     if (resumeBtn) resumeBtn.disabled = this.resumableDialogsCount === 0;
+    this.updateContextHealthUi();
+  }
+
+  private formatTokenCountShort(count: number): string {
+    if (!Number.isFinite(count)) return String(count);
+    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+    if (count >= 10_000) return `${Math.round(count / 1000)}k`;
+    if (count >= 1_000) return `${(count / 1000).toFixed(1)}k`;
+    return String(count);
+  }
+
+  private formatPercent(ratio: number): string {
+    const pct = ratio * 100;
+    if (!Number.isFinite(pct)) return '∞';
+    const fixed = pct < 10 ? pct.toFixed(1) : pct.toFixed(0);
+    return `${fixed}%`;
+  }
+
+  private clamp01(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+  }
+
+  private renderContextUsageIcon(snapshot: ContextHealthSnapshot | null): string {
+    const size = 18;
+    const cx = 9;
+    const cy = 9;
+    const r = 7;
+    const startAngleRad = -Math.PI / 2;
+
+    if (!snapshot || snapshot.kind !== 'available') {
+      return `
+        <svg class="ctx-usage-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" focusable="false">
+          <circle class="ctx-usage-ring" cx="${cx}" cy="${cy}" r="${r}" fill="none" />
+        </svg>
+      `;
+    }
+
+    const hardRatio = this.clamp01(snapshot.hardUtil);
+    const optimalRatio = this.clamp01(
+      snapshot.effectiveOptimalMaxTokens / snapshot.modelContextLimitTokens,
+    );
+
+    const endAngleRad = startAngleRad + hardRatio * 2 * Math.PI;
+    const endX = cx + r * Math.cos(endAngleRad);
+    const endY = cy + r * Math.sin(endAngleRad);
+    const largeArc = hardRatio > 0.5 ? 1 : 0;
+
+    const hasWedge = hardRatio > 0;
+    const wedgePath = hasWedge
+      ? `M ${cx} ${cy} L ${cx} ${cy - r} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY} Z`
+      : '';
+
+    const markAngleRad = startAngleRad + optimalRatio * 2 * Math.PI;
+    const markX = cx + r * Math.cos(markAngleRad);
+    const markY = cy + r * Math.sin(markAngleRad);
+
+    return `
+      <svg class="ctx-usage-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" focusable="false">
+        ${hasWedge ? `<path class="ctx-usage-wedge" d="${wedgePath}" />` : ''}
+        <circle class="ctx-usage-ring" cx="${cx}" cy="${cy}" r="${r}" fill="none" />
+        <line class="ctx-usage-mark" x1="${cx}" y1="${cy}" x2="${markX}" y2="${markY}" />
+      </svg>
+    `;
+  }
+
+  private updateContextHealthUi(): void {
+    const el = this.shadowRoot?.querySelector('#toolbar-context-health');
+    if (!(el instanceof HTMLElement)) return;
+
+    const snapshot = this.toolbarContextHealth;
+    if (!snapshot) {
+      el.setAttribute('data-level', 'unknown');
+      const label = formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+      el.title = label;
+      el.setAttribute('aria-label', label);
+      el.innerHTML = this.renderContextUsageIcon(null);
+      return;
+    }
+
+    if (snapshot.kind !== 'available') {
+      el.setAttribute('data-level', 'unknown');
+      const label = formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+      el.title = label;
+      el.setAttribute('aria-label', label);
+      el.innerHTML = this.renderContextUsageIcon(snapshot);
+      return;
+    }
+
+    const overOptimal = snapshot.promptTokens > snapshot.effectiveOptimalMaxTokens;
+    el.setAttribute('data-level', overOptimal ? 'caution' : 'healthy');
+    el.innerHTML = this.renderContextUsageIcon(snapshot);
+    const label = formatContextUsageTitle(this.uiLanguage, {
+      kind: 'known',
+      promptTokens: snapshot.promptTokens,
+      hardPercentText: this.formatPercent(snapshot.hardUtil),
+      modelContextLimitTokens: snapshot.modelContextLimitTokens,
+      overOptimal,
+    });
+    el.title = label;
+    el.setAttribute('aria-label', label);
   }
 
   private dialogKey(rootId: string, selfId: string): string {
@@ -1002,6 +1111,58 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-danger-border, #f5c6cb);
         color: var(--dominds-danger, #721c24);
       }
+
+      #toolbar-context-health {
+        cursor: default;
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #toolbar-context-health[data-level='healthy'] {
+        color: var(--dominds-success, #155724);
+      }
+
+      #toolbar-context-health[data-level='caution'] {
+        color: color-mix(in srgb, #b45309 85%, var(--dominds-fg, #333333));
+      }
+
+      #toolbar-context-health[data-level='unknown'] {
+        color: var(--dominds-muted, #666666);
+      }
+
+          .ctx-usage-svg {
+            display: block;
+          }
+
+          .ctx-usage-ring {
+            stroke: var(--dominds-border, #e0e0e0);
+            stroke-width: 1.5;
+          }
+
+          #toolbar-context-health[data-level='unknown'] .ctx-usage-ring {
+            stroke: var(--dominds-muted, #666666);
+            opacity: 0.6;
+          }
+
+      .ctx-usage-wedge {
+        fill: currentColor;
+        opacity: 0.6;
+      }
+
+          .ctx-usage-mark {
+            stroke: var(--dominds-fg, #333333);
+            stroke-width: 1.2;
+            opacity: 0.65;
+          }
 
       .problems-panel {
         position: fixed;
@@ -2213,6 +2374,18 @@ export class DomindsApp extends HTMLElement {
 
   public getHTML(): string {
     const t = getUiStrings(this.uiLanguage);
+    const contextUsageTitle =
+      this.toolbarContextHealth && this.toolbarContextHealth.kind === 'available'
+        ? formatContextUsageTitle(this.uiLanguage, {
+            kind: 'known',
+            promptTokens: this.toolbarContextHealth.promptTokens,
+            hardPercentText: this.formatPercent(this.toolbarContextHealth.hardUtil),
+            modelContextLimitTokens: this.toolbarContextHealth.modelContextLimitTokens,
+            overOptimal:
+              this.toolbarContextHealth.promptTokens >
+              this.toolbarContextHealth.effectiveOptimalMaxTokens,
+          })
+        : formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
     const uiLanguageMatch = getUiLanguageMatchState({
       uiLanguage: this.uiLanguage,
       serverWorkLanguage: this.serverWorkLanguage,
@@ -2274,7 +2447,7 @@ export class DomindsApp extends HTMLElement {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
               <span>${String(this.problems.length)}</span>
             </button>
-            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
+	            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
             <div class="ui-language-menu">
               <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
                 <span id="ui-language-menu-button-label">${uiLanguageButtonLabel}</span>
@@ -2382,20 +2555,21 @@ export class DomindsApp extends HTMLElement {
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div style="flex: 1;"></div>
-              <div id="round-nav">
-                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentRound > 1 ? '' : 'disabled'} aria-label="${t.previousRound}">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                </button>
-              <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">R ${this.toolbarCurrentRound}</span>
-              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentRound < this.toolbarTotalRounds ? '' : 'disabled'} aria-label="${t.nextRound}">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-              </button>
-	            </div>
-	          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
-	            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
-	              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-	              <span>${String(this.toolbarReminders.length)}</span>
-	            </button>
+	              <div id="round-nav">
+	                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentRound > 1 ? '' : 'disabled'} aria-label="${t.previousRound}">
+	                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+	                </button>
+	              <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">R ${this.toolbarCurrentRound}</span>
+	              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentRound < this.toolbarTotalRounds ? '' : 'disabled'} aria-label="${t.nextRound}">
+	                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+	              </button>
+		            </div>
+	              <div class="badge-button" id="toolbar-context-health" data-level="unknown" title="${contextUsageTitle}" aria-label="${contextUsageTitle}" style="margin-left: 12px;">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
+		          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
+		            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
+		              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+		              <span>${String(this.toolbarReminders.length)}</span>
+		            </button>
 	            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
             </button>
@@ -4779,6 +4953,10 @@ export class DomindsApp extends HTMLElement {
         if (this.q4hInput && typeof this.q4hInput.setDialog === 'function') {
           this.q4hInput.setDialog(this.currentDialog);
         }
+
+        const key = this.dialogKey(readyMsg.dialog.rootId, readyMsg.dialog.selfId);
+        this.toolbarContextHealth = this.contextHealthByDialogKey.get(key) ?? null;
+        this.updateContextHealthUi();
         return true;
       }
       case 'new_q4h_asked': {
@@ -4982,6 +5160,25 @@ export class DomindsApp extends HTMLElement {
             }
           }
 
+          break;
+        }
+
+        case 'context_health_evt': {
+          const event = message as ContextHealthEvent;
+          const key = this.dialogKey(dialog.rootId, dialog.selfId);
+          this.contextHealthByDialogKey.set(key, event.contextHealth);
+
+          if (
+            this.currentDialog &&
+            this.currentDialog.rootId === dialog.rootId &&
+            this.currentDialog.selfId === dialog.selfId
+          ) {
+            this.toolbarContextHealth = event.contextHealth;
+            this.updateContextHealthUi();
+          }
+
+          const ts = (message as TypedDialogEvent).timestamp;
+          this.bumpDialogLastModified(dialog.rootId, typeof ts === 'string' ? ts : undefined);
           break;
         }
 

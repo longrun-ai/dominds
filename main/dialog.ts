@@ -18,6 +18,7 @@ import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './shared/async-fifo-mutex';
 import { getWorkLanguage } from './shared/runtime-language';
+import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
   DialogEvent,
   FullRemindersEvent,
@@ -141,6 +142,7 @@ export interface DialogInitParams {
     currentRound?: number;
     createdAt?: string;
     updatedAt?: string;
+    contextHealth?: ContextHealthSnapshot;
   };
 }
 
@@ -180,6 +182,7 @@ export abstract class Dialog {
   protected _updatedAt: string;
   protected _uiLanguage: LanguageCode;
   protected _lastUserLanguageCode: LanguageCode;
+  protected _lastContextHealth?: ContextHealthSnapshot;
   // Prompt queued for the next round drive (set by startNewRound).
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
   // Track whether the current round's initial events (user_text, generating_start)
@@ -237,6 +240,15 @@ export abstract class Dialog {
     this._currentRound = initialState?.currentRound || 1;
     this._uiLanguage = getWorkLanguage();
     this._lastUserLanguageCode = getWorkLanguage();
+    this._lastContextHealth = initialState?.contextHealth;
+  }
+
+  public setLastContextHealth(snapshot: ContextHealthSnapshot): void {
+    this._lastContextHealth = snapshot;
+  }
+
+  public getLastContextHealth(): ContextHealthSnapshot | undefined {
+    return this._lastContextHealth;
   }
 
   public get remindersVer() {
@@ -548,8 +560,13 @@ export abstract class Dialog {
       this._updatedAt = formatUnifiedTimestamp(new Date());
     }
 
-    // Centralized persistence - called when emitting event
-    this.dlgStore.persistReminders(this, this.reminders);
+    // Centralized persistence - called when emitting event.
+    // Must be awaited to avoid overlapping writes (reminders.json.tmp rename races).
+    try {
+      await this.dlgStore.persistReminders(this, this.reminders);
+    } catch (err) {
+      log.warn('Failed to persist reminders', err, { dialogId: this.id.valueOf() });
+    }
 
     const reminders: ReminderContent[] = this.reminders.map((r: Reminder) => ({
       content: r.content,
@@ -823,9 +840,12 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     await this.dlgStore.notifyGeneratingStart(this);
   }
 
-  public async notifyGeneratingFinish(): Promise<void> {
+  public async notifyGeneratingFinish(contextHealth?: ContextHealthSnapshot): Promise<void> {
+    if (contextHealth) {
+      this._lastContextHealth = contextHealth;
+    }
     try {
-      await this.dlgStore.notifyGeneratingFinish(this);
+      await this.dlgStore.notifyGeneratingFinish(this, contextHealth);
     } catch (err) {
       log.warn('notifyGeneratingFinish failed', undefined, {
         genseq: this._activeGenSeq,
@@ -1413,7 +1433,10 @@ export abstract class DialogStore {
   /**
    * Notify end of LLM generation lifecycle (generating_finish_evt)
    */
-  public async notifyGeneratingFinish(_dialog: Dialog): Promise<void> {}
+  public async notifyGeneratingFinish(
+    _dialog: Dialog,
+    _contextHealth?: ContextHealthSnapshot,
+  ): Promise<void> {}
 
   // Explicit phase notifications (driver-driven)
   public thinkingStart(_dialog: Dialog): void {}
