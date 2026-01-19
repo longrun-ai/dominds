@@ -17,7 +17,8 @@
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
-    "webapp-last-modified": "tsx webapp/dialog-last-modified.ts"
+    "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
+    "webapp-run-control-visual": "tsx webapp/run-control-visual.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

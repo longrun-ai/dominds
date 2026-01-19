@@ -5,7 +5,10 @@
 import { getUiStrings } from '../i18n/ui';
 import type { ApiMoveDialogsRequest, ApiRootDialogResponse, DialogInfo } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
-import type { DialogRunState } from '../shared/types/run-state';
+import {
+  runControlVisualStateFromRunState,
+  runStateClassSuffixFromRunState,
+} from '../utils/run-control-visual';
 
 export interface RunningDialogListProps {
   dialogs: ApiRootDialogResponse[];
@@ -37,13 +40,6 @@ type ListState = { kind: 'empty' } | { kind: 'ready'; groups: TaskGroup[] };
 type SelectionState =
   | { kind: 'none' }
   | { kind: 'selected'; rootId: string; selfId: string; isRoot: boolean };
-
-type RunControlVisualState =
-  | { kind: 'none' }
-  | { kind: 'interrupted' }
-  | { kind: 'blocked_q4h' }
-  | { kind: 'blocked_subdialogs' }
-  | { kind: 'blocked_both' };
 
 export class RunningDialogList extends HTMLElement {
   private props: RunningDialogListProps = {
@@ -137,44 +133,15 @@ export class RunningDialogList extends HTMLElement {
     return this.props.generatingDialogKeys.has(key);
   }
 
-  private getRunControlVisualState(runState: DialogRunState | undefined): RunControlVisualState {
-    if (!runState) return { kind: 'none' };
-    switch (runState.kind) {
-      case 'interrupted':
-        return { kind: 'interrupted' };
-      case 'blocked': {
-        switch (runState.reason.kind) {
-          case 'needs_human_input':
-            return { kind: 'blocked_q4h' };
-          case 'waiting_for_subdialogs':
-            return { kind: 'blocked_subdialogs' };
-          case 'needs_human_input_and_subdialogs':
-            return { kind: 'blocked_both' };
-          default: {
-            const _exhaustive: never = runState.reason;
-            return { kind: 'none' };
-          }
-        }
-      }
-      case 'idle_waiting_user':
-      case 'proceeding':
-      case 'proceeding_stop_requested':
-      case 'terminal':
-        return { kind: 'none' };
-      default: {
-        const _exhaustive: never = runState;
-        return { kind: 'none' };
-      }
-    }
-  }
-
   private renderRunBadges(dialog: ApiRootDialogResponse): string {
     const t = getUiStrings(this.props.uiLanguage);
-    const visualState = this.getRunControlVisualState(dialog.runState);
+    const visualState = runControlVisualStateFromRunState(dialog.runState);
     const badges: string[] = [];
 
     switch (visualState.kind) {
       case 'none':
+      case 'proceeding':
+      case 'proceeding_stop_requested':
         break;
       case 'interrupted':
         badges.push(
@@ -213,23 +180,8 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private getRunStateClass(dialog: ApiRootDialogResponse): string {
-    const visualState = this.getRunControlVisualState(dialog.runState);
-    switch (visualState.kind) {
-      case 'none':
-        return '';
-      case 'interrupted':
-        return ' state-interrupted';
-      case 'blocked_q4h':
-        return ' state-blocked-q4h';
-      case 'blocked_subdialogs':
-        return ' state-blocked-subdialogs';
-      case 'blocked_both':
-        return ' state-blocked-both';
-      default: {
-        const _exhaustive: never = visualState;
-        return String(_exhaustive);
-      }
-    }
+    const suffix = runStateClassSuffixFromRunState(dialog.runState);
+    return suffix ? ` ${suffix}` : '';
   }
 
   private updateListState(dialogs: ApiRootDialogResponse[]): void {
@@ -1007,6 +959,18 @@ export class RunningDialogList extends HTMLElement {
       .dialog-item.state-blocked-both {
         border-left-color: color-mix(in srgb, #7c3aed 40%, var(--dominds-primary, #007acc) 40%);
         background: color-mix(in srgb, #7c3aed 6%, var(--dominds-primary, #007acc) 5%);
+      }
+
+      .dialog-item.state-proceeding {
+        border-left-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 5%, transparent);
+        position: relative;
+        animation: dialogGlowPulse 1.3s ease-in-out infinite;
+      }
+
+      .dialog-item.state-proceeding-stop {
+        border-left-color: color-mix(in srgb, #f59e0b 60%, transparent);
+        background: color-mix(in srgb, #f59e0b 8%, transparent);
       }
 
       @keyframes dialogGlowPulse {
