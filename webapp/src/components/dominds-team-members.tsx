@@ -398,18 +398,6 @@ export class DomindsTeamMembers extends HTMLElement {
           ${isDefault ? `<span class="badge badge-default">${t.teamMembersDefaultBadge}</span>` : ''}
           ${member.hidden === true ? `<span class="badge badge-hidden">${t.teamMembersHiddenBadge}</span>` : ''}
         </div>
-        <div class="details-actions">
-          <button type="button" class="details-action" id="team-members-details-mention" data-member-id="${this.escapeAttr(
-            member.id,
-          )}" title="${t.teamMembersMention}" aria-label="${t.teamMembersMention}">
-            ${t.teamMembersMention}
-          </button>
-          <button type="button" class="details-action" id="team-members-details-copy" data-member-id="${this.escapeAttr(
-            member.id,
-          )}" title="${t.teamMembersCopyMention}" aria-label="${t.teamMembersCopyMention}">
-            ${t.teamMembersCopyMention}
-          </button>
-        </div>
       </div>
       <div class="details-grid">
         <div class="details-row"><span class="k">${t.teamMembersProviderLabel}</span><span class="v">${this.escapeHtml(
@@ -524,21 +512,7 @@ export class DomindsTeamMembers extends HTMLElement {
 
     const details = root.querySelector('#team-member-details');
     if (details instanceof HTMLElement) {
-      details.onclick = (event: MouseEvent) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        const btn = target.closest('button[data-member-id]');
-        if (!(btn instanceof HTMLButtonElement)) return;
-        event.preventDefault();
-        const memberId = btn.getAttribute('data-member-id');
-        if (typeof memberId !== 'string' || memberId.length === 0) return;
-
-        if (btn.id === 'team-members-details-mention') {
-          this.emitMention(memberId);
-        } else if (btn.id === 'team-members-details-copy') {
-          void this.copyMention(memberId);
-        }
-      };
+      details.onclick = null;
     }
   }
 
@@ -903,27 +877,6 @@ export class DomindsTeamMembers extends HTMLElement {
       .details-callsign {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         color: var(--dominds-muted, #666666);
-      }
-
-      .details-actions {
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-      }
-
-      .details-action {
-        border: 1px solid var(--dominds-border, #e0e0e0);
-        background: var(--dominds-bg, #ffffff);
-        color: var(--dominds-fg, #333333);
-        border-radius: 10px;
-        padding: 6px 10px;
-        cursor: pointer;
-        font-size: 12px;
-        white-space: nowrap;
-      }
-
-      .details-action:hover {
-        border-color: var(--dominds-primary, #007acc);
       }
 
       .details-grid {

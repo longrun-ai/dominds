@@ -136,7 +136,6 @@ DOM). E2E helpers should pierce the shadow root when selecting the inner control
 - List container (shadow): `#team-members-list`
 - Member row (shadow): `.member-row[data-member-id]` with `aria-pressed="true|false"`
 - Details container (shadow): `#team-member-details`
-- Details actions (shadow): `#team-members-details-mention` and `#team-members-details-copy`
 
 ### Tools activity
 
