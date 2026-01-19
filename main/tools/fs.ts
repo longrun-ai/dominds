@@ -98,7 +98,7 @@ export const listDirTool: TextingTool = {
 Usage: @list_dir [path]
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including listing).
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including listing).
 
 Features:
 - Shows file sizes for all entries
@@ -113,7 +113,7 @@ Example:
 Usage: @list_dir [path]
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including listing).
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including listing).
 
 Features:
 - Shows file sizes for all entries
@@ -127,7 +127,7 @@ Example:
 用法：@list_dir [path]
 
 注意：
-  \`*.tsk/\` 下的路径属于封装任务包，文件工具（包括列目录）不可访问。
+  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括列目录）不可访问。
 
 功能：
 - 显示每个条目的文件大小
@@ -279,7 +279,7 @@ export const rmDirTool: TextingTool = {
 Usage: @rm_dir <path> [options]
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
 
 Options:
   !recursive [true|false]  - Remove directory and all contents (default: false)
@@ -292,7 +292,7 @@ Examples:
 Usage: @rm_dir <path> [options]
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
 
 Options:
   !recursive [true|false]  - Remove directory and all contents (default: false)
@@ -304,7 +304,7 @@ Examples:
 用法：@rm_dir <path> [options]
 
 注意：
-  \`*.tsk/\` 下的路径属于封装任务包，文件工具（包括删除）不可访问。
+  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括删除）不可访问。
 
 选项：
   !recursive [true|false]  - 递归删除目录及其内容（默认：false）
@@ -406,7 +406,7 @@ export const rmFileTool: TextingTool = {
 Usage: @rm_file <path>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
 
 Example:
   @rm_file temp/old-file.txt`,
@@ -415,7 +415,7 @@ Example:
 Usage: @rm_file <path>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools (including deletion).
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
 
 Example:
   @rm_file temp/old-file.txt`,
@@ -423,7 +423,7 @@ Example:
 用法：@rm_file <path>
 
 注意：
-  \`*.tsk/\` 下的路径属于封装任务包，文件工具（包括删除）不可访问。
+  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括删除）不可访问。
 
 示例：
   @rm_file temp/old-file.txt`,

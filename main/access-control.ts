@@ -156,7 +156,7 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
   // Get relative path from workspace root
   const relativePath = path.relative(cwd, resolvedPath);
 
-  // Encapsulated task packages (`*.tsk/`) are forbidden to all general file tools.
+  // Task Docs (`*.tsk/`) are encapsulated and forbidden to all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
     return false;
   }
@@ -210,7 +210,7 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
   // Get relative path from workspace root
   const relativePath = path.relative(cwd, resolvedPath);
 
-  // Encapsulated task packages (`*.tsk/`) are forbidden to all general file tools.
+  // Task Docs (`*.tsk/`) are encapsulated and forbidden to all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
     return false;
   }
@@ -257,7 +257,7 @@ export function getAccessDeniedMessage(operation: 'read' | 'write', targetPath: 
   if (isEncapsulatedTaskPath(targetPath)) {
     lines.push('');
     lines.push(
-      `- Note: \`*.tsk/\` is an encapsulated task package. General file tools must not read/write/list/delete it.`,
+      `- Note: \`*.tsk/\` is an encapsulated Task Doc. General file tools must not read/write/list/delete it.`,
     );
     lines.push(
       `- Hint: Use \`@change_mind !goals\` / \`@change_mind !constraints\` / \`@change_mind !progress\` to update task sections.`,

@@ -759,7 +759,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         'deny-list（no_*）优先于 allow-list（*_dirs）。',
         '若未配置 allow-list，则默认允许（在 deny-list 不命中的前提下）。',
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配。',
-        '`*.tsk/` 是封装任务包：通用文件工具必须禁止访问。',
+        '`*.tsk/` 是封装差遣牒：通用文件工具必须禁止访问。',
       ])
     );
   }
@@ -769,7 +769,7 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Deny-lists (no_*) override allow-lists (*_dirs).',
       'If no allow-list is configured, access defaults to allow (after deny-list check).',
       'Patterns support `*` and `**` with directory-scope semantics.',
-      '`*.tsk/` is an encapsulated task package and is forbidden to general file tools.',
+      '`*.tsk/` is an encapsulated Task Doc and is forbidden to general file tools.',
     ])
   );
 }

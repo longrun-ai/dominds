@@ -167,7 +167,7 @@ export abstract class Dialog {
 
   // relative path to a specific workspace (usually .md) file,
   // used as mission/plan/progress doc of a round of a dialog
-  public readonly taskDocPath: string; // Task document path is immutable for the dialog lifecycle
+  public readonly taskDocPath: string; // Task Doc path is immutable for the dialog lifecycle
 
   readonly id: DialogID;
   readonly agentId: string; // team member id
@@ -219,7 +219,7 @@ export abstract class Dialog {
   ) {
     // Validate required parameters
     if (!taskDocPath || taskDocPath.trim() === '') {
-      throw new Error('Task document path is required for creating a dialog');
+      throw new Error('Task Doc path is required for creating a dialog');
     }
 
     this.dlgStore = dlgStore;
@@ -639,7 +639,7 @@ You're operating in a subdialog, which means you're focused on a specific subtas
       // Main dialog capabilities
       instructions += `
 - @clear_mind: Restart the conversation with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders.
-- @change_mind: Update the shared task document content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For task packages (\`*.tsk/\`), you MUST target exactly one section: \`@change_mind !goals\` / \`!constraints\` / \`!progress\`.
+- @change_mind: Update the shared Task Doc content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For Task Docs (\`*.tsk/\`), each @change_mind call MUST target exactly one section: \`@change_mind !goals\` / \`!constraints\` / \`!progress\`. You may issue multiple @change_mind calls in a single message to update multiple sections.
 
 **Main Dialog Responsibilities:**
 You're the primary dialog agent. You can create subdialogs for specialized tasks, manage the overall conversation flow, and make high-level decisions about task direction and approach.`;

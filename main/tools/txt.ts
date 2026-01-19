@@ -169,7 +169,7 @@ export const readFileTool: TextingTool = {
 Usage: @read_file [options] <path>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Options:
   !decorate-linenos [true|false]  - Add line numbers (default: true)
@@ -194,7 +194,7 @@ Examples:
 Usage: @read_file [options] <path>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Options:
   !decorate-linenos [true|false]  - Add line numbers (default: true)
@@ -218,7 +218,7 @@ Examples:
 用法：@read_file [options] <path>
 
 注意：
-  \`*.tsk/\` 下的路径属于封装任务包，文件工具不可访问。
+  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
 
 选项：
   !decorate-linenos [true|false]  - 显示行号（默认：true）
@@ -307,7 +307,7 @@ export const overwriteFileTool: TextingTool = {
 <file content in body>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Examples:
   @overwrite_file src/config.ts
@@ -321,7 +321,7 @@ Examples:
 <file content in body>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Examples:
   @overwrite_file src/config.ts
@@ -334,7 +334,7 @@ Examples:
 <文件内容写在正文里>
 
 注意：
-  \`*.tsk/\` 下的路径属于封装任务包，文件工具不可访问。
+  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
 
 示例：
   @overwrite_file src/config.ts
@@ -415,7 +415,7 @@ export const patchFileTool: TextingTool = {
 <patch content in body>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Patch format:
   @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
@@ -435,7 +435,7 @@ Example:
 <patch content in body>
 
 Note:
-  Paths under \`*.tsk/\` are encapsulated task packages and are NOT accessible via file tools.
+  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Patch format:
   @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
@@ -454,7 +454,7 @@ Example:
 <补丁内容写在正文里>
 
 注意：
-  \`*.tsk/\` 下的路径属于封装任务包，文件工具不可访问。
+  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
 
 补丁格式：
   @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
@@ -613,16 +613,16 @@ export const applyPatchTool: TextingTool = {
   name: 'apply_patch',
   usageDescription:
     'Apply a unified git diff patch to the workspace.\n' +
-    'Note: Paths under `*.tsk/` are encapsulated task packages and are NOT accessible via file tools.\n' +
+    'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
     'Usage: @apply_patch\n<diff content in body>',
   usageDescriptionI18n: {
     en:
       'Apply a unified git diff patch to the workspace.\n' +
-      'Note: Paths under `*.tsk/` are encapsulated task packages and are NOT accessible via file tools.\n' +
+      'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
       'Usage: @apply_patch\n<diff content in body>',
     zh:
       '对工作区应用 unified git diff 补丁。\n' +
-      '注意：`*.tsk/` 下的路径属于封装任务包，文件工具不可访问。\n' +
+      '注意：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。\n' +
       '用法：@apply_patch\n<diff 内容写在正文里>',
   },
   backfeeding: true,

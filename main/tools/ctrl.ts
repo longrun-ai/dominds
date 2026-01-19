@@ -231,14 +231,14 @@ export const changeMindTool: TextingTool = {
   name: 'change_mind',
   usageDescription:
     'Update task document content (no round reset).\n' +
-    'Task package: @change_mind !goals|!constraints|!progress\\n<new-section-content>',
+    'Task Doc (`*.tsk/`): @change_mind !goals|!constraints|!progress\\n<new-section-content>',
   usageDescriptionI18n: {
     en:
       'Update task document content (no round reset).\n' +
-      'Task package: @change_mind !goals|!constraints|!progress\\n<new-section-content>',
+      'Task Doc (`*.tsk/`): @change_mind !goals|!constraints|!progress\\n<new-section-content>',
     zh:
-      '更新任务文档内容（不重置轮次）。\n' +
-      '任务包：@change_mind !goals|!constraints|!progress\\n<new-section-content>',
+      '更新差遣牒内容（不重置轮次）。\n' +
+      '差遣牒（`*.tsk/`）：@change_mind !goals|!constraints|!progress\\n<new-section-content>',
   },
   backfeeding: false,
   async call(
@@ -295,10 +295,8 @@ export const changeMindTool: TextingTool = {
 
     if (!isTaskPackagePath(taskDocPath)) {
       return fail(
-        `Error: This dialog uses a legacy task doc '${taskDocPath}'. Only \`*.tsk/\` task packages are supported.`,
-        env(
-          `Error: This dialog uses a legacy task doc '${taskDocPath}'. Only \`*.tsk/\` task packages are supported.`,
-        ),
+        `Error: Invalid Task Doc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
+        env(`Error: Invalid Task Doc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`),
       );
     }
 

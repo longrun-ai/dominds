@@ -267,12 +267,10 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
 
     // Validate that taskDocPath is provided (it's now mandatory)
     if (!taskDocPath || taskDocPath.trim() === '') {
-      throw new Error('Task document path is required for creating a dialog');
+      throw new Error('Task Doc path is required for creating a dialog');
     }
     if (!isTaskPackagePath(taskDocPath)) {
-      throw new Error(
-        `Task document must be a task package directory ending in '.tsk/' (got: '${taskDocPath}')`,
-      );
+      throw new Error(`Task Doc must be a directory ending in '.tsk' (got: '${taskDocPath}')`);
     }
 
     // Auto-fill default_responder if no agentId provided

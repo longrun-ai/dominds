@@ -1,9 +1,9 @@
 /**
  * Module: utils/task-package
  *
- * Encapsulated task document packages (`*.tsk/`).
+ * Encapsulated Task Docs (`*.tsk/`).
  *
- * A task package is a directory ending in `.tsk` containing:
+ * A Task Doc is a directory ending in `.tsk`. It *may* contain:
  * - goals.md
  * - constraints.md
  * - progress.md
@@ -13,13 +13,16 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { LanguageCode } from '../shared/types/language';
 
 export type TaskPackageSection = 'goals' | 'constraints' | 'progress';
 
-export interface TaskPackageSections {
-  goals: string;
-  constraints: string;
-  progress: string;
+export type TaskPackageSectionState = { kind: 'present'; content: string } | { kind: 'missing' };
+
+export interface TaskPackageSectionsState {
+  goals: TaskPackageSectionState;
+  constraints: TaskPackageSectionState;
+  progress: TaskPackageSectionState;
 }
 
 const sectionToFilename: Record<TaskPackageSection, string> = {
@@ -64,53 +67,100 @@ async function fileExists(fullPath: string): Promise<boolean> {
   }
 }
 
-async function ensureFileExists(fullPath: string): Promise<void> {
-  if (await fileExists(fullPath)) return;
-  await fs.promises.writeFile(fullPath, '', 'utf8');
-}
-
 export async function ensureTaskPackage(
   taskPackageDirFullPath: string,
   _updatedBy?: string,
 ): Promise<void> {
   await fs.promises.mkdir(taskPackageDirFullPath, { recursive: true });
+}
 
-  for (const filename of Object.values(sectionToFilename)) {
-    await ensureFileExists(path.join(taskPackageDirFullPath, filename));
+async function readSectionFile(sectionPath: string): Promise<TaskPackageSectionState> {
+  if (!(await fileExists(sectionPath))) {
+    return { kind: 'missing' };
   }
+  const content = await fs.promises.readFile(sectionPath, 'utf8');
+  return { kind: 'present', content };
 }
 
 export async function readTaskPackageSections(
   taskPackageDirFullPath: string,
-): Promise<TaskPackageSections> {
-  const goals = await fs.promises.readFile(
+): Promise<TaskPackageSectionsState> {
+  const goals = await readSectionFile(
     path.join(taskPackageDirFullPath, taskPackageFilenameForSection('goals')),
-    'utf8',
   );
-  const constraints = await fs.promises.readFile(
+  const constraints = await readSectionFile(
     path.join(taskPackageDirFullPath, taskPackageFilenameForSection('constraints')),
-    'utf8',
   );
-  const progress = await fs.promises.readFile(
+  const progress = await readSectionFile(
     path.join(taskPackageDirFullPath, taskPackageFilenameForSection('progress')),
-    'utf8',
   );
   return { goals, constraints, progress };
 }
 
-export function formatEffectiveTaskDocFromSections(sections: TaskPackageSections): string {
+function formatSectionBody(section: TaskPackageSection, state: TaskPackageSectionState): string {
+  if (state.kind === 'present') return state.content;
+  if (section === 'goals') return '*Missing `goals.md`. Create it with `@change_mind !goals`.*';
+  if (section === 'constraints')
+    return '*Missing `constraints.md`. Create it with `@change_mind !constraints`.*';
+  if (section === 'progress')
+    return '*Missing `progress.md`. Create it with `@change_mind !progress`.*';
+  const _exhaustive: never = section;
+  return String(_exhaustive);
+}
+
+function formatSectionBodyI18n(
+  language: LanguageCode,
+  section: TaskPackageSection,
+  state: TaskPackageSectionState,
+): string {
+  if (state.kind === 'present') return state.content;
+  if (language === 'zh') {
+    if (section === 'goals') return '*缺少 `goals.md`。请用 `@change_mind !goals` 创建。*';
+    if (section === 'constraints')
+      return '*缺少 `constraints.md`。请用 `@change_mind !constraints` 创建。*';
+    if (section === 'progress') return '*缺少 `progress.md`。请用 `@change_mind !progress` 创建。*';
+    const _exhaustiveZh: never = section;
+    return String(_exhaustiveZh);
+  }
+  return formatSectionBody(section, state);
+}
+
+export function formatEffectiveTaskDocFromSections(
+  language: LanguageCode,
+  sections: TaskPackageSectionsState,
+): string {
   // Deterministic framing only; section bodies are treated as opaque markdown.
+  if (language === 'zh') {
+    return [
+      `# 差遣牒`,
+      ``,
+      `> 我们的差遣牒由三个分段构成：目标/约束/进展。`,
+      `> 维护方式：每次 \`@change_mind\` 必须指定一个分段（\`!goals\` / \`!constraints\` / \`!progress\`）。可在同一条消息中连续发出多个 \`@change_mind\` 来一次更新多个分段。`,
+      ``,
+      `## 目标 (通过 \`@change_mind !goals\` 维护)`,
+      formatSectionBodyI18n(language, 'goals', sections.goals),
+      ``,
+      `## 约束 (通过 \`@change_mind !constraints\` 维护)`,
+      formatSectionBodyI18n(language, 'constraints', sections.constraints),
+      ``,
+      `## 进展 (通过 \`@change_mind !progress\` 维护)`,
+      formatSectionBodyI18n(language, 'progress', sections.progress),
+    ].join('\n');
+  }
   return [
-    `# Task Doc (Dialog Tree)`,
+    `# Task Doc`,
     ``,
-    `## Goals`,
-    sections.goals,
+    `> Our task doc is composed of exactly 3 sections: Goals / Constraints / Progress.`,
+    `> Maintenance: each \`@change_mind\` call must target one section (\`!goals\` / \`!constraints\` / \`!progress\`). You may include multiple \`@change_mind\` calls in a single message to update multiple sections.`,
     ``,
-    `## Constraints`,
-    sections.constraints,
+    `## Goals (subject to \`@change_mind !goals\`)`,
+    formatSectionBodyI18n(language, 'goals', sections.goals),
     ``,
-    `## Progress`,
-    sections.progress,
+    `## Constraints (subject to \`@change_mind !constraints\`)`,
+    formatSectionBodyI18n(language, 'constraints', sections.constraints),
+    ``,
+    `## Progress (subject to \`@change_mind !progress\`)`,
+    formatSectionBodyI18n(language, 'progress', sections.progress),
   ].join('\n');
 }
 

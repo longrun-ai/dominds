@@ -3629,7 +3629,7 @@ export class DomindsApp extends HTMLElement {
     this.dialogs.forEach((dialog, index) => {
       if (!dialog.taskDocPath || dialog.taskDocPath.trim() === '') {
         throw new Error(
-          `❌ CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid task document path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Task document is mandatory for all dialogs.`,
+          `❌ CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid Task Doc path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Task Doc is mandatory for all dialogs.`,
         );
       }
     });
@@ -4444,16 +4444,13 @@ export class DomindsApp extends HTMLElement {
       let taskDocPath = taskInput.value.trim();
 
       // Validate that task document is provided
+      taskDocPath = taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '');
       if (!taskDocPath) {
         taskDocPath = 'socializing.tsk';
+      } else if (!taskDocPath.endsWith('.tsk')) {
+        taskDocPath = `${taskDocPath}.tsk`;
       }
-      if (!taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '').endsWith('.tsk')) {
-        this.showError(
-          `Task doc must be an encapsulated task package directory ending in '.tsk/' (got: '${taskDocPath}')`,
-          'error',
-        );
-        return;
-      }
+      taskInput.value = taskDocPath;
 
       let selectedAgentId: string | undefined;
       if (!select.value) {

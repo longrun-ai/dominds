@@ -520,7 +520,7 @@ async function handleCreateDialog(
     if (!isTaskPackagePath(taskDocPath)) {
       respondJson(res, 400, {
         success: false,
-        error: `taskDocPath must be a task package directory ending in '.tsk/' (got: '${taskDocPath}')`,
+        error: `taskDocPath must be a Task Doc directory ending in '.tsk' (got: '${taskDocPath}')`,
       });
       return true;
     }
@@ -1044,7 +1044,7 @@ async function scanDirectory(
               lastModified: formatUnifiedTimestamp(lastModified),
             });
           } catch (statError) {
-            log.debug(`Failed to get stats for task package: ${fullPath}`, statError);
+            log.debug(`Failed to get stats for Task Doc: ${fullPath}`, statError);
           }
           continue;
         }

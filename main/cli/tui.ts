@@ -172,7 +172,7 @@ async function main() {
       const normalized = args.taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '');
       if (!normalized.endsWith('.tsk')) {
         throw new Error(
-          `task-doc-path must be an encapsulated task package directory ending in '.tsk/' (got: '${args.taskDocPath}')`,
+          `task-doc-path must be a Task Doc directory ending in '.tsk' (got: '${args.taskDocPath}')`,
         );
       }
     }

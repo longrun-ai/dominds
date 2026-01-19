@@ -50,9 +50,9 @@ export function formatContextHealthReminderText(
   if (language === 'zh') {
     switch (args.kind) {
       case 'usage_unknown':
-        return '上下文健康：上一轮生成的 token 使用量未知。如果你感觉性能下降，把重要事实/决策提炼到任务文档和/或提醒里，然后使用 @clear_mind 以精简上下文开启新的对话回合。';
+        return '上下文健康：上一轮生成的 token 使用量未知。如果你感觉性能下降，把重要事实/决策提炼到差遣牒和/或提醒里，然后使用 @clear_mind 以精简上下文开启新的对话回合。';
       case 'over_optimal':
-        return '上下文健康：对话上下文已偏大。Dominds 不会自动压缩上下文——把重要事实/决策提炼到任务文档和/或提醒里，然后使用 @clear_mind 以精简上下文开启新的对话回合。';
+        return '上下文健康：对话上下文已偏大。Dominds 不会自动压缩上下文——把重要事实/决策提炼到差遣牒和/或提醒里，然后使用 @clear_mind 以精简上下文开启新的对话回合。';
       default: {
         const _exhaustiveCheck: never = args;
         return _exhaustiveCheck;
@@ -81,7 +81,7 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
 - @update_reminder <number>\n<new content>
 - @delete_reminder <number>
 
-使用 @clear_mind 会开启新一轮对话——这有助于保持思路清晰，同时提醒会把重要信息带到新一轮中。使用 @change_mind 只会更新任务文档内容（不进入新一轮）。
+使用 @clear_mind 会开启新一轮对话——这有助于保持思路清晰，同时提醒会把重要信息带到新一轮中。使用 @change_mind 只会更新差遣牒内容（不进入新一轮）。
 
 提示：我可以带正文地使用 @clear_mind，该正文会被追加为新的提醒；同时我会进入新一轮对话，不再包含旧消息。`;
   }
