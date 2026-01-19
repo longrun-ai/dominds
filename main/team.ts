@@ -420,7 +420,7 @@ export namespace Team {
       }
       return new Team({
         memberDefaults: md,
-        defaultResponder: 'pangu',
+        defaultResponder: 'fuxi',
         members: { fuxi, pangu },
       });
     }

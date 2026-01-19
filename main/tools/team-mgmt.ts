@@ -1092,7 +1092,7 @@ function renderTeamManual(language: LanguageCode): string {
       '  provider: codex\n' +
       '  model: gpt-5.2\n' +
       '\n' +
-      'default_responder: pangu\n' +
+      'default_responder: fuxi\n' +
       '\n' +
       'members:\n' +
       '  fuxi:\n' +
@@ -1116,7 +1116,7 @@ function renderTeamManual(language: LanguageCode): string {
     '  provider: codex\n' +
     '  model: gpt-5.2\n' +
     '\n' +
-    'default_responder: pangu\n' +
+    'default_responder: fuxi\n' +
     '\n' +
     'members:\n' +
     '  fuxi:\n' +

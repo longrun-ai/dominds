@@ -382,7 +382,7 @@ member_defaults:
   no_write_dirs:
     - .minds/**
 
-default_responder: pangu
+default_responder: fuxi
 
 members:
   # Example visible teammate (recommended): define at least one non-hidden responder for daily work.
