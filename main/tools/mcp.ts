@@ -6,6 +6,7 @@
 
 import type { Dialog } from '../dialog';
 import { createLogger } from '../log';
+import { requestMcpServerRestart } from '../mcp/supervisor';
 import { Team } from '../team';
 import type { FuncTool, JsonSchema, ToolArguments } from '../tool';
 
@@ -50,8 +51,7 @@ export const mcpRestartTool: FuncTool = {
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
     const parsed = parseMcpRestartArgs(args);
 
-    const supervisor = await import('../mcp/supervisor');
-    const res = await supervisor.requestMcpServerRestart(parsed.serverId);
+    const res = await requestMcpServerRestart(parsed.serverId);
 
     log.warn('mcp_restart', { caller: caller.id, serverId: parsed.serverId, ok: res.ok });
 

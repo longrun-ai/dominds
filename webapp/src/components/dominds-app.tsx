@@ -62,6 +62,7 @@ import { ArchivedDialogList } from './archived-dialog-list.js';
 import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-q4h-input';
+import type { DomindsQ4HInput, Q4HQuestion } from './dominds-q4h-input';
 import './dominds-team-members.js';
 import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './dominds-team-members.js';
 import './done-dialog-list.js';
@@ -146,12 +147,9 @@ export class DomindsApp extends HTMLElement {
     return this.q4hQuestionCount > 0;
   }
 
-  private get q4hInput(): import('./dominds-q4h-input').DomindsQ4HInput | null {
+  private get q4hInput(): DomindsQ4HInput | null {
     return (
-      (this.shadowRoot?.querySelector('#q4h-input') as
-        | import('./dominds-q4h-input').DomindsQ4HInput
-        | null
-        | undefined) ?? null
+      (this.shadowRoot?.querySelector('#q4h-input') as DomindsQ4HInput | null | undefined) ?? null
     );
   }
 
@@ -5621,7 +5619,7 @@ export class DomindsApp extends HTMLElement {
     this.q4hDialogContexts = this.buildQ4HDialogContexts(this.q4hQuestions);
 
     // Transform to Q4HQuestion format expected by the component
-    const q4hQuestions: import('./dominds-q4h-input').Q4HQuestion[] = [];
+    const q4hQuestions: Q4HQuestion[] = [];
     for (const context of this.q4hDialogContexts) {
       for (const question of context.questions) {
         q4hQuestions.push({

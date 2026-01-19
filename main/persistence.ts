@@ -9,8 +9,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import * as yaml from 'yaml';
+import type { PendingSubdialog } from './dialog';
 import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
-import { postDialogEvent } from './evt-registry';
+import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
@@ -920,8 +921,88 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Load Questions for Human state from storage
    */
-  public async loadQuestions4Human(dialogId: DialogID): Promise<HumanQuestion[]> {
-    return await DialogPersistence.loadQuestions4HumanState(dialogId);
+  public async loadQuestions4Human(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<HumanQuestion[]> {
+    return await DialogPersistence.loadQuestions4HumanState(dialogId, status);
+  }
+
+  public async loadDialogMetadata(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<DialogMetadataFile | null> {
+    return await DialogPersistence.loadDialogMetadata(dialogId, status);
+  }
+
+  public async loadPendingSubdialogs(
+    rootDialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<PendingSubdialog[]> {
+    const records = await DialogPersistence.loadPendingSubdialogs(rootDialogId, status);
+    return records.map((record) => ({
+      subdialogId: new DialogID(record.subdialogId, rootDialogId.rootId),
+      createdAt: record.createdAt,
+      headLine: record.headLine,
+      targetAgentId: record.targetAgentId,
+      callType: record.callType,
+      topicId: record.topicId,
+    }));
+  }
+
+  public async saveSubdialogRegistry(
+    rootDialogId: DialogID,
+    entries: Array<{
+      key: string;
+      subdialogId: DialogID;
+      agentId: string;
+      topicId?: string;
+    }>,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    await DialogPersistence.saveSubdialogRegistry(rootDialogId, entries, status);
+  }
+
+  public async loadSubdialogRegistry(
+    rootDialog: RootDialog,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const entries = await DialogPersistence.loadSubdialogRegistry(rootDialog.id, status);
+
+    for (const entry of entries) {
+      if (!entry.topicId) continue;
+
+      const existing = rootDialog.lookupDialog(entry.subdialogId.selfId);
+      if (existing) {
+        if (existing instanceof SubDialog && existing.topicId) {
+          rootDialog.registerSubdialog(existing);
+        }
+        continue;
+      }
+
+      const subdialogState = await DialogPersistence.restoreDialog(entry.subdialogId, status);
+      if (!subdialogState) continue;
+
+      const assignmentFromSup = subdialogState.metadata.assignmentFromSup;
+      if (!assignmentFromSup) continue;
+
+      const subdialogStore = new DiskFileDialogStore(entry.subdialogId);
+      const subdialog = new SubDialog(
+        subdialogStore,
+        rootDialog,
+        subdialogState.metadata.taskDocPath,
+        new DialogID(entry.subdialogId.selfId, rootDialog.id.rootId),
+        subdialogState.metadata.agentId,
+        assignmentFromSup,
+        entry.topicId,
+        {
+          messages: subdialogState.messages,
+          reminders: subdialogState.reminders,
+          currentRound: subdialogState.currentRound,
+        },
+      );
+      rootDialog.registerSubdialog(subdialog);
+    }
   }
 
   /**
@@ -2474,7 +2555,6 @@ export class DialogPersistence {
       await fs.promises.rm(questionsFilePath, { force: true });
 
       // Emit q4h_answered events for each removed question
-      const { postDialogEventById } = await import('./evt-registry');
       for (const q of existingQuestions) {
         const answeredEvent: Q4HAnsweredEvent = {
           type: 'q4h_answered',

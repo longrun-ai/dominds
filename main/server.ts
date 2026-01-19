@@ -18,6 +18,7 @@ import { AuthConfig, computeAuthConfig } from './server/auth';
 import { createHttpServer, HttpServerCore, ServerConfig } from './server/server-core';
 import { setupWebSocketServer } from './server/websocket-handler';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './shared/runtime-language';
+import './tools/builtins';
 
 const log = createLogger('server');
 

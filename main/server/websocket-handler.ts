@@ -13,7 +13,7 @@ import {
   requestInterruptDialog,
   setRunStateBroadcaster,
 } from '../dialog-run-state';
-import { dialogEventRegistry } from '../evt-registry';
+import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -992,7 +992,6 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       questionId,
       dialogId,
     };
-    const { postDialogEvent } = await import('../evt-registry');
     postDialogEvent(dialog, answeredEvent);
 
     // Resume the dialog with the user's answer.

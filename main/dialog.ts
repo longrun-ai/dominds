@@ -27,6 +27,7 @@ import type {
 } from './shared/types/dialog';
 import type { LanguageCode } from './shared/types/language';
 import type {
+  DialogMetadataFile,
   HumanQuestion,
   ProviderData,
   ToolArguments as StoredToolArguments,
@@ -325,8 +326,7 @@ export abstract class Dialog {
    */
   public async hasPendingQ4H(): Promise<boolean> {
     try {
-      const { DialogPersistence } = await import('./persistence');
-      const questions = await DialogPersistence.loadQuestions4HumanState(this.id, this.status);
+      const questions = await this.dlgStore.loadQuestions4Human(this.id, this.status);
       return questions.length > 0;
     } catch (err) {
       log.warn('Failed to load Q4H state for pending check', {
@@ -342,8 +342,7 @@ export abstract class Dialog {
    */
   public async hasPendingSubdialogs(): Promise<boolean> {
     try {
-      const { DialogPersistence } = await import('./persistence');
-      const pending = await DialogPersistence.loadPendingSubdialogs(this.id, this.status);
+      const pending = await this.dlgStore.loadPendingSubdialogs(this.id, this.status);
       return pending.length > 0;
     } catch (err) {
       log.warn('Failed to load pending subdialogs for pending check', {
@@ -404,11 +403,9 @@ export abstract class Dialog {
    */
   public async loadPendingSubdialogsFromPersistence(): Promise<void> {
     try {
-      const { DialogPersistence } = await import('./persistence');
-      const pending = await DialogPersistence.loadPendingSubdialogs(this.id, this.status);
-      this._pendingSubdialogIds = pending.map(
-        (record) => new DialogID(record.subdialogId, this.id.rootId),
-      );
+      const pending = await this.dlgStore.loadPendingSubdialogs(this.id, this.status);
+      this.clearPendingSubdialogs();
+      this.addPendingSubdialogs(pending.map((record) => record.subdialogId));
     } catch (err) {
       log.warn('Failed to load pending subdialogs from persistence', {
         dialogId: this.id.selfId,
@@ -1042,8 +1039,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       let originMemberId = responderId;
       let callId = '';
       try {
-        const { DialogPersistence } = await import('./persistence');
-        const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
+        const metadata = await this.dlgStore.loadDialogMetadata(subdialogId, 'running');
         if (metadata) {
           if (metadata.agentId) {
             responderId = metadata.agentId;
@@ -1311,66 +1307,20 @@ export class RootDialog extends Dialog {
    * Save subdialog registry to disk (registry.yaml).
    */
   async saveSubdialogRegistry(): Promise<void> {
-    const { DialogPersistence } = await import('./persistence');
     const entries = Array.from(this._subdialogRegistry.entries()).map(([key, subdialog]) => ({
       key,
       subdialogId: subdialog.id,
       agentId: subdialog.agentId,
       topicId: subdialog.topicId,
     }));
-    await DialogPersistence.saveSubdialogRegistry(this.id, entries, this.status);
+    await this.dlgStore.saveSubdialogRegistry(this.id, entries, this.status);
   }
 
   /**
    * Load subdialog registry from disk (registry.yaml).
    */
   async loadSubdialogRegistry(): Promise<void> {
-    const { DialogPersistence, DiskFileDialogStore } = await import('./persistence');
-    const entries = await DialogPersistence.loadSubdialogRegistry(this.id, this.status);
-
-    for (const entry of entries) {
-      if (!entry.topicId) {
-        continue;
-      }
-      const existing = this.lookupDialog(entry.subdialogId.selfId);
-      if (existing) {
-        if (existing instanceof SubDialog && existing.topicId) {
-          this._subdialogRegistry.set(
-            RootDialog.makeSubdialogKey(entry.agentId, entry.topicId),
-            existing,
-          );
-        }
-        continue;
-      }
-      const subdialogState = await DialogPersistence.restoreDialog(entry.subdialogId, this.status);
-      if (!subdialogState) {
-        continue;
-      }
-
-      const subdialogStore = new DiskFileDialogStore(entry.subdialogId);
-      const assignmentFromSup = subdialogState.metadata.assignmentFromSup;
-      if (!assignmentFromSup) {
-        continue;
-      }
-      const subdialog = new SubDialog(
-        subdialogStore,
-        this,
-        subdialogState.metadata.taskDocPath,
-        new DialogID(entry.subdialogId.selfId, this.id.rootId),
-        subdialogState.metadata.agentId,
-        assignmentFromSup,
-        entry.topicId,
-        {
-          messages: subdialogState.messages,
-          reminders: subdialogState.reminders,
-          currentRound: subdialogState.currentRound,
-        },
-      );
-      this._subdialogRegistry.set(
-        RootDialog.makeSubdialogKey(entry.agentId, entry.topicId),
-        subdialog,
-      );
-    }
+    await this.dlgStore.loadSubdialogRegistry(this, this.status);
   }
 }
 
@@ -1488,9 +1438,42 @@ export abstract class DialogStore {
   /**
    * Load Questions for Human state from storage
    */
-  public async loadQuestions4Human(_dialogId: DialogID): Promise<HumanQuestion[]> {
+  public async loadQuestions4Human(
+    _dialogId: DialogID,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<HumanQuestion[]> {
     return [];
   }
+
+  public async loadDialogMetadata(
+    _dialogId: DialogID,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<DialogMetadataFile | null> {
+    return null;
+  }
+
+  public async loadPendingSubdialogs(
+    _dialogId: DialogID,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<PendingSubdialog[]> {
+    return [];
+  }
+
+  public async saveSubdialogRegistry(
+    _rootDialogId: DialogID,
+    _entries: Array<{
+      key: string;
+      subdialogId: DialogID;
+      agentId: string;
+      topicId?: string;
+    }>,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {}
+
+  public async loadSubdialogRegistry(
+    _rootDialog: RootDialog,
+    _status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {}
 
   /**
    * Clear Questions for Human state in storage

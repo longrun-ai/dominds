@@ -21,8 +21,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { main as readMain } from './cli/read';
+import { main as tuiMain } from './cli/tui';
+import { main as webuiMain } from './cli/webui';
 import { loadRtwsDotenv } from './shared/dotenv';
 import { extractGlobalRtwsChdir } from './shared/rtws-cli';
+import './tools/builtins';
 
 function printHelp(): void {
   console.log(`
@@ -157,38 +161,21 @@ async function main(): Promise<void> {
 }
 
 async function runSubcommand(subcommand: string, args: string[]): Promise<void> {
-  // Get the directory where this cli.ts file is located
-  const cliDir = __dirname;
-
-  // Try .js extension first (for compiled version), then .ts (for development)
-  let scriptPath = path.join(cliDir, 'cli', `${subcommand}.js`);
-  if (!fs.existsSync(scriptPath)) {
-    scriptPath = path.join(cliDir, 'cli', `${subcommand}.ts`);
-  }
-
-  // Check if the script exists
-  if (!fs.existsSync(scriptPath)) {
-    console.error(`Error: Subcommand '${subcommand}' not implemented`);
-    console.error(`Script not found: ${scriptPath.replace(/\.(js|ts)$/, '.{js,ts}')}`);
-    process.exit(1);
-  }
-
-  // Dynamically import and run the subcommand module
   try {
     // Save original argv
     const originalArgv = process.argv;
 
     // Set argv to simulate direct execution of the subcommand
-    process.argv = ['node', scriptPath, ...args];
+    process.argv = ['node', subcommand, ...args];
 
-    // Import and execute the module
-    const module = await import(scriptPath);
-
-    // Check if it has a main function
-    if (typeof module.main === 'function') {
-      await module.main();
+    if (subcommand === 'webui') {
+      await webuiMain();
+    } else if (subcommand === 'tui') {
+      await tuiMain();
+    } else if (subcommand === 'read') {
+      await readMain();
     } else {
-      console.error(`Error: Subcommand '${subcommand}' does not export a main function`);
+      console.error(`Error: Subcommand '${subcommand}' not implemented`);
       process.exit(1);
     }
 

@@ -23,6 +23,7 @@ import {
   getStopRequestedReason,
   setDialogRunState,
 } from '../dialog-run-state';
+import { postDialogEvent } from '../evt-registry';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
 import { DialogPersistence } from '../persistence';
@@ -809,7 +810,6 @@ export async function checkAndReviveSuspendedDialogs(): Promise<void> {
 
 async function checkQ4HAnswered(dialogId: DialogID): Promise<boolean> {
   try {
-    const { DialogPersistence } = await import('../persistence');
     const questions = await DialogPersistence.loadQuestions4HumanState(dialogId);
     return questions.length === 0;
   } catch (err) {
@@ -981,7 +981,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
 
           try {
-            const { postDialogEvent } = await import('../evt-registry');
             postDialogEvent(dlg, {
               type: 'end_of_user_saying_evt',
               round: dlg.currentRound,
@@ -2553,8 +2552,6 @@ async function executeTextingCall(
         },
       };
 
-      // Import postDialogEvent for event emission
-      const { postDialogEvent } = await import('../evt-registry');
       postDialogEvent(dlg, newQuestionEvent);
 
       // Return empty output and suspend for human answer

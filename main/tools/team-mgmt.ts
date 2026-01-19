@@ -20,6 +20,7 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { TextingTool, TextingToolCallResult } from '../tool';
 import { listDirTool, rmDirTool, rmFileTool } from './fs';
+import { listToolsets } from './registry';
 import { applyPatchTool, overwriteFileTool, patchFileTool, readFileTool } from './txt';
 
 const MINDS_ALLOW = ['.minds/**'] as const;
@@ -876,8 +877,7 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
 }
 
 async function renderToolsets(language: LanguageCode): Promise<string> {
-  const registry = await import('./registry');
-  const ids = Object.keys(registry.listToolsets());
+  const ids = Object.keys(listToolsets());
   const header =
     language === 'zh' ? fmtHeader('已注册 toolsets') : fmtHeader('Registered toolsets');
   return header + fmtList(ids.map((id) => `\`${id}\``));

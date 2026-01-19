@@ -1,4 +1,5 @@
 import type { RootDialog } from './dialog';
+import { DialogPersistence } from './persistence';
 
 type RegistryEntry = {
   rootDialog: RootDialog;
@@ -33,7 +34,6 @@ class GlobalDialogRegistry {
     this.entries.set(rootDialog.id.rootId, { rootDialog, needsDrive: false });
     void (async () => {
       try {
-        const { DialogPersistence } = await import('./persistence');
         const needsDrive = await DialogPersistence.getNeedsDrive(rootDialog.id);
         if (needsDrive) {
           this.markNeedsDrive(rootDialog.id.rootId);
