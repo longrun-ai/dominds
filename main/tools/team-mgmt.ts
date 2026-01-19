@@ -85,6 +85,53 @@ function parseArgsAfterTool(headLine: string, toolName: string): string {
   return trimmed.slice(prefix.length).trim();
 }
 
+type FsErrWithCode = { code?: unknown };
+
+function isFsErrWithCode(err: unknown): err is FsErrWithCode {
+  return typeof err === 'object' && err !== null && 'code' in err;
+}
+
+type MindsDirState =
+  | { kind: 'present' }
+  | { kind: 'missing' }
+  | { kind: 'not_directory'; abs: string };
+
+async function getMindsDirState(): Promise<MindsDirState> {
+  const cwd = path.resolve(process.cwd());
+  const abs = path.resolve(cwd, MINDS_DIR);
+  try {
+    const st = await fs.stat(abs);
+    if (!st.isDirectory()) return { kind: 'not_directory', abs };
+    return { kind: 'present' };
+  } catch (err: unknown) {
+    if (isFsErrWithCode(err) && err.code === 'ENOENT') return { kind: 'missing' };
+    throw err;
+  }
+}
+
+function formatMindsMissingNotice(language: LanguageCode): string {
+  if (language === 'zh') {
+    return [
+      `注意：当前工作区未初始化 \`${MINDS_DIR}/\`（这是正常情况）。`,
+      `因此当前在 \`${MINDS_DIR}/\` 下没有可读取/可列出的团队配置。`,
+      ``,
+      `如果要初始化团队配置，请先创建目录：\`@team_mgmt_mkdir ${MINDS_DIR}\`。`,
+    ].join('\n');
+  }
+  return [
+    `Note: \`${MINDS_DIR}/\` is not present in this workspace (this is normal).`,
+    `So there is currently no team configuration to read/list under \`${MINDS_DIR}/\`.`,
+    ``,
+    `If you want to initialize team configuration, create the directory first: \`@team_mgmt_mkdir ${MINDS_DIR}\`.`,
+  ].join('\n');
+}
+
+async function ensureMindsRootDirExists(): Promise<void> {
+  const cwd = path.resolve(process.cwd());
+  const abs = path.resolve(cwd, MINDS_DIR);
+  await fs.mkdir(abs, { recursive: true });
+}
+
 export const teamMgmtListDirTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_list_dir',
@@ -112,6 +159,15 @@ export const teamMgmtListDirTool: TextingTool = {
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
       const after = parseArgsAfterTool(headLine, this.name);
       const rel = toMindsRelativePath(after || '.');
       ensureMindsScopedPath(rel);
@@ -167,6 +223,15 @@ export const teamMgmtReadFileTool: TextingTool = {
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
       const after = parseArgsAfterTool(headLine, this.name);
       const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
       if (parts.length === 0) {
@@ -222,11 +287,18 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
       const after = parseArgsAfterTool(headLine, this.name);
       const filePath = after.split(/\s+/)[0] || '';
       if (!filePath) throw new Error('Path required');
       const rel = toMindsRelativePath(filePath);
-      ensureMindsScopedPath(rel);
+      const resolved = ensureMindsScopedPath(rel);
+      await fs.mkdir(path.dirname(resolved.abs), { recursive: true });
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       return await overwriteFileTool.call(dlg, proxyCaller, `@overwrite_file ${rel}`, inputBody);
     } catch (err: unknown) {
@@ -263,6 +335,12 @@ export const teamMgmtPatchFileTool: TextingTool = {
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
       const after = parseArgsAfterTool(headLine, this.name);
       const filePath = after.split(/\s+/)[0] || '';
       if (!filePath) throw new Error('Path required');
@@ -304,6 +382,12 @@ export const teamMgmtApplyPatchTool: TextingTool = {
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
       const trimmed = headLine.trim();
       if (!trimmed.startsWith(`@${this.name}`)) {
         throw new Error(`Invalid format. Use @${this.name}`);
@@ -332,6 +416,15 @@ export const teamMgmtRmFileTool: TextingTool = {
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
       const after = parseArgsAfterTool(headLine, this.name);
       const filePath = after.split(/\s+/)[0] || '';
       if (!filePath) throw new Error('Path required');
@@ -367,6 +460,15 @@ export const teamMgmtRmDirTool: TextingTool = {
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
       const after = parseArgsAfterTool(headLine, this.name);
       const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
       if (parts.length === 0) throw new Error('Path required');
@@ -448,6 +550,15 @@ export const teamMgmtMovePathTool: TextingTool = {
   async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
       const after = parseArgsAfterTool(headLine, this.name);
       const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
       if (parts.length < 2) throw new Error('Expected: <from> <to>');
