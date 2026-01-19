@@ -46,6 +46,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private sendOnEnter = true; // Default to Enter to send
   private isComposing = false;
   private inputUiRafId: number | null = null;
+  private escPrimedAtMs: number | null = null;
   private props: Q4HInputProps = {
     disabled: false,
     placeholder: 'Type your answer...',
@@ -353,6 +354,7 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.textInput) {
       this.textInput.value = '';
       this.updateSendButton();
+      this.scheduleInputUiUpdate();
     }
   }
 
@@ -408,7 +410,10 @@ export class DomindsQ4HInput extends HTMLElement {
       this.textInput.focus();
       const len = this.textInput.value.length;
       if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
-        this.textInput.setSelectionRange(Math.min(selectionStart, len), Math.min(selectionEnd, len));
+        this.textInput.setSelectionRange(
+          Math.min(selectionStart, len),
+          Math.min(selectionEnd, len),
+        );
       } else {
         this.textInput.setSelectionRange(len, len);
       }
@@ -643,6 +648,7 @@ export class DomindsQ4HInput extends HTMLElement {
       });
       this.textInput.addEventListener('blur', () => {
         this.isComposing = false;
+        this.escPrimedAtMs = null;
         this.scheduleInputUiUpdate();
       });
 
@@ -651,7 +657,37 @@ export class DomindsQ4HInput extends HTMLElement {
       });
 
       this.textInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && (this.isComposing || e.isComposing || e.keyCode === 229)) {
+        const isIme = this.isComposing || e.isComposing || e.keyCode === 229;
+
+        if (e.key === 'Escape') {
+          if (isIme) return;
+          const hasContent = this.textInput.value.length > 0;
+          if (!hasContent) {
+            this.escPrimedAtMs = null;
+            return;
+          }
+
+          const now = Date.now();
+          const primedAt = this.escPrimedAtMs;
+          const isSecondPress = typeof primedAt === 'number' && now - primedAt <= 650;
+          if (isSecondPress) {
+            this.escPrimedAtMs = null;
+            e.preventDefault();
+            e.stopPropagation();
+            this.clear();
+            this.focusInput();
+            return;
+          }
+
+          this.escPrimedAtMs = now;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+
+        this.escPrimedAtMs = null;
+
+        if (e.key === 'Enter' && isIme) {
           return;
         }
         if (this.sendOnEnter) {
