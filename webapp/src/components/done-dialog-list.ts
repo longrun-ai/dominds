@@ -18,6 +18,10 @@ export interface DoneDialogListProps {
   uiLanguage: LanguageCode;
 }
 
+type DialogCreateAction =
+  | { kind: 'task'; taskDocPath: string }
+  | { kind: 'root'; rootId: string; taskDocPath: string; agentId: string };
+
 type DialogDeleteAction = {
   kind: 'root';
   rootId: string;
@@ -334,6 +338,9 @@ export class DoneDialogList extends HTMLElement {
                     <span>${group.taskDocPath}</span>
                   </div>
                   <div class="task-title-right">
+                    <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
+                      ${this.renderCreateIcon()}
+                    </button>
                     <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
                       ${this.renderReviveIcon()}
                     </button>
@@ -369,6 +376,15 @@ export class DoneDialogList extends HTMLElement {
         <polyline points="21 8 21 21 3 21 3 8"></polyline>
         <rect x="1" y="3" width="22" height="5"></rect>
         <line x1="10" y1="12" x2="14" y2="12"></line>
+      </svg>
+    `;
+  }
+
+  private renderCreateIcon(): string {
+    return `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
       </svg>
     `;
   }
@@ -417,6 +433,9 @@ export class DoneDialogList extends HTMLElement {
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button">${toggleIcon}</button>
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
+            <button class="action icon-button" data-action="root-create-dialog" data-root-id="${dialog.rootId}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
+              ${this.renderCreateIcon()}
+            </button>
             <button class="action icon-button" data-action="root-revive" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionRevive}" aria-label="${t.dialogActionRevive}">
               ${this.renderReviveIcon()}
             </button>
@@ -481,6 +500,13 @@ export class DoneDialogList extends HTMLElement {
         }
         return;
       }
+      if (action === 'task-create-dialog') {
+        const taskDocPath = actionEl.getAttribute('data-task-path');
+        if (taskDocPath) {
+          this.emitCreateDialogAction({ kind: 'task', taskDocPath });
+        }
+        return;
+      }
       if (action === 'task-revive') {
         const taskDocPath = actionEl.getAttribute('data-task-path');
         if (taskDocPath) {
@@ -509,6 +535,21 @@ export class DoneDialogList extends HTMLElement {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
           this.toggleRoot(rootId);
+        }
+        return;
+      }
+      if (action === 'root-create-dialog') {
+        const rootId = actionEl.getAttribute('data-root-id');
+        if (rootId) {
+          const rootDialog = this.rootIndex.get(rootId);
+          if (rootDialog) {
+            this.emitCreateDialogAction({
+              kind: 'root',
+              rootId: rootDialog.rootId,
+              taskDocPath: rootDialog.taskDocPath,
+              agentId: rootDialog.agentId,
+            });
+          }
         }
         return;
       }
@@ -643,6 +684,16 @@ export class DoneDialogList extends HTMLElement {
   private emitStatusAction(detail: ApiMoveDialogsRequest): void {
     this.dispatchEvent(
       new CustomEvent('dialog-status-action', {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private emitCreateDialogAction(detail: DialogCreateAction): void {
+    this.dispatchEvent(
+      new CustomEvent('dialog-create-action', {
         detail,
         bubbles: true,
         composed: true,

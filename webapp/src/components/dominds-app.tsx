@@ -68,7 +68,7 @@ import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './domind
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
 import './running-dialog-list.js';
-import { RunningDialogList } from './running-dialog-list.js';
+import { RunningDialogList, type DialogCreateAction } from './running-dialog-list.js';
 
 type ActivityView =
   | { kind: 'running' }
@@ -2706,6 +2706,12 @@ export class DomindsApp extends HTMLElement {
       void this.handleDialogStatusAction(ce.detail);
     }) as EventListener);
 
+    // Dialog creation shortcuts (create new dialog from task/root nodes)
+    this.shadowRoot.addEventListener('dialog-create-action', ((event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      void this.handleDialogCreateAction(ce.detail);
+    }) as EventListener);
+
     // Dialog deletion actions (delete root dialogs) across done/archived list views
     this.shadowRoot.addEventListener('dialog-delete-action', ((event: Event) => {
       const ce = event as CustomEvent<unknown>;
@@ -3437,6 +3443,34 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
+  private async handleDialogCreateAction(detail: unknown): Promise<void> {
+    if (typeof detail !== 'object' || detail === null) return;
+
+    const kind = (detail as { kind?: unknown }).kind;
+    if (kind !== 'task' && kind !== 'root') return;
+
+    const typed = detail as DialogCreateAction;
+    if (typed.kind === 'task') {
+      const taskDocPath = (detail as { taskDocPath?: unknown }).taskDocPath;
+      if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') return;
+
+      if (this.teamMembers.length === 0) {
+        console.error('❌ No team members available');
+        this.showError('No team members available. Please check your team configuration.');
+        return;
+      }
+
+      this.showCreateDialogModal({ taskDocPath });
+      return;
+    }
+
+    const agentId = (detail as { agentId?: unknown }).agentId;
+    const taskDocPath = (detail as { taskDocPath?: unknown }).taskDocPath;
+    if (typeof agentId !== 'string' || agentId.trim() === '') return;
+    if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') return;
+    await this.createDialog(agentId, taskDocPath);
+  }
+
   /**
    * Lazy load subdialogs for a root dialog when user expands it
    */
@@ -4018,7 +4052,7 @@ export class DomindsApp extends HTMLElement {
     return commonPrefix;
   }
 
-  private showCreateDialogModal(): void {
+  private showCreateDialogModal(preset?: { taskDocPath?: string }): void {
     const t = getUiStrings(this.uiLanguage);
     const visibleMembers = this.teamMembers.filter((m) => m.hidden !== true);
     const shadowMembers = this.teamMembers.filter((m) => m.hidden === true);
@@ -4105,6 +4139,13 @@ export class DomindsApp extends HTMLElement {
         </div>
       </div>
     `;
+
+    if (preset && typeof preset.taskDocPath === 'string' && preset.taskDocPath.trim() !== '') {
+      const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement | null;
+      if (taskInput) {
+        taskInput.value = preset.taskDocPath;
+      }
+    }
 
     // Add event listeners and functionality
     this.setupDialogModalEvents(modal);
