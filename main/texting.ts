@@ -1208,33 +1208,31 @@ export class TextingStreamParser {
       this.bodyChunkBuffer += '@';
     }
 
-    // Handle @ symbols that start new calls at line boundaries
-    // BUT: Only if we haven't detected triple backticks in the body content (i.e., not wholly triple quoted)
-    // AND only if we're actually at a line boundary (not in the middle of triple backticks)
+    // Handle @ symbols that start new calls at line boundaries.
+    //
+    // IMPORTANT: Do NOT disable this behavior just because the body contains triple backticks.
+    // Triple backticks are allowed as literal content in non-triple-quoted bodies, and multiple
+    // calls may appear back-to-back without an explicit `@/` terminator.
+    //
+    // Only wholly triple-quoted bodies (started with `callBodyStart('```')`) should prevent
+    // line-boundary `@` from terminating the call.
     if (charType === CharType.AT && this.isAtLineStart) {
-      // This @ is at the start of a line - check if the body contains triple backticks
-      const hasTripleBackticks = this.bodyChunkBuffer.includes('```');
+      const canStartNewCallFromBody =
+        !this.tripleQuotedBodyOpen && this.backtickState === BacktickState.NONE;
 
-      // Only allow @ to start a new call if:
-      // 1. This is NOT a wholly triple quoted body (no triple backticks in content)
-      // 2. AND we're not currently processing triple backticks (backtickState is NONE)
-      if (!hasTripleBackticks && this.backtickState === BacktickState.NONE) {
-        // Not a wholly triple quoted body - @ at line start indicates new call
+      if (canStartNewCallFromBody) {
         await this.flushBodyBuffer();
         await this.downstream.callBodyFinish();
         await this.emitCallFinish();
 
-        // Start processing as new call
         this.mode = ParserMode.TEXTING_CALL_HEADLINE;
         this.firstMentionAccumulator = '';
         this.headlineBuffer = '';
         this.headlineFinished = false;
         this.expectingFirstMention = true;
 
-        // Process this @ character in the new call context
         return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
       }
-      // If hasTripleBackticks is true or we're processing backticks, treat @ as literal content and don't end the call
     }
 
     // In call bodies, ALL content including triple backticks should be treated as literal

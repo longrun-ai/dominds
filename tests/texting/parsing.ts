@@ -136,15 +136,13 @@ async function runTest(
     if (a === b) return true;
 
     // Special case for callFinish: if expected (b) has data null, ignore actual (a) data
-    if (
-      typeof b === 'object' &&
-      b !== null &&
-      'type' in b &&
-      (b as any).type === 'callFinish' &&
-      (b as any).data === null
-    ) {
-      if (typeof a === 'object' && a !== null && 'type' in a && (a as any).type === 'callFinish') {
-        return true;
+    if (typeof b === 'object' && b !== null) {
+      const bRecord = b as Record<string, unknown>;
+      if (bRecord['type'] === 'callFinish' && bRecord['data'] === null) {
+        if (typeof a === 'object' && a !== null) {
+          const aRecord = a as Record<string, unknown>;
+          if (aRecord['type'] === 'callFinish') return true;
+        }
       }
     }
 
@@ -423,6 +421,32 @@ Second body content`,
         '@tool2 second command',
         'Second body content',
         `@tool1 first command\nFirst body content\n\n@tool2 second command\nSecond body content`,
+      ),
+    ],
+  );
+
+  // Test 4b: Multiple tool calls without @/ even if body contains ``` later
+  await runTest(
+    'Multiple tool calls with ``` in body (no @/)',
+    `@tool1 cmd
+first line
+\`\`\`js
+console.log(1)
+\`\`\`
+@tool2 cmd2
+body2`,
+    [
+      ...buildBasicCallEvents(
+        'tool1',
+        '@tool1 cmd',
+        'first line\n```js\nconsole.log(1)\n```\n',
+        `@tool1 cmd\nfirst line\n\`\`\`js\nconsole.log(1)\n\`\`\`\n@tool2 cmd2\nbody2`,
+      ),
+      ...buildBasicCallEvents(
+        'tool2',
+        '@tool2 cmd2',
+        'body2',
+        `@tool1 cmd\nfirst line\n\`\`\`js\nconsole.log(1)\n\`\`\`\n@tool2 cmd2\nbody2`,
       ),
     ],
   );
