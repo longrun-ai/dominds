@@ -12,6 +12,7 @@ import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import { removeProblem, upsertProblem } from '../problems';
 import type { ApiMoveDialogsRequest } from '../shared/types';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent } from '../shared/types/wire';
@@ -24,6 +25,9 @@ import { isTaskPackagePath } from '../utils/task-package';
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
 
 const log = createLogger('api-routes');
+
+const TEAM_YAML_PATH = path.join('.minds', 'team.yaml');
+const TEAM_YAML_PROBLEM_ID = 'team/team_yaml_error';
 
 export interface ApiRouteContext {
   clients?: Set<WebSocket>;
@@ -205,21 +209,43 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
 
     // Basic validation for required defaults
     if (!team.memberDefaults.provider) {
+      const errorText =
+        'Configuration Error: Missing required "provider" field in member_defaults of .minds/team.yaml.';
+      upsertProblem({
+        kind: 'team_workspace_config_error',
+        source: 'team',
+        id: TEAM_YAML_PROBLEM_ID,
+        severity: 'error',
+        timestamp: formatUnifiedTimestamp(new Date()),
+        message: 'Failed to load team configuration.',
+        detail: { filePath: TEAM_YAML_PATH, errorText },
+      });
       respondJson(res, 500, {
         success: false,
-        error:
-          'Configuration Error: Missing required "provider" field in member_defaults of .minds/team.yaml.',
+        error: errorText,
       });
       return true;
     }
     if (!team.memberDefaults.model) {
+      const errorText =
+        'Configuration Error: Missing required "model" field in member_defaults of .minds/team.yaml.';
+      upsertProblem({
+        kind: 'team_workspace_config_error',
+        source: 'team',
+        id: TEAM_YAML_PROBLEM_ID,
+        severity: 'error',
+        timestamp: formatUnifiedTimestamp(new Date()),
+        message: 'Failed to load team configuration.',
+        detail: { filePath: TEAM_YAML_PATH, errorText },
+      });
       respondJson(res, 500, {
         success: false,
-        error:
-          'Configuration Error: Missing required "model" field in member_defaults of .minds/team.yaml.',
+        error: errorText,
       });
       return true;
     }
+
+    removeProblem(TEAM_YAML_PROBLEM_ID);
 
     // Convert Team.Member instances to plain frontend objects without prototypes
     const toFrontendMember = (m: Team.Member) => ({
@@ -252,6 +278,16 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
     return true;
   } catch (error) {
     log.error('Error getting team configuration:', error);
+    const errorText = error instanceof Error ? error.message : String(error);
+    upsertProblem({
+      kind: 'team_workspace_config_error',
+      source: 'team',
+      id: TEAM_YAML_PROBLEM_ID,
+      severity: 'error',
+      timestamp: formatUnifiedTimestamp(new Date()),
+      message: 'Failed to load team configuration.',
+      detail: { filePath: TEAM_YAML_PATH, errorText },
+    });
     respondJson(res, 500, { success: false, error: 'Failed to get team configuration' });
     return true;
   }

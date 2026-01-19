@@ -14,6 +14,18 @@ export type WorkspaceProblem =
       };
     }
   | {
+      kind: 'team_workspace_config_error';
+      source: 'team';
+      id: string;
+      severity: 'error';
+      timestamp: string;
+      message: string;
+      detail: {
+        filePath: string;
+        errorText: string;
+      };
+    }
+  | {
       kind: 'mcp_server_error';
       source: 'mcp';
       id: string;
