@@ -6,13 +6,33 @@
 
 import type { Dialog } from '../dialog';
 import { createLogger } from '../log';
-import { requestMcpServerRestart } from '../mcp/supervisor';
+import {
+  isMcpToolsetLeasedToDialog,
+  releaseMcpToolsetLeaseForDialog,
+  requestMcpServerRestart,
+} from '../mcp/supervisor';
 import { Team } from '../team';
-import type { FuncTool, JsonSchema, ToolArguments } from '../tool';
+import type {
+  FuncTool,
+  JsonSchema,
+  Reminder,
+  ReminderOwner,
+  ReminderUpdateResult,
+  ToolArguments,
+} from '../tool';
 
 const log = createLogger('tools/mcp');
 
 type McpRestartArgs = Readonly<{
+  serverId: string;
+}>;
+
+type McpReleaseArgs = Readonly<{
+  serverId: string;
+}>;
+
+type McpLeaseReminderMeta = Readonly<{
+  kind: 'mcp_lease';
   serverId: string;
 }>;
 
@@ -24,6 +44,20 @@ function parseMcpRestartArgs(args: ToolArguments): McpRestartArgs {
   return { serverId };
 }
 
+function parseMcpReleaseArgs(args: ToolArguments): McpReleaseArgs {
+  const serverId = args.serverId;
+  if (typeof serverId !== 'string' || !serverId.trim()) {
+    throw new Error(`mcp_release.serverId must be a non-empty string`);
+  }
+  return { serverId };
+}
+
+function isMcpLeaseReminderMeta(value: unknown): value is McpLeaseReminderMeta {
+  if (!isRecord(value) || Array.isArray(value)) return false;
+  if (value.kind !== 'mcp_lease') return false;
+  return typeof value.serverId === 'string' && value.serverId.trim().length > 0;
+}
+
 const mcpRestartSchema: JsonSchema = {
   type: 'object',
   properties: {
@@ -31,6 +65,19 @@ const mcpRestartSchema: JsonSchema = {
       type: 'string',
       description:
         "MCP server id from `.minds/mcp.yaml` (e.g., 'sdk_stdio'). Restarts this server only.",
+    },
+  },
+  required: ['serverId'],
+  additionalProperties: false,
+};
+
+const mcpReleaseSchema: JsonSchema = {
+  type: 'object',
+  properties: {
+    serverId: {
+      type: 'string',
+      description:
+        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Releases the leased MCP client for this dialog.",
     },
   },
   required: ['serverId'],
@@ -59,3 +106,76 @@ export const mcpRestartTool: FuncTool = {
     return `ok: restarted ${parsed.serverId}`;
   },
 };
+
+export const mcpReleaseTool: FuncTool = {
+  type: 'func',
+  name: 'mcp_release',
+  description:
+    'Release a leased MCP toolset client for this dialog (stops the underlying process/connection).',
+  descriptionI18n: {
+    en: 'Release a leased MCP toolset client for this dialog (stops the underlying process/connection).',
+    zh: '释放当前对话租用的 MCP toolset client（停止底层进程/连接）。',
+  },
+  parameters: mcpReleaseSchema,
+  argsValidation: 'dominds',
+  call: async (dlg: Dialog, caller: Team.Member, args: ToolArguments) => {
+    const parsed = parseMcpReleaseArgs(args);
+    const dialogKey = dlg.id.key();
+
+    const res = releaseMcpToolsetLeaseForDialog(parsed.serverId, dialogKey);
+
+    log.warn('mcp_release', {
+      caller: caller.id,
+      serverId: parsed.serverId,
+      ok: res.ok,
+      released: res.ok ? res.released : undefined,
+    });
+
+    if (!res.ok) return `error: ${res.errorText}`;
+    if (!res.released) {
+      return `ok: no active lease for ${parsed.serverId} (or server is truely-stateless)`;
+    }
+    return `ok: released ${parsed.serverId} for dialog ${dialogKey}`;
+  },
+};
+
+export const mcpLeaseReminderOwner: ReminderOwner = {
+  name: 'mcpLease',
+  async updateReminder(dlg: Dialog, reminder: Reminder): Promise<ReminderUpdateResult> {
+    if (reminder.owner !== mcpLeaseReminderOwner) return { treatment: 'keep' };
+    if (!isMcpLeaseReminderMeta(reminder.meta)) return { treatment: 'keep' };
+
+    const dialogKey = dlg.id.key();
+    const leased = isMcpToolsetLeasedToDialog(reminder.meta.serverId, dialogKey);
+    if (!leased) {
+      return { treatment: 'drop' };
+    }
+    return { treatment: 'keep' };
+  },
+
+  async renderReminder(dlg: Dialog, reminder: Reminder, index: number) {
+    if (reminder.owner !== mcpLeaseReminderOwner || !isMcpLeaseReminderMeta(reminder.meta)) {
+      return {
+        type: 'transient_guide_msg',
+        role: 'assistant',
+        content: `System Reminder #${index + 1}\n\n${reminder.content}`,
+      };
+    }
+
+    const serverId = reminder.meta.serverId;
+    return {
+      type: 'transient_guide_msg',
+      role: 'assistant',
+      content:
+        `MCP toolset lease #${index + 1}: \`${serverId}\`\n\n` +
+        `This MCP server is treated as non-stateless. A dedicated MCP client instance is leased to this dialog.\n\n` +
+        `When you are confident you won't need this toolset in the near future, release it to stop the underlying MCP process/connection:\n` +
+        `- \`mcp_release({\"serverId\":\"${serverId}\"})\`\n\n` +
+        `If another dialog uses the same MCP toolset concurrently, Dominds will spawn a separate MCP client instance for that dialog.`,
+    };
+  },
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}

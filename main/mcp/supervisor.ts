@@ -1,11 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
-import type { Tool } from '../tool';
+import type { Tool, ToolArguments } from '../tool';
 import {
+  getReminderOwner,
   registerTool,
   registerToolset,
   setToolsetMeta,
@@ -33,7 +35,9 @@ type ServerState = {
   serverId: string;
   toolsetName: string;
   configFingerprint: string;
-  runtime: McpServerRuntime;
+  cfg: McpServerConfig;
+  listedTools: readonly McpListedTool[];
+  dispatch: McpServerDispatch;
   tools: Tool[];
   ownedToolNames: Set<string>;
   problems: WorkspaceProblem[];
@@ -42,6 +46,220 @@ type ServerState = {
 const serverStateById: Map<string, ServerState> = new Map();
 const toolOwnerByName: Map<string, { kind: 'mcp'; serverId: string }> = new Map();
 const toolsetOwnerByName: Map<string, { kind: 'mcp'; serverId: string }> = new Map();
+
+type LeaseReminderMeta = Readonly<{
+  kind: 'mcp_lease';
+  serverId: string;
+}>;
+
+function makeLeaseReminderMeta(serverId: string): LeaseReminderMeta {
+  return { kind: 'mcp_lease', serverId };
+}
+
+function isLeaseReminderMeta(value: unknown): value is LeaseReminderMeta {
+  if (!isRecord(value) || Array.isArray(value)) return false;
+  if (value.kind !== 'mcp_lease') return false;
+  return typeof value.serverId === 'string' && value.serverId.trim().length > 0;
+}
+
+function ensureLeaseReminder(dlg: Dialog, serverId: string): void {
+  for (const r of dlg.reminders) {
+    if (!r.owner) continue;
+    if (r.owner.name !== 'mcpLease') continue;
+    const meta = r.meta;
+    if (!isLeaseReminderMeta(meta)) continue;
+    if (meta.serverId !== serverId) continue;
+    return;
+  }
+
+  const owner = getReminderOwner('mcpLease');
+  const content =
+    `MCP toolset leased: ${serverId}\n\n` +
+    `This MCP server is treated as non-stateless. When you are confident you won't need it again soon, release it:\n` +
+    `mcp_release({"serverId":"${serverId}"})`;
+  dlg.addReminder(content, owner, makeLeaseReminderMeta(serverId));
+}
+
+class McpServerDispatch {
+  public readonly serverId: string;
+  public readonly toolsetName: string;
+  public readonly cfg: McpServerConfig;
+
+  private readonly sharedRuntime: McpServerRuntime | undefined;
+  private readonly leasesByDialogKey: Map<string, McpServerRuntime> = new Map();
+  private readonly leaseInitByDialogKey: Map<string, Promise<McpServerRuntime>> = new Map();
+  private readonly canceledLeaseDialogs: Set<string> = new Set();
+
+  private stopRequested: boolean = false;
+
+  constructor(params: {
+    serverId: string;
+    toolsetName: string;
+    cfg: McpServerConfig;
+    sharedRuntime?: McpServerRuntime;
+  }) {
+    this.serverId = params.serverId;
+    this.toolsetName = params.toolsetName;
+    this.cfg = params.cfg;
+    this.sharedRuntime = params.sharedRuntime;
+  }
+
+  public hasLeaseForDialog(dialogKey: string): boolean {
+    return this.leasesByDialogKey.has(dialogKey) || this.leaseInitByDialogKey.has(dialogKey);
+  }
+
+  public releaseLeaseForDialog(dialogKey: string): boolean {
+    const init = this.leaseInitByDialogKey.get(dialogKey);
+    if (init) {
+      this.canceledLeaseDialogs.add(dialogKey);
+      // Best-effort: allow the in-flight connect to complete, then immediately stop it.
+      void init
+        .then((rt) => rt.requestStop({ forceKillAfterMs: 3_000 }))
+        .catch(() => {
+          // ignore
+        });
+      this.leaseInitByDialogKey.delete(dialogKey);
+    }
+
+    const existing = this.leasesByDialogKey.get(dialogKey);
+    if (!existing) return false;
+    this.leasesByDialogKey.delete(dialogKey);
+    existing.requestStop({ forceKillAfterMs: 3_000 });
+    return true;
+  }
+
+  public requestStop(): void {
+    if (this.stopRequested) return;
+    this.stopRequested = true;
+    if (this.sharedRuntime) {
+      this.sharedRuntime.requestStop({ forceKillAfterMs: 3_000 });
+    }
+    for (const rt of this.leasesByDialogKey.values()) {
+      rt.requestStop({ forceKillAfterMs: 3_000 });
+    }
+    for (const [dialogKey, init] of this.leaseInitByDialogKey.entries()) {
+      this.canceledLeaseDialogs.add(dialogKey);
+      void init
+        .then((rt) => rt.requestStop({ forceKillAfterMs: 3_000 }))
+        .catch(() => {
+          // ignore
+        });
+    }
+  }
+
+  public async callToolForDialog(
+    dlg: Dialog,
+    mcpToolName: string,
+    args: ToolArguments,
+  ): Promise<string> {
+    if (this.cfg.truelyStateless) {
+      if (!this.sharedRuntime) {
+        throw new Error(`MCP server '${this.serverId}' missing shared runtime`);
+      }
+      return await this.sharedRuntime.callTool(mcpToolName, args);
+    }
+
+    const dialogKey = dlg.id.key();
+    const existing = this.leasesByDialogKey.get(dialogKey);
+    if (existing) {
+      return await existing.callTool(mcpToolName, args);
+    }
+
+    if (this.stopRequested) {
+      const oneShot = await this.connectNewLeaseRuntime();
+      oneShot.requestStop({ forceKillAfterMs: 3_000 });
+      return await oneShot.callTool(mcpToolName, args);
+    }
+
+    let init = this.leaseInitByDialogKey.get(dialogKey);
+    if (!init) {
+      this.canceledLeaseDialogs.delete(dialogKey);
+      init = (async () => {
+        try {
+          const rt = await this.connectNewLeaseRuntime();
+          this.finalizeLeaseForDialog(dialogKey, rt);
+          return rt;
+        } catch (err) {
+          this.leaseInitByDialogKey.delete(dialogKey);
+          this.canceledLeaseDialogs.delete(dialogKey);
+          throw err;
+        }
+      })();
+      this.leaseInitByDialogKey.set(dialogKey, init);
+    }
+
+    const runtime = await init;
+    this.attachLeaseReminder(dlg);
+    return await runtime.callTool(mcpToolName, args);
+  }
+
+  private async connectNewLeaseRuntime(): Promise<McpServerRuntime> {
+    const serverId = this.serverId;
+    const client =
+      this.cfg.transport === 'stdio'
+        ? await McpSdkClient.connectStdio({
+            serverId,
+            command: this.cfg.command,
+            args: this.cfg.args,
+            env: buildChildEnv(this.cfg, serverId),
+            cwd: process.cwd(),
+          })
+        : await McpSdkClient.connectStreamableHttp({
+            serverId,
+            url: this.cfg.url,
+            headers: buildHttpHeaders(this.cfg, serverId),
+            sessionId: this.cfg.sessionId,
+          });
+
+    const runtime = new McpServerRuntime({
+      serverId: this.serverId,
+      toolsetName: this.toolsetName,
+      client,
+    });
+
+    return runtime;
+  }
+
+  public finalizeLeaseForDialog(dialogKey: string, runtime: McpServerRuntime): void {
+    this.leaseInitByDialogKey.delete(dialogKey);
+    if (this.canceledLeaseDialogs.has(dialogKey)) {
+      this.canceledLeaseDialogs.delete(dialogKey);
+      runtime.requestStop({ forceKillAfterMs: 3_000 });
+      return;
+    }
+    if (this.stopRequested) {
+      runtime.requestStop({ forceKillAfterMs: 3_000 });
+      return;
+    }
+    this.leasesByDialogKey.set(dialogKey, runtime);
+  }
+
+  public attachLeaseReminder(dlg: Dialog): void {
+    if (this.cfg.truelyStateless) return;
+    ensureLeaseReminder(dlg, this.serverId);
+  }
+}
+
+export function isMcpToolsetLeasedToDialog(serverId: string, dialogKey: string): boolean {
+  const state = serverStateById.get(serverId);
+  if (!state) return false;
+  return state.dispatch.hasLeaseForDialog(dialogKey);
+}
+
+export function releaseMcpToolsetLeaseForDialog(
+  serverId: string,
+  dialogKey: string,
+): { ok: true; released: boolean } | { ok: false; errorText: string } {
+  const state = serverStateById.get(serverId);
+  if (!state) {
+    return { ok: false, errorText: `MCP server '${serverId}' is not loaded` };
+  }
+  if (state.cfg.truelyStateless) {
+    return { ok: true, released: false };
+  }
+  const released = state.dispatch.releaseLeaseForDialog(dialogKey);
+  return { ok: true, released };
+}
 
 let mindsDirWatcher: fs.FSWatcher | undefined;
 let workspaceWatcher: fs.FSWatcher | undefined;
@@ -319,7 +537,7 @@ async function restartServerNow(
 
   if (existing) {
     unregisterServer(existing);
-    existing.runtime.requestStop({ forceKillAfterMs: 3_000 });
+    existing.dispatch.requestStop();
   }
 
   registerServer(res.state);
@@ -361,7 +579,7 @@ async function applyWorkspaceConfig(
   for (const [serverId, state] of serverStateById.entries()) {
     if (desiredIds.has(serverId)) continue;
     unregisterServer(state);
-    state.runtime.requestStop();
+    state.dispatch.requestStop();
     serverStateById.delete(serverId);
     removeProblemsByPrefix(problemPrefixForServer(serverId));
   }
@@ -408,7 +626,7 @@ async function applyWorkspaceConfig(
       removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
       if (existing) {
         unregisterServer(existing);
-        existing.runtime.requestStop();
+        existing.dispatch.requestStop();
       }
       registerServer(res.state);
       serverStateById.set(serverId, res.state);
@@ -420,12 +638,14 @@ async function applyWorkspaceConfig(
     // - auto-clear disappeared problems
     // - re-attempt registering tools that were previously skipped due to collisions
     removeProblemsByPrefix(`${problemPrefixForServer(serverId)}server_error`);
-    const rebuilt = buildToolsForServer(serverCfg, existing.runtime, existing.runtime.listedTools);
+    const rebuilt = buildToolsForServer(serverCfg, existing.dispatch, existing.listedTools);
     const next: ServerState = {
       serverId,
       toolsetName: desiredToolsetName,
       configFingerprint: fingerprint,
-      runtime: existing.runtime,
+      cfg: existing.cfg,
+      listedTools: existing.listedTools,
+      dispatch: existing.dispatch,
       tools: rebuilt.tools,
       ownedToolNames: rebuilt.ownedToolNames,
       problems: rebuilt.problems,
@@ -473,12 +693,14 @@ function reconcileCollisionDependentRegistrations(
     if (!existing) continue;
     if (existing.configFingerprint !== fingerprint) continue; // handled by spawn/update path
 
-    const rebuilt = buildToolsForServer(serverCfg, existing.runtime, existing.runtime.listedTools);
+    const rebuilt = buildToolsForServer(serverCfg, existing.dispatch, existing.listedTools);
     const next: ServerState = {
       serverId,
       toolsetName: existing.toolsetName,
       configFingerprint: fingerprint,
-      runtime: existing.runtime,
+      cfg: existing.cfg,
+      listedTools: existing.listedTools,
+      dispatch: existing.dispatch,
       tools: rebuilt.tools,
       ownedToolNames: rebuilt.ownedToolNames,
       problems: rebuilt.problems,
@@ -582,6 +804,7 @@ async function tryBuildServerState(
   }
 
   let client: McpSdkClient | undefined;
+  let sharedRuntime: McpServerRuntime | undefined;
   try {
     client =
       cfg.transport === 'stdio'
@@ -600,21 +823,33 @@ async function tryBuildServerState(
           });
 
     const listedTools = await client.listTools();
-    const runtime = new McpServerRuntime({ serverId, toolsetName, client, listedTools });
+    if (cfg.truelyStateless) {
+      sharedRuntime = new McpServerRuntime({ serverId, toolsetName, client });
+      client = undefined;
+    } else {
+      await client.close();
+      client = undefined;
+    }
 
-    const build = buildToolsForServer(cfg, runtime, listedTools);
+    const dispatch = new McpServerDispatch({ serverId, toolsetName, cfg, sharedRuntime });
+    const build = buildToolsForServer(cfg, dispatch, listedTools);
 
     const state: ServerState = {
       serverId,
       toolsetName,
       configFingerprint: fingerprint,
-      runtime,
+      cfg,
+      listedTools,
+      dispatch,
       tools: build.tools,
       ownedToolNames: build.ownedToolNames,
       problems: build.problems,
     };
     return { ok: true, state };
   } catch (err: unknown) {
+    if (sharedRuntime) {
+      sharedRuntime.requestStop({ forceKillAfterMs: 3_000 });
+    }
     if (client) {
       try {
         await client.close();
@@ -628,7 +863,7 @@ async function tryBuildServerState(
 
 function buildToolsForServer(
   cfg: McpServerConfig,
-  runtime: McpServerRuntime,
+  dispatch: McpServerDispatch,
   listedTools: readonly McpListedTool[],
 ): { tools: Tool[]; ownedToolNames: Set<string>; problems: WorkspaceProblem[] } {
   const serverId = cfg.serverId;
@@ -749,12 +984,16 @@ function buildToolsForServer(
       continue;
     }
 
-    const func = runtime.makeFuncTool({
-      domindsToolName: domindsName,
-      mcpToolName: originalName,
+    const func: Tool = {
+      type: 'func',
+      name: domindsName,
       description: tool.description,
-      inputSchema: tool.inputSchema,
-    });
+      parameters: tool.inputSchema,
+      argsValidation: 'passthrough',
+      call: async (dlg, _caller, args: ToolArguments) => {
+        return await dispatch.callToolForDialog(dlg, originalName, args);
+      },
+    };
     tools.push(func);
     ownedToolNames.add(domindsName);
     seenDomindsNames.add(domindsName);
@@ -799,6 +1038,7 @@ function fingerprintServerConfig(cfg: McpServerConfig): string {
   const obj =
     cfg.transport === 'stdio'
       ? {
+          truelyStateless: cfg.truelyStateless,
           transport: cfg.transport,
           command: cfg.command,
           args: cfg.args,
@@ -807,6 +1047,7 @@ function fingerprintServerConfig(cfg: McpServerConfig): string {
           transform: cfg.transform,
         }
       : {
+          truelyStateless: cfg.truelyStateless,
           transport: cfg.transport,
           url: cfg.url,
           headers: sortedEntries(cfg.headers),

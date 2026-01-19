@@ -1138,6 +1138,7 @@ function renderMcpManual(language: LanguageCode): string {
       fmtList([
         '每个 MCP serverId 注册一个 toolset，toolset 名称 = `serverId`（不加 `mcp_` 前缀）。',
         '支持热重载：编辑 `.minds/mcp.yaml` 后无需重启 Dominds；必要时用 `mcp_restart`。',
+        '默认按“每个对话租用一个 MCP client”运行（更安全）：首次使用该 toolset 会产生 sticky reminder，完成后用 `mcp_release` 释放；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。',
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
       ]) +
       '\n' +
@@ -1146,6 +1147,7 @@ function renderMcpManual(language: LanguageCode): string {
       'version: 1\n' +
       'servers:\n' +
       '  sdk_http:\n' +
+      '    truely-stateless: false\n' +
       '    transport: streamable_http\n' +
       '    url: http://127.0.0.1:3000/mcp\n' +
       '    tools: { whitelist: [], blacklist: [] }\n' +
@@ -1158,6 +1160,7 @@ function renderMcpManual(language: LanguageCode): string {
     fmtList([
       'Each MCP serverId registers one toolset, and the toolset name is exactly `serverId` (no `mcp_` prefix).',
       'Hot reload: edits apply without restarting Dominds; use `mcp_restart` when needed.',
+      "Default is per-dialog MCP client leasing (safer): first use adds a sticky reminder; call `mcp_release` when you're sure you won't need the toolset soon. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing.",
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
     ]) +
     '\n' +
@@ -1166,6 +1169,7 @@ function renderMcpManual(language: LanguageCode): string {
     'version: 1\n' +
     'servers:\n' +
     '  sdk_http:\n' +
+    '    truely-stateless: false\n' +
     '    transport: streamable_http\n' +
     '    url: http://127.0.0.1:3000/mcp\n' +
     '    tools: { whitelist: [], blacklist: [] }\n' +

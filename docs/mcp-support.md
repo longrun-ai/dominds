@@ -36,6 +36,47 @@ system:
 - Function tool calls can be executed concurrently (the driver `Promise.all()`s them), so any MCP
   client wrapper must safely handle parallel in-flight requests.
 
+## Concurrency & Client Leasing (Important)
+
+Many real-world MCP servers are **not safe to share concurrently** across multiple dialogs/agents.
+Examples include servers that keep mutable session state, maintain implicit “current page” handles,
+or have global process-scoped caches.
+
+Dominds therefore treats MCP client connections/processes as **leased resources** by default.
+
+### Server config: `truely-stateless` (default: `false`)
+
+Each MCP server supports an explicit boolean flag:
+
+- `truely-stateless: false` (default): the server is assumed **not** safe for concurrent multi-dialog
+  use.
+- `truely-stateless: true`: the server is declared safe to share concurrently across dialogs.
+
+Note: the YAML key is intentionally spelled `truely-stateless` (not `truly-stateless`) to match the
+implemented config surface.
+
+### Default behavior (`truely-stateless: false`)
+
+- The first time any MCP tool from that server’s toolset is used in a given dialog, Dominds creates
+  a **dedicated MCP client instance** (and thus a dedicated MCP server process/connection for that
+  dialog).
+- That client instance remains **leased to that dialog** for future tool calls from the same
+  toolset.
+- If another dialog uses the same MCP toolset concurrently, Dominds creates **another** MCP client
+  instance for that requesting dialog (no cross-dialog sharing).
+- On first lease, Dominds adds a **sticky owned reminder** to the dialog instructing the agent to
+  release the lease when it is confident the toolset won’t be needed again soon.
+
+Releasing:
+
+- Agents should call `mcp_release({"serverId":"<serverId>"})` (from `mcp_admin`) to release the
+  leased client instance for the current dialog.
+
+### Shared behavior (`truely-stateless: true`)
+
+- Dominds may share a single MCP client instance across dialogs for that server/toolset.
+- No per-dialog lease reminder is required.
+
 ## Goals
 
 - Configure MCP servers via `.minds/mcp.yaml`.
@@ -320,6 +361,11 @@ This is a Dominds-oriented schema. It is intentionally small and should be easy 
 version: 1
 servers:
   <serverId>:
+    # Concurrency model (IMPORTANT)
+    # - Default false: per-dialog client leasing (safer for stateful servers)
+    # - True: shared client across dialogs (only for servers that are truly stateless)
+    truely-stateless: false
+
     # Transport config (minimum viable set)
     #
     # 1) stdio
@@ -351,6 +397,7 @@ servers:
 version: 1
 servers:
   playwright:
+    truely-stateless: false
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']

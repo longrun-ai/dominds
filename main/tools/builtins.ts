@@ -16,7 +16,7 @@ import {
 } from './ctrl';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, rmDirTool, rmFileTool } from './fs';
-import { mcpRestartTool } from './mcp';
+import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
   addMemoryTool,
   addSharedMemoryTool,
@@ -52,6 +52,7 @@ registerTool(envUnsetTool);
 
 // MCP tools (local testing/ops)
 registerTool(mcpRestartTool);
+registerTool(mcpReleaseTool);
 
 // Memory tools
 registerTool(addMemoryTool);
@@ -110,7 +111,13 @@ registerToolset('os', [
 setToolsetMeta('os', {
   descriptionI18n: { en: 'Shell and process tools', zh: '命令行与进程工具' },
 });
-registerToolset('mcp_admin', [mcpRestartTool, envGetTool, envSetTool, envUnsetTool]);
+registerToolset('mcp_admin', [
+  mcpRestartTool,
+  mcpReleaseTool,
+  envGetTool,
+  envSetTool,
+  envUnsetTool,
+]);
 setToolsetMeta('mcp_admin', {
   descriptionI18n: { en: 'MCP administration tools', zh: 'MCP 管理工具' },
 });
@@ -138,3 +145,4 @@ setToolsetMeta('team-mgmt', {
 // Register ReminderOwners
 registerReminderOwner(shellCmdReminderOwner);
 registerReminderOwner(contextHealthReminderOwner);
+registerReminderOwner(mcpLeaseReminderOwner);

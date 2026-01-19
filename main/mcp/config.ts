@@ -12,6 +12,7 @@ export type McpTransport = 'stdio' | 'streamable_http';
 
 type McpServerConfigBase = {
   serverId: string;
+  truelyStateless: boolean;
   tools: {
     whitelist: string[];
     blacklist: string[];
@@ -122,6 +123,18 @@ function parseWorkspaceConfig(value: unknown): {
 function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
   const obj = asRecord(value, `servers.${serverId}`);
 
+  const truelyStatelessVal = obj['truely-stateless'];
+  const truelyStateless =
+    truelyStatelessVal === undefined
+      ? false
+      : typeof truelyStatelessVal === 'boolean'
+        ? truelyStatelessVal
+        : (() => {
+            throw new Error(
+              `Invalid mcp.yaml: servers.${serverId}.truely-stateless must be a boolean`,
+            );
+          })();
+
   const transport = obj.transport;
   if (transport !== 'stdio' && transport !== 'streamable_http') {
     throw new Error(
@@ -179,6 +192,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
 
     return {
       serverId,
+      truelyStateless,
       transport: 'stdio',
       command,
       args,
@@ -228,6 +242,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
 
   return {
     serverId,
+    truelyStateless,
     transport: 'streamable_http',
     url: parsedUrl.toString(),
     headers,
