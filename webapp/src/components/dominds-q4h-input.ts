@@ -379,6 +379,17 @@ export class DomindsQ4HInput extends HTMLElement {
    * Re-render while preserving input state
    */
   private safeRender(): void {
+    if (this.inputUiRafId !== null) {
+      window.cancelAnimationFrame(this.inputUiRafId);
+      this.inputUiRafId = null;
+    }
+
+    const sr = this.shadowRoot;
+    const active = sr ? sr.activeElement : null;
+    const restoreFocus = active === this.textInput || active === this.sendButton;
+    const selectionStart = active === this.textInput ? this.textInput.selectionStart : null;
+    const selectionEnd = active === this.textInput ? this.textInput.selectionEnd : null;
+
     const currentValue = this.textInput?.value || '';
     const currentHeight = this.textInput?.style.height || '';
 
@@ -392,6 +403,16 @@ export class DomindsQ4HInput extends HTMLElement {
       }
     }
     this.updateUI();
+
+    if (restoreFocus && this.textInput && !this.textInput.disabled) {
+      this.textInput.focus();
+      const len = this.textInput.value.length;
+      if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+        this.textInput.setSelectionRange(Math.min(selectionStart, len), Math.min(selectionEnd, len));
+      } else {
+        this.textInput.setSelectionRange(len, len);
+      }
+    }
   }
 
   private toggleQuestion(questionId: string): void {
@@ -770,6 +791,10 @@ export class DomindsQ4HInput extends HTMLElement {
     const msgId = generateShortId();
 
     try {
+      const sr = this.shadowRoot;
+      const active = sr ? sr.activeElement : null;
+      const restoreFocus = active === this.textInput || active === this.sendButton;
+
       if (this.selectedQuestionId) {
         // Send as Q4H answer
         this.wsManager.sendRaw({
@@ -801,6 +826,14 @@ export class DomindsQ4HInput extends HTMLElement {
           composed: true,
         }),
       );
+
+      if (restoreFocus) {
+        queueMicrotask(() => {
+          if (this.props.disabled) return;
+          if (!this.currentDialog) return;
+          this.focusInput();
+        });
+      }
 
       return { success: true, msgId };
     } catch (error) {
