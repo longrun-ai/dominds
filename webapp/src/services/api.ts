@@ -545,7 +545,13 @@ export function getApiClient(config?: { baseURL?: string; timeout?: number }): A
     let baseURL = config?.baseURL;
     if (!baseURL) {
       const { protocol, hostname, port } = window.location;
-      baseURL = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+      // In dev, the WebUI is served by Vite (5555) while the backend API is on 5556.
+      // Prefer talking to the backend directly to avoid relying on proxy edge-cases.
+      if (port === '5555') {
+        baseURL = `${protocol}//${hostname}:5556`;
+      } else {
+        baseURL = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+      }
     }
     const timeout = config?.timeout || 30000;
     globalApiClient = new ApiClient(baseURL, timeout);

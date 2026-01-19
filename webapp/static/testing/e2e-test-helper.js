@@ -453,19 +453,24 @@ async function waitStreamingComplete(msgId, timeoutMs = 60000) {
   const shadow = dialogContainer?.shadowRoot;
   if (!shadow) return false;
 
+  // IMPORTANT: Avoid false positives caused by races immediately after sendMessage().
+  // We must observe the generation bubble for the specific msgId before declaring completion.
+  let sawTargetBubble = false;
+
   const result = await waitUntil(() => {
     // First check user message bubble completion
     const userMsg = shadow.querySelector(`.user-message[data-user-msg-id="${msgId}"]`);
-    if (userMsg) {
-      const bubble = userMsg.closest('.generation-bubble');
-      if (bubble && bubble.classList.contains('completed')) {
-        return true;
-      }
-    }
     const userBubble = shadow.querySelector(`.generation-bubble[data-user-msg-id="${msgId}"]`);
-    if (userBubble && userBubble.classList.contains('completed')) {
-      return true;
+    const bubble = (userMsg ? userMsg.closest('.generation-bubble') : null) || userBubble;
+
+    if (bubble) {
+      sawTargetBubble = true;
+      return bubble.classList.contains('completed');
     }
+
+    // If we haven't even seen the bubble for this msgId yet, we are not done.
+    // This prevents returning "complete" based on unrelated prior bubbles.
+    if (!sawTargetBubble) return false;
 
     // Fallback: check for any completed bubble with no incomplete ones
     const completedBubble = shadow.querySelector(sel.genCompleted);

@@ -16,7 +16,13 @@ export interface TeamMembersProps {
 
 type TeamMembersUiState =
   | { kind: 'ready'; query: string; showHidden: boolean; selectedMemberId: string | null }
-  | { kind: 'error'; query: string; showHidden: boolean; selectedMemberId: string | null; message: string };
+  | {
+      kind: 'error';
+      query: string;
+      showHidden: boolean;
+      selectedMemberId: string | null;
+      message: string;
+    };
 
 export type TeamMembersMentionEventDetail = {
   memberId: string;
@@ -284,7 +290,13 @@ export class DomindsTeamMembers extends HTMLElement {
     const details = root.querySelector('#team-member-details');
     const memberDetailsScrollTop = details instanceof HTMLElement ? details.scrollTop : 0;
 
-    return { focusedId, selectionStart, selectionEnd, membersListScrollTop, memberDetailsScrollTop };
+    return {
+      focusedId,
+      selectionStart,
+      selectionEnd,
+      membersListScrollTop,
+      memberDetailsScrollTop,
+    };
   }
 
   private restoreRenderContext(
@@ -316,14 +328,21 @@ export class DomindsTeamMembers extends HTMLElement {
 
   private renderMemberRow(member: FrontendTeamMember): string {
     const t = getUiStrings(this.props.uiLanguage);
-    const isDefault = typeof this.props.defaultResponder === 'string' && member.id === this.props.defaultResponder;
+    const isDefault =
+      typeof this.props.defaultResponder === 'string' && member.id === this.props.defaultResponder;
     const isSelected = this.getSelectedMemberId() === member.id;
     const icon = this.getMemberIcon(member);
-    const provider = typeof member.provider === 'string' ? member.provider : t.teamMembersUnknownProvider;
+    const provider =
+      typeof member.provider === 'string' ? member.provider : t.teamMembersUnknownProvider;
     const model = typeof member.model === 'string' ? member.model : t.teamMembersUnknownModel;
 
-    const hiddenBadge = member.hidden === true ? `<span class="badge badge-hidden">${t.teamMembersHiddenBadge}</span>` : '';
-    const defaultBadge = isDefault ? `<span class="badge badge-default">${t.teamMembersDefaultBadge}</span>` : '';
+    const hiddenBadge =
+      member.hidden === true
+        ? `<span class="badge badge-hidden">${t.teamMembersHiddenBadge}</span>`
+        : '';
+    const defaultBadge = isDefault
+      ? `<span class="badge badge-default">${t.teamMembersDefaultBadge}</span>`
+      : '';
 
     return `
       <div class="member-row" role="button" tabindex="0" data-member-id="${this.escapeAttr(member.id)}" aria-pressed="${
@@ -359,9 +378,11 @@ export class DomindsTeamMembers extends HTMLElement {
 
   private renderMemberDetails(member: FrontendTeamMember): string {
     const t = getUiStrings(this.props.uiLanguage);
-    const isDefault = typeof this.props.defaultResponder === 'string' && member.id === this.props.defaultResponder;
+    const isDefault =
+      typeof this.props.defaultResponder === 'string' && member.id === this.props.defaultResponder;
 
-    const provider = typeof member.provider === 'string' ? member.provider : t.teamMembersUnknownProvider;
+    const provider =
+      typeof member.provider === 'string' ? member.provider : t.teamMembersUnknownProvider;
     const model = typeof member.model === 'string' ? member.model : t.teamMembersUnknownModel;
     const streaming = member.streaming === true ? t.teamMembersYes : t.teamMembersNo;
     const gofor = Array.isArray(member.gofor) ? member.gofor : [];

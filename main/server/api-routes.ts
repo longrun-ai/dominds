@@ -561,6 +561,13 @@ async function handleCreateDialog(
     // No need to call registerDialog
 
     respondJson(res, 201, { success: true, selfId: dialogId.selfId, rootId: dialogId.rootId });
+    broadcastDialogCreates(context.clients, {
+      type: 'dialogs_created',
+      scope: { kind: 'root', rootId: dialogId.selfId },
+      status: 'running',
+      createdRootIds: [dialogId.selfId],
+      timestamp: formatUnifiedTimestamp(new Date()),
+    });
     return true;
   } catch (error) {
     log.error('Error creating dialog:', error);
@@ -726,6 +733,26 @@ function broadcastDialogDeletes(
   }
 }
 
+function broadcastDialogCreates(
+  clients: Set<WebSocket> | undefined,
+  message: {
+    type: 'dialogs_created';
+    scope: { kind: 'root'; rootId: string } | { kind: 'task'; taskDocPath: string };
+    status: 'running' | 'completed' | 'archived';
+    createdRootIds: string[];
+    timestamp: string;
+  },
+): void {
+  if (!clients) return;
+  if (message.createdRootIds.length === 0) return;
+  const data = JSON.stringify(message);
+  for (const ws of clients) {
+    if (ws.readyState === 1) {
+      ws.send(data);
+    }
+  }
+}
+
 async function handleDeleteDialog(
   res: ServerResponse,
   dialog: { rootId: string; selfId: string },
@@ -754,6 +781,7 @@ async function handleDeleteDialog(
       return true;
     }
 
+    log.debug('Deleted dialog via API', undefined, { rootId, fromStatus });
     globalDialogRegistry.unregister(rootId);
 
     respondJson(res, 200, { deleted: true, fromStatus });

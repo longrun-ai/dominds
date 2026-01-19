@@ -63,6 +63,10 @@ export class DomindsDialogContainer extends HTMLElement {
   private callingSection?: HTMLElement;
   private codeblockSection?: DomindsCodeBlock;
 
+  // Best-effort cache to recover tool-call streaming sections by genseq.
+  // Tool-call chunk events don't carry callId, so this is scoped to per-genseq recovery only.
+  private toolCallingSectionBySeq = new Map<number, HTMLElement>();
+
   // Track calling sections by callId for direct lookup (tool calls only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
   // Tool call responses can arrive before the corresponding calling section has finished streaming
@@ -780,9 +784,17 @@ export class DomindsDialogContainer extends HTMLElement {
   private findInFlightToolCallingSectionForGenseq(genseq: number): HTMLElement | undefined {
     const sr = this.shadowRoot;
     if (!sr) return undefined;
-    const selector = `.calling-section:not(.teammate-call)[data-genseq="${String(genseq)}"]:not(.completed)`;
+    const selector = `.calling-section:not(.teammate-call)[data-genseq="${String(genseq)}"]`;
     const nodes = sr.querySelectorAll(selector);
     if (nodes.length < 1) return undefined;
+
+    // Prefer an in-flight (not .completed) section; fall back to the latest completed section.
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes.item(i);
+      if (n instanceof HTMLElement && !n.classList.contains('completed')) {
+        return n;
+      }
+    }
     const last = nodes.item(nodes.length - 1);
     return last instanceof HTMLElement ? last : undefined;
   }
@@ -799,6 +811,11 @@ export class DomindsDialogContainer extends HTMLElement {
     if (recovered) {
       this.callingSection = recovered;
       return recovered;
+    }
+    const cached = this.toolCallingSectionBySeq.get(genseq);
+    if (cached && cached.isConnected) {
+      this.callingSection = cached;
+      return cached;
     }
     return undefined;
   }
@@ -822,6 +839,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // This is because callId is now a content-hash computed from the complete call
     (body || bubble).appendChild(callingSection);
     this.callingSection = callingSection;
+    this.toolCallingSectionBySeq.set(genseq, callingSection);
 
     this.scrollToBottom();
   }
@@ -860,12 +878,12 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleToolCallBodyStart(genseq: number, _infoLine?: string): void {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      this.handleProtocolError(
-        `tool_call_body_start_evt received without calling section ${JSON.stringify({
-          genseq,
-          round: this.currentRound,
-        })}`,
-      );
+      // This can happen when the UI intentionally clears DOM during navigation/round transitions,
+      // or when replay/streaming events arrive late. Treat as a tolerated orphan event.
+      console.warn('tool_call_body_start_evt received without calling section', {
+        genseq,
+        round: this.currentRound,
+      });
       return;
     }
     // Body section is already created in DOM structure
@@ -875,12 +893,10 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleToolCallBodyChunk(genseq: number, chunk: string): void {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      this.handleProtocolError(
-        `tool_call_body_chunk_evt received without calling section ${JSON.stringify({
-          genseq,
-          round: this.currentRound,
-        })}`,
-      );
+      console.warn('tool_call_body_chunk_evt received without calling section', {
+        genseq,
+        round: this.currentRound,
+      });
       return;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement;
@@ -891,12 +907,10 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleToolCallBodyFinish(genseq: number, _endQuote?: string): void {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      this.handleProtocolError(
-        `tool_call_body_finish_evt received without calling section ${JSON.stringify({
-          genseq,
-          round: this.currentRound,
-        })}`,
-      );
+      console.warn('tool_call_body_finish_evt received without calling section', {
+        genseq,
+        round: this.currentRound,
+      });
       return;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement;
@@ -926,12 +940,15 @@ export class DomindsDialogContainer extends HTMLElement {
     this.callingSectionByCallId.set(callId, currentSection);
     currentSection.classList.add('completed');
     this.callingSection = undefined;
+    this.toolCallingSectionBySeq.set(event.genseq, currentSection);
 
     const pending = this.pendingToolCallResponsesByCallId.get(callId);
     if (pending) {
-      this.pendingToolCallResponsesByCallId.delete(callId);
       const display = this.formatToolCallResultForSection(currentSection, pending);
-      this.attachResultInline(currentSection, display, pending.status);
+      if (typeof display === 'string') {
+        this.pendingToolCallResponsesByCallId.delete(callId);
+        this.attachResultInline(currentSection, display, pending.status);
+      }
     }
   }
 
@@ -1250,6 +1267,12 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const display = this.formatToolCallResultForSection(callingSection, event);
+    if (typeof display !== 'string') {
+      // Delay rendering until bubble language becomes known (end_of_user_saying_evt),
+      // otherwise we may incorrectly localize tool-call errors based on current UI language.
+      this.pendingToolCallResponsesByCallId.set(callId, event);
+      return;
+    }
     this.attachResultInline(callingSection, display, event.status);
     this.pendingToolCallResponsesByCallId.delete(callId);
     if (event.status === 'failed') {
@@ -1264,7 +1287,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  private resolvePreferredLanguageForSection(section: HTMLElement): LanguageCode {
+  private resolveBubbleLanguageForSection(section: HTMLElement): LanguageCode | null {
     const bubble = section.closest('.generation-bubble');
     if (bubble instanceof HTMLElement) {
       const raw = bubble.getAttribute('data-user-language-code');
@@ -1274,32 +1297,28 @@ export class DomindsDialogContainer extends HTMLElement {
       }
     }
 
-    try {
-      const stored = localStorage.getItem('dominds-ui-language');
-      if (stored) {
-        const parsed = normalizeLanguageCode(stored);
-        if (parsed) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-
-    return 'en';
+    return null;
   }
 
   private formatToolCallResultForSection(
     section: HTMLElement,
     event: ToolCallResponseEvent,
-  ): string {
+  ): string | undefined {
     const rawResult = String(event.result || '');
     if (event.status !== 'failed') return rawResult;
 
     const parsed = parseToolCallError(rawResult);
     if (!parsed) return rawResult;
 
-    const language = this.resolvePreferredLanguageForSection(section);
+    const bubbleLanguage = this.resolveBubbleLanguageForSection(section);
+    if (!bubbleLanguage) {
+      // Don't guess based on current UI language: tool-call errors must match the language of
+      // the originating user prompt (per-bubble data-user-language-code). Defer until known.
+      return undefined;
+    }
+
     return formatToolCallErrorInline({
-      language,
+      language: bubbleLanguage,
       responderId: String(event.responderId || ''),
       headLine: String(event.headLine || ''),
       parsed,
@@ -1648,7 +1667,30 @@ export class DomindsDialogContainer extends HTMLElement {
     } else {
       bubble.removeAttribute('data-user-language-code');
     }
+
+    // If any tool-call responses were deferred due to missing bubble language, try attaching now.
+    this.flushPendingToolCallResponsesForBubble(bubble);
     this.scrollToBottom();
+  }
+
+  private flushPendingToolCallResponsesForBubble(bubble: HTMLElement): void {
+    const sections = bubble.querySelectorAll('.calling-section[data-call-id]');
+    if (sections.length < 1) return;
+
+    for (const section of Array.from(sections)) {
+      if (!(section instanceof HTMLElement)) continue;
+      const callId = String(section.getAttribute('data-call-id') || '').trim();
+      if (!callId) continue;
+
+      const pending = this.pendingToolCallResponsesByCallId.get(callId);
+      if (!pending) continue;
+
+      const display = this.formatToolCallResultForSection(section, pending);
+      if (typeof display !== 'string') continue;
+
+      this.pendingToolCallResponsesByCallId.delete(callId);
+      this.attachResultInline(section, display, pending.status);
+    }
   }
 
   // Create thinking section (inside generation bubble)

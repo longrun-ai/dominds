@@ -2730,6 +2730,26 @@ export class DomindsApp extends HTMLElement {
       }
     });
 
+    // Q4H selection event from the inline panel - keeps q4h-input selection in sync so answers
+    // are routed to the intended question/dialog context.
+    this.shadowRoot.addEventListener('q4h-select-question', (event: Event) => {
+      const ce = event as CustomEvent<{
+        questionId: string | null;
+        dialogId: string;
+        rootId: string;
+        headLine: string;
+        bodyContent: string;
+      }>;
+      const questionId = ce.detail?.questionId ?? null;
+      if (!this.q4hInput) return;
+      this.q4hInput.selectQuestion(questionId);
+      if (questionId) {
+        setTimeout(() => {
+          this.q4hInput?.focusInput();
+        }, 100);
+      }
+    });
+
     // ========== Delegated Click Handlers ==========
     this.shadowRoot.addEventListener('click', async (evt: Event) => {
       const target = evt.target as HTMLElement | null;
@@ -3482,8 +3502,7 @@ export class DomindsApp extends HTMLElement {
 
   private async loadTeamMembers(): Promise<void> {
     const teamMembersEl = this.shadowRoot ? this.shadowRoot.querySelector('#team-members') : null;
-    const teamMembersComponent =
-      teamMembersEl instanceof DomindsTeamMembers ? teamMembersEl : null;
+    const teamMembersComponent = teamMembersEl instanceof DomindsTeamMembers ? teamMembersEl : null;
     if (teamMembersComponent) teamMembersComponent.setLoading(true);
     try {
       const api = getApiClient();
@@ -4994,6 +5013,12 @@ export class DomindsApp extends HTMLElement {
       }
       case 'dialogs_moved': {
         // Another client moved dialogs between running/done/archived - refresh lists.
+        // This ensures multi-tab/multi-browser updates stay consistent without polling.
+        void this.loadDialogs();
+        return true;
+      }
+      case 'dialogs_created': {
+        // Another client created dialogs - refresh lists.
         // This ensures multi-tab/multi-browser updates stay consistent without polling.
         void this.loadDialogs();
         return true;

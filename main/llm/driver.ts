@@ -717,7 +717,7 @@ export async function runBackendDriver(): Promise<void> {
         try {
           if (!(await rootDialog.canDrive())) {
             globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
-            await DialogPersistence.setNeedsDrive(rootDialog.id, false);
+            await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
             continue;
           }
 
@@ -730,10 +730,10 @@ export async function runBackendDriver(): Promise<void> {
 
           if (rootDialog.hasUpNext()) {
             globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
-            await DialogPersistence.setNeedsDrive(rootDialog.id, true);
+            await DialogPersistence.setNeedsDrive(rootDialog.id, true, rootDialog.status);
           } else {
             globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
-            await DialogPersistence.setNeedsDrive(rootDialog.id, false);
+            await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
           }
 
           const status = await rootDialog.getSuspensionStatus();
@@ -789,7 +789,7 @@ export async function checkAndReviveSuspendedDialogs(): Promise<void> {
       if (allSatisfied) {
         await withSuspensionStateLock(rootDialog.id, async () => {
           await DialogPersistence.savePendingSubdialogs(rootDialog.id, []);
-          await DialogPersistence.setNeedsDrive(rootDialog.id, true);
+          await DialogPersistence.setNeedsDrive(rootDialog.id, true, rootDialog.status);
         });
         globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
         log.info(`All subdialogs complete for ${rootDialog.id.rootId}, auto-reviving`);
@@ -2326,7 +2326,7 @@ export async function supplyResponseToSupdialog(
       const hasQ4H = await parentDialog.hasPendingQ4H();
       const shouldRevive = !hasQ4H && filteredPending.length === 0;
       if (shouldRevive && parentDialog instanceof RootDialog) {
-        await DialogPersistence.setNeedsDrive(parentDialog.id, true);
+        await DialogPersistence.setNeedsDrive(parentDialog.id, true, parentDialog.status);
       }
 
       return {

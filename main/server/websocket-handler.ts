@@ -56,6 +56,8 @@ const wsLiveDlg = new WeakMap<WebSocket, Dialog>();
 const wsSub = new WeakMap<WebSocket, { dialogKey: string; subChan: SubChan<DialogEvent> }>();
 const wsUiLanguage = new WeakMap<WebSocket, LanguageCode>();
 
+let broadcastDialogsIndexMessage: ((msg: WebSocketMessage) => void) | null = null;
+
 function resolveUserLanguageCode(
   ws: WebSocket,
   raw: unknown,
@@ -336,6 +338,14 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       taskDocPath: taskDocPath,
     };
     ws.send(JSON.stringify(response));
+
+    broadcastDialogsIndexMessage?.({
+      type: 'dialogs_created',
+      scope: { kind: 'root', rootId: dialogId.selfId },
+      status: 'running',
+      createdRootIds: [dialogId.selfId],
+      timestamp: formatUnifiedTimestamp(new Date()),
+    });
   } catch (error) {
     log.warn('Failed to create dialog', undefined, error);
     ws.send(
@@ -832,9 +842,9 @@ async function handleInterruptDialog(ws: WebSocket, packet: InterruptDialogReque
   const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
   const res = await requestInterruptDialog(dialogIdObj, 'user_stop');
   if (!res.applied) {
-    ws.send(
-      JSON.stringify({ type: 'error', message: 'Dialog is not proceeding (nothing to stop).' }),
-    );
+    // Stop should be idempotent: a double-click (or concurrent stop) must not surface as an error.
+    // If the dialog is already not proceeding, treat as a no-op.
+    return;
   }
 }
 
@@ -1018,6 +1028,17 @@ export function setupWebSocketServer(
       }
     }
   });
+
+  // Broadcast dialog index changes (create/move/delete) so other tabs refresh their lists.
+  // This ensures multi-tab/multi-browser updates stay consistent without polling.
+  broadcastDialogsIndexMessage = (msg: WebSocketMessage) => {
+    const data = JSON.stringify(msg);
+    for (const ws of clients) {
+      if (ws.readyState === 1) {
+        ws.send(data);
+      }
+    }
+  };
 
   // Broadcast workspace Problems snapshots to all connected clients.
   setProblemsBroadcaster((msg: WebSocketMessage) => {

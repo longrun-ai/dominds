@@ -2068,6 +2068,54 @@ export class DialogPersistence {
     );
 
     const result: DialogID[] = [];
+    const rootDialogIdByDialogYamlPath = new Map<string, string | null>();
+
+    const readDialogYamlId = async (dialogYamlPath: string): Promise<string | null> => {
+      const cached = rootDialogIdByDialogYamlPath.get(dialogYamlPath);
+      if (cached !== undefined) return cached;
+      try {
+        const content = await fs.promises.readFile(dialogYamlPath, 'utf-8');
+        const parsed: unknown = yaml.parse(content);
+        if (typeof parsed !== 'object' || parsed === null) {
+          rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
+          return null;
+        }
+        const idValue = (parsed as { id?: unknown }).id;
+        if (typeof idValue !== 'string' || idValue.trim() === '') {
+          rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
+          return null;
+        }
+        const normalized = idValue.trim();
+        rootDialogIdByDialogYamlPath.set(dialogYamlPath, normalized);
+        return normalized;
+      } catch {
+        rootDialogIdByDialogYamlPath.set(dialogYamlPath, null);
+        return null;
+      }
+    };
+
+    const inferRootIdFromRelativeDir = async (relativeDir: string): Promise<string | null> => {
+      const dir = relativeDir.trim();
+      if (dir === '' || dir === '.' || dir === path.sep) return null;
+      const segments = dir.split(path.sep).filter((seg) => seg.length > 0 && seg !== '.');
+      if (segments.length === 0) return null;
+
+      // Root dialog IDs in this repo can contain path separators (e.g. "f4/44/cd85c4e2").
+      // The root dialog directory is therefore nested (RUN_DIR/<rootId>/dialog.yaml).
+      //
+      // To infer the rootId for any dialog.yaml we find (root or subdialog), scan prefixes of the
+      // directory path and pick the first prefix that is itself a valid root dialog directory:
+      // - it has a dialog.yaml
+      // - its dialog.yaml id matches the prefix joined with '/'
+      for (let i = 1; i <= segments.length; i++) {
+        const prefixSegs = segments.slice(0, i);
+        const candidateDialogYamlPath = path.join(specificDir, ...prefixSegs, 'dialog.yaml');
+        const id = await readDialogYamlId(candidateDialogYamlPath);
+        const expectedId = prefixSegs.join('/');
+        if (id === expectedId) return expectedId;
+      }
+      return null;
+    };
 
     const findDialogYamls = async (dirPath: string, relativePath: string = ''): Promise<void> => {
       let entries: fs.Dirent[];
@@ -2088,9 +2136,9 @@ export class DialogPersistence {
         }
         if (entry.name !== 'dialog.yaml') continue;
 
-        const segments = entryRelativePath.split(path.sep);
-        const rootId = segments.length > 0 ? segments[0] : undefined;
-        if (!rootId || rootId.trim() === '') continue;
+        const relDir = path.dirname(entryRelativePath);
+        const rootId = await inferRootIdFromRelativeDir(relDir);
+        if (!rootId) continue;
 
         try {
           const content = await fs.promises.readFile(fullPath, 'utf-8');
@@ -3446,6 +3494,9 @@ export class DialogPersistence {
         const destPath = path.join(toPath, entry.name);
         await fs.promises.rename(srcPath, destPath);
       }
+
+      // Remove the (now-empty) source directory so the dialog is not detected under both statuses.
+      await fs.promises.rm(fromPath, { recursive: true, force: true });
     } catch (error) {
       log.error(`Failed to move dialog ${dialogId} from ${fromStatus} to ${toStatus}:`, error);
       throw error;
@@ -3476,8 +3527,11 @@ export class DialogPersistence {
         rootDialogId.selfId,
       );
       try {
-        const st = await fs.promises.stat(candidatePath);
-        if (st.isDirectory()) {
+        // `run/` can contain stray placeholder directories (e.g. created by status-agnostic metadata updates).
+        // Treat a status as valid only if it contains the root dialog's dialog.yaml.
+        const dialogYamlPath = path.join(candidatePath, 'dialog.yaml');
+        const st = await fs.promises.stat(dialogYamlPath);
+        if (st.isFile()) {
           return candidate.status;
         }
       } catch (error: unknown) {
@@ -3501,8 +3555,17 @@ export class DialogPersistence {
     const status = await this.findRootDialogStatus(rootDialogId);
     if (!status) return null;
 
-    const rootPath = this.getRootDialogPath(rootDialogId, status);
-    await fs.promises.rm(rootPath, { recursive: true, force: true });
+    // Best-effort cleanup: remove the dialog from all status directories to avoid leaving behind
+    // orphaned placeholder paths (e.g. `run/<id>/latest.yaml`) after a delete.
+    const allStatuses: Array<'running' | 'completed' | 'archived'> = [
+      'running',
+      'completed',
+      'archived',
+    ];
+    for (const candidate of allStatuses) {
+      const candidatePath = this.getRootDialogPath(rootDialogId, candidate);
+      await fs.promises.rm(candidatePath, { recursive: true, force: true });
+    }
     return status;
   }
 
