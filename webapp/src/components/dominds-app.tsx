@@ -3491,10 +3491,43 @@ export class DomindsApp extends HTMLElement {
         // h is {root: {...}, subdialogs: [...]}
 
         if (Array.isArray(h.subdialogs)) {
+          const cachedRootRunState = this.dialogRunStatesByKey.get(this.dialogKey(rootId, rootId));
+          const rootRunState = h.root.runState ?? cachedRootRunState;
+          if (rootRunState) {
+            this.dialogRunStatesByKey.set(this.dialogKey(rootId, rootId), rootRunState);
+          }
+
+          let didUpdateRoot = false;
+          this.dialogs = (this.dialogs || []).map((d) => {
+            if (d.rootId !== rootId) return d;
+            if (d.selfId) return d;
+            didUpdateRoot = true;
+            return {
+              ...d,
+              agentId: h.root.agentId,
+              taskDocPath: h.root.taskDocPath,
+              status: h.root.status,
+              currentRound: h.root.currentRound,
+              createdAt: h.root.createdAt,
+              lastModified: h.root.lastModified,
+              runState: rootRunState ?? d.runState,
+            };
+          });
+
           const newSubdialogs: ApiRootDialogResponse[] = [];
 
           for (const subdialog of h.subdialogs) {
             if (subdialog && subdialog.rootId) {
+              const cachedRunState = this.dialogRunStatesByKey.get(
+                this.dialogKey(subdialog.rootId, subdialog.selfId),
+              );
+              const effectiveRunState = subdialog.runState ?? cachedRunState;
+              if (effectiveRunState) {
+                this.dialogRunStatesByKey.set(
+                  this.dialogKey(subdialog.rootId, subdialog.selfId),
+                  effectiveRunState,
+                );
+              }
               newSubdialogs.push({
                 rootId: subdialog.rootId,
                 selfId: subdialog.selfId,
@@ -3504,25 +3537,40 @@ export class DomindsApp extends HTMLElement {
                 currentRound: subdialog.currentRound,
                 createdAt: subdialog.createdAt,
                 lastModified: subdialog.lastModified,
+                runState: effectiveRunState,
                 supdialogId: rootId, // Link to parent
                 topicId: subdialog.topicId,
               });
             }
           }
 
-          // Add new subdialogs to existing dialogs list
-          const existingSubdialogs = this.dialogs.filter(
-            (d) => d.supdialogId === rootId && d.selfId !== undefined,
-          );
+          const incomingByKey = new Map<string, ApiRootDialogResponse>();
+          for (const incoming of newSubdialogs) {
+            incomingByKey.set(`${incoming.rootId}:${incoming.selfId ?? ''}`, incoming);
+          }
 
-          // Deduplicate and merge
-          const existingKeys = new Set(existingSubdialogs.map((d) => `${d.rootId}:${d.selfId}`));
-          const trulyNew = newSubdialogs.filter(
-            (d) => !existingKeys.has(`${d.rootId}:${d.selfId}`),
-          );
+          let didMerge = false;
+          const mergedDialogs = (this.dialogs || []).map((d) => {
+            if (!d.selfId) return d;
+            if (d.supdialogId !== rootId) return d;
+            const incoming = incomingByKey.get(`${d.rootId}:${d.selfId}`);
+            if (!incoming) return d;
+            incomingByKey.delete(`${d.rootId}:${d.selfId}`);
+            didMerge = true;
+            return {
+              ...d,
+              ...incoming,
+              runState: incoming.runState ?? d.runState,
+            };
+          });
 
-          if (trulyNew.length > 0) {
-            this.dialogs = [...this.dialogs, ...trulyNew];
+          const toAppend = Array.from(incomingByKey.values());
+          if (toAppend.length > 0) {
+            didMerge = true;
+          }
+
+          if (didUpdateRoot || didMerge) {
+            this.dialogs = [...mergedDialogs, ...toAppend];
             this.renderDialogList();
           }
         }
@@ -5168,8 +5216,19 @@ export class DomindsApp extends HTMLElement {
                 currentRound: root.currentRound,
                 createdAt: root.createdAt,
                 lastModified: root.lastModified,
+                runState:
+                  root.runState ?? this.dialogRunStatesByKey.get(this.dialogKey(root.id, root.id)),
               });
+              const rootRunState =
+                root.runState ?? this.dialogRunStatesByKey.get(this.dialogKey(root.id, root.id));
+              if (rootRunState) {
+                this.dialogRunStatesByKey.set(this.dialogKey(root.id, root.id), rootRunState);
+              }
               for (const sd of subs) {
+                const sdCachedRunState = this.dialogRunStatesByKey.get(
+                  this.dialogKey(root.id, sd.selfId),
+                );
+                const sdEffectiveRunState = sd.runState ?? sdCachedRunState;
                 entries.push({
                   rootId: root.id, // Subdialogs belong to the supdialog's root for proper path resolution
                   selfId: sd.selfId, // Subdialog's own unique identifier
@@ -5179,9 +5238,16 @@ export class DomindsApp extends HTMLElement {
                   currentRound: sd.currentRound,
                   createdAt: sd.createdAt,
                   lastModified: sd.lastModified,
+                  runState: sdEffectiveRunState,
                   supdialogId: root.id,
                   topicId: sd.topicId,
                 });
+                if (sdEffectiveRunState) {
+                  this.dialogRunStatesByKey.set(
+                    this.dialogKey(root.id, sd.selfId),
+                    sdEffectiveRunState,
+                  );
+                }
               }
               // Merge into existing dialogs: replace any entries under this root
               this.dialogs = this.dialogs.filter(
@@ -5309,6 +5375,10 @@ export class DomindsApp extends HTMLElement {
           }
 
           this.recomputeRunControlCounts();
+
+          // Ensure list views update immediately so the entire hierarchy reflects
+          // run-state changes in real-time (not just the currently selected node).
+          this.updateDialogList();
 
           // Forward to dialog container if this event targets it
           const dialogContainer = this.getDialogContainerForEvent(message);

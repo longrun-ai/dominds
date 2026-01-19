@@ -748,6 +748,26 @@ export class RunningDialogList extends HTMLElement {
     };
     this.collapsedTasks.delete(dialog.taskDocPath);
     this.collapsedRoots.delete(dialog.rootId);
+
+    // Ensure the selected dialog's hierarchy is available in the list.
+    // We only lazy-load subdialogs when the root is expanded via the toggle button,
+    // but selection can happen through other UX paths (clicking a row, deep-link,
+    // programmatic selection, etc.). Without this, run-state styling only appears
+    // for the currently selected node because siblings/children are not loaded.
+    if (
+      !this.requestedSubdialogRoots.has(dialog.rootId) &&
+      !this.hasSubdialogsLoaded(dialog.rootId)
+    ) {
+      this.requestedSubdialogRoots.add(dialog.rootId);
+      this.dispatchEvent(
+        new CustomEvent('dialog-expand', {
+          detail: { rootId: dialog.rootId },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+
     this.renderList();
   }
 
