@@ -44,6 +44,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private collapsedQuestions: Set<string> = new Set();
   private isListExpanded = false; // Start collapsed, auto-expand when questions arrive
   private sendOnEnter = true; // Default to Enter to send
+  private isComposing = false;
   private props: Q4HInputProps = {
     disabled: false,
     placeholder: 'Type your answer...',
@@ -606,12 +607,29 @@ export class DomindsQ4HInput extends HTMLElement {
 
     // Text input handlers
     if (this.textInput) {
+      this.isComposing = false;
+      this.textInput.addEventListener('compositionstart', () => {
+        this.isComposing = true;
+      });
+      this.textInput.addEventListener('compositionend', () => {
+        this.isComposing = false;
+      });
+      this.textInput.addEventListener('compositioncancel', () => {
+        this.isComposing = false;
+      });
+      this.textInput.addEventListener('blur', () => {
+        this.isComposing = false;
+      });
+
       this.textInput.addEventListener('input', () => {
         this.updateSendButton();
         this.autoResizeTextarea();
       });
 
       this.textInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (this.isComposing || e.isComposing || e.keyCode === 229)) {
+          return;
+        }
         if (this.sendOnEnter) {
           // Send on Enter (unless modifier keys are pressed)
           if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
