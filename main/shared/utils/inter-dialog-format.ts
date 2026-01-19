@@ -63,8 +63,8 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   const language: LanguageCode = input.language ?? 'en';
   const greeting =
     language === 'zh'
-      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，@${requireNonEmpty(input.fromAgentId, 'fromAgentId')} 请求你：`
-      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} is asking you:`;
+      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，我是 @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} 现在：`
+      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, this is @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} speaking, now:`;
 
   return `${greeting}
 
