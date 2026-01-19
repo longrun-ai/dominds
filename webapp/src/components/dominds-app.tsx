@@ -3306,6 +3306,7 @@ export class DomindsApp extends HTMLElement {
           this.currentDialogStatus = null;
         }
         this.renderDialogList();
+        this.updateQ4HComponent();
         this.updateInputPanelVisibility();
       } else {
         if (resp.status === 401) {
@@ -3430,6 +3431,34 @@ export class DomindsApp extends HTMLElement {
       const movedCount = Array.isArray(payload.movedRootIds) ? payload.movedRootIds.length : 0;
       this.showToast(`Moved ${movedCount} dialog(s).`, 'info');
 
+      // Optimistic in-memory update so UI reacts immediately (no waiting on loadDialogs()).
+      const movedRootIds = Array.isArray(payload.movedRootIds) ? payload.movedRootIds : [];
+      if (movedRootIds.length > 0) {
+        const moved = new Set(movedRootIds);
+        let didUpdate = false;
+        this.dialogs = (this.dialogs || []).map((d) => {
+          if (!moved.has(d.rootId)) return d;
+          if (d.status === toStatus) return d;
+          didUpdate = true;
+          return { ...d, status: toStatus };
+        });
+        if (didUpdate) {
+          this.updateDialogList();
+          if (this.currentDialog) {
+            this.currentDialogStatus = this.resolveDialogStatus(this.currentDialog);
+          } else {
+            this.currentDialogStatus = null;
+          }
+          this.updateInputPanelVisibility();
+          this.updateQ4HComponent();
+        }
+      }
+
+      // If a dialog is revived to running, refresh Q4H state so any pending questions reappear.
+      if (toStatus === 'running') {
+        this.wsManager.sendRaw({ type: 'get_q4h_state' });
+      }
+
       await this.loadDialogs();
       if (this.currentDialog) {
         this.currentDialogStatus = this.resolveDialogStatus(this.currentDialog);
@@ -3437,6 +3466,7 @@ export class DomindsApp extends HTMLElement {
         this.currentDialogStatus = null;
       }
       this.updateInputPanelVisibility();
+      this.updateQ4HComponent();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showToast(`Failed to move dialogs: ${message}`, 'error');
@@ -3717,6 +3747,20 @@ export class DomindsApp extends HTMLElement {
     if (match) return match.status;
     // Subdialogs always share the same persistence status directory as their root dialog.
     const rootMatch = this.dialogs.find((d) => d.rootId === dialog.rootId && !d.selfId);
+    return rootMatch ? rootMatch.status : null;
+  }
+
+  private resolveDialogStatusByIds(rootId: string, selfId: string): DialogStatusKind | null {
+    if (!rootId || !selfId) return null;
+    const isRoot = selfId === rootId;
+    if (isRoot) {
+      const match = this.dialogs.find((d) => d.rootId === rootId && !d.selfId);
+      return match ? match.status : null;
+    }
+    const match = this.dialogs.find((d) => d.rootId === rootId && d.selfId === selfId);
+    if (match) return match.status;
+    // Subdialogs always share the same persistence status directory as their root dialog.
+    const rootMatch = this.dialogs.find((d) => d.rootId === rootId && !d.selfId);
     return rootMatch ? rootMatch.status : null;
   }
 
@@ -5685,8 +5729,6 @@ export class DomindsApp extends HTMLElement {
       this.q4hQuestions.push(q);
     }
 
-    this.q4hQuestionCount = this.q4hQuestions.length;
-
     // Build dialog contexts and update component
     this.updateQ4HComponent();
   }
@@ -5701,8 +5743,6 @@ export class DomindsApp extends HTMLElement {
       this.q4hQuestions.splice(removeIndex, 1);
     }
 
-    this.q4hQuestionCount = this.q4hQuestions.length;
-
     // Build dialog contexts and update component
     this.updateQ4HComponent();
   }
@@ -5711,11 +5751,61 @@ export class DomindsApp extends HTMLElement {
    * Handle q4h_state_response - initial load of all Q4H questions
    */
   private handleQ4HStateResponse(event: Q4HStateResponse): void {
-    // Replace entire questions array with response
-    this.q4hQuestions = event.questions;
-    this.q4hQuestionCount = this.q4hQuestions.length;
+    // Snapshot contains Q4H for running dialogs. Merge it with existing cached Q4Hs so that
+    // dialogs moved out of running (completed/archived) can be revived without losing their
+    // pending questions client-side, while still pruning stale questions for dialogs that
+    // are currently running.
+    const incomingById = new Map<string, HumanQuestion>();
+    for (const q of event.questions) {
+      if (!q || typeof q.id !== 'string' || q.id.trim() === '') continue;
+      incomingById.set(q.id, q);
+    }
 
-    // Build dialog contexts and update component
+    const next: HumanQuestion[] = [];
+    const seenIds = new Set<string>();
+
+    for (const existing of this.q4hQuestions) {
+      const id = typeof existing.id === 'string' ? existing.id : '';
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+
+      const existingWithDialog = existing as { dialogId?: unknown; rootId?: unknown };
+      const dialogId =
+        typeof existingWithDialog.dialogId === 'string' ? existingWithDialog.dialogId : null;
+      if (!dialogId) {
+        const incoming = incomingById.get(id);
+        next.push(incoming ?? existing);
+        if (incoming) incomingById.delete(id);
+        continue;
+      }
+
+      const rootId =
+        typeof existingWithDialog.rootId === 'string' && existingWithDialog.rootId
+          ? existingWithDialog.rootId
+          : dialogId;
+      const status = this.resolveDialogStatusByIds(rootId, dialogId);
+
+      const incoming = incomingById.get(id);
+      if (incoming) {
+        next.push(incoming);
+        incomingById.delete(id);
+        continue;
+      }
+
+      // Prune only when we can confidently say the dialog is running (snapshot is authoritative).
+      if (status === 'running') {
+        continue;
+      }
+      next.push(existing);
+    }
+
+    for (const [id, q] of incomingById.entries()) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+      next.push(q);
+    }
+
+    this.q4hQuestions = next;
     this.updateQ4HComponent();
   }
 
@@ -5723,8 +5813,20 @@ export class DomindsApp extends HTMLElement {
    * Rebuild Q4H dialog contexts and update component
    */
   private updateQ4HComponent(): void {
+    // Hide Q4H questions for dialogs that are no longer running.
+    // Keep them in `this.q4hQuestions` so a revived dialog can restore immediately.
+    const visibleQuestions = this.q4hQuestions.filter((question) => {
+      const global = question as { dialogId?: unknown; rootId?: unknown };
+      const dialogId = typeof global.dialogId === 'string' ? global.dialogId : null;
+      if (!dialogId) return true;
+      const rootId = typeof global.rootId === 'string' && global.rootId ? global.rootId : dialogId;
+      const status = this.resolveDialogStatusByIds(rootId, dialogId);
+      return status !== 'completed' && status !== 'archived';
+    });
+
     // Build dialog contexts from questions
-    this.q4hDialogContexts = this.buildQ4HDialogContexts(this.q4hQuestions);
+    this.q4hDialogContexts = this.buildQ4HDialogContexts(visibleQuestions);
+    this.q4hQuestionCount = visibleQuestions.length;
 
     // Transform to Q4HQuestion format expected by the component
     const q4hQuestions: Q4HQuestion[] = [];

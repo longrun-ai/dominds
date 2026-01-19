@@ -45,6 +45,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private isListExpanded = false; // Start collapsed, auto-expand when questions arrive
   private sendOnEnter = true; // Default to Enter to send
   private isComposing = false;
+  private inputUiRafId: number | null = null;
   private props: Q4HInputProps = {
     disabled: false,
     placeholder: 'Type your answer...',
@@ -613,17 +614,19 @@ export class DomindsQ4HInput extends HTMLElement {
       });
       this.textInput.addEventListener('compositionend', () => {
         this.isComposing = false;
+        this.scheduleInputUiUpdate();
       });
       this.textInput.addEventListener('compositioncancel', () => {
         this.isComposing = false;
+        this.scheduleInputUiUpdate();
       });
       this.textInput.addEventListener('blur', () => {
         this.isComposing = false;
+        this.scheduleInputUiUpdate();
       });
 
       this.textInput.addEventListener('input', () => {
-        this.updateSendButton();
-        this.autoResizeTextarea();
+        this.scheduleInputUiUpdate();
       });
 
       this.textInput.addEventListener('keydown', (e) => {
@@ -848,6 +851,18 @@ export class DomindsQ4HInput extends HTMLElement {
     const maxHeight = 120;
 
     this.textInput.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
+  }
+
+  private scheduleInputUiUpdate(): void {
+    if (this.inputUiRafId !== null) return;
+    this.inputUiRafId = window.requestAnimationFrame(() => {
+      this.inputUiRafId = null;
+      this.updateSendButton();
+      // Avoid layout thrash during IME composition; resize after composition ends.
+      if (!this.isComposing) {
+        this.autoResizeTextarea();
+      }
+    });
   }
 
   private showError(message: string): void {
