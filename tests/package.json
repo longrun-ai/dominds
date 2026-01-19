@@ -16,7 +16,8 @@
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
-    "toolset-registry": "tsx toolsets/registry.ts"
+    "toolset-registry": "tsx toolsets/registry.ts",
+    "webapp-last-modified": "tsx webapp/dialog-last-modified.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

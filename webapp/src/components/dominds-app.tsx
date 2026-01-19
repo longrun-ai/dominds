@@ -56,6 +56,7 @@ import type {
   WebSocketMessage,
   WelcomeMessage,
 } from '../shared/types/wire';
+import { bumpDialogsLastModified } from '../utils/dialog-last-modified';
 import { marked } from '../utils/markdownRenderer';
 import './archived-dialog-list.js';
 import { ArchivedDialogList } from './archived-dialog-list.js';
@@ -5218,7 +5219,10 @@ export class DomindsApp extends HTMLElement {
           if (dc && typeof dc.resetForRound === 'function') {
             dc.resetForRound(message.round);
           }
-          this.bumpDialogLastModified(dialog.rootId, (message as TypedDialogEvent).timestamp);
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            (message as TypedDialogEvent).timestamp,
+          );
           break;
         }
 
@@ -5301,7 +5305,7 @@ export class DomindsApp extends HTMLElement {
               // FIXED: Use surgical update instead of full render to preserve dialog container state
               this.updateDialogList();
               this.bumpDialogLastModified(
-                rootId,
+                { rootId, selfId: rootId },
                 root.lastModified || (message as TypedDialogEvent).timestamp,
               );
             } else {
@@ -5364,7 +5368,10 @@ export class DomindsApp extends HTMLElement {
           }
 
           const ts = (message as TypedDialogEvent).timestamp;
-          this.bumpDialogLastModified(dialog.rootId, typeof ts === 'string' ? ts : undefined);
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            typeof ts === 'string' ? ts : undefined,
+          );
           break;
         }
 
@@ -5379,7 +5386,10 @@ export class DomindsApp extends HTMLElement {
 
           await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
           const ts = (message as TypedDialogEvent).timestamp;
-          this.bumpDialogLastModified(dialog.rootId, typeof ts === 'string' ? ts : undefined);
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            typeof ts === 'string' ? ts : undefined,
+          );
           break;
         }
 
@@ -5464,7 +5474,10 @@ export class DomindsApp extends HTMLElement {
             console.warn('Failed to forward dialog event to container:', err);
           }
           const ts = (message as TypedDialogEvent).timestamp;
-          this.bumpDialogLastModified(dialog.rootId, typeof ts === 'string' ? ts : undefined);
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            typeof ts === 'string' ? ts : undefined,
+          );
           break;
       }
     } catch (error) {
@@ -5496,20 +5509,15 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private bumpDialogLastModified(rootId: string, isoTs?: string): void {
+  private bumpDialogLastModified(
+    dialogId: { rootId: string; selfId: string },
+    isoTs?: string,
+  ): void {
     if (!isoTs) return;
-    const ts = isoTs;
-    let updated = false;
-    this.dialogs = (this.dialogs || []).map((d) => {
-      if (d.rootId === rootId) {
-        updated = true;
-        return { ...d, lastModified: ts };
-      }
-      return d;
-    });
-    if (updated) {
-      this.renderDialogList();
-    }
+    const res = bumpDialogsLastModified(this.dialogs || [], dialogId, isoTs);
+    if (!res.changed) return;
+    this.dialogs = res.dialogs;
+    this.renderDialogList();
   }
 
   /**
