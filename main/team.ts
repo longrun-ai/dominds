@@ -37,13 +37,12 @@ export class Team {
   getDefaultResponder(): Team.Member | undefined {
     const explicit = this.getMember(this.defaultResponder);
     if (explicit) return explicit;
-
-    // Fallback: pick the first visible member, else any member.
+    // Fallback: pick the first visible member, else Fuxi, else any member.
     const all = Object.values(this.members);
     const visible = all.find((m) => m.hidden !== true);
     if (visible) return visible;
-    const pangu = this.getMember('pangu');
-    if (pangu) return pangu;
+    const fuxi = this.getMember('fuxi');
+    if (fuxi) return fuxi;
     return all.length > 0 ? all[0] : undefined;
   }
 
