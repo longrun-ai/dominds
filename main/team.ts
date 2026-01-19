@@ -403,7 +403,7 @@ export namespace Team {
       name: 'Defaulter',
       provider,
       model,
-      gofor: asOptionalStringArray(mdObj.gofor, 'member_defaults.gofor'),
+      gofor: asOptionalStringOrStringArray(mdObj.gofor, 'member_defaults.gofor'),
       toolsets: asOptionalStringArray(mdObj.toolsets, 'member_defaults.toolsets'),
       tools: asOptionalStringArray(mdObj.tools, 'member_defaults.tools'),
       model_params: asOptionalModelParams(mdObj.model_params, 'member_defaults.model_params'),
@@ -426,7 +426,7 @@ export namespace Team {
         name: asOptionalString(rv.name, `members.${id}.name`) ?? id,
         provider: asOptionalString(rv.provider, `members.${id}.provider`),
         model: asOptionalString(rv.model, `members.${id}.model`),
-        gofor: asOptionalStringArray(rv.gofor, `members.${id}.gofor`),
+        gofor: asOptionalStringOrStringArray(rv.gofor, `members.${id}.gofor`),
         toolsets: asOptionalStringArray(rv.toolsets, `members.${id}.toolsets`),
         tools: asOptionalStringArray(rv.tools, `members.${id}.tools`),
         model_params: asOptionalModelParams(rv.model_params, `members.${id}.model_params`),
@@ -489,6 +489,15 @@ export namespace Team {
       throw new Error(`Invalid ${at}: expected string[]`);
     }
     return value;
+  }
+
+  function asOptionalStringOrStringArray(value: unknown, at: string): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value === 'string') return [value];
+    if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+      return value;
+    }
+    throw new Error(`Invalid ${at}: expected string|string[]`);
   }
 
   function asOptionalStop(value: unknown, at: string): string | string[] | undefined {
