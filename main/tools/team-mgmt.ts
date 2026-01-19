@@ -14,6 +14,9 @@ import path from 'path';
 import YAML from 'yaml';
 
 import type { ChatMessage } from '../llm/client';
+import { LlmConfig } from '../llm/client';
+import type { LlmStreamReceiver } from '../llm/gen';
+import { getLlmGenerator } from '../llm/gen/registry';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -131,6 +134,313 @@ async function ensureMindsRootDirExists(): Promise<void> {
   const abs = path.resolve(cwd, MINDS_DIR);
   await fs.mkdir(abs, { recursive: true });
 }
+
+type ProviderCheckArgs = {
+  providerKey: string;
+  model?: string;
+  allModels: boolean;
+  live: boolean;
+  maxModels: number;
+};
+
+function parseProviderCheckArgs(headLine: string, toolName: string): ProviderCheckArgs {
+  const after = parseArgsAfterTool(headLine, toolName);
+  const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
+  if (parts.length === 0) {
+    throw new Error('Provider key required');
+  }
+
+  const providerKey = parts[0];
+  let model: string | undefined;
+  let allModels = false;
+  let live = false;
+  let maxModels = 10;
+
+  for (let i = 1; i < parts.length; i += 1) {
+    const t = parts[i];
+    if (t === '!model' && i + 1 < parts.length) {
+      model = parts[i + 1];
+      i += 1;
+      continue;
+    }
+    if (t === '!all-models' && i + 1 < parts.length) {
+      const v = parts[i + 1];
+      if (v === 'true' || v === 'false') {
+        allModels = v === 'true';
+        i += 1;
+        continue;
+      }
+      throw new Error('Invalid !all-models value (expected true|false)');
+    }
+    if (t === '!live' && i + 1 < parts.length) {
+      const v = parts[i + 1];
+      if (v === 'true' || v === 'false') {
+        live = v === 'true';
+        i += 1;
+        continue;
+      }
+      throw new Error('Invalid !live value (expected true|false)');
+    }
+    if (t === '!max-models' && i + 1 < parts.length) {
+      const n = Number(parts[i + 1]);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        throw new Error('Invalid !max-models value (expected positive integer)');
+      }
+      maxModels = n;
+      i += 1;
+      continue;
+    }
+  }
+
+  if (model && allModels) {
+    throw new Error('Use either !model <id> or !all-models true (not both)');
+  }
+
+  return { providerKey, model, allModels, live, maxModels };
+}
+
+type ModelCheckResult = { model: string; status: 'pass' | 'fail'; details?: string };
+
+function formatModelCheckResult(r: ModelCheckResult): string {
+  if (r.status === 'pass') return `- ${r.model}: ✅ ok`;
+  return `- ${r.model}: ❌ ${r.details ?? 'failed'}`;
+}
+
+export const teamMgmtCheckProviderTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_check_provider',
+  backfeeding: true,
+  usageDescription:
+    `Validate an LLM provider configuration (and optionally test models).\n` +
+    `Usage: @team_mgmt_check_provider <providerKey> [options]\n\n` +
+    `Options:\n` +
+    `  !model <modelKey>        Check a specific model\n` +
+    `  !all-models true|false   Check all configured models for the provider\n` +
+    `  !live true|false         Attempt a real generation call (may incur cost)\n` +
+    `  !max-models <n>          Limit model checks when !all-models true (default: 10)\n\n` +
+    `Examples:\n` +
+    `@team_mgmt_check_provider codex\n` +
+    `@team_mgmt_check_provider codex !model gpt-5.2\n` +
+    `@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+  usageDescriptionI18n: {
+    en:
+      `Validate an LLM provider configuration (and optionally test models).\n` +
+      `Usage: @team_mgmt_check_provider <providerKey> [options]\n\n` +
+      `Options:\n` +
+      `  !model <modelKey>        Check a specific model\n` +
+      `  !all-models true|false   Check all configured models for the provider\n` +
+      `  !live true|false         Attempt a real generation call (may incur cost)\n` +
+      `  !max-models <n>          Limit model checks when !all-models true (default: 10)\n\n` +
+      `Examples:\n` +
+      `@team_mgmt_check_provider codex\n` +
+      `@team_mgmt_check_provider codex !model gpt-5.2\n` +
+      `@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+    zh:
+      `校验 LLM provider 配置（并可选对模型做实际连通性测试）。\n` +
+      `用法：@team_mgmt_check_provider <providerKey> [options]\n\n` +
+      `选项：\n` +
+      `  !model <modelKey>        校验指定模型\n` +
+      `  !all-models true|false   校验该 provider 下所有已配置模型\n` +
+      `  !live true|false         发起一次真实生成调用（可能产生费用）\n` +
+      `  !max-models <n>          当 !all-models true 时限制校验的模型数量（默认 10）\n\n` +
+      `示例：\n` +
+      `@team_mgmt_check_provider codex\n` +
+      `@team_mgmt_check_provider codex !model gpt-5.2\n` +
+      `@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+  },
+  async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const args = parseProviderCheckArgs(headLine, this.name);
+      const llmCfg = await LlmConfig.load();
+      const providerCfg = llmCfg.getProvider(args.providerKey);
+      if (!providerCfg) {
+        const msg =
+          language === 'zh'
+            ? `Provider 不存在：\`${args.providerKey}\`。请检查 \`.minds/llm.yaml\`（或内置 defaults）。`
+            : `Provider not found: \`${args.providerKey}\`. Check \`.minds/llm.yaml\` (or built-in defaults).`;
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const envVar = providerCfg.apiKeyEnvVar;
+      const rawEnvValue = process.env[envVar];
+      const envConfigured =
+        typeof rawEnvValue === 'string' && rawEnvValue.trim().length > 0 ? true : false;
+
+      const isCodexLike = providerCfg.apiType === 'codex';
+      const envStatusLine = envConfigured
+        ? `apiKeyEnvVar: ${envVar} (configured)`
+        : isCodexLike
+          ? `apiKeyEnvVar: ${envVar} (not set; may still work for codex via default ~/.codex)`
+          : `apiKeyEnvVar: ${envVar} (NOT set)`;
+
+      const models = Object.keys(providerCfg.models);
+      const modelHeader =
+        models.length > 0
+          ? `models: ${models.slice(0, 30).join(', ')}${models.length > 30 ? ', ...' : ''}`
+          : 'models: (none)';
+
+      if (!envConfigured && !isCodexLike) {
+        const msg =
+          language === 'zh'
+            ? [
+                fmtHeader('Provider 校验失败'),
+                fmtList([
+                  `provider: \`${args.providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
+                  envStatusLine,
+                  '该 provider 的环境变量未配置，强烈建议先配置 env var 再修改 team 配置。',
+                ]),
+              ].join('')
+            : [
+                fmtHeader('Provider Check Failed'),
+                fmtList([
+                  `provider: \`${args.providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
+                  envStatusLine,
+                  'Provider env var is not configured. Configure it before changing team config to avoid bricking.',
+                ]),
+              ].join('');
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const modelsToCheck =
+        args.model !== undefined
+          ? [args.model]
+          : args.allModels
+            ? models
+            : models.length > 0
+              ? [models[0]]
+              : [];
+
+      if (
+        args.model !== undefined &&
+        !Object.prototype.hasOwnProperty.call(providerCfg.models, args.model)
+      ) {
+        const msg =
+          language === 'zh'
+            ? `Model 不存在：\`${args.model}\` 不在 provider \`${args.providerKey}\` 的 models 列表中。请先更新 \`.minds/llm.yaml\` 或选择一个已配置的 model key。`
+            : `Model not found: \`${args.model}\` is not in provider \`${args.providerKey}\` models. Update \`.minds/llm.yaml\` or choose a configured model key.`;
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const results: ModelCheckResult[] = [];
+      if (args.live && modelsToCheck.length > 0) {
+        const llmGen = getLlmGenerator(providerCfg.apiType);
+        if (!llmGen) {
+          const msg =
+            language === 'zh'
+              ? `该 provider 的生成器不存在：apiType=\`${providerCfg.apiType}\`。`
+              : `LLM generator not found for apiType=\`${providerCfg.apiType}\`.`;
+          return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+
+        const modelsLimited =
+          args.allModels && modelsToCheck.length > args.maxModels
+            ? modelsToCheck.slice(0, args.maxModels)
+            : modelsToCheck;
+
+        for (const modelKey of modelsLimited) {
+          const agent = new Team.Member({
+            id: 'team_mgmt_checker',
+            name: 'TeamMgmtChecker',
+            provider: args.providerKey,
+            model: modelKey,
+            model_params: {
+              max_tokens: 16,
+              openai: { temperature: 0 },
+              anthropic: { temperature: 0 },
+            },
+          });
+
+          let out = '';
+          let sawFuncCall = false;
+          const receiver: LlmStreamReceiver = {
+            thinkingStart: async () => {},
+            thinkingChunk: async (_chunk: string) => {},
+            thinkingFinish: async () => {},
+            sayingStart: async () => {},
+            sayingChunk: async (chunk: string) => {
+              out += chunk;
+            },
+            sayingFinish: async () => {},
+            funcCall: async (_callId: string, _name: string, _args: string) => {
+              sawFuncCall = true;
+            },
+          };
+
+          const context: ChatMessage[] = [
+            { type: 'environment_msg', role: 'user', content: 'ping' },
+          ];
+          const systemPrompt = 'Connectivity check: reply with a short confirmation (e.g. "ok").';
+
+          try {
+            await llmGen.genToReceiver(providerCfg, agent, systemPrompt, [], context, receiver, 0);
+            const details =
+              out.trim().length > 0
+                ? out.trim().slice(0, 120)
+                : sawFuncCall
+                  ? 'tool call emitted'
+                  : undefined;
+            results.push({ model: modelKey, status: 'pass', details });
+          } catch (err: unknown) {
+            const details = err instanceof Error ? err.message : String(err);
+            results.push({ model: modelKey, status: 'fail', details: details.slice(0, 200) });
+          }
+        }
+
+        if (args.allModels && modelsToCheck.length > modelsLimited.length) {
+          results.push({
+            model: `(skipped ${modelsToCheck.length - modelsLimited.length} models)`,
+            status: 'pass',
+            details: `use !max-models to adjust`,
+          });
+        }
+      }
+
+      const headerTitle = language === 'zh' ? 'Provider 校验结果' : 'Provider Check';
+      const lines: string[] = [];
+      lines.push(fmtHeader(headerTitle));
+      lines.push(
+        fmtList([
+          `provider: \`${args.providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
+          envStatusLine,
+          modelHeader,
+          args.live
+            ? 'live: true (performed a real generation call)'
+            : 'live: false (config/env validation only)',
+        ]),
+      );
+
+      if (!envConfigured && isCodexLike) {
+        const caution =
+          language === 'zh'
+            ? '注意：codex provider 在某些环境下可能仍可工作，但为了稳定性，建议配置对应 env var（通常是 CODEX_HOME）。'
+            : 'Note: codex may still work without the env var, but for stability you should configure it (usually CODEX_HOME).';
+        lines.push(caution + '\n');
+      }
+
+      if (args.live && results.length > 0) {
+        const title = language === 'zh' ? '模型连通性（live）' : 'Model Connectivity (live)';
+        lines.push(fmtHeader(title));
+        lines.push(results.map(formatModelCheckResult).join('\n') + '\n');
+      } else if (!args.live) {
+        const hint =
+          language === 'zh'
+            ? `提示：如需做真实连通性测试，使用 \`!live true\`。例如：\`@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``
+            : `Tip: to perform a real connectivity test, use \`!live true\`. Example: \`@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``;
+        lines.push(hint + '\n');
+      }
+
+      const content = lines.join('');
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
 
 export const teamMgmtListDirTool: TextingTool = {
   type: 'texter',
@@ -265,7 +575,7 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
     `Example:\n` +
     `@team_mgmt_overwrite_file team.yaml\n` +
     `member_defaults:\n` +
-    `  provider: openai\n`,
+    `  provider: codex\n`,
   usageDescriptionI18n: {
     en:
       `Overwrite a text file under ${MINDS_DIR}/.\n` +
@@ -274,7 +584,7 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
       `Example:\n` +
       `@team_mgmt_overwrite_file team.yaml\n` +
       `member_defaults:\n` +
-      `  provider: openai\n`,
+      `  provider: codex\n`,
     zh:
       `覆盖写入 ${MINDS_DIR}/ 下的文本文件。\n` +
       `用法：@team_mgmt_overwrite_file <path>\n` +
@@ -282,7 +592,7 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
       `示例：\n` +
       `@team_mgmt_overwrite_file team.yaml\n` +
       `member_defaults:\n` +
-      `  provider: openai\n`,
+      `  provider: codex\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -761,6 +1071,7 @@ function renderTeamManual(language: LanguageCode): string {
   const common = [
     'member_defaults: provider/model are required',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
+    'when changing provider/model: validate provider exists + env var is configured (use @team_mgmt_check_provider)',
     'hidden: true marks a shadow member (not listed in system prompt)',
     "toolsets supports '*' and '!<toolset>' exclusions (e.g. ['*','!team-mgmt'])",
   ];
@@ -770,6 +1081,7 @@ function renderTeamManual(language: LanguageCode): string {
       fmtList([
         '必须包含 `member_defaults.provider` 与 `member_defaults.model`。',
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
+        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `@team_mgmt_check_provider <providerKey>` 做检查，避免把系统“写死”。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `@<id>` 呼叫。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
       ]) +
@@ -777,7 +1089,7 @@ function renderTeamManual(language: LanguageCode): string {
       '最小模板：\n' +
       '```yaml\n' +
       'member_defaults:\n' +
-      '  provider: openai\n' +
+      '  provider: codex\n' +
       '  model: gpt-5.2\n' +
       '\n' +
       'default_responder: pangu\n' +
@@ -801,7 +1113,7 @@ function renderTeamManual(language: LanguageCode): string {
     'Minimal template:\n' +
     '```yaml\n' +
     'member_defaults:\n' +
-    '  provider: openai\n' +
+    '  provider: codex\n' +
     '  model: gpt-5.2\n' +
     '\n' +
     'default_responder: pangu\n' +
@@ -915,6 +1227,7 @@ function renderTroubleshooting(language: LanguageCode): string {
       fmtList([
         '“缺少 provider/model”：检查 `.minds/team.yaml` 的 member_defaults。',
         '“Provider not found”：检查 `.minds/llm.yaml` 与 defaults 合并后的 provider key。',
+        '修改 provider/model 前：优先运行 `@team_mgmt_check_provider <providerKey> !live true`，尽量避免配置错误导致系统不可用。',
         'MCP 不生效：打开 Problems 面板查看错误；必要时用 `mcp_restart`。',
       ])
     );
@@ -924,6 +1237,7 @@ function renderTroubleshooting(language: LanguageCode): string {
     fmtList([
       '"Missing provider/model": check `.minds/team.yaml` member_defaults.',
       '"Provider not found": check `.minds/llm.yaml` provider keys (merged with defaults).',
+      'Before changing provider/model: run `@team_mgmt_check_provider <providerKey> !live true` to reduce the chance of bricking.',
       'MCP not working: check Problems panel; use `mcp_restart` when needed.',
     ])
   );
@@ -1164,6 +1478,7 @@ export const teamMgmtManualTool: TextingTool = {
 
 export const teamMgmtTools: ReadonlyArray<TextingTool> = [
   teamMgmtManualTool,
+  teamMgmtCheckProviderTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtOverwriteFileTool,

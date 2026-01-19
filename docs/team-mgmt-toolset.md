@@ -367,7 +367,7 @@ bootstraps a default team (today it creates shadow members `fuxi` + `pangu`).
 
 ```yaml
 member_defaults:
-  provider: openai
+  provider: codex
   model: gpt-5.2
   toolsets:
     - ws_read

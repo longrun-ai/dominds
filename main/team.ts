@@ -100,20 +100,20 @@ export namespace Team {
    */
   export class Member {
     readonly id: string;
-    readonly name: string;
-    readonly provider?: string;
-    readonly model?: string;
-    readonly gofor?: string[];
-    readonly toolsets?: string[];
-    readonly tools?: string[];
-    readonly model_params?: ModelParams;
-    readonly read_dirs?: string[];
-    readonly write_dirs?: string[];
-    readonly no_read_dirs?: string[];
-    readonly no_write_dirs?: string[];
-    readonly icon?: string;
-    readonly streaming?: boolean;
-    readonly hidden?: boolean;
+    name: string;
+    provider?: string;
+    model?: string;
+    gofor?: string[];
+    toolsets?: string[];
+    tools?: string[];
+    model_params?: ModelParams;
+    read_dirs?: string[];
+    write_dirs?: string[];
+    no_read_dirs?: string[];
+    no_write_dirs?: string[];
+    icon?: string;
+    streaming?: boolean;
+    hidden?: boolean;
 
     constructor(params: {
       id: string;
@@ -173,6 +173,114 @@ export namespace Team {
           delete self[key];
         }
       }
+    }
+
+    setName(name: string): void {
+      this.name = name;
+    }
+
+    setProvider(provider: string | undefined): void {
+      if (provider === undefined) {
+        delete this.provider;
+        return;
+      }
+      this.provider = provider;
+    }
+
+    setModel(model: string | undefined): void {
+      if (model === undefined) {
+        delete this.model;
+        return;
+      }
+      this.model = model;
+    }
+
+    setGofor(gofor: string[] | undefined): void {
+      if (gofor === undefined) {
+        delete this.gofor;
+        return;
+      }
+      this.gofor = gofor;
+    }
+
+    setToolsets(toolsets: string[] | undefined): void {
+      if (toolsets === undefined) {
+        delete this.toolsets;
+        return;
+      }
+      this.toolsets = toolsets;
+    }
+
+    setTools(tools: string[] | undefined): void {
+      if (tools === undefined) {
+        delete this.tools;
+        return;
+      }
+      this.tools = tools;
+    }
+
+    setModelParams(modelParams: ModelParams | undefined): void {
+      if (modelParams === undefined) {
+        delete this.model_params;
+        return;
+      }
+      this.model_params = modelParams;
+    }
+
+    setReadDirs(readDirs: string[] | undefined): void {
+      if (readDirs === undefined) {
+        delete this.read_dirs;
+        return;
+      }
+      this.read_dirs = readDirs;
+    }
+
+    setWriteDirs(writeDirs: string[] | undefined): void {
+      if (writeDirs === undefined) {
+        delete this.write_dirs;
+        return;
+      }
+      this.write_dirs = writeDirs;
+    }
+
+    setNoReadDirs(noReadDirs: string[] | undefined): void {
+      if (noReadDirs === undefined) {
+        delete this.no_read_dirs;
+        return;
+      }
+      this.no_read_dirs = noReadDirs;
+    }
+
+    setNoWriteDirs(noWriteDirs: string[] | undefined): void {
+      if (noWriteDirs === undefined) {
+        delete this.no_write_dirs;
+        return;
+      }
+      this.no_write_dirs = noWriteDirs;
+    }
+
+    setIcon(icon: string | undefined): void {
+      if (icon === undefined) {
+        delete this.icon;
+        return;
+      }
+      this.icon = icon;
+    }
+
+    setStreaming(streaming: boolean | undefined): void {
+      if (streaming === undefined) {
+        delete this.streaming;
+        return;
+      }
+      this.streaming = streaming;
+    }
+
+    setHidden(hidden: boolean | undefined): void {
+      if (hidden === undefined) {
+        delete this.hidden;
+        return;
+      }
+      this.hidden = hidden;
     }
 
     /**
@@ -260,21 +368,46 @@ export namespace Team {
   // Team config support: load .minds/team.yaml
   export async function load(): Promise<Team> {
     const teamPath = '.minds/team.yaml';
+
+    const md = new Team.Member({
+      id: 'defaulter',
+      name: 'Defaulter',
+    });
+
+    const fuxi = new Team.Member({
+      id: 'fuxi',
+      name: '伏羲(Fuxi)',
+      icon: '☯️',
+      hidden: true,
+      toolsets: ['team-mgmt'],
+    });
+    Object.setPrototypeOf(fuxi, md);
+
+    // Use `*` to include toolsets registered later (e.g., hot-reloaded MCP toolsets),
+    // and exclude the team-management toolset.
+    const pangu = new Team.Member({
+      id: 'pangu',
+      name: '盘古(Pangu)',
+      icon: '⛰️',
+      hidden: true,
+      toolsets: ['*', '!team-mgmt'],
+      no_read_dirs: ['.minds/**'],
+      no_write_dirs: ['.minds/**'],
+    });
+    Object.setPrototypeOf(pangu, md);
+
     try {
       await fs.access(teamPath);
     } catch {
       // When rtws doesn't have a team definition, construct a minimal team with
       // shadow/hidden members for bootstrap.
       const llmCfg = await LlmConfig.load();
-      let provider = '';
-      let model = '';
       const providerEntries = Object.entries(llmCfg.providers);
       const pickProvider = (key: string): void => {
-        provider = key;
+        md.setProvider(key);
         const modelKeys = Object.keys(llmCfg.providers[key]?.models ?? {});
-        if (modelKeys.length > 0) model = modelKeys[0];
+        if (modelKeys.length > 0) md.setModel(modelKeys[0]);
       };
-
       // Prefer a provider with an available API key env var.
       for (const [key, providerConfig] of providerEntries) {
         if (process.env[providerConfig.apiKeyEnvVar]) {
@@ -283,137 +416,167 @@ export namespace Team {
         }
       }
       // Fall back to the first configured provider.
-      if (!provider && providerEntries.length > 0) {
+      if (!md.provider && providerEntries.length > 0) {
         pickProvider(providerEntries[0][0]);
       }
-
-      const md = new Team.Member({
-        id: 'defaulter',
-        name: 'Defaulter',
-        provider,
-        model,
-      });
-
-      const fuxi = new Team.Member({
-        id: 'fuxi',
-        name: 'Fuxi',
-        icon: '🧭',
-        hidden: true,
-        toolsets: ['team-mgmt'],
-      });
-      Object.setPrototypeOf(fuxi, md);
-
-      // Use `*` to include toolsets registered later (e.g., hot-reloaded MCP toolsets),
-      // and exclude the team-management toolset.
-      const pangu = new Team.Member({
-        id: 'pangu',
-        name: 'Pangu',
-        icon: '🛠',
-        hidden: true,
-        toolsets: ['*', '!team-mgmt'],
-        no_read_dirs: ['.minds/**'],
-        no_write_dirs: ['.minds/**'],
-      });
-      Object.setPrototypeOf(pangu, md);
-
       return new Team({
         memberDefaults: md,
         defaultResponder: 'pangu',
         members: { fuxi, pangu },
       });
     }
+
     const raw = await fs.readFile(teamPath, 'utf-8');
     const parsed: unknown = YAML.parse(raw);
-    const team = fromYamlObject(parsed);
+    const team = fromYamlObject(parsed, md, { fuxi, pangu });
 
     // Always include fuxi + pangu as shadow members, even if team.yaml exists.
-    const md = team.memberDefaults;
-
-    const fuxiExisting = team.members['fuxi'];
-    const fuxi = new Team.Member({
-      id: 'fuxi',
-      name: fuxiExisting ? fuxiExisting.name : 'Fuxi',
-      icon: fuxiExisting ? fuxiExisting.icon : '🧭',
-      provider: fuxiExisting ? fuxiExisting.provider : undefined,
-      model: fuxiExisting ? fuxiExisting.model : undefined,
-      gofor: fuxiExisting ? fuxiExisting.gofor : undefined,
-      tools: fuxiExisting ? fuxiExisting.tools : undefined,
-      model_params: fuxiExisting ? fuxiExisting.model_params : undefined,
-      read_dirs: fuxiExisting ? fuxiExisting.read_dirs : undefined,
-      write_dirs: fuxiExisting ? fuxiExisting.write_dirs : undefined,
-      no_read_dirs: fuxiExisting ? fuxiExisting.no_read_dirs : undefined,
-      no_write_dirs: fuxiExisting ? fuxiExisting.no_write_dirs : undefined,
-      streaming: fuxiExisting ? fuxiExisting.streaming : undefined,
-      hidden: true,
-      toolsets: ['team-mgmt'],
-    });
-    Object.setPrototypeOf(fuxi, md);
+    enforceShadowMemberDefaults(fuxi, pangu);
     team.members['fuxi'] = fuxi;
-
-    const panguExisting = team.members['pangu'];
-    const panguExistingNoRead = Array.isArray(panguExisting?.no_read_dirs)
-      ? panguExisting.no_read_dirs
-      : [];
-    const panguExistingNoWrite = Array.isArray(panguExisting?.no_write_dirs)
-      ? panguExisting.no_write_dirs
-      : [];
-    const mindDeny = '.minds/**';
-    const mergedNoRead = panguExistingNoRead.includes(mindDeny)
-      ? panguExistingNoRead
-      : [...panguExistingNoRead, mindDeny];
-    const mergedNoWrite = panguExistingNoWrite.includes(mindDeny)
-      ? panguExistingNoWrite
-      : [...panguExistingNoWrite, mindDeny];
-    const pangu = new Team.Member({
-      id: 'pangu',
-      name: panguExisting ? panguExisting.name : 'Pangu',
-      icon: panguExisting ? panguExisting.icon : '🛠',
-      provider: panguExisting ? panguExisting.provider : undefined,
-      model: panguExisting ? panguExisting.model : undefined,
-      gofor: panguExisting ? panguExisting.gofor : undefined,
-      tools: panguExisting ? panguExisting.tools : undefined,
-      model_params: panguExisting ? panguExisting.model_params : undefined,
-      read_dirs: panguExisting ? panguExisting.read_dirs : undefined,
-      write_dirs: panguExisting ? panguExisting.write_dirs : undefined,
-      no_read_dirs: mergedNoRead,
-      no_write_dirs: mergedNoWrite,
-      streaming: panguExisting ? panguExisting.streaming : undefined,
-      hidden: true,
-      toolsets: ['*', '!team-mgmt'],
-    });
-    Object.setPrototypeOf(pangu, md);
     team.members['pangu'] = pangu;
 
     // Normalize default responder (even if team.yaml omitted it).
     const def = team.getDefaultResponder();
-    team.defaultResponder = def ? def.id : 'pangu';
+    team.defaultResponder = def ? def.id : 'fuxi';
 
     return team;
   }
 
-  function fromYamlObject(obj: unknown): Team {
+  function enforceShadowMemberDefaults(fuxi: Team.Member, pangu: Team.Member): void {
+    // fuxi: always hidden + always has team-mgmt available
+    fuxi.setHidden(true);
+    const fuxiToolsets = fuxi.toolsets ? [...fuxi.toolsets] : [];
+    const withoutExclude = fuxiToolsets.filter((t) => t !== '!team-mgmt');
+    if (!withoutExclude.includes('team-mgmt')) withoutExclude.unshift('team-mgmt');
+    fuxi.setToolsets(withoutExclude);
+
+    // pangu: always hidden + never has team-mgmt + never reads/writes .minds/**
+    pangu.setHidden(true);
+    const panguToolsets = pangu.toolsets ? [...pangu.toolsets] : [];
+    const withoutMgmt = panguToolsets.filter((t) => t !== 'team-mgmt');
+    if (!withoutMgmt.includes('!team-mgmt')) withoutMgmt.push('!team-mgmt');
+    if (!withoutMgmt.includes('*')) withoutMgmt.unshift('*');
+    pangu.setToolsets(withoutMgmt);
+
+    const mindsScope = '.minds/**';
+    const panguNoRead = pangu.no_read_dirs ? [...pangu.no_read_dirs] : [];
+    if (!panguNoRead.includes(mindsScope)) panguNoRead.push(mindsScope);
+    pangu.setNoReadDirs(panguNoRead);
+
+    const panguNoWrite = pangu.no_write_dirs ? [...pangu.no_write_dirs] : [];
+    if (!panguNoWrite.includes(mindsScope)) panguNoWrite.push(mindsScope);
+    pangu.setNoWriteDirs(panguNoWrite);
+  }
+
+  function hasOwnKey(obj: Record<string, unknown>, key: string): boolean {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
+  function requireDefined<T>(value: T | undefined, at: string): T {
+    if (value === undefined) {
+      throw new Error(`Invalid ${at}: value required`);
+    }
+    return value;
+  }
+
+  function applyMemberOverridesFromYamlRecord(
+    member: Team.Member,
+    rv: Record<string, unknown>,
+    at: string,
+  ): void {
+    if (hasOwnKey(rv, 'name')) {
+      member.setName(requireDefined(asOptionalString(rv['name'], `${at}.name`), `${at}.name`));
+    }
+    if (hasOwnKey(rv, 'provider')) {
+      member.setProvider(
+        requireDefined(asOptionalString(rv['provider'], `${at}.provider`), `${at}.provider`),
+      );
+    }
+    if (hasOwnKey(rv, 'model')) {
+      member.setModel(requireDefined(asOptionalString(rv['model'], `${at}.model`), `${at}.model`));
+    }
+    if (hasOwnKey(rv, 'gofor')) {
+      member.setGofor(
+        requireDefined(asOptionalStringOrStringArray(rv['gofor'], `${at}.gofor`), `${at}.gofor`),
+      );
+    }
+    if (hasOwnKey(rv, 'toolsets')) {
+      member.setToolsets(
+        requireDefined(asOptionalStringArray(rv['toolsets'], `${at}.toolsets`), `${at}.toolsets`),
+      );
+    }
+    if (hasOwnKey(rv, 'tools')) {
+      member.setTools(
+        requireDefined(asOptionalStringArray(rv['tools'], `${at}.tools`), `${at}.tools`),
+      );
+    }
+    if (hasOwnKey(rv, 'model_params')) {
+      member.setModelParams(
+        requireDefined(
+          asOptionalModelParams(rv['model_params'], `${at}.model_params`),
+          `${at}.model_params`,
+        ),
+      );
+    }
+    if (hasOwnKey(rv, 'read_dirs')) {
+      member.setReadDirs(
+        requireDefined(
+          asOptionalStringArray(rv['read_dirs'], `${at}.read_dirs`),
+          `${at}.read_dirs`,
+        ),
+      );
+    }
+    if (hasOwnKey(rv, 'write_dirs')) {
+      member.setWriteDirs(
+        requireDefined(
+          asOptionalStringArray(rv['write_dirs'], `${at}.write_dirs`),
+          `${at}.write_dirs`,
+        ),
+      );
+    }
+    if (hasOwnKey(rv, 'no_read_dirs')) {
+      member.setNoReadDirs(
+        requireDefined(
+          asOptionalStringArray(rv['no_read_dirs'], `${at}.no_read_dirs`),
+          `${at}.no_read_dirs`,
+        ),
+      );
+    }
+    if (hasOwnKey(rv, 'no_write_dirs')) {
+      member.setNoWriteDirs(
+        requireDefined(
+          asOptionalStringArray(rv['no_write_dirs'], `${at}.no_write_dirs`),
+          `${at}.no_write_dirs`,
+        ),
+      );
+    }
+    if (hasOwnKey(rv, 'icon')) {
+      member.setIcon(requireDefined(asOptionalString(rv['icon'], `${at}.icon`), `${at}.icon`));
+    }
+    if (hasOwnKey(rv, 'streaming')) {
+      member.setStreaming(
+        requireDefined(asOptionalBoolean(rv['streaming'], `${at}.streaming`), `${at}.streaming`),
+      );
+    }
+    if (hasOwnKey(rv, 'hidden')) {
+      member.setHidden(
+        requireDefined(asOptionalBoolean(rv['hidden'], `${at}.hidden`), `${at}.hidden`),
+      );
+    }
+  }
+
+  function fromYamlObject(
+    obj: unknown,
+    md: Team.Member,
+    shadow: { fuxi: Team.Member; pangu: Team.Member },
+  ): Team {
     const teamObj = asRecord(obj, 'team config');
-    const mdObj = asRecord(teamObj.member_defaults, 'member_defaults');
+    const mdObj =
+      teamObj.member_defaults === undefined
+        ? {}
+        : asRecord(teamObj.member_defaults, 'member_defaults');
 
-    const provider = asString(mdObj.provider, 'member_defaults.provider');
-    const model = asString(mdObj.model, 'member_defaults.model');
-
-    const md = new Team.Member({
-      id: 'defaulter',
-      name: 'Defaulter',
-      provider,
-      model,
-      gofor: asOptionalStringOrStringArray(mdObj.gofor, 'member_defaults.gofor'),
-      toolsets: asOptionalStringArray(mdObj.toolsets, 'member_defaults.toolsets'),
-      tools: asOptionalStringArray(mdObj.tools, 'member_defaults.tools'),
-      model_params: asOptionalModelParams(mdObj.model_params, 'member_defaults.model_params'),
-      read_dirs: asOptionalStringArray(mdObj.read_dirs, 'member_defaults.read_dirs'),
-      write_dirs: asOptionalStringArray(mdObj.write_dirs, 'member_defaults.write_dirs'),
-      no_read_dirs: asOptionalStringArray(mdObj.no_read_dirs, 'member_defaults.no_read_dirs'),
-      no_write_dirs: asOptionalStringArray(mdObj.no_write_dirs, 'member_defaults.no_write_dirs'),
-      icon: asOptionalString(mdObj.icon, 'member_defaults.icon'),
-      streaming: asOptionalBoolean(mdObj.streaming, 'member_defaults.streaming'),
-    });
+    applyMemberOverridesFromYamlRecord(md, mdObj, 'member_defaults');
 
     const defResp = asOptionalString(teamObj.default_responder, 'default_responder');
 
@@ -421,23 +584,17 @@ export namespace Team {
     const membersObj = teamObj.members === undefined ? {} : asRecord(teamObj.members, 'members');
     for (const [id, raw] of Object.entries(membersObj)) {
       const rv = asRecord(raw, `members.${id}`);
-      const m = new Team.Member({
-        id,
-        name: asOptionalString(rv.name, `members.${id}.name`) ?? id,
-        provider: asOptionalString(rv.provider, `members.${id}.provider`),
-        model: asOptionalString(rv.model, `members.${id}.model`),
-        gofor: asOptionalStringOrStringArray(rv.gofor, `members.${id}.gofor`),
-        toolsets: asOptionalStringArray(rv.toolsets, `members.${id}.toolsets`),
-        tools: asOptionalStringArray(rv.tools, `members.${id}.tools`),
-        model_params: asOptionalModelParams(rv.model_params, `members.${id}.model_params`),
-        read_dirs: asOptionalStringArray(rv.read_dirs, `members.${id}.read_dirs`),
-        write_dirs: asOptionalStringArray(rv.write_dirs, `members.${id}.write_dirs`),
-        no_read_dirs: asOptionalStringArray(rv.no_read_dirs, `members.${id}.no_read_dirs`),
-        no_write_dirs: asOptionalStringArray(rv.no_write_dirs, `members.${id}.no_write_dirs`),
-        icon: asOptionalString(rv.icon, `members.${id}.icon`),
-        streaming: asOptionalBoolean(rv.streaming, `members.${id}.streaming`),
-        hidden: asOptionalBoolean(rv.hidden, `members.${id}.hidden`),
-      });
+
+      if (id === 'fuxi' || id === 'pangu') {
+        const shadowMember = id === 'fuxi' ? shadow.fuxi : shadow.pangu;
+        applyMemberOverridesFromYamlRecord(shadowMember, rv, `members.${id}`);
+        Object.setPrototypeOf(shadowMember, md);
+        membersRec[id] = shadowMember;
+        continue;
+      }
+
+      const m = new Team.Member({ id, name: id });
+      applyMemberOverridesFromYamlRecord(m, rv, `members.${id}`);
       Object.setPrototypeOf(m, md);
       membersRec[id] = m;
     }
