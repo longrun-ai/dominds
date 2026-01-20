@@ -8,6 +8,7 @@
  */
 import path from 'path';
 import { log } from './log';
+import type { LanguageCode } from './shared/types/language';
 import { Team } from './team';
 
 function isEncapsulatedTaskPath(targetPath: string): boolean {
@@ -245,23 +246,43 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
 /**
  * Get an access denied error message for a specific operation and path.
  */
-export function getAccessDeniedMessage(operation: 'read' | 'write', targetPath: string): string {
-  const lines = [
-    '❌ **Access Denied**',
-    '',
-    `- Operation: \`${operation}\``,
-    `- Path: \`${targetPath}\``,
-    `- Code: \`ACCESS_DENIED\``,
-  ];
+export function getAccessDeniedMessage(
+  operation: 'read' | 'write',
+  targetPath: string,
+  language: LanguageCode = 'en',
+): string {
+  const lines =
+    language === 'zh'
+      ? [
+          '❌ **访问被拒绝**',
+          '',
+          `- 操作：\`${operation}\``,
+          `- 路径：\`${targetPath}\``,
+          `- 代码：\`ACCESS_DENIED\``,
+        ]
+      : [
+          '❌ **Access Denied**',
+          '',
+          `- Operation: \`${operation}\``,
+          `- Path: \`${targetPath}\``,
+          `- Code: \`ACCESS_DENIED\``,
+        ];
 
   if (isEncapsulatedTaskPath(targetPath)) {
     lines.push('');
-    lines.push(
-      `- Note: \`*.tsk/\` is an encapsulated Task Doc. General file tools must not read/write/list/delete it.`,
-    );
-    lines.push(
-      `- Hint: Use \`@change_mind !goals\` / \`@change_mind !constraints\` / \`@change_mind !progress\` to update task sections.`,
-    );
+    if (language === 'zh') {
+      lines.push(`- 说明：\`*.tsk/\` 是封装差遣牒。通用文件工具不得读/写/列目录/删除其中内容。`);
+      lines.push(
+        `- 提示：使用 \`@change_mind !goals\` / \`@change_mind !constraints\` / \`@change_mind !progress\` 更新差遣牒分段。`,
+      );
+    } else {
+      lines.push(
+        `- Note: \`*.tsk/\` is an encapsulated Task Doc. General file tools must not read/write/list/delete it.`,
+      );
+      lines.push(
+        `- Hint: Use \`@change_mind !goals\` / \`@change_mind !constraints\` / \`@change_mind !progress\` to update task sections.`,
+      );
+    }
   }
 
   return lines.join('\n');

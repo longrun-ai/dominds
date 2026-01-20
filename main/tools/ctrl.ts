@@ -32,6 +32,8 @@ import * as path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
+import { getWorkLanguage } from '../shared/runtime-language';
+import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import { TextingTool, TextingToolCallResult } from '../tool';
 import {
@@ -53,6 +55,78 @@ function fail(result: string, messages?: ChatMessage[]): TextingToolCallResult {
   return { status: 'failed', result, messages };
 }
 
+type CtrlMessages = Readonly<{
+  invalidFormatDelete: string;
+  reminderDoesNotExist: (reminderNoHuman: string, total: number) => string;
+  invalidFormatAdd: string;
+  reminderContentEmpty: string;
+  invalidReminderPosition: (reminderNoHuman: string, totalPlusOne: number) => string;
+  invalidFormatUpdate: string;
+  invalidFormatChangeMind: string;
+  tooManyArgsChangeMind: string;
+  taskDocContentRequired: string;
+  noTaskDocPathConfigured: string;
+  pathMustBeWithinWorkspace: string;
+  invalidTaskDocPath: (taskDocPath: string) => string;
+  selectorRequired: string;
+  invalidSelector: (selector: string) => string;
+  clearedRoundPrompt: (nextRound: number) => string;
+}>;
+
+function getCtrlMessages(language: LanguageCode): CtrlMessages {
+  if (language === 'zh') {
+    return {
+      invalidFormatDelete: '错误：格式不正确。用法：@delete_reminder <reminder-no>',
+      reminderDoesNotExist: (reminderNoHuman, total) =>
+        `错误：提醒编号 ${reminderNoHuman} 不存在。可用范围：1-${total}`,
+      invalidFormatAdd: '错误：格式不正确。用法：@add_reminder [<reminder-no>]',
+      reminderContentEmpty: '错误：提醒内容不能为空',
+      invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
+        `错误：提醒插入位置 ${reminderNoHuman} 无效。有效范围：1-${totalPlusOne}`,
+      invalidFormatUpdate: '错误：格式不正确。用法：@update_reminder <reminder-no>',
+      invalidFormatChangeMind:
+        '错误：格式不正确。用法：@change_mind [!goals|!constraints|!progress]',
+      tooManyArgsChangeMind: '错误：参数过多。用法：@change_mind [!goals|!constraints|!progress]',
+      taskDocContentRequired: '错误：需要提供差遣牒内容',
+      noTaskDocPathConfigured: '错误：此对话未配置差遣牒路径',
+      pathMustBeWithinWorkspace: '错误：路径必须位于工作区内',
+      invalidTaskDocPath: (taskDocPath) =>
+        `错误：差遣牒路径 '${taskDocPath}' 无效。期望为 \`*.tsk/\` 目录。`,
+      selectorRequired: '错误：Task packages 需要目标选择器：!goals | !constraints | !progress',
+      invalidSelector: (selector) =>
+        `错误：选择器 '${selector}' 无效。用法：!goals | !constraints | !progress`,
+      clearedRoundPrompt: (nextRound) =>
+        `这是对话的第 #${nextRound} 轮，你刚清理了思路，请继续执行任务。`,
+    };
+  }
+
+  return {
+    invalidFormatDelete: 'Error: Invalid format. Use: @delete_reminder <reminder-no>',
+    reminderDoesNotExist: (reminderNoHuman, total) =>
+      `Error: Reminder number ${reminderNoHuman} does not exist. Available reminders: 1-${total}`,
+    invalidFormatAdd: 'Error: Invalid format. Use: @add_reminder [<reminder-no>]',
+    reminderContentEmpty: 'Error: Reminder content cannot be empty',
+    invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
+      `Error: Invalid reminder position ${reminderNoHuman}. Valid range: 1-${totalPlusOne}`,
+    invalidFormatUpdate: 'Error: Invalid format. Use: @update_reminder <reminder-no>',
+    invalidFormatChangeMind:
+      'Error: Invalid format. Use: @change_mind [!goals|!constraints|!progress]',
+    tooManyArgsChangeMind:
+      'Error: Too many arguments. Use: @change_mind [!goals|!constraints|!progress]',
+    taskDocContentRequired: 'Error: Task doc content is required',
+    noTaskDocPathConfigured: 'Error: No task doc path configured for this dialog',
+    pathMustBeWithinWorkspace: 'Error: Path must be within workspace',
+    invalidTaskDocPath: (taskDocPath) =>
+      `Error: Invalid Task Doc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
+    selectorRequired:
+      'Error: Task packages require a target selector: !goals | !constraints | !progress',
+    invalidSelector: (selector) =>
+      `Error: Invalid selector '${selector}'. Use: !goals | !constraints | !progress`,
+    clearedRoundPrompt: (nextRound) =>
+      `This is round #${nextRound} of the dialog, you just cleared your mind and please proceed with the task.`,
+  };
+}
+
 /**
  * Delete a reminder by its number
  * Usage: @delete_reminder <reminder-no>
@@ -72,22 +146,21 @@ export const deleteReminderTool: TextingTool = {
     headLine: string,
     _inputBody: string,
   ): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
     const reminderNoMatch = headLine.match(/^@delete_reminder\s+(\d+)\s*$/);
     if (!reminderNoMatch) {
-      return fail(
-        'Error: Invalid format. Use: @delete_reminder <reminder-no>',
-        env('Error: Invalid format. Use: @delete_reminder <reminder-no>'),
-      );
+      return fail(t.invalidFormatDelete, env(t.invalidFormatDelete));
     }
 
     const reminderNo = parseInt(reminderNoMatch[1], 10) - 1; // Convert to 0-based index
     if (reminderNo < 0 || reminderNo >= dlg.reminders.length) {
-      const msg = `Error: Reminder number ${reminderNoMatch[1]} does not exist. Available reminders: 1-${dlg.reminders.length}`;
+      const msg = t.reminderDoesNotExist(reminderNoMatch[1], dlg.reminders.length);
       return fail(msg, env(msg));
     }
 
     dlg.deleteReminder(reminderNo);
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'deleted'));
+    return ok(formatToolActionResult(language, 'deleted'));
   },
 };
 
@@ -111,27 +184,23 @@ export const addReminderTool: TextingTool = {
     headLine: string,
     inputBody: string,
   ): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
     const reminderNoMatch = headLine.match(/^@add_reminder(?:\s+(\d+)\s*)?$/);
     if (!reminderNoMatch) {
-      return fail(
-        'Error: Invalid format. Use: @add_reminder [<reminder-no>]',
-        env('Error: Invalid format. Use: @add_reminder [<reminder-no>]'),
-      );
+      return fail(t.invalidFormatAdd, env(t.invalidFormatAdd));
     }
 
     const reminderContent = inputBody.trim();
     if (!reminderContent) {
-      return fail(
-        'Error: Reminder content cannot be empty',
-        env('Error: Reminder content cannot be empty'),
-      );
+      return fail(t.reminderContentEmpty, env(t.reminderContentEmpty));
     }
 
     let insertIndex: number;
     if (reminderNoMatch[1]) {
       insertIndex = parseInt(reminderNoMatch[1], 10) - 1; // Convert to 0-based index
       if (insertIndex < 0 || insertIndex > dlg.reminders.length) {
-        const msg = `Error: Invalid reminder position ${reminderNoMatch[1]}. Valid range: 1-${dlg.reminders.length + 1}`;
+        const msg = t.invalidReminderPosition(reminderNoMatch[1], dlg.reminders.length + 1);
         return fail(msg, env(msg));
       }
     } else {
@@ -139,7 +208,7 @@ export const addReminderTool: TextingTool = {
     }
 
     dlg.addReminder(reminderContent, undefined, undefined, insertIndex);
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'added'));
+    return ok(formatToolActionResult(language, 'added'));
   },
 };
 
@@ -163,30 +232,26 @@ export const updateReminderTool: TextingTool = {
     headLine: string,
     inputBody: string,
   ): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
     const reminderNoMatch = headLine.match(/^@update_reminder\s+(\d+)\s*$/);
     if (!reminderNoMatch) {
-      return fail(
-        'Error: Invalid format. Use: @update_reminder <reminder-no>',
-        env('Error: Invalid format. Use: @update_reminder <reminder-no>'),
-      );
+      return fail(t.invalidFormatUpdate, env(t.invalidFormatUpdate));
     }
 
     const reminderNo = parseInt(reminderNoMatch[1], 10) - 1; // Convert to 0-based index
     if (reminderNo < 0 || reminderNo >= dlg.reminders.length) {
-      const msg = `Error: Reminder number ${reminderNoMatch[1]} does not exist. Available reminders: 1-${dlg.reminders.length}`;
+      const msg = t.reminderDoesNotExist(reminderNoMatch[1], dlg.reminders.length);
       return fail(msg, env(msg));
     }
 
     const reminderContent = inputBody.trim();
     if (!reminderContent) {
-      return fail(
-        'Error: Reminder content cannot be empty',
-        env('Error: Reminder content cannot be empty'),
-      );
+      return fail(t.reminderContentEmpty, env(t.reminderContentEmpty));
     }
 
     dlg.updateReminder(reminderNo, reminderContent);
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'updated'));
+    return ok(formatToolActionResult(language, 'updated'));
   },
 };
 
@@ -210,14 +275,14 @@ export const clearMindTool: TextingTool = {
     _headLine: string,
     inputBody: string,
   ): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
     const reminderContent = inputBody.trim();
     if (reminderContent) {
       dlg.addReminder(reminderContent);
     }
-    await dlg.startNewRound(
-      `This is round #${dlg.currentRound + 1} of the dialog, you just cleared your mind and please proceed with the task.`,
-    );
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'mindCleared'));
+    await dlg.startNewRound(t.clearedRoundPrompt(dlg.currentRound + 1));
+    return ok(formatToolActionResult(language, 'mindCleared'));
   },
 };
 
@@ -247,12 +312,11 @@ export const changeMindTool: TextingTool = {
     headLine: string,
     inputBody: string,
   ): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
     const trimmedHeadLine = headLine.trim();
     if (!trimmedHeadLine.startsWith('@change_mind')) {
-      return fail(
-        'Error: Invalid format. Use: @change_mind [!goals|!constraints|!progress]',
-        env('Error: Invalid format. Use: @change_mind [!goals|!constraints|!progress]'),
-      );
+      return fail(t.invalidFormatChangeMind, env(t.invalidFormatChangeMind));
     }
 
     const headBeforeColon = trimmedHeadLine.split(':', 1)[0] || trimmedHeadLine;
@@ -260,58 +324,39 @@ export const changeMindTool: TextingTool = {
     const selector = tokens.length >= 2 ? tokens[1] : undefined;
     const extraToken = tokens.length >= 3 ? tokens[2] : undefined;
     if (extraToken) {
-      return fail(
-        'Error: Too many arguments. Use: @change_mind [!goals|!constraints|!progress]',
-        env('Error: Too many arguments. Use: @change_mind [!goals|!constraints|!progress]'),
-      );
+      return fail(t.tooManyArgsChangeMind, env(t.tooManyArgsChangeMind));
     }
 
     const newTaskDocContent = inputBody.trim();
 
     if (!newTaskDocContent) {
-      return fail(
-        'Error: Task doc content is required',
-        env('Error: Task doc content is required'),
-      );
+      return fail(t.taskDocContentRequired, env(t.taskDocContentRequired));
     }
 
     // Task doc path is immutable for the dialog lifecycle.
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) {
-      return fail(
-        'Error: No task doc path configured for this dialog',
-        env('Error: No task doc path configured for this dialog'),
-      );
+      return fail(t.noTaskDocPathConfigured, env(t.noTaskDocPathConfigured));
     }
 
     const workspaceRoot = path.resolve(process.cwd());
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
     if (!fullPath.startsWith(workspaceRoot)) {
-      return fail(
-        'Error: Path must be within workspace',
-        env('Error: Path must be within workspace'),
-      );
+      return fail(t.pathMustBeWithinWorkspace, env(t.pathMustBeWithinWorkspace));
     }
 
     if (!isTaskPackagePath(taskDocPath)) {
-      return fail(
-        `Error: Invalid Task Doc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
-        env(`Error: Invalid Task Doc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`),
-      );
+      const msg = t.invalidTaskDocPath(taskDocPath);
+      return fail(msg, env(msg));
     }
 
     if (!selector) {
-      return fail(
-        'Error: Task packages require a target selector: !goals | !constraints | !progress',
-        env('Error: Task packages require a target selector: !goals | !constraints | !progress'),
-      );
+      return fail(t.selectorRequired, env(t.selectorRequired));
     }
     const section: TaskPackageSection | null = taskPackageSectionFromSelector(selector);
     if (!section) {
-      return fail(
-        `Error: Invalid selector '${selector}'. Use: !goals | !constraints | !progress`,
-        env(`Error: Invalid selector '${selector}'. Use: !goals | !constraints | !progress`),
-      );
+      const msg = t.invalidSelector(selector);
+      return fail(msg, env(msg));
     }
 
     await updateTaskPackageSection({
@@ -320,6 +365,6 @@ export const changeMindTool: TextingTool = {
       content: newTaskDocContent,
       updatedBy: caller.id,
     });
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'mindChanged'));
+    return ok(formatToolActionResult(language, 'mindChanged'));
   },
 };

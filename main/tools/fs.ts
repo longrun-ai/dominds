@@ -11,6 +11,7 @@ import { createInterface } from 'readline';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
 import { log } from '../log';
+import { getWorkLanguage } from '../shared/runtime-language';
 import { TextingTool, TextingToolCallResult } from '../tool';
 
 interface DirectoryEntry {
@@ -139,6 +140,44 @@ Example:
 @list_dir src/tools`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const workLanguage = getWorkLanguage();
+    const labels =
+      workLanguage === 'zh'
+        ? {
+            formatError:
+              '请使用正确的目录列出格式。\n\n**期望格式：** `@list_dir [path]`\n\n**示例：**\n```\n@list_dir src/tools\n```',
+            accessDenied: '❌ **访问被拒绝**\n\n路径必须位于工作区内',
+            notFound: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
+            notDir: (p: string) => `❌ **错误**\n\n路径 \`${p}\` 不是目录。`,
+            readDirFailed: (msg: string) => `❌ **错误**\n\n读取目录失败：${msg}`,
+            dirHeader: '📁 **目录：**',
+            emptyDir: '_此目录为空。_',
+            table: {
+              name: '名称',
+              type: '类型',
+              size: '大小',
+              lines: '行数',
+              target: '目标',
+            },
+          }
+        : {
+            formatError:
+              'Please use the correct format for listing directories.\n\n**Expected format:** `@list_dir [path]`\n\n**Example:**\n```\n@list_dir src/tools\n```',
+            accessDenied: '❌ **Access Denied**\n\nPath must be within workspace',
+            notFound: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
+            notDir: (p: string) => `❌ **Error**\n\nPath \`${p}\` is not a directory.`,
+            readDirFailed: (msg: string) => `❌ **Error**\n\nFailed to read directory: ${msg}`,
+            dirHeader: '📁 **Directory:**',
+            emptyDir: '_This directory is empty._',
+            table: {
+              name: 'Name',
+              type: 'Type',
+              size: 'Size',
+              lines: 'Lines',
+              target: 'Target',
+            },
+          };
+
     // Parse path from headLine - expect format "@list_dir [path]"
     const trimmed = headLine.trim();
     let rel = '.';
@@ -147,8 +186,7 @@ Example:
       const afterToolName = trimmed.slice('@list_dir'.length).trim();
       rel = afterToolName || '.';
     } else {
-      const content =
-        'Please use the correct format for listing directories.\n\n**Expected format:** `@list_dir [path]`\n\n**Example:**\n```\n@list_dir src/tools\n```';
+      const content = labels.formatError;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
@@ -158,17 +196,39 @@ Example:
     // Basic security check - ensure path is within workspace
     const cwd = path.resolve(process.cwd());
     if (!dir.startsWith(cwd)) {
-      const content = '❌ **Access Denied**\n\nPath must be within workspace';
+      const content = labels.accessDenied;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check member access permissions
     if (!hasReadAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('read', rel);
+      const content = getAccessDeniedMessage('read', rel, workLanguage);
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
+      try {
+        const stats = await fs.lstat(dir);
+        if (!stats.isDirectory()) {
+          const content = labels.notDir(rel);
+          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        }
+      } catch (error: unknown) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          (error as { code?: unknown }).code === 'ENOENT'
+        ) {
+          const content = labels.notFound(rel);
+          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        }
+
+        const msg = error instanceof Error ? error.message : String(error);
+        const content = labels.readDirFailed(msg);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
       const entries = await fs.readdir(dir, { withFileTypes: true });
       const data: DirectoryEntry[] = [];
 
@@ -237,12 +297,12 @@ Example:
       const relativeDir = path.relative(cwd, dir) || '.';
 
       // Create markdown table for directory entries
-      let markdown = `📁 **Directory:** \`${relativeDir}\`\n\n`;
+      let markdown = `${labels.dirHeader} \`${relativeDir}\`\n\n`;
 
       if (data.length === 0) {
-        markdown += '_This directory is empty._';
+        markdown += labels.emptyDir;
       } else {
-        markdown += '| Name | Type | Size | Lines | Target |\n';
+        markdown += `| ${labels.table.name} | ${labels.table.type} | ${labels.table.size} | ${labels.table.lines} | ${labels.table.target} |\n`;
         markdown += '|------|------|------|-------|--------|\n';
 
         for (const entry of data) {
@@ -264,8 +324,29 @@ Example:
       }
 
       return ok(markdown, [{ type: 'environment_msg', role: 'user', content: markdown }]);
-    } catch (error) {
-      const content = `❌ **Error**\n\nFailed to read directory: ${error instanceof Error ? error.message : String(error)}`;
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+      ) {
+        const content = labels.notFound(rel);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOTDIR'
+      ) {
+        const content = labels.notDir(rel);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const msg = error instanceof Error ? error.message : String(error);
+      const content = labels.readDirFailed(msg);
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
@@ -314,6 +395,34 @@ Examples:
   @rm_dir build !recursive true`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const workLanguage = getWorkLanguage();
+    const labels =
+      workLanguage === 'zh'
+        ? {
+            formatError:
+              '请使用正确的目录删除格式。\n\n**期望格式：** `@rm_dir <path> [!recursive true|false]`\n\n**示例：**\n```\n@rm_dir temp !recursive true\n```',
+            dirPathRequired: '❌ **错误**\n\n需要提供目录路径。',
+            pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
+            notDir: (p: string) => `❌ **错误**\n\n\`${p}\` 不是目录。`,
+            notEmpty: (p: string) =>
+              `❌ **错误**\n\n目录 \`${p}\` 非空。请使用 \`!recursive true\` 删除非空目录。`,
+            removed: (p: string) => `✅ 已删除目录：\`${p}\`。`,
+            doesNotExist: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
+            removeFailed: (msg: string) => `❌ **错误**\n\n删除目录失败：${msg}`,
+          }
+        : {
+            formatError:
+              'Please use the correct format for removing directories.\n\n**Expected format:** `@rm_dir <path> [!recursive true|false]`\n\n**Example:**\n```\n@rm_dir temp !recursive true\n```',
+            dirPathRequired: '❌ **Error**\n\nDirectory path is required.',
+            pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
+            notDir: (p: string) => `❌ **Error**\n\n\`${p}\` is not a directory.`,
+            notEmpty: (p: string) =>
+              `❌ **Error**\n\nDirectory \`${p}\` is not empty. Use \`!recursive true\` to remove non-empty directories.`,
+            removed: (p: string) => `✅ Removed directory: \`${p}\`.`,
+            doesNotExist: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
+            removeFailed: (msg: string) => `❌ **Error**\n\nError removing directory: ${msg}`,
+          };
+
     // Parse path and options from headLine
     const trimmed = headLine.trim();
     let rel = '';
@@ -324,7 +433,7 @@ Examples:
       const parts = afterToolName.split(/\s+/);
 
       if (parts.length === 0 || !parts[0]) {
-        const content = 'Error: Directory path is required.';
+        const content = labels.dirPathRequired;
         return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
@@ -338,8 +447,7 @@ Examples:
         }
       }
     } else {
-      const content =
-        'Please use the correct format for removing directories.\n\n**Expected format:** `@rm_dir <path> [!recursive true|false]`\n\n**Example:**\n```\n@rm_dir temp !recursive true\n```';
+      const content = labels.formatError;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
@@ -349,13 +457,13 @@ Examples:
     // Basic security check - ensure path is within workspace
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
-      const content = 'Error: Path must be within workspace';
+      const content = labels.pathMustBeWithinWorkspace;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check member write access permissions
     if (!hasWriteAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('write', rel);
+      const content = getAccessDeniedMessage('write', rel, workLanguage);
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
@@ -363,7 +471,7 @@ Examples:
       // Check if path exists and is a directory
       const stats = await fs.lstat(targetPath);
       if (!stats.isDirectory()) {
-        const content = `Error: '${rel}' is not a directory.`;
+        const content = labels.notDir(rel);
         return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
@@ -371,7 +479,7 @@ Examples:
       if (!recursive) {
         const entries = await fs.readdir(targetPath);
         if (entries.length > 0) {
-          const content = `Error: Directory '${rel}' is not empty. Use !recursive true to remove non-empty directories.`;
+          const content = labels.notEmpty(rel);
           return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
         }
       }
@@ -379,7 +487,7 @@ Examples:
       // Remove the directory
       await fs.rmdir(targetPath, { recursive });
 
-      const content = `Directory '${rel}' removed successfully.`;
+      const content = labels.removed(rel);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       if (
@@ -388,11 +496,11 @@ Examples:
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        const content = `Error: Directory '${rel}' does not exist.`;
+        const content = labels.doesNotExist(rel);
         return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const content = `Error removing directory: ${error instanceof Error ? error.message : String(error)}`;
+      const content = labels.removeFailed(error instanceof Error ? error.message : String(error));
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
@@ -429,6 +537,30 @@ Example:
   @rm_file temp/old-file.txt`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const workLanguage = getWorkLanguage();
+    const labels =
+      workLanguage === 'zh'
+        ? {
+            formatError:
+              '请使用正确的文件删除格式。\n\n**期望格式：** `@rm_file <path>`\n\n**示例：**\n```\n@rm_file temp/old-file.txt\n```',
+            filePathRequired: '❌ **错误**\n\n需要提供文件路径。',
+            pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
+            notFile: (p: string) => `❌ **错误**\n\n\`${p}\` 不是文件。`,
+            removed: (p: string) => `✅ 已删除文件：\`${p}\`。`,
+            doesNotExist: (p: string) => `❌ **未找到**\n\n文件 \`${p}\` 不存在。`,
+            removeFailed: (msg: string) => `❌ **错误**\n\n删除文件失败：${msg}`,
+          }
+        : {
+            formatError:
+              'Please use the correct format for removing files.\n\n**Expected format:** `@rm_file <path>`\n\n**Example:**\n```\n@rm_file temp/old-file.txt\n```',
+            filePathRequired: '❌ **Error**\n\nFile path is required.',
+            pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
+            notFile: (p: string) => `❌ **Error**\n\n\`${p}\` is not a file.`,
+            removed: (p: string) => `✅ Removed file: \`${p}\`.`,
+            doesNotExist: (p: string) => `❌ **Not Found**\n\nFile \`${p}\` does not exist.`,
+            removeFailed: (msg: string) => `❌ **Error**\n\nError removing file: ${msg}`,
+          };
+
     // Parse path from headLine
     const trimmed = headLine.trim();
     let rel = '';
@@ -437,13 +569,12 @@ Example:
       const afterToolName = trimmed.slice('@rm_file'.length).trim();
       rel = afterToolName;
     } else {
-      const content =
-        'Please use the correct format for removing files.\n\n**Expected format:** `@rm_file <path>`\n\n**Example:**\n```\n@rm_file temp/old-file.txt\n```';
+      const content = labels.formatError;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     if (!rel) {
-      const content = 'Error: File path is required.';
+      const content = labels.filePathRequired;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
@@ -453,13 +584,13 @@ Example:
     // Basic security check - ensure path is within workspace
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
-      const content = 'Error: Path must be within workspace';
+      const content = labels.pathMustBeWithinWorkspace;
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check member write access permissions
     if (!hasWriteAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('write', rel);
+      const content = getAccessDeniedMessage('write', rel, workLanguage);
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
@@ -467,14 +598,14 @@ Example:
       // Check if path exists and is a file
       const stats = await fs.lstat(targetPath);
       if (!stats.isFile()) {
-        const content = `Error: '${rel}' is not a file.`;
+        const content = labels.notFile(rel);
         return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       // Remove the file
       await fs.unlink(targetPath);
 
-      const content = `File '${rel}' removed successfully.`;
+      const content = labels.removed(rel);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       if (
@@ -483,11 +614,11 @@ Example:
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        const content = `Error: File '${rel}' does not exist.`;
+        const content = labels.doesNotExist(rel);
         return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const content = `Error removing file: ${error instanceof Error ? error.message : String(error)}`;
+      const content = labels.removeFailed(error instanceof Error ? error.message : String(error));
       return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },

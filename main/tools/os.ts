@@ -8,6 +8,8 @@
 import { ChildProcess, spawn } from 'child_process';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
+import { getWorkLanguage } from '../shared/runtime-language';
+import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type {
@@ -106,6 +108,59 @@ type ShellCmdReminderMeta = JsonObject & {
   completed?: boolean;
   lastUpdated?: string;
 };
+
+type OsToolMessages = Readonly<{
+  daemonStarted: (pid: number, timeoutSeconds: number, command: string) => string;
+  commandCompleted: (exitCode: number | null, scrollNotice: string) => string;
+  scrolledLinesNotice: (lines: number) => string;
+  stdoutLabel: string;
+  stderrLabel: string;
+  failedToExecute: (msg: string) => string;
+  noDaemonFound: (pid: number) => string;
+  daemonStopped: (pid: number, command: string) => string;
+  failedToStop: (pid: number, msg: string) => string;
+  daemonOutputHeader: (pid: number, streamLabel: string) => string;
+  noOutput: string;
+  scrolledOutNotice: (lines: number) => string;
+}>;
+
+function getOsToolMessages(language: LanguageCode): OsToolMessages {
+  if (language === 'zh') {
+    return {
+      daemonStarted: (pid, timeoutSeconds, _command) =>
+        `🔄 命令已作为守护进程启动（PID: ${pid}）\n该进程在 ${timeoutSeconds} 秒内未完成，已在后台继续运行。\n已添加提醒以跟踪其进度。\n\n需要时可使用 stop_daemon({"pid": ${pid}}) 终止该进程。`,
+      commandCompleted: (exitCode, scrollNotice) =>
+        `✅ 命令已完成（退出码：${exitCode ?? 'unknown'}）${scrollNotice}\n\n`,
+      scrolledLinesNotice: (lines) => `\n⚠️  执行期间有 ${lines} 行已滚出可视范围`,
+      stdoutLabel: '📤 stdout：',
+      stderrLabel: '📤 stderr：',
+      failedToExecute: (msg) => `❌ 执行命令失败：${msg}`,
+      noDaemonFound: (pid) => `❌ 未找到 PID 为 ${pid} 的守护进程`,
+      daemonStopped: (pid, command) => `✅ 守护进程 ${pid}（${command}）已停止`,
+      failedToStop: (pid, msg) => `❌ 停止守护进程 ${pid} 失败：${msg}`,
+      daemonOutputHeader: (pid, streamLabel) => `📤 守护进程 ${pid} ${streamLabel} 输出：\n`,
+      noOutput: '(无输出)',
+      scrolledOutNotice: (lines) => `\n\n⚠️  有 ${lines} 行已滚出可视范围`,
+    };
+  }
+
+  return {
+    daemonStarted: (pid, timeoutSeconds, _command) =>
+      `🔄 Command started as daemon process (PID: ${pid})\nThe process didn't complete within ${timeoutSeconds} seconds and is now running in the background.\nA reminder has been added to track its progress.\n\nUse stop_daemon({"pid": ${pid}}) to terminate it when needed.`,
+    commandCompleted: (exitCode, scrollNotice) =>
+      `✅ Command completed (exit code: ${exitCode ?? 'unknown'})${scrollNotice}\n\n`,
+    scrolledLinesNotice: (lines) => `\n⚠️  ${lines} lines scrolled out of view during execution`,
+    stdoutLabel: '📤 stdout:',
+    stderrLabel: '📤 stderr:',
+    failedToExecute: (msg) => `❌ Failed to execute command: ${msg}`,
+    noDaemonFound: (pid) => `❌ No daemon process found with PID ${pid}`,
+    daemonStopped: (pid, command) => `✅ Daemon process ${pid} (${command}) stopped successfully`,
+    failedToStop: (pid, msg) => `❌ Failed to stop daemon process ${pid}: ${msg}`,
+    daemonOutputHeader: (pid, streamLabel) => `📤 Daemon ${pid} ${streamLabel} output:\n`,
+    noOutput: '(no output)',
+    scrolledOutNotice: (lines) => `\n\n⚠️  ${lines} lines have scrolled out of view`,
+  };
+}
 
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -385,6 +440,8 @@ export const shellCmdTool: FuncTool = {
   },
   parameters: shellCmdSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+    const language = getWorkLanguage();
+    const t = getOsToolMessages(language);
     const parsedArgs = parseShellCmdArgs(args);
     const { command, shell = 'bash', bufferSize = 500, timeoutSeconds = 5 } = parsedArgs;
 
@@ -435,9 +492,7 @@ export const shellCmdTool: FuncTool = {
           startTime: formatUnifiedTimestamp(startTime),
         });
 
-        resolve(
-          `🔄 Command started as daemon process (PID: ${pid})\nThe process didn't complete within ${timeoutSeconds} seconds and is now running in the background.\nA reminder has been added to track its progress.\n\nUse stop_daemon({"pid": ${pid}}) to terminate it when needed.`,
-        );
+        resolve(t.daemonStarted(pid, timeoutSeconds, command));
       }, timeoutSeconds * 1000);
 
       // Handle process completion
@@ -451,7 +506,7 @@ export const shellCmdTool: FuncTool = {
         let scrollNotice = '';
         if (stdoutInfo.hasScrolledContent || stderrInfo.hasScrolledContent) {
           const scrolledLines = stdoutInfo.linesScrolledOut + stderrInfo.linesScrolledOut;
-          scrollNotice = `\n⚠️  ${scrolledLines} lines scrolled out of view during execution`;
+          scrollNotice = t.scrolledLinesNotice(scrolledLines);
         }
 
         const stdoutContent = stdoutBuffer.getContent();
@@ -459,14 +514,14 @@ export const shellCmdTool: FuncTool = {
 
         const fenceConsole = '```console';
         const fenceEnd = '```';
-        let result = `✅ Command completed (exit code: ${code})${scrollNotice}\n\n`;
+        let result = t.commandCompleted(code, scrollNotice);
 
         if (stdoutContent) {
-          result += `📤 stdout:\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}\n\n`;
+          result += `${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}\n\n`;
         }
 
         if (stderrContent) {
-          result += `📤 stderr:\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
+          result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
         }
 
         resolve(result.trim());
@@ -474,7 +529,7 @@ export const shellCmdTool: FuncTool = {
 
       childProcess.on('error', (error) => {
         clearTimeout(timeoutHandle);
-        resolve(`❌ Failed to execute command: ${error.message}`);
+        resolve(t.failedToExecute(error.message));
       });
     });
   },
@@ -492,11 +547,13 @@ export const stopDaemonTool: FuncTool = {
   },
   parameters: stopDaemonSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+    const language = getWorkLanguage();
+    const t = getOsToolMessages(language);
     const { pid } = parseStopDaemonArgs(args);
 
     const daemon = daemonProcesses.get(pid);
     if (!daemon) {
-      return `❌ No daemon process found with PID ${pid}`;
+      return t.noDaemonFound(pid);
     }
 
     try {
@@ -539,10 +596,10 @@ export const stopDaemonTool: FuncTool = {
       // Clean up daemon tracking
       daemonProcesses.delete(pid);
 
-      return `✅ Daemon process ${pid} (${daemon.command}) stopped successfully`;
+      return t.daemonStopped(pid, daemon.command);
     } catch (error) {
       daemonProcesses.delete(pid); // Clean up tracking even if kill failed
-      return `❌ Failed to stop daemon process ${pid}: ${error instanceof Error ? error.message : String(error)}`;
+      return t.failedToStop(pid, error instanceof Error ? error.message : String(error));
     }
   },
 };
@@ -559,11 +616,13 @@ export const getDaemonOutputTool: FuncTool = {
   },
   parameters: getDaemonOutputSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+    const language = getWorkLanguage();
+    const t = getOsToolMessages(language);
     const { pid, stream = 'stdout' } = parseGetDaemonOutputArgs(args);
 
     const daemon = daemonProcesses.get(pid);
     if (!daemon) {
-      return `❌ No daemon process found with PID ${pid}`;
+      return t.noDaemonFound(pid);
     }
 
     const buffer = stream === 'stdout' ? daemon.stdoutBuffer : daemon.stderrBuffer;
@@ -574,16 +633,16 @@ export const getDaemonOutputTool: FuncTool = {
     const fenceConsole = '```console';
     const fenceEnd = '```';
 
-    let result = `📤 Daemon ${pid} ${streamLabel} output:\n`;
+    let result = t.daemonOutputHeader(pid, streamLabel);
 
     if (content) {
       result += `${fenceConsole}\n${content}\n${fenceEnd}`;
     } else {
-      result += '(no output)';
+      result += t.noOutput;
     }
 
     if (scrollInfo.hasScrolledContent) {
-      result += `\n\n⚠️  ${scrollInfo.linesScrolledOut} lines have scrolled out of view`;
+      result += t.scrolledOutNotice(scrollInfo.linesScrolledOut);
     }
 
     return result;

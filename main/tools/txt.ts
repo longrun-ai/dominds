@@ -12,6 +12,7 @@ import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
 import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
+import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import { TextingTool, TextingToolCallResult } from '../tool';
 
@@ -20,11 +21,15 @@ function wrapTextingResult(language: LanguageCode, messages: ChatMessage[]): Tex
   const text =
     first && 'content' in first && typeof first.content === 'string' ? first.content : '';
   const failed =
-    /^(?:Error:|❌\s|\*\*Access Denied\*\*)/m.test(text) ||
+    /^(?:Error:|错误：|❌\s|\*\*Access Denied\*\*|\*\*访问被拒绝\*\*)/m.test(text) ||
     text.includes('Please use the correct format') ||
+    text.includes('请使用正确的格式') ||
     text.includes('Invalid format') ||
+    text.includes('格式不正确') ||
     text.includes('Path required') ||
-    text.includes('Path must be within workspace');
+    text.includes('需要提供路径') ||
+    text.includes('Path must be within workspace') ||
+    text.includes('路径必须位于工作区内');
   return {
     status: failed ? 'failed' : 'completed',
     result: text || (failed ? formatToolError(language) : formatToolOk(language)),
@@ -240,15 +245,37 @@ Examples:
   @read_file !range ~20 src/main.ts`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const labels =
+      language === 'zh'
+        ? {
+            formatError:
+              '请使用正确的文件读取格式。\n\n**期望格式：** `@read_file [options] <path>`\n\n**示例：**\n```\n@read_file src/main.ts\n@read_file !range 10~50 src/main.ts\n@read_file !range 300~ src/main.ts\n```',
+            fileLabel: '文件',
+            warningTruncated: (totalBytes: number, shownBytes: number) =>
+              `⚠️ **警告：** 文件已截断（总大小 ${totalBytes} bytes，当前显示前 ${shownBytes} bytes）\n\n`,
+            sizeLabel: '大小',
+            optionsLabel: '选项',
+            failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
+          }
+        : {
+            formatError:
+              'Please use the correct format for reading files.\n\n**Expected format:** `@read_file [options] <path>`\n\n**Examples:**\n```\n@read_file src/main.ts\n@read_file !range 10~50 src/main.ts\n@read_file !range 300~ src/main.ts\n```',
+            fileLabel: 'File',
+            warningTruncated: (totalBytes: number, shownBytes: number) =>
+              `⚠️ **Warning:** File was truncated (${totalBytes} bytes total, showing first ${shownBytes} bytes)\n\n`,
+            sizeLabel: 'Size',
+            optionsLabel: 'Options',
+            failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
+          };
+
     try {
       const { path: rel, options } = parseReadFileOptions(headLine);
 
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
-        const content = getAccessDeniedMessage('read', rel);
-        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-          { type: 'environment_msg', role: 'user', content },
-        ]);
+        const content = getAccessDeniedMessage('read', rel, language);
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const file = ensureInsideWorkspace(rel);
@@ -261,14 +288,14 @@ Examples:
       const formattedContent = formatFileContent(rawContent, options);
 
       // Create markdown response
-      let markdown = `📄 **File:** \`${rel}\`\n`;
+      let markdown = `📄 **${labels.fileLabel}:** \`${rel}\`\n`;
 
       if (fileTruncated) {
-        markdown += `⚠️ **Warning:** File was truncated (${stat.size} bytes total, showing first ${rawContent.length} bytes)\n\n`;
+        markdown += labels.warningTruncated(stat.size, rawContent.length);
       }
 
-      markdown += `**Size:** ${stat.size} bytes\n`;
-      markdown += `**Options:** ${JSON.stringify(options)}\n\n`;
+      markdown += `**${labels.sizeLabel}:** ${stat.size} bytes\n`;
+      markdown += `**${labels.optionsLabel}:** ${JSON.stringify(options)}\n\n`;
 
       // Add file content with code block formatting
       markdown += '```\n';
@@ -279,22 +306,18 @@ Examples:
       markdown += '```';
 
       return ok(markdown, [{ type: 'environment_msg', role: 'user', content: markdown }]);
-    } catch (error) {
+    } catch (error: unknown) {
       if (
         error instanceof Error &&
         (error.message === 'Invalid format' || error.message === 'Path required')
       ) {
-        const content =
-          'Please use the correct format for reading files.\n\n**Expected format:** `@read_file [options] <path>`\n\n**Examples:**\n```\n@read_file src/main.ts\n@read_file !range 10~50 src/main.ts\n@read_file !range 300~ src/main.ts\n```';
-        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-          { type: 'environment_msg', role: 'user', content },
-        ]);
+        const content = labels.formatError;
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      const content = `❌ **Error**\n\nFailed to read file: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const msg = error instanceof Error ? error.message : String(error);
+      const content = labels.failedToRead(msg);
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
@@ -345,45 +368,53 @@ Examples:
   This is a sample project.`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const labels =
+      language === 'zh'
+        ? {
+            invalidFormat: '错误：格式不正确。用法：@overwrite_file <path>',
+            filePathRequired: '错误：需要提供文件路径。',
+            contentRequired: '错误：需要在正文中提供文件内容。',
+            overwritten: (p: string) => `✅ 文件已覆盖写入：\`${p}\`。`,
+            overwriteFailed: (msg: string) => `❌ **错误**\n\n覆盖写入文件失败：${msg}`,
+          }
+        : {
+            invalidFormat: 'Error: Invalid format. Use @overwrite_file <path>',
+            filePathRequired: 'Error: File path is required.',
+            contentRequired: 'Error: File content is required in the body.',
+            overwritten: (p: string) => `File '${p}' has been overwritten successfully.`,
+            overwriteFailed: (msg: string) => `Error overwriting file: ${msg}`,
+          };
+
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@overwrite_file')) {
-      const content = 'Error: Invalid format. Use @overwrite_file <path>';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.invalidFormat;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const afterToolName = trimmed.slice('@overwrite_file'.length).trim();
     if (!afterToolName) {
-      const content = 'Error: File path is required.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.filePathRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
 
     if (!filePath) {
-      const content = 'Error: File path is required.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.filePathRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check write access
     if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath);
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = getAccessDeniedMessage('write', filePath, language);
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     if (!inputBody) {
-      const content = 'Error: File content is required in the body.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.contentRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -396,13 +427,13 @@ Examples:
       // Write the file
       fsSync.writeFileSync(fullPath, inputBody, 'utf8');
 
-      const content = `File '${filePath}' has been overwritten successfully.`;
+      const content = labels.overwritten(filePath);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
-      const content = `Error overwriting file: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.overwriteFailed(
+        error instanceof Error ? error.message : String(error),
+      );
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
@@ -471,43 +502,57 @@ Example:
    };`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const labels =
+      language === 'zh'
+        ? {
+            patchContentRequired: '错误：需要在正文中提供补丁内容。',
+            invalidFormat: '错误：格式不正确。用法：@patch_file <path>',
+            filePathRequired: '错误：需要提供文件路径。',
+            fileDoesNotExist: (p: string) => `错误：文件 '${p}' 不存在。`,
+            missingHunkHeader: '错误：补丁格式无效：缺少 @@ hunk 头。',
+            invalidHunkHeader: '错误：hunk 头格式无效。',
+            applied: (p: string) => `✅ 已将补丁应用到：\`${p}\`。`,
+            applyFailed: (msg: string) => `错误：应用补丁失败：${msg}`,
+          }
+        : {
+            patchContentRequired: 'Error: Patch content is required in the body.',
+            invalidFormat: 'Error: Invalid format. Use @patch_file <path>',
+            filePathRequired: 'Error: File path is required.',
+            fileDoesNotExist: (p: string) => `Error: File '${p}' does not exist.`,
+            missingHunkHeader: 'Error: Invalid patch format. Missing @@ hunk header.',
+            invalidHunkHeader: 'Error: Invalid hunk header format.',
+            applied: (p: string) => `Patch applied successfully to '${p}'.`,
+            applyFailed: (msg: string) => `Error applying patch: ${msg}`,
+          };
+
     if (!inputBody || inputBody.trim() === '') {
-      const content = 'Error: Patch content is required in the body.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.patchContentRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@patch_file')) {
-      const content = 'Error: Invalid format. Use @patch_file <path>';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.invalidFormat;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const afterToolName = trimmed.slice('@patch_file'.length).trim();
     if (!afterToolName) {
-      const content = 'Error: File path is required.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.filePathRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      const content = 'Error: File path is required.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.filePathRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check write access
     if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath);
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = getAccessDeniedMessage('write', filePath, language);
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -515,10 +560,8 @@ Example:
 
       // Check if file exists
       if (!fsSync.existsSync(fullPath)) {
-        const content = `Error: File '${filePath}' does not exist.`;
-        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-          { type: 'environment_msg', role: 'user', content },
-        ]);
+        const content = labels.fileDoesNotExist(filePath);
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       // Read current file content
@@ -539,20 +582,16 @@ Example:
       }
 
       if (hunkHeaderIndex === -1) {
-        const content = 'Error: Invalid patch format. Missing @@ hunk header.';
-        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-          { type: 'environment_msg', role: 'user', content },
-        ]);
+        const content = labels.missingHunkHeader;
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
       const hunkHeader = patchLines[hunkHeaderIndex];
       const hunkMatch = hunkHeader.match(/^@@\s*-(\d+),(\d+)\s*\+(\d+),(\d+)\s*@@/);
       if (!hunkMatch) {
-        const content = 'Error: Invalid hunk header format.';
-        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-          { type: 'environment_msg', role: 'user', content },
-        ]);
+        const content = labels.invalidHunkHeader;
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const oldStart = parseInt(hunkMatch[1]) - 1; // Convert to 0-based
@@ -597,13 +636,11 @@ Example:
       const newContent = newLines.join('\n');
       fsSync.writeFileSync(fullPath, newContent, 'utf8');
 
-      const content = `Patch applied successfully to '${filePath}'.`;
+      const content = labels.applied(filePath);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
-      const content = `Error applying patch: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
@@ -626,12 +663,24 @@ export const applyPatchTool: TextingTool = {
       '用法：@apply_patch\n<diff 内容写在正文里>',
   },
   backfeeding: true,
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, _headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
+    const labels =
+      language === 'zh'
+        ? {
+            patchContentRequired: '错误：需要在正文中提供补丁内容。',
+            applied: '✅ 已应用补丁。',
+            applyFailed: (msg: string) => `错误：应用补丁失败：${msg}`,
+          }
+        : {
+            patchContentRequired: 'Error: Patch content is required in the body.',
+            applied: 'Patch applied successfully.',
+            applyFailed: (msg: string) => `Error applying patch: ${msg}`,
+          };
+
     if (!inputBody || inputBody.trim() === '') {
-      const content = 'Error: Patch content is required in the body.';
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.patchContentRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const diffContent = inputBody.trim();
@@ -655,10 +704,8 @@ export const applyPatchTool: TextingTool = {
     // Check write access for all affected files
     for (const filePath of affectedFiles) {
       if (!hasWriteAccess(caller, filePath)) {
-        const content = getAccessDeniedMessage('write', filePath);
-        return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-          { type: 'environment_msg', role: 'user', content },
-        ]);
+        const content = getAccessDeniedMessage('write', filePath, language);
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
     }
 
@@ -676,13 +723,11 @@ export const applyPatchTool: TextingTool = {
       // Clean up the temporary file
       fsSync.unlinkSync(tempFile);
 
-      const content = 'Patch applied successfully.';
+      const content = labels.applied;
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
-      const content = `Error applying patch: ${error instanceof Error ? error.message : String(error)}`;
-      return wrapTextingResult(dlg.getLastUserLanguageCode(), [
-        { type: 'environment_msg', role: 'user', content },
-      ]);
+      const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };

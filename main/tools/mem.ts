@@ -10,6 +10,8 @@ import { getAccessDeniedMessage, hasWriteAccess } from '../access-control';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
+import { getWorkLanguage } from '../shared/runtime-language';
+import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import { TextingTool, TextingToolCallResult } from '../tool';
 
@@ -25,18 +27,34 @@ function fail(result: string): TextingToolCallResult {
   return { status: 'failed', result, messages: env(result) };
 }
 
-function getMemoryPath(caller: Team.Member, filePath: string, isShared: boolean = false): string {
+type MemoryPathResult =
+  | Readonly<{ kind: 'ok'; rel: string }>
+  | Readonly<{ kind: 'invalid_path'; message: string }>;
+
+function getMemoryPath(params: {
+  language: LanguageCode;
+  caller: Team.Member;
+  filePath: string;
+  isShared?: boolean;
+}): MemoryPathResult {
   // Prevent path traversal by rejecting paths with '..'
-  if (filePath.includes('..')) {
-    throw new Error('Path traversal not allowed in memory paths');
+  if (params.filePath.includes('..')) {
+    return {
+      kind: 'invalid_path',
+      message:
+        params.language === 'zh'
+          ? '❌ **错误**\n\n记忆路径不允许包含 `..`（禁止路径穿越）。'
+          : '❌ **Error**\n\nPath traversal is not allowed in memory paths (`..` is forbidden).',
+    };
   }
 
   const mindsDir = '.minds/memory';
-  if (isShared) {
-    return path.join(mindsDir, 'team_shared', filePath);
-  } else {
-    return path.join(mindsDir, 'individual', caller.id, filePath);
-  }
+  const isShared = params.isShared === true;
+  const rel = isShared
+    ? path.join(mindsDir, 'team_shared', params.filePath)
+    : path.join(mindsDir, 'individual', params.caller.id, params.filePath);
+
+  return { kind: 'ok', rel };
 }
 
 export const addMemoryTool: TextingTool = {
@@ -85,37 +103,51 @@ Examples:
   - Bug fixes`,
   },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@add_memory')) {
-      return fail('Error: Invalid format. Use @add_memory <relative-file-path>');
+      return fail(
+        language === 'zh'
+          ? '错误：格式不正确。用法：@add_memory <relative-file-path>'
+          : 'Error: Invalid format. Use @add_memory <relative-file-path>',
+      );
     }
 
     const afterToolName = trimmed.slice('@add_memory'.length).trim();
     if (!afterToolName) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     if (!inputBody) {
-      return fail('Error: Memory content is required in the body.');
+      return fail(
+        language === 'zh'
+          ? '错误：需要在正文中提供记忆内容。'
+          : 'Error: Memory content is required in the body.',
+      );
     }
 
-    const memoryPath = getMemoryPath(caller, filePath);
-
-    if (!hasWriteAccess(caller, memoryPath)) {
-      return fail(getAccessDeniedMessage('write', memoryPath));
+    const memoryPath = getMemoryPath({ language, caller, filePath });
+    if (memoryPath.kind === 'invalid_path') {
+      return fail(memoryPath.message);
     }
 
-    const fullPath = path.resolve(process.cwd(), memoryPath);
+    if (!hasWriteAccess(caller, memoryPath.rel)) {
+      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
+    }
+
+    const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (fs.existsSync(fullPath)) {
       return fail(
-        `Error: Memory file '${filePath}' already exists. Use @replace_memory to update it.`,
+        language === 'zh'
+          ? `错误：记忆文件 '${filePath}' 已存在。请使用 @replace_memory 更新它。`
+          : `Error: Memory file '${filePath}' already exists. Use @replace_memory to update it.`,
       );
     }
 
@@ -123,7 +155,7 @@ Examples:
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'added'));
+    return ok(formatToolActionResult(language, 'added'));
   },
 };
 
@@ -152,37 +184,49 @@ Examples:
   @drop_memory tasks/completed-task.md`,
   },
   async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@drop_memory')) {
-      return fail('Error: Invalid format. Use @drop_memory <relative-file-path>');
+      return fail(
+        language === 'zh'
+          ? '错误：格式不正确。用法：@drop_memory <relative-file-path>'
+          : 'Error: Invalid format. Use @drop_memory <relative-file-path>',
+      );
     }
 
     const afterToolName = trimmed.slice('@drop_memory'.length).trim();
     if (!afterToolName) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
-    const memoryPath = getMemoryPath(caller, filePath);
-
-    if (!hasWriteAccess(caller, memoryPath)) {
-      return fail(getAccessDeniedMessage('write', memoryPath));
+    const memoryPath = getMemoryPath({ language, caller, filePath });
+    if (memoryPath.kind === 'invalid_path') {
+      return fail(memoryPath.message);
     }
 
-    const fullPath = path.resolve(process.cwd(), memoryPath);
+    if (!hasWriteAccess(caller, memoryPath.rel)) {
+      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
+    }
+
+    const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return fail(`Error: Memory file '${filePath}' does not exist.`);
+      return fail(
+        language === 'zh'
+          ? `错误：记忆文件 '${filePath}' 不存在。`
+          : `Error: Memory file '${filePath}' does not exist.`,
+      );
     }
 
     fs.unlinkSync(fullPath);
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'deleted'));
+    return ok(formatToolActionResult(language, 'deleted'));
   },
 };
 
@@ -217,41 +261,57 @@ Examples:
   Current progress and next steps...`,
   },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@replace_memory')) {
-      return fail('Error: Invalid format. Use @replace_memory <relative-file-path>');
+      return fail(
+        language === 'zh'
+          ? '错误：格式不正确。用法：@replace_memory <relative-file-path>'
+          : 'Error: Invalid format. Use @replace_memory <relative-file-path>',
+      );
     }
 
     const afterToolName = trimmed.slice('@replace_memory'.length).trim();
     if (!afterToolName) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     if (!inputBody) {
-      return fail('Error: Memory content is required in the body.');
+      return fail(
+        language === 'zh'
+          ? '错误：需要在正文中提供记忆内容。'
+          : 'Error: Memory content is required in the body.',
+      );
     }
 
-    const memoryPath = getMemoryPath(caller, filePath);
-
-    if (!hasWriteAccess(caller, memoryPath)) {
-      return fail(getAccessDeniedMessage('write', memoryPath));
+    const memoryPath = getMemoryPath({ language, caller, filePath });
+    if (memoryPath.kind === 'invalid_path') {
+      return fail(memoryPath.message);
     }
 
-    const fullPath = path.resolve(process.cwd(), memoryPath);
+    if (!hasWriteAccess(caller, memoryPath.rel)) {
+      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
+    }
+
+    const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return fail(`Error: Memory file '${filePath}' does not exist. Use @add_memory to create it.`);
+      return fail(
+        language === 'zh'
+          ? `错误：记忆文件 '${filePath}' 不存在。请使用 @add_memory 创建它。`
+          : `Error: Memory file '${filePath}' does not exist. Use @add_memory to create it.`,
+      );
     }
 
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'updated'));
+    return ok(formatToolActionResult(language, 'updated'));
   },
 };
 
@@ -274,22 +334,23 @@ This will remove all files in my personal memory directory.`,
 这会删除个人记忆目录下的所有文件。`,
   },
   async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const memoryDir = path.join('.minds/memory/individual', caller.id);
 
     if (!hasWriteAccess(caller, memoryDir)) {
-      return fail(getAccessDeniedMessage('write', memoryDir));
+      return fail(getAccessDeniedMessage('write', memoryDir, language));
     }
 
     const fullPath = path.resolve(process.cwd(), memoryDir);
 
     if (!fs.existsSync(fullPath)) {
-      return fail('No personal memory to clear.');
+      return fail(language === 'zh' ? '没有可清空的个人记忆。' : 'No personal memory to clear.');
     }
 
     fs.rmSync(fullPath, { recursive: true, force: true });
     fs.mkdirSync(fullPath, { recursive: true });
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'cleared'));
+    return ok(formatToolActionResult(language, 'cleared'));
   },
 };
 
@@ -336,37 +397,51 @@ Examples:
   Important decisions made by the team...`,
   },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@add_team_memory')) {
-      return fail('Error: Invalid format. Use @add_team_memory <relative-file-path>');
+      return fail(
+        language === 'zh'
+          ? '错误：格式不正确。用法：@add_team_memory <relative-file-path>'
+          : 'Error: Invalid format. Use @add_team_memory <relative-file-path>',
+      );
     }
 
     const afterToolName = trimmed.slice('@add_team_memory'.length).trim();
     if (!afterToolName) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     if (!inputBody) {
-      return fail('Error: Shared memory content is required in the body.');
+      return fail(
+        language === 'zh'
+          ? '错误：需要在正文中提供共享记忆内容。'
+          : 'Error: Shared memory content is required in the body.',
+      );
     }
 
-    const memoryPath = getMemoryPath(caller, filePath, true);
-
-    if (!hasWriteAccess(caller, memoryPath)) {
-      return fail(getAccessDeniedMessage('write', memoryPath));
+    const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
+    if (memoryPath.kind === 'invalid_path') {
+      return fail(memoryPath.message);
     }
 
-    const fullPath = path.resolve(process.cwd(), memoryPath);
+    if (!hasWriteAccess(caller, memoryPath.rel)) {
+      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
+    }
+
+    const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (fs.existsSync(fullPath)) {
       return fail(
-        `Error: Shared memory file '${filePath}' already exists. Use @replace_team_memory to update it.`,
+        language === 'zh'
+          ? `错误：共享记忆文件 '${filePath}' 已存在。请使用 @replace_team_memory 更新它。`
+          : `Error: Shared memory file '${filePath}' already exists. Use @replace_team_memory to update it.`,
       );
     }
 
@@ -374,7 +449,7 @@ Examples:
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'added'));
+    return ok(formatToolActionResult(language, 'added'));
   },
 };
 
@@ -403,37 +478,49 @@ Examples:
   @drop_team_memory team/outdated-decisions.md`,
   },
   async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@drop_team_memory')) {
-      return fail('Error: Invalid format. Use @drop_team_memory <relative-file-path>');
+      return fail(
+        language === 'zh'
+          ? '错误：格式不正确。用法：@drop_team_memory <relative-file-path>'
+          : 'Error: Invalid format. Use @drop_team_memory <relative-file-path>',
+      );
     }
 
     const afterToolName = trimmed.slice('@drop_team_memory'.length).trim();
     if (!afterToolName) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
-    const memoryPath = getMemoryPath(caller, filePath, true);
-
-    if (!hasWriteAccess(caller, memoryPath)) {
-      return fail(getAccessDeniedMessage('write', memoryPath));
+    const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
+    if (memoryPath.kind === 'invalid_path') {
+      return fail(memoryPath.message);
     }
 
-    const fullPath = path.resolve(process.cwd(), memoryPath);
+    if (!hasWriteAccess(caller, memoryPath.rel)) {
+      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
+    }
+
+    const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
-      return fail(`Error: Shared memory file '${filePath}' does not exist.`);
+      return fail(
+        language === 'zh'
+          ? `错误：共享记忆文件 '${filePath}' 不存在。`
+          : `Error: Shared memory file '${filePath}' does not exist.`,
+      );
     }
 
     fs.unlinkSync(fullPath);
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'deleted'));
+    return ok(formatToolActionResult(language, 'deleted'));
   },
 };
 
@@ -468,43 +555,57 @@ Examples:
   Revised requirements based on feedback...`,
   },
   async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
     if (!trimmed.startsWith('@replace_team_memory')) {
-      return fail('Error: Invalid format. Use @replace_team_memory <relative-file-path>');
+      return fail(
+        language === 'zh'
+          ? '错误：格式不正确。用法：@replace_team_memory <relative-file-path>'
+          : 'Error: Invalid format. Use @replace_team_memory <relative-file-path>',
+      );
     }
 
     const afterToolName = trimmed.slice('@replace_team_memory'.length).trim();
     if (!afterToolName) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
-      return fail('Error: File path is required.');
+      return fail(language === 'zh' ? '错误：需要提供文件路径。' : 'Error: File path is required.');
     }
 
     if (!inputBody) {
-      return fail('Error: Shared memory content is required in the body.');
+      return fail(
+        language === 'zh'
+          ? '错误：需要在正文中提供共享记忆内容。'
+          : 'Error: Shared memory content is required in the body.',
+      );
     }
 
-    const memoryPath = getMemoryPath(caller, filePath, true);
-
-    if (!hasWriteAccess(caller, memoryPath)) {
-      return fail(getAccessDeniedMessage('write', memoryPath));
+    const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
+    if (memoryPath.kind === 'invalid_path') {
+      return fail(memoryPath.message);
     }
 
-    const fullPath = path.resolve(process.cwd(), memoryPath);
+    if (!hasWriteAccess(caller, memoryPath.rel)) {
+      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
+    }
+
+    const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
       return fail(
-        `Error: Shared memory file '${filePath}' does not exist. Use @add_team_memory to create it.`,
+        language === 'zh'
+          ? `错误：共享记忆文件 '${filePath}' 不存在。请使用 @add_team_memory 创建它。`
+          : `Error: Shared memory file '${filePath}' does not exist. Use @add_team_memory to create it.`,
       );
     }
 
     fs.writeFileSync(fullPath, inputBody, 'utf8');
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'updated'));
+    return ok(formatToolActionResult(language, 'updated'));
   },
 };
 
@@ -527,21 +628,22 @@ This will remove all files in the shared memory directory.`,
 这会删除共享记忆目录下的所有文件。`,
   },
   async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getWorkLanguage();
     const memoryDir = '.minds/memory/team_shared';
 
     if (!hasWriteAccess(caller, memoryDir)) {
-      return fail(getAccessDeniedMessage('write', memoryDir));
+      return fail(getAccessDeniedMessage('write', memoryDir, language));
     }
 
     const fullPath = path.resolve(process.cwd(), memoryDir);
 
     if (!fs.existsSync(fullPath)) {
-      return fail('No shared memory to clear.');
+      return fail(language === 'zh' ? '没有可清空的共享记忆。' : 'No shared memory to clear.');
     }
 
     fs.rmSync(fullPath, { recursive: true, force: true });
     fs.mkdirSync(fullPath, { recursive: true });
 
-    return ok(formatToolActionResult(dlg.getLastUserLanguageCode(), 'cleared'));
+    return ok(formatToolActionResult(language, 'cleared'));
   },
 };
