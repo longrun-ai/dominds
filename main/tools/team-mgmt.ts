@@ -24,7 +24,12 @@ import { Team } from '../team';
 import type { TextingTool, TextingToolCallResult } from '../tool';
 import { listDirTool, rmDirTool, rmFileTool } from './fs';
 import { listToolsets } from './registry';
-import { applyPatchTool, overwriteFileTool, patchFileTool, readFileTool } from './txt';
+import {
+  applyFileModificationTool,
+  overwriteFileTool,
+  planFileModificationTool,
+  readFileTool,
+} from './txt';
 
 const MINDS_ALLOW = ['.minds/**'] as const;
 const MINDS_DIR = '.minds';
@@ -621,26 +626,23 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtPatchFileTool: TextingTool = {
+export const teamMgmtPlanFileModificationTool: TextingTool = {
   type: 'texter',
-  name: 'team_mgmt_patch_file',
+  name: 'team_mgmt_plan_file_modification',
   backfeeding: true,
   usageDescription:
-    `Apply a simple single-file patch under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_patch_file <path>\n` +
-    `<patch in body>\n\n` +
-    `Tip: If your patch contains lines starting with '@' (e.g. '@@' hunks), wrap the body in triple backticks.\n`,
+    `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !!@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+    `<new content lines in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Apply a simple single-file patch under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_patch_file <path>\n` +
-      `<patch in body>\n\n` +
-      `Tip: If your patch contains lines starting with '@' (e.g. '@@' hunks), wrap the body in triple backticks.\n`,
+      `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !!@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+      `<new content lines in body>\n`,
     zh:
-      `对 ${MINDS_DIR}/ 下的单个文件应用简单补丁。\n` +
-      `用法：!!@team_mgmt_patch_file <path>\n` +
-      `<正文为补丁内容>\n\n` +
-      `提示：如果补丁包含以 @ 开头的行（例如 @@ hunk），请用三反引号 \`\`\` 包裹正文。\n`,
+      `按行号范围规划 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。\n` +
+      `用法：!!@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+      `<正文为新内容行>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -652,12 +654,20 @@ export const teamMgmtPatchFileTool: TextingTool = {
       await ensureMindsRootDirExists();
 
       const after = parseArgsAfterTool(headLine, this.name);
-      const filePath = after.split(/\s+/)[0] || '';
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const filePath = parts[0] ?? '';
+      const rangeSpec = parts[1] ?? '';
+      const maybeHunkId = parts[2] ?? '';
       if (!filePath) throw new Error('Path required');
+      if (!rangeSpec) throw new Error('Range required (e.g. 10~20 or ~)');
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await patchFileTool.call(dlg, proxyCaller, `@patch_file ${rel}`, inputBody);
+      const proxyHeadLine =
+        maybeHunkId && maybeHunkId.startsWith('!')
+          ? `@plan_file_modification ${rel} ${rangeSpec} ${maybeHunkId}`
+          : `@plan_file_modification ${rel} ${rangeSpec}`;
+      return await planFileModificationTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -668,28 +678,22 @@ export const teamMgmtPatchFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtApplyPatchTool: TextingTool = {
+export const teamMgmtApplyFileModificationTool: TextingTool = {
   type: 'texter',
-  name: 'team_mgmt_apply_patch',
+  name: 'team_mgmt_apply_file_modification',
   backfeeding: true,
   usageDescription:
-    `Apply a unified diff patch to files under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_apply_patch\n` +
-    `<diff content in body>\n\n` +
-    `Tip: Unified diffs usually contain '@@' hunks; wrap the body in triple backticks.\n`,
+    `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.\n` +
+    `Usage: !!@team_mgmt_apply_file_modification !<hunk-id>\n`,
   usageDescriptionI18n: {
     en:
-      `Apply a unified diff patch to files under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_apply_patch\n` +
-      `<diff content in body>\n\n` +
-      `Tip: Unified diffs usually contain '@@' hunks; wrap the body in triple backticks.\n`,
+      `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.\n` +
+      `Usage: !!@team_mgmt_apply_file_modification !<hunk-id>\n`,
     zh:
-      `对 ${MINDS_DIR}/ 下的文件应用 unified diff 补丁。\n` +
-      `用法：!!@team_mgmt_apply_patch\n` +
-      `<正文为 diff 内容>\n\n` +
-      `提示：unified diff 通常包含 @@ hunk，请用三反引号 \`\`\` 包裹正文。\n`,
+      `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下的单文件修改。\n` +
+      `用法：!!@team_mgmt_apply_file_modification !<hunk-id>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -698,12 +702,16 @@ export const teamMgmtApplyPatchTool: TextingTool = {
       }
       await ensureMindsRootDirExists();
 
-      const trimmed = headLine.trim();
-      if (!trimmed.startsWith(`@${this.name}`)) {
-        throw new Error(`Invalid format. Use !!@${this.name}`);
-      }
+      const after = parseArgsAfterTool(headLine, this.name);
+      const id = after.split(/\s+/)[0] || '';
+      if (!id) throw new Error('Hunk id required (e.g. !a1b2c3d4)');
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await applyPatchTool.call(dlg, proxyCaller, '@apply_patch', inputBody);
+      return await applyFileModificationTool.call(
+        dlg,
+        proxyCaller,
+        `@apply_file_modification ${id}`,
+        '',
+      );
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1087,6 +1095,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 fuxi/pangu）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!!@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
+        '修改文件推荐流程：先 `!!@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!!@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!!@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!!@team_mgmt_overwrite_file team.yaml`。',
       ]) +
       '\n' +
       '最小模板：\n' +
@@ -1112,7 +1121,11 @@ function renderTeamManual(language: LanguageCode): string {
   }
   return (
     fmtHeader('.minds/team.yaml') +
-    fmtList(common.map((s) => s)) +
+    fmtList(
+      common.concat([
+        'Recommended editing workflow: use `!!@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!!@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!!@team_mgmt_apply_file_modification !<id>`; for large edits, use `!!@team_mgmt_overwrite_file team.yaml`.',
+      ]),
+    ) +
     '\n' +
     'Minimal template:\n' +
     '```yaml\n' +
@@ -1491,8 +1504,8 @@ export const teamMgmtTools: ReadonlyArray<TextingTool> = [
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtOverwriteFileTool,
-  teamMgmtPatchFileTool,
-  teamMgmtApplyPatchTool,
+  teamMgmtPlanFileModificationTool,
+  teamMgmtApplyFileModificationTool,
   teamMgmtMkdirTool,
   teamMgmtMovePathTool,
   teamMgmtRmFileTool,

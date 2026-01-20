@@ -1,5 +1,7 @@
 #!/usr/bin/env tsx
 
+import 'dominds/tools/builtins';
+
 import { Team } from 'dominds/team';
 import { getTool, getToolset, listTools, listToolsets } from 'dominds/tools/registry';
 
@@ -88,7 +90,7 @@ runTest('Member with toolsets', () => {
     provider: 'openai',
     model: 'gpt-4',
     toolsets: ['ws_read', 'memory'],
-    tools: ['apply_patch', 'list_dir'], // list_dir should be duplicate from ws_read toolset
+    tools: ['apply_file_modification', 'list_dir'], // list_dir should be duplicate from ws_read toolset
   });
 
   const memberTools = testMember.listTools();

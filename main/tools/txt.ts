@@ -2,12 +2,11 @@
  * Module: tools/txt
  *
  * Text file tooling for reading and modifying workspace files.
- * Provides `read_file`, `overwrite_file`, `patch_file`, and `apply_patch`.
+ * Provides `read_file`, `overwrite_file`, `plan_file_modification`, and `apply_file_modification`.
  */
-import { execSync } from 'child_process';
+import crypto from 'crypto';
 import fsSync from 'fs';
 import fs from 'fs/promises';
-import os from 'os';
 import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
@@ -48,6 +47,269 @@ function ensureInsideWorkspace(rel: string): string {
     throw new Error('Path must be within workspace');
   }
   return file;
+}
+
+type ParsedLineRange =
+  | { kind: 'replace'; startLine: number; endLine: number }
+  | { kind: 'append'; startLine: number };
+
+type PlannedFileModification = {
+  readonly hunkId: string;
+  readonly plannedBy: string;
+  readonly createdAtMs: number;
+  readonly expiresAtMs: number;
+  readonly relPath: string;
+  readonly absPath: string;
+  readonly range: ParsedLineRange;
+  readonly startIndex0: number;
+  readonly deleteCount: number;
+  readonly contextBefore: ReadonlyArray<string>;
+  readonly contextAfter: ReadonlyArray<string>;
+  readonly oldLines: ReadonlyArray<string>;
+  readonly newLines: ReadonlyArray<string>;
+  readonly unifiedDiff: string;
+};
+
+const PLANNED_MOD_TTL_MS = 60 * 60 * 1000; // ~1 hour
+const plannedModsById = new Map<string, PlannedFileModification>();
+
+type LockQueueItem = {
+  readonly priority: number;
+  readonly tieBreaker: string;
+  readonly run: () => Promise<void>;
+};
+
+const fileApplyQueues = new Map<string, LockQueueItem[]>();
+const fileApplyRunning = new Set<string>();
+
+function enqueueFileApply(relPath: string, item: LockQueueItem): void {
+  const q = fileApplyQueues.get(relPath) ?? [];
+  q.push(item);
+  q.sort((a, b) =>
+    a.priority !== b.priority ? a.priority - b.priority : a.tieBreaker.localeCompare(b.tieBreaker),
+  );
+  fileApplyQueues.set(relPath, q);
+}
+
+async function drainFileApplyQueue(relPath: string): Promise<void> {
+  if (fileApplyRunning.has(relPath)) return;
+  const q = fileApplyQueues.get(relPath);
+  if (!q || q.length === 0) return;
+  fileApplyRunning.add(relPath);
+  try {
+    while (true) {
+      const next = fileApplyQueues.get(relPath)?.shift();
+      if (!next) break;
+      await next.run();
+    }
+  } finally {
+    fileApplyRunning.delete(relPath);
+    const remaining = fileApplyQueues.get(relPath);
+    if (!remaining || remaining.length === 0) fileApplyQueues.delete(relPath);
+  }
+}
+
+function pruneExpiredPlannedMods(nowMs: number): void {
+  for (const [id, mod] of plannedModsById.entries()) {
+    if (mod.expiresAtMs <= nowMs) plannedModsById.delete(id);
+  }
+}
+
+function generateHunkId(): string {
+  // Short, URL-safe, command-friendly id
+  return crypto.randomBytes(4).toString('hex');
+}
+
+function parseOptionalHunkId(arg: string): string | undefined {
+  const trimmed = arg.trim();
+  if (!trimmed.startsWith('!')) return undefined;
+  const id = trimmed.slice(1);
+  if (!/^[a-z0-9_-]{2,32}$/i.test(id)) return undefined;
+  return id;
+}
+
+function parseLineRangeSpec(
+  rangeSpec: string,
+  totalLines: number,
+): { ok: true; range: ParsedLineRange } | { ok: false; error: string } {
+  const trimmed = rangeSpec.trim();
+  if (!trimmed) return { ok: false, error: 'Range required' };
+
+  // Shorthand: "N" means "N~N"
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n <= 0) return { ok: false, error: 'Invalid range' };
+    if (n > totalLines) return { ok: false, error: 'Range out of bounds' };
+    return { ok: true, range: { kind: 'replace', startLine: n, endLine: n } };
+  }
+
+  const match = trimmed.match(/^(\d+)?~(\d+)?$/);
+  if (!match) return { ok: false, error: 'Invalid range' };
+
+  const startStr = match[1];
+  const endStr = match[2];
+
+  const start = startStr !== undefined ? Number.parseInt(startStr, 10) : undefined;
+  const end = endStr !== undefined ? Number.parseInt(endStr, 10) : undefined;
+
+  if (start !== undefined && (!Number.isFinite(start) || start <= 0)) {
+    return { ok: false, error: 'Invalid range' };
+  }
+  if (end !== undefined && (!Number.isFinite(end) || end <= 0)) {
+    return { ok: false, error: 'Invalid range' };
+  }
+
+  // "~" = entire file
+  if (start === undefined && end === undefined) {
+    return { ok: true, range: { kind: 'replace', startLine: 1, endLine: totalLines } };
+  }
+
+  // "~N" = 1..N
+  if (start === undefined && end !== undefined) {
+    if (end > totalLines) return { ok: false, error: 'Range out of bounds' };
+    return { ok: true, range: { kind: 'replace', startLine: 1, endLine: end } };
+  }
+
+  // "N~" = N..end (or append if N is exactly totalLines+1)
+  if (start !== undefined && end === undefined) {
+    if (start === totalLines + 1) {
+      return { ok: true, range: { kind: 'append', startLine: start } };
+    }
+    if (start > totalLines) return { ok: false, error: 'Range out of bounds' };
+    return { ok: true, range: { kind: 'replace', startLine: start, endLine: totalLines } };
+  }
+
+  // "N~M"
+  if (start !== undefined && end !== undefined) {
+    if (start > end) return { ok: false, error: 'Invalid range' };
+    if (end > totalLines) return { ok: false, error: 'Range out of bounds' };
+    return { ok: true, range: { kind: 'replace', startLine: start, endLine: end } };
+  }
+
+  return { ok: false, error: 'Invalid range' };
+}
+
+function buildUnifiedSingleHunkDiff(
+  relPath: string,
+  currentLines: ReadonlyArray<string>,
+  startIndex0: number,
+  deleteCount: number,
+  newLines: ReadonlyArray<string>,
+): string {
+  const context = 3;
+  const beforeStart0 = Math.max(0, startIndex0 - context);
+  const afterEnd0 = Math.min(currentLines.length, startIndex0 + deleteCount + context);
+
+  const contextBefore = currentLines.slice(beforeStart0, startIndex0);
+  const oldRemoved = currentLines.slice(startIndex0, startIndex0 + deleteCount);
+  const contextAfter = currentLines.slice(startIndex0 + deleteCount, afterEnd0);
+
+  const oldStartLine1 = beforeStart0 + 1;
+  const oldCount = contextBefore.length + oldRemoved.length + contextAfter.length;
+  const newStartLine1 = oldStartLine1;
+  const newCount = contextBefore.length + newLines.length + contextAfter.length;
+
+  const hunkLines = [
+    ...contextBefore.map((l) => ` ${l}`),
+    ...oldRemoved.map((l) => `-${l}`),
+    ...newLines.map((l) => `+${l}`),
+    ...contextAfter.map((l) => ` ${l}`),
+  ];
+
+  return [
+    `diff --git a/${relPath} b/${relPath}`,
+    `--- a/${relPath}`,
+    `+++ b/${relPath}`,
+    `@@ -${oldStartLine1},${oldCount} +${newStartLine1},${newCount} @@`,
+    ...hunkLines,
+    '',
+  ].join('\n');
+}
+
+function computeContextWindow(
+  currentLines: ReadonlyArray<string>,
+  startIndex0: number,
+  deleteCount: number,
+): {
+  contextBefore: ReadonlyArray<string>;
+  contextAfter: ReadonlyArray<string>;
+} {
+  const context = 3;
+  const beforeStart0 = Math.max(0, startIndex0 - context);
+  const afterEnd0 = Math.min(currentLines.length, startIndex0 + deleteCount + context);
+  const contextBefore = currentLines.slice(beforeStart0, startIndex0);
+  const contextAfter = currentLines.slice(startIndex0 + deleteCount, afterEnd0);
+  return { contextBefore, contextAfter };
+}
+
+function splitPlannedBodyLines(inputBody: string): string[] {
+  // Treat a single trailing '\n' as a terminator, not an extra blank line.
+  // - '' (no body) means "replace with nothing" (deletion).
+  // - '\n' means "replace with one empty line".
+  if (inputBody === '') return [];
+  const body = inputBody.endsWith('\n') ? inputBody.slice(0, -1) : inputBody;
+  return body.split('\n');
+}
+
+function matchesAt(
+  currentLines: ReadonlyArray<string>,
+  index0: number,
+  oldLines: ReadonlyArray<string>,
+): boolean {
+  if (index0 < 0) return false;
+  if (index0 + oldLines.length > currentLines.length) return false;
+  for (let i = 0; i < oldLines.length; i++) {
+    if (currentLines[index0 + i] !== oldLines[i]) return false;
+  }
+  return true;
+}
+
+function findAllMatches(
+  currentLines: ReadonlyArray<string>,
+  oldLines: ReadonlyArray<string>,
+): number[] {
+  if (oldLines.length === 0) return [];
+  const matches: number[] = [];
+  const maxStart = currentLines.length - oldLines.length;
+  for (let i = 0; i <= maxStart; i++) {
+    if (matchesAt(currentLines, i, oldLines)) matches.push(i);
+  }
+  return matches;
+}
+
+function filterByContext(
+  currentLines: ReadonlyArray<string>,
+  candidateStarts: ReadonlyArray<number>,
+  contextBefore: ReadonlyArray<string>,
+  contextAfter: ReadonlyArray<string>,
+  oldLinesLen: number,
+): number[] {
+  if (candidateStarts.length <= 1) return [...candidateStarts];
+  if (contextBefore.length === 0 && contextAfter.length === 0) return [...candidateStarts];
+  const out: number[] = [];
+  for (const start0 of candidateStarts) {
+    const beforeStart0 = start0 - contextBefore.length;
+    const afterStart0 = start0 + oldLinesLen;
+    const afterEnd0 = afterStart0 + contextAfter.length;
+    if (beforeStart0 < 0) continue;
+    if (afterEnd0 > currentLines.length) continue;
+    let ok = true;
+    for (let i = 0; i < contextBefore.length; i++) {
+      if (currentLines[beforeStart0 + i] !== contextBefore[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    for (let i = 0; i < contextAfter.length; i++) {
+      if (currentLines[afterStart0 + i] !== contextAfter[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) out.push(start0);
+  }
+  return out;
 }
 
 interface ReadFileOptions {
@@ -438,114 +700,143 @@ Examples:
   },
 };
 
-export const patchFileTool: TextingTool = {
+export const planFileModificationTool: TextingTool = {
   type: 'texter',
-  name: 'patch_file',
+  name: 'plan_file_modification',
   backfeeding: true,
-  usageDescription: `Apply a simple patch to a single file. Usage: !!@patch_file <path>
-<patch content in body>
+  usageDescription: `Plan a single-file modification by line range (does not write yet).
+Usage: !!@plan_file_modification <path> <line~range> [!hunk-id]
+<new content lines in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
+  Body can be empty to delete the target range.
 
-Patch format:
-  @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
-  -removed line
-  +added line
-   unchanged line
+Range formats:
+  10~50     - Lines 10 to 50 (replace)
+  300~      - From line 300 to end (replace)
+  ~20       - From start to line 20 (replace)
+  ~         - Whole file (replace)
+  42        - Shorthand for 42~42 (replace)
+  N~        - If N is (last_line+1), append at end
 
-Example:
-  !!@patch_file src/config.ts
-  @@ -5,3 +5,4 @@
-   export const config = {
-     version: '1.0',
-  +  debug: true,
-   };`,
+Workflow:
+  1) Plan: tool returns a proposed unified diff hunk with a generated hunk id.
+  2) Review the diff.
+  3) Apply: confirm by calling \`!!@apply_file_modification !<hunk-id>\`.
+  4) Optional revise: re-run this tool with \`!<hunk-id>\` to update the planned hunk.
+
+Tip:
+  For multiple hunks, plan each hunk separately.
+  - Multiple applies to the same file can be in one message; they are serialized in-process (older planned hunks first).
+  - Multiple applies to different files are safe to batch in one message.`,
   usageDescriptionI18n: {
-    en: `Apply a simple patch to a single file. Usage: !!@patch_file <path>
-<patch content in body>
+    en: `Plan a single-file modification by line range (does not write yet).
+Usage: !!@plan_file_modification <path> <line~range> [!hunk-id]
+<new content lines in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
+  Body can be empty to delete the target range.
 
-Patch format:
-  @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
-  -removed line
-  +added line
-   unchanged line
+Range formats:
+  10~50     - Lines 10 to 50 (replace)
+  300~      - From line 300 to end (replace)
+  ~20       - From start to line 20 (replace)
+  ~         - Whole file (replace)
+  42        - Shorthand for 42~42 (replace)
+  N~        - If N is (last_line+1), append at end
 
-Example:
-  !!@patch_file src/config.ts
-  @@ -5,3 +5,4 @@
-   export const config = {
-     version: '1.0',
-  +  debug: true,
-   };`,
-    zh: `对单个文件应用简单补丁。用法：!!@patch_file <path>
-<补丁内容写在正文里>
+Workflow:
+  1) Plan: tool returns a proposed unified diff hunk with a generated hunk id.
+  2) Review the diff.
+  3) Apply: confirm by calling \`!!@apply_file_modification !<hunk-id>\`.
+  4) Optional revise: re-run this tool with \`!<hunk-id>\` to update the planned hunk.
+
+Tip:
+  For multiple hunks, plan each hunk separately.
+  - Multiple applies to the same file can be in one message; they are serialized in-process (older planned hunks first).
+  - Multiple applies to different files are safe to batch in one message.`,
+    zh: `按行号范围规划单文件修改（不会立刻写入文件）。
+用法：!!@plan_file_modification <path> <line~range> [!hunk-id]
+<正文为新内容行>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
+  正文可为空，表示删除目标范围。
 
-补丁格式：
-  @@ -<old_line>,<old_count> +<new_line>,<new_count> @@
-  -删除的行
-  +新增的行
-   未改变的行
+范围格式：
+  10~50     - 第 10 行到第 50 行（替换）
+  300~      - 从第 300 行到末尾（替换）
+  ~20       - 从开头到第 20 行（替换）
+  ~         - 整个文件（替换）
+  42        - 等价于 42~42（替换）
+  N~        - 若 N =（最后一行+1），表示追加到末尾
 
-示例：
-  !!@patch_file src/config.ts
-  @@ -5,3 +5,4 @@
-   export const config = {
-     version: '1.0',
-  +  debug: true,
-   };`,
+流程：
+  1) 规划：返回一个 proposed unified diff hunk，并生成 hunk id。
+  2) 你先检查 diff。
+  3) 应用：用 \`!!@apply_file_modification !<hunk-id>\` 显式确认并写入。
+  4) 可选修订：再次调用本工具并带上 \`!<hunk-id>\` 更新该规划。
+
+提示：
+  多处修改请拆成多个 hunk：分别规划。
+  - 同一文件的多个 apply 可放在同一条消息里：系统会在进程内串行应用（按“更早规划的 hunk 先应用”）。
+  - 不同文件的多个 apply 放在同一条消息里可安全批量确认。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
         ? {
-            patchContentRequired: '错误：需要在正文中提供补丁内容。',
-            invalidFormat: '错误：格式不正确。用法：!!@patch_file <path>',
+            invalidFormat:
+              '错误：格式不正确。\n\n期望格式：`!!@plan_file_modification <path> <line~range> [!hunk-id]`',
             filePathRequired: '错误：需要提供文件路径。',
-            fileDoesNotExist: (p: string) => `错误：文件 '${p}' 不存在。`,
-            missingHunkHeader: '错误：补丁格式无效：缺少 @@ hunk 头。',
-            invalidHunkHeader: '错误：hunk 头格式无效。',
-            applied: (p: string) => `✅ 已将补丁应用到：\`${p}\`。`,
-            applyFailed: (msg: string) => `错误：应用补丁失败：${msg}`,
+            rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
+            fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
+            planOk: (id: string) => `✅ 已生成修改规划：\`!${id}\``,
+            next: (id: string) =>
+              `下一步：执行 \`!!@apply_file_modification !${id}\` 来确认并写入。`,
+            hunkIdTaken: (id: string) => `错误：hunk id \`!${id}\` 已被其他成员占用。`,
+            planFailed: (msg: string) => `错误：生成修改规划失败：${msg}`,
           }
         : {
-            patchContentRequired: 'Error: Patch content is required in the body.',
-            invalidFormat: 'Error: Invalid format. Use !!@patch_file <path>',
+            invalidFormat:
+              'Error: Invalid format.\n\nExpected: `!!@plan_file_modification <path> <line~range> [!hunk-id]`',
             filePathRequired: 'Error: File path is required.',
-            fileDoesNotExist: (p: string) => `Error: File '${p}' does not exist.`,
-            missingHunkHeader: 'Error: Invalid patch format. Missing @@ hunk header.',
-            invalidHunkHeader: 'Error: Invalid hunk header format.',
-            applied: (p: string) => `Patch applied successfully to '${p}'.`,
-            applyFailed: (msg: string) => `Error applying patch: ${msg}`,
+            rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
+            fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
+            planOk: (id: string) => `Planned modification: \`!${id}\``,
+            next: (id: string) =>
+              `Next: run \`!!@apply_file_modification !${id}\` to confirm and write.`,
+            hunkIdTaken: (id: string) =>
+              `Error: hunk id \`!${id}\` is already owned by a different member.`,
+            planFailed: (msg: string) => `Error planning modification: ${msg}`,
           };
 
-    if (!inputBody || inputBody.trim() === '') {
-      const content = labels.patchContentRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
     const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@patch_file')) {
+    if (!trimmed.startsWith('@plan_file_modification')) {
       const content = labels.invalidFormat;
       return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
-    const afterToolName = trimmed.slice('@patch_file'.length).trim();
+    const afterToolName = trimmed.slice('@plan_file_modification'.length).trim();
     if (!afterToolName) {
       const content = labels.filePathRequired;
       return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
-    const filePath = afterToolName.split(/\s+/)[0];
+    const parts = afterToolName.split(/\s+/).filter((p) => p.length > 0);
+    const filePath = parts[0] ?? '';
+    const rangeSpec = parts[1] ?? '';
+    const maybeId = parts[2] ?? '';
+    const requestedId = parseOptionalHunkId(maybeId);
     if (!filePath) {
       const content = labels.filePathRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+    if (!rangeSpec) {
+      const content = labels.rangeRequired;
       return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
@@ -556,6 +847,7 @@ Example:
     }
 
     try {
+      pruneExpiredPlannedMods(Date.now());
       const fullPath = ensureInsideWorkspace(filePath);
 
       // Check if file exists
@@ -568,163 +860,262 @@ Example:
       const currentContent = fsSync.readFileSync(fullPath, 'utf8');
       const currentLines = currentContent.split('\n');
 
-      // Parse the patch
-      const patchContent = inputBody.trim();
-      const patchLines = patchContent.split('\n');
-
-      // Find the hunk header
-      let hunkHeaderIndex = -1;
-      for (let i = 0; i < patchLines.length; i++) {
-        if (patchLines[i].startsWith('@@')) {
-          hunkHeaderIndex = i;
-          break;
-        }
-      }
-
-      if (hunkHeaderIndex === -1) {
-        const content = labels.missingHunkHeader;
+      const totalLines = currentLines.length;
+      const parsed = parseLineRangeSpec(rangeSpec, totalLines);
+      if (!parsed.ok) {
+        const content =
+          language === 'zh'
+            ? `错误：行号范围无效：${parsed.error}`
+            : `Error: invalid line range: ${parsed.error}`;
         return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
-      const hunkHeader = patchLines[hunkHeaderIndex];
-      const hunkMatch = hunkHeader.match(/^@@\s*-(\d+),(\d+)\s*\+(\d+),(\d+)\s*@@/);
-      if (!hunkMatch) {
-        const content = labels.invalidHunkHeader;
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-      }
+      const range = parsed.range;
+      const startIndex0 = range.kind === 'append' ? totalLines : range.startLine - 1;
+      const deleteCount = range.kind === 'append' ? 0 : range.endLine - range.startLine + 1;
+      const newLines = splitPlannedBodyLines(inputBody);
+      const oldLines = currentLines.slice(startIndex0, startIndex0 + deleteCount);
+      const { contextBefore, contextAfter } = computeContextWindow(
+        currentLines,
+        startIndex0,
+        deleteCount,
+      );
 
-      const oldStart = parseInt(hunkMatch[1]) - 1; // Convert to 0-based
-      const oldCount = parseInt(hunkMatch[2]);
-      const newStart = parseInt(hunkMatch[3]) - 1; // Convert to 0-based
+      const unifiedDiff = buildUnifiedSingleHunkDiff(
+        filePath,
+        currentLines,
+        startIndex0,
+        deleteCount,
+        newLines,
+      );
 
-      // Apply the patch
-      const newLines = [...currentLines];
-      const hunkLines = patchLines.slice(hunkHeaderIndex + 1);
-
-      let oldLineIndex = oldStart;
-      let newLineIndex = newStart;
-      let insertions: string[] = [];
-      let deletions = 0;
-
-      for (const line of hunkLines) {
-        if (line.startsWith('-')) {
-          // Line to be removed
-          deletions++;
-        } else if (line.startsWith('+')) {
-          // Line to be added
-          insertions.push(line.substring(1));
-        } else if (line.startsWith(' ')) {
-          // Context line - apply any pending changes first
-          if (deletions > 0 || insertions.length > 0) {
-            // Remove deleted lines and insert new lines
-            newLines.splice(oldLineIndex, deletions, ...insertions);
-            oldLineIndex += insertions.length;
-            deletions = 0;
-            insertions = [];
-          }
-          oldLineIndex++;
+      const nowMs = Date.now();
+      const hunkId = requestedId ?? generateHunkId();
+      if (requestedId) {
+        const existing = plannedModsById.get(hunkId);
+        if (existing && existing.plannedBy !== caller.id) {
+          const content = labels.hunkIdTaken(hunkId);
+          return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
         }
       }
+      const planned: PlannedFileModification = {
+        hunkId,
+        plannedBy: caller.id,
+        createdAtMs: nowMs,
+        expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
+        relPath: filePath,
+        absPath: fullPath,
+        range,
+        startIndex0,
+        deleteCount,
+        contextBefore,
+        contextAfter,
+        oldLines,
+        newLines,
+        unifiedDiff,
+      };
+      plannedModsById.set(hunkId, planned);
 
-      // Apply any remaining changes
-      if (deletions > 0 || insertions.length > 0) {
-        newLines.splice(oldLineIndex, deletions, ...insertions);
-      }
+      const rangeLabel =
+        range.kind === 'append' ? `${range.startLine}~` : `${range.startLine}~${range.endLine}`;
 
-      // Write the modified content back to the file
-      const newContent = newLines.join('\n');
-      fsSync.writeFileSync(fullPath, newContent, 'utf8');
+      const reviseHint =
+        language === 'zh'
+          ? `（可选：用 \`!!@plan_file_modification ${filePath} ${rangeSpec} !${hunkId}\` 重新规划并覆写该 hunk。）`
+          : `Optional: revise by running \`!!@plan_file_modification ${filePath} ${rangeSpec} !${hunkId}\` with corrected body.`;
 
-      const content = labels.applied(filePath);
+      const content =
+        `${labels.planOk(hunkId)}\n\n` +
+        `**File:** \`${filePath}\`\n` +
+        `**Range:** \`${rangeLabel}\`\n\n` +
+        `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
+        `${labels.next(hunkId)}\n` +
+        `${reviseHint}`;
+
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
-      const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
+      const content = labels.planFailed(error instanceof Error ? error.message : String(error));
       return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
 
-export const applyPatchTool: TextingTool = {
+export const applyFileModificationTool: TextingTool = {
   type: 'texter',
-  name: 'apply_patch',
+  name: 'apply_file_modification',
   usageDescription:
-    'Apply a unified git diff patch to the workspace.\n' +
+    'Apply a previously planned file modification by hunk id.\n' +
     'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
-    'Usage: !!@apply_patch\n<diff content in body>',
+    'Notes: Applies are serialized per file (single-process). The hunk may still apply if lines moved, as long as the original target content is uniquely matchable.\n' +
+    'Usage: !!@apply_file_modification !<hunk-id>\n' +
+    '(no body)',
   usageDescriptionI18n: {
     en:
-      'Apply a unified git diff patch to the workspace.\n' +
+      'Apply a previously planned file modification by hunk id.\n' +
       'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
-      'Usage: !!@apply_patch\n<diff content in body>',
+      'Notes: Applies are serialized per file (single-process). The hunk may still apply if lines moved, as long as the original target content is uniquely matchable.\n' +
+      'Usage: !!@apply_file_modification !<hunk-id>\n' +
+      '(no body)',
     zh:
-      '对工作区应用 unified git diff 补丁。\n' +
+      '按 hunk id 应用之前规划的单文件修改。\n' +
       '注意：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。\n' +
-      '用法：!!@apply_patch\n<diff 内容写在正文里>',
+      '说明：同一文件的 apply 会在进程内串行化；若行号发生移动，只要能在文件中唯一定位到原始目标内容，仍可应用。\n' +
+      '用法：!!@apply_file_modification !<hunk-id>\n' +
+      '（无正文）',
   },
   backfeeding: true,
-  async call(_dlg, caller, _headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
         ? {
-            patchContentRequired: '错误：需要在正文中提供补丁内容。',
-            applied: '✅ 已应用补丁。',
-            applyFailed: (msg: string) => `错误：应用补丁失败：${msg}`,
+            invalidFormat: '错误：格式不正确。用法：!!@apply_file_modification !<hunk-id>',
+            hunkIdRequired: '错误：需要提供要应用的 hunk id（例如 `!a1b2c3d4`）。',
+            notFound: (id: string) => `错误：未找到该 hunk：\`!${id}\`（可能已过期或已被应用）。`,
+            wrongOwner: '错误：该 hunk 不是由当前成员规划的，不能应用。',
+            mismatch: '错误：文件内容已变化，无法安全应用该 hunk；请重新规划。',
+            ambiguous:
+              '错误：无法唯一定位该 hunk 的目标位置（文件内出现多处匹配）；请重新规划（缩小范围或增加上下文）。',
+            applied: (p: string, id: string) => `✅ 已应用：\`${p}\`（\`!${id}\`）`,
+            applyFailed: (msg: string) => `错误：应用失败：${msg}`,
           }
         : {
-            patchContentRequired: 'Error: Patch content is required in the body.',
-            applied: 'Patch applied successfully.',
-            applyFailed: (msg: string) => `Error applying patch: ${msg}`,
+            invalidFormat: 'Error: Invalid format. Use !!@apply_file_modification !<hunk-id>',
+            hunkIdRequired: 'Error: hunk id is required (e.g. `!a1b2c3d4`).',
+            notFound: (id: string) =>
+              `Error: hunk \`!${id}\` not found (expired or already applied).`,
+            wrongOwner: 'Error: this hunk was planned by a different member.',
+            mismatch:
+              'Error: file content has changed; refusing to apply this hunk safely. Re-plan it.',
+            ambiguous:
+              'Error: unable to uniquely locate the hunk target (multiple matches). Re-plan with a narrower range or more context.',
+            applied: (p: string, id: string) => `Applied: \`${p}\` (\`!${id}\`)`,
+            applyFailed: (msg: string) => `Error applying modification: ${msg}`,
           };
 
-    if (!inputBody || inputBody.trim() === '') {
-      const content = labels.patchContentRequired;
+    const trimmed = headLine.trim();
+    if (!trimmed.startsWith('@apply_file_modification')) {
+      const content = labels.invalidFormat;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+    const afterToolName = trimmed.slice('@apply_file_modification'.length).trim();
+    if (!afterToolName) {
+      const content = labels.hunkIdRequired;
       return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
-    const diffContent = inputBody.trim();
-
-    // Parse the diff to extract file paths for access control
-    const affectedFiles: string[] = [];
-    const lines = diffContent.split('\n');
-
-    for (const line of lines) {
-      // Look for file headers in unified diff format
-      if (line.startsWith('--- ') || line.startsWith('+++ ')) {
-        const filePath = line.substring(4).trim();
-        // Remove a/ or b/ prefixes if present
-        const cleanPath = filePath.replace(/^[ab]\//, '');
-        if (cleanPath !== '/dev/null' && !affectedFiles.includes(cleanPath)) {
-          affectedFiles.push(cleanPath);
-        }
-      }
-    }
-
-    // Check write access for all affected files
-    for (const filePath of affectedFiles) {
-      if (!hasWriteAccess(caller, filePath)) {
-        const content = getAccessDeniedMessage('write', filePath, language);
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-      }
+    const raw = afterToolName.split(/\s+/)[0] ?? '';
+    const id = raw.startsWith('!') ? raw.slice(1) : raw;
+    if (!id) {
+      const content = labels.hunkIdRequired;
+      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
-      // Create a temporary file for the patch
-      const tempFile = path.join(os.tmpdir(), `patch-${Date.now()}.diff`);
-      fsSync.writeFileSync(tempFile, diffContent);
+      pruneExpiredPlannedMods(Date.now());
+      const planned = plannedModsById.get(id);
+      if (!planned) {
+        const content = labels.notFound(id);
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (planned.plannedBy !== caller.id) {
+        const content = labels.wrongOwner;
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (!hasWriteAccess(caller, planned.relPath)) {
+        const content = getAccessDeniedMessage('write', planned.relPath, language);
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      }
 
-      // Apply the patch using git apply
-      execSync(`git apply "${tempFile}"`, {
-        cwd: process.cwd(),
-        stdio: 'pipe',
+      const absKey = planned.absPath;
+      const res = await new Promise<TextingToolCallResult>((resolve) => {
+        enqueueFileApply(absKey, {
+          priority: planned.createdAtMs,
+          tieBreaker: planned.hunkId,
+          run: async () => {
+            try {
+              pruneExpiredPlannedMods(Date.now());
+              const p = plannedModsById.get(id);
+              if (!p) {
+                const content = labels.notFound(id);
+                resolve(
+                  wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+                );
+                return;
+              }
+              if (p.plannedBy !== caller.id) {
+                const content = labels.wrongOwner;
+                resolve(
+                  wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+                );
+                return;
+              }
+
+              const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
+              const currentLines = currentContent.split('\n');
+
+              let startIndex0 = -1;
+              if (p.deleteCount === 0 && p.oldLines.length === 0) {
+                // Append-at-end is stable even if the file has changed.
+                startIndex0 = currentLines.length;
+              } else if (matchesAt(currentLines, p.startIndex0, p.oldLines)) {
+                startIndex0 = p.startIndex0;
+              } else {
+                const all = findAllMatches(currentLines, p.oldLines);
+                if (all.length === 0) {
+                  const content = labels.mismatch;
+                  resolve(
+                    wrapTextingResult(language, [
+                      { type: 'environment_msg', role: 'user', content },
+                    ]),
+                  );
+                  return;
+                }
+                if (all.length === 1) {
+                  startIndex0 = all[0];
+                } else {
+                  const filtered = filterByContext(
+                    currentLines,
+                    all,
+                    p.contextBefore,
+                    p.contextAfter,
+                    p.oldLines.length,
+                  );
+                  if (filtered.length === 1) {
+                    startIndex0 = filtered[0];
+                  } else {
+                    const content = labels.ambiguous;
+                    resolve(
+                      wrapTextingResult(language, [
+                        { type: 'environment_msg', role: 'user', content },
+                      ]),
+                    );
+                    return;
+                  }
+                }
+              }
+
+              const nextLines = [...currentLines];
+              nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
+              fsSync.writeFileSync(p.absPath, nextLines.join('\n'), 'utf8');
+              plannedModsById.delete(id);
+
+              const content = `${labels.applied(p.relPath, id)}\n\n\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+              resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+            } catch (error: unknown) {
+              const content = labels.applyFailed(
+                error instanceof Error ? error.message : String(error),
+              );
+              resolve(
+                wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+              );
+            }
+          },
+        });
+        void drainFileApplyQueue(absKey);
       });
 
-      // Clean up the temporary file
-      fsSync.unlinkSync(tempFile);
-
-      const content = labels.applied;
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return res;
     } catch (error: unknown) {
       const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
       return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);

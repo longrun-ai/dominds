@@ -91,18 +91,18 @@ The `team-mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scope
 
 Recommended tools (names are suggestions; use `snake_case` to match existing tools):
 
-| Tool name                  | Based on | Purpose                                    | Default allowlist scope |
-| -------------------------- | -------- | ------------------------------------------ | ----------------------- |
-| `team_mgmt_list_dir`       | `fs`     | List directories/files under `.minds/`     | `.minds/**`             |
-| `team_mgmt_read_file`      | `txt`    | Read a text file under `.minds/`           | `.minds/**`             |
-| `team_mgmt_overwrite_file` | `txt`    | Overwrite a file under `.minds/`           | `.minds/**`             |
-| `team_mgmt_patch_file`     | `txt`    | Apply a single-file patch under `.minds/`  | `.minds/**`             |
-| `team_mgmt_apply_patch`    | `txt`    | Apply a unified diff patch under `.minds/` | `.minds/**`             |
-| `team_mgmt_mkdir`          | `fs`     | Create directories under `.minds/`         | `.minds/**`             |
-| `team_mgmt_move_path`      | `fs`     | Rename/move paths under `.minds/`          | `.minds/**`             |
-| `team_mgmt_rm_file`        | `fs`     | Delete files under `.minds/`               | `.minds/**`             |
-| `team_mgmt_rm_dir`         | `fs`     | Delete directories under `.minds/`         | `.minds/**`             |
-| `team_mgmt_manual`         | new      | Built-in “how-to” manual (see below)       | N/A                     |
+| Tool name                           | Based on | Purpose                                                                  | Default allowlist scope |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------ | ----------------------- |
+| `team_mgmt_list_dir`                | `fs`     | List directories/files under `.minds/`                                   | `.minds/**`             |
+| `team_mgmt_read_file`               | `txt`    | Read a text file under `.minds/`                                         | `.minds/**`             |
+| `team_mgmt_overwrite_file`          | `txt`    | Overwrite a file under `.minds/`                                         | `.minds/**`             |
+| `team_mgmt_plan_file_modification`  | `txt`    | Plan a single-file modification under `.minds/` (returns a diff hunk id) | `.minds/**`             |
+| `team_mgmt_apply_file_modification` | `txt`    | Apply a planned modification by hunk id under `.minds/`                  | `.minds/**`             |
+| `team_mgmt_mkdir`                   | `fs`     | Create directories under `.minds/`                                       | `.minds/**`             |
+| `team_mgmt_move_path`               | `fs`     | Rename/move paths under `.minds/`                                        | `.minds/**`             |
+| `team_mgmt_rm_file`                 | `fs`     | Delete files under `.minds/`                                             | `.minds/**`             |
+| `team_mgmt_rm_dir`                  | `fs`     | Delete directories under `.minds/`                                       | `.minds/**`             |
+| `team_mgmt_manual`                  | new      | Built-in “how-to” manual (see below)                                     | N/A                     |
 
 Notes:
 

@@ -30,15 +30,20 @@ import {
 import { getDaemonOutputTool, shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from './os';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
 import { teamMgmtTools } from './team-mgmt';
-import { applyPatchTool, overwriteFileTool, patchFileTool, readFileTool } from './txt';
+import {
+  applyFileModificationTool,
+  overwriteFileTool,
+  planFileModificationTool,
+  readFileTool,
+} from './txt';
 
 registerTool(listDirTool);
 registerTool(rmDirTool);
 registerTool(rmFileTool);
 registerTool(readFileTool);
 registerTool(overwriteFileTool);
-registerTool(patchFileTool);
-registerTool(applyPatchTool);
+registerTool(planFileModificationTool);
+registerTool(applyFileModificationTool);
 
 // OS tools
 registerTool(shellCmdTool);
@@ -131,8 +136,8 @@ registerToolset('ws_mod', [
   rmFileTool,
   readFileTool,
   overwriteFileTool,
-  patchFileTool,
-  applyPatchTool,
+  planFileModificationTool,
+  applyFileModificationTool,
 ]);
 setToolsetMeta('ws_mod', {
   descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
