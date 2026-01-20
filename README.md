@@ -16,9 +16,9 @@
   - Use least-privilege credentials and avoid production secrets in `.env` when experimenting.
   - Treat your workspace as sensitive: dialogs, logs, and memory may persist locally on disk.
 
-- **Thoroughly Agentic (not pair-programming)**: you work more like a remote manager than a copilot driver.
-  - Expect asynchronous iteration: give clear task docs, constraints, and checkpoints.
-  - You are responsible for the consequences of the agent team you define and set in motion — trust them to execute, but stay a remote reviewer, not a hands-on driver.
+- **Authorize Your Agents (or don’t use dominds)**: dominds is not pair‑programming. Once authorized, agents will act — assume mistakes and review outcomes from a distance.
+  - If you prefer to work closely with your agents, use a more traditional copilot‑style tool.
+  - You’re not a hands‑on driver; you’re fully responsible for the consequences of the team you define and animate — trust them to execute, stay remote, and accept the outcomes, good or bad.
 
 - **Costs / Privacy / Compliance**: using LLM providers can cost money and may send prompts (sometimes including code) to third parties.
   - Review provider terms, set spending limits, and avoid putting secrets in prompts.
