@@ -43,7 +43,7 @@ to your original call:
 
 > ok
 
-针对你原始的呼叫：
+针对你最初的诉请：
 
 > @bob hello
 `;

@@ -102,7 +102,7 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
     language === 'zh'
       ? `你好 @${requireNonEmpty(input.requesterId, 'toAgentId')}，@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
       : `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
-  const tail = language === 'zh' ? '针对你原始的呼叫：' : 'to your original call:';
+  const tail = language === 'zh' ? '针对你最初的诉请：' : 'to your original call:';
 
   return `${hello}
 
