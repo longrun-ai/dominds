@@ -2,6 +2,49 @@ import { TextingEventsReceiver, TextingStreamParser } from 'dominds/texting';
 
 type RecordedEvent = { type: string; data: unknown };
 
+// Deep comparison function that handles undefined values
+const deepEqual = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+
+  // Special case for callFinish: if expected (b) has data null, ignore actual (a) data
+  if (typeof b === 'object' && b !== null) {
+    const bRecord = b as Record<string, unknown>;
+    if (bRecord['type'] === 'callFinish' && bRecord['data'] === null) {
+      if (typeof a === 'object' && a !== null) {
+        const aRecord = a as Record<string, unknown>;
+        if (aRecord['type'] === 'callFinish') return true;
+      }
+    }
+  }
+
+  if (a == null || b == null) return false;
+  if (typeof a !== typeof b) return false;
+
+  if (typeof a !== 'object') return false;
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+
+  if (keysA.length !== keysB.length) return false;
+
+  for (const key of keysA) {
+    if (!keysB.includes(key)) return false;
+    if (!deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+      return false;
+  }
+
+  return true;
+};
+
 // Mock TextingEventsReceiver that collects all events
 class MockTextingEventsReceiver implements TextingEventsReceiver {
   public events: RecordedEvent[] = [];
@@ -62,7 +105,7 @@ class MockTextingEventsReceiver implements TextingEventsReceiver {
 let totalCnt = 0,
   failedCnt = 0;
 
-const STREAM_CHUNK = 10; // Must match TextingStreamParser.CHUNK_THRESHOLD
+const TEST_UPSTREAM_CHUNK = 10; // Test upstream chunk size (arbitrary)
 
 // Helper function to run a test case
 async function runTest(
@@ -79,8 +122,8 @@ async function runTest(
   const parser = new TextingStreamParser(receiver);
 
   // Process the input in chunks to test streaming behavior
-  for (let i = 0; i < input.length; i += STREAM_CHUNK) {
-    const chunk = input.substring(i, i + STREAM_CHUNK);
+  for (let i = 0; i < input.length; i += TEST_UPSTREAM_CHUNK) {
+    const chunk = input.substring(i, i + TEST_UPSTREAM_CHUNK);
     await parser.takeUpstreamChunk(chunk);
   }
 
@@ -131,50 +174,151 @@ async function runTest(
     return calls;
   };
 
-  // Deep comparison function that handles undefined values
-  const deepEqual = (a: unknown, b: unknown): boolean => {
-    if (a === b) return true;
+  const canonicalizeEvents = (events: RecordedEvent[]): RecordedEvent[] => {
+    const out: RecordedEvent[] = [];
+    let inMarkdown = false;
+    let markdownText = '';
 
-    // Special case for callFinish: if expected (b) has data null, ignore actual (a) data
-    if (typeof b === 'object' && b !== null) {
-      const bRecord = b as Record<string, unknown>;
-      if (bRecord['type'] === 'callFinish' && bRecord['data'] === null) {
-        if (typeof a === 'object' && a !== null) {
-          const aRecord = a as Record<string, unknown>;
-          if (aRecord['type'] === 'callFinish') return true;
+    let inCallHeadline = false;
+    let callHeadlineText = '';
+
+    let inCallBody = false;
+    let callBodyText = '';
+
+    let inCodeBlock = false;
+    let codeBlockText = '';
+
+    const flushMarkdown = (): void => {
+      if (!inMarkdown) return;
+      out.push({ type: 'markdownStart', data: null });
+      if (markdownText.length > 0) out.push({ type: 'markdownChunk', data: markdownText });
+      out.push({ type: 'markdownFinish', data: null });
+      inMarkdown = false;
+      markdownText = '';
+    };
+
+    const flushCallHeadline = (): void => {
+      if (!inCallHeadline) return;
+      if (callHeadlineText.length > 0)
+        out.push({ type: 'callHeadLineChunk', data: callHeadlineText });
+      out.push({ type: 'callHeadLineFinish', data: null });
+      inCallHeadline = false;
+      callHeadlineText = '';
+    };
+
+    const flushCallBody = (): void => {
+      if (!inCallBody) return;
+      if (callBodyText.length > 0) out.push({ type: 'callBodyChunk', data: callBodyText });
+      out.push({ type: 'callBodyFinish', data: {} });
+      inCallBody = false;
+      callBodyText = '';
+    };
+
+    const flushCodeBlock = (endQuote: string): void => {
+      if (!inCodeBlock) return;
+      if (codeBlockText.length > 0) out.push({ type: 'codeBlockChunk', data: codeBlockText });
+      out.push({ type: 'codeBlockFinish', data: { endQuote } });
+      inCodeBlock = false;
+      codeBlockText = '';
+    };
+
+    for (const ev of events) {
+      switch (ev.type) {
+        case 'markdownStart':
+          // We'll re-emit in flushMarkdown().
+          inMarkdown = true;
+          break;
+        case 'markdownChunk':
+          inMarkdown = true;
+          markdownText += typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+          break;
+        case 'markdownFinish':
+          flushMarkdown();
+          break;
+
+        case 'callStart':
+          flushMarkdown();
+          out.push(ev);
+          inCallHeadline = true;
+          break;
+        case 'callHeadLineChunk':
+          inCallHeadline = true;
+          callHeadlineText += typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+          break;
+        case 'callHeadLineFinish':
+          flushCallHeadline();
+          break;
+
+        case 'callBodyStart': {
+          flushCallHeadline();
+          out.push(ev);
+          inCallBody = true;
+          break;
         }
+        case 'callBodyChunk':
+          inCallBody = true;
+          callBodyText += typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+          break;
+        case 'callBodyFinish': {
+          // Preserve triple-quote endQuote when present.
+          const endQuote =
+            typeof ev.data === 'object' && ev.data !== null && 'endQuote' in ev.data
+              ? ((ev.data as Record<string, unknown>)['endQuote'] as unknown)
+              : undefined;
+          if (callBodyText.length > 0) out.push({ type: 'callBodyChunk', data: callBodyText });
+          out.push({
+            type: 'callBodyFinish',
+            data: typeof endQuote === 'string' ? { endQuote } : {},
+          });
+          inCallBody = false;
+          callBodyText = '';
+          break;
+        }
+
+        case 'callFinish':
+          // If there was an empty body, some sequences might not include callBodyStart/Finish.
+          flushCallHeadline();
+          if (inCallBody) {
+            // No explicit callBodyFinish seen, emit canonical empty finish.
+            flushCallBody();
+          }
+          out.push(ev);
+          break;
+
+        case 'codeBlockStart': {
+          flushMarkdown();
+          out.push(ev);
+          inCodeBlock = true;
+          break;
+        }
+        case 'codeBlockChunk':
+          inCodeBlock = true;
+          codeBlockText += typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+          break;
+        case 'codeBlockFinish': {
+          const endQuote =
+            typeof ev.data === 'object' && ev.data !== null && 'endQuote' in ev.data
+              ? (ev.data as Record<string, unknown>)['endQuote']
+              : '';
+          flushCodeBlock(typeof endQuote === 'string' ? endQuote : String(endQuote ?? ''));
+          break;
+        }
+
+        default:
+          out.push(ev);
+          break;
       }
     }
 
-    if (a == null || b == null) return false;
-    if (typeof a !== typeof b) return false;
+    flushMarkdown();
+    flushCallHeadline();
+    if (inCallBody) flushCallBody();
+    if (inCodeBlock) flushCodeBlock('');
 
-    if (typeof a !== 'object') return false;
-
-    if (Array.isArray(a) || Array.isArray(b)) {
-      if (!Array.isArray(a) || !Array.isArray(b)) return false;
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) {
-        if (!deepEqual(a[i], b[i])) return false;
-      }
-      return true;
-    }
-
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-
-    if (keysA.length !== keysB.length) return false;
-
-    for (const key of keysA) {
-      if (!keysB.includes(key)) return false;
-      if (!deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
-        return false;
-    }
-
-    return true;
+    return out;
   };
 
-  const passed = deepEqual(receiver.events, expectedEvents);
+  const passed = deepEqual(canonicalizeEvents(receiver.events), canonicalizeEvents(expectedEvents));
   const expectedCollectedCalls = collectCallsFromEvents(receiver.events);
   const actualCollectedCalls = parser.getCollectedCalls();
   const callCollectionOk = deepEqual(actualCollectedCalls, expectedCollectedCalls);
@@ -204,7 +348,7 @@ async function runTest(
 function chunkByStreamBoundaries(text: string, startIndex: number): string[] {
   const chunks: string[] = [];
   let i = 0;
-  const firstChunk = STREAM_CHUNK - (startIndex % STREAM_CHUNK || 0);
+  const firstChunk = TEST_UPSTREAM_CHUNK - (startIndex % TEST_UPSTREAM_CHUNK || 0);
   if (text.length <= firstChunk) {
     chunks.push(text);
     return chunks;
@@ -212,8 +356,8 @@ function chunkByStreamBoundaries(text: string, startIndex: number): string[] {
   chunks.push(text.substring(0, firstChunk));
   i = firstChunk;
   while (i < text.length) {
-    chunks.push(text.substring(i, i + STREAM_CHUNK));
-    i += STREAM_CHUNK;
+    chunks.push(text.substring(i, i + TEST_UPSTREAM_CHUNK));
+    i += TEST_UPSTREAM_CHUNK;
   }
   return chunks;
 }
@@ -248,13 +392,13 @@ function buildBasicCallEvents(
   // Simulate the parser's headline chunking:
   // - It does NOT emit headline chunks until `callStart` is emitted.
   // - After `callStart`, it flushes the entire headline buffer at upstream chunk boundaries
-  //   (STREAM_CHUNK) and at headline termination (newline / finalize).
+  //   (TEST_UPSTREAM_CHUNK) and at headline termination (newline / finalize).
   const headChunks: string[] = [];
 
   if (!input) {
     // No input provided - use simple 10-char chunking
-    for (let i = 0; i < headLine.length; i += STREAM_CHUNK) {
-      headChunks.push(headLine.substring(i, Math.min(i + STREAM_CHUNK, headLine.length)));
+    for (let i = 0; i < headLine.length; i += TEST_UPSTREAM_CHUNK) {
+      headChunks.push(headLine.substring(i, Math.min(i + TEST_UPSTREAM_CHUNK, headLine.length)));
     }
   } else {
     // Find where `callStart` gets emitted: the first non-mention char after the initial `@...`.
@@ -273,7 +417,7 @@ function buildBasicCallEvents(
     const headEnd = headStart + headLine.length;
 
     let last = 0;
-    for (let b = STREAM_CHUNK; b < headEnd; b += STREAM_CHUNK) {
+    for (let b = TEST_UPSTREAM_CHUNK; b < headEnd; b += TEST_UPSTREAM_CHUNK) {
       if (b <= headStart) continue;
       // Flush happens at upstream chunk end only after callStart has been emitted.
       if (callStartGlobalPos < b) {
@@ -304,8 +448,8 @@ function buildBasicCallEvents(
         ? chunkByStreamBoundaries(withoutClosing, bodyStart)
         : (() => {
             const arr: string[] = [];
-            for (let i = 0; i < withoutClosing.length; i += STREAM_CHUNK) {
-              arr.push(withoutClosing.substring(i, i + STREAM_CHUNK));
+            for (let i = 0; i < withoutClosing.length; i += TEST_UPSTREAM_CHUNK) {
+              arr.push(withoutClosing.substring(i, i + TEST_UPSTREAM_CHUNK));
             }
             return arr;
           })();
@@ -320,8 +464,8 @@ function buildBasicCallEvents(
         ? chunkByStreamBoundaries(body, bodyStart)
         : (() => {
             const arr: string[] = [];
-            for (let i = 0; i < body.length; i += STREAM_CHUNK) {
-              arr.push(body.substring(i, i + STREAM_CHUNK));
+            for (let i = 0; i < body.length; i += TEST_UPSTREAM_CHUNK) {
+              arr.push(body.substring(i, i + TEST_UPSTREAM_CHUNK));
             }
             return arr;
           })();
@@ -348,8 +492,8 @@ function buildFreeTextEvents(text: string, input?: string, fromIndex?: number) {
     ? chunkByStreamBoundaries(text, start)
     : (() => {
         const arr: string[] = [];
-        for (let i = 0; i < text.length; i += STREAM_CHUNK) {
-          arr.push(text.substring(i, i + STREAM_CHUNK));
+        for (let i = 0; i < text.length; i += TEST_UPSTREAM_CHUNK) {
+          arr.push(text.substring(i, i + TEST_UPSTREAM_CHUNK));
         }
         return arr;
       })();
@@ -373,8 +517,8 @@ function buildCodeBlockEvents(infoLine: string, content: string, input?: string)
     ? chunkByStreamBoundaries(content, contentStart)
     : (() => {
         const arr: string[] = [];
-        for (let i = 0; i < content.length; i += STREAM_CHUNK) {
-          arr.push(content.substring(i, i + STREAM_CHUNK));
+        for (let i = 0; i < content.length; i += TEST_UPSTREAM_CHUNK) {
+          arr.push(content.substring(i, i + TEST_UPSTREAM_CHUNK));
         }
         return arr;
       })();
@@ -385,6 +529,242 @@ function buildCodeBlockEvents(infoLine: string, content: string, input?: string)
   events.push({ type: 'codeBlockFinish', data: { endQuote: '' } });
 
   return events;
+}
+
+type NormalizedSegment =
+  | { kind: 'markdown'; text: string }
+  | { kind: 'call'; firstMention: string; headLine: string; body: string; callId: string }
+  | { kind: 'codeBlock'; infoLine: string; content: string; endQuote: string };
+
+function normalizeEventsToSegments(events: RecordedEvent[]): NormalizedSegment[] {
+  const segments: NormalizedSegment[] = [];
+
+  let currentMarkdown: { kind: 'markdown'; text: string } | null = null;
+  let currentCall: {
+    kind: 'call';
+    firstMention: string;
+    headLine: string;
+    body: string;
+    callId: string;
+  } | null = null;
+  let currentCodeBlock: {
+    kind: 'codeBlock';
+    infoLine: string;
+    content: string;
+    endQuote: string;
+  } | null = null;
+
+  for (const ev of events) {
+    switch (ev.type) {
+      case 'markdownStart': {
+        currentMarkdown = { kind: 'markdown', text: '' };
+        break;
+      }
+      case 'markdownChunk': {
+        const text = typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+        if (!currentMarkdown) currentMarkdown = { kind: 'markdown', text: '' };
+        currentMarkdown.text += text;
+        break;
+      }
+      case 'markdownFinish': {
+        if (currentMarkdown) segments.push(currentMarkdown);
+        currentMarkdown = null;
+        break;
+      }
+      case 'callStart': {
+        let firstMention = '';
+        if (typeof ev.data === 'object' && ev.data !== null && 'firstMention' in ev.data) {
+          const v = (ev.data as Record<string, unknown>)['firstMention'];
+          firstMention = typeof v === 'string' ? v : String(v ?? '');
+        }
+        currentCall = { kind: 'call', firstMention, headLine: '', body: '', callId: '' };
+        break;
+      }
+      case 'callHeadLineChunk': {
+        const text = typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+        if (!currentCall) {
+          currentCall = { kind: 'call', firstMention: '', headLine: '', body: '', callId: '' };
+        }
+        currentCall.headLine += text;
+        break;
+      }
+      case 'callBodyChunk': {
+        const text = typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+        if (!currentCall) {
+          currentCall = { kind: 'call', firstMention: '', headLine: '', body: '', callId: '' };
+        }
+        currentCall.body += text;
+        break;
+      }
+      case 'callFinish': {
+        const callId = typeof ev.data === 'string' ? ev.data : '';
+        if (currentCall) {
+          currentCall.callId = callId;
+          segments.push(currentCall);
+        }
+        currentCall = null;
+        break;
+      }
+      case 'codeBlockStart': {
+        let infoLine = '';
+        if (typeof ev.data === 'object' && ev.data !== null && 'infoLine' in ev.data) {
+          const v = (ev.data as Record<string, unknown>)['infoLine'];
+          infoLine = typeof v === 'string' ? v : String(v ?? '');
+        }
+        currentCodeBlock = { kind: 'codeBlock', infoLine, content: '', endQuote: '' };
+        break;
+      }
+      case 'codeBlockChunk': {
+        const text = typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+        if (!currentCodeBlock) {
+          currentCodeBlock = { kind: 'codeBlock', infoLine: '', content: '', endQuote: '' };
+        }
+        currentCodeBlock.content += text;
+        break;
+      }
+      case 'codeBlockFinish': {
+        let endQuote = '';
+        if (typeof ev.data === 'object' && ev.data !== null && 'endQuote' in ev.data) {
+          const v = (ev.data as Record<string, unknown>)['endQuote'];
+          endQuote = typeof v === 'string' ? v : String(v ?? '');
+        }
+        if (!currentCodeBlock) {
+          currentCodeBlock = { kind: 'codeBlock', infoLine: '', content: '', endQuote };
+        } else {
+          currentCodeBlock.endQuote = endQuote;
+        }
+        segments.push(currentCodeBlock);
+        currentCodeBlock = null;
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+  }
+
+  // If a test crashes early, don't silently drop partial segments.
+  if (currentMarkdown) segments.push(currentMarkdown);
+  if (currentCall) segments.push(currentCall);
+  if (currentCodeBlock) segments.push(currentCodeBlock);
+
+  return segments;
+}
+
+async function parseToSegments(
+  input: string,
+  upstreamChunkSize: number,
+): Promise<NormalizedSegment[]> {
+  const receiver = new MockTextingEventsReceiver();
+  const parser = new TextingStreamParser(receiver);
+
+  for (let i = 0; i < input.length; i += upstreamChunkSize) {
+    const chunk = input.substring(i, i + upstreamChunkSize);
+    await parser.takeUpstreamChunk(chunk);
+  }
+  await parser.finalize();
+
+  return normalizeEventsToSegments(receiver.events);
+}
+
+async function runChunkInvarianceTest(
+  name: string,
+  input: string,
+  upstreamChunkSizes: number[],
+): Promise<void> {
+  console.log(`\n=== Chunk invariance: ${name} ===`);
+  const baselineSize = Math.max(1, input.length);
+  const baseline = await parseToSegments(input, baselineSize);
+
+  for (const size of upstreamChunkSizes) {
+    const actualSize = Math.max(1, size);
+    const got = await parseToSegments(input, actualSize);
+    if (!deepEqual(got, baseline)) {
+      console.log('❌ Chunk invariance failed.');
+      console.log('Baseline segments:');
+      console.log(JSON.stringify(baseline, null, 2));
+      console.log(`Segments with upstream chunk size = ${actualSize}:`);
+      console.log(JSON.stringify(got, null, 2));
+      throw new Error(`Chunk invariance failed for upstream chunk size = ${actualSize}`);
+    }
+  }
+
+  console.log(`Result: ✅ PASS (sizes: ${upstreamChunkSizes.join(', ')})`);
+}
+
+function makeXorShift32(seed: number): () => number {
+  let x = seed | 0;
+  return () => {
+    // xorshift32
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    return x >>> 0;
+  };
+}
+
+function splitIntoRandomChunks(inputLength: number, seed: number, maxChunkSize: number): number[] {
+  const sizes: number[] = [];
+  const next = makeXorShift32(seed);
+  let remaining = inputLength;
+
+  while (remaining > 0) {
+    const r = next();
+    const size = 1 + (r % Math.max(1, maxChunkSize));
+    const actual = Math.min(size, remaining);
+    sizes.push(actual);
+    remaining -= actual;
+  }
+
+  return sizes;
+}
+
+async function parseToSegmentsWithChunkPlan(
+  input: string,
+  chunkSizes: number[],
+): Promise<NormalizedSegment[]> {
+  const receiver = new MockTextingEventsReceiver();
+  const parser = new TextingStreamParser(receiver);
+
+  let pos = 0;
+  for (const sz of chunkSizes) {
+    if (pos >= input.length) break;
+    const actual = Math.max(0, Math.min(sz, input.length - pos));
+    if (actual <= 0) continue;
+    const chunk = input.substring(pos, pos + actual);
+    await parser.takeUpstreamChunk(chunk);
+    pos += actual;
+  }
+  await parser.finalize();
+
+  return normalizeEventsToSegments(receiver.events);
+}
+
+async function runRandomChunkInvarianceTest(
+  name: string,
+  input: string,
+  seeds: number[],
+  maxChunkSize: number,
+): Promise<void> {
+  console.log(`\n=== Random chunk invariance: ${name} ===`);
+  const baseline = await parseToSegments(input, Math.max(1, input.length));
+
+  for (const seed of seeds) {
+    const plan = splitIntoRandomChunks(input.length, seed, maxChunkSize);
+    const got = await parseToSegmentsWithChunkPlan(input, plan);
+    if (!deepEqual(got, baseline)) {
+      console.log('❌ Random chunk invariance failed.');
+      console.log(`Seed: ${seed}, maxChunkSize: ${maxChunkSize}`);
+      console.log(`Chunk plan: ${plan.join(',')}`);
+      console.log('Baseline segments:');
+      console.log(JSON.stringify(baseline, null, 2));
+      console.log('Actual segments:');
+      console.log(JSON.stringify(got, null, 2));
+      throw new Error(`Random chunk invariance failed (seed=${seed})`);
+    }
+  }
+
+  console.log(`Result: ✅ PASS (seeds: ${seeds.join(', ')}, maxChunkSize: ${maxChunkSize})`);
 }
 
 // Main function to run all tests
@@ -808,6 +1188,45 @@ Would you like me to reach out to \`@fuxi\` instead?`,
       changeMindBlocksInputNoTool,
     ),
   ]);
+
+  // Chunk-size invariance checks (semantic equivalence across different upstream chunk sizes)
+  const invarianceChunkSizes = [1, 2, 3, 5, 7, 10, 13, 64];
+  await runChunkInvarianceTest(
+    'change_mind blocks + @human + tool',
+    changeMindBlocksInput,
+    invarianceChunkSizes,
+  );
+  await runChunkInvarianceTest(
+    'change_mind blocks + @human (no tool)',
+    changeMindBlocksInputNoTool,
+    invarianceChunkSizes,
+  );
+  await runChunkInvarianceTest(
+    'multi-line headline boundary',
+    '@u1 12345\n@u2 second line\nThis is the body',
+    invarianceChunkSizes,
+  );
+
+  const invarianceSeeds = [1, 2, 3, 4, 5, 123, 999];
+  await runRandomChunkInvarianceTest(
+    'change_mind blocks + @human + tool',
+    changeMindBlocksInput,
+    invarianceSeeds,
+    32,
+  );
+  await runRandomChunkInvarianceTest(
+    'triple backticks + calls',
+    `Free text before
+\`\`\`javascript
+console.log("Hello");
+\`\`\`
+@tool1 cmd
+body
+@/
+Done.`,
+    invarianceSeeds,
+    16,
+  );
 
   if (failedCnt <= 0) {
     console.log(`\n🎉 All ${totalCnt} tests passed!`);
