@@ -314,16 +314,19 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
-    // Create initial latest.yaml with current round and lastModified info
-    await DialogPersistence.saveDialogLatest(new DialogID(dialogId.selfId), {
-      currentRound: 1,
-      lastModified: formatUnifiedTimestamp(new Date()),
-      status: 'active',
-      messageCount: 0,
-      functionCallCount: 0,
-      subdialogCount: 0,
-      runState: { kind: 'idle_waiting_user' },
-    });
+    // Initialize latest.yaml via the mutation API (write-back will flush).
+    await DialogPersistence.mutateDialogLatest(new DialogID(dialogId.selfId), () => ({
+      kind: 'replace',
+      next: {
+        currentRound: 1,
+        lastModified: formatUnifiedTimestamp(new Date()),
+        status: 'active',
+        messageCount: 0,
+        functionCallCount: 0,
+        subdialogCount: 0,
+        runState: { kind: 'idle_waiting_user' },
+      },
+    }));
 
     // Send dialog_ready with full info so frontend can track the active dialog
     const response: DialogReadyMessage = {

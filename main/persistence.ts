@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'fs';
+import { randomUUID } from 'node:crypto';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import * as yaml from 'yaml';
@@ -14,6 +15,7 @@ import { Dialog, DialogID, DialogStore, RootDialog, SubDialog } from './dialog';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
+import { AsyncFifoMutex } from './shared/async-fifo-mutex';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
   CodeBlockChunkEvent,
@@ -247,16 +249,19 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
     await DialogPersistence.saveDialogMetadata(subdialogId, metadata);
 
-    // Create initial latest.yaml with current round and lastModified info
-    await DialogPersistence.saveDialogLatest(subdialogId, {
-      currentRound: 1,
-      lastModified: formatUnifiedTimestamp(new Date()),
-      status: 'active',
-      messageCount: 0,
-      functionCallCount: 0,
-      subdialogCount: 0,
-      runState: { kind: 'idle_waiting_user' },
-    });
+    // Initialize latest.yaml via the mutation API (write-back will flush).
+    await DialogPersistence.mutateDialogLatest(subdialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentRound: 1,
+        lastModified: formatUnifiedTimestamp(new Date()),
+        status: 'active',
+        messageCount: 0,
+        functionCallCount: 0,
+        subdialogCount: 0,
+        runState: { kind: 'idle_waiting_user' },
+      },
+    }));
 
     // Supdialog clarification context is persisted in subdialog metadata (supdialogCall)
 
@@ -490,7 +495,10 @@ export class DiskFileDialogStore extends DialogStore {
       postDialogEvent(dialog, genStartEvt);
 
       // Update generating flag in latest.yaml
-      await DialogPersistence.updateDialogLatest(this.dialogId, { generating: true });
+      await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
+        kind: 'patch',
+        patch: { generating: true },
+      }));
     } catch (err) {
       log.warn('Failed to persist gen_start event', err);
     }
@@ -536,7 +544,10 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       // Update generating flag in latest.yaml
-      await DialogPersistence.updateDialogLatest(this.dialogId, { generating: false });
+      await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
+        kind: 'patch',
+        patch: { generating: false },
+      }));
     } catch (err) {
       log.warn('Failed to persist gen_finish event', err);
     }
@@ -800,11 +811,11 @@ export class DiskFileDialogStore extends DialogStore {
     // Use the currently attached dialog's reminders to avoid stale state
     await this.persistReminders(dialog, dialog.reminders || []);
 
-    // Update latest.yaml with new round and lastModified
-    await DialogPersistence.updateDialogLatest(this.dialogId, {
-      currentRound: newRound,
-      lastModified: formatUnifiedTimestamp(new Date()),
-    });
+    // Update latest.yaml with new round (lastModified is set by persistence layer)
+    await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
+      kind: 'patch',
+      patch: { currentRound: newRound },
+    }));
 
     // Post round update event
     const roundUpdateEvt: RoundEvent = {
@@ -1872,6 +1883,33 @@ export class DiskFileDialogStore extends DialogStore {
   }
 }
 
+type LatestWriteBackEntry =
+  | {
+      kind: 'scheduled';
+      dialogId: DialogID;
+      status: 'running' | 'completed' | 'archived';
+      latest: DialogLatestFile;
+      timer: NodeJS.Timeout;
+    }
+  | {
+      kind: 'flushing';
+      dialogId: DialogID;
+      status: 'running' | 'completed' | 'archived';
+      latest: DialogLatestFile;
+      dirty: boolean;
+      inFlight: Promise<void>;
+    };
+
+type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentRound' | 'lastModified'>> & {
+  currentRound?: number;
+  lastModified?: string;
+};
+
+type DialogLatestMutation =
+  | { kind: 'noop' }
+  | { kind: 'patch'; patch: DialogLatestPatch }
+  | { kind: 'replace'; next: DialogLatestFile };
+
 /**
  * Utility class for managing dialog persistence
  */
@@ -1881,6 +1919,27 @@ export class DialogPersistence {
   private static readonly DONE_DIR = 'done';
   private static readonly ARCHIVE_DIR = 'archive';
   private static readonly SUBDIALOGS_DIR = 'subdialogs';
+
+  private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
+
+  private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
+
+  private static getLatestWriteBackMutex(key: string): AsyncFifoMutex {
+    const existing = this.latestWriteBackMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.latestWriteBackMutexes.set(key, created);
+    return created;
+  }
+
+  private static getLatestWriteBackKey(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): string {
+    // Include dialogs root dir to avoid cross-test/process.cwd collisions.
+    return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
+  }
 
   /**
    * Get the base dialogs directory path
@@ -2268,12 +2327,15 @@ export class DialogPersistence {
       await fs.promises.appendFile(roundFilePath, eventLine, 'utf-8');
 
       // Update latest.yaml with new lastModified timestamp
-      await this.updateDialogLatest(
+      await this.mutateDialogLatest(
         dialogId,
-        {
-          lastModified: formatUnifiedTimestamp(new Date()),
-          currentRound: round,
-        },
+        () => ({
+          kind: 'patch',
+          patch: {
+            lastModified: formatUnifiedTimestamp(new Date()),
+            currentRound: round,
+          },
+        }),
         status,
       );
     } catch (error) {
@@ -3115,7 +3177,7 @@ export class DialogPersistence {
   /**
    * Save latest.yaml with current round and lastModified info
    */
-  static async saveDialogLatest(
+  private static async writeDialogLatestToDisk(
     dialogId: DialogID,
     latest: DialogLatestFile,
     status: 'running' | 'completed' | 'archived' = 'running',
@@ -3127,7 +3189,12 @@ export class DialogPersistence {
       // Ensure directory exists before writing (handles race conditions and new dialogs)
       await fs.promises.mkdir(dialogPath, { recursive: true });
 
-      const tempFile = latestFilePath + '.tmp';
+      // NOTE: Use a unique temp file name to avoid collisions when multiple updates
+      // happen concurrently for the same dialog (e.g., parallel tool responses).
+      const tempFile = path.join(
+        dialogPath,
+        `.${path.basename(latestFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
       const yamlContent = yaml.stringify(latest);
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
 
@@ -3188,6 +3255,11 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<DialogLatestFile | null> {
     try {
+      const key = this.getLatestWriteBackKey(dialogId, status);
+      const staged = this.latestWriteBack.get(key);
+      if (staged) {
+        return staged.latest;
+      }
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
 
@@ -3206,30 +3278,203 @@ export class DialogPersistence {
   }
 
   /**
-   * Update dialog latest info (current round and lastModified)
+   * Delta-only latest.yaml update API.
+   *
+   * Callers provide a mutation callback which is applied against the most recent
+   * staged state (or disk fallback). This avoids read-modify-write races in user code
+   * and allows lock-free-ish coalescing to disk via the write-back buffer.
    */
-  static async updateDialogLatest(
+  static async mutateDialogLatest(
     dialogId: DialogID,
-    updates: Partial<Omit<DialogLatestFile, 'currentRound' | 'lastModified'>> & {
-      currentRound?: number;
-      lastModified?: string;
-    },
+    mutator: (previous: DialogLatestFile) => DialogLatestMutation,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<DialogLatestFile> {
-    const existing = (await this.loadDialogLatest(dialogId, status)) || {
-      currentRound: 1,
-      lastModified: formatUnifiedTimestamp(new Date()),
-      status: 'active',
-    };
+    const key = this.getLatestWriteBackKey(dialogId, status);
+    const mutex = this.getLatestWriteBackMutex(key);
 
-    const updated: DialogLatestFile = {
-      ...existing,
-      ...updates,
-      lastModified: updates.lastModified || formatUnifiedTimestamp(new Date()),
-    };
+    const release = await mutex.acquire();
+    try {
+      const staged = this.latestWriteBack.get(key);
+      const existing = (staged
+        ? staged.latest
+        : await this.loadDialogLatestFromDisk(dialogId, status)) || {
+        currentRound: 1,
+        lastModified: formatUnifiedTimestamp(new Date()),
+        status: 'active',
+      };
 
-    await this.saveDialogLatest(dialogId, updated, status);
-    return updated;
+      const mutation = mutator(existing);
+
+      let updated: DialogLatestFile;
+      if (mutation.kind === 'noop') {
+        return existing;
+      } else if (mutation.kind === 'replace') {
+        updated = {
+          ...mutation.next,
+          lastModified: formatUnifiedTimestamp(new Date()),
+        };
+      } else if (mutation.kind === 'patch') {
+        updated = {
+          ...existing,
+          ...mutation.patch,
+          lastModified: mutation.patch.lastModified || formatUnifiedTimestamp(new Date()),
+        };
+      } else {
+        const _exhaustive: never = mutation;
+        throw new Error(`Unhandled dialog latest mutation: ${String(_exhaustive)}`);
+      }
+
+      const pending = this.latestWriteBack.get(key);
+      if (!pending) {
+        const timer = setTimeout(() => {
+          void this.flushLatestWriteBack(key);
+        }, this.LATEST_WRITEBACK_WINDOW_MS);
+
+        this.latestWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId,
+          status,
+          latest: updated,
+          timer,
+        });
+
+        return updated;
+      }
+
+      pending.latest = updated;
+      if (pending.kind === 'flushing') {
+        pending.dirty = true;
+      }
+
+      // Keep the existing timer to ensure a bounded flush window.
+      return updated;
+    } finally {
+      release();
+    }
+  }
+
+  private static async loadDialogLatestFromDisk(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<DialogLatestFile | null> {
+    try {
+      const dialogPath = this.getDialogEventsPath(dialogId, status);
+      const latestFilePath = path.join(dialogPath, 'latest.yaml');
+
+      const content = await fs.promises.readFile(latestFilePath, 'utf-8');
+      const parsed: unknown = yaml.parse(content);
+      if (!isDialogLatestFile(parsed)) {
+        throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
+      }
+      return parsed;
+    } catch (error) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private static async flushLatestWriteBack(key: string): Promise<void> {
+    const mutex = this.getLatestWriteBackMutex(key);
+
+    let captured:
+      | {
+          dialogId: DialogID;
+          status: 'running' | 'completed' | 'archived';
+          latestToWrite: DialogLatestFile;
+          inFlight: Promise<void>;
+        }
+      | undefined;
+
+    {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.latestWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind === 'flushing') return;
+        if (entry.kind !== 'scheduled') return;
+
+        clearTimeout(entry.timer);
+
+        const latestToWrite = entry.latest;
+        const inFlight = this.writeDialogLatestToDisk(entry.dialogId, latestToWrite, entry.status);
+
+        captured = {
+          dialogId: entry.dialogId,
+          status: entry.status,
+          latestToWrite,
+          inFlight,
+        };
+
+        this.latestWriteBack.set(key, {
+          kind: 'flushing',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          latest: entry.latest,
+          dirty: false,
+          inFlight,
+        });
+      } finally {
+        release();
+      }
+    }
+
+    if (!captured) return;
+
+    try {
+      await captured.inFlight;
+    } catch (error) {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.latestWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind !== 'flushing') return;
+        if (entry.inFlight !== captured.inFlight) return;
+
+        const timer = setTimeout(() => {
+          void this.flushLatestWriteBack(key);
+        }, this.LATEST_WRITEBACK_WINDOW_MS);
+
+        this.latestWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          latest: entry.latest,
+          timer,
+        });
+      } finally {
+        release();
+      }
+      return;
+    }
+
+    const release = await mutex.acquire();
+    try {
+      const entry = this.latestWriteBack.get(key);
+      if (!entry) return;
+      if (entry.kind !== 'flushing') return;
+      if (entry.inFlight !== captured.inFlight) return;
+
+      if (!entry.dirty) {
+        this.latestWriteBack.delete(key);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        void this.flushLatestWriteBack(key);
+      }, this.LATEST_WRITEBACK_WINDOW_MS);
+
+      this.latestWriteBack.set(key, {
+        kind: 'scheduled',
+        dialogId: entry.dialogId,
+        status: entry.status,
+        latest: entry.latest,
+        timer,
+      });
+    } finally {
+      release();
+    }
   }
 
   static async setNeedsDrive(
@@ -3237,7 +3482,11 @@ export class DialogPersistence {
     needsDrive: boolean,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    await this.updateDialogLatest(dialogId, { needsDrive }, status);
+    await this.mutateDialogLatest(
+      dialogId,
+      () => ({ kind: 'patch', patch: { needsDrive } }),
+      status,
+    );
   }
 
   static async getNeedsDrive(

@@ -68,7 +68,10 @@ export async function setDialogRunState(
   runState: DialogRunState,
 ): Promise<void> {
   try {
-    await DialogPersistence.updateDialogLatest(dialogId, { runState });
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'patch',
+      patch: { runState },
+    }));
   } catch (err) {
     log.warn('Failed to persist dialog runState', err, { dialogId: dialogId.valueOf() });
   }
@@ -159,7 +162,10 @@ export async function reconcileRunStatesAfterRestart(): Promise<void> {
           ? nextIdle
           : ({ kind: 'interrupted', reason: { kind: 'server_restart' } } satisfies DialogRunState);
       try {
-        await DialogPersistence.updateDialogLatest(dialogId, { generating: false, runState: next });
+        await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+          kind: 'patch',
+          patch: { generating: false, runState: next },
+        }));
       } catch (err) {
         log.warn('Failed to reconcile proceeding dialog after restart', err, {
           dialogId: dialogId.valueOf(),
@@ -171,7 +177,10 @@ export async function reconcileRunStatesAfterRestart(): Promise<void> {
     if (!existing) {
       const inferred = await computeIdleRunStateFromPersistence(dialogId);
       try {
-        await DialogPersistence.updateDialogLatest(dialogId, { runState: inferred });
+        await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+          kind: 'patch',
+          patch: { runState: inferred },
+        }));
       } catch (err) {
         log.warn('Failed to backfill missing runState', err, { dialogId: dialogId.valueOf() });
       }
