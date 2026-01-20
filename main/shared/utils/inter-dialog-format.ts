@@ -77,11 +77,11 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
   const language: LanguageCode = input.language ?? 'en';
   const hello =
     language === 'zh'
-      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理你原始任务期间：`
+      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理你最初诉请期间：`
       : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, during processing your original assignment:`;
   const asking =
     language === 'zh'
-      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 请求你：`
+      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 诉请你：`
       : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` is asking you:`;
 
   return `${hello}
