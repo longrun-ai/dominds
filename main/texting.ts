@@ -226,6 +226,7 @@ export class TextingStreamParser {
   private bodyChunkBuffer = '';
   private isAtLineStart = true;
   private pendingAtTermination = false; // Track potential @/ termination spanning chunks
+  private pendingAtWasLineStart = false; // Track whether deferred @ was at line start
   private pendingInitialBackticks = 0; // Backticks seen before deciding body type
 
   // Code block state
@@ -322,6 +323,7 @@ export class TextingStreamParser {
     this.tripleQuotedBodyOpen = false;
     this.bodyChunkBuffer = '';
     this.pendingAtTermination = false;
+    this.pendingAtWasLineStart = false;
     this.headlineHasContent = false;
     this.mode = ParserMode.FREE_TEXT;
   }
@@ -406,7 +408,7 @@ export class TextingStreamParser {
       if (!this.callStartEmitted && !this.hasValidFirstMention()) {
         this.abortCallToMarkdown();
       } else {
-        if (this.hasValidFirstMention()) {
+        if (!this.callStartEmitted && this.hasValidFirstMention()) {
           const firstMention = this.firstMentionAccumulator.substring(1);
           await this.emitCallStart(firstMention);
           this.firstMentionAccumulator = '';
@@ -860,44 +862,34 @@ export class TextingStreamParser {
     char: string,
     charType: CharType,
   ): Promise<number> {
-    // Handle @/ termination marker
-    if (this.pendingAtTermination && char === '/') {
+    // Handle pending @ at end-of-chunk (could be @/ terminator or start of a new call).
+    if (this.pendingAtTermination) {
       this.pendingAtTermination = false;
-      // Finish headline first if we haven't already
-      if (this.headlineBuffer && !this.headlineFinished) {
-        await this.downstream.callHeadLineFinish();
-        this.headlineFinished = true;
-      }
-      // Emit callBodyStart for empty body (needed for proper event sequencing)
-      if (!this.hasBody) {
-        this.hasBody = true;
-        await this.downstream.callBodyStart();
-        this.bodyChunkBuffer = '';
-      }
-      // Now finish the call
-      await this.emitCallFinish();
-
-      // Handle newline at chunk boundary in BEFORE_BODY mode
-      // This ensures callStart is emitted when next @ is processed
-      if (charType === CharType.NEWLINE) {
-        // Reset state for next call but stay in BEFORE_BODY to detect next @
-        this.mode = ParserMode.TEXTING_CALL_BEFORE_BODY;
-        this.firstMentionAccumulator = '';
-        this.headlineBuffer = '';
-        this.headlineFinished = false;
-        this.expectingFirstMention = true;
-        this.hasBody = false;
+      if (char === '/') {
+        // Treat as @/ terminator for the current call.
+        this.mode = ParserMode.FREE_TEXT;
         return position + 1;
       }
 
-      // Stay in BEFORE_BODY mode to detect next @ for sequential reminders
-      // Don't switch to FREE_TEXT - that breaks @ detection
-      this.firstMentionAccumulator = '';
-      this.headlineBuffer = '';
+      // Treat as start of a new call. Seed headline parsing with the deferred '@' and
+      // continue parsing from the current character.
+      await this.emitCallFinish();
+      this.mode = ParserMode.TEXTING_CALL_HEADLINE;
+      this.firstMentionAccumulator = '@';
+      this.headlineBuffer = '@';
       this.headlineFinished = false;
       this.expectingFirstMention = true;
-      return position + 1;
+      this.headlineHasContent = false;
+      this.hasBody = false;
+      this.isTripleQuotedBody = false;
+      this.tripleQuotedBodyOpen = false;
+      this.bodyChunkBuffer = '';
+      this.pendingInitialBackticks = 0;
+      return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
     }
+
+    // Handle @/ termination marker
+    // (the / character itself is handled above via the pendingAtTermination block)
     if (charType === CharType.SPACE) {
       let aheadPos = position;
       while (aheadPos < chunk.length) {
@@ -1074,53 +1066,31 @@ export class TextingStreamParser {
     // Handle @ symbol - this indicates a new call
     if (charType === CharType.AT) {
       if (position + 1 >= chunk.length) {
+        // Defer: could be @/ terminator or start of next call.
+        await this.emitCallFinish();
         this.pendingAtTermination = true;
         return position + 1;
       }
+
       if (position + 1 < chunk.length && chunk[position + 1] === '/') {
         await this.emitCallFinish();
         this.mode = ParserMode.FREE_TEXT;
         return position + 2;
       }
-      await this.downstream.markdownStart();
-      await this.downstream.markdownFinish();
-      await this.emitCallFinish();
-      let mention = '';
-      let i = position + 1;
-      while (i < chunk.length) {
-        const c = chunk[i];
-        const charCode = c.charCodeAt(0);
-        const isValid =
-          (charCode >= 48 && charCode <= 57) || // 0-9
-          (charCode >= 65 && charCode <= 90) || // A-Z
-          (charCode >= 97 && charCode <= 122) || // a-z
-          c === '_' ||
-          c === '-' ||
-          c === '.' ||
-          /\p{L}/u.test(c) ||
-          /\p{N}/u.test(c);
 
-        if (!isValid) {
-          break;
-        }
-        mention += c;
-        i++;
-      }
-      if (mention) {
-        await this.emitCallStart(mention);
-        this.firstMentionAccumulator = '';
-        this.expectingFirstMention = false;
-      } else {
-        this.firstMentionAccumulator = '@';
-        this.expectingFirstMention = true;
-      }
-      // Start processing as new call
+      await this.emitCallFinish();
       this.mode = ParserMode.TEXTING_CALL_HEADLINE;
+      this.firstMentionAccumulator = '';
       this.headlineBuffer = '';
       this.headlineFinished = false;
-
-      // Process this @ character in the new call context
-      return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
+      this.expectingFirstMention = true;
+      this.headlineHasContent = false;
+      this.hasBody = false;
+      this.isTripleQuotedBody = false;
+      this.tripleQuotedBodyOpen = false;
+      this.bodyChunkBuffer = '';
+      this.pendingInitialBackticks = 0;
+      return position;
     }
 
     // Any other character means there IS a body - start processing it
@@ -1174,12 +1144,14 @@ export class TextingStreamParser {
     if (char === '@' && position + 1 >= chunk.length) {
       // This @ is at the end of the chunk - defer decision to next chunk
       this.pendingAtTermination = true;
+      this.pendingAtWasLineStart = this.isAtLineStart;
       return position + 1;
     }
 
     // If we had a pending @ termination and current char is /, end the call
     if (this.pendingAtTermination && char === '/') {
       this.pendingAtTermination = false;
+      this.pendingAtWasLineStart = false;
       // Don't add @ or / to body buffer
       await this.flushBodyBuffer();
       await this.downstream.callBodyFinish();
@@ -1205,6 +1177,31 @@ export class TextingStreamParser {
     // Clear pending termination flag for any other character and include the deferred '@'
     if (this.pendingAtTermination) {
       this.pendingAtTermination = false;
+      const wasLineStart = this.pendingAtWasLineStart;
+      this.pendingAtWasLineStart = false;
+
+      // If the deferred '@' was at line start, it may actually be a new call (not literal body).
+      // Decide using the first character after '@': '/' => terminator (handled above); otherwise new call.
+      if (wasLineStart) {
+        const canStartNewCallFromBody =
+          !this.tripleQuotedBodyOpen && this.backtickState === BacktickState.NONE;
+
+        if (canStartNewCallFromBody) {
+          await this.flushBodyBuffer();
+          await this.downstream.callBodyFinish();
+          await this.emitCallFinish();
+
+          this.mode = ParserMode.TEXTING_CALL_HEADLINE;
+          this.firstMentionAccumulator = '@';
+          this.headlineBuffer = '@';
+          this.headlineFinished = false;
+          this.expectingFirstMention = true;
+          this.headlineHasContent = false;
+
+          return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
+        }
+      }
+
       this.bodyChunkBuffer += '@';
     }
 

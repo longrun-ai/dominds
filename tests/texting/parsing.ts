@@ -229,13 +229,26 @@ function buildBasicCallEvents(
   // Call events
 
   // Headline chunks - simulate how the actual TextingStreamParser emits chunks
-  // The parser buffers characters and emits at chunk boundaries or when callStart is emitted
   const headStart = input ? input.indexOf(headLine) : 0;
 
-  // Simulate the parser's chunking: emit headline content at STREAM_CHUNK boundaries
-  // The parser buffers characters and emits at chunk boundaries or when callStart is emitted
-  // For short headlines (don't reach 10 chars after callStart), emit as single chunk
-  // For longer headlines, use offset-based chunking to match actual implementation
+  const isValidMentionChar = (char: string): boolean => {
+    const charCode = char.charCodeAt(0);
+    return (
+      (charCode >= 48 && charCode <= 57) || // 0-9
+      (charCode >= 65 && charCode <= 90) || // A-Z
+      (charCode >= 97 && charCode <= 122) || // a-z
+      char === '_' ||
+      char === '-' ||
+      char === '.' ||
+      /\p{L}/u.test(char) ||
+      /\p{N}/u.test(char)
+    );
+  };
+
+  // Simulate the parser's headline chunking:
+  // - It does NOT emit headline chunks until `callStart` is emitted.
+  // - After `callStart`, it flushes the entire headline buffer at upstream chunk boundaries
+  //   (STREAM_CHUNK) and at headline termination (newline / finalize).
   const headChunks: string[] = [];
 
   if (!input) {
@@ -244,28 +257,31 @@ function buildBasicCallEvents(
       headChunks.push(headLine.substring(i, Math.min(i + STREAM_CHUNK, headLine.length)));
     }
   } else {
-    // Input provided - calculate chars in buffer at callStart
-    const charsInBufferAtCallStart = headStart % STREAM_CHUNK;
-    const charsAfterCallStart = headLine.length - charsInBufferAtCallStart;
-
-    if (charsAfterCallStart <= STREAM_CHUNK) {
-      // Headline doesn't reach 10 chars after callStart - emit as single chunk
-      headChunks.push(headLine);
-    } else {
-      // Headline reaches 10 chars after callStart - use offset-based chunking
-      const remainder = headStart % STREAM_CHUNK;
-      const firstChunk = STREAM_CHUNK - remainder;
-      let pos = 0;
-      while (pos < headLine.length) {
-        if (pos === 0) {
-          headChunks.push(headLine.substring(0, firstChunk));
-          pos = firstChunk;
-        } else {
-          headChunks.push(headLine.substring(pos, pos + STREAM_CHUNK));
-          pos += STREAM_CHUNK;
+    // Find where `callStart` gets emitted: the first non-mention char after the initial `@...`.
+    // If the headline contains only the mention, `callStart` happens at the newline after the
+    // headline (i.e. effectively at headLine.length for our purposes).
+    let callStartOffset = headLine.length;
+    if (headLine.startsWith('@')) {
+      for (let i = 1; i < headLine.length; i++) {
+        if (!isValidMentionChar(headLine[i])) {
+          callStartOffset = i;
+          break;
         }
       }
     }
+    const callStartGlobalPos = headStart + callStartOffset;
+    const headEnd = headStart + headLine.length;
+
+    let last = 0;
+    for (let b = STREAM_CHUNK; b < headEnd; b += STREAM_CHUNK) {
+      if (b <= headStart) continue;
+      // Flush happens at upstream chunk end only after callStart has been emitted.
+      if (callStartGlobalPos < b) {
+        headChunks.push(headLine.substring(last, b - headStart));
+        last = b - headStart;
+      }
+    }
+    headChunks.push(headLine.substring(last));
   }
 
   // emit callStart first, then headline chunks
@@ -709,6 +725,89 @@ Would you like me to reach out to \`@fuxi\` instead?`,
     '@pangu.\nNext line.',
     buildBasicCallEvents('pangu', '@pangu.', 'Next line.', '@pangu.\nNext line.'),
   );
+
+  // Test 17: change_mind blocks + @human + tool call
+  const changeMindBlocksInput = `@change_mind !goals
+- 扫描 \`dominds/\`（推测为 \`.minds/\`）目录下已开发代码与文档，提炼为 DevOps 团队创建的参考依据
+- 若目录名有误，向用户确认正确路径
+@change_mind !constraints
+- 不使用通用文件工具操作 \`*.tsk/\`
+- 仅能在 \`.minds/\` 下读写与管理团队相关内容
+- 需要澄清 \`dominds/\` 是否等同于 \`.minds/\`
+@change_mind !progress
+- 已创建差遣牒三分段，待开始扫描目录
+
+@human 我将先扫描 \`.minds/\` 目录结构并读取相关文档。请确认你说的 \`dominds/\` 是否指 \`.minds/\`？如果不是，请给出准确路径。
+
+@team_mgmt_list_dir`;
+
+  await runTest('change_mind blocks then @human then tool', changeMindBlocksInput, [
+    ...buildBasicCallEvents(
+      'change_mind',
+      '@change_mind !goals',
+      '- 扫描 `dominds/`（推测为 `.minds/`）目录下已开发代码与文档，提炼为 DevOps 团队创建的参考依据\n- 若目录名有误，向用户确认正确路径\n',
+      changeMindBlocksInput,
+    ),
+    ...buildBasicCallEvents(
+      'change_mind',
+      '@change_mind !constraints',
+      '- 不使用通用文件工具操作 `*.tsk/`\n- 仅能在 `.minds/` 下读写与管理团队相关内容\n- 需要澄清 `dominds/` 是否等同于 `.minds/`\n',
+      changeMindBlocksInput,
+    ),
+    ...buildBasicCallEvents(
+      'change_mind',
+      '@change_mind !progress',
+      '- 已创建差遣牒三分段，待开始扫描目录\n\n',
+      changeMindBlocksInput,
+    ),
+    ...buildBasicCallEvents(
+      'human',
+      '@human 我将先扫描 `.minds/` 目录结构并读取相关文档。请确认你说的 `dominds/` 是否指 `.minds/`？如果不是，请给出准确路径。',
+      '',
+      changeMindBlocksInput,
+    ),
+    ...buildBasicCallEvents('team_mgmt_list_dir', '@team_mgmt_list_dir', '', changeMindBlocksInput),
+  ]);
+
+  // Test 18: change_mind blocks + @human (no trailing tool call)
+  const changeMindBlocksInputNoTool = `@change_mind !goals
+- 扫描 \`dominds/\` 目录下已开发的代码与文档，提炼为 DevOps 团队创建的参考依据
+- 若目录名有误，向用户确认正确路径
+@change_mind !constraints
+- 不使用通用文件工具操作 \`*.tsk/\`
+- 仅能在 \`.minds/\` 下读写与管理团队相关内容
+- 需要澄清 \`dominds/\` 是否等同于 \`.minds/\`
+@change_mind !progress
+- 已记录用户需求，待确认 \`dominds/\` 的准确路径
+
+@human 我只能访问 \`.minds/\`。你说的 \`dominds/\` 是否等同于 \`.minds/\`？如果不是，请给出准确路径或允许我访问对应目录。`;
+
+  await runTest('change_mind blocks then @human (no tool)', changeMindBlocksInputNoTool, [
+    ...buildBasicCallEvents(
+      'change_mind',
+      '@change_mind !goals',
+      '- 扫描 `dominds/` 目录下已开发的代码与文档，提炼为 DevOps 团队创建的参考依据\n- 若目录名有误，向用户确认正确路径\n',
+      changeMindBlocksInputNoTool,
+    ),
+    ...buildBasicCallEvents(
+      'change_mind',
+      '@change_mind !constraints',
+      '- 不使用通用文件工具操作 `*.tsk/`\n- 仅能在 `.minds/` 下读写与管理团队相关内容\n- 需要澄清 `dominds/` 是否等同于 `.minds/`\n',
+      changeMindBlocksInputNoTool,
+    ),
+    ...buildBasicCallEvents(
+      'change_mind',
+      '@change_mind !progress',
+      '- 已记录用户需求，待确认 `dominds/` 的准确路径\n\n',
+      changeMindBlocksInputNoTool,
+    ),
+    ...buildBasicCallEvents(
+      'human',
+      '@human 我只能访问 `.minds/`。你说的 `dominds/` 是否等同于 `.minds/`？如果不是，请给出准确路径或允许我访问对应目录。',
+      '',
+      changeMindBlocksInputNoTool,
+    ),
+  ]);
 
   if (failedCnt <= 0) {
     console.log(`\n🎉 All ${totalCnt} tests passed!`);
