@@ -4,8 +4,8 @@
  * Team management tooling scoped strictly to `.minds/**`.
  *
  * Goals:
- * - Allow a dedicated team manager (e.g. shadow `fuxi`) to manage `.minds/` without granting broad
- *   workspace permissions (e.g. `ws_mod`).
+ * - Allow a dedicated team manager (e.g. a shadow/hidden member) to manage `.minds/` without granting
+ *   broad workspace permissions (e.g. `ws_mod`).
  * - Enforce static scoping to `.minds/**` and reject anything outside that subtree.
  */
 
@@ -1072,6 +1072,7 @@ function renderTeamManual(language: LanguageCode): string {
     'member_defaults: provider/model are required',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
     'when changing provider/model: validate provider exists + env var is configured (use @team_mgmt_check_provider)',
+    'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
     'hidden: true marks a shadow member (not listed in system prompt)',
     "toolsets supports '*' and '!<toolset>' exclusions (e.g. ['*','!team-mgmt'])",
   ];
@@ -1081,24 +1082,26 @@ function renderTeamManual(language: LanguageCode): string {
       fmtList([
         '必须包含 `member_defaults.provider` 与 `member_defaults.model`。',
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
-        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `@team_mgmt_check_provider <providerKey>` 做检查，避免把系统“写死”。',
+        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `@team_mgmt_check_provider <providerKey>` 做检查，避免把系统刷成板砖。',
+        '不要把内置成员（例如 fuxi/pangu）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `@<id>` 呼叫。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
       ]) +
       '\n' +
       '最小模板：\n' +
       '```yaml\n' +
+      '# 这里只放工作区自己的成员；不要把内置成员（例如 fuxi/pangu）写进来。\n' +
       'member_defaults:\n' +
       '  provider: codex\n' +
       '  model: gpt-5.2\n' +
       '\n' +
-      'default_responder: fuxi\n' +
+      'default_responder: primary\n' +
       '\n' +
       'members:\n' +
-      '  fuxi:\n' +
+      '  team_manager:\n' +
       '    hidden: true\n' +
       "    toolsets: ['team-mgmt']\n" +
-      '  pangu:\n' +
+      '  primary:\n' +
       '    hidden: true\n' +
       "    toolsets: ['*', '!team-mgmt']\n" +
       "    no_read_dirs: ['.minds/**']\n" +
@@ -1112,17 +1115,18 @@ function renderTeamManual(language: LanguageCode): string {
     '\n' +
     'Minimal template:\n' +
     '```yaml\n' +
+    '# Define only workspace members here (do not copy built-in members like fuxi/pangu).\n' +
     'member_defaults:\n' +
     '  provider: codex\n' +
     '  model: gpt-5.2\n' +
     '\n' +
-    'default_responder: fuxi\n' +
+    'default_responder: primary\n' +
     '\n' +
     'members:\n' +
-    '  fuxi:\n' +
+    '  team_manager:\n' +
     '    hidden: true\n' +
     "    toolsets: ['team-mgmt']\n" +
-    '  pangu:\n' +
+    '  primary:\n' +
     '    hidden: true\n' +
     "    toolsets: ['*', '!team-mgmt']\n" +
     "    no_read_dirs: ['.minds/**']\n" +
