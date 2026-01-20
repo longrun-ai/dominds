@@ -31,18 +31,18 @@ This document is a **design spec** for the new `team-mgmt` toolset. It is not so
 ever tell an agent to “look up” at runtime.
 
 Instead, the runtime “single source of truth” for team management guidance should be
-`@team_mgmt_manual`.
+`!!@team_mgmt_manual`.
 
 Historically, some of the guidance lived in a legacy builtin “team manager” mind set inside the
 `dominds/` source tree. That legacy builtin is being removed. The runtime “single source of truth”
-should be the `@team_mgmt_manual` tool output.
+should be the `!!@team_mgmt_manual` tool output.
 
 Planned change:
 
 - Add a new texting tool `team_mgmt_manual` whose responses cover the team-management topics (file
   formats, workflows, safety).
 - Remove legacy builtin guidance to avoid duplication. If any stub remains, it must point to
-  `@team_mgmt_manual` (and not to this design document).
+  `!!@team_mgmt_manual` (and not to this design document).
 
 Rationale:
 
@@ -54,7 +54,7 @@ Rationale:
 
 In typical deployments we deny direct `.minds/` access via the general-purpose workspace tools:
 
-- `fs` / `txt` (`@list_dir`, `@read_file`, `@overwrite_file`, …)
+- `fs` / `txt` (`!!@list_dir`, `!!@read_file`, `!!@overwrite_file`, …)
 
 This makes sense for “normal” agents, but it blocks the team manager from doing its job.
 
@@ -81,7 +81,7 @@ The `team-mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scope
 ### Naming Conventions (Human / UI)
 
 - **Tools** use `snake_case` (underscore-separated), both for tool IDs and chat commands (e.g.
-  `@team_mgmt_manual`). Avoid `kebab-case` aliases for tool commands; if UX needs a friendlier name,
+  `!!@team_mgmt_manual`). Avoid `kebab-case` aliases for tool commands; if UX needs a friendlier name,
   treat it as a display label only.
 - **Teammates** use either `kebab-case` (hyphen-separated) or an “internet name” (dot-separated).
 - This is a convention for docs/UI/readability only; do not enforce it via validation or other
@@ -130,32 +130,32 @@ may not exist during bootstrap. A dedicated `team-mgmt` toolset:
 - Makes it easy to grant _just_ team management capabilities to an ad-hoc agent without full rtws
   access.
 
-## `@team_mgmt_manual`
+## `!!@team_mgmt_manual`
 
 We need a single in-chat manual tool so the team manager can reliably self-serve guidance without
 reading source code.
 
 ### Command shape
 
-- `@team_mgmt_manual` → show a short index (topics).
-- `@team_mgmt_manual !topics` → list topics.
-- `@team_mgmt_manual !llm` → how to manage `.minds/llm.yaml` (+ templates).
-- `@team_mgmt_manual !llm !builtin-defaults` → show builtin providers/models (from defaults).
-- `@team_mgmt_manual !mcp` → how to manage `.minds/mcp.yaml` (+ templates).
-- `@team_mgmt_manual !mcp !transports` → stdio vs `streamable_http`, env/headers wiring.
-- `@team_mgmt_manual !mcp !tools` → whitelist/blacklist + naming transforms + collision rules.
-- `@team_mgmt_manual !mcp !troubleshooting` → common MCP failure modes and how to recover.
-- `@team_mgmt_manual !team` → how to manage `.minds/team.yaml` (+ templates).
-- `@team_mgmt_manual !team !member-properties` → list supported member fields and meanings.
-- `@team_mgmt_manual !minds` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
-- `@team_mgmt_manual !permissions` → how `read_dirs`/`write_dirs` and deny-lists work.
-- `@team_mgmt_manual !troubleshooting` → common failure modes and how to recover.
+- `!!@team_mgmt_manual` → show a short index (topics).
+- `!!@team_mgmt_manual !topics` → list topics.
+- `!!@team_mgmt_manual !llm` → how to manage `.minds/llm.yaml` (+ templates).
+- `!!@team_mgmt_manual !llm !builtin-defaults` → show builtin providers/models (from defaults).
+- `!!@team_mgmt_manual !mcp` → how to manage `.minds/mcp.yaml` (+ templates).
+- `!!@team_mgmt_manual !mcp !transports` → stdio vs `streamable_http`, env/headers wiring.
+- `!!@team_mgmt_manual !mcp !tools` → whitelist/blacklist + naming transforms + collision rules.
+- `!!@team_mgmt_manual !mcp !troubleshooting` → common MCP failure modes and how to recover.
+- `!!@team_mgmt_manual !team` → how to manage `.minds/team.yaml` (+ templates).
+- `!!@team_mgmt_manual !team !member-properties` → list supported member fields and meanings.
+- `!!@team_mgmt_manual !minds` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
+- `!!@team_mgmt_manual !permissions` → how `read_dirs`/`write_dirs` and deny-lists work.
+- `!!@team_mgmt_manual !troubleshooting` → common failure modes and how to recover.
 
 The manual should accept **multiple** `!topic` arguments (a simple topic “path”); the tool should
 select the most specific match and fall back to the nearest parent when needed.
 
-If UX wants a friendlier label than `@team_mgmt_manual`, treat that as presentation-only; the
-canonical command remains `@team_mgmt_manual`.
+If UX wants a friendlier label than `!!@team_mgmt_manual`, treat that as presentation-only; the
+canonical command remains `!!@team_mgmt_manual`.
 
 ## Manual Coverage Requirements (legacy coverage)
 
@@ -196,12 +196,12 @@ This keeps the manual accurate when the framework changes, and avoids documentat
 
 Recommended sources by topic:
 
-- `@team_mgmt_manual !llm !builtin-defaults`
+- `!!@team_mgmt_manual !llm !builtin-defaults`
   - Load from the same installation resource the runtime uses for defaults:
     `dominds/main/llm/defaults.yaml` (via `__dirname` resolution in the backend build output).
   - Prefer reusing `LlmConfig.load()` and formatting its merged view, or adding a helper that returns
     both “defaults-only” and “merged” provider maps.
-- `@team_mgmt_manual !toolsets` (if added)
+- `!!@team_mgmt_manual !toolsets` (if added)
   - Load from the in-memory registries at runtime (`listToolsets()` / `listTools()` in
     `dominds/main/tools/registry.ts`), rather than maintaining a separate list.
 

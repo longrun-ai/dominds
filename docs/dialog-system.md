@@ -42,7 +42,7 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `@clear_mind` operations**. The actual question content is stored in the dialog's conversation messages where `@human` was called.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `!!@clear_mind` operations**. The actual question content is stored in the dialog's conversation messages where the `@human` call was recorded (invoked via `!!@human` / `!!@ask_human`).
 
 ### Subdialog Index (subdlg.yaml)
 
@@ -127,18 +127,18 @@ This section documents the three distinct types of teammate calls in the Dominds
 
 ```mermaid
 flowchart TD
-  M[LLM emits @mention] --> Q{Is this a subdialog calling its direct parent?}
-  Q -- yes --> A[TYPE A: Supdialog call<br/>Primary: @super (NO !topic)<br/>Fallback: @&lt;supdialogAgentId&gt; (NO !topic)]
+  M[LLM emits !!@mention] --> Q{Is this a subdialog calling its direct parent?}
+  Q -- yes --> A[TYPE A: Supdialog call<br/>Primary: !!@super (NO !topic)<br/>Fallback: !!@&lt;supdialogAgentId&gt; (NO !topic)]
   Q -- no --> T{Is !topic present?}
-  T -- yes --> B[TYPE B: Registered subdialog call<br/>@agentId !topic topicId]
-  T -- no --> C[TYPE C: Transient subdialog call<br/>@agentId]
+  T -- yes --> B[TYPE B: Registered subdialog call<br/>!!@agentId !topic topicId]
+  T -- no --> C[TYPE C: Transient subdialog call<br/>!!@agentId]
 ```
 
 ### TYPE A: Supdialog Call
 
-**Primary syntax**: `@super` (NO `!topic`) — `@super !topic ...` is a **syntax error**
+**Primary syntax**: `!!@super` (NO `!topic`) — `!!@super !topic ...` is a **syntax error**
 
-**Tolerated fallback**: `@<supdialogAgentId>` (NO `!topic`)
+**Tolerated fallback**: `!!@<supdialogAgentId>` (NO `!topic`)
 
 **Behavior**:
 
@@ -152,9 +152,9 @@ flowchart TD
 - Uses `subdialog.supdialog` reference (no registry lookup)
 - No registration - supdialog relationship is inherent
 - Supdialog is always the direct parent in the hierarchy
-- `@super` is the **canonical** Type A syntax: it always resolves to the direct parent, even if the parent's `agentId`
+- `!!@super` is the **canonical** Type A syntax: it always resolves to the direct parent, even if the parent's `agentId`
   is identical to the subdialog's `agentId` (common for Fresh Boots Reasoning self-subdialogs).
-- The explicit `@<supdialogAgentId>` form is accepted as a semantic fallback for backwards compatibility, but is more
+- The explicit `!!@<supdialogAgentId>` form is accepted as a semantic fallback for backwards compatibility, but is more
   error-prone in FBR/self-subdialog cases.
 
 **Example**:
@@ -163,7 +163,7 @@ flowchart TD
 Current dialog: sub-001 (agentId: "backend-dev")
 Parent supdialog: "orchestrator" (agentId)
 
-LLM emits: @orchestrator How should I handle the database migration?
+LLM emits: !!@orchestrator How should I handle the database migration?
 
 Result:
 - sub-001 suspends
@@ -174,15 +174,15 @@ Result:
 
 ### TYPE B: Registered Subdialog Call
 
-**Syntax**: `@<anyAgentId> !topic <topic-id>` (note the space before `!topic`)
+**Syntax**: `!!@<anyAgentId> !topic <topic-id>` (note the space before `!topic`)
 
-**Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `@self !topic <topic-id>`
+**Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `!!@self !topic <topic-id>`
 
-- `@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
+- `!!@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
 - This is an **unambiguous** syntax for self-calls and helps avoid accidental `@teammate`→`@teammate` self-calls caused by
   echoing/quoting prior call headlines.
-- **FBR itself should be common**, but the `!topic`-addressed variant should be rare. Prefer `@self` (TYPE C, transient)
-  for most FBR usage. Use `@self !topic ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
+- **FBR itself should be common**, but the `!topic`-addressed variant should be rare. Prefer `!!@self` (TYPE C, transient)
+  for most FBR usage. Use `!!@self !topic ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
   for a multi-step sub-problem.
 
 **Topic ID Schema**: `<topic-id>` uses the same identifier schema as `<mention-id>`:
@@ -230,7 +230,7 @@ This makes Type B subdialogs reusable across multiple call sites without losing 
 Root dialog: orchestrator
 Registry: {} (empty)
 
-LLM emits: @researcher !topic market-analysis
+LLM emits: !!@researcher !topic market-analysis
 
 Result (first call):
 - Registry lookup: no "researcher!market-analysis" exists
@@ -241,7 +241,7 @@ Result (first call):
 - Response flows back to orchestrator
 - orchestrator resumes
 
-LLM emits again: @researcher !topic market-analysis
+LLM emits again: !!@researcher !topic market-analysis
 
 Result (second call):
 - Registry lookup: "researcher!market-analysis" exists
@@ -254,11 +254,11 @@ Result (second call):
 
 ### TYPE C: Transient Subdialog Call
 
-**Syntax**: `@<nonSupdialogAgentId>` (NO `!topic`)
+**Syntax**: `!!@<nonSupdialogAgentId>` (NO `!topic`)
 
-**Fresh Boots Reasoning (FBR) self-call syntax (default; most common)**: `@self`
+**Fresh Boots Reasoning (FBR) self-call syntax (default; most common)**: `!!@self`
 
-- `@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** with the same persona/config.
+- `!!@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** with the same persona/config.
 - Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
 
 **Behavior**:
@@ -304,7 +304,7 @@ Result:
 
 | Aspect                     | TYPE A: Supdialog Call            | TYPE B: Registered Subdialog      | TYPE C: Transient Subdialog       |
 | -------------------------- | --------------------------------- | --------------------------------- | --------------------------------- |
-| **Syntax**                 | `@<supdialogAgentId>`             | `@<anyAgentId> !topic <id>`       | `@<nonSupdialogAgentId>`          |
+| **Syntax**                 | `!!@<supdialogAgentId>`           | `!!@<anyAgentId> !topic <id>`     | `!!@<nonSupdialogAgentId>`        |
 | **!topic**                 | Not allowed                       | Required                          | Not allowed                       |
 | **Registry Lookup**        | No (uses `subdialog.supdialog`)   | Yes (`agentId!topicId`)           | No (never registered)             |
 | **Resumption**             | No (supdialog not a subdialog)    | Yes (lookup finds existing)       | No (always new)                   |
@@ -322,21 +322,21 @@ The Dominds dialog system is built on four interconnected core mechanisms that w
 ```mermaid
 flowchart TD
   H[Dialog hierarchy<br/>(root ↔ subdialogs)] <--> S[Subdialog supply<br/>(responses, pending list, registry)]
-  H --> Q[Q4H (@human)<br/>(q4h.yaml index)]
+  H --> Q[Q4H (!!@human)<br/>(q4h.yaml index)]
   S --> Q
 
   Q --> UI[Frontend Q4H panel<br/>(questions_count_update)]
   UI --> Ans[User answers Q4H<br/>(drive_dialog_by_user_answer)]
   Ans --> Q
 
-  Clarity[@clear_mind] -->|clears| Q
+  Clarity[!!@clear_mind] -->|clears| Q
   Clarity -->|preserves| R[Reminders]
   Clarity -->|preserves| Reg[Registry (root only)]
 ```
 
 ### Key Design Principles
 
-1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `@human` call was made. They do not survive `@clear_mind`.
+1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `@human` call was recorded (invoked via `!!@human` / `!!@ask_human`). They do not survive `!!@clear_mind`.
 
 2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
 
@@ -349,7 +349,7 @@ flowchart TD
 6. **Subdialog Registry**: Registered subdialogs (TYPE B calls) are tracked in a root-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on root load.
 
 7. **State Preservation Contract**:
-   - `@clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
+   - `!!@clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
    - Subdialog completion: Writes response to supdialog, removes from pending list (registry unchanged)
    - Q4H answer: Clears the answered question from index, continues the dialog
 
@@ -367,7 +367,8 @@ Q4H (Questions for Human) is the mechanism by which dialogs can suspend executio
 /**
  * HumanQuestion - index entry persisted in q4h.yaml per dialog
  * NOTE: This is an INDEX, not the source of truth. The actual question
- * content is in the dialog's conversation messages where @human was called.
+ * content is in the dialog's conversation messages where the @human call was recorded
+ * (invoked via !!@human / !!@ask_human).
  */
 interface HumanQuestion {
   readonly id: string; // Unique identifier (UUID) - matches message ID
@@ -379,7 +380,7 @@ interface HumanQuestion {
 
 **Storage Location**: `<dialog-path>/q4h.yaml` - serves as an index for quick lookup
 
-**Source of Truth**: The actual `@human` call is stored in the dialog's conversation messages (round JSONL files), where the question was asked.
+**Source of Truth**: The actual `!!@human` / `!!@ask_human` call is stored in the dialog's conversation messages (round JSONL files), where the question was asked.
 
 ### Q4H Mechanism Flow
 
@@ -403,7 +404,7 @@ sequenceDiagram
 
 ### When Does a Dialog Raise Q4H?
 
-Q4H is raised when the `@human` teammate call is invoked by ANY dialog (root or subdialog) on its own right:
+Q4H is raised when the `!!@human` / `!!@ask_human` teammate call is invoked by ANY dialog (root or subdialog) on its own right:
 
 ```typescript
 // From main/llm/driver.ts, collectAndExecuteTextingCalls function
@@ -415,21 +416,21 @@ if (firstMention === 'ask_human' || firstMention === 'human') {
 **Invocation Pattern**:
 
 ```
-@human: <question headline>
+!!@human <question headline>
 <question body content>
 ```
 
 Or:
 
 ```
-@human: <question headline>
+!!@ask_human <question headline>
 <question body content>
 ```
 
 ### Q4H Recording Process
 
 ```typescript
-// When @human is detected as a teammate call
+// When !!@human / !!@ask_human is detected as a teammate call
 async function recordQuestionForHuman(
   dlg: Dialog,
   headLine: string,
@@ -547,7 +548,7 @@ sequenceDiagram
   Sup->>Sub: creates subdialog (Type B or C)
   Note over Sup: Supdialog is blocked on pending subdialogs
 
-  Sub->>WS: emits @human question
+  Sub->>WS: emits !!@human question
   WS-->>UI: questions_count_update
   Note over Sub: Subdialog cannot proceed until answered
 
@@ -559,11 +560,11 @@ sequenceDiagram
 
 ### Q4H and Mental Clarity Operations
 
-**Critical Design Decision**: Q4H questions are **CLEARED** by `@clear_mind` operations.
+**Critical Design Decision**: Q4H questions are **CLEARED** by `!!@clear_mind` operations.
 
 ```mermaid
 flowchart LR
-  Before[Before clarity<br/>Messages present<br/>Reminders present<br/>Q4H present] --> Op[@clear_mind]
+  Before[Before clarity<br/>Messages present<br/>Reminders present<br/>Q4H present] --> Op[!!@clear_mind]
   Op --> After[After clarity<br/>Messages cleared<br/>Reminders preserved<br/>Q4H cleared]
 ```
 
@@ -652,7 +653,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ## Mental Clarity Tools
 
-**Implementation**: `@clear_mind` delegates to `Dialog.startNewRound(newRoundPrompt)`, which:
+**Implementation**: `!!@clear_mind` delegates to `Dialog.startNewRound(newRoundPrompt)`, which:
 
 1. Clears all chat messages
 2. Clears all Q4H questions
@@ -660,14 +661,14 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 4. Updates the dialog's timestamp
 5. Queues `newRoundPrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next round
 
-### @clear_mind
+### !!@clear_mind
 
 **Purpose**: Achieve mental clarity by clearing conversational noise while preserving essential context.
 
 **Texting Call Syntax**:
 
 ```
-@clear_mind
+!!@clear_mind
 <reminder-content (optional)>
 ```
 
@@ -686,10 +687,10 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ```
 BEFORE (LLM output):
-@clear_mind
+!!@clear_mind
 The conversation has too much debug output
 
-AFTER @clear_mind:
+AFTER !!@clear_mind:
 [new round starts]
 [msg1: user, "This is round #<n> of the dialog, you just cleared your minds and please proceed with the task."]  <-- newRoundPrompt
 ```
@@ -704,7 +705,7 @@ AFTER @clear_mind:
 **Implementation Notes**:
 
 - Operation is scoped to the current dialog only
-- Subdialogs are not affected by parent's @clear_mind
+- Subdialogs are not affected by parent's !!@clear_mind
 - Task document remains unchanged and accessible
 - Reminders provide continuity bridge across the clarity operation
 - **Q4H is cleared** - user can ask new questions if needed
@@ -712,21 +713,21 @@ AFTER @clear_mind:
 - Tools are `backfeeding: false`; the new-round prompt is applied by the driver in the follow-up coroutine
 - Internally calls `Dialog.startNewRound(newRoundPrompt)` for all clearing, prompt queueing, and round management
 
-### @change_mind
+### !!@change_mind
 
 **Purpose**: Update the shared task document content that all dialogs in the dialog tree reference.
 
 **Texting Call Syntax**:
 
 ```
-@change_mind
+!!@change_mind
 <new-task-doc-content>
 ```
 
 For encapsulated task packages (`*.tsk/`), a target selector is required:
 
 ```
-@change_mind !goals
+!!@change_mind !goals
 <new-goals-content>
 ```
 
@@ -741,11 +742,11 @@ Supported selectors:
 - Updates the workspace task document content (exactly one section file in a `*.tsk/` package)
 - **Does not change the task document path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
-- **Does not start a new dialog round.** If a round reset is desired, use `@clear_mind` separately.
+- **Does not start a new dialog round.** If a round reset is desired, use `!!@clear_mind` separately.
 - Does not clear messages, reminders, Q4H, or registry by itself
 - Affects all participant agents (main and subdialogs) referencing the same task document
 
-**Message Flow**: `@change_mind` is an in-place task-doc update; no new-round prompt is generated.
+**Message Flow**: `!!@change_mind` is an in-place task-doc update; no new-round prompt is generated.
 
 **Use Cases**:
 
@@ -762,22 +763,22 @@ Supported selectors:
 - Multiple dialog trees working on the same task document receive the updates simultaneously
 - Hierarchical relationships and contexts are preserved
 - The task document file persists beyond individual conversations and team changes
-- `dlg.taskDocPath` is readonly after dialog creation; @change_mind only overwrites the file contents at that path
+- `dlg.taskDocPath` is readonly after dialog creation; !!@change_mind only overwrites the file contents at that path
 - For `*.tsk/` packages, the task doc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`
 
 ---
 
 ## Reminder Management
 
-**Tools**: @add_reminder, @update_reminder, @delete_reminder
+**Tools**: !!@add_reminder, !!@update_reminder, !!@delete_reminder
 
 **Purpose**: Manage dialog-scoped working memory that persists across conversation cleanup.
 
 **Behavior**:
 
 - Scoped to individual dialogs
-- **Survive @clear_mind operations**
-- **Survive @change_mind operations**
+- **Survive !!@clear_mind operations**
+- **Survive !!@change_mind operations**
 - Provide guidance for refreshed mental focus
 - Support structured capture of insights, decisions, and next steps
 
@@ -823,7 +824,7 @@ researcher!market-analysis:
 
 ```mermaid
 flowchart TD
-  Call[TYPE B call: @agentId !topic topicId] --> Key[Compute key: agentId!topicId]
+  Call[TYPE B call: !!@agentId !topic topicId] --> Key[Compute key: agentId!topicId]
   Key --> Lookup{Registry hit?}
   Lookup -- yes --> Resume[Restore + drive existing subdialog]
   Lookup -- no --> Create[Create + register + drive new subdialog]
@@ -841,7 +842,7 @@ flowchart TD
   - Owns the TYPE B subdialog registry (`registry.yaml`)
   - Creates/registers/looks up registered subdialogs (`agentId!topicId`)
 - `SubDialog`
-  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`@super`)
+  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`!!@super`)
   - Cannot access or mutate the root registry (by design)
 
 **Mutex Semantics**:
@@ -906,7 +907,7 @@ For subdialogs needing to communicate with the main dialog (root dialog), see th
 The persistence layer handles:
 
 - **Dialog Storage**: `dominds/main/persistence.ts`
-- **Q4H Storage**: `q4h.yaml` per dialog (cleared by @clear_mind)
+- **Q4H Storage**: `q4h.yaml` per dialog (cleared by !!@clear_mind)
 - **Reminder Storage**: `reminders.json` per dialog
 - **Event Persistence**: Round-based JSONL files
 - **Registry Storage**: `registry.yaml` per root dialog
@@ -1022,7 +1023,7 @@ interface RegistryMethods {
 
 **Memory Updates**: Team and agent memories are updated asynchronously and eventually consistent across all dialogs.
 
-**Q4H Persistence**: Q4H questions are persisted when created and cleared atomically when answered or when @clear_mind is called.
+**Q4H Persistence**: Q4H questions are persisted when created and cleared atomically when answered or when !!@clear_mind is called.
 
 **Registry Persistence**: Registry is persisted after each modification and restored on root dialog load.
 
@@ -1114,7 +1115,7 @@ flowchart TD
 These diagrams focus on **control flow** and avoid box-art alignment so they stay readable even when
 renderers wrap long lines.
 
-#### TYPE A: Supdialog Call (`@super`, no `!topic`)
+#### TYPE A: Supdialog Call (`!!@super`, no `!topic`)
 
 ```mermaid
 sequenceDiagram
@@ -1122,13 +1123,13 @@ sequenceDiagram
   participant Driver as Backend driver
   participant Sup as Supdialog (direct parent)
 
-  Sub->>Driver: emits `@super` + question
+  Sub->>Driver: emits `!!@super` + question
   Driver->>Sup: drive supdialog to answer
   Sup-->>Driver: response text
   Driver-->>Sub: resume subdialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Call (`@agentId !topic topicId`, or `@self !topic topicId`)
+#### TYPE B: Registered Subdialog Call (`!!@agentId !topic topicId`, or `!!@self !topic topicId`)
 
 ```mermaid
 sequenceDiagram
@@ -1137,7 +1138,7 @@ sequenceDiagram
   participant Reg as Root subdialog registry
   participant Sub as Registered subdialog
 
-  Caller->>Driver: emits `@agentId !topic topicId`
+  Caller->>Driver: emits `!!@agentId !topic topicId`
   Driver->>Reg: lookup `agentId!topicId`
   alt registry hit
     Reg-->>Driver: existing subdialog selfId
@@ -1153,7 +1154,7 @@ sequenceDiagram
   end
 ```
 
-#### TYPE C: Transient Subdialog Call (`@agentId`, or `@self`)
+#### TYPE C: Transient Subdialog Call (`!!@agentId`, or `!!@self`)
 
 ```mermaid
 sequenceDiagram
@@ -1161,7 +1162,7 @@ sequenceDiagram
   participant Driver as Backend driver
   participant Sub as Transient subdialog
 
-  Caller->>Driver: emits `@agentId`
+  Caller->>Driver: emits `!!@agentId`
   Driver->>Sub: create (NOT registered)
   Driver->>Sub: drive
   Sub-->>Driver: final response
@@ -1172,12 +1173,12 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[@human call emitted] --> B[Append HumanQuestion entry to q4h.yaml]
+  A[!!@human call emitted] --> B[Append HumanQuestion entry to q4h.yaml]
   B --> C[Emit questions_count_update]
   C --> D[UI shows Q4H badge / list]
   D --> E{How is it cleared?}
   E -->|User answers (drive_dialog_by_user_answer)| F[Remove question from q4h.yaml\\n(delete file if empty)]
-  E -->|@clear_mind| G[Clear q4h.yaml (all questions)]
+  E -->|!!@clear_mind| G[Clear q4h.yaml (all questions)]
   F --> H[Dialog may become driveable again]
   G --> H
 ```
@@ -1197,7 +1198,7 @@ sequenceDiagram
 
   Sup->>Sub: create subdialog (Type B or C)
   Note over Sup,Sub: Supdialog becomes blocked on pending subdialogs
-  Sub->>WS: emits @human question (Q4H)
+  Sub->>WS: emits !!@human question (Q4H)
   WS-->>UI: questions_count_update (global)
 
   Note over Sub: Subdialog cannot proceed until answered
@@ -1226,7 +1227,7 @@ sequenceDiagram
   participant Store as Persistence (q4h.yaml)
   participant UI as Frontend
 
-  User->>Main: @human question
+  User->>Main: !!@human question
   Main->>Store: recordQuestionForHuman()
   Main-->>UI: questions_count_update
   Main-->>Main: suspend root drive loop
@@ -1286,14 +1287,14 @@ sequenceDiagram
 
 ### 4. Clarity Operations Preserve Registry
 
-| State Element | Effect of `@clear_mind`                     |
+| State Element | Effect of `!!@clear_mind`                   |
 | ------------- | ------------------------------------------- |
 | Messages      | Cleared (new round / fresh message context) |
 | Q4H           | Cleared                                     |
 | Reminders     | Preserved                                   |
 | Registry      | Preserved                                   |
 
-`@change_mind` is not a clarity operation; it updates task document content in-place and does not clear messages/Q4H/reminders/registry.
+`!!@change_mind` is not a clarity operation; it updates task document content in-place and does not clear messages/Q4H/reminders/registry.
 
 ---
 
@@ -1336,18 +1337,18 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 | Mechanism              | Purpose                       | Survives Clarity | Cleared By    |
 | ---------------------- | ----------------------------- | ---------------- | ------------- |
 | **Dialog Hierarchy**   | Parent-child task delegation  | N/A              | N/A           |
-| **Q4H**                | Human input requests          | No               | @clear_mind   |
+| **Q4H**                | Human input requests          | No               | !!@clear_mind |
 | **Mental Clarity**     | Context reset tools           | N/A              | N/A           |
 | **Reminders**          | Persistent working memory     | Yes              | N/A           |
 | **Subdialog Registry** | Registered subdialog tracking | Yes              | Never deleted |
 
 ### Three Types of Teammate Calls
 
-| Type       | Syntax                   | Registry                | Use Case                  |
-| ---------- | ------------------------ | ----------------------- | ------------------------- |
-| **TYPE A** | `@<supdialogAgentId>`    | No                      | Clarification from parent |
-| **TYPE B** | `@<agentId> !topic <id>` | Yes (lookup + register) | Resume persistent subtask |
-| **TYPE C** | `@<nonSupdialogAgentId>` | No                      | One-off independent task  |
+| Type       | Syntax                     | Registry                | Use Case                  |
+| ---------- | -------------------------- | ----------------------- | ------------------------- |
+| **TYPE A** | `!!@<supdialogAgentId>`    | No                      | Clarification from parent |
+| **TYPE B** | `!!@<agentId> !topic <id>` | Yes (lookup + register) | Resume persistent subtask |
+| **TYPE C** | `!!@<nonSupdialogAgentId>` | No                      | One-off independent task  |
 
 ### Class Responsibility
 

@@ -772,51 +772,51 @@ async function runAllTests() {
   // Test 1: Basic single mention parsing
   await runTest(
     'Basic single mention',
-    '@tool1 some args',
-    buildBasicCallEvents('tool1', '@tool1 some args', '', '@tool1 some args'),
+    '!!@tool1 some args',
+    buildBasicCallEvents('tool1', '@tool1 some args', '', '!!@tool1 some args'),
   );
 
   // Test 2: Multiple mentions in headline
   await runTest(
     'Multiple mentions in headline',
-    '@user1 @user2 hello there',
-    buildBasicCallEvents('user1', '@user1 @user2 hello there', '', '@user1 @user2 hello there'),
+    '!!@user1 @user2 hello there',
+    buildBasicCallEvents('user1', '@user1 @user2 hello there', '', '!!@user1 @user2 hello there'),
   );
 
   // Test 3: Tool call with body
   await runTest(
     'Tool call with body',
-    `@tool1 command
+    `!!@tool1 command
 This is the body
 with multiple lines`,
     buildBasicCallEvents(
       'tool1',
       '@tool1 command',
       'This is the body\nwith multiple lines',
-      `@tool1 command\nThis is the body\nwith multiple lines`,
+      `!!@tool1 command\nThis is the body\nwith multiple lines`,
     ),
   );
 
   // Test 4: Multiple tool calls
   await runTest(
     'Multiple tool calls',
-    `@tool1 first command
+    `!!@tool1 first command
 First body content
 
-@tool2 second command
+!!@tool2 second command
 Second body content`,
     [
       ...buildBasicCallEvents(
         'tool1',
         '@tool1 first command',
         'First body content\n\n',
-        `@tool1 first command\nFirst body content\n\n@tool2 second command\nSecond body content`,
+        `!!@tool1 first command\nFirst body content\n\n!!@tool2 second command\nSecond body content`,
       ),
       ...buildBasicCallEvents(
         'tool2',
         '@tool2 second command',
         'Second body content',
-        `@tool1 first command\nFirst body content\n\n@tool2 second command\nSecond body content`,
+        `!!@tool1 first command\nFirst body content\n\n!!@tool2 second command\nSecond body content`,
       ),
     ],
   );
@@ -824,25 +824,25 @@ Second body content`,
   // Test 4b: Multiple tool calls without @/ even if body contains ``` later
   await runTest(
     'Multiple tool calls with ``` in body (no @/)',
-    `@tool1 cmd
+    `!!@tool1 cmd
 first line
 \`\`\`js
 console.log(1)
 \`\`\`
-@tool2 cmd2
+!!@tool2 cmd2
 body2`,
     [
       ...buildBasicCallEvents(
         'tool1',
         '@tool1 cmd',
         'first line\n```js\nconsole.log(1)\n```\n',
-        `@tool1 cmd\nfirst line\n\`\`\`js\nconsole.log(1)\n\`\`\`\n@tool2 cmd2\nbody2`,
+        `!!@tool1 cmd\nfirst line\n\`\`\`js\nconsole.log(1)\n\`\`\`\n!!@tool2 cmd2\nbody2`,
       ),
       ...buildBasicCallEvents(
         'tool2',
         '@tool2 cmd2',
         'body2',
-        `@tool1 cmd\nfirst line\n\`\`\`js\nconsole.log(1)\n\`\`\`\n@tool2 cmd2\nbody2`,
+        `!!@tool1 cmd\nfirst line\n\`\`\`js\nconsole.log(1)\n\`\`\`\n!!@tool2 cmd2\nbody2`,
       ),
     ],
   );
@@ -860,20 +860,20 @@ body2`,
   // Test 6: Special @/ syntax
   await runTest(
     'Special @/ syntax',
-    `@tool1 command
+    `!!@tool1 command
 This is body content
-@/
-This text after @/`,
+!!@/
+This text after !!@/`,
     [
       ...buildBasicCallEvents(
         'tool1',
         '@tool1 command',
         'This is body content\n',
-        `@tool1 command\nThis is body content\n@/\nThis text after @/`,
+        `!!@tool1 command\nThis is body content\n!!@/\nThis text after !!@/`,
       ),
       ...buildFreeTextEvents(
-        '\nThis text after @/',
-        `@tool1 command\nThis is body content\n@/\nThis text after @/`,
+        '\nThis text after !!@/',
+        `!!@tool1 command\nThis is body content\n!!@/\nThis text after !!@/`,
       ),
     ],
   );
@@ -881,24 +881,34 @@ This text after @/`,
   // Test 7: Multi-line headline
   await runTest(
     'Multi-line headline',
-    `@user1 first line\n@user2 second line\nThis is the body`,
+    `!!@user1 first line\n@user2 second line\nThis is the body`,
     buildBasicCallEvents(
       'user1',
       '@user1 first line\n@user2 second line',
       'This is the body',
-      `@user1 first line\n@user2 second line\nThis is the body`,
+      `!!@user1 first line\n@user2 second line\nThis is the body`,
     ),
   );
 
   // Test 8: Empty call with null body
   await runTest(
     'Empty call with null body',
-    `@tool1 command
+    `!!@tool1 command
 
-@tool2 another`,
+!!@tool2 another`,
     [
-      ...buildBasicCallEvents('tool1', '@tool1 command', '', `@tool1 command\n\n@tool2 another`),
-      ...buildBasicCallEvents('tool2', '@tool2 another', '', `@tool1 command\n\n@tool2 another`),
+      ...buildBasicCallEvents(
+        'tool1',
+        '@tool1 command',
+        '',
+        `!!@tool1 command\n\n!!@tool2 another`,
+      ),
+      ...buildBasicCallEvents(
+        'tool2',
+        '@tool2 another',
+        '',
+        `!!@tool1 command\n\n!!@tool2 another`,
+      ),
     ],
   );
 
@@ -935,7 +945,7 @@ Free text after`,
   // Test 10: Qualified names with dots
   await runTest(
     'Qualified names with dots',
-    `@namespace.tool1 command
+    `!!@namespace.tool1 command
 This is the body`,
     [
       { type: 'callStart', data: { firstMention: 'namespace.tool1' } },
@@ -954,7 +964,7 @@ This is the body`,
   // Test 11: Backtick escaping for whole call body
   await runTest(
     'Backtick escaping for whole call body',
-    `@tool1 code example
+    `!!@tool1 code example
 \`\`\`
 @this_should_be_ignored
 function test() {
@@ -1020,53 +1030,53 @@ End text`,
     'Multiple @add_reminder calls',
     `Setting up reminders.
 
-@add_reminder
+!!@add_reminder
 Goals Tracking - Monitor project objectives and outcomes
-@/
+!!@/
 
-@add_reminder
+!!@add_reminder
 Timeline Management - Track deadlines and milestones
-@/
+!!@/
 
-@add_reminder
+!!@add_reminder
 Budget Oversight - Monitor financial constraints and expenditures
-@/
+!!@/
 
 Done.`,
     [
       ...buildFreeTextEvents(
         'Setting up reminders.\n\n',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
       ...buildBasicCallEvents(
         'add_reminder',
         '@add_reminder',
         'Goals Tracking - Monitor project objectives and outcomes\n',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
       ...buildFreeTextEvents(
         '\n\n',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
       ...buildBasicCallEvents(
         'add_reminder',
         '@add_reminder',
         'Timeline Management - Track deadlines and milestones\n',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
       ...buildFreeTextEvents(
         '\n\n',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
       ...buildBasicCallEvents(
         'add_reminder',
         '@add_reminder',
         'Budget Oversight - Monitor financial constraints and expenditures\n',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
       ...buildFreeTextEvents(
         '\n\nDone.',
-        `Setting up reminders.\n\n@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n@/\n\n@add_reminder\nTimeline Management - Track deadlines and milestones\n@/\n\n@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n@/\n\nDone.`,
+        `Setting up reminders.\n\n!!@add_reminder\nGoals Tracking - Monitor project objectives and outcomes\n!!@/\n\n!!@add_reminder\nTimeline Management - Track deadlines and milestones\n!!@/\n\n!!@add_reminder\nBudget Oversight - Monitor financial constraints and expenditures\n!!@/\n\nDone.`,
       ),
     ],
   );
@@ -1099,27 +1109,57 @@ Would you like me to reach out to \`@fuxi\` instead?`,
     ),
   );
 
+  // Test 15b: Legacy @ headline should NOT start a call (must start with !!@)
+  await runTest(
+    'Legacy @ headline should remain free text',
+    '@tool1 command\nBody content',
+    buildFreeTextEvents('@tool1 command\nBody content', '@tool1 command\nBody content'),
+  );
+
+  // Test 15c: Indented !!@ should NOT start a call (must start at column 0)
+  await runTest(
+    'Indented !!@ headline should remain free text',
+    '  !!@tool1 command\nBody content',
+    buildFreeTextEvents('  !!@tool1 command\nBody content', '  !!@tool1 command\nBody content'),
+  );
+
+  // Test 15d: @/ should be literal text in call bodies (terminator is !!@/ only)
+  const legacyTerminatorInBodyInput = `!!@tool1 command
+Line 1
+@/
+Line 2`;
+  await runTest(
+    '@/ should not terminate calls',
+    legacyTerminatorInBodyInput,
+    buildBasicCallEvents(
+      'tool1',
+      '@tool1 command',
+      'Line 1\n@/\nLine 2',
+      legacyTerminatorInBodyInput,
+    ),
+  );
+
   // Test 16: Mention ending with dot should be parsed (trailing dot ignored)
   await runTest(
     'Trailing dot mention should be parsed',
-    '@pangu.\nNext line.',
-    buildBasicCallEvents('pangu', '@pangu.', 'Next line.', '@pangu.\nNext line.'),
+    '!!@pangu.\nNext line.',
+    buildBasicCallEvents('pangu', '@pangu.', 'Next line.', '!!@pangu.\nNext line.'),
   );
 
   // Test 17: change_mind blocks + @human + tool call
-  const changeMindBlocksInput = `@change_mind !goals
+  const changeMindBlocksInput = `!!@change_mind !goals
 - 扫描 \`dominds/\`（推测为 \`.minds/\`）目录下已开发代码与文档，提炼为 DevOps 团队创建的参考依据
 - 若目录名有误，向用户确认正确路径
-@change_mind !constraints
+!!@change_mind !constraints
 - 不使用通用文件工具操作 \`*.tsk/\`
 - 仅能在 \`.minds/\` 下读写与管理团队相关内容
 - 需要澄清 \`dominds/\` 是否等同于 \`.minds/\`
-@change_mind !progress
+!!@change_mind !progress
 - 已创建差遣牒三分段，待开始扫描目录
 
-@human 我将先扫描 \`.minds/\` 目录结构并读取相关文档。请确认你说的 \`dominds/\` 是否指 \`.minds/\`？如果不是，请给出准确路径。
+!!@human 我将先扫描 \`.minds/\` 目录结构并读取相关文档。请确认你说的 \`dominds/\` 是否指 \`.minds/\`？如果不是，请给出准确路径。
 
-@team_mgmt_list_dir`;
+!!@team_mgmt_list_dir`;
 
   await runTest('change_mind blocks then @human then tool', changeMindBlocksInput, [
     ...buildBasicCallEvents(
@@ -1150,17 +1190,17 @@ Would you like me to reach out to \`@fuxi\` instead?`,
   ]);
 
   // Test 18: change_mind blocks + @human (no trailing tool call)
-  const changeMindBlocksInputNoTool = `@change_mind !goals
+  const changeMindBlocksInputNoTool = `!!@change_mind !goals
 - 扫描 \`dominds/\` 目录下已开发的代码与文档，提炼为 DevOps 团队创建的参考依据
 - 若目录名有误，向用户确认正确路径
-@change_mind !constraints
+!!@change_mind !constraints
 - 不使用通用文件工具操作 \`*.tsk/\`
 - 仅能在 \`.minds/\` 下读写与管理团队相关内容
 - 需要澄清 \`dominds/\` 是否等同于 \`.minds/\`
-@change_mind !progress
+!!@change_mind !progress
 - 已记录用户需求，待确认 \`dominds/\` 的准确路径
 
-@human 我只能访问 \`.minds/\`。你说的 \`dominds/\` 是否等同于 \`.minds/\`？如果不是，请给出准确路径或允许我访问对应目录。`;
+!!@human 我只能访问 \`.minds/\`。你说的 \`dominds/\` 是否等同于 \`.minds/\`？如果不是，请给出准确路径或允许我访问对应目录。`;
 
   await runTest('change_mind blocks then @human (no tool)', changeMindBlocksInputNoTool, [
     ...buildBasicCallEvents(
@@ -1203,7 +1243,7 @@ Would you like me to reach out to \`@fuxi\` instead?`,
   );
   await runChunkInvarianceTest(
     'multi-line headline boundary',
-    '@u1 12345\n@u2 second line\nThis is the body',
+    '!!@u1 12345\n@u2 second line\nThis is the body',
     invarianceChunkSizes,
   );
 
@@ -1220,9 +1260,9 @@ Would you like me to reach out to \`@fuxi\` instead?`,
 \`\`\`javascript
 console.log("Hello");
 \`\`\`
-@tool1 cmd
+!!@tool1 cmd
 body
-@/
+!!@/
 Done.`,
     invarianceSeeds,
     16,

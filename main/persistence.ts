@@ -326,12 +326,12 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle TEXTING TOOL responses with callId for inline result display
    *
    * Call Types:
-   * - Texting Tool Call: @tool_name (e.g., @add_reminder, @list_files)
+   * - Texting Tool Call: !!@tool_name (e.g., !!@add_reminder, !!@list_files)
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation between call_start and response
    *   - Uses receiveToolResponse() + callId parameter
    *
-   * - Teammate Call: @agentName (e.g., @coder, @tester)
+   * - Teammate Call: !!@agentName (e.g., !!@coder, !!@tester)
    *   - Result displays in SEPARATE bubble (subdialog response)
    *   - Uses calleeDialogId for correlation
    *   - Uses receiveTeammateResponse() instead
@@ -384,12 +384,12 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle TEAMMATE CALL responses (separate bubble for @agentName calls)
    *
    * Call Types:
-   * - Texting Tool Call: @tool_name (e.g., @add_reminder)
+   * - Texting Tool Call: !!@tool_name (e.g., !!@add_reminder)
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation
    *   - Uses receiveToolResponse() instead
    *
-   * - Teammate Call: @agentName (e.g., @coder, @tester)
+   * - Teammate Call: !!@agentName (e.g., !!@coder, !!@tester)
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)
    *   - Uses this method (receiveTeammateResponse)

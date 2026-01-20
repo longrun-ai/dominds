@@ -9,7 +9,7 @@ export function noneText(language: LanguageCode): string {
 }
 
 export function noTextingToolsText(language: LanguageCode): string {
-  return language === 'zh' ? '没有可用的 texting 工具。' : 'No texting tools available.';
+  return language === 'zh' ? '没有可用的诉请工具。' : 'No texting tools available.';
 }
 
 export function noneRequiredFieldsText(language: LanguageCode): string {
@@ -25,9 +25,9 @@ export function funcToolUsageLabels(language: LanguageCode): {
 } {
   if (language === 'zh') {
     return {
-      toolLabel: 'Function Tool',
+      toolLabel: '函数工具',
       invocationLabel: '调用方式',
-      invocationBody: '原生 function-calling（严格 JSON 参数）',
+      invocationBody: '原生函数工具调用（严格 JSON 参数）',
       requiredLabel: '必填字段',
       parametersLabel: '参数',
     };
@@ -44,8 +44,8 @@ export function funcToolUsageLabels(language: LanguageCode): {
 
 export function funcToolRulesText(language: LanguageCode): string {
   return language === 'zh'
-    ? `\n- 对所有 function tools 一律使用原生 function-calling；不要尝试用 texting 标题（例如 \`@name\`）调用它们。\n- 参数必须是严格 JSON：与 schema 精确匹配，包含所有 required 字段，不允许额外字段。`
-    : `\n- Use native function-calling for all function tools listed; do not attempt texting headlines (e.g., \`@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
+    ? `\n- 对所有函数工具一律使用原生 function-calling；不要尝试用诉请标题（例如 \`!!@name\`）调用它们。\n- 参数必须是严格 JSON：与 schema 精确匹配，包含所有 required 字段，不允许额外字段。`
+    : `\n- Use native function-calling for all function tools listed; do not attempt texting headlines (e.g., \`!!@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
 }
 
 export function memoryPreambleLabels(language: LanguageCode): {

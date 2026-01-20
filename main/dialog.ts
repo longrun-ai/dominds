@@ -587,7 +587,7 @@ export abstract class Dialog {
 
   /**
    * Get intrinsic control tools available to this dialog's agent.
-   * Applies access control: @change_mind is only available to main dialog agents.
+   * Applies access control: !!@change_mind is only available to main dialog agents.
    */
   public getIntrinsicTools(): TextingTool[] {
     const baseTools: TextingTool[] = [
@@ -597,7 +597,7 @@ export abstract class Dialog {
       clearMindTool,
     ];
 
-    // @change_mind is only available to main dialog agents (not subdialogs)
+    // !!@change_mind is only available to main dialog agents (not subdialogs)
     if (!this.supdialog) {
       baseTools.push(changeMindTool);
     }
@@ -617,10 +617,10 @@ export abstract class Dialog {
 The key to effective AI assistance is maintaining clear focus on goals while filtering out conversational noise. When chat history becomes cluttered with repeated tool failures, debugging attempts, or tangential discussions, your attention gets fragmented. These tools help you regain clarity and redirect focus to productive work.
 
 **Dialog Reminders:**
-- @add_reminder: Capture important insights, decisions, or next steps that should persist beyond conversation cleanup
-- @update_reminder: Refine your understanding as situations evolve or new information emerges  
-- @delete_reminder: Remove completed or obsolete reminders to keep your focus sharp
-- @clear_mind: Achieve mental clarity by clearing conversational noise while preserving your reminders and task focus
+- !!@add_reminder: Capture important insights, decisions, or next steps that should persist beyond conversation cleanup
+- !!@update_reminder: Refine your understanding as situations evolve or new information emerges  
+- !!@delete_reminder: Remove completed or obsolete reminders to keep your focus sharp
+- !!@clear_mind: Achieve mental clarity by clearing conversational noise while preserving your reminders and task focus
 
 **Task Context Control:**`;
 
@@ -633,16 +633,16 @@ The key to effective AI assistance is maintaining clear focus on goals while fil
 
       // Subdialog restrictions
       instructions += `
-- @clear_mind: Restart this subdialog with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders and supdialog-call context.
-- @change_mind: **Not available in subdialogs.** If you need to change the overall task context or direction, communicate with the main dialog agent (@${rootDialog.agentId}) and ask them to use @change_mind instead.
+- !!@clear_mind: Restart this subdialog with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders and supdialog-call context.
+- !!@change_mind: **Not available in subdialogs.** If you need to change the overall task context or direction, communicate with the main dialog agent (@${rootDialog.agentId}) and ask them to use !!@change_mind instead.
 
 **Subdialog Guidelines:**
 You're operating in a subdialog, which means you're focused on a specific subtask. Your memory and context are scoped to this particular conversation thread. When you complete your subtask or need to escalate decisions, communicate back to the supdialog.`;
     } else {
       // Main dialog capabilities
       instructions += `
-- @clear_mind: Restart the conversation with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders.
-- @change_mind: Update the shared Task Doc content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For Task Docs (\`*.tsk/\`), each @change_mind call MUST target exactly one section: \`@change_mind !goals\` / \`!constraints\` / \`!progress\`. You may issue multiple @change_mind calls in a single message to update multiple sections.
+- !!@clear_mind: Restart the conversation with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders.
+- !!@change_mind: Update the shared Task Doc content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For Task Docs (\`*.tsk/\`), each !!@change_mind call MUST target exactly one section: \`!!@change_mind !goals\` / \`!constraints\` / \`!progress\`. You may issue multiple !!@change_mind calls in a single message to update multiple sections.
 
 **Main Dialog Responsibilities:**
 You're the primary dialog agent. You can create subdialogs for specialized tasks, manage the overall conversation flow, and make high-level decisions about task direction and approach.`;
@@ -651,12 +651,12 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     instructions += `
 
 **Best Practices:**
-- **Maintain Mental Clarity:** When conversations become cluttered with debugging, repeated failures, or tangential discussions, use @clear_mind to refocus on what matters
+- **Maintain Mental Clarity:** When conversations become cluttered with debugging, repeated failures, or tangential discussions, use !!@clear_mind to refocus on what matters
 - **Strategic Reminders:** Capture key insights, decisions, and next steps in reminders before clearing your mind - they'll persist and guide your refreshed focus
-- **Task Document Focus:** Keep the task document authoritative (goals / constraints / progress). Use @change_mind to update it explicitly; use @clear_mind when you need a new round.
+- **Task Document Focus:** Keep the task document authoritative (goals / constraints / progress). Use !!@change_mind to update it explicitly; use !!@clear_mind when you need a new round.
 - **Proactive Clarity:** Don't wait for conversations to become overwhelming - clear your mind proactively when you sense attention fragmentation
 - **Context Preservation:** Remember that clearing your mind preserves reminders and (for subdialogs) supdialog-call information - you lose chat noise, not important context
-- **Strategic Pivots:** Use @change_mind when requirements evolve or you need to adjust constraints/progress; it updates the shared task document for all agents immediately.`;
+- **Strategic Pivots:** Use !!@change_mind when requirements evolve or you need to adjust constraints/progress; it updates the shared task document for all agents immediately.`;
 
     return instructions;
   }
@@ -775,7 +775,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   /**
    * Start a new round - clears conversational noise, Q4H, and increments round counter.
    * Queues a new-round prompt for the driver to consume on the next drive cycle.
-   * This is the single entry point for mental clarity operations (@clear_mind, @change_mind).
+   * This is the single entry point for mental clarity operations (!!@clear_mind, !!@change_mind).
    */
   public async startNewRound(newRoundPrompt: string): Promise<void> {
     const trimmedPrompt = newRoundPrompt.trim();
@@ -823,7 +823,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   public async notifyGeneratingStart(): Promise<void> {
     // Capture the generation's starting round so any events emitted during this generation
     // remain attributed to the correct round even if a tool mutates dialog.currentRound
-    // mid-generation (e.g., @clear_mind).
+    // mid-generation (e.g., !!@clear_mind).
     this._activeGenRound = this.currentRound;
     if (typeof this._activeGenSeq === 'number') {
       this._activeGenSeq++;

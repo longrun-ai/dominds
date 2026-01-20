@@ -1224,12 +1224,12 @@ export class DomindsDialogContainer extends HTMLElement {
   // Renamed from handleTextingResponse to handleToolCallResponse
   //
   // Call Type Distinction:
-  // - Texting Tool Call: @tool_name (e.g., @add_reminder, @list_files)
+  // - Texting Tool Call: !!@tool_name (e.g., !!@add_reminder, !!@list_files)
   //   - Result displays INLINE in same bubble via attachResultInline()
   //   - Uses callId for correlation (callingSectionByCallId map)
   //   - Uses this handler (handleToolCallResponse)
   //
-  // - Teammate Call: @agentName (e.g., @coder, @tester)
+  // - Teammate Call: !!@agentName (e.g., !!@coder, !!@tester)
   //   - Result displays in SEPARATE bubble (subdialog response)
   //   - Uses calleeDialogId for correlation
   //   - Uses handleTeammateResponse() instead
@@ -1346,12 +1346,12 @@ export class DomindsDialogContainer extends HTMLElement {
   // Now includes full response and agentId from subdialog completion
   //
   // Call Type Distinction:
-  // - Texting Tool Call: @tool_name (e.g., @add_reminder)
+  // - Texting Tool Call: !!@tool_name (e.g., !!@add_reminder)
   //   - Result displays INLINE in same bubble
   //   - Uses callId for correlation
   //   - Uses handleToolCallResponse() instead
   //
-  // - Teammate Call: @agentName (e.g., @coder, @tester)
+  // - Teammate Call: !!@agentName (e.g., !!@coder, !!@tester)
   //   - Result displays in SEPARATE bubble (subdialog or supdialog response)
   //   - Uses calleeDialogId for correlation (event.calleeDialogId)
   //   - Uses this handler (handleTeammateResponse)

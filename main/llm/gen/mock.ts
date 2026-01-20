@@ -40,13 +40,13 @@
  * # docs/e2e-story-test/reminders.md: User creates reminders
  * - message: "create reminders"
  *   role: "user"
- *   response: "@add_reminder goals..."
+ *   response: "!!@add_reminder goals..."
  *
  * // Turn 2: Tool error (func_result_msg with role='tool'), LLM self-corrects
  * # docs/e2e-story-test/reminders.md: Tool syntax error recovery
- * - message: "Error: Invalid format. Use: @add_reminder"
+ * - message: "Error: Invalid format. Use: !!@add_reminder"
  *   role: "tool"
- *   response: "@add_reminder 1\nGoals..."
+ *   response: "!!@add_reminder 1\nGoals..."
  */
 
 import fs from 'fs/promises';

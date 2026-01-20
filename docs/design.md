@@ -411,8 +411,8 @@ For detailed implementation specifications, including core tools, technical arch
 
 **Key Implementation Components**:
 
-- **@clear_mind**: Mental clarity tool for clearing conversational noise while preserving context
-- **@change_mind**: Task direction tool for updating authoritative task documents across dialog hierarchies
+- **!!@clear_mind**: Mental clarity tool for clearing conversational noise while preserving context
+- **!!@change_mind**: Task direction tool for updating authoritative task documents across dialog hierarchies
 - **Reminder Management**: Dialog-scoped working memory that persists across clarity operations
 - **Hierarchical Dialog Architecture**: Tree-structured dialogs with flat storage and autonomous management
 - **Memory Layers**: Dialog-scoped and workspace-persistent memory with autonomous evolution
@@ -484,7 +484,7 @@ The implementation emphasizes autonomous agent operation, enabling agents to ind
 
 2. **Task Document Focus**: Always reference the task document as your primary source of truth when making autonomous decisions or changing direction
 
-3. **Strategic Clarity Timing**: Trigger `@clear_mind` operations when you detect that conversation noise is impacting your autonomous decision-making quality
+3. **Strategic Clarity Timing**: Trigger `!!@clear_mind` operations when you detect that conversation noise is impacting your autonomous decision-making quality
 
 4. **Independent Context Preservation**: Before any clarity operation, autonomously assess and preserve essential context through structured reminders
 
@@ -549,7 +549,7 @@ dominds dialog start --task-doc-path tasks/auth-system.tsk
 - Multiple dialog trees can reference the same task document
 - Team members collaborate by updating the same file
 - Progress tracking persists across conversations
-- Requirements evolve through `@change_mind` operations
+- Requirements evolve through `!!@change_mind` operations
 
 **Collaboration Example**:
 

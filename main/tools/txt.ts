@@ -171,7 +171,7 @@ export const readFileTool: TextingTool = {
   name: 'read_file',
   backfeeding: true,
   usageDescription: `Read a text file (bounded) relative to workspace. 
-Usage: @read_file [options] <path>
+Usage: !!@read_file [options] <path>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
@@ -188,15 +188,15 @@ Range formats:
   ~         - No range limit (entire file)
 
 Examples:
-  @read_file src/main.ts
-  @read_file !decorate-linenos false src/main.ts
-  @read_file !range 10~50 src/main.ts
-  @read_file !max-lines 100 !range 1~200 src/main.ts
-  @read_file !range 300~ src/main.ts
-  @read_file !range ~20 src/main.ts`,
+  !!@read_file src/main.ts
+  !!@read_file !decorate-linenos false src/main.ts
+  !!@read_file !range 10~50 src/main.ts
+  !!@read_file !max-lines 100 !range 1~200 src/main.ts
+  !!@read_file !range 300~ src/main.ts
+  !!@read_file !range ~20 src/main.ts`,
   usageDescriptionI18n: {
     en: `Read a text file (bounded) relative to workspace.
-Usage: @read_file [options] <path>
+Usage: !!@read_file [options] <path>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
@@ -213,14 +213,14 @@ Range formats:
   ~         - No range limit (entire file)
 
 Examples:
-  @read_file src/main.ts
-  @read_file !decorate-linenos false src/main.ts
-  @read_file !range 10~50 src/main.ts
-  @read_file !max-lines 100 !range 1~200 src/main.ts
-  @read_file !range 300~ src/main.ts
-  @read_file !range ~20 src/main.ts`,
+  !!@read_file src/main.ts
+  !!@read_file !decorate-linenos false src/main.ts
+  !!@read_file !range 10~50 src/main.ts
+  !!@read_file !max-lines 100 !range 1~200 src/main.ts
+  !!@read_file !range 300~ src/main.ts
+  !!@read_file !range ~20 src/main.ts`,
     zh: `读取工作区内的文本文件（有上限/可截断）。
-用法：@read_file [options] <path>
+用法：!!@read_file [options] <path>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
@@ -237,12 +237,12 @@ Examples:
   ~         - 不限制范围（整文件）
 
 示例：
-  @read_file src/main.ts
-  @read_file !decorate-linenos false src/main.ts
-  @read_file !range 10~50 src/main.ts
-  @read_file !max-lines 100 !range 1~200 src/main.ts
-  @read_file !range 300~ src/main.ts
-  @read_file !range ~20 src/main.ts`,
+  !!@read_file src/main.ts
+  !!@read_file !decorate-linenos false src/main.ts
+  !!@read_file !range 10~50 src/main.ts
+  !!@read_file !max-lines 100 !range 1~200 src/main.ts
+  !!@read_file !range 300~ src/main.ts
+  !!@read_file !range ~20 src/main.ts`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
@@ -250,7 +250,7 @@ Examples:
       language === 'zh'
         ? {
             formatError:
-              '请使用正确的文件读取格式。\n\n**期望格式：** `@read_file [options] <path>`\n\n**示例：**\n```\n@read_file src/main.ts\n@read_file !range 10~50 src/main.ts\n@read_file !range 300~ src/main.ts\n```',
+              '请使用正确的文件读取格式。\n\n**期望格式：** `!!@read_file [options] <path>`\n\n**示例：**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
             fileLabel: '文件',
             warningTruncated: (totalBytes: number, shownBytes: number) =>
               `⚠️ **警告：** 文件已截断（总大小 ${totalBytes} bytes，当前显示前 ${shownBytes} bytes）\n\n`,
@@ -260,7 +260,7 @@ Examples:
           }
         : {
             formatError:
-              'Please use the correct format for reading files.\n\n**Expected format:** `@read_file [options] <path>`\n\n**Examples:**\n```\n@read_file src/main.ts\n@read_file !range 10~50 src/main.ts\n@read_file !range 300~ src/main.ts\n```',
+              'Please use the correct format for reading files.\n\n**Expected format:** `!!@read_file [options] <path>`\n\n**Examples:**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
             fileLabel: 'File',
             warningTruncated: (totalBytes: number, shownBytes: number) =>
               `⚠️ **Warning:** File was truncated (${totalBytes} bytes total, showing first ${shownBytes} bytes)\n\n`,
@@ -326,44 +326,44 @@ export const overwriteFileTool: TextingTool = {
   type: 'texter',
   name: 'overwrite_file',
   backfeeding: true,
-  usageDescription: `Overwrite a file with new content. Usage: @overwrite_file <path>
+  usageDescription: `Overwrite a file with new content. Usage: !!@overwrite_file <path>
 <file content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Examples:
-  @overwrite_file src/config.ts
+  !!@overwrite_file src/config.ts
   export const config = { version: '1.0' };
   
-  @overwrite_file README.md
+  !!@overwrite_file README.md
   # My Project
   This is a sample project.`,
   usageDescriptionI18n: {
-    en: `Overwrite a file with new content. Usage: @overwrite_file <path>
+    en: `Overwrite a file with new content. Usage: !!@overwrite_file <path>
 <file content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Examples:
-  @overwrite_file src/config.ts
+  !!@overwrite_file src/config.ts
   export const config = { version: '1.0' };
   
-  @overwrite_file README.md
+  !!@overwrite_file README.md
   # My Project
   This is a sample project.`,
-    zh: `用新内容覆盖写入一个文件。用法：@overwrite_file <path>
+    zh: `用新内容覆盖写入一个文件。用法：!!@overwrite_file <path>
 <文件内容写在正文里>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
 
 示例：
-  @overwrite_file src/config.ts
+  !!@overwrite_file src/config.ts
   export const config = { version: '1.0' };
   
-  @overwrite_file README.md
+  !!@overwrite_file README.md
   # My Project
   This is a sample project.`,
   },
@@ -372,14 +372,14 @@ Examples:
     const labels =
       language === 'zh'
         ? {
-            invalidFormat: '错误：格式不正确。用法：@overwrite_file <path>',
+            invalidFormat: '错误：格式不正确。用法：!!@overwrite_file <path>',
             filePathRequired: '错误：需要提供文件路径。',
             contentRequired: '错误：需要在正文中提供文件内容。',
             overwritten: (p: string) => `✅ 文件已覆盖写入：\`${p}\`。`,
             overwriteFailed: (msg: string) => `❌ **错误**\n\n覆盖写入文件失败：${msg}`,
           }
         : {
-            invalidFormat: 'Error: Invalid format. Use @overwrite_file <path>',
+            invalidFormat: 'Error: Invalid format. Use !!@overwrite_file <path>',
             filePathRequired: 'Error: File path is required.',
             contentRequired: 'Error: File content is required in the body.',
             overwritten: (p: string) => `File '${p}' has been overwritten successfully.`,
@@ -442,7 +442,7 @@ export const patchFileTool: TextingTool = {
   type: 'texter',
   name: 'patch_file',
   backfeeding: true,
-  usageDescription: `Apply a simple patch to a single file. Usage: @patch_file <path>
+  usageDescription: `Apply a simple patch to a single file. Usage: !!@patch_file <path>
 <patch content in body>
 
 Note:
@@ -455,14 +455,14 @@ Patch format:
    unchanged line
 
 Example:
-  @patch_file src/config.ts
+  !!@patch_file src/config.ts
   @@ -5,3 +5,4 @@
    export const config = {
      version: '1.0',
   +  debug: true,
    };`,
   usageDescriptionI18n: {
-    en: `Apply a simple patch to a single file. Usage: @patch_file <path>
+    en: `Apply a simple patch to a single file. Usage: !!@patch_file <path>
 <patch content in body>
 
 Note:
@@ -475,13 +475,13 @@ Patch format:
    unchanged line
 
 Example:
-  @patch_file src/config.ts
+  !!@patch_file src/config.ts
   @@ -5,3 +5,4 @@
    export const config = {
      version: '1.0',
   +  debug: true,
    };`,
-    zh: `对单个文件应用简单补丁。用法：@patch_file <path>
+    zh: `对单个文件应用简单补丁。用法：!!@patch_file <path>
 <补丁内容写在正文里>
 
 注意：
@@ -494,7 +494,7 @@ Example:
    未改变的行
 
 示例：
-  @patch_file src/config.ts
+  !!@patch_file src/config.ts
   @@ -5,3 +5,4 @@
    export const config = {
      version: '1.0',
@@ -507,7 +507,7 @@ Example:
       language === 'zh'
         ? {
             patchContentRequired: '错误：需要在正文中提供补丁内容。',
-            invalidFormat: '错误：格式不正确。用法：@patch_file <path>',
+            invalidFormat: '错误：格式不正确。用法：!!@patch_file <path>',
             filePathRequired: '错误：需要提供文件路径。',
             fileDoesNotExist: (p: string) => `错误：文件 '${p}' 不存在。`,
             missingHunkHeader: '错误：补丁格式无效：缺少 @@ hunk 头。',
@@ -517,7 +517,7 @@ Example:
           }
         : {
             patchContentRequired: 'Error: Patch content is required in the body.',
-            invalidFormat: 'Error: Invalid format. Use @patch_file <path>',
+            invalidFormat: 'Error: Invalid format. Use !!@patch_file <path>',
             filePathRequired: 'Error: File path is required.',
             fileDoesNotExist: (p: string) => `Error: File '${p}' does not exist.`,
             missingHunkHeader: 'Error: Invalid patch format. Missing @@ hunk header.',
@@ -651,16 +651,16 @@ export const applyPatchTool: TextingTool = {
   usageDescription:
     'Apply a unified git diff patch to the workspace.\n' +
     'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
-    'Usage: @apply_patch\n<diff content in body>',
+    'Usage: !!@apply_patch\n<diff content in body>',
   usageDescriptionI18n: {
     en:
       'Apply a unified git diff patch to the workspace.\n' +
       'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
-      'Usage: @apply_patch\n<diff content in body>',
+      'Usage: !!@apply_patch\n<diff content in body>',
     zh:
       '对工作区应用 unified git diff 补丁。\n' +
       '注意：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。\n' +
-      '用法：@apply_patch\n<diff 内容写在正文里>',
+      '用法：!!@apply_patch\n<diff 内容写在正文里>',
   },
   backfeeding: true,
   async call(_dlg, caller, _headLine, inputBody): Promise<TextingToolCallResult> {

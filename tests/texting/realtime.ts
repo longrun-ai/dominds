@@ -395,7 +395,7 @@ function processLargeDataset(data) {
   });
 
   // Test 3: Large call body should preserve content integrity
-  const largeCallBody = `@tool processLargeData
+  const largeCallBody = `!!@tool processLargeData
 This is a very long call body that contains detailed instructions
 for processing a large dataset. The content should be preserved
 with exact boundaries to maintain readability and context.
@@ -433,9 +433,9 @@ async function testCorrectnessBoundaries(): Promise<void> {
   // Test 1: @ symbol at boundary (disambiguation required)
   await runChunkPreservationTest({
     name: '@ Symbol Disambiguation Boundary',
-    input: 'Text before @tool1 command\nBody content',
+    input: 'Text before !!@tool1 command\nBody content',
     chunkSizes: [10, 5, 15], // @ symbol split across boundary
-    description: '@ symbols at chunk boundaries require disambiguation buffering',
+    description: '!!@ marker at chunk boundaries requires disambiguation buffering',
     expectedChunkBoundaries: [
       {
         position: 10,
@@ -443,20 +443,20 @@ async function testCorrectnessBoundaries(): Promise<void> {
         content: 'Text befor',
         type: 'markdownChunk',
 
-        description: '@ symbol at chunk boundary requires disambiguation',
+        description: 'marker at chunk boundary requires disambiguation',
       },
       {
         position: 15,
         size: 5,
-        content: 'e @to',
+        content: 'e !!@',
         type: 'callHeadLineChunk',
 
-        description: '@ symbol continuation requires buffering',
+        description: 'marker continuation requires buffering',
       },
       {
         position: 30,
         size: 15,
-        content: 'ol1 command\nBody',
+        content: 'tool1 command\nBo',
         type: 'callBodyChunk',
 
         description: 'Call body content should pass through',
@@ -498,17 +498,17 @@ async function testCorrectnessBoundaries(): Promise<void> {
     ],
   });
 
-  // Test 3: @/ termination marker (disambiguation required)
+  // Test 3: !!@/ termination marker (disambiguation required)
   await runChunkPreservationTest({
     name: 'Termination Marker Disambiguation',
-    input: '@tool1 command\nBody content\n@/',
+    input: '!!@tool1 command\nBody content\n!!@/',
     chunkSizes: [15, 5, 1, 1], // @/ split across boundary
-    description: '@/ termination marker requires disambiguation buffering',
+    description: '!!@/ termination marker requires disambiguation buffering',
     expectedChunkBoundaries: [
       {
         position: 15,
         size: 15,
-        content: '@tool1 command\nBo',
+        content: '!!@tool1 command\n',
         type: 'callHeadLineChunk',
 
         description: 'Call headline with @ symbol requires disambiguation',
@@ -542,12 +542,12 @@ async function testRealisticStreaming(): Promise<void> {
   // Test 1: WebSocket with reasonable chunk sizes (should mostly pass through)
   const realisticInput = `Hey team, working on the API endpoint.
 
-@auth validateUser "user@example.com"
+!!@auth validateUser "user@example.com"
 Check user permissions and validate the request format
 
-@/
+!!@/
 
-@database updateUser "user@example.com" 
+!!@database updateUser "user@example.com" 
 UPDATE users SET status = $1 WHERE id = $2;
 
 Let me know what you think!`;
@@ -580,14 +580,14 @@ Let me know what you think!`;
   // Test 2: Mobile network with small chunks (some boundary splitting expected)
   await runChunkPreservationTest({
     name: 'Mobile Network Small Chunks',
-    input: '@tool1 status\nSystem check\n@/ Mobile update',
+    input: '!!@tool1 status\nSystem check\n!!@/ Mobile update',
     chunkSizes: [8, 8, 8, 8, 8, 8, 8, 8], // Small mobile chunks
     description: 'Small mobile chunks may require more boundary splitting',
     expectedChunkBoundaries: [
       {
         position: 8,
         size: 8,
-        content: '@tool1 st',
+        content: '!!@tool1',
         type: 'callHeadLineChunk',
 
         description: '@ symbol requires disambiguation in small chunks',
@@ -606,7 +606,7 @@ Let me know what you think!`;
   // Test 3: Large file transfer chunks (exact boundaries expected)
   await runChunkPreservationTest({
     name: 'Large File Transfer',
-    input: `@ai analyzeData
+    input: `!!@ai analyzeData
 Processing large dataset with comprehensive analysis
 
 \`\`\`python
@@ -623,14 +623,14 @@ results = df.groupby('category').agg({
 print("Analysis complete")
 \`\`\`
 
-@/ Analysis summary ready`,
+!!@/ Analysis summary ready`,
     chunkSizes: [150, 200, 180], // Large file transfer chunks
     description: 'Large file transfer chunks should have exact boundaries',
     expectedChunkBoundaries: [
       {
         position: 150,
         size: 150,
-        content: `@ai analyzeData
+        content: `!!@ai analyzeData
 Processing large dataset with comprehensive analysis
 
 \`\`\`python
@@ -664,31 +664,39 @@ async function testEdgeCases(): Promise<void> {
   // Test 1: Empty chunks should not break pass-through behavior
   await runChunkPreservationTest({
     name: 'Empty Chunks Pass-Through',
-    input: '@tool1 args\nBody content',
+    input: '!!@tool1 args\nBody content',
     chunkSizes: [10, 0, 15, 0, 5], // Empty chunks mixed in
     description: 'Empty chunks should not interfere with pass-through behavior',
     expectedChunkBoundaries: [
       {
         position: 10,
         size: 10,
-        content: '@tool1 args',
+        content: '!!@tool1 a',
         type: 'callHeadLineChunk',
 
-        description: 'Call headline with @ symbol',
+        description: 'Call headline chunk should pass through',
       },
       {
-        position: 24,
-        size: 14,
-        content: '\nBody content',
+        position: 25,
+        size: 15,
+        content: 'rgs\nBody conten',
         type: 'callBodyChunk',
 
-        description: 'Body content should pass through',
+        description: 'Headline remainder + body start should pass through',
+      },
+      {
+        position: 26,
+        size: 1,
+        content: 't',
+        type: 'callBodyChunk',
+
+        description: 'Trailing body content should pass through',
       },
     ],
   });
 
   // Test 2: Unicode content should pass through intact
-  const unicodeContent = '@tøol1 🎉 process\nBödy with émojis 🎈 and ñ unicode content\n@/';
+  const unicodeContent = '!!@tøol1 🎉 process\nBödy with émojis 🎈 and ñ unicode content\n!!@/';
 
   await runChunkPreservationTest({
     name: 'Unicode Content Pass-Through',
@@ -699,7 +707,7 @@ async function testEdgeCases(): Promise<void> {
       {
         position: 25,
         size: 25,
-        content: '@tøol1 🎉 process\nBödy w',
+        content: '!!@tøol1 🎉 process\nBödy',
         type: 'callHeadLineChunk',
 
         description: 'Unicode with emoji boundary',
