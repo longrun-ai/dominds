@@ -4,6 +4,29 @@
 
 > Agents should be sustaining the continuous development of your products, one-shot product creation is hallucination.
 
+## CAVEATS
+
+- **NO WARRANTY / AT YOUR OWN RISK**: dominds is powerful automation. If you point it at the wrong repo, give it the wrong goal, or trust output blindly, it can waste time or cause damage.
+  - Keep backups and review changes carefully (especially before merging or deploying).
+  - Prefer running on a disposable clone or non-critical branch until you trust your workflow.
+
+- **No Human Permission Mechanism (won’t-have)**: dominds does not aim to add a per-action “please approve” prompt for tool usage.
+  - The intended safety model is _hard guardrails via workflow/policy_ (planned), not human-in-the-loop popups.
+  - Put high-risk tools behind principled agents so their judgment enforces policies and mitigates risk.
+  - Use least-privilege credentials and avoid production secrets in `.env` when experimenting.
+  - Treat your workspace as sensitive: dialogs, logs, and memory may persist locally on disk.
+
+- **Thoroughly Agentic (not pair-programming)**: you work more like a remote manager than a copilot driver.
+  - Expect asynchronous iteration: give clear task docs, constraints, and checkpoints.
+  - You are responsible for the consequences of the agent team you define and set in motion — trust them to execute, but stay a remote reviewer, not a hands-on driver.
+
+- **Costs / Privacy / Compliance**: using LLM providers can cost money and may send prompts (sometimes including code) to third parties.
+  - Review provider terms, set spending limits, and avoid putting secrets in prompts.
+  - If you need strict privacy/compliance, evaluate self-hosted models and stricter tool policies.
+
+- **Help Yourself (early community)**: dominds is LGPL, with limited support and a young community.
+  - Expect rough edges, breaking changes, and gaps in docs; issues/PRs are welcome.
+
 ## Table of Contents
 
 - [dominds — DevOps Mindsets — Sustainable Agentic Product Lifecycle](#dominds--devops-mindsets--sustainable-agentic-product-lifecycle)
