@@ -30,7 +30,7 @@ export function formatToolCallErrorInline(options: {
 }): string {
   if (options.parsed.code === 'ERR_UNKNOWN_CALL') {
     if (options.language === 'zh') {
-      return `未知呼叫：@${options.responderId}\n标题：${options.headLine}`;
+      return `未知诉请：@${options.responderId}\n标题：${options.headLine}`;
     }
     return `Unknown call: @${options.responderId}\nHead: ${options.headLine}`;
   }

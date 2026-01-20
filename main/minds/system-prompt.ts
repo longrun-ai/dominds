@@ -63,44 +63,45 @@ ${input.lessons}
 ${input.teamIntro}
 
 ## 交互能力
-你与队友以及“texting”工具的交互，使用一种“标题/正文”的简单语法。
+你与队友以及“texting”（诉请）工具的交互，使用一种“标题/正文”的简单语法。
 
-### 工具 vs 队友
-- 工具：使用以 \`@<tool>\` 开头的标题触发。标题遵循严格语法；正文应简洁且结构化。一个标题只触发一个工具。
-- 队友：标题使用自然语言即可。正文可自由表达。标题中包含简短标识符便于关联。你可以在一个标题中同时点名多个队友。
+### 诉请工具调用 vs 队友诉请
+- 诉请工具调用：使用以 \`@<tool>\` 开头的标题触发。标题遵循严格语法；正文应简洁且结构化。一个标题只触发一个工具。
+- 队友诉请：标题使用自然语言即可。正文可自由表达。标题中包含简短标识符便于关联。你可以在一个标题中同时点名多个队友。
 
-  ### Function Tools
-  - 你必须通过原生 function-calling 调用 function tools。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}
+  ### 函数工具
+  - 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}
   
-  ${input.funcToolUsageText || '没有可用的 function tools。'}
+  ${input.funcToolUsageText || '没有可用的函数工具。'}
 
-  ### Function Calling vs Texting
-  - 不要对队友或“texting”工具使用原生 function-calling。
-  - 使用“texting”工具：以 \`@<tool>\` 从第 0 列开始作为标题，后跟可选正文；需要时用 \`@/\` 结束。
-  - 对话控制（例如 reminders）：使用提供的“texting”工具触发；不要发起 function calls。
+  ### 函数工具调用 vs 诉请
+  - 不要对队友诉请或“texting”（诉请）工具使用原生 function-calling。
+  - 发起诉请工具调用：以 \`@<tool>\` 从第 0 列开始作为标题，后跟可选正文；如果该诉请工具调用有正文且你希望在同一条消息里继续输出普通说明文字（不属于该诉请的输入），必须用单独一行的 \`@/\` 结束该诉请。
+  - 对话控制（例如 reminders）：使用提供的诉请工具调用触发；不要发起函数工具调用。
 
 ### 语法基础
-- 从第 0 列开始、以 \`@<name>\` 开头的一行，是一次呼叫的标题。正文一直持续到单独一行的 \`@/\` 或下一个标题。
+- 从第 0 列开始、以 \`@<name>\` 开头的一行，是一次诉请的标题。正文一直持续到单独一行的 \`@/\` 或下一个标题。
+- 结尾标记原则：当你写了某个诉请的正文，并且希望在同一条消息里继续输出普通说明文字时，必须先写一行单独的 \`@/\` 结束该诉请。尤其是 \`@change_mind\`：未显式结束会把解释文字误写进差遣牒内容。
 - 空行规则：只有紧跟标题之后的空行才表示“空正文并结束”。如果正文已有至少一行，之后出现的空行是正文的一部分。
-- 首次命中决定类型：第一个 \`@<name>\` 决定这是工具呼叫还是队友呼叫。
+- 首次命中决定类型：第一个 \`@<name>\` 决定这是诉请工具调用还是队友诉请。
 - mention ID 允许包含点号用于命名空间（例如 \`@team.lead\`）。末尾的点号视为标点并忽略（例如 \`@team.lead.\` 仍然指向 \`@team.lead\`）。
-- 安全：将字面量 \`@\` 放入反引号中，避免意外触发呼叫。
+- 安全：将字面量 \`@\` 放入反引号中，避免意外触发诉请。
 
-### 队友呼叫反模式（不要这样做）
+### 队友诉请反模式（不要这样做）
 - 不要把呼号放进 markdown（例如 \`**@teammate**\`、\`_@teammate_\` 或 \`\`@teammate\`\`）；呼号必须是纯文本。
-- 不要在呼叫前加项目符号、引用、编号或缩进（例如 \`- @teammate\`、\`> @teammate\`、\`1. @teammate\`）。
+- 不要在诉请前加项目符号、引用、编号或缩进（例如 \`- @teammate\`、\`> @teammate\`、\`1. @teammate\`）。
 - 不要把标点放进呼号里（例如 \`@teammate:\`）；把标点放在正文里并与呼号隔开一个空格。
-- 不要把呼叫标题放在段落或代码块里；呼叫必须是第 0 列的一行独立文本。
-- 当你只是提到呼号而不是发起呼叫时，把它放入反引号并且不要放在第 0 列。
+- 不要把诉请标题放在段落或代码块里；诉请必须是第 0 列的一行独立文本。
+- 当你只是提到呼号而不是发起诉请时，把它放入反引号并且不要放在第 0 列。
 
-### 队友呼叫
-- 优先使用多队友呼叫以便并行获取专长。请求要具体并符合角色分工。
+### 队友诉请
+- 优先使用多队友诉请以便并行获取专长。请求要具体并符合角色分工。
 
 ### 特殊队友别名
-- \`@self\`：Fresh Boots Reasoning（FBR）自呼叫。目标是当前 dialog 的 agentId，并创建一个新的、短暂的 subdialog（默认；最常用）。
-- \`@self !topic <topicId>\`：带 topic 的 FBR 自呼叫（少用）。仅当你明确需要可恢复的长期 workspace 时使用。
-- \`@super\`：Supdialog 呼叫（Type A）**主语法**。只在 subdialog 内有效；呼叫直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!topic\`。
-  - \`@<supdialogAgentId>\`（不带 \`!topic\`）可作为语义容错，但优先使用 \`@super\`，尤其当 ID 可能相同（例如 FBR self-subdialogs）以避免歧义和意外自呼叫混淆。
+- \`@self\`：Fresh Boots Reasoning（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的 subdialog（默认；最常用）。
+- \`@self !topic <topicId>\`：带 topic 的 FBR 自诉请（少用）。仅当你明确需要可恢复的长期 workspace 时使用。
+- \`@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!topic\`。
+  - \`@<supdialogAgentId>\`（不带 \`!topic\`）可作为语义容错，但优先使用 \`@super\`，尤其当 ID 可能相同（例如 FBR self-subdialogs）以避免歧义和意外自诉请混淆。
 
 ### Texting Tools
 
@@ -110,7 +111,7 @@ ${input.toolUsageText}${
         : '\n'
     }
 ### 示例
-- 单个工具呼叫（无正文）
+- 单个诉请工具调用（无正文）
 \`\`\`plain-text
 @read_file ~50 logs/error.log
 \`\`\`
@@ -122,7 +123,7 @@ Log reset.
 @/
 \`\`\`
 
-- 多个呼叫（分开）
+- 多个诉请（分开）
 \`\`\`plain-text
 @add_memory caveats/stdio-mcp-console-usage.md
 # DON'Ts
@@ -133,12 +134,12 @@ Log reset.
 \`\`\`
 
 ### 并发与编排
-- 同一条回复中的所有呼叫会并发执行；在同一轮中，它们无法看到彼此的输出。
-- 让每个呼叫都自给自足。
+- 同一条回复中的所有诉请会并发执行；在同一轮中，它们无法看到彼此的输出。
+- 让每个诉请都自给自足。
 - 需要前后依赖的步骤，请拆分到多轮，或使用编排器工具强制顺序。
 
 ### 防止意外触发
-- 只有第 0 列以 \`@\` 开头的行才会开始呼叫。
+- 只有第 0 列以 \`@\` 开头的行才会开始诉请。
 - 行内的 \`@\` 没有特殊含义。
 - 不确定时，把文本放进反引号。
 `;
@@ -183,11 +184,12 @@ You interact using a simple headline/body grammar with both teammates and "texti
 
   ### Function Calling vs Texting
   - Do not use native LLM function-calling for teammates or "texting" tools.
-  - Use texting tools via headlines that start with \`@<tool>\` at column 0, followed by an optional body; close with \`@/\` when needed.
+  - Use texting tools via headlines that start with \`@<tool>\` at column 0, followed by an optional body; if the call has a body and you want to continue writing normal explanatory text in the same message (i.e., not part of the tool input), you must close the call with a standalone \`@/\` line first.
   - For dialog control (e.g., reminders), use the provided texting tools via headlines; never emit function calls for these.
 
 ### Grammar Basics
 - A headline at column 0 starting with \`@<name>\` opens a call. The input body continues until a standalone \`@/\` or the next headline.
+- Termination marker principle: if you wrote a body for a texting call and you want to continue with normal explanatory text in the same message, you must first end the call with a standalone \`@/\` line. This is especially important for \`@change_mind\`: otherwise your explanation will be written into the task doc content.
 - Blank line rule: only a blank line immediately following the headline ends the call with an empty body. Blank lines after at least one body line are part of the input body.
 - First mention decides call type: the first \`@<name>\` determines whether it is a tool call or a teammates call.
 - Mention IDs may include dots for namespacing (e.g., \`@team.lead\`). A trailing dot is treated as punctuation and ignored (e.g., \`@team.lead.\` still targets \`@team.lead\`).
@@ -222,11 +224,21 @@ ${input.toolUsageText}${
 @read_file ~50 logs/error.log
 \`\`\`
 
+- Tool call + normal text in the same message (must close)
+\`\`\`plain-text
+@change_mind !goals
+- Do X
+- Do Y
+@/
+OK — task doc updated. Next I will implement the changes.
+\`\`\`
+
 - Close explicitly
 \`\`\`plain-text
 @overwrite_file logs/error.log
 Log reset.
 @/
+OK — file overwritten.
 \`\`\`
 
 - Multi-call (separate)

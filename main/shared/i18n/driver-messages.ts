@@ -102,8 +102,8 @@ Tip: I can use @clear_mind with a body, and that body will be added as a new rem
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`@super` 只在子对话（subdialog）中有效，用于呼叫直接父对话（supdialog）。' +
-      '你当前不在子对话中，因此没有父对话可呼叫。'
+      'Dominds 提示：`@super` 只在子对话（subdialog）中有效，用于诉请直接父对话（supdialog）。' +
+      '你当前不在子对话中，因此没有父对话可诉请。'
     );
   }
   return (
@@ -115,7 +115,7 @@ export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): s
 export function formatDomindsNoteSuperNoTopic(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`@super` 是 Type A 的 supdialog 呼叫，不接受 `!topic`。' +
+      'Dominds 提示：`@super` 是 Type A 的 supdialog 诉请，不接受 `!topic`。' +
       '请使用不带 `!topic` 的 `@super`；或使用 `@self !topic <topicId>` / `@<agentId> !topic <topicId>` 来触发 Type B。'
     );
   }
@@ -128,9 +128,9 @@ export function formatDomindsNoteSuperNoTopic(language: LanguageCode): string {
 export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：该呼叫目标是当前 agent（自呼叫/self-call）。' +
+      'Dominds 提示：该诉请目标是当前 agent（自诉请/self-call）。' +
       'Fresh Boots Reasoning 通常应使用 `@self`（不带 `!topic`）来创建一次性的 fresh boots 会话；' +
-      '仅在你明确需要可恢复的长期子对话时才使用 `@self !topic <topicId>`。该呼叫将继续执行。'
+      '仅在你明确需要可恢复的长期子对话时才使用 `@self !topic <topicId>`。该诉请将继续执行。'
     );
   }
   return (

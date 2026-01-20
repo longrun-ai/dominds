@@ -299,7 +299,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toolsTitle: '工具',
       toolsEmpty: '暂无工具',
       toolsRefresh: '刷新',
-      toolsSectionTexting: '文本工具',
+      toolsSectionTexting: '诉请工具',
       toolsSectionFunction: '函数工具',
 
       daemonLabel: '守护进程',

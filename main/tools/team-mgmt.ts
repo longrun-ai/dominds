@@ -1049,7 +1049,7 @@ function renderMemberProperties(language: LanguageCode): string {
         '`provider` / `model` / `model_params`',
         '`toolsets` / `tools`',
         '`streaming`',
-        '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被呼叫）',
+        '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
         '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`',
       ])
     );
@@ -1084,7 +1084,7 @@ function renderTeamManual(language: LanguageCode): string {
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `@team_mgmt_check_provider <providerKey>` 做检查，避免把系统刷成板砖。',
         '不要把内置成员（例如 fuxi/pangu）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）。',
-        '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `@<id>` 呼叫。',
+        '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
       ]) +
       '\n' +
