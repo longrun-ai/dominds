@@ -171,6 +171,38 @@ providers:
         input_length: 128000
         output_length: 8192
         context_window: '128K'
+  z.ai:
+    name: Z.AI
+    apiType: anthropic
+    baseUrl: https://api.z.ai/api/anthropic
+    apiKeyEnvVar: ZAI_API_KEY
+    tech_spec_url: https://docs.z.ai/api-reference
+    api_mgmt_url: https://z.ai/manage-apikey/apikey-list
+    models:
+      glm-4.7:
+        name: GLM-4.7
+        context_length: 200000
+        input_length: 200000
+        output_length: 8192
+        context_window: '200K'
+      glm-4.6:
+        name: GLM-4.6
+        context_length: 200000
+        input_length: 200000
+        output_length: 8192
+        context_window: '200K'
+      glm-4.5:
+        name: GLM-4.5
+        context_length: 128000
+        input_length: 128000
+        output_length: 8192
+        context_window: '128K'
+      glm-4.5-air:
+        name: GLM-4.5-Air
+        context_length: 128000
+        input_length: 128000
+        output_length: 8192
+        context_window: '128K'
   ark-coding-plan:
     name: Ark Coding Plan
     apiType: anthropic
