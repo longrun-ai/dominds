@@ -990,7 +990,7 @@ export class DomindsApp extends HTMLElement {
 	        color: var(--dominds-muted, #666666);
 	        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
 	        background: var(--dominds-hover, #f8f9fa);
-	        padding: 1px 8px;
+	        padding: 5px 8px;
 	        border-radius: 4px;
 	        border: 1px solid var(--dominds-border, #e0e0e0);
 	        flex: 1;
