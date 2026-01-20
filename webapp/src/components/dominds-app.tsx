@@ -637,9 +637,9 @@ export class DomindsApp extends HTMLElement {
   }
   connectedCallback(): void {
     this.initializeTheme();
+    this.initializeAuth();
     this.initialRender();
     this.setupEventListeners();
-    this.initializeAuth();
     this.loadInitialData();
 
     // Subscribe to connection state changes for Q4H loading
@@ -2746,11 +2746,17 @@ export class DomindsApp extends HTMLElement {
         bodyContent: string;
       }>;
       const questionId = ce.detail?.questionId ?? null;
-      if (!this.q4hInput) return;
-      this.q4hInput.selectQuestion(questionId);
+      const input = this.q4hInput;
+      if (!input) return;
+      // Avoid infinite recursion: `DomindsQ4HInput.selectQuestion()` dispatches
+      // `q4h-select-question`, which bubbles to this handler.
+      if (!event.composedPath().includes(input)) {
+        input.selectQuestion(questionId);
+      }
       if (questionId) {
         setTimeout(() => {
-          this.q4hInput?.focusInput();
+          const current = this.q4hInput;
+          if (current && current === input) current.focusInput();
         }, 100);
       }
     });

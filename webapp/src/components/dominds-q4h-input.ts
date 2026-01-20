@@ -229,6 +229,8 @@ export class DomindsQ4HInput extends HTMLElement {
    * Automatically expands the selected question
    */
   public selectQuestion(questionId: string | null): void {
+    if (questionId === this.selectedQuestionId) return;
+
     // Remember expand/collapse state of previously selected question
     if (this.selectedQuestionId) {
       if (this.expandedQuestions.has(this.selectedQuestionId)) {
