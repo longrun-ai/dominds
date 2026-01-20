@@ -2346,7 +2346,6 @@ export async function supplyResponseToSupdialog(
     await parentDialog.receiveTeammateResponse(
       result.responderId,
       result.headLine,
-      result.responseContent,
       'completed',
       subdialogId,
       {
@@ -2572,15 +2571,8 @@ async function executeTextingCall(
     // Parse the call text to determine type A/B/C
     if (isSuperAlias && !(dlg instanceof SubDialog)) {
       const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkLanguage());
-      const result = formatTeammateResponseContent({
-        responderId: 'dominds',
-        requesterId: dlg.agentId,
-        originalCallHeadLine: headLine,
-        responseBody: response,
-        language: getWorkLanguage(),
-      });
       try {
-        await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
+        await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
           response,
           agentId: 'dominds',
           callId,
@@ -2599,15 +2591,8 @@ async function executeTextingCall(
       const topicId = extractTopicIdFromHeadline(headLine, 'super');
       if (topicId) {
         const response = formatDomindsNoteSuperNoTopic(getWorkLanguage());
-        const result = formatTeammateResponseContent({
-          responderId: 'dominds',
-          requesterId: dlg.agentId,
-          originalCallHeadLine: headLine,
-          responseBody: response,
-          language: getWorkLanguage(),
-        });
         try {
-          await dlg.receiveTeammateResponse('dominds', headLine, result, 'failed', dlg.id, {
+          await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
             response,
             agentId: 'dominds',
             callId,
@@ -2636,15 +2621,8 @@ async function executeTextingCall(
     const isDirectSelfCall = !isSelfAlias && !isSuperAlias && parseResult.agentId === dlg.agentId;
     if (isDirectSelfCall) {
       const response = formatDomindsNoteDirectSelfCall(getWorkLanguage());
-      const result = formatTeammateResponseContent({
-        responderId: 'dominds',
-        requesterId: dlg.agentId,
-        originalCallHeadLine: headLine,
-        responseBody: response,
-        language: getWorkLanguage(),
-      });
       try {
-        await dlg.receiveTeammateResponse('dominds', headLine, result, 'completed', dlg.id, {
+        await dlg.receiveTeammateResponse('dominds', headLine, 'completed', dlg.id, {
           response,
           agentId: 'dominds',
           callId,
@@ -2719,7 +2697,6 @@ async function executeTextingCall(
           await dlg.receiveTeammateResponse(
             parseResult.agentId,
             headLine,
-            responseContent,
             'completed',
             supdialog.id,
             {
@@ -2743,19 +2720,12 @@ async function executeTextingCall(
             content: errorText,
           };
           toolOutputs.push(resultMsg);
-          await dlg.receiveTeammateResponse(
-            parseResult.agentId,
-            headLine,
-            errorText,
-            'failed',
-            supdialog.id,
-            {
-              response: errorText,
-              agentId: parseResult.agentId,
-              callId,
-              originMemberId: dlg.agentId,
-            },
-          );
+          await dlg.receiveTeammateResponse(parseResult.agentId, headLine, 'failed', supdialog.id, {
+            response: errorText,
+            agentId: parseResult.agentId,
+            callId,
+            originMemberId: dlg.agentId,
+          });
         }
       } else {
         log.warn('Type A call on dialog without supdialog, falling back to Type C', {

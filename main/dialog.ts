@@ -34,7 +34,10 @@ import type {
   UserTextGrammar,
 } from './shared/types/storage';
 import { generateShortId } from './shared/utils/id';
-import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
+import {
+  formatAssignmentFromSupdialog,
+  formatTeammateResponseContent,
+} from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
 import { Reminder, ReminderOwner, TextingTool } from './tool';
@@ -975,7 +978,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   public async receiveTeammateResponse(
     responderId: string,
     headLine: string,
-    result: string,
     status: 'completed' | 'failed',
     subdialogId: DialogID | undefined,
     options: {
@@ -989,7 +991,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       this,
       responderId,
       headLine,
-      result,
       status,
       subdialogId,
       options,
@@ -1074,6 +1075,14 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
       // Emit virtual generating_start_evt for subdialog response bubble
       await this.notifyGeneratingStart();
 
+      const formattedResult = formatTeammateResponseContent({
+        responderId,
+        requesterId: originMemberId,
+        originalCallHeadLine: headLine,
+        responseBody: response,
+        language: getWorkLanguage(),
+      });
+
       // Emit TeammateResponseEvent
       const evt: TeammateResponseEvent = {
         type: 'teammate_response_evt',
@@ -1081,7 +1090,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
         calleeDialogId: subdialogId.selfId,
         headLine,
         status: 'completed',
-        result: response,
+        result: formattedResult,
         round: this.currentRound,
         response,
         agentId: responderAgentId ?? responderId,
@@ -1422,7 +1431,6 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _responderId: string,
     _headLine: string,
-    _result: string,
     _status: 'completed' | 'failed',
     _subdialogId: DialogID | undefined,
     _options: {

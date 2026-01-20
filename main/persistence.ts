@@ -16,6 +16,7 @@ import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './shared/async-fifo-mutex';
+import { getWorkLanguage } from './shared/runtime-language';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
   CodeBlockChunkEvent,
@@ -67,6 +68,7 @@ import type {
   ToolCallResultRecord,
   UserTextGrammar,
 } from './shared/types/storage';
+import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonObject, JsonValue } from './tool';
 import { Reminder } from './tool';
@@ -395,7 +397,6 @@ export class DiskFileDialogStore extends DialogStore {
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the teammate agent (e.g., "coder")
    * @param headLine - Headline of the original teammate call
-   * @param result - The teammate's response content
    * @param status - Response status ('completed' | 'failed')
    * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
    */
@@ -403,7 +404,6 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     responderId: string,
     headLine: string,
-    result: string,
     status: 'completed' | 'failed',
     calleeDialogId: DialogID | undefined,
     options: {
@@ -420,6 +420,13 @@ export class DiskFileDialogStore extends DialogStore {
     const agentId = options.agentId;
     const callId = options.callId;
     const originMemberId = options.originMemberId;
+    const result = formatTeammateResponseContent({
+      responderId,
+      requesterId: originMemberId,
+      originalCallHeadLine: headLine,
+      responseBody: response,
+      language: getWorkLanguage(),
+    });
     const ev: TeammateResponseRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'teammate_response_record',
@@ -1829,13 +1836,20 @@ export class DiskFileDialogStore extends DialogStore {
 
       case 'teammate_response_record': {
         // Handle teammate response events (separate bubble for @teammate calls)
+        const formattedResult = formatTeammateResponseContent({
+          responderId: event.responderId,
+          requesterId: event.originMemberId,
+          originalCallHeadLine: event.headLine,
+          responseBody: event.response,
+          language: getWorkLanguage(),
+        });
         const teammateResponseEvent = {
           type: 'teammate_response_evt',
           responderId: event.responderId,
           calleeDialogId: event.calleeDialogId,
           headLine: event.headLine,
           status: event.status,
-          result: event.result,
+          result: formattedResult,
           response: event.response,
           agentId: event.agentId,
           callId: event.callId,
@@ -3745,13 +3759,20 @@ export class DialogPersistence {
         case 'teammate_response_record': {
           // Convert teammate response to ChatMessage (teammate - separate bubble)
           // Note: Teammate responses are stored as separate records but use same message type
+          const formattedResult = formatTeammateResponseContent({
+            responderId: event.responderId,
+            requesterId: event.originMemberId,
+            originalCallHeadLine: event.headLine,
+            responseBody: event.response,
+            language: getWorkLanguage(),
+          });
           messages.push({
             type: 'call_result_msg',
             role: 'tool',
             responderId: event.responderId,
             headLine: event.headLine,
             status: event.status,
-            content: event.result,
+            content: formattedResult,
           });
           break;
         }

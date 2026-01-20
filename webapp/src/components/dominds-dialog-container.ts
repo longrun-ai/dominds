@@ -1382,27 +1382,26 @@ export class DomindsDialogContainer extends HTMLElement {
       throw new Error('handleTeammateResponse: Missing originMemberId (requesterId)');
     }
     if (typeof event.result !== 'string') {
-      throw new Error('handleTeammateResponse: Missing result payload for formatting verification');
+      throw new Error('handleTeammateResponse: Missing result payload');
     }
-    const expectedResult = formatTeammateResponseContent({
-      responderId: event.responderId,
-      requesterId,
-      originalCallHeadLine: event.headLine,
-      responseBody: event.response,
-      language: this.serverWorkLanguage,
-    });
-    if (event.result !== expectedResult) {
-      throw new Error(
-        `handleTeammateResponse: Response formatting mismatch. Expected "${expectedResult}" but received "${event.result}".`,
-      );
+
+    // In prod, trust the backend to send the fully-formatted narrative. In dev, verify that
+    // `event.result` matches the canonical formatting from structured fields.
+    if (import.meta.env.DEV) {
+      const expectedResult = formatTeammateResponseContent({
+        responderId: event.responderId,
+        requesterId,
+        originalCallHeadLine: event.headLine,
+        responseBody: event.response,
+        language: this.serverWorkLanguage,
+      });
+      if (event.result !== expectedResult) {
+        throw new Error(
+          `handleTeammateResponse: Response formatting mismatch. Expected "${expectedResult}" but received "${event.result}".`,
+        );
+      }
     }
-    const responseNarr = formatTeammateResponseContent({
-      responderId: event.responderId,
-      requesterId: requesterId,
-      originalCallHeadLine: event.headLine,
-      responseBody: event.response,
-      language: this.serverWorkLanguage,
-    });
+    const responseNarr = event.result;
 
     // If callId is provided, find the calling section and set its data-call-id attribute
     // and show the "Jump to response" link
