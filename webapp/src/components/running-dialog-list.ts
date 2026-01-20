@@ -962,10 +962,11 @@ export class RunningDialogList extends HTMLElement {
       }
 
       .dialog-item.state-proceeding {
-        border-left-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 5%, transparent);
+        --dialog-glow-color: var(--dominds-primary, #007acc);
+        border-left-color: color-mix(in srgb, var(--dialog-glow-color) 55%, transparent);
+        background: color-mix(in srgb, var(--dialog-glow-color) 5%, transparent);
         position: relative;
-        animation: dialogGlowPulse 1.3s ease-in-out infinite;
+        overflow: hidden;
       }
 
       .dialog-item.state-proceeding-stop {
@@ -973,21 +974,93 @@ export class RunningDialogList extends HTMLElement {
         background: color-mix(in srgb, #f59e0b 8%, transparent);
       }
 
-      @keyframes dialogGlowPulse {
+      .dialog-item.state-proceeding::before,
+      .dialog-item.gen-active::before {
+        content: '';
+        position: absolute;
+        inset: -28px;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(
+            ellipse at 50% 50%,
+            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 40%, transparent)
+              0%,
+            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 20%, transparent)
+              35%,
+            transparent 70%
+          );
+        opacity: 0.12;
+        transform: scale(0.98);
+        filter: blur(12px);
+      }
+
+      .dialog-item.state-proceeding::after,
+      .dialog-item.gen-active::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -120%;
+        width: 240%;
+        z-index: 0;
+        transform: translateX(0);
+        pointer-events: none;
+        opacity: 0.5;
+        background:
+          linear-gradient(
+            90deg,
+            transparent 0%,
+            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 20%, transparent)
+              25%,
+            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 55%, transparent)
+              50%,
+            color-mix(in srgb, var(--dialog-glow-color, var(--dominds-primary, #007acc)) 20%, transparent)
+              75%,
+            transparent 100%
+          );
+        filter: blur(0.5px);
+        animation: dialogScanlineSweep 1.05s ease-in-out infinite;
+      }
+
+      .dialog-item.state-proceeding > .dialog-row,
+      .dialog-item.gen-active > .dialog-row {
+        position: relative;
+        z-index: 1;
+      }
+
+      @keyframes dialogScanlineSweep {
         0% {
-          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
+          transform: translateX(-10%);
+          opacity: 0.15;
         }
-        40% {
-          box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-primary, #007acc) 30%, transparent);
+        35% {
+          opacity: 0.85;
         }
         100% {
-          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
+          transform: translateX(110%);
+          opacity: 0.15;
         }
       }
 
       .dialog-item.gen-active {
+        --dialog-glow-color: var(--dominds-primary, #007acc);
         position: relative;
-        animation: dialogGlowPulse 1.3s ease-in-out infinite;
+        overflow: hidden;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .dialog-item.state-proceeding::before,
+        .dialog-item.gen-active::before,
+        .dialog-item.state-proceeding::after,
+        .dialog-item.gen-active::after {
+          animation: none;
+        }
+
+        .dialog-item.state-proceeding::after,
+        .dialog-item.gen-active::after {
+          opacity: 0.2;
+        }
       }
 
       .run-badges {
