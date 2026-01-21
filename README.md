@@ -1,4 +1,4 @@
-# dominds — DevOps Mindsets — Sustainable Agentic Product Lifecycle
+# Dominds — DevOps Mindsets — Sustainable Agentic Product Lifecycle
 
 > Ship your product with an AI DevOps team that self-improves while it works.
 
@@ -6,17 +6,17 @@
 
 ## CAVEATS
 
-- **NO WARRANTY / AT YOUR OWN RISK**: dominds is powerful automation. If you point it at the wrong repo, give it the wrong goal, or trust output blindly, it can waste time or cause damage.
+- **NO WARRANTY / AT YOUR OWN RISK**: Dominds is powerful automation. If you point it at the wrong repo, give it the wrong goal, or trust output blindly, it can waste time or cause damage.
   - Keep backups and review changes carefully (especially before merging or deploying).
   - Prefer running on a disposable clone or non-critical branch until you trust your workflow.
 
-- **No Human Permission Mechanism (won’t-have)**: dominds does not aim to add a per-action “please approve” prompt for tool usage.
+- **No Human Permission Mechanism (won’t-have)**: Dominds does not aim to add a per-action “please approve” prompt for tool usage.
   - The intended safety model is _hard guardrails via workflow/policy_ (planned), not human-in-the-loop popups.
   - Put high-risk tools behind principled agents so their judgment enforces policies and mitigates risk.
   - Use least-privilege credentials and avoid production secrets in `.env` when experimenting.
   - Treat your workspace as sensitive: dialogs, logs, and memory may persist locally on disk.
 
-- **Authorize Your Agents (or don’t use dominds)**: dominds is not pair‑programming. Once authorized, agents will act — assume mistakes and review outcomes from a distance.
+- **Authorize Your Agents (or don’t use Dominds)**: Dominds is not pair‑programming. Once authorized, agents will act — assume mistakes and review outcomes from a distance.
   - If you prefer to work closely with your agents, use a more traditional copilot‑style tool.
   - You’re not a hands‑on driver; you’re fully responsible for the consequences of the team you define and animate — trust them to execute, stay remote, and accept the outcomes, good or bad.
 
@@ -24,17 +24,17 @@
   - Review provider terms, set spending limits, and avoid putting secrets in prompts.
   - If you need strict privacy/compliance, evaluate self-hosted models and stricter tool policies.
 
-- **Help Yourself (early community)**: dominds is LGPL, with limited support and a young community.
+- **Help Yourself (early community)**: Dominds is LGPL, with limited support and a young community.
   - Expect rough edges, breaking changes, and gaps in docs; issues/PRs are welcome.
 
 ## Table of Contents
 
-- [dominds — DevOps Mindsets — Sustainable Agentic Product Lifecycle](#dominds--devops-mindsets--sustainable-agentic-product-lifecycle)
+- [Dominds — DevOps Mindsets — Sustainable Agentic Product Lifecycle](#dominds--devops-mindsets--sustainable-agentic-product-lifecycle)
   - [Table of Contents](#table-of-contents)
-  - [What is dominds?](#what-is-dominds)
+  - [What is Dominds?](#what-is-dominds)
   - [Installation](#installation)
     - [Prerequisites](#prerequisites)
-    - [Install dominds](#install-dominds)
+    - [Install Dominds](#install-dominds)
     - [Workspace Setup](#workspace-setup)
   - [Quick Start](#quick-start)
   - [Core Philosophy](#core-philosophy)
@@ -44,13 +44,13 @@
   - [Documentation](#documentation)
     - [Getting Help](#getting-help)
 
-## What is dominds?
+## What is Dominds?
 
-dominds is an AI-powered DevOps framework that creates autonomous development teams with persistent memory and self-improving capabilities. Unlike traditional AI assistants, dominds agents maintain context across conversations, learn from experience, and collaborate as a cohesive team to handle complex development workflows.
+Dominds is an AI-powered DevOps framework that creates autonomous development teams with persistent memory and self-improving capabilities. Unlike traditional AI assistants, Dominds agents maintain context across conversations, learn from experience, and collaborate as a cohesive team to handle complex development workflows.
 
 **Key Features:**
 
-- **Fully Local Architecture**: Agents run directly on your machine in parallel threads with instant responsiveness and complete privacy. Unlike cloud-only solutions, dominds eliminates network latency, ensures your code never leaves your environment, and provides unlimited concurrent operations without API rate limits or external dependencies.
+- **Fully Local Architecture**: Agents run directly on your machine in parallel threads with instant responsiveness and complete privacy. Unlike cloud-only solutions, Dominds eliminates network latency, ensures your code never leaves your environment, and provides unlimited concurrent operations without API rate limits or external dependencies.
 
 - **Transparent Workspace Integration**: Agent knowledge, personas, lessons learned, and mindset artifacts are stored locally as part of your workspace. This maximizes transparency to humans and enables version control alongside your product code, creating a complete historical record of both human and AI contributions to your project.
 
@@ -70,7 +70,7 @@ dominds is an AI-powered DevOps framework that creates autonomous development te
 - **pnpm**: Version 9.x or later (workspace package manager)
 - **API Keys**: One or more API keys, for OpenAI, Anthropic, or other compatible LLM providers
 
-### Install dominds
+### Install Dominds
 
 ```bash
 # Global installation (recommended)
@@ -93,11 +93,11 @@ For development or testing:
 
 # Recommended: keep using the released `dominds` CLI (stable) while developing dominds.
 #
-# Emergency only: if the released CLI has a blocking bug, link a clean checkout of `main`
+# Emergency only: if the released CLI has a blocking bug, link a clean checkout of `main` branch
 # from a different directory (do NOT link the same dominds checkout you are editing for PRs).
 git clone https://github.com/longrun-ai/dominds.git ~/src/dominds-main
 pnpm -C ~/src/dominds-main install
-pnpm -C ~/src/dominds-main run build:backend
+pnpm -C ~/src/dominds-main run build
 pnpm -C ~/src/dominds-main link --global
 ```
 
@@ -107,14 +107,14 @@ pnpm -C ~/src/dominds-main link --global
 
 ```bash
 # Preferred: Use scaffold templates with pre-configured teams
-pnpm dlx dominds init web-scaffold my-project
+dominds init web-scaffold my-project
 cd my-project
 
 # Fallback: Basic team configurations for existing projects
-pnpm dlx dominds init --1ma       # One Man Army - do what's on the only agent's first thoughts
-pnpm dlx dominds init --fbr       # Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
-pnpm dlx dominds init --pnx       # Plan and Execution - two agents with basic division of work
-pnpm dlx dominds init --igx       # Inteligence Guarded Execution - one more differently-minded criticist agent
+dominds init --1ma       # One Man Army - do what's on the only agent's first thoughts
+dominds init --fbr       # Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
+dominds init --pnx       # Plan and Execution - two agents with basic division of work
+dominds init --igx       # Inteligence Guarded Execution - one more differently-minded criticist agent
 ```
 
 For more initialization options and available scaffold templates, see the [CLI Usage Guide](docs/cli-usage.md#initialize-a-dominds-workspace).
@@ -168,7 +168,7 @@ dominds init https://github.com/myorg/custom-template.git my-project
 
 **Note:** The `init` subcommand is planned for future release. For now, manually copy configuration from `poc/` examples.
 
-Once installed and configured, you can start using dominds immediately:
+Once installed and configured, you can start using `dominds` immediately:
 
 ```bash
 # Create a task doc package for your project (recommended: `*.tsk/`)
@@ -219,7 +219,7 @@ dominds webui  # Explicitly start Web UI
 
 **What happens next:**
 
-- dominds creates a new dialog with a unique ID
+- Dominds creates a new dialog with a unique ID
 - The assigned agent reads your task document and begins working
 - All conversation history and file changes are tracked
 - Agents can create subdialogs for complex subtasks
@@ -241,7 +241,7 @@ Why it matters
 
 ## 2) Tools with intent: safe by design
 
-> Powerful tools (for example, shells or other side‑effectful interfaces) are hard to fully audit without compromising usefulness. But do micro-auditing by yourself? Or rely on vague “be careful” instructions? Big NO with dominds!
+> Powerful tools (for example, shells or other side‑effectful interfaces) are hard to fully audit without compromising usefulness. But do micro-auditing by yourself? Or rely on vague “be careful” instructions? Big NO with Dominds!
 
 Principles
 
