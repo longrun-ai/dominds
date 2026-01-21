@@ -22,10 +22,6 @@
  * agents always see reminders in llm input, humans should have some sticky UI component to see the reminders
  * agents should see hints of reminder manip syntax
  * humans should better have clickable UI widgets to draft reminder manips
- *
- * agents always see task-doc content (with ws path info together) in llm input
- * humans should have the clickable link (webui or vscode etc., configurable) to current task-doc file,
- * with doc-path (relative to workspace root) as the link text
  */
 
 import * as path from 'path';
