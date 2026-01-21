@@ -12,7 +12,7 @@ The `dominds` package provides multiple command-line interfaces for different as
     - [Web UI Interface](#web-ui-interface)
     - [Text User Interface (TUI)](#text-user-interface-tui)
     - [Minds Reader](#minds-reader)
-    - [Workspace Initialization](#workspace-initialization)
+    - [Workspace Creation](#workspace-creation)
   - [TUI Command Options](#tui-command-options)
     - [Change Workspace](#change-workspace)
     - [Specify Team Member](#specify-team-member)
@@ -28,14 +28,14 @@ The `dominds` package provides multiple command-line interfaces for different as
 
 The `dominds` package provides a unified CLI with subcommands:
 
-| Command                        | Purpose                                     | Interface Type            |
-| ------------------------------ | ------------------------------------------- | ------------------------- |
-| `dominds` or `dominds webui`   | Web-based user interface (default)          | Web UI                    |
-| `dominds tui` or `dominds run` | Terminal-based dialog interface             | TUI (Text User Interface) |
-| `dominds read`                 | Read and analyze agent minds configurations | CLI Utility               |
-| `dominds init`                 | Initialize new workspace                    | CLI Utility               |
-| `dominds help`                 | Show help message                           | CLI Utility               |
-| `dominds --version`            | Show version information                    | CLI Utility               |
+| Command                           | Purpose                                     | Interface Type            |
+| --------------------------------- | ------------------------------------------- | ------------------------- |
+| `dominds` or `dominds webui`      | Web-based user interface (default)          | Web UI                    |
+| `dominds tui` or `dominds run`    | Terminal-based dialog interface             | TUI (Text User Interface) |
+| `dominds read`                    | Read and analyze agent minds configurations | CLI Utility               |
+| `dominds create` or `dominds new` | Create a new workspace from a template      | CLI Utility               |
+| `dominds help`                    | Show help message                           | CLI Utility               |
+| `dominds --version`               | Show version information                    | CLI Utility               |
 
 ## Quick Reference
 
@@ -61,8 +61,9 @@ dominds read [options] [member-id]
 dominds --help
 dominds help
 
-# Workspace initialization - Set up new projects
-dominds init [options] [directory]
+# Workspace creation - Scaffold a new project/workspace
+dominds create <template> [directory]
+dominds new <template> [directory]  # alias for create
 ```
 
 ## Core Commands
@@ -267,35 +268,37 @@ dominds read --only-prompt
 dominds read --only-mem
 ```
 
-### Workspace Initialization
+### Workspace Creation
 
 ```bash
-dominds init [options] [directory]
+dominds create <template> [directory]
+dominds new <template> [directory]  # alias for create
 ```
 
-Initialize a new dominds-powered workspace. **Preferred approach**: Use scaffold templates that include pre-configured `.minds/` setup for specific project types.
+Create a new dominds-powered workspace by cloning/scaffolding a template repository that includes a pre-configured `.minds/` setup.
 
 **Arguments:**
 
-- `directory` - Target directory name (optional, defaults to current workspace)
+- `template` - Template name or Git URL (required)
+- `directory` - Target directory name (optional, defaults to the template-derived directory name)
 
-**Primary Usage - Scaffold Templates:**
+**Usage - Scaffold Templates:**
 
 ```bash
 # Recommended: Use scaffold templates with pre-configured teams
-dominds init <template> [directory]
+dominds create|new <template> [directory]
 
 # Short form for official templates (uses DOMINDS_TEMPLATE_BASE)
-dominds init web-scaffold my-web-app
-dominds init api-scaffold my-api
-dominds init cli-scaffold my-cli
-dominds init fullstack-scaffold my-app
+dominds create web-scaffold my-web-app
+dominds create api-scaffold my-api
+dominds create cli-scaffold my-cli
+dominds create fullstack-scaffold my-app
 
 # Full GitHub URLs for custom templates
-dominds init https://github.com/myorg/custom-template.git my-project
+dominds create https://github.com/myorg/custom-template.git my-project
 
 # With custom repository setup
-dominds init web-scaffold \
+dominds create web-scaffold \
                  --repo-url https://github.com/myorg/new-project.git \
                  my-project
 ```
@@ -310,65 +313,28 @@ export DOMINDS_TEMPLATE_BASE="https://github.com/longrun-ai"
 
 # Custom organization templates
 export DOMINDS_TEMPLATE_BASE="https://github.com/myorg"
-dominds init web-scaffold my-app  # Resolves to: https://github.com/myorg/web-scaffold.git
+dominds create web-scaffold my-app  # Resolves to: https://github.com/myorg/web-scaffold.git
 
 # Team-specific templates
 export DOMINDS_TEMPLATE_BASE="https://github.com/mycompany/dominds-templates"
-dominds init backend-service my-service  # Resolves to: https://github.com/mycompany/dominds-templates/backend-service.git
-```
-
-**Fallback - Basic Team Configurations:**
-
-Use these only when no suitable scaffold template exists:
-
-```bash
-# One Man Army - do what's on the only agent's first thoughts
-dominds init --1ma
-
-# Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
-dominds init --fbr
-
-# Plan and Execution - two agents with basic division of work
-dominds init --pnx
-
-# Inteligence Guarded Execution - one more differently-minded criticist agent
-dominds init --igx
+dominds create backend-service my-service  # Resolves to: https://github.com/mycompany/dominds-templates/backend-service.git
 ```
 
 **Examples:**
 
 ```bash
 # Preferred: Clone scaffold template (includes .minds/ configuration)
-dominds init react-scaffold \
+dominds create react-scaffold \
                  --repo-url git@github.com:myorg/new-react-app.git \
                  my-react-app
-
-# One Man Army - do what's on the only agent's first thoughts
-dominds init --1ma
-
-# Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
-dominds init --fbr
-
-# Plan and Execution - two agents with basic division of work
-dominds init --pnx
-
-# Inteligence Guarded Execution - one more differently-minded criticist agent
-dominds init --igx
 ```
-
-**Team Configuration Details:**
-
-- **--1ma**: One man army - single agent (`agent`) handles all development tasks with standard toolsets
-- **--fbr**: Single fresh-boots-reasoner agent (`agent`) that creates fresh minds for each work item to do, ensuring clean reasoning without context pollution
-- **--pnx**: Two-agent setup with `planner` (strategic thinking) and `executor` (implementation) for collaborative workflows
-- **--igx**: Intelligence-Guarded Execution - adds a `critic` agent that reviews plans and changes to improve safety and reasoning quality
 
 **Generated Structure:**
 
 ```
 project-directory/
 ├── .minds/
-│   ├── team.yaml          # Team configuration (from template or generated)
+│   ├── team.yaml          # Team configuration (from template)
 │   ├── llm.yaml          # LLM provider settings
 │   └── toolsets/         # Custom toolset definitions (if from template)
 ├── .gitignore            # Dominds-aware gitignore
@@ -473,8 +439,8 @@ dominds read /path/to/project/.minds --verbose
 ### Advanced Usage
 
 ```bash
-# Initialize new workspace with scaffold
-dominds init web-scaffold my-project
+# Create a new workspace with a scaffold template
+dominds create web-scaffold my-project
 cd my-project
 
 # Verify setup
@@ -490,14 +456,14 @@ dominds tui task.tsk "Continue development"
 # Quick help for any command
 dominds tui --help
 dominds read --help
-dominds init --help
+dominds create --help
 ```
 
 ### Multi-Interface Workflow
 
 ```bash
 # Use different interfaces for different tasks
-dominds init --fbr my-research-project  # Initialize workspace
+dominds new research-scaffold my-research-project
 cd my-research-project
 
 dominds read                            # Validate configuration
@@ -556,7 +522,7 @@ The TUI now includes improved command validation that:
 - Maintains backward compatibility with existing task document paths
 - Toolset validation failures
 
-**Workspace Init (`dominds init`) Errors:**
+**Workspace Create (`dominds create` / `dominds new`) Errors:**
 
 - Network connectivity for template downloads
 - Directory permission issues
@@ -572,7 +538,7 @@ dominds read --validate
 # Get help for specific commands
 dominds tui --help
 dominds read --help
-dominds init --help
+dominds create --help
 
 # Start Web UI for visual debugging
 dominds

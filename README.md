@@ -103,21 +103,16 @@ pnpm -C ~/src/dominds-main link --global
 
 ### Workspace Setup
 
-1. **Initialize your workspace** in your project directory:
+1. **Create your workspace** in your project directory:
 
 ```bash
 # Preferred: Use scaffold templates with pre-configured teams
-dominds init web-scaffold my-project
+dominds create web-scaffold my-project
+# (or) dominds new web-scaffold my-project  # alias for create
 cd my-project
-
-# Fallback: Basic team configurations for existing projects
-dominds init --1ma       # One Man Army - do what's on the only agent's first thoughts
-dominds init --fbr       # Fresh Boots Reasoning - solo doer agent, second thoughts with fresh minds adviced
-dominds init --pnx       # Plan and Execution - two agents with basic division of work
-dominds init --igx       # Inteligence Guarded Execution - one more differently-minded criticist agent
 ```
 
-For more initialization options and available scaffold templates, see the [CLI Usage Guide](docs/cli-usage.md#initialize-a-dominds-workspace).
+For more template options, see the [CLI Usage Guide](docs/cli-usage.md#workspace-creation).
 
 2. **Set up environment variables**:
 
@@ -142,22 +137,22 @@ dominds tui --list  # Should show no dialogs initially
 dominds  # Opens web interface for the current workspace
 ```
 
-For detailed configuration examples, see the [example workspace](poc/ws-1ma/.minds/) in this repository.
+For detailed configuration and usage patterns, see the [CLI Usage Guide](docs/cli-usage.md).
 
 ## Quick Start
 
-Initialize a new dominds-powered workspace using scaffold templates:
+Create a new dominds-powered workspace using scaffold templates:
 
 ```bash
 # Use official scaffold templates (recommended)
-dominds init web-scaffold my-project
+dominds create web-scaffold my-project
 
 # Or use custom organization templates
 export DOMINDS_TEMPLATE_BASE="https://github.com/myorg"
-dominds init web-scaffold my-project
+dominds create web-scaffold my-project
 
 # Or use full URLs for any template
-dominds init https://github.com/myorg/custom-template.git my-project
+dominds create https://github.com/myorg/custom-template.git my-project
 ```
 
 **Template Resolution:**
@@ -165,8 +160,6 @@ dominds init https://github.com/myorg/custom-template.git my-project
 - Short names like `web-scaffold` resolve to `${DOMINDS_TEMPLATE_BASE}/web-scaffold.git`
 - Default `DOMINDS_TEMPLATE_BASE` is `https://github.com/longrun-ai`
 - Set your own `DOMINDS_TEMPLATE_BASE` for organization-specific templates
-
-**Note:** The `init` subcommand is planned for future release. For now, manually copy configuration from `poc/` examples.
 
 Once installed and configured, you can start using `dominds` immediately:
 
