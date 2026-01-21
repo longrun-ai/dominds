@@ -1024,6 +1024,36 @@ Free text after`,
     ],
   );
 
+  // Test 9b: Triple backticks are code fences ONLY at strict column 0 (line start)
+  await runTest(
+    'Inline triple backticks are not code fences',
+    `Prefix \`\`\`javascript
+not a fence
+suffix \`\`\` end`,
+    buildFreeTextEvents(
+      `Prefix \`\`\`javascript\nnot a fence\nsuffix \`\`\` end`,
+      `Prefix \`\`\`javascript\nnot a fence\nsuffix \`\`\` end`,
+    ),
+  );
+
+  // Test 9c: Closing code fence must be at strict line start; inline ``` inside code block is literal
+  await runTest(
+    'Code block preserves inline ``` and closes only at line start',
+    `\`\`\`txt
+line 1
+inline \`\`\` stays
+\`\`\`
+after`,
+    [
+      ...buildCodeBlockEvents(
+        'txt',
+        '\nline 1\ninline ``` stays\n',
+        `\`\`\`txt\nline 1\ninline \`\`\` stays\n\`\`\`\nafter`,
+      ),
+      ...buildFreeTextEvents('\nafter', `\`\`\`txt\nline 1\ninline \`\`\` stays\n\`\`\`\nafter`),
+    ],
+  );
+
   // Test 10: Qualified names with dots
   await runTest(
     'Qualified names with dots',

@@ -206,6 +206,7 @@ export class TextingStreamParser {
   private backtickState: BacktickState = BacktickState.NONE;
   private backtickCount = 0;
   private inSingleBacktick = false;
+  private backtickRunStartedAtLineStart = false;
 
   // Free text state
   private markdownChunkBuffer = '';
@@ -690,7 +691,12 @@ export class TextingStreamParser {
       // Add backtick to buffer
       this.markdownChunkBuffer += char;
 
-      if (this.backtickState === BacktickState.TRIPLE_START && this.backtickCount >= 3) {
+      // Code fences are recognized ONLY at strict column 0 (line start, no leading whitespace).
+      if (
+        this.backtickState === BacktickState.TRIPLE_START &&
+        this.backtickCount >= 3 &&
+        this.backtickRunStartedAtLineStart
+      ) {
         // Remove the triple backticks from markdown buffer before emitting
         const cleanBuffer = this.markdownChunkBuffer.replace(/`{3,}$/, '');
         if (cleanBuffer.length > 0) {
@@ -1328,8 +1334,13 @@ export class TextingStreamParser {
     char: string,
     charType: CharType,
   ): Promise<number> {
-    // Check for closing triple backticks
+    // Code fences (closing) are recognized ONLY at strict column 0.
+    //
+    // Preserve all other backticks literally as part of code block content.
     if (charType === CharType.BACKTICK) {
+      if (this.backtickCount === 0) {
+        this.backtickRunStartedAtLineStart = this.isAtLineStart;
+      }
       this.backtickCount++;
       if (this.backtickCount === 1) {
         this.backtickState = BacktickState.SINGLE;
@@ -1337,10 +1348,17 @@ export class TextingStreamParser {
         this.backtickState = BacktickState.DOUBLE;
       } else if (this.backtickCount === 3) {
         this.backtickState = BacktickState.TRIPLE_START;
+      } else {
+        this.backtickState = BacktickState.TRIPLE_CONTENT;
+      }
 
-        // Remove the previous two backticks from the buffer (they were added before)
-        if (this.codeBlockChunkBuffer.endsWith('``')) {
-          this.codeBlockChunkBuffer = this.codeBlockChunkBuffer.slice(0, -2);
+      // Append as literal content for now. If this becomes a closing fence, we'll remove it.
+      this.codeBlockChunkBuffer += '`';
+
+      if (this.backtickCount >= 3 && this.backtickRunStartedAtLineStart) {
+        // Remove the closing fence from the buffer (we've already appended it).
+        if (this.codeBlockChunkBuffer.endsWith('```')) {
+          this.codeBlockChunkBuffer = this.codeBlockChunkBuffer.slice(0, -3);
         }
 
         // Flush any remaining content
@@ -1355,23 +1373,26 @@ export class TextingStreamParser {
         // Switch to free text (don't automatically start markdown unless there's content)
         this.mode = ParserMode.FREE_TEXT;
         this.markdownChunkBuffer = '';
-        // Don't set markdownStarted = true here - let free text processing handle it naturally
 
         // Reset backtick state
         this.backtickCount = 0;
         this.backtickState = BacktickState.NONE;
+        this.backtickRunStartedAtLineStart = false;
 
-        return position + 1; // Skip the third backtick
-      } else {
-        this.backtickState = BacktickState.TRIPLE_CONTENT;
+        this.isAtLineStart = false;
+        return position + 1;
       }
-    } else {
-      // Update backtick state for non-backtick characters (reset count)
-      this.updateBacktickState(charType);
 
-      this.codeBlockChunkBuffer += char;
+      this.isAtLineStart = false;
+      return position + 1;
     }
 
+    // Non-backtick characters end any backtick run in code blocks.
+    this.backtickCount = 0;
+    this.backtickState = BacktickState.NONE;
+    this.backtickRunStartedAtLineStart = false;
+
+    this.codeBlockChunkBuffer += char;
     this.isAtLineStart = charType === CharType.NEWLINE;
     return position + 1;
   }
@@ -1379,6 +1400,9 @@ export class TextingStreamParser {
   // Backtick state management
   private updateBacktickState(charType: CharType): void {
     if (charType === CharType.BACKTICK) {
+      if (this.backtickCount === 0) {
+        this.backtickRunStartedAtLineStart = this.isAtLineStart;
+      }
       this.backtickCount++;
       if (this.backtickCount === 1) {
         this.backtickState = BacktickState.SINGLE;
@@ -1397,6 +1421,7 @@ export class TextingStreamParser {
       }
       this.backtickCount = 0;
       this.backtickState = BacktickState.NONE;
+      this.backtickRunStartedAtLineStart = false;
     }
   }
 
@@ -1473,7 +1498,25 @@ export class TextingStreamParser {
       case ParserMode.CODE_BLOCK_INFO:
         break;
       case ParserMode.CODE_BLOCK_CONTENT:
-        await this.flushCodeBlockBuffer();
+        if (this.codeBlockChunkBuffer) {
+          // If the upstream chunk ends with 1–2 backticks, defer emitting those backticks until
+          // the next chunk so we can disambiguate literal backticks vs a closing fence at line start.
+          //
+          // This mirrors the FREE_TEXT behavior and is required for chunk-size invariance.
+          if (this.backtickCount > 0) {
+            const suffix = '`'.repeat(this.backtickCount);
+            if (this.codeBlockChunkBuffer.endsWith(suffix)) {
+              const prefix = this.codeBlockChunkBuffer.slice(0, -suffix.length);
+              if (prefix.length > 0) {
+                await this.downstream.codeBlockChunk(prefix);
+              }
+              this.codeBlockChunkBuffer = suffix;
+              break;
+            }
+          }
+          await this.downstream.codeBlockChunk(this.codeBlockChunkBuffer);
+          this.codeBlockChunkBuffer = '';
+        }
         break;
     }
   }
