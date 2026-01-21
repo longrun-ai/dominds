@@ -122,6 +122,7 @@ export class DomindsApp extends HTMLElement {
   private serverWorkLanguage: LanguageCode | null = null;
   private uiLanguageMenuOpen: boolean = false;
   private _uiLanguageMenuGlobalCancel?: () => void;
+  private bootInFlight: boolean = false;
 
   // Workspace Problems
   private problemsVersion: number = 0;
@@ -640,7 +641,7 @@ export class DomindsApp extends HTMLElement {
     this.initializeAuth();
     this.initialRender();
     this.setupEventListeners();
-    this.loadInitialData();
+    void this.bootstrap();
 
     // Subscribe to connection state changes for Q4H loading
     const connStateSub = this.wsManager.subscribeToConnectionState();
@@ -3139,6 +3140,50 @@ export class DomindsApp extends HTMLElement {
     ]);
   }
 
+  private async bootstrap(): Promise<void> {
+    if (this.bootInFlight) return;
+    this.bootInFlight = true;
+    try {
+      const gate = await this.gateBySetup();
+      if (gate.kind !== 'proceed') return;
+      await this.loadInitialData();
+    } finally {
+      this.bootInFlight = false;
+    }
+  }
+
+  private async gateBySetup(): Promise<
+    { kind: 'proceed' } | { kind: 'redirected' } | { kind: 'auth_required' } | { kind: 'failed' }
+  > {
+    // If we're already on /setup, do not attempt to run the main app.
+    const path = window.location.pathname;
+    if (path === '/setup' || path === '/setup/') return { kind: 'redirected' };
+
+    const resp = await this.apiClient.getSetupStatus();
+    if (!resp.success) {
+      if (resp.status === 401) {
+        this.onAuthRejected('api');
+        return { kind: 'auth_required' };
+      }
+      // Setup check failed; fall back to the legacy behavior (try to load anyway).
+      return { kind: 'proceed' };
+    }
+
+    const payload = resp.data;
+    if (!payload) return { kind: 'proceed' };
+    const requirement = payload.requirement;
+    if (requirement.kind !== 'ok') {
+      const dest =
+        this.authState.kind === 'active' && this.authState.source === 'url'
+          ? `/setup/?auth=${encodeURIComponent(this.authState.key)}`
+          : '/setup';
+      window.location.href = dest;
+      return { kind: 'redirected' };
+    }
+
+    return { kind: 'proceed' };
+  }
+
   private initializeAuth(): void {
     const urlKey = readAuthKeyFromUrl();
     if (urlKey) {
@@ -3263,7 +3308,7 @@ export class DomindsApp extends HTMLElement {
       this.authState = { kind: 'active', source: 'manual', key };
 
       // Reconnect websocket and refresh data.
-      void this.loadInitialData();
+      void this.bootstrap();
     };
 
     submitBtn?.addEventListener('click', () => void doSubmit());

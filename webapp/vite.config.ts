@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  appType: 'mpa',
+  appType: 'spa',
   publicDir: 'static',
   server: {
     port: 5555, // Frontend development server - FIXED PORT, NO FALLBACK

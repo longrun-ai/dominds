@@ -9,6 +9,12 @@ import {
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
   ApiSubdialogResponse,
+  SetupFileResponse,
+  SetupStatusResponse,
+  SetupWriteShellEnvRequest,
+  SetupWriteShellEnvResponse,
+  SetupWriteTeamYamlRequest,
+  SetupWriteTeamYamlResponse,
   ToolsetInfo,
 } from '../shared/types';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -353,6 +359,36 @@ export class ApiClient {
    */
   async getTeamConfig(): Promise<ApiResponse<{ configuration: FrontendTeam }>> {
     return this.request('/api/team/config');
+  }
+
+  /**
+   * Setup status endpoint (WebUI /setup)
+   */
+  async getSetupStatus(): Promise<ApiResponse<SetupStatusResponse>> {
+    return this.request('/api/setup/status');
+  }
+
+  async getSetupDefaultsYaml(): Promise<ApiResponse<SetupFileResponse>> {
+    return this.request('/api/setup/defaults-yaml');
+  }
+
+  async getSetupWorkspaceLlmYaml(): Promise<ApiResponse<SetupFileResponse>> {
+    return this.request('/api/setup/workspace-llm-yaml');
+  }
+
+  async writeTeamYaml(
+    req: SetupWriteTeamYamlRequest,
+  ): Promise<ApiResponse<SetupWriteTeamYamlResponse>> {
+    return this.request('/api/setup/write-team-yaml', { method: 'POST', body: req });
+  }
+
+  /**
+   * Write shell env var to ~/.bashrc and/or ~/.zshrc (managed block)
+   */
+  async writeShellEnv(
+    req: SetupWriteShellEnvRequest,
+  ): Promise<ApiResponse<SetupWriteShellEnvResponse>> {
+    return this.request('/api/setup/write-shell-env', { method: 'POST', body: req });
   }
 
   async getTaskDocuments(): Promise<

@@ -2,6 +2,7 @@
 
 export * from './language';
 export * from './problems';
+export * from './setup';
 export * from './tools-registry';
 export * from './wire';
 

@@ -8,6 +8,7 @@ import 'katex/dist/katex.min.css';
 
 import './components/dominds-app.tsx';
 import './components/dominds-connection-status.tsx';
+import './components/dominds-setup.tsx';
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', async () => {
@@ -34,7 +35,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Create and mount the main application component
-  const app = document.createElement('dominds-app');
+  const path = window.location.pathname;
+  const isSetup = path === '/setup' || path === '/setup/';
+  const app = document.createElement(isSetup ? 'dominds-setup' : 'dominds-app');
 
   // Replace any existing content with our app
   document.body.innerHTML = '';

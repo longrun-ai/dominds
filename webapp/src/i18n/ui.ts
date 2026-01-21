@@ -150,6 +150,50 @@ export type UiStrings = {
   daemonLabel: string;
   commandLabel: string;
   unknownCommand: string;
+
+  // /setup
+  setupTitle: string;
+  setupRefresh: string;
+  setupGoToApp: string;
+  setupLoadingStatus: string;
+  setupAuthenticationTitle: string;
+  setupAuthRejected: string;
+  setupAuthRequired: string;
+  setupWriteTeamYamlCreate: string;
+  setupWriteTeamYamlOverwrite: string;
+  setupProvidersTitle: string;
+  setupProvidersHelp: string;
+  setupViewDefaultsYaml: string;
+  setupViewWorkspaceLlmYaml: string;
+  setupTeamTitle: string;
+  setupTeamFileLabel: string;
+  setupTeamProviderLabel: string;
+  setupTeamModelLabel: string;
+  setupTeamAfterWriteHint: string;
+  setupSummaryReady: string;
+  setupSummaryRequired: string;
+  setupSummaryShell: string;
+  setupSummaryDefaultRc: string;
+  setupProviderApiKeys: string;
+  setupProviderDocs: string;
+  setupProviderBaseUrl: string;
+  setupProviderEnvVar: string;
+  setupProviderEnvVarSet: string;
+  setupProviderEnvVarMissing: string;
+  setupProviderModelsHint: string;
+  setupWriteRcWrite: string;
+  setupWriteRcOverwrite: string;
+  setupFileModalLoading: string;
+  setupFileModalSelectToCopy: string;
+  setupFileModalCopy: string;
+  setupSelectProviderModelFirst: string;
+  setupReqMissingTeamYaml: string;
+  setupReqInvalidTeamYaml: string;
+  setupReqMissingDefaultsFields: string;
+  setupReqUnknownProvider: string;
+  setupReqUnknownModel: string;
+  setupReqMissingProviderEnv: string;
+  setupReqOk: string;
 };
 
 export function getUiStrings(language: LanguageCode): UiStrings {
@@ -305,6 +349,49 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       daemonLabel: '守护进程',
       commandLabel: '命令',
       unknownCommand: '未知命令',
+
+      setupTitle: '设置',
+      setupRefresh: '刷新',
+      setupGoToApp: '进入主界面',
+      setupLoadingStatus: '正在加载设置状态…',
+      setupAuthenticationTitle: '认证',
+      setupAuthRejected: '认证被拒绝，请重试。',
+      setupAuthRequired: '需要认证才能访问设置页。',
+      setupWriteTeamYamlCreate: '创建 team.yaml',
+      setupWriteTeamYamlOverwrite: '覆盖 team.yaml',
+      setupProvidersTitle: 'Providers（来自 defaults.yaml）',
+      setupProvidersHelp: '先配置 provider 的环境变量（必要时写入 shell rc），再使用该 provider。',
+      setupViewDefaultsYaml: '查看 defaults.yaml',
+      setupViewWorkspaceLlmYaml: '查看 .minds/llm.yaml',
+      setupTeamTitle: '团队配置',
+      setupTeamFileLabel: '文件',
+      setupTeamProviderLabel: 'member_defaults.provider',
+      setupTeamModelLabel: 'member_defaults.model',
+      setupTeamAfterWriteHint: '写入/更新文件后点刷新；当配置有效时，“进入主界面”按钮会启用。',
+      setupSummaryReady: '已就绪',
+      setupSummaryRequired: '需要设置',
+      setupSummaryShell: 'Shell',
+      setupSummaryDefaultRc: '默认 rc',
+      setupProviderApiKeys: 'API Keys',
+      setupProviderDocs: '文档',
+      setupProviderBaseUrl: 'Base URL',
+      setupProviderEnvVar: '环境变量',
+      setupProviderEnvVarSet: '已设置',
+      setupProviderEnvVarMissing: '缺失',
+      setupProviderModelsHint: '模型（verified = 环境变量存在）：',
+      setupWriteRcWrite: '写入',
+      setupWriteRcOverwrite: '覆盖',
+      setupFileModalLoading: '加载中…',
+      setupFileModalSelectToCopy: '可直接选择复制，或点击“复制”按钮。',
+      setupFileModalCopy: '复制',
+      setupSelectProviderModelFirst: '请先选择 provider 与 model。',
+      setupReqMissingTeamYaml: '缺少 team.yaml（请先创建并设置 member_defaults.provider/model）。',
+      setupReqInvalidTeamYaml: 'team.yaml 无效：',
+      setupReqMissingDefaultsFields: 'team.yaml 缺少字段：',
+      setupReqUnknownProvider: '未知 provider：',
+      setupReqUnknownModel: '未知 model：',
+      setupReqMissingProviderEnv: '缺少环境变量：',
+      setupReqOk: 'team provider/model 与环境变量已就绪。',
     };
   }
 
@@ -459,6 +546,52 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     daemonLabel: 'Daemon',
     commandLabel: 'Command',
     unknownCommand: 'unknown command',
+
+    setupTitle: 'Setup',
+    setupRefresh: 'Refresh',
+    setupGoToApp: 'Go to App',
+    setupLoadingStatus: 'Loading setup status…',
+    setupAuthenticationTitle: 'Authentication',
+    setupAuthRejected: 'Auth rejected. Please try again.',
+    setupAuthRequired: 'Auth required to access setup.',
+    setupWriteTeamYamlCreate: 'Create team.yaml',
+    setupWriteTeamYamlOverwrite: 'Overwrite team.yaml',
+    setupProvidersTitle: 'Providers (from defaults.yaml)',
+    setupProvidersHelp:
+      'Set the provider env var (and persist to your shell rc) before using the provider.',
+    setupViewDefaultsYaml: 'View defaults.yaml',
+    setupViewWorkspaceLlmYaml: 'View .minds/llm.yaml',
+    setupTeamTitle: 'Team Configuration',
+    setupTeamFileLabel: 'File',
+    setupTeamProviderLabel: 'member_defaults.provider',
+    setupTeamModelLabel: 'member_defaults.model',
+    setupTeamAfterWriteHint:
+      'After writing/updating the file, click Refresh. “Go to App” enables when setup is valid.',
+    setupSummaryReady: 'Ready',
+    setupSummaryRequired: 'Setup Required',
+    setupSummaryShell: 'Shell',
+    setupSummaryDefaultRc: 'Default rc',
+    setupProviderApiKeys: 'API keys',
+    setupProviderDocs: 'Docs',
+    setupProviderBaseUrl: 'Base URL',
+    setupProviderEnvVar: 'Env var',
+    setupProviderEnvVarSet: 'set',
+    setupProviderEnvVarMissing: 'missing',
+    setupProviderModelsHint: 'Models (verified = env var present):',
+    setupWriteRcWrite: 'Write',
+    setupWriteRcOverwrite: 'Overwrite',
+    setupFileModalLoading: 'Loading…',
+    setupFileModalSelectToCopy: 'Select to copy, or use the Copy button.',
+    setupFileModalCopy: 'Copy',
+    setupSelectProviderModelFirst: 'Please select a provider and model first.',
+    setupReqMissingTeamYaml:
+      'Missing team.yaml (create it and set member_defaults.provider/model).',
+    setupReqInvalidTeamYaml: 'Invalid team.yaml: ',
+    setupReqMissingDefaultsFields: 'team.yaml missing: ',
+    setupReqUnknownProvider: 'Unknown provider: ',
+    setupReqUnknownModel: 'Unknown model: ',
+    setupReqMissingProviderEnv: 'Missing env var: ',
+    setupReqOk: 'Team provider/model and provider env var look configured.',
   };
 }
 

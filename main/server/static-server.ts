@@ -80,6 +80,20 @@ Backend API: http://localhost:5556/api/
     }
 
     if (!existsSync(filePath)) {
+      // SPA fallback: serve index.html for client-side routes (e.g. /setup).
+      // Only apply when the request path does not look like a static asset.
+      const lastSeg =
+        pathname
+          .split('/')
+          .filter((s) => s !== '')
+          .slice(-1)[0] ?? '';
+      const looksLikeAsset = lastSeg.includes('.');
+      if (!looksLikeAsset) {
+        const indexPath = join(staticDir, 'index.html');
+        if (existsSync(indexPath)) {
+          return await sendFile(indexPath, res, '.html');
+        }
+      }
       return false;
     }
 

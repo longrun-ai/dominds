@@ -21,6 +21,12 @@ import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
+import {
+  buildSetupFileResponse,
+  buildSetupStatusResponse,
+  handleWriteShellEnv,
+  handleWriteTeamYaml,
+} from './setup-routes';
 
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
 
@@ -57,6 +63,61 @@ export async function handleApiRoute(
     // Team configuration endpoint (renamed)
     if (pathname === '/api/team/config' && req.method === 'GET') {
       return await handleGetTeamConfig(res);
+    }
+
+    // Setup status endpoint (WebUI /setup)
+    if (pathname === '/api/setup/status' && req.method === 'GET') {
+      const payload = await buildSetupStatusResponse();
+      respondJson(res, 200, payload);
+      return true;
+    }
+
+    if (pathname === '/api/setup/defaults-yaml' && req.method === 'GET') {
+      const payload = await buildSetupFileResponse('defaults_yaml');
+      respondJson(res, payload.success ? 200 : 404, payload);
+      return true;
+    }
+
+    if (pathname === '/api/setup/workspace-llm-yaml' && req.method === 'GET') {
+      const payload = await buildSetupFileResponse('workspace_llm_yaml');
+      respondJson(res, payload.success ? 200 : 404, payload);
+      return true;
+    }
+
+    // Setup: write env vars to shell rc files
+    if (pathname === '/api/setup/write-shell-env' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const result = await handleWriteShellEnv(rawBody);
+      if (result.kind === 'ok') {
+        respondJson(res, 200, result.response);
+        return true;
+      }
+      if (result.kind === 'bad_request') {
+        respondJson(res, 400, { success: false, error: result.errorText });
+        return true;
+      }
+      respondJson(res, 500, { success: false, error: result.errorText });
+      return true;
+    }
+
+    // Setup: create/overwrite .minds/team.yaml with minimal member_defaults
+    if (pathname === '/api/setup/write-team-yaml' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const result = await handleWriteTeamYaml(rawBody);
+      if (result.kind === 'ok') {
+        respondJson(res, 200, result.response);
+        return true;
+      }
+      if (result.kind === 'conflict') {
+        respondJson(res, 409, { success: false, path: result.path, error: result.errorText });
+        return true;
+      }
+      if (result.kind === 'bad_request') {
+        respondJson(res, 400, { success: false, path: result.path, error: result.errorText });
+        return true;
+      }
+      respondJson(res, 500, { success: false, path: result.path, error: result.errorText });
+      return true;
     }
 
     // Dialog list endpoint
