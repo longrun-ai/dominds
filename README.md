@@ -263,10 +263,21 @@ Practices
 
 ## Documentation
 
-- **[CLI Usage Guide](docs/cli-usage.md)** — Complete command reference and usage patterns
-- **[Design Documentation](docs/design.md)** — System architecture and philosophy
-- **[Dialog System](docs/dialog-system.md)** — How conversations and memory work
-- **[Dialog Persistence](docs/dialog-persistence.md)** — Data storage and workspace structure
+- **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
+- **[Dev Principles](docs/dev-principles.md)** — Conventions and quality bar
+- **[Design](docs/design.md)** — Architecture and key abstractions
+- **[Dialog System](docs/dialog-system.md)** — Dialog runtime model and streaming
+- **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle
+- **[Interruption & Resumption](docs/interruption-resumption.md)** — Stop/resume semantics
+- **[Encapsulated Task Docs](docs/encapsulated-task-doc.md)** — `*.tsk/` packages and parsing
+- **[Auth](docs/auth.md)** — Authentication and access model
+- **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
+- **[MCP Support](docs/mcp-support.md)** — MCP tool integration
+- **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — Managing team members via tools
+- **[Team Tools View](docs/team-tools-view.md)** — Inspecting tool availability
+- **[i18n](docs/i18n.md)** — Language and localization rules
+- **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
+- **[Mottos](docs/mottos.md)** — Short guiding statements
 
 ### Getting Help
 
