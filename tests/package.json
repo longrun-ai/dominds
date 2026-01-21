@@ -12,6 +12,7 @@
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
     "realtime": "tsx texting/realtime.ts",
     "teammate-call-parse": "tsx texting/teammate-call-parse.ts",
+    "keep-going": "tsx texting/keep-going.ts",
     "task-package": "tsx task-package.ts",
     "taskdoc-search": "tsx taskdoc-search.ts",
     "team-yaml-parsing": "tsx team-yaml-parsing.ts",

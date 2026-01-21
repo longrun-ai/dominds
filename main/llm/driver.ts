@@ -88,6 +88,88 @@ export interface HumanPrompt {
 
 type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
 
+const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
+  zh: [
+    '除非确实需要人类用户介入，请继续你的工作。',
+    '',
+    '作为智能体团队成员，你能自己动手的事儿就绝不要麻烦人类。',
+    '',
+    '不该或者不能自主继续工作时，你应该使用 `!!@human` 诉请人类确认相关问题或者指出工作方向。',
+  ].join('\n'),
+  en: [
+    'Unless you truly need the human user to intervene, keep working.',
+    '',
+    'As an agent team member, do not bother the human with things you can do yourself.',
+    '',
+    'When you should not or cannot continue autonomously, use `!!@human` to ask the human to confirm the relevant questions or provide direction.',
+  ].join('\n'),
+};
+
+function isNodeErrorWithCode(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
+async function loadRtwsDiligenceText(workLanguage: LanguageCode): Promise<string | null> {
+  const langSpecificPath = path.resolve(process.cwd(), '.minds', `diligence.${workLanguage}.md`);
+  const genericPath = path.resolve(process.cwd(), '.minds', 'diligence.md');
+
+  try {
+    const raw = await fs.promises.readFile(langSpecificPath, 'utf-8');
+    const trimmed = raw.trim();
+    // Explicit opt-out: existing file with empty content disables auto-continue.
+    return trimmed === '' ? null : trimmed;
+  } catch (error: unknown) {
+    if (!(isNodeErrorWithCode(error) && error.code === 'ENOENT')) {
+      log.warn('Failed to read rtws diligence file; falling back to built-in text', error, {
+        filePath: langSpecificPath,
+      });
+      return DILIGENCE_FALLBACK_TEXT[workLanguage];
+    }
+  }
+
+  try {
+    const raw = await fs.promises.readFile(genericPath, 'utf-8');
+    const trimmed = raw.trim();
+    // Explicit opt-out: existing file with empty content disables auto-continue.
+    return trimmed === '' ? null : trimmed;
+  } catch (error: unknown) {
+    if (isNodeErrorWithCode(error) && error.code === 'ENOENT') {
+      return DILIGENCE_FALLBACK_TEXT[workLanguage];
+    }
+    log.warn('Failed to read rtws diligence file; falling back to built-in text', error, {
+      filePath: genericPath,
+    });
+    return DILIGENCE_FALLBACK_TEXT[workLanguage];
+  }
+}
+
+async function maybeInjectDiligenceAndContinue(options: {
+  dlg: Dialog;
+  isRootDialog: boolean;
+  alreadyInjectedCount: number;
+  maxInjectCount: number;
+}): Promise<{ didInject: boolean; nextInjectedCount: number }> {
+  if (!options.isRootDialog) {
+    return { didInject: false, nextInjectedCount: options.alreadyInjectedCount };
+  }
+  if (options.alreadyInjectedCount >= options.maxInjectCount) {
+    return { didInject: false, nextInjectedCount: options.alreadyInjectedCount };
+  }
+
+  const diligence = await loadRtwsDiligenceText(getWorkLanguage());
+  if (diligence === null) {
+    return { didInject: false, nextInjectedCount: options.alreadyInjectedCount };
+  }
+
+  await options.dlg.addChatMessages({
+    type: 'environment_msg',
+    role: 'user',
+    content: diligence,
+  });
+
+  return { didInject: true, nextInjectedCount: options.alreadyInjectedCount + 1 };
+}
+
 // === SUSPENSION AND RESUMPTION INTERFACES ===
 
 export interface DialogSuspension {
@@ -851,6 +933,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
   let takenSubdialogResponses: TakenSubdialogResponse[] = [];
 
   let genIterNo = 0;
+  let diligenceAutoContinueCount = 0;
+  const maxDiligenceAutoContinue = 1;
   try {
     while (true) {
       genIterNo++;
@@ -1354,6 +1438,22 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             assistantToolOutputsCount > 0 ||
             (funcResults.length > 0 && funcCalls.length === 0);
           if (!shouldContinue) {
+            const hasNonEmptySaying = assistantMsgs.some(
+              (m) => m.type === 'saying_msg' && m.content.trim() !== '',
+            );
+            const shouldAutoContinue = collectedAssistantCalls.length > 0 || !hasNonEmptySaying;
+            if (shouldAutoContinue) {
+              const injected = await maybeInjectDiligenceAndContinue({
+                dlg,
+                isRootDialog: dlg instanceof RootDialog,
+                alreadyInjectedCount: diligenceAutoContinueCount,
+                maxInjectCount: maxDiligenceAutoContinue,
+              });
+              diligenceAutoContinueCount = injected.nextInjectedCount;
+              if (injected.didInject) {
+                continue;
+              }
+            }
             break;
           }
 
@@ -1675,6 +1775,20 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const shouldContinue =
             toolOutputsCount > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
           if (!shouldContinue) {
+            const shouldAutoContinue =
+              collectedCalls.length > 0 || currentSayingContent.trim() === '';
+            if (shouldAutoContinue) {
+              const injected = await maybeInjectDiligenceAndContinue({
+                dlg,
+                isRootDialog: dlg instanceof RootDialog,
+                alreadyInjectedCount: diligenceAutoContinueCount,
+                maxInjectCount: maxDiligenceAutoContinue,
+              });
+              diligenceAutoContinueCount = injected.nextInjectedCount;
+              if (injected.didInject) {
+                continue;
+              }
+            }
             break;
           }
         }
