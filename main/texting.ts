@@ -232,6 +232,7 @@ export class TextingStreamParser {
   private pendingLineStartMarker: '' | '!' | '!!' | '!!@' = '';
   private pendingLineStartMarkerWasLineStart = false;
   private pendingInitialBackticks = 0; // Backticks seen before deciding body type
+  private beforeBodyWhitespaceBuffer = ''; // Whitespace/newlines observed in BEFORE_BODY (replayed if body exists)
 
   // Code block state
   private codeBlockChunkBuffer = '';
@@ -326,6 +327,7 @@ export class TextingStreamParser {
     this.tripleQuotedBodyClose = false;
     this.bodyChunkBuffer = '';
     this.pendingInitialBackticks = 0;
+    this.beforeBodyWhitespaceBuffer = '';
   }
 
   private async endCurrentCallFromBodyToFreeText(): Promise<void> {
@@ -371,6 +373,7 @@ export class TextingStreamParser {
     this.headlineHasContent = false;
     this.pendingHeadlineNewline = false;
     this.pendingHeadlineNewlineWhitespace = '';
+    this.beforeBodyWhitespaceBuffer = '';
     this.mode = ParserMode.FREE_TEXT;
   }
 
@@ -437,7 +440,8 @@ export class TextingStreamParser {
         this.hasBody = true;
         await this.downstream.callBodyStart();
         this.mode = ParserMode.TEXTING_CALL_BODY;
-        this.bodyChunkBuffer = pending;
+        this.bodyChunkBuffer = `${this.beforeBodyWhitespaceBuffer}${pending}`;
+        this.beforeBodyWhitespaceBuffer = '';
         this.isAtLineStart = false;
       } else if (this.mode === ParserMode.TEXTING_CALL_BODY) {
         this.bodyChunkBuffer += pending;
@@ -486,6 +490,8 @@ export class TextingStreamParser {
       }
     } else if (this.mode === ParserMode.TEXTING_CALL_BEFORE_BODY) {
       // Only emit callFinish if a call was actually started (this.currentCall exists)
+      this.beforeBodyWhitespaceBuffer = '';
+      this.pendingInitialBackticks = 0;
       if (this.currentCall) {
         await this.emitCallFinish();
       }
@@ -752,6 +758,11 @@ export class TextingStreamParser {
       }
 
       // Anything else starts the body (newline is the separator, not headline content).
+      //
+      // IMPORTANT: the whitespace immediately after the newline might actually be the first-line
+      // indentation of the call body (e.g. a tool body that starts with two spaces). When the
+      // newline falls exactly on an upstream chunk boundary, we must NOT drop this whitespace.
+      this.beforeBodyWhitespaceBuffer = this.pendingHeadlineNewlineWhitespace;
       this.pendingHeadlineNewline = false;
       this.pendingHeadlineNewlineWhitespace = '';
 
@@ -897,6 +908,7 @@ export class TextingStreamParser {
       this.headlineFinished = true;
       this.mode = ParserMode.TEXTING_CALL_BEFORE_BODY;
       this.isAtLineStart = true;
+      this.beforeBodyWhitespaceBuffer = '';
       return position + 1;
     }
 
@@ -1002,7 +1014,8 @@ export class TextingStreamParser {
         }
         await this.downstream.callBodyStart();
         this.mode = ParserMode.TEXTING_CALL_BODY;
-        this.bodyChunkBuffer = '!';
+        this.bodyChunkBuffer = `${this.beforeBodyWhitespaceBuffer}!`;
+        this.beforeBodyWhitespaceBuffer = '';
         this.isAtLineStart = false;
         return position;
       }
@@ -1015,7 +1028,8 @@ export class TextingStreamParser {
         }
         await this.downstream.callBodyStart();
         this.mode = ParserMode.TEXTING_CALL_BODY;
-        this.bodyChunkBuffer = '!!';
+        this.bodyChunkBuffer = `${this.beforeBodyWhitespaceBuffer}!!`;
+        this.beforeBodyWhitespaceBuffer = '';
         this.isAtLineStart = false;
         return position;
       }
@@ -1025,27 +1039,35 @@ export class TextingStreamParser {
           await this.emitCallFinish();
           this.mode = ParserMode.FREE_TEXT;
           this.isAtLineStart = false;
+          this.beforeBodyWhitespaceBuffer = '';
+          this.pendingInitialBackticks = 0;
           return position + 1;
         }
         if (this.isValidMentionChar(char)) {
           await this.emitCallFinish();
+          this.beforeBodyWhitespaceBuffer = '';
+          this.pendingInitialBackticks = 0;
           this.enterHeadlineAfterExplicitPrefix();
           return await this.processTextingCallHeadlineChunk(chunk, position, char, charType);
         }
         await this.downstream.callBodyStart();
         this.mode = ParserMode.TEXTING_CALL_BODY;
-        this.bodyChunkBuffer = '!!@';
+        this.bodyChunkBuffer = `${this.beforeBodyWhitespaceBuffer}!!@`;
+        this.beforeBodyWhitespaceBuffer = '';
         this.isAtLineStart = false;
         return position;
       }
     }
 
-    // Track line start while skipping whitespace.
+    // Track line start while buffering whitespace. We must preserve this whitespace if a body exists,
+    // but discard it if we conclude there is no body (next call / explicit terminator).
     if (char === ' ' || char === '\t') {
-      // Still at line start if we're only consuming indentation.
+      this.beforeBodyWhitespaceBuffer += char;
+      this.isAtLineStart = false;
       return position + 1;
     }
     if (charType === CharType.NEWLINE) {
+      this.beforeBodyWhitespaceBuffer += char;
       this.isAtLineStart = true;
       return position + 1;
     }
@@ -1076,10 +1098,14 @@ export class TextingStreamParser {
             await this.emitCallFinish();
             this.mode = ParserMode.FREE_TEXT;
             this.isAtLineStart = false;
+            this.beforeBodyWhitespaceBuffer = '';
+            this.pendingInitialBackticks = 0;
             return position + 4;
           }
           if (this.isValidMentionChar(nextChar)) {
             await this.emitCallFinish();
+            this.beforeBodyWhitespaceBuffer = '';
+            this.pendingInitialBackticks = 0;
             this.enterHeadlineAfterExplicitPrefix();
             return await this.processTextingCallHeadlineChunk(
               chunk,
@@ -1101,7 +1127,8 @@ export class TextingStreamParser {
         this.isTripleQuotedBody = true;
         this.tripleQuotedBodyOpen = true;
         await this.downstream.callBodyStart('```');
-        this.bodyChunkBuffer = '```';
+        this.bodyChunkBuffer = `${this.beforeBodyWhitespaceBuffer}\`\`\``;
+        this.beforeBodyWhitespaceBuffer = '';
         this.pendingInitialBackticks = 0;
         this.mode = ParserMode.TEXTING_CALL_BODY;
         this.backtickCount = 0;
@@ -1116,12 +1143,11 @@ export class TextingStreamParser {
     // Any other non-whitespace character starts a regular body.
     await this.downstream.callBodyStart();
     this.mode = ParserMode.TEXTING_CALL_BODY;
-    if (this.pendingInitialBackticks > 0) {
-      this.bodyChunkBuffer = '`'.repeat(this.pendingInitialBackticks);
-      this.pendingInitialBackticks = 0;
-    } else {
-      this.bodyChunkBuffer = '';
-    }
+    this.bodyChunkBuffer =
+      this.beforeBodyWhitespaceBuffer +
+      (this.pendingInitialBackticks > 0 ? '`'.repeat(this.pendingInitialBackticks) : '');
+    this.beforeBodyWhitespaceBuffer = '';
+    this.pendingInitialBackticks = 0;
     this.isAtLineStart = false;
     return position;
   }

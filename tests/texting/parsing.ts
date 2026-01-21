@@ -797,6 +797,88 @@ with multiple lines`,
     ),
   );
 
+  // Test 3b: Leading indentation in body must be preserved (spaces)
+  await runTest(
+    'Tool call with body (leading spaces preserved)',
+    `!!@tool1 cmd
+  const x = 1;
+!!@/`,
+    buildBasicCallEvents(
+      'tool1',
+      '@tool1 cmd',
+      '  const x = 1;\n',
+      `!!@tool1 cmd\n  const x = 1;\n!!@/`,
+    ),
+  );
+
+  // Test 3c: Blank line + indentation before body content must be preserved
+  await runTest(
+    'Tool call with body (blank line + indent preserved)',
+    `!!@tool1 cmd
+
+  const x = 1;
+!!@/`,
+    buildBasicCallEvents(
+      'tool1',
+      '@tool1 cmd',
+      '\n  const x = 1;\n',
+      `!!@tool1 cmd\n\n  const x = 1;\n!!@/`,
+    ),
+  );
+
+  // Test 3c2: Spaces-only line in body must be preserved (even though it's hard to visualize)
+  await runTest(
+    'Tool call with body (spaces-only line preserved)',
+    `!!@tool1 cmd
+    
+x
+!!@/`,
+    buildBasicCallEvents('tool1', '@tool1 cmd', '    \nx\n', `!!@tool1 cmd\n    \nx\n!!@/`),
+  );
+
+  // Test 3d: Leading indentation in body must be preserved (tab)
+  await runTest(
+    'Tool call with body (leading tab preserved)',
+    `!!@tool1 cmd
+\tconst x = 1;
+!!@/`,
+    buildBasicCallEvents(
+      'tool1',
+      '@tool1 cmd',
+      '\tconst x = 1;\n',
+      `!!@tool1 cmd\n\tconst x = 1;\n!!@/`,
+    ),
+  );
+
+  // Test 3e: Indented !!@ must be treated as body content, not a new call
+  await runTest(
+    'Tool call with body (indented !!@ is not a new call)',
+    `!!@tool1 cmd
+  !!@tool2 not-a-call
+!!@/`,
+    buildBasicCallEvents(
+      'tool1',
+      '@tool1 cmd',
+      '  !!@tool2 not-a-call\n',
+      `!!@tool1 cmd\n  !!@tool2 not-a-call\n!!@/`,
+    ),
+  );
+
+  // Test 3f: Indented !!@/ must be treated as body content, not a terminator
+  await runTest(
+    'Tool call with body (indented !!@/ is not a terminator)',
+    `!!@tool1 cmd
+  !!@/
+after
+!!@/`,
+    buildBasicCallEvents(
+      'tool1',
+      '@tool1 cmd',
+      '  !!@/\nafter\n',
+      `!!@tool1 cmd\n  !!@/\nafter\n!!@/`,
+    ),
+  );
+
   // Test 4: Multiple tool calls
   await runTest(
     'Multiple tool calls',
@@ -1247,10 +1329,45 @@ Line 2`;
     invarianceChunkSizes,
   );
 
+  const leadingWhitespaceBodyInput = `!!@tool1 cmd
+
+  const x = 1;
+  !!@tool2 not-a-call
+!!@/
+!!@tool3 cmd3
+body3`;
+  const leadingIndentImmediateBodyInput = `!!@tool1 cmd
+  indented
+!!@/
+!!@tool2 cmd2
+body2`;
+  await runChunkInvarianceTest(
+    'call body leading whitespace + indented !!@',
+    leadingWhitespaceBodyInput,
+    invarianceChunkSizes,
+  );
+  await runChunkInvarianceTest(
+    'call body leading indent immediately after headline newline',
+    leadingIndentImmediateBodyInput,
+    invarianceChunkSizes,
+  );
+
   const invarianceSeeds = [1, 2, 3, 4, 5, 123, 999];
   await runRandomChunkInvarianceTest(
     'change_mind blocks + @human + tool',
     changeMindBlocksInput,
+    invarianceSeeds,
+    32,
+  );
+  await runRandomChunkInvarianceTest(
+    'call body leading whitespace + indented !!@',
+    leadingWhitespaceBodyInput,
+    invarianceSeeds,
+    32,
+  );
+  await runRandomChunkInvarianceTest(
+    'call body leading indent immediately after headline newline',
+    leadingIndentImmediateBodyInput,
     invarianceSeeds,
     32,
   );
