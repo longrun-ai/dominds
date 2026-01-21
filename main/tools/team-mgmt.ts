@@ -144,6 +144,20 @@ async function ensureMindsRootDirExists(): Promise<void> {
   await fs.mkdir(abs, { recursive: true });
 }
 
+type TeamConfigProblem = Extract<WorkspaceProblem, { source: 'team' }>;
+
+function listTeamYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): TeamConfigProblem[] {
+  const out: TeamConfigProblem[] = [];
+  for (const p of problems) {
+    if (p.source !== 'team') continue;
+    if (p.id.startsWith(TEAM_YAML_PROBLEM_PREFIX)) {
+      out.push(p);
+    }
+  }
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
+
 type ProviderCheckArgs = {
   providerKey: string;
   model?: string;
@@ -954,7 +968,17 @@ function fmtHeader(title: string): string {
 }
 
 function fmtList(items: string[]): string {
-  return items.map((s) => `- ${s}`).join('\n') + '\n';
+  return (
+    items
+      .filter((s) => s.trim() !== '')
+      .map((s) => `- ${s}`)
+      .join('\n') + '\n'
+  );
+}
+
+function fmtCodeBlock(lang: string, lines: string[]): string {
+  const body = lines.join('\n');
+  return `\n\n\`\`\`${lang}\n${body}\n\`\`\`\n`;
 }
 
 async function loadBuiltinLlmDefaultsText(): Promise<string> {
@@ -1059,11 +1083,12 @@ function renderMemberProperties(language: LanguageCode): string {
       fmtHeader('成员字段（members.<id>）') +
       fmtList([
         '`name` / `icon` / `gofor`',
+        '`gofor`：该长期 agent 的职责速记卡（建议 5 行内），用于快速路由/提醒：写清“负责什么 / 不负责什么 / 主要交付物 / 优先级”。推荐用 YAML list（3–6 条）；也支持 YAML object（单对象多键值，value 必须是 string），string 仅适合单句。对象的渲染顺序跟 YAML key 写入顺序一致（当前实现/依赖）。详细规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。',
         '`provider` / `model` / `model_params`',
-        '`toolsets` / `tools`',
+        '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
         '`streaming`',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
-        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`',
+        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!!@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
       ])
     );
   }
@@ -1071,19 +1096,21 @@ function renderMemberProperties(language: LanguageCode): string {
     fmtHeader('Member Properties (members.<id>)') +
     fmtList([
       '`name` / `icon` / `gofor`',
+      '`gofor`: a short responsibility flashcard (≤ 5 lines) for a long-lived agent; use it for fast routing/reminders (owns / does-not-own / key deliverables / priorities). Prefer a YAML list (3–6 items); YAML object is also allowed (single object with multiple keys, string values only). Object rendering order follows the YAML key order (implementation-dependent). Use a string only for a single sentence. Put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.',
       '`provider` / `model` / `model_params`',
-      '`toolsets` / `tools`',
+      '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
       '`streaming`',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
-      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`',
+      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!!@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
     ])
   );
 }
 
 function renderTeamManual(language: LanguageCode): string {
   const common = [
-    'member_defaults: provider/model are required',
+    'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
+    'after every modification to `.minds/team.yaml`: you must run `!!@team_mgmt_validate_team_cfg` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
     'when changing provider/model: validate provider exists + env var is configured (use !!@team_mgmt_check_provider)',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
     'hidden: true marks a shadow member (not listed in system prompt)',
@@ -1093,13 +1120,21 @@ function renderTeamManual(language: LanguageCode): string {
     return (
       fmtHeader('.minds/team.yaml') +
       fmtList([
-        '必须包含 `member_defaults.provider` 与 `member_defaults.model`。',
+        '团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。',
+        '强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。',
+        '每次修改 `.minds/team.yaml` 必须运行 `!!@team_mgmt_validate_team_cfg`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
+        '角色职责（Markdown）通过 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 绑定到 `members.<id>`：同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
+        '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 用于写该长期 agent 的“职责速记卡/工作边界/交付物摘要”（建议 5 行内）：用于快速路由与提醒；更完整的规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。\n示例（gofor）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain script-style smoke tests and how to run them\n      - Reject changes that break lint/types/tests (or request fixes)\n      - Track high-risk areas and required manual verification\n```\n示例（gofor, object；按 YAML key 顺序渲染）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
+        '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
+        '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
+
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `!!@team_mgmt_check_provider <providerKey>` 做检查，避免把系统刷成板砖。',
-        '不要把内置成员（例如 fuxi/pangu）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）。',
+        '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!!@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
         '修改文件推荐流程：先 `!!@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!!@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!!@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!!@team_mgmt_overwrite_file team.yaml`。',
+        '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
       '最小模板：\n' +
@@ -1120,6 +1155,16 @@ function renderTeamManual(language: LanguageCode): string {
       "    toolsets: ['*', '!team-mgmt']\n" +
       "    no_read_dirs: ['.minds/**']\n" +
       "    no_write_dirs: ['.minds/**']\n" +
+      '  qa_guard:\n' +
+      '    name: QA Guard\n' +
+      '    gofor:\n' +
+      '      - Own release regression checklist and pass/fail gate\n' +
+      '      - Maintain runnable smoke tests and docs\n' +
+      '      - Flag high-risk changes and required manual checks\n' +
+      '  coder:\n' +
+      '    name: Coder\n' +
+      '    provider: codex\n' +
+      '    model: gpt-5.2-codex\n' +
       '```\n'
     );
   }
@@ -1127,6 +1172,11 @@ function renderTeamManual(language: LanguageCode): string {
     fmtHeader('.minds/team.yaml') +
     fmtList(
       common.concat([
+        'The team definition entrypoint is `.minds/team.yaml` (no `.minds/team.yml` alias today).',
+        'Role responsibilities (Markdown) live under `.minds/team/<id>/{persona,knowledge,lessons}.*.md` and are linked by member id: the same `<id>` must exist in `members.<id>` in `team.yaml`.',
+        'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
+        'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
+        'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'Recommended editing workflow: use `!!@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!!@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!!@team_mgmt_apply_file_modification !<id>`; for large edits, use `!!@team_mgmt_overwrite_file team.yaml`.',
       ]),
     ) +
@@ -1158,45 +1208,94 @@ function renderMcpManual(language: LanguageCode): string {
     return (
       fmtHeader('.minds/mcp.yaml') +
       fmtList([
-        '每个 MCP serverId 注册一个 toolset，toolset 名称 = `serverId`（不加 `mcp_` 前缀）。',
-        '支持热重载：编辑 `.minds/mcp.yaml` 后无需重启 Dominds；必要时用 `mcp_restart`。',
+        '每个 MCP `serverId` 注册一个 toolset，toolset 名称 = `serverId`（不加 `mcp_` 前缀）。成员通过 `members.<id>.toolsets` 选择能用哪些 MCP toolset。',
+        '支持热重载：编辑 `.minds/mcp.yaml` 后通常无需重启 Dominds；必要时用 `mcp_restart`。',
         '默认按“每个对话租用一个 MCP client”运行（更安全）：首次使用该 toolset 会产生 sticky reminder，完成后用 `mcp_release` 释放；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。',
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
+        '常见坑：stdio transport 需要可执行命令路径/工作目录正确，且受成员目录权限（`read_dirs/write_dirs/no_*`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
+        '高频坑（stdio 路径）：相对路径会受 `cwd` 影响而失败；推荐用绝对路径，或显式设置 `cwd` 来固定相对路径的解析。',
+        '最小诊断流程（建议顺序）：1) 先用 `!!@team_mgmt_check_provider <providerKey>` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`!!@team_mgmt_manual !permissions`）；3) 最后检查 MCP 侧报错（Problems 面板/相关日志提示），必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
-      '\n' +
-      '示例（HTTP）：\n' +
-      '```yaml\n' +
-      'version: 1\n' +
-      'servers:\n' +
-      '  sdk_http:\n' +
-      '    truely-stateless: false\n' +
-      '    transport: streamable_http\n' +
-      '    url: http://127.0.0.1:3000/mcp\n' +
-      '    tools: { whitelist: [], blacklist: [] }\n' +
-      '    transform: []\n' +
-      '```\n'
+      fmtCodeBlock('yaml', [
+        '# 最小模板（stdio）',
+        'version: 1',
+        'servers:',
+        '  sdk_stdio:',
+        '    truely-stateless: false',
+        '    transport: stdio',
+        '    command: ["node", "./path/to/mcp-server.js"]',
+        '    cwd: "./"',
+        '    env: {}',
+        '    tools: { whitelist: [], blacklist: [] }',
+        '    transform: []',
+      ]) +
+      fmtCodeBlock('yaml', [
+        '# stdio 路径示例（最小）',
+        '# 相对路径：cwd 变化会失败',
+        'command: ["node", "./mcp/server.js"]',
+        'cwd: "/absolute/path/to/project"',
+        '',
+        '# 绝对路径：不依赖 cwd',
+        'command: ["node", "/absolute/path/to/mcp/server.js"]',
+      ]) +
+      fmtCodeBlock('yaml', [
+        '# 最小模板（HTTP）',
+        'version: 1',
+        'servers:',
+        '  sdk_http:',
+        '    truely-stateless: false',
+        '    transport: streamable_http',
+        '    url: http://127.0.0.1:3000/mcp',
+        '    tools: { whitelist: [], blacklist: [] }',
+        '    transform: []',
+      ])
     );
   }
+
   return (
     fmtHeader('.minds/mcp.yaml') +
     fmtList([
-      'Each MCP serverId registers one toolset, and the toolset name is exactly `serverId` (no `mcp_` prefix).',
-      'Hot reload: edits apply without restarting Dominds; use `mcp_restart` when needed.',
+      'Each MCP `serverId` registers one toolset, and the toolset name is exactly `serverId` (no `mcp_` prefix). Members choose MCP access via `members.<id>.toolsets`.',
+      'Hot reload: edits usually apply without restarting Dominds; use `mcp_restart` when needed.',
       "Default is per-dialog MCP client leasing (safer): first use adds a sticky reminder; call `mcp_release` when you're sure you won't need the toolset soon. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing.",
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
+      'Common pitfalls: stdio transport needs a correct executable/command path and working directory, and is subject to member directory permissions (`read_dirs/write_dirs/no_*`); HTTP transport requires the server URL to be reachable.',
+      'High-frequency pitfall (stdio paths): relative paths depend on `cwd` and can break; prefer absolute paths, or set `cwd` explicitly to make relative paths stable.',
+      'Minimal diagnostic flow: 1) run `!!@team_mgmt_check_provider <providerKey>` to confirm the LLM provider works; 2) review member directory permissions (`!!@team_mgmt_manual !permissions`); 3) check MCP-side errors (Problems panel / logs), use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
-    '\n' +
-    'Example (HTTP):\n' +
-    '```yaml\n' +
-    'version: 1\n' +
-    'servers:\n' +
-    '  sdk_http:\n' +
-    '    truely-stateless: false\n' +
-    '    transport: streamable_http\n' +
-    '    url: http://127.0.0.1:3000/mcp\n' +
-    '    tools: { whitelist: [], blacklist: [] }\n' +
-    '    transform: []\n' +
-    '```\n'
+    fmtCodeBlock('yaml', [
+      '# Minimal template (stdio)',
+      'version: 1',
+      'servers:',
+      '  sdk_stdio:',
+      '    truely-stateless: false',
+      '    transport: stdio',
+      '    command: ["node", "./path/to/mcp-server.js"]',
+      '    cwd: "./"',
+      '    env: {}',
+      '    tools: { whitelist: [], blacklist: [] }',
+      '    transform: []',
+    ]) +
+    fmtCodeBlock('yaml', [
+      '# stdio path example (minimal)',
+      '# Relative path: depends on cwd',
+      'command: ["node", "./mcp/server.js"]',
+      'cwd: "/absolute/path/to/project"',
+      '',
+      '# Absolute path: independent of cwd',
+      'command: ["node", "/absolute/path/to/mcp/server.js"]',
+    ]) +
+    fmtCodeBlock('yaml', [
+      '# Minimal template (HTTP)',
+      'version: 1',
+      'servers:',
+      '  sdk_http:',
+      '    truely-stateless: false',
+      '    transport: streamable_http',
+      '    url: http://127.0.0.1:3000/mcp',
+      '    tools: { whitelist: [], blacklist: [] }',
+      '    transform: []',
+    ])
   );
 }
 
@@ -1205,20 +1304,46 @@ function renderPermissionsManual(language: LanguageCode): string {
     return (
       fmtHeader('目录权限（read_dirs / write_dirs）') +
       fmtList([
+        '权限字段：`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`。',
         'deny-list（no_*）优先于 allow-list（*_dirs）。',
-        '若未配置 allow-list，则默认允许（在 deny-list 不命中的前提下）。',
-        '模式支持 `*` 和 `**`，按“目录范围”语义匹配。',
-        '`*.tsk/` 是封装差遣牒：通用文件工具必须禁止访问。',
+        '若未配置 allow-list，则默认允许（在 deny-list 不命中的前提下）。这很方便，但也更容易“权限过大”；如需最小权限，建议显式收敛 allow-list 并对敏感目录加 deny-list。',
+        '`read_dirs` 与 `write_dirs` 是独立控制：不要默认 write implies read（以当前实现的权限检查为准）。',
+        '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
+        '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
+        '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
+        '`*.tsk/` 是封装差遣牒：只能用 `!!@change_mind` 维护。通用文件工具（read/list/overwrite/rm/plan/apply）必须禁止访问该目录树。',
+      ]) +
+      fmtCodeBlock('yaml', [
+        '# 最小权限写法示例（仅示意）',
+        'members:',
+        '  coder:',
+        '    read_dirs: ["dominds/**"]',
+        '    write_dirs: ["dominds/**"]',
+        '    no_read_dirs: [".minds/**", "*.tsk/**"]',
+        '    no_write_dirs: [".minds/**", "*.tsk/**"]',
       ])
     );
   }
   return (
     fmtHeader('Directory Permissions (read_dirs / write_dirs)') +
     fmtList([
+      'Fields: `read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`.',
       'Deny-lists (no_*) override allow-lists (*_dirs).',
-      'If no allow-list is configured, access defaults to allow (after deny-list check).',
-      'Patterns support `*` and `**` with directory-scope semantics.',
-      '`*.tsk/` is an encapsulated Task Doc and is forbidden to general file tools.',
+      'If no allow-list is configured, access defaults to allow (after deny-list check). This is convenient but can be overly permissive; for least privilege, explicitly narrow allow-lists and deny sensitive directories.',
+      '`read_dirs` and `write_dirs` are controlled independently (do not assume write implies read; follow current implementation).',
+      'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
+      'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
+      'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
+      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via `!!@change_mind` only. General file tools (read/list/overwrite/rm/plan/apply) must be blocked from that directory tree.',
+    ]) +
+    fmtCodeBlock('yaml', [
+      '# Least-privilege example (illustrative)',
+      'members:',
+      '  coder:',
+      '    read_dirs: ["dominds/**"]',
+      '    write_dirs: ["dominds/**"]',
+      '    no_read_dirs: [".minds/**", "*.tsk/**"]',
+      '    no_write_dirs: [".minds/**", "*.tsk/**"]',
     ])
   );
 }
@@ -1228,20 +1353,38 @@ function renderMindsManual(language: LanguageCode): string {
     return (
       fmtHeader('.minds/team/<id>/*') +
       fmtList([
+        '最小要求：每个 `members.<id>` 建议至少提供 `persona.*.md`（否则该成员将缺少可发现的角色设定；具体忽略/回退/报错行为以当前实现为准）。',
         'persona.*.md：角色设定（稳定的工作方式与职责）。',
         'knowledge.*.md：领域知识（可维护）。',
         'lessons.*.md：经验教训（可维护）。',
-        '优先按工作语言命名：persona.zh.md / persona.en.md 等。',
+        '语言文件命名：优先按工作语言提供 `persona.zh.md` / `persona.en.md` 等；是否回退到 `persona.md`/其他语言版本，以当前实现为准。',
+      ]) +
+      fmtCodeBlock('text', [
+        '.minds/',
+        '  team/',
+        '    qa_guard/',
+        '      persona.zh.md',
+        '      knowledge.zh.md',
+        '      lessons.zh.md',
       ])
     );
   }
   return (
     fmtHeader('.minds/team/<id>/*') +
     fmtList([
+      'Minimum: for each `members.<id>`, provide at least `persona.*.md` (otherwise the member may lack a discoverable persona; ignore/fallback/error behavior follows current implementation).',
       'persona.*.md: persona and operating style.',
       'knowledge.*.md: domain knowledge (maintainable).',
       'lessons.*.md: lessons learned (maintainable).',
-      'Prefer working-language variants: persona.en.md / persona.zh.md, etc.',
+      'Language variants: prefer working-language files like `persona.en.md` / `persona.zh.md`; whether it falls back to `persona.md` or other languages follows current implementation.',
+    ]) +
+    fmtCodeBlock('text', [
+      '.minds/',
+      '  team/',
+      '    qa_guard/',
+      '      persona.en.md',
+      '      knowledge.en.md',
+      '      lessons.en.md',
     ])
   );
 }
@@ -1249,22 +1392,24 @@ function renderMindsManual(language: LanguageCode): string {
 function renderTroubleshooting(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      fmtHeader('排障') +
+      fmtHeader('排障（症状 → 原因 → 解决步骤）') +
       fmtList([
-        '“缺少 provider/model”：检查 `.minds/team.yaml` 的 member_defaults。',
-        '“Provider not found”：检查 `.minds/llm.yaml` 与 defaults 合并后的 provider key。',
-        '修改 provider/model 前：优先运行 `!!@team_mgmt_check_provider <providerKey> !live true`，尽量避免配置错误导致系统不可用。',
-        'MCP 不生效：打开 Problems 面板查看错误；必要时用 `mcp_restart`。',
+        '改 provider/model 前总是先做：运行 `!!@team_mgmt_check_provider <providerKey> !live true`，确认 provider key 存在且环境变量已配置。',
+        '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
+        '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
+        '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `!!@team_mgmt_manual !permissions` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
+        '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：打开 Problems 面板查看错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
   }
   return (
-    fmtHeader('Troubleshooting') +
+    fmtHeader('Troubleshooting (symptom → cause → steps)') +
     fmtList([
-      '"Missing provider/model": check `.minds/team.yaml` member_defaults.',
-      '"Provider not found": check `.minds/llm.yaml` provider keys (merged with defaults).',
-      'Before changing provider/model: run `!!@team_mgmt_check_provider <providerKey> !live true` to reduce the chance of bricking.',
-      'MCP not working: check Problems panel; use `mcp_restart` when needed.',
+      'Always do this before changing provider/model: run `!!@team_mgmt_check_provider <providerKey> !live true` to verify the provider key and env vars.',
+      'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
+      'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
+      'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `!!@team_mgmt_manual !permissions` and the member `read_dirs/write_dirs/no_*` config.',
+      'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: check Problems panel; use `mcp_restart`; call `mcp_release` when done.',
     ])
   );
 }
@@ -1281,19 +1426,21 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
       header +
       fmtList([
         '`model_params` 写在 `.minds/team.yaml` 的 `member_defaults` 或 `members.<id>` 下，用来控制采样/推理/输出风格。',
-        'OpenAI/Codex 常用：`openai.reasoning_effort`（minimal/low/medium/high）、`openai.verbosity`（low/medium/high）。',
-        '工具调用/可重复输出：倾向 `openai.temperature: 0` 或较低（0–0.2）。',
+        '`model_params` 是运行时参数；`model_param_options`（在 `.minds/llm.yaml` 或内置 defaults 中）是文档/说明用途，用来描述可用参数范围（不保证强制校验）。',
+        '常见参数示例（不同 provider 支持不同；字段名/层级以 `.minds/llm.yaml` 中该 provider 的定义为准）：例如 `reasoning_effort`、`verbosity`、`temperature`、`max_tokens` 等。',
+        '风险提示：部分参数可能影响成本/延迟/输出稳定性（例如 temperature、max tokens 等）。参数是否透传/是否会被校验或裁剪，以当前实现为准。',
       ]) +
       '\n' +
       '示例：\n' +
       '```yaml\n' +
       'members:\n' +
-      '  pangu:\n' +
+      '  qa_guard:\n' +
       '    model_params:\n' +
-      '      openai:\n' +
+      '      myprovider:\n' +
       '        reasoning_effort: medium\n' +
       '        verbosity: low\n' +
       '        temperature: 0\n' +
+      '        max_tokens: 1024\n' +
       '```\n' +
       '\n' +
       '内置 provider 的 `model_param_options` 摘要（来自 `dominds/main/llm/defaults.yaml`）：\n' +
@@ -1306,19 +1453,21 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
     header +
     fmtList([
       '`model_params` lives in `.minds/team.yaml` under `member_defaults` or `members.<id>` to control sampling/reasoning/output style.',
-      'Common OpenAI/Codex knobs: `openai.reasoning_effort` (minimal/low/medium/high), `openai.verbosity` (low/medium/high).',
-      'For tool-calling and repeatability: prefer `openai.temperature: 0` or low (0–0.2).',
+      '`model_params` is runtime config; `model_param_options` (in `.minds/llm.yaml` or built-in defaults) is documentation-only to describe supported knobs (not guaranteed to be strictly validated).',
+      'Common examples (provider-dependent; field names and nesting depend on your provider schema in `.minds/llm.yaml`): e.g. `reasoning_effort`, `verbosity`, `temperature`, `max_tokens`, etc.',
+      'Risk note: some knobs may affect cost/latency/output stability (e.g. temperature, max tokens). Whether params are passed through / validated / clamped follows current implementation.',
     ]) +
     '\n' +
     'Example:\n' +
     '```yaml\n' +
     'members:\n' +
-    '  pangu:\n' +
+    '  qa_guard:\n' +
     '    model_params:\n' +
-    '      openai:\n' +
+    '      myprovider:\n' +
     '        reasoning_effort: medium\n' +
     '        verbosity: low\n' +
     '        temperature: 0\n' +
+    '        max_tokens: 1024\n' +
     '```\n' +
     '\n' +
     'Built-in provider `model_param_options` summary (from `dominds/main/llm/defaults.yaml`):\n' +
@@ -1331,7 +1480,31 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
   const ids = Object.keys(listToolsets());
   const header =
     language === 'zh' ? fmtHeader('已注册 toolsets') : fmtHeader('Registered toolsets');
-  return header + fmtList(ids.map((id) => `\`${id}\``));
+
+  const intro =
+    language === 'zh'
+      ? fmtList([
+          '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
+          '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
+        ])
+      : fmtList([
+          'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
+          'Three common patterns (in `.minds/team.yaml` under `members.<id>.toolsets`):',
+        ]);
+
+  const patterns = fmtCodeBlock('yaml', [
+    '# 1) allow all',
+    'toolsets: ["*"]',
+    '',
+    '# 2) allow all except team-mgmt',
+    'toolsets: ["*", "!team-mgmt"]',
+    '',
+    '# 3) allow a few',
+    'toolsets: ["shell", "git", "mcp"]',
+  ]);
+
+  const list = fmtList(ids.map((id) => `\`${id}\``));
+  return header + intro + patterns + '\n' + list;
 }
 
 async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
@@ -1340,7 +1513,19 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
       ? fmtHeader('内置 LLM Defaults（摘要）')
       : fmtHeader('Built-in LLM Defaults (summary)');
   const body = await loadBuiltinLlmDefaultsText();
-  return header + body + '\n';
+
+  const explain =
+    language === 'zh'
+      ? fmtList([
+          '这份列表来自 Dominds 内置的 LLM defaults（实现内置）。当你没有在 `.minds/llm.yaml` 里显式覆盖某些 provider/model key 时，这些 defaults 可能会生效（以当前实现的合并规则为准）。',
+          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `!!@team_mgmt_check_provider <providerKey> !live true` 验证配置。',
+        ])
+      : fmtList([
+          'This list comes from Dominds built-in LLM defaults (implementation-provided). If you do not explicitly override certain provider/model keys in `.minds/llm.yaml`, these defaults may be used (per current merge rules).',
+          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `!!@team_mgmt_check_provider <providerKey> !live true` to verify.',
+        ]);
+
+  return header + explain + '\n' + body + '\n';
 }
 
 export const teamMgmtValidateTeamCfgTool: TextingTool = {
@@ -1504,17 +1689,20 @@ export const teamMgmtManualTool: TextingTool = {
           fmtHeader('Team Management Manual') +
           msgPrefix +
           fmtList([
-            '`!!@team_mgmt_manual !topics`：主题索引',
-            '`!!@team_mgmt_manual !team`：.minds/team.yaml',
-            '`!!@team_mgmt_manual !team !member-properties`：成员字段表',
-            '`!!@team_mgmt_manual !llm`：.minds/llm.yaml',
-            '`!!@team_mgmt_manual !llm !builtin-defaults`：内置 provider/model 摘要',
-            '`!!@team_mgmt_manual !llm !model-params`：模型参数（model_params）参考',
-            '`!!@team_mgmt_manual !mcp`：.minds/mcp.yaml',
-            '`!!@team_mgmt_manual !minds`：.minds/team/<id>/*',
-            '`!!@team_mgmt_manual !permissions`：目录权限',
-            '`!!@team_mgmt_manual !toolsets`：当前已注册 toolsets',
-            '`!!@team_mgmt_manual !troubleshooting`：排障',
+            '`!!@team_mgmt_manual !topics`：主题索引（你在这里）',
+            '新手最常见流程：先写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `!!@team_mgmt_check_provider <providerKey>`。',
+            '',
+            '`!!@team_mgmt_manual !team`：.minds/team.yaml（团队花名册、工具集、目录权限入口）',
+            '`!!@team_mgmt_manual !minds`：.minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）',
+            '`!!@team_mgmt_manual !permissions`：目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）',
+            '`!!@team_mgmt_manual !toolsets`：toolsets 列表（当前已注册 toolsets；常见三种授权模式）',
+            '`!!@team_mgmt_manual !llm`：.minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）',
+            '`!!@team_mgmt_manual !mcp`：.minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）',
+            '`!!@team_mgmt_manual !troubleshooting`：排障（按症状定位；优先用 check_provider）',
+            '',
+            '`!!@team_mgmt_manual !team !member-properties`：成员字段表（members.<id> 字段参考）',
+            '`!!@team_mgmt_manual !llm !builtin-defaults`：内置 defaults 摘要（内置 provider/model 概览与合并语义）',
+            '`!!@team_mgmt_manual !llm !model-params`：模型参数参考（model_params / model_param_options）',
           ])
         );
       }
@@ -1522,17 +1710,20 @@ export const teamMgmtManualTool: TextingTool = {
         fmtHeader('Team Management Manual') +
         msgPrefix +
         fmtList([
-          '`!!@team_mgmt_manual !topics`: topic index',
-          '`!!@team_mgmt_manual !team`: .minds/team.yaml',
-          '`!!@team_mgmt_manual !team !member-properties`: member field reference',
-          '`!!@team_mgmt_manual !llm`: .minds/llm.yaml',
-          '`!!@team_mgmt_manual !llm !builtin-defaults`: built-in provider/model summary',
-          '`!!@team_mgmt_manual !llm !model-params`: `model_params` reference',
-          '`!!@team_mgmt_manual !mcp`: .minds/mcp.yaml',
-          '`!!@team_mgmt_manual !minds`: .minds/team/<id>/*',
-          '`!!@team_mgmt_manual !permissions`: directory permissions',
-          '`!!@team_mgmt_manual !toolsets`: currently registered toolsets',
-          '`!!@team_mgmt_manual !troubleshooting`: troubleshooting',
+          '`!!@team_mgmt_manual !topics`: topic index (you are here)',
+          'Common starter flow: write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `!!@team_mgmt_check_provider <providerKey>`. ',
+          '',
+          '`!!@team_mgmt_manual !team`: `.minds/team.yaml` (roster/toolsets/permissions entrypoint)',
+          '`!!@team_mgmt_manual !minds`: `.minds/team/<id>/*` (persona/knowledge/lessons assets)',
+          '`!!@team_mgmt_manual !permissions`: directory permissions (semantics + conflict rules)',
+          '`!!@team_mgmt_manual !toolsets`: toolsets list (registered toolsets + common patterns)',
+          '`!!@team_mgmt_manual !llm`: `.minds/llm.yaml` (provider keys, env var boundaries)',
+          '`!!@team_mgmt_manual !mcp`: `.minds/mcp.yaml` (serverId→toolset, hot reload, leasing, minimal templates)',
+          '`!!@team_mgmt_manual !troubleshooting`: troubleshooting (symptom → steps; start with check_provider)',
+          '',
+          '`!!@team_mgmt_manual !team !member-properties`: member field reference (members.<id>)',
+          '`!!@team_mgmt_manual !llm !builtin-defaults`: built-in defaults summary (what/when/merge behavior)',
+          '`!!@team_mgmt_manual !llm !model-params`: `model_params` and `model_param_options` reference',
         ])
       );
     };
@@ -1569,14 +1760,22 @@ export const teamMgmtManualTool: TextingTool = {
           language === 'zh'
             ? fmtHeader('.minds/llm.yaml') +
               fmtList([
-                '定义 provider→model 映射（覆盖内置 defaults）。',
+                '定义 provider key → model 映射（用于 `.minds/team.yaml` 的 `member_defaults.provider` / `members.<id>.provider` 引用）。',
+                '最小示例：\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\n然后在 `.minds/team.yaml` 里引用 `provider: my_provider` / `model: my_model`。',
+
+                '覆盖/合并语义：`.minds/llm.yaml` 会在内置 defaults 之上做覆盖（以当前实现为准）；定义一个 provider key 并不意味着“禁用其他内置 provider”。',
+
                 '不要在文件里存 API key，使用环境变量（apiKeyEnvVar）。',
                 'member_defaults.provider/model 需要引用这里的 key。',
                 '`model_param_options` 可选：用于记录该 provider 支持的 `.minds/team.yaml model_params` 选项（文档用途）。',
               ])
             : fmtHeader('.minds/llm.yaml') +
               fmtList([
-                'Defines provider→model map (overrides built-in defaults).',
+                'Defines provider keys → model keys (referenced by `.minds/team.yaml` via `member_defaults.provider` / `members.<id>.provider`).',
+                'Minimal example:\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\nThen reference `provider: my_provider` and `model: my_model` in `.minds/team.yaml`.',
+
+                'Merge/override: `.minds/llm.yaml` overrides built-in defaults (per current implementation); defining one provider does not imply disabling other built-in providers.',
+
                 'Do not store API keys in the file; use env vars via apiKeyEnvVar.',
                 'member_defaults.provider/model must reference these keys.',
                 'Optional: `model_param_options` documents `.minds/team.yaml model_params` knobs (documentation only).',

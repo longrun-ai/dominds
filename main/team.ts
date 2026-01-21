@@ -108,7 +108,7 @@ export namespace Team {
     name: string;
     provider?: string;
     model?: string;
-    gofor?: string[];
+    gofor?: string[] | Record<string, string>;
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
@@ -125,7 +125,7 @@ export namespace Team {
       name: string;
       provider?: string;
       model?: string;
-      gofor?: string[];
+      gofor?: string[] | Record<string, string>;
       toolsets?: string[];
       tools?: string[];
       model_params?: ModelParams;
@@ -200,7 +200,7 @@ export namespace Team {
       this.model = model;
     }
 
-    setGofor(gofor: string[] | undefined): void {
+    setGofor(gofor: string[] | Record<string, string> | undefined): void {
       if (gofor === undefined) {
         delete this.gofor;
         return;
@@ -616,7 +616,7 @@ export namespace Team {
     name?: string;
     provider?: string;
     model?: string;
-    gofor?: string[];
+    gofor?: string[] | Record<string, string>;
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
@@ -666,7 +666,7 @@ export namespace Team {
     if (hasOwnKey(rv, 'gofor')) {
       try {
         overrides.gofor = requireDefined(
-          asOptionalStringOrStringArray(rv['gofor'], `${at}.gofor`),
+          asOptionalGofor(rv['gofor'], `${at}.gofor`),
           `${at}.gofor`,
         );
       } catch (err: unknown) {
@@ -987,6 +987,30 @@ export namespace Team {
       return value;
     }
     throw new Error(`Invalid ${at}: expected string|string[] (got ${describeValueType(value)})`);
+  }
+
+  function asOptionalGofor(
+    value: unknown,
+    at: string,
+  ): string[] | Record<string, string> | undefined {
+    if (value === undefined) return undefined;
+
+    if (typeof value === 'string') return [value];
+    if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value;
+
+    if (isRecordValue(value)) {
+      const obj = value as Record<string, unknown>;
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v !== 'string') {
+          throw new Error(`Invalid ${at}.${k}: expected string (got ${describeValueType(v)})`);
+        }
+      }
+      return obj as Record<string, string>;
+    }
+
+    throw new Error(
+      `Invalid ${at}: expected string|string[]|Record<string,string> (got ${describeValueType(value)})`,
+    );
   }
 
   function asOptionalStop(value: unknown, at: string): string | string[] | undefined {

@@ -14,9 +14,21 @@ export function formatTeamIntro(team: Team, selfAgentId: string, language: Langu
   return visibleMembers
     .map((m) => {
       const isSelf = m.id === selfAgentId ? selfSuffix : '';
-      const goforList =
-        Array.isArray(m.gofor) && m.gofor.length ? m.gofor.map((t) => `    - ${t}`).join('\n') : '';
-      const gofor = goforList ? `\n  - ${focusLabel}:\n${goforList}` : '';
+
+      const gofor = (() => {
+        if (m.gofor === undefined) return '';
+        if (typeof m.gofor === 'string') return `\n  - ${focusLabel}:\n    - ${m.gofor}`;
+        if (Array.isArray(m.gofor)) {
+          if (m.gofor.length === 0) return '';
+          const list = m.gofor.map((t) => `    - ${t}`).join('\n');
+          return `\n  - ${focusLabel}:\n${list}`;
+        }
+        const entries = Object.entries(m.gofor);
+        if (entries.length === 0) return '';
+        const list = entries.map(([k, v]) => `    - ${k}: ${v}`).join('\n');
+        return `\n  - ${focusLabel}:\n${list}`;
+      })();
+
       return `- ${callSignLabel}: @${m.id}${isSelf} - ${m.name}${gofor}`;
     })
     .join('\n');
