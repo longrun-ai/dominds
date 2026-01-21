@@ -14,6 +14,7 @@
     "teammate-call-parse": "tsx texting/teammate-call-parse.ts",
     "task-package": "tsx task-package.ts",
     "taskdoc-search": "tsx taskdoc-search.ts",
+    "team-yaml-parsing": "tsx team-yaml-parsing.ts",
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",

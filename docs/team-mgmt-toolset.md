@@ -102,6 +102,7 @@ Recommended tools (names are suggestions; use `snake_case` to match existing too
 | `team_mgmt_move_path`               | `fs`     | Rename/move paths under `.minds/`                                        | `.minds/**`             |
 | `team_mgmt_rm_file`                 | `fs`     | Delete files under `.minds/`                                             | `.minds/**`             |
 | `team_mgmt_rm_dir`                  | `fs`     | Delete directories under `.minds/`                                       | `.minds/**`             |
+| `team_mgmt_validate_team_cfg`       | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel     | `.minds/**`             |
 | `team_mgmt_manual`                  | new      | Built-in “how-to” manual (see below)                                     | N/A                     |
 
 Notes:
@@ -109,6 +110,8 @@ Notes:
 - Include the full `.minds/` lifecycle (create, update, rename/move, delete). The team manager must
   be able to correct mistakes and recover from accidental corruptions (including ones introduced by
   other tools).
+- After any change to `.minds/team.yaml`, the team manager should run `!!@team_mgmt_validate_team_cfg`
+  to ensure all errors are detected and surfaced (and to avoid silently omitting broken member configs).
 - Path handling should be strict:
   - Reject absolute paths.
   - Reject paths containing `..`.

@@ -17,8 +17,10 @@ import type { ChatMessage } from '../llm/client';
 import { LlmConfig } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
+import { getProblemsSnapshot } from '../problems';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
+import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { TextingTool, TextingToolCallResult } from '../tool';
@@ -33,6 +35,8 @@ import {
 
 const MINDS_ALLOW = ['.minds/**'] as const;
 const MINDS_DIR = '.minds';
+const TEAM_YAML_REL = `${MINDS_DIR}/team.yaml`;
+const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
 
 function ok(result: string, messages?: ChatMessage[]): TextingToolCallResult {
   return { status: 'completed', result, messages };
@@ -1339,6 +1343,120 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
   return header + body + '\n';
 }
 
+export const teamMgmtValidateTeamCfgTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_validate_team_cfg',
+  backfeeding: true,
+  usageDescription:
+    `Validate ${TEAM_YAML_REL} and surface all issues to the WebUI Problems panel.\n` +
+    `Usage: !!@team_mgmt_validate_team_cfg\n`,
+  usageDescriptionI18n: {
+    en:
+      `Validate ${TEAM_YAML_REL} and surface all issues to the WebUI Problems panel.\n` +
+      `Usage: !!@team_mgmt_validate_team_cfg\n`,
+    zh:
+      `校验 ${TEAM_YAML_REL}，并将所有问题上报到 WebUI 的 Problems 面板。\n` +
+      `用法：!!@team_mgmt_validate_team_cfg\n`,
+  },
+  async call(dlg, _caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const minds = await getMindsDirState();
+      if (minds.kind === 'missing') {
+        const msg =
+          formatMindsMissingNotice(language) +
+          (language === 'zh'
+            ? `\n\n当前无法校验 \`${TEAM_YAML_REL}\`。`
+            : `\n\nCannot validate \`${TEAM_YAML_REL}\` yet.`);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (minds.kind === 'not_directory') {
+        const msg =
+          language === 'zh'
+            ? `错误：\`${MINDS_DIR}/\` 存在但不是目录：\`${minds.abs}\``
+            : `Error: \`${MINDS_DIR}/\` exists but is not a directory: \`${minds.abs}\``;
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const cwd = path.resolve(process.cwd());
+      const teamYamlAbs = path.resolve(cwd, TEAM_YAML_REL);
+      try {
+        const st = await fs.stat(teamYamlAbs);
+        if (!st.isFile()) {
+          const msg =
+            language === 'zh'
+              ? `错误：\`${TEAM_YAML_REL}\` 存在但不是文件。`
+              : `Error: \`${TEAM_YAML_REL}\` exists but is not a file.`;
+          return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+      } catch (err: unknown) {
+        if (isFsErrWithCode(err) && err.code === 'ENOENT') {
+          const msg =
+            language === 'zh'
+              ? `未发现 \`${TEAM_YAML_REL}\`，无需校验。`
+              : `\`${TEAM_YAML_REL}\` not found; nothing to validate.`;
+          return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+        throw err;
+      }
+
+      // Team.load() is fail-open (always returns a usable team) and publishes any team.yaml issues
+      // to the Problems panel.
+      await Team.load();
+
+      const snapshot = getProblemsSnapshot();
+      const teamProblems = listTeamYamlProblems(snapshot.problems);
+
+      if (teamProblems.length === 0) {
+        const msg =
+          language === 'zh'
+            ? fmtHeader('team.yaml 校验通过') +
+              fmtList([
+                `\`${TEAM_YAML_REL}\`：✅ 未检测到问题`,
+                '提示：每次修改 team.yaml 后都应运行本工具，避免“坏成员配置被静默跳过”。',
+              ])
+            : fmtHeader('team.yaml Validation Passed') +
+              fmtList([
+                `\`${TEAM_YAML_REL}\`: ✅ no issues detected`,
+                'Tip: run this after every team.yaml change to avoid silent omission of broken members.',
+              ]);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const issueLines: string[] = [];
+      for (const p of teamProblems) {
+        issueLines.push(`- ${p.id}: ${p.message}`);
+        issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
+      }
+
+      const msg =
+        language === 'zh'
+          ? fmtHeader('team.yaml 校验失败') +
+            fmtList([
+              `\`${TEAM_YAML_REL}\`：❌ 检测到 ${teamProblems.length} 个问题（详见 Problems 面板）`,
+              '说明：坏的成员配置会被运行时跳过（为了保持 Team 可用），但你仍应立即修复以免行为偏离预期。',
+            ]) +
+            '\n' +
+            issueLines.join('\n')
+          : fmtHeader('team.yaml Validation Failed') +
+            fmtList([
+              `\`${TEAM_YAML_REL}\`: ❌ ${teamProblems.length} issue(s) detected (see Problems panel)`,
+              'Note: invalid member configs are omitted at runtime (to keep the Team usable), but you should fix them immediately.',
+            ]) +
+            '\n' +
+            issueLines.join('\n');
+
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `校验失败：${err instanceof Error ? err.message : String(err)}`
+          : `Validation failed: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
 export const teamMgmtManualTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_manual',
@@ -1501,6 +1619,7 @@ export const teamMgmtManualTool: TextingTool = {
 export const teamMgmtTools: ReadonlyArray<TextingTool> = [
   teamMgmtManualTool,
   teamMgmtCheckProviderTool,
+  teamMgmtValidateTeamCfgTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtOverwriteFileTool,

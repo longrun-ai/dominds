@@ -11,6 +11,9 @@ import YAML from 'yaml';
 
 import { LlmConfig } from './llm/client';
 import { log } from './log';
+import { reconcileProblemsByPrefix } from './problems';
+import type { WorkspaceProblem } from './shared/types/problems';
+import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { Tool } from './tool';
 import { getTool, getToolset, listToolsets } from './tools/registry';
 
@@ -53,6 +56,9 @@ export class Team {
 }
 
 export namespace Team {
+  const TEAM_YAML_PATH = '.minds/team.yaml';
+  const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
+
   export interface ModelParams {
     // General parameters that can be used by any provider
     max_tokens?: number; // Maximum tokens to generate (provider-agnostic)
@@ -366,8 +372,6 @@ export namespace Team {
 
   // Team config support: load .minds/team.yaml
   export async function load(): Promise<Team> {
-    const teamPath = '.minds/team.yaml';
-
     const md = new Team.Member({
       id: 'defaulter',
       name: 'Defaulter',
@@ -395,50 +399,166 @@ export namespace Team {
     });
     Object.setPrototypeOf(pangu, md);
 
-    try {
-      await fs.access(teamPath);
-    } catch {
-      // When rtws doesn't have a team definition, construct a minimal team with
-      // shadow/hidden members for bootstrap.
-      const llmCfg = await LlmConfig.load();
-      const providerEntries = Object.entries(llmCfg.providers);
-      const pickProvider = (key: string): void => {
-        md.setProvider(key);
-        const modelKeys = Object.keys(llmCfg.providers[key]?.models ?? {});
-        if (modelKeys.length > 0) md.setModel(modelKeys[0]);
-      };
-      // Prefer a provider with an available API key env var.
-      for (const [key, providerConfig] of providerEntries) {
-        if (process.env[providerConfig.apiKeyEnvVar]) {
-          pickProvider(key);
-          break;
-        }
+    const issuesById = new Map<string, { message: string; errorText: string }>();
+    const addIssue = (id: string, message: string, errorText: string): void => {
+      issuesById.set(id, { message, errorText });
+    };
+
+    const finalizeProblems = (): void => {
+      const now = formatUnifiedTimestamp(new Date());
+      const desired: WorkspaceProblem[] = [];
+      for (const [id, issue] of issuesById.entries()) {
+        desired.push({
+          kind: 'team_workspace_config_error',
+          source: 'team',
+          id: TEAM_YAML_PROBLEM_PREFIX + id,
+          severity: 'error',
+          timestamp: now,
+          message: issue.message,
+          detail: { filePath: TEAM_YAML_PATH, errorText: issue.errorText },
+        });
       }
-      // Fall back to the first configured provider.
-      if (!md.provider && providerEntries.length > 0) {
-        pickProvider(providerEntries[0][0]);
+      reconcileProblemsByPrefix(TEAM_YAML_PROBLEM_PREFIX, desired);
+    };
+
+    const buildBootstrapTeam = async (): Promise<Team> => {
+      try {
+        await applyBootstrapMemberDefaults(md);
+      } catch (err: unknown) {
+        log.warn(
+          `Failed to apply bootstrap member defaults: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       return new Team({
         memberDefaults: md,
         defaultResponder: 'fuxi',
         members: { fuxi, pangu },
       });
+    };
+
+    try {
+      await fs.access(TEAM_YAML_PATH);
+    } catch {
+      // When rtws doesn't have a team definition, construct a minimal team with
+      // shadow/hidden members for bootstrap.
+      const team = await buildBootstrapTeam();
+      finalizeProblems();
+      return team;
     }
 
-    const raw = await fs.readFile(teamPath, 'utf-8');
-    const parsed: unknown = YAML.parse(raw);
-    const team = fromYamlObject(parsed, md, { fuxi, pangu });
+    let team: Team;
+    try {
+      const raw = await fs.readFile(TEAM_YAML_PATH, 'utf-8');
+      let parsed: unknown;
+      try {
+        parsed = YAML.parse(raw);
+      } catch (err: unknown) {
+        addIssue(
+          'parse',
+          'Failed to parse .minds/team.yaml.',
+          err instanceof Error ? err.message : String(err),
+        );
+        team = await buildBootstrapTeam();
+        finalizeProblems();
+        return team;
+      }
+
+      const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu });
+      for (const issue of parsedTeam.issues) {
+        addIssue(issue.id, issue.message, issue.errorText);
+      }
+
+      team = parsedTeam.team;
+    } catch (err: unknown) {
+      addIssue(
+        'read',
+        'Failed to load .minds/team.yaml.',
+        err instanceof Error ? err.message : String(err),
+      );
+      team = await buildBootstrapTeam();
+      finalizeProblems();
+      return team;
+    }
 
     // Always include fuxi + pangu as shadow members, even if team.yaml exists.
     enforceShadowMemberDefaults(fuxi, pangu);
     team.members['fuxi'] = fuxi;
     team.members['pangu'] = pangu;
 
+    const configuredDefaultResponder = team.defaultResponder;
+
     // Normalize default responder (even if team.yaml omitted it).
     const def = team.getDefaultResponder();
     team.defaultResponder = def ? def.id : 'fuxi';
 
+    // If member_defaults provider/model are missing after parsing, try to recover from llm.yaml.
+    try {
+      await applyBootstrapMemberDefaults(md);
+    } catch (err: unknown) {
+      // Fail open: Team must remain usable even if llm.yaml cannot be loaded.
+      log.warn(
+        `Failed to recover missing member_defaults provider/model from llm config: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (!md.provider) {
+      addIssue(
+        'member_defaults/provider',
+        'Invalid .minds/team.yaml: missing member_defaults.provider.',
+        'member_defaults.provider is required (or must be recoverable from .minds/llm.yaml).',
+      );
+    }
+    if (!md.model) {
+      addIssue(
+        'member_defaults/model',
+        'Invalid .minds/team.yaml: missing member_defaults.model.',
+        'member_defaults.model is required (or must be recoverable from .minds/llm.yaml).',
+      );
+    }
+
+    if (configuredDefaultResponder && !team.getMember(configuredDefaultResponder)) {
+      addIssue(
+        'default_responder/unknown',
+        'Invalid .minds/team.yaml: default_responder does not match any member.',
+        `default_responder '${configuredDefaultResponder}' does not exist in team members.`,
+      );
+    }
+
+    finalizeProblems();
     return team;
+  }
+
+  async function applyBootstrapMemberDefaults(md: Team.Member): Promise<void> {
+    if (md.provider && md.model) return;
+
+    const llmCfg = await LlmConfig.load();
+    const providerEntries = Object.entries(llmCfg.providers);
+
+    const tryPickProvider = (key: string): void => {
+      if (!md.provider) md.setProvider(key);
+
+      const providerKey = md.provider;
+      if (!providerKey) return;
+      const modelKeys = Object.keys(llmCfg.providers[providerKey]?.models ?? {});
+      if (!md.model && modelKeys.length > 0) md.setModel(modelKeys[0]);
+    };
+
+    // Prefer a provider with an available API key env var.
+    for (const [key, providerConfig] of providerEntries) {
+      if (process.env[providerConfig.apiKeyEnvVar]) {
+        tryPickProvider(key);
+        break;
+      }
+    }
+
+    // Fall back to the first configured provider.
+    if (!md.provider && providerEntries.length > 0) {
+      tryPickProvider(providerEntries[0][0]);
+    }
+
+    // If provider is set but model is missing, try to pick a model for that provider.
+    if (md.provider && !md.model) {
+      tryPickProvider(md.provider);
+    }
   }
 
   function enforceShadowMemberDefaults(fuxi: Team.Member, pangu: Team.Member): void {
@@ -473,144 +593,334 @@ export namespace Team {
 
   function requireDefined<T>(value: T | undefined, at: string): T {
     if (value === undefined) {
-      throw new Error(`Invalid ${at}: value required`);
+      throw new Error(`Invalid ${at}: value required (got ${describeValueType(value)})`);
     }
     return value;
   }
 
-  function applyMemberOverridesFromYamlRecord(
-    member: Team.Member,
-    rv: Record<string, unknown>,
-    at: string,
-  ): void {
-    if (hasOwnKey(rv, 'name')) {
-      member.setName(requireDefined(asOptionalString(rv['name'], `${at}.name`), `${at}.name`));
-    }
-    if (hasOwnKey(rv, 'provider')) {
-      member.setProvider(
-        requireDefined(asOptionalString(rv['provider'], `${at}.provider`), `${at}.provider`),
-      );
-    }
-    if (hasOwnKey(rv, 'model')) {
-      member.setModel(requireDefined(asOptionalString(rv['model'], `${at}.model`), `${at}.model`));
-    }
-    if (hasOwnKey(rv, 'gofor')) {
-      member.setGofor(
-        requireDefined(asOptionalStringOrStringArray(rv['gofor'], `${at}.gofor`), `${at}.gofor`),
-      );
-    }
-    if (hasOwnKey(rv, 'toolsets')) {
-      member.setToolsets(
-        requireDefined(asOptionalStringArray(rv['toolsets'], `${at}.toolsets`), `${at}.toolsets`),
-      );
-    }
-    if (hasOwnKey(rv, 'tools')) {
-      member.setTools(
-        requireDefined(asOptionalStringArray(rv['tools'], `${at}.tools`), `${at}.tools`),
-      );
-    }
-    if (hasOwnKey(rv, 'model_params')) {
-      member.setModelParams(
-        requireDefined(
-          asOptionalModelParams(rv['model_params'], `${at}.model_params`),
-          `${at}.model_params`,
-        ),
-      );
-    }
-    if (hasOwnKey(rv, 'read_dirs')) {
-      member.setReadDirs(
-        requireDefined(
-          asOptionalStringArray(rv['read_dirs'], `${at}.read_dirs`),
-          `${at}.read_dirs`,
-        ),
-      );
-    }
-    if (hasOwnKey(rv, 'write_dirs')) {
-      member.setWriteDirs(
-        requireDefined(
-          asOptionalStringArray(rv['write_dirs'], `${at}.write_dirs`),
-          `${at}.write_dirs`,
-        ),
-      );
-    }
-    if (hasOwnKey(rv, 'no_read_dirs')) {
-      member.setNoReadDirs(
-        requireDefined(
-          asOptionalStringArray(rv['no_read_dirs'], `${at}.no_read_dirs`),
-          `${at}.no_read_dirs`,
-        ),
-      );
-    }
-    if (hasOwnKey(rv, 'no_write_dirs')) {
-      member.setNoWriteDirs(
-        requireDefined(
-          asOptionalStringArray(rv['no_write_dirs'], `${at}.no_write_dirs`),
-          `${at}.no_write_dirs`,
-        ),
-      );
-    }
-    if (hasOwnKey(rv, 'icon')) {
-      member.setIcon(requireDefined(asOptionalString(rv['icon'], `${at}.icon`), `${at}.icon`));
-    }
-    if (hasOwnKey(rv, 'streaming')) {
-      member.setStreaming(
-        requireDefined(asOptionalBoolean(rv['streaming'], `${at}.streaming`), `${at}.streaming`),
-      );
-    }
-    if (hasOwnKey(rv, 'hidden')) {
-      member.setHidden(
-        requireDefined(asOptionalBoolean(rv['hidden'], `${at}.hidden`), `${at}.hidden`),
-      );
-    }
+  type TeamYamlIssue = { id: string; message: string; errorText: string };
+
+  function isRecordValue(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  function fromYamlObject(
+  function sanitizeProblemIdSegment(segment: string): string {
+    return segment.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
+  function asErrorText(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+  }
+
+  type MemberOverrides = {
+    name?: string;
+    provider?: string;
+    model?: string;
+    gofor?: string[];
+    toolsets?: string[];
+    tools?: string[];
+    model_params?: ModelParams;
+    read_dirs?: string[];
+    write_dirs?: string[];
+    no_read_dirs?: string[];
+    no_write_dirs?: string[];
+    icon?: string;
+    streaming?: boolean;
+    hidden?: boolean;
+  };
+
+  function parseMemberOverrides(
+    rv: Record<string, unknown>,
+    at: string,
+  ): { kind: 'ok'; overrides: MemberOverrides } | { kind: 'error'; errorTexts: string[] } {
+    const overrides: MemberOverrides = {};
+    const errors: string[] = [];
+
+    if (hasOwnKey(rv, 'name')) {
+      try {
+        overrides.name = requireDefined(asOptionalString(rv['name'], `${at}.name`), `${at}.name`);
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'provider')) {
+      try {
+        overrides.provider = requireDefined(
+          asOptionalString(rv['provider'], `${at}.provider`),
+          `${at}.provider`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'model')) {
+      try {
+        overrides.model = requireDefined(
+          asOptionalString(rv['model'], `${at}.model`),
+          `${at}.model`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'gofor')) {
+      try {
+        overrides.gofor = requireDefined(
+          asOptionalStringOrStringArray(rv['gofor'], `${at}.gofor`),
+          `${at}.gofor`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'toolsets')) {
+      try {
+        overrides.toolsets = requireDefined(
+          asOptionalStringArray(rv['toolsets'], `${at}.toolsets`),
+          `${at}.toolsets`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'tools')) {
+      try {
+        overrides.tools = requireDefined(
+          asOptionalStringArray(rv['tools'], `${at}.tools`),
+          `${at}.tools`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'model_params')) {
+      try {
+        overrides.model_params = requireDefined(
+          asOptionalModelParams(rv['model_params'], `${at}.model_params`),
+          `${at}.model_params`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'read_dirs')) {
+      try {
+        overrides.read_dirs = requireDefined(
+          asOptionalStringArray(rv['read_dirs'], `${at}.read_dirs`),
+          `${at}.read_dirs`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'write_dirs')) {
+      try {
+        overrides.write_dirs = requireDefined(
+          asOptionalStringArray(rv['write_dirs'], `${at}.write_dirs`),
+          `${at}.write_dirs`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'no_read_dirs')) {
+      try {
+        overrides.no_read_dirs = requireDefined(
+          asOptionalStringArray(rv['no_read_dirs'], `${at}.no_read_dirs`),
+          `${at}.no_read_dirs`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'no_write_dirs')) {
+      try {
+        overrides.no_write_dirs = requireDefined(
+          asOptionalStringArray(rv['no_write_dirs'], `${at}.no_write_dirs`),
+          `${at}.no_write_dirs`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'icon')) {
+      try {
+        overrides.icon = requireDefined(asOptionalString(rv['icon'], `${at}.icon`), `${at}.icon`);
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'streaming')) {
+      try {
+        overrides.streaming = requireDefined(
+          asOptionalBoolean(rv['streaming'], `${at}.streaming`),
+          `${at}.streaming`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'hidden')) {
+      try {
+        overrides.hidden = requireDefined(
+          asOptionalBoolean(rv['hidden'], `${at}.hidden`),
+          `${at}.hidden`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+
+    if (errors.length > 0) return { kind: 'error', errorTexts: errors };
+    return { kind: 'ok', overrides };
+  }
+
+  function applyOverrides(member: Team.Member, overrides: MemberOverrides): void {
+    if (overrides.name !== undefined) member.setName(overrides.name);
+    if (overrides.provider !== undefined) member.setProvider(overrides.provider);
+    if (overrides.model !== undefined) member.setModel(overrides.model);
+    if (overrides.gofor !== undefined) member.setGofor(overrides.gofor);
+    if (overrides.toolsets !== undefined) member.setToolsets(overrides.toolsets);
+    if (overrides.tools !== undefined) member.setTools(overrides.tools);
+    if (overrides.model_params !== undefined) member.setModelParams(overrides.model_params);
+    if (overrides.read_dirs !== undefined) member.setReadDirs(overrides.read_dirs);
+    if (overrides.write_dirs !== undefined) member.setWriteDirs(overrides.write_dirs);
+    if (overrides.no_read_dirs !== undefined) member.setNoReadDirs(overrides.no_read_dirs);
+    if (overrides.no_write_dirs !== undefined) member.setNoWriteDirs(overrides.no_write_dirs);
+    if (overrides.icon !== undefined) member.setIcon(overrides.icon);
+    if (overrides.streaming !== undefined) member.setStreaming(overrides.streaming);
+    if (overrides.hidden !== undefined) member.setHidden(overrides.hidden);
+  }
+
+  function parseTeamYamlObject(
     obj: unknown,
     md: Team.Member,
     shadow: { fuxi: Team.Member; pangu: Team.Member },
-  ): Team {
-    const teamObj = asRecord(obj, 'team config');
-    const mdObj =
-      teamObj.member_defaults === undefined
-        ? {}
-        : asRecord(teamObj.member_defaults, 'member_defaults');
+  ): { team: Team; issues: TeamYamlIssue[] } {
+    const issues: TeamYamlIssue[] = [];
+    const pushIssue = (id: string, message: string, errorText: string): void => {
+      issues.push({ id, message, errorText });
+    };
 
-    applyMemberOverridesFromYamlRecord(md, mdObj, 'member_defaults');
+    const teamObj: Record<string, unknown> = (() => {
+      if (isRecordValue(obj)) return obj;
+      pushIssue(
+        'root',
+        'Invalid .minds/team.yaml: expected an object at root.',
+        `Invalid team config: expected an object (got ${describeValueType(obj)})`,
+      );
+      return {};
+    })();
 
-    const defResp = asOptionalString(teamObj.default_responder, 'default_responder');
+    // member_defaults
+    const rawMemberDefaults = teamObj.member_defaults;
+    if (rawMemberDefaults !== undefined) {
+      if (!isRecordValue(rawMemberDefaults)) {
+        pushIssue(
+          'member_defaults',
+          'Invalid .minds/team.yaml: member_defaults must be an object.',
+          `Invalid member_defaults: expected an object (got ${describeValueType(rawMemberDefaults)})`,
+        );
+      } else {
+        const parsedMd = parseMemberOverrides(rawMemberDefaults, 'member_defaults');
+        if (parsedMd.kind === 'ok') {
+          applyOverrides(md, parsedMd.overrides);
+        } else {
+          pushIssue(
+            'member_defaults',
+            'Invalid .minds/team.yaml: member_defaults has invalid fields.',
+            parsedMd.errorTexts.join('\n'),
+          );
+        }
+      }
+    }
+
+    // default_responder
+    let defResp: string | undefined;
+    if (teamObj.default_responder !== undefined) {
+      try {
+        defResp = asOptionalString(teamObj.default_responder, 'default_responder');
+      } catch (err: unknown) {
+        pushIssue(
+          'default_responder/type',
+          'Invalid .minds/team.yaml: default_responder must be a string.',
+          asErrorText(err),
+        );
+      }
+    }
 
     const membersRec: Record<string, Team.Member> = {};
-    const membersObj = teamObj.members === undefined ? {} : asRecord(teamObj.members, 'members');
+    const rawMembers = teamObj.members;
+    const membersObj: Record<string, unknown> = (() => {
+      if (rawMembers === undefined) return {};
+      if (isRecordValue(rawMembers)) return rawMembers;
+      pushIssue(
+        'members',
+        'Invalid .minds/team.yaml: members must be an object.',
+        `Invalid members: expected an object (got ${describeValueType(rawMembers)})`,
+      );
+      return {};
+    })();
+
     for (const [id, raw] of Object.entries(membersObj)) {
-      const rv = asRecord(raw, `members.${id}`);
+      const memberAt = `members.${id}`;
+      const idSeg = sanitizeProblemIdSegment(id);
+
+      if (!isRecordValue(raw)) {
+        pushIssue(
+          `members/${idSeg}`,
+          `Invalid .minds/team.yaml: ${memberAt} must be an object.`,
+          `Invalid ${memberAt}: expected an object (got ${describeValueType(raw)})`,
+        );
+        continue;
+      }
+
+      const parsedMember = parseMemberOverrides(raw, memberAt);
+      if (parsedMember.kind === 'error') {
+        pushIssue(
+          `members/${idSeg}`,
+          `Invalid .minds/team.yaml: ${memberAt} has invalid fields.`,
+          parsedMember.errorTexts.join('\n'),
+        );
+        if (id === 'fuxi' || id === 'pangu') {
+          // Shadow members are always present; ignore overrides on invalid config.
+          const shadowMember = id === 'fuxi' ? shadow.fuxi : shadow.pangu;
+          Object.setPrototypeOf(shadowMember, md);
+          membersRec[id] = shadowMember;
+        }
+        continue;
+      }
 
       if (id === 'fuxi' || id === 'pangu') {
         const shadowMember = id === 'fuxi' ? shadow.fuxi : shadow.pangu;
-        applyMemberOverridesFromYamlRecord(shadowMember, rv, `members.${id}`);
+        applyOverrides(shadowMember, parsedMember.overrides);
         Object.setPrototypeOf(shadowMember, md);
         membersRec[id] = shadowMember;
         continue;
       }
 
       const m = new Team.Member({ id, name: id });
-      applyMemberOverridesFromYamlRecord(m, rv, `members.${id}`);
+      applyOverrides(m, parsedMember.overrides);
       Object.setPrototypeOf(m, md);
       membersRec[id] = m;
     }
 
-    return new Team({ memberDefaults: md, defaultResponder: defResp, members: membersRec });
+    return {
+      team: new Team({ memberDefaults: md, defaultResponder: defResp, members: membersRec }),
+      issues,
+    };
   }
 
   function asRecord(value: unknown, at: string): Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      throw new Error(`Invalid ${at}: expected an object`);
+      throw new Error(`Invalid ${at}: expected an object (got ${describeValueType(value)})`);
     }
     return value as Record<string, unknown>;
   }
 
   function asString(value: unknown, at: string): string {
     if (typeof value !== 'string') {
-      throw new Error(`Invalid ${at}: expected a string`);
+      throw new Error(`Invalid ${at}: expected a string (got ${describeValueType(value)})`);
     }
     return value;
   }
@@ -618,7 +928,7 @@ export namespace Team {
   function asOptionalString(value: unknown, at: string): string | undefined {
     if (value === undefined) return undefined;
     if (typeof value !== 'string') {
-      throw new Error(`Invalid ${at}: expected a string`);
+      throw new Error(`Invalid ${at}: expected a string (got ${describeValueType(value)})`);
     }
     return value;
   }
@@ -626,7 +936,7 @@ export namespace Team {
   function asOptionalBoolean(value: unknown, at: string): boolean | undefined {
     if (value === undefined) return undefined;
     if (typeof value !== 'boolean') {
-      throw new Error(`Invalid ${at}: expected a boolean`);
+      throw new Error(`Invalid ${at}: expected a boolean (got ${describeValueType(value)})`);
     }
     return value;
   }
@@ -634,7 +944,7 @@ export namespace Team {
   function asOptionalNumber(value: unknown, at: string): number | undefined {
     if (value === undefined) return undefined;
     if (typeof value !== 'number') {
-      throw new Error(`Invalid ${at}: expected a number`);
+      throw new Error(`Invalid ${at}: expected a number (got ${describeValueType(value)})`);
     }
     return value;
   }
@@ -642,9 +952,32 @@ export namespace Team {
   function asOptionalStringArray(value: unknown, at: string): string[] | undefined {
     if (value === undefined) return undefined;
     if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
-      throw new Error(`Invalid ${at}: expected string[]`);
+      throw new Error(`Invalid ${at}: expected string[] (got ${describeValueType(value)})`);
     }
     return value;
+  }
+
+  function describeValueType(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) return 'unknown[]';
+
+      const elementTypes = new Set<string>();
+      for (const v of value) {
+        if (v === undefined) elementTypes.add('undefined');
+        else if (v === null) elementTypes.add('null');
+        else if (Array.isArray(v)) elementTypes.add('unknown[]');
+        else elementTypes.add(typeof v);
+      }
+
+      const t = Array.from(elementTypes).sort();
+      if (t.length === 1) return `${t[0]}[]`;
+      return `(${t.join('|')})[]`;
+    }
+
+    return typeof value;
   }
 
   function asOptionalStringOrStringArray(value: unknown, at: string): string[] | undefined {
@@ -653,14 +986,14 @@ export namespace Team {
     if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
       return value;
     }
-    throw new Error(`Invalid ${at}: expected string|string[]`);
+    throw new Error(`Invalid ${at}: expected string|string[] (got ${describeValueType(value)})`);
   }
 
   function asOptionalStop(value: unknown, at: string): string | string[] | undefined {
     if (value === undefined) return undefined;
     if (typeof value === 'string') return value;
     if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value;
-    throw new Error(`Invalid ${at}: expected string|string[]`);
+    throw new Error(`Invalid ${at}: expected string|string[] (got ${describeValueType(value)})`);
   }
 
   function asOptionalLogitBias(value: unknown, at: string): Record<string, number> | undefined {
@@ -668,7 +1001,7 @@ export namespace Team {
     const obj = asRecord(value, at);
     for (const [k, v] of Object.entries(obj)) {
       if (typeof v !== 'number') {
-        throw new Error(`Invalid ${at}.${k}: expected a number`);
+        throw new Error(`Invalid ${at}.${k}: expected a number (got ${describeValueType(v)})`);
       }
     }
     return obj as Record<string, number>;
@@ -694,22 +1027,33 @@ export namespace Team {
       asOptionalStop(openai.stop, `${at}.openai.stop`);
       asOptionalLogitBias(openai.logit_bias, `${at}.openai.logit_bias`);
       asOptionalString(openai.user, `${at}.openai.user`);
+      const reasoningEffort = openai.reasoning_effort;
       if (
-        openai.reasoning_effort !== undefined &&
-        openai.reasoning_effort !== 'minimal' &&
-        openai.reasoning_effort !== 'low' &&
-        openai.reasoning_effort !== 'medium' &&
-        openai.reasoning_effort !== 'high'
+        reasoningEffort !== undefined &&
+        reasoningEffort !== 'minimal' &&
+        reasoningEffort !== 'low' &&
+        reasoningEffort !== 'medium' &&
+        reasoningEffort !== 'high'
       ) {
-        throw new Error(`Invalid ${at}.openai.reasoning_effort`);
+        throw new Error(
+          `Invalid ${at}.openai.reasoning_effort: expected minimal|low|medium|high (got ${describeValueType(
+            reasoningEffort,
+          )})`,
+        );
       }
+
+      const verbosity = openai.verbosity;
       if (
-        openai.verbosity !== undefined &&
-        openai.verbosity !== 'low' &&
-        openai.verbosity !== 'medium' &&
-        openai.verbosity !== 'high'
+        verbosity !== undefined &&
+        verbosity !== 'low' &&
+        verbosity !== 'medium' &&
+        verbosity !== 'high'
       ) {
-        throw new Error(`Invalid ${at}.openai.verbosity`);
+        throw new Error(
+          `Invalid ${at}.openai.verbosity: expected low|medium|high (got ${describeValueType(
+            verbosity,
+          )})`,
+        );
       }
     }
 
