@@ -229,7 +229,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       placeholderToolsText: '按 toolset 分组展示当前已注册工具。',
 
       newDialogTitle: '新建对话',
-      currentDialogPlaceholder: '从选择或创建一个对话开始',
+      currentDialogPlaceholder: '👈 从选择或创建一个对话开始',
 
       previousRound: '上一轮',
       nextRound: '下一轮',
@@ -426,7 +426,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     placeholderToolsText: 'Currently registered tools, grouped by toolset.',
 
     newDialogTitle: 'New Dialog',
-    currentDialogPlaceholder: 'Select or create a dialog to start',
+    currentDialogPlaceholder: '👈 Select or create a dialog to start',
 
     previousRound: 'Previous Round',
     nextRound: 'Next Round',

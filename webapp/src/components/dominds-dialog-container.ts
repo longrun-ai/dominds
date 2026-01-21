@@ -1595,7 +1595,7 @@ export class DomindsDialogContainer extends HTMLElement {
     } else if (originMemberId && originMemberId.trim() !== '') {
       caller = this.formatAgentLabel(originMemberId);
     }
-    return `Response → ${caller}`;
+    return ` → ${caller}`;
   }
 
   private buildGenerationBubbleHeaderHtml(timestamp: string): string {
