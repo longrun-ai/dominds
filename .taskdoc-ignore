@@ -1,0 +1,19 @@
+# TaskDoc Ignore Patterns
+# This file controls which folders are excluded from the taskdoc search
+
+# Ignore common build artifacts
+dist/*
+build/*
+
+# Ignore test files that shouldn't be taskdoc
+tests/*
+test-results/*
+
+# Ignore configuration files
+config/*
+
+# Ignore generated documentation
+api-docs/*
+
+# Ignore dirs with these names
+archive/*

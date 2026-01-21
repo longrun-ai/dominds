@@ -3,7 +3,6 @@
  *
  * Common API route handlers for both production and development servers
  */
-import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
@@ -21,6 +20,7 @@ import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
+import { listTaskDocumentsInWorkspace } from '../utils/taskdoc-search';
 import {
   buildSetupFileResponse,
   buildSetupStatusResponse,
@@ -985,7 +985,7 @@ function respondJson(res: ServerResponse, statusCode: number, data: unknown): vo
 }
 
 /**
- * List task documents (enhanced recursive search with ignore patterns)
+ * List task documents (recursive search; Task Docs are encapsulated `*.tsk/` directories)
  */
 async function listTaskDocuments(): Promise<{
   success: boolean;
@@ -998,162 +998,7 @@ async function listTaskDocuments(): Promise<{
   }>;
   error?: string;
 }> {
-  try {
-    const taskDocuments: Array<{
-      path: string;
-      relativePath: string;
-      name: string;
-      size: number;
-      lastModified: string;
-    }> = [];
-
-    // Load ignore patterns from .minds/task-ignore if it exists
-    const ignorePatterns = await loadTaskIgnorePatterns();
-
-    // Start recursive search from current directory
-    await scanDirectory('.', taskDocuments, ignorePatterns);
-
-    // Sort by path for consistent ordering
-    taskDocuments.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-
-    return { success: true, taskDocuments };
-  } catch (error) {
-    log.error('Error listing task documents:', error);
-    return { success: false, error: 'Failed to list task documents' };
-  }
-}
-
-/**
- * Load ignore patterns from .minds/task-ignore file
- */
-async function loadTaskIgnorePatterns(): Promise<string[]> {
-  const ignorePatterns: string[] = [
-    // Default patterns to ignore common non-task directories
-    'node_modules/**',
-    '.git/**',
-    '.minds/**',
-    '.dialogs/**',
-    '.gitignore',
-    'package.json',
-    'package-lock.json',
-    'README.md',
-    'LICENSE',
-    '*.log',
-    '**/.DS_Store',
-    '**/Thumbs.db',
-  ];
-
-  try {
-    const taskIgnorePath = '.minds/task-ignore';
-    if (fs.existsSync(taskIgnorePath)) {
-      const ignoreContent = await fsPromises.readFile(taskIgnorePath, 'utf-8');
-      const patterns = ignoreContent
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('#'));
-
-      ignorePatterns.push(...patterns);
-    }
-  } catch (error) {
-    log.debug('No .minds/task-ignore file found, using default patterns');
-  }
-
-  return ignorePatterns;
-}
-
-/**
- * Check if a path should be ignored based on patterns
- */
-function shouldIgnorePath(filePath: string, ignorePatterns: string[]): boolean {
-  const normalizedPath = filePath.replace(/\\/g, '/');
-
-  for (const pattern of ignorePatterns) {
-    // Simple glob pattern matching
-    if (pattern.includes('**')) {
-      // Handle double asterisk patterns
-      const globPattern = pattern.replace(/\*\*/g, '.*');
-      if (new RegExp(`^${globPattern}$`).test(normalizedPath)) {
-        return true;
-      }
-    } else if (pattern.includes('*')) {
-      // Handle single asterisk patterns
-      const globPattern = pattern.replace(/\*/g, '[^/]*');
-      if (new RegExp(`^${globPattern}$`).test(normalizedPath)) {
-        return true;
-      }
-    } else {
-      // Exact match or prefix match for directories
-      if (normalizedPath === pattern || normalizedPath.startsWith(pattern + '/')) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-/**
- * Recursively scan directory for task documents
- */
-async function scanDirectory(
-  dirPath: string,
-  taskDocuments: Array<{
-    path: string;
-    relativePath: string;
-    name: string;
-    size: number;
-    lastModified: string;
-  }>,
-  ignorePatterns: string[],
-): Promise<void> {
-  try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
-      const relativePath = path.relative('.', fullPath);
-
-      // Check if this path should be ignored
-      if (shouldIgnorePath(relativePath, ignorePatterns)) {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        // Treat `*.tsk/` as a single encapsulated task document (do NOT recurse into it).
-        if (entry.name.toLowerCase().endsWith('.tsk')) {
-          try {
-            const dirStats = fs.statSync(fullPath);
-            let totalSize = 0;
-            let lastModified = dirStats.mtime;
-            const sectionFiles = ['goals.md', 'constraints.md', 'progress.md'] as const;
-            for (const filename of sectionFiles) {
-              try {
-                const sectionPath = path.join(fullPath, filename);
-                const s = fs.statSync(sectionPath);
-                totalSize += s.size;
-                if (s.mtime > lastModified) lastModified = s.mtime;
-              } catch {
-                // Missing files are allowed; package may be created lazily.
-              }
-            }
-            taskDocuments.push({
-              path: fullPath,
-              relativePath: relativePath.replace(/\\/g, '/'),
-              name: entry.name,
-              size: totalSize,
-              lastModified: formatUnifiedTimestamp(lastModified),
-            });
-          } catch (statError) {
-            log.debug(`Failed to get stats for Task Doc: ${fullPath}`, statError);
-          }
-          continue;
-        }
-
-        // Recursively scan subdirectories
-        await scanDirectory(fullPath, taskDocuments, ignorePatterns);
-      }
-    }
-  } catch (error) {
-    log.debug(`Failed to scan directory: ${dirPath}`, error);
-  }
+  const result = await listTaskDocumentsInWorkspace({ rootDir: '.' });
+  if (result.kind === 'ok') return { success: true, taskDocuments: result.taskDocuments };
+  return { success: false, error: result.errorText };
 }
