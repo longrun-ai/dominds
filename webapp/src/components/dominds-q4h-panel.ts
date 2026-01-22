@@ -116,8 +116,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       });
     });
 
-    // Checkbox and headline - toggle selection
-    this.shadowRoot.querySelectorAll('.q4h-checkbox, .q4h-question-headline').forEach((el) => {
+    // Checkbox and title - toggle selection
+    this.shadowRoot.querySelectorAll('.q4h-checkbox, .q4h-question-title').forEach((el) => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         const card = el.closest('.q4h-question-card');
@@ -345,12 +345,36 @@ export class DomindsQ4HPanel extends HTMLElement {
         display: block;
       }
 
-      .q4h-question-headline {
+      .q4h-question-title {
         flex: 1;
-        font-size: 14px;
-        font-weight: 500;
+        font-size: 13px;
+        font-weight: 600;
         color: var(--color-fg-primary, #0f172a);
-        line-height: 1.4;
+        line-height: 1.35;
+        display: inline-flex;
+        gap: 6px;
+        align-items: baseline;
+        min-width: 0;
+      }
+
+      .q4h-question-origin {
+        white-space: nowrap;
+      }
+
+      .q4h-question-origin-id {
+        white-space: nowrap;
+      }
+
+      .q4h-question-origin-asked-at {
+        color: var(--color-fg-tertiary, #64748b);
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .q4h-question-origin-sep {
+        color: var(--color-fg-tertiary, #64748b);
+        font-weight: 400;
+        white-space: nowrap;
       }
 
       .q4h-question-body {
@@ -375,18 +399,36 @@ export class DomindsQ4HPanel extends HTMLElement {
         }
       }
 
-      .q4h-question-content {
+      .q4h-question-call {
         margin-top: 12px;
-        font-size: 13px;
-        color: var(--color-fg-secondary, #475569);
-        line-height: 1.5;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .q4h-question-call-headline {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+          'Courier New', monospace;
+        font-size: 12px;
+        color: var(--color-fg-primary, #0f172a);
+        background: var(--color-bg-tertiary, #f8fafc);
+        border: 1px solid var(--color-border-primary, #e2e8f0);
+        border-radius: 6px;
+        padding: 6px 8px;
         white-space: pre-wrap;
       }
 
-      .q4h-question-timestamp {
-        margin-top: 10px;
+      .q4h-question-call-body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+          'Courier New', monospace;
         font-size: 12px;
-        color: var(--color-fg-tertiary, #64748b);
+        color: var(--color-fg-secondary, #475569);
+        background: var(--color-bg-tertiary, #f8fafc);
+        border: 1px solid var(--color-border-primary, #e2e8f0);
+        border-radius: 6px;
+        padding: 8px;
+        margin: 0;
+        white-space: pre-wrap;
       }
 
       .q4h-goto-site-btn {
@@ -452,17 +494,25 @@ export class DomindsQ4HPanel extends HTMLElement {
     const selectedClass = isSelected ? 'selected' : '';
 
     return `
-      <div class="q4h-question-card ${expandedClass} ${selectedClass}" data-question-id="${question.id}" data-dialog-id="${dialogContext.selfId}" data-root-id="${dialogContext.rootId}">
+      <div class="q4h-question-card ${expandedClass} ${selectedClass}" data-question-id="${question.id}" data-dialog-id="${dialogContext.selfId}" data-root-id="${dialogContext.rootId}" data-agent-id="${dialogContext.agentId}" data-asked-at="${question.askedAt}">
         <div class="q4h-question-header" data-question-id="${question.id}">
           <span class="q4h-checkbox">
             <span class="q4h-checkbox-check">✓</span>
           </span>
           <span class="q4h-expand-icon">▶</span>
-          <span class="q4h-question-headline">${this.escapeHtml(question.headLine)}</span>
+          <span class="q4h-question-title">
+            <span class="q4h-question-origin">@${this.escapeHtml(dialogContext.agentId)}</span>
+            <span class="q4h-question-origin-sep">•</span>
+            <span class="q4h-question-origin-id">${this.escapeHtml(dialogContext.selfId)}</span>
+            <span class="q4h-question-origin-sep">•</span>
+            <span class="q4h-question-origin-asked-at">${this.escapeHtml(question.askedAt)}</span>
+          </span>
         </div>
         <div class="q4h-question-body">
-          <div class="q4h-question-content">${this.escapeHtml(question.bodyContent)}</div>
-          <div class="q4h-question-timestamp">Asked: ${question.askedAt}</div>
+          <div class="q4h-question-call">
+            <code class="q4h-question-call-headline">${this.escapeHtml(question.headLine)}</code>
+            <pre class="q4h-question-call-body">${this.escapeHtml(question.bodyContent)}</pre>
+          </div>
           <button
             class="q4h-goto-site-btn"
             data-question-id="${question.id}"

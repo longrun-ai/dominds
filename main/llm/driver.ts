@@ -13,6 +13,7 @@ import type { AssignmentFromSup } from '../dialog';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 
 import { inspect } from 'util';
+import YAML from 'yaml';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
@@ -105,69 +106,201 @@ const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
   ].join('\n'),
 };
 
+const DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS = 30;
+
 function isNodeErrorWithCode(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
-async function loadRtwsDiligenceText(workLanguage: LanguageCode): Promise<string | null> {
-  const langSpecificPath = path.resolve(process.cwd(), '.minds', `diligence.${workLanguage}.md`);
-  const genericPath = path.resolve(process.cwd(), '.minds', 'diligence.md');
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
-  try {
-    const raw = await fs.promises.readFile(langSpecificPath, 'utf-8');
-    const trimmed = raw.trim();
-    // Explicit opt-out: existing file with empty content disables auto-continue.
-    return trimmed === '' ? null : trimmed;
-  } catch (error: unknown) {
-    if (!(isNodeErrorWithCode(error) && error.code === 'ENOENT')) {
-      log.warn('Failed to read rtws diligence file; falling back to built-in text', error, {
-        filePath: langSpecificPath,
-      });
-      return DILIGENCE_FALLBACK_TEXT[workLanguage];
-    }
+function parseMarkdownFrontmatter(raw: string): {
+  meta: Record<string, unknown> | null;
+  body: string;
+} {
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) {
+    return { meta: null, body: raw };
   }
+  const frontmatterRaw = match[1] ?? '';
+  const body = match[2] ?? '';
 
   try {
-    const raw = await fs.promises.readFile(genericPath, 'utf-8');
-    const trimmed = raw.trim();
-    // Explicit opt-out: existing file with empty content disables auto-continue.
-    return trimmed === '' ? null : trimmed;
+    const parsed: unknown = YAML.parse(frontmatterRaw);
+    return { meta: isRecord(parsed) ? parsed : null, body };
   } catch (error: unknown) {
-    if (isNodeErrorWithCode(error) && error.code === 'ENOENT') {
-      return DILIGENCE_FALLBACK_TEXT[workLanguage];
-    }
-    log.warn('Failed to read rtws diligence file; falling back to built-in text', error, {
-      filePath: genericPath,
-    });
-    return DILIGENCE_FALLBACK_TEXT[workLanguage];
+    log.warn('Failed to parse diligence frontmatter; ignoring frontmatter', error);
+    return { meta: null, body };
   }
 }
 
-async function maybeInjectDiligenceAndContinue(options: {
+function parseMaxNumPrompts(meta: Record<string, unknown> | null): number | undefined {
+  if (!meta) return undefined;
+  const value = meta['max-num-prompts'];
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  if (value !== undefined) {
+    log.warn('Invalid max-num-prompts in diligence frontmatter; using default', { value });
+  }
+  return undefined;
+}
+
+type RtwsDiligenceResolution =
+  | { kind: 'disabled'; reason: 'empty_file' | 'empty_body' | 'max_lt_one' }
+  | { kind: 'enabled'; diligenceText: string; maxNumPrompts: number };
+
+async function resolveRtwsDiligenceConfig(
+  workLanguage: LanguageCode,
+): Promise<RtwsDiligenceResolution> {
+  const langSpecificPath = path.resolve(process.cwd(), '.minds', `diligence.${workLanguage}.md`);
+  const genericPath = path.resolve(process.cwd(), '.minds', 'diligence.md');
+
+  async function resolveFromFile(filePath: string): Promise<RtwsDiligenceResolution | null> {
+    let raw: string;
+    try {
+      raw = await fs.promises.readFile(filePath, 'utf-8');
+    } catch (error: unknown) {
+      if (isNodeErrorWithCode(error) && error.code === 'ENOENT') {
+        return null;
+      }
+      log.warn('Failed to read rtws diligence file; falling back to built-in defaults', error, {
+        filePath,
+      });
+      return {
+        kind: 'enabled',
+        diligenceText: DILIGENCE_FALLBACK_TEXT[workLanguage],
+        maxNumPrompts: DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS,
+      };
+    }
+
+    const trimmed = raw.trim();
+    // Existing empty file explicitly disables keep-going.
+    // Semantics: treat empty file as max-num-prompts = 0.
+    if (trimmed === '') {
+      return { kind: 'disabled', reason: 'empty_file' };
+    }
+
+    const { meta, body } = parseMarkdownFrontmatter(raw);
+    const maxNumPrompts = parseMaxNumPrompts(meta) ?? DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS;
+    if (maxNumPrompts < 1) {
+      return { kind: 'disabled', reason: 'max_lt_one' };
+    }
+
+    const bodyTrimmed = body.trim();
+    if (bodyTrimmed === '') {
+      return { kind: 'disabled', reason: 'empty_body' };
+    }
+
+    return { kind: 'enabled', diligenceText: bodyTrimmed, maxNumPrompts };
+  }
+
+  const langSpecific = await resolveFromFile(langSpecificPath);
+  if (langSpecific) {
+    return langSpecific;
+  }
+
+  const generic = await resolveFromFile(genericPath);
+  if (generic) {
+    return generic;
+  }
+
+  // No diligence file found: use built-in prompt + default max.
+  return {
+    kind: 'enabled',
+    diligenceText: DILIGENCE_FALLBACK_TEXT[workLanguage],
+    maxNumPrompts: DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS,
+  };
+}
+
+async function maybePrepareDiligenceAutoContinuePrompt(options: {
   dlg: Dialog;
   isRootDialog: boolean;
   alreadyInjectedCount: number;
-  maxInjectCount: number;
-}): Promise<{ didInject: boolean; nextInjectedCount: number }> {
+}): Promise<
+  | { kind: 'disabled'; nextInjectedCount: number }
+  | { kind: 'budget_exhausted'; maxInjectCount: number; nextInjectedCount: number }
+  | { kind: 'prompt'; prompt: HumanPrompt; maxInjectCount: number; nextInjectedCount: number }
+> {
   if (!options.isRootDialog) {
-    return { didInject: false, nextInjectedCount: options.alreadyInjectedCount };
-  }
-  if (options.alreadyInjectedCount >= options.maxInjectCount) {
-    return { didInject: false, nextInjectedCount: options.alreadyInjectedCount };
+    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
   }
 
-  const diligence = await loadRtwsDiligenceText(getWorkLanguage());
-  if (diligence === null) {
-    return { didInject: false, nextInjectedCount: options.alreadyInjectedCount };
+  const resolved = await resolveRtwsDiligenceConfig(getWorkLanguage());
+  if (resolved.kind === 'disabled') {
+    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
   }
 
-  await options.dlg.addChatMessages({
-    type: 'environment_msg',
-    role: 'user',
-    content: diligence,
-  });
+  const maxInjectCount = resolved.maxNumPrompts;
+  if (options.alreadyInjectedCount >= maxInjectCount) {
+    return {
+      kind: 'budget_exhausted',
+      maxInjectCount,
+      nextInjectedCount: options.alreadyInjectedCount,
+    };
+  }
 
-  return { didInject: true, nextInjectedCount: options.alreadyInjectedCount + 1 };
+  const prompt: HumanPrompt = {
+    content: resolved.diligenceText,
+    msgId: generateShortId(),
+    grammar: 'markdown',
+  };
+  return {
+    kind: 'prompt',
+    prompt,
+    maxInjectCount,
+    nextInjectedCount: options.alreadyInjectedCount + 1,
+  };
+}
+
+async function suspendForKeepGoingBudgetExhausted(options: {
+  dlg: Dialog;
+  maxInjectCount: number;
+}): Promise<void> {
+  const { dlg, maxInjectCount } = options;
+  const questionId = `q4h-${generateDialogID()}`;
+  const question: HumanQuestion = {
+    id: questionId,
+    headLine: '@human',
+    bodyContent:
+      `Keep-going budget exhausted (max ${maxInjectCount}).\n\n` +
+      'Please confirm what to do next:\n' +
+      '- Reply with “continue” to allow the agent to keep going, or\n' +
+      '- Reply with “stop” if you want to stop this dialog here.\n',
+    askedAt: formatUnifiedTimestamp(new Date()),
+    callSiteRef: {
+      round: dlg.currentRound,
+      messageIndex: dlg.msgs.length,
+    },
+  };
+
+  const existingQuestions = await DialogPersistence.loadQuestions4HumanState(dlg.id);
+  existingQuestions.push(question);
+  await DialogPersistence._saveQuestions4HumanState(dlg.id, existingQuestions);
+
+  const newQuestionEvent: NewQ4HAskedEvent = {
+    type: 'new_q4h_asked',
+    question: {
+      id: question.id,
+      dialogId: dlg.id.selfId,
+      headLine: question.headLine,
+      bodyContent: question.bodyContent,
+      askedAt: question.askedAt,
+      callSiteRef: question.callSiteRef,
+      rootId: dlg.id.rootId,
+      agentId: dlg.agentId,
+      taskDocPath: dlg.taskDocPath,
+    },
+  };
+  postDialogEvent(dlg, newQuestionEvent);
 }
 
 // === SUSPENSION AND RESUMPTION INTERFACES ===
@@ -933,8 +1066,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
   let takenSubdialogResponses: TakenSubdialogResponse[] = [];
 
   let genIterNo = 0;
-  let diligenceAutoContinueCount = 0;
-  const maxDiligenceAutoContinue = 1;
+  let pendingPrompt: HumanPrompt | undefined = humanPrompt;
   try {
     while (true) {
       genIterNo++;
@@ -1009,12 +1141,14 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         throwIfAborted(abortSignal, dlg.id);
         await dlg.notifyGeneratingStart();
 
-        if (humanPrompt && genIterNo === 1) {
-          promptContent = humanPrompt.content;
-          const msgId = humanPrompt.msgId;
-          const promptGrammar = humanPrompt.grammar;
+        const currentPrompt = pendingPrompt;
+        pendingPrompt = undefined;
+        if (currentPrompt) {
+          promptContent = currentPrompt.content;
+          const msgId = currentPrompt.msgId;
+          const promptGrammar = currentPrompt.grammar;
           const persistedUserLanguageCode =
-            humanPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
+            currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
 
           await dlg.addChatMessages({
             type: 'prompting_msg',
@@ -1426,31 +1560,52 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
 
           if (suspendForHuman) {
+            try {
+              // Q4H suspension resets keep-going budget so post-Q4H continuation gets a fresh counter.
+              if (await dlg.hasPendingQ4H()) {
+                dlg.diligenceAutoContinueCount = 0;
+              }
+            } catch (err) {
+              log.warn('Failed to check Q4H state for keep-going reset', err, {
+                dialogId: dlg.id.valueOf(),
+              });
+            }
             break;
           }
 
-          // Check if we should continue to another generation iteration.
-          // We continue if:
-          // 1. There are function calls
-          // 2. There are assistant tool outputs from texting calls
+          // Continue when there is any tool output / function output that requires another iteration.
           const shouldContinue =
             funcCalls.length > 0 ||
             assistantToolOutputsCount > 0 ||
             (funcResults.length > 0 && funcCalls.length === 0);
           if (!shouldContinue) {
-            const hasNonEmptySaying = assistantMsgs.some(
-              (m) => m.type === 'saying_msg' && m.content.trim() !== '',
-            );
-            const shouldAutoContinue = collectedAssistantCalls.length > 0 || !hasNonEmptySaying;
-            if (shouldAutoContinue) {
-              const injected = await maybeInjectDiligenceAndContinue({
+            // Keep-going (root dialog only): prevent ALL stopping except legitimate suspension.
+            // If disabled (empty diligence file) or budget exhausted, we suspend via Q4H.
+            if (dlg instanceof RootDialog) {
+              const suspension = await dlg.getSuspensionStatus();
+              if (!suspension.canDrive) {
+                if (suspension.q4h) {
+                  dlg.diligenceAutoContinueCount = 0;
+                }
+                break;
+              }
+
+              const prepared = await maybePrepareDiligenceAutoContinuePrompt({
                 dlg,
-                isRootDialog: dlg instanceof RootDialog,
-                alreadyInjectedCount: diligenceAutoContinueCount,
-                maxInjectCount: maxDiligenceAutoContinue,
+                isRootDialog: true,
+                alreadyInjectedCount: dlg.diligenceAutoContinueCount,
               });
-              diligenceAutoContinueCount = injected.nextInjectedCount;
-              if (injected.didInject) {
+              dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
+              if (prepared.kind === 'budget_exhausted') {
+                await suspendForKeepGoingBudgetExhausted({
+                  dlg,
+                  maxInjectCount: prepared.maxInjectCount,
+                });
+                dlg.diligenceAutoContinueCount = 0;
+                break;
+              }
+              if (prepared.kind === 'prompt') {
+                pendingPrompt = prepared.prompt;
                 continue;
               }
             }
@@ -1769,23 +1924,48 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           await Promise.resolve();
 
           if (suspendForHuman) {
+            try {
+              // Q4H suspension resets keep-going budget so post-Q4H continuation gets a fresh counter.
+              if (await dlg.hasPendingQ4H()) {
+                dlg.diligenceAutoContinueCount = 0;
+              }
+            } catch (err) {
+              log.warn('Failed to check Q4H state for keep-going reset', err, {
+                dialogId: dlg.id.valueOf(),
+              });
+            }
             break;
           }
 
           const shouldContinue =
             toolOutputsCount > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
           if (!shouldContinue) {
-            const shouldAutoContinue =
-              collectedCalls.length > 0 || currentSayingContent.trim() === '';
-            if (shouldAutoContinue) {
-              const injected = await maybeInjectDiligenceAndContinue({
+            // Keep-going (root dialog only): prevent ALL stopping except legitimate suspension.
+            if (dlg instanceof RootDialog) {
+              const suspension = await dlg.getSuspensionStatus();
+              if (!suspension.canDrive) {
+                if (suspension.q4h) {
+                  dlg.diligenceAutoContinueCount = 0;
+                }
+                break;
+              }
+
+              const prepared = await maybePrepareDiligenceAutoContinuePrompt({
                 dlg,
-                isRootDialog: dlg instanceof RootDialog,
-                alreadyInjectedCount: diligenceAutoContinueCount,
-                maxInjectCount: maxDiligenceAutoContinue,
+                isRootDialog: true,
+                alreadyInjectedCount: dlg.diligenceAutoContinueCount,
               });
-              diligenceAutoContinueCount = injected.nextInjectedCount;
-              if (injected.didInject) {
+              dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
+              if (prepared.kind === 'budget_exhausted') {
+                await suspendForKeepGoingBudgetExhausted({
+                  dlg,
+                  maxInjectCount: prepared.maxInjectCount,
+                });
+                dlg.diligenceAutoContinueCount = 0;
+                break;
+              }
+              if (prepared.kind === 'prompt') {
+                pendingPrompt = prepared.prompt;
                 continue;
               }
             }
@@ -2662,6 +2842,9 @@ async function executeTextingCall(
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,
           callSiteRef: question.callSiteRef,
+          rootId: dlg.id.rootId,
+          agentId: dlg.agentId,
+          taskDocPath: dlg.taskDocPath,
         },
       };
 

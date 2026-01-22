@@ -2,13 +2,20 @@
 
 ## Summary
 
-Dominds dialogs can “stop” without producing a visible follow-up when the model output contains no LLM-visible feedback (e.g., only `backfeeding=false` texting tools, or an empty assistant message). This creates a UX failure mode: users assume the agent is stuck, tools failed, or the system is unresponsive.
+Dominds root dialogs are intended for long-run operation. A root dialog “stopping” (becoming idle)
+is often not what operators want: they want the agent to keep pushing forward until it either:
 
-This document specifies a small runtime mechanism (“keep-going”) that, for **root/main dialogs only**, automatically injects a short “diligence” prompt and continues generation **when the dialog would otherwise stop**, except when the dialog is legitimately suspended (Q4H or pending subdialogs).
+- legitimately suspends for a human decision (Q4H), or
+- legitimately suspends waiting for subdialogs (teammate calls/backfill).
+
+This document specifies a runtime mechanism (“keep-going”) that, for **root/main dialogs only**,
+prevents the dialog from stopping: whenever the driver would otherwise stop, it auto-sends a short
+diligence prompt (rendered as a normal user bubble) and continues generation, except when the dialog
+is legitimately suspended (Q4H or pending subdialogs).
 
 ## Goals
 
-- Prevent “silent stops” in root/main dialogs by ensuring the runtime can prompt the model to keep going.
+- Prevent root dialogs from stopping except for legitimate suspension states (Q4H / subdialogs).
 - Keep behavior predictable and bounded (no infinite loops).
 - Make the nudge text configurable per workspace (rtws) and language.
 - Provide a clear, user-controlled “disable” mechanism.
@@ -46,24 +53,41 @@ This is the “controlled convergence” path. The keep-going mechanism should *
 - Dialog is **not suspended**:
   - no pending Q4H, and
   - no pending subdialogs (waiting for backfill).
-- The driver would otherwise stop the generation loop because there is **no tool feedback that requires another iteration**:
-  - no function calls / function results that force continuation, and
-  - no texting-tool outputs that were fed back into the model context.
-- Additionally, the stop must be a plausible “stopping” case:
-  - the assistant produced at least one texting call (commonly tool-only responses), **or**
-  - the assistant produced an empty assistant saying output (empty / whitespace).
+- The driver would otherwise stop the generation loop (i.e., no tool/function outputs require another iteration).
 
 ### Action
 
-The runtime injects a single `environment_msg` to the model context with a “diligence” prompt and runs **one more** generation iteration.
+The runtime auto-sends a diligence prompt (rendered as a normal user bubble) and runs another
+generation iteration.
 
 ### Boundedness
 
-To avoid loops, the driver injects diligence at most **once per `driveDialogStream` invocation**.
+To avoid infinite loops, keep-going has a per-dialog budget (**max-num-prompts**) that controls how
+many auto-continued diligence prompts can be injected for a given dialog before the runtime forces a
+Q4H suspension.
+
+- Default: **30**
+- Configurable per-rtws via diligence file frontmatter key `max-num-prompts` (see below)
+- If `< 1`, keep-going is effectively disabled for that workspace
+
+### Reset on Q4H
+
+When a dialog becomes suspended due to a pending Q4H (Questions for Human), the keep-going injection
+counter is reset. This ensures that after the human answers the Q4H and the dialog is resumed, the
+dialog gets a fresh keep-going budget again.
+
+### Budget exhausted → force Q4H
+
+When the keep-going budget is exhausted, the runtime creates a Q4H entry that asks the human whether
+to continue or stop. This converts “boundedness” into a legitimate suspension point and avoids
+infinite auto-continue loops.
 
 ### Disable switch
 
-If the selected diligence file exists but its content is empty/whitespace, keep-going is disabled for that workspace (no injection).
+Keep-going can be disabled per-rtws in either of these ways:
+
+- If the selected diligence file exists but its content is empty/whitespace, keep-going is disabled (no injection).
+- If the selected diligence file frontmatter sets `max-num-prompts: 0` (or any `< 1`), keep-going is disabled (no injection).
 
 ## Diligence prompt resolution
 
@@ -75,11 +99,31 @@ Resolution order:
 2. `<rtws>/.minds/diligence.md` (language-agnostic fallback)
 3. Built-in fallback text (hardcoded i18n; `zh` is canonical and embedded in source)
 
-If the first existing file in the above order has empty/whitespace content, return `null` and **disable** keep-going.
+If the first existing file in the above order has empty/whitespace content, **disable** keep-going.
+
+### Frontmatter: `max-num-prompts`
+
+The resolved diligence file may start with YAML frontmatter:
+
+```md
+---
+max-num-prompts: 30
+---
+
+<diligence prompt body…>
+```
+
+Rules:
+
+- If the key is missing, `max-num-prompts` defaults to **30** (even when the file exists).
+- If the key is present and `< 1`, keep-going is disabled for that workspace.
+- If no diligence file exists at all, dominds uses the built-in fallback prompt and `max-num-prompts: 30`.
 
 ## UX notes
 
-- Keep-going is a runtime-only nudge; it should not masquerade as a user message in the UI.
+- Keep-going is a runtime-only nudge, but it should be **visible**: the diligence prompt is rendered
+  as a normal user message bubble (auto-sent by the runtime) so operators can understand why an
+  extra iteration occurred.
 - Users should observe that the agent continues with a brief follow-up after tool-only operations.
 - When the agent truly needs user intervention, it should use Q4H. Keep-going should not try to “fake” completion.
 
@@ -91,15 +135,22 @@ Implemented in the LLM driver loop (`dominds/main/llm/driver.ts`) as a small pos
 
 1. If `suspendForHuman` is true, stop (Q4H / subdialog pending).
 2. If there is any tool feedback, continue normally.
-3. Otherwise, attempt keep-going injection (root only, once) and continue.
+3. Otherwise (root only), attempt keep-going auto-continue:
+   - If disabled → stop normally.
+   - If budget exhausted → create Q4H and stop.
+   - Else → auto-send diligence prompt and continue.
 
 ### Message type
 
-We inject the diligence prompt as:
+We inject the diligence prompt as an auto-sent user message:
 
-- `ChatMessage` of type `environment_msg` with `role: 'user'`
+- `ChatMessage` of type `prompting_msg` with `role: 'user'`
 
-This ensures it is present in the model context without requiring a new human message record.
+This ensures:
+
+- It is present in the model context
+- It is persisted as a human message record
+- It renders in the chat timeline as a normal user bubble (like any other user message)
 
 ## Observability
 

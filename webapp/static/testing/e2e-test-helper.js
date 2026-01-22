@@ -1113,15 +1113,17 @@ function captureQ4HState(shadow, app) {
   // Get question cards
   const questionCards = inputShadow?.querySelectorAll('.q4h-question-card') || [];
   const questions = Array.from(questionCards).map((card) => {
-    const headline = card.querySelector('.q4h-question-headline')?.textContent?.trim() || '';
-    const content = card.querySelector('.q4h-question-content')?.textContent?.trim() || '';
-    const timestamp = card.querySelector('.q4h-question-timestamp')?.textContent?.trim() || '';
+    const title = card.querySelector('.q4h-question-title')?.textContent?.trim() || '';
+    const callHeadline = card.querySelector('.q4h-question-call-headline')?.textContent?.trim() || '';
+    const callBody = card.querySelector('.q4h-question-call-body')?.textContent?.trim() || '';
+    const askedAt = card.getAttribute('data-asked-at') || '';
     const isChecked = card.querySelector('.q4h-checkbox-check');
 
     return {
-      headline: headline.slice(0, 100) + (headline.length > 100 ? '...' : ''),
-      contentPreview: content.slice(0, 150) + (content.length > 150 ? '...' : ''),
-      timestamp,
+      title: title.slice(0, 140) + (title.length > 140 ? '...' : ''),
+      callHeadline: callHeadline.slice(0, 120) + (callHeadline.length > 120 ? '...' : ''),
+      callBodyPreview: callBody.slice(0, 150) + (callBody.length > 150 ? '...' : ''),
+      askedAt,
       checked: !!isChecked,
     };
   });
@@ -2168,6 +2170,21 @@ function getQ4HList() {
  * Selects a Q4H question by ID.
  */
 function selectQ4HQuestion(questionId) {
+  // Preferred: use dominds-q4h-input public API so selection works even when the panel view is not rendered.
+  const inputArea = getInputArea();
+  if (inputArea && typeof inputArea.selectQuestion === 'function') {
+    try {
+      inputArea.selectQuestion(questionId);
+      if (typeof inputArea.getSelectedQuestionId === 'function') {
+        return inputArea.getSelectedQuestionId() === questionId;
+      }
+      return true;
+    } catch (err) {
+      console.warn('selectQ4HQuestion: failed to select via input component', err);
+      // Fall through to DOM-click fallback.
+    }
+  }
+
   const shadow = getAppShadow();
   if (!shadow) return false;
 
@@ -2179,9 +2196,9 @@ function selectQ4HQuestion(questionId) {
   );
   if (!card) return false;
 
-  const headline = card.querySelector('.q4h-question-headline');
-  if (headline) {
-    headline.click();
+  const title = card.querySelector('.q4h-question-title');
+  if (title) {
+    title.click();
     return true;
   }
   return false;
