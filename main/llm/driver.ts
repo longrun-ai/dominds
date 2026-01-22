@@ -702,13 +702,23 @@ async function applyContextHealthMonitor(
   dlg: Dialog,
   snapshot: ContextHealthSnapshot,
 ): Promise<void> {
-  let hasContextHealthReminder = false;
-  for (const reminder of dlg.reminders) {
+  const contextHealthReminderIndices: number[] = [];
+  for (let i = 0; i < dlg.reminders.length; i++) {
+    const reminder = dlg.reminders[i];
     if (reminder.owner && reminder.owner.name === contextHealthReminderOwner.name) {
-      hasContextHealthReminder = true;
-      break;
+      contextHealthReminderIndices.push(i);
     }
   }
+
+  // Defensive: ensure owner-level de-dupe (at most one reminder per owner).
+  // This prevents legacy or buggy sessions from accumulating multiple context_health reminders.
+  if (contextHealthReminderIndices.length > 1) {
+    for (let i = contextHealthReminderIndices.length - 1; i >= 1; i--) {
+      dlg.deleteReminder(contextHealthReminderIndices[i]);
+    }
+  }
+
+  let hasContextHealthReminder = contextHealthReminderIndices.length > 0;
 
   if (snapshot.kind !== 'available') {
     if (hasContextHealthReminder) {

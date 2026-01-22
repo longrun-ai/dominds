@@ -258,6 +258,16 @@ export interface ReminderStateFile {
   reminders: Array<{
     id: string;
     content: string;
+    /**
+     * Optional ReminderOwner name used to rehydrate owned reminders after restart.
+     * When present, the backend should resolve it via the ReminderOwner registry.
+     */
+    ownerName?: string;
+    /**
+     * Optional reminder metadata. Intended for UI display and owner lifecycle.
+     * Must be JSON-serializable.
+     */
+    meta?: JsonValue;
     createdAt: string;
     priority: 'high' | 'medium' | 'low';
   }>;

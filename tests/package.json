@@ -10,6 +10,7 @@
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "mentionx": "tsx texting/mentionx.ts",
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
+    "persistence-reminders-owner-meta": "tsx persistence/reminders-owner-meta.ts",
     "realtime": "tsx texting/realtime.ts",
     "teammate-call-parse": "tsx texting/teammate-call-parse.ts",
     "keep-going": "tsx texting/keep-going.ts",

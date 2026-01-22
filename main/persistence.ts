@@ -70,13 +70,8 @@ import type {
 } from './shared/types/storage';
 import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
-import type { JsonObject, JsonValue } from './tool';
 import { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function getErrorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
@@ -1116,11 +1111,7 @@ export class DiskFileDialogStore extends DialogStore {
       // Rehydrate reminders from dialog state
       const dialogState = await DialogPersistence.restoreDialog(dialog.id, status);
       const rehydrated: Reminder[] = (dialogState?.reminders ?? []).map((r) => {
-        const ownerName =
-          r.owner?.name ??
-          (isJsonObject(r.meta) && r.meta.type === 'daemon' ? 'shellCmd' : undefined);
-        const owner = ownerName ? getReminderOwner(ownerName) : undefined;
-        return { content: r.content, owner, meta: r.meta };
+        return { content: r.content, owner: r.owner, meta: r.meta };
       });
       dialog.reminders.length = 0;
       dialog.reminders.push(...rehydrated);
@@ -2447,6 +2438,8 @@ export class DialogPersistence {
         reminders: reminders.map((r, index) => ({
           id: `reminder-${index}`,
           content: r.content,
+          ownerName: r.owner ? r.owner.name : undefined,
+          meta: r.meta,
           createdAt: formatUnifiedTimestamp(new Date()),
           priority: 'medium',
         })),
@@ -2477,12 +2470,19 @@ export class DialogPersistence {
       try {
         const content = await fs.promises.readFile(remindersFilePath, 'utf-8');
         const reminderState: ReminderStateFile = JSON.parse(content);
-        return reminderState.reminders.map((r) => ({
-          id: r.id,
-          content: r.content,
-          createdAt: r.createdAt,
-          priority: r.priority as 'high' | 'medium' | 'low',
-        }));
+        return reminderState.reminders.map((r) => {
+          const ownerNameFromFile = typeof r.ownerName === 'string' ? r.ownerName : undefined;
+          const owner = ownerNameFromFile ? getReminderOwner(ownerNameFromFile) : undefined;
+
+          return {
+            id: r.id,
+            content: r.content,
+            owner,
+            meta: r.meta,
+            createdAt: r.createdAt,
+            priority: r.priority,
+          };
+        });
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
           // reminders.json doesn't exist - return empty array
