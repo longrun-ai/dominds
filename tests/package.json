@@ -21,6 +21,7 @@
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
+    "memory-access": "tsx toolsets/memory-access.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts"
   },

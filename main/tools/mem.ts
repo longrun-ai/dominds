@@ -2,11 +2,10 @@
  * Module: tools/mem
  *
  * Memory management texting tools for personal and shared memory under `.minds/memory`.
- * Add, drop, replace, clear operations with access control.
+ * Add, drop, replace, clear operations with strict path validation.
  */
 import fs from 'fs';
 import path from 'path';
-import { getAccessDeniedMessage, hasWriteAccess } from '../access-control';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
@@ -37,6 +36,16 @@ function getMemoryPath(params: {
   filePath: string;
   isShared?: boolean;
 }): MemoryPathResult {
+  if (path.isAbsolute(params.filePath)) {
+    return {
+      kind: 'invalid_path',
+      message:
+        params.language === 'zh'
+          ? '❌ **错误**\n\n记忆路径必须是相对路径（不允许以 `/` 开头）。'
+          : '❌ **Error**\n\nMemory paths must be relative (absolute paths are not allowed).',
+    };
+  }
+
   // Prevent path traversal by rejecting paths with '..'
   if (params.filePath.includes('..')) {
     return {
@@ -137,10 +146,6 @@ Examples:
       return fail(memoryPath.message);
     }
 
-    if (!hasWriteAccess(caller, memoryPath.rel)) {
-      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
-    }
-
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (fs.existsSync(fullPath)) {
@@ -208,10 +213,6 @@ Examples:
     const memoryPath = getMemoryPath({ language, caller, filePath });
     if (memoryPath.kind === 'invalid_path') {
       return fail(memoryPath.message);
-    }
-
-    if (!hasWriteAccess(caller, memoryPath.rel)) {
-      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
@@ -295,10 +296,6 @@ Examples:
       return fail(memoryPath.message);
     }
 
-    if (!hasWriteAccess(caller, memoryPath.rel)) {
-      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
-    }
-
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
@@ -336,10 +333,6 @@ This will remove all files in my personal memory directory.`,
   async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
     const memoryDir = path.join('.minds/memory/individual', caller.id);
-
-    if (!hasWriteAccess(caller, memoryDir)) {
-      return fail(getAccessDeniedMessage('write', memoryDir, language));
-    }
 
     const fullPath = path.resolve(process.cwd(), memoryDir);
 
@@ -431,10 +424,6 @@ Examples:
       return fail(memoryPath.message);
     }
 
-    if (!hasWriteAccess(caller, memoryPath.rel)) {
-      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
-    }
-
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (fs.existsSync(fullPath)) {
@@ -502,10 +491,6 @@ Examples:
     const memoryPath = getMemoryPath({ language, caller, filePath, isShared: true });
     if (memoryPath.kind === 'invalid_path') {
       return fail(memoryPath.message);
-    }
-
-    if (!hasWriteAccess(caller, memoryPath.rel)) {
-      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
     }
 
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
@@ -589,10 +574,6 @@ Examples:
       return fail(memoryPath.message);
     }
 
-    if (!hasWriteAccess(caller, memoryPath.rel)) {
-      return fail(getAccessDeniedMessage('write', memoryPath.rel, language));
-    }
-
     const fullPath = path.resolve(process.cwd(), memoryPath.rel);
 
     if (!fs.existsSync(fullPath)) {
@@ -630,10 +611,6 @@ This will remove all files in the shared memory directory.`,
   async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
     const memoryDir = '.minds/memory/team_shared';
-
-    if (!hasWriteAccess(caller, memoryDir)) {
-      return fail(getAccessDeniedMessage('write', memoryDir, language));
-    }
 
     const fullPath = path.resolve(process.cwd(), memoryDir);
 
