@@ -319,113 +319,246 @@ interface ReadFileOptions {
   maxLines: number;
 }
 
-function parseReadFileOptions(headLine: string): { path: string; options: ReadFileOptions } {
+const READ_FILE_CONTENT_CHAR_LIMIT = 100_000;
+
+type ReadFileParseResult =
+  | {
+      kind: 'ok';
+      path: string;
+      options: ReadFileOptions;
+      flags: { maxLinesSpecified: boolean; rangeSpecified: boolean };
+    }
+  | {
+      kind: 'error';
+      error:
+        | 'invalid_format'
+        | 'path_required'
+        | 'missing_option_value'
+        | 'invalid_option_value'
+        | 'unknown_option'
+        | 'unexpected_token';
+      option?: string;
+      expected?: string;
+      value?: string;
+      token?: string;
+    };
+
+function parseReadFileOptions(headLine: string): ReadFileParseResult {
   const trimmed = headLine.trim();
 
   if (!trimmed.startsWith('@read_file')) {
-    throw new Error('Invalid format');
+    return { kind: 'error', error: 'invalid_format' };
   }
 
   const afterToolName = trimmed.slice('@read_file'.length).trim();
-  const parts = afterToolName.split(/\s+/);
+  const parts = afterToolName.split(/\s+/).filter((p) => p.trim() !== '');
 
   if (parts.length === 0) {
-    throw new Error('Path required');
+    return { kind: 'error', error: 'path_required' };
   }
 
   // Path is now at the end
   const path = parts[parts.length - 1];
+  if (!path || path.startsWith('!')) {
+    return { kind: 'error', error: 'path_required' };
+  }
   const options: ReadFileOptions = {
-    decorateLinenos: true, // default
-    maxLines: 2000, // default
+    decorateLinenos: true, // default (line numbers shown unless explicitly disabled)
+    maxLines: 200, // default
   };
+  const flags = { maxLinesSpecified: false, rangeSpecified: false };
 
   // Parse options (all parts except the last one which is the path)
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
 
-    if (part === '!decorate-linenos') {
-      const nextPart = parts[i + 1];
-      if (nextPart === 'true' || nextPart === 'false') {
-        options.decorateLinenos = nextPart === 'true';
-        i++; // skip the next part as we consumed it
-      } else {
-        options.decorateLinenos = true; // default when just flag is present
-      }
-    } else if (part === '!range') {
-      // Parse range format: !range <range_spec>
-      const rangePart = parts[i + 1];
-      if (rangePart && i + 1 < parts.length - 1) {
-        // ensure we don't consume the path
-        const rangeMatch = rangePart.match(/^(\d+)?~(\d+)?$/);
-        if (rangeMatch) {
-          const [, startStr, endStr] = rangeMatch;
-
-          if (startStr) {
-            const start = parseInt(startStr, 10);
-            if (!isNaN(start) && start > 0) {
-              options.rangeStart = start;
-            }
-          }
-
-          if (endStr) {
-            const end = parseInt(endStr, 10);
-            if (!isNaN(end) && end > 0) {
-              options.rangeEnd = end;
-            }
-          }
-
-          // Handle special case of just "~" for no range limit
-          if (!startStr && !endStr) {
-            // "~" means no range limit - don't set rangeStart or rangeEnd
-          }
-
-          i++; // skip the range part as we consumed it
-        }
-      }
-    } else if (part === '!max-lines') {
-      const nextPart = parts[i + 1];
-      if (nextPart && i + 1 < parts.length - 1) {
-        // ensure we don't consume the path
-        const maxLines = parseInt(nextPart, 10);
-        if (!isNaN(maxLines) && maxLines > 0) {
-          options.maxLines = maxLines;
-          i++; // skip the next part as we consumed it
-        }
-      }
+    if (part === '!no-linenos') {
+      options.decorateLinenos = false;
+      continue;
     }
+
+    if (part === '!range') {
+      const rangePart = parts[i + 1];
+      if (!rangePart || i + 1 >= parts.length - 1) {
+        return {
+          kind: 'error',
+          error: 'missing_option_value',
+          option: '!range',
+          expected: '<start~end>',
+        };
+      }
+
+      const rangeMatch = rangePart.match(/^(\d+)?~(\d+)?$/);
+      if (!rangeMatch) {
+        return {
+          kind: 'error',
+          error: 'invalid_option_value',
+          option: '!range',
+          value: rangePart,
+        };
+      }
+
+      const [, startStr, endStr] = rangeMatch;
+
+      flags.rangeSpecified = true;
+
+      if (startStr) {
+        const start = parseInt(startStr, 10);
+        if (Number.isNaN(start) || start <= 0) {
+          return {
+            kind: 'error',
+            error: 'invalid_option_value',
+            option: '!range',
+            value: startStr,
+          };
+        }
+        options.rangeStart = start;
+      }
+
+      if (endStr) {
+        const end = parseInt(endStr, 10);
+        if (Number.isNaN(end) || end <= 0) {
+          return {
+            kind: 'error',
+            error: 'invalid_option_value',
+            option: '!range',
+            value: endStr,
+          };
+        }
+        options.rangeEnd = end;
+      }
+
+      if (
+        options.rangeStart !== undefined &&
+        options.rangeEnd !== undefined &&
+        options.rangeStart > options.rangeEnd
+      ) {
+        return {
+          kind: 'error',
+          error: 'invalid_option_value',
+          option: '!range',
+          value: rangePart,
+        };
+      }
+
+      i++; // consume range spec
+      continue;
+    }
+
+    if (part === '!max-lines') {
+      const maxLinesPart = parts[i + 1];
+      if (!maxLinesPart || i + 1 >= parts.length - 1) {
+        return {
+          kind: 'error',
+          error: 'missing_option_value',
+          option: '!max-lines',
+          expected: '<number>',
+        };
+      }
+
+      const maxLines = parseInt(maxLinesPart, 10);
+      if (Number.isNaN(maxLines) || maxLines <= 0) {
+        return {
+          kind: 'error',
+          error: 'invalid_option_value',
+          option: '!max-lines',
+          value: maxLinesPart,
+        };
+      }
+
+      flags.maxLinesSpecified = true;
+      options.maxLines = maxLines;
+      i++; // consume value
+      continue;
+    }
+
+    if (part.startsWith('!')) {
+      return { kind: 'error', error: 'unknown_option', option: part };
+    }
+
+    return { kind: 'error', error: 'unexpected_token', token: part };
   }
 
-  return { path, options };
+  return { kind: 'ok', path, options, flags };
 }
 
-function formatFileContent(content: string, options: ReadFileOptions): string {
-  const lines = content.split('\n');
-  let processedLines = lines;
+async function readFileContentBounded(
+  absPath: string,
+  options: ReadFileOptions,
+): Promise<{
+  totalLines: number;
+  formattedContent: string;
+  shownLines: number;
+  truncatedByMaxLines: boolean;
+  truncatedByCharLimit: boolean;
+}> {
+  const rangeStart = options.rangeStart ?? 1;
+  const rangeEnd = options.rangeEnd ?? Number.POSITIVE_INFINITY;
 
-  // Apply range filtering if specified
-  if (options.rangeStart !== undefined && options.rangeEnd !== undefined) {
-    const startIdx = Math.max(0, options.rangeStart - 1); // Convert to 0-based index
-    const endIdx = Math.min(lines.length, options.rangeEnd); // End is inclusive
-    processedLines = lines.slice(startIdx, endIdx);
-  }
+  const outLines: string[] = [];
+  let shownLines = 0;
+  let totalLines = 0;
+  let outputChars = 0;
+  let truncatedByMaxLines = false;
+  let truncatedByCharLimit = false;
 
-  // Apply max-lines limit
-  if (processedLines.length > options.maxLines) {
-    processedLines = processedLines.slice(0, options.maxLines);
-  }
+  const stream = fsSync.createReadStream(absPath, { encoding: 'utf8' });
+  let leftover = '';
+  let currentLineNumber = 1;
 
-  // Apply line number decoration if enabled
-  if (options.decorateLinenos) {
-    const startLineNum = options.rangeStart || 1;
-    processedLines = processedLines.map((line, idx) => {
-      const lineNum = startLineNum + idx;
-      const paddedLineNum = lineNum.toString().padStart(4, ' ');
-      return `${paddedLineNum}| ${line}`;
+  const tryAddLine = (line: string, lineNumber: number): void => {
+    if (lineNumber < rangeStart || lineNumber > rangeEnd) return;
+    if (shownLines >= options.maxLines) {
+      truncatedByMaxLines = true;
+      return;
+    }
+
+    const decoratedLine = options.decorateLinenos
+      ? `${lineNumber.toString().padStart(4, ' ')}| ${line}`
+      : line;
+
+    const extraChars = decoratedLine.length + (outLines.length === 0 ? 0 : 1); // +1 for '\n'
+    if (outputChars + extraChars > READ_FILE_CONTENT_CHAR_LIMIT) {
+      truncatedByCharLimit = true;
+      return;
+    }
+
+    outLines.push(decoratedLine);
+    outputChars += extraChars;
+    shownLines++;
+  };
+
+  return await new Promise((resolve, reject) => {
+    stream.on('error', (err: unknown) => reject(err));
+    stream.on('data', (chunk: string | Buffer) => {
+      const chunkText = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const combined = leftover + chunkText;
+      const parts = combined.split('\n');
+      const nextLeftover = parts.pop();
+      leftover = nextLeftover === undefined ? '' : nextLeftover;
+
+      for (const line of parts) {
+        tryAddLine(line, currentLineNumber);
+        totalLines++;
+        currentLineNumber++;
+      }
     });
-  }
+    stream.on('end', () => {
+      // Match `content.split('\n')` semantics:
+      // - empty file yields 1 empty line
+      // - trailing '\n' yields a final empty line
+      tryAddLine(leftover, currentLineNumber);
+      totalLines++;
 
-  return processedLines.join('\n');
+      resolve({
+        totalLines,
+        formattedContent: outLines.join('\n'),
+        shownLines,
+        truncatedByMaxLines,
+        truncatedByCharLimit,
+      });
+    });
+  });
 }
 
 export const readFileTool: TextingTool = {
@@ -439,9 +572,12 @@ Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Options:
-  !decorate-linenos [true|false]  - Add line numbers (default: true)
+  !no-linenos                     - Disable line numbers (default: show line numbers)
   !range <range>                  - Show specific line range
-  !max-lines <number>             - Limit max lines shown (default: 2000)
+  !max-lines <number>             - Limit max lines shown (default: 200)
+
+Output bounds:
+  Content is truncated to stay below ~100KB characters total.
 
 Range formats:
   10~50     - Lines 10 to 50
@@ -451,7 +587,7 @@ Range formats:
 
 Examples:
   !!@read_file src/main.ts
-  !!@read_file !decorate-linenos false src/main.ts
+  !!@read_file !no-linenos src/main.ts
   !!@read_file !range 10~50 src/main.ts
   !!@read_file !max-lines 100 !range 1~200 src/main.ts
   !!@read_file !range 300~ src/main.ts
@@ -464,9 +600,12 @@ Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
 
 Options:
-  !decorate-linenos [true|false]  - Add line numbers (default: true)
+  !no-linenos                     - Disable line numbers (default: show line numbers)
   !range <range>                  - Show specific line range
-  !max-lines <number>             - Limit max lines shown (default: 2000)
+  !max-lines <number>             - Limit max lines shown (default: 200)
+
+Output bounds:
+  Content is truncated to stay below ~100KB characters total.
 
 Range formats:
   10~50     - Lines 10 to 50
@@ -476,7 +615,7 @@ Range formats:
 
 Examples:
   !!@read_file src/main.ts
-  !!@read_file !decorate-linenos false src/main.ts
+  !!@read_file !no-linenos src/main.ts
   !!@read_file !range 10~50 src/main.ts
   !!@read_file !max-lines 100 !range 1~200 src/main.ts
   !!@read_file !range 300~ src/main.ts
@@ -488,9 +627,12 @@ Examples:
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
 
 选项：
-  !decorate-linenos [true|false]  - 显示行号（默认：true）
+  !no-linenos                     - 不显示行号（默认：显示行号）
   !range <range>                  - 读取指定行范围
-  !max-lines <number>             - 最多显示行数（默认：2000）
+  !max-lines <number>             - 最多显示行数（默认：200）
+
+输出上限：
+  内容会被截断以确保返回的字符总数低于约 100KB。
 
 范围格式：
   10~50     - 第 10 行到第 50 行
@@ -500,7 +642,7 @@ Examples:
 
 示例：
   !!@read_file src/main.ts
-  !!@read_file !decorate-linenos false src/main.ts
+  !!@read_file !no-linenos src/main.ts
   !!@read_file !range 10~50 src/main.ts
   !!@read_file !max-lines 100 !range 1~200 src/main.ts
   !!@read_file !range 300~ src/main.ts
@@ -513,26 +655,93 @@ Examples:
         ? {
             formatError:
               '请使用正确的文件读取格式。\n\n**期望格式：** `!!@read_file [options] <path>`\n\n**示例：**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
+            formatErrorWithReason: (msg: string) =>
+              `❌ **错误：** ${msg}\n\n` +
+              '请使用正确的文件读取格式。\n\n**期望格式：** `!!@read_file [options] <path>`\n\n**示例：**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
             fileLabel: '文件',
-            warningTruncated: (totalBytes: number, shownBytes: number) =>
-              `⚠️ **警告：** 文件已截断（总大小 ${totalBytes} bytes，当前显示前 ${shownBytes} bytes）\n\n`,
+            warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
+              `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
+            warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
+              `⚠️ **警告：** 输出已截断（字符总数上限约 ${maxChars}，当前显示 ${shown} 行）\n\n`,
+            warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
+              `⚠️ **警告：** \`!max-lines\`（${maxLines}）与 \`!range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
+            hintUseRangeNext: (relPath: string, start: number, end: number) =>
+              `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!!@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+            hintLargeFileStrategy: (relPath: string) =>
+              `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!!@read_file !range 1~200 ${relPath}\`、\`!!@read_file !range 201~400 ${relPath}\`）。\n\n`,
             sizeLabel: '大小',
-            optionsLabel: '选项',
+            totalLinesLabel: '总行数',
             failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
           }
         : {
             formatError:
               'Please use the correct format for reading files.\n\n**Expected format:** `!!@read_file [options] <path>`\n\n**Examples:**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
+            formatErrorWithReason: (msg: string) =>
+              `❌ **Error:** ${msg}\n\n` +
+              'Please use the correct format for reading files.\n\n**Expected format:** `!!@read_file [options] <path>`\n\n**Examples:**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
             fileLabel: 'File',
-            warningTruncated: (totalBytes: number, shownBytes: number) =>
-              `⚠️ **Warning:** File was truncated (${totalBytes} bytes total, showing first ${shownBytes} bytes)\n\n`,
+            warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
+              `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
+            warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
+              `⚠️ **Warning:** Output was truncated (~${maxChars} character cap; showing ${shown} lines)\n\n`,
+            warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
+              `⚠️ **Warning:** \`!max-lines\` (${maxLines}) contradicts \`!range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
+            hintUseRangeNext: (relPath: string, start: number, end: number) =>
+              `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!!@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+            hintLargeFileStrategy: (relPath: string) =>
+              `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`@clear_mind\` (less context) before reading the next slice (e.g. \`!!@read_file !range 1~200 ${relPath}\`, then \`!!@read_file !range 201~400 ${relPath}\`).\n\n`,
             sizeLabel: 'Size',
-            optionsLabel: 'Options',
+            totalLinesLabel: 'Total lines',
             failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
           };
 
     try {
-      const { path: rel, options } = parseReadFileOptions(headLine);
+      const parsed = parseReadFileOptions(headLine);
+      if (parsed.kind === 'error') {
+        let reason = '';
+        if (language === 'zh') {
+          if (parsed.error === 'unknown_option') {
+            reason = `无法识别的选项：${parsed.option ?? ''}`;
+          } else if (parsed.error === 'unexpected_token') {
+            reason = `多余参数：${parsed.token ?? ''}`;
+          } else if (parsed.error === 'missing_option_value') {
+            reason = `${parsed.option ?? ''} 缺少参数（期望 ${parsed.expected ?? ''}）`;
+          } else if (parsed.error === 'invalid_option_value') {
+            reason = `${parsed.option ?? ''} 的参数无效：${parsed.value ?? ''}`;
+          }
+        } else {
+          if (parsed.error === 'unknown_option') {
+            reason = `Unrecognized option: ${parsed.option ?? ''}`;
+          } else if (parsed.error === 'unexpected_token') {
+            reason = `Unexpected token: ${parsed.token ?? ''}`;
+          } else if (parsed.error === 'missing_option_value') {
+            reason = `Missing value for ${parsed.option ?? ''} (expected ${parsed.expected ?? ''})`;
+          } else if (parsed.error === 'invalid_option_value') {
+            reason = `Invalid value for ${parsed.option ?? ''}: ${parsed.value ?? ''}`;
+          }
+        }
+
+        const content =
+          parsed.error === 'invalid_format' || parsed.error === 'path_required'
+            ? labels.formatError
+            : labels.formatErrorWithReason(reason);
+        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const rel = parsed.path;
+      const flags = parsed.flags;
+      const optionsRequested = parsed.options;
+      const options: ReadFileOptions = { ...optionsRequested };
+      let maxLinesRangeMismatch: { maxLines: number; rangeLines: number; used: number } | null =
+        null;
+      if (flags.maxLinesSpecified && flags.rangeSpecified && options.rangeEnd !== undefined) {
+        const rangeStart = options.rangeStart ?? 1;
+        const rangeLines = options.rangeEnd - rangeStart + 1;
+        if (rangeLines > 0 && rangeLines < options.maxLines) {
+          maxLinesRangeMismatch = { maxLines: options.maxLines, rangeLines, used: rangeLines };
+          options.maxLines = rangeLines;
+        }
+      }
 
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
@@ -542,27 +751,50 @@ Examples:
 
       const file = ensureInsideWorkspace(rel);
       const stat = await fs.stat(file);
-      const maxFileSize = 200_000; // 200 KB
-      const buf = await fs.readFile(file, { encoding: 'utf-8' });
-      const fileTruncated = stat.size > maxFileSize;
-      const rawContent = fileTruncated ? buf.slice(0, maxFileSize) : buf;
-
-      const formattedContent = formatFileContent(rawContent, options);
+      const contentSummary = await readFileContentBounded(file, options);
 
       // Create markdown response
       let markdown = `📄 **${labels.fileLabel}:** \`${rel}\`\n`;
 
-      if (fileTruncated) {
-        markdown += labels.warningTruncated(stat.size, rawContent.length);
+      if (maxLinesRangeMismatch) {
+        markdown += labels.warningMaxLinesRangeMismatch(
+          maxLinesRangeMismatch.maxLines,
+          maxLinesRangeMismatch.rangeLines,
+          maxLinesRangeMismatch.used,
+        );
+      }
+
+      if (contentSummary.truncatedByCharLimit) {
+        markdown += labels.warningTruncatedByCharLimit(
+          contentSummary.shownLines,
+          READ_FILE_CONTENT_CHAR_LIMIT,
+        );
+      } else if (contentSummary.truncatedByMaxLines) {
+        markdown += labels.warningTruncatedByMaxLines(contentSummary.shownLines, options.maxLines);
+      }
+
+      if (
+        (contentSummary.truncatedByCharLimit || contentSummary.truncatedByMaxLines) &&
+        !flags.maxLinesSpecified &&
+        !flags.rangeSpecified
+      ) {
+        const start = contentSummary.shownLines + 1;
+        const end = start + 199;
+        markdown += labels.hintUseRangeNext(rel, start, end);
+      }
+
+      if (contentSummary.truncatedByCharLimit) {
+        markdown += labels.hintLargeFileStrategy(rel);
       }
 
       markdown += `**${labels.sizeLabel}:** ${stat.size} bytes\n`;
-      markdown += `**${labels.optionsLabel}:** ${JSON.stringify(options)}\n\n`;
+      markdown += `**${labels.totalLinesLabel}:** ${contentSummary.totalLines}\n`;
+      markdown += '\n';
 
       // Add file content with code block formatting
       markdown += '```\n';
-      markdown += formattedContent;
-      if (!formattedContent.endsWith('\n')) {
+      markdown += contentSummary.formattedContent;
+      if (!contentSummary.formattedContent.endsWith('\n')) {
         markdown += '\n';
       }
       markdown += '```';

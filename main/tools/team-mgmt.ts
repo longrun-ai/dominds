@@ -527,7 +527,7 @@ export const teamMgmtReadFileTool: TextingTool = {
     `Options (same as !!@read_file):\n` +
     `  !range <start~end>\n` +
     `  !max-lines <n>\n` +
-    `  !decorate-linenos [true|false]\n\n` +
+    `  !no-linenos\n\n` +
     `Examples:\n` +
     `!!@team_mgmt_read_file team.yaml\n` +
     `!!@team_mgmt_read_file !range 1~120 team.yaml\n`,
@@ -538,7 +538,7 @@ export const teamMgmtReadFileTool: TextingTool = {
       `Options (same as !!@read_file):\n` +
       `  !range <start~end>\n` +
       `  !max-lines <n>\n` +
-      `  !decorate-linenos [true|false]\n\n` +
+      `  !no-linenos\n\n` +
       `Examples:\n` +
       `!!@team_mgmt_read_file team.yaml\n` +
       `!!@team_mgmt_read_file !range 1~120 team.yaml\n`,
@@ -548,7 +548,7 @@ export const teamMgmtReadFileTool: TextingTool = {
       `可选项（同 !!@read_file）：\n` +
       `  !range <start~end>\n` +
       `  !max-lines <n>\n` +
-      `  !decorate-linenos [true|false]\n\n` +
+      `  !no-linenos\n\n` +
       `示例：\n` +
       `!!@team_mgmt_read_file team.yaml\n` +
       `!!@team_mgmt_read_file !range 1~120 team.yaml\n`,
