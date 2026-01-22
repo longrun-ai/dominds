@@ -364,7 +364,7 @@ function parseReadFileOptions(headLine: string): ReadFileParseResult {
   }
   const options: ReadFileOptions = {
     decorateLinenos: true, // default (line numbers shown unless explicitly disabled)
-    maxLines: 200, // default
+    maxLines: 500, // default
   };
   const flags = { maxLinesSpecified: false, rangeSpecified: false };
 
@@ -574,7 +574,7 @@ Note:
 Options:
   !no-linenos                     - Disable line numbers (default: show line numbers)
   !range <range>                  - Show specific line range
-  !max-lines <number>             - Limit max lines shown (default: 200)
+  !max-lines <number>             - Limit max lines shown (default: 500)
 
 Output bounds:
   Content is truncated to stay below ~100KB characters total.
@@ -589,7 +589,7 @@ Examples:
   !!@read_file src/main.ts
   !!@read_file !no-linenos src/main.ts
   !!@read_file !range 10~50 src/main.ts
-  !!@read_file !max-lines 100 !range 1~200 src/main.ts
+  !!@read_file !max-lines 100 !range 1~500 src/main.ts
   !!@read_file !range 300~ src/main.ts
   !!@read_file !range ~20 src/main.ts`,
   usageDescriptionI18n: {
@@ -602,7 +602,7 @@ Note:
 Options:
   !no-linenos                     - Disable line numbers (default: show line numbers)
   !range <range>                  - Show specific line range
-  !max-lines <number>             - Limit max lines shown (default: 200)
+  !max-lines <number>             - Limit max lines shown (default: 500)
 
 Output bounds:
   Content is truncated to stay below ~100KB characters total.
@@ -617,7 +617,7 @@ Examples:
   !!@read_file src/main.ts
   !!@read_file !no-linenos src/main.ts
   !!@read_file !range 10~50 src/main.ts
-  !!@read_file !max-lines 100 !range 1~200 src/main.ts
+  !!@read_file !max-lines 100 !range 1~500 src/main.ts
   !!@read_file !range 300~ src/main.ts
   !!@read_file !range ~20 src/main.ts`,
     zh: `读取工作区内的文本文件（有上限/可截断）。
@@ -629,7 +629,7 @@ Examples:
 选项：
   !no-linenos                     - 不显示行号（默认：显示行号）
   !range <range>                  - 读取指定行范围
-  !max-lines <number>             - 最多显示行数（默认：200）
+  !max-lines <number>             - 最多显示行数（默认：500）
 
 输出上限：
   内容会被截断以确保返回的字符总数低于约 100KB。
@@ -644,7 +644,7 @@ Examples:
   !!@read_file src/main.ts
   !!@read_file !no-linenos src/main.ts
   !!@read_file !range 10~50 src/main.ts
-  !!@read_file !max-lines 100 !range 1~200 src/main.ts
+  !!@read_file !max-lines 100 !range 1~500 src/main.ts
   !!@read_file !range 300~ src/main.ts
   !!@read_file !range ~20 src/main.ts`,
   },
@@ -668,7 +668,7 @@ Examples:
             hintUseRangeNext: (relPath: string, start: number, end: number) =>
               `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!!@read_file !range ${start}~${end} ${relPath}\`\n\n`,
             hintLargeFileStrategy: (relPath: string) =>
-              `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!!@read_file !range 1~200 ${relPath}\`、\`!!@read_file !range 201~400 ${relPath}\`）。\n\n`,
+              `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!!@read_file !range 1~500 ${relPath}\`、\`!!@read_file !range 201~400 ${relPath}\`）。\n\n`,
             sizeLabel: '大小',
             totalLinesLabel: '总行数',
             failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
@@ -689,7 +689,7 @@ Examples:
             hintUseRangeNext: (relPath: string, start: number, end: number) =>
               `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!!@read_file !range ${start}~${end} ${relPath}\`\n\n`,
             hintLargeFileStrategy: (relPath: string) =>
-              `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`@clear_mind\` (less context) before reading the next slice (e.g. \`!!@read_file !range 1~200 ${relPath}\`, then \`!!@read_file !range 201~400 ${relPath}\`).\n\n`,
+              `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`@clear_mind\` (less context) before reading the next slice (e.g. \`!!@read_file !range 1~500 ${relPath}\`, then \`!!@read_file !range 201~400 ${relPath}\`).\n\n`,
             sizeLabel: 'Size',
             totalLinesLabel: 'Total lines',
             failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
