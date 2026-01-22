@@ -56,7 +56,7 @@ export interface NewQ4HAskedEvent {
 export interface Q4HAnsweredEvent {
   type: 'q4h_answered';
   questionId: string;
-  dialogId: string;
+  selfId: string;
 }
 
 /**
@@ -65,7 +65,7 @@ export interface Q4HAnsweredEvent {
  */
 export interface GlobalQ4HQuestion extends HumanQuestion {
   /** Dialog self ID */
-  dialogId: string;
+  selfId: string;
   /** Dialog root ID (for subdialogs, points to parent) */
   rootId: string;
   /** Agent ID who asked the question */
@@ -81,7 +81,7 @@ export interface Q4HNavigationDetail {
   /** Question ID being answered */
   questionId: string;
   /** Dialog containing the question */
-  dialogId: string;
+  selfId: string;
   /** Root dialog ID for context */
   rootId: string;
   /** Round number of the @human call site */

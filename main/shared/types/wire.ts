@@ -149,7 +149,10 @@ export interface Q4HStateResponse {
   type: 'q4h_state_response';
   questions: Array<{
     id: string;
-    dialogId: string;
+    selfId: string;
+    rootId: string;
+    agentId: string;
+    taskDocPath: string;
     headLine: string;
     bodyContent: string;
     askedAt: string;

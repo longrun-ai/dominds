@@ -257,7 +257,7 @@ export interface NewQ4HAskedEvent {
   type: 'new_q4h_asked';
   question: {
     id: string;
-    dialogId: string;
+    selfId: string;
     headLine: string;
     bodyContent: string;
     askedAt: string;
@@ -265,16 +265,16 @@ export interface NewQ4HAskedEvent {
       round: number;
       messageIndex: number;
     };
-    rootId?: string;
-    agentId?: string;
-    taskDocPath?: string;
+    rootId: string;
+    agentId: string;
+    taskDocPath: string;
   };
 }
 
 export interface Q4HAnsweredEvent {
   type: 'q4h_answered';
   questionId: string;
-  dialogId: string;
+  selfId: string;
 }
 
 // === UNION TYPES ===

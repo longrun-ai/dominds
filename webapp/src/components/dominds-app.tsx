@@ -4635,7 +4635,6 @@ export class DomindsApp extends HTMLElement {
       }
       const api = getApiClient();
       const resp = await api.createDialog(fallbackAgent, taskDocPath);
-      // Accept either {selfId, rootId} or legacy {dialogId}
       if (!resp.success || !resp.data) {
         if (resp.status === 401) {
           this.onAuthRejected('api');
@@ -4647,8 +4646,8 @@ export class DomindsApp extends HTMLElement {
         throw new Error('Dialog creation failed: invalid response payload');
       }
       const rec = payload as Record<string, unknown>;
-      const selfIdRaw = rec.selfId ?? rec.dialogId;
-      const rootIdRaw = rec.rootId ?? rec.dialogId ?? selfIdRaw;
+      const selfIdRaw = rec.selfId;
+      const rootIdRaw = rec.rootId;
       if (typeof selfIdRaw !== 'string' || typeof rootIdRaw !== 'string') {
         this.showError('Invalid dialog identifiers in createDialog response', 'error');
         throw new Error('Invalid dialog identifiers');
@@ -5828,10 +5827,10 @@ export class DomindsApp extends HTMLElement {
       if (!id || seenIds.has(id)) continue;
       seenIds.add(id);
 
-      const existingWithDialog = existing as { dialogId?: unknown; rootId?: unknown };
-      const dialogId =
-        typeof existingWithDialog.dialogId === 'string' ? existingWithDialog.dialogId : null;
-      if (!dialogId) {
+      const existingWithDialog = existing as { selfId?: unknown; rootId?: unknown };
+      const selfId =
+        typeof existingWithDialog.selfId === 'string' ? existingWithDialog.selfId : null;
+      if (!selfId) {
         const incoming = incomingById.get(id);
         next.push(incoming ?? existing);
         if (incoming) incomingById.delete(id);
@@ -5841,8 +5840,8 @@ export class DomindsApp extends HTMLElement {
       const rootId =
         typeof existingWithDialog.rootId === 'string' && existingWithDialog.rootId
           ? existingWithDialog.rootId
-          : dialogId;
-      const status = this.resolveDialogStatusByIds(rootId, dialogId);
+          : selfId;
+      const status = this.resolveDialogStatusByIds(rootId, selfId);
 
       const incoming = incomingById.get(id);
       if (incoming) {
@@ -5875,11 +5874,11 @@ export class DomindsApp extends HTMLElement {
     // Hide Q4H questions for dialogs that are no longer running.
     // Keep them in `this.q4hQuestions` so a revived dialog can restore immediately.
     const visibleQuestions = this.q4hQuestions.filter((question) => {
-      const global = question as { dialogId?: unknown; rootId?: unknown };
-      const dialogId = typeof global.dialogId === 'string' ? global.dialogId : null;
-      if (!dialogId) return true;
-      const rootId = typeof global.rootId === 'string' && global.rootId ? global.rootId : dialogId;
-      const status = this.resolveDialogStatusByIds(rootId, dialogId);
+      const global = question as { selfId?: unknown; rootId?: unknown };
+      const selfId = typeof global.selfId === 'string' ? global.selfId : null;
+      if (!selfId) return true;
+      const rootId = typeof global.rootId === 'string' && global.rootId ? global.rootId : selfId;
+      const status = this.resolveDialogStatusByIds(rootId, selfId);
       return status !== 'completed' && status !== 'archived';
     });
 
@@ -5914,7 +5913,7 @@ export class DomindsApp extends HTMLElement {
    */
   private buildQ4HDialogContexts(questions: HumanQuestion[]): Q4HDialogContext[] {
     // Group questions by their source dialog
-    // Note: For global Q4H, questions may have embedded dialog context (dialogId, rootId, agentId, taskDocPath)
+    // Note: For global Q4H, questions may have embedded dialog context (selfId, rootId, agentId, taskDocPath)
     // For single-dialog Q4H, we need to look up dialog info from the frontend's dialogs list
 
     const contextMap = new Map<string, Q4HDialogContext>();
@@ -5922,7 +5921,7 @@ export class DomindsApp extends HTMLElement {
     for (const question of questions) {
       // Check if this is a GlobalQ4HQuestion with embedded dialog context
       const globalQuestion = question as {
-        dialogId?: string;
+        selfId?: string;
         rootId?: string;
         agentId?: string;
         taskDocPath?: string;
@@ -5932,9 +5931,9 @@ export class DomindsApp extends HTMLElement {
       let agentId: string | undefined;
       let taskDocPath: string | undefined;
 
-      if (globalQuestion.dialogId) {
+      if (globalQuestion.selfId) {
         // Global Q4H: use embedded dialog context
-        dialogId = globalQuestion.dialogId;
+        dialogId = globalQuestion.selfId;
         rootId = globalQuestion.rootId ?? dialogId;
         agentId = globalQuestion.agentId ?? 'unknown';
         taskDocPath = globalQuestion.taskDocPath ?? '';

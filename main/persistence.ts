@@ -1038,7 +1038,7 @@ export class DiskFileDialogStore extends DialogStore {
         const answeredEvent: Q4HAnsweredEvent = {
           type: 'q4h_answered',
           questionId: q.id,
-          dialogId: dialog.id.selfId,
+          selfId: dialog.id.selfId,
         };
         postDialogEvent(dialog, answeredEvent);
       }
@@ -2559,7 +2559,7 @@ export class DialogPersistence {
   static async loadAllQ4HState(): Promise<
     Array<{
       id: string;
-      dialogId: string;
+      selfId: string;
       rootId: string;
       agentId: string;
       taskDocPath: string;
@@ -2570,11 +2570,11 @@ export class DialogPersistence {
     }>
   > {
     try {
-      // Get all running dialogs
-      const dialogIds = await this.listDialogs('running');
+      // Get all running dialogs (root + subdialogs) with correct rootId association.
+      const dialogIds = await this.listAllDialogIds('running');
       const allQuestions: Array<{
         id: string;
-        dialogId: string;
+        selfId: string;
         rootId: string;
         agentId: string;
         taskDocPath: string;
@@ -2584,9 +2584,8 @@ export class DialogPersistence {
         callSiteRef: { round: number; messageIndex: number };
       }> = [];
 
-      for (const dialogId of dialogIds) {
+      for (const dialogIdObj of dialogIds) {
         try {
-          const dialogIdObj = new DialogID(dialogId);
           const questions = await this.loadQuestions4HumanState(dialogIdObj, 'running');
           const metadata = await this.loadDialogMetadata(dialogIdObj, 'running');
 
@@ -2594,7 +2593,7 @@ export class DialogPersistence {
             for (const q of questions) {
               allQuestions.push({
                 ...q,
-                dialogId: dialogId,
+                selfId: dialogIdObj.selfId,
                 rootId: dialogIdObj.rootId,
                 agentId: metadata.agentId,
                 taskDocPath: metadata.taskDocPath,
@@ -2602,7 +2601,7 @@ export class DialogPersistence {
             }
           }
         } catch (err) {
-          log.warn(`Failed to load Q4H for dialog ${dialogId}:`, err);
+          log.warn(`Failed to load Q4H for dialog ${dialogIdObj.valueOf()}:`, err);
         }
       }
 
@@ -2635,7 +2634,7 @@ export class DialogPersistence {
         const answeredEvent: Q4HAnsweredEvent = {
           type: 'q4h_answered',
           questionId: q.id,
-          dialogId: dialogId.valueOf(),
+          selfId: dialogId.selfId,
         };
         postDialogEventById(dialogId, answeredEvent);
       }

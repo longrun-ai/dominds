@@ -10,6 +10,7 @@ import type { LanguageCode } from '../shared/types/language';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogRunState } from '../shared/types/run-state.js';
 import type { DialogIdent } from '../shared/types/wire.js';
+import { escapeHtmlAttr } from '../shared/utils/html.js';
 import { generateShortId } from '../shared/utils/id.js';
 
 /**
@@ -1279,9 +1280,17 @@ export class DomindsQ4HInput extends HTMLElement {
         font-weight: 600;
         color: var(--color-fg-primary, #0f172a);
         line-height: 1.35;
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        min-width: 0;
+      }
+
+      .q4h-question-origin-left {
         display: inline-flex;
         gap: 6px;
         align-items: baseline;
+        flex: 1;
         min-width: 0;
       }
 
@@ -1293,10 +1302,30 @@ export class DomindsQ4HInput extends HTMLElement {
         white-space: nowrap;
       }
 
+      .q4h-question-origin-taskdoc {
+        color: var(--color-fg-tertiary, #64748b);
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        max-width: 44ch;
+      }
+
       .q4h-question-origin-asked-at {
         color: var(--color-fg-tertiary, #64748b);
         font-weight: 500;
         white-space: nowrap;
+        margin-left: auto;
+        text-align: right;
+        flex-shrink: 0;
+      }
+
+      .q4h-question-origin-asked-at::before {
+        content: '•';
+        color: var(--color-fg-tertiary, #64748b);
+        font-weight: 400;
+        margin: 0 6px 0 10px;
       }
 
       .q4h-question-origin-sep {
@@ -1547,10 +1576,13 @@ export class DomindsQ4HInput extends HTMLElement {
           </span>
           <span class="q4h-expand-icon">▶</span>
           <span class="q4h-question-title">
-            <span class="q4h-question-origin">@${this.escapeHtml(question.dialogContext.agentId)}</span>
-            <span class="q4h-question-origin-sep">•</span>
-            <span class="q4h-question-origin-id">${this.escapeHtml(question.dialogContext.selfId)}</span>
-            <span class="q4h-question-origin-sep">•</span>
+            <span class="q4h-question-origin-left">
+              <span class="q4h-question-origin">@${this.escapeHtml(question.dialogContext.agentId)}</span>
+              <span class="q4h-question-origin-sep">•</span>
+              <span class="q4h-question-origin-id">${this.escapeHtml(question.dialogContext.selfId)}</span>
+              <span class="q4h-question-origin-sep">•</span>
+              <span class="q4h-question-origin-taskdoc" title="${escapeHtmlAttr(question.dialogContext.taskDocPath)}">${this.escapeHtml(question.dialogContext.taskDocPath)}</span>
+            </span>
             <span class="q4h-question-origin-asked-at">${this.escapeHtml(question.askedAt)}</span>
           </span>
           <span class="q4h-external-link" data-question-id="${question.id}">↗</span>

@@ -290,7 +290,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
     type: 'new_q4h_asked',
     question: {
       id: question.id,
-      dialogId: dlg.id.selfId,
+      selfId: dlg.id.selfId,
       headLine: question.headLine,
       bodyContent: question.bodyContent,
       askedAt: question.askedAt,
@@ -2837,7 +2837,7 @@ async function executeTextingCall(
         type: 'new_q4h_asked',
         question: {
           id: question.id,
-          dialogId: dlg.id.selfId,
+          selfId: dlg.id.selfId,
           headLine: question.headLine,
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,

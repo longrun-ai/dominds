@@ -20,6 +20,7 @@ import {
   supportedLanguageCodes,
   type LanguageCode,
 } from '../shared/types/language';
+import { escapeHtmlAttr } from '../shared/utils/html.js';
 import './dominds-code-block';
 
 type AuthState =
@@ -921,10 +922,6 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function escapeHtmlAttr(text: string): string {
-  return escapeHtml(text);
 }
 
 customElements.define('dominds-setup', DomindsSetup);

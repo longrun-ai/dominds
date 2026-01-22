@@ -37,7 +37,7 @@ import type {
   ResumeDialogRequest,
   WebSocketMessage,
 } from '../shared/types';
-import type { DialogEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
+import type { DialogEvent, NewQ4HAskedEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
 import {
   normalizeLanguageCode,
   supportedLanguageCodes,
@@ -521,21 +521,23 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     try {
       const allQuestions = await DialogPersistence.loadAllQ4HState();
 
-      // Transform to questions_count_update format
-      const questions = allQuestions.map((q) => ({
-        id: q.id,
-        dialogId: q.dialogId,
-        headLine: q.headLine,
-        bodyContent: q.bodyContent,
-        askedAt: q.askedAt,
-        callSiteRef: q.callSiteRef,
-      }));
-
-      // Emit new_q4h_asked events for each question (full sync on dialog display)
-      for (const q of questions) {
-        const newQ4HEvent = {
+      // Emit new_q4h_asked events for each question (best-effort sync on dialog display).
+      // Include full dialog context (selfId/rootId/agentId/taskDocPath) so the frontend can
+      // render origin info without relying on additional lookups.
+      for (const q of allQuestions) {
+        const newQ4HEvent: NewQ4HAskedEvent = {
           type: 'new_q4h_asked',
-          question: q,
+          question: {
+            id: q.id,
+            selfId: q.selfId,
+            rootId: q.rootId,
+            agentId: q.agentId,
+            taskDocPath: q.taskDocPath,
+            headLine: q.headLine,
+            bodyContent: q.bodyContent,
+            askedAt: q.askedAt,
+            callSiteRef: q.callSiteRef,
+          },
         };
         ws.send(JSON.stringify(newQ4HEvent));
       }
@@ -564,11 +566,14 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
     // Load Q4H from all running dialogs
     const allQuestions = await DialogPersistence.loadAllQ4HState();
 
-    // Transform to questions_count_update format
-    // The frontend expects questions with dialogId field
+    // Transform to wire `Q4HStateResponse` question entries.
+    // `selfId` + `rootId` uniquely identify the originating dialog (including subdialogs).
     const questions = allQuestions.map((q) => ({
       id: q.id,
-      dialogId: q.dialogId,
+      selfId: q.selfId,
+      rootId: q.rootId,
+      agentId: q.agentId,
+      taskDocPath: q.taskDocPath,
       headLine: q.headLine,
       bodyContent: q.bodyContent,
       askedAt: q.askedAt,
@@ -991,7 +996,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     const answeredEvent: Q4HAnsweredEvent = {
       type: 'q4h_answered',
       questionId,
-      dialogId,
+      selfId: dialogId,
     };
     postDialogEvent(dialog, answeredEvent);
 
