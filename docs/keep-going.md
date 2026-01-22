@@ -69,6 +69,7 @@ Q4H suspension.
 - Default: **30**
 - Configurable per-rtws via diligence file frontmatter key `max-num-prompts` (see below)
 - If `< 1`, keep-going is effectively disabled for that workspace
+- Also capped per-member via `diligence-push-max` in `.minds/team.yaml` (effective max is the minimum)
 
 ### Reset on Q4H
 
@@ -118,6 +119,23 @@ Rules:
 - If the key is missing, `max-num-prompts` defaults to **30** (even when the file exists).
 - If the key is present and `< 1`, keep-going is disabled for that workspace.
 - If no diligence file exists at all, dominds uses the built-in fallback prompt and `max-num-prompts: 30`.
+
+### Team member cap: `diligence-push-max`
+
+Each team member can optionally cap keep-going via `.minds/team.yaml`:
+
+```yaml
+members:
+  alice:
+    diligence-push-max: 10
+```
+
+Rules:
+
+- If missing, `diligence-push-max` defaults to **30** for that member.
+- The effective `maxInjectCount` is `min(max-num-prompts, diligence-push-max)`.
+- If `diligence-push-max < 1`, keep-going is disabled for that member (no injection), even if the diligence file exists.
+- Built-in shadow members `fuxi` and `pangu` default to `diligence-push-max: 0` unless explicitly overridden in team.yaml.
 
 ## UX notes
 

@@ -112,6 +112,9 @@ export namespace Team {
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
+    // Keep-going: per-member cap on how many diligence prompts can be auto-sent before forcing Q4H.
+    // Effective maxInjectCount = min(rtws diligence frontmatter max-num-prompts, this value).
+    diligence_push_max?: number;
     read_dirs?: string[];
     write_dirs?: string[];
     no_read_dirs?: string[];
@@ -129,6 +132,7 @@ export namespace Team {
       toolsets?: string[];
       tools?: string[];
       model_params?: ModelParams;
+      diligence_push_max?: number;
       read_dirs?: string[];
       write_dirs?: string[];
       no_read_dirs?: string[];
@@ -147,6 +151,8 @@ export namespace Team {
       if (params.toolsets !== undefined) this.toolsets = params.toolsets;
       if (params.tools !== undefined) this.tools = params.tools;
       if (params.model_params !== undefined) this.model_params = params.model_params;
+      if (params.diligence_push_max !== undefined)
+        this.diligence_push_max = params.diligence_push_max;
       if (params.read_dirs !== undefined) this.read_dirs = params.read_dirs;
       if (params.write_dirs !== undefined) this.write_dirs = params.write_dirs;
       if (params.no_read_dirs !== undefined) this.no_read_dirs = params.no_read_dirs;
@@ -165,6 +171,7 @@ export namespace Team {
         'toolsets',
         'tools',
         'model_params',
+        'diligence_push_max',
         'read_dirs',
         'write_dirs',
         'no_read_dirs',
@@ -230,6 +237,14 @@ export namespace Team {
         return;
       }
       this.model_params = modelParams;
+    }
+
+    setDiligencePushMax(max: number | undefined): void {
+      if (max === undefined) {
+        delete this.diligence_push_max;
+        return;
+      }
+      this.diligence_push_max = max;
     }
 
     setReadDirs(readDirs: string[] | undefined): void {
@@ -383,6 +398,7 @@ export namespace Team {
       icon: '☯️',
       hidden: true,
       toolsets: ['team-mgmt'],
+      diligence_push_max: 0,
     });
     Object.setPrototypeOf(fuxi, md);
 
@@ -396,6 +412,7 @@ export namespace Team {
       toolsets: ['*', '!team-mgmt'],
       no_read_dirs: ['.minds/**'],
       no_write_dirs: ['.minds/**'],
+      diligence_push_max: 0,
     });
     Object.setPrototypeOf(pangu, md);
 
@@ -620,6 +637,7 @@ export namespace Team {
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
+    diligence_push_max?: number;
     read_dirs?: string[];
     write_dirs?: string[];
     no_read_dirs?: string[];
@@ -698,6 +716,31 @@ export namespace Team {
         overrides.model_params = requireDefined(
           asOptionalModelParams(rv['model_params'], `${at}.model_params`),
           `${at}.model_params`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    const hasDiligencePushMaxDash = hasOwnKey(rv, 'diligence-push-max');
+    const hasDiligencePushMaxUnderscore = hasOwnKey(rv, 'diligence_push_max');
+    if (hasDiligencePushMaxDash && hasDiligencePushMaxUnderscore) {
+      errors.push(
+        `Invalid ${at}: both diligence-push-max and diligence_push_max are set; please use only diligence-push-max.`,
+      );
+    } else if (hasDiligencePushMaxDash) {
+      try {
+        overrides.diligence_push_max = requireDefined(
+          asOptionalNumber(rv['diligence-push-max'], `${at}.diligence-push-max`),
+          `${at}.diligence-push-max`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    } else if (hasDiligencePushMaxUnderscore) {
+      try {
+        overrides.diligence_push_max = requireDefined(
+          asOptionalNumber(rv['diligence_push_max'], `${at}.diligence_push_max`),
+          `${at}.diligence_push_max`,
         );
       } catch (err: unknown) {
         errors.push(asErrorText(err));
@@ -783,6 +826,8 @@ export namespace Team {
     if (overrides.toolsets !== undefined) member.setToolsets(overrides.toolsets);
     if (overrides.tools !== undefined) member.setTools(overrides.tools);
     if (overrides.model_params !== undefined) member.setModelParams(overrides.model_params);
+    if (overrides.diligence_push_max !== undefined)
+      member.setDiligencePushMax(overrides.diligence_push_max);
     if (overrides.read_dirs !== undefined) member.setReadDirs(overrides.read_dirs);
     if (overrides.write_dirs !== undefined) member.setWriteDirs(overrides.write_dirs);
     if (overrides.no_read_dirs !== undefined) member.setNoReadDirs(overrides.no_read_dirs);
@@ -943,7 +988,7 @@ export namespace Team {
 
   function asOptionalNumber(value: unknown, at: string): number | undefined {
     if (value === undefined) return undefined;
-    if (typeof value !== 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new Error(`Invalid ${at}: expected a number (got ${describeValueType(value)})`);
     }
     return value;

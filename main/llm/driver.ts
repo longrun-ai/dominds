@@ -112,6 +112,14 @@ function isNodeErrorWithCode(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
+function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
+  const member = team.getMember(agentId);
+  if (member && member.diligence_push_max !== undefined) {
+    return member.diligence_push_max;
+  }
+  return DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -225,6 +233,7 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
   dlg: Dialog;
   isRootDialog: boolean;
   alreadyInjectedCount: number;
+  diligencePushMax: number;
 }): Promise<
   | { kind: 'disabled'; nextInjectedCount: number }
   | { kind: 'budget_exhausted'; maxInjectCount: number; nextInjectedCount: number }
@@ -234,12 +243,19 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
     return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
   }
 
+  if (options.diligencePushMax < 1) {
+    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
+  }
+
   const resolved = await resolveRtwsDiligenceConfig(getWorkLanguage());
   if (resolved.kind === 'disabled') {
     return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
   }
 
-  const maxInjectCount = resolved.maxNumPrompts;
+  const maxInjectCount = Math.min(resolved.maxNumPrompts, options.diligencePushMax);
+  if (maxInjectCount < 1) {
+    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
+  }
   if (options.alreadyInjectedCount >= maxInjectCount) {
     return {
       kind: 'budget_exhausted',
@@ -1594,6 +1610,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 dlg,
                 isRootDialog: true,
                 alreadyInjectedCount: dlg.diligenceAutoContinueCount,
+                diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
               dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
               if (prepared.kind === 'budget_exhausted') {
@@ -1954,6 +1971,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 dlg,
                 isRootDialog: true,
                 alreadyInjectedCount: dlg.diligenceAutoContinueCount,
+                diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
               dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
               if (prepared.kind === 'budget_exhausted') {
