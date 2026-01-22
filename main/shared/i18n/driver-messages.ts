@@ -48,11 +48,44 @@ export function formatContextHealthReminderText(
   args: ContextHealthReminderTextArgs,
 ): string {
   if (language === 'zh') {
+    const distillLines = [
+      '建议：用 `!!@change_mind !progress` 把“提炼摘要”写回差遣牒，然后再用 `!!@clear_mind` 清理噪音开启新回合。',
+      '',
+      '提炼摘要（写入 `!progress` 即可；无需复制粘贴代码块）：',
+      '## 提炼摘要',
+      '- 目标：',
+      '- 关键决策：',
+      '- 已改文件：',
+      '- 下一步：',
+      '- 未决问题：',
+    ];
+
+    const options = [
+      '- 可选动作（按当前意图自行选择）：',
+      '  - 把关键事实/决策写入差遣牒（`!!@change_mind !progress`）',
+      '  - 收窄范围/减少输出噪音（例如减少大段粘贴、减少无关回显）',
+      '  - 接受风险继续（例如为了保持连续性）',
+    ];
+
     switch (args.kind) {
       case 'usage_unknown':
-        return '上下文健康：上一轮生成的 token 使用量未知。如果你感觉性能下降，把重要事实/决策提炼到差遣牒和/或提醒里，然后使用 !!@clear_mind 以精简上下文开启新的对话回合。';
+        return [
+          '上下文健康：上一轮生成的 token 使用量未知。',
+          '',
+          '- 原因：当上下文接近模型上限或统计未知时，质量与稳定性更容易波动。',
+          ...options,
+          '',
+          ...distillLines,
+        ].join('\n');
       case 'over_optimal':
-        return '上下文健康：对话上下文已偏大。Dominds 不会自动压缩上下文——把重要事实/决策提炼到差遣牒和/或提醒里，然后使用 !!@clear_mind 以精简上下文开启新的对话回合。';
+        return [
+          '上下文健康：对话上下文已偏大。',
+          '',
+          '- 原因：上下文过大会降低质量并拖慢响应。',
+          ...options,
+          '',
+          ...distillLines,
+        ].join('\n');
       default: {
         const _exhaustiveCheck: never = args;
         return _exhaustiveCheck;
@@ -60,11 +93,44 @@ export function formatContextHealthReminderText(
     }
   }
 
+  const distillLines = [
+    'Suggested flow: write a short distillation into the task doc via `!!@change_mind !progress`, then use `!!@clear_mind` to start a new round with less noise.',
+    '',
+    'Distilled context (put this into `!progress`; no code block copy needed):',
+    '## Distilled context',
+    '- Goal:',
+    '- Key decisions:',
+    '- Files touched:',
+    '- Next steps:',
+    '- Open questions:',
+  ];
+
+  const options = [
+    '- Options (choose based on your intent):',
+    '  - Write key facts/decisions into the task doc (`!!@change_mind !progress`)',
+    '  - Narrow scope / reduce output noise (avoid large pastes, avoid irrelevant tool echoes)',
+    '  - Continue as-is if you accept the risk',
+  ];
+
   switch (args.kind) {
     case 'usage_unknown':
-      return 'Context health: unknown for the last generation. If you feel degraded performance, distill the important facts/decisions into the task doc and/or reminders, then use !!@clear_mind to start a new round of the dialog with concise context.';
+      return [
+        'Context health: token usage for the last generation is unknown.',
+        '',
+        '- Why: When context is near limits or usage is unknown, quality and stability can drift.',
+        ...options,
+        '',
+        ...distillLines,
+      ].join('\n');
     case 'over_optimal':
-      return 'Context health: your dialog context is getting large. Dominds does not auto-compact context — distill the important facts/decisions into the task doc and/or reminders, then use !!@clear_mind to start a new round of the dialog with concise context.';
+      return [
+        'Context health: your dialog context is getting large.',
+        '',
+        '- Why: Large prompts can degrade quality and slow responses.',
+        ...options,
+        '',
+        ...distillLines,
+      ].join('\n');
     default: {
       const _exhaustiveCheck: never = args;
       return _exhaustiveCheck;
@@ -74,29 +140,45 @@ export function formatContextHealthReminderText(
 
 export function formatReminderIntro(language: LanguageCode, count: number): string {
   if (language === 'zh') {
-    return `我有 ${count} 条提醒可用于记忆管理。
+    return `⚠️ 我当前有 ${count} 条提醒（请优先处理）。
 
-我可以随时管理这些提醒，以在多轮对话间保持上下文：
-- !!@add_reminder [<position>]\n<content>
-- !!@update_reminder <number>\n<new content>
-- !!@delete_reminder <number>
+快速操作：
+- 新增：!!@add_reminder [<position>]
+- 更新：!!@update_reminder <number>
+- 删除：!!@delete_reminder <number>
 
-使用 !!@clear_mind 会开启新一轮对话——这有助于保持思路清晰，同时提醒会把重要信息带到新一轮中。使用 !!@change_mind 只会更新差遣牒内容（不进入新一轮）。
+建议做法（可选）：
+- 先用 \`!!@change_mind !progress\` 把关键事实/决策写回差遣牒
+- 然后使用 !!@clear_mind 开启新回合以清理噪音
 
-提示：我可以带正文地使用 !!@clear_mind，该正文会被追加为新的提醒；同时我会进入新一轮对话，不再包含旧消息。`;
+提炼模板（写入差遣牒的 \`!progress\` 段）：
+## 提炼摘要
+- 目标：
+- 关键决策：
+- 已改文件：
+- 下一步：
+- 未决问题：`;
   }
 
   const plural = count > 1 ? 's' : '';
-  return `I have ${count} reminder${plural} available for my memory management.
+  return `⚠️ I currently have ${count} reminder${plural} (please review).
 
-I can manage these anytime to maintain context across dialog rounds:
-- !!@add_reminder [<position>]\n<content>
-- !!@update_reminder <number>\n<new content>
-- !!@delete_reminder <number>
+Quick actions:
+- Add: !!@add_reminder [<position>]
+- Update: !!@update_reminder <number>
+- Delete: !!@delete_reminder <number>
 
-Using !!@clear_mind starts a new dialog round (good for clearing noise) while reminders carry important info forward. Using !!@change_mind only updates the task document content (no round reset).
+Suggested flow (optional):
+- First, write a short distillation into the task doc via \`!!@change_mind !progress\`
+- Then use !!@clear_mind to start a new round with less noise
 
-Tip: I can use !!@clear_mind with a body, and that body will be added as a new reminder, while I'm in a new dialog round without old messages.`;
+Distill template (put this into the task doc \`!progress\` section):
+## Distilled context
+- Goal:
+- Key decisions:
+- Files touched:
+- Next steps:
+- Open questions:`;
 }
 
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
