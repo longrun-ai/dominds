@@ -1054,6 +1054,49 @@ after`,
     ],
   );
 
+  // Test 9d: 4+ backticks are supported for fenced code blocks (outer fence can contain ``` inside)
+  await runTest(
+    'Code block supports 4+ backticks (nested ``` stays literal)',
+    `Before
+\`\`\`\`markdown
+\`\`\`js
+console.log("hi")
+\`\`\`
+\`\`\`\`
+After`,
+    [
+      ...buildFreeTextEvents(
+        'Before\n',
+        `Before\n\`\`\`\`markdown\n\`\`\`js\nconsole.log("hi")\n\`\`\`\n\`\`\`\`\nAfter`,
+      ),
+      ...buildCodeBlockEvents(
+        'markdown',
+        '\n```js\nconsole.log("hi")\n```\n',
+        `Before\n\`\`\`\`markdown\n\`\`\`js\nconsole.log("hi")\n\`\`\`\n\`\`\`\`\nAfter`,
+      ),
+      ...buildFreeTextEvents(
+        '\nAfter',
+        `Before\n\`\`\`\`markdown\n\`\`\`js\nconsole.log("hi")\n\`\`\`\n\`\`\`\`\nAfter`,
+        `Before\n\`\`\`\`markdown\n\`\`\`js\nconsole.log("hi")\n\`\`\`\n\`\`\`\`\nAfter`.indexOf(
+          '\nAfter',
+        ),
+      ),
+    ],
+  );
+
+  // Test 9e: Closing fence may be longer than opening fence (CommonMark: closing >= opening)
+  await runTest(
+    'Code block closes with longer fence (``` ... ````)',
+    `\`\`\`txt
+line
+\`\`\`\`
+after`,
+    [
+      ...buildCodeBlockEvents('txt', '\nline\n', `\`\`\`txt\nline\n\`\`\`\`\nafter`),
+      ...buildFreeTextEvents('\nafter', `\`\`\`txt\nline\n\`\`\`\`\nafter`),
+    ],
+  );
+
   // Test 10: Qualified names with dots
   await runTest(
     'Qualified names with dots',
@@ -1098,6 +1141,32 @@ function test() {
       { type: 'callBodyChunk', data: 'o_ignored"' },
       { type: 'callBodyChunk', data: ';\n}\n```' },
       { type: 'callBodyFinish', data: { endQuote: '```' } },
+      { type: 'callFinish', data: null },
+    ],
+  );
+
+  // Test 11b: 4+ backticks are supported for fenced call bodies (outer fence can contain ``` lines)
+  await runTest(
+    'Backtick escaping supports 4+ backticks for whole call body',
+    `!!@tool1 code example
+\`\`\`\`
+@this_should_be_ignored
+\`\`\`inner
+\`\`\`
+\`\`\`\``,
+    [
+      { type: 'callStart', data: { firstMention: 'tool1' } },
+      { type: 'callHeadLineChunk', data: '@tool1 c' },
+      { type: 'callHeadLineChunk', data: 'ode exampl' },
+      { type: 'callHeadLineChunk', data: 'e' },
+      { type: 'callHeadLineFinish', data: null },
+      { type: 'callBodyStart', data: { infoLine: '````' } },
+      { type: 'callBodyChunk', data: '````\n@th' },
+      { type: 'callBodyChunk', data: 'is_should_' },
+      { type: 'callBodyChunk', data: 'be_ignored' },
+      { type: 'callBodyChunk', data: '\n```inner\n' },
+      { type: 'callBodyChunk', data: '```\n````' },
+      { type: 'callBodyFinish', data: { endQuote: '````' } },
       { type: 'callFinish', data: null },
     ],
   );
