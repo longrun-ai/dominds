@@ -209,7 +209,6 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 ## Documentation
 
 - **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
-- **[Dev Principles](docs/dev-principles.md)** — Conventions and quality bar
 - **[Design](docs/design.md)** — Architecture and key abstractions
 - **[Dialog System](docs/dialog-system.md)** — Dialog runtime model and streaming
 - **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle

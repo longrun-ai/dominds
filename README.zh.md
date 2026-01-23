@@ -125,7 +125,10 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - [**Dialog Persistence**](docs/dialog-persistence.md) — 磁盘持久化存储结构
 - [**Interruption & Resumption**](docs/interruption-resumption.md) — 任务中断与恢复语义
 - [**Encapsulated Task Docs**](docs/encapsulated-task-doc.md) — `*.tsk/` 差遣牒说明
+- [**Auth**](docs/auth.md) — 认证机制与访问模型（WebUI + API）
+- [**Context Health**](docs/context-health.md) — 上下文健康监测（token 使用与提醒策略）
 - [**Team Mgmt Toolset**](docs/team-mgmt-toolset.md) — 团队管理工具集
+- [**Team Tools View**](docs/team-tools-view.md) — WebUI：查看团队成员工具/工具集可用性
 - [**MCP Support**](docs/mcp-support.md) — MCP 工具集成指南
 - [**i18n**](docs/i18n.md) — 语言支持与本地化配置
 - [**OEC Philosophy**](docs/OEC-philosophy.md) — 全方位优化管理法
