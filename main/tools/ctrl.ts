@@ -83,7 +83,12 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       invalidFormatChangeMind:
         '错误：格式不正确。用法：!?@change_mind [!goals|!constraints|!progress]',
       tooManyArgsChangeMind: '错误：参数过多。用法：!?@change_mind [!goals|!constraints|!progress]',
-      taskDocContentRequired: '错误：需要提供差遣牒内容',
+      taskDocContentRequired:
+        '错误：需要提供差遣牒内容。请把正文放在后续以 `!?` 开头的行里；普通 markdown 行会结束诉请块，导致 body 为空。\n' +
+        '可复制示例：\n' +
+        '`!?@change_mind !progress`\n' +
+        '`!?- 关键决策：...`\n' +
+        '`!?- 下一步：...`',
       noTaskDocPathConfigured: '错误：此对话未配置差遣牒路径',
       pathMustBeWithinWorkspace: '错误：路径必须位于工作区内',
       invalidTaskDocPath: (taskDocPath) =>
@@ -109,7 +114,12 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       'Error: Invalid format. Use: !?@change_mind [!goals|!constraints|!progress]',
     tooManyArgsChangeMind:
       'Error: Too many arguments. Use: !?@change_mind [!goals|!constraints|!progress]',
-    taskDocContentRequired: 'Error: Task doc content is required',
+    taskDocContentRequired:
+      'Error: Task doc content is required. Put the section content on subsequent lines that start with `!?`; normal Markdown ends the tellask block and leaves the body empty.\n' +
+      'Copy/paste example:\n' +
+      '`!?@change_mind !progress`\n' +
+      '`!?- Key decisions: ...`\n' +
+      '`!?- Next steps: ...`',
     noTaskDocPathConfigured: 'Error: No task doc path configured for this dialog',
     pathMustBeWithinWorkspace: 'Error: Path must be within workspace',
     invalidTaskDocPath: (taskDocPath) =>

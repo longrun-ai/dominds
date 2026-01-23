@@ -94,6 +94,8 @@ ${input.teamIntro}
 - 命名建议：\`<owner>-<area>-<short>\`，例如 \`tooling-read-file-options\`、\`server-ws-schema-v2\`。
 - 不要用于 \`!?@super\`（规则：\`@super\` 必须不带 \`!topic\`）。
 
+**关键易错点：对“需要正文”的工具（如 \`!?@add_memory\` / \`!?@replace_memory\` / \`!?@change_mind\`），正文每行也必须以 \`!?\` 开头，否则会被当作普通 markdown 分隔符导致 body 为空。**
+
 **常见坑（我们已经踩过）**
 - 连续写两行 \`!?@...\`：第二行不会触发第二个工具，会被并入同一诉请块 headline，导致“多余参数/格式不正确”等误导性错误。
 - 依赖空行分隔不稳：请用一行可见分隔符（推荐 \`--- split ---\`）。
