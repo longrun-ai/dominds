@@ -14,6 +14,7 @@ import {
   deleteReminderTool,
   updateReminderTool,
 } from './ctrl';
+import { verifyTextingParsingTool } from './diag';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
@@ -108,6 +109,9 @@ for (const tool of teamMgmtTools) {
   registerTool(tool);
 }
 
+// Diag tools
+registerTool(verifyTextingParsingTool);
+
 // Register well-known toolsets
 registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, clearMemoryTool]);
 setToolsetMeta('memory', {
@@ -193,6 +197,10 @@ setToolsetMeta('ws_mod', {
 registerToolset('team-mgmt', [...teamMgmtTools]);
 setToolsetMeta('team-mgmt', {
   descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
+});
+registerToolset('diag', [verifyTextingParsingTool]);
+setToolsetMeta('diag', {
+  descriptionI18n: { en: 'Diagnostics tools', zh: '诊断工具' },
 });
 
 // Register ReminderOwners
