@@ -847,60 +847,115 @@ Examples:
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
-    const labels =
-      language === 'zh'
-        ? {
-            formatError:
-              '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
-            formatErrorWithReason: (msg: string) =>
-              `❌ **错误：** ${msg}\n\n` +
-              '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
-            fileLabel: '文件',
-            warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
-              `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
-            warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
-              `⚠️ **警告：** 输出已截断（字符总数上限约 ${maxChars}，当前显示 ${shown} 行）\n\n`,
-            warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
-              `⚠️ **警告：** \`!max-lines\`（${maxLines}）与 \`!range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
-            hintUseRangeNext: (relPath: string, start: number, end: number) =>
-              `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
-            hintLargeFileStrategy: (relPath: string) =>
-              `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`!?@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!?@read_file !range 1~500 ${relPath}\`、\`!?@read_file !range 201~400 ${relPath}\`）。\n\n`,
-            sizeLabel: '大小',
-            totalLinesLabel: '总行数',
-            failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
-          }
-        : {
-            formatError:
-              'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
-            formatErrorWithReason: (msg: string) =>
-              `❌ **Error:** ${msg}\n\n` +
-              'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
-            fileLabel: 'File',
-            warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
-              `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
-            warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
-              `⚠️ **Warning:** Output was truncated (~${maxChars} character cap; showing ${shown} lines)\n\n`,
-            warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
-              `⚠️ **Warning:** \`!max-lines\` (${maxLines}) contradicts \`!range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
-            hintUseRangeNext: (relPath: string, start: number, end: number) =>
-              `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
-            hintLargeFileStrategy: (relPath: string) =>
-              `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`!?@clear_mind\` (less context) before reading the next slice (e.g. \`!?@read_file !range 1~500 ${relPath}\`, then \`!?@read_file !range 201~400 ${relPath}\`).\n\n`,
-            sizeLabel: 'Size',
-            totalLinesLabel: 'Total lines',
-            failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
-          };
+    let labels:
+      | {
+          formatError: string;
+          formatErrorWithReason: (msg: string) => string;
+          fileLabel: string;
+          warningTruncatedByMaxLines: (shown: number, maxLines: number) => string;
+          warningTruncatedByCharLimit: (shown: number, maxChars: number) => string;
+          warningMaxLinesRangeMismatch: (
+            maxLines: number,
+            rangeLines: number,
+            used: number,
+          ) => string;
+          hintUseRangeNext: (relPath: string, start: number, end: number) => string;
+          hintLargeFileStrategy: (relPath: string) => string;
+          sizeLabel: string;
+          totalLinesLabel: string;
+          failedToRead: (msg: string) => string;
+          invalidFormatMultiToolCalls: (toolName: string) => string;
+        }
+      | undefined;
+
+    if (language === 'zh') {
+      labels = {
+        formatError:
+          '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
+          '**多个工具调用需用普通行分隔：**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+        formatErrorWithReason: (msg: string) =>
+          `❌ **错误：** ${msg}\n\n` +
+          '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
+          '**多个工具调用需用普通行分隔：**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+        fileLabel: '文件',
+        warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
+          `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
+        warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
+          `⚠️ **警告：** 输出已截断（字符总数上限约 ${maxChars}，当前显示 ${shown} 行）\n\n`,
+        warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
+          `⚠️ **警告：** \`!max-lines\`（${maxLines}）与 \`!range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
+        hintUseRangeNext: (relPath: string, start: number, end: number) =>
+          `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+        hintLargeFileStrategy: (relPath: string) =>
+          `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`!?@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!?@read_file !range 1~500 ${relPath}\`、\`!?@read_file !range 201~400 ${relPath}\`）。\n\n`,
+        sizeLabel: '大小',
+        totalLinesLabel: '总行数',
+        failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
+        invalidFormatMultiToolCalls: (toolName: string) =>
+          `INVALID_FORMAT：检测到疑似多个工具调用被合并到同一个诉请块 headline（例如出现 \`${toolName}\`）。\n\n` +
+          '多个工具调用必须用一行普通文本分隔（不要以 `!?` 开头），例如：\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+      };
+    } else {
+      labels = {
+        formatError:
+          'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
+          '**Multiple tool calls must be separated by a normal line:**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+        formatErrorWithReason: (msg: string) =>
+          `❌ **Error:** ${msg}\n\n` +
+          'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
+          '**Multiple tool calls must be separated by a normal line:**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+        fileLabel: 'File',
+        warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
+          `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
+        warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
+          `⚠️ **Warning:** Output was truncated (~${maxChars} character cap; showing ${shown} lines)\n\n`,
+        warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
+          `⚠️ **Warning:** \`!max-lines\` (${maxLines}) contradicts \`!range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
+        hintUseRangeNext: (relPath: string, start: number, end: number) =>
+          `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+        hintLargeFileStrategy: (relPath: string) =>
+          `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`!?@clear_mind\` (less context) before reading the next slice (e.g. \`!?@read_file !range 1~500 ${relPath}\`, then \`!?@read_file !range 201~400 ${relPath}\`).\n\n`,
+        sizeLabel: 'Size',
+        totalLinesLabel: 'Total lines',
+        failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
+        invalidFormatMultiToolCalls: (toolName: string) =>
+          `INVALID_FORMAT: Detected what looks like multiple tool calls merged into a single tellask headline (e.g. \`${toolName}\`).\n\n` +
+          'Multiple tool calls must be separated by a normal line (not starting with `!?`), for example:\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+      };
+    }
+
+    // labels is always set above
+    if (!labels) {
+      throw new Error('Failed to initialize labels');
+    }
 
     try {
+      const trimmed = headLine.trimEnd();
+      const lines = trimmed.split(/\r?\n/);
+      if (lines.length > 1) {
+        const suspicious = lines.slice(1).find((l) => l.trimStart().startsWith('@'));
+        if (suspicious) {
+          const toolName = suspicious.trimStart().split(/\s+/)[0];
+          const content = labels.invalidFormatMultiToolCalls(toolName);
+          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        }
+      }
+
       const parsed = parseReadFileOptions(headLine);
       if (parsed.kind === 'error') {
         let reason = '';
+        const tokenHint = parsed.error === 'unexpected_token' ? (parsed.token ?? '') : '';
+        const tokenLooksLikeToolCall =
+          tokenHint.includes('!?@') || /@[-a-zA-Z0-9_]{1,64}/.test(tokenHint);
         if (language === 'zh') {
           if (parsed.error === 'unknown_option') {
             reason = `无法识别的选项：${parsed.option ?? ''}`;
           } else if (parsed.error === 'unexpected_token') {
             reason = `多余参数：${parsed.token ?? ''}`;
+            if (tokenLooksLikeToolCall) {
+              reason +=
+                '（疑似把另一个工具调用并入了同一诉请块 headline；多个工具调用需用普通行分隔）';
+            }
           } else if (parsed.error === 'missing_option_value') {
             reason = `${parsed.option ?? ''} 缺少参数（期望 ${parsed.expected ?? ''}）`;
           } else if (parsed.error === 'invalid_option_value') {
@@ -911,6 +966,10 @@ Examples:
             reason = `Unrecognized option: ${parsed.option ?? ''}`;
           } else if (parsed.error === 'unexpected_token') {
             reason = `Unexpected token: ${parsed.token ?? ''}`;
+            if (tokenLooksLikeToolCall) {
+              reason +=
+                ' (It looks like another tool call was merged into the same tellask headline; separate tool calls with a normal line.)';
+            }
           } else if (parsed.error === 'missing_option_value') {
             reason = `Missing value for ${parsed.option ?? ''} (expected ${parsed.expected ?? ''})`;
           } else if (parsed.error === 'invalid_option_value') {
@@ -1812,7 +1871,7 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: insert_after\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-after failed: invalid format. Use !?@insert_after <path> <anchor> [options].'
+            ? 'Insert-after 失败：格式不正确。用法：!?@insert_after <path> <anchor> [options]（body 为要插入的内容）。'
             : 'Insert-after failed: invalid format. Use !?@insert_after <path> <anchor> [options].',
         )}`,
       );
@@ -1839,7 +1898,7 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\npath: ${yamlQuote(filePath)}\nmode: insert_after\nerror: CONTENT_REQUIRED\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-after failed: content is required in the body.'
+            ? 'Insert-after 失败：body 中需要提供要插入的内容。'
             : 'Insert-after failed: content is required in the body.',
         )}`,
       );
@@ -2073,7 +2132,7 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: insert_before\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-before failed: invalid format. Use !?@insert_before <path> <anchor> [options].'
+            ? 'Insert-before 失败：格式不正确。用法：!?@insert_before <path> <anchor> [options]（body 为要插入的内容）。'
             : 'Insert-before failed: invalid format. Use !?@insert_before <path> <anchor> [options].',
         )}`,
       );
@@ -2104,7 +2163,7 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\npath: ${yamlQuote(filePath)}\nmode: insert_before\nerror: CONTENT_REQUIRED\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-before failed: content is required in the body.'
+            ? 'Insert-before 失败：body 中需要提供要插入的内容。'
             : 'Insert-before failed: content is required in the body.',
         )}`,
       );
@@ -2533,7 +2592,7 @@ Options:
       const rangePreview = buildRangePreview(replacementLines);
       const summary =
         language === 'zh'
-          ? `Replace-block: lines ${replacedRangeStartLine}–${replacedRangeEndLine}; ${oldCountInBlock} → ${newCountInBlock} lines; anchors ${includeAnchors ? 'preserved' : 'replaced'}.`
+          ? `Replace-block：第 ${replacedRangeStartLine}–${replacedRangeEndLine} 行；${oldCountInBlock} → ${newCountInBlock} 行；anchors ${includeAnchors ? 'preserved' : 'replaced'}。`
           : `Replace-block: lines ${replacedRangeStartLine}–${replacedRangeEndLine}; ${oldCountInBlock} → ${newCountInBlock} lines; anchors ${includeAnchors ? 'preserved' : 'replaced'}.`;
 
       const yaml = [

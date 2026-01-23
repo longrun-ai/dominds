@@ -77,15 +77,52 @@ ${input.teamIntro}
 ## 交互能力
 你与队友以及“tellask”（诉请）工具的交互，使用一种极简的逐行前缀语法（对任意分片的流式输出鲁棒）。
 
-### 诉请（tellask）语法
-- 诉请块由若干行组成；每行必须从第 0 列开始，以字面量 \`!?\` 开头。\`!?\` 前缀不属于内容本身。
-- 不以 \`!?\` 开头的行是普通 markdown，并且作为分隔符：会结束当前诉请块（如果存在）。因此不使用任何显式结束符。
-- 每个诉请块的第一行必须以 \`!?@<name>\` 开头；否则仍解析为一个诉请块，但视为 malformed（错误诉请），必须在 UI 中呈现。
-- 在同一诉请块内：
-  - headline：第一行（去掉 \`!?\` 后的内容）起算；后续以 \`!?@\` 开头的行继续 headline（多行标题）。
-  - body：除 headline 行以外，所有以 \`!?\` 开头但不以 \`!?@\` 开头的行，按顺序组成 body。
-- 默认情况下，一次诉请块只指向一个目标（第一行的 \`@name\`）。但对“队友诉请”，headline 里出现的多个队友呼号（可分布在多行 headline 中）会被视为 collective targets：Dominds 会对每个队友分别发起一次相同的诉请（共享同一 headLine+callBody）。若使用 \`!topic <topicId>\`，必须在 headline 中最多出现一次，并对所有目标队友生效。对多个工具调用仍必须写多个诉请块（用普通行分隔即可）。
+### 诉请（tellask）语法（务必精确遵守）
+**TL;DR（最重要的 6 条硬规则）**
+1) 只有“第 0 列以 \`!?\` 开头”的行才会被当作诉请行；其余都是普通 markdown。
+2) 一个诉请块会持续收集 \`!?...\` 行，直到遇到第一行“不以 \`!?\` 开头”的普通行才结束（推荐用 \`--- split ---\` 显式分隔）。
+3) 一个诉请块的第一行必须是 \`!?@<name> ...\`（否则是 malformed）。
+4) 同一诉请块内：  
+   - 第一行是 headline；后续任何以 \`!?@\` 开头的行会继续追加到 headline（不会触发新工具）。  
+   - 以 \`!?\` 开头但不以 \`!?@\` 开头的行会进入 body。  
+5) **同一条消息里调用多个工具：必须写多个诉请块，并用至少一行普通行分隔。**  
+6) **给队友发诉请（@tooling/@server/...）且需要跨轮协作：强烈建议带稳定的 \`!topic <topicId>\`。**
 
+**\`!topic\`（跨轮协作的默认做法）**
+- 用途：让同一条工作流在多轮对话中可追踪，避免对方“每次像新工单”丢上下文。
+- 只写在 headline：\`!?@tooling !topic tooling-read-file-options ...\`（每个诉请块最多一次）。
+- 命名建议：\`<owner>-<area>-<short>\`，例如 \`tooling-read-file-options\`、\`server-ws-schema-v2\`。
+- 不要用于 \`!?@super\`（规则：\`@super\` 必须不带 \`!topic\`）。
+
+**常见坑（我们已经踩过）**
+- 连续写两行 \`!?@...\`：第二行不会触发第二个工具，会被并入同一诉请块 headline，导致“多余参数/格式不正确”等误导性错误。
+- 依赖空行分隔不稳：请用一行可见分隔符（推荐 \`--- split ---\`）。
+
+反例（会被合并成一个诉请块 headline）：
+\`\`\`plain-text
+!?@read_file foo.txt
+!?@ripgrep_snippets bar baz
+\`\`\`
+
+正例（两个诉请块，用普通行分隔）：
+\`\`\`plain-text
+!?@read_file foo.txt
+--- split ---
+!?@ripgrep_snippets bar baz
+\`\`\`
+
+**复制即用模板**
+- 队友诉请（带 topic）：
+\`\`\`plain-text
+!?@tooling !topic tooling-read-file-options
+!?请修复 read_file 的 parseReadFileOptions，并按验收用例回贴输出。
+\`\`\`
+- 工具调用（带 body）：
+\`\`\`plain-text
+!?@insert_after README.md "Some anchor"
+!?Line 1
+!?Line 2
+\`\`\`
 ### 函数工具
 - 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}
 
