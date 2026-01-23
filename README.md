@@ -4,6 +4,8 @@
 
 > Agents should be sustaining the continuous development of your products, one-shot product creation is hallucination.
 
+- 中文版：[README.zh.md](./README.zh.md)
+
 ## CAVEATS
 
 - **NO WARRANTY / AT YOUR OWN RISK**: Dominds is powerful automation. If you point it at the wrong repo, give it the wrong goal, or trust output blindly, it can waste time or cause damage.
@@ -39,9 +41,9 @@
   - [Quick Start](#quick-start)
   - [Start from scratch](#start-from-scratch)
   - [Core Philosophy](#core-philosophy)
-  - [1) Clear minds, focused tasks](#1-clear-minds-focused-tasks)
-  - [2) Tools with intent: safe by design](#2-tools-with-intent-safe-by-design)
-  - [3) Diverse, self‑improving team from templates](#3-diverse-selfimproving-team-from-templates)
+    - [1) Clear minds, focused tasks](#1-clear-minds-focused-tasks)
+    - [2) Tools with intent: safe by design](#2-tools-with-intent-safe-by-design)
+    - [3) Diverse, self‑improving team from templates](#3-diverse-selfimproving-team-from-templates)
   - [Documentation](#documentation)
     - [Getting Help](#getting-help)
 
@@ -68,7 +70,7 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 ### Prerequisites
 
 - **Node.js (with npm bundled)**: Version 22.x or later
-- **LLM provider configured for your team**: Dominds ships with a built-in provider catalog (`dominds/main/llm/defaults.yaml`) including Codex (ChatGPT) and Anthropic, plus several Anthropic-compatible endpoints (e.g. MiniMax, Z.ai, BigModel). You’ll need valid credentials for at least one provider.
+- **LLM provider configured for your team**: Dominds ships with a built-in provider catalog [main/llm/defaults.yaml](./main/llm/defaults.yaml) including Codex (ChatGPT) and Anthropic, plus several Anthropic-compatible endpoints (e.g. MiniMax, Z.ai, BigModel). You’ll need valid credentials for at least one provider.
 - **pnpm (optional)**: Recommended only if you’re developing Dominds itself.
 
 ### Install Dominds
@@ -99,7 +101,7 @@ There are two common ways to create a workspace:
 
 Dominds uses your current working directory as the runtime workspace (rtws). When you start `dominds`, the WebUI will automatically redirect you to `http://localhost:5666/setup` if the workspace is missing required configuration (for example `.minds/team.yaml` or provider env vars).
 
-Note: in production mode, Dominds enables a local shared-secret auth key by default, so the browser may open with a URL containing `?auth=...`. Treat that token as sensitive.
+Note: In production mode, Dominds enables a local shared-secret auth key by default, so the browser may open with a URL containing `?auth=...`. Treat that token as sensitive.
 
 **Template creation (recommended)**:
 
@@ -137,8 +139,8 @@ dominds
 Then:
 
 1. Your browser should land on `http://localhost:5666/setup` (either directly, or via an automatic redirect).
-2. In **Setup**, pick a provider + model and click **Create/Overwrite `.minds/team.yaml`** (this writes a minimal `member_defaults` config).
-3. Still in **Setup**, set the required provider env var (the name comes from the provider catalog, e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CODEX_HOME`, etc).
+2. In **Setup**, pick a provider + model. If your template didn’t create `.minds/team.yaml`, use Setup to create/overwrite it (this writes a minimal `member_defaults` config).
+3. Still in **Setup**, set the required provider env var (the name comes from the provider catalog, e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CODEX_HOME`, etc.).
    - The setup UI can write it into `~/.zshrc` / `~/.bashrc` in a managed block, and also applies it to the running server process immediately.
 4. Click **Go to App**, create a dialog, and start working.
 
@@ -164,44 +166,45 @@ dominds
 
 ## Core Philosophy
 
-## 1) Clear minds, focused tasks
+Dominds is designed for long-running product development and operations, with a “division of labor” constitution:
 
-> Break large initiatives into well-structured, bounded tasks. Each agent should operate with a clear, minimal context for the task at hand. Excess context pollutes reasoning and degrades performance—much like cognitive overload does for humans.
+- Reduce **agent mental overhead** by dividing and distributing work across a team of specialized agents, and by using more effective **dialog round control** (instead of brittle context condensation) to shed conversational/tool-call noise when a dialog becomes cluttered.
+- Prevent **tool misuse** by putting side-effectful tools only in the hands of well-prompted specialist agents, via least-privilege toolsets/policies.
+- Prevent **staleness** (agents acting on outdated assumptions) by encoding decisions, conventions, configuration, and key repo facts into version-tracked workspace artifacts intended to be loaded into agent context (team-shared and agent-individual memory, task docs, and dialog-local reminders), rather than leaving them as “undiscovered” knowledge scattered across the repo.
 
-Why it matters
+### 1) Clear minds, focused tasks
 
-- Focus reduces hallucination risk and error rates
-- Bounded scopes make evaluation and iteration faster
-- Clear task contracts enable parallelism and reuse
+> Split big initiatives into bounded tasks. Each agent should operate with a clear, minimal context; everything else is noise.
 
-## 2) Tools with intent: safe by design
+- Smaller context reduces hallucination risk and error rates.
+- Bounded scopes make evaluation and iteration faster.
+- Clear task contracts enable parallelism and reuse.
 
-> Powerful tools (for example, shells or other side‑effectful interfaces) are hard to fully audit without compromising usefulness. But do micro-auditing by yourself? Or rely on vague “be careful” instructions? Big NO with Dominds!
+### 2) Tools with intent: safe by design
+
+> Side-effectful tools are powerful, yet dangerous. Safety comes from intent-aware guardrails; vague “be careful” prompts don’t scale, and neither does a human doing constant micro-audits.
 
 Principles
 
-- Flexible by default, safe by design: AI tailors guardrails to task and context; hard‑coded rules are rigid—often blocking or slow
-- Reliable at scale: consistent, fatigue‑free checks; human processes drift with attention and availability
-- Fast intent to action: AI drafts plans, simulates changes, and executes with lightweight human reviews where needed
+- Least privilege by default; expand access only when justified.
+- For dangerous tools, require per-call intent justification:
+  - Will it cause unexpected side effects?
+  - Could it be misused (even “nerfed”)?
+  - Does it create an “evil leverage” path?
+  - Is there a safer/minimal alternative?
+  - Pattern-based command matching is not enough; safety comes from disciplined specialist agents enforcing policy with judgment.
+- Keep tool grants explicit and reviewable (toolsets, per-agent tool lists, and workspace access scopes).
 
-Outcomes
+Result: fewer bad side effects, higher plan fidelity, and more first‑try successes.
 
-- Fewer execution errors; safer side effects
-- Higher plan fidelity; better adherence to intent
-- More first‑try successes on complex tasks
+### 3) Diverse, self‑improving team from templates
 
-## 3) Diverse, self‑improving team from templates
+> Start from a template team, then curate and evolve both individual and shared memory as versioned artifacts.
 
-> Bootstrap specialized team from project templates, then curate and evolve both individual and collective memory: personas, knowledge, lessons, and playbooks.
-
-Practices
-
-- Bootstrap the team from a starter scaffold project template tailored to specific domains and workflows
-- Maintain individual personas and skill maps; track what each agent learns within their specialized context
-- Maintain shared team memory for patterns, failures, and standards specific to the project type
-- Enable autonomous improvement loops: agents evolve collective and individual mindsets (personas, principles, heuristics) based on template foundations
-- Design specialized agents for team management and governance appropriate to the project domain
-- Keep mindsets transparent as plain Markdown files for humans; see `.minds/` directory of interesting templates for a variety of setups
+- Bootstrap from a domain-specific scaffold (team + workflows).
+- Keep individual and shared memory in `.minds/**` (personas, lessons, playbooks).
+- Evolve mindsets and governance as the product evolves.
+- Keep it transparent to humans: plain Markdown, version-tracked.
 
 ## Documentation
 

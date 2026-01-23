@@ -3175,7 +3175,7 @@ export class DomindsApp extends HTMLElement {
     if (requirement.kind !== 'ok') {
       const dest =
         this.authState.kind === 'active' && this.authState.source === 'url'
-          ? `/setup/?auth=${encodeURIComponent(this.authState.key)}`
+          ? `/setup?auth=${encodeURIComponent(this.authState.key)}`
           : '/setup';
       window.location.href = dest;
       return { kind: 'redirected' };
