@@ -2,7 +2,7 @@
  * Module: tool
  *
  * Tool type definitions and argument validation helpers.
- * Supports function tools (`func`) and texter tools (`texter`).
+ * Supports function tools (`func`) and tellask tools (`tellask`).
  */
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
@@ -39,7 +39,7 @@ export interface FuncTool {
 }
 
 export interface TellaskTool {
-  readonly type: 'texter';
+  readonly type: 'tellask';
   readonly name: string;
   readonly usageDescription: string;
   readonly usageDescriptionI18n?: I18nText;

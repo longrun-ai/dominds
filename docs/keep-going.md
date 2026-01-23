@@ -31,7 +31,7 @@ is legitimately suspended (Q4H or pending subdialogs).
 - **Root/main dialog**: a `RootDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
 - **Subdialog**: a `SubDialog`, created for teammate calls / scoped work.
 - **Q4H**: “Questions for Human”, initiated via `!?@human`, which suspends dialog progression until the human responds.
-- **Backfeeding**: a texter-tool property indicating whether tool execution produces messages that are injected back into the model context.
+- **Backfeeding**: a tellask-tool property indicating whether tool execution produces messages that are injected back into the model context.
 
 ## Expected “normal” completion path (recommended)
 

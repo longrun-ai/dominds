@@ -241,7 +241,7 @@ function formatModelCheckResult(r: ModelCheckResult): string {
 }
 
 export const teamMgmtCheckProviderTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_check_provider',
   backfeeding: true,
   usageDescription:
@@ -477,7 +477,7 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
 };
 
 export const teamMgmtListDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_list_dir',
   backfeeding: true,
   usageDescription:
@@ -529,7 +529,7 @@ export const teamMgmtListDirTool: TellaskTool = {
 };
 
 export const teamMgmtReadFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_read_file',
   backfeeding: true,
   usageDescription:
@@ -599,7 +599,7 @@ export const teamMgmtReadFileTool: TellaskTool = {
 };
 
 export const teamMgmtReplaceFileContentsTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_replace_file_contents',
   backfeeding: true,
   usageDescription:
@@ -649,7 +649,7 @@ export const teamMgmtReplaceFileContentsTool: TellaskTool = {
 };
 
 export const teamMgmtAppendFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_append_file',
   backfeeding: true,
   usageDescription:
@@ -693,7 +693,7 @@ export const teamMgmtAppendFileTool: TellaskTool = {
 };
 
 export const teamMgmtInsertAfterTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_insert_after',
   backfeeding: true,
   usageDescription:
@@ -743,7 +743,7 @@ export const teamMgmtInsertAfterTool: TellaskTool = {
 };
 
 export const teamMgmtInsertBeforeTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_insert_before',
   backfeeding: true,
   usageDescription:
@@ -793,7 +793,7 @@ export const teamMgmtInsertBeforeTool: TellaskTool = {
 };
 
 export const teamMgmtReplaceBlockTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_replace_block',
   backfeeding: true,
   usageDescription:
@@ -843,7 +843,7 @@ export const teamMgmtReplaceBlockTool: TellaskTool = {
 };
 
 export const teamMgmtPlanFileModificationTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_plan_file_modification',
   backfeeding: true,
   usageDescription:
@@ -895,7 +895,7 @@ export const teamMgmtPlanFileModificationTool: TellaskTool = {
 };
 
 export const teamMgmtApplyFileModificationTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_apply_file_modification',
   backfeeding: true,
   usageDescription:
@@ -939,7 +939,7 @@ export const teamMgmtApplyFileModificationTool: TellaskTool = {
 };
 
 export const teamMgmtMkDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_mk_dir',
   backfeeding: true,
   usageDescription: `Create a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
@@ -977,7 +977,7 @@ export const teamMgmtMkDirTool: TellaskTool = {
 };
 
 export const teamMgmtMoveFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_move_file',
   backfeeding: true,
   usageDescription: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_file <from> <to>\n`,
@@ -1019,7 +1019,7 @@ export const teamMgmtMoveFileTool: TellaskTool = {
 };
 
 export const teamMgmtMoveDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_move_dir',
   backfeeding: true,
   usageDescription: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_dir <from> <to>\n`,
@@ -1061,7 +1061,7 @@ export const teamMgmtMoveDirTool: TellaskTool = {
 };
 
 export const teamMgmtRipgrepFilesTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_ripgrep_files',
   backfeeding: true,
   usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
@@ -1104,7 +1104,7 @@ export const teamMgmtRipgrepFilesTool: TellaskTool = {
 };
 
 export const teamMgmtRipgrepSnippetsTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_ripgrep_snippets',
   backfeeding: true,
   usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
@@ -1146,7 +1146,7 @@ export const teamMgmtRipgrepSnippetsTool: TellaskTool = {
 };
 
 export const teamMgmtRipgrepCountTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_ripgrep_count',
   backfeeding: true,
   usageDescription: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
@@ -1188,7 +1188,7 @@ export const teamMgmtRipgrepCountTool: TellaskTool = {
 };
 
 export const teamMgmtRipgrepFixedTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_ripgrep_fixed',
   backfeeding: true,
   usageDescription: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
@@ -1230,7 +1230,7 @@ export const teamMgmtRipgrepFixedTool: TellaskTool = {
 };
 
 export const teamMgmtRipgrepSearchTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_ripgrep_search',
   backfeeding: true,
   usageDescription: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
@@ -1272,7 +1272,7 @@ export const teamMgmtRipgrepSearchTool: TellaskTool = {
 };
 
 export const teamMgmtRmFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_rm_file',
   backfeeding: true,
   usageDescription: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_rm_file <path>\n`,
@@ -1310,7 +1310,7 @@ export const teamMgmtRmFileTool: TellaskTool = {
 };
 
 export const teamMgmtRmDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_rm_dir',
   backfeeding: true,
   usageDescription:
@@ -1357,7 +1357,7 @@ export const teamMgmtRmDirTool: TellaskTool = {
 };
 
 export const teamMgmtMkdirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_mkdir',
   backfeeding: true,
   usageDescription:
@@ -1406,7 +1406,7 @@ export const teamMgmtMkdirTool: TellaskTool = {
 };
 
 export const teamMgmtMovePathTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_move_path',
   backfeeding: true,
   usageDescription:
@@ -2060,7 +2060,7 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
 }
 
 export const teamMgmtValidateTeamCfgTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_validate_team_cfg',
   backfeeding: true,
   usageDescription:
@@ -2174,7 +2174,7 @@ export const teamMgmtValidateTeamCfgTool: TellaskTool = {
 };
 
 export const teamMgmtManualTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'team_mgmt_manual',
   backfeeding: true,
   usageDescription:

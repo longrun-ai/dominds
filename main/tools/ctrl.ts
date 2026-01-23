@@ -128,7 +128,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
  * Usage: !?@delete_reminder <reminder-no>
  */
 export const deleteReminderTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'delete_reminder',
   usageDescription: 'Delete a reminder by number: !?@delete_reminder <reminder-no>',
   usageDescriptionI18n: {
@@ -166,7 +166,7 @@ export const deleteReminderTool: TellaskTool = {
  * !?<reminder-content>
  */
 export const addReminderTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'add_reminder',
   usageDescription: 'Add a reminder: !?@add_reminder [<reminder-no>]\n!?<reminder-content>',
   usageDescriptionI18n: {
@@ -214,7 +214,7 @@ export const addReminderTool: TellaskTool = {
  * !?<reminder-content>
  */
 export const updateReminderTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'update_reminder',
   usageDescription: 'Update a reminder: !?@update_reminder <reminder-no>\n!?<reminder-content>',
   usageDescriptionI18n: {
@@ -257,7 +257,7 @@ export const updateReminderTool: TellaskTool = {
  * !?<reminder-content> - optional, when provided, adds as new reminder
  */
 export const clearMindTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'clear_mind',
   usageDescription: 'Clear mind and start new round: !?@clear_mind\\n!?<reminder-content>',
   usageDescriptionI18n: {
@@ -288,7 +288,7 @@ export const clearMindTool: TellaskTool = {
  * !?<new-task-doc-content> - required, overwrites current task doc file
  */
 export const changeMindTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'change_mind',
   usageDescription:
     'Update task document content (no round reset).\n' +

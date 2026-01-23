@@ -2721,7 +2721,7 @@ function getToolCallingSections() {
 }
 
 /**
- * Detects if the last calling section is a texter tool call (e.g. @clear_mind, @change_mind).
+ * Detects if the last calling section is a tellask tool call (e.g. @clear_mind, @change_mind).
  * This is NOT the same as a function call (.func-call-section).
  *
  * @param {string} [toolName] - Optional tool name to check for (e.g., 'clear_mind')

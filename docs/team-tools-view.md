@@ -67,7 +67,7 @@ tools are currently registered (including MCP-derived toolsets).
 - Toolsets are collapsed by default; a triangle indicator reflects collapsed/expanded state.
 - Toolsets and tools are shown in **registration order** (as provided by the backend snapshot).
 - Tools within a toolset show:
-  - Kind marker (`ƒ` for function tools, `@` for texters)
+  - Kind marker (`ƒ` for function tools, `@` for tellasks)
   - Tool name
   - Optional description
 

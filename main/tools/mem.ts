@@ -67,7 +67,7 @@ function getMemoryPath(params: {
 }
 
 export const addMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'add_memory',
   backfeeding: false,
   usageDescription: `I can add new memory content to my personal memory store.
@@ -165,7 +165,7 @@ Examples:
 };
 
 export const dropMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'drop_memory',
   backfeeding: false,
   usageDescription: `I can remove a memory file from my personal memory store.
@@ -232,7 +232,7 @@ Examples:
 };
 
 export const replaceMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'replace_memory',
   backfeeding: false,
   usageDescription: `I can replace the content of an existing memory file in my personal memory store.
@@ -313,7 +313,7 @@ Examples:
 };
 
 export const clearMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'clear_memory',
   backfeeding: false,
   usageDescription: `I can clear all memory files from my personal memory store.
@@ -348,7 +348,7 @@ This will remove all files in my personal memory directory.`,
 };
 
 export const addSharedMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'add_team_memory',
   backfeeding: false,
   usageDescription: `I can add new content to the shared memory store accessible by all team members.
@@ -443,7 +443,7 @@ Examples:
 };
 
 export const dropSharedMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'drop_team_memory',
   backfeeding: false,
   usageDescription: `I can remove a file from the shared memory store.
@@ -510,7 +510,7 @@ Examples:
 };
 
 export const replaceSharedMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'replace_team_memory',
   backfeeding: false,
   usageDescription: `I can replace the content of an existing shared memory file.
@@ -591,7 +591,7 @@ Examples:
 };
 
 export const clearSharedMemoryTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'clear_team_memory',
   backfeeding: false,
   usageDescription: `I can clear all files from the shared memory store.

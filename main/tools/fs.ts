@@ -92,7 +92,7 @@ async function countLines(filePath: string): Promise<number> {
 }
 
 export const listDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'list_dir',
   backfeeding: true,
   usageDescription: `List directory contents relative to workspace with detailed information.
@@ -353,7 +353,7 @@ Example:
 };
 
 export const rmDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'rm_dir',
   backfeeding: true,
   usageDescription: `Remove a directory relative to workspace.
@@ -507,7 +507,7 @@ Examples:
 };
 
 export const rmFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'rm_file',
   backfeeding: true,
   usageDescription: `Remove a file relative to workspace.
@@ -651,7 +651,7 @@ async function countDirEntries(absPath: string): Promise<number> {
 }
 
 export const mkDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'mk_dir',
   backfeeding: true,
   usageDescription: `Create a directory relative to workspace.
@@ -795,7 +795,7 @@ Options:
 };
 
 export const moveFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'move_file',
   backfeeding: true,
   usageDescription: `Move/rename a file relative to workspace.
@@ -955,7 +955,7 @@ Usage: !?@move_file <from> <to>`,
 };
 
 export const moveDirTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'move_dir',
   backfeeding: true,
   usageDescription: `Move/rename a directory relative to workspace.

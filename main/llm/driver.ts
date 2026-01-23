@@ -886,7 +886,7 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *
  * Phase 3 - User Tool Calls Collection & Execution:
  *   - Parse user text for tellask tool-call blocks using TellaskStreamParser
- *   - Execute texter tools (agent-to-agent calls, intrinsic tools)
+ *   - Execute tellask tools (agent-to-agent calls, intrinsic tools)
  *   - Handle subdialog creation for @teammate mentions
  *
  * Phase 4 - Context Building:
@@ -900,7 +900,7 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *
  * Phase 6 - Function/Tellask Tool Call Execution:
  *   - Execute function calls (non-streaming mode)
- *   - Execute texter tool calls (streaming mode)
+ *   - Execute tellask tool calls (streaming mode)
  *   - Collect and persist results
  *
  * Phase 7 - Loop or Complete:
@@ -3478,7 +3478,7 @@ async function executeTellaskCall(
       }
     }
   } else {
-    // Not a team member - check for texter tools
+    // Not a team member - check for tellask tools
     let tool =
       tellaskTools.find((t) => t.name === firstMention) ||
       intrinsicTools.find((t) => t.name === firstMention);
@@ -3486,11 +3486,11 @@ async function executeTellaskCall(
       try {
         const globalTool = getTool(firstMention);
         switch (globalTool?.type) {
-          case 'texter':
+          case 'tellask':
             tool = globalTool;
             break;
           case 'func':
-            log.warn(`Function tool "${globalTool.name}" should not be called as texter tool!`);
+            log.warn(`Function tool "${globalTool.name}" should not be called as tellask tool!`);
             break;
         }
       } catch (toolErr) {

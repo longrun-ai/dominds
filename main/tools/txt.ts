@@ -759,7 +759,7 @@ async function readFileContentBounded(
 }
 
 export const readFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'read_file',
   backfeeding: true,
   usageDescription: `Read a text file (bounded) relative to workspace. 
@@ -1014,7 +1014,7 @@ Examples:
 };
 
 export const replaceFileContentsTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'replace_file_contents',
   backfeeding: true,
   usageDescription: `Replace a file's entire contents (writes literally; does NOT parse diff/patch syntax).
@@ -1118,7 +1118,7 @@ Note:
 };
 
 export const planFileModificationTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'plan_file_modification',
   backfeeding: true,
   usageDescription: `Plan a single-file modification by line range (does not write yet).
@@ -1405,7 +1405,7 @@ Tip:
 };
 
 export const applyFileModificationTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'apply_file_modification',
   usageDescription:
     'Apply a previously planned file modification by hunk id.\n' +
@@ -1667,7 +1667,7 @@ export const applyFileModificationTool: TellaskTool = {
 };
 
 export const appendFileTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'append_file',
   backfeeding: true,
   usageDescription: `Append content to the end of a text file.
@@ -1779,7 +1779,7 @@ Note:
 };
 
 export const insertAfterTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'insert_after',
   backfeeding: true,
   usageDescription: `Insert content after an anchor string (by occurrence).
@@ -2040,7 +2040,7 @@ Options:
 };
 
 export const insertBeforeTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'insert_before',
   backfeeding: true,
   usageDescription: `Insert content before an anchor string (by occurrence).
@@ -2303,7 +2303,7 @@ Options:
 };
 
 export const replaceBlockTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'replace_block',
   backfeeding: true,
   usageDescription: `Replace a block between start/end anchors.

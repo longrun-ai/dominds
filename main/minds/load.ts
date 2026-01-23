@@ -136,7 +136,7 @@ export async function loadAgentMinds(
   // Use only base agent tools - intrinsic tools are handled separately via Dialog
   const agentTools: Tool[] = baseAgentTools;
 
-  const tellaskTools = agentTools.filter((t): t is TellaskTool => t.type === 'texter');
+  const tellaskTools = agentTools.filter((t): t is TellaskTool => t.type === 'tellask');
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
   // Generate tool usage text - keep regular and intrinsic tools completely separate

@@ -35,10 +35,10 @@ function toolToInfo(tool: Tool): ToolInfo {
         description: tool.description,
         descriptionI18n: tool.descriptionI18n,
       };
-    case 'texter':
+    case 'tellask':
       return {
         name: tool.name,
-        kind: 'texter',
+        kind: 'tellask',
         description: tool.usageDescription,
         descriptionI18n: tool.usageDescriptionI18n,
       };

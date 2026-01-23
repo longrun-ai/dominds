@@ -316,7 +316,7 @@ async function loadFileLines(relPath: string): Promise<string[]> {
 }
 
 export const ripgrepFilesTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'ripgrep_files',
   backfeeding: true,
   usageDescription: `Search file paths containing a pattern (rg-backed).
@@ -408,7 +408,7 @@ Options:
 };
 
 export const ripgrepCountTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'ripgrep_count',
   backfeeding: true,
   usageDescription: `Count matches per file (rg-backed).
@@ -502,7 +502,7 @@ Options:
 };
 
 export const ripgrepSnippetsTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'ripgrep_snippets',
   backfeeding: true,
   usageDescription: `Search snippets with line/col (rg-backed).
@@ -636,7 +636,7 @@ Options:
 };
 
 export const ripgrepFixedTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'ripgrep_fixed',
   backfeeding: true,
   usageDescription: `Fixed-string ripgrep convenience tool.
@@ -709,7 +709,7 @@ Options:
 const DISALLOWED_RG_ARGS = new Set(['--pre', '--pre-glob']);
 
 export const ripgrepSearchTool: TellaskTool = {
-  type: 'texter',
+  type: 'tellask',
   name: 'ripgrep_search',
   backfeeding: true,
   usageDescription: `Escape hatch: run rg-style search (snippets output, with a limited allowlist).

@@ -39,7 +39,7 @@ should be the `!?@team_mgmt_manual` tool output.
 
 Planned change:
 
-- Add a new texter tool `team_mgmt_manual` whose responses cover the team-management topics (file
+- Add a new tellask tool `team_mgmt_manual` whose responses cover the team-management topics (file
   formats, workflows, safety).
 - Remove legacy builtin guidance to avoid duplication. If any stub remains, it must point to
   `!?@team_mgmt_manual` (and not to this design document).

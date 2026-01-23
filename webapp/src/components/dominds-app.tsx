@@ -5041,7 +5041,7 @@ export class DomindsApp extends HTMLElement {
 
     const renderSectionHtml = (
       sectionTitle: string,
-      kind: 'texter' | 'func',
+      kind: 'tellask' | 'func',
       kindLabel: string,
     ): string => {
       const sectionToolsetsHtml = toolsets
@@ -5064,7 +5064,7 @@ export class DomindsApp extends HTMLElement {
     };
 
     return [
-      renderSectionHtml(t.toolsSectionTellask, 'texter', '@'),
+      renderSectionHtml(t.toolsSectionTellask, 'tellask', '@'),
       renderSectionHtml(t.toolsSectionFunction, 'func', 'ƒ'),
     ].join('');
   }
