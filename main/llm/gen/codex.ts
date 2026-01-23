@@ -136,19 +136,18 @@ function buildCodexRequest(
     }
   }
 
-  const openaiParams =
-    agent.model_params && agent.model_params.openai ? agent.model_params.openai : undefined;
+  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   let reasoning: ChatGptReasoning | null = null;
   let text: ChatGptTextControls | undefined;
 
-  if (openaiParams && openaiParams.reasoning_effort) {
+  if (codexParams && codexParams.reasoning_effort) {
     reasoning = {
-      effort: openaiParams.reasoning_effort,
+      effort: codexParams.reasoning_effort,
     };
   }
-  if (openaiParams && openaiParams.verbosity) {
+  if (codexParams && codexParams.verbosity) {
     text = {
-      verbosity: openaiParams.verbosity,
+      verbosity: codexParams.verbosity,
     };
   }
 

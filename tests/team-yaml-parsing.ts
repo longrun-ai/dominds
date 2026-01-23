@@ -67,6 +67,65 @@ async function main(): Promise<void> {
     assert.ok(charlieProblem && charlieProblem.kind === 'team_workspace_config_error');
     assert.ok(charlieProblem.detail.errorText.includes('members.charlie'));
 
+    // Unknown keys + common model_params misplacements should be detected and reported (but not
+    // break loading of otherwise valid members/defaults).
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        '  reasoning_effort: high',
+        '  model_params:',
+        '    reasoning_effort: high',
+        '    codex:',
+        '      reasoning_effort: high',
+        '      verbosity: low',
+        '      extra_key: true',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    verbosity: low',
+        '    model_params:',
+        '      codex:',
+        '        verbosity: low',
+        '',
+      ].join('\n'),
+    );
+
+    const team2 = await Team.load();
+    assert.ok(team2.getMember('alice'), 'alice should still be loaded');
+
+    const snapshot2 = getProblemsSnapshot();
+    const ids2 = snapshot2.problems.map((p) => p.id).sort();
+    assert.ok(
+      ids2.includes('team/team_yaml_error/member_defaults/unknown_fields'),
+      'problem for member_defaults unknown fields should exist',
+    );
+    assert.ok(
+      ids2.includes('team/team_yaml_error/member_defaults/model_params/unknown_fields'),
+      'problem for member_defaults.model_params unknown fields should exist',
+    );
+    assert.ok(
+      ids2.includes('team/team_yaml_error/member_defaults/model_params/codex/unknown_fields'),
+      'problem for member_defaults.model_params.codex unknown fields should exist',
+    );
+    assert.ok(
+      ids2.includes('team/team_yaml_error/members/alice/unknown_fields'),
+      'problem for members.alice unknown fields should exist',
+    );
+
+    const mdUnknown = snapshot2.problems.find(
+      (p) => p.id === 'team/team_yaml_error/member_defaults/unknown_fields',
+    );
+    assert.ok(mdUnknown && mdUnknown.kind === 'team_workspace_config_error');
+    assert.ok(mdUnknown.detail.errorText.includes('member_defaults.reasoning_effort'));
+    assert.ok(
+      mdUnknown.detail.errorText.includes('member_defaults.model_params.codex.reasoning_effort'),
+    );
+
     console.log('✅ team-yaml-parsing tests passed');
   } finally {
     process.chdir(oldCwd);

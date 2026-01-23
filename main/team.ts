@@ -59,26 +59,33 @@ export namespace Team {
   const TEAM_YAML_PATH = '.minds/team.yaml';
   const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
 
+  type OpenAiStyleModelParams = {
+    temperature?: number; // 0-2, controls randomness
+    max_tokens?: number; // Maximum tokens to generate
+    top_p?: number; // 0-1, nucleus sampling
+    frequency_penalty?: number; // -2 to 2, penalize frequent tokens
+    presence_penalty?: number; // -2 to 2, penalize present tokens
+    seed?: number; // For deterministic outputs
+    logprobs?: boolean; // Return log probabilities
+    top_logprobs?: number; // Number of most likely tokens to return
+    stop?: string | string[]; // Stop sequences
+    logit_bias?: Record<string, number>; // Modify likelihood of specific tokens
+    user?: string; // User identifier for abuse monitoring
+    reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'; // For o1/reasoning models
+    verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
+  };
+
   export interface ModelParams {
     // General parameters that can be used by any provider
     max_tokens?: number; // Maximum tokens to generate (provider-agnostic)
 
-    // OpenAI specific parameters
-    openai?: {
-      temperature?: number; // 0-2, controls randomness
-      max_tokens?: number; // Maximum tokens to generate
-      top_p?: number; // 0-1, nucleus sampling
-      frequency_penalty?: number; // -2 to 2, penalize frequent tokens
-      presence_penalty?: number; // -2 to 2, penalize present tokens
-      seed?: number; // For deterministic outputs
-      logprobs?: boolean; // Return log probabilities
-      top_logprobs?: number; // Number of most likely tokens to return
-      stop?: string | string[]; // Stop sequences
-      logit_bias?: Record<string, number>; // Modify likelihood of specific tokens
-      user?: string; // User identifier for abuse monitoring
-      reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'; // For o1/reasoning models
-      verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
-    };
+    // Codex provider (apiType: codex) parameters.
+    // Preferred for `provider: codex` in `.minds/team.yaml`.
+    codex?: OpenAiStyleModelParams;
+
+    // Legacy OpenAI-style parameters (kept for backward compatibility).
+    // Some providers may still document params under this namespace.
+    openai?: OpenAiStyleModelParams;
 
     // Anthropic specific parameters
     anthropic?: {
@@ -621,6 +628,158 @@ export namespace Team {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
+  const TEAM_ROOT_KEYS = ['member_defaults', 'default_responder', 'members'] as const;
+  const MEMBER_KEYS = [
+    'name',
+    'provider',
+    'model',
+    'gofor',
+    'toolsets',
+    'tools',
+    'model_params',
+    'diligence-push-max',
+    'diligence_push_max',
+    'read_dirs',
+    'write_dirs',
+    'no_read_dirs',
+    'no_write_dirs',
+    'icon',
+    'streaming',
+    'hidden',
+  ] as const;
+
+  const MODEL_PARAMS_ROOT_KEYS = ['max_tokens', 'codex', 'openai', 'anthropic'] as const;
+  const MODEL_PARAMS_OPENAI_KEYS = [
+    'temperature',
+    'max_tokens',
+    'top_p',
+    'frequency_penalty',
+    'presence_penalty',
+    'seed',
+    'logprobs',
+    'top_logprobs',
+    'stop',
+    'logit_bias',
+    'user',
+    'reasoning_effort',
+    'verbosity',
+  ] as const;
+  const MODEL_PARAMS_CODEX_KEYS = MODEL_PARAMS_OPENAI_KEYS;
+  const MODEL_PARAMS_ANTHROPIC_KEYS = [
+    'temperature',
+    'max_tokens',
+    'top_p',
+    'top_k',
+    'stop_sequences',
+    'reasoning_split',
+  ] as const;
+
+  function listUnknownKeys(obj: Record<string, unknown>, allowedKeys: readonly string[]): string[] {
+    const allowed = new Set(allowedKeys);
+    const unknown: string[] = [];
+    for (const k of Object.keys(obj)) {
+      if (!allowed.has(k)) unknown.push(k);
+    }
+    unknown.sort((a, b) => a.localeCompare(b));
+    return unknown;
+  }
+
+  function buildUnknownFieldErrorText(
+    at: string,
+    unknownKeys: readonly string[],
+    hints: Record<string, string>,
+  ): string {
+    const lines: string[] = [];
+    for (const k of unknownKeys) {
+      const hint = hints[k];
+      lines.push(hint ? `- ${at}.${k}: unknown field. ${hint}` : `- ${at}.${k}: unknown field.`);
+    }
+    return lines.join('\n');
+  }
+
+  function validateCommonModelParamMisplacements(
+    pushIssue: (id: string, message: string, errorText: string) => void,
+    idPrefix: string,
+    atPrefix: string,
+    memberObj: Record<string, unknown>,
+  ): void {
+    const hintsAtMember: Record<string, string> = {
+      reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_effort\`? (not supported at ${atPrefix} root)`,
+      verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
+    };
+
+    const unknownAtMember = listUnknownKeys(memberObj, MEMBER_KEYS);
+    if (unknownAtMember.length > 0) {
+      pushIssue(
+        `${idPrefix}/unknown_fields`,
+        `Invalid .minds/team.yaml: ${atPrefix} contains unknown fields.`,
+        buildUnknownFieldErrorText(atPrefix, unknownAtMember, hintsAtMember),
+      );
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(memberObj, 'model_params')) return;
+    const rawModelParams = memberObj.model_params;
+    if (rawModelParams === undefined) return;
+    if (!isRecordValue(rawModelParams)) {
+      // Type errors are handled by parseMemberOverrides; keep this check focused on schema/placement.
+      return;
+    }
+
+    const modelParamsAt = `${atPrefix}.model_params`;
+    const hintsAtModelParams: Record<string, string> = {
+      reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
+      verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
+      temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
+      top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
+      max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` (top-level), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
+    };
+
+    const unknownAtModelParams = listUnknownKeys(rawModelParams, MODEL_PARAMS_ROOT_KEYS);
+    if (unknownAtModelParams.length > 0) {
+      pushIssue(
+        `${idPrefix}/model_params/unknown_fields`,
+        `Invalid .minds/team.yaml: ${modelParamsAt} contains unknown fields.`,
+        buildUnknownFieldErrorText(modelParamsAt, unknownAtModelParams, hintsAtModelParams),
+      );
+    }
+
+    const rawCodex = rawModelParams.codex;
+    if (rawCodex !== undefined && isRecordValue(rawCodex)) {
+      const unknownAtCodex = listUnknownKeys(rawCodex, MODEL_PARAMS_CODEX_KEYS);
+      if (unknownAtCodex.length > 0) {
+        pushIssue(
+          `${idPrefix}/model_params/codex/unknown_fields`,
+          `Invalid .minds/team.yaml: ${modelParamsAt}.codex contains unknown fields.`,
+          buildUnknownFieldErrorText(`${modelParamsAt}.codex`, unknownAtCodex, {}),
+        );
+      }
+    }
+
+    const rawOpenai = rawModelParams.openai;
+    if (rawOpenai !== undefined && isRecordValue(rawOpenai)) {
+      const unknownAtOpenai = listUnknownKeys(rawOpenai, MODEL_PARAMS_OPENAI_KEYS);
+      if (unknownAtOpenai.length > 0) {
+        pushIssue(
+          `${idPrefix}/model_params/openai/unknown_fields`,
+          `Invalid .minds/team.yaml: ${modelParamsAt}.openai contains unknown fields.`,
+          buildUnknownFieldErrorText(`${modelParamsAt}.openai`, unknownAtOpenai, {}),
+        );
+      }
+    }
+
+    const rawAnthropic = rawModelParams.anthropic;
+    if (rawAnthropic !== undefined && isRecordValue(rawAnthropic)) {
+      const unknownAtAnthropic = listUnknownKeys(rawAnthropic, MODEL_PARAMS_ANTHROPIC_KEYS);
+      if (unknownAtAnthropic.length > 0) {
+        pushIssue(
+          `${idPrefix}/model_params/anthropic/unknown_fields`,
+          `Invalid .minds/team.yaml: ${modelParamsAt}.anthropic contains unknown fields.`,
+          buildUnknownFieldErrorText(`${modelParamsAt}.anthropic`, unknownAtAnthropic, {}),
+        );
+      }
+    }
+  }
+
   function sanitizeProblemIdSegment(segment: string): string {
     return segment.replace(/[^a-zA-Z0-9_-]/g, '_');
   }
@@ -857,6 +1016,15 @@ export namespace Team {
       return {};
     })();
 
+    const unknownRootKeys = listUnknownKeys(teamObj, TEAM_ROOT_KEYS);
+    if (unknownRootKeys.length > 0) {
+      pushIssue(
+        'root/unknown_fields',
+        'Invalid .minds/team.yaml: unknown top-level fields.',
+        buildUnknownFieldErrorText('root', unknownRootKeys, {}),
+      );
+    }
+
     // member_defaults
     const rawMemberDefaults = teamObj.member_defaults;
     if (rawMemberDefaults !== undefined) {
@@ -867,6 +1035,12 @@ export namespace Team {
           `Invalid member_defaults: expected an object (got ${describeValueType(rawMemberDefaults)})`,
         );
       } else {
+        validateCommonModelParamMisplacements(
+          pushIssue,
+          'member_defaults',
+          'member_defaults',
+          rawMemberDefaults,
+        );
         const parsedMd = parseMemberOverrides(rawMemberDefaults, 'member_defaults');
         if (parsedMd.kind === 'ok') {
           applyOverrides(md, parsedMd.overrides);
@@ -919,6 +1093,8 @@ export namespace Team {
         );
         continue;
       }
+
+      validateCommonModelParamMisplacements(pushIssue, `members/${idSeg}`, memberAt, raw);
 
       const parsedMember = parseMemberOverrides(raw, memberAt);
       if (parsedMember.kind === 'error') {
@@ -1080,23 +1256,20 @@ export namespace Team {
     if (value === undefined) return undefined;
     const obj = asRecord(value, at);
 
-    const openai = obj.openai === undefined ? undefined : asRecord(obj.openai, `${at}.openai`);
-    const anthropic =
-      obj.anthropic === undefined ? undefined : asRecord(obj.anthropic, `${at}.anthropic`);
+    const validateOpenAiStyleParams = (params: Record<string, unknown>, at2: string): void => {
+      asOptionalNumber(params.temperature, `${at2}.temperature`);
+      asOptionalNumber(params.max_tokens, `${at2}.max_tokens`);
+      asOptionalNumber(params.top_p, `${at2}.top_p`);
+      asOptionalNumber(params.frequency_penalty, `${at2}.frequency_penalty`);
+      asOptionalNumber(params.presence_penalty, `${at2}.presence_penalty`);
+      asOptionalNumber(params.seed, `${at2}.seed`);
+      asOptionalBoolean(params.logprobs, `${at2}.logprobs`);
+      asOptionalNumber(params.top_logprobs, `${at2}.top_logprobs`);
+      asOptionalStop(params.stop, `${at2}.stop`);
+      asOptionalLogitBias(params.logit_bias, `${at2}.logit_bias`);
+      asOptionalString(params.user, `${at2}.user`);
 
-    if (openai) {
-      asOptionalNumber(openai.temperature, `${at}.openai.temperature`);
-      asOptionalNumber(openai.max_tokens, `${at}.openai.max_tokens`);
-      asOptionalNumber(openai.top_p, `${at}.openai.top_p`);
-      asOptionalNumber(openai.frequency_penalty, `${at}.openai.frequency_penalty`);
-      asOptionalNumber(openai.presence_penalty, `${at}.openai.presence_penalty`);
-      asOptionalNumber(openai.seed, `${at}.openai.seed`);
-      asOptionalBoolean(openai.logprobs, `${at}.openai.logprobs`);
-      asOptionalNumber(openai.top_logprobs, `${at}.openai.top_logprobs`);
-      asOptionalStop(openai.stop, `${at}.openai.stop`);
-      asOptionalLogitBias(openai.logit_bias, `${at}.openai.logit_bias`);
-      asOptionalString(openai.user, `${at}.openai.user`);
-      const reasoningEffort = openai.reasoning_effort;
+      const reasoningEffort = params.reasoning_effort;
       if (
         reasoningEffort !== undefined &&
         reasoningEffort !== 'minimal' &&
@@ -1105,13 +1278,13 @@ export namespace Team {
         reasoningEffort !== 'high'
       ) {
         throw new Error(
-          `Invalid ${at}.openai.reasoning_effort: expected minimal|low|medium|high (got ${describeValueType(
+          `Invalid ${at2}.reasoning_effort: expected minimal|low|medium|high (got ${describeValueType(
             reasoningEffort,
           )})`,
         );
       }
 
-      const verbosity = openai.verbosity;
+      const verbosity = params.verbosity;
       if (
         verbosity !== undefined &&
         verbosity !== 'low' &&
@@ -1119,11 +1292,24 @@ export namespace Team {
         verbosity !== 'high'
       ) {
         throw new Error(
-          `Invalid ${at}.openai.verbosity: expected low|medium|high (got ${describeValueType(
+          `Invalid ${at2}.verbosity: expected low|medium|high (got ${describeValueType(
             verbosity,
           )})`,
         );
       }
+    };
+
+    const codex = obj.codex === undefined ? undefined : asRecord(obj.codex, `${at}.codex`);
+    const openai = obj.openai === undefined ? undefined : asRecord(obj.openai, `${at}.openai`);
+    const anthropic =
+      obj.anthropic === undefined ? undefined : asRecord(obj.anthropic, `${at}.anthropic`);
+
+    if (codex) {
+      validateOpenAiStyleParams(codex, `${at}.codex`);
+    }
+
+    if (openai) {
+      validateOpenAiStyleParams(openai, `${at}.openai`);
     }
 
     if (anthropic) {

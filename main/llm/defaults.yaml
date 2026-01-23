@@ -17,7 +17,7 @@ providers:
           type: integer
           min: 1
           description: Maximum tokens to generate (provider-agnostic override).
-      openai:
+      codex:
         reasoning_effort:
           # Trade latency/cost for quality on reasoning-capable models.
           # Allowed: minimal | low | medium | high
