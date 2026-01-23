@@ -848,16 +848,19 @@ export const teamMgmtPlanFileModificationTool: TellaskTool = {
   backfeeding: true,
   usageDescription:
     `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+    `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!existing-hunk-id]\n` +
+    `Note: \`!<hunk-id>\` is only for revising an existing planned hunk; custom hunk ids are not allowed.\n` +
     `!?<new content lines in body>\n`,
   usageDescriptionI18n: {
     en:
       `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+      `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!existing-hunk-id]\n` +
+      `Note: \`!<hunk-id>\` is only for revising an existing planned hunk; custom hunk ids are not allowed.\n` +
       `!?<new content lines in body>\n`,
     zh:
       `按行号范围规划 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+      `用法：!?@team_mgmt_plan_file_modification <path> <line~range> [!existing-hunk-id]\n` +
+      `注意：\`!<hunk-id>\` 仅用于修订已存在的规划；不支持自定义 hunk id。\n` +
       `!?<正文为新内容行>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
@@ -871,18 +874,21 @@ export const teamMgmtPlanFileModificationTool: TellaskTool = {
 
       const after = parseArgsAfterTool(headLine, this.name);
       const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      if (parts.length > 3) throw new Error('Invalid format');
       const filePath = parts[0] ?? '';
       const rangeSpec = parts[1] ?? '';
       const maybeHunkId = parts[2] ?? '';
       if (!filePath) throw new Error('Path required');
       if (!rangeSpec) throw new Error('Range required (e.g. 10~20 or ~)');
+      if (maybeHunkId && !maybeHunkId.startsWith('!')) {
+        throw new Error('Invalid hunk id format (expected !<hunk-id>)');
+      }
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine =
-        maybeHunkId && maybeHunkId.startsWith('!')
-          ? `@plan_file_modification ${rel} ${rangeSpec} ${maybeHunkId}`
-          : `@plan_file_modification ${rel} ${rangeSpec}`;
+      const proxyHeadLine = maybeHunkId
+        ? `@plan_file_modification ${rel} ${rangeSpec} ${maybeHunkId}`
+        : `@plan_file_modification ${rel} ${rangeSpec}`;
       return await planFileModificationTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
@@ -1665,7 +1671,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!?@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!?@team_mgmt_replace_file_contents team.yaml`。',
+        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_plan_file_modification team.yaml <line~range>` 生成 diff（工具会返回 `!<hunk-id>`），再用 `!?@team_mgmt_apply_file_modification !<hunk-id>` 显式确认写入；如需修订同一个规划，再次运行 `!?@team_mgmt_plan_file_modification ... !<hunk-id>` 覆写；大改动直接 `!?@team_mgmt_replace_file_contents team.yaml`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -1710,7 +1716,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!?@team_mgmt_apply_file_modification !<id>`; for large edits, use `!?@team_mgmt_replace_file_contents team.yaml`.',
+        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_plan_file_modification team.yaml <line~range>` to get a diff (the tool returns a `!<hunk-id>`), then confirm with `!?@team_mgmt_apply_file_modification !<hunk-id>`; to revise the same plan, re-run `!?@team_mgmt_plan_file_modification ... !<hunk-id>` to overwrite; for large edits, use `!?@team_mgmt_replace_file_contents team.yaml`.',
       ]),
     ) +
     '\n' +
