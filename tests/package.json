@@ -10,6 +10,7 @@
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
     "persistence-reminders-owner-meta": "tsx persistence/reminders-owner-meta.ts",
     "tellask:parsing": "tsx tellask/parsing.ts",
+    "teammate-call:parsing": "tsx tellask/teammate-call-parsing.ts",
     "tellask:realtime": "tsx tellask/realtime.ts",
     "task-package": "tsx task-package.ts",
     "taskdoc-search": "tsx taskdoc-search.ts",

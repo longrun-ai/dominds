@@ -2231,12 +2231,12 @@ type TopicDirectiveParse =
   | { kind: 'multiple' };
 
 function parseTopicDirectiveFromHeadline(headLine: string): TopicDirectiveParse {
-  const re = /(^|\\s)!topic\\s+([^\\s]+)/g;
+  const re = /(^|\s)!topic\s+([^\s]+)/g;
   const ids: string[] = [];
   for (const match of headLine.matchAll(re)) {
     const raw = match[2] ?? '';
     const candidate = raw.trim();
-    const m = candidate.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]+)*)/);
+    const m = candidate.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)*)/);
     const topicId = (m?.[1] ?? '').trim();
     if (!isValidTopicId(topicId)) {
       return { kind: 'invalid' };
