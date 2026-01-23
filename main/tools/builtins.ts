@@ -15,7 +15,7 @@ import {
   updateReminderTool,
 } from './ctrl';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
-import { listDirTool, rmDirTool, rmFileTool } from './fs';
+import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
   addMemoryTool,
@@ -29,21 +29,48 @@ import {
 } from './mem';
 import { getDaemonOutputTool, shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from './os';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
+import {
+  ripgrepCountTool,
+  ripgrepFilesTool,
+  ripgrepFixedTool,
+  ripgrepSearchTool,
+  ripgrepSnippetsTool,
+} from './ripgrep';
 import { teamMgmtTools } from './team-mgmt';
 import {
+  appendFileTool,
   applyFileModificationTool,
+  insertAfterTool,
+  insertBeforeTool,
   overwriteFileTool,
   planFileModificationTool,
   readFileTool,
+  replaceBlockTool,
+  replaceFileContentsTool,
 } from './txt';
 
 registerTool(listDirTool);
 registerTool(rmDirTool);
 registerTool(rmFileTool);
+registerTool(mkDirTool);
+registerTool(moveFileTool);
+registerTool(moveDirTool);
 registerTool(readFileTool);
 registerTool(overwriteFileTool);
+registerTool(replaceFileContentsTool);
 registerTool(planFileModificationTool);
 registerTool(applyFileModificationTool);
+registerTool(appendFileTool);
+registerTool(insertAfterTool);
+registerTool(insertBeforeTool);
+registerTool(replaceBlockTool);
+
+// Ripgrep tools
+registerTool(ripgrepFilesTool);
+registerTool(ripgrepSnippetsTool);
+registerTool(ripgrepCountTool);
+registerTool(ripgrepFixedTool);
+registerTool(ripgrepSearchTool);
 
 // OS tools
 registerTool(shellCmdTool);
@@ -126,7 +153,15 @@ registerToolset('mcp_admin', [
 setToolsetMeta('mcp_admin', {
   descriptionI18n: { en: 'MCP administration tools', zh: 'MCP 管理工具' },
 });
-registerToolset('ws_read', [listDirTool, readFileTool]);
+registerToolset('ws_read', [
+  listDirTool,
+  readFileTool,
+  ripgrepFilesTool,
+  ripgrepSnippetsTool,
+  ripgrepCountTool,
+  ripgrepFixedTool,
+  ripgrepSearchTool,
+]);
 setToolsetMeta('ws_read', {
   descriptionI18n: { en: 'Workspace read-only tools', zh: '工作区只读工具' },
 });
@@ -134,10 +169,23 @@ registerToolset('ws_mod', [
   listDirTool,
   rmDirTool,
   rmFileTool,
+  mkDirTool,
+  moveFileTool,
+  moveDirTool,
   readFileTool,
   overwriteFileTool,
+  replaceFileContentsTool,
+  appendFileTool,
+  insertAfterTool,
+  insertBeforeTool,
+  replaceBlockTool,
   planFileModificationTool,
   applyFileModificationTool,
+  ripgrepFilesTool,
+  ripgrepSnippetsTool,
+  ripgrepCountTool,
+  ripgrepFixedTool,
+  ripgrepSearchTool,
 ]);
 setToolsetMeta('ws_mod', {
   descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },

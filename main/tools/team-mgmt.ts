@@ -24,13 +24,25 @@ import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { TextingTool, TextingToolCallResult } from '../tool';
-import { listDirTool, rmDirTool, rmFileTool } from './fs';
+import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { listToolsets } from './registry';
 import {
+  ripgrepCountTool,
+  ripgrepFilesTool,
+  ripgrepFixedTool,
+  ripgrepSearchTool,
+  ripgrepSnippetsTool,
+} from './ripgrep';
+import {
+  appendFileTool,
   applyFileModificationTool,
+  insertAfterTool,
+  insertBeforeTool,
   overwriteFileTool,
   planFileModificationTool,
   readFileTool,
+  replaceBlockTool,
+  replaceFileContentsTool,
 } from './txt';
 
 const MINDS_ALLOW = ['.minds/**'] as const;
@@ -644,6 +656,250 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
   },
 };
 
+export const teamMgmtReplaceFileContentsTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_replace_file_contents',
+  backfeeding: true,
+  usageDescription:
+    `Replace file contents under ${MINDS_DIR}/.\n` +
+    `Usage: !!@team_mgmt_replace_file_contents <path>\n` +
+    `<content in body>\n`,
+  usageDescriptionI18n: {
+    en:
+      `Replace file contents under ${MINDS_DIR}/.\n` +
+      `Usage: !!@team_mgmt_replace_file_contents <path>\n` +
+      `<content in body>\n`,
+    zh:
+      `整体替换写入 ${MINDS_DIR}/ 下的文件内容。\n` +
+      `用法：!!@team_mgmt_replace_file_contents <path>\n` +
+      `<正文为文件内容>\n`,
+  },
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const filePath = after.split(/\s+/)[0] || '';
+      if (!filePath) throw new Error('Path required');
+      const rel = toMindsRelativePath(filePath);
+      const resolved = ensureMindsScopedPath(rel);
+      await fs.mkdir(path.dirname(resolved.abs), { recursive: true });
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await replaceFileContentsTool.call(
+        dlg,
+        proxyCaller,
+        `@replace_file_contents ${rel}`,
+        inputBody,
+      );
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtAppendFileTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_append_file',
+  backfeeding: true,
+  usageDescription:
+    `Append content to a file under ${MINDS_DIR}/.\n` +
+    `Usage: !!@team_mgmt_append_file <path>\n` +
+    `<content in body>\n`,
+  usageDescriptionI18n: {
+    en:
+      `Append content to a file under ${MINDS_DIR}/.\n` +
+      `Usage: !!@team_mgmt_append_file <path>\n` +
+      `<content in body>\n`,
+    zh:
+      `向 ${MINDS_DIR}/ 下的文件末尾追加内容。\n` +
+      `用法：!!@team_mgmt_append_file <path>\n` +
+      `<正文为追加内容>\n`,
+  },
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const filePath = after.split(/\s+/)[0] || '';
+      if (!filePath) throw new Error('Path required');
+      const rel = toMindsRelativePath(filePath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await appendFileTool.call(dlg, proxyCaller, `@append_file ${rel}`, inputBody);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtInsertAfterTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_insert_after',
+  backfeeding: true,
+  usageDescription:
+    `Insert content after an anchor in a file under ${MINDS_DIR}/.\n` +
+    `Usage: !!@team_mgmt_insert_after <path> <anchor> [options]\n` +
+    `<content in body>\n`,
+  usageDescriptionI18n: {
+    en:
+      `Insert content after an anchor in a file under ${MINDS_DIR}/.\n` +
+      `Usage: !!@team_mgmt_insert_after <path> <anchor> [options]\n` +
+      `<content in body>\n`,
+    zh:
+      `在 ${MINDS_DIR}/ 下文件的锚点之后插入内容。\n` +
+      `用法：!!@team_mgmt_insert_after <path> <anchor> [options]\n` +
+      `<正文为插入内容>\n`,
+  },
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/);
+      const rawPath = parts[0] ?? '';
+      if (!rawPath) throw new Error('Path required');
+      const rest = parts.slice(1).join(' ').trim();
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = rest ? `@insert_after ${rel} ${rest}` : `@insert_after ${rel}`;
+      return await insertAfterTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtInsertBeforeTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_insert_before',
+  backfeeding: true,
+  usageDescription:
+    `Insert content before an anchor in a file under ${MINDS_DIR}/.\n` +
+    `Usage: !!@team_mgmt_insert_before <path> <anchor> [options]\n` +
+    `<content in body>\n`,
+  usageDescriptionI18n: {
+    en:
+      `Insert content before an anchor in a file under ${MINDS_DIR}/.\n` +
+      `Usage: !!@team_mgmt_insert_before <path> <anchor> [options]\n` +
+      `<content in body>\n`,
+    zh:
+      `在 ${MINDS_DIR}/ 下文件的锚点之前插入内容。\n` +
+      `用法：!!@team_mgmt_insert_before <path> <anchor> [options]\n` +
+      `<正文为插入内容>\n`,
+  },
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/);
+      const rawPath = parts[0] ?? '';
+      if (!rawPath) throw new Error('Path required');
+      const rest = parts.slice(1).join(' ').trim();
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = rest ? `@insert_before ${rel} ${rest}` : `@insert_before ${rel}`;
+      return await insertBeforeTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtReplaceBlockTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_replace_block',
+  backfeeding: true,
+  usageDescription:
+    `Replace a block between anchors in a file under ${MINDS_DIR}/.\n` +
+    `Usage: !!@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+    `<content in body>\n`,
+  usageDescriptionI18n: {
+    en:
+      `Replace a block between anchors in a file under ${MINDS_DIR}/.\n` +
+      `Usage: !!@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+      `<content in body>\n`,
+    zh:
+      `替换 ${MINDS_DIR}/ 下文件中 start/end 锚点之间的块内容。\n` +
+      `用法：!!@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+      `<正文为新块内容>\n`,
+  },
+  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/);
+      const rawPath = parts[0] ?? '';
+      if (!rawPath) throw new Error('Path required');
+      const rest = parts.slice(1).join(' ').trim();
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = rest ? `@replace_block ${rel} ${rest}` : `@replace_block ${rel}`;
+      return await replaceBlockTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
 export const teamMgmtPlanFileModificationTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_plan_file_modification',
@@ -730,6 +986,339 @@ export const teamMgmtApplyFileModificationTool: TextingTool = {
         `@apply_file_modification ${id}`,
         '',
       );
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtMkDirTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_mk_dir',
+  backfeeding: true,
+  usageDescription: `Create a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+  usageDescriptionI18n: {
+    en: `Create a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+    zh: `创建 ${MINDS_DIR}/ 下目录。\n用法：!!@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const rawPath = parts[0] ?? '';
+      const rest = parts.slice(1).join(' ').trim();
+      if (!rawPath) throw new Error('Path required');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = rest ? `@mk_dir ${rel} ${rest}` : `@mk_dir ${rel}`;
+      return await mkDirTool.call(dlg, proxyCaller, proxyHeadLine, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtMoveFileTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_move_file',
+  backfeeding: true,
+  usageDescription: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_file <from> <to>\n`,
+  usageDescriptionI18n: {
+    en: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_file <from> <to>\n`,
+    zh: `移动/重命名 ${MINDS_DIR}/ 下文件。\n用法：!!@team_mgmt_move_file <from> <to>\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const rawFrom = parts[0] ?? '';
+      const rawTo = parts[1] ?? '';
+      if (!rawFrom || !rawTo) throw new Error('From/to required');
+      const fromRel = toMindsRelativePath(rawFrom);
+      const toRel = toMindsRelativePath(rawTo);
+      ensureMindsScopedPath(fromRel);
+      ensureMindsScopedPath(toRel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await moveFileTool.call(dlg, proxyCaller, `@move_file ${fromRel} ${toRel}`, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtMoveDirTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_move_dir',
+  backfeeding: true,
+  usageDescription: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_dir <from> <to>\n`,
+  usageDescriptionI18n: {
+    en: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_dir <from> <to>\n`,
+    zh: `移动/重命名 ${MINDS_DIR}/ 下目录。\n用法：!!@team_mgmt_move_dir <from> <to>\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const rawFrom = parts[0] ?? '';
+      const rawTo = parts[1] ?? '';
+      if (!rawFrom || !rawTo) throw new Error('From/to required');
+      const fromRel = toMindsRelativePath(rawFrom);
+      const toRel = toMindsRelativePath(rawTo);
+      ensureMindsScopedPath(fromRel);
+      ensureMindsScopedPath(toRel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await moveDirTool.call(dlg, proxyCaller, `@move_dir ${fromRel} ${toRel}`, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtRipgrepFilesTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_ripgrep_files',
+  backfeeding: true,
+  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !!@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+  usageDescriptionI18n: {
+    en: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !!@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_files 搜索。\n用法：!!@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const pattern = parts[0] ?? '';
+      const maybePathOrOpt = parts[1];
+      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
+      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
+      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = `@ripgrep_files ${pattern} ${rel} ${rest}`.trim();
+      return await ripgrepFilesTool.call(dlg, proxyCaller, proxyHeadLine, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtRipgrepSnippetsTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_ripgrep_snippets',
+  backfeeding: true,
+  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !!@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+  usageDescriptionI18n: {
+    en: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !!@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_snippets 搜索。\n用法：!!@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const pattern = parts[0] ?? '';
+      const maybePathOrOpt = parts[1];
+      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
+      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
+      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = `@ripgrep_snippets ${pattern} ${rel} ${rest}`.trim();
+      return await ripgrepSnippetsTool.call(dlg, proxyCaller, proxyHeadLine, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtRipgrepCountTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_ripgrep_count',
+  backfeeding: true,
+  usageDescription: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !!@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+  usageDescriptionI18n: {
+    en: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !!@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_count 计数。\n用法：!!@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const pattern = parts[0] ?? '';
+      const maybePathOrOpt = parts[1];
+      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
+      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
+      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = `@ripgrep_count ${pattern} ${rel} ${rest}`.trim();
+      return await ripgrepCountTool.call(dlg, proxyCaller, proxyHeadLine, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtRipgrepFixedTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_ripgrep_fixed',
+  backfeeding: true,
+  usageDescription: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+  usageDescriptionI18n: {
+    en: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下固定字符串搜索。\n用法：!!@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const literal = parts[0] ?? '';
+      const maybePathOrOpt = parts[1];
+      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
+      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
+      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = `@ripgrep_fixed ${literal} ${rel} ${rest}`.trim();
+      return await ripgrepFixedTool.call(dlg, proxyCaller, proxyHeadLine, '');
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtRipgrepSearchTool: TextingTool = {
+  type: 'texter',
+  name: 'team_mgmt_ripgrep_search',
+  backfeeding: true,
+  usageDescription: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+  usageDescriptionI18n: {
+    en: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+    zh: `在 ${MINDS_DIR}/ 下使用 ripgrep_search 逃生舱。\n用法：!!@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      const after = parseArgsAfterTool(headLine, this.name);
+      const parts = after.split(/\s+/).filter((p) => p.length > 0);
+      const pattern = parts[0] ?? '';
+      const maybePathOrArg = parts[1];
+      const hasPath = typeof maybePathOrArg === 'string' && !maybePathOrArg.startsWith('-');
+      const rawPath = hasPath ? (maybePathOrArg ?? '') : MINDS_DIR;
+      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const proxyHeadLine = `@ripgrep_search ${pattern} ${rel} ${rest}`.trim();
+      return await ripgrepSearchTool.call(dlg, proxyCaller, proxyHeadLine, '');
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1822,8 +2411,21 @@ export const teamMgmtTools: ReadonlyArray<TextingTool> = [
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtOverwriteFileTool,
+  teamMgmtReplaceFileContentsTool,
+  teamMgmtAppendFileTool,
+  teamMgmtInsertAfterTool,
+  teamMgmtInsertBeforeTool,
+  teamMgmtReplaceBlockTool,
   teamMgmtPlanFileModificationTool,
   teamMgmtApplyFileModificationTool,
+  teamMgmtMkDirTool,
+  teamMgmtMoveFileTool,
+  teamMgmtMoveDirTool,
+  teamMgmtRipgrepFilesTool,
+  teamMgmtRipgrepSnippetsTool,
+  teamMgmtRipgrepCountTool,
+  teamMgmtRipgrepFixedTool,
+  teamMgmtRipgrepSearchTool,
   teamMgmtMkdirTool,
   teamMgmtMovePathTool,
   teamMgmtRmFileTool,

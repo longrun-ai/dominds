@@ -623,3 +623,495 @@ Example:
     }
   },
 };
+
+function yamlQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function formatYamlCodeBlock(yaml: string): string {
+  return `\`\`\`yaml\n${yaml}\n\`\`\``;
+}
+
+function parseBooleanOption(value: string): boolean | undefined {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+async function countDirEntries(absPath: string): Promise<number> {
+  let count = 0;
+  const entries = await fs.readdir(absPath, { withFileTypes: true });
+  for (const entry of entries) {
+    count++;
+    if (entry.isDirectory()) {
+      count += await countDirEntries(path.join(absPath, entry.name));
+    }
+  }
+  return count;
+}
+
+export const mkDirTool: TextingTool = {
+  type: 'texter',
+  name: 'mk_dir',
+  backfeeding: true,
+  usageDescription: `Create a directory relative to workspace.
+Usage: !!@mk_dir <path> [options]
+
+Options:
+  parents=true|false (default: true)`,
+  usageDescriptionI18n: {
+    en: `Create a directory relative to workspace.
+Usage: !!@mk_dir <path> [options]
+
+Options:
+  parents=true|false (default: true)`,
+    zh: `创建工作区内目录。
+用法：!!@mk_dir <path> [options]
+
+选项：
+  parents=true|false（默认 true）`,
+  },
+  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const workLanguage = getWorkLanguage();
+    const trimmed = headLine.trim();
+    if (!trimmed.startsWith('@mk_dir')) {
+      const yaml = [
+        `status: error`,
+        `error: INVALID_FORMAT`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Mk-dir failed: invalid format. Use !!@mk_dir <path> [parents=true|false].'
+            : 'Mk-dir failed: invalid format. Use !!@mk_dir <path> [parents=true|false].',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const after = trimmed.slice('@mk_dir'.length).trim();
+    const parts = after.split(/\s+/).filter((p) => p.length > 0);
+    const rel = parts[0] ?? '';
+    if (!rel) {
+      const yaml = [
+        `status: error`,
+        `error: PATH_REQUIRED`,
+        `summary: ${yamlQuote(workLanguage === 'zh' ? 'Mk-dir failed: path required.' : 'Mk-dir failed: path required.')}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    let parents = true;
+    for (const tok of parts.slice(1)) {
+      const eq = tok.indexOf('=');
+      if (eq <= 0) continue;
+      const key = tok.slice(0, eq);
+      const value = tok.slice(eq + 1);
+      if (key === 'parents') {
+        const parsed = parseBooleanOption(value);
+        if (parsed !== undefined) parents = parsed;
+      }
+    }
+
+    const targetPath = path.resolve(process.cwd(), rel);
+    const cwd = path.resolve(process.cwd());
+    if (!targetPath.startsWith(cwd)) {
+      const yaml = [
+        `status: error`,
+        `path: ${yamlQuote(rel)}`,
+        `error: PATH_OUTSIDE_WORKSPACE`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Mk-dir failed: path must be within workspace.'
+            : 'Mk-dir failed: path must be within workspace.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    if (!hasWriteAccess(caller, rel)) {
+      const content = getAccessDeniedMessage('write', rel, workLanguage);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    try {
+      const st = await fs.lstat(targetPath).catch((err: unknown) => {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code?: unknown }).code === 'ENOENT'
+        ) {
+          return undefined;
+        }
+        throw err;
+      });
+      if (st) {
+        if (!st.isDirectory()) {
+          const yaml = [
+            `status: error`,
+            `path: ${yamlQuote(rel)}`,
+            `error: PATH_EXISTS_NOT_DIR`,
+            `summary: ${yamlQuote(
+              workLanguage === 'zh'
+                ? 'Mk-dir failed: path exists and is not a directory.'
+                : 'Mk-dir failed: path exists and is not a directory.',
+            )}`,
+          ].join('\n');
+          const content = formatYamlCodeBlock(yaml);
+          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        }
+        const yaml = [
+          `status: ok`,
+          `path: ${yamlQuote(rel)}`,
+          `created: false`,
+          `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).`)}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      await fs.mkdir(targetPath, { recursive: parents });
+      const yaml = [
+        `status: ok`,
+        `path: ${yamlQuote(rel)}`,
+        `created: true`,
+        `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).`)}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `path: ${yamlQuote(rel)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+  },
+};
+
+export const moveFileTool: TextingTool = {
+  type: 'texter',
+  name: 'move_file',
+  backfeeding: true,
+  usageDescription: `Move/rename a file relative to workspace.
+Usage: !!@move_file <from> <to>`,
+  usageDescriptionI18n: {
+    en: `Move/rename a file relative to workspace.
+Usage: !!@move_file <from> <to>`,
+    zh: `移动/重命名工作区内文件。
+用法：!!@move_file <from> <to>`,
+  },
+  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const workLanguage = getWorkLanguage();
+    const trimmed = headLine.trim();
+    if (!trimmed.startsWith('@move_file')) {
+      const yaml = [
+        `status: error`,
+        `error: INVALID_FORMAT`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Move-file failed: invalid format. Use !!@move_file <from> <to>.'
+            : 'Move-file failed: invalid format. Use !!@move_file <from> <to>.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const after = trimmed.slice('@move_file'.length).trim();
+    const parts = after.split(/\s+/).filter((p) => p.length > 0);
+    const from = parts[0] ?? '';
+    const to = parts[1] ?? '';
+    if (!from || !to) {
+      const yaml = [
+        `status: error`,
+        `error: INVALID_FORMAT`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Move-file failed: from/to required.'
+            : 'Move-file failed: from/to required.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const absFrom = path.resolve(process.cwd(), from);
+    const absTo = path.resolve(process.cwd(), to);
+    const cwd = path.resolve(process.cwd());
+    if (!absFrom.startsWith(cwd) || !absTo.startsWith(cwd)) {
+      const yaml = [
+        `status: error`,
+        `from: ${yamlQuote(from)}`,
+        `to: ${yamlQuote(to)}`,
+        `error: PATH_OUTSIDE_WORKSPACE`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Move-file failed: paths must be within workspace.'
+            : 'Move-file failed: paths must be within workspace.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    if (!hasWriteAccess(caller, from) || !hasWriteAccess(caller, to)) {
+      const content = getAccessDeniedMessage('write', from, workLanguage);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    try {
+      const st = await fs.lstat(absFrom);
+      if (!st.isFile()) {
+        const yaml = [
+          `status: error`,
+          `from: ${yamlQuote(from)}`,
+          `to: ${yamlQuote(to)}`,
+          `error: FROM_NOT_FILE`,
+          `summary: ${yamlQuote(
+            workLanguage === 'zh'
+              ? 'Move-file failed: from is not a file.'
+              : 'Move-file failed: from is not a file.',
+          )}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const toParent = path.dirname(absTo);
+      const toParentSt = await fs.lstat(toParent).catch(() => undefined);
+      if (!toParentSt || !toParentSt.isDirectory()) {
+        const yaml = [
+          `status: error`,
+          `from: ${yamlQuote(from)}`,
+          `to: ${yamlQuote(to)}`,
+          `error: TO_PARENT_NOT_DIR`,
+          `summary: ${yamlQuote(
+            workLanguage === 'zh'
+              ? 'Move-file failed: destination parent directory does not exist. Use mk_dir first.'
+              : 'Move-file failed: destination parent directory does not exist. Use mk_dir first.',
+          )}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const toExists = await fs
+        .lstat(absTo)
+        .then(() => true)
+        .catch((err: unknown) => {
+          if (
+            typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code?: unknown }).code === 'ENOENT'
+          ) {
+            return false;
+          }
+          throw err;
+        });
+      if (toExists) {
+        const yaml = [
+          `status: error`,
+          `from: ${yamlQuote(from)}`,
+          `to: ${yamlQuote(to)}`,
+          `error: TO_EXISTS`,
+          `summary: ${yamlQuote(
+            workLanguage === 'zh'
+              ? 'Move-file failed: destination already exists.'
+              : 'Move-file failed: destination already exists.',
+          )}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      await fs.rename(absFrom, absTo);
+      const yaml = [
+        `status: ok`,
+        `from: ${yamlQuote(from)}`,
+        `to: ${yamlQuote(to)}`,
+        `summary: ${yamlQuote(`Move-file: ${from} \u2192 ${to}.`)}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `from: ${yamlQuote(from)}`,
+        `to: ${yamlQuote(to)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+  },
+};
+
+export const moveDirTool: TextingTool = {
+  type: 'texter',
+  name: 'move_dir',
+  backfeeding: true,
+  usageDescription: `Move/rename a directory relative to workspace.
+Usage: !!@move_dir <from> <to>`,
+  usageDescriptionI18n: {
+    en: `Move/rename a directory relative to workspace.
+Usage: !!@move_dir <from> <to>`,
+    zh: `移动/重命名工作区内目录。
+用法：!!@move_dir <from> <to>`,
+  },
+  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+    const workLanguage = getWorkLanguage();
+    const trimmed = headLine.trim();
+    if (!trimmed.startsWith('@move_dir')) {
+      const yaml = [
+        `status: error`,
+        `error: INVALID_FORMAT`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Move-dir failed: invalid format. Use !!@move_dir <from> <to>.'
+            : 'Move-dir failed: invalid format. Use !!@move_dir <from> <to>.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const after = trimmed.slice('@move_dir'.length).trim();
+    const parts = after.split(/\s+/).filter((p) => p.length > 0);
+    const from = parts[0] ?? '';
+    const to = parts[1] ?? '';
+    if (!from || !to) {
+      const yaml = [
+        `status: error`,
+        `error: INVALID_FORMAT`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Move-dir failed: from/to required.'
+            : 'Move-dir failed: from/to required.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const absFrom = path.resolve(process.cwd(), from);
+    const absTo = path.resolve(process.cwd(), to);
+    const cwd = path.resolve(process.cwd());
+    if (!absFrom.startsWith(cwd) || !absTo.startsWith(cwd)) {
+      const yaml = [
+        `status: error`,
+        `from: ${yamlQuote(from)}`,
+        `to: ${yamlQuote(to)}`,
+        `error: PATH_OUTSIDE_WORKSPACE`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Move-dir failed: paths must be within workspace.'
+            : 'Move-dir failed: paths must be within workspace.',
+        )}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    if (!hasWriteAccess(caller, from) || !hasWriteAccess(caller, to)) {
+      const content = getAccessDeniedMessage('write', from, workLanguage);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    try {
+      const st = await fs.lstat(absFrom);
+      if (!st.isDirectory()) {
+        const yaml = [
+          `status: error`,
+          `from: ${yamlQuote(from)}`,
+          `to: ${yamlQuote(to)}`,
+          `error: FROM_NOT_DIR`,
+          `summary: ${yamlQuote(
+            workLanguage === 'zh'
+              ? 'Move-dir failed: from is not a directory.'
+              : 'Move-dir failed: from is not a directory.',
+          )}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const toParent = path.dirname(absTo);
+      const toParentSt = await fs.lstat(toParent).catch(() => undefined);
+      if (!toParentSt || !toParentSt.isDirectory()) {
+        const yaml = [
+          `status: error`,
+          `from: ${yamlQuote(from)}`,
+          `to: ${yamlQuote(to)}`,
+          `error: TO_PARENT_NOT_DIR`,
+          `summary: ${yamlQuote(
+            workLanguage === 'zh'
+              ? 'Move-dir failed: destination parent directory does not exist. Use mk_dir first.'
+              : 'Move-dir failed: destination parent directory does not exist. Use mk_dir first.',
+          )}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const toExists = await fs
+        .lstat(absTo)
+        .then(() => true)
+        .catch((err: unknown) => {
+          if (
+            typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            (err as { code?: unknown }).code === 'ENOENT'
+          ) {
+            return false;
+          }
+          throw err;
+        });
+      if (toExists) {
+        const yaml = [
+          `status: error`,
+          `from: ${yamlQuote(from)}`,
+          `to: ${yamlQuote(to)}`,
+          `error: TO_EXISTS`,
+          `summary: ${yamlQuote(
+            workLanguage === 'zh'
+              ? 'Move-dir failed: destination already exists.'
+              : 'Move-dir failed: destination already exists.',
+          )}`,
+        ].join('\n');
+        const content = formatYamlCodeBlock(yaml);
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const movedEntryCount = await countDirEntries(absFrom);
+      await fs.rename(absFrom, absTo);
+      const yaml = [
+        `status: ok`,
+        `from: ${yamlQuote(from)}`,
+        `to: ${yamlQuote(to)}`,
+        `moved_entry_count: ${movedEntryCount}`,
+        `summary: ${yamlQuote(`Move-dir: ${from} \u2192 ${to} (${movedEntryCount} entries).`)}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `from: ${yamlQuote(from)}`,
+        `to: ${yamlQuote(to)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      const content = formatYamlCodeBlock(yaml);
+      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+  },
+};

@@ -866,27 +866,18 @@ export class TextingStreamParser {
       this.updateBacktickState(charType);
 
       if (!this.inSingleBacktick) {
-        // Handle @ character when firstMentionAccumulator is empty (e.g., after mode switch from FREE_TEXT)
-        // In this case, we need to set firstMentionAccumulator to '@' so the subsequent characters are accumulated
-        if (this.firstMentionAccumulator === '') {
+        // Only parse `@...` as a mention when we're still expecting the very first mention.
+        // After the first mention is resolved, `@` must be treated as literal headline content
+        // (e.g. for diff markers like `@@ -1,1 +1,1 @@`).
+        if (this.expectingFirstMention) {
           this.firstMentionAccumulator = '@';
           this.headlineBuffer += '@';
           return position + 1;
         }
-        // Only start a new mention if we're expecting one
-        if (this.expectingFirstMention) {
-          this.firstMentionAccumulator = '@';
-          this.headlineBuffer += '@'; // Add @ to headline buffer too
-          return position + 1;
-        } else {
-          // We're in headline mode, treat @ as regular content
-          // Only add @ if not already at the start of headlineBuffer (avoids double-add when space follows mention)
-          if (!this.headlineBuffer.endsWith('@')) {
-            this.headlineBuffer += '@';
-          }
 
-          return position + 1;
-        }
+        this.headlineBuffer += '@';
+        this.headlineHasContent = true;
+        return position + 1;
       } else {
         // Inside single backticks, treat @ as regular headline content
         this.headlineBuffer += char;
