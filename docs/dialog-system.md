@@ -407,7 +407,7 @@ sequenceDiagram
 Q4H is raised when the `!?@human` teammate call is invoked by ANY dialog (root or subdialog) on its own right:
 
 ```typescript
-// From main/llm/driver.ts, executeTextingCall function
+// From main/llm/driver.ts, executeTellaskCall function
 const isQ4H = firstMention === 'human';
 ```
 

@@ -3006,7 +3006,7 @@ function setGlobal() {
     waitUntil,
     // Function call detection
     detectFuncCall,
-    // Texter tool-call detection (e.g. @clear_mind)
+    // Tellask tool-call detection (e.g. @clear_mind)
     getToolCallingSections,
     detectToolCall,
     // Dialog creation

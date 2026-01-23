@@ -31,7 +31,7 @@ import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
-import { TextingTool, TextingToolCallResult } from '../tool';
+import { TellaskTool, TellaskToolCallResult } from '../tool';
 import {
   isTaskPackagePath,
   taskPackageSectionFromSelector,
@@ -43,11 +43,11 @@ function env(content: string): ChatMessage[] {
   return [{ type: 'environment_msg', role: 'user', content }] satisfies ChatMessage[];
 }
 
-function ok(result?: string, messages?: ChatMessage[]): TextingToolCallResult {
+function ok(result?: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'completed', result, messages };
 }
 
-function fail(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function fail(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'failed', result, messages };
 }
 
@@ -127,7 +127,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
  * Delete a reminder by its number
  * Usage: !?@delete_reminder <reminder-no>
  */
-export const deleteReminderTool: TextingTool = {
+export const deleteReminderTool: TellaskTool = {
   type: 'texter',
   name: 'delete_reminder',
   usageDescription: 'Delete a reminder by number: !?@delete_reminder <reminder-no>',
@@ -141,7 +141,7 @@ export const deleteReminderTool: TextingTool = {
     _caller: Team.Member,
     headLine: string,
     _inputBody: string,
-  ): Promise<TextingToolCallResult> {
+  ): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const reminderNoMatch = headLine.match(/^@delete_reminder\s+(\d+)\s*$/);
@@ -165,7 +165,7 @@ export const deleteReminderTool: TextingTool = {
  * Usage: !?@add_reminder [<reminder-no>]
  * !?<reminder-content>
  */
-export const addReminderTool: TextingTool = {
+export const addReminderTool: TellaskTool = {
   type: 'texter',
   name: 'add_reminder',
   usageDescription: 'Add a reminder: !?@add_reminder [<reminder-no>]\n!?<reminder-content>',
@@ -179,7 +179,7 @@ export const addReminderTool: TextingTool = {
     _caller: Team.Member,
     headLine: string,
     inputBody: string,
-  ): Promise<TextingToolCallResult> {
+  ): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const reminderNoMatch = headLine.match(/^@add_reminder(?:\s+(\d+)\s*)?$/);
@@ -213,7 +213,7 @@ export const addReminderTool: TextingTool = {
  * Usage: !?@update_reminder <reminder-no>
  * !?<reminder-content>
  */
-export const updateReminderTool: TextingTool = {
+export const updateReminderTool: TellaskTool = {
   type: 'texter',
   name: 'update_reminder',
   usageDescription: 'Update a reminder: !?@update_reminder <reminder-no>\n!?<reminder-content>',
@@ -227,7 +227,7 @@ export const updateReminderTool: TextingTool = {
     _caller: Team.Member,
     headLine: string,
     inputBody: string,
-  ): Promise<TextingToolCallResult> {
+  ): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const reminderNoMatch = headLine.match(/^@update_reminder\s+(\d+)\s*$/);
@@ -256,7 +256,7 @@ export const updateReminderTool: TextingTool = {
  * Usage: !?@clear_mind
  * !?<reminder-content> - optional, when provided, adds as new reminder
  */
-export const clearMindTool: TextingTool = {
+export const clearMindTool: TellaskTool = {
   type: 'texter',
   name: 'clear_mind',
   usageDescription: 'Clear mind and start new round: !?@clear_mind\\n!?<reminder-content>',
@@ -270,7 +270,7 @@ export const clearMindTool: TextingTool = {
     _caller: Team.Member,
     _headLine: string,
     inputBody: string,
-  ): Promise<TextingToolCallResult> {
+  ): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const reminderContent = inputBody.trim();
@@ -287,7 +287,7 @@ export const clearMindTool: TextingTool = {
  * Usage: !?@change_mind
  * !?<new-task-doc-content> - required, overwrites current task doc file
  */
-export const changeMindTool: TextingTool = {
+export const changeMindTool: TellaskTool = {
   type: 'texter',
   name: 'change_mind',
   usageDescription:
@@ -307,7 +307,7 @@ export const changeMindTool: TextingTool = {
     caller: Team.Member,
     headLine: string,
     inputBody: string,
-  ): Promise<TextingToolCallResult> {
+  ): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const t = getCtrlMessages(language);
     const trimmedHeadLine = headLine.trim();

@@ -175,7 +175,7 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
   }
 
   // Handle texter tool-call results (NOT LLM-native, represented as role='user' messages)
-  // Texter tools are conversational, not function calls - send as text content
+  // Tellask tools are conversational, not function calls - send as text content
   if (chatMsg.type === 'call_result_msg') {
     const msg: AnthropicContentBlock = {
       type: 'text',

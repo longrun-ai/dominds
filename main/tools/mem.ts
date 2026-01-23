@@ -12,17 +12,17 @@ import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
-import { TextingTool, TextingToolCallResult } from '../tool';
+import { TellaskTool, TellaskToolCallResult } from '../tool';
 
 function env(content: string): ChatMessage[] {
   return [{ type: 'environment_msg', role: 'user', content }] satisfies ChatMessage[];
 }
 
-function ok(result?: string): TextingToolCallResult {
+function ok(result?: string): TellaskToolCallResult {
   return { status: 'completed', result };
 }
 
-function fail(result: string): TextingToolCallResult {
+function fail(result: string): TellaskToolCallResult {
   return { status: 'failed', result, messages: env(result) };
 }
 
@@ -66,7 +66,7 @@ function getMemoryPath(params: {
   return { kind: 'ok', rel };
 }
 
-export const addMemoryTool: TextingTool = {
+export const addMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'add_memory',
   backfeeding: false,
@@ -111,7 +111,7 @@ Examples:
 !?- Feature implementation
 !?- Bug fixes`,
   },
-  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
@@ -164,7 +164,7 @@ Examples:
   },
 };
 
-export const dropMemoryTool: TextingTool = {
+export const dropMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'drop_memory',
   backfeeding: false,
@@ -188,7 +188,7 @@ Examples:
 !?@drop_memory notes/old-ideas.md
 !?@drop_memory tasks/completed-task.md`,
   },
-  async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
@@ -231,7 +231,7 @@ Examples:
   },
 };
 
-export const replaceMemoryTool: TextingTool = {
+export const replaceMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'replace_memory',
   backfeeding: false,
@@ -261,7 +261,7 @@ Examples:
 !?# Updated Project Status
 !?Current progress and next steps...`,
   },
-  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
@@ -312,7 +312,7 @@ Examples:
   },
 };
 
-export const clearMemoryTool: TextingTool = {
+export const clearMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'clear_memory',
   backfeeding: false,
@@ -330,7 +330,7 @@ This will remove all files in my personal memory directory.`,
 
 这会删除个人记忆目录下的所有文件。`,
   },
-  async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const memoryDir = path.join('.minds/memory/individual', caller.id);
 
@@ -347,7 +347,7 @@ This will remove all files in my personal memory directory.`,
   },
 };
 
-export const addSharedMemoryTool: TextingTool = {
+export const addSharedMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'add_team_memory',
   backfeeding: false,
@@ -389,7 +389,7 @@ Examples:
 !?## Team Decisions
 !?Important decisions made by the team...`,
   },
-  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
@@ -442,7 +442,7 @@ Examples:
   },
 };
 
-export const dropSharedMemoryTool: TextingTool = {
+export const dropSharedMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'drop_team_memory',
   backfeeding: false,
@@ -466,7 +466,7 @@ Examples:
 !?@drop_team_memory project/old-requirements.md
 !?@drop_team_memory team/outdated-decisions.md`,
   },
-  async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
@@ -509,7 +509,7 @@ Examples:
   },
 };
 
-export const replaceSharedMemoryTool: TextingTool = {
+export const replaceSharedMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'replace_team_memory',
   backfeeding: false,
@@ -539,7 +539,7 @@ Examples:
 !?# Updated Project Requirements
 !?Revised requirements based on feedback...`,
   },
-  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
 
@@ -590,7 +590,7 @@ Examples:
   },
 };
 
-export const clearSharedMemoryTool: TextingTool = {
+export const clearSharedMemoryTool: TellaskTool = {
   type: 'texter',
   name: 'clear_team_memory',
   backfeeding: false,
@@ -608,7 +608,7 @@ This will remove all files in the shared memory directory.`,
 
 这会删除共享记忆目录下的所有文件。`,
   },
-  async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg: Dialog, caller, _headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const memoryDir = '.minds/memory/team_shared';
 

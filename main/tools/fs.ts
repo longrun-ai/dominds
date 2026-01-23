@@ -12,7 +12,7 @@ import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access
 import type { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getWorkLanguage } from '../shared/runtime-language';
-import { TextingTool, TextingToolCallResult } from '../tool';
+import { TellaskTool, TellaskToolCallResult } from '../tool';
 
 interface DirectoryEntry {
   name: string;
@@ -22,11 +22,11 @@ interface DirectoryEntry {
   target?: string;
 }
 
-function ok(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'completed', result, messages };
 }
 
-function fail(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function fail(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'failed', result, messages };
 }
 
@@ -91,7 +91,7 @@ async function countLines(filePath: string): Promise<number> {
   }
 }
 
-export const listDirTool: TextingTool = {
+export const listDirTool: TellaskTool = {
   type: 'texter',
   name: 'list_dir',
   backfeeding: true,
@@ -139,7 +139,7 @@ Example:
 示例：
 !?@list_dir src/tools`,
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
@@ -352,7 +352,7 @@ Example:
   },
 };
 
-export const rmDirTool: TextingTool = {
+export const rmDirTool: TellaskTool = {
   type: 'texter',
   name: 'rm_dir',
   backfeeding: true,
@@ -394,7 +394,7 @@ Examples:
   !?@rm_dir temp
   !?@rm_dir build !recursive true`,
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
@@ -506,7 +506,7 @@ Examples:
   },
 };
 
-export const rmFileTool: TextingTool = {
+export const rmFileTool: TellaskTool = {
   type: 'texter',
   name: 'rm_file',
   backfeeding: true,
@@ -536,7 +536,7 @@ Example:
 示例：
   !?@rm_file temp/old-file.txt`,
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
@@ -650,7 +650,7 @@ async function countDirEntries(absPath: string): Promise<number> {
   return count;
 }
 
-export const mkDirTool: TextingTool = {
+export const mkDirTool: TellaskTool = {
   type: 'texter',
   name: 'mk_dir',
   backfeeding: true,
@@ -671,7 +671,7 @@ Options:
 选项：
   parents=true|false（默认 true）`,
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const workLanguage = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@mk_dir')) {
@@ -794,7 +794,7 @@ Options:
   },
 };
 
-export const moveFileTool: TextingTool = {
+export const moveFileTool: TellaskTool = {
   type: 'texter',
   name: 'move_file',
   backfeeding: true,
@@ -806,7 +806,7 @@ Usage: !?@move_file <from> <to>`,
     zh: `移动/重命名工作区内文件。
 用法：!?@move_file <from> <to>`,
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const workLanguage = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@move_file')) {
@@ -954,7 +954,7 @@ Usage: !?@move_file <from> <to>`,
   },
 };
 
-export const moveDirTool: TextingTool = {
+export const moveDirTool: TellaskTool = {
   type: 'texter',
   name: 'move_dir',
   backfeeding: true,
@@ -966,7 +966,7 @@ Usage: !?@move_dir <from> <to>`,
     zh: `移动/重命名工作区内目录。
 用法：!?@move_dir <from> <to>`,
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const workLanguage = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@move_dir')) {

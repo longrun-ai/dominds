@@ -9,13 +9,13 @@ import path from 'path';
 import type { ChatMessage } from '../llm/client';
 import { getWorkLanguage } from '../shared/runtime-language';
 import { Team } from '../team';
-import { TextingTool, TextingToolCallResult } from '../tool';
+import { TellaskTool, TellaskToolCallResult } from '../tool';
 
-function ok(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'completed', result, messages };
 }
 
-function failed(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function failed(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'failed', result, messages };
 }
 
@@ -315,7 +315,7 @@ async function loadFileLines(relPath: string): Promise<string[]> {
   return parts;
 }
 
-export const ripgrepFilesTool: TextingTool = {
+export const ripgrepFilesTool: TellaskTool = {
   type: 'texter',
   name: 'ripgrep_files',
   backfeeding: true,
@@ -329,7 +329,7 @@ Options:
   max_files=<n> (default: 50)
   include_hidden=true|false (default: false)
   follow_symlinks=true|false (default: false)`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const parsed = parseRipgrepArgs('ripgrep_files', headLine, {
       ...defaultBaseOptions(),
       maxFiles: 50,
@@ -407,7 +407,7 @@ Options:
   },
 };
 
-export const ripgrepCountTool: TextingTool = {
+export const ripgrepCountTool: TellaskTool = {
   type: 'texter',
   name: 'ripgrep_count',
   backfeeding: true,
@@ -421,7 +421,7 @@ Options:
   max_files=<n> (default: 200)
   include_hidden=true|false (default: false)
   follow_symlinks=true|false (default: false)`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const parsed = parseRipgrepArgs('ripgrep_count', headLine, {
       ...defaultBaseOptions(),
       maxFiles: 200,
@@ -501,7 +501,7 @@ Options:
   },
 };
 
-export const ripgrepSnippetsTool: TextingTool = {
+export const ripgrepSnippetsTool: TellaskTool = {
   type: 'texter',
   name: 'ripgrep_snippets',
   backfeeding: true,
@@ -517,7 +517,7 @@ Options:
   max_results=<n> (default: 50)
   include_hidden=true|false (default: false)
   follow_symlinks=true|false (default: false)`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const parsed = parseRipgrepArgs('ripgrep_snippets', headLine, {
       ...defaultBaseOptions(),
       maxResults: 50,
@@ -635,7 +635,7 @@ Options:
   },
 };
 
-export const ripgrepFixedTool: TextingTool = {
+export const ripgrepFixedTool: TellaskTool = {
   type: 'texter',
   name: 'ripgrep_fixed',
   backfeeding: true,
@@ -650,7 +650,7 @@ Options:
   max_results=<n>
   include_hidden=true|false
   follow_symlinks=true|false`,
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@ripgrep_fixed')) {
@@ -708,7 +708,7 @@ Options:
 
 const DISALLOWED_RG_ARGS = new Set(['--pre', '--pre-glob']);
 
-export const ripgrepSearchTool: TextingTool = {
+export const ripgrepSearchTool: TellaskTool = {
   type: 'texter',
   name: 'ripgrep_search',
   backfeeding: true,
@@ -718,7 +718,7 @@ Usage: !?@ripgrep_search <pattern> [path] [rg_args...]
 Notes:
   - Output is normalized to YAML snippets mode.
   - Disallowed flags: --pre, --pre-glob`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@ripgrep_search')) {

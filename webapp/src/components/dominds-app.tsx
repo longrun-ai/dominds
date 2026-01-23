@@ -5064,7 +5064,7 @@ export class DomindsApp extends HTMLElement {
     };
 
     return [
-      renderSectionHtml(t.toolsSectionTexting, 'texter', '@'),
+      renderSectionHtml(t.toolsSectionTellask, 'texter', '@'),
       renderSectionHtml(t.toolsSectionFunction, 'func', 'ƒ'),
     ].join('');
   }

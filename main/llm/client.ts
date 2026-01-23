@@ -61,7 +61,7 @@ export type FuncResultMsg = {
   content: string;
 };
 
-export type TextingCallResultMsg = {
+export type TellaskCallResultMsg = {
   type: 'call_result_msg';
   role: 'tool';
   responderId: string; // id of tool only
@@ -79,7 +79,7 @@ export type ChatMessage =
   | ThinkingMsg
   | FuncCallMsg
   | FuncResultMsg
-  | TextingCallResultMsg;
+  | TellaskCallResultMsg;
 
 export interface ModelInfo {
   name?: string; // Optional, defaults to model key if not specified

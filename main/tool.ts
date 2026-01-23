@@ -38,7 +38,7 @@ export interface FuncTool {
   call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string>;
 }
 
-export interface TextingTool {
+export interface TellaskTool {
   readonly type: 'texter';
   readonly name: string;
   readonly usageDescription: string;
@@ -48,11 +48,11 @@ export interface TextingTool {
     caller: Team.Member,
     headLine: string,
     inputBody: string,
-  ): Promise<TextingToolCallResult>;
+  ): Promise<TellaskToolCallResult>;
   readonly backfeeding: boolean;
 }
 
-export type TextingToolCallResult =
+export type TellaskToolCallResult =
   | {
       status: 'completed';
       result?: string;
@@ -64,7 +64,7 @@ export type TextingToolCallResult =
       messages?: ChatMessage[];
     };
 
-export type Tool = FuncTool | TextingTool;
+export type Tool = FuncTool | TellaskTool;
 
 // Reminder-related interfaces
 export interface Reminder {

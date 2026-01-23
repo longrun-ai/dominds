@@ -23,7 +23,7 @@ import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import type { TextingTool, TextingToolCallResult } from '../tool';
+import type { TellaskTool, TellaskToolCallResult } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { listToolsets } from './registry';
 import {
@@ -50,11 +50,11 @@ const MINDS_DIR = '.minds';
 const TEAM_YAML_REL = `${MINDS_DIR}/team.yaml`;
 const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
 
-function ok(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'completed', result, messages };
 }
 
-function fail(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function fail(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'failed', result, messages };
 }
 
@@ -241,7 +241,7 @@ function formatModelCheckResult(r: ModelCheckResult): string {
   return `- ${r.model}: ❌ ${r.details ?? 'failed'}`;
 }
 
-export const teamMgmtCheckProviderTool: TextingTool = {
+export const teamMgmtCheckProviderTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_check_provider',
   backfeeding: true,
@@ -283,7 +283,7 @@ export const teamMgmtCheckProviderTool: TextingTool = {
       `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
       `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
   },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const args = parseProviderCheckArgs(headLine, this.name);
@@ -477,7 +477,7 @@ export const teamMgmtCheckProviderTool: TextingTool = {
   },
 };
 
-export const teamMgmtListDirTool: TextingTool = {
+export const teamMgmtListDirTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_list_dir',
   backfeeding: true,
@@ -501,7 +501,7 @@ export const teamMgmtListDirTool: TextingTool = {
       `!?@team_mgmt_list_dir\n` +
       `!?@team_mgmt_list_dir team\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -529,7 +529,7 @@ export const teamMgmtListDirTool: TextingTool = {
   },
 };
 
-export const teamMgmtReadFileTool: TextingTool = {
+export const teamMgmtReadFileTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_read_file',
   backfeeding: true,
@@ -565,7 +565,7 @@ export const teamMgmtReadFileTool: TextingTool = {
       `!?@team_mgmt_read_file team.yaml\n` +
       `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -599,7 +599,7 @@ export const teamMgmtReadFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtOverwriteFileTool: TextingTool = {
+export const teamMgmtOverwriteFileTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_overwrite_file',
   backfeeding: true,
@@ -629,7 +629,7 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
       `!?member_defaults:\n` +
       `!?  provider: codex\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -656,7 +656,7 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtReplaceFileContentsTool: TextingTool = {
+export const teamMgmtReplaceFileContentsTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_replace_file_contents',
   backfeeding: true,
@@ -674,7 +674,7 @@ export const teamMgmtReplaceFileContentsTool: TextingTool = {
       `用法：!?@team_mgmt_replace_file_contents <path>\n` +
       `!?<正文为文件内容>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -706,7 +706,7 @@ export const teamMgmtReplaceFileContentsTool: TextingTool = {
   },
 };
 
-export const teamMgmtAppendFileTool: TextingTool = {
+export const teamMgmtAppendFileTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_append_file',
   backfeeding: true,
@@ -724,7 +724,7 @@ export const teamMgmtAppendFileTool: TextingTool = {
       `用法：!?@team_mgmt_append_file <path>\n` +
       `!?<正文为追加内容>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -750,7 +750,7 @@ export const teamMgmtAppendFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtInsertAfterTool: TextingTool = {
+export const teamMgmtInsertAfterTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_insert_after',
   backfeeding: true,
@@ -768,7 +768,7 @@ export const teamMgmtInsertAfterTool: TextingTool = {
       `用法：!?@team_mgmt_insert_after <path> <anchor> [options]\n` +
       `!?<正文为插入内容>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -800,7 +800,7 @@ export const teamMgmtInsertAfterTool: TextingTool = {
   },
 };
 
-export const teamMgmtInsertBeforeTool: TextingTool = {
+export const teamMgmtInsertBeforeTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_insert_before',
   backfeeding: true,
@@ -818,7 +818,7 @@ export const teamMgmtInsertBeforeTool: TextingTool = {
       `用法：!?@team_mgmt_insert_before <path> <anchor> [options]\n` +
       `!?<正文为插入内容>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -850,7 +850,7 @@ export const teamMgmtInsertBeforeTool: TextingTool = {
   },
 };
 
-export const teamMgmtReplaceBlockTool: TextingTool = {
+export const teamMgmtReplaceBlockTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_replace_block',
   backfeeding: true,
@@ -868,7 +868,7 @@ export const teamMgmtReplaceBlockTool: TextingTool = {
       `用法：!?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
       `!?<正文为新块内容>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -900,7 +900,7 @@ export const teamMgmtReplaceBlockTool: TextingTool = {
   },
 };
 
-export const teamMgmtPlanFileModificationTool: TextingTool = {
+export const teamMgmtPlanFileModificationTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_plan_file_modification',
   backfeeding: true,
@@ -918,7 +918,7 @@ export const teamMgmtPlanFileModificationTool: TextingTool = {
       `用法：!?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
       `!?<正文为新内容行>\n`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -952,7 +952,7 @@ export const teamMgmtPlanFileModificationTool: TextingTool = {
   },
 };
 
-export const teamMgmtApplyFileModificationTool: TextingTool = {
+export const teamMgmtApplyFileModificationTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_apply_file_modification',
   backfeeding: true,
@@ -967,7 +967,7 @@ export const teamMgmtApplyFileModificationTool: TextingTool = {
       `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下的单文件修改。\n` +
       `用法：!?@team_mgmt_apply_file_modification !<hunk-id>\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -996,7 +996,7 @@ export const teamMgmtApplyFileModificationTool: TextingTool = {
   },
 };
 
-export const teamMgmtMkDirTool: TextingTool = {
+export const teamMgmtMkDirTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_mk_dir',
   backfeeding: true,
@@ -1005,7 +1005,7 @@ export const teamMgmtMkDirTool: TextingTool = {
     en: `Create a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
     zh: `创建 ${MINDS_DIR}/ 下目录。\n用法：!?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1034,7 +1034,7 @@ export const teamMgmtMkDirTool: TextingTool = {
   },
 };
 
-export const teamMgmtMoveFileTool: TextingTool = {
+export const teamMgmtMoveFileTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_move_file',
   backfeeding: true,
@@ -1043,7 +1043,7 @@ export const teamMgmtMoveFileTool: TextingTool = {
     en: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_file <from> <to>\n`,
     zh: `移动/重命名 ${MINDS_DIR}/ 下文件。\n用法：!?@team_mgmt_move_file <from> <to>\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1076,7 +1076,7 @@ export const teamMgmtMoveFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtMoveDirTool: TextingTool = {
+export const teamMgmtMoveDirTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_move_dir',
   backfeeding: true,
@@ -1085,7 +1085,7 @@ export const teamMgmtMoveDirTool: TextingTool = {
     en: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_dir <from> <to>\n`,
     zh: `移动/重命名 ${MINDS_DIR}/ 下目录。\n用法：!?@team_mgmt_move_dir <from> <to>\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1118,7 +1118,7 @@ export const teamMgmtMoveDirTool: TextingTool = {
   },
 };
 
-export const teamMgmtRipgrepFilesTool: TextingTool = {
+export const teamMgmtRipgrepFilesTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_files',
   backfeeding: true,
@@ -1127,7 +1127,7 @@ export const teamMgmtRipgrepFilesTool: TextingTool = {
     en: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
     zh: `在 ${MINDS_DIR}/ 下用 ripgrep_files 搜索。\n用法：!?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1161,7 +1161,7 @@ export const teamMgmtRipgrepFilesTool: TextingTool = {
   },
 };
 
-export const teamMgmtRipgrepSnippetsTool: TextingTool = {
+export const teamMgmtRipgrepSnippetsTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_snippets',
   backfeeding: true,
@@ -1170,7 +1170,7 @@ export const teamMgmtRipgrepSnippetsTool: TextingTool = {
     en: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
     zh: `在 ${MINDS_DIR}/ 下用 ripgrep_snippets 搜索。\n用法：!?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1203,7 +1203,7 @@ export const teamMgmtRipgrepSnippetsTool: TextingTool = {
   },
 };
 
-export const teamMgmtRipgrepCountTool: TextingTool = {
+export const teamMgmtRipgrepCountTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_count',
   backfeeding: true,
@@ -1212,7 +1212,7 @@ export const teamMgmtRipgrepCountTool: TextingTool = {
     en: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
     zh: `在 ${MINDS_DIR}/ 下用 ripgrep_count 计数。\n用法：!?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1245,7 +1245,7 @@ export const teamMgmtRipgrepCountTool: TextingTool = {
   },
 };
 
-export const teamMgmtRipgrepFixedTool: TextingTool = {
+export const teamMgmtRipgrepFixedTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_fixed',
   backfeeding: true,
@@ -1254,7 +1254,7 @@ export const teamMgmtRipgrepFixedTool: TextingTool = {
     en: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
     zh: `在 ${MINDS_DIR}/ 下固定字符串搜索。\n用法：!?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1287,7 +1287,7 @@ export const teamMgmtRipgrepFixedTool: TextingTool = {
   },
 };
 
-export const teamMgmtRipgrepSearchTool: TextingTool = {
+export const teamMgmtRipgrepSearchTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_search',
   backfeeding: true,
@@ -1296,7 +1296,7 @@ export const teamMgmtRipgrepSearchTool: TextingTool = {
     en: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
     zh: `在 ${MINDS_DIR}/ 下使用 ripgrep_search 逃生舱。\n用法：!?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1329,7 +1329,7 @@ export const teamMgmtRipgrepSearchTool: TextingTool = {
   },
 };
 
-export const teamMgmtRmFileTool: TextingTool = {
+export const teamMgmtRmFileTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_rm_file',
   backfeeding: true,
@@ -1338,7 +1338,7 @@ export const teamMgmtRmFileTool: TextingTool = {
     en: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_rm_file <path>\n`,
     zh: `删除 ${MINDS_DIR}/ 下的文件。\n` + `用法：!?@team_mgmt_rm_file <path>\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1367,7 +1367,7 @@ export const teamMgmtRmFileTool: TextingTool = {
   },
 };
 
-export const teamMgmtRmDirTool: TextingTool = {
+export const teamMgmtRmDirTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_rm_dir',
   backfeeding: true,
@@ -1382,7 +1382,7 @@ export const teamMgmtRmDirTool: TextingTool = {
       `删除 ${MINDS_DIR}/ 下的目录。\n` +
       `用法：!?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1414,7 +1414,7 @@ export const teamMgmtRmDirTool: TextingTool = {
   },
 };
 
-export const teamMgmtMkdirTool: TextingTool = {
+export const teamMgmtMkdirTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_mkdir',
   backfeeding: true,
@@ -1428,7 +1428,7 @@ export const teamMgmtMkdirTool: TextingTool = {
     zh:
       `在 ${MINDS_DIR}/ 下创建目录。\n` + `用法：!?@team_mgmt_mkdir <path> [!parents true|false]\n`,
   },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const after = parseArgsAfterTool(headLine, this.name);
@@ -1463,7 +1463,7 @@ export const teamMgmtMkdirTool: TextingTool = {
   },
 };
 
-export const teamMgmtMovePathTool: TextingTool = {
+export const teamMgmtMovePathTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_move_path',
   backfeeding: true,
@@ -1473,7 +1473,7 @@ export const teamMgmtMovePathTool: TextingTool = {
     en: `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_move_path <from> <to>\n`,
     zh: `在 ${MINDS_DIR}/ 下移动/重命名路径。\n` + `用法：!?@team_mgmt_move_path <from> <to>\n`,
   },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -2117,7 +2117,7 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
   return header + explain + '\n' + body + '\n';
 }
 
-export const teamMgmtValidateTeamCfgTool: TextingTool = {
+export const teamMgmtValidateTeamCfgTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_validate_team_cfg',
   backfeeding: true,
@@ -2132,7 +2132,7 @@ export const teamMgmtValidateTeamCfgTool: TextingTool = {
       `校验 ${TEAM_YAML_REL}，并将所有问题上报到 WebUI 的 Problems 面板。\n` +
       `用法：!?@team_mgmt_validate_team_cfg\n`,
   },
-  async call(dlg, _caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, _caller, _headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
     try {
       const minds = await getMindsDirState();
@@ -2231,7 +2231,7 @@ export const teamMgmtValidateTeamCfgTool: TextingTool = {
   },
 };
 
-export const teamMgmtManualTool: TextingTool = {
+export const teamMgmtManualTool: TellaskTool = {
   type: 'texter',
   name: 'team_mgmt_manual',
   backfeeding: true,
@@ -2264,7 +2264,7 @@ export const teamMgmtManualTool: TextingTool = {
       `!?@team_mgmt_manual !llm !builtin-defaults\n` +
       `!?@team_mgmt_manual !llm !model-params\n`,
   },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const topics = parseManualTopics(headLine);
     const msgPrefix =
@@ -2404,7 +2404,7 @@ export const teamMgmtManualTool: TextingTool = {
   },
 };
 
-export const teamMgmtTools: ReadonlyArray<TextingTool> = [
+export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
   teamMgmtManualTool,
   teamMgmtCheckProviderTool,
   teamMgmtValidateTeamCfgTool,

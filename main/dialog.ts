@@ -41,7 +41,7 @@ import {
 } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
-import { Reminder, ReminderOwner, TextingTool } from './tool';
+import { Reminder, ReminderOwner, TellaskTool } from './tool';
 import {
   addReminderTool,
   changeMindTool,
@@ -596,8 +596,8 @@ export abstract class Dialog {
    * Get intrinsic control tools available to this dialog's agent.
    * Applies access control: !?@change_mind is only available to main dialog agents.
    */
-  public getIntrinsicTools(): TextingTool[] {
-    const baseTools: TextingTool[] = [
+  public getIntrinsicTools(): TellaskTool[] {
+    const baseTools: TellaskTool[] = [
       addReminderTool,
       deleteReminderTool,
       updateReminderTool,

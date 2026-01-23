@@ -25,7 +25,7 @@ This doc remains the canonical design/spec for the behavior and semantics.
 MCP support should be implemented by composing existing primitives rather than inventing a parallel
 system:
 
-- Tool types are `FuncTool` / `TextingTool` unions in `dominds/main/tool.ts`.
+- Tool types are `FuncTool` / `TellaskTool` unions in `dominds/main/tool.ts`.
 - Tools and toolsets are globally registered via `registerTool` / `registerToolset` in
   `dominds/main/tools/registry.ts` (with built-ins registered during module initialization).
 - Team members resolve toolsets into concrete tool lists at runtime via `Team.Member.listTools()` in
@@ -150,7 +150,7 @@ tools as `FuncTool`s means:
 - MCP tools automatically show up to the model as function tools.
 - Results are recorded as `func_result_msg`, matching existing persistence and UI logic.
 
-Texting tools (`TextingTool`) are a separate grammar and are not a good fit for MCP’s structured
+Tellask tools (`TellaskTool`) are a separate grammar and are not a good fit for MCP’s structured
 schema-driven tools.
 
 ### Stdio transport caveat (MCP server side)

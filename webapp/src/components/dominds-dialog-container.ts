@@ -949,7 +949,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === TEXTER TOOL RESPONSE HANDLER ===
   // Handles responses for @tool_name calls - displays result INLINE in same bubble
-  // Renamed from handleTextingResponse to handleToolCallResponse
+  // Renamed from handleTellaskResponse to handleToolCallResponse
   //
   // Call Type Distinction:
   // - Tool Call: !?@tool_name (e.g., !?@add_reminder, !?@list_files)

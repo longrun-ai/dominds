@@ -13,9 +13,9 @@ import type { ChatMessage } from '../llm/client';
 import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
-import { TextingTool, TextingToolCallResult } from '../tool';
+import { TellaskTool, TellaskToolCallResult } from '../tool';
 
-function wrapTextingResult(language: LanguageCode, messages: ChatMessage[]): TextingToolCallResult {
+function wrapTellaskResult(language: LanguageCode, messages: ChatMessage[]): TellaskToolCallResult {
   const first = messages[0];
   const text =
     first && 'content' in first && typeof first.content === 'string' ? first.content : '';
@@ -36,11 +36,11 @@ function wrapTextingResult(language: LanguageCode, messages: ChatMessage[]): Tex
   };
 }
 
-function ok(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'completed', result, messages };
 }
 
-function failed(result: string, messages?: ChatMessage[]): TextingToolCallResult {
+function failed(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
   return { status: 'failed', result, messages };
 }
 
@@ -758,7 +758,7 @@ async function readFileContentBounded(
   });
 }
 
-export const readFileTool: TextingTool = {
+export const readFileTool: TellaskTool = {
   type: 'texter',
   name: 'read_file',
   backfeeding: true,
@@ -845,7 +845,7 @@ Examples:
 !?@read_file !range 300~ src/main.ts
 !?@read_file !range ~20 src/main.ts`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
@@ -922,7 +922,7 @@ Examples:
           parsed.error === 'invalid_format' || parsed.error === 'path_required'
             ? labels.formatError
             : labels.formatErrorWithReason(reason);
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const rel = parsed.path;
@@ -943,7 +943,7 @@ Examples:
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
         const content = getAccessDeniedMessage('read', rel, language);
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const file = ensureInsideWorkspace(rel);
@@ -1003,17 +1003,17 @@ Examples:
         (error.message === 'Invalid format' || error.message === 'Path required')
       ) {
         const content = labels.formatError;
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const msg = error instanceof Error ? error.message : String(error);
       const content = labels.failedToRead(msg);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
 
-export const overwriteFileTool: TextingTool = {
+export const overwriteFileTool: TellaskTool = {
   type: 'texter',
   name: 'overwrite_file',
   backfeeding: true,
@@ -1064,7 +1064,7 @@ Examples:
 !?# My Project
 !?This is a sample project.`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
@@ -1091,31 +1091,31 @@ Examples:
 
     if (!trimmed.startsWith('@overwrite_file')) {
       const content = labels.invalidFormat;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const afterToolName = trimmed.slice('@overwrite_file'.length).trim();
     if (!afterToolName) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
 
     if (!filePath) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check write access
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     if (!inputBody) {
       const content = labels.contentRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -1145,12 +1145,12 @@ Examples:
       const content = labels.overwriteFailed(
         error instanceof Error ? error.message : String(error),
       );
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
 
-export const replaceFileContentsTool: TextingTool = {
+export const replaceFileContentsTool: TellaskTool = {
   type: 'texter',
   name: 'replace_file_contents',
   backfeeding: true,
@@ -1177,7 +1177,7 @@ Note:
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
   若粘贴了 diff（例如 \`+\`/\`-\` 前缀或 \`@@\`），会被按字面写入文件。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
@@ -1203,29 +1203,29 @@ Note:
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@replace_file_contents')) {
       const content = labels.invalidFormat;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const afterToolName = trimmed.slice('@replace_file_contents'.length).trim();
     if (!afterToolName) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const filePath = afterToolName.split(/\s+/)[0];
     if (!filePath) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     if (!inputBody) {
       const content = labels.contentRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -1249,12 +1249,12 @@ Note:
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       const content = labels.replaceFailed(error instanceof Error ? error.message : String(error));
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
 
-export const planFileModificationTool: TextingTool = {
+export const planFileModificationTool: TellaskTool = {
   type: 'texter',
   name: 'plan_file_modification',
   backfeeding: true,
@@ -1338,7 +1338,7 @@ Tip:
   - 同一文件的多个 apply 可放在同一条消息里：系统会在进程内串行应用（按“更早规划的 hunk 先应用”）。
   - 不同文件的多个 apply 放在同一条消息里可安全批量确认。`,
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
@@ -1371,13 +1371,13 @@ Tip:
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@plan_file_modification')) {
       const content = labels.invalidFormat;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const afterToolName = trimmed.slice('@plan_file_modification'.length).trim();
     if (!afterToolName) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const parts = afterToolName.split(/\s+/).filter((p) => p.length > 0);
@@ -1387,17 +1387,17 @@ Tip:
     const requestedId = parseOptionalHunkId(maybeId);
     if (!filePath) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (!rangeSpec) {
       const content = labels.rangeRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     // Check write access
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -1407,7 +1407,7 @@ Tip:
       // Check if file exists
       if (!fsSync.existsSync(fullPath)) {
         const content = labels.fileDoesNotExist(filePath);
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       // Read current file content
@@ -1421,7 +1421,7 @@ Tip:
           language === 'zh'
             ? `错误：行号范围无效：${parsed.error}`
             : `Error: invalid line range: ${parsed.error}`;
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const range = parsed.range;
@@ -1449,7 +1449,7 @@ Tip:
         const existing = plannedModsById.get(hunkId);
         if (existing && existing.plannedBy !== caller.id) {
           const content = labels.hunkIdTaken(hunkId);
-          return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
         }
       }
       const planned: PlannedFileModification = {
@@ -1536,12 +1536,12 @@ Tip:
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (error: unknown) {
       const content = labels.planFailed(error instanceof Error ? error.message : String(error));
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
 
-export const applyFileModificationTool: TextingTool = {
+export const applyFileModificationTool: TellaskTool = {
   type: 'texter',
   name: 'apply_file_modification',
   usageDescription:
@@ -1565,7 +1565,7 @@ export const applyFileModificationTool: TextingTool = {
       '（无正文）',
   },
   backfeeding: true,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
@@ -1597,19 +1597,19 @@ export const applyFileModificationTool: TextingTool = {
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@apply_file_modification')) {
       const content = labels.invalidFormat;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     const afterToolName = trimmed.slice('@apply_file_modification'.length).trim();
     if (!afterToolName) {
       const content = labels.hunkIdRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     const raw = afterToolName.split(/\s+/)[0] ?? '';
     const id = raw.startsWith('!') ? raw.slice(1) : raw;
     if (!id) {
       const content = labels.hunkIdRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -1617,19 +1617,19 @@ export const applyFileModificationTool: TextingTool = {
       const planned = plannedModsById.get(id);
       if (!planned) {
         const content = labels.notFound(id);
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (planned.plannedBy !== caller.id) {
         const content = labels.wrongOwner;
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (!hasWriteAccess(caller, planned.relPath)) {
         const content = getAccessDeniedMessage('write', planned.relPath, language);
-        return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
       const absKey = planned.absPath;
-      const res = await new Promise<TextingToolCallResult>((resolve) => {
+      const res = await new Promise<TellaskToolCallResult>((resolve) => {
         enqueueFileApply(absKey, {
           priority: planned.createdAtMs,
           tieBreaker: planned.hunkId,
@@ -1640,14 +1640,14 @@ export const applyFileModificationTool: TextingTool = {
               if (!p) {
                 const content = labels.notFound(id);
                 resolve(
-                  wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+                  wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]),
                 );
                 return;
               }
               if (p.plannedBy !== caller.id) {
                 const content = labels.wrongOwner;
                 resolve(
-                  wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+                  wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]),
                 );
                 return;
               }
@@ -1787,7 +1787,7 @@ export const applyFileModificationTool: TextingTool = {
                 error instanceof Error ? error.message : String(error),
               );
               resolve(
-                wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+                wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]),
               );
             }
           },
@@ -1798,12 +1798,12 @@ export const applyFileModificationTool: TextingTool = {
       return res;
     } catch (error: unknown) {
       const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
   },
 };
 
-export const appendFileTool: TextingTool = {
+export const appendFileTool: TellaskTool = {
   type: 'texter',
   name: 'append_file',
   backfeeding: true,
@@ -1827,7 +1827,7 @@ Note:
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。`,
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
@@ -1847,21 +1847,21 @@ Note:
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@append_file')) {
       const content = labels.invalidFormat;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     const afterToolName = trimmed.slice('@append_file'.length).trim();
     const filePath = afterToolName.split(/\s+/)[0] ?? '';
     if (!filePath) {
       const content = labels.filePathRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (inputBody === '') {
       const content = labels.contentRequired;
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
     try {
@@ -1915,7 +1915,7 @@ Note:
   },
 };
 
-export const insertAfterTool: TextingTool = {
+export const insertAfterTool: TellaskTool = {
   type: 'texter',
   name: 'insert_after',
   backfeeding: true,
@@ -1942,7 +1942,7 @@ Options:
   occurrence=<n|last>（默认 1）
   strict=true|false（默认 true）`,
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@insert_after')) {
@@ -1974,7 +1974,7 @@ Options:
     }
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (inputBody === '') {
       const content = formatYamlCodeBlock(
@@ -2180,7 +2180,7 @@ Options:
   },
 };
 
-export const insertBeforeTool: TextingTool = {
+export const insertBeforeTool: TellaskTool = {
   type: 'texter',
   name: 'insert_before',
   backfeeding: true,
@@ -2207,7 +2207,7 @@ Options:
   occurrence=<n|last>（默认 1）
   strict=true|false（默认 true）`,
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@insert_before')) {
@@ -2239,7 +2239,7 @@ Options:
     }
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (inputBody === '') {
       const content = formatYamlCodeBlock(
@@ -2443,7 +2443,7 @@ Options:
   },
 };
 
-export const replaceBlockTool: TextingTool = {
+export const replaceBlockTool: TellaskTool = {
   type: 'texter',
   name: 'replace_block',
   backfeeding: true,
@@ -2470,7 +2470,7 @@ Options:
   occurrence=<n|last>（默认 1）
   include_anchors=true|false（默认 true）`,
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
+  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getWorkLanguage();
     const trimmed = headLine.trim();
     if (!trimmed.startsWith('@replace_block')) {
@@ -2503,7 +2503,7 @@ Options:
     }
     if (!hasWriteAccess(caller, filePath)) {
       const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTextingResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (inputBody === '') {
       const content = formatYamlCodeBlock(

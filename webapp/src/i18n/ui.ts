@@ -144,7 +144,7 @@ export type UiStrings = {
   toolsTitle: string;
   toolsEmpty: string;
   toolsRefresh: string;
-  toolsSectionTexting: string;
+  toolsSectionTellask: string;
   toolsSectionFunction: string;
 
   daemonLabel: string;
@@ -343,7 +343,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toolsTitle: '工具',
       toolsEmpty: '暂无工具',
       toolsRefresh: '刷新',
-      toolsSectionTexting: '诉请工具',
+      toolsSectionTellask: '诉请工具',
       toolsSectionFunction: '函数工具',
 
       daemonLabel: '守护进程',
@@ -540,7 +540,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toolsTitle: 'Tools',
     toolsEmpty: 'No tools',
     toolsRefresh: 'Refresh',
-    toolsSectionTexting: 'Tellask Tools',
+    toolsSectionTellask: 'Tellask Tools',
     toolsSectionFunction: 'Function Tools',
 
     daemonLabel: 'Daemon',

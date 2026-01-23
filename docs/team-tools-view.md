@@ -60,7 +60,7 @@ tools are currently registered (including MCP-derived toolsets).
 
 - A server-provided **timestamp** for the currently displayed snapshot.
 - Two top-level tool group sections:
-  - **Texting Tools** (collapsible; expanded by default)
+  - **Tellask Tools** (collapsible; expanded by default)
   - **Function Tools** (collapsible; expanded by default)
 - Within each group, toolsets are displayed as grouped sections titled `toolsetName (N)` where `N`
   is the number of tools in that toolset **for that group**.

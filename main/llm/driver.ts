@@ -58,7 +58,7 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
 import type { ToolArguments } from '../tool';
-import { FuncTool, TextingTool, Tool, validateArgs } from '../tool';
+import { FuncTool, TellaskTool, Tool, validateArgs } from '../tool';
 import { contextHealthReminderOwner } from '../tools/context-health';
 import { getTool } from '../tools/registry';
 import { generateDialogID } from '../utils/id';
@@ -71,7 +71,7 @@ import {
   type ModelInfo,
   type ProviderConfig,
   SayingMsg,
-  TextingCallResultMsg,
+  TellaskCallResultMsg,
   ThinkingMsg,
 } from './client';
 import { getLlmGenerator } from './gen/registry';
@@ -898,7 +898,7 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *   - For streaming=false: Generate all messages at once
  *   - For streaming=true: Stream responses with thinking/saying events
  *
- * Phase 6 - Function/Texter Tool Call Execution:
+ * Phase 6 - Function/Tellask Tool Call Execution:
  *   - Execute function calls (non-streaming mode)
  *   - Execute texter tool calls (streaming mode)
  *   - Collect and persist results
@@ -1089,7 +1089,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       throwIfAborted(abortSignal, dlg.id);
 
       // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
-      const { team, agent, systemPrompt, memories, agentTools, textingTools } =
+      const { team, agent, systemPrompt, memories, agentTools, tellaskTools } =
         await loadAgentMinds(dlg.agentId, dlg);
 
       // reload cfgs every round, in case it's been updated by human or ai meanwhile
@@ -1185,14 +1185,14 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           if (promptGrammar === 'tellask') {
             // Collect and execute tellask calls from user text using streaming parser
             // Combine agent tellask tools with intrinsic reminder tools
-            const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+            const allTellaskTools = [...tellaskTools, ...dlg.getIntrinsicTools()];
             throwIfAborted(abortSignal, dlg.id);
             const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
             throwIfAborted(abortSignal, dlg.id);
-            const userResult = await executeTextingCalls(
+            const userResult = await executeTellaskCalls(
               dlg,
               agent,
-              allTextingTools,
+              allTellaskTools,
               collectedUserCalls,
             );
 
@@ -1438,12 +1438,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           let assistantToolOutputsCount = 0;
           if (collectedAssistantCalls.length > 0) {
-            const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
+            const allTellaskTools = [...tellaskTools, ...dlg.getIntrinsicTools()];
             throwIfAborted(abortSignal, dlg.id);
-            const assistantResult = await executeTextingCalls(
+            const assistantResult = await executeTellaskCalls(
               dlg,
               agent,
-              allTextingTools,
+              allTellaskTools,
               collectedAssistantCalls,
             );
             if (dlg.hasUpNext()) {
@@ -1795,10 +1795,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           throwIfAborted(abortSignal, dlg.id);
           const results = await Promise.all(
             validCalls.map((call) =>
-              executeTextingCall(
+              executeTellaskCall(
                 dlg,
                 agent,
-                textingTools,
+                tellaskTools,
                 call.validation.firstMention,
                 call.headLine,
                 call.body,
@@ -2800,10 +2800,10 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
 /**
  * Collect tellask tool calls using the streaming parser, then execute them
  */
-async function executeTextingCalls(
+async function executeTellaskCalls(
   dlg: Dialog,
   agent: Team.Member,
-  textingTools: TextingTool[],
+  tellaskTools: TellaskTool[],
   collectedCalls: CollectedTellaskCall[],
 ): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: DialogID[] }> {
   const malformedToolOutputs = await emitMalformedTellaskResponses(dlg, collectedCalls);
@@ -2818,10 +2818,10 @@ async function executeTextingCalls(
   // Execute collected calls concurrently
   const results = await Promise.all(
     validCalls.map((call) =>
-      executeTextingCall(
+      executeTellaskCall(
         dlg,
         agent,
-        textingTools,
+        tellaskTools,
         call.validation.firstMention,
         call.headLine,
         call.body,
@@ -2875,10 +2875,10 @@ async function emitMalformedTellaskResponses(
  * Execute a single tellask tool call using Phase 5 3-Type Taxonomy.
  * Handles Type A (supdialog suspension), Type B (registered subdialog), and Type C (transient subdialog).
  */
-async function executeTextingCall(
+async function executeTellaskCall(
   dlg: Dialog,
   agent: Team.Member,
-  textingTools: TextingTool[],
+  tellaskTools: TellaskTool[],
   firstMention: string,
   headLine: string,
   body: string,
@@ -2977,10 +2977,10 @@ async function executeTextingCall(
 
       const perTargetResults = await Promise.all(
         knownTargets.map(async (targetId) => {
-          return await executeTextingCall(
+          return await executeTellaskCall(
             dlg,
             agent,
-            textingTools,
+            tellaskTools,
             targetId,
             headLine,
             body,
@@ -3206,7 +3206,7 @@ async function executeTextingCall(
           // Resume the subdialog with the supdialog's response
           dlg.setSuspensionState('resumed');
 
-          const resultMsg: TextingCallResultMsg = {
+          const resultMsg: TellaskCallResultMsg = {
             type: 'call_result_msg',
             role: 'tool',
             responderId: parseResult.agentId,
@@ -3232,7 +3232,7 @@ async function executeTextingCall(
           // Resume the subdialog even on error
           dlg.setSuspensionState('resumed');
           const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
-          const resultMsg: TextingCallResultMsg = {
+          const resultMsg: TellaskCallResultMsg = {
             type: 'call_result_msg',
             role: 'tool',
             responderId: parseResult.agentId,
@@ -3480,7 +3480,7 @@ async function executeTextingCall(
   } else {
     // Not a team member - check for texter tools
     let tool =
-      textingTools.find((t) => t.name === firstMention) ||
+      tellaskTools.find((t) => t.name === firstMention) ||
       intrinsicTools.find((t) => t.name === firstMention);
     if (!tool) {
       try {
@@ -3521,7 +3521,7 @@ async function executeTextingCall(
 
         if (tool.backfeeding && !raw.messages) {
           log.warn(
-            `Texter tool @${firstMention} returned empty output while backfeeding=true`,
+            `Tellask tool @${firstMention} returned empty output while backfeeding=true`,
             undefined,
             { headLine },
           );
@@ -3535,7 +3535,7 @@ async function executeTextingCall(
         });
 
         // Create error message (no callId - for LLM context only)
-        const errorMsg: TextingCallResultMsg = {
+        const errorMsg: TellaskCallResultMsg = {
           type: 'call_result_msg',
           role: 'tool',
           responderId: firstMention,
@@ -3560,7 +3560,7 @@ async function executeTextingCall(
       });
 
       // Create error message for LLM context
-      const errorMsg: TextingCallResultMsg = {
+      const errorMsg: TellaskCallResultMsg = {
         type: 'call_result_msg',
         role: 'tool',
         responderId: firstMention,

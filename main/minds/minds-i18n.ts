@@ -8,7 +8,7 @@ export function noneText(language: LanguageCode): string {
   return language === 'zh' ? '无。' : 'None.';
 }
 
-export function noTextingToolsText(language: LanguageCode): string {
+export function noTellaskToolsText(language: LanguageCode): string {
   return language === 'zh' ? '没有可用的诉请工具。' : 'No tellask tools available.';
 }
 

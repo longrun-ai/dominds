@@ -14,7 +14,7 @@ import { getTextForLanguage } from '../shared/i18n/text';
 import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import type { FuncTool, TextingTool, Tool } from '../tool';
+import type { FuncTool, TellaskTool, Tool } from '../tool';
 import {
   defaultPersonaText,
   funcToolRulesText as formatFuncToolRulesText,
@@ -25,7 +25,7 @@ import {
   memoriesSummarySectionShared,
   memoriesSummaryTitle,
   memoryPreambleLabels,
-  noTextingToolsText,
+  noTellaskToolsText,
   noneRequiredFieldsText,
   noneText,
   personalMemoriesHeader,
@@ -98,7 +98,7 @@ export async function loadAgentMinds(
   systemPrompt: string;
   memories: ChatMessage[];
   agentTools: Tool[];
-  textingTools: TextingTool[];
+  tellaskTools: TellaskTool[];
 }> {
   const workingLanguage = getWorkLanguage();
   let team = await Team.load();
@@ -136,7 +136,7 @@ export async function loadAgentMinds(
   // Use only base agent tools - intrinsic tools are handled separately via Dialog
   const agentTools: Tool[] = baseAgentTools;
 
-  const textingTools = agentTools.filter((t): t is TextingTool => t.type === 'texter');
+  const tellaskTools = agentTools.filter((t): t is TellaskTool => t.type === 'texter');
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
   // Generate tool usage text - keep regular and intrinsic tools completely separate
@@ -147,8 +147,8 @@ export async function loadAgentMinds(
 
   // Regular tools (from agent)
   toolUsageText =
-    textingTools.length > 0
-      ? textingTools
+    tellaskTools.length > 0
+      ? tellaskTools
           .map((tool) => {
             const usage = getTextForLanguage(
               { i18n: tool.usageDescriptionI18n, fallback: tool.usageDescription },
@@ -157,7 +157,7 @@ export async function loadAgentMinds(
             return `#### @${tool.name}\n\n${usage}\n`;
           })
           .join('\n')
-      : noTextingToolsText(workingLanguage);
+      : noTellaskToolsText(workingLanguage);
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools
       .map((tool) => {
@@ -413,6 +413,6 @@ export async function loadAgentMinds(
     systemPrompt,
     memories: groupedOutput.length > 0 ? groupedOutput : memories,
     agentTools,
-    textingTools,
+    tellaskTools,
   };
 }
