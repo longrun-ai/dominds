@@ -106,10 +106,10 @@ ${input.teamIntro}
 !?@ripgrep_snippets bar baz
 \`\`\`
 
-正例（两个诉请块，用普通行分隔）：
+正例（两个诉请块，用空行分隔）：
 \`\`\`plain-text
 !?@read_file foo.txt
---- split ---
+
 !?@ripgrep_snippets bar baz
 \`\`\`
 

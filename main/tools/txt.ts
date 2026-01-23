@@ -872,11 +872,11 @@ Examples:
       labels = {
         formatError:
           '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**多个工具调用需用普通行分隔：**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+          '**多个工具调用用空行分隔即可：**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **错误：** ${msg}\n\n` +
           '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**多个工具调用需用普通行分隔：**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+          '**多个工具调用用空行分隔即可：**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
         fileLabel: '文件',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
           `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
@@ -893,17 +893,17 @@ Examples:
         failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
           `INVALID_FORMAT：检测到疑似多个工具调用被合并到同一个诉请块 headline（例如出现 \`${toolName}\`）。\n\n` +
-          '多个工具调用必须用一行普通文本分隔（不要以 `!?` 开头），例如：\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+          '多个工具调用必须用空行分隔，例如：\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
       };
     } else {
       labels = {
         formatError:
           'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**Multiple tool calls must be separated by a normal line:**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+          '**Separate multiple tool calls with a blank line:**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **Error:** ${msg}\n\n` +
           'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**Multiple tool calls must be separated by a normal line:**\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+          '**Separate multiple tool calls with a blank line:**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
         fileLabel: 'File',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
           `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
@@ -920,7 +920,7 @@ Examples:
         failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
           `INVALID_FORMAT: Detected what looks like multiple tool calls merged into a single tellask headline (e.g. \`${toolName}\`).\n\n` +
-          'Multiple tool calls must be separated by a normal line (not starting with `!?`), for example:\n```\n!?@read_file src/main.ts\n--- split ---\n!?@ripgrep_files "pattern" .\n```',
+          'Multiple tool calls must be separated by a blank line, for example:\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
       };
     }
 
