@@ -2,7 +2,7 @@
  * Module: tools/txt
  *
  * Text file tooling for reading and modifying workspace files.
- * Provides `read_file`, `overwrite_file`, `plan_file_modification`, and `apply_file_modification`.
+ * Provides `read_file`, `replace_file_contents`, `plan_file_modification`, and `apply_file_modification`.
  */
 import crypto from 'crypto';
 import fsSync from 'fs';
@@ -1013,143 +1013,6 @@ Examples:
   },
 };
 
-export const overwriteFileTool: TellaskTool = {
-  type: 'texter',
-  name: 'overwrite_file',
-  backfeeding: true,
-  usageDescription: `Overwrite a file with new content (writes literally; does NOT parse diff/patch syntax).
-Usage: !?@overwrite_file <path>
-!?<file content in body>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
-  If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.
-
-Examples:
-!?@overwrite_file src/config.ts
-!?export const config = { version: '1.0' };
-  
-!?@overwrite_file README.md
-!?# My Project
-!?This is a sample project.`,
-  usageDescriptionI18n: {
-    en: `Overwrite a file with new content (writes literally; does NOT parse diff/patch syntax).
-Usage: !?@overwrite_file <path>
-!?<file content in body>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
-  If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.
-
-Examples:
-!?@overwrite_file src/config.ts
-!?export const config = { version: '1.0' };
-  
-!?@overwrite_file README.md
-!?# My Project
-!?This is a sample project.`,
-    zh: `用新内容覆盖写入一个文件（逐字写入；不会解析 diff/patch 语法）。
-用法：!?@overwrite_file <path>
-!?<文件内容写在正文里>
-
-注意：
-  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
-  若粘贴了 diff（例如 \`+\`/\`-\` 前缀或 \`@@\`），会被按字面写入文件。
-
-示例：
-!?@overwrite_file src/config.ts
-!?export const config = { version: '1.0' };
-  
-!?@overwrite_file README.md
-!?# My Project
-!?This is a sample project.`,
-  },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const labels =
-      language === 'zh'
-        ? {
-            invalidFormat: '错误：格式不正确。用法：!?@overwrite_file <path>',
-            filePathRequired: '错误：需要提供文件路径。',
-            contentRequired: '错误：需要在正文中提供文件内容。',
-            diffLikeWarning:
-              '⚠️ 检测到疑似 diff/patch 内容。\n`overwrite_file` 会逐字写入；其中的 `+` / `-` / `@@` 等将被保存进文件。\n',
-            overwritten: (p: string) => `✅ 文件已覆盖写入：\`${p}\`。`,
-            overwriteFailed: (msg: string) => `❌ **错误**\n\n覆盖写入文件失败：${msg}`,
-          }
-        : {
-            invalidFormat: 'Error: Invalid format. Use !?@overwrite_file <path>',
-            filePathRequired: 'Error: File path is required.',
-            contentRequired: 'Error: File content is required in the body.',
-            diffLikeWarning:
-              '⚠️ Detected diff-like content.\n`overwrite_file` writes literally; `+` / `-` / `@@` will be saved into the file.\n',
-            overwritten: (p: string) => `File '${p}' has been overwritten successfully.`,
-            overwriteFailed: (msg: string) => `Error overwriting file: ${msg}`,
-          };
-
-    const trimmed = headLine.trim();
-
-    if (!trimmed.startsWith('@overwrite_file')) {
-      const content = labels.invalidFormat;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const afterToolName = trimmed.slice('@overwrite_file'.length).trim();
-    if (!afterToolName) {
-      const content = labels.filePathRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const filePath = afterToolName.split(/\s+/)[0];
-
-    if (!filePath) {
-      const content = labels.filePathRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    // Check write access
-    if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    if (!inputBody) {
-      const content = labels.contentRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    try {
-      const fullPath = ensureInsideWorkspace(filePath);
-
-      // Ensure directory exists
-      const dir = path.dirname(fullPath);
-      fsSync.mkdirSync(dir, { recursive: true });
-
-      const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
-      const diffLike = detectDiffLikeContent(inputBody);
-
-      // Write the file (normalized: ensure content ends with '\n' when non-empty)
-      fsSync.writeFileSync(fullPath, normalizedBody, 'utf8');
-
-      const warning = diffLike ? labels.diffLikeWarning : '';
-      const normalizedNote =
-        addedTrailingNewlineToContent && normalizedBody !== ''
-          ? language === 'zh'
-            ? '（已规范化：补齐正文末尾换行）\n'
-            : '(normalized: added trailing newline)\n'
-          : '';
-
-      const content = `${warning}${labels.overwritten(filePath)}\n${normalizedNote}`.trimEnd();
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = labels.overwriteFailed(
-        error instanceof Error ? error.message : String(error),
-      );
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-  },
-};
-
 export const replaceFileContentsTool: TellaskTool = {
   type: 'texter',
   name: 'replace_file_contents',
@@ -1966,17 +1829,13 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: insert_after\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-after failed: path and anchor are required.'
-            : 'Insert-after failed: path and anchor are required.',
+            ? 'Insert-after failed: path and anchor are required. 用法：!?@insert_after <path> <anchor> [options]（参数必须在同一行；body 为要插入的内容）。'
+            : 'Insert-after failed: path and anchor are required. Usage: !?@insert_after <path> <anchor> [options] (args must be on the same line; body is inserted text).',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
     if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (inputBody === '') {
       const content = formatYamlCodeBlock(
         `status: error\npath: ${yamlQuote(filePath)}\nmode: insert_after\nerror: CONTENT_REQUIRED\nsummary: ${yamlQuote(
           language === 'zh'
@@ -2231,8 +2090,8 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: insert_before\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-before failed: path and anchor are required.'
-            : 'Insert-before failed: path and anchor are required.',
+            ? 'Insert-before failed: path and anchor are required. 用法：!?@insert_before <path> <anchor> [options]（参数必须在同一行；body 为要插入的内容）。'
+            : 'Insert-before failed: path and anchor are required. Usage: !?@insert_before <path> <anchor> [options] (args must be on the same line; body is inserted text).',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);

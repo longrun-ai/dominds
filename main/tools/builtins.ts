@@ -43,7 +43,6 @@ import {
   applyFileModificationTool,
   insertAfterTool,
   insertBeforeTool,
-  overwriteFileTool,
   planFileModificationTool,
   readFileTool,
   replaceBlockTool,
@@ -57,7 +56,6 @@ registerTool(mkDirTool);
 registerTool(moveFileTool);
 registerTool(moveDirTool);
 registerTool(readFileTool);
-registerTool(overwriteFileTool);
 registerTool(replaceFileContentsTool);
 registerTool(planFileModificationTool);
 registerTool(applyFileModificationTool);
@@ -177,7 +175,6 @@ registerToolset('ws_mod', [
   moveFileTool,
   moveDirTool,
   readFileTool,
-  overwriteFileTool,
   replaceFileContentsTool,
   appendFileTool,
   insertAfterTool,

@@ -38,7 +38,6 @@ import {
   applyFileModificationTool,
   insertAfterTool,
   insertBeforeTool,
-  overwriteFileTool,
   planFileModificationTool,
   readFileTool,
   replaceBlockTool,
@@ -589,63 +588,6 @@ export const teamMgmtReadFileTool: TellaskTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const rebuilt = `@read_file ${[...opts, rel].join(' ')}`.trim();
       return await readFileTool.call(dlg, proxyCaller, rebuilt, '');
-    } catch (err: unknown) {
-      const msg =
-        language === 'zh'
-          ? `错误：${err instanceof Error ? err.message : String(err)}`
-          : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-    }
-  },
-};
-
-export const teamMgmtOverwriteFileTool: TellaskTool = {
-  type: 'texter',
-  name: 'team_mgmt_overwrite_file',
-  backfeeding: true,
-  usageDescription:
-    `Overwrite a text file under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_overwrite_file <path>\n` +
-    `!?<content in body>\n\n` +
-    `Example:\n` +
-    `!?@team_mgmt_overwrite_file team.yaml\n` +
-    `!?member_defaults:\n` +
-    `!?  provider: codex\n`,
-  usageDescriptionI18n: {
-    en:
-      `Overwrite a text file under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_overwrite_file <path>\n` +
-      `!?<content in body>\n\n` +
-      `Example:\n` +
-      `!?@team_mgmt_overwrite_file team.yaml\n` +
-      `!?member_defaults:\n` +
-      `!?  provider: codex\n`,
-    zh:
-      `覆盖写入 ${MINDS_DIR}/ 下的文本文件。\n` +
-      `用法：!?@team_mgmt_overwrite_file <path>\n` +
-      `!?<正文为文件内容>\n\n` +
-      `示例：\n` +
-      `!?@team_mgmt_overwrite_file team.yaml\n` +
-      `!?member_defaults:\n` +
-      `!?  provider: codex\n`,
-  },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    const language = getUserLang(dlg);
-    try {
-      const mindsState = await getMindsDirState();
-      if (mindsState.kind === 'not_directory') {
-        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
-      }
-      await ensureMindsRootDirExists();
-
-      const after = parseArgsAfterTool(headLine, this.name);
-      const filePath = after.split(/\s+/)[0] || '';
-      if (!filePath) throw new Error('Path required');
-      const rel = toMindsRelativePath(filePath);
-      const resolved = ensureMindsScopedPath(rel);
-      await fs.mkdir(path.dirname(resolved.abs), { recursive: true });
-      const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await overwriteFileTool.call(dlg, proxyCaller, `@overwrite_file ${rel}`, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1722,7 +1664,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!?@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!?@team_mgmt_overwrite_file team.yaml`。',
+        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!?@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!?@team_mgmt_replace_file_contents team.yaml`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -1766,7 +1708,7 @@ function renderTeamManual(language: LanguageCode): string {
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!?@team_mgmt_apply_file_modification !<id>`; for large edits, use `!?@team_mgmt_overwrite_file team.yaml`.',
+        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!?@team_mgmt_apply_file_modification !<id>`; for large edits, use `!?@team_mgmt_replace_file_contents team.yaml`.',
       ]),
     ) +
     '\n' +
@@ -2410,7 +2352,6 @@ export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
   teamMgmtValidateTeamCfgTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
-  teamMgmtOverwriteFileTool,
   teamMgmtReplaceFileContentsTool,
   teamMgmtAppendFileTool,
   teamMgmtInsertAfterTool,

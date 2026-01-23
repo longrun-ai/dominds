@@ -106,7 +106,7 @@ ${input.funcToolUsageText || '没有可用的函数工具。'}
 - \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!topic\`。
   - \`!?@<supdialogAgentId>\`（不带 \`!topic\`）可作为语义容错，但优先使用 \`!?@super\`，尤其当 ID 可能相同（例如 FBR self-subdialogs）以避免歧义和意外自诉请混淆。
 
-### Tellask Tools
+### 诉请工具
 
 ${input.toolUsageText}${
       input.intrinsicToolInstructions
@@ -121,9 +121,9 @@ ${input.toolUsageText}${
 
 - 带正文（普通行会自动结束该诉请块）
 \`\`\`plain-text
-!?@overwrite_file logs/error.log
+!?@replace_file_contents logs/error.log
 !?Log reset.
-OK —— 文件已覆盖写入。
+OK —— 文件内容已替换写入。
 \`\`\`
 
 - 多行标题 + 正文

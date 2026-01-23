@@ -54,7 +54,7 @@ Rationale:
 
 In typical deployments we deny direct `.minds/` access via the general-purpose workspace tools:
 
-- `fs` / `txt` (`!?@list_dir`, `!?@read_file`, `!?@overwrite_file`, …)
+- `fs` / `txt` (`!?@list_dir`, `!?@read_file`, `!?@replace_file_contents`, …)
 
 This makes sense for “normal” agents, but it blocks the team manager from doing its job.
 
@@ -95,7 +95,7 @@ Recommended tools (names are suggestions; use `snake_case` to match existing too
 | ----------------------------------- | -------- | ------------------------------------------------------------------------ | ----------------------- |
 | `team_mgmt_list_dir`                | `fs`     | List directories/files under `.minds/`                                   | `.minds/**`             |
 | `team_mgmt_read_file`               | `txt`    | Read a text file under `.minds/`                                         | `.minds/**`             |
-| `team_mgmt_overwrite_file`          | `txt`    | Overwrite a file under `.minds/`                                         | `.minds/**`             |
+| `team_mgmt_replace_file_contents`   | `txt`    | Replace file contents under `.minds/`                                    | `.minds/**`             |
 | `team_mgmt_plan_file_modification`  | `txt`    | Plan a single-file modification under `.minds/` (returns a diff hunk id) | `.minds/**`             |
 | `team_mgmt_apply_file_modification` | `txt`    | Apply a planned modification by hunk id under `.minds/`                  | `.minds/**`             |
 | `team_mgmt_mkdir`                   | `fs`     | Create directories under `.minds/`                                       | `.minds/**`             |
