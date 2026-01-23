@@ -22,6 +22,7 @@ import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
 import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
+import { renderDomindsMarkdown } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 
 type DialogContext = DialogIdent & {
@@ -1062,7 +1063,9 @@ export class DomindsDialogContainer extends HTMLElement {
     section.classList.toggle('failed', status === 'failed');
     const resultEl = section.querySelector('.calling-result') as HTMLElement | null;
     if (resultEl) {
-      resultEl.textContent = String(result || '');
+      const raw = String(result || '');
+      resultEl.innerHTML = renderDomindsMarkdown(raw);
+      resultEl.setAttribute('data-raw-md', raw);
       resultEl.classList.toggle('failed', status === 'failed');
       resultEl.style.display = 'block';
     }
@@ -2071,7 +2074,7 @@ export class DomindsDialogContainer extends HTMLElement {
         padding: 8px;
         border-radius: 6px;
         font-size: 12px;
-        white-space: pre-wrap;
+        white-space: normal;
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));

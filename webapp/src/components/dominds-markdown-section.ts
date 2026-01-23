@@ -3,10 +3,7 @@
  * Supports chunk-based incremental rendering
  */
 
-import { marked } from 'marked';
-import './dominds-code-block';
-import './dominds-math-block';
-import './dominds-mermaid-block';
+import { renderDomindsMarkdown } from './dominds-markdown-render';
 
 export class DomindsMarkdownSection extends HTMLElement {
   private accumulatedRawMarkdown: string = '';
@@ -47,50 +44,9 @@ export class DomindsMarkdownSection extends HTMLElement {
   private render(): void {
     const contentEl = this.querySelector('.markdown-content') as HTMLElement | null;
     if (contentEl) {
-      contentEl.innerHTML = this.renderMarkdown(this.accumulatedRawMarkdown);
+      contentEl.innerHTML = renderDomindsMarkdown(this.accumulatedRawMarkdown);
       // Store raw content in data attribute for persistence/reconstruction
       contentEl.setAttribute('data-raw-md', this.accumulatedRawMarkdown);
-    }
-  }
-
-  /**
-   * Use 'marked' library for markdown rendering
-   */
-  private renderMarkdown(input: string): string {
-    try {
-      // Pre-process math before markdown parsing
-      let processedInput = input
-        // Block math: $$ ... $$
-        .replace(
-          /\$\$\s*([\s\S]*?)\s*\$\$/g,
-          '<dominds-math-block display="block">$1</dominds-math-block>',
-        )
-        // Inline math: $ ... $ (avoid matching $ in code blocks if possible, but marked handles that)
-        .replace(
-          /\$([^\$\n]+?)\$/g,
-          '<dominds-math-block display="inline">$1</dominds-math-block>',
-        );
-
-      const renderer = new marked.Renderer();
-
-      // Custom code block renderer
-      renderer.code = ({ text, lang }) => {
-        const language = lang || '';
-        if (language === 'mermaid') {
-          return `<dominds-mermaid-block>${text}</dominds-mermaid-block>`;
-        }
-        return `<dominds-code-block language="${language}">${text}</dominds-code-block>`;
-      };
-
-      // Configure marked for consistent rendering
-      return marked.parse(processedInput, {
-        breaks: true,
-        gfm: true,
-        renderer,
-      }) as string;
-    } catch (error) {
-      console.error('Markdown rendering error:', error);
-      return input; // Fallback to raw text on error
     }
   }
 }
