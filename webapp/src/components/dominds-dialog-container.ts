@@ -1958,18 +1958,23 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: 85%;
       }
 
-      .markdown-content table {
+      .markdown-content table,
+      .calling-result table {
         border-collapse: collapse;
         width: 100%;
         margin-bottom: 0.75em;
       }
 
-      .markdown-content th, .markdown-content td {
+      .markdown-content th,
+      .markdown-content td,
+      .calling-result th,
+      .calling-result td {
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         padding: 6px 13px;
       }
 
-      .markdown-content tr:nth-child(2n) {
+      .markdown-content tr:nth-child(2n),
+      .calling-result tr:nth-child(2n) {
         background-color: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9));
       }
 
