@@ -37,6 +37,7 @@
     - [Install Dominds](#install-dominds)
     - [Workspace Setup](#workspace-setup)
   - [Quick Start](#quick-start)
+  - [Start from scratch](#start-from-scratch)
   - [Core Philosophy](#core-philosophy)
   - [1) Clear minds, focused tasks](#1-clear-minds-focused-tasks)
   - [2) Tools with intent: safe by design](#2-tools-with-intent-safe-by-design)
@@ -46,11 +47,11 @@
 
 ## What is Dominds?
 
-Dominds is an AI-powered DevOps framework that creates autonomous development teams with persistent memory and self-improving capabilities. Unlike traditional AI assistants, Dominds agents maintain context across conversations, learn from experience, and collaborate as a cohesive team to handle complex development workflows.
+Dominds is an AI-powered DevOps framework that creates autonomous agentic teams with persistent memory and self-improving capabilities. Unlike traditional AI assistants, Dominds agents maintain context across conversations, learn from experience, and collaborate as a cohesive team to handle complex development workflows.
 
 **Key Features:**
 
-- **Fully Local Architecture**: Agents run directly on your machine in parallel threads with instant responsiveness and complete privacy. Unlike cloud-only solutions, Dominds eliminates network latency, ensures your code never leaves your environment, and provides unlimited concurrent operations without API rate limits or external dependencies.
+- **Local-first Runtime**: The orchestration layer runs on your machine and persists team state locally in your workspace. LLM calls still go to your configured provider (so apply normal cost/privacy discipline).
 
 - **Transparent Workspace Integration**: Agent knowledge, personas, lessons learned, and mindset artifacts are stored locally as part of your workspace. This maximizes transparency to humans and enables version control alongside your product code, creating a complete historical record of both human and AI contributions to your project.
 
@@ -66,9 +67,9 @@ Dominds is an AI-powered DevOps framework that creates autonomous development te
 
 ### Prerequisites
 
-- **Node.js**: Version 22.x or later
-- **pnpm**: Version 9.x or later (workspace package manager)
-- **API Keys**: One or more API keys, for OpenAI, Anthropic, or other compatible LLM providers
+- **Node.js (with npm bundled)**: Version 22.x or later
+- **LLM provider configured for your team**: Dominds ships with a built-in provider catalog (`dominds/main/llm/defaults.yaml`) including Codex (ChatGPT) and Anthropic, plus several Anthropic-compatible endpoints (e.g. MiniMax, Z.ai, BigModel). You’ll need valid credentials for at least one provider.
+- **pnpm (optional)**: Recommended only if you’re developing Dominds itself.
 
 ### Install Dominds
 
@@ -81,73 +82,32 @@ npm install -g dominds
 dominds --help
 ```
 
-For development or testing:
+For development and any sort of open source contribution, use the in-tree dev wrapper workspace:
 
-```bash
-# Official dev workflow (recommended for PRs)
-# Use the in-tree dev wrapper workspace:
-# https://github.com/longrun-ai/dominds-feat-dev
-# - Clone dominds-feat-dev
-# - Clone your dominds fork into dominds-feat-dev/dominds/
-# - Open PRs against longrun-ai/dominds from that inner repo
+https://github.com/longrun-ai/dominds-feat-dev
 
-# Recommended: keep using the released `dominds` CLI (stable) while developing dominds.
-#
-# Emergency only: if the released CLI has a blocking bug, link a clean checkout of `main` branch
-# from a different directory (do NOT link the same dominds checkout you are editing for PRs).
-git clone https://github.com/longrun-ai/dominds.git ~/src/dominds-main
-pnpm -C ~/src/dominds-main install
-pnpm -C ~/src/dominds-main run build
-pnpm -C ~/src/dominds-main link --global
-```
+1. Clone dominds-feat-dev
+2. Clone your dominds fork into dominds-feat-dev/dominds/
+3. Open PRs against [longrun-ai/dominds](https://github.com/longrun-ai/dominds) from that inner repo
 
 ### Workspace Setup
 
-1. **Create your workspace** in your project directory:
+There are two common ways to create a workspace:
+
+- **Recommended**: start from a scaffold/template (see [Quick Start](#quick-start)).
+- **Minimal**: start from an empty folder (see [Start from scratch](#start-from-scratch)).
+
+Dominds uses your current working directory as the runtime workspace (rtws). When you start `dominds`, the WebUI will automatically redirect you to `http://localhost:5666/setup` if the workspace is missing required configuration (for example `.minds/team.yaml` or provider env vars).
+
+Note: in production mode, Dominds enables a local shared-secret auth key by default, so the browser may open with a URL containing `?auth=...`. Treat that token as sensitive.
+
+**Template creation (recommended)**:
 
 ```bash
-# Preferred: Use scaffold templates with pre-configured teams
-dominds create web-scaffold my-project
-# (or) dominds new web-scaffold my-project  # alias for create
-cd my-project
-```
-
-For more template options, see the [CLI Usage Guide](docs/cli-usage.md#workspace-creation).
-
-2. **Set up environment variables**:
-
-```bash
-# Dominds CLI loads `.env` then `.env.local` from your workspace root (rtws).
-# `.env.local` overwrites `.env`, and both overwrite existing `process.env`.
-export OPENAI_API_KEY="your-openai-api-key"
-export ANTHROPIC_API_KEY="your-anthropic-api-key"  # Optional
-```
-
-3. **Verify installation**:
-
-```bash
-# Test the CLI
-dominds --help
-
-# Test the TUI setup
-dominds tui --help
-dominds tui --list  # Should show no dialogs initially
-
-# Or start the Web UI (default command)
-dominds  # Opens web interface for the current workspace
-```
-
-For detailed configuration and usage patterns, see the [CLI Usage Guide](docs/cli-usage.md).
-
-## Quick Start
-
-Create a new dominds-powered workspace using scaffold templates:
-
-```bash
-# Use official scaffold templates (recommended)
+# Use official scaffold templates (default base = https://github.com/longrun-ai)
 dominds create web-scaffold my-project
 
-# Or use custom organization templates
+# Use custom organization templates
 export DOMINDS_TEMPLATE_BASE="https://github.com/myorg"
 dominds create web-scaffold my-project
 
@@ -161,64 +121,46 @@ dominds create https://github.com/myorg/custom-template.git my-project
 - Default `DOMINDS_TEMPLATE_BASE` is `https://github.com/longrun-ai`
 - Set your own `DOMINDS_TEMPLATE_BASE` for organization-specific templates
 
-Once installed and configured, you can start using `dominds` immediately:
+For more template options, see the [CLI Usage Guide](docs/cli-usage.md#workspace-creation).
+
+## Quick Start
 
 ```bash
-# Create a task doc package for your project (recommended: `*.tsk/`)
-mkdir -p tasks/auth.tsk
-cat > tasks/auth.tsk/goals.md << 'EOF'
-# User Authentication
+# 1) Create a workspace from a scaffold template
+dominds create web-scaffold my-project
+cd my-project
 
-Implement secure user authentication system with JWT tokens.
-EOF
-
-cat > tasks/auth.tsk/constraints.md << 'EOF'
-- Login/logout endpoints
-- Password hashing
-- JWT token generation
-- Session management
-EOF
-
-cat > tasks/auth.tsk/progress.md << 'EOF'
-- Not started yet
-EOF
-
-# Start a new dialog with your task (TUI)
-dominds tui tasks/auth.tsk "Implement user authentication system"
-
-# Or use the 'run' alias
-dominds run tasks/auth.tsk "Implement user authentication system"
-
-# List all active dialogs
-dominds tui --list
-
-# Resume an existing dialog (use actual dialog ID from --list)
-dominds tui -i aa/bb/12345678 tasks/auth.tsk "Continue working on auth"
-
-# Read team configuration
-dominds read  # Show all team members
-dominds read developer  # Show specific member
-
-# Get help and see all available commands
-dominds --help
-dominds tui --help
-dominds webui --help
-dominds read --help
-
-# Or use the Web UI for a graphical interface (default command)
-dominds  # Opens in browser for the current workspace
-dominds webui  # Explicitly start Web UI
+# 2) Start the WebUI (opens a browser by default)
+dominds
 ```
 
-**What happens next:**
+Then:
 
-- Dominds creates a new dialog with a unique ID
-- The assigned agent reads your task document and begins working
-- All conversation history and file changes are tracked
-- Agents can create subdialogs for complex subtasks
-- Team memory is updated with new learnings
+1. Your browser should land on `http://localhost:5666/setup` (either directly, or via an automatic redirect).
+2. In **Setup**, pick a provider + model and click **Create/Overwrite `.minds/team.yaml`** (this writes a minimal `member_defaults` config).
+3. Still in **Setup**, set the required provider env var (the name comes from the provider catalog, e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CODEX_HOME`, etc).
+   - The setup UI can write it into `~/.zshrc` / `~/.bashrc` in a managed block, and also applies it to the running server process immediately.
+4. Click **Go to App**, create a dialog, and start working.
 
-For detailed usage patterns and advanced features, see the [CLI Usage Guide](docs/cli-usage.md).
+## Start from scratch
+
+Starting from scratch means: create an empty folder, run `dominds`, let Setup generate the minimal `.minds/team.yaml`, then use the shadow team manager (`@fuxi`) to design a real team for your product.
+
+```bash
+mkdir my-workspace
+cd my-workspace
+
+# Starts the WebUI server and opens a browser (default port: 5666)
+dominds
+```
+
+1. The WebUI should redirect you to `http://localhost:5666/setup` because the workspace has no `.minds/team.yaml` yet.
+2. In **Setup**:
+   - Select a provider + model and click **Create `.minds/team.yaml`**.
+   - Provide the required provider env var and write it to your shell rc (or set it manually). Setup applies it immediately to the running server.
+   - Click **Go to App**.
+3. In the app, create a new dialog with **shadow member** `@fuxi` (Fuxi is hidden by default; use the “Shadow members” picker in the dialog creation modal). Until you add visible members, you’ll mostly work through shadow members.
+4. Tell `@fuxi` your product idea and ask it to propose and apply a suitable agentic team configuration by updating `.minds/team.yaml` (Fuxi has the `team-mgmt` toolset scoped to `.minds/**`).
 
 ## Core Philosophy
 
@@ -259,7 +201,7 @@ Practices
 - Maintain shared team memory for patterns, failures, and standards specific to the project type
 - Enable autonomous improvement loops: agents evolve collective and individual mindsets (personas, principles, heuristics) based on template foundations
 - Design specialized agents for team management and governance appropriate to the project domain
-- Keep mindsets transparent as plain Markdown files for humans; see `.minds/` directory of interesting templates for varity of the setups
+- Keep mindsets transparent as plain Markdown files for humans; see `.minds/` directory of interesting templates for a variety of setups
 
 ## Documentation
 
@@ -285,4 +227,4 @@ Practices
 
 ---
 
-**License:** LGPL | **Repository:** [github.com/longrun-ai/dominds](https://github.com/longrun-ai/dominds)
+**License:** [LGPL](./LICENSE) | **Repository:** [github.com/longrun-ai/dominds](https://github.com/longrun-ai/dominds)
