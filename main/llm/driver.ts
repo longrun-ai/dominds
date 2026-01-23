@@ -3,7 +3,7 @@
  *
  * Drives dialog streaming end-to-end:
  * - Loads minds/tools, selects generator, streams outputs
- * - Parses texting/code blocks, executes tools, handles human prompts
+ * - Parses tellask tool-call blocks, executes tools, handles human prompts
  * - Supports autonomous teammate calls: when an agent mentions a teammate (e.g., @teammate), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
  */
 
@@ -32,6 +32,10 @@ import { removeProblem, upsertProblem } from '../problems';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import {
   formatDomindsNoteDirectSelfCall,
+  formatDomindsNoteInvalidMultiTeammateTargets,
+  formatDomindsNoteInvalidTopicDirective,
+  formatDomindsNoteMalformedTellaskCall,
+  formatDomindsNoteMultipleTopicDirectives,
   formatDomindsNoteSuperNoTopic,
   formatDomindsNoteSuperOnlyInSubdialog,
   formatReminderIntro,
@@ -52,12 +56,7 @@ import {
 } from '../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import {
-  CollectedTextingCall,
-  TextingEventsReceiver,
-  TextingStreamParser,
-  extractMentions,
-} from '../texting';
+import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
 import type { ToolArguments } from '../tool';
 import { FuncTool, TextingTool, Tool, validateArgs } from '../tool';
 import { contextHealthReminderOwner } from '../tools/context-health';
@@ -93,16 +92,16 @@ const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
   zh: [
     '除非确实需要人类用户介入，请继续你的工作。',
     '',
-    '作为智能体团队成员，你该诉请（`!!@<teammate-callsign>`）队友完成的事儿千万别自己干，你自己的事儿能自己动手推进的就绝不要麻烦人类。',
+    '作为智能体团队成员，你该诉请（`!?@<teammate-callsign>`）队友完成的事儿千万别自己干，你自己的事儿能自己动手推进的就绝不要麻烦人类。',
     '',
-    '不该或者不能自主继续工作时，你应该使用 `!!@human` 诉请人类确认相关问题或者指出工作方向。',
+    '不该或者不能自主继续工作时，你应该使用 `!?@human` 诉请人类确认相关问题或者指出工作方向。',
   ].join('\n'),
   en: [
     'Unless you truly need the human user to intervene, keep working.',
     '',
-    'As an agent team member: if it’s something you should ask a teammate (`!!@<teammate-callsign>`) to do, do not do it yourself; and for things you can advance on your own, do not bother the human.',
+    'As an agent team member: if it’s something you should ask a teammate (`!?@<teammate-callsign>`) to do, do not do it yourself; and for things you can advance on your own, do not bother the human.',
     '',
-    'When you should not or cannot continue autonomously, use `!!@human` to ask the human to confirm the relevant questions or provide direction.',
+    'When you should not or cannot continue autonomously, use `!?@human` to ask the human to confirm the relevant questions or provide direction.',
   ].join('\n'),
 };
 
@@ -743,11 +742,11 @@ async function applyContextHealthMonitor(
 // === UNIFIED STREAMING HANDLERS ===
 
 /**
- * Create a TextingEventsReceiver for unified saying event emission.
- * Handles @mentions, codeblocks, and markdown using TextingStreamParser.
+ * Create a TellaskEventsReceiver for unified saying event emission.
+ * Handles tellask call blocks and markdown using TellaskStreamParser.
  * Used by both streaming and non-streaming modes.
  */
-export function createSayingEventsReceiver(dlg: Dialog): TextingEventsReceiver {
+export function createSayingEventsReceiver(dlg: Dialog): TellaskEventsReceiver {
   return {
     markdownStart: async () => {
       await dlg.markdownStart();
@@ -758,8 +757,8 @@ export function createSayingEventsReceiver(dlg: Dialog): TextingEventsReceiver {
     markdownFinish: async () => {
       await dlg.markdownFinish();
     },
-    callStart: async (first: string) => {
-      await dlg.callingStart(first);
+    callStart: async (validation) => {
+      await dlg.callingStart(validation);
     },
     callHeadLineChunk: async (chunk: string) => {
       await dlg.callingHeadlineChunk(chunk);
@@ -767,26 +766,17 @@ export function createSayingEventsReceiver(dlg: Dialog): TextingEventsReceiver {
     callHeadLineFinish: async () => {
       await dlg.callingHeadlineFinish();
     },
-    callBodyStart: async (infoLine?: string) => {
-      await dlg.callingBodyStart(infoLine);
+    callBodyStart: async () => {
+      await dlg.callingBodyStart();
     },
     callBodyChunk: async (chunk: string) => {
       await dlg.callingBodyChunk(chunk);
     },
-    callBodyFinish: async (endQuote?: string) => {
-      await dlg.callingBodyFinish(endQuote);
+    callBodyFinish: async () => {
+      await dlg.callingBodyFinish();
     },
     callFinish: async (callId: string) => {
       await dlg.callingFinish(callId);
-    },
-    codeBlockStart: async (infoLine: string) => {
-      await dlg.codeBlockStart(infoLine);
-    },
-    codeBlockChunk: async (chunk: string) => {
-      await dlg.codeBlockChunk(chunk);
-    },
-    codeBlockFinish: async (endQuote: string) => {
-      await dlg.codeBlockFinish(endQuote);
     },
   };
 }
@@ -812,17 +802,17 @@ export async function emitThinkingEvents(
 }
 
 /**
- * Emit saying events using TextingStreamParser for @mentions/codeblocks (non-streaming mode).
- * Processes the entire content at once, handling all markdown/call/code events.
+ * Emit saying events using TellaskStreamParser (non-streaming mode).
+ * Processes the entire content at once, handling markdown + tellask calls.
  */
 export async function emitSayingEvents(
   dlg: Dialog,
   content: string,
-): Promise<CollectedTextingCall[]> {
+): Promise<CollectedTellaskCall[]> {
   if (!content.trim()) return [];
 
   const receiver = createSayingEventsReceiver(dlg);
-  const parser = new TextingStreamParser(receiver);
+  const parser = new TellaskStreamParser(receiver);
   await parser.takeUpstreamChunk(content);
   await parser.finalize();
 
@@ -894,9 +884,9 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *   - If humanPrompt is provided, add it as a prompting_msg
  *   - Persist user message to storage
  *
- * Phase 3 - User Texting Calls Collection & Execution:
- *   - Parse user text for @mentions and code blocks using TextingStreamParser
- *   - Execute texting tools (agent-to-agent calls, intrinsic tools)
+ * Phase 3 - User Tool Calls Collection & Execution:
+ *   - Parse user text for tellask tool-call blocks using TellaskStreamParser
+ *   - Execute texter tools (agent-to-agent calls, intrinsic tools)
  *   - Handle subdialog creation for @teammate mentions
  *
  * Phase 4 - Context Building:
@@ -908,9 +898,9 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *   - For streaming=false: Generate all messages at once
  *   - For streaming=true: Stream responses with thinking/saying events
  *
- * Phase 6 - Function/Texting Call Execution:
+ * Phase 6 - Function/Texter Tool Call Execution:
  *   - Execute function calls (non-streaming mode)
- *   - Execute texting calls (streaming mode)
+ *   - Execute texter tool calls (streaming mode)
  *   - Collect and persist results
  *
  * Phase 7 - Loop or Complete:
@@ -1192,9 +1182,9 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             persistedUserLanguageCode,
           );
 
-          if (promptGrammar === 'texting') {
-            // Collect and execute texting calls from user text using streaming parser
-            // Combine agent texting tools with intrinsic reminder tools
+          if (promptGrammar === 'tellask') {
+            // Collect and execute tellask calls from user text using streaming parser
+            // Combine agent tellask tools with intrinsic reminder tools
             const allTextingTools = [...textingTools, ...dlg.getIntrinsicTools()];
             throwIfAborted(abortSignal, dlg.id);
             const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
@@ -1217,7 +1207,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               suspendForHuman = true;
             }
 
-            // No teammate-call fallback here: rely exclusively on TextingStreamParser.
+            // No teammate-call fallback here: rely exclusively on TellaskStreamParser.
 
             // Pending subdialogs are tracked in persistence (pending-subdialogs.json) as the source of truth.
           } else {
@@ -1415,7 +1405,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             (m): m is SayingMsg | ThinkingMsg =>
               m.type === 'saying_msg' || m.type === 'thinking_msg',
           );
-          const collectedAssistantCalls: CollectedTextingCall[] = [];
+          const collectedAssistantCalls: CollectedTellaskCall[] = [];
 
           if (assistantMsgs.length > 0) {
             await dlg.addChatMessages(...assistantMsgs);
@@ -1437,7 +1427,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   await emitThinkingEvents(dlg, msg.content);
                 }
 
-                // Emit saying events using shared TextingStreamParser integration
+                // Emit saying events using shared TellaskStreamParser integration
                 if (msg.type === 'saying_msg') {
                   const calls = await emitSayingEvents(dlg, msg.content);
                   collectedAssistantCalls.push(...calls);
@@ -1650,11 +1640,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           let currentSayingContent = '';
           let sawAnyStreamContent = false;
 
-          // Create receiver using shared helper (unified TextingStreamParser integration)
+          // Create receiver using shared helper (unified TellaskStreamParser integration)
           const receiver = createSayingEventsReceiver(dlg);
 
           // Direct streaming parser that forwards events without state tracking
-          const parser = new TextingStreamParser(receiver);
+          const parser = new TellaskStreamParser(receiver);
 
           let streamResult: { usage: LlmUsageStats } | undefined;
           try {
@@ -1786,6 +1776,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           // Execute collected calls concurrently after streaming completes
           const collectedCalls = parser.getCollectedCalls();
+          const malformedToolOutputs = await emitMalformedTellaskResponses(dlg, collectedCalls);
 
           if (collectedCalls.length > 0 && !collectedCalls[0].callId) {
             throw new Error(
@@ -1793,14 +1784,22 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             );
           }
 
+          const validCalls = collectedCalls.filter(
+            (
+              call,
+            ): call is CollectedTellaskCall & {
+              validation: { kind: 'valid'; firstMention: string };
+            } => call.validation.kind === 'valid',
+          );
+
           throwIfAborted(abortSignal, dlg.id);
           const results = await Promise.all(
-            collectedCalls.map((call) =>
+            validCalls.map((call) =>
               executeTextingCall(
                 dlg,
                 agent,
                 textingTools,
-                call.firstMention,
+                call.validation.firstMention,
                 call.headLine,
                 call.body,
                 call.callId,
@@ -1814,6 +1813,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           // Combine results from all concurrent calls and track tool outputs for termination logic
           let toolOutputsCount = 0;
+          if (malformedToolOutputs.length > 0) {
+            toolOutputsCount += malformedToolOutputs.length;
+            newMsgs.push(...malformedToolOutputs);
+          }
           for (const result of results) {
             if (result.toolOutputs.length > 0) {
               toolOutputsCount += result.toolOutputs.length;
@@ -2221,19 +2224,36 @@ function isValidTopicId(topicId: string): boolean {
   return segments.every((segment) => /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(segment));
 }
 
-function extractTopicIdFromHeadline(headLine: string, firstMention: string): string | null {
-  const mentionToken = `@${firstMention}`;
-  const mentionIndex = headLine.indexOf(mentionToken);
-  if (mentionIndex < 0) return null;
-  const afterMention = headLine.slice(mentionIndex + mentionToken.length);
-  const trimmed = afterMention.trimStart();
-  if (!trimmed.startsWith('!topic')) return null;
-  const rest = trimmed.slice('!topic'.length).trimStart();
-  if (!rest) return null;
-  const match = rest.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]+)*)/);
-  if (!match) return null;
-  const topicId = match[1] ?? '';
-  return isValidTopicId(topicId) ? topicId : null;
+type TopicDirectiveParse =
+  | { kind: 'none' }
+  | { kind: 'one'; topicId: string }
+  | { kind: 'invalid' }
+  | { kind: 'multiple' };
+
+function parseTopicDirectiveFromHeadline(headLine: string): TopicDirectiveParse {
+  const re = /(^|\\s)!topic\\s+([^\\s]+)/g;
+  const ids: string[] = [];
+  for (const match of headLine.matchAll(re)) {
+    const raw = match[2] ?? '';
+    const candidate = raw.trim();
+    const m = candidate.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\\.[a-zA-Z0-9_-]+)*)/);
+    const topicId = (m?.[1] ?? '').trim();
+    if (!isValidTopicId(topicId)) {
+      return { kind: 'invalid' };
+    }
+    ids.push(topicId);
+  }
+
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return { kind: 'none' };
+  if (unique.length === 1) return { kind: 'one', topicId: unique[0] ?? '' };
+  return { kind: 'multiple' };
+}
+
+function extractSingleTopicIdFromHeadline(headLine: string): string | null {
+  const parsed = parseTopicDirectiveFromHeadline(headLine);
+  if (parsed.kind === 'one') return parsed.topicId;
+  return null;
 }
 
 /**
@@ -2262,7 +2282,7 @@ export function parseTeammateCall(
   // mentions.
   if (firstMention === 'self') {
     const agentId = currentDialog?.agentId ?? 'self';
-    const topicId = extractTopicIdFromHeadline(headLine, 'self');
+    const topicId = extractSingleTopicIdFromHeadline(headLine);
     if (topicId) {
       return {
         type: 'B',
@@ -2276,7 +2296,7 @@ export function parseTeammateCall(
     };
   }
 
-  const topicId = extractTopicIdFromHeadline(headLine, firstMention);
+  const topicId = extractSingleTopicIdFromHeadline(headLine);
   if (topicId) {
     return {
       type: 'B',
@@ -2483,6 +2503,7 @@ export async function createSubdialogForSupdialog(
       originMemberId: supdialog.agentId,
       callerDialogId: supdialog.id.selfId,
       callId,
+      collectiveTargets: [targetAgentId],
     });
 
     // Persist pending subdialog record
@@ -2511,6 +2532,7 @@ export async function createSubdialogForSupdialog(
             headLine,
             callBody: callBody,
             language: getWorkLanguage(),
+            collectiveTargets: [targetAgentId],
           }),
           msgId: generateShortId(),
           grammar: 'markdown',
@@ -2776,22 +2798,31 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
 }
 
 /**
- * Collect texting calls using the streaming parser, then execute them
+ * Collect tellask tool calls using the streaming parser, then execute them
  */
 async function executeTextingCalls(
   dlg: Dialog,
   agent: Team.Member,
   textingTools: TextingTool[],
-  collectedCalls: CollectedTextingCall[],
+  collectedCalls: CollectedTellaskCall[],
 ): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: DialogID[] }> {
+  const malformedToolOutputs = await emitMalformedTellaskResponses(dlg, collectedCalls);
+
+  const validCalls = collectedCalls.filter(
+    (
+      call,
+    ): call is CollectedTellaskCall & { validation: { kind: 'valid'; firstMention: string } } =>
+      call.validation.kind === 'valid',
+  );
+
   // Execute collected calls concurrently
   const results = await Promise.all(
-    collectedCalls.map((call) =>
+    validCalls.map((call) =>
       executeTextingCall(
         dlg,
         agent,
         textingTools,
-        call.firstMention,
+        call.validation.firstMention,
         call.headLine,
         call.body,
         call.callId,
@@ -2801,14 +2832,47 @@ async function executeTextingCalls(
 
   // Combine results from all concurrent calls
   const suspend = results.some((result) => result.suspend);
-  const toolOutputs = results.flatMap((result) => result.toolOutputs);
+  const toolOutputs = [...malformedToolOutputs, ...results.flatMap((result) => result.toolOutputs)];
   const subdialogsCreated = results.flatMap((result) => result.subdialogsCreated);
 
   return { suspend, toolOutputs, subdialogsCreated };
 }
 
+async function emitMalformedTellaskResponses(
+  dlg: Dialog,
+  collectedCalls: CollectedTellaskCall[],
+): Promise<ChatMessage[]> {
+  const toolOutputs: ChatMessage[] = [];
+  const language = getWorkLanguage();
+  for (const call of collectedCalls) {
+    if (call.validation.kind !== 'malformed') continue;
+    const firstLineAfterPrefix = (call.headLine.split('\n')[0] ?? '').trim();
+    const msg = formatDomindsNoteMalformedTellaskCall(language, call.validation.reason, {
+      firstLineAfterPrefix,
+    });
+
+    toolOutputs.push({
+      type: 'environment_msg',
+      role: 'user',
+      content: msg,
+    });
+    toolOutputs.push({
+      type: 'call_result_msg',
+      role: 'tool',
+      responderId: 'dominds',
+      headLine: call.headLine,
+      status: 'failed',
+      content: msg,
+    });
+
+    await dlg.receiveToolResponse('dominds', call.headLine, msg, 'failed', call.callId);
+    dlg.clearCurrentCallId();
+  }
+  return toolOutputs;
+}
+
 /**
- * Execute a single texting call using Phase 5 3-Type Taxonomy.
+ * Execute a single tellask tool call using Phase 5 3-Type Taxonomy.
  * Handles Type A (supdialog suspension), Type B (registered subdialog), and Type C (transient subdialog).
  */
 async function executeTextingCall(
@@ -2819,6 +2883,11 @@ async function executeTextingCall(
   headLine: string,
   body: string,
   callId: string,
+  options?: {
+    allowMultiTeammateTargets?: boolean;
+    collectiveTargets?: string[];
+    skipTopicDirectiveValidation?: boolean;
+  },
 ): Promise<{
   toolOutputs: ChatMessage[];
   suspend: boolean;
@@ -2833,6 +2902,105 @@ async function executeTextingCall(
   const isSelfAlias = firstMention === 'self';
   const isSuperAlias = firstMention === 'super';
   const member = isSelfAlias ? team.getMember(dlg.agentId) : team.getMember(firstMention);
+
+  // Multi-teammate fan-out (collective teammate call):
+  // A single tellask block can target multiple teammates by including multiple teammate mentions
+  // anywhere inside the (possibly multiline) headline. The full headline/body is passed verbatim
+  // to each target so each subdialog can see this is a collective assignment.
+  const allowMultiTeammateTargets = options?.allowMultiTeammateTargets ?? true;
+  if (allowMultiTeammateTargets && member && !isSelfAlias && !isSuperAlias) {
+    const mentioned = extractMentionIdsFromHeadline(headLine);
+    const uniqueMentioned = Array.from(new Set(mentioned));
+    const knownTargets = uniqueMentioned.filter((id) => team.getMember(id) !== null);
+    if (!knownTargets.includes(firstMention)) {
+      knownTargets.unshift(firstMention);
+    }
+
+    if (knownTargets.length >= 2) {
+      const unknown = uniqueMentioned.filter(
+        (id) =>
+          team.getMember(id) === null &&
+          id !== 'self' &&
+          id !== 'super' &&
+          id !== 'human' &&
+          id !== 'dominds',
+      );
+      if (unknown.length > 0) {
+        const msg = formatDomindsNoteInvalidMultiTeammateTargets(getWorkLanguage(), { unknown });
+        toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+        toolOutputs.push({
+          type: 'call_result_msg',
+          role: 'tool',
+          responderId: 'dominds',
+          headLine,
+          status: 'failed',
+          content: msg,
+        });
+        await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+        dlg.clearCurrentCallId();
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
+
+      if (options?.skipTopicDirectiveValidation !== true) {
+        const topicDirective = parseTopicDirectiveFromHeadline(headLine);
+        if (topicDirective.kind === 'multiple') {
+          const msg = formatDomindsNoteMultipleTopicDirectives(getWorkLanguage());
+          toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+          toolOutputs.push({
+            type: 'call_result_msg',
+            role: 'tool',
+            responderId: 'dominds',
+            headLine,
+            status: 'failed',
+            content: msg,
+          });
+          await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+          dlg.clearCurrentCallId();
+          return { toolOutputs, suspend: false, subdialogsCreated: [] };
+        }
+        if (topicDirective.kind === 'invalid') {
+          const msg = formatDomindsNoteInvalidTopicDirective(getWorkLanguage());
+          toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+          toolOutputs.push({
+            type: 'call_result_msg',
+            role: 'tool',
+            responderId: 'dominds',
+            headLine,
+            status: 'failed',
+            content: msg,
+          });
+          await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+          dlg.clearCurrentCallId();
+          return { toolOutputs, suspend: false, subdialogsCreated: [] };
+        }
+      }
+
+      const perTargetResults = await Promise.all(
+        knownTargets.map(async (targetId) => {
+          return await executeTextingCall(
+            dlg,
+            agent,
+            textingTools,
+            targetId,
+            headLine,
+            body,
+            callId,
+            {
+              allowMultiTeammateTargets: false,
+              collectiveTargets: knownTargets,
+              skipTopicDirectiveValidation: true,
+            },
+          );
+        }),
+      );
+
+      return {
+        toolOutputs: perTargetResults.flatMap((r) => r.toolOutputs),
+        suspend: perTargetResults.some((r) => r.suspend),
+        subdialogsCreated: perTargetResults.flatMap((r) => r.subdialogsCreated),
+      };
+    }
+  }
 
   // === Q4H: Handle @human teammate calls (Questions for Human) ===
   // Q4H works for both user-initiated and assistant-initiated @human calls
@@ -2892,8 +3060,7 @@ async function executeTextingCall(
   }
 
   if (member || isSelfAlias || isSuperAlias) {
-    // This is a teammate call - parse using Phase 5 taxonomy
-    // Parse the call text to determine type A/B/C
+    // This is a teammate call - parse using Phase 5 taxonomy (Type A/B/C).
     if (isSuperAlias && !(dlg instanceof SubDialog)) {
       const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkLanguage());
       try {
@@ -2912,9 +3079,10 @@ async function executeTextingCall(
       return { toolOutputs, suspend: false, subdialogsCreated: [] };
     }
 
-    if (isSuperAlias) {
-      const topicId = extractTopicIdFromHeadline(headLine, 'super');
-      if (topicId) {
+    if (options?.skipTopicDirectiveValidation !== true) {
+      const topicDirective = parseTopicDirectiveFromHeadline(headLine);
+
+      if (isSuperAlias && topicDirective.kind !== 'none') {
         const response = formatDomindsNoteSuperNoTopic(getWorkLanguage());
         try {
           await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
@@ -2931,13 +3099,41 @@ async function executeTextingCall(
         }
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
+
+      if (topicDirective.kind === 'multiple') {
+        const msg = formatDomindsNoteMultipleTopicDirectives(getWorkLanguage());
+        toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+        toolOutputs.push({
+          type: 'call_result_msg',
+          role: 'tool',
+          responderId: 'dominds',
+          headLine,
+          status: 'failed',
+          content: msg,
+        });
+        await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+        dlg.clearCurrentCallId();
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
+      if (topicDirective.kind === 'invalid') {
+        const msg = formatDomindsNoteInvalidTopicDirective(getWorkLanguage());
+        toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+        toolOutputs.push({
+          type: 'call_result_msg',
+          role: 'tool',
+          responderId: 'dominds',
+          headLine,
+          status: 'failed',
+          content: msg,
+        });
+        await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+        dlg.clearCurrentCallId();
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
     }
 
     const parseResult: TeammateCallParseResult = isSuperAlias
-      ? {
-          type: 'A',
-          agentId: (dlg as SubDialog).supdialog.agentId,
-        }
+      ? { type: 'A', agentId: (dlg as SubDialog).supdialog.agentId }
       : parseTeammateCall(firstMention, headLine, dlg);
 
     // If the agent calls itself via `@<agentId>` (instead of `@self`), allow it to proceed
@@ -3078,6 +3274,7 @@ async function executeTextingCall(
             callerDialogId: callerDialog.id.selfId,
             callId,
             topicId: parseResult.topicId,
+            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
           });
 
           const pendingRecord: PendingSubdialogRecordType = {
@@ -3103,6 +3300,7 @@ async function executeTextingCall(
                   headLine,
                   callBody: body,
                   language: getWorkLanguage(),
+                  collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -3126,6 +3324,7 @@ async function executeTextingCall(
           originMemberId,
           callerDialogId: callerDialog.id.selfId,
           callId,
+          collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
 
         const existingSubdialog = rootDialog.lookupSubdialog(
@@ -3143,6 +3342,7 @@ async function executeTextingCall(
               headLine,
               callBody: body,
               language: getWorkLanguage(),
+              collectiveTargets: options?.collectiveTargets ?? [existingSubdialog.agentId],
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
@@ -3183,6 +3383,7 @@ async function executeTextingCall(
             callerDialogId: callerDialog.id.selfId,
             callId,
             topicId: parseResult.topicId,
+            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
           });
           rootDialog.registerSubdialog(sub);
           await rootDialog.saveSubdialogRegistry();
@@ -3210,6 +3411,7 @@ async function executeTextingCall(
                   headLine,
                   callBody: body,
                   language: getWorkLanguage(),
+                  collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
@@ -3228,62 +3430,55 @@ async function executeTextingCall(
 
     // Type C: Transient subdialog (unregistered)
     if (parseResult.type === 'C') {
-      const targets = isSelfAlias
-        ? [parseResult.agentId]
-        : Array.from(new Set(extractMentions(headLine))).filter((m) => !!team.getMember(m));
+      try {
+        const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+          originMemberId: dlg.agentId,
+          callerDialogId: dlg.id.selfId,
+          callId,
+          collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+        });
+        const pendingRecord: PendingSubdialogRecordType = {
+          subdialogId: sub.id.selfId,
+          createdAt: formatUnifiedTimestamp(new Date()),
+          headLine,
+          targetAgentId: parseResult.agentId,
+          callType: 'C',
+        };
+        await withSuspensionStateLock(dlg.id, async () => {
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
+          existingPending.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
+        });
 
-      for (const tgt of targets) {
-        try {
-          const sub = await dlg.createSubDialog(tgt, headLine, body, {
-            originMemberId: dlg.agentId,
-            callerDialogId: dlg.id.selfId,
-            callId,
-          });
-          const pendingRecord: PendingSubdialogRecordType = {
-            subdialogId: sub.id.selfId,
-            createdAt: formatUnifiedTimestamp(new Date()),
-            headLine,
-            targetAgentId: tgt,
-            callType: 'C',
-          };
-          await withSuspensionStateLock(dlg.id, async () => {
-            const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
-            existingPending.push(pendingRecord);
-            await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
-          });
-
-          const task = (async () => {
-            try {
-              const initPrompt: HumanPrompt = {
-                content: formatAssignmentFromSupdialog({
-                  fromAgentId: dlg.agentId,
-                  toAgentId: sub.agentId,
-                  headLine,
-                  callBody: body,
-                  language: getWorkLanguage(),
-                }),
-                msgId: generateShortId(),
-                grammar: 'markdown',
-              };
-              // Type C: Move to done/ on completion (handled by subdialog completion)
-              await driveDialogStream(sub, initPrompt, true);
-            } catch (err) {
-              log.warn('Type C subdialog processing error:', err);
-            }
-          })();
-          void task;
-          subdialogsCreated.push(sub.id);
-        } catch (err) {
-          log.warn('Subdialog creation error:', err);
-        }
-      }
-
-      if (subdialogsCreated.length > 0) {
+        const task = (async () => {
+          try {
+            const initPrompt: HumanPrompt = {
+              content: formatAssignmentFromSupdialog({
+                fromAgentId: dlg.agentId,
+                toAgentId: sub.agentId,
+                headLine,
+                callBody: body,
+                language: getWorkLanguage(),
+                collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
+              }),
+              msgId: generateShortId(),
+              grammar: 'markdown',
+            };
+            // Type C: Move to done/ on completion (handled by subdialog completion)
+            await driveDialogStream(sub, initPrompt, true);
+          } catch (err) {
+            log.warn('Type C subdialog processing error:', err);
+          }
+        })();
+        void task;
+        subdialogsCreated.push(sub.id);
         suspend = true;
+      } catch (err) {
+        log.warn('Subdialog creation error:', err);
       }
     }
   } else {
-    // Not a team member - check for texting tools
+    // Not a team member - check for texter tools
     let tool =
       textingTools.find((t) => t.name === firstMention) ||
       intrinsicTools.find((t) => t.name === firstMention);
@@ -3295,7 +3490,7 @@ async function executeTextingCall(
             tool = globalTool;
             break;
           case 'func':
-            log.warn(`Function tool "${globalTool.name}" should not be called as texting tool!`);
+            log.warn(`Function tool "${globalTool.name}" should not be called as texter tool!`);
             break;
         }
       } catch (toolErr) {
@@ -3326,7 +3521,7 @@ async function executeTextingCall(
 
         if (tool.backfeeding && !raw.messages) {
           log.warn(
-            `Texting tool @${firstMention} returned empty output while backfeeding=true`,
+            `Texter tool @${firstMention} returned empty output while backfeeding=true`,
             undefined,
             { headLine },
           );
@@ -3385,4 +3580,61 @@ async function executeTextingCall(
   }
 
   return { toolOutputs, suspend, subdialogsCreated };
+}
+
+function isValidMentionChar(char: string): boolean {
+  const charCode = char.charCodeAt(0);
+  return (
+    (charCode >= 48 && charCode <= 57) ||
+    (charCode >= 65 && charCode <= 90) ||
+    (charCode >= 97 && charCode <= 122) ||
+    char === '_' ||
+    char === '-' ||
+    char === '.' ||
+    /\p{L}/u.test(char) ||
+    /\p{N}/u.test(char)
+  );
+}
+
+function trimTrailingDots(value: string): string {
+  let out = value;
+  while (out.endsWith('.')) out = out.slice(0, -1);
+  return out;
+}
+
+function isMentionBoundaryChar(char: string): boolean {
+  if (char === '' || char === '\n' || char === '\t' || char === ' ') return true;
+  return !isValidMentionChar(char);
+}
+
+function extractMentionIdsFromHeadline(headLine: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < headLine.length; i++) {
+    const ch = headLine[i] ?? '';
+    if (ch !== '@') continue;
+    const prev = i === 0 ? '' : (headLine[i - 1] ?? '');
+    if (!isMentionBoundaryChar(prev)) continue;
+
+    let j = i + 1;
+    let raw = '';
+    while (j < headLine.length) {
+      const c = headLine[j] ?? '';
+      if (c !== '' && isValidMentionChar(c)) {
+        raw += c;
+        j += 1;
+        continue;
+      }
+      break;
+    }
+
+    const id = trimTrailingDots(raw);
+    if (id === '') continue;
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+    i = j - 1;
+  }
+  return out;
 }

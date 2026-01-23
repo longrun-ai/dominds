@@ -28,7 +28,7 @@ async function main() {
       genseq: 1,
       msgId: 'test-user-msg',
       content: 'Say hello in 3 words.',
-      grammar: 'texting',
+      grammar: 'tellask',
     },
   ];
 

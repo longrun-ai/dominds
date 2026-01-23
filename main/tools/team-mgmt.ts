@@ -104,7 +104,7 @@ function parseArgsAfterTool(headLine: string, toolName: string): string {
   const trimmed = headLine.trim();
   const prefix = `@${toolName}`;
   if (!trimmed.startsWith(prefix)) {
-    throw new Error(`Invalid format. Use !!@${toolName} ...`);
+    throw new Error(`Invalid format. Use !?@${toolName} ...`);
   }
   return trimmed.slice(prefix.length).trim();
 }
@@ -139,14 +139,14 @@ function formatMindsMissingNotice(language: LanguageCode): string {
       `注意：当前工作区未初始化 \`${MINDS_DIR}/\`（这是正常情况）。`,
       `因此当前在 \`${MINDS_DIR}/\` 下没有可读取/可列出的团队配置。`,
       ``,
-      `如果要初始化团队配置，请先创建目录：\`!!@team_mgmt_mkdir ${MINDS_DIR}\`。`,
+      `如果要初始化团队配置，请先创建目录：\`!?@team_mgmt_mkdir ${MINDS_DIR}\`。`,
     ].join('\n');
   }
   return [
     `Note: \`${MINDS_DIR}/\` is not present in this workspace (this is normal).`,
     `So there is currently no team configuration to read/list under \`${MINDS_DIR}/\`.`,
     ``,
-    `If you want to initialize team configuration, create the directory first: \`!!@team_mgmt_mkdir ${MINDS_DIR}\`.`,
+    `If you want to initialize team configuration, create the directory first: \`!?@team_mgmt_mkdir ${MINDS_DIR}\`.`,
   ].join('\n');
 }
 
@@ -247,41 +247,41 @@ export const teamMgmtCheckProviderTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Validate an LLM provider configuration (and optionally test models).\n` +
-    `Usage: !!@team_mgmt_check_provider <providerKey> [options]\n\n` +
+    `Usage: !?@team_mgmt_check_provider <providerKey> [options]\n\n` +
     `Options:\n` +
     `  !model <modelKey>        Check a specific model\n` +
     `  !all-models true|false   Check all configured models for the provider\n` +
     `  !live true|false         Attempt a real generation call (may incur cost)\n` +
     `  !max-models <n>          Limit model checks when !all-models true (default: 10)\n\n` +
     `Examples:\n` +
-    `!!@team_mgmt_check_provider codex\n` +
-    `!!@team_mgmt_check_provider codex !model gpt-5.2\n` +
-    `!!@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+    `!?@team_mgmt_check_provider codex\n` +
+    `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
+    `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
   usageDescriptionI18n: {
     en:
       `Validate an LLM provider configuration (and optionally test models).\n` +
-      `Usage: !!@team_mgmt_check_provider <providerKey> [options]\n\n` +
+      `Usage: !?@team_mgmt_check_provider <providerKey> [options]\n\n` +
       `Options:\n` +
       `  !model <modelKey>        Check a specific model\n` +
       `  !all-models true|false   Check all configured models for the provider\n` +
       `  !live true|false         Attempt a real generation call (may incur cost)\n` +
       `  !max-models <n>          Limit model checks when !all-models true (default: 10)\n\n` +
       `Examples:\n` +
-      `!!@team_mgmt_check_provider codex\n` +
-      `!!@team_mgmt_check_provider codex !model gpt-5.2\n` +
-      `!!@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+      `!?@team_mgmt_check_provider codex\n` +
+      `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
+      `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
     zh:
       `校验 LLM provider 配置（并可选对模型做实际连通性测试）。\n` +
-      `用法：!!@team_mgmt_check_provider <providerKey> [options]\n\n` +
+      `用法：!?@team_mgmt_check_provider <providerKey> [options]\n\n` +
       `选项：\n` +
       `  !model <modelKey>        校验指定模型\n` +
       `  !all-models true|false   校验该 provider 下所有已配置模型\n` +
       `  !live true|false         发起一次真实生成调用（可能产生费用）\n` +
       `  !max-models <n>          当 !all-models true 时限制校验的模型数量（默认 10）\n\n` +
       `示例：\n` +
-      `!!@team_mgmt_check_provider codex\n` +
-      `!!@team_mgmt_check_provider codex !model gpt-5.2\n` +
-      `!!@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+      `!?@team_mgmt_check_provider codex\n` +
+      `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
+      `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
   },
   async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -460,8 +460,8 @@ export const teamMgmtCheckProviderTool: TextingTool = {
       } else if (!args.live) {
         const hint =
           language === 'zh'
-            ? `提示：如需做真实连通性测试，使用 \`!live true\`。例如：\`!!@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``
-            : `Tip: to perform a real connectivity test, use \`!live true\`. Example: \`!!@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``;
+            ? `提示：如需做真实连通性测试，使用 \`!live true\`。例如：\`!?@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``
+            : `Tip: to perform a real connectivity test, use \`!live true\`. Example: \`!?@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``;
         lines.push(hint + '\n');
       }
 
@@ -483,23 +483,23 @@ export const teamMgmtListDirTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `List directory contents under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_list_dir [path]\n\n` +
+    `Usage: !?@team_mgmt_list_dir [path]\n\n` +
     `Examples:\n` +
-    `!!@team_mgmt_list_dir\n` +
-    `!!@team_mgmt_list_dir team\n`,
+    `!?@team_mgmt_list_dir\n` +
+    `!?@team_mgmt_list_dir team\n`,
   usageDescriptionI18n: {
     en:
       `List directory contents under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_list_dir [path]\n\n` +
+      `Usage: !?@team_mgmt_list_dir [path]\n\n` +
       `Examples:\n` +
-      `!!@team_mgmt_list_dir\n` +
-      `!!@team_mgmt_list_dir team\n`,
+      `!?@team_mgmt_list_dir\n` +
+      `!?@team_mgmt_list_dir team\n`,
     zh:
       `列出 ${MINDS_DIR}/ 下的目录内容。\n` +
-      `用法：!!@team_mgmt_list_dir [path]\n\n` +
+      `用法：!?@team_mgmt_list_dir [path]\n\n` +
       `示例：\n` +
-      `!!@team_mgmt_list_dir\n` +
-      `!!@team_mgmt_list_dir team\n`,
+      `!?@team_mgmt_list_dir\n` +
+      `!?@team_mgmt_list_dir team\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -535,35 +535,35 @@ export const teamMgmtReadFileTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Read a text file under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_read_file [options] <path>\n\n` +
-    `Options (same as !!@read_file):\n` +
+    `Usage: !?@team_mgmt_read_file [options] <path>\n\n` +
+    `Options (same as !?@read_file):\n` +
     `  !range <start~end>\n` +
     `  !max-lines <n>\n` +
     `  !no-linenos\n\n` +
     `Examples:\n` +
-    `!!@team_mgmt_read_file team.yaml\n` +
-    `!!@team_mgmt_read_file !range 1~120 team.yaml\n`,
+    `!?@team_mgmt_read_file team.yaml\n` +
+    `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
   usageDescriptionI18n: {
     en:
       `Read a text file under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_read_file [options] <path>\n\n` +
-      `Options (same as !!@read_file):\n` +
+      `Usage: !?@team_mgmt_read_file [options] <path>\n\n` +
+      `Options (same as !?@read_file):\n` +
       `  !range <start~end>\n` +
       `  !max-lines <n>\n` +
       `  !no-linenos\n\n` +
       `Examples:\n` +
-      `!!@team_mgmt_read_file team.yaml\n` +
-      `!!@team_mgmt_read_file !range 1~120 team.yaml\n`,
+      `!?@team_mgmt_read_file team.yaml\n` +
+      `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
     zh:
       `读取 ${MINDS_DIR}/ 下的文本文件。\n` +
-      `用法：!!@team_mgmt_read_file [options] <path>\n\n` +
-      `可选项（同 !!@read_file）：\n` +
+      `用法：!?@team_mgmt_read_file [options] <path>\n\n` +
+      `可选项（同 !?@read_file）：\n` +
       `  !range <start~end>\n` +
       `  !max-lines <n>\n` +
       `  !no-linenos\n\n` +
       `示例：\n` +
-      `!!@team_mgmt_read_file team.yaml\n` +
-      `!!@team_mgmt_read_file !range 1~120 team.yaml\n`,
+      `!?@team_mgmt_read_file team.yaml\n` +
+      `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -605,29 +605,29 @@ export const teamMgmtOverwriteFileTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Overwrite a text file under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_overwrite_file <path>\n` +
-    `<content in body>\n\n` +
+    `Usage: !?@team_mgmt_overwrite_file <path>\n` +
+    `!?<content in body>\n\n` +
     `Example:\n` +
-    `!!@team_mgmt_overwrite_file team.yaml\n` +
-    `member_defaults:\n` +
-    `  provider: codex\n`,
+    `!?@team_mgmt_overwrite_file team.yaml\n` +
+    `!?member_defaults:\n` +
+    `!?  provider: codex\n`,
   usageDescriptionI18n: {
     en:
       `Overwrite a text file under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_overwrite_file <path>\n` +
-      `<content in body>\n\n` +
+      `Usage: !?@team_mgmt_overwrite_file <path>\n` +
+      `!?<content in body>\n\n` +
       `Example:\n` +
-      `!!@team_mgmt_overwrite_file team.yaml\n` +
-      `member_defaults:\n` +
-      `  provider: codex\n`,
+      `!?@team_mgmt_overwrite_file team.yaml\n` +
+      `!?member_defaults:\n` +
+      `!?  provider: codex\n`,
     zh:
       `覆盖写入 ${MINDS_DIR}/ 下的文本文件。\n` +
-      `用法：!!@team_mgmt_overwrite_file <path>\n` +
-      `<正文为文件内容>\n\n` +
+      `用法：!?@team_mgmt_overwrite_file <path>\n` +
+      `!?<正文为文件内容>\n\n` +
       `示例：\n` +
-      `!!@team_mgmt_overwrite_file team.yaml\n` +
-      `member_defaults:\n` +
-      `  provider: codex\n`,
+      `!?@team_mgmt_overwrite_file team.yaml\n` +
+      `!?member_defaults:\n` +
+      `!?  provider: codex\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -662,17 +662,17 @@ export const teamMgmtReplaceFileContentsTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Replace file contents under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_replace_file_contents <path>\n` +
-    `<content in body>\n`,
+    `Usage: !?@team_mgmt_replace_file_contents <path>\n` +
+    `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
       `Replace file contents under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_replace_file_contents <path>\n` +
-      `<content in body>\n`,
+      `Usage: !?@team_mgmt_replace_file_contents <path>\n` +
+      `!?<content in body>\n`,
     zh:
       `整体替换写入 ${MINDS_DIR}/ 下的文件内容。\n` +
-      `用法：!!@team_mgmt_replace_file_contents <path>\n` +
-      `<正文为文件内容>\n`,
+      `用法：!?@team_mgmt_replace_file_contents <path>\n` +
+      `!?<正文为文件内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -712,17 +712,17 @@ export const teamMgmtAppendFileTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Append content to a file under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_append_file <path>\n` +
-    `<content in body>\n`,
+    `Usage: !?@team_mgmt_append_file <path>\n` +
+    `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
       `Append content to a file under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_append_file <path>\n` +
-      `<content in body>\n`,
+      `Usage: !?@team_mgmt_append_file <path>\n` +
+      `!?<content in body>\n`,
     zh:
       `向 ${MINDS_DIR}/ 下的文件末尾追加内容。\n` +
-      `用法：!!@team_mgmt_append_file <path>\n` +
-      `<正文为追加内容>\n`,
+      `用法：!?@team_mgmt_append_file <path>\n` +
+      `!?<正文为追加内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -756,17 +756,17 @@ export const teamMgmtInsertAfterTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Insert content after an anchor in a file under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_insert_after <path> <anchor> [options]\n` +
-    `<content in body>\n`,
+    `Usage: !?@team_mgmt_insert_after <path> <anchor> [options]\n` +
+    `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
       `Insert content after an anchor in a file under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_insert_after <path> <anchor> [options]\n` +
-      `<content in body>\n`,
+      `Usage: !?@team_mgmt_insert_after <path> <anchor> [options]\n` +
+      `!?<content in body>\n`,
     zh:
       `在 ${MINDS_DIR}/ 下文件的锚点之后插入内容。\n` +
-      `用法：!!@team_mgmt_insert_after <path> <anchor> [options]\n` +
-      `<正文为插入内容>\n`,
+      `用法：!?@team_mgmt_insert_after <path> <anchor> [options]\n` +
+      `!?<正文为插入内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -806,17 +806,17 @@ export const teamMgmtInsertBeforeTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Insert content before an anchor in a file under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_insert_before <path> <anchor> [options]\n` +
-    `<content in body>\n`,
+    `Usage: !?@team_mgmt_insert_before <path> <anchor> [options]\n` +
+    `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
       `Insert content before an anchor in a file under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_insert_before <path> <anchor> [options]\n` +
-      `<content in body>\n`,
+      `Usage: !?@team_mgmt_insert_before <path> <anchor> [options]\n` +
+      `!?<content in body>\n`,
     zh:
       `在 ${MINDS_DIR}/ 下文件的锚点之前插入内容。\n` +
-      `用法：!!@team_mgmt_insert_before <path> <anchor> [options]\n` +
-      `<正文为插入内容>\n`,
+      `用法：!?@team_mgmt_insert_before <path> <anchor> [options]\n` +
+      `!?<正文为插入内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -856,17 +856,17 @@ export const teamMgmtReplaceBlockTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Replace a block between anchors in a file under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
-    `<content in body>\n`,
+    `Usage: !?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+    `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
       `Replace a block between anchors in a file under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
-      `<content in body>\n`,
+      `Usage: !?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+      `!?<content in body>\n`,
     zh:
       `替换 ${MINDS_DIR}/ 下文件中 start/end 锚点之间的块内容。\n` +
-      `用法：!!@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
-      `<正文为新块内容>\n`,
+      `用法：!?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+      `!?<正文为新块内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -906,17 +906,17 @@ export const teamMgmtPlanFileModificationTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !!@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
-    `<new content lines in body>\n`,
+    `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+    `!?<new content lines in body>\n`,
   usageDescriptionI18n: {
     en:
       `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !!@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
-      `<new content lines in body>\n`,
+      `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+      `!?<new content lines in body>\n`,
     zh:
       `按行号范围规划 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。\n` +
-      `用法：!!@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
-      `<正文为新内容行>\n`,
+      `用法：!?@team_mgmt_plan_file_modification <path> <line~range> [!hunk-id]\n` +
+      `!?<正文为新内容行>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -958,14 +958,14 @@ export const teamMgmtApplyFileModificationTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.\n` +
-    `Usage: !!@team_mgmt_apply_file_modification !<hunk-id>\n`,
+    `Usage: !?@team_mgmt_apply_file_modification !<hunk-id>\n`,
   usageDescriptionI18n: {
     en:
       `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.\n` +
-      `Usage: !!@team_mgmt_apply_file_modification !<hunk-id>\n`,
+      `Usage: !?@team_mgmt_apply_file_modification !<hunk-id>\n`,
     zh:
       `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下的单文件修改。\n` +
-      `用法：!!@team_mgmt_apply_file_modification !<hunk-id>\n`,
+      `用法：!?@team_mgmt_apply_file_modification !<hunk-id>\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1000,10 +1000,10 @@ export const teamMgmtMkDirTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_mk_dir',
   backfeeding: true,
-  usageDescription: `Create a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+  usageDescription: `Create a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
   usageDescriptionI18n: {
-    en: `Create a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_mk_dir <path> [parents=true|false]\n`,
-    zh: `创建 ${MINDS_DIR}/ 下目录。\n用法：!!@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+    en: `Create a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+    zh: `创建 ${MINDS_DIR}/ 下目录。\n用法：!?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1038,10 +1038,10 @@ export const teamMgmtMoveFileTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_move_file',
   backfeeding: true,
-  usageDescription: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_file <from> <to>\n`,
+  usageDescription: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_file <from> <to>\n`,
   usageDescriptionI18n: {
-    en: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_file <from> <to>\n`,
-    zh: `移动/重命名 ${MINDS_DIR}/ 下文件。\n用法：!!@team_mgmt_move_file <from> <to>\n`,
+    en: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_file <from> <to>\n`,
+    zh: `移动/重命名 ${MINDS_DIR}/ 下文件。\n用法：!?@team_mgmt_move_file <from> <to>\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1080,10 +1080,10 @@ export const teamMgmtMoveDirTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_move_dir',
   backfeeding: true,
-  usageDescription: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_dir <from> <to>\n`,
+  usageDescription: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_dir <from> <to>\n`,
   usageDescriptionI18n: {
-    en: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !!@team_mgmt_move_dir <from> <to>\n`,
-    zh: `移动/重命名 ${MINDS_DIR}/ 下目录。\n用法：!!@team_mgmt_move_dir <from> <to>\n`,
+    en: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_dir <from> <to>\n`,
+    zh: `移动/重命名 ${MINDS_DIR}/ 下目录。\n用法：!?@team_mgmt_move_dir <from> <to>\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1122,10 +1122,10 @@ export const teamMgmtRipgrepFilesTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_files',
   backfeeding: true,
-  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !!@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
   usageDescriptionI18n: {
-    en: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !!@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_files 搜索。\n用法：!!@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+    en: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_files 搜索。\n用法：!?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1165,10 +1165,10 @@ export const teamMgmtRipgrepSnippetsTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_snippets',
   backfeeding: true,
-  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !!@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
   usageDescriptionI18n: {
-    en: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !!@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_snippets 搜索。\n用法：!!@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+    en: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_snippets 搜索。\n用法：!?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1207,10 +1207,10 @@ export const teamMgmtRipgrepCountTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_count',
   backfeeding: true,
-  usageDescription: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !!@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+  usageDescription: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
   usageDescriptionI18n: {
-    en: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !!@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_count 计数。\n用法：!!@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+    en: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_count 计数。\n用法：!?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1249,10 +1249,10 @@ export const teamMgmtRipgrepFixedTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_fixed',
   backfeeding: true,
-  usageDescription: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+  usageDescription: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
   usageDescriptionI18n: {
-    en: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下固定字符串搜索。\n用法：!!@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+    en: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+    zh: `在 ${MINDS_DIR}/ 下固定字符串搜索。\n用法：!?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1291,10 +1291,10 @@ export const teamMgmtRipgrepSearchTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_ripgrep_search',
   backfeeding: true,
-  usageDescription: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+  usageDescription: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
   usageDescriptionI18n: {
-    en: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !!@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
-    zh: `在 ${MINDS_DIR}/ 下使用 ripgrep_search 逃生舱。\n用法：!!@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+    en: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+    zh: `在 ${MINDS_DIR}/ 下使用 ripgrep_search 逃生舱。\n用法：!?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1333,10 +1333,10 @@ export const teamMgmtRmFileTool: TextingTool = {
   type: 'texter',
   name: 'team_mgmt_rm_file',
   backfeeding: true,
-  usageDescription: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !!@team_mgmt_rm_file <path>\n`,
+  usageDescription: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_rm_file <path>\n`,
   usageDescriptionI18n: {
-    en: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !!@team_mgmt_rm_file <path>\n`,
-    zh: `删除 ${MINDS_DIR}/ 下的文件。\n` + `用法：!!@team_mgmt_rm_file <path>\n`,
+    en: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_rm_file <path>\n`,
+    zh: `删除 ${MINDS_DIR}/ 下的文件。\n` + `用法：!?@team_mgmt_rm_file <path>\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1373,14 +1373,14 @@ export const teamMgmtRmDirTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Remove a directory under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
+    `Usage: !?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
   usageDescriptionI18n: {
     en:
       `Remove a directory under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
+      `Usage: !?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
     zh:
       `删除 ${MINDS_DIR}/ 下的目录。\n` +
-      `用法：!!@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
+      `用法：!?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1420,13 +1420,13 @@ export const teamMgmtMkdirTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Create a directory under ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_mkdir <path> [!parents true|false]\n`,
+    `Usage: !?@team_mgmt_mkdir <path> [!parents true|false]\n`,
   usageDescriptionI18n: {
     en:
       `Create a directory under ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_mkdir <path> [!parents true|false]\n`,
+      `Usage: !?@team_mgmt_mkdir <path> [!parents true|false]\n`,
     zh:
-      `在 ${MINDS_DIR}/ 下创建目录。\n` + `用法：!!@team_mgmt_mkdir <path> [!parents true|false]\n`,
+      `在 ${MINDS_DIR}/ 下创建目录。\n` + `用法：!?@team_mgmt_mkdir <path> [!parents true|false]\n`,
   },
   async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1468,10 +1468,10 @@ export const teamMgmtMovePathTool: TextingTool = {
   name: 'team_mgmt_move_path',
   backfeeding: true,
   usageDescription:
-    `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !!@team_mgmt_move_path <from> <to>\n`,
+    `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_move_path <from> <to>\n`,
   usageDescriptionI18n: {
-    en: `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !!@team_mgmt_move_path <from> <to>\n`,
-    zh: `在 ${MINDS_DIR}/ 下移动/重命名路径。\n` + `用法：!!@team_mgmt_move_path <from> <to>\n`,
+    en: `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_move_path <from> <to>\n`,
+    zh: `在 ${MINDS_DIR}/ 下移动/重命名路径。\n` + `用法：!?@team_mgmt_move_path <from> <to>\n`,
   },
   async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -1677,7 +1677,7 @@ function renderMemberProperties(language: LanguageCode): string {
         '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
         '`streaming`',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
-        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!!@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
+        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!?@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
       ])
     );
   }
@@ -1690,7 +1690,7 @@ function renderMemberProperties(language: LanguageCode): string {
       '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
       '`streaming`',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
-      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!!@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
+      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!?@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
     ])
   );
 }
@@ -1699,8 +1699,8 @@ function renderTeamManual(language: LanguageCode): string {
   const common = [
     'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
-    'after every modification to `.minds/team.yaml`: you must run `!!@team_mgmt_validate_team_cfg` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
-    'when changing provider/model: validate provider exists + env var is configured (use !!@team_mgmt_check_provider)',
+    'after every modification to `.minds/team.yaml`: you must run `!?@team_mgmt_validate_team_cfg` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
+    'when changing provider/model: validate provider exists + env var is configured (use `!?@team_mgmt_check_provider`)',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
     'hidden: true marks a shadow member (not listed in system prompt)',
     "toolsets supports '*' and '!<toolset>' exclusions (e.g. ['*','!team-mgmt'])",
@@ -1711,18 +1711,18 @@ function renderTeamManual(language: LanguageCode): string {
       fmtList([
         '团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。',
         '强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。',
-        '每次修改 `.minds/team.yaml` 必须运行 `!!@team_mgmt_validate_team_cfg`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
+        '每次修改 `.minds/team.yaml` 必须运行 `!?@team_mgmt_validate_team_cfg`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
         '角色职责（Markdown）通过 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 绑定到 `members.<id>`：同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 用于写该长期 agent 的“职责速记卡/工作边界/交付物摘要”（建议 5 行内）：用于快速路由与提醒；更完整的规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。\n示例（gofor）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain script-style smoke tests and how to run them\n      - Reject changes that break lint/types/tests (or request fixes)\n      - Track high-risk areas and required manual verification\n```\n示例（gofor, object；按 YAML key 顺序渲染）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
-        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `!!@team_mgmt_check_provider <providerKey>` 做检查，避免把系统刷成板砖。',
+        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `!?@team_mgmt_check_provider <providerKey>` 做检查，避免把系统刷成板砖。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
-        '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!!@<id>` 诉请。',
+        '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `!!@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!!@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!!@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!!@team_mgmt_overwrite_file team.yaml`。',
+        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` 生成 diff 后，再用 `!?@team_mgmt_apply_file_modification !<id>` 显式确认写入；大改动直接 `!?@team_mgmt_overwrite_file team.yaml`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -1766,7 +1766,7 @@ function renderTeamManual(language: LanguageCode): string {
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `!!@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!!@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!!@team_mgmt_apply_file_modification !<id>`; for large edits, use `!!@team_mgmt_overwrite_file team.yaml`.',
+        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_plan_file_modification team.yaml <line~range> !<id>` to get a diff, then confirm with `!?@team_mgmt_apply_file_modification !<id>`; for large edits, use `!?@team_mgmt_overwrite_file team.yaml`.',
       ]),
     ) +
     '\n' +
@@ -1803,7 +1803,7 @@ function renderMcpManual(language: LanguageCode): string {
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
         '常见坑：stdio transport 需要可执行命令路径/工作目录正确，且受成员目录权限（`read_dirs/write_dirs/no_*`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
         '高频坑（stdio 路径）：相对路径会受 `cwd` 影响而失败；推荐用绝对路径，或显式设置 `cwd` 来固定相对路径的解析。',
-        '最小诊断流程（建议顺序）：1) 先用 `!!@team_mgmt_check_provider <providerKey>` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`!!@team_mgmt_manual !permissions`）；3) 最后检查 MCP 侧报错（Problems 面板/相关日志提示），必要时 `mcp_restart`，用完记得 `mcp_release`。',
+        '最小诊断流程（建议顺序）：1) 先用 `!?@team_mgmt_check_provider <providerKey>` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`!?@team_mgmt_manual !permissions`）；3) 最后检查 MCP 侧报错（Problems 面板/相关日志提示），必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小模板（stdio）',
@@ -1850,7 +1850,7 @@ function renderMcpManual(language: LanguageCode): string {
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
       'Common pitfalls: stdio transport needs a correct executable/command path and working directory, and is subject to member directory permissions (`read_dirs/write_dirs/no_*`); HTTP transport requires the server URL to be reachable.',
       'High-frequency pitfall (stdio paths): relative paths depend on `cwd` and can break; prefer absolute paths, or set `cwd` explicitly to make relative paths stable.',
-      'Minimal diagnostic flow: 1) run `!!@team_mgmt_check_provider <providerKey>` to confirm the LLM provider works; 2) review member directory permissions (`!!@team_mgmt_manual !permissions`); 3) check MCP-side errors (Problems panel / logs), use `mcp_restart` if needed, and `mcp_release` when done.',
+      'Minimal diagnostic flow: 1) run `!?@team_mgmt_check_provider <providerKey>` to confirm the LLM provider works; 2) review member directory permissions (`!?@team_mgmt_manual !permissions`); 3) check MCP-side errors (Problems panel / logs), use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Minimal template (stdio)',
@@ -1900,7 +1900,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
-        '`*.tsk/` 是封装差遣牒：只能用 `!!@change_mind` 维护。通用文件工具（read/list/overwrite/rm/plan/apply）必须禁止访问该目录树。',
+        '`*.tsk/` 是封装差遣牒：只能用 `!?@change_mind` 维护。通用文件工具（read/list/overwrite/rm/plan/apply）必须禁止访问该目录树。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小权限写法示例（仅示意）',
@@ -1923,7 +1923,7 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
-      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via `!!@change_mind` only. General file tools (read/list/overwrite/rm/plan/apply) must be blocked from that directory tree.',
+      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via `!?@change_mind` only. General file tools (read/list/overwrite/rm/plan/apply) must be blocked from that directory tree.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Least-privilege example (illustrative)',
@@ -1983,10 +1983,10 @@ function renderTroubleshooting(language: LanguageCode): string {
     return (
       fmtHeader('排障（症状 → 原因 → 解决步骤）') +
       fmtList([
-        '改 provider/model 前总是先做：运行 `!!@team_mgmt_check_provider <providerKey> !live true`，确认 provider key 存在且环境变量已配置。',
+        '改 provider/model 前总是先做：运行 `!?@team_mgmt_check_provider <providerKey> !live true`，确认 provider key 存在且环境变量已配置。',
         '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
-        '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `!!@team_mgmt_manual !permissions` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
+        '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `!?@team_mgmt_manual !permissions` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
         '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：打开 Problems 面板查看错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
@@ -1994,10 +1994,10 @@ function renderTroubleshooting(language: LanguageCode): string {
   return (
     fmtHeader('Troubleshooting (symptom → cause → steps)') +
     fmtList([
-      'Always do this before changing provider/model: run `!!@team_mgmt_check_provider <providerKey> !live true` to verify the provider key and env vars.',
+      'Always do this before changing provider/model: run `!?@team_mgmt_check_provider <providerKey> !live true` to verify the provider key and env vars.',
       'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
-      'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `!!@team_mgmt_manual !permissions` and the member `read_dirs/write_dirs/no_*` config.',
+      'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `!?@team_mgmt_manual !permissions` and the member `read_dirs/write_dirs/no_*` config.',
       'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: check Problems panel; use `mcp_restart`; call `mcp_release` when done.',
     ])
   );
@@ -2107,11 +2107,11 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
     language === 'zh'
       ? fmtList([
           '这份列表来自 Dominds 内置的 LLM defaults（实现内置）。当你没有在 `.minds/llm.yaml` 里显式覆盖某些 provider/model key 时，这些 defaults 可能会生效（以当前实现的合并规则为准）。',
-          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `!!@team_mgmt_check_provider <providerKey> !live true` 验证配置。',
+          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `!?@team_mgmt_check_provider <providerKey> !live true` 验证配置。',
         ])
       : fmtList([
           'This list comes from Dominds built-in LLM defaults (implementation-provided). If you do not explicitly override certain provider/model keys in `.minds/llm.yaml`, these defaults may be used (per current merge rules).',
-          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `!!@team_mgmt_check_provider <providerKey> !live true` to verify.',
+          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `!?@team_mgmt_check_provider <providerKey> !live true` to verify.',
         ]);
 
   return header + explain + '\n' + body + '\n';
@@ -2123,14 +2123,14 @@ export const teamMgmtValidateTeamCfgTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Validate ${TEAM_YAML_REL} and surface all issues to the WebUI Problems panel.\n` +
-    `Usage: !!@team_mgmt_validate_team_cfg\n`,
+    `Usage: !?@team_mgmt_validate_team_cfg\n`,
   usageDescriptionI18n: {
     en:
       `Validate ${TEAM_YAML_REL} and surface all issues to the WebUI Problems panel.\n` +
-      `Usage: !!@team_mgmt_validate_team_cfg\n`,
+      `Usage: !?@team_mgmt_validate_team_cfg\n`,
     zh:
       `校验 ${TEAM_YAML_REL}，并将所有问题上报到 WebUI 的 Problems 面板。\n` +
-      `用法：!!@team_mgmt_validate_team_cfg\n`,
+      `用法：!?@team_mgmt_validate_team_cfg\n`,
   },
   async call(dlg, _caller, _headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getUserLang(dlg);
@@ -2237,32 +2237,32 @@ export const teamMgmtManualTool: TextingTool = {
   backfeeding: true,
   usageDescription:
     `Team management manual for ${MINDS_DIR}/.\n` +
-    `Usage: !!@team_mgmt_manual [!topic ...]\n\n` +
+    `Usage: !?@team_mgmt_manual [!topic ...]\n\n` +
     `Examples:\n` +
-    `!!@team_mgmt_manual\n` +
-    `!!@team_mgmt_manual !topics\n` +
-    `!!@team_mgmt_manual !team !member-properties\n` +
-    `!!@team_mgmt_manual !llm !builtin-defaults\n` +
-    `!!@team_mgmt_manual !llm !model-params\n`,
+    `!?@team_mgmt_manual\n` +
+    `!?@team_mgmt_manual !topics\n` +
+    `!?@team_mgmt_manual !team !member-properties\n` +
+    `!?@team_mgmt_manual !llm !builtin-defaults\n` +
+    `!?@team_mgmt_manual !llm !model-params\n`,
   usageDescriptionI18n: {
     en:
       `Team management manual for ${MINDS_DIR}/.\n` +
-      `Usage: !!@team_mgmt_manual [!topic ...]\n\n` +
+      `Usage: !?@team_mgmt_manual [!topic ...]\n\n` +
       `Examples:\n` +
-      `!!@team_mgmt_manual\n` +
-      `!!@team_mgmt_manual !topics\n` +
-      `!!@team_mgmt_manual !team !member-properties\n` +
-      `!!@team_mgmt_manual !llm !builtin-defaults\n` +
-      `!!@team_mgmt_manual !llm !model-params\n`,
+      `!?@team_mgmt_manual\n` +
+      `!?@team_mgmt_manual !topics\n` +
+      `!?@team_mgmt_manual !team !member-properties\n` +
+      `!?@team_mgmt_manual !llm !builtin-defaults\n` +
+      `!?@team_mgmt_manual !llm !model-params\n`,
     zh:
       `${MINDS_DIR}/ 的团队管理手册。\n` +
-      `用法：!!@team_mgmt_manual [!topic ...]\n\n` +
+      `用法：!?@team_mgmt_manual [!topic ...]\n\n` +
       `示例：\n` +
-      `!!@team_mgmt_manual\n` +
-      `!!@team_mgmt_manual !topics\n` +
-      `!!@team_mgmt_manual !team !member-properties\n` +
-      `!!@team_mgmt_manual !llm !builtin-defaults\n` +
-      `!!@team_mgmt_manual !llm !model-params\n`,
+      `!?@team_mgmt_manual\n` +
+      `!?@team_mgmt_manual !topics\n` +
+      `!?@team_mgmt_manual !team !member-properties\n` +
+      `!?@team_mgmt_manual !llm !builtin-defaults\n` +
+      `!?@team_mgmt_manual !llm !model-params\n`,
   },
   async call(dlg, _caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
@@ -2278,20 +2278,20 @@ export const teamMgmtManualTool: TextingTool = {
           fmtHeader('Team Management Manual') +
           msgPrefix +
           fmtList([
-            '`!!@team_mgmt_manual !topics`：主题索引（你在这里）',
-            '新手最常见流程：先写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `!!@team_mgmt_check_provider <providerKey>`。',
+            '`!?@team_mgmt_manual !topics`：主题索引（你在这里）',
+            '新手最常见流程：先写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `!?@team_mgmt_check_provider <providerKey>`。',
             '',
-            '`!!@team_mgmt_manual !team`：.minds/team.yaml（团队花名册、工具集、目录权限入口）',
-            '`!!@team_mgmt_manual !minds`：.minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）',
-            '`!!@team_mgmt_manual !permissions`：目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）',
-            '`!!@team_mgmt_manual !toolsets`：toolsets 列表（当前已注册 toolsets；常见三种授权模式）',
-            '`!!@team_mgmt_manual !llm`：.minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）',
-            '`!!@team_mgmt_manual !mcp`：.minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）',
-            '`!!@team_mgmt_manual !troubleshooting`：排障（按症状定位；优先用 check_provider）',
+            '`!?@team_mgmt_manual !team`：.minds/team.yaml（团队花名册、工具集、目录权限入口）',
+            '`!?@team_mgmt_manual !minds`：.minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）',
+            '`!?@team_mgmt_manual !permissions`：目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）',
+            '`!?@team_mgmt_manual !toolsets`：toolsets 列表（当前已注册 toolsets；常见三种授权模式）',
+            '`!?@team_mgmt_manual !llm`：.minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）',
+            '`!?@team_mgmt_manual !mcp`：.minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）',
+            '`!?@team_mgmt_manual !troubleshooting`：排障（按症状定位；优先用 check_provider）',
             '',
-            '`!!@team_mgmt_manual !team !member-properties`：成员字段表（members.<id> 字段参考）',
-            '`!!@team_mgmt_manual !llm !builtin-defaults`：内置 defaults 摘要（内置 provider/model 概览与合并语义）',
-            '`!!@team_mgmt_manual !llm !model-params`：模型参数参考（model_params / model_param_options）',
+            '`!?@team_mgmt_manual !team !member-properties`：成员字段表（members.<id> 字段参考）',
+            '`!?@team_mgmt_manual !llm !builtin-defaults`：内置 defaults 摘要（内置 provider/model 概览与合并语义）',
+            '`!?@team_mgmt_manual !llm !model-params`：模型参数参考（model_params / model_param_options）',
           ])
         );
       }
@@ -2299,20 +2299,20 @@ export const teamMgmtManualTool: TextingTool = {
         fmtHeader('Team Management Manual') +
         msgPrefix +
         fmtList([
-          '`!!@team_mgmt_manual !topics`: topic index (you are here)',
-          'Common starter flow: write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `!!@team_mgmt_check_provider <providerKey>`. ',
+          '`!?@team_mgmt_manual !topics`: topic index (you are here)',
+          'Common starter flow: write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `!?@team_mgmt_check_provider <providerKey>`. ',
           '',
-          '`!!@team_mgmt_manual !team`: `.minds/team.yaml` (roster/toolsets/permissions entrypoint)',
-          '`!!@team_mgmt_manual !minds`: `.minds/team/<id>/*` (persona/knowledge/lessons assets)',
-          '`!!@team_mgmt_manual !permissions`: directory permissions (semantics + conflict rules)',
-          '`!!@team_mgmt_manual !toolsets`: toolsets list (registered toolsets + common patterns)',
-          '`!!@team_mgmt_manual !llm`: `.minds/llm.yaml` (provider keys, env var boundaries)',
-          '`!!@team_mgmt_manual !mcp`: `.minds/mcp.yaml` (serverId→toolset, hot reload, leasing, minimal templates)',
-          '`!!@team_mgmt_manual !troubleshooting`: troubleshooting (symptom → steps; start with check_provider)',
+          '`!?@team_mgmt_manual !team`: `.minds/team.yaml` (roster/toolsets/permissions entrypoint)',
+          '`!?@team_mgmt_manual !minds`: `.minds/team/<id>/*` (persona/knowledge/lessons assets)',
+          '`!?@team_mgmt_manual !permissions`: directory permissions (semantics + conflict rules)',
+          '`!?@team_mgmt_manual !toolsets`: toolsets list (registered toolsets + common patterns)',
+          '`!?@team_mgmt_manual !llm`: `.minds/llm.yaml` (provider keys, env var boundaries)',
+          '`!?@team_mgmt_manual !mcp`: `.minds/mcp.yaml` (serverId→toolset, hot reload, leasing, minimal templates)',
+          '`!?@team_mgmt_manual !troubleshooting`: troubleshooting (symptom → steps; start with check_provider)',
           '',
-          '`!!@team_mgmt_manual !team !member-properties`: member field reference (members.<id>)',
-          '`!!@team_mgmt_manual !llm !builtin-defaults`: built-in defaults summary (what/when/merge behavior)',
-          '`!!@team_mgmt_manual !llm !model-params`: `model_params` and `model_param_options` reference',
+          '`!?@team_mgmt_manual !team !member-properties`: member field reference (members.<id>)',
+          '`!?@team_mgmt_manual !llm !builtin-defaults`: built-in defaults summary (what/when/merge behavior)',
+          '`!?@team_mgmt_manual !llm !model-params`: `model_params` and `model_param_options` reference',
         ])
       );
     };

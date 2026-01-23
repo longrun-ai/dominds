@@ -540,7 +540,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toolsTitle: 'Tools',
     toolsEmpty: 'No tools',
     toolsRefresh: 'Refresh',
-    toolsSectionTexting: 'Texting Tools',
+    toolsSectionTexting: 'Tellask Tools',
     toolsSectionFunction: 'Function Tools',
 
     daemonLabel: 'Daemon',

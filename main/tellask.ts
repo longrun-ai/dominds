@@ -25,11 +25,9 @@
 
 import { generateContentHash } from './utils/id';
 
-export type TellaskMalformedReason = 'missing_mention_prefix' | 'invalid_mention_id';
+import type { TellaskCallValidation, TellaskMalformedReason } from './shared/types/tellask';
 
-export type TellaskCallValidation =
-  | { kind: 'valid'; firstMention: string }
-  | { kind: 'malformed'; reason: TellaskMalformedReason };
+export type { TellaskCallValidation, TellaskMalformedReason };
 
 export interface CollectedTellaskCall {
   validation: TellaskCallValidation;

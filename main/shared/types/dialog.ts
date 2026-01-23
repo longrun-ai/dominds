@@ -10,6 +10,7 @@ import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogInterruptionReason, DialogRunState } from './run-state';
 import type { UserTextGrammar } from './storage';
+import type { TellaskCallValidation } from './tellask';
 
 export interface DialogRunStateEvent {
   type: 'dlg_run_state_evt';
@@ -115,7 +116,7 @@ export interface FunctionResultEvent {
 // callId is determined at finish event via content-hash (see shared/utils/id.ts)
 export type ToolCallStartEvent = LlmGenDlgEvent & {
   type: 'tool_call_start_evt';
-  firstMention: string;
+  validation: TellaskCallValidation;
 };
 
 export type ToolCallHeadlineChunkEvent = LlmGenDlgEvent & {
@@ -129,7 +130,6 @@ export type ToolCallHeadlineFinishEvent = LlmGenDlgEvent & {
 
 export type ToolCallBodyStartEvent = LlmGenDlgEvent & {
   type: 'tool_call_body_start_evt';
-  infoLine?: string;
 };
 
 export type ToolCallBodyChunkEvent = LlmGenDlgEvent & {
@@ -139,7 +139,6 @@ export type ToolCallBodyChunkEvent = LlmGenDlgEvent & {
 
 export type ToolCallBodyFinishEvent = LlmGenDlgEvent & {
   type: 'tool_call_body_finish_evt';
-  endQuote?: string;
 };
 
 export type ToolCallFinishEvent = LlmGenDlgEvent & {
@@ -157,41 +156,6 @@ export interface ToolCallResponseEvent {
   result: string;
   callId: string; // Content-hash for replay correlation
 }
-
-// Teammate call events (streaming mode - @agentName and @human mentions)
-export type TeammateCallStartEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_start_evt';
-  firstMention: string;
-  calleeDialogId?: string; // For @agentName: subdialog ID; For @human: "human"
-};
-
-export type TeammateCallHeadlineChunkEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_headline_chunk_evt';
-  chunk: string;
-};
-
-export type TeammateCallHeadlineFinishEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_headline_finish_evt';
-};
-
-export type TeammateCallBodyStartEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_body_start_evt';
-  infoLine?: string;
-};
-
-export type TeammateCallBodyChunkEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_body_chunk_evt';
-  chunk: string;
-};
-
-export type TeammateCallBodyFinishEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_body_finish_evt';
-  endQuote?: string;
-};
-
-export type TeammateCallFinishEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_finish_evt';
-};
 
 export interface ReminderContent {
   content: string;
@@ -220,7 +184,7 @@ export interface TeammateResponseEvent {
   originMemberId: string;
 }
 
-// End of user saying event - emitted after user texting calls are parsed/executed
+// End of user saying event - emitted after user tool calls are parsed/executed
 // Used by frontend to render <hr/> separator between user content and AI response
 export interface EndOfUserSayingEvent {
   type: 'end_of_user_saying_evt';
@@ -231,21 +195,6 @@ export interface EndOfUserSayingEvent {
   grammar: UserTextGrammar;
   userLanguageCode?: LanguageCode;
 }
-
-export type CodeBlockStartEvent = LlmGenDlgEvent & {
-  type: 'codeblock_start_evt';
-  infoLine?: string;
-};
-
-export type CodeBlockChunkEvent = LlmGenDlgEvent & {
-  type: 'codeblock_chunk_evt';
-  chunk: string;
-};
-
-export type CodeBlockFinishEvent = LlmGenDlgEvent & {
-  type: 'codeblock_finish_evt';
-  endQuote?: string;
-};
 
 export interface RoundEvent {
   type: 'round_update';
@@ -330,19 +279,7 @@ export type DialogEvent =
   | ToolCallBodyFinishEvent
   | ToolCallFinishEvent
   | ToolCallResponseEvent
-  // Teammate calls (@agentName, @human)
-  | TeammateCallStartEvent
-  | TeammateCallHeadlineChunkEvent
-  | TeammateCallHeadlineFinishEvent
-  | TeammateCallBodyStartEvent
-  | TeammateCallBodyChunkEvent
-  | TeammateCallBodyFinishEvent
-  | TeammateCallFinishEvent
   | TeammateResponseEvent
-  // Code blocks
-  | CodeBlockStartEvent
-  | CodeBlockChunkEvent
-  | CodeBlockFinishEvent
   // Subdialog events
   | SubdialogEvent
   // User events

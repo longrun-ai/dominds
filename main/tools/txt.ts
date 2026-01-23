@@ -763,7 +763,7 @@ export const readFileTool: TextingTool = {
   name: 'read_file',
   backfeeding: true,
   usageDescription: `Read a text file (bounded) relative to workspace. 
-Usage: !!@read_file [options] <path>
+Usage: !?@read_file [options] <path>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
@@ -783,15 +783,15 @@ Range formats:
   ~         - No range limit (entire file)
 
 Examples:
-  !!@read_file src/main.ts
-  !!@read_file !no-linenos src/main.ts
-  !!@read_file !range 10~50 src/main.ts
-  !!@read_file !max-lines 100 !range 1~500 src/main.ts
-  !!@read_file !range 300~ src/main.ts
-  !!@read_file !range ~20 src/main.ts`,
+!?@read_file src/main.ts
+!?@read_file !no-linenos src/main.ts
+!?@read_file !range 10~50 src/main.ts
+!?@read_file !max-lines 100 !range 1~500 src/main.ts
+!?@read_file !range 300~ src/main.ts
+!?@read_file !range ~20 src/main.ts`,
   usageDescriptionI18n: {
     en: `Read a text file (bounded) relative to workspace.
-Usage: !!@read_file [options] <path>
+Usage: !?@read_file [options] <path>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
@@ -811,14 +811,14 @@ Range formats:
   ~         - No range limit (entire file)
 
 Examples:
-  !!@read_file src/main.ts
-  !!@read_file !no-linenos src/main.ts
-  !!@read_file !range 10~50 src/main.ts
-  !!@read_file !max-lines 100 !range 1~500 src/main.ts
-  !!@read_file !range 300~ src/main.ts
-  !!@read_file !range ~20 src/main.ts`,
+!?@read_file src/main.ts
+!?@read_file !no-linenos src/main.ts
+!?@read_file !range 10~50 src/main.ts
+!?@read_file !max-lines 100 !range 1~500 src/main.ts
+!?@read_file !range 300~ src/main.ts
+!?@read_file !range ~20 src/main.ts`,
     zh: `读取工作区内的文本文件（有上限/可截断）。
-用法：!!@read_file [options] <path>
+用法：!?@read_file [options] <path>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
@@ -838,12 +838,12 @@ Examples:
   ~         - 不限制范围（整文件）
 
 示例：
-  !!@read_file src/main.ts
-  !!@read_file !no-linenos src/main.ts
-  !!@read_file !range 10~50 src/main.ts
-  !!@read_file !max-lines 100 !range 1~500 src/main.ts
-  !!@read_file !range 300~ src/main.ts
-  !!@read_file !range ~20 src/main.ts`,
+!?@read_file src/main.ts
+!?@read_file !no-linenos src/main.ts
+!?@read_file !range 10~50 src/main.ts
+!?@read_file !max-lines 100 !range 1~500 src/main.ts
+!?@read_file !range 300~ src/main.ts
+!?@read_file !range ~20 src/main.ts`,
   },
   async call(dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
@@ -851,10 +851,10 @@ Examples:
       language === 'zh'
         ? {
             formatError:
-              '请使用正确的文件读取格式。\n\n**期望格式：** `!!@read_file [options] <path>`\n\n**示例：**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
+              '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
             formatErrorWithReason: (msg: string) =>
               `❌ **错误：** ${msg}\n\n` +
-              '请使用正确的文件读取格式。\n\n**期望格式：** `!!@read_file [options] <path>`\n\n**示例：**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
+              '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
             fileLabel: '文件',
             warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
               `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
@@ -863,19 +863,19 @@ Examples:
             warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
               `⚠️ **警告：** \`!max-lines\`（${maxLines}）与 \`!range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
             hintUseRangeNext: (relPath: string, start: number, end: number) =>
-              `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!!@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+              `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
             hintLargeFileStrategy: (relPath: string) =>
-              `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!!@read_file !range 1~500 ${relPath}\`、\`!!@read_file !range 201~400 ${relPath}\`）。\n\n`,
+              `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`!?@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!?@read_file !range 1~500 ${relPath}\`、\`!?@read_file !range 201~400 ${relPath}\`）。\n\n`,
             sizeLabel: '大小',
             totalLinesLabel: '总行数',
             failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
           }
         : {
             formatError:
-              'Please use the correct format for reading files.\n\n**Expected format:** `!!@read_file [options] <path>`\n\n**Examples:**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
+              'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
             formatErrorWithReason: (msg: string) =>
               `❌ **Error:** ${msg}\n\n` +
-              'Please use the correct format for reading files.\n\n**Expected format:** `!!@read_file [options] <path>`\n\n**Examples:**\n```\n!!@read_file src/main.ts\n!!@read_file !range 10~50 src/main.ts\n!!@read_file !range 300~ src/main.ts\n```',
+              'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```',
             fileLabel: 'File',
             warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
               `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
@@ -884,9 +884,9 @@ Examples:
             warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
               `⚠️ **Warning:** \`!max-lines\` (${maxLines}) contradicts \`!range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
             hintUseRangeNext: (relPath: string, start: number, end: number) =>
-              `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!!@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+              `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
             hintLargeFileStrategy: (relPath: string) =>
-              `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`@clear_mind\` (less context) before reading the next slice (e.g. \`!!@read_file !range 1~500 ${relPath}\`, then \`!!@read_file !range 201~400 ${relPath}\`).\n\n`,
+              `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`!?@clear_mind\` (less context) before reading the next slice (e.g. \`!?@read_file !range 1~500 ${relPath}\`, then \`!?@read_file !range 201~400 ${relPath}\`).\n\n`,
             sizeLabel: 'Size',
             totalLinesLabel: 'Total lines',
             failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
@@ -1018,58 +1018,58 @@ export const overwriteFileTool: TextingTool = {
   name: 'overwrite_file',
   backfeeding: true,
   usageDescription: `Overwrite a file with new content (writes literally; does NOT parse diff/patch syntax).
-Usage: !!@overwrite_file <path>
-<file content in body>
+Usage: !?@overwrite_file <path>
+!?<file content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
   If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.
 
 Examples:
-  !!@overwrite_file src/config.ts
-  export const config = { version: '1.0' };
+!?@overwrite_file src/config.ts
+!?export const config = { version: '1.0' };
   
-  !!@overwrite_file README.md
-  # My Project
-  This is a sample project.`,
+!?@overwrite_file README.md
+!?# My Project
+!?This is a sample project.`,
   usageDescriptionI18n: {
     en: `Overwrite a file with new content (writes literally; does NOT parse diff/patch syntax).
-Usage: !!@overwrite_file <path>
-<file content in body>
+Usage: !?@overwrite_file <path>
+!?<file content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
   If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.
 
 Examples:
-  !!@overwrite_file src/config.ts
-  export const config = { version: '1.0' };
+!?@overwrite_file src/config.ts
+!?export const config = { version: '1.0' };
   
-  !!@overwrite_file README.md
-  # My Project
-  This is a sample project.`,
+!?@overwrite_file README.md
+!?# My Project
+!?This is a sample project.`,
     zh: `用新内容覆盖写入一个文件（逐字写入；不会解析 diff/patch 语法）。
-用法：!!@overwrite_file <path>
-<文件内容写在正文里>
+用法：!?@overwrite_file <path>
+!?<文件内容写在正文里>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
   若粘贴了 diff（例如 \`+\`/\`-\` 前缀或 \`@@\`），会被按字面写入文件。
 
 示例：
-  !!@overwrite_file src/config.ts
-  export const config = { version: '1.0' };
+!?@overwrite_file src/config.ts
+!?export const config = { version: '1.0' };
   
-  !!@overwrite_file README.md
-  # My Project
-  This is a sample project.`,
+!?@overwrite_file README.md
+!?# My Project
+!?This is a sample project.`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TextingToolCallResult> {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
         ? {
-            invalidFormat: '错误：格式不正确。用法：!!@overwrite_file <path>',
+            invalidFormat: '错误：格式不正确。用法：!?@overwrite_file <path>',
             filePathRequired: '错误：需要提供文件路径。',
             contentRequired: '错误：需要在正文中提供文件内容。',
             diffLikeWarning:
@@ -1078,7 +1078,7 @@ Examples:
             overwriteFailed: (msg: string) => `❌ **错误**\n\n覆盖写入文件失败：${msg}`,
           }
         : {
-            invalidFormat: 'Error: Invalid format. Use !!@overwrite_file <path>',
+            invalidFormat: 'Error: Invalid format. Use !?@overwrite_file <path>',
             filePathRequired: 'Error: File path is required.',
             contentRequired: 'Error: File content is required in the body.',
             diffLikeWarning:
@@ -1155,23 +1155,23 @@ export const replaceFileContentsTool: TextingTool = {
   name: 'replace_file_contents',
   backfeeding: true,
   usageDescription: `Replace a file's entire contents (writes literally; does NOT parse diff/patch syntax).
-Usage: !!@replace_file_contents <path>
-<file content in body>
+Usage: !?@replace_file_contents <path>
+!?<file content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
   If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.`,
   usageDescriptionI18n: {
     en: `Replace a file's entire contents (writes literally; does NOT parse diff/patch syntax).
-Usage: !!@replace_file_contents <path>
-<file content in body>
+Usage: !?@replace_file_contents <path>
+!?<file content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
   If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.`,
     zh: `用新内容整体替换写入一个文件（逐字写入；不会解析 diff/patch 语法）。
-用法：!!@replace_file_contents <path>
-<文件内容写在正文里>
+用法：!?@replace_file_contents <path>
+!?<文件内容写在正文里>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
@@ -1182,7 +1182,7 @@ Note:
     const labels =
       language === 'zh'
         ? {
-            invalidFormat: '错误：格式不正确。用法：!!@replace_file_contents <path>',
+            invalidFormat: '错误：格式不正确。用法：!?@replace_file_contents <path>',
             filePathRequired: '错误：需要提供文件路径。',
             contentRequired: '错误：需要在正文中提供文件内容。',
             diffLikeWarning:
@@ -1191,7 +1191,7 @@ Note:
             replaceFailed: (msg: string) => `❌ **错误**\n\n替换写入文件失败：${msg}`,
           }
         : {
-            invalidFormat: 'Error: Invalid format. Use !!@replace_file_contents <path>',
+            invalidFormat: 'Error: Invalid format. Use !?@replace_file_contents <path>',
             filePathRequired: 'Error: File path is required.',
             contentRequired: 'Error: File content is required in the body.',
             diffLikeWarning:
@@ -1259,8 +1259,8 @@ export const planFileModificationTool: TextingTool = {
   name: 'plan_file_modification',
   backfeeding: true,
   usageDescription: `Plan a single-file modification by line range (does not write yet).
-Usage: !!@plan_file_modification <path> <line~range> [!hunk-id]
-<new content lines in body>
+Usage: !?@plan_file_modification <path> <line~range> [!hunk-id]
+!?<new content lines in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
@@ -1277,7 +1277,7 @@ Range formats:
 Workflow:
   1) Plan: tool returns a proposed unified diff hunk with a generated hunk id.
   2) Review the diff.
-  3) Apply: confirm by calling \`!!@apply_file_modification !<hunk-id>\`.
+  3) Apply: confirm by calling \`!?@apply_file_modification !<hunk-id>\`.
   4) Optional revise: re-run this tool with \`!<hunk-id>\` to update the planned hunk.
 
 Tip:
@@ -1286,8 +1286,8 @@ Tip:
   - Multiple applies to different files are safe to batch in one message.`,
   usageDescriptionI18n: {
     en: `Plan a single-file modification by line range (does not write yet).
-Usage: !!@plan_file_modification <path> <line~range> [!hunk-id]
-<new content lines in body>
+Usage: !?@plan_file_modification <path> <line~range> [!hunk-id]
+!?<new content lines in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
@@ -1304,7 +1304,7 @@ Range formats:
 Workflow:
   1) Plan: tool returns a proposed unified diff hunk with a generated hunk id.
   2) Review the diff.
-  3) Apply: confirm by calling \`!!@apply_file_modification !<hunk-id>\`.
+  3) Apply: confirm by calling \`!?@apply_file_modification !<hunk-id>\`.
   4) Optional revise: re-run this tool with \`!<hunk-id>\` to update the planned hunk.
 
 Tip:
@@ -1312,8 +1312,8 @@ Tip:
   - Multiple applies to the same file can be in one message; they are serialized in-process (older planned hunks first).
   - Multiple applies to different files are safe to batch in one message.`,
     zh: `按行号范围规划单文件修改（不会立刻写入文件）。
-用法：!!@plan_file_modification <path> <line~range> [!hunk-id]
-<正文为新内容行>
+用法：!?@plan_file_modification <path> <line~range> [!hunk-id]
+!?<正文为新内容行>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
@@ -1330,7 +1330,7 @@ Tip:
 流程：
   1) 规划：返回一个 proposed unified diff hunk，并生成 hunk id。
   2) 你先检查 diff。
-  3) 应用：用 \`!!@apply_file_modification !<hunk-id>\` 显式确认并写入。
+  3) 应用：用 \`!?@apply_file_modification !<hunk-id>\` 显式确认并写入。
   4) 可选修订：再次调用本工具并带上 \`!<hunk-id>\` 更新该规划。
 
 提示：
@@ -1344,25 +1344,25 @@ Tip:
       language === 'zh'
         ? {
             invalidFormat:
-              '错误：格式不正确。\n\n期望格式：`!!@plan_file_modification <path> <line~range> [!hunk-id]`',
+              '错误：格式不正确。\n\n期望格式：`!?@plan_file_modification <path> <line~range> [!hunk-id]`',
             filePathRequired: '错误：需要提供文件路径。',
             rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
             fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
             planned: (id: string, p: string) => `✅ 已规划：\`!${id}\` → \`${p}\``,
             next: (id: string) =>
-              `下一步：执行 \`!!@apply_file_modification !${id}\` 来确认并写入。`,
+              `下一步：执行 \`!?@apply_file_modification !${id}\` 来确认并写入。`,
             hunkIdTaken: (id: string) => `错误：hunk id \`!${id}\` 已被其他成员占用。`,
             planFailed: (msg: string) => `错误：生成修改规划失败：${msg}`,
           }
         : {
             invalidFormat:
-              'Error: Invalid format.\n\nExpected: `!!@plan_file_modification <path> <line~range> [!hunk-id]`',
+              'Error: Invalid format.\n\nExpected: `!?@plan_file_modification <path> <line~range> [!hunk-id]`',
             filePathRequired: 'Error: File path is required.',
             rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
             fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
             planned: (id: string, p: string) => `✅ Planned \`!${id}\` for \`${p}\``,
             next: (id: string) =>
-              `Next: run \`!!@apply_file_modification !${id}\` to confirm and write.`,
+              `Next: run \`!?@apply_file_modification !${id}\` to confirm and write.`,
             hunkIdTaken: (id: string) =>
               `Error: hunk id \`!${id}\` is already owned by a different member.`,
             planFailed: (msg: string) => `Error planning modification: ${msg}`,
@@ -1475,8 +1475,8 @@ Tip:
 
       const reviseHint =
         language === 'zh'
-          ? `（可选：用 \`!!@plan_file_modification ${filePath} ${rangeSpec} !${hunkId}\` 重新规划并覆写该 hunk。）`
-          : `Optional: revise by running \`!!@plan_file_modification ${filePath} ${rangeSpec} !${hunkId}\` with corrected body.`;
+          ? `（可选：用 \`!?@plan_file_modification ${filePath} ${rangeSpec} !${hunkId}\` 重新规划并覆写该 hunk。）`
+          : `Optional: revise by running \`!?@plan_file_modification ${filePath} ${rangeSpec} !${hunkId}\` with corrected body.`;
 
       const action: 'replace' | 'append' | 'delete' =
         range.kind === 'append' ? 'append' : newLines.length === 0 ? 'delete' : 'replace';
@@ -1548,20 +1548,20 @@ export const applyFileModificationTool: TextingTool = {
     'Apply a previously planned file modification by hunk id.\n' +
     'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
     'Notes: Applies are serialized per file (single-process). The hunk may still apply if lines moved, as long as the original target content is uniquely matchable.\n' +
-    'Usage: !!@apply_file_modification !<hunk-id>\n' +
+    'Usage: !?@apply_file_modification !<hunk-id>\n' +
     '(no body)',
   usageDescriptionI18n: {
     en:
       'Apply a previously planned file modification by hunk id.\n' +
       'Note: Paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.\n' +
       'Notes: Applies are serialized per file (single-process). The hunk may still apply if lines moved, as long as the original target content is uniquely matchable.\n' +
-      'Usage: !!@apply_file_modification !<hunk-id>\n' +
+      'Usage: !?@apply_file_modification !<hunk-id>\n' +
       '(no body)',
     zh:
       '按 hunk id 应用之前规划的单文件修改。\n' +
       '注意：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。\n' +
       '说明：同一文件的 apply 会在进程内串行化；若行号发生移动，只要能在文件中唯一定位到原始目标内容，仍可应用。\n' +
-      '用法：!!@apply_file_modification !<hunk-id>\n' +
+      '用法：!?@apply_file_modification !<hunk-id>\n' +
       '（无正文）',
   },
   backfeeding: true,
@@ -1570,7 +1570,7 @@ export const applyFileModificationTool: TextingTool = {
     const labels =
       language === 'zh'
         ? {
-            invalidFormat: '错误：格式不正确。用法：!!@apply_file_modification !<hunk-id>',
+            invalidFormat: '错误：格式不正确。用法：!?@apply_file_modification !<hunk-id>',
             hunkIdRequired: '错误：需要提供要应用的 hunk id（例如 `!a1b2c3d4`）。',
             notFound: (id: string) => `错误：未找到该 hunk：\`!${id}\`（可能已过期或已被应用）。`,
             wrongOwner: '错误：该 hunk 不是由当前成员规划的，不能应用。',
@@ -1581,7 +1581,7 @@ export const applyFileModificationTool: TextingTool = {
             applyFailed: (msg: string) => `错误：应用失败：${msg}`,
           }
         : {
-            invalidFormat: 'Error: Invalid format. Use !!@apply_file_modification !<hunk-id>',
+            invalidFormat: 'Error: Invalid format. Use !?@apply_file_modification !<hunk-id>',
             hunkIdRequired: 'Error: hunk id is required (e.g. `!a1b2c3d4`).',
             notFound: (id: string) =>
               `Error: hunk \`!${id}\` not found (expired or already applied).`,
@@ -1808,21 +1808,21 @@ export const appendFileTool: TextingTool = {
   name: 'append_file',
   backfeeding: true,
   usageDescription: `Append content to the end of a text file.
-Usage: !!@append_file <path>
-<content in body>
+Usage: !?@append_file <path>
+!?<content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.`,
   usageDescriptionI18n: {
     en: `Append content to the end of a text file.
-Usage: !!@append_file <path>
-<content in body>
+Usage: !?@append_file <path>
+!?<content in body>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.`,
     zh: `向文本文件末尾追加内容。
-用法：!!@append_file <path>
-<正文为追加内容>
+用法：!?@append_file <path>
+!?<正文为追加内容>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。`,
@@ -1832,13 +1832,13 @@ Note:
     const labels =
       language === 'zh'
         ? {
-            invalidFormat: '错误：格式不正确。用法：!!@append_file <path>',
+            invalidFormat: '错误：格式不正确。用法：!?@append_file <path>',
             filePathRequired: '错误：需要提供文件路径。',
             contentRequired: '错误：需要在正文中提供追加内容。',
             writeFailed: (msg: string) => `错误：追加失败：${msg}`,
           }
         : {
-            invalidFormat: 'Error: Invalid format. Use !!@append_file <path>',
+            invalidFormat: 'Error: Invalid format. Use !?@append_file <path>',
             filePathRequired: 'Error: file path is required.',
             contentRequired: 'Error: content is required in the body.',
             writeFailed: (msg: string) => `Error appending to file: ${msg}`,
@@ -1920,23 +1920,23 @@ export const insertAfterTool: TextingTool = {
   name: 'insert_after',
   backfeeding: true,
   usageDescription: `Insert content after an anchor string (by occurrence).
-Usage: !!@insert_after <path> <anchor> [options]
-<content in body>
+Usage: !?@insert_after <path> <anchor> [options]
+!?<content in body>
 
 Options:
   occurrence=<n|last> (default: 1)
   strict=true|false (default: true)`,
   usageDescriptionI18n: {
     en: `Insert content after an anchor string (by occurrence).
-Usage: !!@insert_after <path> <anchor> [options]
-<content in body>
+Usage: !?@insert_after <path> <anchor> [options]
+!?<content in body>
 
 Options:
   occurrence=<n|last> (default: 1)
   strict=true|false (default: true)`,
     zh: `在锚点字符串之后插入内容（按 occurrence 选择）。
-用法：!!@insert_after <path> <anchor> [options]
-<正文为插入内容>
+用法：!?@insert_after <path> <anchor> [options]
+!?<正文为插入内容>
 
 选项：
   occurrence=<n|last>（默认 1）
@@ -1949,8 +1949,8 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: insert_after\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-after failed: invalid format. Use !!@insert_after <path> <anchor> [options].'
-            : 'Insert-after failed: invalid format. Use !!@insert_after <path> <anchor> [options].',
+            ? 'Insert-after failed: invalid format. Use !?@insert_after <path> <anchor> [options].'
+            : 'Insert-after failed: invalid format. Use !?@insert_after <path> <anchor> [options].',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -2185,23 +2185,23 @@ export const insertBeforeTool: TextingTool = {
   name: 'insert_before',
   backfeeding: true,
   usageDescription: `Insert content before an anchor string (by occurrence).
-Usage: !!@insert_before <path> <anchor> [options]
-<content in body>
+Usage: !?@insert_before <path> <anchor> [options]
+!?<content in body>
 
 Options:
   occurrence=<n|last> (default: 1)
   strict=true|false (default: true)`,
   usageDescriptionI18n: {
     en: `Insert content before an anchor string (by occurrence).
-Usage: !!@insert_before <path> <anchor> [options]
-<content in body>
+Usage: !?@insert_before <path> <anchor> [options]
+!?<content in body>
 
 Options:
   occurrence=<n|last> (default: 1)
   strict=true|false (default: true)`,
     zh: `在锚点字符串之前插入内容（按 occurrence 选择）。
-用法：!!@insert_before <path> <anchor> [options]
-<正文为插入内容>
+用法：!?@insert_before <path> <anchor> [options]
+!?<正文为插入内容>
 
 选项：
   occurrence=<n|last>（默认 1）
@@ -2214,8 +2214,8 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: insert_before\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Insert-before failed: invalid format. Use !!@insert_before <path> <anchor> [options].'
-            : 'Insert-before failed: invalid format. Use !!@insert_before <path> <anchor> [options].',
+            ? 'Insert-before failed: invalid format. Use !?@insert_before <path> <anchor> [options].'
+            : 'Insert-before failed: invalid format. Use !?@insert_before <path> <anchor> [options].',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -2448,23 +2448,23 @@ export const replaceBlockTool: TextingTool = {
   name: 'replace_block',
   backfeeding: true,
   usageDescription: `Replace a block between start/end anchors.
-Usage: !!@replace_block <path> <start_anchor> <end_anchor> [options]
-<content in body>
+Usage: !?@replace_block <path> <start_anchor> <end_anchor> [options]
+!?<content in body>
 
 Options:
   occurrence=<n|last> (default: 1)
   include_anchors=true|false (default: true)`,
   usageDescriptionI18n: {
     en: `Replace a block between start/end anchors.
-Usage: !!@replace_block <path> <start_anchor> <end_anchor> [options]
-<content in body>
+Usage: !?@replace_block <path> <start_anchor> <end_anchor> [options]
+!?<content in body>
 
 Options:
   occurrence=<n|last> (default: 1)
   include_anchors=true|false (default: true)`,
     zh: `按 start/end 锚点替换块内容。
-用法：!!@replace_block <path> <start_anchor> <end_anchor> [options]
-<正文为新块内容>
+用法：!?@replace_block <path> <start_anchor> <end_anchor> [options]
+!?<正文为新块内容>
 
 选项：
   occurrence=<n|last>（默认 1）
@@ -2477,8 +2477,8 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nmode: replace_block\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Replace-block failed: invalid format. Use !!@replace_block <path> <start_anchor> <end_anchor> [options].'
-            : 'Replace-block failed: invalid format. Use !!@replace_block <path> <start_anchor> <end_anchor> [options].',
+            ? 'Replace-block failed: invalid format. Use !?@replace_block <path> <start_anchor> <end_anchor> [options].'
+            : 'Replace-block failed: invalid format. Use !?@replace_block <path> <start_anchor> <end_anchor> [options].',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);

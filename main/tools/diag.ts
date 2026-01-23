@@ -6,10 +6,11 @@
 
 import type { Dialog } from '../dialog';
 import { Team } from '../team';
-import { CollectedTextingCall, TextingEventsReceiver, TextingStreamParser } from '../texting';
+import type { TellaskCallValidation } from '../tellask';
+import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
 import type { FuncTool, JsonSchema, ToolArguments } from '../tool';
 
-type VerifyTextingParsingArgs = Readonly<{
+type VerifyTellaskParsingArgs = Readonly<{
   text: string;
   upstreamChunkSize: number;
   chunkSizesPlan: ReadonlyArray<number> | null;
@@ -32,7 +33,7 @@ type DiagEvent =
   | { kind: 'markdownStart' }
   | { kind: 'markdownChunk'; chunk: string; upstreamChunkIndex: number; upstreamChunkSize: number }
   | { kind: 'markdownFinish' }
-  | { kind: 'callStart'; firstMention: string }
+  | { kind: 'callStart'; validation: TellaskCallValidation }
   | {
       kind: 'callHeadLineChunk';
       chunk: string;
@@ -40,37 +41,34 @@ type DiagEvent =
       upstreamChunkSize: number;
     }
   | { kind: 'callHeadLineFinish' }
-  | { kind: 'callBodyStart'; infoLine: string | null }
+  | { kind: 'callBodyStart' }
   | { kind: 'callBodyChunk'; chunk: string; upstreamChunkIndex: number; upstreamChunkSize: number }
-  | { kind: 'callBodyFinish'; endQuote: string | null }
-  | { kind: 'callFinish'; callId: string }
-  | { kind: 'codeBlockStart'; infoLine: string }
-  | {
-      kind: 'codeBlockChunk';
-      chunk: string;
-      upstreamChunkIndex: number;
-      upstreamChunkSize: number;
-    }
-  | { kind: 'codeBlockFinish'; endQuote: string };
+  | { kind: 'callBodyFinish' }
+  | { kind: 'callFinish'; callId: string };
 
-type TextingSegment =
+type TellaskSegment =
   | { kind: 'markdown'; text: string }
-  | { kind: 'call'; firstMention: string; headLine: string; body: string; callId: string }
-  | { kind: 'codeBlock'; infoLine: string; content: string; endQuote: string };
+  | {
+      kind: 'call';
+      validation: TellaskCallValidation;
+      headLine: string;
+      body: string;
+      callId: string;
+    };
 
 type SegmentDiff =
   | { kind: 'equal' }
   | {
       kind: 'different';
       atIndex: number;
-      baseline: TextingSegment | null;
-      got: TextingSegment | null;
+      baseline: TellaskSegment | null;
+      got: TellaskSegment | null;
     };
 
-function parseVerifyTextingParsingArgs(args: ToolArguments): VerifyTextingParsingArgs {
+function parseVerifyTellaskParsingArgs(args: ToolArguments): VerifyTellaskParsingArgs {
   const text = args.text;
   if (typeof text !== 'string') {
-    throw new Error(`verify_texting_parsing.text must be a string`);
+    throw new Error(`verify_tellask_parsing.text must be a string`);
   }
 
   const includeEventsValue = args.include_events;
@@ -94,13 +92,13 @@ function parseVerifyTextingParsingArgs(args: ToolArguments): VerifyTextingParsin
   const chunkSizesPlanValue = args.chunk_sizes;
   const chunkSizesPlan = parseOptionalIntArray(
     chunkSizesPlanValue,
-    'verify_texting_parsing.chunk_sizes',
+    'verify_tellask_parsing.chunk_sizes',
   );
 
   const invarianceChunkSizesValue = args.invariance_chunk_sizes;
   const invarianceChunkSizesParsed = parseOptionalIntArray(
     invarianceChunkSizesValue,
-    'verify_texting_parsing.invariance_chunk_sizes',
+    'verify_tellask_parsing.invariance_chunk_sizes',
   );
   const invarianceChunkSizes =
     invarianceChunkSizesParsed !== null
@@ -110,7 +108,7 @@ function parseVerifyTextingParsingArgs(args: ToolArguments): VerifyTextingParsin
   const randomSeedsValue = args.random_invariance_seeds;
   const randomInvarianceSeedsParsed = parseOptionalIntArray(
     randomSeedsValue,
-    'verify_texting_parsing.random_invariance_seeds',
+    'verify_tellask_parsing.random_invariance_seeds',
   );
   const randomInvarianceSeeds =
     randomInvarianceSeedsParsed !== null ? randomInvarianceSeedsParsed : [1, 2, 3, 4, 5, 123, 999];
@@ -153,7 +151,7 @@ function previewText(value: string, maxLen: number): string {
   return `${value.slice(0, maxLen)}…`;
 }
 
-class DiagTextingReceiver implements TextingEventsReceiver {
+class DiagTellaskReceiver implements TellaskEventsReceiver {
   public readonly events: DiagEvent[] = [];
 
   private currentUpstreamChunkIndex = -1;
@@ -181,8 +179,8 @@ class DiagTextingReceiver implements TextingEventsReceiver {
     this.events.push({ kind: 'markdownFinish' });
   }
 
-  async callStart(firstMention: string): Promise<void> {
-    this.events.push({ kind: 'callStart', firstMention });
+  async callStart(validation: TellaskCallValidation): Promise<void> {
+    this.events.push({ kind: 'callStart', validation });
   }
   async callHeadLineChunk(chunk: string): Promise<void> {
     this.events.push({ kind: 'callHeadLineChunk', chunk, ...this.upstreamCtx() });
@@ -190,36 +188,23 @@ class DiagTextingReceiver implements TextingEventsReceiver {
   async callHeadLineFinish(): Promise<void> {
     this.events.push({ kind: 'callHeadLineFinish' });
   }
-  async callBodyStart(infoLine?: string): Promise<void> {
-    this.events.push({ kind: 'callBodyStart', infoLine: infoLine === undefined ? null : infoLine });
+  async callBodyStart(): Promise<void> {
+    this.events.push({ kind: 'callBodyStart' });
   }
   async callBodyChunk(chunk: string): Promise<void> {
     this.events.push({ kind: 'callBodyChunk', chunk, ...this.upstreamCtx() });
   }
-  async callBodyFinish(endQuote?: string): Promise<void> {
-    this.events.push({
-      kind: 'callBodyFinish',
-      endQuote: endQuote === undefined ? null : endQuote,
-    });
+  async callBodyFinish(): Promise<void> {
+    this.events.push({ kind: 'callBodyFinish' });
   }
   async callFinish(callId: string): Promise<void> {
     this.events.push({ kind: 'callFinish', callId });
   }
-
-  async codeBlockStart(infoLine: string): Promise<void> {
-    this.events.push({ kind: 'codeBlockStart', infoLine });
-  }
-  async codeBlockChunk(chunk: string): Promise<void> {
-    this.events.push({ kind: 'codeBlockChunk', chunk, ...this.upstreamCtx() });
-  }
-  async codeBlockFinish(endQuote: string): Promise<void> {
-    this.events.push({ kind: 'codeBlockFinish', endQuote });
-  }
 }
 
 function segmentsDiff(
-  baseline: ReadonlyArray<TextingSegment>,
-  got: ReadonlyArray<TextingSegment>,
+  baseline: ReadonlyArray<TellaskSegment>,
+  got: ReadonlyArray<TellaskSegment>,
 ): SegmentDiff {
   const maxLen = Math.max(baseline.length, got.length);
   for (let i = 0; i < maxLen; i++) {
@@ -235,7 +220,7 @@ function segmentsDiff(
   return { kind: 'equal' };
 }
 
-function segmentEqual(a: TextingSegment, b: TextingSegment): boolean {
+function segmentEqual(a: TellaskSegment, b: TellaskSegment): boolean {
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
     case 'markdown':
@@ -243,21 +228,17 @@ function segmentEqual(a: TextingSegment, b: TextingSegment): boolean {
     case 'call': {
       const bb = b as {
         kind: 'call';
-        firstMention: string;
+        validation: TellaskCallValidation;
         headLine: string;
         body: string;
         callId: string;
       };
       return (
-        a.firstMention === bb.firstMention &&
+        JSON.stringify(a.validation) === JSON.stringify(bb.validation) &&
         a.headLine === bb.headLine &&
         a.body === bb.body &&
         a.callId === bb.callId
       );
-    }
-    case 'codeBlock': {
-      const bb = b as { kind: 'codeBlock'; infoLine: string; content: string; endQuote: string };
-      return a.infoLine === bb.infoLine && a.content === bb.content && a.endQuote === bb.endQuote;
     }
     default: {
       const _exhaustive: never = a;
@@ -266,22 +247,16 @@ function segmentEqual(a: TextingSegment, b: TextingSegment): boolean {
   }
 }
 
-function eventsToSegments(events: ReadonlyArray<DiagEvent>): TextingSegment[] {
-  const segments: TextingSegment[] = [];
+function eventsToSegments(events: ReadonlyArray<DiagEvent>): TellaskSegment[] {
+  const segments: TellaskSegment[] = [];
 
   let currentMarkdown: { kind: 'markdown'; text: string } | null = null;
   let currentCall: {
     kind: 'call';
-    firstMention: string;
+    validation: TellaskCallValidation;
     headLine: string;
     body: string;
     callId: string;
-  } | null = null;
-  let currentCodeBlock: {
-    kind: 'codeBlock';
-    infoLine: string;
-    content: string;
-    endQuote: string;
   } | null = null;
 
   for (const ev of events) {
@@ -303,7 +278,7 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TextingSegment[] {
       case 'callStart':
         currentCall = {
           kind: 'call',
-          firstMention: ev.firstMention,
+          validation: ev.validation,
           headLine: '',
           body: '',
           callId: '',
@@ -311,13 +286,25 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TextingSegment[] {
         break;
       case 'callHeadLineChunk': {
         if (!currentCall)
-          currentCall = { kind: 'call', firstMention: '', headLine: '', body: '', callId: '' };
+          currentCall = {
+            kind: 'call',
+            validation: { kind: 'malformed', reason: 'missing_mention_prefix' },
+            headLine: '',
+            body: '',
+            callId: '',
+          };
         currentCall.headLine += ev.chunk;
         break;
       }
       case 'callBodyChunk': {
         if (!currentCall)
-          currentCall = { kind: 'call', firstMention: '', headLine: '', body: '', callId: '' };
+          currentCall = {
+            kind: 'call',
+            validation: { kind: 'malformed', reason: 'missing_mention_prefix' },
+            headLine: '',
+            body: '',
+            callId: '',
+          };
         currentCall.body += ev.chunk;
         break;
       }
@@ -327,28 +314,6 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TextingSegment[] {
           segments.push(currentCall);
         }
         currentCall = null;
-        break;
-
-      case 'codeBlockStart':
-        currentCodeBlock = { kind: 'codeBlock', infoLine: ev.infoLine, content: '', endQuote: '' };
-        break;
-      case 'codeBlockChunk': {
-        if (!currentCodeBlock)
-          currentCodeBlock = { kind: 'codeBlock', infoLine: '', content: '', endQuote: '' };
-        currentCodeBlock.content += ev.chunk;
-        break;
-      }
-      case 'codeBlockFinish':
-        if (!currentCodeBlock)
-          currentCodeBlock = {
-            kind: 'codeBlock',
-            infoLine: '',
-            content: '',
-            endQuote: ev.endQuote,
-          };
-        currentCodeBlock.endQuote = ev.endQuote;
-        segments.push(currentCodeBlock);
-        currentCodeBlock = null;
         break;
 
       case 'callHeadLineFinish':
@@ -366,7 +331,6 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TextingSegment[] {
 
   if (currentMarkdown) segments.push(currentMarkdown);
   if (currentCall) segments.push(currentCall);
-  if (currentCodeBlock) segments.push(currentCodeBlock);
   return segments;
 }
 
@@ -377,7 +341,6 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
   let callActive = false;
   let callHeadlineFinished = false;
   let callBodyActive = false;
-  let codeBlockActive = false;
 
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
@@ -431,18 +394,6 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
         callBodyActive = false;
         break;
 
-      case 'codeBlockStart':
-        if (codeBlockActive) issues.push(`event[${i}]: codeBlockStart while codeBlockActive`);
-        codeBlockActive = true;
-        break;
-      case 'codeBlockChunk':
-        if (!codeBlockActive) issues.push(`event[${i}]: codeBlockChunk without codeBlockStart`);
-        break;
-      case 'codeBlockFinish':
-        if (!codeBlockActive) issues.push(`event[${i}]: codeBlockFinish without codeBlockStart`);
-        codeBlockActive = false;
-        break;
-
       default: {
         const _exhaustive: never = ev;
         void _exhaustive;
@@ -455,7 +406,6 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
   if (markdownActive) issues.push(`end: markdownActive not finished`);
   if (callActive) issues.push(`end: callActive not finished`);
   if (callBodyActive) issues.push(`end: callBodyActive not finished`);
-  if (codeBlockActive) issues.push(`end: codeBlockActive not finished`);
 
   return { ok: issues.length === 0, issues };
 }
@@ -486,20 +436,20 @@ function splitIntoRandomChunks(inputLength: number, seed: number, maxChunkSize: 
   return sizes;
 }
 
-async function parseTextingWithChunkPlan(
+async function parseTellaskWithChunkPlan(
   input: string,
   chunkSizesPlan: ReadonlyArray<number> | null,
   upstreamChunkSize: number,
 ): Promise<{
   upstreamChunks: UpstreamChunk[];
   events: DiagEvent[];
-  segments: TextingSegment[];
-  collectedCalls: CollectedTextingCall[];
+  segments: TellaskSegment[];
+  collectedCalls: CollectedTellaskCall[];
   chunkPlanUsed: number[];
   chunkPlanExtendedToCoverRemainder: boolean;
 }> {
-  const receiver = new DiagTextingReceiver();
-  const parser = new TextingStreamParser(receiver);
+  const receiver = new DiagTellaskReceiver();
+  const parser = new TellaskStreamParser(receiver);
 
   const upstreamChunks: UpstreamChunk[] = [];
   const chunkPlanUsed: number[] = [];
@@ -607,8 +557,7 @@ function computeChunkingMetrics(
     if (
       ev.kind !== 'markdownChunk' &&
       ev.kind !== 'callHeadLineChunk' &&
-      ev.kind !== 'callBodyChunk' &&
-      ev.kind !== 'codeBlockChunk'
+      ev.kind !== 'callBodyChunk'
     ) {
       continue;
     }
@@ -648,10 +597,10 @@ function computeChunkingMetrics(
   };
 }
 
-const verifyTextingParsingSchema: JsonSchema = {
+const verifyTellaskParsingSchema: JsonSchema = {
   type: 'object',
   properties: {
-    text: { type: 'string', description: 'Raw texting/saying text to parse.' },
+    text: { type: 'string', description: 'Raw tellask/markdown text to parse.' },
     upstream_chunk_size: {
       type: 'integer',
       description:
@@ -661,19 +610,17 @@ const verifyTextingParsingSchema: JsonSchema = {
       type: 'array',
       items: { type: 'integer' },
       description:
-        'Explicit upstream chunk-size plan (like tests/texting/realtime.ts). May include 0 for empty chunks.',
+        'Explicit upstream chunk-size plan (like tests/tellask/realtime.ts). May include 0 for empty chunks.',
     },
     invariance_chunk_sizes: {
       type: 'array',
       items: { type: 'integer' },
-      description:
-        'Upstream chunk sizes to verify invariance against baseline single-chunk parse (like tests/texting/parsing.ts).',
+      description: 'Upstream chunk sizes to verify invariance against baseline single-chunk parse.',
     },
     random_invariance_seeds: {
       type: 'array',
       items: { type: 'integer' },
-      description:
-        'Seeds used to generate random chunk plans to verify invariance (like tests/texting/parsing.ts).',
+      description: 'Seeds used to generate random chunk plans to verify invariance.',
     },
     random_invariance_max_chunk_size: {
       type: 'integer',
@@ -694,22 +641,22 @@ const verifyTextingParsingSchema: JsonSchema = {
   additionalProperties: false,
 };
 
-export const verifyTextingParsingTool: FuncTool = {
+export const verifyTellaskParsingTool: FuncTool = {
   type: 'func',
-  name: 'verify_texting_parsing',
+  name: 'verify_tellask_parsing',
   description:
-    'Parse a raw texting/saying text block via TextingStreamParser and return structured segments + streaming diagnostics.',
+    'Parse a raw tellask/markdown text block via TellaskStreamParser and return structured segments + streaming diagnostics.',
   descriptionI18n: {
-    en: 'Parse a raw texting/saying text block via TextingStreamParser and return structured segments + streaming diagnostics.',
-    zh: '将一段原始 texting/saying 文本交给 TextingStreamParser 解析，并返回结构化片段与流式诊断结果。',
+    en: 'Parse a raw tellask/markdown text block via TellaskStreamParser and return structured segments + streaming diagnostics.',
+    zh: '将一段原始 tellask/markdown 文本交给 TellaskStreamParser 解析，并返回结构化片段与流式诊断结果。',
   },
-  parameters: verifyTextingParsingSchema,
+  parameters: verifyTellaskParsingSchema,
   argsValidation: 'dominds',
   call: async (_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> => {
     try {
-      const parsed = parseVerifyTextingParsingArgs(args);
+      const parsed = parseVerifyTellaskParsingArgs(args);
 
-      const primary = await parseTextingWithChunkPlan(
+      const primary = await parseTellaskWithChunkPlan(
         parsed.text,
         parsed.chunkSizesPlan,
         parsed.upstreamChunkSize,
@@ -719,7 +666,7 @@ export const verifyTextingParsingTool: FuncTool = {
       const chunking = computeChunkingMetrics(primary.events, primary.upstreamChunks);
 
       const baselineChunkSize = Math.max(1, parsed.text.length);
-      const baseline = await parseTextingWithChunkPlan(parsed.text, null, baselineChunkSize);
+      const baseline = await parseTellaskWithChunkPlan(parsed.text, null, baselineChunkSize);
 
       const invarianceFailures: Array<{
         upstreamChunkSize: number;
@@ -727,7 +674,7 @@ export const verifyTextingParsingTool: FuncTool = {
       }> = [];
       for (const sz of parsed.invarianceChunkSizes) {
         const actualSize = Math.max(1, sz);
-        const got = await parseTextingWithChunkPlan(parsed.text, null, actualSize);
+        const got = await parseTellaskWithChunkPlan(parsed.text, null, actualSize);
         const diff = segmentsDiff(baseline.segments, got.segments);
         if (diff.kind !== 'equal') {
           invarianceFailures.push({ upstreamChunkSize: actualSize, diff });
@@ -746,7 +693,7 @@ export const verifyTextingParsingTool: FuncTool = {
           seed,
           parsed.randomInvarianceMaxChunkSize,
         );
-        const got = await parseTextingWithChunkPlan(parsed.text, plan, parsed.upstreamChunkSize);
+        const got = await parseTellaskWithChunkPlan(parsed.text, plan, parsed.upstreamChunkSize);
         const diff = segmentsDiff(baseline.segments, got.segments);
         if (diff.kind !== 'equal') {
           randomFailures.push({

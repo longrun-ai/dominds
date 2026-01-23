@@ -226,7 +226,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
           genseq,
           msgId: `func-call-${scenario.name}`,
           content: scenario.prompt,
-          grammar: 'texting',
+          grammar: 'tellask',
         },
       ];
 

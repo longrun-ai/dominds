@@ -174,8 +174,8 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
     return [block];
   }
 
-  // Handle texting call results (NOT LLM-native, represented as role='user' messages)
-  // Texting tools are conversational, not function calls - send as text content
+  // Handle texter tool-call results (NOT LLM-native, represented as role='user' messages)
+  // Texter tools are conversational, not function calls - send as text content
   if (chatMsg.type === 'call_result_msg') {
     const msg: AnthropicContentBlock = {
       type: 'text',

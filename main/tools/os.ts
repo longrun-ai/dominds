@@ -386,7 +386,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
         type: 'transient_guide_msg',
         role: 'assistant',
         content: `🔔 **System Reminder #${index + 1}** - Process Management Context
-I need to evaluate this reminder's current relevance to system operations and issue \`!!@delete_reminder ${index + 1}\` if the context has changed or the task is complete.
+I need to evaluate this reminder's current relevance to system operations and issue \`!?@delete_reminder ${index + 1}\` if the context has changed or the task is complete.
 ---
 ${reminder.content}`,
       };
@@ -401,7 +401,7 @@ ${reminder.content}`,
         type: 'transient_guide_msg',
         role: 'assistant',
         content: `⚰️ **Process Lifecycle Alert #${index + 1}** - Daemon Terminated (PID ${pid})
-This daemon process has completed its lifecycle and is no longer running. I should clean up this tracking reminder with \`!!@delete_reminder ${index + 1}\` to maintain system hygiene.`,
+This daemon process has completed its lifecycle and is no longer running. I should clean up this tracking reminder with \`!?@delete_reminder ${index + 1}\` to maintain system hygiene.`,
       };
     }
 
@@ -420,7 +420,7 @@ This daemon process has completed its lifecycle and is no longer running. I shou
       type: 'transient_guide_msg',
       role: 'assistant',
       content: `🔄 **Active Daemon Monitor #${index + 1}** - PID ${pid} (Uptime: ${uptimeStr})
-This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. Use \`!!@delete_reminder ${index + 1}\` when monitoring is no longer needed or if the process should be terminated.
+This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. Use \`!?@delete_reminder ${index + 1}\` when monitoring is no longer needed or if the process should be terminated.
 
 **Current Status:**
 ${statusInfo}`,

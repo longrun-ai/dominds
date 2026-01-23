@@ -98,33 +98,33 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
           `- 我们的差遣牒是一个 \`*.tsk/\` 目录，分为 3 个分段：\`goals\` / \`constraints\` / \`progress\`。`,
-          `- 维护方式：每次 \`!!@change_mind\` 必须指定一个分段（\`!goals\` / \`!constraints\` / \`!progress\`）；可在同一条消息中连续发出多个 \`!!@change_mind\` 来一次更新多个分段。`,
+          `- 维护方式：每次 \`!?@change_mind\` 必须指定一个分段（\`!goals\` / \`!constraints\` / \`!progress\`）；可在同一条消息中连续发出多个 \`!?@change_mind\` 来一次更新多个分段。`,
           ``,
           `**分段状态：**`,
           `- \`goals.md\`：${goalsZh}`,
           `- \`constraints.md\`：${constraintsZh}`,
           `- \`progress.md\`：${progressZh}`,
           ``,
-          `若某个分段缺失，请用 \`!!@change_mind\` 创建（不要用通用文件工具）：`,
-          `- \`!!@change_mind !goals\\n<content>\``,
-          `- \`!!@change_mind !constraints\\n<content>\``,
-          `- \`!!@change_mind !progress\\n<content>\``,
+          `若某个分段缺失，请用 \`!?@change_mind\` 创建（不要用通用文件工具）：`,
+          `- \`!?@change_mind !goals\\n!?<content>\``,
+          `- \`!?@change_mind !constraints\\n!?<content>\``,
+          `- \`!?@change_mind !progress\\n!?<content>\``,
         ].join('\n');
       }
       return [
         `**Task Doc Constitution (Encapsulated \`*.tsk/\`):**`,
         `- Our Task Doc is a \`*.tsk/\` directory with exactly 3 sections: \`goals\` / \`constraints\` / \`progress\`.`,
-        `- Maintenance: each \`!!@change_mind\` call must target one section (\`!goals\` / \`!constraints\` / \`!progress\`). You may include multiple \`!!@change_mind\` calls in a single message to update multiple sections.`,
+        `- Maintenance: each \`!?@change_mind\` call must target one section (\`!goals\` / \`!constraints\` / \`!progress\`). You may include multiple \`!?@change_mind\` calls in a single message to update multiple sections.`,
         ``,
         `**Sections:**`,
         `- \`goals.md\`: ${goalsStatus}`,
         `- \`constraints.md\`: ${constraintsStatus}`,
         `- \`progress.md\`: ${progressStatus}`,
         ``,
-        `If any section is missing, create it with \`!!@change_mind\` (never via general file tools):`,
-        `- \`!!@change_mind !goals\\n<content>\``,
-        `- \`!!@change_mind !constraints\\n<content>\``,
-        `- \`!!@change_mind !progress\\n<content>\``,
+        `If any section is missing, create it with \`!?@change_mind\` (never via general file tools):`,
+        `- \`!?@change_mind !goals\\n!?<content>\``,
+        `- \`!?@change_mind !constraints\\n!?<content>\``,
+        `- \`!?@change_mind !progress\\n!?<content>\``,
       ].join('\n');
     })();
     const effectiveDoc = formatEffectiveTaskDocFromSections(language, sections);
@@ -143,7 +143,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
 ${statusBlock}
 
 ⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。
-请用 \`!!@change_mind !goals\` / \`!!@change_mind !constraints\` / \`!!@change_mind !progress\` 来更新（每次调用只更新一个分段；你可以在同一条消息里写多个 \`!!@change_mind\` 调用来批量更新）。`,
+请用 \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` 来更新（每次调用只更新一个分段；你可以在同一条消息里写多个 \`!?@change_mind\` 调用来批量更新）。`,
         };
       }
       return {
@@ -156,7 +156,7 @@ ${statusBlock}
 ${statusBlock}
 
 ⚠️ **Note:** Task Docs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.
-Use \`!!@change_mind !goals\` / \`!!@change_mind !constraints\` / \`!!@change_mind !progress\` to update (each call updates one section; you may include multiple \`!!@change_mind\` calls in a single message to batch updates).`,
+Use \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` to update (each call updates one section; you may include multiple \`!?@change_mind\` calls in a single message to batch updates).`,
       };
     }
 
@@ -174,9 +174,9 @@ ${statusBlock}
 ${effectiveDoc}
 ---
 
-*用 \`!!@change_mind !goals\` / \`!!@change_mind !constraints\` / \`!!@change_mind !progress\` 来替换分段（每次调用只替换一个分段；你可以在同一条消息里写多个 \`!!@change_mind\` 调用来批量替换）。*
+*用 \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` 来替换分段（每次调用只替换一个分段；你可以在同一条消息里写多个 \`!?@change_mind\` 调用来批量替换）。*
 
-指令：不要对 \`*.tsk/\` 下的任何路径调用通用文件工具（\`!!@read_file\`, \`!!@overwrite_file\`, \`!!@plan_file_modification\`, \`!!@apply_file_modification\`, \`!!@list_dir\`, \`!!@rm_file\`, \`!!@rm_dir\`）。差遣牒状态只能通过显式的差遣牒操作进行管理。`,
+指令：不要对 \`*.tsk/\` 下的任何路径调用通用文件工具（\`!?@read_file\`, \`!?@overwrite_file\`, \`!?@plan_file_modification\`, \`!?@apply_file_modification\`, \`!?@list_dir\`, \`!?@rm_file\`, \`!?@rm_dir\`）。差遣牒状态只能通过显式的差遣牒操作进行管理。`,
       };
     }
     return {
@@ -192,9 +192,9 @@ ${statusBlock}
 ${effectiveDoc}
 ---
 
-*Use \`!!@change_mind !goals\` / \`!!@change_mind !constraints\` / \`!!@change_mind !progress\` to replace sections (each call replaces one section; you may include multiple \`!!@change_mind\` calls in a single message to batch replacements).*
+*Use \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` to replace sections (each call replaces one section; you may include multiple \`!?@change_mind\` calls in a single message to batch replacements).*
 
-Directive: Do not invoke any general file tools (\`!!@read_file\`, \`!!@overwrite_file\`, \`!!@plan_file_modification\`, \`!!@apply_file_modification\`, \`!!@list_dir\`, \`!!@rm_file\`, \`!!@rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit task-doc actions.`,
+Directive: Do not invoke any general file tools (\`!?@read_file\`, \`!?@overwrite_file\`, \`!?@plan_file_modification\`, \`!?@apply_file_modification\`, \`!?@list_dir\`, \`!?@rm_file\`, \`!?@rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit task-doc actions.`,
     };
   } catch (error: unknown) {
     if (language === 'zh') {

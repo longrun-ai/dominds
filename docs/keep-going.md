@@ -30,14 +30,14 @@ is legitimately suspended (Q4H or pending subdialogs).
 
 - **Root/main dialog**: a `RootDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
 - **Subdialog**: a `SubDialog`, created for teammate calls / scoped work.
-- **Q4H**: “Questions for Human”, initiated via `!!@human`, which suspends dialog progression until the human responds.
-- **Backfeeding**: texting-tool property indicating whether tool execution produces messages that are injected back into the model context.
+- **Q4H**: “Questions for Human”, initiated via `!?@human`, which suspends dialog progression until the human responds.
+- **Backfeeding**: a texter-tool property indicating whether tool execution produces messages that are injected back into the model context.
 
 ## Expected “normal” completion path (recommended)
 
 When the agent needs a human decision to conclude (e.g., confirm a choice or decide whether to mark the dialog done), the correct path is:
 
-1. The agent issues a Q4H (`!!@human`) with the necessary context and explicit decision request.
+1. The agent issues a Q4H (`!?@human`) with the necessary context and explicit decision request.
 2. The WebUI surfaces the Q4H clearly.
 3. The human decides and either:
    - marks the root dialog “done” manually, or

@@ -33,6 +33,7 @@ import type {
   ToolArguments as StoredToolArguments,
   UserTextGrammar,
 } from './shared/types/storage';
+import type { TellaskCallValidation } from './shared/types/tellask';
 import { generateShortId } from './shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
@@ -159,6 +160,7 @@ export interface AssignmentFromSup {
   originMemberId: string;
   callerDialogId: string;
   callId: string;
+  collectiveTargets?: string[];
 }
 
 /**
@@ -210,8 +212,8 @@ export abstract class Dialog {
 
   private readonly _mutex: AsyncFifoMutex;
 
-  // Current callId for TEXTING TOOL CALL correlation
-  // - Set during call_start_evt (from TextingEventsReceiver)
+  // Current callId for tellask tool-call correlation
+  // - Set during tool_call_finish_evt (from TellaskStreamParser)
   // - Retrieved during tool response (for receiveToolResponse callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
   // - NOT used for teammate calls (which use calleeDialogId instead)
@@ -284,10 +286,10 @@ export abstract class Dialog {
   }
 
   /**
-   * Get the current callId for TEXTING TOOL CALL correlation
+   * Get the current callId for tool-call correlation
    *
    * Call Types:
-   * - Texting Tool Call (@tool_name): callId is set during call_start_evt, used for inline result
+   * - Tool Call (`!?@tool_name`): callId is set during tool_call_start_evt, used for inline result
    * - Teammate Call (@agentName): Uses calleeDialogId, not callId
    *
    * @returns The current callId for tool correlation, or null if no active tool call
@@ -297,9 +299,9 @@ export abstract class Dialog {
   }
 
   /**
-   * Set the current callId (called during call_finish_evt for texting tool calls)
+   * Set the current callId (called during tool_call_finish_evt for tool calls)
    *
-   * @param callId - The correlation ID from TextingEventsReceiver.callFinish()
+   * @param callId - The correlation ID from TellaskEventsReceiver.callFinish()
    */
   public setCurrentCallId(callId: string): void {
     this._currentCallId = callId;
@@ -434,6 +436,7 @@ export abstract class Dialog {
       callerDialogId: string;
       callId: string;
       topicId?: string;
+      collectiveTargets?: string[];
     },
   ): Promise<SubDialog>;
 
@@ -591,7 +594,7 @@ export abstract class Dialog {
 
   /**
    * Get intrinsic control tools available to this dialog's agent.
-   * Applies access control: !!@change_mind is only available to main dialog agents.
+   * Applies access control: !?@change_mind is only available to main dialog agents.
    */
   public getIntrinsicTools(): TextingTool[] {
     const baseTools: TextingTool[] = [
@@ -601,7 +604,7 @@ export abstract class Dialog {
       clearMindTool,
     ];
 
-    // !!@change_mind is only available to main dialog agents (not subdialogs)
+    // !?@change_mind is only available to main dialog agents (not subdialogs)
     if (!this.supdialog) {
       baseTools.push(changeMindTool);
     }
@@ -621,10 +624,10 @@ export abstract class Dialog {
 The key to effective AI assistance is maintaining clear focus on goals while filtering out conversational noise. When chat history becomes cluttered with repeated tool failures, debugging attempts, or tangential discussions, your attention gets fragmented. These tools help you regain clarity and redirect focus to productive work.
 
 **Dialog Reminders:**
-- !!@add_reminder: Capture important insights, decisions, or next steps that should persist beyond conversation cleanup
-- !!@update_reminder: Refine your understanding as situations evolve or new information emerges  
-- !!@delete_reminder: Remove completed or obsolete reminders to keep your focus sharp
-- !!@clear_mind: Achieve mental clarity by clearing conversational noise while preserving your reminders and task focus
+- !?@add_reminder: Capture important insights, decisions, or next steps that should persist beyond conversation cleanup
+- !?@update_reminder: Refine your understanding as situations evolve or new information emerges  
+- !?@delete_reminder: Remove completed or obsolete reminders to keep your focus sharp
+- !?@clear_mind: Achieve mental clarity by clearing conversational noise while preserving your reminders and task focus
 
 **Task Context Control:**`;
 
@@ -637,16 +640,16 @@ The key to effective AI assistance is maintaining clear focus on goals while fil
 
       // Subdialog restrictions
       instructions += `
-- !!@clear_mind: Restart this subdialog with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders and supdialog-call context.
-- !!@change_mind: **Not available in subdialogs.** If you need to change the overall task context or direction, communicate with the main dialog agent (@${rootDialog.agentId}) and ask them to use !!@change_mind instead.
+- !?@clear_mind: Restart this subdialog with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders and supdialog-call context.
+- !?@change_mind: **Not available in subdialogs.** If you need to change the overall task context or direction, communicate with the main dialog agent (@${rootDialog.agentId}) and ask them to use !?@change_mind instead.
 
 **Subdialog Guidelines:**
 You're operating in a subdialog, which means you're focused on a specific subtask. Your memory and context are scoped to this particular conversation thread. When you complete your subtask or need to escalate decisions, communicate back to the supdialog.`;
     } else {
       // Main dialog capabilities
       instructions += `
-- !!@clear_mind: Restart the conversation with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders.
-- !!@change_mind: Update the shared Task Doc content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For Task Docs (\`*.tsk/\`), each !!@change_mind call MUST target exactly one section: \`!!@change_mind !goals\` / \`!constraints\` / \`!progress\`. You may issue multiple !!@change_mind calls in a single message to update multiple sections.
+- !?@clear_mind: Restart the conversation with a clean slate, focusing your attention on the task document and any specific reminder you provide. This clears conversational noise while preserving your reminders.
+- !?@change_mind: Update the shared Task Doc content for this dialog tree (no round reset). This affects all participant agents (yourself and any subdialog agents). For Task Docs (\`*.tsk/\`), each !?@change_mind call MUST target exactly one section: \`!?@change_mind !goals\` / \`!constraints\` / \`!progress\`. You may issue multiple !?@change_mind calls in a single message to update multiple sections.
 
 **Main Dialog Responsibilities:**
 You're the primary dialog agent. You can create subdialogs for specialized tasks, manage the overall conversation flow, and make high-level decisions about task direction and approach.`;
@@ -655,12 +658,12 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     instructions += `
 
 **Best Practices:**
-- **Maintain Mental Clarity:** When conversations become cluttered with debugging, repeated failures, or tangential discussions, use !!@clear_mind to refocus on what matters
+- **Maintain Mental Clarity:** When conversations become cluttered with debugging, repeated failures, or tangential discussions, use !?@clear_mind to refocus on what matters
 - **Strategic Reminders:** Capture key insights, decisions, and next steps in reminders before clearing your mind - they'll persist and guide your refreshed focus
-- **Task Document Focus:** Keep the task document authoritative (goals / constraints / progress). Use !!@change_mind to update it explicitly; use !!@clear_mind when you need a new round.
+- **Task Document Focus:** Keep the task document authoritative (goals / constraints / progress). Use !?@change_mind to update it explicitly; use !?@clear_mind when you need a new round.
 - **Proactive Clarity:** Don't wait for conversations to become overwhelming - clear your mind proactively when you sense attention fragmentation
 - **Context Preservation:** Remember that clearing your mind preserves reminders and (for subdialogs) supdialog-call information - you lose chat noise, not important context
-- **Strategic Pivots:** Use !!@change_mind when requirements evolve or you need to adjust constraints/progress; it updates the shared task document for all agents immediately.`;
+- **Strategic Pivots:** Use !?@change_mind when requirements evolve or you need to adjust constraints/progress; it updates the shared task document for all agents immediately.`;
 
     return instructions;
   }
@@ -779,7 +782,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   /**
    * Start a new round - clears conversational noise, Q4H, and increments round counter.
    * Queues a new-round prompt for the driver to consume on the next drive cycle.
-   * This is the single entry point for mental clarity operations (!!@clear_mind, !!@change_mind).
+   * This is the single entry point for mental clarity operations (!?@clear_mind, !?@change_mind).
    */
   public async startNewRound(newRoundPrompt: string): Promise<void> {
     const trimmedPrompt = newRoundPrompt.trim();
@@ -814,6 +817,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
             headLine: this.assignmentFromSup.headLine,
             callBody: this.assignmentFromSup.callBody,
             language: getWorkLanguage(),
+            collectiveTargets: this.assignmentFromSup.collectiveTargets ?? [this.agentId],
           })}\n---\n${trimmedPrompt}`
         : trimmedPrompt;
     this.setUpNextPrompt(combinedPrompt);
@@ -827,7 +831,7 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
   public async notifyGeneratingStart(): Promise<void> {
     // Capture the generation's starting round so any events emitted during this generation
     // remain attributed to the correct round even if a tool mutates dialog.currentRound
-    // mid-generation (e.g., !!@clear_mind).
+    // mid-generation (e.g., !?@clear_mind).
     this._activeGenRound = this.currentRound;
     if (typeof this._activeGenSeq === 'number') {
       this._activeGenSeq++;
@@ -906,16 +910,6 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     await this.dlgStore.sayingFinish(this);
   }
 
-  public async codeBlockStart(infoLine?: string): Promise<void> {
-    await this.dlgStore.codeBlockStart(this, infoLine);
-  }
-  public async codeBlockChunk(chunk: string): Promise<void> {
-    await this.dlgStore.codeBlockChunk(this, chunk);
-  }
-  public async codeBlockFinish(endQuote?: string): Promise<void> {
-    await this.dlgStore.codeBlockFinish(this, endQuote);
-  }
-
   // Function call events (non-streaming mode - single event captures entire call)
   public async funcCallRequested(
     funcId: string,
@@ -925,9 +919,9 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     await this.dlgStore.funcCallRequested(this, funcId, funcName, argumentsStr);
   }
 
-  // Tool call events (streaming mode - @tool_name mentions)
-  public async callingStart(firstMention: string): Promise<void> {
-    await this.dlgStore.callingStart(this, firstMention);
+  // Tellask call events (streaming mode - `!?@...` blocks)
+  public async callingStart(validation: TellaskCallValidation): Promise<void> {
+    await this.dlgStore.callingStart(this, validation);
   }
 
   public async callingHeadlineChunk(chunk: string): Promise<void> {
@@ -938,16 +932,16 @@ You're the primary dialog agent. You can create subdialogs for specialized tasks
     await this.dlgStore.callingHeadlineFinish(this);
   }
 
-  public async callingBodyStart(infoLine?: string): Promise<void> {
-    await this.dlgStore.callingBodyStart(this, infoLine);
+  public async callingBodyStart(): Promise<void> {
+    await this.dlgStore.callingBodyStart(this);
   }
 
   public async callingBodyChunk(chunk: string): Promise<void> {
     await this.dlgStore.callingBodyChunk(this, chunk);
   }
 
-  public async callingBodyFinish(endQuote?: string): Promise<void> {
-    await this.dlgStore.callingBodyFinish(this, endQuote);
+  public async callingBodyFinish(): Promise<void> {
+    await this.dlgStore.callingBodyFinish(this);
   }
 
   public async callingFinish(callId: string): Promise<void> {
@@ -1187,6 +1181,7 @@ export class SubDialog extends Dialog {
       callerDialogId: string;
       callId: string;
       topicId?: string;
+      collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
     return await this.rootDialog.createSubDialog(targetAgentId, headLine, callBody, options);
@@ -1311,6 +1306,7 @@ export class RootDialog extends Dialog {
       callerDialogId: string;
       callId: string;
       topicId?: string;
+      collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
     return await this.dlgStore.createSubDialog(this, targetAgentId, headLine, callBody, options);
@@ -1362,6 +1358,7 @@ export abstract class DialogStore {
       callerDialogId: string;
       callId: string;
       topicId?: string;
+      collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
@@ -1379,13 +1376,14 @@ export abstract class DialogStore {
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
+        collectiveTargets: options.collectiveTargets,
       },
       options.topicId,
     );
   }
 
   /**
-   * Receive and handle LLM generation streams (FreeTextingStream, CodeBlockStream, TextingCallStream)
+   * Receive and handle LLM generation streams (Markdown stream + tellask call stream)
    */
 
   /**
@@ -1492,18 +1490,13 @@ export abstract class DialogStore {
    */
   public async clearQuestions4Human(_dialog: Dialog): Promise<void> {}
 
-  // Code block streaming methods
-  public async codeBlockStart(_dialog: Dialog, _infoLine?: string): Promise<void> {}
-  public async codeBlockChunk(_dialog: Dialog, _chunk: string): Promise<void> {}
-  public async codeBlockFinish(_dialog: Dialog, _endQuote?: string): Promise<void> {}
-
-  // Tool call streaming methods
-  public async callingStart(_dialog: Dialog, _firstMention: string): Promise<void> {}
+  // Tellask call streaming methods
+  public async callingStart(_dialog: Dialog, _validation: TellaskCallValidation): Promise<void> {}
   public async callingHeadlineChunk(_dialog: Dialog, _chunk: string): Promise<void> {}
   public async callingHeadlineFinish(_dialog: Dialog): Promise<void> {}
-  public async callingBodyStart(_dialog: Dialog, _infoLine?: string): Promise<void> {}
+  public async callingBodyStart(_dialog: Dialog): Promise<void> {}
   public async callingBodyChunk(_dialog: Dialog, _chunk: string): Promise<void> {}
-  public async callingBodyFinish(_dialog: Dialog, _endQuote?: string): Promise<void> {}
+  public async callingBodyFinish(_dialog: Dialog): Promise<void> {}
   public async callingFinish(_dialog: Dialog, _callId: string): Promise<void> {}
 
   // Function call event (non-streaming mode - single event)

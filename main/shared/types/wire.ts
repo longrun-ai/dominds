@@ -21,6 +21,7 @@ export interface AssignmentFromSup {
   originMemberId: string;
   callerDialogId: string;
   callId: string;
+  collectiveTargets?: string[];
 }
 
 // Utility function to create DialogIdent from various formats

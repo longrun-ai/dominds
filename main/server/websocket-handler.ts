@@ -754,7 +754,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     ) {
       await driveDialogStream(
         existingDialog,
-        { content, msgId, grammar: 'texting', userLanguageCode },
+        { content, msgId, grammar: 'tellask', userLanguageCode },
         true,
       );
       return;
@@ -783,7 +783,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       await setupWebSocketSubscription(ws, dialog);
       await driveDialogStream(
         dialog,
-        { content, msgId, grammar: 'texting', userLanguageCode },
+        { content, msgId, grammar: 'tellask', userLanguageCode },
         true,
       );
       return;
@@ -1001,7 +1001,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     postDialogEvent(dialog, answeredEvent);
 
     // Resume the dialog with the user's answer.
-    await driveDialogStream(dialog, { content, msgId, grammar: 'texting', userLanguageCode }, true);
+    await driveDialogStream(dialog, { content, msgId, grammar: 'tellask', userLanguageCode }, true);
   } catch (error) {
     log.error('Error processing Q4H user answer:', error);
     ws.send(

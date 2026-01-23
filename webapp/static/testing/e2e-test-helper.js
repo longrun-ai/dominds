@@ -95,12 +95,6 @@ const IGNORED_ERROR_PATTERNS = [
   'tool_call_finish_evt',
   'tool_call_start_evt',
   'tool_call_finish_evt',
-  // Teammate call events
-  'teammate_call_headline_chunk_evt',
-  'teammate_call_body_start_evt',
-  'teammate_call_finish_evt',
-  'teammate_call_start_evt',
-  'teammate_call_finish_evt',
 ];
 
 // Console error interceptor
@@ -2727,7 +2721,7 @@ function getToolCallingSections() {
 }
 
 /**
- * Detects if the last calling section is a TEXTING TOOL call (e.g. @clear_mind, @change_mind).
+ * Detects if the last calling section is a texter tool call (e.g. @clear_mind, @change_mind).
  * This is NOT the same as a function call (.func-call-section).
  *
  * @param {string} [toolName] - Optional tool name to check for (e.g., 'clear_mind')
@@ -3012,7 +3006,7 @@ function setGlobal() {
     waitUntil,
     // Function call detection
     detectFuncCall,
-    // Texting tool-call detection (e.g. @clear_mind)
+    // Texter tool-call detection (e.g. @clear_mind)
     getToolCallingSections,
     detectToolCall,
     // Dialog creation

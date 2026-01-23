@@ -241,8 +241,8 @@ function parseRipgrepArgs(
         `error: INVALID_FORMAT`,
         `summary: ${yamlQuote(
           language === 'zh'
-            ? `Invalid format. Use !!@${toolName} <pattern> [path] [options].`
-            : `Invalid format. Use !!@${toolName} <pattern> [path] [options].`,
+            ? `Invalid format. Use !?@${toolName} <pattern> [path] [options].`
+            : `Invalid format. Use !?@${toolName} <pattern> [path] [options].`,
         )}`,
       ].join('\n'),
     };
@@ -320,7 +320,7 @@ export const ripgrepFilesTool: TextingTool = {
   name: 'ripgrep_files',
   backfeeding: true,
   usageDescription: `Search file paths containing a pattern (rg-backed).
-Usage: !!@ripgrep_files <pattern> [path] [options]
+Usage: !?@ripgrep_files <pattern> [path] [options]
 
 Options:
   globs=[...]
@@ -412,7 +412,7 @@ export const ripgrepCountTool: TextingTool = {
   name: 'ripgrep_count',
   backfeeding: true,
   usageDescription: `Count matches per file (rg-backed).
-Usage: !!@ripgrep_count <pattern> [path] [options]
+Usage: !?@ripgrep_count <pattern> [path] [options]
 
 Options:
   globs=[...]
@@ -506,7 +506,7 @@ export const ripgrepSnippetsTool: TextingTool = {
   name: 'ripgrep_snippets',
   backfeeding: true,
   usageDescription: `Search snippets with line/col (rg-backed).
-Usage: !!@ripgrep_snippets <pattern> [path] [options]
+Usage: !?@ripgrep_snippets <pattern> [path] [options]
 
 Options:
   globs=[...]
@@ -640,7 +640,7 @@ export const ripgrepFixedTool: TextingTool = {
   name: 'ripgrep_fixed',
   backfeeding: true,
   usageDescription: `Fixed-string ripgrep convenience tool.
-Usage: !!@ripgrep_fixed <literal> [path] [options]
+Usage: !?@ripgrep_fixed <literal> [path] [options]
 
 Options:
   mode=files|snippets|count (default: snippets)
@@ -657,8 +657,8 @@ Options:
       const content = formatYamlCodeBlock(
         `status: error\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Invalid format. Use !!@ripgrep_fixed <literal> [path] [options].'
-            : 'Invalid format. Use !!@ripgrep_fixed <literal> [path] [options].',
+            ? 'Invalid format. Use !?@ripgrep_fixed <literal> [path] [options].'
+            : 'Invalid format. Use !?@ripgrep_fixed <literal> [path] [options].',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -713,7 +713,7 @@ export const ripgrepSearchTool: TextingTool = {
   name: 'ripgrep_search',
   backfeeding: true,
   usageDescription: `Escape hatch: run rg-style search (snippets output, with a limited allowlist).
-Usage: !!@ripgrep_search <pattern> [path] [rg_args...]
+Usage: !?@ripgrep_search <pattern> [path] [rg_args...]
 
 Notes:
   - Output is normalized to YAML snippets mode.
@@ -725,8 +725,8 @@ Notes:
       const content = formatYamlCodeBlock(
         `status: error\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
           language === 'zh'
-            ? 'Invalid format. Use !!@ripgrep_search <pattern> [path] [rg_args...].'
-            : 'Invalid format. Use !!@ripgrep_search <pattern> [path] [rg_args...].',
+            ? 'Invalid format. Use !?@ripgrep_search <pattern> [path] [rg_args...].'
+            : 'Invalid format. Use !?@ripgrep_search <pattern> [path] [rg_args...].',
         )}`,
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);

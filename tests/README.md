@@ -7,13 +7,13 @@
 From the `dominds` project root (recommended):
 
 ```bash
-pnpm -C tests run parsing
+pnpm -C tests run tellask:parsing
 ```
 
 Or directly from `tests/`:
 
 ```bash
-pnpm run parsing
+pnpm run tellask:parsing
 ```
 
 General form:
@@ -45,21 +45,23 @@ Path aliases in `tests/tsconfig.json`:
 
 ## Available scripts
 
-| Script              | Runs                                                      |
-| ------------------- | --------------------------------------------------------- |
-| auth                | `auth.ts` (auth key/env/header parsing)                   |
-| parsing             | `texting/parsing.ts` (headline/body parser)               |
-| mentionx            | `texting/mentionx.ts` (extractMentions tests)             |
-| realtime            | `texting/realtime.ts` (streaming parser boundaries)       |
-| func-call           | `provider/func-call.ts` (non-streaming function calls)    |
-| stream-func-call    | `provider/stream-func-call.ts` (streaming function calls) |
-| anthropic-streaming | `provider/anthropic-streaming.ts` (streaming smoke test)  |
-| codex-streaming     | `provider/codex-streaming.ts` (streaming smoke test)      |
-| toolset-registry    | `toolsets/registry.ts` (tool registry checks)             |
-| dialog-driving      | `driving/dialog-driving.ts` (dialog event driving)        |
-| type-a-flow         | `driving/type-a-flow.ts`                                  |
-| type-b-flow         | `driving/type-b-flow.ts`                                  |
-| type-c-flow         | `driving/type-c-flow.ts`                                  |
-| revival-flow        | `driving/revival-flow.ts`                                 |
-| llm-streaming       | `driving/llm-streaming.ts`                                |
-| teammate-call-parse | `driving/teammate-call-parse.ts`                          |
+| Script                           | Runs                                                      |
+| -------------------------------- | --------------------------------------------------------- |
+| auth                             | `auth.ts` (auth key/env/header parsing)                   |
+| mindset-i18n                     | `minds/mindset-i18n.ts` (mindset i18n checks)             |
+| persistence-latest-writeback     | `persistence/latest-writeback.ts`                         |
+| persistence-reminders-owner-meta | `persistence/reminders-owner-meta.ts`                     |
+| tellask:parsing                  | `tellask/parsing.ts` (tellask parser)                     |
+| tellask:realtime                 | `tellask/realtime.ts` (streaming boundaries)              |
+| task-package                     | `task-package.ts`                                         |
+| taskdoc-search                   | `taskdoc-search.ts`                                       |
+| team-yaml-parsing                | `team-yaml-parsing.ts`                                    |
+| func-call                        | `provider/func-call.ts` (non-streaming function calls)    |
+| stream-func-call                 | `provider/stream-func-call.ts` (streaming function calls) |
+| anthropic-streaming              | `provider/anthropic-streaming.ts` (streaming smoke test)  |
+| codex-streaming                  | `provider/codex-streaming.ts` (streaming smoke test)      |
+| toolset-registry                 | `toolsets/registry.ts` (tool registry checks)             |
+| diag-tool                        | `toolsets/diag.ts`                                        |
+| memory-access                    | `toolsets/memory-access.ts`                               |
+| webapp-last-modified             | `webapp/dialog-last-modified.ts`                          |
+| webapp-run-control-visual        | `webapp/run-control-visual.ts`                            |

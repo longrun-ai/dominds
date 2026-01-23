@@ -2,7 +2,7 @@
 
 import type { Dialog } from 'dominds/dialog';
 import { Team } from 'dominds/team';
-import { verifyTextingParsingTool } from 'dominds/tools/diag';
+import { verifyTellaskParsingTool } from 'dominds/tools/diag';
 
 function assertTrue(condition: boolean, message?: string): void {
   if (!condition) {
@@ -59,18 +59,17 @@ async function main(): Promise<void> {
 
   const dlg = {} as unknown as Dialog;
 
-  await runTest('verify_texting_parsing basic', async () => {
+  await runTest('verify_tellask_parsing basic', async () => {
     const text = [
       'Hello before',
-      '!!@tool1 cmd arg',
-      'body line 1',
-      'body line 2',
-      '!!@/',
+      '!?@tool1 cmd arg',
+      '!?body line 1',
+      '!?body line 2',
       'after',
       '',
     ].join('\n');
 
-    const raw = await verifyTextingParsingTool.call(dlg, caller, {
+    const raw = await verifyTellaskParsingTool.call(dlg, caller, {
       text,
       upstream_chunk_size: 10,
       invariance_chunk_sizes: [1, 2, 3, 5, 8],
@@ -97,9 +96,9 @@ async function main(): Promise<void> {
     );
   });
 
-  await runTest('verify_texting_parsing supports empty chunks in plan', async () => {
-    const text = '!!@tool1 args\nBody content\n!!@/\n';
-    const raw = await verifyTextingParsingTool.call(dlg, caller, {
+  await runTest('verify_tellask_parsing supports empty chunks in plan', async () => {
+    const text = '!?@tool1 args\n!?Body content\n';
+    const raw = await verifyTellaskParsingTool.call(dlg, caller, {
       text,
       chunk_sizes: [10, 0, 15, 0, 5],
       include_events: false,

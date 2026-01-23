@@ -1,7 +1,7 @@
 /**
  * Module: tools/fs
  *
- * Filesystem texting tools: list directories, remove directories/files.
+ * Filesystem tellask tools: list directories, remove directories/files.
  * Includes helpers for text-file detection and line counting.
  */
 import { createReadStream } from 'fs';
@@ -96,7 +96,7 @@ export const listDirTool: TextingTool = {
   name: 'list_dir',
   backfeeding: true,
   usageDescription: `List directory contents relative to workspace with detailed information.
-Usage: !!@list_dir [path]
+Usage: !?@list_dir [path]
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including listing).
@@ -108,10 +108,10 @@ Features:
 - Categorizes entries by type (dir, file, symlink, other)
 
 Example:
-!!@list_dir src/tools`,
+!?@list_dir src/tools`,
   usageDescriptionI18n: {
     en: `List directory contents relative to workspace with detailed information.
-Usage: !!@list_dir [path]
+Usage: !?@list_dir [path]
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including listing).
@@ -123,9 +123,9 @@ Features:
 - Categorizes entries by type (dir, file, symlink, other)
 
 Example:
-!!@list_dir src/tools`,
+!?@list_dir src/tools`,
     zh: `列出工作区内目录内容（包含详细信息）。
-用法：!!@list_dir [path]
+用法：!?@list_dir [path]
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括列目录）不可访问。
@@ -137,7 +137,7 @@ Example:
 - 按类型分类（dir、file、symlink、other）
 
 示例：
-!!@list_dir src/tools`,
+!?@list_dir src/tools`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const workLanguage = getWorkLanguage();
@@ -145,7 +145,7 @@ Example:
       workLanguage === 'zh'
         ? {
             formatError:
-              '请使用正确的目录列出格式。\n\n**期望格式：** `!!@list_dir [path]`\n\n**示例：**\n```\n!!@list_dir src/tools\n```',
+              '请使用正确的目录列出格式。\n\n**期望格式：** `!?@list_dir [path]`\n\n**示例：**\n```\n!?@list_dir src/tools\n```',
             accessDenied: '❌ **访问被拒绝**\n\n路径必须位于工作区内',
             notFound: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
             notDir: (p: string) => `❌ **错误**\n\n路径 \`${p}\` 不是目录。`,
@@ -162,7 +162,7 @@ Example:
           }
         : {
             formatError:
-              'Please use the correct format for listing directories.\n\n**Expected format:** `!!@list_dir [path]`\n\n**Example:**\n```\n!!@list_dir src/tools\n```',
+              'Please use the correct format for listing directories.\n\n**Expected format:** `!?@list_dir [path]`\n\n**Example:**\n```\n!?@list_dir src/tools\n```',
             accessDenied: '❌ **Access Denied**\n\nPath must be within workspace',
             notFound: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
             notDir: (p: string) => `❌ **Error**\n\nPath \`${p}\` is not a directory.`,
@@ -357,7 +357,7 @@ export const rmDirTool: TextingTool = {
   name: 'rm_dir',
   backfeeding: true,
   usageDescription: `Remove a directory relative to workspace.
-Usage: !!@rm_dir <path> [options]
+Usage: !?@rm_dir <path> [options]
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
@@ -366,11 +366,11 @@ Options:
   !recursive [true|false]  - Remove directory and all contents (default: false)
 
 Examples:
-  !!@rm_dir temp
-  !!@rm_dir build !recursive true`,
+  !?@rm_dir temp
+  !?@rm_dir build !recursive true`,
   usageDescriptionI18n: {
     en: `Remove a directory relative to workspace.
-Usage: !!@rm_dir <path> [options]
+Usage: !?@rm_dir <path> [options]
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
@@ -379,10 +379,10 @@ Options:
   !recursive [true|false]  - Remove directory and all contents (default: false)
 
 Examples:
-  !!@rm_dir temp
-  !!@rm_dir build !recursive true`,
+  !?@rm_dir temp
+  !?@rm_dir build !recursive true`,
     zh: `删除工作区内的目录。
-用法：!!@rm_dir <path> [options]
+用法：!?@rm_dir <path> [options]
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括删除）不可访问。
@@ -391,8 +391,8 @@ Examples:
   !recursive [true|false]  - 递归删除目录及其内容（默认：false）
 
 示例：
-  !!@rm_dir temp
-  !!@rm_dir build !recursive true`,
+  !?@rm_dir temp
+  !?@rm_dir build !recursive true`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const workLanguage = getWorkLanguage();
@@ -400,7 +400,7 @@ Examples:
       workLanguage === 'zh'
         ? {
             formatError:
-              '请使用正确的目录删除格式。\n\n**期望格式：** `!!@rm_dir <path> [!recursive true|false]`\n\n**示例：**\n```\n!!@rm_dir temp !recursive true\n```',
+              '请使用正确的目录删除格式。\n\n**期望格式：** `!?@rm_dir <path> [!recursive true|false]`\n\n**示例：**\n```\n!?@rm_dir temp !recursive true\n```',
             dirPathRequired: '❌ **错误**\n\n需要提供目录路径。',
             pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
             notDir: (p: string) => `❌ **错误**\n\n\`${p}\` 不是目录。`,
@@ -412,7 +412,7 @@ Examples:
           }
         : {
             formatError:
-              'Please use the correct format for removing directories.\n\n**Expected format:** `!!@rm_dir <path> [!recursive true|false]`\n\n**Example:**\n```\n!!@rm_dir temp !recursive true\n```',
+              'Please use the correct format for removing directories.\n\n**Expected format:** `!?@rm_dir <path> [!recursive true|false]`\n\n**Example:**\n```\n!?@rm_dir temp !recursive true\n```',
             dirPathRequired: '❌ **Error**\n\nDirectory path is required.',
             pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
             notDir: (p: string) => `❌ **Error**\n\n\`${p}\` is not a directory.`,
@@ -511,30 +511,30 @@ export const rmFileTool: TextingTool = {
   name: 'rm_file',
   backfeeding: true,
   usageDescription: `Remove a file relative to workspace.
-Usage: !!@rm_file <path>
+Usage: !?@rm_file <path>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
 
 Example:
-  !!@rm_file temp/old-file.txt`,
+  !?@rm_file temp/old-file.txt`,
   usageDescriptionI18n: {
     en: `Remove a file relative to workspace.
-Usage: !!@rm_file <path>
+Usage: !?@rm_file <path>
 
 Note:
   Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
 
 Example:
-  !!@rm_file temp/old-file.txt`,
+  !?@rm_file temp/old-file.txt`,
     zh: `删除工作区内的文件。
-用法：!!@rm_file <path>
+用法：!?@rm_file <path>
 
 注意：
   \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括删除）不可访问。
 
 示例：
-  !!@rm_file temp/old-file.txt`,
+  !?@rm_file temp/old-file.txt`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const workLanguage = getWorkLanguage();
@@ -542,7 +542,7 @@ Example:
       workLanguage === 'zh'
         ? {
             formatError:
-              '请使用正确的文件删除格式。\n\n**期望格式：** `!!@rm_file <path>`\n\n**示例：**\n```\n!!@rm_file temp/old-file.txt\n```',
+              '请使用正确的文件删除格式。\n\n**期望格式：** `!?@rm_file <path>`\n\n**示例：**\n```\n!?@rm_file temp/old-file.txt\n```',
             filePathRequired: '❌ **错误**\n\n需要提供文件路径。',
             pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
             notFile: (p: string) => `❌ **错误**\n\n\`${p}\` 不是文件。`,
@@ -552,7 +552,7 @@ Example:
           }
         : {
             formatError:
-              'Please use the correct format for removing files.\n\n**Expected format:** `!!@rm_file <path>`\n\n**Example:**\n```\n!!@rm_file temp/old-file.txt\n```',
+              'Please use the correct format for removing files.\n\n**Expected format:** `!?@rm_file <path>`\n\n**Example:**\n```\n!?@rm_file temp/old-file.txt\n```',
             filePathRequired: '❌ **Error**\n\nFile path is required.',
             pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
             notFile: (p: string) => `❌ **Error**\n\n\`${p}\` is not a file.`,
@@ -655,18 +655,18 @@ export const mkDirTool: TextingTool = {
   name: 'mk_dir',
   backfeeding: true,
   usageDescription: `Create a directory relative to workspace.
-Usage: !!@mk_dir <path> [options]
+Usage: !?@mk_dir <path> [options]
 
 Options:
   parents=true|false (default: true)`,
   usageDescriptionI18n: {
     en: `Create a directory relative to workspace.
-Usage: !!@mk_dir <path> [options]
+Usage: !?@mk_dir <path> [options]
 
 Options:
   parents=true|false (default: true)`,
     zh: `创建工作区内目录。
-用法：!!@mk_dir <path> [options]
+用法：!?@mk_dir <path> [options]
 
 选项：
   parents=true|false（默认 true）`,
@@ -680,8 +680,8 @@ Options:
         `error: INVALID_FORMAT`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
-            ? 'Mk-dir failed: invalid format. Use !!@mk_dir <path> [parents=true|false].'
-            : 'Mk-dir failed: invalid format. Use !!@mk_dir <path> [parents=true|false].',
+            ? 'Mk-dir failed: invalid format. Use !?@mk_dir <path> [parents=true|false].'
+            : 'Mk-dir failed: invalid format. Use !?@mk_dir <path> [parents=true|false].',
         )}`,
       ].join('\n');
       const content = formatYamlCodeBlock(yaml);
@@ -799,12 +799,12 @@ export const moveFileTool: TextingTool = {
   name: 'move_file',
   backfeeding: true,
   usageDescription: `Move/rename a file relative to workspace.
-Usage: !!@move_file <from> <to>`,
+Usage: !?@move_file <from> <to>`,
   usageDescriptionI18n: {
     en: `Move/rename a file relative to workspace.
-Usage: !!@move_file <from> <to>`,
+Usage: !?@move_file <from> <to>`,
     zh: `移动/重命名工作区内文件。
-用法：!!@move_file <from> <to>`,
+用法：!?@move_file <from> <to>`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const workLanguage = getWorkLanguage();
@@ -815,8 +815,8 @@ Usage: !!@move_file <from> <to>`,
         `error: INVALID_FORMAT`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
-            ? 'Move-file failed: invalid format. Use !!@move_file <from> <to>.'
-            : 'Move-file failed: invalid format. Use !!@move_file <from> <to>.',
+            ? 'Move-file failed: invalid format. Use !?@move_file <from> <to>.'
+            : 'Move-file failed: invalid format. Use !?@move_file <from> <to>.',
         )}`,
       ].join('\n');
       const content = formatYamlCodeBlock(yaml);
@@ -959,12 +959,12 @@ export const moveDirTool: TextingTool = {
   name: 'move_dir',
   backfeeding: true,
   usageDescription: `Move/rename a directory relative to workspace.
-Usage: !!@move_dir <from> <to>`,
+Usage: !?@move_dir <from> <to>`,
   usageDescriptionI18n: {
     en: `Move/rename a directory relative to workspace.
-Usage: !!@move_dir <from> <to>`,
+Usage: !?@move_dir <from> <to>`,
     zh: `移动/重命名工作区内目录。
-用法：!!@move_dir <from> <to>`,
+用法：!?@move_dir <from> <to>`,
   },
   async call(_dlg, caller, headLine, _inputBody): Promise<TextingToolCallResult> {
     const workLanguage = getWorkLanguage();
@@ -975,8 +975,8 @@ Usage: !!@move_dir <from> <to>`,
         `error: INVALID_FORMAT`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
-            ? 'Move-dir failed: invalid format. Use !!@move_dir <from> <to>.'
-            : 'Move-dir failed: invalid format. Use !!@move_dir <from> <to>.',
+            ? 'Move-dir failed: invalid format. Use !?@move_dir <from> <to>.'
+            : 'Move-dir failed: invalid format. Use !?@move_dir <from> <to>.',
         )}`,
       ].join('\n');
       const content = formatYamlCodeBlock(yaml);

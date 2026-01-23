@@ -34,7 +34,7 @@ export type InterDialogParticipants = {
 };
 
 export type SubdialogAssignmentFormatInput = InterDialogParticipants &
-  InterDialogCallContent & { language?: LanguageCode };
+  InterDialogCallContent & { language?: LanguageCode; collectiveTargets?: string[] };
 
 export type SupdialogCallPromptInput = {
   fromAgentId: string;
@@ -61,16 +61,41 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
 
 export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
-  const greeting =
-    language === 'zh'
-      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，我是 @${requireNonEmpty(input.fromAgentId, 'fromAgentId')}, 现在：`
-      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, this is @${requireNonEmpty(input.fromAgentId, 'fromAgentId')} speaking, now:`;
+  const to = requireNonEmpty(input.toAgentId, 'toAgentId');
+  const from = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  const rawTargets =
+    input.collectiveTargets && input.collectiveTargets.length > 0 ? input.collectiveTargets : [to];
+  const cleanedTargets = rawTargets.map(trimTrailingDots).filter((t) => t.trim() !== '');
+  const uniqueTargets = Array.from(new Set(cleanedTargets));
+  if (!uniqueTargets.includes(to)) {
+    uniqueTargets.unshift(to);
+  }
+  const isCollective = uniqueTargets.length >= 2;
+
+  const greeting = (() => {
+    if (!isCollective) {
+      return language === 'zh'
+        ? `你好 @${to}，我是 @${from}, 现在：`
+        : `Hi @${to}, this is @${from} speaking, now:`;
+    }
+
+    const targetsText = uniqueTargets.map((id) => `@${id}`).join(', ');
+    return language === 'zh'
+      ? `你好 @${to}，我是 @${from}。这是一项集体诉请（collective assignment），同时发给：${targetsText}。请作为其中一员并行推进，必要时与其他队友对齐：`
+      : `Hi @${to}, this is @${from}. This is a collective assignment sent to: ${targetsText}. Please proceed in parallel as one of the assignees and coordinate with other teammates when needed:`;
+  })();
 
   return `${greeting}
 
 ${markdownQuote(requireNonEmpty(input.headLine, 'headLine'))}
 ${markdownQuote(input.callBody)}
 `;
+}
+
+function trimTrailingDots(value: string): string {
+  let out = value;
+  while (out.endsWith('.')) out = out.slice(0, -1);
+  return out;
 }
 
 export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {

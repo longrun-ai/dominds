@@ -9,11 +9,11 @@
  * universally accessible.
  *
  * INTRINSIC TOOLS:
- * - !!@add_reminder: Add new reminders to maintain context across conversations
- * - !!@delete_reminder: Remove specific reminders by number
- * - !!@update_reminder: Modify existing reminder content
- * - !!@clear_mind: Drop all messages, start new round, optionally add reminder from call body
- * - !!@change_mind: Update a `.tsk/` task doc section without starting a new round
+ * - !?@add_reminder: Add new reminders to maintain context across conversations
+ * - !?@delete_reminder: Remove specific reminders by number
+ * - !?@update_reminder: Modify existing reminder content
+ * - !?@clear_mind: Drop all messages, start new round, optionally add reminder from call body
+ * - !?@change_mind: Update a `.tsk/` task doc section without starting a new round
  *
  * USAGE CONTEXT:
  * Can both be triggered by an agent autonomously, or by human with role='user' msg,
@@ -72,17 +72,17 @@ type CtrlMessages = Readonly<{
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
   if (language === 'zh') {
     return {
-      invalidFormatDelete: '错误：格式不正确。用法：!!@delete_reminder <reminder-no>',
+      invalidFormatDelete: '错误：格式不正确。用法：!?@delete_reminder <reminder-no>',
       reminderDoesNotExist: (reminderNoHuman, total) =>
         `错误：提醒编号 ${reminderNoHuman} 不存在。可用范围：1-${total}`,
-      invalidFormatAdd: '错误：格式不正确。用法：!!@add_reminder [<reminder-no>]',
+      invalidFormatAdd: '错误：格式不正确。用法：!?@add_reminder [<reminder-no>]',
       reminderContentEmpty: '错误：提醒内容不能为空',
       invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
         `错误：提醒插入位置 ${reminderNoHuman} 无效。有效范围：1-${totalPlusOne}`,
-      invalidFormatUpdate: '错误：格式不正确。用法：!!@update_reminder <reminder-no>',
+      invalidFormatUpdate: '错误：格式不正确。用法：!?@update_reminder <reminder-no>',
       invalidFormatChangeMind:
-        '错误：格式不正确。用法：!!@change_mind [!goals|!constraints|!progress]',
-      tooManyArgsChangeMind: '错误：参数过多。用法：!!@change_mind [!goals|!constraints|!progress]',
+        '错误：格式不正确。用法：!?@change_mind [!goals|!constraints|!progress]',
+      tooManyArgsChangeMind: '错误：参数过多。用法：!?@change_mind [!goals|!constraints|!progress]',
       taskDocContentRequired: '错误：需要提供差遣牒内容',
       noTaskDocPathConfigured: '错误：此对话未配置差遣牒路径',
       pathMustBeWithinWorkspace: '错误：路径必须位于工作区内',
@@ -97,18 +97,18 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
   }
 
   return {
-    invalidFormatDelete: 'Error: Invalid format. Use: !!@delete_reminder <reminder-no>',
+    invalidFormatDelete: 'Error: Invalid format. Use: !?@delete_reminder <reminder-no>',
     reminderDoesNotExist: (reminderNoHuman, total) =>
       `Error: Reminder number ${reminderNoHuman} does not exist. Available reminders: 1-${total}`,
-    invalidFormatAdd: 'Error: Invalid format. Use: !!@add_reminder [<reminder-no>]',
+    invalidFormatAdd: 'Error: Invalid format. Use: !?@add_reminder [<reminder-no>]',
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
     invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
       `Error: Invalid reminder position ${reminderNoHuman}. Valid range: 1-${totalPlusOne}`,
-    invalidFormatUpdate: 'Error: Invalid format. Use: !!@update_reminder <reminder-no>',
+    invalidFormatUpdate: 'Error: Invalid format. Use: !?@update_reminder <reminder-no>',
     invalidFormatChangeMind:
-      'Error: Invalid format. Use: !!@change_mind [!goals|!constraints|!progress]',
+      'Error: Invalid format. Use: !?@change_mind [!goals|!constraints|!progress]',
     tooManyArgsChangeMind:
-      'Error: Too many arguments. Use: !!@change_mind [!goals|!constraints|!progress]',
+      'Error: Too many arguments. Use: !?@change_mind [!goals|!constraints|!progress]',
     taskDocContentRequired: 'Error: Task doc content is required',
     noTaskDocPathConfigured: 'Error: No task doc path configured for this dialog',
     pathMustBeWithinWorkspace: 'Error: Path must be within workspace',
@@ -125,15 +125,15 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
 
 /**
  * Delete a reminder by its number
- * Usage: !!@delete_reminder <reminder-no>
+ * Usage: !?@delete_reminder <reminder-no>
  */
 export const deleteReminderTool: TextingTool = {
   type: 'texter',
   name: 'delete_reminder',
-  usageDescription: 'Delete a reminder by number: !!@delete_reminder <reminder-no>',
+  usageDescription: 'Delete a reminder by number: !?@delete_reminder <reminder-no>',
   usageDescriptionI18n: {
-    en: 'Delete a reminder by number: !!@delete_reminder <reminder-no>',
-    zh: '按编号删除提醒：!!@delete_reminder <reminder-no>',
+    en: 'Delete a reminder by number: !?@delete_reminder <reminder-no>',
+    zh: '按编号删除提醒：!?@delete_reminder <reminder-no>',
   },
   backfeeding: false,
   async call(
@@ -162,16 +162,16 @@ export const deleteReminderTool: TextingTool = {
 
 /**
  * Add a new reminder or insert at specific position
- * Usage: !!@add_reminder [<reminder-no>]
- * <reminder-content>
+ * Usage: !?@add_reminder [<reminder-no>]
+ * !?<reminder-content>
  */
 export const addReminderTool: TextingTool = {
   type: 'texter',
   name: 'add_reminder',
-  usageDescription: 'Add a reminder: !!@add_reminder [<reminder-no>]\n<reminder-content>',
+  usageDescription: 'Add a reminder: !?@add_reminder [<reminder-no>]\n!?<reminder-content>',
   usageDescriptionI18n: {
-    en: 'Add a reminder: !!@add_reminder [<reminder-no>]\n<reminder-content>',
-    zh: '添加提醒：!!@add_reminder [<reminder-no>]\n<reminder-content>',
+    en: 'Add a reminder: !?@add_reminder [<reminder-no>]\n!?<reminder-content>',
+    zh: '添加提醒：!?@add_reminder [<reminder-no>]\n!?<reminder-content>',
   },
   backfeeding: false,
   async call(
@@ -210,16 +210,16 @@ export const addReminderTool: TextingTool = {
 
 /**
  * Update an existing reminder
- * Usage: !!@update_reminder <reminder-no>
- * <reminder-content>
+ * Usage: !?@update_reminder <reminder-no>
+ * !?<reminder-content>
  */
 export const updateReminderTool: TextingTool = {
   type: 'texter',
   name: 'update_reminder',
-  usageDescription: 'Update a reminder: !!@update_reminder <reminder-no>\n<reminder-content>',
+  usageDescription: 'Update a reminder: !?@update_reminder <reminder-no>\n!?<reminder-content>',
   usageDescriptionI18n: {
-    en: 'Update a reminder: !!@update_reminder <reminder-no>\n<reminder-content>',
-    zh: '更新提醒：!!@update_reminder <reminder-no>\n<reminder-content>',
+    en: 'Update a reminder: !?@update_reminder <reminder-no>\n!?<reminder-content>',
+    zh: '更新提醒：!?@update_reminder <reminder-no>\n!?<reminder-content>',
   },
   backfeeding: false,
   async call(
@@ -253,16 +253,16 @@ export const updateReminderTool: TextingTool = {
 
 /**
  * Clear mind - start new round, drop all messages, add call body as reminder if provided
- * Usage: !!@clear_mind
- * <reminder-content> - optional, when provided, adds as new reminder
+ * Usage: !?@clear_mind
+ * !?<reminder-content> - optional, when provided, adds as new reminder
  */
 export const clearMindTool: TextingTool = {
   type: 'texter',
   name: 'clear_mind',
-  usageDescription: 'Clear mind and start new round: !!@clear_mind\\n<reminder-content>',
+  usageDescription: 'Clear mind and start new round: !?@clear_mind\\n!?<reminder-content>',
   usageDescriptionI18n: {
-    en: 'Clear mind and start new round: !!@clear_mind\\n<reminder-content>',
-    zh: '清空思维并开始新一轮：!!@clear_mind\\n<reminder-content>',
+    en: 'Clear mind and start new round: !?@clear_mind\\n!?<reminder-content>',
+    zh: '清空思维并开始新一轮：!?@clear_mind\\n!?<reminder-content>',
   },
   backfeeding: false,
   async call(
@@ -284,22 +284,22 @@ export const clearMindTool: TextingTool = {
 
 /**
  * Change mind - start new round, drop all messages, overwrite task doc with call body
- * Usage: !!@change_mind
- * <new-task-doc-content> - required, overwrites current task doc file
+ * Usage: !?@change_mind
+ * !?<new-task-doc-content> - required, overwrites current task doc file
  */
 export const changeMindTool: TextingTool = {
   type: 'texter',
   name: 'change_mind',
   usageDescription:
     'Update task document content (no round reset).\n' +
-    'Task Doc (`*.tsk/`): !!@change_mind !goals|!constraints|!progress\\n<new-section-content>',
+    'Task Doc (`*.tsk/`): !?@change_mind !goals|!constraints|!progress\\n!?<new-section-content>',
   usageDescriptionI18n: {
     en:
       'Update task document content (no round reset).\n' +
-      'Task Doc (`*.tsk/`): !!@change_mind !goals|!constraints|!progress\\n<new-section-content>',
+      'Task Doc (`*.tsk/`): !?@change_mind !goals|!constraints|!progress\\n!?<new-section-content>',
     zh:
       '更新差遣牒内容（不重置轮次）。\n' +
-      '差遣牒（`*.tsk/`）：!!@change_mind !goals|!constraints|!progress\\n<new-section-content>',
+      '差遣牒（`*.tsk/`）：!?@change_mind !goals|!constraints|!progress\\n!?<new-section-content>',
   },
   backfeeding: false,
   async call(

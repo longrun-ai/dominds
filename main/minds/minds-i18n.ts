@@ -9,7 +9,7 @@ export function noneText(language: LanguageCode): string {
 }
 
 export function noTextingToolsText(language: LanguageCode): string {
-  return language === 'zh' ? '没有可用的诉请工具。' : 'No texting tools available.';
+  return language === 'zh' ? '没有可用的诉请工具。' : 'No tellask tools available.';
 }
 
 export function noneRequiredFieldsText(language: LanguageCode): string {
@@ -44,8 +44,8 @@ export function funcToolUsageLabels(language: LanguageCode): {
 
 export function funcToolRulesText(language: LanguageCode): string {
   return language === 'zh'
-    ? `\n- 对所有函数工具一律使用原生 function-calling；不要尝试用诉请标题（例如 \`!!@name\`）调用它们。\n- 参数必须是严格 JSON：与 schema 精确匹配，包含所有 required 字段，不允许额外字段。`
-    : `\n- Use native function-calling for all function tools listed; do not attempt texting headlines (e.g., \`!!@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
+    ? `\n- 对所有函数工具一律使用原生 function-calling；不要尝试用诉请行（例如 \`!?@name\`）调用它们。\n- 参数必须是严格 JSON：与 schema 精确匹配，包含所有 required 字段，不允许额外字段。`
+    : `\n- Use native function-calling for all function tools listed; do not attempt tellask lines (e.g., \`!?@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
 }
 
 export function memoryPreambleLabels(language: LanguageCode): {

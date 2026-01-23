@@ -65,7 +65,7 @@ export type TextingCallResultMsg = {
   type: 'call_result_msg';
   role: 'tool';
   responderId: string; // id of tool only
-  headLine: string; // headLine of original texting call, body not included in the result
+  headLine: string; // headline of original tellask tool call (body not included in the result)
   status: 'completed' | 'failed';
   content: string;
   // callId REMOVED - UI correlation is handled via ResponseEvent

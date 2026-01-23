@@ -19,9 +19,6 @@ import { AsyncFifoMutex } from './shared/async-fifo-mutex';
 import { getWorkLanguage } from './shared/runtime-language';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
-  CodeBlockChunkEvent,
-  CodeBlockFinishEvent,
-  CodeBlockStartEvent,
   ContextHealthEvent,
   FuncCallStartEvent,
   FunctionResultEvent,
@@ -68,6 +65,7 @@ import type {
   ToolCallResultRecord,
   UserTextGrammar,
 } from './shared/types/storage';
+import type { TellaskCallValidation } from './shared/types/tellask';
 import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import { Reminder } from './tool';
@@ -90,6 +88,12 @@ function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['as
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callerDialogId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
+  if ('collectiveTargets' in value) {
+    const collectiveTargets = (value as Record<string, unknown>).collectiveTargets;
+    if (collectiveTargets === undefined) return true;
+    if (!Array.isArray(collectiveTargets)) return false;
+    if (!collectiveTargets.every((item) => typeof item === 'string')) return false;
+  }
   return true;
 }
 
@@ -171,7 +175,7 @@ export interface Questions4Human {
 
 // Remove old type definitions - now using shared/types/storage.ts
 
-import { TextingEventsReceiver, TextingStreamParser } from './texting';
+import { TellaskEventsReceiver, TellaskStreamParser } from './tellask';
 import { generateDialogID } from './utils/id';
 
 /**
@@ -318,15 +322,15 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Receive and handle TEXTING TOOL responses with callId for inline result display
+   * Receive and handle tellask tool responses with callId for inline result display
    *
    * Call Types:
-   * - Texting Tool Call: !!@tool_name (e.g., !!@add_reminder, !!@list_files)
+   * - Tool Call: !?@tool_name (e.g., !?@add_reminder, !?@list_files)
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation between call_start and response
    *   - Uses receiveToolResponse() + callId parameter
    *
-   * - Teammate Call: !!@agentName (e.g., !!@coder, !!@tester)
+   * - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
    *   - Result displays in SEPARATE bubble (subdialog response)
    *   - Uses calleeDialogId for correlation
    *   - Uses receiveTeammateResponse() instead
@@ -379,12 +383,12 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle TEAMMATE CALL responses (separate bubble for @agentName calls)
    *
    * Call Types:
-   * - Texting Tool Call: !!@tool_name (e.g., !!@add_reminder)
+   * - Tool Call: !?@tool_name (e.g., !?@add_reminder)
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation
    *   - Uses receiveToolResponse() instead
    *
-   * - Teammate Call: !!@agentName (e.g., !!@coder, !!@tester)
+   * - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)
    *   - Uses this method (receiveTeammateResponse)
@@ -655,43 +659,12 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, evt);
   }
 
-  public async codeBlockStart(dialog: Dialog, infoLine?: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
-    const evt: CodeBlockStartEvent = {
-      type: 'codeblock_start_evt',
-      infoLine,
-      round,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-  public async codeBlockChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
-    const codeBlockChunkEvt: CodeBlockChunkEvent = {
-      type: 'codeblock_chunk_evt',
-      chunk,
-      round,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, codeBlockChunkEvt);
-  }
-  public async codeBlockFinish(dialog: Dialog, endQuote?: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
-    const codeBlockFinishEvt: CodeBlockFinishEvent = {
-      type: 'codeblock_finish_evt',
-      endQuote,
-      round,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, codeBlockFinishEvt);
-  }
-
-  // Tool call streaming methods (renamed from calling to tool_call)
-  public async callingStart(dialog: Dialog, firstMention: string): Promise<void> {
+  // Tellask call streaming methods
+  public async callingStart(dialog: Dialog, validation: TellaskCallValidation): Promise<void> {
     const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallStartEvent = {
       type: 'tool_call_start_evt',
-      firstMention,
+      validation,
       round,
       genseq: dialog.activeGenSeq,
     };
@@ -719,11 +692,10 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, evt);
   }
 
-  public async callingBodyStart(dialog: Dialog, infoLine?: string): Promise<void> {
+  public async callingBodyStart(dialog: Dialog): Promise<void> {
     const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallBodyStartEvent = {
       type: 'tool_call_body_start_evt',
-      infoLine,
       round,
       genseq: dialog.activeGenSeq,
     };
@@ -741,11 +713,10 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, evt);
   }
 
-  public async callingBodyFinish(dialog: Dialog, endQuote?: string): Promise<void> {
+  public async callingBodyFinish(dialog: Dialog): Promise<void> {
     const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const evt: ToolCallBodyFinishEvent = {
       type: 'tool_call_body_finish_evt',
-      endQuote,
       round,
       genseq: dialog.activeGenSeq,
     };
@@ -839,7 +810,7 @@ export class DiskFileDialogStore extends DialogStore {
   /**
    * Persist a user message to storage
    * Note: The end_of_user_saying_evt is emitted by the driver after user content
-   * is rendered and any texting calls are parsed/executed.
+   * is rendered and any tellask calls are parsed/executed.
    */
   public async persistUserMessage(
     dialog: Dialog,
@@ -863,7 +834,7 @@ export class DiskFileDialogStore extends DialogStore {
     };
     await this.appendEvent(round, humanEv);
 
-    // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after texting calls complete
+    // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after tellask calls complete
   }
 
   /**
@@ -1135,12 +1106,12 @@ export class DiskFileDialogStore extends DialogStore {
       case 'human_text_record': {
         const genseq = event.genseq;
         const content = event.content || '';
-        const grammar: UserTextGrammar = event.grammar ?? 'texting';
+        const grammar: UserTextGrammar = event.grammar ?? 'tellask';
         const userLanguageCode = event.userLanguageCode;
 
         if (content) {
-          if (grammar === 'texting') {
-            const receiver: TextingEventsReceiver = {
+          if (grammar === 'tellask') {
+            const receiver: TellaskEventsReceiver = {
               markdownStart: async () => {
                 if (ws.readyState === 1) {
                   ws.send(
@@ -1181,12 +1152,12 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callStart: async (first: string) => {
+              callStart: async (validation) => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_start_evt',
-                      firstMention: first,
+                      validation,
                       round,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1222,12 +1193,11 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callBodyStart: async (infoLine?: string) => {
+              callBodyStart: async () => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_body_start_evt',
-                      infoLine,
                       round,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1250,12 +1220,11 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callBodyFinish: async (endQuote?: string) => {
+              callBodyFinish: async () => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_body_finish_evt',
-                      endQuote,
                       round,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1278,52 +1247,10 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              codeBlockStart: async (infoLine: string) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'codeblock_start_evt',
-                      infoLine,
-                      round,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              codeBlockChunk: async (chunk: string) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'codeblock_chunk_evt',
-                      chunk,
-                      round,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              codeBlockFinish: async (endQuote: string) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'codeblock_finish_evt',
-                      endQuote,
-                      round,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
             };
 
-            // Parse user content through TextingStreamParser (same as live mode)
-            const streamingParser = new TextingStreamParser(receiver);
+            // Parse user content through TellaskStreamParser (same as live mode)
+            const streamingParser = new TellaskStreamParser(receiver);
             await streamingParser.takeUpstreamChunk(content);
             await streamingParser.finalize();
           } else {
@@ -1497,7 +1424,7 @@ export class DiskFileDialogStore extends DialogStore {
         const content = event.content || '';
         if (content) {
           // Create ad-hoc receiver similar to driver pattern with closure-based WebSocket access
-          const receiver: TextingEventsReceiver = {
+          const receiver: TellaskEventsReceiver = {
             markdownStart: async () => {
               if (ws.readyState === 1) {
                 ws.send(
@@ -1547,12 +1474,12 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callStart: async (first: string) => {
+            callStart: async (validation) => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_start_evt',
-                    firstMention: first,
+                    validation,
                     round,
                     genseq: event.genseq,
                     dialog: {
@@ -1597,12 +1524,11 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callBodyStart: async (infoLine?: string) => {
+            callBodyStart: async () => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_body_start_evt',
-                    infoLine,
                     round,
                     genseq: event.genseq,
                     dialog: {
@@ -1631,12 +1557,11 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callBodyFinish: async (endQuote?: string) => {
+            callBodyFinish: async () => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_body_finish_evt',
-                    endQuote,
                     round,
                     genseq: event.genseq,
                     dialog: {
@@ -1665,61 +1590,10 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            codeBlockStart: async (infoLine: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'codeblock_start_evt',
-                    infoLine,
-                    round,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            codeBlockChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'codeblock_chunk_evt',
-                    chunk,
-                    round,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            codeBlockFinish: async (endQuote: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'codeblock_finish_evt',
-                    endQuote,
-                    round,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
           };
 
-          // Use the same TextingStreamParser that live streaming uses
-          const streamingParser = new TextingStreamParser(receiver);
+          // Use the same TellaskStreamParser that live streaming uses
+          const streamingParser = new TellaskStreamParser(receiver);
 
           // Stream the content through the parser to ensure consistent event emission
           await streamingParser.takeUpstreamChunk(content);
@@ -1802,7 +1676,7 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'tool_call_result_record': {
-        // Handle tool call results (renamed from texting_call_result_record)
+        // Handle tool call results
         const responseEvent = {
           type: 'tool_call_response_evt',
           responderId: event.responderId,
@@ -3711,7 +3585,7 @@ export class DialogPersistence {
             genseq: event.genseq,
             msgId: event.msgId,
             content: event.content,
-            grammar: event.grammar ?? 'texting',
+            grammar: event.grammar ?? 'tellask',
           });
           break;
         }

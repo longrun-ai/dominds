@@ -1,4 +1,5 @@
 import { formatLanguageName, type LanguageCode } from '../types/language';
+import type { TellaskMalformedReason } from '../types/tellask';
 
 export function formatUserFacingLanguageGuide(
   workingLanguage: LanguageCode,
@@ -25,12 +26,12 @@ export function formatReminderItemGuide(
   content: string,
 ): string {
   if (language === 'zh') {
-    return `这里是提醒 #${index}。我应判断它是否仍然相关；如果不相关，应立即执行 \`!!@delete_reminder ${index}\`。
+    return `这里是提醒 #${index}。我应判断它是否仍然相关；如果不相关，应立即执行 \`!?@delete_reminder ${index}\`。
 ---
 ${content}`;
   }
 
-  return `Here I have reminder #${index}, I should assess whether it's still relevant and issue \`!!@delete_reminder ${index}\` immediately if deemed not.
+  return `Here I have reminder #${index}, I should assess whether it's still relevant and issue \`!?@delete_reminder ${index}\` immediately if deemed not.
 ---
 ${content}`;
 }
@@ -49,7 +50,7 @@ export function formatContextHealthReminderText(
 ): string {
   if (language === 'zh') {
     const distillLines = [
-      '建议：用 `!!@change_mind !progress` 把“提炼摘要”写回差遣牒，然后再用 `!!@clear_mind` 清理噪音开启新回合。',
+      '建议：用 `!?@change_mind !progress` 把“提炼摘要”写回差遣牒，然后再用 `!?@clear_mind` 清理噪音开启新回合。',
       '',
       '提炼摘要（写入 `!progress` 即可；无需复制粘贴代码块）：',
       '## 提炼摘要',
@@ -62,7 +63,7 @@ export function formatContextHealthReminderText(
 
     const options = [
       '- 可选动作（按当前意图自行选择）：',
-      '  - 把关键事实/决策写入差遣牒（`!!@change_mind !progress`）',
+      '  - 把关键事实/决策写入差遣牒（`!?@change_mind !progress`）',
       '  - 收窄范围/减少输出噪音（例如减少大段粘贴、减少无关回显）',
       '  - 接受风险继续（例如为了保持连续性）',
     ];
@@ -94,7 +95,7 @@ export function formatContextHealthReminderText(
   }
 
   const distillLines = [
-    'Suggested flow: write a short distillation into the task doc via `!!@change_mind !progress`, then use `!!@clear_mind` to start a new round with less noise.',
+    'Suggested flow: write a short distillation into the task doc via `!?@change_mind !progress`, then use `!?@clear_mind` to start a new round with less noise.',
     '',
     'Distilled context (put this into `!progress`; no code block copy needed):',
     '## Distilled context',
@@ -107,7 +108,7 @@ export function formatContextHealthReminderText(
 
   const options = [
     '- Options (choose based on your intent):',
-    '  - Write key facts/decisions into the task doc (`!!@change_mind !progress`)',
+    '  - Write key facts/decisions into the task doc (`!?@change_mind !progress`)',
     '  - Narrow scope / reduce output noise (avoid large pastes, avoid irrelevant tool echoes)',
     '  - Continue as-is if you accept the risk',
   ];
@@ -143,13 +144,13 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
     return `⚠️ 我当前有 ${count} 条提醒（请优先处理）。
 
 快速操作：
-- 新增：!!@add_reminder [<position>]
-- 更新：!!@update_reminder <number>
-- 删除：!!@delete_reminder <number>
+- 新增：!?@add_reminder [<position>]
+- 更新：!?@update_reminder <number>
+- 删除：!?@delete_reminder <number>
 
 建议做法（可选）：
-- 先用 \`!!@change_mind !progress\` 把关键事实/决策写回差遣牒
-- 然后使用 !!@clear_mind 开启新回合以清理噪音
+- 先用 \`!?@change_mind !progress\` 把关键事实/决策写回差遣牒
+- 然后使用 !?@clear_mind 开启新回合以清理噪音
 
 提炼模板（写入差遣牒的 \`!progress\` 段）：
 ## 提炼摘要
@@ -164,13 +165,13 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
   return `⚠️ I currently have ${count} reminder${plural} (please review).
 
 Quick actions:
-- Add: !!@add_reminder [<position>]
-- Update: !!@update_reminder <number>
-- Delete: !!@delete_reminder <number>
+- Add: !?@add_reminder [<position>]
+- Update: !?@update_reminder <number>
+- Delete: !?@delete_reminder <number>
 
 Suggested flow (optional):
-- First, write a short distillation into the task doc via \`!!@change_mind !progress\`
-- Then use !!@clear_mind to start a new round with less noise
+- First, write a short distillation into the task doc via \`!?@change_mind !progress\`
+- Then use !?@clear_mind to start a new round with less noise
 
 Distill template (put this into the task doc \`!progress\` section):
 ## Distilled context
@@ -184,12 +185,12 @@ Distill template (put this into the task doc \`!progress\` section):
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!!@super` 只在子对话（subdialog）中有效，用于诉请直接父对话（supdialog）。' +
+      'Dominds 提示：`!?@super` 只在子对话（subdialog）中有效，用于诉请直接父对话（supdialog）。' +
       '你当前不在子对话中，因此没有父对话可诉请。'
     );
   }
   return (
-    'Dominds note: `!!@super` is only valid inside a subdialog and calls the direct parent (supdialog). ' +
+    'Dominds note: `!?@super` is only valid inside a subdialog and calls the direct parent (supdialog). ' +
     'You are currently not in a subdialog, so there is no parent to call.'
   );
 }
@@ -197,13 +198,13 @@ export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): s
 export function formatDomindsNoteSuperNoTopic(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!!@super` 是 Type A 的 supdialog 诉请，不接受 `!topic`。' +
-      '请使用不带 `!topic` 的 `!!@super`；或使用 `!!@self !topic <topicId>` / `!!@<agentId> !topic <topicId>` 来触发 Type B。'
+      'Dominds 提示：`!?@super` 是 Type A 的 supdialog 诉请，不接受 `!topic`。' +
+      '请使用不带 `!topic` 的 `!?@super`；或使用 `!?@self !topic <topicId>` / `!?@<agentId> !topic <topicId>` 来触发 Type B。'
     );
   }
   return (
-    'Dominds note: `!!@super` is a Type A supdialog call and does not accept `!topic`. ' +
-    'Use `!!@super` with NO `!topic`, or use `!!@self !topic <topicId>` / `!!@<agentId> !topic <topicId>` for Type B.'
+    'Dominds note: `!?@super` is a Type A supdialog call and does not accept `!topic`. ' +
+    'Use `!?@super` with NO `!topic`, or use `!?@self !topic <topicId>` / `!?@<agentId> !topic <topicId>` for Type B.'
   );
 }
 
@@ -211,13 +212,123 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   if (language === 'zh') {
     return (
       'Dominds 提示：该诉请目标是当前 agent（自诉请/self-call）。' +
-      'Fresh Boots Reasoning 通常应使用 `!!@self`（不带 `!topic`）来创建一次性的 fresh boots 会话；' +
-      '仅在你明确需要可恢复的长期子对话时才使用 `!!@self !topic <topicId>`。该诉请将继续执行。'
+      'Fresh Boots Reasoning 通常应使用 `!?@self`（不带 `!topic`）来创建一次性的 fresh boots 会话；' +
+      '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !topic <topicId>`。该诉请将继续执行。'
     );
   }
   return (
     'Dominds note: This call targets the current agent (self-call). ' +
-    'Fresh Boots Reasoning should usually use `!!@self` (no `!topic`) for an ephemeral fresh boots session; use ' +
-    '`!!@self !topic <topicId>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.'
+    'Fresh Boots Reasoning should usually use `!?@self` (no `!topic`) for an ephemeral fresh boots session; use ' +
+    '`!?@self !topic <topicId>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.'
+  );
+}
+
+export function formatDomindsNoteMalformedTellaskCall(
+  language: LanguageCode,
+  reason: TellaskMalformedReason,
+  options?: { firstLineAfterPrefix?: string },
+): string {
+  const firstLine = options?.firstLineAfterPrefix?.trim() ?? '';
+  const got = firstLine !== '' ? `\n\nGot: \`!?${firstLine}\`` : '';
+
+  if (language === 'zh') {
+    switch (reason) {
+      case 'missing_mention_prefix': {
+        return (
+          'ERR_MALFORMED_TELLASK\n' +
+          'Dominds 提示：这段内容被解析为“诉请块”，但第一行不是有效的诉请头。\n\n' +
+          '规则：诉请块第一行必须以 `!?@<mention-id>` 开头，例如：`!?@read_file path/to/file`。\n' +
+          '如果你只是想写普通 markdown，请不要在行首使用 `!?`。' +
+          got
+        );
+      }
+      case 'invalid_mention_id': {
+        return (
+          'ERR_MALFORMED_TELLASK\n' +
+          'Dominds 提示：这段内容被解析为“诉请块”，但 `!?@` 后的 mention-id 为空或无效。\n\n' +
+          '规则：第一行必须是 `!?@<mention-id>`（mention-id 不能为空），例如：`!?@list_dir .`。' +
+          got
+        );
+      }
+      default: {
+        const _exhaustive: never = reason;
+        return _exhaustive;
+      }
+    }
+  }
+
+  switch (reason) {
+    case 'missing_mention_prefix': {
+      return (
+        'ERR_MALFORMED_TELLASK\n' +
+        'Dominds note: This content was parsed as a tellask block, but the first line is not a valid tellask headline.\n\n' +
+        'Rule: the first line must start with `!?@<mention-id>`, e.g. `!?@read_file path/to/file`.\n' +
+        'If you want normal markdown, do not start the line with `!?`.' +
+        got
+      );
+    }
+    case 'invalid_mention_id': {
+      return (
+        'ERR_MALFORMED_TELLASK\n' +
+        'Dominds note: This content was parsed as a tellask block, but the mention-id after `!?@` is empty or invalid.\n\n' +
+        'Rule: the first line must be `!?@<mention-id>` (mention-id cannot be empty), e.g. `!?@list_dir .`.' +
+        got
+      );
+    }
+    default: {
+      const _exhaustive: never = reason;
+      return _exhaustive;
+    }
+  }
+}
+
+export function formatDomindsNoteInvalidMultiTeammateTargets(
+  language: LanguageCode,
+  options: { unknown: string[] },
+): string {
+  const unknown = options.unknown.map((id) => `@${id}`).join(', ');
+  if (language === 'zh') {
+    return (
+      'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
+      `Dominds 提示：这条队友诉请包含未知队友呼号：${unknown}\n\n` +
+      '在队友诉请中，headline 里出现的队友呼号会被视为 collective targets 并被 fan-out（共享同一 headLine+callBody）。\n' +
+      '请确认这些呼号是否存在于团队目录中；若你只是想写字面量 `@something`，请用反引号包裹（例如 `@something`）。'
+    );
+  }
+  return (
+    'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
+    `Dominds note: This teammate call includes unknown teammate id(s): ${unknown}\n\n` +
+    'In teammate calls, teammate mentions inside the headline are treated as collective targets and fanned out (shared headLine+callBody).\n' +
+    'Confirm those ids exist in the team roster; if you meant a literal `@something`, wrap it in backticks (e.g., `@something`).'
+  );
+}
+
+export function formatDomindsNoteInvalidTopicDirective(language: LanguageCode): string {
+  if (language === 'zh') {
+    return (
+      'ERR_INVALID_TOPIC_DIRECTIVE\n' +
+      'Dominds 提示：检测到 `!topic` 指令，但 topicId 无效。\n\n' +
+      '规则：`!topic <topicId>` 的 topicId 必须满足 `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`。'
+    );
+  }
+  return (
+    'ERR_INVALID_TOPIC_DIRECTIVE\n' +
+    'Dominds note: Detected a `!topic` directive, but the topicId is invalid.\n\n' +
+    'Rule: `!topic <topicId>` must match `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`.'
+  );
+}
+
+export function formatDomindsNoteMultipleTopicDirectives(language: LanguageCode): string {
+  if (language === 'zh') {
+    return (
+      'ERR_MULTIPLE_TOPIC_DIRECTIVES\n' +
+      'Dominds 提示：同一条诉请的 headline 中出现了多个 `!topic` 指令。\n\n' +
+      '规则：每条诉请最多只能包含一个 `!topic <topicId>`（对 collective teammate call，该 topic 会对所有目标队友生效）。'
+    );
+  }
+  return (
+    'ERR_MULTIPLE_TOPIC_DIRECTIVES\n' +
+    'Dominds note: Multiple `!topic` directives were found in the headline.\n\n' +
+    'Rule: a tellask call may include at most one `!topic <topicId>` (for collective teammate calls, the same topic applies to all targets).'
   );
 }

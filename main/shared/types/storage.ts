@@ -23,7 +23,7 @@ export type ProviderData = JsonObject;
 
 export type ToolArguments = JsonObject;
 
-export type UserTextGrammar = 'texting' | 'markdown';
+export type UserTextGrammar = 'tellask' | 'markdown';
 
 export interface RootDialogMetadataFile {
   /** Unique dialog identifier (selfDlgId only) */
@@ -74,6 +74,7 @@ export interface SubdialogMetadataFile {
     originMemberId: string;
     callerDialogId: string;
     callId: string;
+    collectiveTargets?: string[];
   };
 }
 

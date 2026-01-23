@@ -2,7 +2,7 @@
  * Module: tool
  *
  * Tool type definitions and argument validation helpers.
- * Supports function tools (`func`) and texting tools (`texter`).
+ * Supports function tools (`func`) and texter tools (`texter`).
  */
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
