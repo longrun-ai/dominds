@@ -40,12 +40,13 @@ import {
 import { teamMgmtTools } from './team-mgmt';
 import {
   appendFileTool,
+  applyBlockReplaceTool,
   applyFileModificationTool,
   insertAfterTool,
   insertBeforeTool,
+  planBlockReplaceTool,
   planFileModificationTool,
   readFileTool,
-  replaceBlockTool,
   replaceFileContentsTool,
 } from './txt';
 
@@ -59,10 +60,11 @@ registerTool(readFileTool);
 registerTool(replaceFileContentsTool);
 registerTool(planFileModificationTool);
 registerTool(applyFileModificationTool);
+registerTool(planBlockReplaceTool);
+registerTool(applyBlockReplaceTool);
 registerTool(appendFileTool);
 registerTool(insertAfterTool);
 registerTool(insertBeforeTool);
-registerTool(replaceBlockTool);
 
 // Ripgrep tools
 registerTool(ripgrepFilesTool);
@@ -179,7 +181,8 @@ registerToolset('ws_mod', [
   appendFileTool,
   insertAfterTool,
   insertBeforeTool,
-  replaceBlockTool,
+  planBlockReplaceTool,
+  applyBlockReplaceTool,
   planFileModificationTool,
   applyFileModificationTool,
   ripgrepFilesTool,

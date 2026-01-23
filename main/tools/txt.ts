@@ -265,8 +265,36 @@ type PlannedFileModification = {
   readonly unifiedDiff: string;
 };
 
+type AnchorMatchMode = 'contains' | 'equals';
+
+type PlannedBlockReplace = {
+  readonly hunkId: string;
+  readonly plannedBy: string;
+  readonly createdAtMs: number;
+  readonly expiresAtMs: number;
+  readonly relPath: string;
+  readonly absPath: string;
+  readonly startAnchor: string;
+  readonly endAnchor: string;
+  readonly match: AnchorMatchMode;
+  readonly includeAnchors: boolean;
+  readonly requireUnique: boolean;
+  readonly strict: boolean;
+  readonly occurrence: Occurrence;
+  readonly occurrenceSpecified: boolean;
+  readonly selectedStart0: number;
+  readonly selectedEnd0: number;
+  readonly replaceStart0: number;
+  readonly deleteCount: number;
+  readonly oldLines: ReadonlyArray<string>;
+  readonly newLines: ReadonlyArray<string>;
+  readonly unifiedDiff: string;
+  readonly addedTrailingNewlineToContent: boolean;
+};
+
 const PLANNED_MOD_TTL_MS = 60 * 60 * 1000; // ~1 hour
 const plannedModsById = new Map<string, PlannedFileModification>();
+const plannedBlockReplacesById = new Map<string, PlannedBlockReplace>();
 
 type LockQueueItem = {
   readonly priority: number;
@@ -307,6 +335,12 @@ async function drainFileApplyQueue(relPath: string): Promise<void> {
 function pruneExpiredPlannedMods(nowMs: number): void {
   for (const [id, mod] of plannedModsById.entries()) {
     if (mod.expiresAtMs <= nowMs) plannedModsById.delete(id);
+  }
+}
+
+function pruneExpiredPlannedBlockReplaces(nowMs: number): void {
+  for (const [id, mod] of plannedBlockReplacesById.entries()) {
+    if (mod.expiresAtMs <= nowMs) plannedBlockReplacesById.delete(id);
   }
 }
 
@@ -2382,6 +2416,784 @@ Options:
           `anchor: ${yamlQuote(anchor)}`,
           `error: FAILED`,
           `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+  },
+};
+
+export const planBlockReplaceTool: TellaskTool = {
+  type: 'tellask',
+  name: 'plan_block_replace',
+  backfeeding: true,
+  usageDescription: `Plan a block replacement between start/end anchors (does not write yet).
+Usage: !?@plan_block_replace <path> <start_anchor> <end_anchor> [options]
+!?<new content in body>
+
+Options:
+  occurrence=<n|last> (default: 1)
+  include_anchors=true|false (default: true)
+  match=contains|equals (default: contains)
+  require_unique=true|false (default: true)
+  strict=true|false (default: true)
+
+Workflow:
+  1) Plan: returns a unified diff hunk with a generated hunk id (TTL-limited).
+  2) Apply: confirm by calling \`!?@apply_block_replace !<hunk-id>\`.`,
+  usageDescriptionI18n: {
+    en: `Plan a block replacement between start/end anchors (does not write yet).
+Usage: !?@plan_block_replace <path> <start_anchor> <end_anchor> [options]
+!?<new content in body>
+
+Options:
+  occurrence=<n|last> (default: 1)
+  include_anchors=true|false (default: true)
+  match=contains|equals (default: contains)
+  require_unique=true|false (default: true)
+  strict=true|false (default: true)
+
+Workflow:
+  1) Plan: returns a unified diff hunk with a generated hunk id (TTL-limited).
+  2) Apply: confirm by calling \`!?@apply_block_replace !<hunk-id>\`.`,
+    zh: `按 start/end 锚点规划块替换（不会立刻写入）。
+用法：!?@plan_block_replace <path> <start_anchor> <end_anchor> [options]
+!?<正文为新块内容>
+
+选项：
+  occurrence=<n|last>（默认 1）
+  include_anchors=true|false（默认 true）
+  match=contains|equals（默认 contains）
+  require_unique=true|false（默认 true）
+  strict=true|false（默认 true）
+
+流程：
+  1) 规划：返回 unified diff + hunk id（有 TTL）。
+  2) 应用：用 \`!?@apply_block_replace !<hunk-id>\` 显式确认并写入。`,
+  },
+  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+    const language = getWorkLanguage();
+    const trimmed = headLine.trim();
+    if (!trimmed.startsWith('@plan_block_replace')) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: plan_block_replace`,
+          `error: INVALID_FORMAT`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '格式不正确。用法：!?@plan_block_replace <path> <start_anchor> <end_anchor> [options]'
+              : 'Invalid format. Use: !?@plan_block_replace <path> <start_anchor> <end_anchor> [options]',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const afterToolName = trimmed.slice('@plan_block_replace'.length).trim();
+    const args = splitCommandArgs(afterToolName);
+    const filePath = args[0] ?? '';
+    const startAnchor = args[1] ?? '';
+    const endAnchor = args[2] ?? '';
+    const optTokens = args.slice(3);
+
+    if (!filePath || !startAnchor || !endAnchor) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: plan_block_replace`,
+          `error: INVALID_FORMAT`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '需要提供 path、start_anchor、end_anchor。'
+              : 'path, start_anchor, and end_anchor are required.',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+    if (!hasWriteAccess(caller, filePath)) {
+      const content = getAccessDeniedMessage('write', filePath, language);
+      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+    if (inputBody === '') {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `path: ${yamlQuote(filePath)}`,
+          `mode: plan_block_replace`,
+          `error: CONTENT_REQUIRED`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '正文不能为空（需要提供要写入块内的新内容）。'
+              : 'Content is required in the body (new block content).',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    let occurrence: Occurrence = { kind: 'index', index1: 1 };
+    let occurrenceSpecified = false;
+    let includeAnchors = true;
+    let match: AnchorMatchMode = 'contains';
+    let requireUnique = true;
+    let strict = true;
+
+    for (const token of optTokens) {
+      const [rawK, rawV] = token.split('=', 2);
+      const key = (rawK ?? '').trim();
+      const value = (rawV ?? '').trim();
+      if (!key || !value) continue;
+
+      if (key === 'occurrence') {
+        const parsed = parseOccurrence(value);
+        if (parsed) {
+          occurrence = parsed;
+          occurrenceSpecified = true;
+        }
+      } else if (key === 'include_anchors') {
+        const parsed = parseBooleanOption(value);
+        if (parsed !== undefined) includeAnchors = parsed;
+      } else if (key === 'match') {
+        if (value === 'contains' || value === 'equals') match = value;
+      } else if (key === 'require_unique') {
+        const parsed = parseBooleanOption(value);
+        if (parsed !== undefined) requireUnique = parsed;
+      } else if (key === 'strict') {
+        const parsed = parseBooleanOption(value);
+        if (parsed !== undefined) strict = parsed;
+      }
+    }
+
+    try {
+      pruneExpiredPlannedMods(Date.now());
+      pruneExpiredPlannedBlockReplaces(Date.now());
+
+      const fullPath = ensureInsideWorkspace(filePath);
+      if (!fsSync.existsSync(fullPath)) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `path: ${yamlQuote(filePath)}`,
+            `mode: plan_block_replace`,
+            `error: FILE_NOT_FOUND`,
+            `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File does not exist.')}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const existing = fsSync.readFileSync(fullPath, 'utf8');
+      const addedLeadingNewlineToFile = existing !== '' && !existing.endsWith('\n');
+      const lines = splitTextToLinesForEditing(existing);
+
+      const isMatch = (line: string, anchor: string): boolean => {
+        return match === 'equals' ? line === anchor : line.includes(anchor);
+      };
+
+      const startMatches: number[] = [];
+      const endMatches: number[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? '';
+        if (isMatch(line, startAnchor)) startMatches.push(i);
+        if (isMatch(line, endAnchor)) endMatches.push(i);
+      }
+
+      const pairs: Array<{ start0: number; end0: number }> = [];
+      for (const start0 of startMatches) {
+        const end0 = endMatches.find((e) => e > start0);
+        if (end0 !== undefined) pairs.push({ start0, end0 });
+      }
+
+      const candidatesCount = pairs.length;
+
+      if (candidatesCount === 0) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `path: ${yamlQuote(filePath)}`,
+            `mode: plan_block_replace`,
+            `start_anchor: ${yamlQuote(startAnchor)}`,
+            `end_anchor: ${yamlQuote(endAnchor)}`,
+            `candidates_count: 0`,
+            `error: ANCHOR_NOT_FOUND`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '锚点未找到或无法配对。请改用 plan/apply_file_modification（行号精确编辑）。'
+                : 'Anchors not found or not paired. Use plan/apply_file_modification for precise edits.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      if (!occurrenceSpecified && requireUnique && candidatesCount !== 1 && strict) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `path: ${yamlQuote(filePath)}`,
+            `mode: plan_block_replace`,
+            `start_anchor: ${yamlQuote(startAnchor)}`,
+            `end_anchor: ${yamlQuote(endAnchor)}`,
+            `candidates_count: ${candidatesCount}`,
+            `error: ANCHOR_AMBIGUOUS`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 plan/apply_file_modification。`
+                : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use plan/apply_file_modification.`,
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const selected = (() => {
+        if (candidatesCount === 1) return pairs[0];
+        if (occurrence.kind === 'last') return pairs[pairs.length - 1];
+        const idx0 = occurrence.index1 - 1;
+        return pairs[idx0];
+      })();
+
+      if (!selected) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `path: ${yamlQuote(filePath)}`,
+            `mode: plan_block_replace`,
+            `start_anchor: ${yamlQuote(startAnchor)}`,
+            `end_anchor: ${yamlQuote(endAnchor)}`,
+            `candidates_count: ${candidatesCount}`,
+            `error: OCCURRENCE_OUT_OF_RANGE`,
+            `summary: ${yamlQuote(
+              language === 'zh' ? 'occurrence 超出范围。' : 'occurrence is out of range.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const nestedStart = startMatches.some((s) => s > selected.start0 && s < selected.end0);
+      const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
+      if (nestedStart || nestedEnd) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `path: ${yamlQuote(filePath)}`,
+            `mode: plan_block_replace`,
+            `start_anchor: ${yamlQuote(startAnchor)}`,
+            `end_anchor: ${yamlQuote(endAnchor)}`,
+            `candidates_count: ${candidatesCount}`,
+            `error: ANCHOR_AMBIGUOUS`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 plan/apply_file_modification。'
+                : 'Nested/ambiguous anchors detected. Refusing to plan; normalize anchors or use plan/apply_file_modification.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const occurrenceResolved =
+        candidatesCount === 1
+          ? '1'
+          : occurrence.kind === 'last'
+            ? 'last'
+            : String(occurrence.index1);
+
+      const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
+      const replacementLines = splitPlannedBodyLines(normalizedBody);
+
+      const replaceStart0 = includeAnchors ? selected.start0 + 1 : selected.start0;
+      const replaceDeleteCount = includeAnchors
+        ? Math.max(0, selected.end0 - selected.start0 - 1)
+        : selected.end0 - selected.start0 + 1;
+
+      const oldLines = lines.slice(replaceStart0, replaceStart0 + replaceDeleteCount);
+      const unifiedDiff = buildUnifiedSingleHunkDiff(
+        filePath,
+        lines,
+        replaceStart0,
+        replaceDeleteCount,
+        replacementLines,
+      );
+
+      const nowMs = Date.now();
+      const hunkId = (() => {
+        for (let i = 0; i < 10; i += 1) {
+          const id = generateHunkId();
+          if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
+        }
+        throw new Error('Failed to generate a unique hunk id');
+      })();
+
+      const planned: PlannedBlockReplace = {
+        hunkId,
+        plannedBy: caller.id,
+        createdAtMs: nowMs,
+        expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
+        relPath: filePath,
+        absPath: fullPath,
+        startAnchor,
+        endAnchor,
+        match,
+        includeAnchors,
+        requireUnique,
+        strict,
+        occurrence,
+        occurrenceSpecified,
+        selectedStart0: selected.start0,
+        selectedEnd0: selected.end0,
+        replaceStart0,
+        deleteCount: replaceDeleteCount,
+        oldLines,
+        newLines: replacementLines,
+        unifiedDiff,
+        addedTrailingNewlineToContent,
+      };
+      plannedBlockReplacesById.set(hunkId, planned);
+
+      const oldCount = replaceDeleteCount;
+      const newCount = replacementLines.length;
+      const delta = newCount - oldCount;
+
+      const oldPreview = buildRangePreview(oldLines);
+      const newPreview = buildRangePreview(replacementLines);
+      const summary =
+        language === 'zh'
+          ? `Plan-block-replace：候选=${candidatesCount}；block 第 ${selected.start0 + 1}–${selected.end0 + 1} 行；old=${oldCount}, new=${newCount}, delta=${delta}；hunk_id=${hunkId}.`
+          : `Plan-block-replace: candidates=${candidatesCount}; block lines ${selected.start0 + 1}–${selected.end0 + 1}; old=${oldCount}, new=${newCount}, delta=${delta}; hunk_id=${hunkId}.`;
+
+      const yaml = [
+        `status: ok`,
+        `mode: plan_block_replace`,
+        `path: ${yamlQuote(filePath)}`,
+        `start_anchor: ${yamlQuote(startAnchor)}`,
+        `end_anchor: ${yamlQuote(endAnchor)}`,
+        `match: ${yamlQuote(match)}`,
+        `include_anchors: ${includeAnchors}`,
+        `require_unique: ${requireUnique}`,
+        `strict: ${strict}`,
+        `candidates_count: ${candidatesCount}`,
+        `occurrence_resolved: ${yamlQuote(occurrenceResolved)}`,
+        `hunk_id: ${yamlQuote(hunkId)}`,
+        `expires_at_ms: ${planned.expiresAtMs}`,
+        `block_range:`,
+        `  start_line: ${selected.start0 + 1}`,
+        `  end_line: ${selected.end0 + 1}`,
+        `replace_slice:`,
+        `  start_line: ${replaceStart0 + 1}`,
+        `  delete_count: ${replaceDeleteCount}`,
+        `lines:`,
+        `  old: ${oldCount}`,
+        `  new: ${newCount}`,
+        `  delta: ${delta}`,
+        `normalized:`,
+        `  added_leading_newline_to_file: ${addedLeadingNewlineToFile}`,
+        `  added_trailing_newline_to_content: ${addedTrailingNewlineToContent}`,
+        `evidence_preview:`,
+        `  before_preview: ${yamlFlowStringArray([lines[selected.start0] ?? ''])}`,
+        `  old_preview: ${yamlFlowStringArray(oldPreview)}`,
+        `  new_preview: ${yamlFlowStringArray(newPreview)}`,
+        `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
+        `summary: ${yamlQuote(summary)}`,
+      ].join('\n');
+
+      const content =
+        `${formatYamlCodeBlock(yaml)}\n\n` +
+        `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
+        (language === 'zh'
+          ? `下一步：执行 \`!?@apply_block_replace !${hunkId}\` 来确认并写入。`
+          : `Next: run \`!?@apply_block_replace !${hunkId}\` to confirm and write.`);
+
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (error: unknown) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `path: ${yamlQuote(filePath)}`,
+          `mode: plan_block_replace`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+  },
+};
+
+export const applyBlockReplaceTool: TellaskTool = {
+  type: 'tellask',
+  name: 'apply_block_replace',
+  backfeeding: true,
+  usageDescription: `Apply a previously planned block replacement by hunk id.
+Usage: !?@apply_block_replace !<hunk-id>
+(no body)`,
+  usageDescriptionI18n: {
+    en: `Apply a previously planned block replacement by hunk id.
+Usage: !?@apply_block_replace !<hunk-id>
+(no body)`,
+    zh: `按 hunk id 应用之前规划的块替换。
+用法：!?@apply_block_replace !<hunk-id>
+（无正文）`,
+  },
+  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+    const language = getWorkLanguage();
+    const trimmed = headLine.trim();
+    if (!trimmed.startsWith('@apply_block_replace')) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_block_replace`,
+          `error: INVALID_FORMAT`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '格式不正确。用法：!?@apply_block_replace !<hunk-id>'
+              : 'Invalid format. Use: !?@apply_block_replace !<hunk-id>',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const afterToolName = trimmed.slice('@apply_block_replace'.length).trim();
+    const raw = afterToolName.split(/\s+/)[0] ?? '';
+    const id = raw.startsWith('!') ? raw.slice(1) : raw;
+    if (!id) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_block_replace`,
+          `error: HUNK_ID_REQUIRED`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '需要提供 hunk id（例如 `!a1b2c3d4`）。'
+              : 'hunk id is required (e.g. `!a1b2c3d4`).',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    try {
+      pruneExpiredPlannedMods(Date.now());
+      pruneExpiredPlannedBlockReplaces(Date.now());
+
+      const planned = plannedBlockReplacesById.get(id);
+      if (!planned) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: apply_block_replace`,
+            `hunk_id: ${yamlQuote(id)}`,
+            `error: HUNK_NOT_FOUND`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '未找到该 hunk（可能已过期或已被应用）。请重新规划。'
+                : 'Hunk not found (expired or already applied). Re-plan it.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (planned.plannedBy !== caller.id) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: apply_block_replace`,
+            `path: ${yamlQuote(planned.relPath)}`,
+            `hunk_id: ${yamlQuote(id)}`,
+            `error: WRONG_OWNER`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '该 hunk 不是由当前成员规划的，不能应用。'
+                : 'This hunk was planned by a different member.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (!hasWriteAccess(caller, planned.relPath)) {
+        const content = getAccessDeniedMessage('write', planned.relPath, language);
+        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const absKey = planned.absPath;
+      const res = await new Promise<TellaskToolCallResult>((resolve) => {
+        enqueueFileApply(absKey, {
+          priority: planned.createdAtMs,
+          tieBreaker: planned.hunkId,
+          run: async () => {
+            try {
+              pruneExpiredPlannedMods(Date.now());
+              pruneExpiredPlannedBlockReplaces(Date.now());
+              const p = plannedBlockReplacesById.get(id);
+              if (!p) {
+                const content = formatYamlCodeBlock(
+                  [
+                    `status: error`,
+                    `mode: apply_block_replace`,
+                    `hunk_id: ${yamlQuote(id)}`,
+                    `error: HUNK_NOT_FOUND`,
+                    `summary: ${yamlQuote(
+                      language === 'zh'
+                        ? '未找到该 hunk（可能已过期或已被应用）。请重新规划。'
+                        : 'Hunk not found (expired or already applied). Re-plan it.',
+                    )}`,
+                  ].join('\n'),
+                );
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+              if (p.plannedBy !== caller.id) {
+                const content = formatYamlCodeBlock(
+                  [
+                    `status: error`,
+                    `mode: apply_block_replace`,
+                    `path: ${yamlQuote(p.relPath)}`,
+                    `hunk_id: ${yamlQuote(id)}`,
+                    `error: WRONG_OWNER`,
+                    `summary: ${yamlQuote(
+                      language === 'zh'
+                        ? '该 hunk 不是由当前成员规划的，不能应用。'
+                        : 'This hunk was planned by a different member.',
+                    )}`,
+                  ].join('\n'),
+                );
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              if (!fsSync.existsSync(p.absPath)) {
+                const content = formatYamlCodeBlock(
+                  [
+                    `status: error`,
+                    `mode: apply_block_replace`,
+                    `path: ${yamlQuote(p.relPath)}`,
+                    `hunk_id: ${yamlQuote(id)}`,
+                    `error: FILE_NOT_FOUND`,
+                    `summary: ${yamlQuote(
+                      language === 'zh'
+                        ? '文件不存在，无法应用；请重新规划。'
+                        : 'File not found; cannot apply; re-plan it.',
+                    )}`,
+                  ].join('\n'),
+                );
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
+              const addedLeadingNewlineToFile =
+                currentContent !== '' && !currentContent.endsWith('\n');
+              const lines = splitTextToLinesForEditing(currentContent);
+
+              const isMatch = (line: string, anchor: string): boolean => {
+                return p.match === 'equals' ? line === anchor : line.includes(anchor);
+              };
+
+              const startMatches: number[] = [];
+              const endMatches: number[] = [];
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i] ?? '';
+                if (isMatch(line, p.startAnchor)) startMatches.push(i);
+                if (isMatch(line, p.endAnchor)) endMatches.push(i);
+              }
+
+              const pairs: Array<{ start0: number; end0: number }> = [];
+              for (const start0 of startMatches) {
+                const end0 = endMatches.find((e) => e > start0);
+                if (end0 !== undefined) pairs.push({ start0, end0 });
+              }
+
+              if (pairs.length === 0) {
+                const summary =
+                  language === 'zh'
+                    ? 'Apply rejected：anchors 未找到或无法配对；请重新 plan。'
+                    : 'Apply rejected: anchors not found or not paired; re-plan this hunk.';
+                const yaml = [
+                  `status: error`,
+                  `mode: apply_block_replace`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: APPLY_REJECTED_ANCHOR_NOT_FOUND`,
+                  `summary: ${yamlQuote(summary)}`,
+                ].join('\n');
+                const content = formatYamlCodeBlock(yaml);
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              if (!p.occurrenceSpecified && p.requireUnique && pairs.length !== 1) {
+                const summary =
+                  language === 'zh'
+                    ? `Apply rejected：anchors 歧义（${pairs.length} 个候选块）；请重新 plan 并指定 occurrence。`
+                    : `Apply rejected: ambiguous anchors (${pairs.length} candidates); re-plan with occurrence specified.`;
+                const yaml = [
+                  `status: error`,
+                  `mode: apply_block_replace`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
+                  `candidates_count: ${pairs.length}`,
+                  `summary: ${yamlQuote(summary)}`,
+                ].join('\n');
+                const content = formatYamlCodeBlock(yaml);
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              const selected = (() => {
+                if (pairs.length === 1) return pairs[0];
+                if (p.occurrence.kind === 'last') return pairs[pairs.length - 1];
+                return pairs[p.occurrence.index1 - 1];
+              })();
+
+              if (!selected) {
+                const summary =
+                  language === 'zh'
+                    ? 'Apply rejected：occurrence 超出范围；请重新 plan。'
+                    : 'Apply rejected: occurrence out of range; re-plan.';
+                const yaml = [
+                  `status: error`,
+                  `mode: apply_block_replace`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: APPLY_REJECTED_OCCURRENCE_OUT_OF_RANGE`,
+                  `candidates_count: ${pairs.length}`,
+                  `summary: ${yamlQuote(summary)}`,
+                ].join('\n');
+                const content = formatYamlCodeBlock(yaml);
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              const nestedStart = startMatches.some(
+                (s) => s > selected.start0 && s < selected.end0,
+              );
+              const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
+              if (nestedStart || nestedEnd) {
+                const summary =
+                  language === 'zh'
+                    ? 'Apply rejected：检测到嵌套/歧义锚点；请重新 plan。'
+                    : 'Apply rejected: nested/ambiguous anchors detected; re-plan.';
+                const yaml = [
+                  `status: error`,
+                  `mode: apply_block_replace`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
+                  `summary: ${yamlQuote(summary)}`,
+                ].join('\n');
+                const content = formatYamlCodeBlock(yaml);
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              const replaceStart0 = p.includeAnchors ? selected.start0 + 1 : selected.start0;
+              const replaceDeleteCount = p.includeAnchors
+                ? Math.max(0, selected.end0 - selected.start0 - 1)
+                : selected.end0 - selected.start0 + 1;
+
+              const currentOldLines = lines.slice(
+                replaceStart0,
+                replaceStart0 + replaceDeleteCount,
+              );
+              const same =
+                currentOldLines.length === p.oldLines.length &&
+                currentOldLines.every((v, i) => v === p.oldLines[i]);
+              if (!same) {
+                const summary =
+                  language === 'zh'
+                    ? 'Apply rejected：文件内容已变化（目标块内容与规划时不一致）；请重新 plan。'
+                    : 'Apply rejected: file content changed (target block no longer matches the planned content); re-plan.';
+                const yaml = [
+                  `status: error`,
+                  `mode: apply_block_replace`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: APPLY_REJECTED_CONTENT_CHANGED`,
+                  `summary: ${yamlQuote(summary)}`,
+                ].join('\n');
+                const content = formatYamlCodeBlock(yaml);
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+
+              const outLines = [...lines];
+              outLines.splice(replaceStart0, replaceDeleteCount, ...p.newLines);
+              const out = joinLinesForTextWrite(outLines);
+              fsSync.writeFileSync(p.absPath, out, 'utf8');
+              plannedBlockReplacesById.delete(id);
+
+              const oldCount = replaceDeleteCount;
+              const newCount = p.newLines.length;
+              const delta = newCount - oldCount;
+              const oldPreview = buildRangePreview(p.oldLines);
+              const newPreview = buildRangePreview(p.newLines);
+
+              const summary =
+                language === 'zh'
+                  ? `Apply-block-replace：old=${oldCount}, new=${newCount}, delta=${delta}；hunk_id=${id}.`
+                  : `Apply-block-replace: old=${oldCount}, new=${newCount}, delta=${delta}; hunk_id=${id}.`;
+
+              const yaml = [
+                `status: ok`,
+                `mode: apply_block_replace`,
+                `path: ${yamlQuote(p.relPath)}`,
+                `hunk_id: ${yamlQuote(id)}`,
+                `block_range:`,
+                `  start_line: ${selected.start0 + 1}`,
+                `  end_line: ${selected.end0 + 1}`,
+                `replace_slice:`,
+                `  start_line: ${replaceStart0 + 1}`,
+                `  delete_count: ${replaceDeleteCount}`,
+                `lines:`,
+                `  old: ${oldCount}`,
+                `  new: ${newCount}`,
+                `  delta: ${delta}`,
+                `normalized:`,
+                `  added_leading_newline_to_file: ${addedLeadingNewlineToFile}`,
+                `  added_trailing_newline_to_content: ${p.addedTrailingNewlineToContent}`,
+                `evidence_preview:`,
+                `  before_preview: ${yamlFlowStringArray([lines[selected.start0] ?? ''])}`,
+                `  old_preview: ${yamlFlowStringArray(oldPreview)}`,
+                `  new_preview: ${yamlFlowStringArray(newPreview)}`,
+                `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
+                `summary: ${yamlQuote(summary)}`,
+              ].join('\n');
+
+              const content = formatYamlCodeBlock(yaml);
+              resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+            } catch (err: unknown) {
+              const content = formatYamlCodeBlock(
+                [
+                  `status: error`,
+                  `mode: apply_block_replace`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: FAILED`,
+                  `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+                ].join('\n'),
+              );
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+            }
+          },
+        });
+        void drainFileApplyQueue(absKey).catch(() => {
+          // If queue drainage fails, the queued item still resolves a result above.
+        });
+      });
+
+      return res;
+    } catch (err: unknown) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_block_replace`,
+          `hunk_id: ${yamlQuote(id)}`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
         ].join('\n'),
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);

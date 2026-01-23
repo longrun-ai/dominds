@@ -35,12 +35,13 @@ import {
 } from './ripgrep';
 import {
   appendFileTool,
+  applyBlockReplaceTool,
   applyFileModificationTool,
   insertAfterTool,
   insertBeforeTool,
+  planBlockReplaceTool,
   planFileModificationTool,
   readFileTool,
-  replaceBlockTool,
   replaceFileContentsTool,
 } from './txt';
 
@@ -792,22 +793,22 @@ export const teamMgmtInsertBeforeTool: TellaskTool = {
   },
 };
 
-export const teamMgmtReplaceBlockTool: TellaskTool = {
+export const teamMgmtPlanBlockReplaceTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_replace_block',
+  name: 'team_mgmt_plan_block_replace',
   backfeeding: true,
   usageDescription:
-    `Replace a block between anchors in a file under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
-    `!?<content in body>\n`,
+    `Plan a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !?@team_mgmt_plan_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
+    `!?<new content in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Replace a block between anchors in a file under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
-      `!?<content in body>\n`,
+      `Plan a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !?@team_mgmt_plan_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
+      `!?<new content in body>\n`,
     zh:
-      `替换 ${MINDS_DIR}/ 下文件中 start/end 锚点之间的块内容。\n` +
-      `用法：!?@team_mgmt_replace_block <path> <start_anchor> <end_anchor> [options]\n` +
+      `按锚点规划 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。\n` +
+      `用法：!?@team_mgmt_plan_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
       `!?<正文为新块内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
@@ -822,16 +823,60 @@ export const teamMgmtReplaceBlockTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/);
-      const rawPath = parts[0] ?? '';
+      const after = parseArgsAfterTool(headLine, this.name).trim();
+      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
+      const rawPath = m?.[1] ?? '';
+      const rest = (m?.[2] ?? '').trim();
       if (!rawPath) throw new Error('Path required');
-      const rest = parts.slice(1).join(' ').trim();
+      if (!rest) throw new Error('start_anchor and end_anchor are required');
+
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = rest ? `@replace_block ${rel} ${rest}` : `@replace_block ${rel}`;
-      return await replaceBlockTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+      const proxyHeadLine = `@plan_block_replace ${rel} ${rest}`;
+      return await planBlockReplaceTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtApplyBlockReplaceTool: TellaskTool = {
+  type: 'tellask',
+  name: 'team_mgmt_apply_block_replace',
+  backfeeding: true,
+  usageDescription:
+    `Apply a previously planned block replacement under ${MINDS_DIR}/ by hunk id.\n` +
+    `Usage: !?@team_mgmt_apply_block_replace !<hunk-id>\n`,
+  usageDescriptionI18n: {
+    en:
+      `Apply a previously planned block replacement under ${MINDS_DIR}/ by hunk id.\n` +
+      `Usage: !?@team_mgmt_apply_block_replace !<hunk-id>\n`,
+    zh:
+      `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下块替换。\n` +
+      `用法：!?@team_mgmt_apply_block_replace !<hunk-id>\n`,
+  },
+  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'missing') {
+        const msg = formatMindsMissingNotice(language);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+
+      const after = parseArgsAfterTool(headLine, this.name);
+      const id = after.split(/\s+/)[0] || '';
+      if (!id) throw new Error('Hunk id required (e.g. !a1b2c3d4)');
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await applyBlockReplaceTool.call(dlg, proxyCaller, `@apply_block_replace ${id}`, '');
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2366,7 +2411,8 @@ export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
   teamMgmtAppendFileTool,
   teamMgmtInsertAfterTool,
   teamMgmtInsertBeforeTool,
-  teamMgmtReplaceBlockTool,
+  teamMgmtPlanBlockReplaceTool,
+  teamMgmtApplyBlockReplaceTool,
   teamMgmtPlanFileModificationTool,
   teamMgmtApplyFileModificationTool,
   teamMgmtMkDirTool,

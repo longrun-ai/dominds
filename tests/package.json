@@ -16,6 +16,7 @@
     "taskdoc-search": "tsx taskdoc-search.ts",
     "team-yaml-parsing": "tsx team-yaml-parsing.ts",
     "plan-file-modification-hunkid": "tsx plan-file-modification-hunkid.ts",
+    "block-replace-plan-apply": "tsx block-replace-plan-apply.ts",
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
