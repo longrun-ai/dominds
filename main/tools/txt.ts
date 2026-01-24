@@ -2,7 +2,7 @@
  * Module: tools/txt
  *
  * Text file tooling for reading and modifying workspace files.
- * Provides `read_file`, `replace_file_contents`, `preview_file_modification`, and `apply_file_modification`.
+ * Provides `read_file`, `overwrite_entire_file`, `preview_file_modification`, and `apply_file_modification`.
  */
 import crypto from 'crypto';
 import fsSync from 'fs';
@@ -13,7 +13,7 @@ import type { ChatMessage } from '../llm/client';
 import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
-import { TellaskTool, TellaskToolCallResult } from '../tool';
+import type { FuncTool, TellaskTool, TellaskToolCallResult, ToolArguments } from '../tool';
 
 function wrapTellaskResult(language: LanguageCode, messages: ChatMessage[]): TellaskToolCallResult {
   const first = messages[0];
@@ -63,29 +63,39 @@ function normalizeFileWriteBody(inputBody: string): {
   return { normalizedBody: `${inputBody}\n`, addedTrailingNewlineToContent: true };
 }
 
-function detectDiffLikeContent(inputBody: string): boolean {
-  if (
-    inputBody.includes('diff --git') ||
-    inputBody.includes('\n@@') ||
-    inputBody.startsWith('@@')
-  ) {
-    return true;
-  }
-  const lines = inputBody.split('\n');
-  let nonEmpty = 0;
-  let plusMinusPrefixed = 0;
-  for (const line of lines) {
-    if (line === '') continue;
-    nonEmpty++;
-    if (
-      (line.startsWith('+') || line.startsWith('-')) &&
-      !line.startsWith('+++') &&
-      !line.startsWith('---')
-    ) {
-      plusMinusPrefixed++;
-    }
-  }
-  return nonEmpty >= 8 && plusMinusPrefixed / nonEmpty >= 0.6;
+function detectStrongDiffOrPatchMarkers(text: string): boolean {
+  // Intentionally "strong-feature only" to avoid false positives on common Markdown patterns
+  // like list bullets (`- foo`) or front matter delimiters (`---`).
+  if (/^diff --git\s/m.test(text)) return true;
+  if (/^\*\*\* Begin Patch\s*$/m.test(text)) return true;
+  if (/^@@.*@@/m.test(text)) return true;
+  const hasHeaderOld = /^---\s+\S+/m.test(text);
+  const hasHeaderNew = /^\+\+\+\s+\S+/m.test(text);
+  return hasHeaderOld && hasHeaderNew;
+}
+
+async function countFileLinesUtf8(absPath: string): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const stream = fsSync.createReadStream(absPath, { encoding: 'utf8' });
+    let newlineCount = 0;
+    let sawAny = false;
+    let lastChar = '';
+    stream.on('error', (err: unknown) => reject(err));
+    stream.on('data', (chunk: string | Buffer) => {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      if (text.length === 0) return;
+      sawAny = true;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === '\n') newlineCount += 1;
+      }
+      lastChar = text[text.length - 1] ?? '';
+    });
+    stream.on('end', () => {
+      if (!sawAny) return resolve(0);
+      if (lastChar === '\n') return resolve(newlineCount);
+      return resolve(newlineCount + 1);
+    });
+  });
 }
 
 function yamlQuote(value: string): string {
@@ -1192,107 +1202,254 @@ Examples:
   },
 };
 
-export const replaceFileContentsTool: TellaskTool = {
-  type: 'tellask',
-  name: 'replace_file_contents',
-  backfeeding: true,
-  usageDescription: `Replace a file's entire contents (writes literally; does NOT parse diff/patch syntax).
-Usage: !?@replace_file_contents <path>
-!?<file content in body>
+type OverwriteContentFormat = 'text' | 'markdown' | 'json' | 'diff' | 'patch';
 
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
-  If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.`,
-  usageDescriptionI18n: {
-    en: `Replace a file's entire contents (writes literally; does NOT parse diff/patch syntax).
-Usage: !?@replace_file_contents <path>
-!?<file content in body>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
-  If you paste a diff (e.g. lines starting with \`+\` / \`-\` or \`@@\`), it will be saved literally.`,
-    zh: `用新内容整体替换写入一个文件（逐字写入；不会解析 diff/patch 语法）。
-用法：!?@replace_file_contents <path>
-!?<文件内容写在正文里>
-
-注意：
-  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
-  若粘贴了 diff（例如 \`+\`/\`-\` 前缀或 \`@@\`），会被按字面写入文件。`,
+const overwriteEntireFileSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    path: {
+      type: 'string',
+      description: 'Workspace-relative path to an existing file to overwrite.',
+    },
+    known_old_total_lines: {
+      type: 'integer',
+      description:
+        'Expected old total line count of the file (0 for empty). Used as an overwrite guardrail.',
+    },
+    known_old_total_bytes: {
+      type: 'integer',
+      description:
+        'Expected old total bytes of the file as reported by stat().size. Used as an overwrite guardrail.',
+    },
+    content: {
+      type: 'string',
+      description:
+        'The new full file content. If non-empty and missing a trailing newline, Dominds will append one.',
+    },
+    content_format: {
+      type: 'string',
+      description:
+        "Optional content format hint. If omitted, Dominds refuses to overwrite when content looks like a diff/patch (use preview/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
+    },
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
+} as const;
+
+function parseOverwriteContentFormat(value: unknown): OverwriteContentFormat | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return undefined;
+  switch (value) {
+    case 'text':
+    case 'markdown':
+    case 'json':
+    case 'diff':
+    case 'patch':
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function parseOverwriteEntireFileArgs(args: ToolArguments): {
+  path: string;
+  knownOldTotalLines: number;
+  knownOldTotalBytes: number;
+  content: string;
+  contentFormat: OverwriteContentFormat | undefined;
+} {
+  const pathValue = args['path'];
+  if (typeof pathValue !== 'string' || pathValue.trim() === '') {
+    throw new Error('Invalid `path` (expected non-empty string)');
+  }
+
+  const knownOldTotalLinesValue = args['known_old_total_lines'];
+  if (typeof knownOldTotalLinesValue !== 'number' || !Number.isInteger(knownOldTotalLinesValue)) {
+    throw new Error('Invalid `known_old_total_lines` (expected integer)');
+  }
+  if (knownOldTotalLinesValue < 0) {
+    throw new Error('Invalid `known_old_total_lines` (must be >= 0)');
+  }
+
+  const knownOldTotalBytesValue = args['known_old_total_bytes'];
+  if (typeof knownOldTotalBytesValue !== 'number' || !Number.isInteger(knownOldTotalBytesValue)) {
+    throw new Error('Invalid `known_old_total_bytes` (expected integer)');
+  }
+  if (knownOldTotalBytesValue < 0) {
+    throw new Error('Invalid `known_old_total_bytes` (must be >= 0)');
+  }
+
+  const contentValue = args['content'];
+  if (typeof contentValue !== 'string') {
+    throw new Error('Invalid `content` (expected string)');
+  }
+
+  const contentFormat = parseOverwriteContentFormat(args['content_format']);
+  if (
+    'content_format' in args &&
+    args['content_format'] !== undefined &&
+    contentFormat === undefined
+  ) {
+    throw new Error(
+      'Invalid `content_format` (expected one of: text, markdown, json, diff, patch)',
+    );
+  }
+
+  return {
+    path: pathValue,
+    knownOldTotalLines: knownOldTotalLinesValue,
+    knownOldTotalBytes: knownOldTotalBytesValue,
+    content: contentValue,
+    contentFormat,
+  };
+}
+
+export const overwriteEntireFileTool: FuncTool = {
+  type: 'func',
+  name: 'overwrite_entire_file',
+  description:
+    'Overwrite an existing file with new full content (guarded by known_old_total_lines/bytes; refuses diff/patch-like content unless content_format is diff|patch).',
+  descriptionI18n: {
+    en: 'Overwrite an existing file with new full content (guarded by known_old_total_lines/bytes; refuses diff/patch-like content unless content_format is diff|patch).',
+    zh: '整体覆盖写入一个已存在的文件（需要 known_old_total_lines/bytes 对账；若正文疑似 diff/patch 且未显式声明 content_format=diff|patch，则默认拒绝）。',
+  },
+  parameters: overwriteEntireFileSchema,
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const language = getWorkLanguage();
     const labels =
       language === 'zh'
         ? {
-            invalidFormat: '错误：格式不正确。用法：!?@replace_file_contents <path>',
-            filePathRequired: '错误：需要提供文件路径。',
-            contentRequired: '错误：需要在正文中提供文件内容。',
-            diffLikeWarning:
-              '⚠️ 检测到疑似 diff/patch 内容。\n`replace_file_contents` 会逐字写入；其中的 `+` / `-` / `@@` 等将被保存进文件。\n',
-            replaced: (p: string) => `✅ 文件已整体替换写入：\`${p}\`。`,
-            replaceFailed: (msg: string) => `❌ **错误**\n\n替换写入文件失败：${msg}`,
+            fileNotFound: (p: string) =>
+              `错误：文件不存在：\`${p}\`。创建文件请使用 preview/apply（例如 preview_file_append create=true）。`,
+            notAFile: (p: string) => `错误：路径不是文件：\`${p}\`。`,
+            statsMismatch: (
+              p: string,
+              knownLines: number,
+              knownBytes: number,
+              actualLines: number,
+              actualBytes: number,
+            ) =>
+              `错误：旧文件快照不匹配，拒绝覆盖写入：\`${p}\`。\n` +
+              `- known_old_total_lines: ${knownLines}\n` +
+              `- known_old_total_bytes: ${knownBytes}\n` +
+              `- actual_old_total_lines: ${actualLines}\n` +
+              `- actual_old_total_bytes: ${actualBytes}\n` +
+              `下一步：先 read_file / list_dir 获取最新状态，再重试。`,
+            suspiciousDiff:
+              '错误：检测到疑似 diff/patch 正文，且未显式声明 `content_format`。\n' +
+              '为避免把 patch 文本误写进文件，默认拒绝。\n' +
+              '下一步：改用 preview_* → apply_file_modification；或若你确实要保存 diff/patch 字面量，请设置 content_format=diff|patch。',
+            ok: (p: string, normalized: boolean, newLines: number, newBytes: number) =>
+              `✅ 已覆盖写入：\`${p}\`\n` +
+              `- new_total_lines: ${newLines}\n` +
+              `- new_total_bytes: ${newBytes}\n` +
+              (normalized ? '- normalized: added trailing newline\n' : ''),
           }
         : {
-            invalidFormat: 'Error: Invalid format. Use !?@replace_file_contents <path>',
-            filePathRequired: 'Error: File path is required.',
-            contentRequired: 'Error: File content is required in the body.',
-            diffLikeWarning:
-              '⚠️ Detected diff-like content.\n`replace_file_contents` writes literally; `+` / `-` / `@@` will be saved into the file.\n',
-            replaced: (p: string) => `Replaced contents of: \`${p}\`.`,
-            replaceFailed: (msg: string) => `Error replacing file contents: ${msg}`,
+            fileNotFound: (p: string) =>
+              `Error: file not found: \`${p}\`. To create a file, use preview/apply (e.g. preview_file_append create=true).`,
+            notAFile: (p: string) => `Error: path is not a file: \`${p}\`.`,
+            statsMismatch: (
+              p: string,
+              knownLines: number,
+              knownBytes: number,
+              actualLines: number,
+              actualBytes: number,
+            ) =>
+              `Error: known_old_stats mismatch; refusing to overwrite: \`${p}\`.\n` +
+              `- known_old_total_lines: ${knownLines}\n` +
+              `- known_old_total_bytes: ${knownBytes}\n` +
+              `- actual_old_total_lines: ${actualLines}\n` +
+              `- actual_old_total_bytes: ${actualBytes}\n` +
+              `Next: read_file / list_dir to refresh stats, then retry.`,
+            suspiciousDiff:
+              'Error: content looks like a diff/patch, but `content_format` was not provided.\n' +
+              'To avoid accidentally overwriting a file with patch text, this call is rejected by default.\n' +
+              "Next: use preview_* → apply_file_modification; or if you intentionally want to store diff/patch text literally, set content_format='diff'|'patch'.",
+            ok: (p: string, normalized: boolean, newLines: number, newBytes: number) =>
+              `ok: overwrote \`${p}\`\n` +
+              `new_total_lines: ${newLines}\n` +
+              `new_total_bytes: ${newBytes}\n` +
+              (normalized ? 'normalized: added trailing newline\n' : ''),
           };
 
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@replace_file_contents')) {
-      const content = labels.invalidFormat;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    const parsed = parseOverwriteEntireFileArgs(args);
+
+    if (!hasWriteAccess(caller, parsed.path)) {
+      return getAccessDeniedMessage('write', parsed.path, language);
     }
 
-    const afterToolName = trimmed.slice('@replace_file_contents'.length).trim();
-    if (!afterToolName) {
-      const content = labels.filePathRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const filePath = afterToolName.split(/\s+/)[0];
-    if (!filePath) {
-      const content = labels.filePathRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    if (!inputBody) {
-      const content = labels.contentRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
+    let absPath: string;
     try {
-      const fullPath = ensureInsideWorkspace(filePath);
-      const dir = path.dirname(fullPath);
-      fsSync.mkdirSync(dir, { recursive: true });
-
-      const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
-      const diffLike = detectDiffLikeContent(inputBody);
-      fsSync.writeFileSync(fullPath, normalizedBody, 'utf8');
-
-      const warning = diffLike ? labels.diffLikeWarning : '';
-      const normalizedNote =
-        addedTrailingNewlineToContent && normalizedBody !== ''
-          ? language === 'zh'
-            ? '（已规范化：补齐正文末尾换行）\n'
-            : '(normalized: added trailing newline)\n'
-          : '';
-
-      const content = `${warning}${labels.replaced(filePath)}\n${normalizedNote}`.trimEnd();
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = labels.replaceFailed(error instanceof Error ? error.message : String(error));
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      absPath = ensureInsideWorkspace(parsed.path);
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
     }
+
+    let s: fsSync.Stats;
+    try {
+      s = fsSync.statSync(absPath);
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return labels.fileNotFound(parsed.path);
+      }
+      return err instanceof Error ? err.message : String(err);
+    }
+    if (!s.isFile()) return labels.notAFile(parsed.path);
+
+    const actualOldTotalBytes = s.size;
+    let actualOldTotalLines: number;
+    try {
+      actualOldTotalLines = await countFileLinesUtf8(absPath);
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+
+    if (
+      parsed.knownOldTotalBytes !== actualOldTotalBytes ||
+      parsed.knownOldTotalLines !== actualOldTotalLines
+    ) {
+      return labels.statsMismatch(
+        parsed.path,
+        parsed.knownOldTotalLines,
+        parsed.knownOldTotalBytes,
+        actualOldTotalLines,
+        actualOldTotalBytes,
+      );
+    }
+
+    if (parsed.contentFormat !== 'diff' && parsed.contentFormat !== 'patch') {
+      // Only refuse when content_format is omitted (or a non-diff format), and content is strongly diff-like.
+      if (detectStrongDiffOrPatchMarkers(parsed.content)) {
+        return labels.suspiciousDiff;
+      }
+    }
+
+    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(
+      parsed.content,
+    );
+    try {
+      await fs.writeFile(absPath, normalizedBody, 'utf8');
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+
+    const newTotalBytes = Buffer.byteLength(normalizedBody, 'utf8');
+    const newTotalLines = splitTextToLinesForEditing(normalizedBody).length;
+    return labels
+      .ok(
+        parsed.path,
+        addedTrailingNewlineToContent && normalizedBody !== '',
+        newTotalLines,
+        newTotalBytes,
+      )
+      .trimEnd();
   },
 };
 

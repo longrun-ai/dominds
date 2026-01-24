@@ -35,13 +35,13 @@ import {
 } from './ripgrep';
 import {
   applyFileModificationTool,
+  overwriteEntireFileTool,
   previewBlockReplaceTool,
   previewFileAppendTool,
   previewFileModificationTool,
   previewInsertAfterTool,
   previewInsertBeforeTool,
   readFileTool,
-  replaceFileContentsTool,
 } from './txt';
 
 const MINDS_ALLOW = ['.minds/**'] as const;
@@ -598,22 +598,22 @@ export const teamMgmtReadFileTool: TellaskTool = {
   },
 };
 
-export const teamMgmtReplaceFileContentsTool: TellaskTool = {
+export const teamMgmtOverwriteEntireFileTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_replace_file_contents',
+  name: 'team_mgmt_overwrite_entire_file',
   backfeeding: true,
   usageDescription:
-    `Replace file contents under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_replace_file_contents <path>\n` +
+    `Overwrite an existing file under ${MINDS_DIR}/ (exception path; writes immediately; guarded).\n` +
+    `Usage: !?@team_mgmt_overwrite_entire_file <path> known_old_total_lines=<n> known_old_total_bytes=<n> [content_format=<text|markdown|json|diff|patch>]\n` +
     `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Replace file contents under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_replace_file_contents <path>\n` +
+      `Overwrite an existing file under ${MINDS_DIR}/ (exception path; writes immediately; guarded).\n` +
+      `Usage: !?@team_mgmt_overwrite_entire_file <path> known_old_total_lines=<n> known_old_total_bytes=<n> [content_format=<text|markdown|json|diff|patch>]\n` +
       `!?<content in body>\n`,
     zh:
-      `整体替换写入 ${MINDS_DIR}/ 下的文件内容。\n` +
-      `用法：!?@team_mgmt_replace_file_contents <path>\n` +
+      `整体覆盖写入 ${MINDS_DIR}/ 下的已存在文件（例外通道：会直接写盘，带护栏）。\n` +
+      `用法：!?@team_mgmt_overwrite_entire_file <path> known_old_total_lines=<n> known_old_total_bytes=<n> [content_format=<text|markdown|json|diff|patch>]\n` +
       `!?<正文为文件内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
@@ -625,19 +625,49 @@ export const teamMgmtReplaceFileContentsTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const filePath = after.split(/\s+/)[0] || '';
-      if (!filePath) throw new Error('Path required');
-      const rel = toMindsRelativePath(filePath);
-      const resolved = ensureMindsScopedPath(rel);
-      await fs.mkdir(path.dirname(resolved.abs), { recursive: true });
+      const after = parseArgsAfterTool(headLine, this.name).trim();
+      const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
+      const rawPath = parts[0] ?? '';
+      if (!rawPath) throw new Error('Path required');
+
+      let knownOldTotalLines: number | undefined;
+      let knownOldTotalBytes: number | undefined;
+      let contentFormat: string | undefined;
+      for (const part of parts.slice(1)) {
+        const m = part.match(/^([^=]+)=(.+)$/);
+        if (!m) continue;
+        const k = m[1] ?? '';
+        const v = m[2] ?? '';
+        if (k === 'known_old_total_lines') {
+          if (!/^\d+$/.test(v)) throw new Error('Invalid known_old_total_lines (expected integer)');
+          knownOldTotalLines = Number.parseInt(v, 10);
+        } else if (k === 'known_old_total_bytes') {
+          if (!/^\d+$/.test(v)) throw new Error('Invalid known_old_total_bytes (expected integer)');
+          knownOldTotalBytes = Number.parseInt(v, 10);
+        } else if (k === 'content_format') {
+          contentFormat = v;
+        }
+      }
+
+      if (knownOldTotalLines === undefined || knownOldTotalBytes === undefined) {
+        throw new Error(
+          language === 'zh'
+            ? '需要提供 known_old_total_lines 与 known_old_total_bytes 作为对账护栏。'
+            : 'known_old_total_lines and known_old_total_bytes are required as overwrite guardrails.',
+        );
+      }
+
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await replaceFileContentsTool.call(
-        dlg,
-        proxyCaller,
-        `@replace_file_contents ${rel}`,
-        inputBody,
-      );
+      const result = await overwriteEntireFileTool.call(dlg, proxyCaller, {
+        path: rel,
+        known_old_total_lines: knownOldTotalLines,
+        known_old_total_bytes: knownOldTotalBytes,
+        content: inputBody,
+        ...(contentFormat ? { content_format: contentFormat } : {}),
+      });
+      return ok(result, [{ type: 'environment_msg', role: 'user', content: result }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1683,7 +1713,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_preview_file_modification team.yaml <line~range>` 生成 diff（工具会返回 `!<hunk-id>`），再用 `!?@team_mgmt_apply_file_modification !<hunk-id>` 显式确认写入；如需修订同一个预览，再次运行 `!?@team_mgmt_preview_file_modification ... !<hunk-id>` 覆写；大改动直接 `!?@team_mgmt_replace_file_contents team.yaml`。',
+        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_preview_file_modification team.yaml <line~range>` 生成 diff（工具会返回 `!<hunk-id>`），再用 `!?@team_mgmt_apply_file_modification !<hunk-id>` 显式确认写入；如需修订同一个预览，再次运行 `!?@team_mgmt_preview_file_modification ... !<hunk-id>` 覆写；如确实需要整文件覆盖：先 `!?@team_mgmt_read_file team.yaml` 获取旧文件快照（total_lines/bytes），再用 `!?@team_mgmt_overwrite_entire_file team.yaml known_old_total_lines=<n> known_old_total_bytes=<n>`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -1728,7 +1758,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_preview_file_modification team.yaml <line~range>` to get a diff (the tool returns a `!<hunk-id>`), then confirm with `!?@team_mgmt_apply_file_modification !<hunk-id>`; to revise the same preview, re-run `!?@team_mgmt_preview_file_modification ... !<hunk-id>` to overwrite; for large edits, use `!?@team_mgmt_replace_file_contents team.yaml`.',
+        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_preview_file_modification team.yaml <line~range>` to get a diff (the tool returns a `!<hunk-id>`), then confirm with `!?@team_mgmt_apply_file_modification !<hunk-id>`; to revise the same preview, re-run `!?@team_mgmt_preview_file_modification ... !<hunk-id>` to overwrite; if you truly need a full overwrite: first `!?@team_mgmt_read_file team.yaml` to capture old stats (total_lines/bytes), then use `!?@team_mgmt_overwrite_entire_file team.yaml known_old_total_lines=<n> known_old_total_bytes=<n>`.',
       ]),
     ) +
     '\n' +
@@ -2378,7 +2408,7 @@ export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
   teamMgmtValidateTeamCfgTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
-  teamMgmtReplaceFileContentsTool,
+  teamMgmtOverwriteEntireFileTool,
   teamMgmtPreviewFileAppendTool,
   teamMgmtPreviewInsertAfterTool,
   teamMgmtPreviewInsertBeforeTool,

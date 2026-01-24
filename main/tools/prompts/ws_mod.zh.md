@@ -10,7 +10,7 @@
 - 并行约束：同一条消息中的多个工具调用会并行执行；**preview → apply 必须分两条消息**（除非未来有顺序编排器）。
 - 输出以 YAML + unified diff 为主：低注意力可复核（`summary` + `evidence`/`apply_evidence`）。
 - 规范化：所有写入遵循“每行以 `\n` 结尾（含最后一行）”；EOF 换行会被补齐并通过 `normalized.*` 字段呈现。
-- 例外：`replace_file_contents` 是“整文件覆盖写入”的原始工具（会直接写盘，不走 preview/apply）。仅用于明确需要整文件覆盖的场景（例如初始化/重置 scratch 文件）。
+- 例外：`overwrite_entire_file` 是“整文件覆盖写入”的函数工具（会直接写盘，不走 preview/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏，并且在正文疑似 diff/patch 且未显式声明 `content_format=diff|patch` 时默认拒绝。仅用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 preview/apply。
 
 ## 该用哪个 `preview_*`
 
@@ -21,7 +21,8 @@
 
 ## hunk id 规则（重要）
 
-- `preview_*` 会生成 `hunk_id`（有 TTL）；apply 只能用仍然存在的 hunk。
+- `preview_*` 会生成 `hunk_id`（TTL=1 小时）；apply 只能用仍然存在的 hunk。
+- 过期/未使用的 hunk **不会产生任何副作用**，会在运行时自动清理；你只需要关注“自己最后一次想 apply 的那个 hunk_id”。
 - 部分 preview 工具支持 `[!existing-hunk-id]` 作为“覆写同一 preview”的方式；**不支持自定义新 id**。
 
 ## apply 语义（context_match）

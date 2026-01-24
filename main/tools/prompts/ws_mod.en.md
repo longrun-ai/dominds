@@ -10,7 +10,7 @@ You have workspace write access, but **all incremental text edits must be previe
 - Parallelism constraint: multiple tool calls in one message run in parallel; **preview → apply must be two messages** (until an orchestrator exists).
 - Outputs are YAML + unified diff for quick review (`summary` + `evidence`/`apply_evidence`).
 - Normalization: writes assume every line ends with `\n` (including the last line); EOF newlines are normalized and reported via `normalized.*`.
-- Exception: `replace_file_contents` is a raw full-file overwrite tool (writes immediately; not preview/apply). Use it only when you explicitly intend to overwrite the whole file (e.g. initializing/resetting scratch files).
+- Exception: `overwrite_entire_file` is a full-file overwrite function tool (writes immediately; not preview/apply). It requires `known_old_total_lines/known_old_total_bytes` as guardrails, and rejects diff/patch-like content by default unless `content_format='diff'|'patch'`. Use it only for small new content (e.g. <100 lines) or explicit resets/generated files; otherwise prefer preview/apply.
 
 ## Which `preview_*` to use
 
@@ -21,7 +21,8 @@ You have workspace write access, but **all incremental text edits must be previe
 
 ## hunk id rules (important)
 
-- `preview_*` generates a TTL-limited `hunk_id`; apply can only use an existing hunk.
+- `preview_*` generates a TTL-limited `hunk_id` (TTL = 1 hour); apply can only use an existing hunk.
+- Expired/unused hunks have **no side effects** and are automatically cleaned up; you only need to care about the last `hunk_id` you intend to apply.
 - Some preview tools accept `[!existing-hunk-id]` to revise the same preview; **custom new ids are not allowed**.
 
 ## apply semantics (context_match)

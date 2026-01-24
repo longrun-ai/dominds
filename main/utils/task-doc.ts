@@ -176,7 +176,7 @@ ${effectiveDoc}
 
 *用 \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` 来替换分段（每次调用只替换一个分段；你可以在同一条消息里写多个 \`!?@change_mind\` 调用来批量替换）。*
 
-指令：不要对 \`*.tsk/\` 下的任何路径调用通用文件工具（\`!?@read_file\`, \`!?@replace_file_contents\`, \`!?@preview_file_modification\`, \`!?@apply_file_modification\`, \`!?@list_dir\`, \`!?@rm_file\`, \`!?@rm_dir\`）。差遣牒状态只能通过显式的差遣牒操作进行管理。`,
+指令：不要对 \`*.tsk/\` 下的任何路径调用通用文件工具（\`!?@read_file\`, \`overwrite_entire_file\`, \`!?@preview_file_modification\`, \`!?@apply_file_modification\`, \`!?@list_dir\`, \`!?@rm_file\`, \`!?@rm_dir\`）。差遣牒状态只能通过显式的差遣牒操作进行管理。`,
       };
     }
     return {
@@ -194,7 +194,7 @@ ${effectiveDoc}
 
 *Use \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` to replace sections (each call replaces one section; you may include multiple \`!?@change_mind\` calls in a single message to batch replacements).*
 
-Directive: Do not invoke any general file tools (\`!?@read_file\`, \`!?@replace_file_contents\`, \`!?@preview_file_modification\`, \`!?@apply_file_modification\`, \`!?@list_dir\`, \`!?@rm_file\`, \`!?@rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit task-doc actions.`,
+Directive: Do not invoke any general file tools (\`!?@read_file\`, \`overwrite_entire_file\`, \`!?@preview_file_modification\`, \`!?@apply_file_modification\`, \`!?@list_dir\`, \`!?@rm_file\`, \`!?@rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit task-doc actions.`,
     };
   } catch (error: unknown) {
     if (language === 'zh') {

@@ -40,13 +40,13 @@ import {
 import { teamMgmtTools } from './team-mgmt';
 import {
   applyFileModificationTool,
+  overwriteEntireFileTool,
   previewBlockReplaceTool,
   previewFileAppendTool,
   previewFileModificationTool,
   previewInsertAfterTool,
   previewInsertBeforeTool,
   readFileTool,
-  replaceFileContentsTool,
 } from './txt';
 
 registerTool(listDirTool);
@@ -56,7 +56,7 @@ registerTool(mkDirTool);
 registerTool(moveFileTool);
 registerTool(moveDirTool);
 registerTool(readFileTool);
-registerTool(replaceFileContentsTool);
+registerTool(overwriteEntireFileTool);
 registerTool(previewFileModificationTool);
 registerTool(applyFileModificationTool);
 registerTool(previewFileAppendTool);
@@ -178,7 +178,7 @@ registerToolset('ws_mod', [
   moveFileTool,
   moveDirTool,
   readFileTool,
-  replaceFileContentsTool,
+  overwriteEntireFileTool,
   previewFileAppendTool,
   previewInsertAfterTool,
   previewInsertBeforeTool,

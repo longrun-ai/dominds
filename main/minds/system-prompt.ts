@@ -164,9 +164,9 @@ ${input.toolUsageText}${
 
 - 带正文（普通行会自动结束该诉请块）
 \`\`\`plain-text
-!?@replace_file_contents logs/error.log
-!?Log reset.
-OK —— 文件内容已替换写入。
+!?@change_mind !goals
+!?- 做 X
+OK —— goals 已更新。
 \`\`\`
 
 - 多行标题 + 正文

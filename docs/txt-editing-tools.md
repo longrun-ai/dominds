@@ -43,7 +43,7 @@ updated: 2026-01-24
 ### 2.2 非目标
 
 - 不做复杂 patch DSL（仍以 unified diff 为主）。
-- 不保证跨进程/重启的 hunk 持久化（当前 hunk registry 为进程内内存 + TTL）。
+- 不保证跨进程/重启的 hunk 持久化（当前 hunk registry 为进程内内存 + TTL=1h）。
 - 不承诺“自动格式化/自动空行风格对齐”；只做可观测（style_warning）与最小必要规范化（EOF 换行）。
 
 ## 3. Toolset Prompt（i18n）设计
@@ -70,8 +70,11 @@ updated: 2026-01-24
 
 ### 4.2 原始写入工具（例外）
 
-- `replace_file_contents`：整文件覆盖写入（**不走 preview/apply**）。  
-  设计定位：用于初始化/重置 scratch 文件或确实要覆盖整个文件时使用；它会对“diff-like 内容”给出警示但仍会按字面写入。
+- `overwrite_entire_file`（函数工具）：整文件覆盖写入（**不走 preview/apply**）。  
+  设计定位：用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 preview/apply。  
+  护栏（强制）：必须提供 `known_old_total_lines/known_old_total_bytes`（旧文件快照）才允许执行；若对账不匹配则拒绝覆盖。  
+  护栏（默认拒绝）：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 preview/apply（避免把 patch 文本误写进文件）。  
+  限制：不负责创建文件；创建请用 `preview_file_append create=true` → `apply_file_modification`。
 
 ### 4.3 增量编辑（preview-first）
 
@@ -268,4 +271,4 @@ This is the design doc for `ws_mod` text editing as implemented.
 - Tool calls in one message run in parallel → **preview → apply must be two messages**.
 - Applies are serialized per file in-process (queue by `createdAtMs`, then `hunkId`).
 - `hunk_id` is TTL-limited and in-memory; apply checks ownership and access.
-- `replace_file_contents` remains as a raw full-file overwrite tool (immediate write; use only when you explicitly intend to overwrite the entire file).
+- `overwrite_entire_file` is the exception full-file overwrite tool, guarded by `known_old_total_lines/known_old_total_bytes`, and it refuses diff/patch-like content by default unless `content_format='diff'|'patch'`.

@@ -54,7 +54,7 @@ Rationale:
 
 In typical deployments we deny direct `.minds/` access via the general-purpose workspace tools:
 
-- `fs` / `txt` (`!?@list_dir`, `!?@read_file`, `!?@replace_file_contents`, …)
+- `fs` / `txt` (`!?@list_dir`, `!?@read_file`, `overwrite_entire_file`, …)
 
 This makes sense for “normal” agents, but it blocks the team manager from doing its job.
 
@@ -95,7 +95,7 @@ Recommended tools (names are suggestions; use `snake_case` to match existing too
 | ------------------------------------- | -------- | --------------------------------------------------------------------------------- | ----------------------- |
 | `team_mgmt_list_dir`                  | `fs`     | List directories/files under `.minds/`                                            | `.minds/**`             |
 | `team_mgmt_read_file`                 | `txt`    | Read a text file under `.minds/`                                                  | `.minds/**`             |
-| `team_mgmt_replace_file_contents`     | `txt`    | Replace file contents under `.minds/`                                             | `.minds/**`             |
+| `team_mgmt_overwrite_entire_file`     | `txt`    | Overwrite an existing file under `.minds/` (guarded exception path)               | `.minds/**`             |
 | `team_mgmt_preview_file_modification` | `txt`    | Preview a single-file edit by line range under `.minds/` (returns a diff hunk id) | `.minds/**`             |
 | `team_mgmt_preview_file_append`       | `txt`    | Preview an append-to-EOF edit under `.minds/` (returns a diff hunk id)            | `.minds/**`             |
 | `team_mgmt_preview_insert_after`      | `txt`    | Preview inserting after an anchor under `.minds/` (returns a diff hunk id)        | `.minds/**`             |
