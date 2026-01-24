@@ -39,13 +39,12 @@ import {
 } from './ripgrep';
 import { teamMgmtTools } from './team-mgmt';
 import {
-  appendFileTool,
-  applyBlockReplaceTool,
   applyFileModificationTool,
-  insertAfterTool,
-  insertBeforeTool,
-  planBlockReplaceTool,
-  planFileModificationTool,
+  previewBlockReplaceTool,
+  previewFileAppendTool,
+  previewFileModificationTool,
+  previewInsertAfterTool,
+  previewInsertBeforeTool,
   readFileTool,
   replaceFileContentsTool,
 } from './txt';
@@ -58,13 +57,12 @@ registerTool(moveFileTool);
 registerTool(moveDirTool);
 registerTool(readFileTool);
 registerTool(replaceFileContentsTool);
-registerTool(planFileModificationTool);
+registerTool(previewFileModificationTool);
 registerTool(applyFileModificationTool);
-registerTool(planBlockReplaceTool);
-registerTool(applyBlockReplaceTool);
-registerTool(appendFileTool);
-registerTool(insertAfterTool);
-registerTool(insertBeforeTool);
+registerTool(previewFileAppendTool);
+registerTool(previewInsertAfterTool);
+registerTool(previewInsertBeforeTool);
+registerTool(previewBlockReplaceTool);
 
 // Ripgrep tools
 registerTool(ripgrepFilesTool);
@@ -178,12 +176,11 @@ registerToolset('ws_mod', [
   moveDirTool,
   readFileTool,
   replaceFileContentsTool,
-  appendFileTool,
-  insertAfterTool,
-  insertBeforeTool,
-  planBlockReplaceTool,
-  applyBlockReplaceTool,
-  planFileModificationTool,
+  previewFileAppendTool,
+  previewInsertAfterTool,
+  previewInsertBeforeTool,
+  previewBlockReplaceTool,
+  previewFileModificationTool,
   applyFileModificationTool,
   ripgrepFilesTool,
   ripgrepSnippetsTool,
@@ -193,6 +190,7 @@ registerToolset('ws_mod', [
 ]);
 setToolsetMeta('ws_mod', {
   descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
+  promptFilesI18n: { en: './prompts/ws_mod.en.md', zh: './prompts/ws_mod.zh.md' },
 });
 registerToolset('team-mgmt', [...teamMgmtTools]);
 setToolsetMeta('team-mgmt', {

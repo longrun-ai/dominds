@@ -15,6 +15,7 @@ import { getWorkLanguage } from '../shared/runtime-language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { FuncTool, TellaskTool, Tool } from '../tool';
+import { getToolsetPromptI18n } from '../tools/registry';
 import {
   defaultPersonaText,
   funcToolRulesText as formatFuncToolRulesText,
@@ -139,6 +140,26 @@ export async function loadAgentMinds(
   const tellaskTools = agentTools.filter((t): t is TellaskTool => t.type === 'tellask');
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
+  const toolsetPromptText = (() => {
+    const toolsetNames = agent.listResolvedToolsetNames();
+    const blocks = toolsetNames
+      .map((toolsetName) => {
+        const promptI18n = getToolsetPromptI18n(toolsetName);
+        const prompt = getTextForLanguage(
+          { i18n: promptI18n, fallback: '' },
+          workingLanguage,
+        ).trim();
+        if (prompt === '') return '';
+        const title =
+          workingLanguage === 'zh'
+            ? `### Toolset 提示：${toolsetName}`
+            : `### Toolset prompt: ${toolsetName}`;
+        return `${title}\n\n${prompt}`;
+      })
+      .filter((b) => b !== '');
+    return blocks.join('\n\n');
+  })();
+
   // Generate tool usage text - keep regular and intrinsic tools completely separate
   let toolUsageText: string;
   let intrinsicToolInstructions: string = '';
@@ -146,18 +167,23 @@ export async function loadAgentMinds(
   let funcToolRulesText: string = '';
 
   // Regular tools (from agent)
-  toolUsageText =
-    tellaskTools.length > 0
-      ? tellaskTools
-          .map((tool) => {
-            const usage = getTextForLanguage(
-              { i18n: tool.usageDescriptionI18n, fallback: tool.usageDescription },
-              workingLanguage,
-            );
-            return `#### @${tool.name}\n\n${usage}\n`;
-          })
-          .join('\n')
-      : noTellaskToolsText(workingLanguage);
+  toolUsageText = (() => {
+    const perTool =
+      tellaskTools.length > 0
+        ? tellaskTools
+            .map((tool) => {
+              const usage = getTextForLanguage(
+                { i18n: tool.usageDescriptionI18n, fallback: tool.usageDescription },
+                workingLanguage,
+              );
+              return `#### @${tool.name}\n\n${usage}\n`;
+            })
+            .join('\n')
+        : noTellaskToolsText(workingLanguage);
+
+    if (toolsetPromptText === '') return perTool;
+    return `${toolsetPromptText}\n\n${perTool}`;
+  })();
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools
       .map((tool) => {

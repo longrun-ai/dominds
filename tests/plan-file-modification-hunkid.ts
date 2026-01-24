@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/shared/runtime-language';
 import { Team } from '../main/team';
-import { planFileModificationTool } from '../main/tools/txt';
+import { previewFileModificationTool } from '../main/tools/txt';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -35,10 +35,10 @@ async function main(): Promise<void> {
       write_dirs: ['**'],
     });
 
-    const r1 = await planFileModificationTool.call(
+    const r1 = await previewFileModificationTool.call(
       dlg,
       alice,
-      '@plan_file_modification a.txt 1~1',
+      '@preview_file_modification a.txt 1~1',
       'new',
     );
     assert.equal(r1.status, 'completed');
@@ -46,20 +46,20 @@ async function main(): Promise<void> {
     const hunkId = extractHunkId(out1);
 
     // Custom ids are not allowed: unknown id should fail.
-    const r2 = await planFileModificationTool.call(
+    const r2 = await previewFileModificationTool.call(
       dlg,
       alice,
-      '@plan_file_modification a.txt 1~1 !deadbeef',
+      '@preview_file_modification a.txt 1~1 !deadbeef',
       'newer',
     );
     assert.equal(r2.status, 'failed');
     assert.ok((r2.result ?? '').includes('Custom hunk ids are not allowed'));
 
     // Revising an existing hunk id (generated previously) should succeed.
-    const r3 = await planFileModificationTool.call(
+    const r3 = await previewFileModificationTool.call(
       dlg,
       alice,
-      `@plan_file_modification a.txt 1~1 !${hunkId}`,
+      `@preview_file_modification a.txt 1~1 !${hunkId}`,
       'newer',
     );
     assert.equal(r3.status, 'completed');
@@ -71,16 +71,16 @@ async function main(): Promise<void> {
       read_dirs: ['**'],
       write_dirs: ['**'],
     });
-    const r4 = await planFileModificationTool.call(
+    const r4 = await previewFileModificationTool.call(
       dlg,
       bob,
-      `@plan_file_modification a.txt 1~1 !${hunkId}`,
+      `@preview_file_modification a.txt 1~1 !${hunkId}`,
       'bob-change',
     );
     assert.equal(r4.status, 'failed');
     assert.ok((r4.result ?? '').includes('planned by a different member'));
 
-    console.log('✅ plan-file-modification-hunkid tests passed');
+    console.log('✅ preview-file-modification-hunkid tests passed');
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

@@ -121,7 +121,11 @@ ${input.teamIntro}
 \`\`\`
 - 工具调用（带 body）：
 \`\`\`plain-text
-!?@insert_after README.md "Some anchor"
+!?@preview_insert_after README.md "Some anchor"
+!?Line 1
+!?Line 2
+
+!?@apply_file_modification !<hunk-id>
 !?Line 1
 !?Line 2
 \`\`\`

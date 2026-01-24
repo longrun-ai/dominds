@@ -315,52 +315,69 @@ export namespace Team {
      * Honors declaration order of toolsets and tools. Logs warnings for duplicate tool names
      * that resolve to different Tool objects. Returns no duplicate tools per name.
      */
+    listResolvedToolsetNames(): string[] {
+      if (!this.toolsets) return [];
+
+      const excludedToolsets = new Set<string>();
+      for (const entry of this.toolsets) {
+        if (entry.startsWith('!') && entry.length > 1) {
+          excludedToolsets.add(entry.slice(1));
+        }
+      }
+
+      const resolved: string[] = [];
+      const seen = new Set<string>();
+
+      for (const toolsetName of this.toolsets) {
+        if (toolsetName.startsWith('!')) continue;
+
+        const toolsetNames =
+          toolsetName === '*'
+            ? Object.keys(listToolsets()).filter((n) => !excludedToolsets.has(n))
+            : excludedToolsets.has(toolsetName)
+              ? []
+              : [toolsetName];
+
+        for (const resolvedToolsetName of toolsetNames) {
+          if (seen.has(resolvedToolsetName)) continue;
+          const tools = getToolset(resolvedToolsetName);
+          if (!tools) {
+            log.warn(
+              `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
+            );
+            continue;
+          }
+
+          resolved.push(resolvedToolsetName);
+          seen.add(resolvedToolsetName);
+        }
+      }
+
+      return resolved;
+    }
+
     listTools(): Tool[] {
       const toolMap = new Map<string, Tool>();
       const seenNames = new Set<string>();
 
       // Process toolsets (in declaration order)
-      if (this.toolsets) {
-        const excludedToolsets = new Set<string>();
-        for (const entry of this.toolsets) {
-          if (entry.startsWith('!') && entry.length > 1) {
-            excludedToolsets.add(entry.slice(1));
-          }
-        }
+      for (const toolsetName of this.listResolvedToolsetNames()) {
+        const tools = getToolset(toolsetName);
+        if (!tools) continue;
 
-        for (const toolsetName of this.toolsets) {
-          if (toolsetName.startsWith('!')) continue;
-          const toolsetNames =
-            toolsetName === '*'
-              ? Object.keys(listToolsets()).filter((n) => !excludedToolsets.has(n))
-              : excludedToolsets.has(toolsetName)
-                ? []
-                : [toolsetName];
-
-          for (const resolvedToolsetName of toolsetNames) {
-            const tools = getToolset(resolvedToolsetName);
-            if (!tools) {
+        for (const tool of tools) {
+          if (seenNames.has(tool.name)) {
+            const existingTool = toolMap.get(tool.name);
+            if (existingTool && existingTool !== tool) {
               log.warn(
-                `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
+                `Tool name '${tool.name}' resolves to different Tool objects for member '${this.id}'. Using first occurrence.`,
               );
-              continue;
             }
-
-            for (const tool of tools) {
-              if (seenNames.has(tool.name)) {
-                const existingTool = toolMap.get(tool.name);
-                if (existingTool && existingTool !== tool) {
-                  log.warn(
-                    `Tool name '${tool.name}' resolves to different Tool objects for member '${this.id}'. Using first occurrence.`,
-                  );
-                }
-                continue; // Skip duplicate
-              }
-
-              toolMap.set(tool.name, tool);
-              seenNames.add(tool.name);
-            }
+            continue; // Skip duplicate
           }
+
+          toolMap.set(tool.name, tool);
+          seenNames.add(tool.name);
         }
       }
 

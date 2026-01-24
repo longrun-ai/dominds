@@ -3,6 +3,8 @@
  *
  * Global registries for tools and toolsets with helpers and built-in initialization.
  */
+import fsSync from 'fs';
+import path from 'path';
 import type { I18nText } from '../shared/types/i18n';
 import type { ReminderOwner, Tool } from '../tool';
 
@@ -14,6 +16,17 @@ export const toolsetsRegistry: Map<string, Tool[]> = new Map<string, Tool[]>();
 
 export type ToolsetMeta = {
   descriptionI18n?: I18nText;
+  /**
+   * Toolset-level prompt injected into the agent system prompt when the member
+   * includes this toolset. Use this for comprehensive workflows/examples; keep
+   * per-tool usage descriptions focused on the tool's own contract.
+   */
+  promptI18n?: I18nText;
+  /**
+   * Toolset-level prompt loaded from markdown files (read on-demand, no cache).
+   * Paths are relative to the directory of the compiled JS module (i.e. `__dirname`).
+   */
+  promptFilesI18n?: Partial<Record<keyof I18nText, string>>;
 };
 
 export const toolsetMetaRegistry: Map<string, ToolsetMeta> = new Map<string, ToolsetMeta>();
@@ -58,6 +71,32 @@ export function setToolsetMeta(name: string, meta: ToolsetMeta): void {
 
 export function getToolsetMeta(name: string): ToolsetMeta | undefined {
   return toolsetMetaRegistry.get(name);
+}
+
+export function getToolsetPromptI18n(name: string): I18nText | undefined {
+  const meta = getToolsetMeta(name);
+  if (!meta) return undefined;
+  if (meta.promptI18n) return meta.promptI18n;
+  if (!meta.promptFilesI18n) return undefined;
+
+  const enPath = meta.promptFilesI18n.en;
+  const zhPath = meta.promptFilesI18n.zh;
+  if (!enPath || !zhPath) return undefined;
+
+  const tryRead = (relPath: string): string => {
+    const abs = path.resolve(__dirname, relPath);
+    try {
+      return fsSync.readFileSync(abs, 'utf8');
+    } catch {
+      return '';
+    }
+  };
+
+  const en = tryRead(enPath);
+  const zh = tryRead(zhPath);
+  if (en.trim() === '' || zh.trim() === '') return undefined;
+
+  return { en, zh };
 }
 
 // Retrieve a toolset by name (returns array of tool objects)

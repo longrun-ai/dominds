@@ -34,13 +34,12 @@ import {
   ripgrepSnippetsTool,
 } from './ripgrep';
 import {
-  appendFileTool,
-  applyBlockReplaceTool,
   applyFileModificationTool,
-  insertAfterTool,
-  insertBeforeTool,
-  planBlockReplaceTool,
-  planFileModificationTool,
+  previewBlockReplaceTool,
+  previewFileAppendTool,
+  previewFileModificationTool,
+  previewInsertAfterTool,
+  previewInsertBeforeTool,
   readFileTool,
   replaceFileContentsTool,
 } from './txt';
@@ -649,23 +648,23 @@ export const teamMgmtReplaceFileContentsTool: TellaskTool = {
   },
 };
 
-export const teamMgmtAppendFileTool: TellaskTool = {
+export const teamMgmtPreviewFileAppendTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_append_file',
+  name: 'team_mgmt_preview_file_append',
   backfeeding: true,
   usageDescription:
-    `Append content to a file under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_append_file <path>\n` +
+    `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !?@team_mgmt_preview_file_append <path> [options] [!existing-hunk-id]\n` +
     `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Append content to a file under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_append_file <path>\n` +
+      `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !?@team_mgmt_preview_file_append <path> [options] [!existing-hunk-id]\n` +
       `!?<content in body>\n`,
     zh:
-      `向 ${MINDS_DIR}/ 下的文件末尾追加内容。\n` +
-      `用法：!?@team_mgmt_append_file <path>\n` +
-      `!?<正文为追加内容>\n`,
+      `预览 ${MINDS_DIR}/ 下“末尾追加”修改（不会立刻写入）。\n` +
+      `用法：!?@team_mgmt_preview_file_append <path> [options] [!existing-hunk-id]\n` +
+      `!?<正文为要追加的内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
@@ -676,13 +675,19 @@ export const teamMgmtAppendFileTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const filePath = after.split(/\s+/)[0] || '';
-      if (!filePath) throw new Error('Path required');
-      const rel = toMindsRelativePath(filePath);
+      const after = parseArgsAfterTool(headLine, this.name).trim();
+      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
+      const rawPath = m?.[1] ?? '';
+      const rest = (m?.[2] ?? '').trim();
+      if (!rawPath) throw new Error('Path required');
+
+      const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await appendFileTool.call(dlg, proxyCaller, `@append_file ${rel}`, inputBody);
+      const proxyHeadLine = rest
+        ? `@preview_file_append ${rel} ${rest}`
+        : `@preview_file_append ${rel}`;
+      return await previewFileAppendTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -693,23 +698,23 @@ export const teamMgmtAppendFileTool: TellaskTool = {
   },
 };
 
-export const teamMgmtInsertAfterTool: TellaskTool = {
+export const teamMgmtPreviewInsertAfterTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_insert_after',
+  name: 'team_mgmt_preview_insert_after',
   backfeeding: true,
   usageDescription:
-    `Insert content after an anchor in a file under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_insert_after <path> <anchor> [options]\n` +
+    `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !?@team_mgmt_preview_insert_after <path> <anchor> [options] [!existing-hunk-id]\n` +
     `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Insert content after an anchor in a file under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_insert_after <path> <anchor> [options]\n` +
+      `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !?@team_mgmt_preview_insert_after <path> <anchor> [options] [!existing-hunk-id]\n` +
       `!?<content in body>\n`,
     zh:
-      `在 ${MINDS_DIR}/ 下文件的锚点之后插入内容。\n` +
-      `用法：!?@team_mgmt_insert_after <path> <anchor> [options]\n` +
-      `!?<正文为插入内容>\n`,
+      `按锚点预览 ${MINDS_DIR}/ 下“在其后插入”修改（不会立刻写入）。\n` +
+      `用法：!?@team_mgmt_preview_insert_after <path> <anchor> [options] [!existing-hunk-id]\n` +
+      `!?<正文为要插入的内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
@@ -723,16 +728,18 @@ export const teamMgmtInsertAfterTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/);
-      const rawPath = parts[0] ?? '';
+      const after = parseArgsAfterTool(headLine, this.name).trim();
+      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
+      const rawPath = m?.[1] ?? '';
+      const rest = (m?.[2] ?? '').trim();
       if (!rawPath) throw new Error('Path required');
-      const rest = parts.slice(1).join(' ').trim();
+      if (!rest) throw new Error('Anchor is required');
+
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = rest ? `@insert_after ${rel} ${rest}` : `@insert_after ${rel}`;
-      return await insertAfterTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+      const proxyHeadLine = `@preview_insert_after ${rel} ${rest}`;
+      return await previewInsertAfterTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -743,23 +750,23 @@ export const teamMgmtInsertAfterTool: TellaskTool = {
   },
 };
 
-export const teamMgmtInsertBeforeTool: TellaskTool = {
+export const teamMgmtPreviewInsertBeforeTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_insert_before',
+  name: 'team_mgmt_preview_insert_before',
   backfeeding: true,
   usageDescription:
-    `Insert content before an anchor in a file under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_insert_before <path> <anchor> [options]\n` +
+    `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !?@team_mgmt_preview_insert_before <path> <anchor> [options] [!existing-hunk-id]\n` +
     `!?<content in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Insert content before an anchor in a file under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_insert_before <path> <anchor> [options]\n` +
+      `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !?@team_mgmt_preview_insert_before <path> <anchor> [options] [!existing-hunk-id]\n` +
       `!?<content in body>\n`,
     zh:
-      `在 ${MINDS_DIR}/ 下文件的锚点之前插入内容。\n` +
-      `用法：!?@team_mgmt_insert_before <path> <anchor> [options]\n` +
-      `!?<正文为插入内容>\n`,
+      `按锚点预览 ${MINDS_DIR}/ 下“在其前插入”修改（不会立刻写入）。\n` +
+      `用法：!?@team_mgmt_preview_insert_before <path> <anchor> [options] [!existing-hunk-id]\n` +
+      `!?<正文为要插入的内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
     const language = getUserLang(dlg);
@@ -773,16 +780,18 @@ export const teamMgmtInsertBeforeTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/);
-      const rawPath = parts[0] ?? '';
+      const after = parseArgsAfterTool(headLine, this.name).trim();
+      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
+      const rawPath = m?.[1] ?? '';
+      const rest = (m?.[2] ?? '').trim();
       if (!rawPath) throw new Error('Path required');
-      const rest = parts.slice(1).join(' ').trim();
+      if (!rest) throw new Error('Anchor is required');
+
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = rest ? `@insert_before ${rel} ${rest}` : `@insert_before ${rel}`;
-      return await insertBeforeTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+      const proxyHeadLine = `@preview_insert_before ${rel} ${rest}`;
+      return await previewInsertBeforeTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -793,22 +802,22 @@ export const teamMgmtInsertBeforeTool: TellaskTool = {
   },
 };
 
-export const teamMgmtPlanBlockReplaceTool: TellaskTool = {
+export const teamMgmtPreviewBlockReplaceTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_plan_block_replace',
+  name: 'team_mgmt_preview_block_replace',
   backfeeding: true,
   usageDescription:
-    `Plan a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_plan_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
+    `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !?@team_mgmt_preview_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
     `!?<new content in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Plan a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_plan_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
+      `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !?@team_mgmt_preview_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
       `!?<new content in body>\n`,
     zh:
-      `按锚点规划 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_plan_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
+      `按锚点预览 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。\n` +
+      `用法：!?@team_mgmt_preview_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
       `!?<正文为新块内容>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
@@ -833,8 +842,8 @@ export const teamMgmtPlanBlockReplaceTool: TellaskTool = {
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@plan_block_replace ${rel} ${rest}`;
-      return await planBlockReplaceTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+      const proxyHeadLine = `@preview_block_replace ${rel} ${rest}`;
+      return await previewBlockReplaceTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -845,67 +854,25 @@ export const teamMgmtPlanBlockReplaceTool: TellaskTool = {
   },
 };
 
-export const teamMgmtApplyBlockReplaceTool: TellaskTool = {
+export const teamMgmtPreviewFileModificationTool: TellaskTool = {
   type: 'tellask',
-  name: 'team_mgmt_apply_block_replace',
+  name: 'team_mgmt_preview_file_modification',
   backfeeding: true,
   usageDescription:
-    `Apply a previously planned block replacement under ${MINDS_DIR}/ by hunk id.\n` +
-    `Usage: !?@team_mgmt_apply_block_replace !<hunk-id>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Apply a previously planned block replacement under ${MINDS_DIR}/ by hunk id.\n` +
-      `Usage: !?@team_mgmt_apply_block_replace !<hunk-id>\n`,
-    zh:
-      `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下块替换。\n` +
-      `用法：!?@team_mgmt_apply_block_replace !<hunk-id>\n`,
-  },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const language = getUserLang(dlg);
-    try {
-      const mindsState = await getMindsDirState();
-      if (mindsState.kind === 'missing') {
-        const msg = formatMindsMissingNotice(language);
-        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-      }
-      if (mindsState.kind === 'not_directory') {
-        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
-      }
-
-      const after = parseArgsAfterTool(headLine, this.name);
-      const id = after.split(/\s+/)[0] || '';
-      if (!id) throw new Error('Hunk id required (e.g. !a1b2c3d4)');
-      const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await applyBlockReplaceTool.call(dlg, proxyCaller, `@apply_block_replace ${id}`, '');
-    } catch (err: unknown) {
-      const msg =
-        language === 'zh'
-          ? `错误：${err instanceof Error ? err.message : String(err)}`
-          : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-    }
-  },
-};
-
-export const teamMgmtPlanFileModificationTool: TellaskTool = {
-  type: 'tellask',
-  name: 'team_mgmt_plan_file_modification',
-  backfeeding: true,
-  usageDescription:
-    `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!existing-hunk-id]\n` +
-    `Note: \`!<hunk-id>\` is only for revising an existing planned hunk; custom hunk ids are not allowed.\n` +
+    `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
+    `Usage: !?@team_mgmt_preview_file_modification <path> <line~range> [!existing-hunk-id]\n` +
+    `Note: \`!<hunk-id>\` is only for revising an existing preview hunk; custom hunk ids are not allowed.\n` +
     `!?<new content lines in body>\n`,
   usageDescriptionI18n: {
     en:
-      `Plan a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_plan_file_modification <path> <line~range> [!existing-hunk-id]\n` +
-      `Note: \`!<hunk-id>\` is only for revising an existing planned hunk; custom hunk ids are not allowed.\n` +
+      `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
+      `Usage: !?@team_mgmt_preview_file_modification <path> <line~range> [!existing-hunk-id]\n` +
+      `Note: \`!<hunk-id>\` is only for revising an existing preview hunk; custom hunk ids are not allowed.\n` +
       `!?<new content lines in body>\n`,
     zh:
-      `按行号范围规划 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_plan_file_modification <path> <line~range> [!existing-hunk-id]\n` +
-      `注意：\`!<hunk-id>\` 仅用于修订已存在的规划；不支持自定义 hunk id。\n` +
+      `按行号范围预览 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。\n` +
+      `用法：!?@team_mgmt_preview_file_modification <path> <line~range> [!existing-hunk-id]\n` +
+      `注意：\`!<hunk-id>\` 仅用于修订已存在的预览；不支持自定义 hunk id。\n` +
       `!?<正文为新内容行>\n`,
   },
   async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
@@ -932,9 +899,9 @@ export const teamMgmtPlanFileModificationTool: TellaskTool = {
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const proxyHeadLine = maybeHunkId
-        ? `@plan_file_modification ${rel} ${rangeSpec} ${maybeHunkId}`
-        : `@plan_file_modification ${rel} ${rangeSpec}`;
-      return await planFileModificationTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+        ? `@preview_file_modification ${rel} ${rangeSpec} ${maybeHunkId}`
+        : `@preview_file_modification ${rel} ${rangeSpec}`;
+      return await previewFileModificationTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1716,7 +1683,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_plan_file_modification team.yaml <line~range>` 生成 diff（工具会返回 `!<hunk-id>`），再用 `!?@team_mgmt_apply_file_modification !<hunk-id>` 显式确认写入；如需修订同一个规划，再次运行 `!?@team_mgmt_plan_file_modification ... !<hunk-id>` 覆写；大改动直接 `!?@team_mgmt_replace_file_contents team.yaml`。',
+        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_preview_file_modification team.yaml <line~range>` 生成 diff（工具会返回 `!<hunk-id>`），再用 `!?@team_mgmt_apply_file_modification !<hunk-id>` 显式确认写入；如需修订同一个预览，再次运行 `!?@team_mgmt_preview_file_modification ... !<hunk-id>` 覆写；大改动直接 `!?@team_mgmt_replace_file_contents team.yaml`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -1761,7 +1728,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_plan_file_modification team.yaml <line~range>` to get a diff (the tool returns a `!<hunk-id>`), then confirm with `!?@team_mgmt_apply_file_modification !<hunk-id>`; to revise the same plan, re-run `!?@team_mgmt_plan_file_modification ... !<hunk-id>` to overwrite; for large edits, use `!?@team_mgmt_replace_file_contents team.yaml`.',
+        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_preview_file_modification team.yaml <line~range>` to get a diff (the tool returns a `!<hunk-id>`), then confirm with `!?@team_mgmt_apply_file_modification !<hunk-id>`; to revise the same preview, re-run `!?@team_mgmt_preview_file_modification ... !<hunk-id>` to overwrite; for large edits, use `!?@team_mgmt_replace_file_contents team.yaml`.',
       ]),
     ) +
     '\n' +
@@ -1895,7 +1862,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
-        '`*.tsk/` 是封装差遣牒：只能用 `!?@change_mind` 维护。通用文件工具（read/list/overwrite/rm/plan/apply）必须禁止访问该目录树。',
+        '`*.tsk/` 是封装差遣牒：只能用 `!?@change_mind` 维护。通用文件工具（read/list/replace/rm/preview/apply）必须禁止访问该目录树。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小权限写法示例（仅示意）',
@@ -1918,7 +1885,7 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
-      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via `!?@change_mind` only. General file tools (read/list/overwrite/rm/plan/apply) must be blocked from that directory tree.',
+      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via `!?@change_mind` only. General file tools (read/list/replace/rm/preview/apply) must be blocked from that directory tree.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Least-privilege example (illustrative)',
@@ -2408,12 +2375,11 @@ export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtReplaceFileContentsTool,
-  teamMgmtAppendFileTool,
-  teamMgmtInsertAfterTool,
-  teamMgmtInsertBeforeTool,
-  teamMgmtPlanBlockReplaceTool,
-  teamMgmtApplyBlockReplaceTool,
-  teamMgmtPlanFileModificationTool,
+  teamMgmtPreviewFileAppendTool,
+  teamMgmtPreviewInsertAfterTool,
+  teamMgmtPreviewInsertBeforeTool,
+  teamMgmtPreviewBlockReplaceTool,
+  teamMgmtPreviewFileModificationTool,
   teamMgmtApplyFileModificationTool,
   teamMgmtMkDirTool,
   teamMgmtMoveFileTool,

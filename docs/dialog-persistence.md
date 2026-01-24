@@ -138,11 +138,13 @@ Dominds loads memory files as plain markdown (`*.md`) from two scopes:
 
 These paths are enforced by the memory tools (see `main/tools/mem.ts`) and loaded into agent context by
 `main/minds/load.ts`.
+
 ---
 
 ## Dialog Storage Structure _(Design Reference Only)_
 
 > **Note**: This section describes the intended dialog storage structure, and the current persistence implementation largely matches it (see `main/persistence.ts`).
+
 ### Dialog Identification
 
 **Dialog IDs**: Generated using `generateDialogID()` format: `aa/bb/cccccccc`

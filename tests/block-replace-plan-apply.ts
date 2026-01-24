@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/shared/runtime-language';
 import { Team } from '../main/team';
-import { applyBlockReplaceTool, planBlockReplaceTool } from '../main/tools/txt';
+import { applyFileModificationTool, previewBlockReplaceTool } from '../main/tools/txt';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -42,18 +42,18 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const plan1 = await planBlockReplaceTool.call(
+    const plan1 = await previewBlockReplaceTool.call(
       dlg,
       alice,
-      '@plan_block_replace doc.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
+      '@preview_block_replace doc.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
       'new\n',
     );
     assert.equal(plan1.status, 'completed');
     const hunk1 = extractHunkId(plan1.result ?? '');
-    const apply1 = await applyBlockReplaceTool.call(
+    const apply1 = await applyFileModificationTool.call(
       dlg,
       alice,
-      `@apply_block_replace !${hunk1}`,
+      `@apply_file_modification !${hunk1}`,
       '',
     );
     assert.equal(apply1.status, 'completed');
@@ -68,10 +68,10 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc2.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const plan2 = await planBlockReplaceTool.call(
+    const plan2 = await previewBlockReplaceTool.call(
       dlg,
       alice,
-      '@plan_block_replace doc2.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
+      '@preview_block_replace doc2.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
       'new\n',
     );
     assert.equal(plan2.status, 'completed');
@@ -80,10 +80,10 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc2.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old (changed)', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const apply2 = await applyBlockReplaceTool.call(
+    const apply2 = await applyFileModificationTool.call(
       dlg,
       alice,
-      `@apply_block_replace !${hunk2}`,
+      `@apply_file_modification !${hunk2}`,
       '',
     );
     assert.equal(apply2.status, 'failed');
@@ -103,10 +103,10 @@ async function main(): Promise<void> {
         '',
       ].join('\n'),
     );
-    const planAmb = await planBlockReplaceTool.call(
+    const planAmb = await previewBlockReplaceTool.call(
       dlg,
       alice,
-      '@plan_block_replace amb.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
+      '@preview_block_replace amb.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
       'x\n',
     );
     assert.equal(planAmb.status, 'failed');
@@ -114,30 +114,30 @@ async function main(): Promise<void> {
 
     // Plan fails on missing anchors.
     await writeText(path.join(tmpRoot, 'missing.md'), ['no anchors', ''].join('\n'));
-    const planMissing = await planBlockReplaceTool.call(
+    const planMissing = await previewBlockReplaceTool.call(
       dlg,
       alice,
-      '@plan_block_replace missing.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
+      '@preview_block_replace missing.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
       'x\n',
     );
     assert.equal(planMissing.status, 'failed');
     assert.ok((planMissing.result ?? '').includes('error: ANCHOR_NOT_FOUND'));
 
     // Occurrence out of range.
-    const planOor = await planBlockReplaceTool.call(
+    const planOor = await previewBlockReplaceTool.call(
       dlg,
       alice,
-      '@plan_block_replace amb.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->" occurrence=3',
+      '@preview_block_replace amb.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->" occurrence=3',
       'x\n',
     );
     assert.equal(planOor.status, 'failed');
     assert.ok((planOor.result ?? '').includes('error: OCCURRENCE_OUT_OF_RANGE'));
 
     // Empty body fails with CONTENT_REQUIRED.
-    const planEmpty = await planBlockReplaceTool.call(
+    const planEmpty = await previewBlockReplaceTool.call(
       dlg,
       alice,
-      '@plan_block_replace doc.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
+      '@preview_block_replace doc.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
       '',
     );
     assert.equal(planEmpty.status, 'failed');
