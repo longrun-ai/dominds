@@ -6,6 +6,7 @@
  * Entry points (server/cli) must import this module once to populate registries.
  */
 
+import { applyPatchTool, shellCommandTool } from '@dominds/codex-tools';
 import { contextHealthReminderOwner } from './context-health';
 import {
   addReminderTool,
@@ -75,6 +76,10 @@ registerTool(ripgrepSearchTool);
 registerTool(shellCmdTool);
 registerTool(stopDaemonTool);
 registerTool(getDaemonOutputTool);
+
+// Codex CLI compatibility tools
+registerTool(shellCommandTool);
+registerTool(applyPatchTool);
 
 // Env tools (local testing)
 registerTool(envGetTool);
@@ -190,6 +195,46 @@ registerToolset('ws_mod', [
 ]);
 setToolsetMeta('ws_mod', {
   descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
+  promptFilesI18n: { en: './prompts/ws_mod.en.md', zh: './prompts/ws_mod.zh.md' },
+});
+
+// Codex-focused toolsets (function tools only; suitable for Codex provider)
+registerToolset('codex_ws_read', [
+  shellCommandTool,
+  listDirTool,
+  ripgrepFilesTool,
+  ripgrepSnippetsTool,
+  ripgrepCountTool,
+  ripgrepFixedTool,
+  ripgrepSearchTool,
+]);
+setToolsetMeta('codex_ws_read', {
+  descriptionI18n: { en: 'Codex workspace read-only tools', zh: 'Codex 工作区只读工具' },
+});
+registerToolset('codex_ws_mod', [
+  shellCommandTool,
+  applyPatchTool,
+  listDirTool,
+  rmDirTool,
+  rmFileTool,
+  mkDirTool,
+  moveFileTool,
+  moveDirTool,
+  replaceFileContentsTool,
+  previewFileAppendTool,
+  previewInsertAfterTool,
+  previewInsertBeforeTool,
+  previewBlockReplaceTool,
+  previewFileModificationTool,
+  applyFileModificationTool,
+  ripgrepFilesTool,
+  ripgrepSnippetsTool,
+  ripgrepCountTool,
+  ripgrepFixedTool,
+  ripgrepSearchTool,
+]);
+setToolsetMeta('codex_ws_mod', {
+  descriptionI18n: { en: 'Codex workspace read/write tools', zh: 'Codex 工作区读写工具' },
   promptFilesI18n: { en: './prompts/ws_mod.en.md', zh: './prompts/ws_mod.zh.md' },
 });
 registerToolset('team-mgmt', [...teamMgmtTools]);
