@@ -8,7 +8,7 @@ The persistence layer is fully implemented and active with modern TypeScript typ
 
 ### Current State
 
-- **✅ Fully Implemented**: Modern storage system with strong TypeScript types in `shared/types/storage.ts`
+- **✅ Fully Implemented**: Modern storage system with strong TypeScript types in `main/shared/types/storage.ts`
 - **✅ latest.yaml Support**: Current round and lastModified tracking for accurate UI timestamps
 - **✅ Append-Only Events**: JSONL-based event streaming with atomic operations
 - **✅ Strong Type Safety**: Discriminated unions and type guards for compile-time verification
@@ -61,16 +61,11 @@ workspace/
 │   │       ├── knowledge.md  # Agent expertise and skills
 │   │       └── lessons.md    # Agent learning and adaptations
 │   └── memory/               # Workspace-persistent memories
-│       ├── shared/           # Team-shared memories
-│       │   ├── mission.md    # Project mission and context
-│       │   ├── standards.md  # Coding conventions and practices
-│       │   └── history.md    # Project decisions and milestones
-│       └── team/             # Agent-individual memories
+│       ├── team_shared/      # Team-shared memories (all `*.md` under this dir are loaded)
+│       │   └── *.md
+│       └── individual/       # Agent-individual memories (per agent)
 │           └── <member>/
-│               ├── expertise.md    # Personal expertise
-│               ├── lessons.md      # Individual learning
-│               ├── context.md      # Role-specific context
-│               └── patterns.md     # Performance patterns
+│               └── **/*.md
 └── .dialogs/                 # Dialog runtime state
     ├── run/                  # Active dialogs
     ├── done/                 # Completed dialogs
@@ -136,37 +131,18 @@ providers:
 
 ### Memory Storage (`.minds/memory/`)
 
-**Shared Mission Context** (`shared/mission.md`):
+Dominds loads memory files as plain markdown (`*.md`) from two scopes:
 
-- Project goals and objectives
-- Constraints and requirements
-- Success criteria and metrics
+- **Team-shared memories**: `.minds/memory/team_shared/**/*.md`
+- **Individual memories**: `.minds/memory/individual/<member>/**/*.md`
 
-**Team Standards** (`shared/standards.md`):
-
-- Coding conventions and style guides
-- Architectural decisions and patterns
-- Quality standards and practices
-
-**Project History** (`shared/history.md`):
-
-- Important decisions and rationale
-- Milestones and achievements
-- Lessons learned and insights
-
-**Individual Memories** (`team/<member>/`):
-
-- Personal expertise and specializations
-- Individual learning and adaptation
-- Role-specific context and responsibilities
-- Performance patterns and optimizations
-
+These paths are enforced by the memory tools (see `main/tools/mem.ts`) and loaded into agent context by
+`main/minds/load.ts`.
 ---
 
 ## Dialog Storage Structure _(Design Reference Only)_
 
-> **Note**: This section describes the intended dialog storage structure. The current persistence implementation generates dialog IDs but does not create the described file structures.
-
+> **Note**: This section describes the intended dialog storage structure, and the current persistence implementation largely matches it (see `main/persistence.ts`).
 ### Dialog Identification
 
 **Dialog IDs**: Generated using `generateDialogID()` format: `aa/bb/cccccccc`
@@ -223,7 +199,7 @@ This design balances the need for clear hierarchical relationships with efficien
 **Key Features**:
 
 - **latest.yaml**: Modern tracking file with current round, lastModified, and status
-- **Strong Typing**: All files use TypeScript interfaces from `shared/types/storage.ts`
+- **Strong Typing**: All files use TypeScript interfaces from `main/shared/types/storage.ts`
 - **Atomic Updates**: latest.yaml updated atomically on all dialog modifications
 - **UI Integration**: Timestamps from latest.yaml display correctly in dialog list
 
@@ -263,7 +239,7 @@ assignmentFromSup: # Assignment context from parent
   originMemberId: 'alice'
 ```
 
-**Type Safety**: All metadata follows `DialogMetadataFile` interface from `shared/types/storage.ts` with compile-time verification.
+**Type Safety**: All metadata follows `DialogMetadataFile` interface from `main/shared/types/storage.ts` with compile-time verification.
 
 ### Latest Status File (`latest.yaml`)
 
@@ -559,7 +535,7 @@ Migration and versioning features are not yet implemented and remain planned cap
 
 The persistence layer has been **completely modernized** with no backward compatibility:
 
-#### ✅ Strong TypeScript Types (`shared/types/storage.ts`)
+#### ✅ Strong TypeScript Types (`main/shared/types/storage.ts`)
 
 - **Modern Discriminated Unions**: Type-safe event handling with compile-time verification
 - **Type Guards**: Runtime validation of storage formats
@@ -597,7 +573,7 @@ The persistence layer has been **completely modernized** with no backward compat
 **Breaking Changes**: This refactoring intentionally removed all backward compatibility:
 
 - Old interfaces removed from `main/persistence.ts`
-- New `shared/types/storage.ts` provides all type definitions
+- New `main/shared/types/storage.ts` provides all type definitions
 - All dialog creation now includes `latest.yaml` initialization
 - API responses include `lastModified` field for UI timestamps
 
