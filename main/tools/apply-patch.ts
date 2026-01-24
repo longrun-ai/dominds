@@ -1,8 +1,19 @@
+/**
+ * Module: tools/apply-patch
+ *
+ * Codex-style `apply_patch` function tool.
+ * - Accepts the Codex CLI patch format (`*** Begin Patch` ... `*** End Patch`)
+ * - Applies edits to the current workspace (rtws)
+ * - Enforces Dominds directory access control (`read_dirs`/`write_dirs` + deny lists)
+ */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import type { FuncTool, ToolArguments } from '../dominds-tool';
-import { resolveInWorkspace } from './_path';
+import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
+import type { Dialog } from '../dialog';
+import { getWorkLanguage } from '../shared/runtime-language';
+import type { Team } from '../team';
+import type { FuncTool, ToolArguments } from '../tool';
 
 const BEGIN_PATCH_MARKER = '*** Begin Patch';
 const END_PATCH_MARKER = '*** End Patch';
@@ -16,8 +27,8 @@ const EMPTY_CHANGE_CONTEXT_MARKER = '@@';
 
 type ApplyPatchArgs = Readonly<{ patch: string }>;
 
-type AddFileHunk = Readonly<{ type: 'add_file'; path: string; contents: string }>;
-type DeleteFileHunk = Readonly<{ type: 'delete_file'; path: string }>;
+type AddFileHunk = Readonly<{ kind: 'add_file'; relPath: string; contents: string }>;
+type DeleteFileHunk = Readonly<{ kind: 'delete_file'; relPath: string }>;
 type UpdateFileChunk = Readonly<{
   changeContext: string | null;
   oldLines: string[];
@@ -25,9 +36,9 @@ type UpdateFileChunk = Readonly<{
   isEndOfFile: boolean;
 }>;
 type UpdateFileHunk = Readonly<{
-  type: 'update_file';
-  path: string;
-  movePath: string | null;
+  kind: 'update_file';
+  relPath: string;
+  moveToRelPath: string | null;
   chunks: UpdateFileChunk[];
 }>;
 
@@ -41,15 +52,37 @@ function parseApplyPatchArgs(args: ToolArguments): ApplyPatchArgs {
   return { patch: patchValue };
 }
 
+function assertRelativePath(input: string, label: string): void {
+  if (path.isAbsolute(input) || /^[a-zA-Z]:[\\/]/.test(input)) {
+    throw new Error(`${label} must be a relative path: ${input}`);
+  }
+}
+
+function resolveInWorkspace(workspaceRoot: string, relPath: string, label: string): string {
+  assertRelativePath(relPath, label);
+  const resolved = path.resolve(workspaceRoot, relPath);
+  const root = path.resolve(workspaceRoot);
+  if (resolved === root) return resolved;
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  if (!resolved.startsWith(prefix)) {
+    throw new Error(`${label} escapes workspace root: ${relPath}`);
+  }
+  return resolved;
+}
+
 function splitLines(text: string): string[] {
   return text.split(/\r?\n/);
 }
 
 function tryStripHeredocWrapper(lines: string[]): string[] | null {
   if (lines.length < 4) return null;
-  const first = lines[0]?.trim();
-  const last = lines[lines.length - 1]?.trim() ?? '';
-  if (first !== '<<EOF' && first !== "<<'EOF'" && first !== '<<"EOF"') {
+  const firstRaw = lines[0];
+  const lastRaw = lines[lines.length - 1];
+  if (firstRaw === undefined || lastRaw === undefined) return null;
+
+  const first = firstRaw.trim();
+  const last = lastRaw.trim();
+  if (first !== '<<EOF' && first !== "<<'EOF'" && first !== '<<\"EOF\"') {
     return null;
   }
   if (!last.endsWith('EOF')) {
@@ -59,14 +92,18 @@ function tryStripHeredocWrapper(lines: string[]): string[] | null {
 }
 
 function ensurePatchBoundariesStrict(lines: string[]): { inner: string[] } {
-  const first = lines[0]?.trim() ?? '';
-  const last = lines[lines.length - 1]?.trim() ?? '';
+  const firstLine = lines.length > 0 ? lines[0] : undefined;
+  const lastLine = lines.length > 0 ? lines[lines.length - 1] : undefined;
+  const first = typeof firstLine === 'string' ? firstLine.trim() : '';
+  const last = typeof lastLine === 'string' ? lastLine.trim() : '';
+
   if (first !== BEGIN_PATCH_MARKER) {
     throw new Error(`Invalid patch: The first line of the patch must be '${BEGIN_PATCH_MARKER}'`);
   }
   if (last !== END_PATCH_MARKER) {
     throw new Error(`Invalid patch: The last line of the patch must be '${END_PATCH_MARKER}'`);
   }
+
   return { inner: lines.slice(1, lines.length - 1) };
 }
 
@@ -76,13 +113,12 @@ function normalizePatchText(patch: string): string {
     const strict = ensurePatchBoundariesStrict(rawLines);
     return [BEGIN_PATCH_MARKER, ...strict.inner, END_PATCH_MARKER].join('\n');
   } catch (strictErr) {
-    const heredoc = tryStripHeredocWrapper(rawLines);
-    if (!heredoc) {
+    const heredocLines = tryStripHeredocWrapper(rawLines);
+    if (heredocLines === null) {
       const message = strictErr instanceof Error ? strictErr.message : String(strictErr);
       throw new Error(message);
     }
-    const stripped = heredoc.map((l) => l);
-    const strict = ensurePatchBoundariesStrict(stripped);
+    const strict = ensurePatchBoundariesStrict(heredocLines);
     return [BEGIN_PATCH_MARKER, ...strict.inner, END_PATCH_MARKER].join('\n');
   }
 }
@@ -99,21 +135,25 @@ function seekSequence(
   const searchStart = eof && lines.length >= pattern.length ? lines.length - pattern.length : start;
   const maxStart = lines.length - pattern.length;
 
-  const exactMatch = (idx: number): boolean => {
+  const exactMatchAt = (idx: number): boolean => {
     for (let j = 0; j < pattern.length; j++) {
-      if (lines[idx + j] !== pattern[j]) return false;
+      const lhs = lines[idx + j];
+      const rhs = pattern[j];
+      if (lhs !== rhs) return false;
     }
     return true;
   };
 
   for (let i = searchStart; i <= maxStart; i++) {
-    if (exactMatch(i)) return i;
+    if (exactMatchAt(i)) return i;
   }
 
   for (let i = searchStart; i <= maxStart; i++) {
     let ok = true;
     for (let j = 0; j < pattern.length; j++) {
-      if (lines[i + j]?.trimEnd() !== pattern[j]?.trimEnd()) {
+      const lhs = lines[i + j] ?? '';
+      const rhs = pattern[j] ?? '';
+      if (lhs.trimEnd() !== rhs.trimEnd()) {
         ok = false;
         break;
       }
@@ -124,7 +164,9 @@ function seekSequence(
   for (let i = searchStart; i <= maxStart; i++) {
     let ok = true;
     for (let j = 0; j < pattern.length; j++) {
-      if (lines[i + j]?.trim() !== pattern[j]?.trim()) {
+      const lhs = lines[i + j] ?? '';
+      const rhs = pattern[j] ?? '';
+      if (lhs.trim() !== rhs.trim()) {
         ok = false;
         break;
       }
@@ -200,13 +242,13 @@ function parseUpdateFileChunk(
   lines: readonly string[],
   lineNumber: number,
   allowMissingContext: boolean,
-): { chunk: UpdateFileChunk; consumed: number } {
+): Readonly<{ chunk: UpdateFileChunk; consumed: number }> {
   if (lines.length === 0) {
     throw new Error(`Invalid hunk at line ${lineNumber}: Update hunk does not contain any lines`);
   }
 
-  const first = lines[0] ?? '';
-  const firstTrimmed = first.trim();
+  const firstLine = lines[0] ?? '';
+  const firstTrimmed = firstLine.trim();
   let changeContext: string | null = null;
   let startIndex = 0;
 
@@ -218,7 +260,7 @@ function parseUpdateFileChunk(
   } else {
     if (!allowMissingContext) {
       throw new Error(
-        `Invalid hunk at line ${lineNumber}: Expected update hunk to start with a @@ context marker, got: '${first}'`,
+        `Invalid hunk at line ${lineNumber}: Expected update hunk to start with a @@ context marker, got: '${firstLine}'`,
       );
     }
     startIndex = 0;
@@ -233,13 +275,13 @@ function parseUpdateFileChunk(
   const oldLines: string[] = [];
   const newLines: string[] = [];
   let isEndOfFile = false;
-
   let parsedLines = 0;
+
   for (let i = startIndex; i < lines.length; i++) {
     const line = lines[i] ?? '';
-    const trimmed = line.trim();
+    const lineTrimmed = line.trim();
 
-    if (trimmed === EOF_MARKER) {
+    if (lineTrimmed === EOF_MARKER) {
       if (parsedLines === 0) {
         throw new Error(
           `Invalid hunk at line ${lineNumber + 1}: Update hunk does not contain any lines`,
@@ -250,17 +292,18 @@ function parseUpdateFileChunk(
       break;
     }
 
-    const firstChar = line.length > 0 ? line[0] : null;
-    if (firstChar === null) {
+    if (line.length === 0) {
       oldLines.push('');
       newLines.push('');
       parsedLines += 1;
       continue;
     }
 
+    const firstChar = line[0];
     if (firstChar === ' ') {
-      oldLines.push(line.slice(1));
-      newLines.push(line.slice(1));
+      const rest = line.slice(1);
+      oldLines.push(rest);
+      newLines.push(rest);
       parsedLines += 1;
       continue;
     }
@@ -280,7 +323,6 @@ function parseUpdateFileChunk(
         `Invalid hunk at line ${lineNumber + 1}: Unexpected line found in update hunk: '${line}'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)`,
       );
     }
-
     break;
   }
 
@@ -293,14 +335,20 @@ function parseUpdateFileChunk(
 function parseOneHunk(
   lines: readonly string[],
   lineNumber: number,
-): { hunk: PatchHunk; consumed: number } {
-  const firstLine = (lines[0] ?? '').trim();
-  if (firstLine.startsWith(ADD_FILE_MARKER)) {
-    const filePath = firstLine.slice(ADD_FILE_MARKER.length);
+): Readonly<{ hunk: PatchHunk; consumed: number }> {
+  const firstLineRaw = lines.length > 0 ? lines[0] : undefined;
+  const firstLineTrimmed = typeof firstLineRaw === 'string' ? firstLineRaw.trim() : '';
+
+  if (firstLineTrimmed.startsWith(ADD_FILE_MARKER)) {
+    const relPath = firstLineTrimmed.slice(ADD_FILE_MARKER.length);
+    if (relPath.trim() === '') {
+      throw new Error(`Invalid hunk at line ${lineNumber}: Add file path is empty`);
+    }
     let contents = '';
     let consumed = 1;
     for (let i = 1; i < lines.length; i++) {
-      const line = lines[i] ?? '';
+      const line = lines[i];
+      if (typeof line !== 'string') break;
       if (line.startsWith('+')) {
         contents += line.slice(1) + '\n';
         consumed += 1;
@@ -308,24 +356,34 @@ function parseOneHunk(
       }
       break;
     }
-    return { hunk: { type: 'add_file', path: filePath, contents }, consumed };
+    return { hunk: { kind: 'add_file', relPath, contents }, consumed };
   }
 
-  if (firstLine.startsWith(DELETE_FILE_MARKER)) {
-    const filePath = firstLine.slice(DELETE_FILE_MARKER.length);
-    return { hunk: { type: 'delete_file', path: filePath }, consumed: 1 };
+  if (firstLineTrimmed.startsWith(DELETE_FILE_MARKER)) {
+    const relPath = firstLineTrimmed.slice(DELETE_FILE_MARKER.length);
+    if (relPath.trim() === '') {
+      throw new Error(`Invalid hunk at line ${lineNumber}: Delete file path is empty`);
+    }
+    return { hunk: { kind: 'delete_file', relPath }, consumed: 1 };
   }
 
-  if (firstLine.startsWith(UPDATE_FILE_MARKER)) {
-    const filePath = firstLine.slice(UPDATE_FILE_MARKER.length);
+  if (firstLineTrimmed.startsWith(UPDATE_FILE_MARKER)) {
+    const relPath = firstLineTrimmed.slice(UPDATE_FILE_MARKER.length);
+    if (relPath.trim() === '') {
+      throw new Error(`Invalid hunk at line ${lineNumber}: Update file path is empty`);
+    }
     let consumed = 1;
     let remaining = lines.slice(1);
 
-    let movePath: string | null = null;
+    let moveToRelPath: string | null = null;
     if (remaining.length > 0) {
-      const moveCandidate = (remaining[0] ?? '').trim();
+      const moveCandidateRaw = remaining[0];
+      const moveCandidate = typeof moveCandidateRaw === 'string' ? moveCandidateRaw.trim() : '';
       if (moveCandidate.startsWith(MOVE_TO_MARKER)) {
-        movePath = moveCandidate.slice(MOVE_TO_MARKER.length);
+        moveToRelPath = moveCandidate.slice(MOVE_TO_MARKER.length);
+        if (moveToRelPath.trim() === '') {
+          throw new Error(`Invalid hunk at line ${lineNumber + consumed}: Move-to path is empty`);
+        }
         remaining = remaining.slice(1);
         consumed += 1;
       }
@@ -333,13 +391,16 @@ function parseOneHunk(
 
     const chunks: UpdateFileChunk[] = [];
     while (remaining.length > 0) {
-      if ((remaining[0] ?? '').trim() === '') {
+      const first = remaining[0];
+      const firstStr = typeof first === 'string' ? first : '';
+
+      if (firstStr.trim() === '') {
         remaining = remaining.slice(1);
         consumed += 1;
         continue;
       }
 
-      if ((remaining[0] ?? '').trimStart().startsWith('***')) {
+      if (firstStr.trimStart().startsWith('***')) {
         break;
       }
 
@@ -352,18 +413,15 @@ function parseOneHunk(
 
     if (chunks.length === 0) {
       throw new Error(
-        `Invalid hunk at line ${lineNumber}: Update file hunk for path '${filePath}' is empty`,
+        `Invalid hunk at line ${lineNumber}: Update file hunk for path '${relPath}' is empty`,
       );
     }
 
-    return {
-      hunk: { type: 'update_file', path: filePath, movePath, chunks },
-      consumed,
-    };
+    return { hunk: { kind: 'update_file', relPath, moveToRelPath, chunks }, consumed };
   }
 
   throw new Error(
-    `Invalid hunk at line ${lineNumber}: '${firstLine}' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'`,
+    `Invalid hunk at line ${lineNumber}: '${firstLineTrimmed}' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'`,
   );
 }
 
@@ -422,10 +480,8 @@ function computeReplacements(
     }
 
     if (chunk.oldLines.length === 0) {
-      const insertionIdx =
-        originalLines.length > 0 && originalLines[originalLines.length - 1] === ''
-          ? originalLines.length - 1
-          : originalLines.length;
+      const last = originalLines.length > 0 ? originalLines[originalLines.length - 1] : undefined;
+      const insertionIdx = last === '' ? originalLines.length - 1 : originalLines.length;
       replacements.push([insertionIdx, 0, [...chunk.newLines]]);
       continue;
     }
@@ -503,7 +559,24 @@ function printSummary(summary: ApplyPatchSummary): string {
   return parts.join('\n\n');
 }
 
-async function applyHunksToWorkspace(hunks: readonly PatchHunk[]): Promise<ApplyPatchSummary> {
+function ensureReadAccess(caller: Team.Member, relPath: string): void {
+  const language = getWorkLanguage();
+  if (!hasReadAccess(caller, relPath)) {
+    throw new Error(getAccessDeniedMessage('read', relPath, language));
+  }
+}
+
+function ensureWriteAccess(caller: Team.Member, relPath: string): void {
+  const language = getWorkLanguage();
+  if (!hasWriteAccess(caller, relPath)) {
+    throw new Error(getAccessDeniedMessage('write', relPath, language));
+  }
+}
+
+async function applyHunksToWorkspace(
+  caller: Team.Member,
+  hunks: readonly PatchHunk[],
+): Promise<ApplyPatchSummary> {
   if (hunks.length === 0) {
     throw new Error('No files were modified.');
   }
@@ -514,37 +587,53 @@ async function applyHunksToWorkspace(hunks: readonly PatchHunk[]): Promise<Apply
   const deleted: string[] = [];
 
   for (const hunk of hunks) {
-    if (hunk.type === 'add_file') {
-      const abs = resolveInWorkspace(workspaceRoot, hunk.path, 'apply_patch path');
-      const parent = path.dirname(abs);
-      await fs.mkdir(parent, { recursive: true });
-      await fs.writeFile(abs, hunk.contents, 'utf8');
-      added.push(hunk.path);
-      continue;
+    switch (hunk.kind) {
+      case 'add_file': {
+        ensureWriteAccess(caller, hunk.relPath);
+        const abs = resolveInWorkspace(workspaceRoot, hunk.relPath, 'apply_patch path');
+        const parent = path.dirname(abs);
+        await fs.mkdir(parent, { recursive: true });
+        await fs.writeFile(abs, hunk.contents, 'utf8');
+        added.push(hunk.relPath);
+        break;
+      }
+      case 'delete_file': {
+        ensureWriteAccess(caller, hunk.relPath);
+        const abs = resolveInWorkspace(workspaceRoot, hunk.relPath, 'apply_patch path');
+        await fs.unlink(abs);
+        deleted.push(hunk.relPath);
+        break;
+      }
+      case 'update_file': {
+        ensureReadAccess(caller, hunk.relPath);
+        ensureWriteAccess(caller, hunk.relPath);
+        const srcAbs = resolveInWorkspace(workspaceRoot, hunk.relPath, 'apply_patch path');
+        const newContents = await deriveNewContentsFromChunks(srcAbs, hunk.chunks);
+
+        if (hunk.moveToRelPath !== null) {
+          ensureWriteAccess(caller, hunk.moveToRelPath);
+          const destAbs = resolveInWorkspace(
+            workspaceRoot,
+            hunk.moveToRelPath,
+            'apply_patch move target',
+          );
+          const parent = path.dirname(destAbs);
+          await fs.mkdir(parent, { recursive: true });
+          await fs.writeFile(destAbs, newContents, 'utf8');
+          await fs.unlink(srcAbs);
+          modified.push(hunk.moveToRelPath);
+          break;
+        }
+
+        await fs.writeFile(srcAbs, newContents, 'utf8');
+        modified.push(hunk.relPath);
+        break;
+      }
+      default: {
+        const _exhaustive: never = hunk;
+        return _exhaustive;
+      }
     }
-
-    if (hunk.type === 'delete_file') {
-      const abs = resolveInWorkspace(workspaceRoot, hunk.path, 'apply_patch path');
-      await fs.unlink(abs);
-      deleted.push(hunk.path);
-      continue;
-    }
-
-    const srcAbs = resolveInWorkspace(workspaceRoot, hunk.path, 'apply_patch path');
-    const newContents = await deriveNewContentsFromChunks(srcAbs, hunk.chunks);
-
-    if (hunk.movePath !== null) {
-      const destAbs = resolveInWorkspace(workspaceRoot, hunk.movePath, 'apply_patch move target');
-      const parent = path.dirname(destAbs);
-      await fs.mkdir(parent, { recursive: true });
-      await fs.writeFile(destAbs, newContents, 'utf8');
-      await fs.unlink(srcAbs);
-      modified.push(hunk.movePath);
-      continue;
-    }
-
-    await fs.writeFile(srcAbs, newContents, 'utf8');
-    modified.push(hunk.path);
   }
 
   return { added, modified, deleted };
@@ -554,7 +643,7 @@ export const applyPatchTool: FuncTool = {
   type: 'func',
   name: 'apply_patch',
   description:
-    'Apply a Codex apply_patch formatted patch to the workspace. Compatibility port of Codex CLI apply_patch.',
+    'Apply a Codex-style apply_patch formatted patch to the workspace. Enforces Dominds directory allow/deny lists.',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -563,10 +652,10 @@ export const applyPatchTool: FuncTool = {
       patch: { type: 'string' },
     },
   },
-  async call(_dlg: unknown, _caller: unknown, args: ToolArguments): Promise<string> {
+  async call(_dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
     const parsed = parseApplyPatchArgs(args);
     const hunks = parsePatch(parsed.patch);
-    const summary = await applyHunksToWorkspace(hunks);
+    const summary = await applyHunksToWorkspace(caller, hunks);
     return printSummary(summary);
   },
 };

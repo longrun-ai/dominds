@@ -5,8 +5,7 @@
  *
  * Entry points (server/cli) must import this module once to populate registries.
  */
-
-import { applyPatchTool, shellCommandTool } from '@dominds/codex-tools';
+import { applyPatchTool } from './apply-patch';
 import { contextHealthReminderOwner } from './context-health';
 import {
   addReminderTool,
@@ -77,8 +76,7 @@ registerTool(shellCmdTool);
 registerTool(stopDaemonTool);
 registerTool(getDaemonOutputTool);
 
-// Codex CLI compatibility tools
-registerTool(shellCommandTool);
+// Codex-style compatibility tools
 registerTool(applyPatchTool);
 
 // Env tools (local testing)
@@ -199,43 +197,13 @@ setToolsetMeta('ws_mod', {
 });
 
 // Codex-focused toolsets (function tools only; suitable for Codex provider)
-registerToolset('codex_ws_read', [
-  shellCommandTool,
-  listDirTool,
-  ripgrepFilesTool,
-  ripgrepSnippetsTool,
-  ripgrepCountTool,
-  ripgrepFixedTool,
-  ripgrepSearchTool,
-]);
-setToolsetMeta('codex_ws_read', {
-  descriptionI18n: { en: 'Codex workspace read-only tools', zh: 'Codex 工作区只读工具' },
-});
-registerToolset('codex_ws_mod', [
-  shellCommandTool,
-  applyPatchTool,
-  listDirTool,
-  rmDirTool,
-  rmFileTool,
-  mkDirTool,
-  moveFileTool,
-  moveDirTool,
-  replaceFileContentsTool,
-  previewFileAppendTool,
-  previewInsertAfterTool,
-  previewInsertBeforeTool,
-  previewBlockReplaceTool,
-  previewFileModificationTool,
-  applyFileModificationTool,
-  ripgrepFilesTool,
-  ripgrepSnippetsTool,
-  ripgrepCountTool,
-  ripgrepFixedTool,
-  ripgrepSearchTool,
-]);
-setToolsetMeta('codex_ws_mod', {
-  descriptionI18n: { en: 'Codex workspace read/write tools', zh: 'Codex 工作区读写工具' },
-  promptFilesI18n: { en: './prompts/ws_mod.en.md', zh: './prompts/ws_mod.zh.md' },
+registerToolset('codex_style_tools', [applyPatchTool]);
+setToolsetMeta('codex_style_tools', {
+  descriptionI18n: { en: 'Codex-style tools (apply_patch)', zh: 'Codex 风格工具（apply_patch）' },
+  promptI18n: {
+    en: 'Use `apply_patch` (Codex-style patch format) to modify files. Paths must be relative to the workspace. This tool enforces Dominds directory allow/deny lists.',
+    zh: '使用 `apply_patch`（Codex 风格 patch 格式）修改文件。路径必须相对工作区根目录。本工具会按成员的目录权限（allow/deny）做访问控制。',
+  },
 });
 registerToolset('team-mgmt', [...teamMgmtTools]);
 setToolsetMeta('team-mgmt', {

@@ -2038,10 +2038,14 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     language === 'zh'
       ? fmtList([
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
+          '按 provider 选择匹配的 toolsets：当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，优先给 `codex_style_tools`（`apply_patch`）；如果还需要“读工作区”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。其他 provider 或采用 Dominds 原生工具习惯时，优先给 `ws_read` / `ws_mod`（Tellask 预览→应用工作流）。',
+          '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”）。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
       : fmtList([
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
+          'Pick toolsets to match the provider: for `provider: codex` (Codex CLI-style prompts/tool names), prefer `codex_style_tools` (`apply_patch`); if you also need “read the workspace”, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators. For other providers or when using Dominds-native tool habits, prefer `ws_read` / `ws_mod` (Tellask preview→apply workflow).',
+          'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”). For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
           'Three common patterns (in `.minds/team.yaml` under `members.<id>.toolsets`):',
         ]);
 

@@ -12,6 +12,7 @@ import { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getTextForLanguage } from '../shared/i18n/text';
 import { getWorkLanguage } from '../shared/runtime-language';
+import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import type { FuncTool, TellaskTool, Tool } from '../tool';
@@ -37,6 +38,84 @@ import {
 import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
+
+function listShellCapableMembers(team: Team): string[] {
+  const ids: string[] = [];
+  for (const member of Object.values(team.members)) {
+    const tools = member.listTools();
+    const hasShell = tools.some(
+      (t) =>
+        t.type === 'func' &&
+        (t.name === 'shell_cmd' || t.name === 'stop_daemon' || t.name === 'get_daemon_output'),
+    );
+    if (hasShell) {
+      ids.push(member.id);
+    }
+  }
+  return ids;
+}
+
+function buildShellPolicyPrompt(options: {
+  language: LanguageCode;
+  agentHasShellTools: boolean;
+  shellCapableMemberIds: string[];
+}): string {
+  const { language, agentHasShellTools, shellCapableMemberIds } = options;
+  const title =
+    language === 'zh' ? '### Shell 执行策略（重要）' : '### Shell Execution Policy (Important)';
+
+  const shellPeers =
+    shellCapableMemberIds.length > 0
+      ? shellCapableMemberIds.map((id) => `@${id}`).join(', ')
+      : language === 'zh'
+        ? '（未发现任何具备 shell 能力的队友）'
+        : '(no shell-capable teammates found)';
+
+  if (agentHasShellTools) {
+    const body =
+      language === 'zh'
+        ? [
+            '你具备 shell 执行能力（高风险）。使用前必须先做风险识别与最小化：',
+            '- 说明目的、预期输出/验证方式、预期工作目录与影响面。',
+            '- 优先选择只读命令；写入/删除/网络/权限相关操作必须解释理由与安全边界。',
+            '- 如果不确定命令后果，先提出更安全的替代方案或向人类/队友确认。',
+            '',
+            `同队具备 shell 能力的成员：${shellPeers}`,
+          ].join('\n')
+        : [
+            'You have shell execution capability (high-risk). Before using it, do risk identification and minimize blast radius:',
+            '- State intent, expected output/verification, expected working directory, and scope of impact.',
+            '- Prefer read-only commands; for writes/deletes/network/privilege-related actions, justify and state safety boundaries.',
+            '- If unsure about consequences, propose a safer alternative or confirm with a human/teammate first.',
+            '',
+            `Shell-capable teammates: ${shellPeers}`,
+          ].join('\n');
+    return `${title}\n\n${body}`.trim();
+  }
+
+  const body =
+    language === 'zh'
+      ? [
+          '你当前未配置 shell 工具：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
+          '当你确实需要 shell 执行时：请转交给具备 shell 能力的专员队友，并提供充分理由与可审查的命令提案：',
+          '- 你要达成的目标（why）',
+          '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
+          '- 风险评估与安全边界（risk & guardrails）',
+          '',
+          `可转交的 shell 专员队友：${shellPeers}`,
+        ].join('\n')
+      : [
+          'You do not have shell tools configured: do not fabricate/assume command output, and do not ask the system to execute commands directly.',
+          'When you truly need shell execution, delegate to a shell-capable specialist teammate with a justified, reviewable proposal:',
+          '- Goal (why)',
+          '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
+          '- Risk assessment and guardrails (risk & guardrails)',
+          '',
+          `Shell-capable specialist teammates: ${shellPeers}`,
+        ].join('\n');
+
+  return `${title}\n\n${body}`.trim();
+}
 
 async function readAgentMindResult(id: string, fn: string): Promise<ReadAgentMindResult> {
   const mindFn = path.join('.minds', 'team', id, fn);
@@ -140,6 +219,16 @@ export async function loadAgentMinds(
   const tellaskTools = agentTools.filter((t): t is TellaskTool => t.type === 'tellask');
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
+  const agentHasShellTools = funcTools.some(
+    (t) => t.name === 'shell_cmd' || t.name === 'stop_daemon' || t.name === 'get_daemon_output',
+  );
+  const shellCapableMemberIds = listShellCapableMembers(team);
+  const shellPolicyPrompt = buildShellPolicyPrompt({
+    language: workingLanguage,
+    agentHasShellTools,
+    shellCapableMemberIds,
+  });
+
   const toolsetPromptText = (() => {
     const toolsetNames = agent.listResolvedToolsetNames();
     const blocks = toolsetNames
@@ -181,8 +270,11 @@ export async function loadAgentMinds(
             .join('\n')
         : noTellaskToolsText(workingLanguage);
 
-    if (toolsetPromptText === '') return perTool;
-    return `${toolsetPromptText}\n\n${perTool}`;
+    const prefix = [shellPolicyPrompt, toolsetPromptText]
+      .filter((b) => b.trim() !== '')
+      .join('\n\n');
+    if (prefix === '') return perTool;
+    return `${prefix}\n\n${perTool}`;
   })();
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools

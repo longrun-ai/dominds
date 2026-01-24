@@ -25,7 +25,7 @@
     "lint:types": "tsc -p main/tsconfig.json --noEmit && tsc -p webapp/src/tsconfig.json --noEmit",
     "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
     "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
-    "build:deps": "pnpm -C codex-auth build && pnpm -C codex-tools build",
+    "build:deps": "pnpm -C codex-auth build",
     "build:backend": "tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && mkdir -p dist/tools && cp -r main/tools/prompts dist/tools/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null",
     "build:frontend": "pnpm -C webapp exec vite build"
   },
@@ -50,7 +50,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.67.0",
     "@dominds/codex-auth": "workspace:*",
-    "@dominds/codex-tools": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "async-mutex": "^0.5.0",
     "openai": "^6.4.0",
