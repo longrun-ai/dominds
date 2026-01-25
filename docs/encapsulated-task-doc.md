@@ -86,18 +86,18 @@ Notes:
 - The effective task doc MUST be deterministic (no hidden reformatting beyond the above framing).
 - Empty sections are allowed but the files still exist.
 
-## `!?@change_mind` Semantics (No Round Reset)
+## `change_mind` Semantics (No Round Reset)
 
-`!?@change_mind` updates **exactly one** section file of the task package by **replacing its entire contents**.
+The function tool `change_mind` updates **exactly one** section file of the task package by **replacing its entire contents**.
 
 Critically:
 
-- `!?@change_mind` **MUST NOT** start a new dialog round.
-- If a round reset is desired, use `!?@clear_mind` (or other round-control mechanisms) separately.
+- `change_mind` **MUST NOT** start a new dialog round.
+- If a round reset is desired, call the function tool `clear_mind({ "reminder_content": "" })` (or other round-control mechanisms) separately.
 
-### Syntax (v2)
+### Arguments (v2)
 
-`!?@change_mind` takes a required target selector:
+`change_mind` takes a required target selector:
 
 - `!goals`
 - `!constraints`
@@ -105,24 +105,23 @@ Critically:
 
 Example:
 
-```tellask-call
-!?@change_mind !constraints
-!?- MUST not browse the web.
-!?- MUST keep responses under 10 lines unless asked otherwise.
+```text
+Call the function tool `change_mind` with:
+{ "selector": "!constraints", "content": "- MUST not browse the web.\\n- MUST keep responses under 10 lines unless asked otherwise.\\n" }
 ```
 
 ### Behavioral rules
 
 - The target selector MUST be one of the supported literals; anything else is an error.
 - The body is treated as opaque markdown text; no partial patching/diff semantics are implied.
-- A successful `!?@change_mind` updates the task package immediately and becomes visible to:
+- A successful `change_mind` updates the task package immediately and becomes visible to:
   - the current dialog
   - all subdialogs/teammates in the dialog tree
   - any observing WebUI clients
 
 ### Failure cases (non-exhaustive)
 
-`!?@change_mind` MUST be rejected if:
+`change_mind` MUST be rejected if:
 
 - The selector is missing or invalid.
 - The body is missing (empty body is allowed only if explicitly supported; v1 SHOULD reject empty body to prevent mistakes).
@@ -139,7 +138,7 @@ All general filesystem tools (read/write/list/move/delete) MUST treat any path u
 Rationale:
 
 - Prevents accidental edits via generic file operations.
-- Forces task-doc mutations through explicit, semantically meaningful actions (`!?@change_mind`).
+- Forces task-doc mutations through explicit, semantically meaningful actions (`change_mind`).
 - Avoids prompt/control-flow footguns where an agent “helpfully” rewrites task constraints without clear intent.
 
 The system prompt (and any tool documentation shown to agents) MUST explicitly state this restriction.
@@ -165,5 +164,5 @@ If a workspace previously used single-file `.md` task docs, they MUST be migrate
 ## Open Questions
 
 - Where should the task package live by default (under dialog persistence, next to the initiating entrypoint, or a dedicated workspace dir)?
-- Should `!?@change_mind` allow explicitly setting an empty section body (for intentional clearing)?
+- Should `change_mind` allow explicitly setting an empty section body (for intentional clearing)?
 - Do we need a first-class “view task section” command/tool for text-only clients, given file tools cannot read `.tsk/`?

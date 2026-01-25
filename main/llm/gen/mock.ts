@@ -40,13 +40,13 @@
  * # docs/e2e-story-test/reminders.md: User creates reminders
  * - message: "create reminders"
  *   role: "user"
- *   response: "!?@add_reminder goals..."
+ *   response: "Call the function tool `add_reminder` with {\"content\":\"goals...\"}"
  *
  * // Turn 2: Tool error (func_result_msg with role='tool'), LLM self-corrects
  * # docs/e2e-story-test/reminders.md: Tool syntax error recovery
- * - message: "Error: Invalid format. Use: !?@add_reminder"
+ * - message: "Error: Invalid args. Use: add_reminder({ content: string, position: number }) (position=0 means append)."
  *   role: "tool"
- *   response: "!?@add_reminder 1\n!?Goals..."
+ *   response: "Call the function tool `add_reminder` with {\"content\":\"Goals...\",\"position\":1}"
  */
 
 import fs from 'fs/promises';

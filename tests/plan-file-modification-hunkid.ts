@@ -35,34 +35,31 @@ async function main(): Promise<void> {
       write_dirs: ['**'],
     });
 
-    const r1 = await previewFileModificationTool.call(
-      dlg,
-      alice,
-      '@preview_file_modification a.txt 1~1',
-      'new',
-    );
-    assert.equal(r1.status, 'completed');
-    const out1 = r1.result ?? '';
+    const out1 = await previewFileModificationTool.call(dlg, alice, {
+      path: 'a.txt',
+      range: '1~1',
+      existing_hunk_id: '',
+      content: 'new\n',
+    });
     const hunkId = extractHunkId(out1);
 
     // Custom ids are not allowed: unknown id should fail.
-    const r2 = await previewFileModificationTool.call(
-      dlg,
-      alice,
-      '@preview_file_modification a.txt 1~1 !deadbeef',
-      'newer',
-    );
-    assert.equal(r2.status, 'failed');
-    assert.ok((r2.result ?? '').includes('Custom hunk ids are not allowed'));
+    const out2 = await previewFileModificationTool.call(dlg, alice, {
+      path: 'a.txt',
+      range: '1~1',
+      existing_hunk_id: 'deadbeef',
+      content: 'newer\n',
+    });
+    assert.ok(out2.includes('Custom new ids are not allowed'));
 
     // Revising an existing hunk id (generated previously) should succeed.
-    const r3 = await previewFileModificationTool.call(
-      dlg,
-      alice,
-      `@preview_file_modification a.txt 1~1 !${hunkId}`,
-      'newer',
-    );
-    assert.equal(r3.status, 'completed');
+    const out3 = await previewFileModificationTool.call(dlg, alice, {
+      path: 'a.txt',
+      range: '1~1',
+      existing_hunk_id: hunkId,
+      content: 'newer\n',
+    });
+    assert.ok(out3.includes('status: ok'));
 
     // Another member cannot overwrite alice's planned hunk id.
     const bob = new Team.Member({
@@ -71,14 +68,13 @@ async function main(): Promise<void> {
       read_dirs: ['**'],
       write_dirs: ['**'],
     });
-    const r4 = await previewFileModificationTool.call(
-      dlg,
-      bob,
-      `@preview_file_modification a.txt 1~1 !${hunkId}`,
-      'bob-change',
-    );
-    assert.equal(r4.status, 'failed');
-    assert.ok((r4.result ?? '').includes('planned by a different member'));
+    const out4 = await previewFileModificationTool.call(dlg, bob, {
+      path: 'a.txt',
+      range: '1~1',
+      existing_hunk_id: hunkId,
+      content: 'bob-change\n',
+    });
+    assert.ok(out4.includes('planned by a different member'));
 
     console.log('✅ preview-file-modification-hunkid tests passed');
   } finally {

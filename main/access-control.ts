@@ -273,14 +273,14 @@ export function getAccessDeniedMessage(
     if (language === 'zh') {
       lines.push(`- 说明：\`*.tsk/\` 是封装差遣牒。通用文件工具不得读/写/列目录/删除其中内容。`);
       lines.push(
-        `- 提示：使用 \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` 更新差遣牒分段。`,
+        `- 提示：使用函数工具 \`change_mind\` 更新差遣牒分段，例如：\`change_mind({\"selector\":\"!goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!progress\",\"content\":\"...\"})\`。`,
       );
     } else {
       lines.push(
         `- Note: \`*.tsk/\` is an encapsulated Task Doc. General file tools must not read/write/list/delete it.`,
       );
       lines.push(
-        `- Hint: Use \`!?@change_mind !goals\` / \`!?@change_mind !constraints\` / \`!?@change_mind !progress\` to update task sections.`,
+        `- Hint: Use the function tool \`change_mind\` to update task sections, e.g. \`change_mind({\"selector\":\"!goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!progress\",\"content\":\"...\"})\`.`,
       );
     }
   }

@@ -15,7 +15,14 @@ import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import type { FuncTool, TellaskTool, Tool } from '../tool';
+import type { FuncTool, Tool } from '../tool';
+import {
+  addReminderTool,
+  changeMindTool,
+  clearMindTool,
+  deleteReminderTool,
+  updateReminderTool,
+} from '../tools/ctrl';
 import { getToolsetPromptI18n } from '../tools/registry';
 import {
   defaultPersonaText,
@@ -27,7 +34,6 @@ import {
   memoriesSummarySectionShared,
   memoriesSummaryTitle,
   memoryPreambleLabels,
-  noTellaskToolsText,
   noneRequiredFieldsText,
   noneText,
   personalMemoriesHeader,
@@ -178,7 +184,6 @@ export async function loadAgentMinds(
   systemPrompt: string;
   memories: ChatMessage[];
   agentTools: Tool[];
-  tellaskTools: TellaskTool[];
 }> {
   const workingLanguage = getWorkLanguage();
   let team = await Team.load();
@@ -210,13 +215,33 @@ export async function loadAgentMinds(
   const teamIntro = formatTeamIntro(team, agent.id, workingLanguage);
 
   // Compose tool list from member's resolved toolsets and tools + built-in human tool
-  // Get base tools from agent (excluding intrinsic tools which are now managed by Dialog)
+  // Get base tools from agent (excluding intrinsic dialog control tools which are always injected)
   const baseAgentTools: Tool[] = agent.listTools();
 
-  // Use only base agent tools - intrinsic tools are handled separately via Dialog
-  const agentTools: Tool[] = baseAgentTools;
+  // Inject intrinsic dialog control tools as function tools (available to all agents).
+  const intrinsicFuncTools: FuncTool[] = [
+    addReminderTool,
+    deleteReminderTool,
+    updateReminderTool,
+    clearMindTool,
+  ];
+  // change_mind is only available in main dialogs (not subdialogs).
+  if (dialog === undefined || dialog.supdialog === undefined) {
+    intrinsicFuncTools.push(changeMindTool);
+  }
 
-  const tellaskTools = agentTools.filter((t): t is TellaskTool => t.type === 'tellask');
+  const agentTools: Tool[] = (() => {
+    const out: Tool[] = [...baseAgentTools];
+    const seenNames = new Set(out.map((t) => t.name));
+    for (const t of intrinsicFuncTools) {
+      if (!seenNames.has(t.name)) {
+        out.push(t);
+        seenNames.add(t.name);
+      }
+    }
+    return out;
+  })();
+
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
   const agentHasShellTools = funcTools.some(
@@ -249,32 +274,16 @@ export async function loadAgentMinds(
     return blocks.join('\n\n');
   })();
 
-  // Generate tool usage text - keep regular and intrinsic tools completely separate
+  // Generate tool usage text (shell policy + toolset prompts; tools themselves are function tools).
   let toolUsageText: string;
-  let intrinsicToolInstructions: string = '';
   let funcToolUsageText: string = '';
   let funcToolRulesText: string = '';
 
-  // Regular tools (from agent)
   toolUsageText = (() => {
-    const perTool =
-      tellaskTools.length > 0
-        ? tellaskTools
-            .map((tool) => {
-              const usage = getTextForLanguage(
-                { i18n: tool.usageDescriptionI18n, fallback: tool.usageDescription },
-                workingLanguage,
-              );
-              return `#### @${tool.name}\n\n${usage}\n`;
-            })
-            .join('\n')
-        : noTellaskToolsText(workingLanguage);
-
     const prefix = [shellPolicyPrompt, toolsetPromptText]
       .filter((b) => b.trim() !== '')
       .join('\n\n');
-    if (prefix === '') return perTool;
-    return `${prefix}\n\n${perTool}`;
+    return prefix;
   })();
   if (funcTools.length > 0) {
     funcToolUsageText = funcTools
@@ -316,11 +325,6 @@ export async function loadAgentMinds(
     funcToolRulesText = formatFuncToolRulesText(workingLanguage);
   }
 
-  // Intrinsic tools (from dialog, if available)
-  if (dialog) {
-    intrinsicToolInstructions = dialog.getIntrinsicToolInstructions();
-  }
-
   const systemPrompt = buildSystemPrompt({
     language: workingLanguage,
     agent,
@@ -329,7 +333,7 @@ export async function loadAgentMinds(
     lessons,
     teamIntro,
     toolUsageText,
-    intrinsicToolInstructions,
+    intrinsicToolInstructions: '',
     funcToolUsageText,
     funcToolRulesText,
   });
@@ -531,6 +535,5 @@ export async function loadAgentMinds(
     systemPrompt,
     memories: groupedOutput.length > 0 ? groupedOutput : memories,
     agentTools,
-    tellaskTools,
   };
 }

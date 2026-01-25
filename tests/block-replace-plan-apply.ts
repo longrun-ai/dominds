@@ -42,21 +42,20 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const plan1 = await previewBlockReplaceTool.call(
-      dlg,
-      alice,
-      '@preview_block_replace doc.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
-      'new\n',
-    );
-    assert.equal(plan1.status, 'completed');
-    const hunk1 = extractHunkId(plan1.result ?? '');
-    const apply1 = await applyFileModificationTool.call(
-      dlg,
-      alice,
-      `@apply_file_modification !${hunk1}`,
-      '',
-    );
-    assert.equal(apply1.status, 'completed');
+    const plan1 = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'doc.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: '',
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      content: 'new\n',
+    });
+    const hunk1 = extractHunkId(plan1);
+    const apply1 = await applyFileModificationTool.call(dlg, alice, { hunk_id: hunk1 });
+    assert.ok(apply1.includes('status: ok'));
     const after1 = await readText(path.join(tmpRoot, 'doc.md'));
     assert.equal(
       after1,
@@ -68,26 +67,24 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc2.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const plan2 = await previewBlockReplaceTool.call(
-      dlg,
-      alice,
-      '@preview_block_replace doc2.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
-      'new\n',
-    );
-    assert.equal(plan2.status, 'completed');
-    const hunk2 = extractHunkId(plan2.result ?? '');
+    const plan2 = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'doc2.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: '',
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      content: 'new\n',
+    });
+    const hunk2 = extractHunkId(plan2);
     await writeText(
       path.join(tmpRoot, 'doc2.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old (changed)', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const apply2 = await applyFileModificationTool.call(
-      dlg,
-      alice,
-      `@apply_file_modification !${hunk2}`,
-      '',
-    );
-    assert.equal(apply2.status, 'failed');
-    assert.ok((apply2.result ?? '').includes('APPLY_REJECTED_CONTENT_CHANGED'));
+    const apply2 = await applyFileModificationTool.call(dlg, alice, { hunk_id: hunk2 });
+    assert.ok(apply2.includes('APPLY_REJECTED_CONTENT_CHANGED'));
 
     // Plan fails on ambiguous anchors when occurrence is not specified.
     await writeText(
@@ -103,45 +100,61 @@ async function main(): Promise<void> {
         '',
       ].join('\n'),
     );
-    const planAmb = await previewBlockReplaceTool.call(
-      dlg,
-      alice,
-      '@preview_block_replace amb.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
-      'x\n',
-    );
-    assert.equal(planAmb.status, 'failed');
-    assert.ok((planAmb.result ?? '').includes('error: ANCHOR_AMBIGUOUS'));
+    const planAmb = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'amb.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: '',
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      content: 'x\n',
+    });
+    assert.ok(planAmb.includes('error: ANCHOR_AMBIGUOUS'));
 
     // Plan fails on missing anchors.
     await writeText(path.join(tmpRoot, 'missing.md'), ['no anchors', ''].join('\n'));
-    const planMissing = await previewBlockReplaceTool.call(
-      dlg,
-      alice,
-      '@preview_block_replace missing.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
-      'x\n',
-    );
-    assert.equal(planMissing.status, 'failed');
-    assert.ok((planMissing.result ?? '').includes('error: ANCHOR_NOT_FOUND'));
+    const planMissing = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'missing.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: '',
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      content: 'x\n',
+    });
+    assert.ok(planMissing.includes('error: ANCHOR_NOT_FOUND'));
 
     // Occurrence out of range.
-    const planOor = await previewBlockReplaceTool.call(
-      dlg,
-      alice,
-      '@preview_block_replace amb.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->" occurrence=3',
-      'x\n',
-    );
-    assert.equal(planOor.status, 'failed');
-    assert.ok((planOor.result ?? '').includes('error: OCCURRENCE_OUT_OF_RANGE'));
+    const planOor = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'amb.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: 3,
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      content: 'x\n',
+    });
+    assert.ok(planOor.includes('error: OCCURRENCE_OUT_OF_RANGE'));
 
     // Empty body fails with CONTENT_REQUIRED.
-    const planEmpty = await previewBlockReplaceTool.call(
-      dlg,
-      alice,
-      '@preview_block_replace doc.md "<!-- BEGIN AUTO -->" "<!-- END AUTO -->"',
-      '',
-    );
-    assert.equal(planEmpty.status, 'failed');
-    assert.ok((planEmpty.result ?? '').includes('error: CONTENT_REQUIRED'));
+    const planEmpty = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'doc.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: '',
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      content: '',
+    });
+    assert.ok(planEmpty.includes('error: CONTENT_REQUIRED'));
 
     console.log('✅ block-replace-plan-apply tests passed');
   } finally {

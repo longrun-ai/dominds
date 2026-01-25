@@ -13,9 +13,17 @@ import type { ChatMessage } from '../llm/client';
 import { formatToolError, formatToolOk } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
-import type { FuncTool, TellaskTool, TellaskToolCallResult, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments } from '../tool';
 
-function wrapTellaskResult(language: LanguageCode, messages: ChatMessage[]): TellaskToolCallResult {
+type ToolCaller = Parameters<FuncTool['call']>[1];
+
+type TxtToolCallResult = {
+  status: 'completed' | 'failed';
+  result: string;
+  messages?: ChatMessage[];
+};
+
+function wrapTxtToolResult(language: LanguageCode, messages: ChatMessage[]): TxtToolCallResult {
   const first = messages[0];
   const text =
     first && 'content' in first && typeof first.content === 'string' ? first.content : '';
@@ -36,11 +44,11 @@ function wrapTellaskResult(language: LanguageCode, messages: ChatMessage[]): Tel
   };
 }
 
-function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
+function ok(result: string, messages?: ChatMessage[]): TxtToolCallResult {
   return { status: 'completed', result, messages };
 }
 
-function failed(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
+function failed(result: string, messages?: ChatMessage[]): TxtToolCallResult {
   return { status: 'failed', result, messages };
 }
 
@@ -72,6 +80,57 @@ function detectStrongDiffOrPatchMarkers(text: string): boolean {
   const hasHeaderOld = /^---\s+\S+/m.test(text);
   const hasHeaderNew = /^\+\+\+\s+\S+/m.test(text);
   return hasHeaderOld && hasHeaderNew;
+}
+
+function requireNonEmptyStringArg(args: ToolArguments, key: string): string {
+  const value = args[key];
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`Invalid arguments: \`${key}\` must be a non-empty string`);
+  }
+  return value;
+}
+
+function optionalStringArg(args: ToolArguments, key: string): string | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`Invalid arguments: \`${key}\` must be a string`);
+  return value;
+}
+
+function optionalBooleanArg(args: ToolArguments, key: string): boolean | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean')
+    throw new Error(`Invalid arguments: \`${key}\` must be a boolean`);
+  return value;
+}
+
+function optionalIntegerArg(args: ToolArguments, key: string): number | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new Error(`Invalid arguments: \`${key}\` must be an integer`);
+  }
+  return value;
+}
+
+function optionalNonEmptyStringArg(args: ToolArguments, key: string): string | undefined {
+  const value = optionalStringArg(args, key);
+  if (value === undefined) return undefined;
+  if (value.trim() === '') return undefined;
+  return value;
+}
+
+function normalizeExistingHunkId(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  const id = trimmed.startsWith('!') ? trimmed.slice(1) : trimmed;
+  if (id === '') return undefined;
+  return id;
+}
+
+function unwrapTxtToolResult(res: TxtToolCallResult): string {
+  return res.result;
 }
 
 async function countFileLinesUtf8(absPath: string): Promise<number> {
@@ -186,62 +245,6 @@ function countTrailingBlankLines(lines: ReadonlyArray<string>): number {
     else break;
   }
   return count;
-}
-
-function splitCommandArgs(raw: string): string[] {
-  const args: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-  let escape = false;
-
-  const flush = (): void => {
-    if (current === '') return;
-    args.push(current);
-    current = '';
-  };
-
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i] ?? '';
-    if (escape) {
-      current += ch;
-      escape = false;
-      continue;
-    }
-    if (!inSingle && ch === '\\') {
-      escape = true;
-      continue;
-    }
-    if (!inDouble && ch === "'" && !inSingle) {
-      inSingle = true;
-      continue;
-    }
-    if (!inDouble && ch === "'" && inSingle) {
-      inSingle = false;
-      continue;
-    }
-    if (!inSingle && ch === '"' && !inDouble) {
-      inDouble = true;
-      continue;
-    }
-    if (!inSingle && ch === '"' && inDouble) {
-      inDouble = false;
-      continue;
-    }
-    if (!inSingle && !inDouble && /\s/.test(ch)) {
-      flush();
-      continue;
-    }
-    current += ch;
-  }
-  flush();
-  return args;
-}
-
-function parseBooleanOption(value: string): boolean | undefined {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return undefined;
 }
 
 type Occurrence = { kind: 'index'; index1: number } | { kind: 'last' };
@@ -445,12 +448,8 @@ function generateHunkId(): string {
   return crypto.randomBytes(4).toString('hex');
 }
 
-function parseOptionalHunkId(arg: string): string | undefined {
-  const trimmed = arg.trim();
-  if (!trimmed.startsWith('!')) return undefined;
-  const id = trimmed.slice(1);
-  if (!/^[a-z0-9_-]{2,32}$/i.test(id)) return undefined;
-  return id;
+function isValidHunkId(id: string): boolean {
+  return /^[a-z0-9_-]{2,32}$/i.test(id);
 }
 
 function parseLineRangeSpec(
@@ -646,167 +645,6 @@ interface ReadFileOptions {
 
 const READ_FILE_CONTENT_CHAR_LIMIT = 100_000;
 
-type ReadFileParseResult =
-  | {
-      kind: 'ok';
-      path: string;
-      options: ReadFileOptions;
-      flags: { maxLinesSpecified: boolean; rangeSpecified: boolean };
-    }
-  | {
-      kind: 'error';
-      error:
-        | 'invalid_format'
-        | 'path_required'
-        | 'missing_option_value'
-        | 'invalid_option_value'
-        | 'unknown_option'
-        | 'unexpected_token';
-      option?: string;
-      expected?: string;
-      value?: string;
-      token?: string;
-    };
-
-function parseReadFileOptions(headLine: string): ReadFileParseResult {
-  const trimmed = headLine.trim();
-
-  if (!trimmed.startsWith('@read_file')) {
-    return { kind: 'error', error: 'invalid_format' };
-  }
-
-  const afterToolName = trimmed.slice('@read_file'.length).trim();
-  const parts = afterToolName.split(/\s+/).filter((p) => p.trim() !== '');
-
-  if (parts.length === 0) {
-    return { kind: 'error', error: 'path_required' };
-  }
-
-  // Path is now at the end
-  const path = parts[parts.length - 1];
-  if (!path || path.startsWith('!')) {
-    return { kind: 'error', error: 'path_required' };
-  }
-  const options: ReadFileOptions = {
-    decorateLinenos: true, // default (line numbers shown unless explicitly disabled)
-    maxLines: 500, // default
-  };
-  const flags = { maxLinesSpecified: false, rangeSpecified: false };
-
-  // Parse options (all parts except the last one which is the path)
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i];
-
-    if (part === '!no-linenos') {
-      options.decorateLinenos = false;
-      continue;
-    }
-
-    if (part === '!range') {
-      const rangePart = parts[i + 1];
-      if (!rangePart || i + 1 >= parts.length - 1) {
-        return {
-          kind: 'error',
-          error: 'missing_option_value',
-          option: '!range',
-          expected: '<start~end>',
-        };
-      }
-
-      const rangeMatch = rangePart.match(/^(\d+)?~(\d+)?$/);
-      if (!rangeMatch) {
-        return {
-          kind: 'error',
-          error: 'invalid_option_value',
-          option: '!range',
-          value: rangePart,
-        };
-      }
-
-      const [, startStr, endStr] = rangeMatch;
-
-      flags.rangeSpecified = true;
-
-      if (startStr) {
-        const start = parseInt(startStr, 10);
-        if (Number.isNaN(start) || start <= 0) {
-          return {
-            kind: 'error',
-            error: 'invalid_option_value',
-            option: '!range',
-            value: startStr,
-          };
-        }
-        options.rangeStart = start;
-      }
-
-      if (endStr) {
-        const end = parseInt(endStr, 10);
-        if (Number.isNaN(end) || end <= 0) {
-          return {
-            kind: 'error',
-            error: 'invalid_option_value',
-            option: '!range',
-            value: endStr,
-          };
-        }
-        options.rangeEnd = end;
-      }
-
-      if (
-        options.rangeStart !== undefined &&
-        options.rangeEnd !== undefined &&
-        options.rangeStart > options.rangeEnd
-      ) {
-        return {
-          kind: 'error',
-          error: 'invalid_option_value',
-          option: '!range',
-          value: rangePart,
-        };
-      }
-
-      i++; // consume range spec
-      continue;
-    }
-
-    if (part === '!max-lines') {
-      const maxLinesPart = parts[i + 1];
-      if (!maxLinesPart || i + 1 >= parts.length - 1) {
-        return {
-          kind: 'error',
-          error: 'missing_option_value',
-          option: '!max-lines',
-          expected: '<number>',
-        };
-      }
-
-      const maxLines = parseInt(maxLinesPart, 10);
-      if (Number.isNaN(maxLines) || maxLines <= 0) {
-        return {
-          kind: 'error',
-          error: 'invalid_option_value',
-          option: '!max-lines',
-          value: maxLinesPart,
-        };
-      }
-
-      flags.maxLinesSpecified = true;
-      options.maxLines = maxLines;
-      i++; // consume value
-      continue;
-    }
-
-    if (part.startsWith('!')) {
-      return { kind: 'error', error: 'unknown_option', option: part };
-    }
-
-    return { kind: 'error', error: 'unexpected_token', token: part };
-  }
-
-  return { kind: 'ok', path, options, flags };
-}
-
 async function readFileContentBounded(
   absPath: string,
   options: ReadFileOptions,
@@ -888,94 +726,34 @@ async function readFileContentBounded(
   });
 }
 
-export const readFileTool: TellaskTool = {
-  type: 'tellask',
+export const readFileTool = {
+  type: 'func',
   name: 'read_file',
-  backfeeding: true,
-  usageDescription: `Read a text file (bounded) relative to workspace. 
-Usage: !?@read_file [options] <path>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
-
-Options:
-  !no-linenos                     - Disable line numbers (default: show line numbers)
-  !range <range>                  - Show specific line range
-  !max-lines <number>             - Limit max lines shown (default: 500)
-
-Output bounds:
-  Content is truncated to stay below ~100KB characters total.
-
-Range formats:
-  10~50     - Lines 10 to 50
-  300~      - From line 300 to end
-  ~20       - From start to line 20
-  ~         - No range limit (entire file)
-
-Examples:
-!?@read_file src/main.ts
-!?@read_file !no-linenos src/main.ts
-!?@read_file !range 10~50 src/main.ts
-!?@read_file !max-lines 100 !range 1~500 src/main.ts
-!?@read_file !range 300~ src/main.ts
-!?@read_file !range ~20 src/main.ts`,
-  usageDescriptionI18n: {
-    en: `Read a text file (bounded) relative to workspace.
-Usage: !?@read_file [options] <path>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools.
-
-Options:
-  !no-linenos                     - Disable line numbers (default: show line numbers)
-  !range <range>                  - Show specific line range
-  !max-lines <number>             - Limit max lines shown (default: 500)
-
-Output bounds:
-  Content is truncated to stay below ~100KB characters total.
-
-Range formats:
-  10~50     - Lines 10 to 50
-  300~      - From line 300 to end
-  ~20       - From start to line 20
-  ~         - No range limit (entire file)
-
-Examples:
-!?@read_file src/main.ts
-!?@read_file !no-linenos src/main.ts
-!?@read_file !range 10~50 src/main.ts
-!?@read_file !max-lines 100 !range 1~500 src/main.ts
-!?@read_file !range 300~ src/main.ts
-!?@read_file !range ~20 src/main.ts`,
-    zh: `读取工作区内的文本文件（有上限/可截断）。
-用法：!?@read_file [options] <path>
-
-注意：
-  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具不可访问。
-
-选项：
-  !no-linenos                     - 不显示行号（默认：显示行号）
-  !range <range>                  - 读取指定行范围
-  !max-lines <number>             - 最多显示行数（默认：500）
-
-输出上限：
-  内容会被截断以确保返回的字符总数低于约 100KB。
-
-范围格式：
-  10~50     - 第 10 行到第 50 行
-  300~      - 从第 300 行到文件末尾
-  ~20       - 从开头到第 20 行
-  ~         - 不限制范围（整文件）
-
-示例：
-!?@read_file src/main.ts
-!?@read_file !no-linenos src/main.ts
-!?@read_file !range 10~50 src/main.ts
-!?@read_file !max-lines 100 !range 1~500 src/main.ts
-!?@read_file !range 300~ src/main.ts
-!?@read_file !range ~20 src/main.ts`,
+  description: 'Read a text file (bounded) relative to workspace.',
+  descriptionI18n: {
+    en: 'Read a text file (bounded) relative to workspace.',
+    zh: '读取工作区内的文本文件（有上限/可截断）。',
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string', description: 'Workspace-relative path.' },
+      range: {
+        type: 'string',
+        description:
+          "Optional line range string: '10~50' | '300~' | '~20' | '~' (1-based, inclusive).",
+      },
+      max_lines: { type: 'integer', description: 'Max lines to show (default: 500).' },
+      show_linenos: {
+        type: 'boolean',
+        description: 'Whether to show line numbers (default: true).',
+      },
+    },
+    required: ['path'],
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, caller, args: ToolArguments): Promise<string> => {
     const language = getWorkLanguage();
     let labels:
       | {
@@ -1001,56 +779,72 @@ Examples:
     if (language === 'zh') {
       labels = {
         formatError:
-          '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**多个工具调用用空行分隔即可：**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
+          '请使用正确的函数工具参数调用 `read_file`。\n\n' +
+          '**期望格式：** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
+          '说明（Codex provider 要求函数工具参数字段全部 `required`）：\n' +
+          '- `range: \"\"` 表示不指定范围\n' +
+          '- `max_lines: 0` 表示使用默认值（500）\n\n' +
+          '**示例：**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **错误：** ${msg}\n\n` +
-          '请使用正确的文件读取格式。\n\n**期望格式：** `!?@read_file [options] <path>`\n\n**示例：**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**多个工具调用用空行分隔即可：**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
+          '请使用正确的函数工具参数调用 `read_file`。\n\n' +
+          '**期望格式：** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
+          '说明（Codex provider 要求函数工具参数字段全部 `required`）：\n' +
+          '- `range: \"\"` 表示不指定范围\n' +
+          '- `max_lines: 0` 表示使用默认值（500）\n\n' +
+          '**示例：**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
         fileLabel: '文件',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
           `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
         warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
           `⚠️ **警告：** 输出已截断（字符总数上限约 ${maxChars}，当前显示 ${shown} 行）\n\n`,
         warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
-          `⚠️ **警告：** \`!max-lines\`（${maxLines}）与 \`!range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
+          `⚠️ **警告：** \`max_lines\`（${maxLines}）与 \`range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
         hintUseRangeNext: (relPath: string, start: number, end: number) =>
-          `💡 **提示：** 可使用 \`!range\` 继续读取下一段，例如：\`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+          `💡 **提示：** 可继续调用 \`read_file\` 读取下一段，例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"${start}~${end}\", \"max_lines\": 0, \"show_linenos\": true })\`\n\n`,
         hintLargeFileStrategy: (relPath: string) =>
-          `💡 **大文件策略：** 建议分多轮分析：每轮用 \`!range\` 读取一段、完成总结后，在新一轮先执行 \`!?@clear_mind\`（降低上下文占用），再读取下一段（例如：\`!?@read_file !range 1~500 ${relPath}\`、\`!?@read_file !range 201~400 ${relPath}\`）。\n\n`,
+          `💡 **大文件策略：** 建议分多轮分析：每轮读取一段、完成总结后，在新一轮先调用函数工具 \`clear_mind({ \"reminder_content\": \"\" })\`（降低上下文占用），再继续读取下一段（例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`、\`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`）。\n\n`,
         sizeLabel: '大小',
         totalLinesLabel: '总行数',
         failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
-          `INVALID_FORMAT：检测到疑似多个工具调用被合并到同一个诉请块 headline（例如出现 \`${toolName}\`）。\n\n` +
-          '多个工具调用必须用空行分隔，例如：\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
+          `INVALID_FORMAT：检测到疑似把多个工具调用文本混入了 \`read_file\` 的输入（例如出现 \`${toolName}\`）。\n\n` +
+          '请把不同工具拆分为独立调用（不要把 `@ripgrep_*` 等调用文本拼接到 `path/range` 里）。',
       };
     } else {
       labels = {
         formatError:
-          'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**Separate multiple tool calls with a blank line:**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
+          'Please call the function tool `read_file` with valid arguments.\n\n' +
+          '**Expected:** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
+          'Note (Codex provider requires all args to be `required`):\n' +
+          '- use `range: \"\"` for unset\n' +
+          '- use `max_lines: 0` for default (500)\n\n' +
+          '**Examples:**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **Error:** ${msg}\n\n` +
-          'Please use the correct format for reading files.\n\n**Expected format:** `!?@read_file [options] <path>`\n\n**Examples:**\n```\n!?@read_file src/main.ts\n!?@read_file !range 10~50 src/main.ts\n!?@read_file !range 300~ src/main.ts\n```\n\n' +
-          '**Separate multiple tool calls with a blank line:**\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
+          'Please call the function tool `read_file` with valid arguments.\n\n' +
+          '**Expected:** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
+          'Note (Codex provider requires all args to be `required`):\n' +
+          '- use `range: \"\"` for unset\n' +
+          '- use `max_lines: 0` for default (500)\n\n' +
+          '**Examples:**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
         fileLabel: 'File',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
           `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
         warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
           `⚠️ **Warning:** Output was truncated (~${maxChars} character cap; showing ${shown} lines)\n\n`,
         warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
-          `⚠️ **Warning:** \`!max-lines\` (${maxLines}) contradicts \`!range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
+          `⚠️ **Warning:** \`max_lines\` (${maxLines}) contradicts \`range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
         hintUseRangeNext: (relPath: string, start: number, end: number) =>
-          `💡 **Hint:** Use \`!range\` to continue reading, e.g. \`!?@read_file !range ${start}~${end} ${relPath}\`\n\n`,
+          `💡 **Hint:** Call \`read_file\` again to continue reading, e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"${start}~${end}\", \"max_lines\": 0, \"show_linenos\": true })\`\n\n`,
         hintLargeFileStrategy: (relPath: string) =>
-          `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice via \`!range\`, summarize, then start a new round and run \`!?@clear_mind\` (less context) before reading the next slice (e.g. \`!?@read_file !range 1~500 ${relPath}\`, then \`!?@read_file !range 201~400 ${relPath}\`).\n\n`,
+          `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice, summarize, then start a new round and call the function tool \`clear_mind({ \"reminder_content\": \"\" })\` (less context) before reading the next slice (e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`, then \`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`).\n\n`,
         sizeLabel: 'Size',
         totalLinesLabel: 'Total lines',
         failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
-          `INVALID_FORMAT: Detected what looks like multiple tool calls merged into a single tellask headline (e.g. \`${toolName}\`).\n\n` +
-          'Multiple tool calls must be separated by a blank line, for example:\n```\n!?@read_file src/main.ts\n\n!?@ripgrep_files \"pattern\" .\n```',
+          `INVALID_FORMAT: Detected what looks like tool-call text mixed into \`read_file\` input (e.g. \`${toolName}\`).\n\n` +
+          'Split different tools into separate calls (do not paste `@ripgrep_*` or other tool-call text into `path/range`).',
       };
     }
 
@@ -1059,65 +853,122 @@ Examples:
       throw new Error('Failed to initialize labels');
     }
 
-    try {
-      const trimmed = headLine.trimEnd();
+    const errorMsg = (zh: string, en: string): string => (language === 'zh' ? zh : en);
+
+    const pathValue = args['path'];
+    if (typeof pathValue !== 'string' || pathValue.trim() === '') {
+      return labels.formatError;
+    }
+    const rel = pathValue.trim();
+
+    const showLinenosValue = args['show_linenos'];
+    const showLinenos =
+      showLinenosValue === undefined
+        ? true
+        : typeof showLinenosValue === 'boolean'
+          ? showLinenosValue
+          : null;
+    if (showLinenos === null) {
+      return labels.formatErrorWithReason(
+        errorMsg('`show_linenos` 必须是 boolean', '`show_linenos` must be a boolean'),
+      );
+    }
+
+    const maxLinesValue = args['max_lines'];
+    const maxLinesSpecified = maxLinesValue !== undefined && maxLinesValue !== 0;
+    const maxLines =
+      maxLinesValue === undefined || maxLinesValue === 0
+        ? 500
+        : typeof maxLinesValue === 'number' && Number.isInteger(maxLinesValue) && maxLinesValue > 0
+          ? maxLinesValue
+          : null;
+    if (maxLines === null) {
+      return labels.formatErrorWithReason(
+        errorMsg(
+          '`max_lines` 必须是正整数（或传 0 表示默认值）',
+          '`max_lines` must be a positive integer (or 0 for default)',
+        ),
+      );
+    }
+
+    const rangeValue = args['range'];
+    const rangeStr =
+      rangeValue === undefined ? '' : typeof rangeValue === 'string' ? rangeValue.trim() : null;
+    if (rangeStr === null) {
+      return labels.formatErrorWithReason(
+        errorMsg(
+          '`range` 必须是 string（传 \"\" 表示不指定）',
+          '`range` must be a string (use "" for unset)',
+        ),
+      );
+    }
+    const rangeSpecified = rangeStr !== '';
+
+    const detectMultiToolCalls = (input: string): string | null => {
+      const trimmed = input.trimEnd();
       const lines = trimmed.split(/\r?\n/);
-      if (lines.length > 1) {
-        const suspicious = lines.slice(1).find((l) => l.trimStart().startsWith('@'));
-        if (suspicious) {
-          const toolName = suspicious.trimStart().split(/\s+/)[0];
-          const content = labels.invalidFormatMultiToolCalls(toolName);
-          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-        }
+      if (lines.length <= 1) return null;
+      const suspicious = lines.slice(1).find((l) => l.trimStart().startsWith('@'));
+      if (!suspicious) return null;
+      return suspicious.trimStart().split(/\s+/)[0] ?? null;
+    };
+
+    const suspiciousTool =
+      detectMultiToolCalls(rel) ?? (rangeSpecified ? detectMultiToolCalls(rangeStr) : null);
+    if (suspiciousTool) {
+      return labels.invalidFormatMultiToolCalls(suspiciousTool);
+    }
+
+    const options: ReadFileOptions = { decorateLinenos: showLinenos, maxLines };
+    if (rangeSpecified) {
+      const match = rangeStr.match(/^(\d+)?~(\d+)?$/);
+      if (!match) {
+        return labels.formatErrorWithReason(
+          errorMsg(
+            '`range` 无效（期望：\"start~end\" / \"start~\" / \"~end\" / \"~\"）',
+            'Invalid `range` (expected "start~end" / "start~" / "~end" / "~")',
+          ),
+        );
       }
-
-      const parsed = parseReadFileOptions(headLine);
-      if (parsed.kind === 'error') {
-        let reason = '';
-        const tokenHint = parsed.error === 'unexpected_token' ? (parsed.token ?? '') : '';
-        const tokenLooksLikeToolCall =
-          tokenHint.includes('!?@') || /@[-a-zA-Z0-9_]{1,64}/.test(tokenHint);
-        if (language === 'zh') {
-          if (parsed.error === 'unknown_option') {
-            reason = `无法识别的选项：${parsed.option ?? ''}`;
-          } else if (parsed.error === 'unexpected_token') {
-            reason = `多余参数：${parsed.token ?? ''}`;
-            if (tokenLooksLikeToolCall) {
-              reason +=
-                '（疑似把另一个工具调用并入了同一诉请块 headline；多个工具调用需用普通行分隔）';
-            }
-          } else if (parsed.error === 'missing_option_value') {
-            reason = `${parsed.option ?? ''} 缺少参数（期望 ${parsed.expected ?? ''}）`;
-          } else if (parsed.error === 'invalid_option_value') {
-            reason = `${parsed.option ?? ''} 的参数无效：${parsed.value ?? ''}`;
-          }
-        } else {
-          if (parsed.error === 'unknown_option') {
-            reason = `Unrecognized option: ${parsed.option ?? ''}`;
-          } else if (parsed.error === 'unexpected_token') {
-            reason = `Unexpected token: ${parsed.token ?? ''}`;
-            if (tokenLooksLikeToolCall) {
-              reason +=
-                ' (It looks like another tool call was merged into the same tellask headline; separate tool calls with a normal line.)';
-            }
-          } else if (parsed.error === 'missing_option_value') {
-            reason = `Missing value for ${parsed.option ?? ''} (expected ${parsed.expected ?? ''})`;
-          } else if (parsed.error === 'invalid_option_value') {
-            reason = `Invalid value for ${parsed.option ?? ''}: ${parsed.value ?? ''}`;
-          }
+      const [, startStr, endStr] = match;
+      if (startStr) {
+        const start = Number.parseInt(startStr, 10);
+        if (!Number.isFinite(start) || start <= 0) {
+          return labels.formatErrorWithReason(
+            errorMsg(
+              '`range` 起始行号无效（必须是正整数）',
+              'Invalid `range` start (must be a positive integer)',
+            ),
+          );
         }
-
-        const content =
-          parsed.error === 'invalid_format' || parsed.error === 'path_required'
-            ? labels.formatError
-            : labels.formatErrorWithReason(reason);
-        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        options.rangeStart = start;
       }
+      if (endStr) {
+        const end = Number.parseInt(endStr, 10);
+        if (!Number.isFinite(end) || end <= 0) {
+          return labels.formatErrorWithReason(
+            errorMsg(
+              '`range` 结束行号无效（必须是正整数）',
+              'Invalid `range` end (must be a positive integer)',
+            ),
+          );
+        }
+        options.rangeEnd = end;
+      }
+      if (
+        options.rangeStart !== undefined &&
+        options.rangeEnd !== undefined &&
+        options.rangeStart > options.rangeEnd
+      ) {
+        return labels.formatErrorWithReason(
+          errorMsg('`range` 无效（start 必须 <= end）', 'Invalid `range` (start must be <= end)'),
+        );
+      }
+    }
 
-      const rel = parsed.path;
-      const flags = parsed.flags;
-      const optionsRequested = parsed.options;
-      const options: ReadFileOptions = { ...optionsRequested };
+    const flags = { maxLinesSpecified, rangeSpecified };
+
+    try {
       let maxLinesRangeMismatch: { maxLines: number; rangeLines: number; used: number } | null =
         null;
       if (flags.maxLinesSpecified && flags.rangeSpecified && options.rangeEnd !== undefined) {
@@ -1132,7 +983,7 @@ Examples:
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
         const content = getAccessDeniedMessage('read', rel, language);
-        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return content;
       }
 
       const file = ensureInsideWorkspace(rel);
@@ -1185,22 +1036,22 @@ Examples:
       }
       markdown += '```';
 
-      return ok(markdown, [{ type: 'environment_msg', role: 'user', content: markdown }]);
+      return markdown;
     } catch (error: unknown) {
       if (
         error instanceof Error &&
         (error.message === 'Invalid format' || error.message === 'Path required')
       ) {
         const content = labels.formatError;
-        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+        return content;
       }
 
       const msg = error instanceof Error ? error.message : String(error);
       const content = labels.failedToRead(msg);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      return content;
     }
   },
-};
+} satisfies FuncTool;
 
 type OverwriteContentFormat = 'text' | 'markdown' | 'json' | 'diff' | 'patch';
 
@@ -1230,7 +1081,7 @@ const overwriteEntireFileSchema = {
     content_format: {
       type: 'string',
       description:
-        "Optional content format hint. If omitted, Dominds refuses to overwrite when content looks like a diff/patch (use preview/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
+        "Optional content format hint. If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use preview/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
     },
   },
   required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
@@ -1239,6 +1090,7 @@ const overwriteEntireFileSchema = {
 function parseOverwriteContentFormat(value: unknown): OverwriteContentFormat | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') return undefined;
+  if (value.trim() === '') return undefined;
   switch (value) {
     case 'text':
     case 'markdown':
@@ -1284,15 +1136,23 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
     throw new Error('Invalid `content` (expected string)');
   }
 
-  const contentFormat = parseOverwriteContentFormat(args['content_format']);
-  if (
-    'content_format' in args &&
-    args['content_format'] !== undefined &&
-    contentFormat === undefined
-  ) {
-    throw new Error(
-      'Invalid `content_format` (expected one of: text, markdown, json, diff, patch)',
-    );
+  const rawContentFormat = args['content_format'];
+  let contentFormat: OverwriteContentFormat | undefined;
+  if (rawContentFormat === undefined) {
+    contentFormat = undefined;
+  } else if (typeof rawContentFormat === 'string') {
+    if (rawContentFormat.trim() === '') {
+      contentFormat = undefined;
+    } else {
+      contentFormat = parseOverwriteContentFormat(rawContentFormat);
+      if (contentFormat === undefined) {
+        throw new Error(
+          'Invalid `content_format` (expected one of: text, markdown, json, diff, patch)',
+        );
+      }
+    }
+  } else {
+    throw new Error('Invalid `content_format` (expected string)');
   }
 
   return {
@@ -1453,649 +1313,560 @@ export const overwriteEntireFileTool: FuncTool = {
   },
 };
 
-export const previewFileModificationTool: TellaskTool = {
-  type: 'tellask',
-  name: 'preview_file_modification',
-  backfeeding: true,
-  usageDescription: `Preview a single-file edit by line range (does not write).
-Usage: !?@preview_file_modification <path> <line~range> [!existing-hunk-id]
-!?<new content lines in body>
-
-- Empty body deletes the target range.
-- Range formats: 10~50 | 300~ | ~20 | ~ | 42 | N~ (append if N=(last_line+1)).
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-  usageDescriptionI18n: {
-    en: `Preview a single-file edit by line range (does not write).
-Usage: !?@preview_file_modification <path> <line~range> [!existing-hunk-id]
-!?<new content lines in body>
-
-- Empty body deletes the target range.
-- Range formats: 10~50 | 300~ | ~20 | ~ | 42 | N~ (append if N=(last_line+1)).
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-    zh: `按行号范围预览单文件修改（不会立刻写入）。
-用法：!?@preview_file_modification <path> <line~range> [!existing-hunk-id]
-!?<正文为新内容行>
-
-- 正文可为空：删除目标范围。
-- 范围格式：10~50 / 300~ / ~20 / ~ / 42 / N~（若 N=最后一行+1，则表示追加）。
-- 返回：YAML + unified diff + hunk_id（后续单独 apply）。`,
-  },
-  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const labels =
-      language === 'zh'
-        ? {
-            invalidFormat:
-              '错误：格式不正确。\n\n期望格式：`!?@preview_file_modification <path> <line~range> [!existing-hunk-id]`',
-            filePathRequired: '错误：需要提供文件路径。',
-            rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
-            fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
-            planned: (id: string, p: string) => `✅ 已规划：\`!${id}\` → \`${p}\``,
-            next: (id: string) =>
-              `下一步：执行 \`!?@apply_file_modification !${id}\` 来确认并写入。`,
-            invalidHunkId: '错误：hunk id 格式无效（期望 `!<hunk-id>`）。',
-            unknownHunkId: (id: string) =>
-              `错误：hunk id \`!${id}\` 不存在（可能已过期/已被应用）。不支持自定义 hunk id；新规划请省略第三个参数，由工具自动生成。`,
-            wrongOwner: (id: string) => `错误：hunk id \`!${id}\` 不是由当前成员规划的，不能覆写。`,
-            planFailed: (msg: string) => `错误：生成修改规划失败：${msg}`,
-          }
-        : {
-            invalidFormat:
-              'Error: Invalid format.\n\nExpected: `!?@preview_file_modification <path> <line~range> [!existing-hunk-id]`',
-            filePathRequired: 'Error: File path is required.',
-            rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
-            fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
-            planned: (id: string, p: string) => `✅ Planned \`!${id}\` for \`${p}\``,
-            next: (id: string) =>
-              `Next: run \`!?@apply_file_modification !${id}\` to confirm and write.`,
-            invalidHunkId: 'Error: invalid hunk id format (expected `!<hunk-id>`).',
-            unknownHunkId: (id: string) =>
-              `Error: hunk id \`!${id}\` not found (expired or already applied). Custom hunk ids are not allowed; omit the third argument to generate a new one.`,
-            wrongOwner: (id: string) =>
-              `Error: hunk id \`!${id}\` was planned by a different member; cannot overwrite.`,
-            planFailed: (msg: string) => `Error planning modification: ${msg}`,
-          };
-
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@preview_file_modification')) {
-      const content = labels.invalidFormat;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const afterToolName = trimmed.slice('@preview_file_modification'.length).trim();
-    if (!afterToolName) {
-      const content = labels.filePathRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const parts = afterToolName.split(/\s+/).filter((p) => p.length > 0);
-    if (parts.length > 3) {
-      const content = labels.invalidFormat;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    const filePath = parts[0] ?? '';
-    const rangeSpec = parts[1] ?? '';
-    const maybeId = parts[2] ?? '';
-    const requestedId = parseOptionalHunkId(maybeId);
-    if (maybeId && !requestedId) {
-      const content = labels.invalidHunkId;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (!filePath) {
-      const content = labels.filePathRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (!rangeSpec) {
-      const content = labels.rangeRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    // Check write access
-    if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    try {
-      pruneExpiredPlannedMods(Date.now());
-      pruneExpiredPlannedBlockReplaces(Date.now());
-      const fullPath = ensureInsideWorkspace(filePath);
-      if (requestedId) {
-        const existing = plannedModsById.get(requestedId);
-        if (!existing) {
-          const content = labels.unknownHunkId(requestedId);
-          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+async function runPreviewFileModification(
+  caller: ToolCaller,
+  filePath: string,
+  rangeSpec: string,
+  requestedId: string | undefined,
+  inputBody: string,
+): Promise<TxtToolCallResult> {
+  const language = getWorkLanguage();
+  const labels =
+    language === 'zh'
+      ? {
+          invalidFormat:
+            '错误：参数不正确。\n\n期望：调用函数工具 `preview_file_modification({ path, range, existing_hunk_id, content })`。\n（Codex provider 要求参数字段全部 required：`existing_hunk_id: \"\"` 表示生成新 hunk；`content: \"\"` 可用于删除范围内内容。）',
+          filePathRequired: '错误：需要提供文件路径。',
+          rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
+          fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
+          planned: (id: string, p: string) => `✅ 已规划：\`${id}\` → \`${p}\``,
+          next: (id: string) =>
+            `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${id}\" }`,
+          invalidHunkId: '错误：hunk id 格式无效（例如 `a1b2c3d4`）。',
+          unknownHunkId: (id: string) =>
+            `错误：hunk id \`${id}\` 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 \`existing_hunk_id\` 设为空字符串。`,
+          wrongOwner: (id: string) => `错误：hunk id \`${id}\` 不是由当前成员规划的，不能覆写。`,
+          planFailed: (msg: string) => `错误：生成修改规划失败：${msg}`,
         }
-        if (existing.plannedBy !== caller.id) {
-          const content = labels.wrongOwner(requestedId);
-          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-        if (existing.kind !== 'range') {
-          const content =
-            language === 'zh'
-              ? `错误：hunk id \`!${requestedId}\` 不是由 preview_file_modification 生成的，不能用该工具覆写。`
-              : `Error: hunk id \`!${requestedId}\` was not generated by preview_file_modification; cannot overwrite with this tool.`;
-          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-        }
+      : {
+          invalidFormat:
+            'Error: Invalid args.\n\nExpected: call the function tool `preview_file_modification({ path, range, existing_hunk_id, content })`.\n(Codex provider requires all args to be required: `existing_hunk_id: \"\"` means generate a new hunk; `content: \"\"` can be used to delete the range.)',
+          filePathRequired: 'Error: File path is required.',
+          rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
+          fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
+          planned: (id: string, p: string) => `✅ Planned \`${id}\` for \`${p}\``,
+          next: (id: string) =>
+            `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${id}\" }.`,
+          invalidHunkId: 'Error: invalid hunk id format (e.g. `a1b2c3d4`).',
+          unknownHunkId: (id: string) =>
+            `Error: hunk id \`${id}\` not found (expired or already applied). Custom new ids are not allowed; set \`existing_hunk_id\` to an empty string to generate a new one.`,
+          wrongOwner: (id: string) =>
+            `Error: hunk id \`${id}\` was planned by a different member; cannot overwrite.`,
+          planFailed: (msg: string) => `Error planning modification: ${msg}`,
+        };
+
+  if (!filePath) {
+    const content = labels.filePathRequired;
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (!rangeSpec) {
+    const content = labels.rangeRequired;
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+    const content = labels.invalidHunkId;
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+
+  // Check write access
+  if (!hasWriteAccess(caller, filePath)) {
+    const content = getAccessDeniedMessage('write', filePath, language);
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+
+  try {
+    pruneExpiredPlannedMods(Date.now());
+    pruneExpiredPlannedBlockReplaces(Date.now());
+    const fullPath = ensureInsideWorkspace(filePath);
+    if (requestedId) {
+      const existing = plannedModsById.get(requestedId);
+      if (!existing) {
+        const content = labels.unknownHunkId(requestedId);
+        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
-
-      // Check if file exists
-      if (!fsSync.existsSync(fullPath)) {
-        const content = labels.fileDoesNotExist(filePath);
-        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+      if (existing.plannedBy !== caller.id) {
+        const content = labels.wrongOwner(requestedId);
+        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
-
-      // Read current file content
-      const currentContent = fsSync.readFileSync(fullPath, 'utf8');
-      const currentLines = splitFileTextToLines(currentContent);
-
-      const totalLines = rangeTotalLines(currentLines);
-      const parsed = parseLineRangeSpec(rangeSpec, totalLines);
-      if (!parsed.ok) {
+      if (existing.kind !== 'range') {
         const content =
           language === 'zh'
-            ? `错误：行号范围无效：${parsed.error}`
-            : `Error: invalid line range: ${parsed.error}`;
-        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+            ? `错误：hunk id \`${requestedId}\` 不是由 preview_file_modification 生成的，不能用该工具覆写。`
+            : `Error: hunk id \`${requestedId}\` was not generated by preview_file_modification; cannot overwrite with this tool.`;
+        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
-
-      const range = parsed.range;
-      const startIndex0 = range.kind === 'append' ? totalLines : range.startLine - 1;
-      const deleteCount = range.kind === 'append' ? 0 : range.endLine - range.startLine + 1;
-      const newLines = splitPlannedBodyLines(inputBody);
-      const oldLines = currentLines.slice(startIndex0, startIndex0 + deleteCount);
-      const { contextBefore, contextAfter } = computeContextWindow(
-        currentLines,
-        startIndex0,
-        deleteCount,
-      );
-
-      const unifiedDiff = buildUnifiedSingleHunkDiff(
-        filePath,
-        currentLines,
-        startIndex0,
-        deleteCount,
-        newLines,
-      );
-
-      const nowMs = Date.now();
-      const action: PlannedRangeAction =
-        range.kind === 'append' ? 'append' : newLines.length === 0 ? 'delete' : 'replace';
-
-      const hunkId = (() => {
-        if (requestedId) return requestedId;
-        for (let i = 0; i < 10; i += 1) {
-          const id = generateHunkId();
-          if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
-        }
-        throw new Error('Failed to generate a unique hunk id');
-      })();
-      const planned: PlannedRangeModification = {
-        kind: 'range',
-        action,
-        hunkId,
-        plannedBy: caller.id,
-        createdAtMs: nowMs,
-        expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
-        relPath: filePath,
-        absPath: fullPath,
-        range,
-        startIndex0,
-        deleteCount,
-        contextBefore,
-        contextAfter,
-        oldLines,
-        newLines,
-        unifiedDiff,
-        plannedFileDigestSha256: action === 'append' ? sha256HexUtf8(currentContent) : undefined,
-      };
-      plannedModsById.set(hunkId, planned);
-
-      const rangeLabel =
-        range.kind === 'append' ? `${range.startLine}~` : `${range.startLine}~${range.endLine}`;
-
-      const reviseHint =
-        language === 'zh'
-          ? `（可选：用 \`!?@preview_file_modification ${filePath} ${rangeSpec} !${hunkId}\` 重新规划并覆写该 hunk。）`
-          : `Optional: revise by running \`!?@preview_file_modification ${filePath} ${rangeSpec} !${hunkId}\` with corrected body.`;
-
-      const resolvedStart = range.kind === 'append' ? range.startLine : range.startLine;
-      const resolvedEnd =
-        range.kind === 'append'
-          ? range.startLine + Math.max(0, newLines.length - 1)
-          : range.endLine;
-
-      const evidenceBefore = previewWindow(currentLines, startIndex0 - 2, 2);
-      const evidenceRange = buildRangePreview(oldLines);
-      const evidenceAfter = previewWindow(currentLines, startIndex0 + deleteCount, 2);
-
-      const linesOld = deleteCount;
-      const linesNew = newLines.length;
-      const delta = linesNew - linesOld;
-
-      const summary =
-        language === 'zh'
-          ? `Plan：${action} 第 ${resolvedStart}–${resolvedEnd} 行（old=${linesOld}, new=${linesNew}, delta=${delta}）；匹配=exact；hunk_id=${hunkId}.`
-          : `Plan: ${action} lines ${resolvedStart}–${resolvedEnd} (old=${linesOld}, new=${linesNew}, delta=${delta}); matched exact; hunk_id=${hunkId}.`;
-
-      const fileEofHasNewline = currentContent === '' || currentContent.endsWith('\n');
-      const normalizedFileEofNewlineAdded = currentContent !== '' && !currentContent.endsWith('\n');
-      const contentEofHasNewline = inputBody === '' || inputBody.endsWith('\n');
-      const normalizedContentEofNewlineAdded = inputBody !== '' && !inputBody.endsWith('\n');
-
-      const yaml = [
-        `status: ok`,
-        `mode: preview_file_modification`,
-        `path: ${yamlQuote(filePath)}`,
-        `hunk_id: ${yamlQuote(hunkId)}`,
-        `expires_at_ms: ${planned.expiresAtMs}`,
-        `action: ${action}`,
-        `range:`,
-        `  input: ${yamlQuote(rangeSpec)}`,
-        `  resolved:`,
-        `    start: ${resolvedStart}`,
-        `    end: ${resolvedEnd}`,
-        `file_line_count: ${fileLineCount(currentLines)}`,
-        `lines:`,
-        `  old: ${linesOld}`,
-        `  new: ${linesNew}`,
-        `  delta: ${delta}`,
-        `match: exact`,
-        `normalized:`,
-        `  file_eof_has_newline: ${fileEofHasNewline}`,
-        `  content_eof_has_newline: ${contentEofHasNewline}`,
-        `  normalized_file_eof_newline_added: ${normalizedFileEofNewlineAdded}`,
-        `  normalized_content_eof_newline_added: ${normalizedContentEofNewlineAdded}`,
-        `evidence:`,
-        `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
-        `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
-        `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
-        `summary: ${yamlQuote(summary)}`,
-      ].join('\n');
-
-      const content =
-        `${labels.planned(hunkId, filePath)}\n\n` +
-        `${formatYamlCodeBlock(yaml)}\n\n` +
-        `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
-        `${labels.next(hunkId)}\n` +
-        `${reviseHint}\n` +
-        (language === 'zh'
-          ? `（Range resolved: \`${rangeLabel}\`）`
-          : `(Range resolved: \`${rangeLabel}\`)`);
-
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = labels.planFailed(error instanceof Error ? error.message : String(error));
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
+
+    // Check if file exists
+    if (!fsSync.existsSync(fullPath)) {
+      const content = labels.fileDoesNotExist(filePath);
+      return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    // Read current file content
+    const currentContent = fsSync.readFileSync(fullPath, 'utf8');
+    const currentLines = splitFileTextToLines(currentContent);
+
+    const totalLines = rangeTotalLines(currentLines);
+    const parsed = parseLineRangeSpec(rangeSpec, totalLines);
+    if (!parsed.ok) {
+      const content =
+        language === 'zh'
+          ? `错误：行号范围无效：${parsed.error}`
+          : `Error: invalid line range: ${parsed.error}`;
+      return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const range = parsed.range;
+    const startIndex0 = range.kind === 'append' ? totalLines : range.startLine - 1;
+    const deleteCount = range.kind === 'append' ? 0 : range.endLine - range.startLine + 1;
+    const newLines = splitPlannedBodyLines(inputBody);
+    const oldLines = currentLines.slice(startIndex0, startIndex0 + deleteCount);
+    const { contextBefore, contextAfter } = computeContextWindow(
+      currentLines,
+      startIndex0,
+      deleteCount,
+    );
+
+    const unifiedDiff = buildUnifiedSingleHunkDiff(
+      filePath,
+      currentLines,
+      startIndex0,
+      deleteCount,
+      newLines,
+    );
+
+    const nowMs = Date.now();
+    const action: PlannedRangeAction =
+      range.kind === 'append' ? 'append' : newLines.length === 0 ? 'delete' : 'replace';
+
+    const hunkId = (() => {
+      if (requestedId) return requestedId;
+      for (let i = 0; i < 10; i += 1) {
+        const id = generateHunkId();
+        if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
+      }
+      throw new Error('Failed to generate a unique hunk id');
+    })();
+    const planned: PlannedRangeModification = {
+      kind: 'range',
+      action,
+      hunkId,
+      plannedBy: caller.id,
+      createdAtMs: nowMs,
+      expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
+      relPath: filePath,
+      absPath: fullPath,
+      range,
+      startIndex0,
+      deleteCount,
+      contextBefore,
+      contextAfter,
+      oldLines,
+      newLines,
+      unifiedDiff,
+      plannedFileDigestSha256: action === 'append' ? sha256HexUtf8(currentContent) : undefined,
+    };
+    plannedModsById.set(hunkId, planned);
+
+    const rangeLabel =
+      range.kind === 'append' ? `${range.startLine}~` : `${range.startLine}~${range.endLine}`;
+
+    const reviseHint =
+      language === 'zh'
+        ? `（可选：用同一工具重新规划并覆写该 hunk：\`preview_file_modification({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`。）`
+        : `Optional: revise by re-running the same tool to overwrite this hunk: \`preview_file_modification({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`.`;
+
+    const resolvedStart = range.kind === 'append' ? range.startLine : range.startLine;
+    const resolvedEnd =
+      range.kind === 'append' ? range.startLine + Math.max(0, newLines.length - 1) : range.endLine;
+
+    const evidenceBefore = previewWindow(currentLines, startIndex0 - 2, 2);
+    const evidenceRange = buildRangePreview(oldLines);
+    const evidenceAfter = previewWindow(currentLines, startIndex0 + deleteCount, 2);
+
+    const linesOld = deleteCount;
+    const linesNew = newLines.length;
+    const delta = linesNew - linesOld;
+
+    const summary =
+      language === 'zh'
+        ? `Plan：${action} 第 ${resolvedStart}–${resolvedEnd} 行（old=${linesOld}, new=${linesNew}, delta=${delta}）；匹配=exact；hunk_id=${hunkId}.`
+        : `Plan: ${action} lines ${resolvedStart}–${resolvedEnd} (old=${linesOld}, new=${linesNew}, delta=${delta}); matched exact; hunk_id=${hunkId}.`;
+
+    const fileEofHasNewline = currentContent === '' || currentContent.endsWith('\n');
+    const normalizedFileEofNewlineAdded = currentContent !== '' && !currentContent.endsWith('\n');
+    const contentEofHasNewline = inputBody === '' || inputBody.endsWith('\n');
+    const normalizedContentEofNewlineAdded = inputBody !== '' && !inputBody.endsWith('\n');
+
+    const yaml = [
+      `status: ok`,
+      `mode: preview_file_modification`,
+      `path: ${yamlQuote(filePath)}`,
+      `hunk_id: ${yamlQuote(hunkId)}`,
+      `expires_at_ms: ${planned.expiresAtMs}`,
+      `action: ${action}`,
+      `range:`,
+      `  input: ${yamlQuote(rangeSpec)}`,
+      `  resolved:`,
+      `    start: ${resolvedStart}`,
+      `    end: ${resolvedEnd}`,
+      `file_line_count: ${fileLineCount(currentLines)}`,
+      `lines:`,
+      `  old: ${linesOld}`,
+      `  new: ${linesNew}`,
+      `  delta: ${delta}`,
+      `match: exact`,
+      `normalized:`,
+      `  file_eof_has_newline: ${fileEofHasNewline}`,
+      `  content_eof_has_newline: ${contentEofHasNewline}`,
+      `  normalized_file_eof_newline_added: ${normalizedFileEofNewlineAdded}`,
+      `  normalized_content_eof_newline_added: ${normalizedContentEofNewlineAdded}`,
+      `evidence:`,
+      `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
+      `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
+      `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
+      `summary: ${yamlQuote(summary)}`,
+    ].join('\n');
+
+    const content =
+      `${labels.planned(hunkId, filePath)}\n\n` +
+      `${formatYamlCodeBlock(yaml)}\n\n` +
+      `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
+      `${labels.next(hunkId)}\n` +
+      `${reviseHint}\n` +
+      (language === 'zh'
+        ? `（Range resolved: \`${rangeLabel}\`）`
+        : `(Range resolved: \`${rangeLabel}\`)`);
+
+    return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+  } catch (error: unknown) {
+    const content = labels.planFailed(error instanceof Error ? error.message : String(error));
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+}
+
+export const previewFileModificationTool: FuncTool = {
+  type: 'func',
+  name: 'preview_file_modification',
+  description: 'Preview a single-file edit by line range (does not write).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string' },
+      range: { type: 'string' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+    required: ['path', 'range'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const filePath = requireNonEmptyStringArg(args, 'path');
+    const range = requireNonEmptyStringArg(args, 'range');
+    const existingHunkId = normalizeExistingHunkId(
+      optionalNonEmptyStringArg(args, 'existing_hunk_id'),
+    );
+    const content = optionalStringArg(args, 'content') ?? '';
+
+    const requestedId = existingHunkId;
+    if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+      throw new Error(
+        "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+      );
+    }
+
+    const res = await runPreviewFileModification(caller, filePath, range, requestedId, content);
+    return unwrapTxtToolResult(res);
   },
 };
 
-export const previewFileAppendTool: TellaskTool = {
-  type: 'tellask',
-  name: 'preview_file_append',
-  backfeeding: true,
-  usageDescription: `Preview an append-to-EOF edit (does not write).
-Usage: !?@preview_file_append <path> [create=true|false] [!existing-hunk-id]
-!?<content in body>
-
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-  usageDescriptionI18n: {
-    en: `Preview an append-to-EOF edit (does not write).
-Usage: !?@preview_file_append <path> [create=true|false] [!existing-hunk-id]
-!?<content in body>
-
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-    zh: `预览“末尾追加”修改（不会立刻写入）。
-用法：!?@preview_file_append <path> [create=true|false] [!existing-hunk-id]
-!?<正文为要追加的内容>
-
-- 返回：YAML + unified diff + hunk_id（后续单独 apply）。`,
-  },
-  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@preview_file_append')) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: preview_file_append`,
-          `error: INVALID_FORMAT`,
-          `summary: ${yamlQuote(
-            language === 'zh'
-              ? '格式不正确。用法：!?@preview_file_append <path> [options] [!hunk-id]'
-              : 'Invalid format. Use: !?@preview_file_append <path> [options] [!hunk-id]',
-          )}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const afterToolName = trimmed.slice('@preview_file_append'.length).trim();
-    const args = splitCommandArgs(afterToolName);
-    const filePath = args[0] ?? '';
-    const rest = args.slice(1);
-
-    if (!filePath) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: preview_file_append`,
-          `error: PATH_REQUIRED`,
-          `summary: ${yamlQuote(
-            language === 'zh' ? '需要提供文件路径。' : 'File path is required.',
-          )}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (inputBody === '') {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: preview_file_append`,
-          `path: ${yamlQuote(filePath)}`,
-          `error: CONTENT_REQUIRED`,
-          `summary: ${yamlQuote(
-            language === 'zh' ? '正文不能为空（需要提供要追加的内容）。' : 'Content is required.',
-          )}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    let requestedId: string | undefined = undefined;
-    let create = true;
-
-    for (const token of rest) {
-      if (token.startsWith('!')) {
-        const parsed = parseOptionalHunkId(token);
-        if (!parsed) {
-          const content = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: preview_file_append`,
-              `path: ${yamlQuote(filePath)}`,
-              `error: INVALID_HUNK_ID`,
-              `summary: ${yamlQuote(
-                language === 'zh'
-                  ? 'hunk id 格式无效（期望 `!<hunk-id>`）。'
-                  : 'Invalid hunk id (expected `!<hunk-id>`).',
-              )}`,
-            ].join('\n'),
-          );
-          return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-        if (requestedId) {
-          const content = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: preview_file_append`,
-              `path: ${yamlQuote(filePath)}`,
-              `error: INVALID_FORMAT`,
-              `summary: ${yamlQuote(
-                language === 'zh'
-                  ? '只允许提供一个 hunk id（例如 `!a1b2c3d4`）。'
-                  : 'Only one hunk id may be provided.',
-              )}`,
-            ].join('\n'),
-          );
-          return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-        requestedId = parsed;
-        continue;
-      }
-      const eq = token.indexOf('=');
-      if (eq <= 0) continue;
-      const key = token.slice(0, eq);
-      const value = token.slice(eq + 1);
-      if (key === 'create') {
-        const parsed = parseBooleanOption(value);
-        if (parsed !== undefined) create = parsed;
-      }
-    }
-
-    try {
-      pruneExpiredPlannedMods(Date.now());
-      pruneExpiredPlannedBlockReplaces(Date.now());
-
-      const fullPath = ensureInsideWorkspace(filePath);
-      if (requestedId) {
-        const existing = plannedModsById.get(requestedId);
-        if (!existing) {
-          const content = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: preview_file_append`,
-              `path: ${yamlQuote(filePath)}`,
-              `hunk_id: ${yamlQuote(requestedId)}`,
-              `error: HUNK_NOT_FOUND`,
-              `summary: ${yamlQuote(
-                language === 'zh'
-                  ? '该 hunk id 不存在（可能已过期/已被应用）。不支持自定义 hunk id；新规划请省略 `!<hunk-id>`。'
-                  : 'Hunk not found (expired or already applied). Custom hunk ids are not allowed; omit `!<hunk-id>` to generate a new one.',
-              )}`,
-            ].join('\n'),
-          );
-          return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-        if (existing.plannedBy !== caller.id) {
-          const content = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: preview_file_append`,
-              `path: ${yamlQuote(filePath)}`,
-              `hunk_id: ${yamlQuote(requestedId)}`,
-              `error: WRONG_OWNER`,
-              `summary: ${yamlQuote(
-                language === 'zh'
-                  ? '该 hunk 不是由当前成员规划的，不能覆写。'
-                  : 'This hunk was planned by a different member; cannot overwrite.',
-              )}`,
-            ].join('\n'),
-          );
-          return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-        if (existing.kind !== 'append') {
-          const content = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: preview_file_append`,
-              `path: ${yamlQuote(filePath)}`,
-              `hunk_id: ${yamlQuote(requestedId)}`,
-              `error: WRONG_MODE`,
-              `summary: ${yamlQuote(
-                language === 'zh'
-                  ? '该 hunk id 不是由 preview_file_append 生成的，不能用该工具覆写。'
-                  : 'This hunk was not generated by preview_file_append; cannot overwrite.',
-              )}`,
-            ].join('\n'),
-          );
-          return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-      }
-
-      const fileExists = fsSync.existsSync(fullPath);
-      if (!fileExists && !create) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: preview_file_append`,
-            `path: ${yamlQuote(filePath)}`,
-            `error: FILE_NOT_FOUND`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? '文件不存在（create=false），无法规划追加。'
-                : 'File does not exist (create=false); cannot plan append.',
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const existingContent = fileExists ? fsSync.readFileSync(fullPath, 'utf8') : '';
-
-      const fileEofHasNewline = existingContent === '' || existingContent.endsWith('\n');
-      const normalizedFileEofNewlineAdded =
-        existingContent !== '' && !existingContent.endsWith('\n');
-      const existingNormalized = normalizedFileEofNewlineAdded
-        ? `${existingContent}\n`
-        : existingContent;
-
-      const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
-      const contentEofHasNewline = inputBody.endsWith('\n');
-      const normalizedContentEofNewlineAdded = addedTrailingNewlineToContent;
-
-      const normalized: FileEofNewlineNormalization = {
-        fileEofHasNewline,
-        contentEofHasNewline,
-        normalizedFileEofNewlineAdded,
-        normalizedContentEofNewlineAdded,
-      };
-
-      const fileLinesBefore = splitTextToLinesForEditing(existingNormalized);
-      const appendLines = splitPlannedBodyLines(normalizedBody);
-      const plannedAfterLines = [...fileLinesBefore, ...appendLines];
-      const unifiedDiff = buildUnifiedSingleHunkDiff(
-        filePath,
-        fileLinesBefore,
-        fileLinesBefore.length,
-        0,
-        appendLines,
-      );
-
-      const fileLineCountBefore = countLogicalLines(existingContent);
-      const fileLineCountAfter = countLogicalLines(`${existingNormalized}${normalizedBody}`);
-      const appendedLineCount = countLogicalLines(normalizedBody);
-
-      const fileTrailingBlankLineCount = countTrailingBlankLines(fileLinesBefore);
-      const contentLeadingBlankLineCount = countLeadingBlankLines(appendLines);
-      const styleWarning =
-        fileTrailingBlankLineCount > 0 && contentLeadingBlankLineCount > 0
-          ? language === 'zh'
-            ? '注意：文件末尾已有空行且追加内容以空行开头，可能产生多余空行。'
-            : 'Warning: file already ends with blank line(s) and appended content starts with blank line(s); you may get extra blank lines.'
-          : '';
-
-      const evidenceBeforeTail = fileLinesBefore.slice(Math.max(0, fileLinesBefore.length - 2));
-      const evidenceAppendPreview = appendLines.length <= 2 ? appendLines : appendLines.slice(0, 2);
-      const evidenceAfterTail = plannedAfterLines.slice(Math.max(0, plannedAfterLines.length - 2));
-
-      const nowMs = Date.now();
-      const hunkId = (() => {
-        if (requestedId) return requestedId;
-        for (let i = 0; i < 10; i += 1) {
-          const id = generateHunkId();
-          if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
-        }
-        throw new Error('Failed to generate a unique hunk id');
-      })();
-
-      const planned: PlannedAppendModification = {
-        kind: 'append',
-        hunkId,
-        plannedBy: caller.id,
-        createdAtMs: nowMs,
-        expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
-        relPath: filePath,
-        absPath: fullPath,
-        allowCreate: create,
-        plannedFileDigestSha256: sha256HexUtf8(existingContent),
-        newLines: appendLines,
-        unifiedDiff,
-        normalized,
-      };
-      plannedModsById.set(hunkId, planned);
-
-      const summary =
-        language === 'zh'
-          ? `Plan-append：+${appendedLineCount} 行；file ${fileLineCountBefore} → ${fileLineCountAfter}；hunk_id=${hunkId}.`
-          : `Plan-append: +${appendedLineCount} lines; file ${fileLineCountBefore} → ${fileLineCountAfter}; hunk_id=${hunkId}.`;
-
-      const yaml = [
-        `status: ok`,
-        `mode: preview_file_append`,
-        `path: ${yamlQuote(filePath)}`,
-        `hunk_id: ${yamlQuote(hunkId)}`,
-        `expires_at_ms: ${planned.expiresAtMs}`,
-        `action: append`,
-        `create: ${create}`,
-        `file_line_count_before: ${fileLineCountBefore}`,
-        `file_line_count_after: ${fileLineCountAfter}`,
-        `appended_line_count: ${appendedLineCount}`,
-        `normalized:`,
-        `  file_eof_has_newline: ${normalized.fileEofHasNewline}`,
-        `  content_eof_has_newline: ${normalized.contentEofHasNewline}`,
-        `  normalized_file_eof_newline_added: ${normalized.normalizedFileEofNewlineAdded}`,
-        `  normalized_content_eof_newline_added: ${normalized.normalizedContentEofNewlineAdded}`,
-        `blankline_style:`,
-        `  file_trailing_blank_line_count: ${fileTrailingBlankLineCount}`,
-        `  content_leading_blank_line_count: ${contentLeadingBlankLineCount}`,
-        styleWarning ? `style_warning: ${yamlQuote(styleWarning)}` : `style_warning: ''`,
-        `evidence_preview:`,
-        `  before_tail: ${yamlFlowStringArray(evidenceBeforeTail)}`,
-        `  append_preview: ${yamlFlowStringArray(evidenceAppendPreview)}`,
-        `  after_tail: ${yamlFlowStringArray(evidenceAfterTail)}`,
-        `summary: ${yamlQuote(summary)}`,
-      ].join('\n');
-
-      const content =
-        `${formatYamlCodeBlock(yaml)}\n\n` +
-        `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
-        (language === 'zh'
-          ? `下一步：执行 \`!?@apply_file_modification !${hunkId}\` 来确认并写入。`
-          : `Next: run \`!?@apply_file_modification !${hunkId}\` to confirm and write.`);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: preview_file_append`,
-          `path: ${yamlQuote(filePath)}`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-  },
-};
-
-async function planInsertionCommon(
-  position: 'before' | 'after',
-  caller: Parameters<TellaskTool['call']>[1],
-  headLine: string,
+async function runPreviewFileAppend(
+  caller: ToolCaller,
+  filePath: string,
   inputBody: string,
-): Promise<TellaskToolCallResult> {
+  options: { create: boolean; requestedId: string | undefined },
+): Promise<TxtToolCallResult> {
   const language = getWorkLanguage();
-  const toolName = position === 'after' ? '@preview_insert_after' : '@preview_insert_before';
-  const mode = position === 'after' ? 'preview_insert_after' : 'preview_insert_before';
-  const trimmed = headLine.trim();
-  if (!trimmed.startsWith(toolName)) {
+  if (!filePath) {
     const content = formatYamlCodeBlock(
       [
         `status: error`,
-        `mode: ${mode}`,
-        `error: INVALID_FORMAT`,
+        `mode: preview_file_append`,
+        `error: PATH_REQUIRED`,
         `summary: ${yamlQuote(
-          language === 'zh'
-            ? `格式不正确。用法：!?${toolName} <path> <anchor> [options] [!hunk-id]`
-            : `Invalid format. Use: !?${toolName} <path> <anchor> [options] [!hunk-id]`,
+          language === 'zh' ? '需要提供文件路径。' : 'File path is required.',
+        )}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (!hasWriteAccess(caller, filePath)) {
+    const content = getAccessDeniedMessage('write', filePath, language);
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (inputBody === '') {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `mode: preview_file_append`,
+        `path: ${yamlQuote(filePath)}`,
+        `error: CONTENT_REQUIRED`,
+        `summary: ${yamlQuote(
+          language === 'zh' ? '正文不能为空（需要提供要追加的内容）。' : 'Content is required.',
         )}`,
       ].join('\n'),
     );
     return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 
-  const afterToolName = trimmed.slice(toolName.length).trim();
-  const args = splitCommandArgs(afterToolName);
-  const filePath = args[0] ?? '';
-  const anchor = args[1] ?? '';
-  const optTokens = args.slice(2);
+  const create = options.create;
+  const requestedId = options.requestedId;
+  if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `mode: preview_file_append`,
+        `path: ${yamlQuote(filePath)}`,
+        `error: INVALID_HUNK_ID`,
+        `summary: ${yamlQuote(
+          language === 'zh'
+            ? 'hunk id 格式无效（例如 `a1b2c3d4`）。'
+            : 'Invalid hunk id (e.g. `a1b2c3d4`).',
+        )}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+
+  try {
+    pruneExpiredPlannedMods(Date.now());
+    pruneExpiredPlannedBlockReplaces(Date.now());
+
+    const fullPath = ensureInsideWorkspace(filePath);
+    if (requestedId) {
+      const existing = plannedModsById.get(requestedId);
+      if (!existing) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: preview_file_append`,
+            `path: ${yamlQuote(filePath)}`,
+            `hunk_id: ${yamlQuote(requestedId)}`,
+            `error: HUNK_NOT_FOUND`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '该 hunk id 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 `existing_hunk_id` 设为空字符串。'
+                : 'Hunk not found (expired or already applied). Custom new ids are not allowed; set `existing_hunk_id` to an empty string to generate a new one.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (existing.plannedBy !== caller.id) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: preview_file_append`,
+            `path: ${yamlQuote(filePath)}`,
+            `hunk_id: ${yamlQuote(requestedId)}`,
+            `error: WRONG_OWNER`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '该 hunk 不是由当前成员规划的，不能覆写。'
+                : 'This hunk was planned by a different member; cannot overwrite.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (existing.kind !== 'append') {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: preview_file_append`,
+            `path: ${yamlQuote(filePath)}`,
+            `hunk_id: ${yamlQuote(requestedId)}`,
+            `error: WRONG_MODE`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '该 hunk id 不是由 preview_file_append 生成的，不能用该工具覆写。'
+                : 'This hunk was not generated by preview_file_append; cannot overwrite.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+    }
+
+    const fileExists = fsSync.existsSync(fullPath);
+    if (!fileExists && !create) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: preview_file_append`,
+          `path: ${yamlQuote(filePath)}`,
+          `error: FILE_NOT_FOUND`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '文件不存在（create=false），无法规划追加。'
+              : 'File does not exist (create=false); cannot plan append.',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const existingContent = fileExists ? fsSync.readFileSync(fullPath, 'utf8') : '';
+
+    const fileEofHasNewline = existingContent === '' || existingContent.endsWith('\n');
+    const normalizedFileEofNewlineAdded = existingContent !== '' && !existingContent.endsWith('\n');
+    const existingNormalized = normalizedFileEofNewlineAdded
+      ? `${existingContent}\n`
+      : existingContent;
+
+    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
+    const contentEofHasNewline = inputBody.endsWith('\n');
+    const normalizedContentEofNewlineAdded = addedTrailingNewlineToContent;
+
+    const normalized: FileEofNewlineNormalization = {
+      fileEofHasNewline,
+      contentEofHasNewline,
+      normalizedFileEofNewlineAdded,
+      normalizedContentEofNewlineAdded,
+    };
+
+    const fileLinesBefore = splitTextToLinesForEditing(existingNormalized);
+    const appendLines = splitPlannedBodyLines(normalizedBody);
+    const plannedAfterLines = [...fileLinesBefore, ...appendLines];
+    const unifiedDiff = buildUnifiedSingleHunkDiff(
+      filePath,
+      fileLinesBefore,
+      fileLinesBefore.length,
+      0,
+      appendLines,
+    );
+
+    const fileLineCountBefore = countLogicalLines(existingContent);
+    const fileLineCountAfter = countLogicalLines(`${existingNormalized}${normalizedBody}`);
+    const appendedLineCount = countLogicalLines(normalizedBody);
+
+    const fileTrailingBlankLineCount = countTrailingBlankLines(fileLinesBefore);
+    const contentLeadingBlankLineCount = countLeadingBlankLines(appendLines);
+    const styleWarning =
+      fileTrailingBlankLineCount > 0 && contentLeadingBlankLineCount > 0
+        ? language === 'zh'
+          ? '注意：文件末尾已有空行且追加内容以空行开头，可能产生多余空行。'
+          : 'Warning: file already ends with blank line(s) and appended content starts with blank line(s); you may get extra blank lines.'
+        : '';
+
+    const evidenceBeforeTail = fileLinesBefore.slice(Math.max(0, fileLinesBefore.length - 2));
+    const evidenceAppendPreview = appendLines.length <= 2 ? appendLines : appendLines.slice(0, 2);
+    const evidenceAfterTail = plannedAfterLines.slice(Math.max(0, plannedAfterLines.length - 2));
+
+    const nowMs = Date.now();
+    const hunkId = (() => {
+      if (requestedId) return requestedId;
+      for (let i = 0; i < 10; i += 1) {
+        const id = generateHunkId();
+        if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
+      }
+      throw new Error('Failed to generate a unique hunk id');
+    })();
+
+    const planned: PlannedAppendModification = {
+      kind: 'append',
+      hunkId,
+      plannedBy: caller.id,
+      createdAtMs: nowMs,
+      expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
+      relPath: filePath,
+      absPath: fullPath,
+      allowCreate: create,
+      plannedFileDigestSha256: sha256HexUtf8(existingContent),
+      newLines: appendLines,
+      unifiedDiff,
+      normalized,
+    };
+    plannedModsById.set(hunkId, planned);
+
+    const summary =
+      language === 'zh'
+        ? `Plan-append：+${appendedLineCount} 行；file ${fileLineCountBefore} → ${fileLineCountAfter}；hunk_id=${hunkId}.`
+        : `Plan-append: +${appendedLineCount} lines; file ${fileLineCountBefore} → ${fileLineCountAfter}; hunk_id=${hunkId}.`;
+
+    const yaml = [
+      `status: ok`,
+      `mode: preview_file_append`,
+      `path: ${yamlQuote(filePath)}`,
+      `hunk_id: ${yamlQuote(hunkId)}`,
+      `expires_at_ms: ${planned.expiresAtMs}`,
+      `action: append`,
+      `create: ${create}`,
+      `file_line_count_before: ${fileLineCountBefore}`,
+      `file_line_count_after: ${fileLineCountAfter}`,
+      `appended_line_count: ${appendedLineCount}`,
+      `normalized:`,
+      `  file_eof_has_newline: ${normalized.fileEofHasNewline}`,
+      `  content_eof_has_newline: ${normalized.contentEofHasNewline}`,
+      `  normalized_file_eof_newline_added: ${normalized.normalizedFileEofNewlineAdded}`,
+      `  normalized_content_eof_newline_added: ${normalized.normalizedContentEofNewlineAdded}`,
+      `blankline_style:`,
+      `  file_trailing_blank_line_count: ${fileTrailingBlankLineCount}`,
+      `  content_leading_blank_line_count: ${contentLeadingBlankLineCount}`,
+      styleWarning ? `style_warning: ${yamlQuote(styleWarning)}` : `style_warning: ''`,
+      `evidence_preview:`,
+      `  before_tail: ${yamlFlowStringArray(evidenceBeforeTail)}`,
+      `  append_preview: ${yamlFlowStringArray(evidenceAppendPreview)}`,
+      `  after_tail: ${yamlFlowStringArray(evidenceAfterTail)}`,
+      `summary: ${yamlQuote(summary)}`,
+    ].join('\n');
+
+    const content =
+      `${formatYamlCodeBlock(yaml)}\n\n` +
+      `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
+      (language === 'zh'
+        ? `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
+        : `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${hunkId}\" }.`);
+    return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+  } catch (error: unknown) {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `mode: preview_file_append`,
+        `path: ${yamlQuote(filePath)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+}
+
+async function planInsertionCommon(
+  position: 'before' | 'after',
+  caller: ToolCaller,
+  options: {
+    filePath: string;
+    anchor: string;
+    occurrence: Occurrence;
+    occurrenceSpecified: boolean;
+    match: AnchorMatchMode;
+    requestedId: string | undefined;
+    inputBody: string;
+  },
+): Promise<TxtToolCallResult> {
+  const language = getWorkLanguage();
+  const mode = position === 'after' ? 'preview_insert_after' : 'preview_insert_before';
+
+  const filePath = options.filePath;
+  const anchor = options.anchor;
+  const inputBody = options.inputBody;
+  const occurrence = options.occurrence;
+  const occurrenceSpecified = options.occurrenceSpecified;
+  const match = options.match;
+  const requestedId = options.requestedId;
 
   if (!filePath || !anchor) {
     const content = formatYamlCodeBlock(
@@ -2105,17 +1876,36 @@ async function planInsertionCommon(
         `error: INVALID_FORMAT`,
         `summary: ${yamlQuote(
           language === 'zh'
-            ? `需要提供 path 与 anchor。用法：!?${toolName} <path> <anchor> [options] [!hunk-id]`
-            : `path and anchor are required. Use: !?${toolName} <path> <anchor> [options] [!hunk-id]`,
+            ? `需要提供 path 与 anchor。请调用函数工具：${mode}({ path, anchor, content, ...options })`
+            : `path and anchor are required. Call the function tool: ${mode}({ path, anchor, content, ...options })`,
         )}`,
       ].join('\n'),
     );
     return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
+
+  if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `mode: ${mode}`,
+        `path: ${yamlQuote(filePath)}`,
+        `error: INVALID_HUNK_ID`,
+        `summary: ${yamlQuote(
+          language === 'zh'
+            ? 'hunk id 格式无效（例如 `a1b2c3d4`）。'
+            : 'Invalid hunk id (e.g. `a1b2c3d4`).',
+        )}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
   }
+
   if (inputBody === '') {
     const content = formatYamlCodeBlock(
       [
@@ -2131,65 +1921,6 @@ async function planInsertionCommon(
       ].join('\n'),
     );
     return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-  }
-
-  let occurrence: Occurrence = { kind: 'index', index1: 1 };
-  let occurrenceSpecified = false;
-  let match: AnchorMatchMode = 'contains';
-  let requestedId: string | undefined = undefined;
-
-  for (const token of optTokens) {
-    if (token.startsWith('!')) {
-      const parsed = parseOptionalHunkId(token);
-      if (!parsed) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: ${mode}`,
-            `path: ${yamlQuote(filePath)}`,
-            `error: INVALID_HUNK_ID`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? 'hunk id 格式无效（期望 `!<hunk-id>`）。'
-                : 'Invalid hunk id (expected `!<hunk-id>`).',
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (requestedId) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: ${mode}`,
-            `path: ${yamlQuote(filePath)}`,
-            `error: INVALID_FORMAT`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? '只允许提供一个 hunk id（例如 `!a1b2c3d4`）。'
-                : 'Only one hunk id may be provided.',
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      requestedId = parsed;
-      continue;
-    }
-
-    const eq = token.indexOf('=');
-    if (eq <= 0) continue;
-    const key = token.slice(0, eq);
-    const value = token.slice(eq + 1);
-    if (key === 'occurrence') {
-      const parsed = parseOccurrence(value);
-      if (parsed) {
-        occurrence = parsed;
-        occurrenceSpecified = true;
-      }
-    } else if (key === 'match') {
-      if (value === 'contains' || value === 'equals') match = value;
-    }
   }
 
   try {
@@ -2224,8 +1955,8 @@ async function planInsertionCommon(
             `error: HUNK_NOT_FOUND`,
             `summary: ${yamlQuote(
               language === 'zh'
-                ? '该 hunk id 不存在（可能已过期/已被应用）。不支持自定义 hunk id；新规划请省略 `!<hunk-id>`。'
-                : 'Hunk not found (expired or already applied). Custom hunk ids are not allowed; omit `!<hunk-id>` to generate a new one.',
+                ? '该 hunk id 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 `existing_hunk_id` 设为空字符串。'
+                : 'Hunk not found (expired or already applied). Custom new ids are not allowed; set `existing_hunk_id` to an empty string to generate a new one.',
             )}`,
           ].join('\n'),
         );
@@ -2486,8 +2217,8 @@ async function planInsertionCommon(
       `${formatYamlCodeBlock(yaml)}\n\n` +
       `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
       (language === 'zh'
-        ? `下一步：执行 \`!?@apply_file_modification !${hunkId}\` 来确认并写入。`
-        : `Next: run \`!?@apply_file_modification !${hunkId}\` to confirm and write.`);
+        ? `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
+        : `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${hunkId}\" }.`);
     return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
   } catch (error: unknown) {
     const content = formatYamlCodeBlock(
@@ -2503,430 +2234,401 @@ async function planInsertionCommon(
   }
 }
 
-export const previewInsertAfterTool: TellaskTool = {
-  type: 'tellask',
+export const previewInsertAfterTool: FuncTool = {
+  type: 'func',
   name: 'preview_insert_after',
-  backfeeding: true,
-  usageDescription: `Preview an insertion after an anchor line (does not write).
-Usage: !?@preview_insert_after <path> <anchor> [occurrence=<n|last>] [match=contains|equals] [!existing-hunk-id]
-!?<content in body>
-
-- Fails on ambiguity (set occurrence when the anchor appears multiple times).
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-  usageDescriptionI18n: {
-    en: `Preview an insertion after an anchor line (does not write).
-Usage: !?@preview_insert_after <path> <anchor> [occurrence=<n|last>] [match=contains|equals] [!existing-hunk-id]
-!?<content in body>
-
-- Fails on ambiguity (set occurrence when the anchor appears multiple times).
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-    zh: `按锚点预览“在其后插入”修改（不会立刻写入）。
-用法：!?@preview_insert_after <path> <anchor> [occurrence=<n|last>] [match=contains|equals] [!existing-hunk-id]
-!?<正文为要插入的内容>
-
-- 锚点歧义会失败（当锚点多次出现时请指定 occurrence）。
-- 返回：YAML + unified diff + hunk_id（后续单独 apply）。`,
+  description: 'Preview an insertion after an anchor line (does not write).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string' },
+      anchor: { type: 'string' },
+      occurrence: { type: ['integer', 'string'] },
+      match: { type: 'string' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+    required: ['path', 'anchor', 'content'],
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    return await planInsertionCommon('after', caller, headLine, inputBody);
-  },
-};
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const filePath = requireNonEmptyStringArg(args, 'path');
+    const anchor = requireNonEmptyStringArg(args, 'anchor');
+    const existingHunkId = normalizeExistingHunkId(
+      optionalNonEmptyStringArg(args, 'existing_hunk_id'),
+    );
+    const content = optionalStringArg(args, 'content') ?? '';
 
-export const previewInsertBeforeTool: TellaskTool = {
-  type: 'tellask',
-  name: 'preview_insert_before',
-  backfeeding: true,
-  usageDescription: `Preview an insertion before an anchor line (does not write).
-Usage: !?@preview_insert_before <path> <anchor> [occurrence=<n|last>] [match=contains|equals] [!existing-hunk-id]
-!?<content in body>
+    let occurrence: Occurrence = { kind: 'index', index1: 1 };
+    let occurrenceSpecified = false;
 
-- Fails on ambiguity (set occurrence when the anchor appears multiple times).
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-  usageDescriptionI18n: {
-    en: `Preview an insertion before an anchor line (does not write).
-Usage: !?@preview_insert_before <path> <anchor> [occurrence=<n|last>] [match=contains|equals] [!existing-hunk-id]
-!?<content in body>
-
-- Fails on ambiguity (set occurrence when the anchor appears multiple times).
-- Returns: YAML + unified diff + hunk_id (apply separately).`,
-    zh: `按锚点预览“在其前插入”修改（不会立刻写入）。
-用法：!?@preview_insert_before <path> <anchor> [occurrence=<n|last>] [match=contains|equals] [!existing-hunk-id]
-!?<正文为要插入的内容>
-
-- 锚点歧义会失败（当锚点多次出现时请指定 occurrence）。
-- 返回：YAML + unified diff + hunk_id（后续单独 apply）。`,
-  },
-  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    return await planInsertionCommon('before', caller, headLine, inputBody);
-  },
-};
-
-export const applyFileModificationTool: TellaskTool = {
-  type: 'tellask',
-  name: 'apply_file_modification',
-  usageDescription:
-    'Apply a previewed file modification by hunk id (writes the file).\n' +
-    'Usage: !?@apply_file_modification !<hunk-id>\n' +
-    '(no body)',
-  usageDescriptionI18n: {
-    en:
-      'Apply a previewed file modification by hunk id (writes the file).\n' +
-      'Usage: !?@apply_file_modification !<hunk-id>\n' +
-      '(no body)',
-    zh:
-      '按 hunk id 应用之前预览规划的单文件修改（写入文件）。\n' +
-      '用法：!?@apply_file_modification !<hunk-id>\n' +
-      '（无正文）',
-  },
-  backfeeding: true,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const labels =
-      language === 'zh'
-        ? {
-            invalidFormat: '错误：格式不正确。用法：!?@apply_file_modification !<hunk-id>',
-            hunkIdRequired: '错误：需要提供要应用的 hunk id（例如 `!a1b2c3d4`）。',
-            notFound: (id: string) => `错误：未找到该 hunk：\`!${id}\`（可能已过期或已被应用）。`,
-            wrongOwner: '错误：该 hunk 不是由当前成员规划的，不能应用。',
-            mismatch: '错误：文件内容已变化，无法安全应用该 hunk；请重新规划。',
-            ambiguous:
-              '错误：无法唯一定位该 hunk 的目标位置（文件内出现多处匹配）；请重新规划（缩小范围或增加上下文）。',
-            applied: (p: string, id: string) => `✅ 已应用：\`!${id}\` → \`${p}\``,
-            applyFailed: (msg: string) => `错误：应用失败：${msg}`,
+    const occurrenceValue = args['occurrence'];
+    if (occurrenceValue !== undefined) {
+      if (typeof occurrenceValue === 'number' && Number.isInteger(occurrenceValue)) {
+        // Codex may require this field to be present even when semantically "unset".
+        // Sentinel 0 means "not specified".
+        if (occurrenceValue >= 1) {
+          occurrence = { kind: 'index', index1: occurrenceValue };
+          occurrenceSpecified = true;
+        } else if (occurrenceValue !== 0) {
+          throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+        }
+      } else if (typeof occurrenceValue === 'string') {
+        const trimmed = occurrenceValue.trim();
+        // Codex may require this field to be present even when semantically "unset".
+        // Sentinel empty string means "not specified".
+        if (trimmed !== '') {
+          const parsed = parseOccurrence(trimmed);
+          if (!parsed) {
+            throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
           }
-        : {
-            invalidFormat: 'Error: Invalid format. Use !?@apply_file_modification !<hunk-id>',
-            hunkIdRequired: 'Error: hunk id is required (e.g. `!a1b2c3d4`).',
-            notFound: (id: string) =>
-              `Error: hunk \`!${id}\` not found (expired or already applied).`,
-            wrongOwner: 'Error: this hunk was planned by a different member.',
-            mismatch:
-              'Error: file content has changed; refusing to apply this hunk safely. Re-plan it.',
-            ambiguous:
-              'Error: unable to uniquely locate the hunk target (multiple matches). Re-plan with a narrower range or more context.',
-            applied: (p: string, id: string) => `✅ Applied \`!${id}\` to \`${p}\``,
-            applyFailed: (msg: string) => `Error applying modification: ${msg}`,
-          };
-
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@apply_file_modification')) {
-      const content = labels.invalidFormat;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    const afterToolName = trimmed.slice('@apply_file_modification'.length).trim();
-    if (!afterToolName) {
-      const content = labels.hunkIdRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+          occurrence = parsed;
+          occurrenceSpecified = true;
+        }
+      } else {
+        throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+      }
     }
 
-    const raw = afterToolName.split(/\s+/)[0] ?? '';
-    const id = raw.startsWith('!') ? raw.slice(1) : raw;
-    if (!id) {
-      const content = labels.hunkIdRequired;
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    let match: AnchorMatchMode = 'contains';
+    const matchArg = optionalNonEmptyStringArg(args, 'match');
+    if (matchArg !== undefined) {
+      if (matchArg !== 'contains' && matchArg !== 'equals') {
+        throw new Error("Invalid arguments: `match` must be one of: 'contains', 'equals'");
+      }
+      match = matchArg;
     }
 
-    try {
-      pruneExpiredPlannedMods(Date.now());
-      pruneExpiredPlannedBlockReplaces(Date.now());
+    const requestedId = existingHunkId;
+    if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+      throw new Error(
+        "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+      );
+    }
 
-      const plannedFileMod = plannedModsById.get(id);
-      const plannedBlockReplace = plannedBlockReplacesById.get(id);
+    const res = await planInsertionCommon('after', caller, {
+      filePath,
+      anchor,
+      occurrence,
+      occurrenceSpecified,
+      match,
+      requestedId,
+      inputBody: content,
+    });
+    return unwrapTxtToolResult(res);
+  },
+};
 
-      if (plannedFileMod && plannedBlockReplace) {
+export const previewInsertBeforeTool: FuncTool = {
+  type: 'func',
+  name: 'preview_insert_before',
+  description: 'Preview an insertion before an anchor line (does not write).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string' },
+      anchor: { type: 'string' },
+      occurrence: { type: ['integer', 'string'] },
+      match: { type: 'string' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+    required: ['path', 'anchor', 'content'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const filePath = requireNonEmptyStringArg(args, 'path');
+    const anchor = requireNonEmptyStringArg(args, 'anchor');
+    const existingHunkId = normalizeExistingHunkId(
+      optionalNonEmptyStringArg(args, 'existing_hunk_id'),
+    );
+    const content = optionalStringArg(args, 'content') ?? '';
+
+    let occurrence: Occurrence = { kind: 'index', index1: 1 };
+    let occurrenceSpecified = false;
+
+    const occurrenceValue = args['occurrence'];
+    if (occurrenceValue !== undefined) {
+      if (typeof occurrenceValue === 'number' && Number.isInteger(occurrenceValue)) {
+        // Codex may require this field to be present even when semantically "unset".
+        // Sentinel 0 means "not specified".
+        if (occurrenceValue >= 1) {
+          occurrence = { kind: 'index', index1: occurrenceValue };
+          occurrenceSpecified = true;
+        } else if (occurrenceValue !== 0) {
+          throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+        }
+      } else if (typeof occurrenceValue === 'string') {
+        const trimmed = occurrenceValue.trim();
+        // Codex may require this field to be present even when semantically "unset".
+        // Sentinel empty string means "not specified".
+        if (trimmed !== '') {
+          const parsed = parseOccurrence(trimmed);
+          if (!parsed) {
+            throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+          }
+          occurrence = parsed;
+          occurrenceSpecified = true;
+        }
+      } else {
+        throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+      }
+    }
+
+    let match: AnchorMatchMode = 'contains';
+    const matchArg = optionalNonEmptyStringArg(args, 'match');
+    if (matchArg !== undefined) {
+      if (matchArg !== 'contains' && matchArg !== 'equals') {
+        throw new Error("Invalid arguments: `match` must be one of: 'contains', 'equals'");
+      }
+      match = matchArg;
+    }
+
+    const requestedId = existingHunkId;
+    if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+      throw new Error(
+        "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+      );
+    }
+
+    const res = await planInsertionCommon('before', caller, {
+      filePath,
+      anchor,
+      occurrence,
+      occurrenceSpecified,
+      match,
+      requestedId,
+      inputBody: content,
+    });
+    return unwrapTxtToolResult(res);
+  },
+};
+
+async function runApplyFileModification(
+  caller: ToolCaller,
+  id: string,
+): Promise<TxtToolCallResult> {
+  const language = getWorkLanguage();
+  const labels =
+    language === 'zh'
+      ? {
+          invalidFormat:
+            '错误：参数不正确。请调用函数工具：apply_file_modification({ \"hunk_id\": \"<hunk_id>\" })',
+          hunkIdRequired: '错误：需要提供要应用的 hunk id（例如 `a1b2c3d4`）。',
+          notFound: (id: string) => `错误：未找到该 hunk：\`${id}\`（可能已过期或已被应用）。`,
+          wrongOwner: '错误：该 hunk 不是由当前成员规划的，不能应用。',
+          mismatch: '错误：文件内容已变化，无法安全应用该 hunk；请重新规划。',
+          ambiguous:
+            '错误：无法唯一定位该 hunk 的目标位置（文件内出现多处匹配）；请重新规划（缩小范围或增加上下文）。',
+          applied: (p: string, id: string) => `✅ 已应用：\`${id}\` → \`${p}\``,
+          applyFailed: (msg: string) => `错误：应用失败：${msg}`,
+        }
+      : {
+          invalidFormat:
+            'Error: Invalid args. Call the function tool: apply_file_modification({ "hunk_id": "<hunk_id>" })',
+          hunkIdRequired: 'Error: hunk id is required (e.g. `a1b2c3d4`).',
+          notFound: (id: string) => `Error: hunk \`${id}\` not found (expired or already applied).`,
+          wrongOwner: 'Error: this hunk was planned by a different member.',
+          mismatch:
+            'Error: file content has changed; refusing to apply this hunk safely. Re-plan it.',
+          ambiguous:
+            'Error: unable to uniquely locate the hunk target (multiple matches). Re-plan with a narrower range or more context.',
+          applied: (p: string, id: string) => `✅ Applied \`${id}\` to \`${p}\``,
+          applyFailed: (msg: string) => `Error applying modification: ${msg}`,
+        };
+  if (!id) {
+    const content = labels.hunkIdRequired;
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (!isValidHunkId(id)) {
+    const content = labels.hunkIdRequired;
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+
+  try {
+    pruneExpiredPlannedMods(Date.now());
+    pruneExpiredPlannedBlockReplaces(Date.now());
+
+    const plannedFileMod = plannedModsById.get(id);
+    const plannedBlockReplace = plannedBlockReplacesById.get(id);
+
+    if (plannedFileMod && plannedBlockReplace) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_file_modification`,
+          `hunk_id: ${yamlQuote(id)}`,
+          `error: HUNK_ID_CONFLICT`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? 'hunk id 冲突：该 id 同时存在于不同的规划类型中；请重新规划生成新的 hunk id。'
+              : 'Hunk id conflict: this id exists in multiple plan types; re-plan to generate a new hunk id.',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    if (!plannedFileMod && !plannedBlockReplace) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_file_modification`,
+          `hunk_id: ${yamlQuote(id)}`,
+          `error: HUNK_NOT_FOUND`,
+          `summary: ${yamlQuote(labels.notFound(id))}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    if (plannedFileMod) {
+      if (plannedFileMod.plannedBy !== caller.id) {
         const content = formatYamlCodeBlock(
           [
             `status: error`,
             `mode: apply_file_modification`,
             `hunk_id: ${yamlQuote(id)}`,
-            `error: HUNK_ID_CONFLICT`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? 'hunk id 冲突：该 id 同时存在于不同的规划类型中；请重新规划生成新的 hunk id。'
-                : 'Hunk id conflict: this id exists in multiple plan types; re-plan to generate a new hunk id.',
-            )}`,
+            `error: WRONG_OWNER`,
+            `summary: ${yamlQuote(labels.wrongOwner)}`,
           ].join('\n'),
         );
         return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
-
-      if (!plannedFileMod && !plannedBlockReplace) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: apply_file_modification`,
-            `hunk_id: ${yamlQuote(id)}`,
-            `error: HUNK_NOT_FOUND`,
-            `summary: ${yamlQuote(labels.notFound(id))}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      if (!hasWriteAccess(caller, plannedFileMod.relPath)) {
+        const content = getAccessDeniedMessage('write', plannedFileMod.relPath, language);
+        return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
 
-      if (plannedFileMod) {
-        if (plannedFileMod.plannedBy !== caller.id) {
-          const content = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: apply_file_modification`,
-              `hunk_id: ${yamlQuote(id)}`,
-              `error: WRONG_OWNER`,
-              `summary: ${yamlQuote(labels.wrongOwner)}`,
-            ].join('\n'),
-          );
-          return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-        }
-        if (!hasWriteAccess(caller, plannedFileMod.relPath)) {
-          const content = getAccessDeniedMessage('write', plannedFileMod.relPath, language);
-          return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-        }
+      const absKey = plannedFileMod.absPath;
+      const res = await new Promise<TxtToolCallResult>((resolve) => {
+        enqueueFileApply(absKey, {
+          priority: plannedFileMod.createdAtMs,
+          tieBreaker: plannedFileMod.hunkId,
+          run: async () => {
+            try {
+              pruneExpiredPlannedMods(Date.now());
+              pruneExpiredPlannedBlockReplaces(Date.now());
+              const p = plannedModsById.get(id);
+              if (!p) {
+                const content = formatYamlCodeBlock(
+                  [
+                    `status: error`,
+                    `mode: apply_file_modification`,
+                    `hunk_id: ${yamlQuote(id)}`,
+                    `error: HUNK_NOT_FOUND`,
+                    `summary: ${yamlQuote(labels.notFound(id))}`,
+                  ].join('\n'),
+                );
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
+              if (p.plannedBy !== caller.id) {
+                const content = formatYamlCodeBlock(
+                  [
+                    `status: error`,
+                    `mode: apply_file_modification`,
+                    `hunk_id: ${yamlQuote(id)}`,
+                    `error: WRONG_OWNER`,
+                    `summary: ${yamlQuote(labels.wrongOwner)}`,
+                  ].join('\n'),
+                );
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
 
-        const absKey = plannedFileMod.absPath;
-        const res = await new Promise<TellaskToolCallResult>((resolve) => {
-          enqueueFileApply(absKey, {
-            priority: plannedFileMod.createdAtMs,
-            tieBreaker: plannedFileMod.hunkId,
-            run: async () => {
-              try {
-                pruneExpiredPlannedMods(Date.now());
-                pruneExpiredPlannedBlockReplaces(Date.now());
-                const p = plannedModsById.get(id);
-                if (!p) {
-                  const content = formatYamlCodeBlock(
-                    [
-                      `status: error`,
-                      `mode: apply_file_modification`,
-                      `hunk_id: ${yamlQuote(id)}`,
-                      `error: HUNK_NOT_FOUND`,
-                      `summary: ${yamlQuote(labels.notFound(id))}`,
-                    ].join('\n'),
-                  );
-                  resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                  return;
-                }
-                if (p.plannedBy !== caller.id) {
-                  const content = formatYamlCodeBlock(
-                    [
-                      `status: error`,
-                      `mode: apply_file_modification`,
-                      `hunk_id: ${yamlQuote(id)}`,
-                      `error: WRONG_OWNER`,
-                      `summary: ${yamlQuote(labels.wrongOwner)}`,
-                    ].join('\n'),
-                  );
-                  resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                  return;
-                }
-
-                // Read current file (append hunks may allow creation).
-                let fileExists = fsSync.existsSync(p.absPath);
-                if (!fileExists && p.kind === 'append' && p.allowCreate) {
-                  fsSync.mkdirSync(path.dirname(p.absPath), { recursive: true });
-                  fileExists = true;
-                  fsSync.writeFileSync(p.absPath, '', 'utf8');
-                }
-                if (!fileExists) {
-                  const content = formatYamlCodeBlock(
-                    [
-                      `status: error`,
-                      `mode: apply_file_modification`,
-                      `path: ${yamlQuote(p.relPath)}`,
-                      `hunk_id: ${yamlQuote(id)}`,
-                      `context_match: rejected`,
-                      `error: FILE_NOT_FOUND`,
-                      `summary: ${yamlQuote(
-                        language === 'zh'
-                          ? '文件不存在，无法应用；请重新规划。'
-                          : 'File not found; cannot apply; re-plan it.',
-                      )}`,
-                    ].join('\n'),
-                  );
-                  resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                  return;
-                }
-
-                const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
-
-                // Append is always applied at EOF; drift is reported via digest.
-                if (p.kind === 'append' || (p.kind === 'range' && p.action === 'append')) {
-                  const currentDigest = sha256HexUtf8(currentContent);
-                  const plannedDigest =
-                    p.kind === 'append' ? p.plannedFileDigestSha256 : p.plannedFileDigestSha256;
-                  const contextMatch =
-                    plannedDigest && plannedDigest === currentDigest ? 'exact' : 'fuzz';
-
-                  const currentLinesRaw = splitFileTextToLines(currentContent);
-                  const baseLines = isEmptyFileLines(currentLinesRaw) ? [] : currentLinesRaw;
-                  const nextLines = [...baseLines, ...p.newLines];
-                  const nextText = joinLinesForWrite(nextLines);
-                  fsSync.mkdirSync(path.dirname(p.absPath), { recursive: true });
-                  fsSync.writeFileSync(p.absPath, nextText, 'utf8');
-                  plannedModsById.delete(id);
-
-                  const fileLineCountBefore = fileLineCount(baseLines);
-                  const appendedLineCount = p.newLines.length;
-                  const appendStartLine = fileLineCountBefore + 1;
-                  const appendEndLine = appendStartLine + Math.max(0, appendedLineCount - 1);
-
-                  const evidenceBeforeTail = baseLines.slice(Math.max(0, baseLines.length - 2));
-                  const evidenceAppendPreview =
-                    p.newLines.length <= 2 ? p.newLines : p.newLines.slice(0, 2);
-                  const evidenceAfterTail = nextLines.slice(Math.max(0, nextLines.length - 2));
-
-                  const summary =
-                    language === 'zh'
-                      ? `Apply：append 第 ${appendStartLine}–${appendEndLine} 行（+${appendedLineCount} 行）；匹配=${contextMatch}；hunk_id=${id}.`
-                      : `Apply: append lines ${appendStartLine}–${appendEndLine} (+${appendedLineCount} lines); matched ${contextMatch}; hunk_id=${id}.`;
-
-                  const yaml = [
-                    `status: ok`,
+              // Read current file (append hunks may allow creation).
+              let fileExists = fsSync.existsSync(p.absPath);
+              if (!fileExists && p.kind === 'append' && p.allowCreate) {
+                fsSync.mkdirSync(path.dirname(p.absPath), { recursive: true });
+                fileExists = true;
+                fsSync.writeFileSync(p.absPath, '', 'utf8');
+              }
+              if (!fileExists) {
+                const content = formatYamlCodeBlock(
+                  [
+                    `status: error`,
                     `mode: apply_file_modification`,
                     `path: ${yamlQuote(p.relPath)}`,
                     `hunk_id: ${yamlQuote(id)}`,
-                    `action: append`,
-                    `append_range:`,
-                    `  start: ${appendStartLine}`,
-                    `  end: ${appendEndLine}`,
-                    `lines:`,
-                    `  old: 0`,
-                    `  new: ${appendedLineCount}`,
-                    `  delta: ${appendedLineCount}`,
-                    `context_match: ${contextMatch}`,
-                    `apply_evidence:`,
-                    `  before_tail: ${yamlBlockScalarLines(evidenceBeforeTail, '    ')}`,
-                    `  appended_preview: ${yamlBlockScalarLines(evidenceAppendPreview, '    ')}`,
-                    `  after_tail: ${yamlBlockScalarLines(evidenceAfterTail, '    ')}`,
-                    `summary: ${yamlQuote(summary)}`,
-                  ].join('\n');
+                    `context_match: rejected`,
+                    `error: FILE_NOT_FOUND`,
+                    `summary: ${yamlQuote(
+                      language === 'zh'
+                        ? '文件不存在，无法应用；请重新规划。'
+                        : 'File not found; cannot apply; re-plan it.',
+                    )}`,
+                  ].join('\n'),
+                );
+                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
 
-                  const content =
-                    `${labels.applied(p.relPath, id)}\n\n` +
-                    `${formatYamlCodeBlock(yaml)}\n\n` +
-                    `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
-                  resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
-                  return;
-                }
+              const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
 
-                if (p.kind === 'insert') {
-                  const currentLines = splitFileTextToLines(currentContent);
+              // Append is always applied at EOF; drift is reported via digest.
+              if (p.kind === 'append' || (p.kind === 'range' && p.action === 'append')) {
+                const currentDigest = sha256HexUtf8(currentContent);
+                const plannedDigest =
+                  p.kind === 'append' ? p.plannedFileDigestSha256 : p.plannedFileDigestSha256;
+                const contextMatch =
+                  plannedDigest && plannedDigest === currentDigest ? 'exact' : 'fuzz';
 
-                  let startIndex0 = -1;
-                  if (matchesAt(currentLines, p.startIndex0, p.oldLines)) {
-                    startIndex0 = p.startIndex0;
-                  } else {
-                    const all = findAllMatches(currentLines, p.oldLines);
-                    if (all.length === 0) {
-                      const summary =
-                        language === 'zh'
-                          ? 'Apply rejected：文件内容已变化，无法定位该 hunk 目标位置；请重新 plan。'
-                          : 'Apply rejected: file content changed; unable to locate the hunk target; re-plan this hunk.';
-                      const yaml = [
-                        `status: error`,
-                        `mode: apply_file_modification`,
-                        `path: ${yamlQuote(p.relPath)}`,
-                        `hunk_id: ${yamlQuote(id)}`,
-                        `context_match: rejected`,
-                        `error: CONTENT_CHANGED`,
-                        `summary: ${yamlQuote(summary)}`,
-                      ].join('\n');
-                      const content = formatYamlCodeBlock(yaml);
-                      resolve(
-                        failed(content, [{ type: 'environment_msg', role: 'user', content }]),
-                      );
-                      return;
-                    }
-                    if (all.length === 1) {
-                      startIndex0 = all[0];
-                    } else {
-                      const filtered = filterByContext(
-                        currentLines,
-                        all,
-                        p.contextBefore,
-                        p.contextAfter,
-                        p.oldLines.length,
-                      );
-                      if (filtered.length === 1) {
-                        startIndex0 = filtered[0];
-                      } else {
-                        const summary =
-                          language === 'zh'
-                            ? 'Apply rejected：hunk 目标位置不唯一（多处匹配）；请缩小范围或增加上下文后重新 plan。'
-                            : 'Apply rejected: ambiguous hunk target (multiple matches); re-plan with a narrower range or more context.';
-                        const yaml = [
-                          `status: error`,
-                          `mode: apply_file_modification`,
-                          `path: ${yamlQuote(p.relPath)}`,
-                          `hunk_id: ${yamlQuote(id)}`,
-                          `context_match: rejected`,
-                          `error: AMBIGUOUS_MATCH`,
-                          `summary: ${yamlQuote(summary)}`,
-                        ].join('\n');
-                        const content = formatYamlCodeBlock(yaml);
-                        resolve(
-                          failed(content, [{ type: 'environment_msg', role: 'user', content }]),
-                        );
-                        return;
-                      }
-                    }
-                  }
+                const currentLinesRaw = splitFileTextToLines(currentContent);
+                const baseLines = isEmptyFileLines(currentLinesRaw) ? [] : currentLinesRaw;
+                const nextLines = [...baseLines, ...p.newLines];
+                const nextText = joinLinesForWrite(nextLines);
+                fsSync.mkdirSync(path.dirname(p.absPath), { recursive: true });
+                fsSync.writeFileSync(p.absPath, nextText, 'utf8');
+                plannedModsById.delete(id);
 
-                  const nextLines = [...currentLines];
-                  nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
-                  const nextText = joinLinesForWrite(nextLines);
-                  fsSync.writeFileSync(p.absPath, nextText, 'utf8');
-                  plannedModsById.delete(id);
+                const fileLineCountBefore = fileLineCount(baseLines);
+                const appendedLineCount = p.newLines.length;
+                const appendStartLine = fileLineCountBefore + 1;
+                const appendEndLine = appendStartLine + Math.max(0, appendedLineCount - 1);
 
-                  const contextMatch = startIndex0 === p.startIndex0 ? 'exact' : 'fuzz';
-                  const insertedLineCount = Math.max(0, p.newLines.length - 1);
-                  const insertedAtLine =
-                    p.insertion.position === 'after' ? startIndex0 + 2 : startIndex0 + 1;
-                  const insertedStartIndex0 =
-                    p.insertion.position === 'after' ? startIndex0 + 1 : startIndex0;
-                  const insertedLines = nextLines.slice(
-                    insertedStartIndex0,
-                    insertedStartIndex0 + insertedLineCount,
-                  );
+                const evidenceBeforeTail = baseLines.slice(Math.max(0, baseLines.length - 2));
+                const evidenceAppendPreview =
+                  p.newLines.length <= 2 ? p.newLines : p.newLines.slice(0, 2);
+                const evidenceAfterTail = nextLines.slice(Math.max(0, nextLines.length - 2));
 
-                  const evidenceBefore = previewWindow(nextLines, insertedStartIndex0 - 2, 2);
-                  const evidenceRange = buildRangePreview(insertedLines);
-                  const evidenceAfter = previewWindow(
-                    nextLines,
-                    insertedStartIndex0 + insertedLineCount,
-                    2,
-                  );
+                const summary =
+                  language === 'zh'
+                    ? `Apply：append 第 ${appendStartLine}–${appendEndLine} 行（+${appendedLineCount} 行）；匹配=${contextMatch}；hunk_id=${id}.`
+                    : `Apply: append lines ${appendStartLine}–${appendEndLine} (+${appendedLineCount} lines); matched ${contextMatch}; hunk_id=${id}.`;
 
-                  const summary =
-                    language === 'zh'
-                      ? `Apply：insert 第 ${insertedAtLine} 起 +${insertedLineCount} 行；匹配=${contextMatch}；hunk_id=${id}.`
-                      : `Apply: insert +${insertedLineCount} lines at line ${insertedAtLine}; matched ${contextMatch}; hunk_id=${id}.`;
+                const yaml = [
+                  `status: ok`,
+                  `mode: apply_file_modification`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `action: append`,
+                  `append_range:`,
+                  `  start: ${appendStartLine}`,
+                  `  end: ${appendEndLine}`,
+                  `lines:`,
+                  `  old: 0`,
+                  `  new: ${appendedLineCount}`,
+                  `  delta: ${appendedLineCount}`,
+                  `context_match: ${contextMatch}`,
+                  `apply_evidence:`,
+                  `  before_tail: ${yamlBlockScalarLines(evidenceBeforeTail, '    ')}`,
+                  `  appended_preview: ${yamlBlockScalarLines(evidenceAppendPreview, '    ')}`,
+                  `  after_tail: ${yamlBlockScalarLines(evidenceAfterTail, '    ')}`,
+                  `summary: ${yamlQuote(summary)}`,
+                ].join('\n');
 
-                  const yaml = [
-                    `status: ok`,
-                    `mode: apply_file_modification`,
-                    `path: ${yamlQuote(p.relPath)}`,
-                    `hunk_id: ${yamlQuote(id)}`,
-                    `action: insert`,
-                    `position: ${yamlQuote(p.insertion.position)}`,
-                    `anchor: ${yamlQuote(p.insertion.anchor)}`,
-                    `inserted_at_line: ${insertedAtLine}`,
-                    `inserted_line_count: ${insertedLineCount}`,
-                    `context_match: ${contextMatch}`,
-                    `apply_evidence:`,
-                    `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
-                    `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
-                    `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
-                    `summary: ${yamlQuote(summary)}`,
-                  ].join('\n');
+                const content =
+                  `${labels.applied(p.relPath, id)}\n\n` +
+                  `${formatYamlCodeBlock(yaml)}\n\n` +
+                  `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+                resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+                return;
+              }
 
-                  const content =
-                    `${labels.applied(p.relPath, id)}\n\n` +
-                    `${formatYamlCodeBlock(yaml)}\n\n` +
-                    `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
-                  resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
-                  return;
-                }
-
-                // Range replace/delete (non-append).
+              if (p.kind === 'insert') {
                 const currentLines = splitFileTextToLines(currentContent);
 
                 let startIndex0 = -1;
@@ -2994,46 +2696,39 @@ export const applyFileModificationTool: TellaskTool = {
                 plannedModsById.delete(id);
 
                 const contextMatch = startIndex0 === p.startIndex0 ? 'exact' : 'fuzz';
-                const action = p.action;
+                const insertedLineCount = Math.max(0, p.newLines.length - 1);
+                const insertedAtLine =
+                  p.insertion.position === 'after' ? startIndex0 + 2 : startIndex0 + 1;
+                const insertedStartIndex0 =
+                  p.insertion.position === 'after' ? startIndex0 + 1 : startIndex0;
+                const insertedLines = nextLines.slice(
+                  insertedStartIndex0,
+                  insertedStartIndex0 + insertedLineCount,
+                );
 
-                const startLine = startIndex0 + 1;
-                const endLine =
-                  action === 'delete'
-                    ? startLine + p.deleteCount - 1
-                    : startLine + Math.max(0, p.newLines.length - 1);
+                const evidenceBefore = previewWindow(nextLines, insertedStartIndex0 - 2, 2);
+                const evidenceRange = buildRangePreview(insertedLines);
+                const evidenceAfter = previewWindow(
+                  nextLines,
+                  insertedStartIndex0 + insertedLineCount,
+                  2,
+                );
 
-                const evidenceBefore = previewWindow(nextLines, startIndex0 - 2, 2);
-                const appliedRangeLines =
-                  action === 'delete'
-                    ? ([] as const)
-                    : nextLines.slice(startIndex0, startIndex0 + p.newLines.length);
-                const evidenceRange = buildRangePreview(appliedRangeLines);
-                const afterStartIndex0 =
-                  action === 'delete' ? startIndex0 : startIndex0 + p.newLines.length;
-                const evidenceAfter = previewWindow(nextLines, afterStartIndex0, 2);
-
-                const linesOld = p.deleteCount;
-                const linesNew = p.newLines.length;
-                const delta = linesNew - linesOld;
                 const summary =
                   language === 'zh'
-                    ? `Apply：${action} 第 ${startLine}–${endLine} 行（old=${linesOld}, new=${linesNew}, delta=${delta}）；匹配=${contextMatch}；hunk_id=${id}.`
-                    : `Apply: ${action} lines ${startLine}–${endLine} (old=${linesOld}, new=${linesNew}, delta=${delta}); matched ${contextMatch}; hunk_id=${id}.`;
+                    ? `Apply：insert 第 ${insertedAtLine} 起 +${insertedLineCount} 行；匹配=${contextMatch}；hunk_id=${id}.`
+                    : `Apply: insert +${insertedLineCount} lines at line ${insertedAtLine}; matched ${contextMatch}; hunk_id=${id}.`;
 
                 const yaml = [
                   `status: ok`,
                   `mode: apply_file_modification`,
                   `path: ${yamlQuote(p.relPath)}`,
                   `hunk_id: ${yamlQuote(id)}`,
-                  `action: ${action}`,
-                  `range:`,
-                  `  applied:`,
-                  `    start: ${startLine}`,
-                  `    end: ${endLine}`,
-                  `lines:`,
-                  `  old: ${linesOld}`,
-                  `  new: ${linesNew}`,
-                  `  delta: ${delta}`,
+                  `action: insert`,
+                  `position: ${yamlQuote(p.insertion.position)}`,
+                  `anchor: ${yamlQuote(p.insertion.anchor)}`,
+                  `inserted_at_line: ${insertedAtLine}`,
+                  `inserted_line_count: ${insertedLineCount}`,
                   `context_match: ${contextMatch}`,
                   `apply_evidence:`,
                   `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
@@ -3047,306 +2742,120 @@ export const applyFileModificationTool: TellaskTool = {
                   `${formatYamlCodeBlock(yaml)}\n\n` +
                   `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
                 resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
-              } catch (error: unknown) {
-                const content = labels.applyFailed(
-                  error instanceof Error ? error.message : String(error),
-                );
-                resolve(
-                  wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]),
-                );
-              }
-            },
-          });
-          void drainFileApplyQueue(absKey);
-        });
-
-        return res;
-      }
-
-      // plannedBlockReplace must exist here.
-      const planned = plannedBlockReplace;
-      if (!planned) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: apply_file_modification`,
-            `hunk_id: ${yamlQuote(id)}`,
-            `error: HUNK_NOT_FOUND`,
-            `summary: ${yamlQuote(labels.notFound(id))}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (planned.plannedBy !== caller.id) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: apply_file_modification`,
-            `path: ${yamlQuote(planned.relPath)}`,
-            `hunk_id: ${yamlQuote(id)}`,
-            `error: WRONG_OWNER`,
-            `summary: ${yamlQuote(labels.wrongOwner)}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (!hasWriteAccess(caller, planned.relPath)) {
-        const content = getAccessDeniedMessage('write', planned.relPath, language);
-        return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const absKey = planned.absPath;
-      const res = await new Promise<TellaskToolCallResult>((resolve) => {
-        enqueueFileApply(absKey, {
-          priority: planned.createdAtMs,
-          tieBreaker: planned.hunkId,
-          run: async () => {
-            try {
-              pruneExpiredPlannedMods(Date.now());
-              pruneExpiredPlannedBlockReplaces(Date.now());
-              const p = plannedBlockReplacesById.get(id);
-              if (!p) {
-                const content = formatYamlCodeBlock(
-                  [
-                    `status: error`,
-                    `mode: apply_file_modification`,
-                    `hunk_id: ${yamlQuote(id)}`,
-                    `error: HUNK_NOT_FOUND`,
-                    `summary: ${yamlQuote(labels.notFound(id))}`,
-                  ].join('\n'),
-                );
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
-              }
-              if (p.plannedBy !== caller.id) {
-                const content = formatYamlCodeBlock(
-                  [
-                    `status: error`,
-                    `mode: apply_file_modification`,
-                    `path: ${yamlQuote(p.relPath)}`,
-                    `hunk_id: ${yamlQuote(id)}`,
-                    `error: WRONG_OWNER`,
-                    `summary: ${yamlQuote(labels.wrongOwner)}`,
-                  ].join('\n'),
-                );
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
                 return;
               }
 
-              if (!fsSync.existsSync(p.absPath)) {
-                const content = formatYamlCodeBlock(
-                  [
+              // Range replace/delete (non-append).
+              const currentLines = splitFileTextToLines(currentContent);
+
+              let startIndex0 = -1;
+              if (matchesAt(currentLines, p.startIndex0, p.oldLines)) {
+                startIndex0 = p.startIndex0;
+              } else {
+                const all = findAllMatches(currentLines, p.oldLines);
+                if (all.length === 0) {
+                  const summary =
+                    language === 'zh'
+                      ? 'Apply rejected：文件内容已变化，无法定位该 hunk 目标位置；请重新 plan。'
+                      : 'Apply rejected: file content changed; unable to locate the hunk target; re-plan this hunk.';
+                  const yaml = [
                     `status: error`,
                     `mode: apply_file_modification`,
                     `path: ${yamlQuote(p.relPath)}`,
                     `hunk_id: ${yamlQuote(id)}`,
                     `context_match: rejected`,
-                    `error: FILE_NOT_FOUND`,
-                    `summary: ${yamlQuote(
+                    `error: CONTENT_CHANGED`,
+                    `summary: ${yamlQuote(summary)}`,
+                  ].join('\n');
+                  const content = formatYamlCodeBlock(yaml);
+                  resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                  return;
+                }
+                if (all.length === 1) {
+                  startIndex0 = all[0];
+                } else {
+                  const filtered = filterByContext(
+                    currentLines,
+                    all,
+                    p.contextBefore,
+                    p.contextAfter,
+                    p.oldLines.length,
+                  );
+                  if (filtered.length === 1) {
+                    startIndex0 = filtered[0];
+                  } else {
+                    const summary =
                       language === 'zh'
-                        ? '文件不存在，无法应用；请重新规划。'
-                        : 'File not found; cannot apply; re-plan it.',
-                    )}`,
-                  ].join('\n'),
-                );
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
+                        ? 'Apply rejected：hunk 目标位置不唯一（多处匹配）；请缩小范围或增加上下文后重新 plan。'
+                        : 'Apply rejected: ambiguous hunk target (multiple matches); re-plan with a narrower range or more context.';
+                    const yaml = [
+                      `status: error`,
+                      `mode: apply_file_modification`,
+                      `path: ${yamlQuote(p.relPath)}`,
+                      `hunk_id: ${yamlQuote(id)}`,
+                      `context_match: rejected`,
+                      `error: AMBIGUOUS_MATCH`,
+                      `summary: ${yamlQuote(summary)}`,
+                    ].join('\n');
+                    const content = formatYamlCodeBlock(yaml);
+                    resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+                    return;
+                  }
+                }
               }
 
-              const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
-              const fileEofHasNewline = currentContent === '' || currentContent.endsWith('\n');
-              const normalizedFileEofNewlineAdded =
-                currentContent !== '' && !currentContent.endsWith('\n');
-              const lines = splitTextToLinesForEditing(currentContent);
+              const nextLines = [...currentLines];
+              nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
+              const nextText = joinLinesForWrite(nextLines);
+              fsSync.writeFileSync(p.absPath, nextText, 'utf8');
+              plannedModsById.delete(id);
 
-              const isMatch = (line: string, anchor: string): boolean => {
-                return p.match === 'equals' ? line === anchor : line.includes(anchor);
-              };
+              const contextMatch = startIndex0 === p.startIndex0 ? 'exact' : 'fuzz';
+              const action = p.action;
 
-              const startMatches: number[] = [];
-              const endMatches: number[] = [];
-              for (let i = 0; i < lines.length; i += 1) {
-                const line = lines[i] ?? '';
-                if (isMatch(line, p.startAnchor)) startMatches.push(i);
-                if (isMatch(line, p.endAnchor)) endMatches.push(i);
-              }
+              const startLine = startIndex0 + 1;
+              const endLine =
+                action === 'delete'
+                  ? startLine + p.deleteCount - 1
+                  : startLine + Math.max(0, p.newLines.length - 1);
 
-              const pairs: Array<{ start0: number; end0: number }> = [];
-              for (const start0 of startMatches) {
-                const end0 = endMatches.find((e) => e > start0);
-                if (end0 !== undefined) pairs.push({ start0, end0 });
-              }
+              const evidenceBefore = previewWindow(nextLines, startIndex0 - 2, 2);
+              const appliedRangeLines =
+                action === 'delete'
+                  ? ([] as const)
+                  : nextLines.slice(startIndex0, startIndex0 + p.newLines.length);
+              const evidenceRange = buildRangePreview(appliedRangeLines);
+              const afterStartIndex0 =
+                action === 'delete' ? startIndex0 : startIndex0 + p.newLines.length;
+              const evidenceAfter = previewWindow(nextLines, afterStartIndex0, 2);
 
-              if (pairs.length === 0) {
-                const summary =
-                  language === 'zh'
-                    ? 'Apply rejected：anchors 未找到或无法配对；请重新 plan。'
-                    : 'Apply rejected: anchors not found or not paired; re-plan this hunk.';
-                const yaml = [
-                  `status: error`,
-                  `mode: apply_file_modification`,
-                  `path: ${yamlQuote(p.relPath)}`,
-                  `hunk_id: ${yamlQuote(id)}`,
-                  `context_match: rejected`,
-                  `error: APPLY_REJECTED_ANCHOR_NOT_FOUND`,
-                  `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
-                const content = formatYamlCodeBlock(yaml);
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
-              }
-
-              if (!p.occurrenceSpecified && p.requireUnique && pairs.length !== 1) {
-                const summary =
-                  language === 'zh'
-                    ? `Apply rejected：anchors 歧义（${pairs.length} 个候选块）；请重新 plan 并指定 occurrence。`
-                    : `Apply rejected: ambiguous anchors (${pairs.length} candidates); re-plan with occurrence specified.`;
-                const yaml = [
-                  `status: error`,
-                  `mode: apply_file_modification`,
-                  `path: ${yamlQuote(p.relPath)}`,
-                  `hunk_id: ${yamlQuote(id)}`,
-                  `context_match: rejected`,
-                  `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
-                  `candidates_count: ${pairs.length}`,
-                  `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
-                const content = formatYamlCodeBlock(yaml);
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
-              }
-
-              const selected = (() => {
-                if (pairs.length === 1) return pairs[0];
-                if (p.occurrence.kind === 'last') return pairs[pairs.length - 1];
-                return pairs[p.occurrence.index1 - 1];
-              })();
-
-              if (!selected) {
-                const summary =
-                  language === 'zh'
-                    ? 'Apply rejected：occurrence 超出范围；请重新 plan。'
-                    : 'Apply rejected: occurrence out of range; re-plan.';
-                const yaml = [
-                  `status: error`,
-                  `mode: apply_file_modification`,
-                  `path: ${yamlQuote(p.relPath)}`,
-                  `hunk_id: ${yamlQuote(id)}`,
-                  `context_match: rejected`,
-                  `error: APPLY_REJECTED_OCCURRENCE_OUT_OF_RANGE`,
-                  `candidates_count: ${pairs.length}`,
-                  `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
-                const content = formatYamlCodeBlock(yaml);
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
-              }
-
-              const nestedStart = startMatches.some(
-                (s) => s > selected.start0 && s < selected.end0,
-              );
-              const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
-              if (nestedStart || nestedEnd) {
-                const summary =
-                  language === 'zh'
-                    ? 'Apply rejected：检测到嵌套/歧义锚点；请重新 plan。'
-                    : 'Apply rejected: nested/ambiguous anchors detected; re-plan.';
-                const yaml = [
-                  `status: error`,
-                  `mode: apply_file_modification`,
-                  `path: ${yamlQuote(p.relPath)}`,
-                  `hunk_id: ${yamlQuote(id)}`,
-                  `context_match: rejected`,
-                  `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
-                  `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
-                const content = formatYamlCodeBlock(yaml);
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
-              }
-
-              const replaceStart0 = p.includeAnchors ? selected.start0 + 1 : selected.start0;
-              const replaceDeleteCount = p.includeAnchors
-                ? Math.max(0, selected.end0 - selected.start0 - 1)
-                : selected.end0 - selected.start0 + 1;
-
-              const currentOldLines = lines.slice(
-                replaceStart0,
-                replaceStart0 + replaceDeleteCount,
-              );
-              const same =
-                currentOldLines.length === p.oldLines.length &&
-                currentOldLines.every((v, i) => v === p.oldLines[i]);
-              if (!same) {
-                const summary =
-                  language === 'zh'
-                    ? 'Apply rejected：文件内容已变化（目标块内容与规划时不一致）；请重新 plan。'
-                    : 'Apply rejected: file content changed (target block no longer matches the planned content); re-plan.';
-                const yaml = [
-                  `status: error`,
-                  `mode: apply_file_modification`,
-                  `path: ${yamlQuote(p.relPath)}`,
-                  `hunk_id: ${yamlQuote(id)}`,
-                  `context_match: rejected`,
-                  `error: APPLY_REJECTED_CONTENT_CHANGED`,
-                  `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
-                const content = formatYamlCodeBlock(yaml);
-                resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
-                return;
-              }
-
-              const outLines = [...lines];
-              outLines.splice(replaceStart0, replaceDeleteCount, ...p.newLines);
-              const out = joinLinesForTextWrite(outLines);
-              fsSync.writeFileSync(p.absPath, out, 'utf8');
-              plannedBlockReplacesById.delete(id);
-
-              const locationMatch =
-                selected.start0 === p.selectedStart0 &&
-                selected.end0 === p.selectedEnd0 &&
-                replaceStart0 === p.replaceStart0 &&
-                replaceDeleteCount === p.deleteCount;
-              const contextMatch = locationMatch ? 'exact' : 'fuzz';
-
-              const oldCount = replaceDeleteCount;
-              const newCount = p.newLines.length;
-              const delta = newCount - oldCount;
-              const oldPreview = buildRangePreview(p.oldLines);
-              const newPreview = buildRangePreview(p.newLines);
-
+              const linesOld = p.deleteCount;
+              const linesNew = p.newLines.length;
+              const delta = linesNew - linesOld;
               const summary =
                 language === 'zh'
-                  ? `Apply：block_replace old=${oldCount}, new=${newCount}, delta=${delta}；匹配=${contextMatch}；hunk_id=${id}.`
-                  : `Apply: block_replace old=${oldCount}, new=${newCount}, delta=${delta}; matched ${contextMatch}; hunk_id=${id}.`;
+                  ? `Apply：${action} 第 ${startLine}–${endLine} 行（old=${linesOld}, new=${linesNew}, delta=${delta}）；匹配=${contextMatch}；hunk_id=${id}.`
+                  : `Apply: ${action} lines ${startLine}–${endLine} (old=${linesOld}, new=${linesNew}, delta=${delta}); matched ${contextMatch}; hunk_id=${id}.`;
 
               const yaml = [
                 `status: ok`,
                 `mode: apply_file_modification`,
                 `path: ${yamlQuote(p.relPath)}`,
                 `hunk_id: ${yamlQuote(id)}`,
-                `action: block_replace`,
-                `block_range:`,
-                `  start_line: ${selected.start0 + 1}`,
-                `  end_line: ${selected.end0 + 1}`,
-                `replace_slice:`,
-                `  start_line: ${replaceStart0 + 1}`,
-                `  delete_count: ${replaceDeleteCount}`,
+                `action: ${action}`,
+                `range:`,
+                `  applied:`,
+                `    start: ${startLine}`,
+                `    end: ${endLine}`,
                 `lines:`,
-                `  old: ${oldCount}`,
-                `  new: ${newCount}`,
+                `  old: ${linesOld}`,
+                `  new: ${linesNew}`,
                 `  delta: ${delta}`,
                 `context_match: ${contextMatch}`,
-                `normalized:`,
-                `  file_eof_has_newline: ${fileEofHasNewline}`,
-                `  content_eof_has_newline: ${p.normalized.contentEofHasNewline}`,
-                `  normalized_file_eof_newline_added: ${normalizedFileEofNewlineAdded}`,
-                `  normalized_content_eof_newline_added: ${p.normalized.normalizedContentEofNewlineAdded}`,
                 `apply_evidence:`,
-                `  before_preview: ${yamlFlowStringArray([lines[selected.start0] ?? ''])}`,
-                `  old_preview: ${yamlFlowStringArray(oldPreview)}`,
-                `  new_preview: ${yamlFlowStringArray(newPreview)}`,
-                `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
+                `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
+                `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
+                `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
                 `summary: ${yamlQuote(summary)}`,
               ].join('\n');
 
@@ -3360,7 +2869,7 @@ export const applyFileModificationTool: TellaskTool = {
                 error instanceof Error ? error.message : String(error),
               );
               resolve(
-                wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+                wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]),
               );
             }
           },
@@ -3369,414 +2878,791 @@ export const applyFileModificationTool: TellaskTool = {
       });
 
       return res;
-    } catch (error: unknown) {
-      const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
+
+    // plannedBlockReplace must exist here.
+    const planned = plannedBlockReplace;
+    if (!planned) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_file_modification`,
+          `hunk_id: ${yamlQuote(id)}`,
+          `error: HUNK_NOT_FOUND`,
+          `summary: ${yamlQuote(labels.notFound(id))}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+    if (planned.plannedBy !== caller.id) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: apply_file_modification`,
+          `path: ${yamlQuote(planned.relPath)}`,
+          `hunk_id: ${yamlQuote(id)}`,
+          `error: WRONG_OWNER`,
+          `summary: ${yamlQuote(labels.wrongOwner)}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+    if (!hasWriteAccess(caller, planned.relPath)) {
+      const content = getAccessDeniedMessage('write', planned.relPath, language);
+      return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const absKey = planned.absPath;
+    const res = await new Promise<TxtToolCallResult>((resolve) => {
+      enqueueFileApply(absKey, {
+        priority: planned.createdAtMs,
+        tieBreaker: planned.hunkId,
+        run: async () => {
+          try {
+            pruneExpiredPlannedMods(Date.now());
+            pruneExpiredPlannedBlockReplaces(Date.now());
+            const p = plannedBlockReplacesById.get(id);
+            if (!p) {
+              const content = formatYamlCodeBlock(
+                [
+                  `status: error`,
+                  `mode: apply_file_modification`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: HUNK_NOT_FOUND`,
+                  `summary: ${yamlQuote(labels.notFound(id))}`,
+                ].join('\n'),
+              );
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+            if (p.plannedBy !== caller.id) {
+              const content = formatYamlCodeBlock(
+                [
+                  `status: error`,
+                  `mode: apply_file_modification`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `error: WRONG_OWNER`,
+                  `summary: ${yamlQuote(labels.wrongOwner)}`,
+                ].join('\n'),
+              );
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            if (!fsSync.existsSync(p.absPath)) {
+              const content = formatYamlCodeBlock(
+                [
+                  `status: error`,
+                  `mode: apply_file_modification`,
+                  `path: ${yamlQuote(p.relPath)}`,
+                  `hunk_id: ${yamlQuote(id)}`,
+                  `context_match: rejected`,
+                  `error: FILE_NOT_FOUND`,
+                  `summary: ${yamlQuote(
+                    language === 'zh'
+                      ? '文件不存在，无法应用；请重新规划。'
+                      : 'File not found; cannot apply; re-plan it.',
+                  )}`,
+                ].join('\n'),
+              );
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
+            const fileEofHasNewline = currentContent === '' || currentContent.endsWith('\n');
+            const normalizedFileEofNewlineAdded =
+              currentContent !== '' && !currentContent.endsWith('\n');
+            const lines = splitTextToLinesForEditing(currentContent);
+
+            const isMatch = (line: string, anchor: string): boolean => {
+              return p.match === 'equals' ? line === anchor : line.includes(anchor);
+            };
+
+            const startMatches: number[] = [];
+            const endMatches: number[] = [];
+            for (let i = 0; i < lines.length; i += 1) {
+              const line = lines[i] ?? '';
+              if (isMatch(line, p.startAnchor)) startMatches.push(i);
+              if (isMatch(line, p.endAnchor)) endMatches.push(i);
+            }
+
+            const pairs: Array<{ start0: number; end0: number }> = [];
+            for (const start0 of startMatches) {
+              const end0 = endMatches.find((e) => e > start0);
+              if (end0 !== undefined) pairs.push({ start0, end0 });
+            }
+
+            if (pairs.length === 0) {
+              const summary =
+                language === 'zh'
+                  ? 'Apply rejected：anchors 未找到或无法配对；请重新 plan。'
+                  : 'Apply rejected: anchors not found or not paired; re-plan this hunk.';
+              const yaml = [
+                `status: error`,
+                `mode: apply_file_modification`,
+                `path: ${yamlQuote(p.relPath)}`,
+                `hunk_id: ${yamlQuote(id)}`,
+                `context_match: rejected`,
+                `error: APPLY_REJECTED_ANCHOR_NOT_FOUND`,
+                `summary: ${yamlQuote(summary)}`,
+              ].join('\n');
+              const content = formatYamlCodeBlock(yaml);
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            if (!p.occurrenceSpecified && p.requireUnique && pairs.length !== 1) {
+              const summary =
+                language === 'zh'
+                  ? `Apply rejected：anchors 歧义（${pairs.length} 个候选块）；请重新 plan 并指定 occurrence。`
+                  : `Apply rejected: ambiguous anchors (${pairs.length} candidates); re-plan with occurrence specified.`;
+              const yaml = [
+                `status: error`,
+                `mode: apply_file_modification`,
+                `path: ${yamlQuote(p.relPath)}`,
+                `hunk_id: ${yamlQuote(id)}`,
+                `context_match: rejected`,
+                `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
+                `candidates_count: ${pairs.length}`,
+                `summary: ${yamlQuote(summary)}`,
+              ].join('\n');
+              const content = formatYamlCodeBlock(yaml);
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            const selected = (() => {
+              if (pairs.length === 1) return pairs[0];
+              if (p.occurrence.kind === 'last') return pairs[pairs.length - 1];
+              return pairs[p.occurrence.index1 - 1];
+            })();
+
+            if (!selected) {
+              const summary =
+                language === 'zh'
+                  ? 'Apply rejected：occurrence 超出范围；请重新 plan。'
+                  : 'Apply rejected: occurrence out of range; re-plan.';
+              const yaml = [
+                `status: error`,
+                `mode: apply_file_modification`,
+                `path: ${yamlQuote(p.relPath)}`,
+                `hunk_id: ${yamlQuote(id)}`,
+                `context_match: rejected`,
+                `error: APPLY_REJECTED_OCCURRENCE_OUT_OF_RANGE`,
+                `candidates_count: ${pairs.length}`,
+                `summary: ${yamlQuote(summary)}`,
+              ].join('\n');
+              const content = formatYamlCodeBlock(yaml);
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            const nestedStart = startMatches.some((s) => s > selected.start0 && s < selected.end0);
+            const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
+            if (nestedStart || nestedEnd) {
+              const summary =
+                language === 'zh'
+                  ? 'Apply rejected：检测到嵌套/歧义锚点；请重新 plan。'
+                  : 'Apply rejected: nested/ambiguous anchors detected; re-plan.';
+              const yaml = [
+                `status: error`,
+                `mode: apply_file_modification`,
+                `path: ${yamlQuote(p.relPath)}`,
+                `hunk_id: ${yamlQuote(id)}`,
+                `context_match: rejected`,
+                `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
+                `summary: ${yamlQuote(summary)}`,
+              ].join('\n');
+              const content = formatYamlCodeBlock(yaml);
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            const replaceStart0 = p.includeAnchors ? selected.start0 + 1 : selected.start0;
+            const replaceDeleteCount = p.includeAnchors
+              ? Math.max(0, selected.end0 - selected.start0 - 1)
+              : selected.end0 - selected.start0 + 1;
+
+            const currentOldLines = lines.slice(replaceStart0, replaceStart0 + replaceDeleteCount);
+            const same =
+              currentOldLines.length === p.oldLines.length &&
+              currentOldLines.every((v, i) => v === p.oldLines[i]);
+            if (!same) {
+              const summary =
+                language === 'zh'
+                  ? 'Apply rejected：文件内容已变化（目标块内容与规划时不一致）；请重新 plan。'
+                  : 'Apply rejected: file content changed (target block no longer matches the planned content); re-plan.';
+              const yaml = [
+                `status: error`,
+                `mode: apply_file_modification`,
+                `path: ${yamlQuote(p.relPath)}`,
+                `hunk_id: ${yamlQuote(id)}`,
+                `context_match: rejected`,
+                `error: APPLY_REJECTED_CONTENT_CHANGED`,
+                `summary: ${yamlQuote(summary)}`,
+              ].join('\n');
+              const content = formatYamlCodeBlock(yaml);
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              return;
+            }
+
+            const outLines = [...lines];
+            outLines.splice(replaceStart0, replaceDeleteCount, ...p.newLines);
+            const out = joinLinesForTextWrite(outLines);
+            fsSync.writeFileSync(p.absPath, out, 'utf8');
+            plannedBlockReplacesById.delete(id);
+
+            const locationMatch =
+              selected.start0 === p.selectedStart0 &&
+              selected.end0 === p.selectedEnd0 &&
+              replaceStart0 === p.replaceStart0 &&
+              replaceDeleteCount === p.deleteCount;
+            const contextMatch = locationMatch ? 'exact' : 'fuzz';
+
+            const oldCount = replaceDeleteCount;
+            const newCount = p.newLines.length;
+            const delta = newCount - oldCount;
+            const oldPreview = buildRangePreview(p.oldLines);
+            const newPreview = buildRangePreview(p.newLines);
+
+            const summary =
+              language === 'zh'
+                ? `Apply：block_replace old=${oldCount}, new=${newCount}, delta=${delta}；匹配=${contextMatch}；hunk_id=${id}.`
+                : `Apply: block_replace old=${oldCount}, new=${newCount}, delta=${delta}; matched ${contextMatch}; hunk_id=${id}.`;
+
+            const yaml = [
+              `status: ok`,
+              `mode: apply_file_modification`,
+              `path: ${yamlQuote(p.relPath)}`,
+              `hunk_id: ${yamlQuote(id)}`,
+              `action: block_replace`,
+              `block_range:`,
+              `  start_line: ${selected.start0 + 1}`,
+              `  end_line: ${selected.end0 + 1}`,
+              `replace_slice:`,
+              `  start_line: ${replaceStart0 + 1}`,
+              `  delete_count: ${replaceDeleteCount}`,
+              `lines:`,
+              `  old: ${oldCount}`,
+              `  new: ${newCount}`,
+              `  delta: ${delta}`,
+              `context_match: ${contextMatch}`,
+              `normalized:`,
+              `  file_eof_has_newline: ${fileEofHasNewline}`,
+              `  content_eof_has_newline: ${p.normalized.contentEofHasNewline}`,
+              `  normalized_file_eof_newline_added: ${normalizedFileEofNewlineAdded}`,
+              `  normalized_content_eof_newline_added: ${p.normalized.normalizedContentEofNewlineAdded}`,
+              `apply_evidence:`,
+              `  before_preview: ${yamlFlowStringArray([lines[selected.start0] ?? ''])}`,
+              `  old_preview: ${yamlFlowStringArray(oldPreview)}`,
+              `  new_preview: ${yamlFlowStringArray(newPreview)}`,
+              `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
+              `summary: ${yamlQuote(summary)}`,
+            ].join('\n');
+
+            const content =
+              `${labels.applied(p.relPath, id)}\n\n` +
+              `${formatYamlCodeBlock(yaml)}\n\n` +
+              `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+          } catch (error: unknown) {
+            const content = labels.applyFailed(
+              error instanceof Error ? error.message : String(error),
+            );
+            resolve(
+              wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]),
+            );
+          }
+        },
+      });
+      void drainFileApplyQueue(absKey);
+    });
+
+    return res;
+  } catch (error: unknown) {
+    const content = labels.applyFailed(error instanceof Error ? error.message : String(error));
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+}
+
+export const applyFileModificationTool: FuncTool = {
+  type: 'func',
+  name: 'apply_file_modification',
+  description: 'Apply a previewed file modification by hunk id (writes the file).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      hunk_id: { type: 'string' },
+    },
+    required: ['hunk_id'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const raw = requireNonEmptyStringArg(args, 'hunk_id');
+    const id = normalizeExistingHunkId(raw) ?? '';
+    if (!id) throw new Error('Invalid arguments: `hunk_id` must be a non-empty string');
+    if (!isValidHunkId(id)) {
+      throw new Error(
+        "Invalid arguments: `hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+      );
+    }
+    const res = await runApplyFileModification(caller, id);
+    return unwrapTxtToolResult(res);
   },
 };
-export const previewBlockReplaceTool: TellaskTool = {
-  type: 'tellask',
-  name: 'preview_block_replace',
-  backfeeding: true,
-  usageDescription: `Preview a block replacement between anchors (does not write).
-Usage: !?@preview_block_replace <path> <start_anchor> <end_anchor> [options]
-!?<new content in body>
-
-Options:
-  occurrence=<n|last> (default: 1)
-  include_anchors=true|false (default: true)
-  match=contains|equals (default: contains)
-  require_unique=true|false (default: true)
-  strict=true|false (default: true)
-
-Returns: YAML + unified diff + hunk_id (apply separately).`,
-  usageDescriptionI18n: {
-    en: `Preview a block replacement between anchors (does not write).
-Usage: !?@preview_block_replace <path> <start_anchor> <end_anchor> [options]
-!?<new content in body>
-
-Options:
-  occurrence=<n|last> (default: 1)
-  include_anchors=true|false (default: true)
-  match=contains|equals (default: contains)
-  require_unique=true|false (default: true)
-  strict=true|false (default: true)
-
-Returns: YAML + unified diff + hunk_id (apply separately).`,
-    zh: `按 start/end 锚点预览块替换（不会立刻写入）。
-用法：!?@preview_block_replace <path> <start_anchor> <end_anchor> [options]
-!?<正文为新块内容>
-
-选项：
-  occurrence=<n|last>（默认 1）
-  include_anchors=true|false（默认 true）
-  match=contains|equals（默认 contains）
-  require_unique=true|false（默认 true）
-  strict=true|false（默认 true）
-
-返回：YAML + unified diff + hunk_id（后续单独 apply）。`,
+async function runPreviewBlockReplace(
+  caller: ToolCaller,
+  options: {
+    filePath: string;
+    startAnchor: string;
+    endAnchor: string;
+    occurrence: Occurrence;
+    occurrenceSpecified: boolean;
+    includeAnchors: boolean;
+    match: AnchorMatchMode;
+    requireUnique: boolean;
+    strict: boolean;
+    inputBody: string;
   },
-  async call(_dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@preview_block_replace')) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: preview_block_replace`,
-          `error: INVALID_FORMAT`,
-          `summary: ${yamlQuote(
-            language === 'zh'
-              ? '格式不正确。用法：!?@preview_block_replace <path> <start_anchor> <end_anchor> [options]'
-              : 'Invalid format. Use: !?@preview_block_replace <path> <start_anchor> <end_anchor> [options]',
-          )}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+): Promise<TxtToolCallResult> {
+  const language = getWorkLanguage();
+  const filePath = options.filePath;
+  const startAnchor = options.startAnchor;
+  const endAnchor = options.endAnchor;
+  const inputBody = options.inputBody;
+  const occurrence = options.occurrence;
+  const occurrenceSpecified = options.occurrenceSpecified;
+  const includeAnchors = options.includeAnchors;
+  const match = options.match;
+  const requireUnique = options.requireUnique;
+  const strict = options.strict;
 
-    const afterToolName = trimmed.slice('@preview_block_replace'.length).trim();
-    const args = splitCommandArgs(afterToolName);
-    const filePath = args[0] ?? '';
-    const startAnchor = args[1] ?? '';
-    const endAnchor = args[2] ?? '';
-    const optTokens = args.slice(3);
+  if (!filePath || !startAnchor || !endAnchor) {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `mode: preview_block_replace`,
+        `error: INVALID_FORMAT`,
+        `summary: ${yamlQuote(
+          language === 'zh'
+            ? '需要提供 path、start_anchor、end_anchor。'
+            : 'path, start_anchor, and end_anchor are required.',
+        )}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (!hasWriteAccess(caller, filePath)) {
+    const content = getAccessDeniedMessage('write', filePath, language);
+    return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+  if (inputBody === '') {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `path: ${yamlQuote(filePath)}`,
+        `mode: preview_block_replace`,
+        `error: CONTENT_REQUIRED`,
+        `summary: ${yamlQuote(
+          language === 'zh'
+            ? '正文不能为空（需要提供要写入块内的新内容）。'
+            : 'Content is required in the body (new block content).',
+        )}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
 
-    if (!filePath || !startAnchor || !endAnchor) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: preview_block_replace`,
-          `error: INVALID_FORMAT`,
-          `summary: ${yamlQuote(
-            language === 'zh'
-              ? '需要提供 path、start_anchor、end_anchor。'
-              : 'path, start_anchor, and end_anchor are required.',
-          )}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (!hasWriteAccess(caller, filePath)) {
-      const content = getAccessDeniedMessage('write', filePath, language);
-      return wrapTellaskResult(language, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    if (inputBody === '') {
+  try {
+    pruneExpiredPlannedMods(Date.now());
+    pruneExpiredPlannedBlockReplaces(Date.now());
+
+    const fullPath = ensureInsideWorkspace(filePath);
+    if (!fsSync.existsSync(fullPath)) {
       const content = formatYamlCodeBlock(
         [
           `status: error`,
           `path: ${yamlQuote(filePath)}`,
           `mode: preview_block_replace`,
-          `error: CONTENT_REQUIRED`,
+          `error: FILE_NOT_FOUND`,
+          `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File does not exist.')}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const existing = fsSync.readFileSync(fullPath, 'utf8');
+    const fileEofHasNewline = existing === '' || existing.endsWith('\n');
+    const normalizedFileEofNewlineAdded = existing !== '' && !existing.endsWith('\n');
+    const lines = splitTextToLinesForEditing(existing);
+
+    const isMatch = (line: string, anchor: string): boolean => {
+      return match === 'equals' ? line === anchor : line.includes(anchor);
+    };
+
+    const startMatches: number[] = [];
+    const endMatches: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? '';
+      if (isMatch(line, startAnchor)) startMatches.push(i);
+      if (isMatch(line, endAnchor)) endMatches.push(i);
+    }
+
+    const pairs: Array<{ start0: number; end0: number }> = [];
+    for (const start0 of startMatches) {
+      const end0 = endMatches.find((e) => e > start0);
+      if (end0 !== undefined) pairs.push({ start0, end0 });
+    }
+
+    const candidatesCount = pairs.length;
+
+    if (candidatesCount === 0) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `path: ${yamlQuote(filePath)}`,
+          `mode: preview_block_replace`,
+          `start_anchor: ${yamlQuote(startAnchor)}`,
+          `end_anchor: ${yamlQuote(endAnchor)}`,
+          `candidates_count: 0`,
+          `error: ANCHOR_NOT_FOUND`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '正文不能为空（需要提供要写入块内的新内容）。'
-              : 'Content is required in the body (new block content).',
+              ? '锚点未找到或无法配对。请改用 preview_file_modification（行号范围精确编辑）。'
+              : 'Anchors not found or not paired. Use preview_file_modification (line-range precise edits).',
           )}`,
         ].join('\n'),
       );
       return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
+
+    if (!occurrenceSpecified && requireUnique && candidatesCount !== 1 && strict) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `path: ${yamlQuote(filePath)}`,
+          `mode: preview_block_replace`,
+          `start_anchor: ${yamlQuote(startAnchor)}`,
+          `end_anchor: ${yamlQuote(endAnchor)}`,
+          `candidates_count: ${candidatesCount}`,
+          `error: ANCHOR_AMBIGUOUS`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 preview_file_modification（行号范围）。`
+              : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use preview_file_modification (line range).`,
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const selected = (() => {
+      if (candidatesCount === 1) return pairs[0];
+      if (occurrence.kind === 'last') return pairs[pairs.length - 1];
+      const idx0 = occurrence.index1 - 1;
+      return pairs[idx0];
+    })();
+
+    if (!selected) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `path: ${yamlQuote(filePath)}`,
+          `mode: preview_block_replace`,
+          `start_anchor: ${yamlQuote(startAnchor)}`,
+          `end_anchor: ${yamlQuote(endAnchor)}`,
+          `candidates_count: ${candidatesCount}`,
+          `error: OCCURRENCE_OUT_OF_RANGE`,
+          `summary: ${yamlQuote(
+            language === 'zh' ? 'occurrence 超出范围。' : 'occurrence is out of range.',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const nestedStart = startMatches.some((s) => s > selected.start0 && s < selected.end0);
+    const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
+    if (nestedStart || nestedEnd) {
+      const content = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `path: ${yamlQuote(filePath)}`,
+          `mode: preview_block_replace`,
+          `start_anchor: ${yamlQuote(startAnchor)}`,
+          `end_anchor: ${yamlQuote(endAnchor)}`,
+          `candidates_count: ${candidatesCount}`,
+          `error: ANCHOR_AMBIGUOUS`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 preview_file_modification（行号范围）。'
+              : 'Nested/ambiguous anchors detected. Refusing to preview; normalize anchors or use preview_file_modification (line range).',
+          )}`,
+        ].join('\n'),
+      );
+      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    }
+
+    const occurrenceResolved =
+      candidatesCount === 1 ? '1' : occurrence.kind === 'last' ? 'last' : String(occurrence.index1);
+
+    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
+    const contentEofHasNewline = inputBody.endsWith('\n');
+    const normalizedContentEofNewlineAdded = addedTrailingNewlineToContent;
+    const normalized: FileEofNewlineNormalization = {
+      fileEofHasNewline,
+      contentEofHasNewline,
+      normalizedFileEofNewlineAdded,
+      normalizedContentEofNewlineAdded,
+    };
+    const replacementLines = splitPlannedBodyLines(normalizedBody);
+
+    const replaceStart0 = includeAnchors ? selected.start0 + 1 : selected.start0;
+    const replaceDeleteCount = includeAnchors
+      ? Math.max(0, selected.end0 - selected.start0 - 1)
+      : selected.end0 - selected.start0 + 1;
+
+    const oldLines = lines.slice(replaceStart0, replaceStart0 + replaceDeleteCount);
+    const unifiedDiff = buildUnifiedSingleHunkDiff(
+      filePath,
+      lines,
+      replaceStart0,
+      replaceDeleteCount,
+      replacementLines,
+    );
+
+    const nowMs = Date.now();
+    const hunkId = (() => {
+      for (let i = 0; i < 10; i += 1) {
+        const id = generateHunkId();
+        if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
+      }
+      throw new Error('Failed to generate a unique hunk id');
+    })();
+
+    const planned: PlannedBlockReplace = {
+      hunkId,
+      plannedBy: caller.id,
+      createdAtMs: nowMs,
+      expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
+      relPath: filePath,
+      absPath: fullPath,
+      startAnchor,
+      endAnchor,
+      match,
+      includeAnchors,
+      requireUnique,
+      strict,
+      occurrence,
+      occurrenceSpecified,
+      selectedStart0: selected.start0,
+      selectedEnd0: selected.end0,
+      replaceStart0,
+      deleteCount: replaceDeleteCount,
+      oldLines,
+      newLines: replacementLines,
+      unifiedDiff,
+      normalized,
+    };
+    plannedBlockReplacesById.set(hunkId, planned);
+
+    const oldCount = replaceDeleteCount;
+    const newCount = replacementLines.length;
+    const delta = newCount - oldCount;
+
+    const oldPreview = buildRangePreview(oldLines);
+    const newPreview = buildRangePreview(replacementLines);
+    const summary =
+      language === 'zh'
+        ? `Plan-block-replace：候选=${candidatesCount}；block 第 ${selected.start0 + 1}–${selected.end0 + 1} 行；old=${oldCount}, new=${newCount}, delta=${delta}；hunk_id=${hunkId}.`
+        : `Plan-block-replace: candidates=${candidatesCount}; block lines ${selected.start0 + 1}–${selected.end0 + 1}; old=${oldCount}, new=${newCount}, delta=${delta}; hunk_id=${hunkId}.`;
+
+    const yaml = [
+      `status: ok`,
+      `mode: preview_block_replace`,
+      `path: ${yamlQuote(filePath)}`,
+      `action: block_replace`,
+      `start_anchor: ${yamlQuote(startAnchor)}`,
+      `end_anchor: ${yamlQuote(endAnchor)}`,
+      `match: ${yamlQuote(match)}`,
+      `include_anchors: ${includeAnchors}`,
+      `require_unique: ${requireUnique}`,
+      `strict: ${strict}`,
+      `candidates_count: ${candidatesCount}`,
+      `occurrence_resolved: ${yamlQuote(occurrenceResolved)}`,
+      `hunk_id: ${yamlQuote(hunkId)}`,
+      `expires_at_ms: ${planned.expiresAtMs}`,
+      `block_range:`,
+      `  start_line: ${selected.start0 + 1}`,
+      `  end_line: ${selected.end0 + 1}`,
+      `replace_slice:`,
+      `  start_line: ${replaceStart0 + 1}`,
+      `  delete_count: ${replaceDeleteCount}`,
+      `lines:`,
+      `  old: ${oldCount}`,
+      `  new: ${newCount}`,
+      `  delta: ${delta}`,
+      `normalized:`,
+      `  file_eof_has_newline: ${normalized.fileEofHasNewline}`,
+      `  content_eof_has_newline: ${normalized.contentEofHasNewline}`,
+      `  normalized_file_eof_newline_added: ${normalized.normalizedFileEofNewlineAdded}`,
+      `  normalized_content_eof_newline_added: ${normalized.normalizedContentEofNewlineAdded}`,
+      `evidence_preview:`,
+      `  before_preview: ${yamlFlowStringArray([lines[selected.start0] ?? ''])}`,
+      `  old_preview: ${yamlFlowStringArray(oldPreview)}`,
+      `  new_preview: ${yamlFlowStringArray(newPreview)}`,
+      `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
+      `summary: ${yamlQuote(summary)}`,
+    ].join('\n');
+
+    const content =
+      `${formatYamlCodeBlock(yaml)}\n\n` +
+      `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
+      (language === 'zh'
+        ? `下一步：调用函数工具 \`apply_file_modification\`，参数：{ \"hunk_id\": \"${hunkId}\" }`
+        : `Next: call function tool \`apply_file_modification\` with { \"hunk_id\": \"${hunkId}\" }.`);
+
+    return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+  } catch (error: unknown) {
+    const content = formatYamlCodeBlock(
+      [
+        `status: error`,
+        `path: ${yamlQuote(filePath)}`,
+        `mode: preview_block_replace`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n'),
+    );
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  }
+}
+
+export const previewBlockReplaceTool: FuncTool = {
+  type: 'func',
+  name: 'preview_block_replace',
+  description: 'Preview a block replacement between anchors (does not write).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string' },
+      start_anchor: { type: 'string' },
+      end_anchor: { type: 'string' },
+      occurrence: { type: ['integer', 'string'] },
+      include_anchors: { type: 'boolean' },
+      match: { type: 'string' },
+      require_unique: { type: 'boolean' },
+      strict: { type: 'boolean' },
+      content: { type: 'string' },
+    },
+    required: ['path', 'start_anchor', 'end_anchor', 'content'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const filePath = requireNonEmptyStringArg(args, 'path');
+    const startAnchor = requireNonEmptyStringArg(args, 'start_anchor');
+    const endAnchor = requireNonEmptyStringArg(args, 'end_anchor');
+    const content = optionalStringArg(args, 'content') ?? '';
 
     let occurrence: Occurrence = { kind: 'index', index1: 1 };
     let occurrenceSpecified = false;
-    let includeAnchors = true;
-    let match: AnchorMatchMode = 'contains';
-    let requireUnique = true;
-    let strict = true;
-
-    for (const token of optTokens) {
-      const [rawK, rawV] = token.split('=', 2);
-      const key = (rawK ?? '').trim();
-      const value = (rawV ?? '').trim();
-      if (!key || !value) continue;
-
-      if (key === 'occurrence') {
-        const parsed = parseOccurrence(value);
-        if (parsed) {
+    const occurrenceValue = args['occurrence'];
+    if (occurrenceValue !== undefined) {
+      if (typeof occurrenceValue === 'number' && Number.isInteger(occurrenceValue)) {
+        // Codex may require this field to be present even when semantically "unset".
+        // Sentinel 0 means "not specified".
+        if (occurrenceValue >= 1) {
+          occurrence = { kind: 'index', index1: occurrenceValue };
+          occurrenceSpecified = true;
+        } else if (occurrenceValue !== 0) {
+          throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+        }
+      } else if (typeof occurrenceValue === 'string') {
+        const trimmed = occurrenceValue.trim();
+        // Codex may require this field to be present even when semantically "unset".
+        // Sentinel empty string means "not specified".
+        if (trimmed !== '') {
+          const parsed = parseOccurrence(trimmed);
+          if (!parsed) {
+            throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
+          }
           occurrence = parsed;
           occurrenceSpecified = true;
         }
-      } else if (key === 'include_anchors') {
-        const parsed = parseBooleanOption(value);
-        if (parsed !== undefined) includeAnchors = parsed;
-      } else if (key === 'match') {
-        if (value === 'contains' || value === 'equals') match = value;
-      } else if (key === 'require_unique') {
-        const parsed = parseBooleanOption(value);
-        if (parsed !== undefined) requireUnique = parsed;
-      } else if (key === 'strict') {
-        const parsed = parseBooleanOption(value);
-        if (parsed !== undefined) strict = parsed;
+      } else {
+        throw new Error("Invalid arguments: `occurrence` must be a positive integer or 'last'");
       }
     }
 
-    try {
-      pruneExpiredPlannedMods(Date.now());
-      pruneExpiredPlannedBlockReplaces(Date.now());
+    const includeAnchors = optionalBooleanArg(args, 'include_anchors') ?? true;
 
-      const fullPath = ensureInsideWorkspace(filePath);
-      if (!fsSync.existsSync(fullPath)) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `path: ${yamlQuote(filePath)}`,
-            `mode: preview_block_replace`,
-            `error: FILE_NOT_FOUND`,
-            `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File does not exist.')}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    let match: AnchorMatchMode = 'contains';
+    const matchArg = optionalNonEmptyStringArg(args, 'match');
+    if (matchArg !== undefined) {
+      if (matchArg !== 'contains' && matchArg !== 'equals') {
+        throw new Error("Invalid arguments: `match` must be one of: 'contains', 'equals'");
       }
-
-      const existing = fsSync.readFileSync(fullPath, 'utf8');
-      const fileEofHasNewline = existing === '' || existing.endsWith('\n');
-      const normalizedFileEofNewlineAdded = existing !== '' && !existing.endsWith('\n');
-      const lines = splitTextToLinesForEditing(existing);
-
-      const isMatch = (line: string, anchor: string): boolean => {
-        return match === 'equals' ? line === anchor : line.includes(anchor);
-      };
-
-      const startMatches: number[] = [];
-      const endMatches: number[] = [];
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? '';
-        if (isMatch(line, startAnchor)) startMatches.push(i);
-        if (isMatch(line, endAnchor)) endMatches.push(i);
-      }
-
-      const pairs: Array<{ start0: number; end0: number }> = [];
-      for (const start0 of startMatches) {
-        const end0 = endMatches.find((e) => e > start0);
-        if (end0 !== undefined) pairs.push({ start0, end0 });
-      }
-
-      const candidatesCount = pairs.length;
-
-      if (candidatesCount === 0) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `path: ${yamlQuote(filePath)}`,
-            `mode: preview_block_replace`,
-            `start_anchor: ${yamlQuote(startAnchor)}`,
-            `end_anchor: ${yamlQuote(endAnchor)}`,
-            `candidates_count: 0`,
-            `error: ANCHOR_NOT_FOUND`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? '锚点未找到或无法配对。请改用 preview_file_modification（行号范围精确编辑）。'
-                : 'Anchors not found or not paired. Use preview_file_modification (line-range precise edits).',
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      if (!occurrenceSpecified && requireUnique && candidatesCount !== 1 && strict) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `path: ${yamlQuote(filePath)}`,
-            `mode: preview_block_replace`,
-            `start_anchor: ${yamlQuote(startAnchor)}`,
-            `end_anchor: ${yamlQuote(endAnchor)}`,
-            `candidates_count: ${candidatesCount}`,
-            `error: ANCHOR_AMBIGUOUS`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 preview_file_modification（行号范围）。`
-                : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use preview_file_modification (line range).`,
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const selected = (() => {
-        if (candidatesCount === 1) return pairs[0];
-        if (occurrence.kind === 'last') return pairs[pairs.length - 1];
-        const idx0 = occurrence.index1 - 1;
-        return pairs[idx0];
-      })();
-
-      if (!selected) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `path: ${yamlQuote(filePath)}`,
-            `mode: preview_block_replace`,
-            `start_anchor: ${yamlQuote(startAnchor)}`,
-            `end_anchor: ${yamlQuote(endAnchor)}`,
-            `candidates_count: ${candidatesCount}`,
-            `error: OCCURRENCE_OUT_OF_RANGE`,
-            `summary: ${yamlQuote(
-              language === 'zh' ? 'occurrence 超出范围。' : 'occurrence is out of range.',
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const nestedStart = startMatches.some((s) => s > selected.start0 && s < selected.end0);
-      const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
-      if (nestedStart || nestedEnd) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `path: ${yamlQuote(filePath)}`,
-            `mode: preview_block_replace`,
-            `start_anchor: ${yamlQuote(startAnchor)}`,
-            `end_anchor: ${yamlQuote(endAnchor)}`,
-            `candidates_count: ${candidatesCount}`,
-            `error: ANCHOR_AMBIGUOUS`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 preview_file_modification（行号范围）。'
-                : 'Nested/ambiguous anchors detected. Refusing to preview; normalize anchors or use preview_file_modification (line range).',
-            )}`,
-          ].join('\n'),
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const occurrenceResolved =
-        candidatesCount === 1
-          ? '1'
-          : occurrence.kind === 'last'
-            ? 'last'
-            : String(occurrence.index1);
-
-      const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(inputBody);
-      const contentEofHasNewline = inputBody.endsWith('\n');
-      const normalizedContentEofNewlineAdded = addedTrailingNewlineToContent;
-      const normalized: FileEofNewlineNormalization = {
-        fileEofHasNewline,
-        contentEofHasNewline,
-        normalizedFileEofNewlineAdded,
-        normalizedContentEofNewlineAdded,
-      };
-      const replacementLines = splitPlannedBodyLines(normalizedBody);
-
-      const replaceStart0 = includeAnchors ? selected.start0 + 1 : selected.start0;
-      const replaceDeleteCount = includeAnchors
-        ? Math.max(0, selected.end0 - selected.start0 - 1)
-        : selected.end0 - selected.start0 + 1;
-
-      const oldLines = lines.slice(replaceStart0, replaceStart0 + replaceDeleteCount);
-      const unifiedDiff = buildUnifiedSingleHunkDiff(
-        filePath,
-        lines,
-        replaceStart0,
-        replaceDeleteCount,
-        replacementLines,
-      );
-
-      const nowMs = Date.now();
-      const hunkId = (() => {
-        for (let i = 0; i < 10; i += 1) {
-          const id = generateHunkId();
-          if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
-        }
-        throw new Error('Failed to generate a unique hunk id');
-      })();
-
-      const planned: PlannedBlockReplace = {
-        hunkId,
-        plannedBy: caller.id,
-        createdAtMs: nowMs,
-        expiresAtMs: nowMs + PLANNED_MOD_TTL_MS,
-        relPath: filePath,
-        absPath: fullPath,
-        startAnchor,
-        endAnchor,
-        match,
-        includeAnchors,
-        requireUnique,
-        strict,
-        occurrence,
-        occurrenceSpecified,
-        selectedStart0: selected.start0,
-        selectedEnd0: selected.end0,
-        replaceStart0,
-        deleteCount: replaceDeleteCount,
-        oldLines,
-        newLines: replacementLines,
-        unifiedDiff,
-        normalized,
-      };
-      plannedBlockReplacesById.set(hunkId, planned);
-
-      const oldCount = replaceDeleteCount;
-      const newCount = replacementLines.length;
-      const delta = newCount - oldCount;
-
-      const oldPreview = buildRangePreview(oldLines);
-      const newPreview = buildRangePreview(replacementLines);
-      const summary =
-        language === 'zh'
-          ? `Plan-block-replace：候选=${candidatesCount}；block 第 ${selected.start0 + 1}–${selected.end0 + 1} 行；old=${oldCount}, new=${newCount}, delta=${delta}；hunk_id=${hunkId}.`
-          : `Plan-block-replace: candidates=${candidatesCount}; block lines ${selected.start0 + 1}–${selected.end0 + 1}; old=${oldCount}, new=${newCount}, delta=${delta}; hunk_id=${hunkId}.`;
-
-      const yaml = [
-        `status: ok`,
-        `mode: preview_block_replace`,
-        `path: ${yamlQuote(filePath)}`,
-        `action: block_replace`,
-        `start_anchor: ${yamlQuote(startAnchor)}`,
-        `end_anchor: ${yamlQuote(endAnchor)}`,
-        `match: ${yamlQuote(match)}`,
-        `include_anchors: ${includeAnchors}`,
-        `require_unique: ${requireUnique}`,
-        `strict: ${strict}`,
-        `candidates_count: ${candidatesCount}`,
-        `occurrence_resolved: ${yamlQuote(occurrenceResolved)}`,
-        `hunk_id: ${yamlQuote(hunkId)}`,
-        `expires_at_ms: ${planned.expiresAtMs}`,
-        `block_range:`,
-        `  start_line: ${selected.start0 + 1}`,
-        `  end_line: ${selected.end0 + 1}`,
-        `replace_slice:`,
-        `  start_line: ${replaceStart0 + 1}`,
-        `  delete_count: ${replaceDeleteCount}`,
-        `lines:`,
-        `  old: ${oldCount}`,
-        `  new: ${newCount}`,
-        `  delta: ${delta}`,
-        `normalized:`,
-        `  file_eof_has_newline: ${normalized.fileEofHasNewline}`,
-        `  content_eof_has_newline: ${normalized.contentEofHasNewline}`,
-        `  normalized_file_eof_newline_added: ${normalized.normalizedFileEofNewlineAdded}`,
-        `  normalized_content_eof_newline_added: ${normalized.normalizedContentEofNewlineAdded}`,
-        `evidence_preview:`,
-        `  before_preview: ${yamlFlowStringArray([lines[selected.start0] ?? ''])}`,
-        `  old_preview: ${yamlFlowStringArray(oldPreview)}`,
-        `  new_preview: ${yamlFlowStringArray(newPreview)}`,
-        `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
-        `summary: ${yamlQuote(summary)}`,
-      ].join('\n');
-
-      const content =
-        `${formatYamlCodeBlock(yaml)}\n\n` +
-        `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
-        (language === 'zh'
-          ? `下一步：执行 \`!?@apply_file_modification !${hunkId}\` 来确认并写入。`
-          : `Next: run \`!?@apply_file_modification !${hunkId}\` to confirm and write.`);
-
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `path: ${yamlQuote(filePath)}`,
-          `mode: preview_block_replace`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      match = matchArg;
     }
+
+    const requireUnique = optionalBooleanArg(args, 'require_unique') ?? true;
+
+    const strict = optionalBooleanArg(args, 'strict') ?? true;
+
+    const res = await runPreviewBlockReplace(caller, {
+      filePath,
+      startAnchor,
+      endAnchor,
+      occurrence,
+      occurrenceSpecified,
+      includeAnchors,
+      match,
+      requireUnique,
+      strict,
+      inputBody: content,
+    });
+    return unwrapTxtToolResult(res);
+  },
+};
+
+export const previewFileAppendTool: FuncTool = {
+  type: 'func',
+  name: 'preview_file_append',
+  description: 'Preview an append-to-EOF edit (does not write).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string' },
+      create: { type: 'boolean' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+    required: ['path', 'content'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const filePath = requireNonEmptyStringArg(args, 'path');
+    const create = optionalBooleanArg(args, 'create');
+    const existingHunkId = normalizeExistingHunkId(
+      optionalNonEmptyStringArg(args, 'existing_hunk_id'),
+    );
+    const content = optionalStringArg(args, 'content') ?? '';
+
+    const requestedId = existingHunkId;
+    if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+      throw new Error(
+        "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+      );
+    }
+
+    const res = await runPreviewFileAppend(caller, filePath, content, {
+      create: create ?? true,
+      requestedId,
+    });
+    return unwrapTxtToolResult(res);
   },
 };

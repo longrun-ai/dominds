@@ -172,7 +172,7 @@ function isShellCmdReminderMeta(meta: JsonValue | undefined): meta is ShellCmdRe
 
 function parseShellCmdArgs(args: ToolArguments): ShellCmdArgs {
   const command = args.command;
-  if (typeof command !== 'string') {
+  if (typeof command !== 'string' || command.trim() === '') {
     throw new Error('shell_cmd.command must be a string');
   }
 
@@ -193,9 +193,31 @@ function parseShellCmdArgs(args: ToolArguments): ShellCmdArgs {
 
   return {
     command,
-    shell,
-    bufferSize,
-    timeoutSeconds,
+    shell: typeof shell === 'string' && shell.trim() !== '' ? shell : undefined,
+    bufferSize:
+      bufferSize === 0
+        ? undefined
+        : bufferSize === undefined
+          ? undefined
+          : Number.isInteger(bufferSize) && bufferSize > 0
+            ? bufferSize
+            : (() => {
+                throw new Error(
+                  'shell_cmd.bufferSize must be a positive integer (or 0 for default)',
+                );
+              })(),
+    timeoutSeconds:
+      timeoutSeconds === 0
+        ? undefined
+        : timeoutSeconds === undefined
+          ? undefined
+          : Number.isInteger(timeoutSeconds) && timeoutSeconds > 0
+            ? timeoutSeconds
+            : (() => {
+                throw new Error(
+                  'shell_cmd.timeoutSeconds must be a positive integer (or 0 for default)',
+                );
+              })(),
   };
 }
 
@@ -214,11 +236,11 @@ function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
   }
 
   const stream = args.stream;
-  if (stream !== undefined && stream !== 'stdout' && stream !== 'stderr') {
+  if (stream !== undefined && stream !== '' && stream !== 'stdout' && stream !== 'stderr') {
     throw new Error('get_daemon_output.stream must be "stdout" or "stderr" if provided');
   }
 
-  return { pid, stream };
+  return { pid, stream: stream === '' ? undefined : stream };
 }
 
 // JSON Schema for shell_cmd parameters
@@ -386,7 +408,7 @@ export const shellCmdReminderOwner: ReminderOwner = {
         type: 'transient_guide_msg',
         role: 'assistant',
         content: `🔔 **System Reminder #${index + 1}** - Process Management Context
-I need to evaluate this reminder's current relevance to system operations and issue \`!?@delete_reminder ${index + 1}\` if the context has changed or the task is complete.
+I need to evaluate this reminder's current relevance to system operations and call the function tool \`delete_reminder\` with \`{ "reminder_no": ${index + 1} }\` if the context has changed or the task is complete.
 ---
 ${reminder.content}`,
       };
@@ -401,7 +423,7 @@ ${reminder.content}`,
         type: 'transient_guide_msg',
         role: 'assistant',
         content: `⚰️ **Process Lifecycle Alert #${index + 1}** - Daemon Terminated (PID ${pid})
-This daemon process has completed its lifecycle and is no longer running. I should clean up this tracking reminder with \`!?@delete_reminder ${index + 1}\` to maintain system hygiene.`,
+This daemon process has completed its lifecycle and is no longer running. I should clean up this tracking reminder by calling \`delete_reminder\` with \`{ "reminder_no": ${index + 1} }\` to maintain system hygiene.`,
       };
     }
 
@@ -420,7 +442,7 @@ This daemon process has completed its lifecycle and is no longer running. I shou
       type: 'transient_guide_msg',
       role: 'assistant',
       content: `🔄 **Active Daemon Monitor #${index + 1}** - PID ${pid} (Uptime: ${uptimeStr})
-This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. Use \`!?@delete_reminder ${index + 1}\` when monitoring is no longer needed or if the process should be terminated.
+This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. Call \`delete_reminder\` with \`{ "reminder_no": ${index + 1} }\` when monitoring is no longer needed or if the process should be terminated.
 
 **Current Status:**
 ${statusInfo}`,

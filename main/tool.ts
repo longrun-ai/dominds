@@ -2,7 +2,10 @@
  * Module: tool
  *
  * Tool type definitions and argument validation helpers.
- * Supports function tools (`func`) and tellask tools (`tellask`).
+ * Dominds tools are function tools (`func`) only.
+ *
+ * NOTE: "tellask" is reserved for teammate calls / dialog orchestration and is
+ * not a tool type.
  */
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
@@ -38,33 +41,7 @@ export interface FuncTool {
   call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string>;
 }
 
-export interface TellaskTool {
-  readonly type: 'tellask';
-  readonly name: string;
-  readonly usageDescription: string;
-  readonly usageDescriptionI18n?: I18nText;
-  call(
-    dlg: Dialog,
-    caller: Team.Member,
-    headLine: string,
-    inputBody: string,
-  ): Promise<TellaskToolCallResult>;
-  readonly backfeeding: boolean;
-}
-
-export type TellaskToolCallResult =
-  | {
-      status: 'completed';
-      result?: string;
-      messages?: ChatMessage[];
-    }
-  | {
-      status: 'failed';
-      result: string;
-      messages?: ChatMessage[];
-    };
-
-export type Tool = FuncTool | TellaskTool;
+export type Tool = FuncTool;
 
 // Reminder-related interfaces
 export interface Reminder {

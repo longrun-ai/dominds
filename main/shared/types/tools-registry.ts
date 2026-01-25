@@ -1,6 +1,6 @@
 import type { I18nText } from './i18n';
 
-export type ToolKind = 'func' | 'tellask';
+export type ToolKind = 'func';
 
 export type ToolInfo = {
   name: string;

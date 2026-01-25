@@ -949,11 +949,11 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === TEXTER TOOL RESPONSE HANDLER ===
-  // Handles responses for @tool_name calls - displays result INLINE in same bubble
+  // Handles responses for tellask call bubbles - displays result INLINE in same bubble
   // Renamed from handleTellaskResponse to handleToolCallResponse
   //
   // Call Type Distinction:
-  // - Tool Call: !?@tool_name (e.g., !?@add_reminder, !?@list_files)
+  // - Tellask Call (inline bubble): !?@<mention-id>
   //   - Result displays INLINE in same bubble via attachResultInline()
   //   - Uses callId for correlation (callingSectionByCallId map)
   //   - Uses this handler (handleToolCallResponse)
@@ -969,7 +969,7 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses this handler (handleToolCallResponse)
   private handleToolCallResponse(event: ToolCallResponseEvent): void {
     // Ignore late tool responses for a different round than the one currently displayed.
-    // This can happen when a tool (e.g., !?@clear_mind) triggers a round transition
+    // This can happen when a dialog-control tool (e.g., clear_mind) triggers a round transition
     // and the UI clears the previous round before the response event arrives.
     if (typeof this.currentRound === 'number' && event.round !== this.currentRound) {
       return;
@@ -1077,11 +1077,6 @@ export class DomindsDialogContainer extends HTMLElement {
   // Now includes full response and agentId from subdialog completion
   //
   // Call Type Distinction:
-  // - Tool Call: !?@tool_name (e.g., !?@add_reminder)
-  //   - Result displays INLINE in same bubble
-  //   - Uses callId for correlation
-  //   - Uses handleToolCallResponse() instead
-  //
   // - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
   //   - Result displays in SEPARATE bubble (subdialog or supdialog response)
   //   - Uses calleeDialogId for correlation (event.calleeDialogId)

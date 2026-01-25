@@ -1,7 +1,7 @@
 /**
  * Module: tools/fs
  *
- * Filesystem tellask tools: list directories, remove directories/files.
+ * Filesystem tools: list directories, remove directories/files, create/move paths.
  * Includes helpers for text-file detection and line counting.
  */
 import { createReadStream } from 'fs';
@@ -9,10 +9,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createInterface } from 'readline';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
-import type { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getWorkLanguage } from '../shared/runtime-language';
-import { TellaskTool, TellaskToolCallResult } from '../tool';
+import type { FuncTool, ToolArguments } from '../tool';
 
 interface DirectoryEntry {
   name: string;
@@ -20,14 +19,6 @@ interface DirectoryEntry {
   size?: number;
   lines?: number;
   target?: string;
-}
-
-function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
-  return { status: 'completed', result, messages };
-}
-
-function fail(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
-  return { status: 'failed', result, messages };
 }
 
 function formatSize(bytes: number): string {
@@ -91,61 +82,31 @@ async function countLines(filePath: string): Promise<number> {
   }
 }
 
-export const listDirTool: TellaskTool = {
-  type: 'tellask',
+export const listDirTool: FuncTool = {
+  type: 'func',
   name: 'list_dir',
-  backfeeding: true,
-  usageDescription: `List directory contents relative to workspace with detailed information.
-Usage: !?@list_dir [path]
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including listing).
-
-Features:
-- Shows file sizes for all entries
-- Shows line count for text files
-- Shows symbolic link targets
-- Categorizes entries by type (dir, file, symlink, other)
-
-Example:
-!?@list_dir src/tools`,
-  usageDescriptionI18n: {
-    en: `List directory contents relative to workspace with detailed information.
-Usage: !?@list_dir [path]
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including listing).
-
-Features:
-- Shows file sizes for all entries
-- Shows line count for text files
-- Shows symbolic link targets
-- Categorizes entries by type (dir, file, symlink, other)
-
-Example:
-!?@list_dir src/tools`,
-    zh: `列出工作区内目录内容（包含详细信息）。
-用法：!?@list_dir [path]
-
-注意：
-  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括列目录）不可访问。
-
-功能：
-- 显示每个条目的文件大小
-- 对文本文件显示行数
-- 显示符号链接目标
-- 按类型分类（dir、file、symlink、other）
-
-示例：
-!?@list_dir src/tools`,
+  description:
+    'List directory contents relative to workspace with detailed information (sizes, line counts for text files, symlink targets).',
+  descriptionI18n: {
+    en: 'List directory contents relative to workspace with detailed information (sizes, line counts for text files, symlink targets).',
+    zh: '列出工作区内目录内容（包含大小、文本文件行数、符号链接目标等信息）。',
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: {
+        type: 'string',
+        description: "Workspace-relative directory path. Defaults to '.'.",
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
         ? {
-            formatError:
-              '请使用正确的目录列出格式。\n\n**期望格式：** `!?@list_dir [path]`\n\n**示例：**\n```\n!?@list_dir src/tools\n```',
             accessDenied: '❌ **访问被拒绝**\n\n路径必须位于工作区内',
             notFound: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
             notDir: (p: string) => `❌ **错误**\n\n路径 \`${p}\` 不是目录。`,
@@ -161,8 +122,6 @@ Example:
             },
           }
         : {
-            formatError:
-              'Please use the correct format for listing directories.\n\n**Expected format:** `!?@list_dir [path]`\n\n**Example:**\n```\n!?@list_dir src/tools\n```',
             accessDenied: '❌ **Access Denied**\n\nPath must be within workspace',
             notFound: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
             notDir: (p: string) => `❌ **Error**\n\nPath \`${p}\` is not a directory.`,
@@ -178,17 +137,9 @@ Example:
             },
           };
 
-    // Parse path from headLine - expect format "@list_dir [path]"
-    const trimmed = headLine.trim();
     let rel = '.';
-
-    if (trimmed.startsWith('@list_dir')) {
-      const afterToolName = trimmed.slice('@list_dir'.length).trim();
-      rel = afterToolName || '.';
-    } else {
-      const content = labels.formatError;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+    const pathValue = args['path'];
+    if (typeof pathValue === 'string' && pathValue.trim() !== '') rel = pathValue.trim();
 
     // Resolve path relative to current working directory (workspace)
     const dir = path.resolve(process.cwd(), rel);
@@ -197,13 +148,13 @@ Example:
     const cwd = path.resolve(process.cwd());
     if (!dir.startsWith(cwd)) {
       const content = labels.accessDenied;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return content;
     }
 
     // Check member access permissions
     if (!hasReadAccess(caller, rel)) {
       const content = getAccessDeniedMessage('read', rel, workLanguage);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return content;
     }
 
     try {
@@ -211,7 +162,7 @@ Example:
         const stats = await fs.lstat(dir);
         if (!stats.isDirectory()) {
           const content = labels.notDir(rel);
-          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+          return content;
         }
       } catch (error: unknown) {
         if (
@@ -221,12 +172,12 @@ Example:
           (error as { code?: unknown }).code === 'ENOENT'
         ) {
           const content = labels.notFound(rel);
-          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+          return content;
         }
 
         const msg = error instanceof Error ? error.message : String(error);
         const content = labels.readDirFailed(msg);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return content;
       }
 
       const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -323,7 +274,7 @@ Example:
         }
       }
 
-      return ok(markdown, [{ type: 'environment_msg', role: 'user', content: markdown }]);
+      return markdown;
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -332,7 +283,7 @@ Example:
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
         const content = labels.notFound(rel);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return content;
       }
 
       if (
@@ -342,114 +293,74 @@ Example:
         (error as { code?: unknown }).code === 'ENOTDIR'
       ) {
         const content = labels.notDir(rel);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return content;
       }
 
       const msg = error instanceof Error ? error.message : String(error);
       const content = labels.readDirFailed(msg);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return content;
     }
   },
 };
 
-export const rmDirTool: TellaskTool = {
-  type: 'tellask',
+export const rmDirTool: FuncTool = {
+  type: 'func',
   name: 'rm_dir',
-  backfeeding: true,
-  usageDescription: `Remove a directory relative to workspace.
-Usage: !?@rm_dir <path> [options]
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
-
-Options:
-  !recursive [true|false]  - Remove directory and all contents (default: false)
-
-Examples:
-  !?@rm_dir temp
-  !?@rm_dir build !recursive true`,
-  usageDescriptionI18n: {
-    en: `Remove a directory relative to workspace.
-Usage: !?@rm_dir <path> [options]
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
-
-Options:
-  !recursive [true|false]  - Remove directory and all contents (default: false)
-
-Examples:
-  !?@rm_dir temp
-  !?@rm_dir build !recursive true`,
-    zh: `删除工作区内的目录。
-用法：!?@rm_dir <path> [options]
-
-注意：
-  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括删除）不可访问。
-
-选项：
-  !recursive [true|false]  - 递归删除目录及其内容（默认：false）
-
-示例：
-  !?@rm_dir temp
-  !?@rm_dir build !recursive true`,
+  description: 'Remove a directory relative to workspace.',
+  descriptionI18n: {
+    en: 'Remove a directory relative to workspace.',
+    zh: '删除工作区内目录。',
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string', description: 'Workspace-relative directory path.' },
+      recursive: {
+        type: 'boolean',
+        description: 'When true, remove directory and all contents.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
         ? {
             formatError:
-              '请使用正确的目录删除格式。\n\n**期望格式：** `!?@rm_dir <path> [!recursive true|false]`\n\n**示例：**\n```\n!?@rm_dir temp !recursive true\n```',
+              '请使用正确的目录删除参数。\n\n**期望参数：** `{ "path": "<path>", "recursive": true|false }`\n\n**示例：**\n```json\n{ \"path\": \"temp\", \"recursive\": true }\n```',
             dirPathRequired: '❌ **错误**\n\n需要提供目录路径。',
             pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
             notDir: (p: string) => `❌ **错误**\n\n\`${p}\` 不是目录。`,
             notEmpty: (p: string) =>
-              `❌ **错误**\n\n目录 \`${p}\` 非空。请使用 \`!recursive true\` 删除非空目录。`,
+              `❌ **错误**\n\n目录 \`${p}\` 非空。请设置 \`recursive: true\` 删除非空目录。`,
             removed: (p: string) => `✅ 已删除目录：\`${p}\`。`,
             doesNotExist: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
             removeFailed: (msg: string) => `❌ **错误**\n\n删除目录失败：${msg}`,
           }
         : {
             formatError:
-              'Please use the correct format for removing directories.\n\n**Expected format:** `!?@rm_dir <path> [!recursive true|false]`\n\n**Example:**\n```\n!?@rm_dir temp !recursive true\n```',
+              'Please use the correct arguments for removing directories.\n\n**Expected args:** `{ "path": "<path>", "recursive": true|false }`\n\n**Example:**\n```json\n{ \"path\": \"temp\", \"recursive\": true }\n```',
             dirPathRequired: '❌ **Error**\n\nDirectory path is required.',
             pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
             notDir: (p: string) => `❌ **Error**\n\n\`${p}\` is not a directory.`,
             notEmpty: (p: string) =>
-              `❌ **Error**\n\nDirectory \`${p}\` is not empty. Use \`!recursive true\` to remove non-empty directories.`,
+              `❌ **Error**\n\nDirectory \`${p}\` is not empty. Set \`recursive: true\` to remove non-empty directories.`,
             removed: (p: string) => `✅ Removed directory: \`${p}\`.`,
             doesNotExist: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
             removeFailed: (msg: string) => `❌ **Error**\n\nError removing directory: ${msg}`,
           };
 
-    // Parse path and options from headLine
-    const trimmed = headLine.trim();
-    let rel = '';
-    let recursive = false;
+    const pathValue = args['path'];
+    const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
+    if (!rel) return labels.dirPathRequired;
 
-    if (trimmed.startsWith('@rm_dir')) {
-      const afterToolName = trimmed.slice('@rm_dir'.length).trim();
-      const parts = afterToolName.split(/\s+/);
-
-      if (parts.length === 0 || !parts[0]) {
-        const content = labels.dirPathRequired;
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      rel = parts[0];
-
-      // Parse options
-      for (let i = 1; i < parts.length; i++) {
-        if (parts[i] === '!recursive' && i + 1 < parts.length) {
-          recursive = parts[i + 1].toLowerCase() === 'true';
-          i++; // Skip the value
-        }
-      }
-    } else {
-      const content = labels.formatError;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+    const recursiveValue = args['recursive'];
+    const recursive = recursiveValue === undefined ? false : recursiveValue === true ? true : false;
+    if (recursiveValue !== undefined && typeof recursiveValue !== 'boolean')
+      return labels.formatError;
 
     // Resolve path relative to current working directory (workspace)
     const targetPath = path.resolve(process.cwd(), rel);
@@ -457,38 +368,33 @@ Examples:
     // Basic security check - ensure path is within workspace
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
-      const content = labels.pathMustBeWithinWorkspace;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return labels.pathMustBeWithinWorkspace;
     }
 
     // Check member write access permissions
     if (!hasWriteAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('write', rel, workLanguage);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return getAccessDeniedMessage('write', rel, workLanguage);
     }
 
     try {
       // Check if path exists and is a directory
       const stats = await fs.lstat(targetPath);
       if (!stats.isDirectory()) {
-        const content = labels.notDir(rel);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return labels.notDir(rel);
       }
 
       // Check if directory is empty when not using recursive
       if (!recursive) {
         const entries = await fs.readdir(targetPath);
         if (entries.length > 0) {
-          const content = labels.notEmpty(rel);
-          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+          return labels.notEmpty(rel);
         }
       }
 
       // Remove the directory
       await fs.rmdir(targetPath, { recursive });
 
-      const content = labels.removed(rel);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return labels.removed(rel);
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -496,53 +402,38 @@ Examples:
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        const content = labels.doesNotExist(rel);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return labels.doesNotExist(rel);
       }
 
-      const content = labels.removeFailed(error instanceof Error ? error.message : String(error));
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return labels.removeFailed(error instanceof Error ? error.message : String(error));
     }
   },
 };
 
-export const rmFileTool: TellaskTool = {
-  type: 'tellask',
+export const rmFileTool: FuncTool = {
+  type: 'func',
   name: 'rm_file',
-  backfeeding: true,
-  usageDescription: `Remove a file relative to workspace.
-Usage: !?@rm_file <path>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
-
-Example:
-  !?@rm_file temp/old-file.txt`,
-  usageDescriptionI18n: {
-    en: `Remove a file relative to workspace.
-Usage: !?@rm_file <path>
-
-Note:
-  Paths under \`*.tsk/\` are encapsulated Task Docs and are NOT accessible via file tools (including deletion).
-
-Example:
-  !?@rm_file temp/old-file.txt`,
-    zh: `删除工作区内的文件。
-用法：!?@rm_file <path>
-
-注意：
-  \`*.tsk/\` 下的路径属于封装差遣牒，文件工具（包括删除）不可访问。
-
-示例：
-  !?@rm_file temp/old-file.txt`,
+  description: 'Remove a file relative to workspace.',
+  descriptionI18n: {
+    en: 'Remove a file relative to workspace.',
+    zh: '删除工作区内文件。',
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string', description: 'Workspace-relative file path.' },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const workLanguage = getWorkLanguage();
     const labels =
       workLanguage === 'zh'
         ? {
             formatError:
-              '请使用正确的文件删除格式。\n\n**期望格式：** `!?@rm_file <path>`\n\n**示例：**\n```\n!?@rm_file temp/old-file.txt\n```',
+              '请使用正确的文件删除参数。\n\n**期望参数：** `{ \"path\": \"<path>\" }`\n\n**示例：**\n```json\n{ \"path\": \"temp/old-file.txt\" }\n```',
             filePathRequired: '❌ **错误**\n\n需要提供文件路径。',
             pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
             notFile: (p: string) => `❌ **错误**\n\n\`${p}\` 不是文件。`,
@@ -552,7 +443,7 @@ Example:
           }
         : {
             formatError:
-              'Please use the correct format for removing files.\n\n**Expected format:** `!?@rm_file <path>`\n\n**Example:**\n```\n!?@rm_file temp/old-file.txt\n```',
+              'Please use the correct arguments for removing files.\n\n**Expected args:** `{ \"path\": \"<path>\" }`\n\n**Example:**\n```json\n{ \"path\": \"temp/old-file.txt\" }\n```',
             filePathRequired: '❌ **Error**\n\nFile path is required.',
             pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
             notFile: (p: string) => `❌ **Error**\n\n\`${p}\` is not a file.`,
@@ -561,22 +452,9 @@ Example:
             removeFailed: (msg: string) => `❌ **Error**\n\nError removing file: ${msg}`,
           };
 
-    // Parse path from headLine
-    const trimmed = headLine.trim();
-    let rel = '';
-
-    if (trimmed.startsWith('@rm_file')) {
-      const afterToolName = trimmed.slice('@rm_file'.length).trim();
-      rel = afterToolName;
-    } else {
-      const content = labels.formatError;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    if (!rel) {
-      const content = labels.filePathRequired;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+    const pathValue = args['path'];
+    const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
+    if (!rel) return labels.filePathRequired;
 
     // Resolve path relative to current working directory (workspace)
     const targetPath = path.resolve(process.cwd(), rel);
@@ -584,29 +462,25 @@ Example:
     // Basic security check - ensure path is within workspace
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
-      const content = labels.pathMustBeWithinWorkspace;
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return labels.pathMustBeWithinWorkspace;
     }
 
     // Check member write access permissions
     if (!hasWriteAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('write', rel, workLanguage);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return getAccessDeniedMessage('write', rel, workLanguage);
     }
 
     try {
       // Check if path exists and is a file
       const stats = await fs.lstat(targetPath);
       if (!stats.isFile()) {
-        const content = labels.notFile(rel);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return labels.notFile(rel);
       }
 
       // Remove the file
       await fs.unlink(targetPath);
 
-      const content = labels.removed(rel);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return labels.removed(rel);
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
@@ -614,12 +488,10 @@ Example:
         'code' in error &&
         (error as { code?: unknown }).code === 'ENOENT'
       ) {
-        const content = labels.doesNotExist(rel);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return labels.doesNotExist(rel);
       }
 
-      const content = labels.removeFailed(error instanceof Error ? error.message : String(error));
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return labels.removeFailed(error instanceof Error ? error.message : String(error));
     }
   },
 };
@@ -630,12 +502,6 @@ function yamlQuote(value: string): string {
 
 function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
-}
-
-function parseBooleanOption(value: string): boolean | undefined {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return undefined;
 }
 
 async function countDirEntries(absPath: string): Promise<number> {
@@ -650,67 +516,54 @@ async function countDirEntries(absPath: string): Promise<number> {
   return count;
 }
 
-export const mkDirTool: TellaskTool = {
-  type: 'tellask',
+export const mkDirTool: FuncTool = {
+  type: 'func',
   name: 'mk_dir',
-  backfeeding: true,
-  usageDescription: `Create a directory relative to workspace.
-Usage: !?@mk_dir <path> [options]
-
-Options:
-  parents=true|false (default: true)`,
-  usageDescriptionI18n: {
-    en: `Create a directory relative to workspace.
-Usage: !?@mk_dir <path> [options]
-
-Options:
-  parents=true|false (default: true)`,
-    zh: `创建工作区内目录。
-用法：!?@mk_dir <path> [options]
-
-选项：
-  parents=true|false（默认 true）`,
+  description: 'Create a directory relative to workspace.',
+  descriptionI18n: { en: 'Create a directory relative to workspace.', zh: '创建工作区内目录。' },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string', description: 'Workspace-relative directory path.' },
+      parents: { type: 'boolean', description: 'Create parent directories as needed.' },
+    },
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const workLanguage = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@mk_dir')) {
-      const yaml = [
-        `status: error`,
-        `error: INVALID_FORMAT`,
-        `summary: ${yamlQuote(
-          workLanguage === 'zh'
-            ? 'Mk-dir failed: invalid format. Use !?@mk_dir <path> [parents=true|false].'
-            : 'Mk-dir failed: invalid format. Use !?@mk_dir <path> [parents=true|false].',
-        )}`,
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const after = trimmed.slice('@mk_dir'.length).trim();
-    const parts = after.split(/\s+/).filter((p) => p.length > 0);
-    const rel = parts[0] ?? '';
+    const pathValue = args['path'];
+    const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
     if (!rel) {
       const yaml = [
         `status: error`,
         `error: PATH_REQUIRED`,
         `summary: ${yamlQuote(workLanguage === 'zh' ? 'Mk-dir failed: path required.' : 'Mk-dir failed: path required.')}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
 
-    let parents = true;
-    for (const tok of parts.slice(1)) {
-      const eq = tok.indexOf('=');
-      if (eq <= 0) continue;
-      const key = tok.slice(0, eq);
-      const value = tok.slice(eq + 1);
-      if (key === 'parents') {
-        const parsed = parseBooleanOption(value);
-        if (parsed !== undefined) parents = parsed;
-      }
+    const parentsValue = args['parents'];
+    const parents =
+      parentsValue === undefined
+        ? true
+        : parentsValue === true
+          ? true
+          : parentsValue === false
+            ? false
+            : true;
+    if (parentsValue !== undefined && typeof parentsValue !== 'boolean') {
+      const yaml = [
+        `status: error`,
+        `error: INVALID_ARGS`,
+        `summary: ${yamlQuote(
+          workLanguage === 'zh'
+            ? 'Mk-dir failed: invalid args. Expected { path: string, parents?: boolean }.'
+            : 'Mk-dir failed: invalid args. Expected { path: string, parents?: boolean }.',
+        )}`,
+      ].join('\n');
+      return formatYamlCodeBlock(yaml);
     }
 
     const targetPath = path.resolve(process.cwd(), rel);
@@ -726,13 +579,11 @@ Options:
             : 'Mk-dir failed: path must be within workspace.',
         )}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
 
     if (!hasWriteAccess(caller, rel)) {
-      const content = getAccessDeniedMessage('write', rel, workLanguage);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return getAccessDeniedMessage('write', rel, workLanguage);
     }
 
     try {
@@ -759,8 +610,7 @@ Options:
                 : 'Mk-dir failed: path exists and is not a directory.',
             )}`,
           ].join('\n');
-          const content = formatYamlCodeBlock(yaml);
-          return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+          return formatYamlCodeBlock(yaml);
         }
         const yaml = [
           `status: ok`,
@@ -768,8 +618,7 @@ Options:
           `created: false`,
           `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).`)}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       await fs.mkdir(targetPath, { recursive: parents });
@@ -779,8 +628,7 @@ Options:
         `created: true`,
         `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).`)}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -788,57 +636,46 @@ Options:
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
   },
 };
 
-export const moveFileTool: TellaskTool = {
-  type: 'tellask',
+export const moveFileTool: FuncTool = {
+  type: 'func',
   name: 'move_file',
-  backfeeding: true,
-  usageDescription: `Move/rename a file relative to workspace.
-Usage: !?@move_file <from> <to>`,
-  usageDescriptionI18n: {
-    en: `Move/rename a file relative to workspace.
-Usage: !?@move_file <from> <to>`,
-    zh: `移动/重命名工作区内文件。
-用法：!?@move_file <from> <to>`,
+  description: 'Move/rename a file relative to workspace.',
+  descriptionI18n: {
+    en: 'Move/rename a file relative to workspace.',
+    zh: '移动/重命名工作区内文件。',
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to'],
+    properties: {
+      from: { type: 'string', description: 'Workspace-relative source file path.' },
+      to: { type: 'string', description: 'Workspace-relative destination file path.' },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const workLanguage = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@move_file')) {
-      const yaml = [
-        `status: error`,
-        `error: INVALID_FORMAT`,
-        `summary: ${yamlQuote(
-          workLanguage === 'zh'
-            ? 'Move-file failed: invalid format. Use !?@move_file <from> <to>.'
-            : 'Move-file failed: invalid format. Use !?@move_file <from> <to>.',
-        )}`,
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const after = trimmed.slice('@move_file'.length).trim();
-    const parts = after.split(/\s+/).filter((p) => p.length > 0);
-    const from = parts[0] ?? '';
-    const to = parts[1] ?? '';
+    const fromValue = args['from'];
+    const toValue = args['to'];
+    const from = typeof fromValue === 'string' ? fromValue.trim() : '';
+    const to = typeof toValue === 'string' ? toValue.trim() : '';
     if (!from || !to) {
       const yaml = [
         `status: error`,
-        `error: INVALID_FORMAT`,
+        `error: INVALID_ARGS`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
             ? 'Move-file failed: from/to required.'
             : 'Move-file failed: from/to required.',
         )}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
 
     const absFrom = path.resolve(process.cwd(), from);
@@ -856,13 +693,11 @@ Usage: !?@move_file <from> <to>`,
             : 'Move-file failed: paths must be within workspace.',
         )}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
 
     if (!hasWriteAccess(caller, from) || !hasWriteAccess(caller, to)) {
-      const content = getAccessDeniedMessage('write', from, workLanguage);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return getAccessDeniedMessage('write', from, workLanguage);
     }
 
     try {
@@ -879,8 +714,7 @@ Usage: !?@move_file <from> <to>`,
               : 'Move-file failed: from is not a file.',
           )}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       const toParent = path.dirname(absTo);
@@ -897,8 +731,7 @@ Usage: !?@move_file <from> <to>`,
               : 'Move-file failed: destination parent directory does not exist. Use mk_dir first.',
           )}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       const toExists = await fs
@@ -927,8 +760,7 @@ Usage: !?@move_file <from> <to>`,
               : 'Move-file failed: destination already exists.',
           )}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       await fs.rename(absFrom, absTo);
@@ -938,8 +770,7 @@ Usage: !?@move_file <from> <to>`,
         `to: ${yamlQuote(to)}`,
         `summary: ${yamlQuote(`Move-file: ${from} \u2192 ${to}.`)}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -948,57 +779,46 @@ Usage: !?@move_file <from> <to>`,
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
   },
 };
 
-export const moveDirTool: TellaskTool = {
-  type: 'tellask',
+export const moveDirTool: FuncTool = {
+  type: 'func',
   name: 'move_dir',
-  backfeeding: true,
-  usageDescription: `Move/rename a directory relative to workspace.
-Usage: !?@move_dir <from> <to>`,
-  usageDescriptionI18n: {
-    en: `Move/rename a directory relative to workspace.
-Usage: !?@move_dir <from> <to>`,
-    zh: `移动/重命名工作区内目录。
-用法：!?@move_dir <from> <to>`,
+  description: 'Move/rename a directory relative to workspace.',
+  descriptionI18n: {
+    en: 'Move/rename a directory relative to workspace.',
+    zh: '移动/重命名工作区内目录。',
   },
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to'],
+    properties: {
+      from: { type: 'string', description: 'Workspace-relative source directory path.' },
+      to: { type: 'string', description: 'Workspace-relative destination directory path.' },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const workLanguage = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@move_dir')) {
-      const yaml = [
-        `status: error`,
-        `error: INVALID_FORMAT`,
-        `summary: ${yamlQuote(
-          workLanguage === 'zh'
-            ? 'Move-dir failed: invalid format. Use !?@move_dir <from> <to>.'
-            : 'Move-dir failed: invalid format. Use !?@move_dir <from> <to>.',
-        )}`,
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const after = trimmed.slice('@move_dir'.length).trim();
-    const parts = after.split(/\s+/).filter((p) => p.length > 0);
-    const from = parts[0] ?? '';
-    const to = parts[1] ?? '';
+    const fromValue = args['from'];
+    const toValue = args['to'];
+    const from = typeof fromValue === 'string' ? fromValue.trim() : '';
+    const to = typeof toValue === 'string' ? toValue.trim() : '';
     if (!from || !to) {
       const yaml = [
         `status: error`,
-        `error: INVALID_FORMAT`,
+        `error: INVALID_ARGS`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
             ? 'Move-dir failed: from/to required.'
             : 'Move-dir failed: from/to required.',
         )}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
 
     const absFrom = path.resolve(process.cwd(), from);
@@ -1016,13 +836,11 @@ Usage: !?@move_dir <from> <to>`,
             : 'Move-dir failed: paths must be within workspace.',
         )}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
 
     if (!hasWriteAccess(caller, from) || !hasWriteAccess(caller, to)) {
-      const content = getAccessDeniedMessage('write', from, workLanguage);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return getAccessDeniedMessage('write', from, workLanguage);
     }
 
     try {
@@ -1039,8 +857,7 @@ Usage: !?@move_dir <from> <to>`,
               : 'Move-dir failed: from is not a directory.',
           )}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       const toParent = path.dirname(absTo);
@@ -1057,8 +874,7 @@ Usage: !?@move_dir <from> <to>`,
               : 'Move-dir failed: destination parent directory does not exist. Use mk_dir first.',
           )}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       const toExists = await fs
@@ -1087,8 +903,7 @@ Usage: !?@move_dir <from> <to>`,
               : 'Move-dir failed: destination already exists.',
           )}`,
         ].join('\n');
-        const content = formatYamlCodeBlock(yaml);
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+        return formatYamlCodeBlock(yaml);
       }
 
       const movedEntryCount = await countDirEntries(absFrom);
@@ -1100,8 +915,7 @@ Usage: !?@move_dir <from> <to>`,
         `moved_entry_count: ${movedEntryCount}`,
         `summary: ${yamlQuote(`Move-dir: ${from} \u2192 ${to} (${movedEntryCount} entries).`)}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -1110,8 +924,7 @@ Usage: !?@move_dir <from> <to>`,
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      return formatYamlCodeBlock(yaml);
     }
   },
 };

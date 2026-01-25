@@ -28,7 +28,7 @@ updated: 2026-01-24
 因此统一为：
 
 - **preview-first**：所有增量编辑先预览（可审阅 diff + evidence + hunk_id）。
-- **single apply**：所有计划类编辑仅通过 `apply_file_modification !<hunk_id>` 落盘。
+- **single apply**：所有计划类编辑仅通过 `apply_file_modification({ "hunk_id": "<hunk_id>" })` 落盘。
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除（无 alias、无兼容层）。
 
 ## 2. 目标与非目标
@@ -65,8 +65,8 @@ updated: 2026-01-24
 
 ### 4.1 支撑工具（读/定位/审阅）
 
-- `read_file`：带上限/可选行号装饰的只读查看（用于复核与定位）。
-- `ripgrep_*`：定位锚点与候选片段（`ripgrep_snippets` 通常最有用）。
+- `read_file`（函数工具）：带上限/可选行号装饰的只读查看（用于复核与定位）。
+- `ripgrep_*`（函数工具）：定位锚点与候选片段（`ripgrep_snippets` 通常最有用）。
 
 ### 4.2 原始写入工具（例外）
 
@@ -110,12 +110,21 @@ updated: 2026-01-24
 
 ### 6.2 “覆写同一规划”的规则（重要）
 
-支持“带 `!existing-hunk-id` 重新 plan 覆写”的工具与规则：
+支持“带 `existing_hunk_id` 重新 plan 覆写”的工具与规则：
 
-- `preview_file_modification`：支持 `!existing-hunk-id`，但该 id 必须已存在、归属当前成员、且模式匹配（不能拿别的 preview 模式的 id 来覆写）。
-- `preview_file_append` / `preview_insert_after` / `preview_insert_before`：同样支持 `!existing-hunk-id` 覆写同模式预览。
-- `preview_block_replace`：当前实现**不支持**传入 `!existing-hunk-id`（每次都会生成新 id）。
-- 所有 plan 工具都**不允许自定义新 id**：`!<id>` 只能用于“覆写已存在规划”。
+- `preview_file_modification`：支持 `existing_hunk_id`，但该 id 必须已存在、归属当前成员、且模式匹配（不能拿别的 preview 模式的 id 来覆写）。
+- `preview_file_append` / `preview_insert_after` / `preview_insert_before`：同样支持 `existing_hunk_id` 覆写同模式预览。
+- `preview_block_replace`：当前实现**不支持** `existing_hunk_id`（每次都会生成新 id）。
+- 所有 plan 工具都**不允许自定义新 id**：只能通过“省略/清空 `existing_hunk_id`”来生成新规划；只有当你想覆写既有规划时才传入 `existing_hunk_id`。
+
+> Codex provider 要求函数工具 schema 的参数字段全部 `required`。因此对于语义上“可选”的字段，统一用哨兵值表达“未指定”：
+>
+> - `existing_hunk_id: ""`：不覆写旧规划（生成新 hunk）。
+> - `occurrence: ""` 或 `0`：不指定 occurrence。
+> - `match: ""`：使用默认 `contains`。
+> - `read_file({ range: "", max_lines: 0, show_linenos: true })`：分别表示“不指定范围 / 使用默认 500 行 / 显示行号”。
+> - `overwrite_entire_file({ content_format: "" })`：表示“未显式声明内容格式”（此时若正文强特征疑似 diff/patch 将默认拒绝写入）。
+> - `ripgrep_*({ path: "", case: "", max_files: 0, max_results: 0 })`：分别表示“默认路径 '.' / 默认 smart-case / 使用默认上限”。
 
 ## 7. 规范化策略（当前实现）
 
@@ -207,52 +216,52 @@ updated: 2026-01-24
 
 消息 1：
 
-```plain-text
-!?@preview_insert_after docs/spec.md "## Configuration" occurrence=1
-!?### Defaults
-!?- provider: codex
+```text
+Call the function tool `preview_insert_after` with:
+{ "path": "docs/spec.md", "anchor": "## Configuration", "occurrence": 1, "match": "", "existing_hunk_id": "", "content": "### Defaults\n- provider: codex\n" }
 ```
 
 消息 2：
 
-```plain-text
-!?@apply_file_modification !<hunk_id>
+```text
+Call the function tool `apply_file_modification` with:
+{ "hunk_id": "<hunk_id>" }
 ```
 
 ### 10.2 末尾追加（plan + apply）
 
-```plain-text
-!?@preview_file_append notes/prompt.md
-!?## Tools
-!?- Use preview_* + apply_file_modification for incremental edits.
+```text
+Call the function tool `preview_file_append` with:
+{ "path": "notes/prompt.md", "create": true, "existing_hunk_id": "", "content": "## Tools\n- Use preview_* + apply_file_modification for incremental edits.\n" }
 ```
 
-```plain-text
-!?@apply_file_modification !<hunk_id>
+```text
+Call the function tool `apply_file_modification` with:
+{ "hunk_id": "<hunk_id>" }
 ```
 
 ### 10.3 行号范围替换（正文可为空表示 delete）
 
-```plain-text
-!?@preview_file_modification README.md 10~12
-!?New line 10
-!?New line 11
+```text
+Call the function tool `preview_file_modification` with:
+{ "path": "README.md", "range": "10~12", "existing_hunk_id": "", "content": "New line 10\nNew line 11\n" }
 ```
 
-```plain-text
-!?@apply_file_modification !<hunk_id>
+```text
+Call the function tool `apply_file_modification` with:
+{ "hunk_id": "<hunk_id>" }
 ```
 
 ### 10.4 双锚点块替换
 
-```plain-text
-!?@preview_block_replace docs/spec.md "## Start" "## End" include_anchors=true
-!?NEW BLOCK LINE 1
-!?NEW BLOCK LINE 2
+```text
+Call the function tool `preview_block_replace` with:
+{ "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "occurrence": "", "include_anchors": true, "match": "", "require_unique": true, "strict": true, "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
 ```
 
-```plain-text
-!?@apply_file_modification !<hunk_id>
+```text
+Call the function tool `apply_file_modification` with:
+{ "hunk_id": "<hunk_id>" }
 ```
 
 ## 11. 与 `.minds/` 的关系（team-mgmt 版本）
@@ -266,7 +275,7 @@ updated: 2026-01-24
 
 This is the design doc for `ws_mod` text editing as implemented.
 
-- Incremental edits are **preview-first** (`preview_*` returns YAML + unified diff + `hunk_id`) and **single-apply** (`apply_file_modification !<hunk_id>` is the only apply entrypoint).
+- Incremental edits are **preview-first** (`preview_*` returns YAML + unified diff + `hunk_id`) and **single-apply** (`apply_file_modification({hunk_id})` is the only apply entrypoint).
 - Legacy direct-write edit tools are removed (no compat): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Tool calls in one message run in parallel → **preview → apply must be two messages**.
 - Applies are serialized per file in-process (queue by `createdAtMs`, then `hunkId`).

@@ -26,14 +26,35 @@ export function formatReminderItemGuide(
   content: string,
 ): string {
   if (language === 'zh') {
-    return `这里是提醒 #${index}。我应判断它是否仍然相关；如果不相关，应立即执行 \`!?@delete_reminder ${index}\`。
+    return `这里是提醒 #${index}。我应判断它是否仍然相关；如果不相关，应立即调用函数工具 \`delete_reminder\`：\`{ \"reminder_no\": ${index} }\`。
 ---
 ${content}`;
   }
 
-  return `Here I have reminder #${index}, I should assess whether it's still relevant and issue \`!?@delete_reminder ${index}\` immediately if deemed not.
+  return `Here I have reminder #${index}. I should assess whether it's still relevant; if not, I should immediately call the function tool \`delete_reminder\` with \`{ \"reminder_no\": ${index} }\`.
 ---
 ${content}`;
+}
+
+export function formatDomindsNoteTellaskForTeammatesOnly(
+  language: LanguageCode,
+  args: { firstMention: string },
+): string {
+  const firstMention = args.firstMention;
+  if (language === 'zh') {
+    return (
+      `错误：诉请（tellask）仅用于队友调用（\`!?@<teammate>\`）。\n` +
+      `- 当前目标：\`@${firstMention}\` 不是已知队友呼号。\n` +
+      `- 若你要调用工具：请使用原生 function-calling（函数工具），不要在文本中输出 \`!?@tool\`。\n` +
+      `- 若你要找队友：请确认呼号（如 \`!?@pangu\` / \`!?@super\` / \`!?@self\`）。`
+    );
+  }
+  return (
+    `Error: tellask is reserved for teammate calls (\`!?@<teammate>\`).\n` +
+    `- Current target: \`@${firstMention}\` is not a known teammate call sign.\n` +
+    `- If you intended to call a tool: use native function-calling; do not emit \`!?@tool\` in text.\n` +
+    `- If you intended to call a teammate: double-check the call sign (e.g. \`!?@pangu\` / \`!?@super\` / \`!?@self\`).`
+  );
 }
 
 export type ContextHealthReminderTextArgs =
@@ -50,7 +71,7 @@ export function formatContextHealthReminderText(
 ): string {
   if (language === 'zh') {
     const distillLines = [
-      '建议：用 `!?@change_mind !progress` 把“提炼摘要”写回差遣牒，然后再用 `!?@clear_mind` 清理噪音开启新回合。',
+      '建议：用函数工具 `change_mind` 把“提炼摘要”写回差遣牒（selector 选 `!progress`），然后再用函数工具 `clear_mind` 清理噪音开启新回合。',
       '',
       '提炼摘要（写入 `!progress` 即可；无需复制粘贴代码块）：',
       '## 提炼摘要',
@@ -63,7 +84,7 @@ export function formatContextHealthReminderText(
 
     const options = [
       '- 可选动作（按当前意图自行选择）：',
-      '  - 把关键事实/决策写入差遣牒（`!?@change_mind !progress`）',
+      '  - 把关键事实/决策写入差遣牒（`change_mind({\"selector\":\"!progress\",\"content\":...})`）',
       '  - 收窄范围/减少输出噪音（例如减少大段粘贴、减少无关回显）',
       '  - 接受风险继续（例如为了保持连续性）',
     ];
@@ -95,7 +116,7 @@ export function formatContextHealthReminderText(
   }
 
   const distillLines = [
-    'Suggested flow: write a short distillation into the task doc via `!?@change_mind !progress`, then use `!?@clear_mind` to start a new round with less noise.',
+    'Suggested flow: write a short distillation into the task doc via the function tool `change_mind` (selector `!progress`), then use the function tool `clear_mind` to start a new round with less noise.',
     '',
     'Distilled context (put this into `!progress`; no code block copy needed):',
     '## Distilled context',
@@ -108,7 +129,7 @@ export function formatContextHealthReminderText(
 
   const options = [
     '- Options (choose based on your intent):',
-    '  - Write key facts/decisions into the task doc (`!?@change_mind !progress`)',
+    '  - Write key facts/decisions into the task doc (`change_mind({\"selector\":\"!progress\",\"content\":...})`)',
     '  - Narrow scope / reduce output noise (avoid large pastes, avoid irrelevant tool echoes)',
     '  - Continue as-is if you accept the risk',
   ];
@@ -144,13 +165,13 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
     return `⚠️ 我当前有 ${count} 条提醒（请优先处理）。
 
 快速操作：
-- 新增：!?@add_reminder [<position>]
-- 更新：!?@update_reminder <number>
-- 删除：!?@delete_reminder <number>
+- 新增：add_reminder({ "content": "...", "position": 0 })（position=0 表示默认追加；也可填 1..N 指定插入位置）
+- 更新：update_reminder({ "reminder_no": 1, "content": "..." })
+- 删除：delete_reminder({ "reminder_no": 1 })
 
 建议做法（可选）：
-- 先用 \`!?@change_mind !progress\` 把关键事实/决策写回差遣牒
-- 然后使用 !?@clear_mind 开启新回合以清理噪音
+- 先用 change_mind({ "selector": "!progress", "content": "..." }) 把关键事实/决策写回差遣牒
+- 然后用 clear_mind({ "reminder_content": "" }) 开启新回合以清理噪音
 
 提炼模板（写入差遣牒的 \`!progress\` 段）：
 ## 提炼摘要
@@ -165,13 +186,13 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
   return `⚠️ I currently have ${count} reminder${plural} (please review).
 
 Quick actions:
-- Add: !?@add_reminder [<position>]
-- Update: !?@update_reminder <number>
-- Delete: !?@delete_reminder <number>
+- Add: add_reminder({ "content": "...", "position": 0 }) (position=0 means append; or set 1..N to insert)
+- Update: update_reminder({ "reminder_no": 1, "content": "..." })
+- Delete: delete_reminder({ "reminder_no": 1 })
 
 Suggested flow (optional):
-- First, write a short distillation into the task doc via \`!?@change_mind !progress\`
-- Then use !?@clear_mind to start a new round with less noise
+- First, write a short distillation into the task doc via change_mind({ "selector": "!progress", "content": "..." })
+- Then use clear_mind({ "reminder_content": "" }) to start a new round with less noise
 
 Distill template (put this into the task doc \`!progress\` section):
 ## Distilled context
@@ -237,7 +258,7 @@ export function formatDomindsNoteMalformedTellaskCall(
         return (
           'ERR_MALFORMED_TELLASK\n' +
           'Dominds 提示：这段内容被解析为“诉请块”，但第一行不是有效的诉请头。\n\n' +
-          '规则：诉请块第一行必须以 `!?@<mention-id>` 开头，例如：`!?@read_file path/to/file`。\n' +
+          '规则：诉请块第一行必须以 `!?@<mention-id>` 开头，例如：`!?@pangu`。\n' +
           '如果你只是想写普通 markdown，请不要在行首使用 `!?`。' +
           got
         );
@@ -246,7 +267,7 @@ export function formatDomindsNoteMalformedTellaskCall(
         return (
           'ERR_MALFORMED_TELLASK\n' +
           'Dominds 提示：这段内容被解析为“诉请块”，但 `!?@` 后的 mention-id 为空或无效。\n\n' +
-          '规则：第一行必须是 `!?@<mention-id>`（mention-id 不能为空），例如：`!?@list_dir .`。' +
+          '规则：第一行必须是 `!?@<mention-id>`（mention-id 不能为空），例如：`!?@pangu`。' +
           got
         );
       }
@@ -262,7 +283,7 @@ export function formatDomindsNoteMalformedTellaskCall(
       return (
         'ERR_MALFORMED_TELLASK\n' +
         'Dominds note: This content was parsed as a tellask block, but the first line is not a valid tellask headline.\n\n' +
-        'Rule: the first line must start with `!?@<mention-id>`, e.g. `!?@read_file path/to/file`.\n' +
+        'Rule: the first line must start with `!?@<mention-id>`, e.g. `!?@pangu`.\n' +
         'If you want normal markdown, do not start the line with `!?`.' +
         got
       );
@@ -271,7 +292,7 @@ export function formatDomindsNoteMalformedTellaskCall(
       return (
         'ERR_MALFORMED_TELLASK\n' +
         'Dominds note: This content was parsed as a tellask block, but the mention-id after `!?@` is empty or invalid.\n\n' +
-        'Rule: the first line must be `!?@<mention-id>` (mention-id cannot be empty), e.g. `!?@list_dir .`.' +
+        'Rule: the first line must be `!?@<mention-id>` (mention-id cannot be empty), e.g. `!?@pangu`.' +
         got
       );
     }

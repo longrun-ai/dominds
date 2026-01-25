@@ -325,7 +325,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle tellask tool responses with callId for inline result display
    *
    * Call Types:
-   * - Tool Call: !?@tool_name (e.g., !?@add_reminder, !?@list_files)
+   * - Tellask Call (inline bubble): !?@<mention-id>
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation between call_start and response
    *   - Uses receiveToolResponse() + callId parameter
@@ -383,11 +383,6 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle TEAMMATE CALL responses (separate bubble for @agentName calls)
    *
    * Call Types:
-   * - Tool Call: !?@tool_name (e.g., !?@add_reminder)
-   *   - Result displays INLINE in the same bubble
-   *   - Uses callId for correlation
-   *   - Uses receiveToolResponse() instead
-   *
    * - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)

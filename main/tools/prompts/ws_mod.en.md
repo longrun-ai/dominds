@@ -7,23 +7,29 @@ You have workspace write access, but **all incremental text edits must be previe
 - Incremental edits: use `preview_*` to produce an applyable hunk; then write via `apply_file_modification`.
 - Legacy tools are removed (no compat): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Constraint: paths under `*.tsk/` are encapsulated Task Docs and are NOT accessible via file tools.
-- Parallelism constraint: multiple tool calls in one message run in parallel; **preview → apply must be two messages** (until an orchestrator exists).
+- Parallelism constraint: multiple tool calls in one generation step may run in parallel; **preview → apply must be two steps** (until an orchestrator exists).
 - Outputs are YAML + unified diff for quick review (`summary` + `evidence`/`apply_evidence`).
 - Normalization: writes assume every line ends with `\n` (including the last line); EOF newlines are normalized and reported via `normalized.*`.
 - Exception: `overwrite_entire_file` is a full-file overwrite function tool (writes immediately; not preview/apply). It requires `known_old_total_lines/known_old_total_bytes` as guardrails, and rejects diff/patch-like content by default unless `content_format='diff'|'patch'`. Use it only for small new content (e.g. <100 lines) or explicit resets/generated files; otherwise prefer preview/apply.
 
 ## Which `preview_*` to use
 
-- Precise range edits: `preview_file_modification <path> <range> [!hunk]`
-- Append to EOF: `preview_file_append <path> [create=true|false] [!hunk]`
-- Anchor insertion: `preview_insert_after|preview_insert_before <path> <anchor> [options] [!hunk]`
-- Block replace between anchors: `preview_block_replace <path> <start_anchor> <end_anchor> [options]`
+- Precise range edits: `preview_file_modification({ path, range, content, existing_hunk_id })`
+- Append to EOF: `preview_file_append({ path, content, create, existing_hunk_id })`
+- Anchor insertion: `preview_insert_after|preview_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
+- Block replace between anchors: `preview_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`
+
+> The Codex provider requires all function tool fields to be present (schema is all-required). To express “unset / default”, use sentinel values:
+>
+> - `existing_hunk_id: ""` means “do not overwrite an existing plan” (generate a new hunk).
+> - `occurrence: ""` or `0` means “occurrence not specified” (you may be required to set it when candidates are ambiguous).
+> - `match: ""` means the default `contains`.
 
 ## hunk id rules (important)
 
 - `preview_*` generates a TTL-limited `hunk_id` (TTL = 1 hour); apply can only use an existing hunk.
 - Expired/unused hunks have **no side effects** and are automatically cleaned up; you only need to care about the last `hunk_id` you intend to apply.
-- Some preview tools accept `[!existing-hunk-id]` to revise the same preview; **custom new ids are not allowed**.
+- Some preview tools accept `existing_hunk_id` to revise the same preview; **custom new ids are not allowed**.
 
 ## apply semantics (context_match)
 
@@ -35,42 +41,39 @@ You have workspace write access, but **all incremental text edits must be previe
 
 1. Preview (returns `hunk_id` + unified diff):
 
-```plain-text
-!?@preview_insert_after docs/spec.md "## Configuration" occurrence=1
-!?### Defaults
-!?- provider: codex
+```text
+Call the function tool `preview_insert_after` with:
+{ "path": "docs/spec.md", "anchor": "## Configuration", "occurrence": 1, "match": "", "existing_hunk_id": "", "content": "### Defaults\\n- provider: codex\\n" }
 ```
 
-2. Apply (must be a separate message):
+2. Apply (must be a separate step):
 
-```plain-text
-!?@apply_file_modification !<hunk_id>
+```text
+Call the function tool `apply_file_modification` with:
+{ "hunk_id": "<hunk_id>" }
 ```
 
 ## Examples
 
 - Append to EOF:
 
-```plain-text
-!?@preview_file_append notes/prompt.md
-!?## Tools
-!?- Use preview_* + apply_file_modification for incremental edits.
+```text
+Call the function tool `preview_file_append` with:
+{ "path": "notes/prompt.md", "create": true, "existing_hunk_id": "", "content": "## Tools\\n- Use preview_* + apply_file_modification for incremental edits.\\n" }
 ```
 
-- Replace a line range (empty body means delete):
+- Replace a line range (`content` may be an empty string to delete):
 
-```plain-text
-!?@preview_file_modification README.md 10~12
-!?New line 10
-!?New line 11
+```text
+Call the function tool `preview_file_modification` with:
+{ "path": "README.md", "range": "10~12", "existing_hunk_id": "", "content": "New line 10\\nNew line 11\\n" }
 ```
 
 - Block replace between anchors:
 
-```plain-text
-!?@preview_block_replace docs/spec.md "## Start" "## End" include_anchors=true
-!?NEW BLOCK LINE 1
-!?NEW BLOCK LINE 2
+```text
+Call the function tool `preview_block_replace` with:
+{ "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "occurrence": "", "include_anchors": true, "match": "", "require_unique": true, "strict": true, "content": "NEW BLOCK LINE 1\\nNEW BLOCK LINE 2\\n" }
 ```
 
 ## Common failures and next steps

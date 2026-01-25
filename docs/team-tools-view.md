@@ -59,15 +59,14 @@ tools are currently registered (including MCP-derived toolsets).
 ### Contents
 
 - A server-provided **timestamp** for the currently displayed snapshot.
-- Two top-level tool group sections:
-  - **Tellask Tools** (collapsible; expanded by default)
+- One top-level tool group section:
   - **Function Tools** (collapsible; expanded by default)
-- Within each group, toolsets are displayed as grouped sections titled `toolsetName (N)` where `N`
-  is the number of tools in that toolset **for that group**.
+- Toolsets are displayed as grouped sections titled `toolsetName (N)` where `N` is the number of
+  tools in that toolset.
 - Toolsets are collapsed by default; a triangle indicator reflects collapsed/expanded state.
 - Toolsets and tools are shown in **registration order** (as provided by the backend snapshot).
 - Tools within a toolset show:
-  - Kind marker (`ƒ` for function tools, `@` for tellasks)
+  - Kind marker (`ƒ`)
   - Tool name
   - Optional description
 

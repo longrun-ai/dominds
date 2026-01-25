@@ -3,7 +3,7 @@
  *
  * Drives dialog streaming end-to-end:
  * - Loads minds/tools, selects generator, streams outputs
- * - Parses tellask tool-call blocks, executes tools, handles human prompts
+ * - Parses tellask blocks (teammate calls), handles human prompts
  * - Supports autonomous teammate calls: when an agent mentions a teammate (e.g., @teammate), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
  */
 
@@ -38,6 +38,7 @@ import {
   formatDomindsNoteMultipleTopicDirectives,
   formatDomindsNoteSuperNoTopic,
   formatDomindsNoteSuperOnlyInSubdialog,
+  formatDomindsNoteTellaskForTeammatesOnly,
   formatReminderIntro,
   formatReminderItemGuide,
   formatUserFacingLanguageGuide,
@@ -57,10 +58,8 @@ import {
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
-import type { ToolArguments } from '../tool';
-import { FuncTool, TellaskTool, Tool, validateArgs } from '../tool';
+import { FuncTool, Tool, validateArgs, type ToolArguments } from '../tool';
 import { contextHealthReminderOwner } from '../tools/context-health';
-import { getTool } from '../tools/registry';
 import { generateDialogID } from '../utils/id';
 import { formatTaskDocContent } from '../utils/task-doc';
 import {
@@ -68,11 +67,11 @@ import {
   FuncCallMsg,
   FuncResultMsg,
   LlmConfig,
-  type ModelInfo,
-  type ProviderConfig,
   SayingMsg,
   TellaskCallResultMsg,
   ThinkingMsg,
+  type ModelInfo,
+  type ProviderConfig,
 } from './client';
 import { getLlmGenerator } from './gen/registry';
 import { projectFuncToolsForProvider } from './tools-projection';
@@ -885,8 +884,8 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *   - Persist user message to storage
  *
  * Phase 3 - User Tool Calls Collection & Execution:
- *   - Parse user text for tellask tool-call blocks using TellaskStreamParser
- *   - Execute tellask tools (agent-to-agent calls, intrinsic tools)
+ *   - Parse user text for tellask blocks using TellaskStreamParser
+ *   - Execute tellask calls (teammate calls / Q4H / supdialog)
  *   - Handle subdialog creation for @teammate mentions
  *
  * Phase 4 - Context Building:
@@ -898,9 +897,9 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *   - For streaming=false: Generate all messages at once
  *   - For streaming=true: Stream responses with thinking/saying events
  *
- * Phase 6 - Function/Tellask Tool Call Execution:
+ * Phase 6 - Function/Tellask Call Execution:
  *   - Execute function calls (non-streaming mode)
- *   - Execute tellask tool calls (streaming mode)
+ *   - Execute tellask calls (streaming mode)
  *   - Collect and persist results
  *
  * Phase 7 - Loop or Complete:
@@ -1089,8 +1088,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       throwIfAborted(abortSignal, dlg.id);
 
       // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
-      const { team, agent, systemPrompt, memories, agentTools, tellaskTools } =
-        await loadAgentMinds(dlg.agentId, dlg);
+      const { team, agent, systemPrompt, memories, agentTools } = await loadAgentMinds(
+        dlg.agentId,
+        dlg,
+      );
 
       // reload cfgs every round, in case it's been updated by human or ai meanwhile
 
@@ -1184,17 +1185,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           if (promptGrammar === 'tellask') {
             // Collect and execute tellask calls from user text using streaming parser
-            // Combine agent tellask tools with intrinsic reminder tools
-            const allTellaskTools = [...tellaskTools, ...dlg.getIntrinsicTools()];
             throwIfAborted(abortSignal, dlg.id);
             const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
             throwIfAborted(abortSignal, dlg.id);
-            const userResult = await executeTellaskCalls(
-              dlg,
-              agent,
-              allTellaskTools,
-              collectedUserCalls,
-            );
+            const userResult = await executeTellaskCalls(dlg, agent, collectedUserCalls);
 
             if (dlg.hasUpNext()) {
               return lastAssistantSayingContent;
@@ -1438,14 +1432,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           let assistantToolOutputsCount = 0;
           if (collectedAssistantCalls.length > 0) {
-            const allTellaskTools = [...tellaskTools, ...dlg.getIntrinsicTools()];
             throwIfAborted(abortSignal, dlg.id);
-            const assistantResult = await executeTellaskCalls(
-              dlg,
-              agent,
-              allTellaskTools,
-              collectedAssistantCalls,
-            );
+            const assistantResult = await executeTellaskCalls(dlg, agent, collectedAssistantCalls);
             if (dlg.hasUpNext()) {
               return lastAssistantSayingContent;
             }
@@ -1798,7 +1786,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               executeTellaskCall(
                 dlg,
                 agent,
-                tellaskTools,
                 call.validation.firstMention,
                 call.headLine,
                 call.body,
@@ -2798,12 +2785,11 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
 }
 
 /**
- * Collect tellask tool calls using the streaming parser, then execute them
+ * Collect tellask calls using the streaming parser, then execute them
  */
 async function executeTellaskCalls(
   dlg: Dialog,
   agent: Team.Member,
-  tellaskTools: TellaskTool[],
   collectedCalls: CollectedTellaskCall[],
 ): Promise<{ suspend: boolean; toolOutputs: ChatMessage[]; subdialogsCreated: DialogID[] }> {
   const malformedToolOutputs = await emitMalformedTellaskResponses(dlg, collectedCalls);
@@ -2821,7 +2807,6 @@ async function executeTellaskCalls(
       executeTellaskCall(
         dlg,
         agent,
-        tellaskTools,
         call.validation.firstMention,
         call.headLine,
         call.body,
@@ -2872,13 +2857,12 @@ async function emitMalformedTellaskResponses(
 }
 
 /**
- * Execute a single tellask tool call using Phase 5 3-Type Taxonomy.
+ * Execute a single tellask call using Phase 5 3-Type Taxonomy.
  * Handles Type A (supdialog suspension), Type B (registered subdialog), and Type C (transient subdialog).
  */
 async function executeTellaskCall(
   dlg: Dialog,
   agent: Team.Member,
-  tellaskTools: TellaskTool[],
   firstMention: string,
   headLine: string,
   body: string,
@@ -2898,7 +2882,6 @@ async function executeTellaskCall(
   const subdialogsCreated: DialogID[] = [];
 
   const team = await Team.load();
-  const intrinsicTools = dlg.getIntrinsicTools();
   const isSelfAlias = firstMention === 'self';
   const isSuperAlias = firstMention === 'super';
   const member = isSelfAlias ? team.getMember(dlg.agentId) : team.getMember(firstMention);
@@ -2977,20 +2960,11 @@ async function executeTellaskCall(
 
       const perTargetResults = await Promise.all(
         knownTargets.map(async (targetId) => {
-          return await executeTellaskCall(
-            dlg,
-            agent,
-            tellaskTools,
-            targetId,
-            headLine,
-            body,
-            callId,
-            {
-              allowMultiTeammateTargets: false,
-              collectiveTargets: knownTargets,
-              skipTopicDirectiveValidation: true,
-            },
-          );
+          return await executeTellaskCall(dlg, agent, targetId, headLine, body, callId, {
+            allowMultiTeammateTargets: false,
+            collectiveTargets: knownTargets,
+            skipTopicDirectiveValidation: true,
+          });
         }),
       );
 
@@ -3478,105 +3452,20 @@ async function executeTellaskCall(
       }
     }
   } else {
-    // Not a team member - check for tellask tools
-    let tool =
-      tellaskTools.find((t) => t.name === firstMention) ||
-      intrinsicTools.find((t) => t.name === firstMention);
-    if (!tool) {
-      try {
-        const globalTool = getTool(firstMention);
-        switch (globalTool?.type) {
-          case 'tellask':
-            tool = globalTool;
-            break;
-          case 'func':
-            log.warn(`Function tool "${globalTool.name}" should not be called as tellask tool!`);
-            break;
-        }
-      } catch (toolErr) {
-        // Fall through
-      }
-    }
-    if (tool) {
-      try {
-        const raw = await tool.call(dlg, agent, headLine, body);
-
-        // Always use what the tool returned
-        if (raw.messages) {
-          toolOutputs.push(...raw.messages);
-        }
-
-        // Emit tool response with callId (inline bubble) - callId is for UI correlation only
-        const defaultOk = 'OK';
-        await dlg.receiveToolResponse(
-          firstMention,
-          headLine,
-          raw.status === 'completed' ? (raw.result ?? defaultOk) : raw.result,
-          raw.status,
-          callId,
-        );
-
-        // Clear callId after response
-        dlg.clearCurrentCallId();
-
-        if (tool.backfeeding && !raw.messages) {
-          log.warn(
-            `Tellask tool @${firstMention} returned empty output while backfeeding=true`,
-            undefined,
-            { headLine },
-          );
-        }
-      } catch (e) {
-        const msg = `ERR_TOOL_EXECUTION\n${showErrorToAi(e)}`;
-        toolOutputs.push({
-          type: 'environment_msg',
-          role: 'user',
-          content: msg,
-        });
-
-        // Create error message (no callId - for LLM context only)
-        const errorMsg: TellaskCallResultMsg = {
-          type: 'call_result_msg',
-          role: 'tool',
-          responderId: firstMention,
-          headLine,
-          status: 'failed',
-          content: msg,
-        };
-        toolOutputs.push(errorMsg);
-
-        // Emit tool response with callId for UI correlation
-        await dlg.receiveToolResponse(firstMention, headLine, msg, 'failed', callId);
-
-        // Clear callId after response
-        dlg.clearCurrentCallId();
-      }
-    } else {
-      const msg = 'ERR_UNKNOWN_CALL';
-      toolOutputs.push({
-        type: 'environment_msg',
-        role: 'user',
-        content: msg,
-      });
-
-      // Create error message for LLM context
-      const errorMsg: TellaskCallResultMsg = {
-        type: 'call_result_msg',
-        role: 'tool',
-        responderId: firstMention,
-        headLine,
-        status: 'failed',
-        content: msg,
-      };
-      toolOutputs.push(errorMsg);
-
-      // Emit tool response with the parser-provided callId so the UI can attach inline.
-      await dlg.receiveToolResponse(firstMention, headLine, msg, 'failed', callId);
-
-      // Clear callId after response
-      dlg.clearCurrentCallId();
-      log.warn(`Unknown call @${firstMention} | Head: ${headLine}`);
-    }
+    // Not a team member: tellask is reserved for teammate calls.
+    // All tools (including dialog control tools) must use native function-calling.
+    const msg = formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), { firstMention });
+    toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+    toolOutputs.push({
+      type: 'call_result_msg',
+      role: 'tool',
+      responderId: 'dominds',
+      headLine,
+      status: 'failed',
+      content: msg,
+    });
+    await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+    dlg.clearCurrentCallId();
   }
 
   return { toolOutputs, suspend, subdialogsCreated };

@@ -23,7 +23,7 @@ Dominds does **not** yet have:
 - Collect **token usage stats** from LLM provider wrappers after each generation.
 - Compute a simple **context health** signal (percent-of-limit) from provider stats + model metadata.
 - When the dialog context is “too large”, add a **reminder** urging the agent to “clear its mind”
-  (Dominds does not auto-compact context: distill important information into the task doc and/or reminders, then use `!?@clear_mind` to restart with minimal context).
+  (Dominds does not auto-compact context: distill important information into the task doc and/or reminders, then call the function tool `clear_mind({ "reminder_content": "" })` to restart with minimal context).
 - Avoid reminder spam via a **reminder owner** mechanism; stop reminding once the dialog is back in a
   healthy range.
 

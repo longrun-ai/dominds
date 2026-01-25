@@ -6,18 +6,8 @@
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
-import type { ChatMessage } from '../llm/client';
-import { getWorkLanguage } from '../shared/runtime-language';
 import { Team } from '../team';
-import { TellaskTool, TellaskToolCallResult } from '../tool';
-
-function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
-  return { status: 'completed', result, messages };
-}
-
-function failed(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
-  return { status: 'failed', result, messages };
-}
+import type { FuncTool, ToolArguments } from '../tool';
 
 function yamlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
@@ -32,92 +22,59 @@ function yamlFlowStringArray(values: ReadonlyArray<string>): string {
   return `[${values.map(yamlQuote).join(', ')}]`;
 }
 
-function splitCommandArgs(raw: string): string[] {
-  const args: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-  let escape = false;
-
-  const flush = (): void => {
-    if (current === '') return;
-    args.push(current);
-    current = '';
-  };
-
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i] ?? '';
-    if (escape) {
-      current += ch;
-      escape = false;
-      continue;
-    }
-    if (!inSingle && ch === '\\') {
-      escape = true;
-      continue;
-    }
-    if (!inDouble && ch === "'" && !inSingle) {
-      inSingle = true;
-      continue;
-    }
-    if (!inDouble && ch === "'" && inSingle) {
-      inSingle = false;
-      continue;
-    }
-    if (!inSingle && ch === '"' && !inDouble) {
-      inDouble = true;
-      continue;
-    }
-    if (!inSingle && ch === '"' && inDouble) {
-      inDouble = false;
-      continue;
-    }
-    if (!inSingle && !inDouble && /\s/.test(ch)) {
-      flush();
-      continue;
-    }
-    current += ch;
+function requireNonEmptyStringArg(args: ToolArguments, key: string): string {
+  const value = args[key];
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`Invalid arguments: \`${key}\` must be a non-empty string`);
   }
-  flush();
-  return args;
+  return value;
 }
 
-function quoteCommandArg(value: string): string {
-  if (value === '') return '""';
-  const needsQuoting = /[\s"\\]/.test(value);
-  if (!needsQuoting) return value;
-  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  return `"${escaped}"`;
-}
-
-function parseBooleanOption(value: string): boolean | undefined {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return undefined;
-}
-
-function parseIntegerOption(value: string): number | undefined {
-  if (!/^\d+$/.test(value)) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return undefined;
-  return parsed;
-}
-
-function parseGlobsValue(value: string): string[] | undefined {
+function optionalStringArg(args: ToolArguments, key: string): string | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`Invalid arguments: \`${key}\` must be a string`);
   const trimmed = value.trim();
-  if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) return undefined;
-  const inner = trimmed.slice(1, -1).trim();
-  if (inner === '') return [];
-  const parts = inner.split(',').map((p) => p.trim());
-  const globs: string[] = [];
-  for (const part of parts) {
-    const unquoted =
-      (part.startsWith('"') && part.endsWith('"')) || (part.startsWith("'") && part.endsWith("'"))
-        ? part.slice(1, -1)
-        : part;
-    if (unquoted !== '') globs.push(unquoted);
+  if (trimmed === '') return undefined;
+  return trimmed;
+}
+
+function optionalBooleanArg(args: ToolArguments, key: string): boolean | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean')
+    throw new Error(`Invalid arguments: \`${key}\` must be a boolean`);
+  return value;
+}
+
+function optionalPositiveIntegerArg(args: ToolArguments, key: string): number | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new Error(`Invalid arguments: \`${key}\` must be an integer`);
   }
-  return globs;
+  if (value < 0) throw new Error(`Invalid arguments: \`${key}\` must be >= 0`);
+  if (value === 0) return undefined; // 0 is a sentinel for "default" under Codex required-all.
+  return value;
+}
+
+function optionalNonNegativeIntegerArg(args: ToolArguments, key: string): number | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new Error(`Invalid arguments: \`${key}\` must be an integer`);
+  }
+  if (value < 0) throw new Error(`Invalid arguments: \`${key}\` must be >= 0`);
+  return value;
+}
+
+function optionalStringArrayArg(args: ToolArguments, key: string): string[] | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
+    throw new Error(`Invalid arguments: \`${key}\` must be an array of strings`);
+  }
+  return value;
 }
 
 function dirPatternToRipgrepGlob(pattern: string): string | undefined {
@@ -176,6 +133,13 @@ function defaultBaseOptions(): RipgrepBaseOptions {
   };
 }
 
+function parseRipgrepCaseModeArg(args: ToolArguments, defaultValue: RipgrepCase): RipgrepCase {
+  const raw = optionalStringArg(args, 'case');
+  if (raw === undefined) return defaultValue;
+  if (raw === 'smart' || raw === 'sensitive' || raw === 'insensitive') return raw;
+  throw new Error("Invalid arguments: `case` must be one of: 'smart', 'sensitive', 'insensitive'");
+}
+
 function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): string[] {
   const args: string[] = ['--no-messages', '--color=never'];
   if (options.includeHidden) args.push('--hidden');
@@ -219,94 +183,6 @@ async function runRgLines(args: string[]): Promise<{ stdoutLines: string[]; stde
   });
 }
 
-function parseRipgrepArgs(
-  toolName: string,
-  headLine: string,
-  defaults: RipgrepBaseOptions & {
-    maxFiles?: number;
-    maxResults?: number;
-    contextBefore?: number;
-    contextAfter?: number;
-  },
-):
-  | { ok: true; pattern: string; searchPath: string; options: typeof defaults }
-  | { ok: false; yamlError: string } {
-  const language = getWorkLanguage();
-  const trimmed = headLine.trim();
-  if (!trimmed.startsWith(`@${toolName}`)) {
-    return {
-      ok: false,
-      yamlError: [
-        `status: error`,
-        `error: INVALID_FORMAT`,
-        `summary: ${yamlQuote(
-          language === 'zh'
-            ? `Invalid format. Use !?@${toolName} <pattern> [path] [options].`
-            : `Invalid format. Use !?@${toolName} <pattern> [path] [options].`,
-        )}`,
-      ].join('\n'),
-    };
-  }
-
-  const afterToolName = trimmed.slice(`@${toolName}`.length).trim();
-  const args = splitCommandArgs(afterToolName);
-  const pattern = args[0] ?? '';
-  if (!pattern) {
-    return {
-      ok: false,
-      yamlError: [
-        `status: error`,
-        `error: PATTERN_REQUIRED`,
-        `summary: ${yamlQuote(language === 'zh' ? 'Pattern required.' : 'Pattern required.')}`,
-      ].join('\n'),
-    };
-  }
-
-  const second = args[1];
-  const searchPath = second && !second.includes('=') ? second : '.';
-  const optTokens = second && !second.includes('=') ? args.slice(2) : args.slice(1);
-
-  const options: Record<string, unknown> = { ...defaults };
-
-  for (const tok of optTokens) {
-    const eq = tok.indexOf('=');
-    if (eq <= 0) continue;
-    const key = tok.slice(0, eq);
-    const value = tok.slice(eq + 1);
-    if (key === 'case') {
-      if (value === 'smart' || value === 'sensitive' || value === 'insensitive') {
-        options.caseMode = value;
-      }
-    } else if (key === 'fixed_strings') {
-      const parsed = parseBooleanOption(value);
-      if (parsed !== undefined) options.fixedStrings = parsed;
-    } else if (key === 'include_hidden') {
-      const parsed = parseBooleanOption(value);
-      if (parsed !== undefined) options.includeHidden = parsed;
-    } else if (key === 'follow_symlinks') {
-      const parsed = parseBooleanOption(value);
-      if (parsed !== undefined) options.followSymlinks = parsed;
-    } else if (key === 'max_files') {
-      const parsed = parseIntegerOption(value);
-      if (parsed !== undefined) options.maxFiles = parsed;
-    } else if (key === 'max_results') {
-      const parsed = parseIntegerOption(value);
-      if (parsed !== undefined) options.maxResults = parsed;
-    } else if (key === 'context_before') {
-      const parsed = parseIntegerOption(value);
-      if (parsed !== undefined) options.contextBefore = parsed;
-    } else if (key === 'context_after') {
-      const parsed = parseIntegerOption(value);
-      if (parsed !== undefined) options.contextAfter = parsed;
-    } else if (key === 'globs') {
-      const parsed = parseGlobsValue(value);
-      if (parsed !== undefined) options.globs = parsed;
-    }
-  }
-
-  return { ok: true, pattern, searchPath, options: options as typeof defaults };
-}
-
 async function loadFileLines(relPath: string): Promise<string[]> {
   const abs = path.resolve(process.cwd(), relPath);
   const text = await fs.readFile(abs, 'utf8');
@@ -315,546 +191,568 @@ async function loadFileLines(relPath: string): Promise<string[]> {
   return parts;
 }
 
-export const ripgrepFilesTool: TellaskTool = {
-  type: 'tellask',
-  name: 'ripgrep_files',
-  backfeeding: true,
-  usageDescription: `Search file paths containing a pattern (rg-backed).
-Usage: !?@ripgrep_files <pattern> [path] [options]
+async function runRipgrepFiles(
+  caller: Team.Member,
+  pattern: string,
+  searchPath: string,
+  options: RipgrepFilesOptions,
+): Promise<string> {
+  const args = [...baseRgArgs(options, caller), '--files-with-matches', '--', pattern, searchPath];
 
-Options:
-  globs=[...]
-  case=smart|sensitive|insensitive
-  fixed_strings=true|false
-  max_files=<n> (default: 50)
-  include_hidden=true|false (default: false)
-  follow_symlinks=true|false (default: false)`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const parsed = parseRipgrepArgs('ripgrep_files', headLine, {
-      ...defaultBaseOptions(),
-      maxFiles: 50,
-    });
-    if (!parsed.ok) {
-      const content = formatYamlCodeBlock(parsed.yamlError);
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  try {
+    const { stdoutLines } = await runRgLines(args);
+    let totalFiles = 0;
+    const results: Array<{ path: string }> = [];
+    for (const line of stdoutLines) {
+      totalFiles++;
+      if (results.length < options.maxFiles) results.push({ path: line });
     }
+    const truncated = totalFiles > options.maxFiles;
+    const summary =
+      totalFiles === 0
+        ? 'No matches.'
+        : truncated
+          ? `Found ${totalFiles} files; showing first ${options.maxFiles} (truncated=true).`
+          : `Found ${totalFiles} files.`;
 
-    if (!caller || typeof caller !== 'object') {
-      const content = formatYamlCodeBlock(
-        `status: error\nerror: INTERNAL\nsummary: ${yamlQuote('Invalid caller.')}`,
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-
-    const options = parsed.options as RipgrepFilesOptions;
-    const args = [
-      ...baseRgArgs(options, caller),
-      '--files-with-matches',
-      '--',
-      parsed.pattern,
-      parsed.searchPath,
-    ];
-
-    try {
-      const { stdoutLines } = await runRgLines(args);
-      let totalFiles = 0;
-      const results: Array<{ path: string }> = [];
-      for (const line of stdoutLines) {
-        totalFiles++;
-        if (results.length < options.maxFiles) results.push({ path: line });
-      }
-      const truncated = totalFiles > options.maxFiles;
-      const summary =
-        totalFiles === 0
-          ? 'No matches.'
-          : truncated
-            ? `Found ${totalFiles} files; showing first ${options.maxFiles} (truncated=true).`
-            : `Found ${totalFiles} files.`;
-
-      const yaml = [
-        `status: ok`,
-        `pattern: ${yamlQuote(parsed.pattern)}`,
+    const yaml = [
+      `status: ok`,
+      `pattern: ${yamlQuote(pattern)}`,
+      `mode: files`,
+      `path: ${yamlQuote(searchPath)}`,
+      ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
+      `case: ${options.caseMode}`,
+      `fixed_strings: ${options.fixedStrings}`,
+      `regex: ${!options.fixedStrings}`,
+      `truncated: ${truncated}`,
+      `limits:`,
+      `  max_files: ${options.maxFiles}`,
+      `totals:`,
+      `  files_matched: ${totalFiles}`,
+      `summary: ${yamlQuote(summary)}`,
+      `results:`,
+      ...results.map((r) => `  - path: ${yamlQuote(r.path)}`),
+    ].join('\n');
+    return formatYamlCodeBlock(yaml);
+  } catch (error: unknown) {
+    return formatYamlCodeBlock(
+      [
+        `status: error`,
+        `pattern: ${yamlQuote(pattern)}`,
         `mode: files`,
-        `path: ${yamlQuote(parsed.searchPath)}`,
-        ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
-        `case: ${options.caseMode}`,
-        `fixed_strings: ${options.fixedStrings}`,
-        `regex: ${!options.fixedStrings}`,
-        `truncated: ${truncated}`,
-        `limits:`,
-        `  max_files: ${options.maxFiles}`,
-        `totals:`,
-        `  files_matched: ${totalFiles}`,
-        `summary: ${yamlQuote(summary)}`,
-        `results:`,
-        ...results.map((r) => `  - path: ${yamlQuote(r.path)}`),
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `pattern: ${yamlQuote(parsed.pattern)}`,
-          `mode: files`,
-          `path: ${yamlQuote(parsed.searchPath)}`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+        `path: ${yamlQuote(searchPath)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n'),
+    );
+  }
+}
+
+export const ripgrepFilesTool: FuncTool = {
+  type: 'func',
+  name: 'ripgrep_files',
+  description: 'Search file paths containing a pattern (rg-backed).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      fixed_strings: { type: 'boolean' },
+      max_files: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+    required: ['pattern'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const pattern = requireNonEmptyStringArg(args, 'pattern');
+    const searchPath = optionalStringArg(args, 'path') ?? '.';
+    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const caseMode = parseRipgrepCaseModeArg(args, 'smart');
+    const fixedStrings = optionalBooleanArg(args, 'fixed_strings') ?? false;
+    const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
+    const followSymlinks = optionalBooleanArg(args, 'follow_symlinks') ?? false;
+    const maxFiles = optionalPositiveIntegerArg(args, 'max_files') ?? 50;
+
+    const options: RipgrepFilesOptions = {
+      globs,
+      caseMode,
+      fixedStrings,
+      includeHidden,
+      followSymlinks,
+      maxFiles,
+    };
+
+    return await runRipgrepFiles(caller, pattern, searchPath, options);
   },
 };
 
-export const ripgrepCountTool: TellaskTool = {
-  type: 'tellask',
-  name: 'ripgrep_count',
-  backfeeding: true,
-  usageDescription: `Count matches per file (rg-backed).
-Usage: !?@ripgrep_count <pattern> [path] [options]
+async function runRipgrepCount(
+  caller: Team.Member,
+  pattern: string,
+  searchPath: string,
+  options: RipgrepCountOptions,
+): Promise<string> {
+  const args = [...baseRgArgs(options, caller), '--count-matches', '--', pattern, searchPath];
 
-Options:
-  globs=[...]
-  case=smart|sensitive|insensitive
-  fixed_strings=true|false
-  max_files=<n> (default: 200)
-  include_hidden=true|false (default: false)
-  follow_symlinks=true|false (default: false)`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const parsed = parseRipgrepArgs('ripgrep_count', headLine, {
-      ...defaultBaseOptions(),
-      maxFiles: 200,
-    });
-    if (!parsed.ok) {
-      const content = formatYamlCodeBlock(parsed.yamlError);
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  try {
+    const { stdoutLines } = await runRgLines(args);
+    let totalFiles = 0;
+    let totalMatches = 0;
+    const results: Array<{ path: string; count: number }> = [];
+    for (const line of stdoutLines) {
+      const idx = line.lastIndexOf(':');
+      if (idx <= 0) continue;
+      const p = line.slice(0, idx);
+      const rawCount = line.slice(idx + 1);
+      const count = Number.parseInt(rawCount, 10);
+      if (!Number.isFinite(count)) continue;
+      totalFiles++;
+      totalMatches += count;
+      if (results.length < options.maxFiles) results.push({ path: p, count });
     }
+    const truncated = totalFiles > options.maxFiles;
+    const summary =
+      totalMatches === 0
+        ? 'No matches.'
+        : truncated
+          ? `Counted ${totalMatches} matches in ${totalFiles} files; showing first ${options.maxFiles} files (truncated=true).`
+          : `Counted ${totalMatches} matches in ${totalFiles} files.`;
 
-    const options = parsed.options as RipgrepCountOptions;
-    const args = [
-      ...baseRgArgs(options, caller),
-      '--count-matches',
-      '--',
-      parsed.pattern,
-      parsed.searchPath,
-    ];
-
-    try {
-      const { stdoutLines } = await runRgLines(args);
-      let totalFiles = 0;
-      let totalMatches = 0;
-      const results: Array<{ path: string; count: number }> = [];
-      for (const line of stdoutLines) {
-        const idx = line.lastIndexOf(':');
-        if (idx <= 0) continue;
-        const p = line.slice(0, idx);
-        const rawCount = line.slice(idx + 1);
-        const count = Number.parseInt(rawCount, 10);
-        if (!Number.isFinite(count)) continue;
-        totalFiles++;
-        totalMatches += count;
-        if (results.length < options.maxFiles) results.push({ path: p, count });
-      }
-      const truncated = totalFiles > options.maxFiles;
-      const summary =
-        totalMatches === 0
-          ? 'No matches.'
-          : truncated
-            ? `Counted ${totalMatches} matches in ${totalFiles} files; showing first ${options.maxFiles} files (truncated=true).`
-            : `Counted ${totalMatches} matches in ${totalFiles} files.`;
-
-      const yaml = [
-        `status: ok`,
-        `pattern: ${yamlQuote(parsed.pattern)}`,
+    const yaml = [
+      `status: ok`,
+      `pattern: ${yamlQuote(pattern)}`,
+      `mode: count`,
+      `path: ${yamlQuote(searchPath)}`,
+      ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
+      `case: ${options.caseMode}`,
+      `fixed_strings: ${options.fixedStrings}`,
+      `regex: ${!options.fixedStrings}`,
+      `truncated: ${truncated}`,
+      `limits:`,
+      `  max_files: ${options.maxFiles}`,
+      `totals:`,
+      `  files_matched: ${totalFiles}`,
+      `  matches: ${totalMatches}`,
+      `summary: ${yamlQuote(summary)}`,
+      `results:`,
+      ...results.map((r) => `  - path: ${yamlQuote(r.path)}\n    count: ${r.count}`),
+    ].join('\n');
+    return formatYamlCodeBlock(yaml);
+  } catch (error: unknown) {
+    return formatYamlCodeBlock(
+      [
+        `status: error`,
+        `pattern: ${yamlQuote(pattern)}`,
         `mode: count`,
-        `path: ${yamlQuote(parsed.searchPath)}`,
-        ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
-        `case: ${options.caseMode}`,
-        `fixed_strings: ${options.fixedStrings}`,
-        `regex: ${!options.fixedStrings}`,
-        `truncated: ${truncated}`,
-        `limits:`,
-        `  max_files: ${options.maxFiles}`,
-        `totals:`,
-        `  files_matched: ${totalFiles}`,
-        `  matches: ${totalMatches}`,
-        `summary: ${yamlQuote(summary)}`,
-        `results:`,
-        ...results.map((r) => `  - path: ${yamlQuote(r.path)}\n    count: ${r.count}`),
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `pattern: ${yamlQuote(parsed.pattern)}`,
-          `mode: count`,
-          `path: ${yamlQuote(parsed.searchPath)}`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+        `path: ${yamlQuote(searchPath)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n'),
+    );
+  }
+}
+
+export const ripgrepCountTool: FuncTool = {
+  type: 'func',
+  name: 'ripgrep_count',
+  description: 'Count matches per file (rg-backed).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      fixed_strings: { type: 'boolean' },
+      max_files: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+    required: ['pattern'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const pattern = requireNonEmptyStringArg(args, 'pattern');
+    const searchPath = optionalStringArg(args, 'path') ?? '.';
+    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const caseMode = parseRipgrepCaseModeArg(args, 'smart');
+    const fixedStrings = optionalBooleanArg(args, 'fixed_strings') ?? false;
+    const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
+    const followSymlinks = optionalBooleanArg(args, 'follow_symlinks') ?? false;
+    const maxFiles = optionalPositiveIntegerArg(args, 'max_files') ?? 200;
+
+    const options: RipgrepCountOptions = {
+      globs,
+      caseMode,
+      fixedStrings,
+      includeHidden,
+      followSymlinks,
+      maxFiles,
+    };
+
+    return await runRipgrepCount(caller, pattern, searchPath, options);
   },
 };
 
-export const ripgrepSnippetsTool: TellaskTool = {
-  type: 'tellask',
-  name: 'ripgrep_snippets',
-  backfeeding: true,
-  usageDescription: `Search snippets with line/col (rg-backed).
-Usage: !?@ripgrep_snippets <pattern> [path] [options]
+async function runRipgrepSnippets(
+  caller: Team.Member,
+  pattern: string,
+  searchPath: string,
+  options: RipgrepSnippetsOptions,
+): Promise<string> {
+  const args = [...baseRgArgs(options, caller), '--vimgrep', '--', pattern, searchPath];
 
-Options:
-  globs=[...]
-  case=smart|sensitive|insensitive
-  fixed_strings=true|false
-  context_before=<n> (default: 1)
-  context_after=<n> (default: 1)
-  max_results=<n> (default: 50)
-  include_hidden=true|false (default: false)
-  follow_symlinks=true|false (default: false)`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const parsed = parseRipgrepArgs('ripgrep_snippets', headLine, {
-      ...defaultBaseOptions(),
-      maxResults: 50,
-      contextBefore: 1,
-      contextAfter: 1,
-    });
-    if (!parsed.ok) {
-      const content = formatYamlCodeBlock(parsed.yamlError);
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
-    const options = parsed.options as RipgrepSnippetsOptions;
+  try {
+    const { stdoutLines } = await runRgLines(args);
+    let totalMatches = 0;
+    const fileSet = new Set<string>();
+    const results: Array<{
+      path: string;
+      line: number;
+      col: number;
+      match: string;
+      before: string[];
+      after: string[];
+    }> = [];
+    const fileCache = new Map<string, string[]>();
 
-    const args = [
-      ...baseRgArgs(options, caller),
-      '--vimgrep',
-      '--',
-      parsed.pattern,
-      parsed.searchPath,
-    ];
+    for (const line of stdoutLines) {
+      totalMatches++;
+      const first = line.indexOf(':');
+      if (first <= 0) continue;
+      const second = line.indexOf(':', first + 1);
+      if (second <= first) continue;
+      const third = line.indexOf(':', second + 1);
+      if (third <= second) continue;
+      const filePath = line.slice(0, first);
+      const lineStr = line.slice(first + 1, second);
+      const colStr = line.slice(second + 1, third);
+      const text = line.slice(third + 1);
+      const ln = Number.parseInt(lineStr, 10);
+      const col = Number.parseInt(colStr, 10);
+      if (!Number.isFinite(ln) || !Number.isFinite(col)) continue;
+      fileSet.add(filePath);
 
-    try {
-      const { stdoutLines } = await runRgLines(args);
-      let totalMatches = 0;
-      const fileSet = new Set<string>();
-      const results: Array<{
-        path: string;
-        line: number;
-        col: number;
-        match: string;
-        before: string[];
-        after: string[];
-      }> = [];
-      const fileCache = new Map<string, string[]>();
-
-      for (const line of stdoutLines) {
-        totalMatches++;
-        const first = line.indexOf(':');
-        if (first <= 0) continue;
-        const second = line.indexOf(':', first + 1);
-        if (second <= first) continue;
-        const third = line.indexOf(':', second + 1);
-        if (third <= second) continue;
-        const filePath = line.slice(0, first);
-        const lineStr = line.slice(first + 1, second);
-        const colStr = line.slice(second + 1, third);
-        const text = line.slice(third + 1);
-        const ln = Number.parseInt(lineStr, 10);
-        const col = Number.parseInt(colStr, 10);
-        if (!Number.isFinite(ln) || !Number.isFinite(col)) continue;
-        fileSet.add(filePath);
-
-        if (results.length >= options.maxResults) continue;
-        let lines = fileCache.get(filePath);
-        if (!lines) {
-          lines = await loadFileLines(filePath).catch(() => []);
-          fileCache.set(filePath, lines);
-        }
-        const idx0 = ln - 1;
-        const before = lines.slice(Math.max(0, idx0 - options.contextBefore), idx0);
-        const after = lines.slice(idx0 + 1, idx0 + 1 + options.contextAfter);
-        results.push({ path: filePath, line: ln, col, match: text, before, after });
+      if (results.length >= options.maxResults) continue;
+      let lines = fileCache.get(filePath);
+      if (!lines) {
+        lines = await loadFileLines(filePath).catch(() => []);
+        fileCache.set(filePath, lines);
       }
+      const idx0 = ln - 1;
+      const before = lines.slice(Math.max(0, idx0 - options.contextBefore), idx0);
+      const after = lines.slice(idx0 + 1, idx0 + 1 + options.contextAfter);
+      results.push({ path: filePath, line: ln, col, match: text, before, after });
+    }
 
-      const truncated = totalMatches > options.maxResults;
-      const summary =
-        totalMatches === 0
-          ? 'No matches.'
-          : truncated
-            ? `Showing first ${options.maxResults} of ${totalMatches} matches (truncated=true).`
-            : `Found ${totalMatches} matches.`;
+    const truncated = totalMatches > options.maxResults;
+    const summary =
+      totalMatches === 0
+        ? 'No matches.'
+        : truncated
+          ? `Showing first ${options.maxResults} of ${totalMatches} matches (truncated=true).`
+          : `Found ${totalMatches} matches.`;
 
-      const yaml = [
-        `status: ok`,
-        `pattern: ${yamlQuote(parsed.pattern)}`,
+    const yaml = [
+      `status: ok`,
+      `pattern: ${yamlQuote(pattern)}`,
+      `mode: snippets`,
+      `path: ${yamlQuote(searchPath)}`,
+      ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
+      `case: ${options.caseMode}`,
+      `fixed_strings: ${options.fixedStrings}`,
+      `regex: ${!options.fixedStrings}`,
+      `truncated: ${truncated}`,
+      `limits:`,
+      `  max_results: ${options.maxResults}`,
+      `totals:`,
+      `  files_matched: ${fileSet.size}`,
+      `  matches: ${totalMatches}`,
+      `summary: ${yamlQuote(summary)}`,
+      `results:`,
+      ...results.map((r) =>
+        [
+          `  - path: ${yamlQuote(r.path)}`,
+          `    line: ${r.line}`,
+          `    col: ${r.col}`,
+          `    match: ${yamlQuote(r.match)}`,
+          `    before: ${yamlFlowStringArray(r.before)}`,
+          `    after: ${yamlFlowStringArray(r.after)}`,
+        ].join('\n'),
+      ),
+    ].join('\n');
+    return formatYamlCodeBlock(yaml);
+  } catch (error: unknown) {
+    return formatYamlCodeBlock(
+      [
+        `status: error`,
+        `pattern: ${yamlQuote(pattern)}`,
         `mode: snippets`,
-        `path: ${yamlQuote(parsed.searchPath)}`,
-        ...(options.globs.length > 0 ? [`globs: ${yamlFlowStringArray(options.globs)}`] : []),
-        `case: ${options.caseMode}`,
-        `fixed_strings: ${options.fixedStrings}`,
-        `regex: ${!options.fixedStrings}`,
-        `truncated: ${truncated}`,
-        `limits:`,
-        `  max_results: ${options.maxResults}`,
-        `totals:`,
-        `  files_matched: ${fileSet.size}`,
-        `  matches: ${totalMatches}`,
-        `summary: ${yamlQuote(summary)}`,
-        `results:`,
-        ...results.map((r) =>
-          [
-            `  - path: ${yamlQuote(r.path)}`,
-            `    line: ${r.line}`,
-            `    col: ${r.col}`,
-            `    match: ${yamlQuote(r.match)}`,
-            `    before: ${yamlFlowStringArray(r.before)}`,
-            `    after: ${yamlFlowStringArray(r.after)}`,
-          ].join('\n'),
-        ),
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `pattern: ${yamlQuote(parsed.pattern)}`,
-          `mode: snippets`,
-          `path: ${yamlQuote(parsed.searchPath)}`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+        `path: ${yamlQuote(searchPath)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n'),
+    );
+  }
+}
+
+export const ripgrepSnippetsTool: FuncTool = {
+  type: 'func',
+  name: 'ripgrep_snippets',
+  description: 'Search snippets with line/col (rg-backed).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      fixed_strings: { type: 'boolean' },
+      context_before: { type: 'integer' },
+      context_after: { type: 'integer' },
+      max_results: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+    required: ['pattern'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const pattern = requireNonEmptyStringArg(args, 'pattern');
+    const searchPath = optionalStringArg(args, 'path') ?? '.';
+    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const caseMode = parseRipgrepCaseModeArg(args, 'smart');
+    const fixedStrings = optionalBooleanArg(args, 'fixed_strings') ?? false;
+    const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
+    const followSymlinks = optionalBooleanArg(args, 'follow_symlinks') ?? false;
+    const maxResults = optionalPositiveIntegerArg(args, 'max_results') ?? 50;
+    const contextBefore = optionalNonNegativeIntegerArg(args, 'context_before') ?? 1;
+    const contextAfter = optionalNonNegativeIntegerArg(args, 'context_after') ?? 1;
+
+    const options: RipgrepSnippetsOptions = {
+      globs,
+      caseMode,
+      fixedStrings,
+      includeHidden,
+      followSymlinks,
+      maxResults,
+      contextBefore,
+      contextAfter,
+    };
+
+    return await runRipgrepSnippets(caller, pattern, searchPath, options);
   },
 };
 
-export const ripgrepFixedTool: TellaskTool = {
-  type: 'tellask',
+export const ripgrepFixedTool: FuncTool = {
+  type: 'func',
   name: 'ripgrep_fixed',
-  backfeeding: true,
-  usageDescription: `Fixed-string ripgrep convenience tool.
-Usage: !?@ripgrep_fixed <literal> [path] [options]
-
-Options:
-  mode=files|snippets|count (default: snippets)
-  globs=[...]
-  case=smart|sensitive|insensitive
-  max_files=<n>
-  max_results=<n>
-  include_hidden=true|false
-  follow_symlinks=true|false`,
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@ripgrep_fixed')) {
-      const content = formatYamlCodeBlock(
-        `status: error\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
-          language === 'zh'
-            ? 'Invalid format. Use !?@ripgrep_fixed <literal> [path] [options].'
-            : 'Invalid format. Use !?@ripgrep_fixed <literal> [path] [options].',
-        )}`,
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+  description:
+    'Fixed-string ripgrep convenience tool (routes to ripgrep_files/ripgrep_snippets/ripgrep_count with fixed_strings=true).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      literal: { type: 'string' },
+      path: { type: 'string' },
+      mode: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      max_files: { type: 'integer' },
+      max_results: { type: 'integer' },
+      context_before: { type: 'integer' },
+      context_after: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+    required: ['literal'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const literal = requireNonEmptyStringArg(args, 'literal');
+    const searchPath = optionalStringArg(args, 'path') ?? '.';
+    const modeRaw = optionalStringArg(args, 'mode') ?? 'snippets';
+    if (modeRaw !== 'files' && modeRaw !== 'snippets' && modeRaw !== 'count') {
+      throw new Error("Invalid arguments: `mode` must be one of: 'files', 'snippets', 'count'");
     }
 
-    const afterToolName = trimmed.slice('@ripgrep_fixed'.length).trim();
-    const args = splitCommandArgs(afterToolName);
-    const literal = args[0] ?? '';
-    if (!literal) {
-      const content = formatYamlCodeBlock(
-        `status: error\nerror: PATTERN_REQUIRED\nsummary: ${yamlQuote('Pattern required.')}`,
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const caseMode = parseRipgrepCaseModeArg(args, 'smart');
+    const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
+    const followSymlinks = optionalBooleanArg(args, 'follow_symlinks') ?? false;
+
+    const base: RipgrepBaseOptions = {
+      globs,
+      caseMode,
+      fixedStrings: true,
+      includeHidden,
+      followSymlinks,
+    };
+
+    if (modeRaw === 'files') {
+      const maxFiles = optionalPositiveIntegerArg(args, 'max_files') ?? 50;
+      const options: RipgrepFilesOptions = { ...base, maxFiles };
+      return await runRipgrepFiles(caller, literal, searchPath, options);
     }
 
-    const second = args[1];
-    const searchPath = second && !second.includes('=') ? second : '.';
-    const optTokens = second && !second.includes('=') ? args.slice(2) : args.slice(1);
-
-    let mode: 'files' | 'snippets' | 'count' = 'snippets';
-    const rewrittenOpts: string[] = [];
-    for (const tok of optTokens) {
-      const eq = tok.indexOf('=');
-      if (eq <= 0) {
-        rewrittenOpts.push(tok);
-        continue;
-      }
-      const key = tok.slice(0, eq);
-      const value = tok.slice(eq + 1);
-      if (key === 'mode' && (value === 'files' || value === 'snippets' || value === 'count')) {
-        mode = value;
-        continue;
-      }
-      rewrittenOpts.push(tok);
+    if (modeRaw === 'count') {
+      const maxFiles = optionalPositiveIntegerArg(args, 'max_files') ?? 200;
+      const options: RipgrepCountOptions = { ...base, maxFiles };
+      return await runRipgrepCount(caller, literal, searchPath, options);
     }
 
-    const forwardHeadLine = `@ripgrep_${mode} ${quoteCommandArg(literal)} ${quoteCommandArg(
-      searchPath,
-    )} fixed_strings=true ${rewrittenOpts.join(' ')}`.trim();
-    if (mode === 'files')
-      return await ripgrepFilesTool.call(dlg, caller, forwardHeadLine, inputBody);
-    if (mode === 'count')
-      return await ripgrepCountTool.call(dlg, caller, forwardHeadLine, inputBody);
-    return await ripgrepSnippetsTool.call(dlg, caller, forwardHeadLine, inputBody);
+    const maxResults = optionalPositiveIntegerArg(args, 'max_results') ?? 50;
+    const contextBefore = optionalNonNegativeIntegerArg(args, 'context_before') ?? 1;
+    const contextAfter = optionalNonNegativeIntegerArg(args, 'context_after') ?? 1;
+    const options: RipgrepSnippetsOptions = { ...base, maxResults, contextBefore, contextAfter };
+    return await runRipgrepSnippets(caller, literal, searchPath, options);
   },
 };
 
 const DISALLOWED_RG_ARGS = new Set(['--pre', '--pre-glob']);
 
-export const ripgrepSearchTool: TellaskTool = {
-  type: 'tellask',
-  name: 'ripgrep_search',
-  backfeeding: true,
-  usageDescription: `Escape hatch: run rg-style search (snippets output, with a limited allowlist).
-Usage: !?@ripgrep_search <pattern> [path] [rg_args...]
-
-Notes:
-  - Output is normalized to YAML snippets mode.
-  - Disallowed flags: --pre, --pre-glob`,
-  async call(_dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const language = getWorkLanguage();
-    const trimmed = headLine.trim();
-    if (!trimmed.startsWith('@ripgrep_search')) {
-      const content = formatYamlCodeBlock(
-        `status: error\nerror: INVALID_FORMAT\nsummary: ${yamlQuote(
-          language === 'zh'
-            ? 'Invalid format. Use !?@ripgrep_search <pattern> [path] [rg_args...].'
-            : 'Invalid format. Use !?@ripgrep_search <pattern> [path] [rg_args...].',
-        )}`,
+async function runRipgrepSearch(
+  caller: Team.Member,
+  pattern: string,
+  searchPath: string,
+  rawRgArgs: ReadonlyArray<string>,
+): Promise<string> {
+  for (const tok of rawRgArgs) {
+    if (DISALLOWED_RG_ARGS.has(tok)) {
+      return formatYamlCodeBlock(
+        `status: error\nerror: DISALLOWED_ARG\nsummary: ${yamlQuote(`Disallowed rg arg: ${tok}`)}`,
       );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
-
-    const afterToolName = trimmed.slice('@ripgrep_search'.length).trim();
-    const args = splitCommandArgs(afterToolName);
-    const pattern = args[0] ?? '';
-    if (!pattern) {
-      const content = formatYamlCodeBlock(
-        `status: error\nerror: PATTERN_REQUIRED\nsummary: ${yamlQuote('Pattern required.')}`,
+    if (
+      tok === '--json' ||
+      tok === '--count' ||
+      tok === '--count-matches' ||
+      tok === '--files-with-matches' ||
+      tok === '--files'
+    ) {
+      return formatYamlCodeBlock(
+        `status: error\nerror: DISALLOWED_ARG\nsummary: ${yamlQuote(`Disallowed rg output arg: ${tok}`)}`,
       );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
     }
-    const second = args[1];
-    const searchPath = second && !second.startsWith('-') ? second : '.';
-    const rawRgArgs = second && !second.startsWith('-') ? args.slice(2) : args.slice(1);
+  }
 
-    for (const tok of rawRgArgs) {
-      if (DISALLOWED_RG_ARGS.has(tok)) {
-        const content = formatYamlCodeBlock(
-          `status: error\nerror: DISALLOWED_ARG\nsummary: ${yamlQuote(`Disallowed rg arg: ${tok}`)}`,
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-      if (
-        tok === '--json' ||
-        tok === '--count' ||
-        tok === '--count-matches' ||
-        tok === '--files-with-matches' ||
-        tok === '--files'
-      ) {
-        const content = formatYamlCodeBlock(
-          `status: error\nerror: DISALLOWED_ARG\nsummary: ${yamlQuote(`Disallowed rg output arg: ${tok}`)}`,
-        );
-        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
+  const options: RipgrepSnippetsOptions = {
+    ...defaultBaseOptions(),
+    fixedStrings: false,
+    maxResults: 50,
+    contextBefore: 1,
+    contextAfter: 1,
+  };
+
+  const rgArgs = [
+    ...baseRgArgs(options, caller),
+    ...rawRgArgs,
+    '--vimgrep',
+    '--',
+    pattern,
+    searchPath,
+  ];
+
+  try {
+    const { stdoutLines } = await runRgLines(rgArgs);
+    let totalMatches = 0;
+    const fileSet = new Set<string>();
+    const results: Array<{ path: string; line: number; col: number; match: string }> = [];
+    for (const line of stdoutLines) {
+      totalMatches++;
+      const first = line.indexOf(':');
+      if (first <= 0) continue;
+      const secondColon = line.indexOf(':', first + 1);
+      if (secondColon <= first) continue;
+      const thirdColon = line.indexOf(':', secondColon + 1);
+      if (thirdColon <= secondColon) continue;
+      const filePath = line.slice(0, first);
+      const lineStr = line.slice(first + 1, secondColon);
+      const colStr = line.slice(secondColon + 1, thirdColon);
+      const text = line.slice(thirdColon + 1);
+      const ln = Number.parseInt(lineStr, 10);
+      const col = Number.parseInt(colStr, 10);
+      if (!Number.isFinite(ln) || !Number.isFinite(col)) continue;
+      fileSet.add(filePath);
+      if (results.length < options.maxResults)
+        results.push({ path: filePath, line: ln, col, match: text });
     }
 
-    const options: RipgrepSnippetsOptions = {
-      ...defaultBaseOptions(),
-      fixedStrings: false,
-      maxResults: 50,
-      contextBefore: 1,
-      contextAfter: 1,
-    };
+    const truncated = totalMatches > options.maxResults;
+    const summary =
+      totalMatches === 0
+        ? 'No matches.'
+        : truncated
+          ? `Showing first ${options.maxResults} of ${totalMatches} matches (truncated=true).`
+          : `Found ${totalMatches} matches.`;
 
-    const rgArgs = [
-      ...baseRgArgs(options, caller),
-      ...rawRgArgs,
-      '--vimgrep',
-      '--',
-      pattern,
-      searchPath,
-    ];
-
-    try {
-      const { stdoutLines } = await runRgLines(rgArgs);
-      let totalMatches = 0;
-      const fileSet = new Set<string>();
-      const results: Array<{ path: string; line: number; col: number; match: string }> = [];
-      for (const line of stdoutLines) {
-        totalMatches++;
-        const first = line.indexOf(':');
-        if (first <= 0) continue;
-        const secondColon = line.indexOf(':', first + 1);
-        if (secondColon <= first) continue;
-        const thirdColon = line.indexOf(':', secondColon + 1);
-        if (thirdColon <= secondColon) continue;
-        const filePath = line.slice(0, first);
-        const lineStr = line.slice(first + 1, secondColon);
-        const colStr = line.slice(secondColon + 1, thirdColon);
-        const text = line.slice(thirdColon + 1);
-        const ln = Number.parseInt(lineStr, 10);
-        const col = Number.parseInt(colStr, 10);
-        if (!Number.isFinite(ln) || !Number.isFinite(col)) continue;
-        fileSet.add(filePath);
-        if (results.length < options.maxResults)
-          results.push({ path: filePath, line: ln, col, match: text });
-      }
-
-      const truncated = totalMatches > options.maxResults;
-      const summary =
-        totalMatches === 0
-          ? 'No matches.'
-          : truncated
-            ? `Showing first ${options.maxResults} of ${totalMatches} matches (truncated=true).`
-            : `Found ${totalMatches} matches.`;
-
-      const yaml = [
-        `status: ok`,
+    const yaml = [
+      `status: ok`,
+      `pattern: ${yamlQuote(pattern)}`,
+      `mode: snippets`,
+      `path: ${yamlQuote(searchPath)}`,
+      `case: smart`,
+      `fixed_strings: false`,
+      `regex: true`,
+      `truncated: ${truncated}`,
+      `limits:`,
+      `  max_results: ${options.maxResults}`,
+      `totals:`,
+      `  files_matched: ${fileSet.size}`,
+      `  matches: ${totalMatches}`,
+      `summary: ${yamlQuote(summary)}`,
+      `results:`,
+      ...results.map((r) =>
+        [
+          `  - path: ${yamlQuote(r.path)}`,
+          `    line: ${r.line}`,
+          `    col: ${r.col}`,
+          `    match: ${yamlQuote(r.match)}`,
+        ].join('\n'),
+      ),
+    ].join('\n');
+    return formatYamlCodeBlock(yaml);
+  } catch (error: unknown) {
+    return formatYamlCodeBlock(
+      [
+        `status: error`,
         `pattern: ${yamlQuote(pattern)}`,
         `mode: snippets`,
         `path: ${yamlQuote(searchPath)}`,
-        `case: smart`,
-        `fixed_strings: false`,
-        `regex: true`,
-        `truncated: ${truncated}`,
-        `limits:`,
-        `  max_results: ${options.maxResults}`,
-        `totals:`,
-        `  files_matched: ${fileSet.size}`,
-        `  matches: ${totalMatches}`,
-        `summary: ${yamlQuote(summary)}`,
-        `results:`,
-        ...results.map((r) =>
-          [
-            `  - path: ${yamlQuote(r.path)}`,
-            `    line: ${r.line}`,
-            `    col: ${r.col}`,
-            `    match: ${yamlQuote(r.match)}`,
-          ].join('\n'),
-        ),
-      ].join('\n');
-      const content = formatYamlCodeBlock(yaml);
-      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
-    } catch (error: unknown) {
-      const content = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `pattern: ${yamlQuote(pattern)}`,
-          `mode: snippets`,
-          `path: ${yamlQuote(searchPath)}`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
-        ].join('\n'),
-      );
-      return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
-    }
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n'),
+    );
+  }
+}
+
+export const ripgrepSearchTool: FuncTool = {
+  type: 'func',
+  name: 'ripgrep_search',
+  description:
+    'Escape hatch: run rg-style search (snippets output, with a limited allowlist). Output is normalized to YAML snippets mode.',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      rg_args: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['pattern'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<string> => {
+    const pattern = requireNonEmptyStringArg(args, 'pattern');
+    const searchPath = optionalStringArg(args, 'path') ?? '.';
+    const rgArgs = optionalStringArrayArg(args, 'rg_args') ?? [];
+    return await runRipgrepSearch(caller, pattern, searchPath, rgArgs);
   },
 };

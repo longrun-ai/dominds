@@ -23,7 +23,7 @@ import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import type { TellaskTool, TellaskToolCallResult } from '../tool';
+import type { FuncTool, ToolArguments } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { listToolsets } from './registry';
 import {
@@ -49,12 +49,14 @@ const MINDS_DIR = '.minds';
 const TEAM_YAML_REL = `${MINDS_DIR}/team.yaml`;
 const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
 
-function ok(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
-  return { status: 'completed', result, messages };
+function ok(result: string, messages?: ChatMessage[]): string {
+  void messages;
+  return result;
 }
 
-function fail(result: string, messages?: ChatMessage[]): TellaskToolCallResult {
-  return { status: 'failed', result, messages };
+function fail(result: string, messages?: ChatMessage[]): string {
+  void messages;
+  return result;
 }
 
 function normalizePathToken(raw: string): string {
@@ -99,13 +101,54 @@ function makeMindsOnlyAccessMember(caller: Team.Member): Team.Member {
   });
 }
 
-function parseArgsAfterTool(headLine: string, toolName: string): string {
-  const trimmed = headLine.trim();
-  const prefix = `@${toolName}`;
-  if (!trimmed.startsWith(prefix)) {
-    throw new Error(`Invalid format. Use !?@${toolName} ...`);
+export function splitCommandArgs(raw: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escape = false;
+
+  const flush = (): void => {
+    if (current === '') return;
+    args.push(current);
+    current = '';
+  };
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i] ?? '';
+    if (escape) {
+      current += ch;
+      escape = false;
+      continue;
+    }
+    if (!inSingle && ch === '\\') {
+      escape = true;
+      continue;
+    }
+    if (!inDouble && ch === "'" && !inSingle) {
+      inSingle = true;
+      continue;
+    }
+    if (!inDouble && ch === "'" && inSingle) {
+      inSingle = false;
+      continue;
+    }
+    if (!inSingle && ch === '"' && !inDouble) {
+      inDouble = true;
+      continue;
+    }
+    if (!inSingle && ch === '"' && inDouble) {
+      inDouble = false;
+      continue;
+    }
+    if (!inSingle && !inDouble && /\s/.test(ch)) {
+      flush();
+      continue;
+    }
+    current += ch;
   }
-  return trimmed.slice(prefix.length).trim();
+  flush();
+  return args;
 }
 
 type FsErrWithCode = { code?: unknown };
@@ -138,14 +181,14 @@ function formatMindsMissingNotice(language: LanguageCode): string {
       `注意：当前工作区未初始化 \`${MINDS_DIR}/\`（这是正常情况）。`,
       `因此当前在 \`${MINDS_DIR}/\` 下没有可读取/可列出的团队配置。`,
       ``,
-      `如果要初始化团队配置，请先创建目录：\`!?@team_mgmt_mkdir ${MINDS_DIR}\`。`,
+      `如果要初始化团队配置，请先创建目录：\`team_mgmt_mk_dir({ \"path\": \"${MINDS_DIR}\", \"parents\": true })\`。`,
     ].join('\n');
   }
   return [
     `Note: \`${MINDS_DIR}/\` is not present in this workspace (this is normal).`,
     `So there is currently no team configuration to read/list under \`${MINDS_DIR}/\`.`,
     ``,
-    `If you want to initialize team configuration, create the directory first: \`!?@team_mgmt_mkdir ${MINDS_DIR}\`.`,
+    `If you want to initialize team configuration, create the directory first: \`team_mgmt_mk_dir({ \"path\": \"${MINDS_DIR}\", \"parents\": true })\`.`,
   ].join('\n');
 }
 
@@ -169,70 +212,6 @@ function listTeamYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): TeamCo
   return out;
 }
 
-type ProviderCheckArgs = {
-  providerKey: string;
-  model?: string;
-  allModels: boolean;
-  live: boolean;
-  maxModels: number;
-};
-
-function parseProviderCheckArgs(headLine: string, toolName: string): ProviderCheckArgs {
-  const after = parseArgsAfterTool(headLine, toolName);
-  const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
-  if (parts.length === 0) {
-    throw new Error('Provider key required');
-  }
-
-  const providerKey = parts[0];
-  let model: string | undefined;
-  let allModels = false;
-  let live = false;
-  let maxModels = 10;
-
-  for (let i = 1; i < parts.length; i += 1) {
-    const t = parts[i];
-    if (t === '!model' && i + 1 < parts.length) {
-      model = parts[i + 1];
-      i += 1;
-      continue;
-    }
-    if (t === '!all-models' && i + 1 < parts.length) {
-      const v = parts[i + 1];
-      if (v === 'true' || v === 'false') {
-        allModels = v === 'true';
-        i += 1;
-        continue;
-      }
-      throw new Error('Invalid !all-models value (expected true|false)');
-    }
-    if (t === '!live' && i + 1 < parts.length) {
-      const v = parts[i + 1];
-      if (v === 'true' || v === 'false') {
-        live = v === 'true';
-        i += 1;
-        continue;
-      }
-      throw new Error('Invalid !live value (expected true|false)');
-    }
-    if (t === '!max-models' && i + 1 < parts.length) {
-      const n = Number(parts[i + 1]);
-      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
-        throw new Error('Invalid !max-models value (expected positive integer)');
-      }
-      maxModels = n;
-      i += 1;
-      continue;
-    }
-  }
-
-  if (model && allModels) {
-    throw new Error('Use either !model <id> or !all-models true (not both)');
-  }
-
-  return { providerKey, model, allModels, live, maxModels };
-}
-
 type ModelCheckResult = { model: string; status: 'pass' | 'fail'; details?: string };
 
 function formatModelCheckResult(r: ModelCheckResult): string {
@@ -240,59 +219,76 @@ function formatModelCheckResult(r: ModelCheckResult): string {
   return `- ${r.model}: ❌ ${r.details ?? 'failed'}`;
 }
 
-export const teamMgmtCheckProviderTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtCheckProviderTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_check_provider',
-  backfeeding: true,
-  usageDescription:
-    `Validate an LLM provider configuration (and optionally test models).\n` +
-    `Usage: !?@team_mgmt_check_provider <providerKey> [options]\n\n` +
-    `Options:\n` +
-    `  !model <modelKey>        Check a specific model\n` +
-    `  !all-models true|false   Check all configured models for the provider\n` +
-    `  !live true|false         Attempt a real generation call (may incur cost)\n` +
-    `  !max-models <n>          Limit model checks when !all-models true (default: 10)\n\n` +
-    `Examples:\n` +
-    `!?@team_mgmt_check_provider codex\n` +
-    `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
-    `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
-  usageDescriptionI18n: {
-    en:
-      `Validate an LLM provider configuration (and optionally test models).\n` +
-      `Usage: !?@team_mgmt_check_provider <providerKey> [options]\n\n` +
-      `Options:\n` +
-      `  !model <modelKey>        Check a specific model\n` +
-      `  !all-models true|false   Check all configured models for the provider\n` +
-      `  !live true|false         Attempt a real generation call (may incur cost)\n` +
-      `  !max-models <n>          Limit model checks when !all-models true (default: 10)\n\n` +
-      `Examples:\n` +
-      `!?@team_mgmt_check_provider codex\n` +
-      `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
-      `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
-    zh:
-      `校验 LLM provider 配置（并可选对模型做实际连通性测试）。\n` +
-      `用法：!?@team_mgmt_check_provider <providerKey> [options]\n\n` +
-      `选项：\n` +
-      `  !model <modelKey>        校验指定模型\n` +
-      `  !all-models true|false   校验该 provider 下所有已配置模型\n` +
-      `  !live true|false         发起一次真实生成调用（可能产生费用）\n` +
-      `  !max-models <n>          当 !all-models true 时限制校验的模型数量（默认 10）\n\n` +
-      `示例：\n` +
-      `!?@team_mgmt_check_provider codex\n` +
-      `!?@team_mgmt_check_provider codex !model gpt-5.2\n` +
-      `!?@team_mgmt_check_provider anthropic !all-models true !live true !max-models 5\n`,
+  description: 'Validate an LLM provider configuration (and optionally test models).',
+  descriptionI18n: {
+    en: 'Validate an LLM provider configuration (and optionally test models).',
+    zh: '校验 LLM provider 配置（可选对模型做实际连通性测试）。',
   },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['provider_key'],
+    properties: {
+      provider_key: { type: 'string' },
+      model: { type: 'string' },
+      all_models: { type: 'boolean' },
+      live: { type: 'boolean' },
+      max_models: { type: 'integer' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
-      const args = parseProviderCheckArgs(headLine, this.name);
+      const providerKeyValue = args['provider_key'];
+      const providerKey = typeof providerKeyValue === 'string' ? providerKeyValue.trim() : '';
+      if (!providerKey) throw new Error('Provider key required');
+
+      const modelValue = args['model'];
+      const model =
+        typeof modelValue === 'string' && modelValue.trim() !== '' ? modelValue.trim() : undefined;
+
+      const allModelsValue = args['all_models'];
+      const allModels = allModelsValue === true ? true : false;
+      if (allModelsValue !== undefined && typeof allModelsValue !== 'boolean') {
+        throw new Error('Invalid all_models (expected boolean)');
+      }
+
+      const liveValue = args['live'];
+      const live = liveValue === true ? true : false;
+      if (liveValue !== undefined && typeof liveValue !== 'boolean') {
+        throw new Error('Invalid live (expected boolean)');
+      }
+
+      const maxModelsValue = args['max_models'];
+      // Codex provider requires all func args to be schema-required; use max_models=0 as sentinel for default.
+      const maxModels =
+        typeof maxModelsValue === 'number' && Number.isInteger(maxModelsValue) && maxModelsValue > 0
+          ? maxModelsValue
+          : 10;
+      if (
+        maxModelsValue !== undefined &&
+        (typeof maxModelsValue !== 'number' ||
+          !Number.isInteger(maxModelsValue) ||
+          maxModelsValue < 0)
+      ) {
+        throw new Error('Invalid max_models (expected positive integer or 0 for default)');
+      }
+
+      if (model !== undefined && allModels) {
+        throw new Error('Use either `model` or `all_models` (not both)');
+      }
+
       const llmCfg = await LlmConfig.load();
-      const providerCfg = llmCfg.getProvider(args.providerKey);
+      const providerCfg = llmCfg.getProvider(providerKey);
       if (!providerCfg) {
         const msg =
           language === 'zh'
-            ? `Provider 不存在：\`${args.providerKey}\`。请检查 \`.minds/llm.yaml\`（或内置 defaults）。`
-            : `Provider not found: \`${args.providerKey}\`. Check \`.minds/llm.yaml\` (or built-in defaults).`;
+            ? `Provider 不存在：\`${providerKey}\`。请检查 \`.minds/llm.yaml\`（或内置 defaults）。`
+            : `Provider not found: \`${providerKey}\`. Check \`.minds/llm.yaml\` (or built-in defaults).`;
         return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
       }
 
@@ -320,7 +316,7 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
             ? [
                 fmtHeader('Provider 校验失败'),
                 fmtList([
-                  `provider: \`${args.providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
+                  `provider: \`${providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
                   envStatusLine,
                   '该 provider 的环境变量未配置，强烈建议先配置 env var 再修改 team 配置。',
                 ]),
@@ -328,7 +324,7 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
             : [
                 fmtHeader('Provider Check Failed'),
                 fmtList([
-                  `provider: \`${args.providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
+                  `provider: \`${providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
                   envStatusLine,
                   'Provider env var is not configured. Configure it before changing team config to avoid bricking.',
                 ]),
@@ -337,27 +333,18 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
       }
 
       const modelsToCheck =
-        args.model !== undefined
-          ? [args.model]
-          : args.allModels
-            ? models
-            : models.length > 0
-              ? [models[0]]
-              : [];
+        model !== undefined ? [model] : allModels ? models : models.length > 0 ? [models[0]] : [];
 
-      if (
-        args.model !== undefined &&
-        !Object.prototype.hasOwnProperty.call(providerCfg.models, args.model)
-      ) {
+      if (model !== undefined && !Object.prototype.hasOwnProperty.call(providerCfg.models, model)) {
         const msg =
           language === 'zh'
-            ? `Model 不存在：\`${args.model}\` 不在 provider \`${args.providerKey}\` 的 models 列表中。请先更新 \`.minds/llm.yaml\` 或选择一个已配置的 model key。`
-            : `Model not found: \`${args.model}\` is not in provider \`${args.providerKey}\` models. Update \`.minds/llm.yaml\` or choose a configured model key.`;
+            ? `Model 不存在：\`${model}\` 不在 provider \`${providerKey}\` 的 models 列表中。请先更新 \`.minds/llm.yaml\` 或选择一个已配置的 model key。`
+            : `Model not found: \`${model}\` is not in provider \`${providerKey}\` models. Update \`.minds/llm.yaml\` or choose a configured model key.`;
         return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
       }
 
       const results: ModelCheckResult[] = [];
-      if (args.live && modelsToCheck.length > 0) {
+      if (live && modelsToCheck.length > 0) {
         const llmGen = getLlmGenerator(providerCfg.apiType);
         if (!llmGen) {
           const msg =
@@ -368,15 +355,15 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
         }
 
         const modelsLimited =
-          args.allModels && modelsToCheck.length > args.maxModels
-            ? modelsToCheck.slice(0, args.maxModels)
+          allModels && modelsToCheck.length > maxModels
+            ? modelsToCheck.slice(0, maxModels)
             : modelsToCheck;
 
         for (const modelKey of modelsLimited) {
           const agent = new Team.Member({
             id: 'team_mgmt_checker',
             name: 'TeamMgmtChecker',
-            provider: args.providerKey,
+            provider: providerKey,
             model: modelKey,
             model_params: {
               max_tokens: 16,
@@ -421,11 +408,11 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
           }
         }
 
-        if (args.allModels && modelsToCheck.length > modelsLimited.length) {
+        if (allModels && modelsToCheck.length > modelsLimited.length) {
           results.push({
             model: `(skipped ${modelsToCheck.length - modelsLimited.length} models)`,
             status: 'pass',
-            details: `use !max-models to adjust`,
+            details: `use max_models to adjust`,
           });
         }
       }
@@ -435,10 +422,10 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
       lines.push(fmtHeader(headerTitle));
       lines.push(
         fmtList([
-          `provider: \`${args.providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
+          `provider: \`${providerKey}\` (apiType: \`${providerCfg.apiType}\`)`,
           envStatusLine,
           modelHeader,
-          args.live
+          live
             ? 'live: true (performed a real generation call)'
             : 'live: false (config/env validation only)',
         ]),
@@ -452,15 +439,15 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
         lines.push(caution + '\n');
       }
 
-      if (args.live && results.length > 0) {
+      if (live && results.length > 0) {
         const title = language === 'zh' ? '模型连通性（live）' : 'Model Connectivity (live)';
         lines.push(fmtHeader(title));
         lines.push(results.map(formatModelCheckResult).join('\n') + '\n');
-      } else if (!args.live) {
+      } else if (!live) {
         const hint =
           language === 'zh'
-            ? `提示：如需做真实连通性测试，使用 \`!live true\`。例如：\`!?@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``
-            : `Tip: to perform a real connectivity test, use \`!live true\`. Example: \`!?@team_mgmt_check_provider ${args.providerKey} !model <modelKey> !live true\``;
+            ? `提示：如需做真实连通性测试，设置 \`live: true\`。例如：\`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true, max_models: 0 })\``
+            : `Tip: to perform a real connectivity test, set \`live: true\`. Example: \`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true, max_models: 0 })\``;
         lines.push(hint + '\n');
       }
 
@@ -476,31 +463,21 @@ export const teamMgmtCheckProviderTool: TellaskTool = {
   },
 };
 
-export const teamMgmtListDirTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtListDirTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_list_dir',
-  backfeeding: true,
-  usageDescription:
-    `List directory contents under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_list_dir [path]\n\n` +
-    `Examples:\n` +
-    `!?@team_mgmt_list_dir\n` +
-    `!?@team_mgmt_list_dir team\n`,
-  usageDescriptionI18n: {
-    en:
-      `List directory contents under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_list_dir [path]\n\n` +
-      `Examples:\n` +
-      `!?@team_mgmt_list_dir\n` +
-      `!?@team_mgmt_list_dir team\n`,
-    zh:
-      `列出 ${MINDS_DIR}/ 下的目录内容。\n` +
-      `用法：!?@team_mgmt_list_dir [path]\n\n` +
-      `示例：\n` +
-      `!?@team_mgmt_list_dir\n` +
-      `!?@team_mgmt_list_dir team\n`,
+  description: `List directory contents under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `List directory contents under ${MINDS_DIR}/.`,
+    zh: `列出 ${MINDS_DIR}/ 下的目录内容。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: { path: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -512,12 +489,13 @@ export const teamMgmtListDirTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const rel = toMindsRelativePath(after || '.');
+      const pathValue = args['path'];
+      const rel = toMindsRelativePath(typeof pathValue === 'string' ? pathValue : '.');
       ensureMindsScopedPath(rel);
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await listDirTool.call(dlg, proxyCaller, `@list_dir ${rel}`, '');
+      const content = await listDirTool.call(dlg, proxyCaller, { path: rel });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -528,43 +506,27 @@ export const teamMgmtListDirTool: TellaskTool = {
   },
 };
 
-export const teamMgmtReadFileTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtReadFileTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_read_file',
-  backfeeding: true,
-  usageDescription:
-    `Read a text file under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_read_file [options] <path>\n\n` +
-    `Options (same as !?@read_file):\n` +
-    `  !range <start~end>\n` +
-    `  !max-lines <n>\n` +
-    `  !no-linenos\n\n` +
-    `Examples:\n` +
-    `!?@team_mgmt_read_file team.yaml\n` +
-    `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
-  usageDescriptionI18n: {
-    en:
-      `Read a text file under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_read_file [options] <path>\n\n` +
-      `Options (same as !?@read_file):\n` +
-      `  !range <start~end>\n` +
-      `  !max-lines <n>\n` +
-      `  !no-linenos\n\n` +
-      `Examples:\n` +
-      `!?@team_mgmt_read_file team.yaml\n` +
-      `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
-    zh:
-      `读取 ${MINDS_DIR}/ 下的文本文件。\n` +
-      `用法：!?@team_mgmt_read_file [options] <path>\n\n` +
-      `可选项（同 !?@read_file）：\n` +
-      `  !range <start~end>\n` +
-      `  !max-lines <n>\n` +
-      `  !no-linenos\n\n` +
-      `示例：\n` +
-      `!?@team_mgmt_read_file team.yaml\n` +
-      `!?@team_mgmt_read_file !range 1~120 team.yaml\n`,
+  description: `Read a text file under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Read a text file under ${MINDS_DIR}/.`,
+    zh: `读取 ${MINDS_DIR}/ 下的文本文件。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string' },
+      range: { type: 'string' },
+      max_lines: { type: 'integer' },
+      show_linenos: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -576,18 +538,54 @@ export const teamMgmtReadFileTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
-      if (parts.length === 0) {
-        throw new Error('Path required');
-      }
-      const rawPath = parts[parts.length - 1];
-      const opts = parts.slice(0, parts.length - 1);
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      if (!rawPath) throw new Error('Path required');
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
+
+      const rangeValue = args['range'];
+      const range =
+        rangeValue === undefined
+          ? undefined
+          : typeof rangeValue === 'string'
+            ? rangeValue
+            : undefined;
+      if (rangeValue !== undefined && typeof rangeValue !== 'string') {
+        throw new Error('Invalid range (expected string)');
+      }
+
+      const maxLinesValue = args['max_lines'];
+      const maxLines =
+        typeof maxLinesValue === 'number' && Number.isInteger(maxLinesValue)
+          ? maxLinesValue
+          : undefined;
+      if (
+        maxLinesValue !== undefined &&
+        (typeof maxLinesValue !== 'number' || !Number.isInteger(maxLinesValue))
+      ) {
+        throw new Error('Invalid max_lines (expected integer)');
+      }
+
+      const showLinenosValue = args['show_linenos'];
+      const showLinenos =
+        showLinenosValue === undefined
+          ? undefined
+          : typeof showLinenosValue === 'boolean'
+            ? showLinenosValue
+            : undefined;
+      if (showLinenosValue !== undefined && typeof showLinenosValue !== 'boolean') {
+        throw new Error('Invalid show_linenos (expected boolean)');
+      }
+
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const rebuilt = `@read_file ${[...opts, rel].join(' ')}`.trim();
-      return await readFileTool.call(dlg, proxyCaller, rebuilt, '');
+      const content = await readFileTool.call(dlg, proxyCaller, {
+        path: rel,
+        ...(range ? { range } : {}),
+        ...(maxLines !== undefined ? { max_lines: maxLines } : {}),
+        ...(showLinenos !== undefined ? { show_linenos: showLinenos } : {}),
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -598,25 +596,28 @@ export const teamMgmtReadFileTool: TellaskTool = {
   },
 };
 
-export const teamMgmtOverwriteEntireFileTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtOverwriteEntireFileTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_overwrite_entire_file',
-  backfeeding: true,
-  usageDescription:
-    `Overwrite an existing file under ${MINDS_DIR}/ (exception path; writes immediately; guarded).\n` +
-    `Usage: !?@team_mgmt_overwrite_entire_file <path> known_old_total_lines=<n> known_old_total_bytes=<n> [content_format=<text|markdown|json|diff|patch>]\n` +
-    `!?<content in body>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Overwrite an existing file under ${MINDS_DIR}/ (exception path; writes immediately; guarded).\n` +
-      `Usage: !?@team_mgmt_overwrite_entire_file <path> known_old_total_lines=<n> known_old_total_bytes=<n> [content_format=<text|markdown|json|diff|patch>]\n` +
-      `!?<content in body>\n`,
-    zh:
-      `整体覆盖写入 ${MINDS_DIR}/ 下的已存在文件（例外通道：会直接写盘，带护栏）。\n` +
-      `用法：!?@team_mgmt_overwrite_entire_file <path> known_old_total_lines=<n> known_old_total_bytes=<n> [content_format=<text|markdown|json|diff|patch>]\n` +
-      `!?<正文为文件内容>\n`,
+  description: `Overwrite an existing file under ${MINDS_DIR}/ (writes immediately; guarded).`,
+  descriptionI18n: {
+    en: `Overwrite an existing file under ${MINDS_DIR}/ (writes immediately; guarded).`,
+    zh: `整体覆盖写入 ${MINDS_DIR}/ 下的已存在文件（直接写盘，带护栏）。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
+    properties: {
+      path: { type: 'string' },
+      known_old_total_lines: { type: 'integer' },
+      known_old_total_bytes: { type: 'integer' },
+      content_format: { type: 'string' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -625,35 +626,40 @@ export const teamMgmtOverwriteEntireFileTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name).trim();
-      const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
-      const rawPath = parts[0] ?? '';
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
       if (!rawPath) throw new Error('Path required');
 
-      let knownOldTotalLines: number | undefined;
-      let knownOldTotalBytes: number | undefined;
-      let contentFormat: string | undefined;
-      for (const part of parts.slice(1)) {
-        const m = part.match(/^([^=]+)=(.+)$/);
-        if (!m) continue;
-        const k = m[1] ?? '';
-        const v = m[2] ?? '';
-        if (k === 'known_old_total_lines') {
-          if (!/^\d+$/.test(v)) throw new Error('Invalid known_old_total_lines (expected integer)');
-          knownOldTotalLines = Number.parseInt(v, 10);
-        } else if (k === 'known_old_total_bytes') {
-          if (!/^\d+$/.test(v)) throw new Error('Invalid known_old_total_bytes (expected integer)');
-          knownOldTotalBytes = Number.parseInt(v, 10);
-        } else if (k === 'content_format') {
-          contentFormat = v;
-        }
-      }
-
-      if (knownOldTotalLines === undefined || knownOldTotalBytes === undefined) {
+      const knownLinesValue = args['known_old_total_lines'];
+      if (typeof knownLinesValue !== 'number' || !Number.isInteger(knownLinesValue)) {
         throw new Error(
           language === 'zh'
-            ? '需要提供 known_old_total_lines 与 known_old_total_bytes 作为对账护栏。'
-            : 'known_old_total_lines and known_old_total_bytes are required as overwrite guardrails.',
+            ? 'known_old_total_lines 需要为整数。'
+            : 'known_old_total_lines must be an integer.',
+        );
+      }
+      const knownBytesValue = args['known_old_total_bytes'];
+      if (typeof knownBytesValue !== 'number' || !Number.isInteger(knownBytesValue)) {
+        throw new Error(
+          language === 'zh'
+            ? 'known_old_total_bytes 需要为整数。'
+            : 'known_old_total_bytes must be an integer.',
+        );
+      }
+      const contentValue = args['content'];
+      if (typeof contentValue !== 'string') {
+        throw new Error(language === 'zh' ? 'content 需要为字符串。' : 'content must be a string.');
+      }
+      const contentFormatValue = args['content_format'];
+      const contentFormat =
+        contentFormatValue === undefined
+          ? undefined
+          : typeof contentFormatValue === 'string'
+            ? contentFormatValue
+            : undefined;
+      if (contentFormatValue !== undefined && typeof contentFormatValue !== 'string') {
+        throw new Error(
+          language === 'zh' ? 'content_format 需要为字符串。' : 'content_format must be a string.',
         );
       }
 
@@ -662,9 +668,9 @@ export const teamMgmtOverwriteEntireFileTool: TellaskTool = {
       const proxyCaller = makeMindsOnlyAccessMember(caller);
       const result = await overwriteEntireFileTool.call(dlg, proxyCaller, {
         path: rel,
-        known_old_total_lines: knownOldTotalLines,
-        known_old_total_bytes: knownOldTotalBytes,
-        content: inputBody,
+        known_old_total_lines: knownLinesValue,
+        known_old_total_bytes: knownBytesValue,
+        content: contentValue,
         ...(contentFormat ? { content_format: contentFormat } : {}),
       });
       return ok(result, [{ type: 'environment_msg', role: 'user', content: result }]);
@@ -678,25 +684,27 @@ export const teamMgmtOverwriteEntireFileTool: TellaskTool = {
   },
 };
 
-export const teamMgmtPreviewFileAppendTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtPreviewFileAppendTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_preview_file_append',
-  backfeeding: true,
-  usageDescription:
-    `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_preview_file_append <path> [options] [!existing-hunk-id]\n` +
-    `!?<content in body>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_preview_file_append <path> [options] [!existing-hunk-id]\n` +
-      `!?<content in body>\n`,
-    zh:
-      `预览 ${MINDS_DIR}/ 下“末尾追加”修改（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_preview_file_append <path> [options] [!existing-hunk-id]\n` +
-      `!?<正文为要追加的内容>\n`,
+  description: `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
+  descriptionI18n: {
+    en: `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `预览 ${MINDS_DIR}/ 下“末尾追加”修改（不会立刻写入）。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'content'],
+    properties: {
+      path: { type: 'string' },
+      create: { type: 'boolean' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -705,19 +713,39 @@ export const teamMgmtPreviewFileAppendTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name).trim();
-      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
-      const rawPath = m?.[1] ?? '';
-      const rest = (m?.[2] ?? '').trim();
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
       if (!rawPath) throw new Error('Path required');
 
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = rest
-        ? `@preview_file_append ${rel} ${rest}`
-        : `@preview_file_append ${rel}`;
-      return await previewFileAppendTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+
+      const createValue = args['create'];
+      const create = createValue === undefined ? undefined : createValue === true ? true : false;
+      if (createValue !== undefined && typeof createValue !== 'boolean') {
+        throw new Error('Invalid create (expected boolean)');
+      }
+      const existingHunkIdValue = args['existing_hunk_id'];
+      const existingHunkId =
+        existingHunkIdValue === undefined
+          ? undefined
+          : typeof existingHunkIdValue === 'string'
+            ? existingHunkIdValue
+            : undefined;
+      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
+        throw new Error('Invalid existing_hunk_id (expected string)');
+      }
+      const contentValue = args['content'];
+      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
+
+      const content = await previewFileAppendTool.call(dlg, proxyCaller, {
+        path: rel,
+        ...(create !== undefined ? { create } : {}),
+        ...(existingHunkId ? { existing_hunk_id: existingHunkId } : {}),
+        content: contentValue,
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -728,25 +756,29 @@ export const teamMgmtPreviewFileAppendTool: TellaskTool = {
   },
 };
 
-export const teamMgmtPreviewInsertAfterTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtPreviewInsertAfterTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_preview_insert_after',
-  backfeeding: true,
-  usageDescription:
-    `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_preview_insert_after <path> <anchor> [options] [!existing-hunk-id]\n` +
-    `!?<content in body>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_preview_insert_after <path> <anchor> [options] [!existing-hunk-id]\n` +
-      `!?<content in body>\n`,
-    zh:
-      `按锚点预览 ${MINDS_DIR}/ 下“在其后插入”修改（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_preview_insert_after <path> <anchor> [options] [!existing-hunk-id]\n` +
-      `!?<正文为要插入的内容>\n`,
+  description: `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
+  descriptionI18n: {
+    en: `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按锚点预览 ${MINDS_DIR}/ 下“在其后插入”修改（不会立刻写入）。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'anchor', 'content'],
+    properties: {
+      path: { type: 'string' },
+      anchor: { type: 'string' },
+      occurrence: { type: ['integer', 'string'] },
+      match: { type: 'string' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -758,18 +790,48 @@ export const teamMgmtPreviewInsertAfterTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name).trim();
-      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
-      const rawPath = m?.[1] ?? '';
-      const rest = (m?.[2] ?? '').trim();
+      const pathValue = args['path'];
+      const anchorValue = args['anchor'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      const anchor = typeof anchorValue === 'string' ? anchorValue : '';
       if (!rawPath) throw new Error('Path required');
-      if (!rest) throw new Error('Anchor is required');
+      if (!anchor) throw new Error('Anchor is required');
 
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@preview_insert_after ${rel} ${rest}`;
-      return await previewInsertAfterTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+
+      const occurrenceValue = args['occurrence'];
+      if (
+        occurrenceValue !== undefined &&
+        typeof occurrenceValue !== 'number' &&
+        typeof occurrenceValue !== 'string'
+      ) {
+        throw new Error("Invalid occurrence (expected integer or 'last')");
+      }
+
+      const matchValue = args['match'];
+      if (matchValue !== undefined && typeof matchValue !== 'string') {
+        throw new Error("Invalid match (expected 'contains'|'equals')");
+      }
+
+      const existingHunkIdValue = args['existing_hunk_id'];
+      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
+        throw new Error('Invalid existing_hunk_id (expected string)');
+      }
+
+      const contentValue = args['content'];
+      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
+
+      const content = await previewInsertAfterTool.call(dlg, proxyCaller, {
+        path: rel,
+        anchor,
+        ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
+        ...(matchValue !== undefined ? { match: matchValue } : {}),
+        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
+        content: contentValue,
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -780,25 +842,29 @@ export const teamMgmtPreviewInsertAfterTool: TellaskTool = {
   },
 };
 
-export const teamMgmtPreviewInsertBeforeTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtPreviewInsertBeforeTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_preview_insert_before',
-  backfeeding: true,
-  usageDescription:
-    `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_preview_insert_before <path> <anchor> [options] [!existing-hunk-id]\n` +
-    `!?<content in body>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_preview_insert_before <path> <anchor> [options] [!existing-hunk-id]\n` +
-      `!?<content in body>\n`,
-    zh:
-      `按锚点预览 ${MINDS_DIR}/ 下“在其前插入”修改（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_preview_insert_before <path> <anchor> [options] [!existing-hunk-id]\n` +
-      `!?<正文为要插入的内容>\n`,
+  description: `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
+  descriptionI18n: {
+    en: `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按锚点预览 ${MINDS_DIR}/ 下“在其前插入”修改（不会立刻写入）。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'anchor', 'content'],
+    properties: {
+      path: { type: 'string' },
+      anchor: { type: 'string' },
+      occurrence: { type: ['integer', 'string'] },
+      match: { type: 'string' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -810,18 +876,48 @@ export const teamMgmtPreviewInsertBeforeTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name).trim();
-      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
-      const rawPath = m?.[1] ?? '';
-      const rest = (m?.[2] ?? '').trim();
+      const pathValue = args['path'];
+      const anchorValue = args['anchor'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      const anchor = typeof anchorValue === 'string' ? anchorValue : '';
       if (!rawPath) throw new Error('Path required');
-      if (!rest) throw new Error('Anchor is required');
+      if (!anchor) throw new Error('Anchor is required');
 
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@preview_insert_before ${rel} ${rest}`;
-      return await previewInsertBeforeTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+
+      const occurrenceValue = args['occurrence'];
+      if (
+        occurrenceValue !== undefined &&
+        typeof occurrenceValue !== 'number' &&
+        typeof occurrenceValue !== 'string'
+      ) {
+        throw new Error("Invalid occurrence (expected integer or 'last')");
+      }
+
+      const matchValue = args['match'];
+      if (matchValue !== undefined && typeof matchValue !== 'string') {
+        throw new Error("Invalid match (expected 'contains'|'equals')");
+      }
+
+      const existingHunkIdValue = args['existing_hunk_id'];
+      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
+        throw new Error('Invalid existing_hunk_id (expected string)');
+      }
+
+      const contentValue = args['content'];
+      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
+
+      const content = await previewInsertBeforeTool.call(dlg, proxyCaller, {
+        path: rel,
+        anchor,
+        ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
+        ...(matchValue !== undefined ? { match: matchValue } : {}),
+        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
+        content: contentValue,
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -832,25 +928,32 @@ export const teamMgmtPreviewInsertBeforeTool: TellaskTool = {
   },
 };
 
-export const teamMgmtPreviewBlockReplaceTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_preview_block_replace',
-  backfeeding: true,
-  usageDescription:
-    `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_preview_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
-    `!?<new content in body>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_preview_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
-      `!?<new content in body>\n`,
-    zh:
-      `按锚点预览 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_preview_block_replace <path> <start_anchor> <end_anchor> [options]\n` +
-      `!?<正文为新块内容>\n`,
+  description: `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
+  descriptionI18n: {
+    en: `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按锚点预览 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'start_anchor', 'end_anchor', 'content'],
+    properties: {
+      path: { type: 'string' },
+      start_anchor: { type: 'string' },
+      end_anchor: { type: 'string' },
+      occurrence: { type: ['integer', 'string'] },
+      include_anchors: { type: 'boolean' },
+      match: { type: 'string' },
+      require_unique: { type: 'boolean' },
+      strict: { type: 'boolean' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -862,18 +965,58 @@ export const teamMgmtPreviewBlockReplaceTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name).trim();
-      const m = after.match(/^(\S+)(?:\s+(.*))?$/);
-      const rawPath = m?.[1] ?? '';
-      const rest = (m?.[2] ?? '').trim();
+      const pathValue = args['path'];
+      const startAnchorValue = args['start_anchor'];
+      const endAnchorValue = args['end_anchor'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      const startAnchor = typeof startAnchorValue === 'string' ? startAnchorValue : '';
+      const endAnchor = typeof endAnchorValue === 'string' ? endAnchorValue : '';
       if (!rawPath) throw new Error('Path required');
-      if (!rest) throw new Error('start_anchor and end_anchor are required');
+      if (!startAnchor || !endAnchor) throw new Error('start_anchor and end_anchor are required');
 
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@preview_block_replace ${rel} ${rest}`;
-      return await previewBlockReplaceTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+
+      const occurrenceValue = args['occurrence'];
+      if (
+        occurrenceValue !== undefined &&
+        typeof occurrenceValue !== 'number' &&
+        typeof occurrenceValue !== 'string'
+      ) {
+        throw new Error("Invalid occurrence (expected integer or 'last')");
+      }
+      const includeAnchorsValue = args['include_anchors'];
+      if (includeAnchorsValue !== undefined && typeof includeAnchorsValue !== 'boolean') {
+        throw new Error('Invalid include_anchors (expected boolean)');
+      }
+      const matchValue = args['match'];
+      if (matchValue !== undefined && typeof matchValue !== 'string') {
+        throw new Error("Invalid match (expected 'contains'|'equals')");
+      }
+      const requireUniqueValue = args['require_unique'];
+      if (requireUniqueValue !== undefined && typeof requireUniqueValue !== 'boolean') {
+        throw new Error('Invalid require_unique (expected boolean)');
+      }
+      const strictValue = args['strict'];
+      if (strictValue !== undefined && typeof strictValue !== 'boolean') {
+        throw new Error('Invalid strict (expected boolean)');
+      }
+      const contentValue = args['content'];
+      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
+
+      const content = await previewBlockReplaceTool.call(dlg, proxyCaller, {
+        path: rel,
+        start_anchor: startAnchor,
+        end_anchor: endAnchor,
+        ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
+        ...(includeAnchorsValue !== undefined ? { include_anchors: includeAnchorsValue } : {}),
+        ...(matchValue !== undefined ? { match: matchValue } : {}),
+        ...(requireUniqueValue !== undefined ? { require_unique: requireUniqueValue } : {}),
+        ...(strictValue !== undefined ? { strict: strictValue } : {}),
+        content: contentValue,
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -884,28 +1027,27 @@ export const teamMgmtPreviewBlockReplaceTool: TellaskTool = {
   },
 };
 
-export const teamMgmtPreviewFileModificationTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtPreviewFileModificationTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_preview_file_modification',
-  backfeeding: true,
-  usageDescription:
-    `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-    `Usage: !?@team_mgmt_preview_file_modification <path> <line~range> [!existing-hunk-id]\n` +
-    `Note: \`!<hunk-id>\` is only for revising an existing preview hunk; custom hunk ids are not allowed.\n` +
-    `!?<new content lines in body>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).\n` +
-      `Usage: !?@team_mgmt_preview_file_modification <path> <line~range> [!existing-hunk-id]\n` +
-      `Note: \`!<hunk-id>\` is only for revising an existing preview hunk; custom hunk ids are not allowed.\n` +
-      `!?<new content lines in body>\n`,
-    zh:
-      `按行号范围预览 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。\n` +
-      `用法：!?@team_mgmt_preview_file_modification <path> <line~range> [!existing-hunk-id]\n` +
-      `注意：\`!<hunk-id>\` 仅用于修订已存在的预览；不支持自定义 hunk id。\n` +
-      `!?<正文为新内容行>\n`,
+  description: `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
+  descriptionI18n: {
+    en: `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按行号范围预览 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。`,
   },
-  async call(dlg, caller, headLine, inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'range'],
+    properties: {
+      path: { type: 'string' },
+      range: { type: 'string' },
+      existing_hunk_id: { type: 'string' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -914,24 +1056,33 @@ export const teamMgmtPreviewFileModificationTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      if (parts.length > 3) throw new Error('Invalid format');
-      const filePath = parts[0] ?? '';
-      const rangeSpec = parts[1] ?? '';
-      const maybeHunkId = parts[2] ?? '';
+      const pathValue = args['path'];
+      const rangeValue = args['range'];
+      const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      const rangeSpec = typeof rangeValue === 'string' ? rangeValue.trim() : '';
       if (!filePath) throw new Error('Path required');
       if (!rangeSpec) throw new Error('Range required (e.g. 10~20 or ~)');
-      if (maybeHunkId && !maybeHunkId.startsWith('!')) {
-        throw new Error('Invalid hunk id format (expected !<hunk-id>)');
+
+      const existingHunkIdValue = args['existing_hunk_id'];
+      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
+        throw new Error('Invalid existing_hunk_id (expected string)');
       }
+
+      const contentValue = args['content'];
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = maybeHunkId
-        ? `@preview_file_modification ${rel} ${rangeSpec} ${maybeHunkId}`
-        : `@preview_file_modification ${rel} ${rangeSpec}`;
-      return await previewFileModificationTool.call(dlg, proxyCaller, proxyHeadLine, inputBody);
+      const content = await previewFileModificationTool.call(dlg, proxyCaller, {
+        path: rel,
+        range: rangeSpec,
+        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
+        ...(typeof contentValue === 'string' ? { content: contentValue } : {}),
+      });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -942,22 +1093,22 @@ export const teamMgmtPreviewFileModificationTool: TellaskTool = {
   },
 };
 
-export const teamMgmtApplyFileModificationTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtApplyFileModificationTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_apply_file_modification',
-  backfeeding: true,
-  usageDescription:
-    `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.\n` +
-    `Usage: !?@team_mgmt_apply_file_modification !<hunk-id>\n`,
-  usageDescriptionI18n: {
-    en:
-      `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.\n` +
-      `Usage: !?@team_mgmt_apply_file_modification !<hunk-id>\n`,
-    zh:
-      `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下的单文件修改。\n` +
-      `用法：!?@team_mgmt_apply_file_modification !<hunk-id>\n`,
+  description: `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.`,
+  descriptionI18n: {
+    en: `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.`,
+    zh: `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下的单文件修改。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['hunk_id'],
+    properties: { hunk_id: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -966,16 +1117,12 @@ export const teamMgmtApplyFileModificationTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const id = after.split(/\s+/)[0] || '';
-      if (!id) throw new Error('Hunk id required (e.g. !a1b2c3d4)');
+      const hunkIdValue = args['hunk_id'];
+      const id = typeof hunkIdValue === 'string' ? hunkIdValue.trim() : '';
+      if (!id) throw new Error('Hunk id required (e.g. a1b2c3d4)');
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await applyFileModificationTool.call(
-        dlg,
-        proxyCaller,
-        `@apply_file_modification ${id}`,
-        '',
-      );
+      const content = await applyFileModificationTool.call(dlg, proxyCaller, { hunk_id: id });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -986,16 +1133,22 @@ export const teamMgmtApplyFileModificationTool: TellaskTool = {
   },
 };
 
-export const teamMgmtMkDirTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtMkDirTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_mk_dir',
-  backfeeding: true,
-  usageDescription: `Create a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
-  usageDescriptionI18n: {
-    en: `Create a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
-    zh: `创建 ${MINDS_DIR}/ 下目录。\n用法：!?@team_mgmt_mk_dir <path> [parents=true|false]\n`,
+  description: `Create a directory under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Create a directory under ${MINDS_DIR}/.`,
+    zh: `创建 ${MINDS_DIR}/ 下目录。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: { path: { type: 'string' }, parents: { type: 'boolean' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1004,16 +1157,21 @@ export const teamMgmtMkDirTool: TellaskTool = {
       }
       await ensureMindsRootDirExists();
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const rawPath = parts[0] ?? '';
-      const rest = parts.slice(1).join(' ').trim();
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
       if (!rawPath) throw new Error('Path required');
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = rest ? `@mk_dir ${rel} ${rest}` : `@mk_dir ${rel}`;
-      return await mkDirTool.call(dlg, proxyCaller, proxyHeadLine, '');
+      const parentsValue = args['parents'];
+      const parents = parentsValue === undefined ? undefined : parentsValue === true ? true : false;
+      if (parentsValue !== undefined && typeof parentsValue !== 'boolean') {
+        throw new Error('Invalid parents (expected boolean)');
+      }
+      const toolArgs: ToolArguments =
+        parents === undefined ? { path: rel } : { path: rel, parents };
+      const content = await mkDirTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1024,16 +1182,22 @@ export const teamMgmtMkDirTool: TellaskTool = {
   },
 };
 
-export const teamMgmtMoveFileTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtMoveFileTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_move_file',
-  backfeeding: true,
-  usageDescription: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_file <from> <to>\n`,
-  usageDescriptionI18n: {
-    en: `Move/rename a file under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_file <from> <to>\n`,
-    zh: `移动/重命名 ${MINDS_DIR}/ 下文件。\n用法：!?@team_mgmt_move_file <from> <to>\n`,
+  description: `Move/rename a file under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Move/rename a file under ${MINDS_DIR}/.`,
+    zh: `移动/重命名 ${MINDS_DIR}/ 下文件。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to'],
+    properties: { from: { type: 'string' }, to: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1045,17 +1209,18 @@ export const teamMgmtMoveFileTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const rawFrom = parts[0] ?? '';
-      const rawTo = parts[1] ?? '';
+      const fromValue = args['from'];
+      const toValue = args['to'];
+      const rawFrom = typeof fromValue === 'string' ? fromValue.trim() : '';
+      const rawTo = typeof toValue === 'string' ? toValue.trim() : '';
       if (!rawFrom || !rawTo) throw new Error('From/to required');
       const fromRel = toMindsRelativePath(rawFrom);
       const toRel = toMindsRelativePath(rawTo);
       ensureMindsScopedPath(fromRel);
       ensureMindsScopedPath(toRel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await moveFileTool.call(dlg, proxyCaller, `@move_file ${fromRel} ${toRel}`, '');
+      const content = await moveFileTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1066,16 +1231,22 @@ export const teamMgmtMoveFileTool: TellaskTool = {
   },
 };
 
-export const teamMgmtMoveDirTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtMoveDirTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_move_dir',
-  backfeeding: true,
-  usageDescription: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_dir <from> <to>\n`,
-  usageDescriptionI18n: {
-    en: `Move/rename a directory under ${MINDS_DIR}/.\nUsage: !?@team_mgmt_move_dir <from> <to>\n`,
-    zh: `移动/重命名 ${MINDS_DIR}/ 下目录。\n用法：!?@team_mgmt_move_dir <from> <to>\n`,
+  description: `Move/rename a directory under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Move/rename a directory under ${MINDS_DIR}/.`,
+    zh: `移动/重命名 ${MINDS_DIR}/ 下目录。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to'],
+    properties: { from: { type: 'string' }, to: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1087,17 +1258,18 @@ export const teamMgmtMoveDirTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const rawFrom = parts[0] ?? '';
-      const rawTo = parts[1] ?? '';
+      const fromValue = args['from'];
+      const toValue = args['to'];
+      const rawFrom = typeof fromValue === 'string' ? fromValue.trim() : '';
+      const rawTo = typeof toValue === 'string' ? toValue.trim() : '';
       if (!rawFrom || !rawTo) throw new Error('From/to required');
       const fromRel = toMindsRelativePath(rawFrom);
       const toRel = toMindsRelativePath(rawTo);
       ensureMindsScopedPath(fromRel);
       ensureMindsScopedPath(toRel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await moveDirTool.call(dlg, proxyCaller, `@move_dir ${fromRel} ${toRel}`, '');
+      const content = await moveDirTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1108,16 +1280,31 @@ export const teamMgmtMoveDirTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRipgrepFilesTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRipgrepFilesTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_ripgrep_files',
-  backfeeding: true,
-  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
-  usageDescriptionI18n: {
-    en: `Search within ${MINDS_DIR}/ using ripgrep_files.\nUsage: !?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_files 搜索。\n用法：!?@team_mgmt_ripgrep_files <pattern> [path] [options]\n`,
+  description: `Search within ${MINDS_DIR}/ using ripgrep_files.`,
+  descriptionI18n: {
+    en: `Search within ${MINDS_DIR}/ using ripgrep_files.`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_files 搜索。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pattern'],
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      fixed_strings: { type: 'boolean' },
+      max_files: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1129,18 +1316,57 @@ export const teamMgmtRipgrepFilesTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const pattern = parts[0] ?? '';
-      const maybePathOrOpt = parts[1];
-      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
-      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
-      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+      const patternValue = args['pattern'];
+      const pattern = typeof patternValue === 'string' ? patternValue.trim() : '';
+      if (!pattern) throw new Error('Pattern required');
+
+      const pathValue = args['path'];
+      const rawPath =
+        typeof pathValue === 'string' && pathValue.trim() !== '' ? pathValue.trim() : MINDS_DIR;
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
+
+      const toolArgs: ToolArguments = { pattern, path: rel };
+      const globsValue = args['globs'];
+      if (globsValue !== undefined) {
+        if (!Array.isArray(globsValue) || !globsValue.every((v) => typeof v === 'string')) {
+          throw new Error('Invalid globs (expected string[])');
+        }
+        toolArgs['globs'] = globsValue;
+      }
+      const caseValue = args['case'];
+      if (caseValue !== undefined) {
+        if (typeof caseValue !== 'string') throw new Error('Invalid case (expected string)');
+        toolArgs['case'] = caseValue;
+      }
+      const fixedStringsValue = args['fixed_strings'];
+      if (fixedStringsValue !== undefined) {
+        if (typeof fixedStringsValue !== 'boolean')
+          throw new Error('Invalid fixed_strings (expected boolean)');
+        toolArgs['fixed_strings'] = fixedStringsValue;
+      }
+      const includeHiddenValue = args['include_hidden'];
+      if (includeHiddenValue !== undefined) {
+        if (typeof includeHiddenValue !== 'boolean')
+          throw new Error('Invalid include_hidden (expected boolean)');
+        toolArgs['include_hidden'] = includeHiddenValue;
+      }
+      const followSymlinksValue = args['follow_symlinks'];
+      if (followSymlinksValue !== undefined) {
+        if (typeof followSymlinksValue !== 'boolean')
+          throw new Error('Invalid follow_symlinks (expected boolean)');
+        toolArgs['follow_symlinks'] = followSymlinksValue;
+      }
+      const maxFilesValue = args['max_files'];
+      if (maxFilesValue !== undefined) {
+        if (typeof maxFilesValue !== 'number' || !Number.isInteger(maxFilesValue))
+          throw new Error('Invalid max_files (expected integer)');
+        toolArgs['max_files'] = maxFilesValue;
+      }
+
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@ripgrep_files ${pattern} ${rel} ${rest}`.trim();
-      return await ripgrepFilesTool.call(dlg, proxyCaller, proxyHeadLine, '');
+      const content = await ripgrepFilesTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1151,16 +1377,33 @@ export const teamMgmtRipgrepFilesTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRipgrepSnippetsTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRipgrepSnippetsTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_ripgrep_snippets',
-  backfeeding: true,
-  usageDescription: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
-  usageDescriptionI18n: {
-    en: `Search within ${MINDS_DIR}/ using ripgrep_snippets.\nUsage: !?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_snippets 搜索。\n用法：!?@team_mgmt_ripgrep_snippets <pattern> [path] [options]\n`,
+  description: `Search within ${MINDS_DIR}/ using ripgrep_snippets.`,
+  descriptionI18n: {
+    en: `Search within ${MINDS_DIR}/ using ripgrep_snippets.`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_snippets 搜索。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pattern'],
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      fixed_strings: { type: 'boolean' },
+      context_before: { type: 'integer' },
+      context_after: { type: 'integer' },
+      max_results: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1171,18 +1414,73 @@ export const teamMgmtRipgrepSnippetsTool: TellaskTool = {
       if (mindsState.kind === 'not_directory') {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const pattern = parts[0] ?? '';
-      const maybePathOrOpt = parts[1];
-      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
-      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
-      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+
+      const patternValue = args['pattern'];
+      const pattern = typeof patternValue === 'string' ? patternValue.trim() : '';
+      if (!pattern) throw new Error('Pattern required');
+
+      const pathValue = args['path'];
+      const rawPath =
+        typeof pathValue === 'string' && pathValue.trim() !== '' ? pathValue.trim() : MINDS_DIR;
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
+
+      const toolArgs: ToolArguments = { pattern, path: rel };
+      const globsValue = args['globs'];
+      if (globsValue !== undefined) {
+        if (!Array.isArray(globsValue) || !globsValue.every((v) => typeof v === 'string')) {
+          throw new Error('Invalid globs (expected string[])');
+        }
+        toolArgs['globs'] = globsValue;
+      }
+      const caseValue = args['case'];
+      if (caseValue !== undefined) {
+        if (typeof caseValue !== 'string') throw new Error('Invalid case (expected string)');
+        toolArgs['case'] = caseValue;
+      }
+      const fixedStringsValue = args['fixed_strings'];
+      if (fixedStringsValue !== undefined) {
+        if (typeof fixedStringsValue !== 'boolean')
+          throw new Error('Invalid fixed_strings (expected boolean)');
+        toolArgs['fixed_strings'] = fixedStringsValue;
+      }
+      const contextBeforeValue = args['context_before'];
+      if (contextBeforeValue !== undefined) {
+        if (typeof contextBeforeValue !== 'number' || !Number.isInteger(contextBeforeValue)) {
+          throw new Error('Invalid context_before (expected integer)');
+        }
+        toolArgs['context_before'] = contextBeforeValue;
+      }
+      const contextAfterValue = args['context_after'];
+      if (contextAfterValue !== undefined) {
+        if (typeof contextAfterValue !== 'number' || !Number.isInteger(contextAfterValue)) {
+          throw new Error('Invalid context_after (expected integer)');
+        }
+        toolArgs['context_after'] = contextAfterValue;
+      }
+      const maxResultsValue = args['max_results'];
+      if (maxResultsValue !== undefined) {
+        if (typeof maxResultsValue !== 'number' || !Number.isInteger(maxResultsValue)) {
+          throw new Error('Invalid max_results (expected integer)');
+        }
+        toolArgs['max_results'] = maxResultsValue;
+      }
+      const includeHiddenValue = args['include_hidden'];
+      if (includeHiddenValue !== undefined) {
+        if (typeof includeHiddenValue !== 'boolean')
+          throw new Error('Invalid include_hidden (expected boolean)');
+        toolArgs['include_hidden'] = includeHiddenValue;
+      }
+      const followSymlinksValue = args['follow_symlinks'];
+      if (followSymlinksValue !== undefined) {
+        if (typeof followSymlinksValue !== 'boolean')
+          throw new Error('Invalid follow_symlinks (expected boolean)');
+        toolArgs['follow_symlinks'] = followSymlinksValue;
+      }
+
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@ripgrep_snippets ${pattern} ${rel} ${rest}`.trim();
-      return await ripgrepSnippetsTool.call(dlg, proxyCaller, proxyHeadLine, '');
+      const content = await ripgrepSnippetsTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1193,16 +1491,31 @@ export const teamMgmtRipgrepSnippetsTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRipgrepCountTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRipgrepCountTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_ripgrep_count',
-  backfeeding: true,
-  usageDescription: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
-  usageDescriptionI18n: {
-    en: `Count matches within ${MINDS_DIR}/ using ripgrep_count.\nUsage: !?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_count 计数。\n用法：!?@team_mgmt_ripgrep_count <pattern> [path] [options]\n`,
+  description: `Count matches within ${MINDS_DIR}/ using ripgrep_count.`,
+  descriptionI18n: {
+    en: `Count matches within ${MINDS_DIR}/ using ripgrep_count.`,
+    zh: `在 ${MINDS_DIR}/ 下用 ripgrep_count 计数。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pattern'],
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      fixed_strings: { type: 'boolean' },
+      max_files: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1213,18 +1526,58 @@ export const teamMgmtRipgrepCountTool: TellaskTool = {
       if (mindsState.kind === 'not_directory') {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const pattern = parts[0] ?? '';
-      const maybePathOrOpt = parts[1];
-      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
-      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
-      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+
+      const patternValue = args['pattern'];
+      const pattern = typeof patternValue === 'string' ? patternValue.trim() : '';
+      if (!pattern) throw new Error('Pattern required');
+
+      const pathValue = args['path'];
+      const rawPath =
+        typeof pathValue === 'string' && pathValue.trim() !== '' ? pathValue.trim() : MINDS_DIR;
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
+
+      const toolArgs: ToolArguments = { pattern, path: rel };
+      const globsValue = args['globs'];
+      if (globsValue !== undefined) {
+        if (!Array.isArray(globsValue) || !globsValue.every((v) => typeof v === 'string')) {
+          throw new Error('Invalid globs (expected string[])');
+        }
+        toolArgs['globs'] = globsValue;
+      }
+      const caseValue = args['case'];
+      if (caseValue !== undefined) {
+        if (typeof caseValue !== 'string') throw new Error('Invalid case (expected string)');
+        toolArgs['case'] = caseValue;
+      }
+      const fixedStringsValue = args['fixed_strings'];
+      if (fixedStringsValue !== undefined) {
+        if (typeof fixedStringsValue !== 'boolean')
+          throw new Error('Invalid fixed_strings (expected boolean)');
+        toolArgs['fixed_strings'] = fixedStringsValue;
+      }
+      const includeHiddenValue = args['include_hidden'];
+      if (includeHiddenValue !== undefined) {
+        if (typeof includeHiddenValue !== 'boolean')
+          throw new Error('Invalid include_hidden (expected boolean)');
+        toolArgs['include_hidden'] = includeHiddenValue;
+      }
+      const followSymlinksValue = args['follow_symlinks'];
+      if (followSymlinksValue !== undefined) {
+        if (typeof followSymlinksValue !== 'boolean')
+          throw new Error('Invalid follow_symlinks (expected boolean)');
+        toolArgs['follow_symlinks'] = followSymlinksValue;
+      }
+      const maxFilesValue = args['max_files'];
+      if (maxFilesValue !== undefined) {
+        if (typeof maxFilesValue !== 'number' || !Number.isInteger(maxFilesValue))
+          throw new Error('Invalid max_files (expected integer)');
+        toolArgs['max_files'] = maxFilesValue;
+      }
+
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@ripgrep_count ${pattern} ${rel} ${rest}`.trim();
-      return await ripgrepCountTool.call(dlg, proxyCaller, proxyHeadLine, '');
+      const content = await ripgrepCountTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1235,16 +1588,34 @@ export const teamMgmtRipgrepCountTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRipgrepFixedTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRipgrepFixedTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_ripgrep_fixed',
-  backfeeding: true,
-  usageDescription: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
-  usageDescriptionI18n: {
-    en: `Fixed-string ripgrep within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
-    zh: `在 ${MINDS_DIR}/ 下固定字符串搜索。\n用法：!?@team_mgmt_ripgrep_fixed <literal> [path] [options]\n`,
+  description: `Fixed-string ripgrep within ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Fixed-string ripgrep within ${MINDS_DIR}/.`,
+    zh: `在 ${MINDS_DIR}/ 下固定字符串搜索。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['literal'],
+    properties: {
+      literal: { type: 'string' },
+      path: { type: 'string' },
+      mode: { type: 'string' },
+      globs: { type: 'array', items: { type: 'string' } },
+      case: { type: 'string' },
+      max_files: { type: 'integer' },
+      max_results: { type: 'integer' },
+      context_before: { type: 'integer' },
+      context_after: { type: 'integer' },
+      include_hidden: { type: 'boolean' },
+      follow_symlinks: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1255,18 +1626,75 @@ export const teamMgmtRipgrepFixedTool: TellaskTool = {
       if (mindsState.kind === 'not_directory') {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const literal = parts[0] ?? '';
-      const maybePathOrOpt = parts[1];
-      const hasPath = typeof maybePathOrOpt === 'string' && !maybePathOrOpt.includes('=');
-      const rawPath = hasPath ? (maybePathOrOpt ?? '') : MINDS_DIR;
-      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+
+      const literalValue = args['literal'];
+      const literal = typeof literalValue === 'string' ? literalValue.trim() : '';
+      if (!literal) throw new Error('Literal required');
+
+      const pathValue = args['path'];
+      const rawPath =
+        typeof pathValue === 'string' && pathValue.trim() !== '' ? pathValue.trim() : MINDS_DIR;
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
+
+      const toolArgs: ToolArguments = { literal, path: rel };
+      const modeValue = args['mode'];
+      if (modeValue !== undefined) {
+        if (typeof modeValue !== 'string') throw new Error('Invalid mode (expected string)');
+        toolArgs['mode'] = modeValue;
+      }
+      const caseValue = args['case'];
+      if (caseValue !== undefined) {
+        if (typeof caseValue !== 'string') throw new Error('Invalid case (expected string)');
+        toolArgs['case'] = caseValue;
+      }
+      const globsValue = args['globs'];
+      if (globsValue !== undefined) {
+        if (!Array.isArray(globsValue) || !globsValue.every((v) => typeof v === 'string')) {
+          throw new Error('Invalid globs (expected string[])');
+        }
+        toolArgs['globs'] = globsValue;
+      }
+      const maxFilesValue = args['max_files'];
+      if (maxFilesValue !== undefined) {
+        if (typeof maxFilesValue !== 'number' || !Number.isInteger(maxFilesValue))
+          throw new Error('Invalid max_files (expected integer)');
+        toolArgs['max_files'] = maxFilesValue;
+      }
+      const maxResultsValue = args['max_results'];
+      if (maxResultsValue !== undefined) {
+        if (typeof maxResultsValue !== 'number' || !Number.isInteger(maxResultsValue))
+          throw new Error('Invalid max_results (expected integer)');
+        toolArgs['max_results'] = maxResultsValue;
+      }
+      const contextBeforeValue = args['context_before'];
+      if (contextBeforeValue !== undefined) {
+        if (typeof contextBeforeValue !== 'number' || !Number.isInteger(contextBeforeValue))
+          throw new Error('Invalid context_before (expected integer)');
+        toolArgs['context_before'] = contextBeforeValue;
+      }
+      const contextAfterValue = args['context_after'];
+      if (contextAfterValue !== undefined) {
+        if (typeof contextAfterValue !== 'number' || !Number.isInteger(contextAfterValue))
+          throw new Error('Invalid context_after (expected integer)');
+        toolArgs['context_after'] = contextAfterValue;
+      }
+      const includeHiddenValue = args['include_hidden'];
+      if (includeHiddenValue !== undefined) {
+        if (typeof includeHiddenValue !== 'boolean')
+          throw new Error('Invalid include_hidden (expected boolean)');
+        toolArgs['include_hidden'] = includeHiddenValue;
+      }
+      const followSymlinksValue = args['follow_symlinks'];
+      if (followSymlinksValue !== undefined) {
+        if (typeof followSymlinksValue !== 'boolean')
+          throw new Error('Invalid follow_symlinks (expected boolean)');
+        toolArgs['follow_symlinks'] = followSymlinksValue;
+      }
+
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@ripgrep_fixed ${literal} ${rel} ${rest}`.trim();
-      return await ripgrepFixedTool.call(dlg, proxyCaller, proxyHeadLine, '');
+      const content = await ripgrepFixedTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1277,16 +1705,26 @@ export const teamMgmtRipgrepFixedTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRipgrepSearchTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRipgrepSearchTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_ripgrep_search',
-  backfeeding: true,
-  usageDescription: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
-  usageDescriptionI18n: {
-    en: `Escape hatch ripgrep_search within ${MINDS_DIR}/.\nUsage: !?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
-    zh: `在 ${MINDS_DIR}/ 下使用 ripgrep_search 逃生舱。\n用法：!?@team_mgmt_ripgrep_search <pattern> [path] [rg_args...]\n`,
+  description: `Escape hatch ripgrep_search within ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Escape hatch ripgrep_search within ${MINDS_DIR}/.`,
+    zh: `在 ${MINDS_DIR}/ 下使用 ripgrep_search 逃生舱。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pattern'],
+    properties: {
+      pattern: { type: 'string' },
+      path: { type: 'string' },
+      rg_args: { type: 'array', items: { type: 'string' } },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1297,18 +1735,32 @@ export const teamMgmtRipgrepSearchTool: TellaskTool = {
       if (mindsState.kind === 'not_directory') {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.length > 0);
-      const pattern = parts[0] ?? '';
-      const maybePathOrArg = parts[1];
-      const hasPath = typeof maybePathOrArg === 'string' && !maybePathOrArg.startsWith('-');
-      const rawPath = hasPath ? (maybePathOrArg ?? '') : MINDS_DIR;
-      const rest = hasPath ? parts.slice(2).join(' ') : parts.slice(1).join(' ');
+
+      const patternValue = args['pattern'];
+      const pattern = typeof patternValue === 'string' ? patternValue.trim() : '';
+      if (!pattern) throw new Error('Pattern required');
+
+      const pathValue = args['path'];
+      const rawPath =
+        typeof pathValue === 'string' && pathValue.trim() !== '' ? pathValue.trim() : MINDS_DIR;
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
+
+      const rgArgsValue = args['rg_args'];
+      if (rgArgsValue !== undefined) {
+        if (!Array.isArray(rgArgsValue) || !rgArgsValue.every((v) => typeof v === 'string')) {
+          throw new Error('Invalid rg_args (expected string[])');
+        }
+      }
+
+      const toolArgs: ToolArguments = {
+        pattern,
+        path: rel,
+        ...(rgArgsValue !== undefined ? { rg_args: rgArgsValue } : {}),
+      };
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const proxyHeadLine = `@ripgrep_search ${pattern} ${rel} ${rest}`.trim();
-      return await ripgrepSearchTool.call(dlg, proxyCaller, proxyHeadLine, '');
+      const content = await ripgrepSearchTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1319,16 +1771,22 @@ export const teamMgmtRipgrepSearchTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRmFileTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRmFileTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_rm_file',
-  backfeeding: true,
-  usageDescription: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_rm_file <path>\n`,
-  usageDescriptionI18n: {
-    en: `Remove a file under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_rm_file <path>\n`,
-    zh: `删除 ${MINDS_DIR}/ 下的文件。\n` + `用法：!?@team_mgmt_rm_file <path>\n`,
+  description: `Remove a file under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Remove a file under ${MINDS_DIR}/.`,
+    zh: `删除 ${MINDS_DIR}/ 下的文件。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: { path: { type: 'string' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1340,13 +1798,14 @@ export const teamMgmtRmFileTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const filePath = after.split(/\s+/)[0] || '';
+      const pathValue = args['path'];
+      const filePath = typeof pathValue === 'string' ? pathValue.trim() : '';
       if (!filePath) throw new Error('Path required');
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await rmFileTool.call(dlg, proxyCaller, `@rm_file ${rel}`, '');
+      const content = await rmFileTool.call(dlg, proxyCaller, { path: rel });
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1357,22 +1816,22 @@ export const teamMgmtRmFileTool: TellaskTool = {
   },
 };
 
-export const teamMgmtRmDirTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtRmDirTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_rm_dir',
-  backfeeding: true,
-  usageDescription:
-    `Remove a directory under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
-  usageDescriptionI18n: {
-    en:
-      `Remove a directory under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
-    zh:
-      `删除 ${MINDS_DIR}/ 下的目录。\n` +
-      `用法：!?@team_mgmt_rm_dir <path> [!recursive true|false]\n`,
+  description: `Remove a directory under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Remove a directory under ${MINDS_DIR}/.`,
+    zh: `删除 ${MINDS_DIR}/ 下的目录。`,
   },
-  async call(dlg, caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: { path: { type: 'string' }, recursive: { type: 'boolean' } },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const mindsState = await getMindsDirState();
@@ -1384,110 +1843,22 @@ export const teamMgmtRmDirTool: TellaskTool = {
         throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
       }
 
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
-      if (parts.length === 0) throw new Error('Path required');
-      const rawPath = parts[0];
-      const rest = parts.slice(1);
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      if (!rawPath) throw new Error('Path required');
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const rebuilt = `@rm_dir ${[rel, ...rest].join(' ')}`.trim();
-      return await rmDirTool.call(dlg, proxyCaller, rebuilt, '');
-    } catch (err: unknown) {
-      const msg =
-        language === 'zh'
-          ? `错误：${err instanceof Error ? err.message : String(err)}`
-          : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-    }
-  },
-};
-
-export const teamMgmtMkdirTool: TellaskTool = {
-  type: 'tellask',
-  name: 'team_mgmt_mkdir',
-  backfeeding: true,
-  usageDescription:
-    `Create a directory under ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_mkdir <path> [!parents true|false]\n`,
-  usageDescriptionI18n: {
-    en:
-      `Create a directory under ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_mkdir <path> [!parents true|false]\n`,
-    zh:
-      `在 ${MINDS_DIR}/ 下创建目录。\n` + `用法：!?@team_mgmt_mkdir <path> [!parents true|false]\n`,
-  },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const language = getUserLang(dlg);
-    try {
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
-      if (parts.length === 0) throw new Error('Path required');
-      const rawPath = parts[0];
-      let parents = true;
-      for (let i = 1; i < parts.length; i += 1) {
-        if (parts[i] === '!parents' && i + 1 < parts.length) {
-          const v = parts[i + 1];
-          if (v === 'true' || v === 'false') {
-            parents = v === 'true';
-            i += 1;
-          }
-        }
+      const recursiveValue = args['recursive'];
+      const recursive =
+        recursiveValue === undefined ? undefined : recursiveValue === true ? true : false;
+      if (recursiveValue !== undefined && typeof recursiveValue !== 'boolean') {
+        throw new Error('Invalid recursive (expected boolean)');
       }
-      const rel = toMindsRelativePath(rawPath);
-      const resolved = ensureMindsScopedPath(rel);
-      await fs.mkdir(resolved.abs, { recursive: parents });
-      const msg =
-        language === 'zh'
-          ? `已创建目录：\`${resolved.rel}\``
-          : `Created directory: \`${resolved.rel}\``;
-      return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-    } catch (err: unknown) {
-      const msg =
-        language === 'zh'
-          ? `错误：${err instanceof Error ? err.message : String(err)}`
-          : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-    }
-  },
-};
-
-export const teamMgmtMovePathTool: TellaskTool = {
-  type: 'tellask',
-  name: 'team_mgmt_move_path',
-  backfeeding: true,
-  usageDescription:
-    `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_move_path <from> <to>\n`,
-  usageDescriptionI18n: {
-    en: `Move/rename a path under ${MINDS_DIR}/.\n` + `Usage: !?@team_mgmt_move_path <from> <to>\n`,
-    zh: `在 ${MINDS_DIR}/ 下移动/重命名路径。\n` + `用法：!?@team_mgmt_move_path <from> <to>\n`,
-  },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
-    const language = getUserLang(dlg);
-    try {
-      const mindsState = await getMindsDirState();
-      if (mindsState.kind === 'missing') {
-        const msg = formatMindsMissingNotice(language);
-        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-      }
-      if (mindsState.kind === 'not_directory') {
-        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
-      }
-
-      const after = parseArgsAfterTool(headLine, this.name);
-      const parts = after.split(/\s+/).filter((p) => p.trim() !== '');
-      if (parts.length < 2) throw new Error('Expected: <from> <to>');
-      const fromRel = toMindsRelativePath(parts[0]);
-      const toRel = toMindsRelativePath(parts[1]);
-      const fromResolved = ensureMindsScopedPath(fromRel);
-      const toResolved = ensureMindsScopedPath(toRel);
-      await fs.rename(fromResolved.abs, toResolved.abs);
-      const msg =
-        language === 'zh'
-          ? `已移动：\`${fromResolved.rel}\` → \`${toResolved.rel}\``
-          : `Moved: \`${fromResolved.rel}\` → \`${toResolved.rel}\``;
-      return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      const toolArgs: ToolArguments =
+        recursive === undefined ? { path: rel } : { path: rel, recursive };
+      const content = await rmDirTool.call(dlg, proxyCaller, toolArgs);
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -1510,37 +1881,6 @@ type ManualTopic =
   | 'toolsets'
   | 'member-properties'
   | 'builtin-defaults';
-
-function parseManualTopics(headLine: string): ManualTopic[] {
-  const trimmed = headLine.trim();
-  if (!trimmed.startsWith('@team_mgmt_manual')) return [];
-  const after = trimmed.slice('@team_mgmt_manual'.length).trim();
-  if (!after) return [];
-  const tokens = after.split(/\s+/).filter((t) => t.trim() !== '');
-  const topics: ManualTopic[] = [];
-  for (const token of tokens) {
-    if (!token.startsWith('!')) continue;
-    const v = token.slice(1);
-    switch (v) {
-      case 'topics':
-      case 'llm':
-      case 'model-params':
-      case 'mcp':
-      case 'team':
-      case 'minds':
-      case 'permissions':
-      case 'troubleshooting':
-      case 'toolsets':
-      case 'member-properties':
-      case 'builtin-defaults':
-        topics.push(v);
-        break;
-      default:
-        break;
-    }
-  }
-  return topics;
-}
 
 function fmtHeader(title: string): string {
   return `# ${title}\n`;
@@ -1667,7 +2007,7 @@ function renderMemberProperties(language: LanguageCode): string {
         '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
         '`streaming`',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
-        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!?@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
+        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
       ])
     );
   }
@@ -1680,7 +2020,7 @@ function renderMemberProperties(language: LanguageCode): string {
       '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
       '`streaming`',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
-      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `!?@team_mgmt_manual !permissions`；read 与 write 是独立控制，别默认 write implies read）',
+      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
     ])
   );
 }
@@ -1689,8 +2029,8 @@ function renderTeamManual(language: LanguageCode): string {
   const common = [
     'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
-    'after every modification to `.minds/team.yaml`: you must run `!?@team_mgmt_validate_team_cfg` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
-    'when changing provider/model: validate provider exists + env var is configured (use `!?@team_mgmt_check_provider`)',
+    'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
+    'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
     'hidden: true marks a shadow member (not listed in system prompt)',
     "toolsets supports '*' and '!<toolset>' exclusions (e.g. ['*','!team-mgmt'])",
@@ -1701,7 +2041,7 @@ function renderTeamManual(language: LanguageCode): string {
       fmtList([
         '团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。',
         '强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。',
-        '每次修改 `.minds/team.yaml` 必须运行 `!?@team_mgmt_validate_team_cfg`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
+        '每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
         '角色职责（Markdown）通过 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 绑定到 `members.<id>`：同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 用于写该长期 agent 的“职责速记卡/工作边界/交付物摘要”（建议 5 行内）：用于快速路由与提醒；更完整的规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。\n示例（gofor）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain script-style smoke tests and how to run them\n      - Reject changes that break lint/types/tests (or request fixes)\n      - Track high-risk areas and required manual verification\n```\n示例（gofor, object；按 YAML key 顺序渲染）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
@@ -1709,11 +2049,11 @@ function renderTeamManual(language: LanguageCode): string {
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
-        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `!?@team_mgmt_check_provider <providerKey>` 做检查，避免把系统刷成板砖。',
+        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `!?@team_mgmt_read_file !range ... team.yaml` 定位行号；小改动用 `!?@team_mgmt_preview_file_modification team.yaml <line~range>` 生成 diff（工具会返回 `!<hunk-id>`），再用 `!?@team_mgmt_apply_file_modification !<hunk-id>` 显式确认写入；如需修订同一个预览，再次运行 `!?@team_mgmt_preview_file_modification ... !<hunk-id>` 覆写；如确实需要整文件覆盖：先 `!?@team_mgmt_read_file team.yaml` 获取旧文件快照（total_lines/bytes），再用 `!?@team_mgmt_overwrite_entire_file team.yaml known_old_total_lines=<n> known_old_total_bytes=<n>`。',
+        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 获取旧文件快照（total_lines/bytes），再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -1758,7 +2098,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `!?@team_mgmt_read_file !range ... team.yaml` to find line numbers; for small edits, run `!?@team_mgmt_preview_file_modification team.yaml <line~range>` to get a diff (the tool returns a `!<hunk-id>`), then confirm with `!?@team_mgmt_apply_file_modification !<hunk-id>`; to revise the same preview, re-run `!?@team_mgmt_preview_file_modification ... !<hunk-id>` to overwrite; if you truly need a full overwrite: first `!?@team_mgmt_read_file team.yaml` to capture old stats (total_lines/bytes), then use `!?@team_mgmt_overwrite_entire_file team.yaml known_old_total_lines=<n> known_old_total_bytes=<n>`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same preview, call `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` to capture old stats (total_lines/bytes), then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
     ) +
     '\n' +
@@ -1795,7 +2135,7 @@ function renderMcpManual(language: LanguageCode): string {
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
         '常见坑：stdio transport 需要可执行命令路径/工作目录正确，且受成员目录权限（`read_dirs/write_dirs/no_*`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
         '高频坑（stdio 路径）：相对路径会受 `cwd` 影响而失败；推荐用绝对路径，或显式设置 `cwd` 来固定相对路径的解析。',
-        '最小诊断流程（建议顺序）：1) 先用 `!?@team_mgmt_check_provider <providerKey>` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`!?@team_mgmt_manual !permissions`）；3) 最后检查 MCP 侧报错（Problems 面板/相关日志提示），必要时 `mcp_restart`，用完记得 `mcp_release`。',
+        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 最后检查 MCP 侧报错（Problems 面板/相关日志提示），必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小模板（stdio）',
@@ -1842,7 +2182,7 @@ function renderMcpManual(language: LanguageCode): string {
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
       'Common pitfalls: stdio transport needs a correct executable/command path and working directory, and is subject to member directory permissions (`read_dirs/write_dirs/no_*`); HTTP transport requires the server URL to be reachable.',
       'High-frequency pitfall (stdio paths): relative paths depend on `cwd` and can break; prefer absolute paths, or set `cwd` explicitly to make relative paths stable.',
-      'Minimal diagnostic flow: 1) run `!?@team_mgmt_check_provider <providerKey>` to confirm the LLM provider works; 2) review member directory permissions (`!?@team_mgmt_manual !permissions`); 3) check MCP-side errors (Problems panel / logs), use `mcp_restart` if needed, and `mcp_release` when done.',
+      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) check MCP-side errors (Problems panel / logs), use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Minimal template (stdio)',
@@ -1892,7 +2232,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
-        '`*.tsk/` 是封装差遣牒：只能用 `!?@change_mind` 维护。通用文件工具（read/list/replace/rm/preview/apply）必须禁止访问该目录树。',
+        '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。通用文件工具（read/list/replace/rm/preview/apply）必须禁止访问该目录树。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小权限写法示例（仅示意）',
@@ -1915,7 +2255,7 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
-      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via `!?@change_mind` only. General file tools (read/list/replace/rm/preview/apply) must be blocked from that directory tree.',
+      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via the function tool `change_mind` only. General file tools (read/list/replace/rm/preview/apply) must be blocked from that directory tree.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Least-privilege example (illustrative)',
@@ -1975,10 +2315,10 @@ function renderTroubleshooting(language: LanguageCode): string {
     return (
       fmtHeader('排障（症状 → 原因 → 解决步骤）') +
       fmtList([
-        '改 provider/model 前总是先做：运行 `!?@team_mgmt_check_provider <providerKey> !live true`，确认 provider key 存在且环境变量已配置。',
+        '改 provider/model 前总是先做：运行 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })`，确认 provider key 存在且环境变量已配置。',
         '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
-        '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `!?@team_mgmt_manual !permissions` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
+        '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
         '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：打开 Problems 面板查看错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
@@ -1986,10 +2326,10 @@ function renderTroubleshooting(language: LanguageCode): string {
   return (
     fmtHeader('Troubleshooting (symptom → cause → steps)') +
     fmtList([
-      'Always do this before changing provider/model: run `!?@team_mgmt_check_provider <providerKey> !live true` to verify the provider key and env vars.',
+      'Always do this before changing provider/model: run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` to verify the provider key and env vars.',
       'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
-      'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `!?@team_mgmt_manual !permissions` and the member `read_dirs/write_dirs/no_*` config.',
+      'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `read_dirs/write_dirs/no_*` config.',
       'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: check Problems panel; use `mcp_restart`; call `mcp_release` when done.',
     ])
   );
@@ -2105,32 +2445,27 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
     language === 'zh'
       ? fmtList([
           '这份列表来自 Dominds 内置的 LLM defaults（实现内置）。当你没有在 `.minds/llm.yaml` 里显式覆盖某些 provider/model key 时，这些 defaults 可能会生效（以当前实现的合并规则为准）。',
-          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `!?@team_mgmt_check_provider <providerKey> !live true` 验证配置。',
+          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` 验证配置。',
         ])
       : fmtList([
           'This list comes from Dominds built-in LLM defaults (implementation-provided). If you do not explicitly override certain provider/model keys in `.minds/llm.yaml`, these defaults may be used (per current merge rules).',
-          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `!?@team_mgmt_check_provider <providerKey> !live true` to verify.',
+          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` to verify.',
         ]);
 
   return header + explain + '\n' + body + '\n';
 }
 
-export const teamMgmtValidateTeamCfgTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtValidateTeamCfgTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_validate_team_cfg',
-  backfeeding: true,
-  usageDescription:
-    `Validate ${TEAM_YAML_REL} and surface all issues to the WebUI Problems panel.\n` +
-    `Usage: !?@team_mgmt_validate_team_cfg\n`,
-  usageDescriptionI18n: {
-    en:
-      `Validate ${TEAM_YAML_REL} and surface all issues to the WebUI Problems panel.\n` +
-      `Usage: !?@team_mgmt_validate_team_cfg\n`,
-    zh:
-      `校验 ${TEAM_YAML_REL}，并将所有问题上报到 WebUI 的 Problems 面板。\n` +
-      `用法：!?@team_mgmt_validate_team_cfg\n`,
+  description: `Validate ${TEAM_YAML_REL} and surface issues to the WebUI Problems panel.`,
+  descriptionI18n: {
+    en: `Validate ${TEAM_YAML_REL} and surface issues to the WebUI Problems panel.`,
+    zh: `校验 ${TEAM_YAML_REL}，并将问题上报到 WebUI 的 Problems 面板。`,
   },
-  async call(dlg, _caller, _headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: { type: 'object', additionalProperties: false, properties: {} },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, _args: ToolArguments): Promise<string> {
     const language = getUserLang(dlg);
     try {
       const minds = await getMindsDirState();
@@ -2229,42 +2564,61 @@ export const teamMgmtValidateTeamCfgTool: TellaskTool = {
   },
 };
 
-export const teamMgmtManualTool: TellaskTool = {
-  type: 'tellask',
+export const teamMgmtManualTool: FuncTool = {
+  type: 'func',
   name: 'team_mgmt_manual',
-  backfeeding: true,
-  usageDescription:
-    `Team management manual for ${MINDS_DIR}/.\n` +
-    `Usage: !?@team_mgmt_manual [!topic ...]\n\n` +
-    `Examples:\n` +
-    `!?@team_mgmt_manual\n` +
-    `!?@team_mgmt_manual !topics\n` +
-    `!?@team_mgmt_manual !team !member-properties\n` +
-    `!?@team_mgmt_manual !llm !builtin-defaults\n` +
-    `!?@team_mgmt_manual !llm !model-params\n`,
-  usageDescriptionI18n: {
-    en:
-      `Team management manual for ${MINDS_DIR}/.\n` +
-      `Usage: !?@team_mgmt_manual [!topic ...]\n\n` +
-      `Examples:\n` +
-      `!?@team_mgmt_manual\n` +
-      `!?@team_mgmt_manual !topics\n` +
-      `!?@team_mgmt_manual !team !member-properties\n` +
-      `!?@team_mgmt_manual !llm !builtin-defaults\n` +
-      `!?@team_mgmt_manual !llm !model-params\n`,
-    zh:
-      `${MINDS_DIR}/ 的团队管理手册。\n` +
-      `用法：!?@team_mgmt_manual [!topic ...]\n\n` +
-      `示例：\n` +
-      `!?@team_mgmt_manual\n` +
-      `!?@team_mgmt_manual !topics\n` +
-      `!?@team_mgmt_manual !team !member-properties\n` +
-      `!?@team_mgmt_manual !llm !builtin-defaults\n` +
-      `!?@team_mgmt_manual !llm !model-params\n`,
+  description: `Team management manual for ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Team management manual for ${MINDS_DIR}/.`,
+    zh: `${MINDS_DIR}/ 的团队管理手册。`,
   },
-  async call(dlg, _caller, headLine, _inputBody): Promise<TellaskToolCallResult> {
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      topics: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Manual topics to render. Empty/omitted renders the index. Examples: ["team"], ["team","member-properties"].',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
     const language = getWorkLanguage();
-    const topics = parseManualTopics(headLine);
+    const topicsValue = args['topics'];
+    const topicsRaw: string[] =
+      topicsValue === undefined
+        ? []
+        : Array.isArray(topicsValue) && topicsValue.every((v) => typeof v === 'string')
+          ? topicsValue
+          : (() => {
+              throw new Error('Invalid topics (expected string[])');
+            })();
+
+    const topics: ManualTopic[] = [];
+    for (const token0 of topicsRaw) {
+      const token = token0.trim().startsWith('!') ? token0.trim().slice(1) : token0.trim();
+      if (token === '') continue;
+      switch (token) {
+        case 'topics':
+        case 'llm':
+        case 'model-params':
+        case 'mcp':
+        case 'team':
+        case 'minds':
+        case 'permissions':
+        case 'troubleshooting':
+        case 'toolsets':
+        case 'member-properties':
+        case 'builtin-defaults':
+          topics.push(token);
+          break;
+        default:
+          throw new Error(`Unknown topic: ${token0}`);
+      }
+    }
     const msgPrefix =
       language === 'zh'
         ? `（生成时间：${formatUnifiedTimestamp(new Date())}）\n\n`
@@ -2276,20 +2630,20 @@ export const teamMgmtManualTool: TellaskTool = {
           fmtHeader('Team Management Manual') +
           msgPrefix +
           fmtList([
-            '`!?@team_mgmt_manual !topics`：主题索引（你在这里）',
-            '新手最常见流程：先写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `!?@team_mgmt_check_provider <providerKey>`。',
+            '`team_mgmt_manual({ topics: ["topics"] })`：主题索引（你在这里）',
+            '新手最常见流程：先写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`。',
             '',
-            '`!?@team_mgmt_manual !team`：.minds/team.yaml（团队花名册、工具集、目录权限入口）',
-            '`!?@team_mgmt_manual !minds`：.minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）',
-            '`!?@team_mgmt_manual !permissions`：目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）',
-            '`!?@team_mgmt_manual !toolsets`：toolsets 列表（当前已注册 toolsets；常见三种授权模式）',
-            '`!?@team_mgmt_manual !llm`：.minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）',
-            '`!?@team_mgmt_manual !mcp`：.minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）',
-            '`!?@team_mgmt_manual !troubleshooting`：排障（按症状定位；优先用 check_provider）',
+            '`team_mgmt_manual({ topics: ["team"] })`：.minds/team.yaml（团队花名册、工具集、目录权限入口）',
+            '`team_mgmt_manual({ topics: ["minds"] })`：.minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）',
+            '`team_mgmt_manual({ topics: ["permissions"] })`：目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）',
+            '`team_mgmt_manual({ topics: ["toolsets"] })`：toolsets 列表（当前已注册 toolsets；常见三种授权模式）',
+            '`team_mgmt_manual({ topics: ["llm"] })`：.minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）',
+            '`team_mgmt_manual({ topics: ["mcp"] })`：.minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）',
+            '`team_mgmt_manual({ topics: ["troubleshooting"] })`：排障（按症状定位；优先用 check_provider）',
             '',
-            '`!?@team_mgmt_manual !team !member-properties`：成员字段表（members.<id> 字段参考）',
-            '`!?@team_mgmt_manual !llm !builtin-defaults`：内置 defaults 摘要（内置 provider/model 概览与合并语义）',
-            '`!?@team_mgmt_manual !llm !model-params`：模型参数参考（model_params / model_param_options）',
+            '`team_mgmt_manual({ topics: ["team","member-properties"] })`：成员字段表（members.<id> 字段参考）',
+            '`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })`：内置 defaults 摘要（内置 provider/model 概览与合并语义）',
+            '`team_mgmt_manual({ topics: ["llm","model-params"] })`：模型参数参考（model_params / model_param_options）',
           ])
         );
       }
@@ -2297,20 +2651,20 @@ export const teamMgmtManualTool: TellaskTool = {
         fmtHeader('Team Management Manual') +
         msgPrefix +
         fmtList([
-          '`!?@team_mgmt_manual !topics`: topic index (you are here)',
-          'Common starter flow: write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `!?@team_mgmt_check_provider <providerKey>`. ',
+          '`team_mgmt_manual({ topics: ["topics"] })`: topic index (you are here)',
+          'Common starter flow: write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`. ',
           '',
-          '`!?@team_mgmt_manual !team`: `.minds/team.yaml` (roster/toolsets/permissions entrypoint)',
-          '`!?@team_mgmt_manual !minds`: `.minds/team/<id>/*` (persona/knowledge/lessons assets)',
-          '`!?@team_mgmt_manual !permissions`: directory permissions (semantics + conflict rules)',
-          '`!?@team_mgmt_manual !toolsets`: toolsets list (registered toolsets + common patterns)',
-          '`!?@team_mgmt_manual !llm`: `.minds/llm.yaml` (provider keys, env var boundaries)',
-          '`!?@team_mgmt_manual !mcp`: `.minds/mcp.yaml` (serverId→toolset, hot reload, leasing, minimal templates)',
-          '`!?@team_mgmt_manual !troubleshooting`: troubleshooting (symptom → steps; start with check_provider)',
+          '`team_mgmt_manual({ topics: ["team"] })`: `.minds/team.yaml` (roster/toolsets/permissions entrypoint)',
+          '`team_mgmt_manual({ topics: ["minds"] })`: `.minds/team/<id>/*` (persona/knowledge/lessons assets)',
+          '`team_mgmt_manual({ topics: ["permissions"] })`: directory permissions (semantics + conflict rules)',
+          '`team_mgmt_manual({ topics: ["toolsets"] })`: toolsets list (registered toolsets + common patterns)',
+          '`team_mgmt_manual({ topics: ["llm"] })`: `.minds/llm.yaml` (provider keys, env var boundaries)',
+          '`team_mgmt_manual({ topics: ["mcp"] })`: `.minds/mcp.yaml` (serverId→toolset, hot reload, leasing, minimal templates)',
+          '`team_mgmt_manual({ topics: ["troubleshooting"] })`: troubleshooting (symptom → steps; start with check_provider)',
           '',
-          '`!?@team_mgmt_manual !team !member-properties`: member field reference (members.<id>)',
-          '`!?@team_mgmt_manual !llm !builtin-defaults`: built-in defaults summary (what/when/merge behavior)',
-          '`!?@team_mgmt_manual !llm !model-params`: `model_params` and `model_param_options` reference',
+          '`team_mgmt_manual({ topics: ["team","member-properties"] })`: member field reference (members.<id>)',
+          '`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })`: built-in defaults summary (what/when/merge behavior)',
+          '`team_mgmt_manual({ topics: ["llm","model-params"] })`: `model_params` and `model_param_options` reference',
         ])
       );
     };
@@ -2402,7 +2756,7 @@ export const teamMgmtManualTool: TellaskTool = {
   },
 };
 
-export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
+export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtManualTool,
   teamMgmtCheckProviderTool,
   teamMgmtValidateTeamCfgTool,
@@ -2423,8 +2777,6 @@ export const teamMgmtTools: ReadonlyArray<TellaskTool> = [
   teamMgmtRipgrepCountTool,
   teamMgmtRipgrepFixedTool,
   teamMgmtRipgrepSearchTool,
-  teamMgmtMkdirTool,
-  teamMgmtMovePathTool,
   teamMgmtRmFileTool,
   teamMgmtRmDirTool,
 ];

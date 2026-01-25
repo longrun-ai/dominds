@@ -5039,16 +5039,11 @@ export class DomindsApp extends HTMLElement {
       </details>`;
     };
 
-    const renderSectionHtml = (
-      sectionTitle: string,
-      kind: 'tellask' | 'func',
-      kindLabel: string,
-    ): string => {
+    const renderSectionHtml = (sectionTitle: string, kindLabel: string): string => {
       const sectionToolsetsHtml = toolsets
         .map((ts) => {
-          const toolsOfKind = ts.tools.filter((tool) => tool.kind === kind);
-          if (toolsOfKind.length === 0) return '';
-          return renderToolsetHtml(ts, toolsOfKind, kindLabel);
+          if (ts.tools.length === 0) return '';
+          return renderToolsetHtml(ts, ts.tools, kindLabel);
         })
         .join('');
 
@@ -5063,10 +5058,7 @@ export class DomindsApp extends HTMLElement {
       </details>`;
     };
 
-    return [
-      renderSectionHtml(t.toolsSectionTellask, 'tellask', '@'),
-      renderSectionHtml(t.toolsSectionFunction, 'func', 'ƒ'),
-    ].join('');
+    return renderSectionHtml(t.toolsSectionFunction, 'ƒ');
   }
 
   private updateToolsRegistryUi(): void {

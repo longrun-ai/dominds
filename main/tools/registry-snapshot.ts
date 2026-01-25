@@ -27,24 +27,10 @@ export function createToolsRegistrySnapshot(): ToolsRegistrySnapshot {
 }
 
 function toolToInfo(tool: Tool): ToolInfo {
-  switch (tool.type) {
-    case 'func':
-      return {
-        name: tool.name,
-        kind: 'func',
-        description: tool.description,
-        descriptionI18n: tool.descriptionI18n,
-      };
-    case 'tellask':
-      return {
-        name: tool.name,
-        kind: 'tellask',
-        description: tool.usageDescription,
-        descriptionI18n: tool.usageDescriptionI18n,
-      };
-    default: {
-      const _exhaustive: never = tool;
-      return _exhaustive;
-    }
-  }
+  return {
+    name: tool.name,
+    kind: 'func',
+    description: tool.description,
+    descriptionI18n: tool.descriptionI18n,
+  };
 }

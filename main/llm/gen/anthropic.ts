@@ -174,8 +174,7 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
     return [block];
   }
 
-  // Handle tellask tool-call results (NOT LLM-native, represented as role='user' messages)
-  // Tellask tools are conversational, not function calls - send as text content
+  // Handle tellask call results (NOT LLM-native tool use; represented as role='user' text)
   if (chatMsg.type === 'call_result_msg') {
     const msg: AnthropicContentBlock = {
       type: 'text',

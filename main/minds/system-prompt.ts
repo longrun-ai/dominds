@@ -75,7 +75,7 @@ ${input.lessons}
 ${input.teamIntro}
 
 ## 交互能力
-你与队友以及“tellask”（诉请）工具的交互，使用一种极简的逐行前缀语法（对任意分片的流式输出鲁棒）。
+你与队友的诉请（tellask）交互，使用一种极简的逐行前缀语法（对任意分片的流式输出鲁棒）。
 
 ### 诉请（tellask）语法（务必精确遵守）
 **TL;DR（最重要的 6 条硬规则）**
@@ -85,7 +85,7 @@ ${input.teamIntro}
 4) 同一诉请块内：  
    - 第一行是 headline；后续任何以 \`!?@\` 开头的行会继续追加到 headline（不会触发新工具）。  
    - 以 \`!?\` 开头但不以 \`!?@\` 开头的行会进入 body。  
-5) **同一条消息里调用多个工具：必须写多个诉请块，并用至少一行普通行分隔。**  
+5) **同一条消息里发起多个诉请：必须写多个诉请块，并用至少一行普通行分隔。**  
 6) **给队友发诉请（@tooling/@server/...）且需要跨轮协作：强烈建议带稳定的 \`!topic <topicId>\`。**
 
 **\`!topic\`（跨轮协作的默认做法）**
@@ -94,7 +94,7 @@ ${input.teamIntro}
 - 命名建议：\`<owner>-<area>-<short>\`，例如 \`tooling-read-file-options\`、\`server-ws-schema-v2\`。
 - 不要用于 \`!?@super\`（规则：\`@super\` 必须不带 \`!topic\`）。
 
-**关键易错点：对“需要正文”的工具（如 \`!?@add_memory\` / \`!?@replace_memory\` / \`!?@change_mind\`），正文每行也必须以 \`!?\` 开头，否则会被当作普通 markdown 分隔符导致 body 为空。**
+**关键易错点：当你需要在队友诉请中携带正文（步骤/上下文/验收标准等）时，正文每行也必须以 \`!?\` 开头，否则会被当作普通 markdown 分隔符导致 body 为空。**
 
 **常见坑（我们已经踩过）**
 - 连续写两行 \`!?@...\`：第二行不会触发第二个工具，会被并入同一诉请块 headline，导致“多余参数/格式不正确”等误导性错误。
@@ -102,15 +102,15 @@ ${input.teamIntro}
 
 反例（会被合并成一个诉请块 headline）：
 \`\`\`plain-text
-!?@read_file foo.txt
-!?@ripgrep_snippets bar baz
+!?@tool_a arg1
+!?@tool_b arg2
 \`\`\`
 
 正例（两个诉请块，用空行分隔）：
 \`\`\`plain-text
-!?@read_file foo.txt
+!?@tool_a arg1
 
-!?@ripgrep_snippets bar baz
+!?@tool_b arg2
 \`\`\`
 
 **复制即用模板**
@@ -119,15 +119,10 @@ ${input.teamIntro}
 !?@tooling !topic tooling-read-file-options
 !?请修复 read_file 的 parseReadFileOptions，并按验收用例回贴输出。
 \`\`\`
-- 工具调用（带 body）：
+- 队友诉请（带正文）：
 \`\`\`plain-text
-!?@preview_insert_after README.md "Some anchor"
-!?Line 1
-!?Line 2
-
-!?@apply_file_modification !<hunk-id>
-!?Line 1
-!?Line 2
+!?@pangu !topic ws-mod-guardrails
+!?请在工作区内定位所有仍在使用 tellask 工具语法（!?@tool）的地方，并迁移到函数工具调用；同时更新文档与测试故事。
 \`\`\`
 ### 函数工具
 - 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}
@@ -135,8 +130,8 @@ ${input.teamIntro}
 ${input.funcToolUsageText || '没有可用的函数工具。'}
 
 ### 函数工具调用 vs 诉请
-- 不要对队友诉请或 tellask（诉请）工具使用原生 function-calling。
-- 对话控制（例如 reminders）：使用提供的 tellask（诉请）工具调用触发；不要发起函数工具调用。
+- 不要对队友诉请使用原生 function-calling（队友诉请必须用 tellask）。
+- 不要在文本中用 tellask（\`!?@...\`）调用工具：工具（包括对话控制/文件/文本编辑等）一律使用原生 function-calling。
 
 ### 语法小抄（反模式）
 - 不要在 \`!?\` 前加项目符号、引用、编号或缩进（例如 \`- !?@tool\`、\`> !?@tool\`、\`  !?@tool\`）。
@@ -149,7 +144,7 @@ ${input.funcToolUsageText || '没有可用的函数工具。'}
 - \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!topic\`。
   - \`!?@<supdialogAgentId>\`（不带 \`!topic\`）可作为语义容错，但优先使用 \`!?@super\`，尤其当 ID 可能相同（例如 FBR self-subdialogs）以避免歧义和意外自诉请混淆。
 
-### 诉请工具
+### 工具集提示与队友诉请（tellask）
 
 ${input.toolUsageText}${
       input.intrinsicToolInstructions
@@ -159,14 +154,15 @@ ${input.toolUsageText}${
 ### 示例
 - 单个诉请（无正文）
 \`\`\`plain-text
-!?@read_file ~50 logs/error.log
+!?@tool_a arg1
 \`\`\`
 
 - 带正文（普通行会自动结束该诉请块）
 \`\`\`plain-text
-!?@change_mind !goals
-!?- 做 X
-OK —— goals 已更新。
+!?@pangu !topic fix-ws-mod
+!?1) 运行 lint/types
+!?2) 回贴错误与修复建议
+OK —— 我会等待你的结果，然后继续推进。
 \`\`\`
 
 - 多行标题 + 正文
@@ -232,8 +228,8 @@ You interact with teammates and "tellask" tools using a primitive line-prefix gr
 ${input.funcToolUsageText || 'No function tools available.'}
 
 ### Function Calling vs Tellask
-- Do not use native LLM function-calling for teammates or tellask tools.
-- For dialog control (e.g., reminders), trigger the provided tellask tools; never emit function calls for these.
+- Do not use native function-calling for teammates (teammate calls must use tellask).
+- Do not call tools via tellask text (\`!?@tool ...\`). All tools (including dialog control) must use native function-calling.
 
 ### Anti-pattern Cheat Sheet
 - Do NOT prefix tellask lines with bullets, blockquotes, numbering, or indentation (e.g., \`- !?@tool\`, \`> !?@tool\`, \`  !?@tool\`).
@@ -249,7 +245,7 @@ ${input.funcToolUsageText || 'No function tools available.'}
 - \`!?@super\`: Supdialog call (Type A) **primary syntax**. Only valid inside a subdialog; calls the direct parent dialog (supdialog), suspending this subdialog temporarily and then resuming with the parent's response. Must be used with NO \`!topic\`.
   - \`!?@<supdialogAgentId>\` (no \`!topic\`) is a tolerated semantic fallback, but prefer \`!?@super\` especially when IDs might be identical (e.g., FBR self-subdialogs), to avoid ambiguity and accidental self-call confusion.
 
-### Tellask Tools
+### Toolset Prompts & Teammate Calls (Tellask)
 
 ${input.toolUsageText}${
     input.intrinsicToolInstructions
@@ -259,15 +255,15 @@ ${input.toolUsageText}${
 ### Examples
 - Single tellask call (no body)
 \`\`\`plain-text
-!?@read_file ~50 logs/error.log
+!?@tool_a arg1
 \`\`\`
 
 - Tellask call with a body (a normal line ends the block automatically)
 \`\`\`plain-text
-!?@change_mind !goals
-!?- Do X
-!?- Do Y
-OK — task doc updated. Next I will implement the changes.
+!?@pangu !topic fix-ws-mod
+!?1) Run lint/types
+!?2) Report errors and proposed fixes
+OK — I will wait for your results and then proceed.
 \`\`\`
 
 - Multiline headline + body
@@ -280,11 +276,11 @@ OK — task doc updated. Next I will implement the changes.
 
 - Multi-call (separate blocks)
 \`\`\`plain-text
-!?@add_memory caveats/stdio-mcp-console-usage.md
-!?# DON'Ts
-!?- Do NOT write to stdout when using MCP stdio transport.
+!?@tooling !topic tooling-read-file-options
+!?Please check why read_file options parsing is failing and propose a fix.
 
-!?@read_file !range 235~ logs/error.log
+!?@server !topic server-ws-func-tools
+!?Please review whether the WS handler needs updates for func-tool calls and report findings.
 \`\`\`
 
 ### Concurrency & Orchestration
