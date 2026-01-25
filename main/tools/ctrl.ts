@@ -71,27 +71,27 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       invalidFormatUpdate:
         '错误：参数不正确。用法：update_reminder({ reminder_no: number, content: string })',
       invalidFormatChangeMind:
-        '错误：参数不正确。用法：change_mind({ selector: \"!goals\"|\"!constraints\"|\"!progress\", content: string })',
+        '错误：参数不正确。用法：change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
       changeMindOnlyInMainDialog:
         '错误：change_mind 仅允许在主对话中使用（子对话中不可用）。若你需要改变整体差遣牒，请向主对话发起 supdialog call（!?@super）请求主对话执行 change_mind。',
       tooManyArgsChangeMind:
-        '错误：参数不正确。用法：change_mind({ selector: \"!goals\"|\"!constraints\"|\"!progress\", content: string })',
+        '错误：参数不正确。用法：change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
       taskDocContentRequired:
         '错误：需要提供差遣牒内容（content）。\n' +
         '可复制示例：\n' +
         '```json\n' +
         '{\n' +
-        '  \"selector\": \"!progress\",\n' +
-        '  \"content\": \"- 关键决策：...\\\\n- 下一步：...\"\n' +
+        '  "selector": "progress",\n' +
+        '  "content": "- 关键决策：...\\n- 下一步：..."\n' +
         '}\n' +
         '```',
       noTaskDocPathConfigured: '错误：此对话未配置差遣牒路径',
       pathMustBeWithinWorkspace: '错误：路径必须位于工作区内',
       invalidTaskDocPath: (taskDocPath) =>
         `错误：差遣牒路径 '${taskDocPath}' 无效。期望为 \`*.tsk/\` 目录。`,
-      selectorRequired: '错误：Task packages 需要目标选择器：!goals | !constraints | !progress',
+      selectorRequired: '错误：Task packages 需要目标选择器：goals | constraints | progress',
       invalidSelector: (selector) =>
-        `错误：选择器 '${selector}' 无效。用法：!goals | !constraints | !progress`,
+        `错误：选择器 '${selector}' 无效。用法：goals | constraints | progress`,
       clearedRoundPrompt: (nextRound) =>
         `这是对话的第 #${nextRound} 轮，你刚清理了思路，请继续执行任务。`,
     };
@@ -109,28 +109,28 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     invalidFormatUpdate:
       'Error: Invalid args. Use: update_reminder({ reminder_no: number, content: string })',
     invalidFormatChangeMind:
-      'Error: Invalid args. Use: change_mind({ selector: "!goals"|"!constraints"|"!progress", content: string })',
+      'Error: Invalid args. Use: change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
     changeMindOnlyInMainDialog:
-      'Error: change_mind is only available in the main dialog (not in subdialogs). If you need to update the shared task doc, ask the parent via a supdialog call (!?@super) and have the main dialog run change_mind.',
+      'Error: change_mind is only available in the main dialog (not in subdialogs). If you need to update the shared Taskdoc, ask the parent via a supdialog call (!?@super) and have the main dialog run change_mind.',
     tooManyArgsChangeMind:
-      'Error: Invalid args. Use: change_mind({ selector: "!goals"|"!constraints"|"!progress", content: string })',
+      'Error: Invalid args. Use: change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
     taskDocContentRequired:
-      'Error: Task doc content is required (content).\n' +
+      'Error: Taskdoc content is required (content).\n' +
       'Copy/paste example:\n' +
       '```json\n' +
       '{\n' +
-      '  "selector": "!progress",\n' +
+      '  "selector": "progress",\n' +
       '  "content": "- Key decisions: ...\\n- Next steps: ..."\n' +
       '}\n' +
       '```',
     noTaskDocPathConfigured: 'Error: No task doc path configured for this dialog',
     pathMustBeWithinWorkspace: 'Error: Path must be within workspace',
     invalidTaskDocPath: (taskDocPath) =>
-      `Error: Invalid Task Doc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
+      `Error: Invalid Taskdoc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
     selectorRequired:
-      'Error: Task packages require a target selector: !goals | !constraints | !progress',
+      'Error: Taskdoc packages require a target selector: goals | constraints | progress',
     invalidSelector: (selector) =>
-      `Error: Invalid selector '${selector}'. Use: !goals | !constraints | !progress`,
+      `Error: Invalid selector '${selector}'. Use: goals | constraints | progress`,
     clearedRoundPrompt: (nextRound) =>
       `This is round #${nextRound} of the dialog, you just cleared your mind and please proceed with the task.`,
   };
@@ -295,7 +295,7 @@ export const changeMindTool: FuncTool = {
     properties: {
       selector: {
         type: 'string',
-        enum: ['!goals', '!constraints', '!progress'],
+        enum: ['goals', 'constraints', 'progress'],
         description: 'Target section selector.',
       },
       content: { type: 'string', description: 'New section content.' },

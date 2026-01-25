@@ -3,8 +3,8 @@
  *
  * Drives dialog streaming end-to-end:
  * - Loads minds/tools, selects generator, streams outputs
- * - Parses tellask blocks (teammate calls), handles human prompts
- * - Supports autonomous teammate calls: when an agent mentions a teammate (e.g., @teammate), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
+ * - Parses tellask blocks (teammate tellasks), handles human prompts
+ * - Supports autonomous teammate tellasks: when an agent mentions a teammate (e.g., @teammate), a subdialog is created and driven; the parent logs the initiating assistant bubble and system creation/result, while subdialog conversation stays in the subdialog
  */
 
 import * as fs from 'fs';
@@ -61,7 +61,7 @@ import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from
 import { FuncTool, Tool, validateArgs, type ToolArguments } from '../tool';
 import { contextHealthReminderOwner } from '../tools/context-health';
 import { generateDialogID } from '../utils/id';
-import { formatTaskDocContent } from '../utils/task-doc';
+import { formatTaskDocContent } from '../utils/taskdoc';
 import {
   ChatMessage,
   FuncCallMsg,
@@ -885,7 +885,7 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *
  * Phase 3 - User Tool Calls Collection & Execution:
  *   - Parse user text for tellask blocks using TellaskStreamParser
- *   - Execute tellask calls (teammate calls / Q4H / supdialog)
+ *   - Execute tellasks (teammate tellasks / Q4H / supdialog)
  *   - Handle subdialog creation for @teammate mentions
  *
  * Phase 4 - Context Building:
@@ -2161,17 +2161,20 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
   }
 }
 
-// === TEAMMATE CALL TYPE SYSTEM (Phase 5) ===
+// === TEAMMATE TELLASK TYPE SYSTEM (Phase 5) ===
 // === PHASE 11 EXTENSION: Type A for subdialog calling its DIRECT parent (supdialog) ===
 
 /**
- * Result of parsing a teammate call pattern.
- * Three types based on the call syntax:
+ * Result of parsing a teammate tellask pattern.
+ * Three types based on the tellask headline syntax:
  * - Type A: @<supdialogAgentId> - subdialog calling its direct parent (supdialog suspension)
  * - Type B: @<agentId> !topic <topicId> - creates/resumes registered subdialog
  * - Type C: @<agentId> - creates transient unregistered subdialog
  */
-export type TeammateCallParseResult = TeammateCallTypeA | TeammateCallTypeB | TeammateCallTypeC;
+export type TeammateTellaskParseResult =
+  | TeammateTellaskTypeA
+  | TeammateTellaskTypeB
+  | TeammateTellaskTypeC;
 
 /**
  * Type A: Supdialog suspension call.
@@ -2179,7 +2182,7 @@ export type TeammateCallParseResult = TeammateCallTypeA | TeammateCallTypeB | Te
  * Suspends the subdialog, drives the supdialog for one round, returns response to subdialog.
  * Only triggered when the @agentId matches the current dialog's supdialog.agentId.
  */
-export interface TeammateCallTypeA {
+export interface TeammateTellaskTypeA {
   type: 'A';
   agentId: string;
 }
@@ -2189,7 +2192,7 @@ export interface TeammateCallTypeA {
  * Syntax: @<agentId> !topic <topicId>
  * Creates or resumes a registered subdialog, tracked in registry.yaml.
  */
-export interface TeammateCallTypeB {
+export interface TeammateTellaskTypeB {
   type: 'B';
   agentId: string;
   topicId: string;
@@ -2200,7 +2203,7 @@ export interface TeammateCallTypeB {
  * Syntax: @<agentId> (without !topic)
  * Creates a one-off subdialog that moves to done/ on completion.
  */
-export interface TeammateCallTypeC {
+export interface TeammateTellaskTypeC {
   type: 'C';
   agentId: string;
 }
@@ -2244,7 +2247,7 @@ function extractSingleTopicIdFromHeadline(headLine: string): string | null {
 }
 
 /**
- * Parse a teammate call pattern and return the appropriate type result.
+ * Parse a teammate tellask pattern and return the appropriate type result.
  *
  * Patterns:
  * - @<supdialogAgentId> (in subdialog context, matching supdialog.agentId) → Type A (supdialog suspension)
@@ -2254,13 +2257,13 @@ function extractSingleTopicIdFromHeadline(headLine: string): string | null {
  * @param firstMention The first teammate mention extracted by the streaming parser (e.g., "teammate")
  * @param headLine The full headline text from the streaming parser
  * @param currentDialog Optional current dialog context to detect Type A (subdialog calling parent)
- * @returns The parsed TeammateCallParseResult
+ * @returns The parsed TeammateTellaskParseResult
  */
-export function parseTeammateCall(
+export function parseTeammateTellask(
   firstMention: string,
   headLine: string,
   currentDialog?: Dialog,
-): TeammateCallParseResult {
+): TeammateTellaskParseResult {
   // Fresh Boots Reasoning (FBR) syntax sugar:
   // `@self` always targets the current dialog's agentId (same persona/config).
   //
@@ -2886,7 +2889,7 @@ async function executeTellaskCall(
   const isSuperAlias = firstMention === 'super';
   const member = isSelfAlias ? team.getMember(dlg.agentId) : team.getMember(firstMention);
 
-  // Multi-teammate fan-out (collective teammate call):
+  // Multi-teammate fan-out (collective teammate tellask):
   // A single tellask block can target multiple teammates by including multiple teammate mentions
   // anywhere inside the (possibly multiline) headline. The full headline/body is passed verbatim
   // to each target so each subdialog can see this is a collective assignment.
@@ -2976,7 +2979,7 @@ async function executeTellaskCall(
     }
   }
 
-  // === Q4H: Handle @human teammate calls (Questions for Human) ===
+  // === Q4H: Handle @human teammate tellasks (Questions for Human) ===
   // Q4H works for both user-initiated and assistant-initiated @human calls
   const isQ4H = firstMention === 'human';
   if (isQ4H) {
@@ -3034,7 +3037,7 @@ async function executeTellaskCall(
   }
 
   if (member || isSelfAlias || isSuperAlias) {
-    // This is a teammate call - parse using Phase 5 taxonomy (Type A/B/C).
+    // This is a teammate tellask - parse using Phase 5 taxonomy (Type A/B/C).
     if (isSuperAlias && !(dlg instanceof SubDialog)) {
       const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkLanguage());
       try {
@@ -3106,9 +3109,9 @@ async function executeTellaskCall(
       }
     }
 
-    const parseResult: TeammateCallParseResult = isSuperAlias
+    const parseResult: TeammateTellaskParseResult = isSuperAlias
       ? { type: 'A', agentId: (dlg as SubDialog).supdialog.agentId }
-      : parseTeammateCall(firstMention, headLine, dlg);
+      : parseTeammateTellask(firstMention, headLine, dlg);
 
     // If the agent calls itself via `@<agentId>` (instead of `@self`), allow it to proceed
     // (self-calls are useful for FBR), but emit a correction bubble so the user can distinguish
@@ -3452,7 +3455,7 @@ async function executeTellaskCall(
       }
     }
   } else {
-    // Not a team member: tellask is reserved for teammate calls.
+    // Not a team member: tellask is reserved for teammate tellasks.
     // All tools (including dialog control tools) must use native function-calling.
     const msg = formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), { firstMention });
     toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });

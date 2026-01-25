@@ -958,7 +958,7 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses callId for correlation (callingSectionByCallId map)
   //   - Uses this handler (handleToolCallResponse)
   //
-  // - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
+  // - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
   //   - Result displays in SEPARATE bubble (subdialog response)
   //   - Uses calleeDialogId for correlation
   //   - Uses handleTeammateResponse() instead
@@ -1077,7 +1077,7 @@ export class DomindsDialogContainer extends HTMLElement {
   // Now includes full response and agentId from subdialog completion
   //
   // Call Type Distinction:
-  // - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
+  // - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
   //   - Result displays in SEPARATE bubble (subdialog or supdialog response)
   //   - Uses calleeDialogId for correlation (event.calleeDialogId)
   //   - Uses this handler (handleTeammateResponse)

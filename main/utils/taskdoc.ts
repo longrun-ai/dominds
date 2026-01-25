@@ -1,7 +1,7 @@
 /**
- * Module: utils/task-doc
+ * Module: utils/taskdoc
  *
- * Utilities for formatting task document content for display in LLM context.
+ * Utilities for formatting Taskdoc content for display in LLM context.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -25,7 +25,7 @@ export async function formatTaskDocContent(taskDocPath: string): Promise<ChatMes
   // Security check - ensure path is within workspace
   if (!fullPath.startsWith(workspaceRoot)) {
     const head =
-      language === 'zh' ? `**差遣牒：** \`${taskDocPath}\`` : `**Task Doc:** \`${taskDocPath}\``;
+      language === 'zh' ? `**差遣牒：** \`${taskDocPath}\`` : `**Taskdoc:** \`${taskDocPath}\``;
     const err =
       language === 'zh'
         ? '❌ **错误：** 路径必须在 workspace 内'
@@ -53,8 +53,8 @@ ${err}`,
       return {
         type: 'environment_msg',
         role: 'user',
-        content: `**Task Doc:** \`${taskDocPath}\`
-❌ **Error:** Invalid Task Doc path: Task Doc must be a directory ending with \`.tsk\` (\`*.tsk/\`).
+        content: `**Taskdoc:** \`${taskDocPath}\`
+❌ **Error:** Invalid Taskdoc path: Taskdoc must be a directory ending with \`.tsk\` (\`*.tsk/\`).
 
 If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please point to a \`.tsk/\` directory instead.`,
       };
@@ -98,7 +98,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
           `- 我们的差遣牒是一个 \`*.tsk/\` 目录，分为 3 个分段：\`goals\` / \`constraints\` / \`progress\`。`,
-          `- 维护方式：每次调用函数工具 \`change_mind\` 必须指定一个分段（selector: \`!goals\` / \`!constraints\` / \`!progress\`）；可在同一轮中多次调用 \`change_mind\` 来一次更新多个分段。`,
+          `- 维护方式：每次调用函数工具 \`change_mind\` 必须指定一个分段（selector: \`goals\` / \`constraints\` / \`progress\`）；可在同一轮中多次调用 \`change_mind\` 来一次更新多个分段。`,
           ``,
           `**分段状态：**`,
           `- \`goals.md\`：${goalsZh}`,
@@ -106,15 +106,15 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           `- \`progress.md\`：${progressZh}`,
           ``,
           `若某个分段缺失，请用函数工具 \`change_mind\` 创建（不要用通用文件工具）：`,
-          `- \`change_mind({\"selector\":\"!goals\",\"content\":\"...\"})\``,
-          `- \`change_mind({\"selector\":\"!constraints\",\"content\":\"...\"})\``,
-          `- \`change_mind({\"selector\":\"!progress\",\"content\":\"...\"})\``,
+          `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
+          `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
+          `- \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\``,
         ].join('\n');
       }
       return [
-        `**Task Doc Constitution (Encapsulated \`*.tsk/\`):**`,
-        `- Our Task Doc is a \`*.tsk/\` directory with exactly 3 sections: \`goals\` / \`constraints\` / \`progress\`.`,
-        `- Maintenance: each function tool call \`change_mind\` must target one section (selector: \`!goals\` / \`!constraints\` / \`!progress\`). You may call \`change_mind\` multiple times in a single turn to update multiple sections.`,
+        `**Taskdoc Constitution (Encapsulated \`*.tsk/\`):**`,
+        `- Our Taskdoc is a \`*.tsk/\` directory with exactly 3 sections: \`goals\` / \`constraints\` / \`progress\`.`,
+        `- Maintenance: each function tool call \`change_mind\` must target one section (selector: \`goals\` / \`constraints\` / \`progress\`). You may call \`change_mind\` multiple times in a single turn to update multiple sections.`,
         ``,
         `**Sections:**`,
         `- \`goals.md\`: ${goalsStatus}`,
@@ -122,9 +122,9 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         `- \`progress.md\`: ${progressStatus}`,
         ``,
         `If any section is missing, create it with the function tool \`change_mind\` (never via general file tools):`,
-        `- \`change_mind({\"selector\":\"!goals\",\"content\":\"...\"})\``,
-        `- \`change_mind({\"selector\":\"!constraints\",\"content\":\"...\"})\``,
-        `- \`change_mind({\"selector\":\"!progress\",\"content\":\"...\"})\``,
+        `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
+        `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
+        `- \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\``,
       ].join('\n');
     })();
     const effectiveDoc = formatEffectiveTaskDocFromSections(language, sections);
@@ -143,20 +143,20 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
 ${statusBlock}
 
 ⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。
-请用函数工具 \`change_mind\` 来更新（每次调用只更新一个分段；你可以在同一轮中多次调用来批量更新），例如：\`change_mind({\"selector\":\"!goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!progress\",\"content\":\"...\"})\`。`,
+请用函数工具 \`change_mind\` 来更新（每次调用只更新一个分段；你可以在同一轮中多次调用来批量更新），例如：\`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\`。`,
         };
       }
       return {
         type: 'environment_msg',
         role: 'user',
-        content: `**Task Doc:** \`${taskDocPath}\`
-📦 **Type:** Encapsulated Task Doc (\`*.tsk/\`)
+        content: `**Taskdoc:** \`${taskDocPath}\`
+📦 **Type:** Encapsulated Taskdoc (\`*.tsk/\`)
 📊 **Size:** ${(bytes / 1024).toFixed(1)} KB (too large to inline)
 
 ${statusBlock}
 
-⚠️ **Note:** Task Docs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.
-Use the function tool \`change_mind\` to update (each call updates one section; you may call it multiple times in a single turn to batch updates), e.g. \`change_mind({\"selector\":\"!goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"!progress\",\"content\":\"...\"})\`.`,
+⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.
+Use the function tool \`change_mind\` to update (each call updates one section; you may call it multiple times in a single turn to batch updates), e.g. \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\`.`,
       };
     }
 
@@ -182,8 +182,8 @@ ${effectiveDoc}
     return {
       type: 'environment_msg',
       role: 'user',
-      content: `**Task Doc:** \`${taskDocPath}\`
-📦 **Type:** Encapsulated Task Doc (\`*.tsk/\`)
+      content: `**Taskdoc:** \`${taskDocPath}\`
+📦 **Type:** Encapsulated Taskdoc (\`*.tsk/\`)
 📄 **Size:** ${bytes} bytes
 
 ${statusBlock}
@@ -208,7 +208,7 @@ Directive: Do not invoke any general file tools (\`read_file\`, \`overwrite_enti
     return {
       type: 'environment_msg',
       role: 'user',
-      content: `**Task Doc:** \`${taskDocPath}\`
+      content: `**Taskdoc:** \`${taskDocPath}\`
 ❌ **Error:** ${error instanceof Error ? error.message : String(error)}`,
     };
   }

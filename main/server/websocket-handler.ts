@@ -735,7 +735,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 
     // If the dialog is already active for this WebSocket, runnable (status === 'running'),
     // and has an event forwarder (subChan),
-    // drive it directly to preserve in-memory state (pending subdialogs, teammate call tracking, etc).
+    // drive it directly to preserve in-memory state (pending subdialogs, teammate tellask tracking, etc).
     //
     // IMPORTANT: do not drive a view-only dialog instance here. When users browse a completed/archived
     // dialog, handleDisplayDialog restores it with dialog.status set to completed/archived. If that

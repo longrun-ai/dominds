@@ -223,7 +223,7 @@ export interface ToolCallResultRecord {
   callId: string; // Content-hash for replay correlation
 }
 
-// Teammate response record - separate bubble for @teammate calls
+// Teammate response record - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export interface TeammateResponseRecord {
   ts: string;

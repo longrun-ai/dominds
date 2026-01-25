@@ -330,7 +330,7 @@ export class DiskFileDialogStore extends DialogStore {
    *   - Uses callId for correlation between call_start and response
    *   - Uses receiveToolResponse() + callId parameter
    *
-   * - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
+   * - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
    *   - Result displays in SEPARATE bubble (subdialog response)
    *   - Uses calleeDialogId for correlation
    *   - Uses receiveTeammateResponse() instead
@@ -380,17 +380,17 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Receive and handle TEAMMATE CALL responses (separate bubble for @agentName calls)
+   * Receive and handle TEAMMATE TELLASK responses (separate bubble for @agentName tellasks)
    *
    * Call Types:
-   * - Teammate Call: !?@agentName (e.g., !?@coder, !?@tester)
+   * - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)
    *   - Uses this method (receiveTeammateResponse)
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the teammate agent (e.g., "coder")
-   * @param headLine - Headline of the original teammate call
+   * @param headLine - Headline of the original teammate tellask
    * @param status - Response status ('completed' | 'failed')
    * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
    */
@@ -1695,7 +1695,7 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'teammate_response_record': {
-        // Handle teammate response events (separate bubble for @teammate calls)
+        // Handle teammate response events (separate bubble for @teammate tellasks)
         const formattedResult = formatTeammateResponseContent({
           responderId: event.responderId,
           requesterId: event.originMemberId,

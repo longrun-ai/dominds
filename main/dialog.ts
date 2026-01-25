@@ -209,7 +209,7 @@ export abstract class Dialog {
   // - Set during tool_call_finish_evt (from TellaskStreamParser)
   // - Retrieved during tool response (for receiveToolResponse callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
-  // - NOT used for teammate calls (which use calleeDialogId instead)
+  // - NOT used for teammate tellasks (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
 
   constructor(
@@ -221,7 +221,7 @@ export abstract class Dialog {
   ) {
     // Validate required parameters
     if (!taskDocPath || taskDocPath.trim() === '') {
-      throw new Error('Task Doc path is required for creating a dialog');
+      throw new Error('Taskdoc path is required for creating a dialog');
     }
 
     this.dlgStore = dlgStore;
@@ -283,7 +283,7 @@ export abstract class Dialog {
    *
    * Call Types:
    * - Tool Call (`!?@tool_name`): callId is set during tool_call_start_evt, used for inline result
-   * - Teammate Call (@agentName): Uses calleeDialogId, not callId
+   * - Teammate Tellask (@agentName): Uses calleeDialogId, not callId
    *
    * @returns The current callId for tool correlation, or null if no active tool call
    */
@@ -886,7 +886,7 @@ export abstract class Dialog {
   }
 
   /**
-   * Receive teammate response (separate bubble for @teammate calls)
+   * Receive teammate response (separate bubble for @teammate tellasks)
    */
   public async receiveTeammateResponse(
     responderId: string,
@@ -1024,7 +1024,7 @@ export abstract class Dialog {
 }
 
 /**
- * SubDialog - A subdialog created by a RootDialog for autonomous teammate calls.
+ * SubDialog - A subdialog created by a RootDialog for autonomous teammate tellasks.
  * Stores the root dialog for registry and lookup, and resolves its effective supdialog dynamically.
  */
 export class SubDialog extends Dialog {
@@ -1210,7 +1210,7 @@ export class RootDialog extends Dialog {
   }
 
   /**
-   * Create a new subdialog for autonomous teammate calls.
+   * Create a new subdialog for autonomous teammate tellasks.
    */
   async createSubDialog(
     targetAgentId: string,
@@ -1342,7 +1342,7 @@ export abstract class DialogStore {
   ): Promise<void> {}
 
   /**
-   * Receive teammate response (separate bubble for @teammate calls)
+   * Receive teammate response (separate bubble for @teammate tellasks)
    */
   public async receiveTeammateResponse(
     _dialog: Dialog,

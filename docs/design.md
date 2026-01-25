@@ -134,30 +134,26 @@ This fundamental problem manifests in several ways:
 
 **2. Task-Centered Focus Architecture**
 
-- **Central Task Document**: Single source of truth for goals, constraints, and progress
+- **Central Taskdoc**: Single source of truth for goals, constraints, and progress
 - **Dynamic Context Windows**: Time-limited context retention
 - **Priority-Based Information Filtering**: Automatic ranking of context relevance
 
-### Task Document Structure
+### Taskdoc Structure
 
 ```
-TASK_DOC Structure:
-├── Primary Objective
+Taskdoc Structure:
+├── Goals
 │   ├── Clear goal statement
 │   ├── Success criteria
 │   └── Timeline constraints
-├── Current Context
+├── Progress
 │   ├── Active decisions pending
 │   ├── Recently completed items
 │   └── Immediate next steps
-├── Constraints & Caveats
-│   ├── Technical limitations
-│   ├── User preferences
-│   └── Resource boundaries
-└── Progress Tracking
-    ├── Completed milestones
-    ├── Blocked items
-    └── Outstanding questions
+└── Constraints
+    ├── Technical limitations
+    ├── User preferences
+    └── Resource boundaries
 ```
 
 ### Benefits of Task-Centered Architecture
@@ -225,7 +221,7 @@ Fresh Session:
 **Traditional Problem-Solving:**
 
 ```
-Agent: [Existing conversation history, current state, task doc] + Problem
+Agent: [Existing conversation history, current state, Taskdoc] + Problem
 → Attempts to solve all aspects simultaneously
 → Suffers from cognitive overload
 → Produces suboptimal results
@@ -234,7 +230,7 @@ Agent: [Existing conversation history, current state, task doc] + Problem
 **Fresh Boots Reasoning:**
 
 ```
-Agent: [Clean mental state + Task doc only] + Specific sub-problem
+Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 → Focuses on single aspect
 → Applies fresh reasoning without baggage
 → Produces clear, targeted solution
@@ -252,7 +248,7 @@ Agent: [Clean mental state + Task doc only] + Specific sub-problem
 **2. Fresh Context Creation**
 
 - Reset agent's "mental state" to initial task understanding
-- Load only the essential task document and sub-problem
+- Load only the essential Taskdoc and sub-problem
 - Clear away all accumulated conversation context
 
 **3. Focused Reasoning Session**
@@ -318,7 +314,7 @@ Agent: [Clean mental state + Task doc only] + Specific sub-problem
 
 **Task-Centered Fresh Sessions:**
 
-- All fresh reasoning sessions reference the same central task document
+- All fresh reasoning sessions reference the same central Taskdoc
 - Ensures consistency across multiple focused reasoning attempts
 - Maintains thread of continuity while allowing cognitive reset
 
@@ -335,41 +331,43 @@ Agent: [Clean mental state + Task doc only] + Specific sub-problem
 ### Dialog Hierarchy
 
 ```
+
 Main Dialog (Root Dialog)
-├── Task Document Reference → tasks/feature-auth.tsk/ (Workspace Task Package)
+├── Taskdoc Reference → tasks/feature-auth.tsk/ (Workspace Taskdoc package)
 ├── Reminders (Working Memory)
 ├── Chat Messages (Ephemeral)
 └── Subdialogs (Tree-Structured, Stored Flat Under Main Dialog)
-    ├── Specialized Agent A
-    │   ├── Task Document Reference → tasks/feature-auth.tsk/ (Same Package)
-    │   ├── Parent Call Context
-    │   ├── Local Reminders
-    │   └── Local Chat Messages
-    │       └── Sub-Subdialogs (Further Nesting Possible)
-    └── Specialized Agent B
-        ├── Task Document Reference → tasks/feature-auth.tsk/ (Same Package)
-        ├── Parent Call Context
-        ├── Local Reminders
-        └── Local Chat Messages
+├── Specialized Agent A
+│ ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
+│ ├── Parent Call Context
+│ ├── Local Reminders
+│ └── Local Chat Messages
+│ └── Sub-Subdialogs (Further Nesting Possible)
+└── Specialized Agent B
+├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
+├── Parent Call Context
+├── Local Reminders
+└── Local Chat Messages
+
 ```
 
 **Key Properties**:
 
-- All dialogs reference the same workspace task doc (a `*.tsk/` task package, e.g. `tasks/feature-auth.tsk/`)
-- Multiple dialog trees can reference the same task document for collaborative work
-- Task documents persist beyond individual conversations and survive team changes
+- All dialogs reference the same workspace Taskdoc (a `*.tsk/` Taskdoc package, e.g. `tasks/feature-auth.tsk/`)
+- Multiple dialog trees can reference the same Taskdoc for collaborative work
+- Taskdocs persist beyond individual conversations and survive team changes
 - Subdialogs can be tree-structured with unlimited nesting depth
 - All subdialog state is stored flat under the main dialog's (root dialog's) `subdialogs/` directory
-- Each subdialog maintains its own working memory while referencing the same task document file
+- Each subdialog maintains its own working memory while referencing the same Taskdoc
 
 ### Memory Layers
 
 #### Dialog-Scoped Memory (Per Conversation)
 
-1. **Task Document Reference**: Points to a workspace task doc tracking a specific DevOps assignment
-   - `*.tsk/` task packages (`goals.md`, `constraints.md`, `progress.md`)
-   - Multiple dialogs can reference the same task document for collaborative work
-   - Task documents persist throughout the entire product lifecycle, spanning multiple conversations and team changes
+1. **Taskdoc Reference**: Points to a workspace Taskdoc tracking a specific DevOps assignment
+   - `*.tsk/` Taskdoc packages (`goals.md`, `constraints.md`, `progress.md`)
+   - Multiple dialogs can reference the same Taskdoc for collaborative work
+   - Taskdocs persist throughout the entire product lifecycle, spanning multiple conversations and team changes
    - Can link to other product documentation and evolve as project requirements change
 2. **Reminders**: Semi-persistent, dialog-scoped, survives conversation cleanup
 3. **Parent Call Context**: Inherited context for subdialogs
@@ -400,8 +398,8 @@ Main Dialog (Root Dialog)
 
 - **Upward**: Subdialogs communicate results and escalations to parents
 - **Downward**: Parents provide context and objectives to subdialogs
-- **Lateral**: Coordination through shared task documents and parent mediation
-- **Temporal**: Reminders and task documents provide continuity across time
+- **Lateral**: Coordination through shared Taskdocs and parent mediation
+- **Temporal**: Reminders and Taskdocs provide continuity across time
 
 ---
 
@@ -412,7 +410,7 @@ For detailed implementation specifications, including core tools, technical arch
 **Key Implementation Components**:
 
 - **`clear_mind`**: Function tool for clearing conversational noise and starting a new round
-- **`change_mind`**: Function tool for updating authoritative task documents across dialog hierarchies (no round reset)
+- **`change_mind`**: Function tool for updating authoritative Taskdocs across dialog hierarchies (no round reset)
 - **Reminder Management**: Dialog-scoped working memory that persists across clarity operations
 - **Hierarchical Dialog Architecture**: Tree-structured dialogs with flat storage and autonomous management
 - **Memory Layers**: Dialog-scoped and workspace-persistent memory with autonomous evolution
@@ -482,7 +480,7 @@ The implementation emphasizes autonomous agent operation, enabling agents to ind
 
 1. **Self-Directed Clarity Assessment**: Regularly evaluate your own cognitive load and conversation noise levels without waiting for external prompts
 
-2. **Task Document Focus**: Always reference the task document as your primary source of truth when making autonomous decisions or changing direction
+2. **Taskdoc Focus**: Always reference the Taskdoc as your primary source of truth when making autonomous decisions or changing direction
 
 3. **Strategic Clarity Timing**: Trigger `clear_mind` when you detect that conversation noise is impacting your autonomous decision-making quality
 
@@ -511,17 +509,19 @@ The implementation emphasizes autonomous agent operation, enabling agents to ind
 
 ---
 
-## Task Document Examples
+## Taskdoc Examples
 
-### Example Task Document Structure
+### Example Taskdoc Structure
 
-A task doc is an encapsulated `*.tsk/` package that tracks a specific DevOps assignment:
+A Taskdoc is an encapsulated `*.tsk/` Taskdoc package that tracks a specific DevOps assignment:
 
 ```
+
 tasks/auth-system.tsk/
 ├── goals.md
 ├── constraints.md
 └── progress.md
+
 ```
 
 Example contents:
@@ -530,23 +530,23 @@ Example contents:
 - `constraints.md`: “MUST support email/password auth; MUST implement JWT refresh; MUST add role-based permissions…”
 - `progress.md`: checklist/status notes (fast-changing).
 
-### Task Document Lifecycle
+### Taskdoc Lifecycle
 
 **Creation Phase**:
 
 ```bash
-# Create new task document
+# Create new Taskdoc
 mkdir -p tasks
 mkdir -p tasks/auth-system.tsk
 echo "# Feature: User Authentication" > tasks/auth-system.tsk/goals.md
 
-# Start dialog referencing the task document
-dominds dialog start --task-doc-path tasks/auth-system.tsk
+# Start dialog referencing the Taskdoc
+dominds dialog start --taskdoc-path tasks/auth-system.tsk
 ```
 
 **Development Phase**:
 
-- Multiple dialog trees can reference the same task document
+- Multiple dialog trees can reference the same Taskdoc
 - Team members collaborate by updating the same file
 - Progress tracking persists across conversations
 - Requirements evolve through `change_mind` operations
@@ -569,7 +569,7 @@ focus: "Deployment and monitoring setup"
 
 **Long-term Evolution**:
 
-- Task documents survive team changes
+- Taskdocs survive team changes
 - Persist through workspace reorganizations
 - Maintain history of requirements evolution
 - Support multiple parallel development efforts
@@ -592,7 +592,7 @@ workspace/
     └── deployment.md
 ```
 
-Each task doc represents an independent DevOps assignment that can be worked on in parallel, with multiple dialog trees collaborating on the same objectives while maintaining their own conversation contexts.
+Each Taskdoc represents an independent DevOps assignment that can be worked on in parallel, with multiple dialog trees collaborating on the same objectives while maintaining their own conversation contexts.
 
 ---
 
@@ -645,6 +645,6 @@ The future of AI agent effectiveness lies not in larger context windows, but in 
 
 Social Division of Labor for AI agents represents a fundamental shift from traditional monolithic approaches to cognitive architecture. The dominds system demonstrates that systematic mental clarity practices are not just nice-to-have features, but core architectural principles that enable autonomous, efficient, and reliable AI assistance.
 
-The key insight is that AI agents, like humans, benefit greatly from mental hygiene practices. Regular cognitive cleanup and focused problem-solving sessions can dramatically improve both the quality and efficiency of agent reasoning. Fresh Boots Reasoning transforms the challenge of managing extensive conversational context into an advantage, allowing agents to bring fresh, focused attention to each aspect of complex problems while maintaining overall project continuity through the central task document.
+The key insight is that AI agents, like humans, benefit greatly from mental hygiene practices. Regular cognitive cleanup and focused problem-solving sessions can dramatically improve both the quality and efficiency of agent reasoning. Fresh Boots Reasoning transforms the challenge of managing extensive conversational context into an advantage, allowing agents to bring fresh, focused attention to each aspect of complex problems while maintaining overall project continuity through the central Taskdoc.
 
 As AI systems become more complex and are deployed in more demanding environments, the principles and patterns outlined in this document will become increasingly critical for success. The future belongs to AI agents that can think clearly, operate autonomously, and collaborate effectively through systematic approaches to cognitive management.

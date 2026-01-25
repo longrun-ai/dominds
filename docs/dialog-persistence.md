@@ -222,7 +222,7 @@ Modern strongly-typed dialog metadata using TypeScript interfaces:
 ```yaml
 id: 'aa/bb/cccccccc' # Unique dialog identifier (selfDlgId only)
 agentId: 'alice' # Agent responsible for this dialog
-taskDocPath: 'task.tsk' # Path to the task doc package directory
+taskDocPath: 'task.tsk' # Path to the workspace Taskdoc package directory
 createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 # No parent fields for root dialogs
 ```
@@ -232,7 +232,7 @@ createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 ```yaml
 id: 'dd/ee/ffffffff' # Unique dialog identifier (selfDlgId only)
 agentId: 'bob' # Agent responsible for this dialog
-taskDocPath: 'task.tsk' # Path to task doc package directory (inherited from parent)
+taskDocPath: 'task.tsk' # Path to workspace Taskdoc package directory (inherited from parent)
 createdAt: '2024-01-15T10:35:00Z' # ISO timestamp when created
 supdialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
 assignmentFromSup: # Assignment context from parent
@@ -362,24 +362,24 @@ subdialogs_created: 1
 status: 'completed'
 ```
 
-### Task Document Storage
+### Taskdoc Storage
 
-Task docs are workspace artifacts that exist independently and are referenced by dialogs through paths.
-Task docs MUST be encapsulated task packages (`*.tsk/`).
+Taskdocs are workspace artifacts that exist independently and are referenced by dialogs through paths.
+Taskdocs MUST be encapsulated Taskdoc packages (`*.tsk/`).
 
 ```yaml
 # In dialog.yaml
-task_document: 'tasks/user-auth.tsk' # Path to workspace task package directory
-task_document_version: 5
-task_document_checksum: 'sha256:abc123...'
+taskdoc: 'tasks/user-auth.tsk' # Path to workspace Taskdoc package directory
+taskdocVersion: 5
+taskdocChecksum: 'sha256:abc123...'
 ```
 
 **Key Properties**:
 
-- Task docs are standard workspace artifacts, not dialog-specific storage
-- Multiple dialogs can reference the same task doc for collaborative work
-- Task documents persist throughout the DevOps lifecycle, beyond individual conversations
-- Changes to task document files are immediately visible to all referencing dialogs
+- Taskdocs are standard workspace artifacts, not dialog-specific storage
+- Multiple dialogs can reference the same Taskdoc for collaborative work
+- Taskdocs persist throughout the DevOps lifecycle, beyond individual conversations
+- Changes to Taskdoc files are immediately visible to all referencing dialogs
 
 ### Error Persistence Policy
 
@@ -418,7 +418,7 @@ The following operations are implemented.
 4. Write initial `dialog.yaml` metadata with the serialized DialogID
 5. Initialize `round.curr` to 1
 6. Create empty `reminders.json`
-7. Set task document file path reference
+7. Set Taskdoc path reference
 
 ### Message Persistence
 
@@ -434,7 +434,7 @@ The following operations are implemented.
    - `selfDlgId`: the newly generated subdialog ID
    - `rootDlgId`: inherited from the supdialog's `rootDlgId`
 3. Create subdialog directory under parent's `subdialogs/` (using only `selfDlgId` for directory name)
-4. Set task document file path reference from parent
+4. Set Taskdoc path reference from parent
 5. Set parent call context in metadata
 6. Initialize subdialog state, storing only `selfDlgId` in metadata
 7. The full `DialogID` with `rootDlgId` is reconstructed during loading based on directory structure

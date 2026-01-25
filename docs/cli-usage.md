@@ -49,8 +49,8 @@ dominds
 dominds webui [options]
 
 # TUI - Terminal-based interactive interface
-dominds tui [options] <task-doc-path> [prompts...]
-dominds run [options] <task-doc-path> [prompts...]  # alias for tui
+dominds tui [options] <taskdoc-path> [prompts...]
+dominds run [options] <taskdoc-path> [prompts...]  # alias for tui
 dominds tui --list
 dominds tui --help
 
@@ -112,21 +112,21 @@ The TUI provides terminal-based interactive dialog management with real-time str
 #### Start or Continue a Dialog
 
 ```bash
-dominds tui <task-doc-path> [prompts...]
-dominds run <task-doc-path> [prompts...]  # alias for tui
+dominds tui <taskdoc-path> [prompts...]
+dominds run <taskdoc-path> [prompts...]  # alias for tui
 ```
 
-Start a new dialog or continue an existing one with the specified task document.
+Start a new dialog or continue an existing one with the specified Taskdoc.
 
 **Arguments:**
 
-- `task-doc-path` - Path to the task document (required, usually a .md file)
+- `taskdoc-path` - Path to the Taskdoc (required, usually a `.tsk/` package directory)
 - `prompts` - Optional initial prompts to start the dialog with
 
 **Examples:**
 
 ```bash
-# Start a new dialog with a task document
+# Start a new dialog with a Taskdoc
 dominds tui task.tsk "Implement user authentication"
 
 # Use the run alias
@@ -162,7 +162,7 @@ Each dialog entry shows:
 dominds follows a **user-first design philosophy** where:
 
 - **All dominds commands require `--` prefix** (e.g., `--list`, `--help`, `--version`)
-- **All bare arguments are reserved for users** (task documents, prompts, user files)
+- **All bare arguments are reserved for users** (Taskdocs, prompts, user files)
 - **No competition for command namespace** - users can freely name their files `list`, `help`, etc.
 
 **Examples:**
@@ -182,7 +182,7 @@ dominds tui version-notes   # Opens user's 'version-notes' file
 **Benefits:**
 
 - **Zero ambiguity** - clear separation between commands and user files
-- **User convenience** - name your task documents anything without worry
+- **User convenience** - name your Taskdocs anything without worry
 - **Predictable behavior** - bare arguments are always user content
 - **Future-proof** - new dominds commands won't break existing workflows
 - Status
@@ -351,8 +351,8 @@ The following options are available for the TUI (`dominds tui` or `dominds run`)
 ### Change Workspace
 
 ```bash
-dominds tui -C <directory> <task-doc-path> [prompts...]
-dominds tui --chdir <directory> <task-doc-path> [prompts...]
+dominds tui -C <directory> <taskdoc-path> [prompts...]
+dominds tui --chdir <directory> <taskdoc-path> [prompts...]
 ```
 
 Change to the specified workspace before executing the command.
@@ -366,8 +366,8 @@ dominds tui -C /path/to/project task.tsk "Start working on feature"
 ### Specify Team Member
 
 ```bash
-dominds tui -m <member-id> <task-doc-path> [prompts...]
-dominds tui --member <member-id> <task-doc-path> [prompts...]
+dominds tui -m <member-id> <taskdoc-path> [prompts...]
+dominds tui --member <member-id> <taskdoc-path> [prompts...]
 ```
 
 Use a specific team member as the agent for this dialog.
@@ -382,8 +382,8 @@ dominds tui --member bob architecture.md "Design the new system"
 ### Resume or Use Custom Dialog ID
 
 ```bash
-dominds tui -i <dialog-id> <task-doc-path> [prompts...]
-dominds tui --id <dialog-id> <task-doc-path> [prompts...]
+dominds tui -i <dialog-id> <taskdoc-path> [prompts...]
+dominds tui --id <dialog-id> <taskdoc-path> [prompts...]
 ```
 
 Resume an existing dialog or start a new dialog with a specific ID.
@@ -492,7 +492,7 @@ The CLI commands provide helpful error messages for common issues:
 
 **TUI (`dominds tui`) Errors:**
 
-- Missing task document path
+- Missing Taskdoc path
 - Invalid dialog IDs
 - Inaccessible directories
 - Missing team configuration
@@ -519,7 +519,7 @@ The TUI now includes improved command validation that:
 - Recognizes valid commands (`list`, `--help`, `--version`, etc.)
 - Identifies invalid command patterns (strings with dashes that aren't file paths)
 - Provides clear error messages with suggestions for resolution
-- Maintains backward compatibility with existing task document paths
+- Maintains backward compatibility with existing Taskdoc paths
 - Toolset validation failures
 
 **Workspace Create (`dominds create` / `dominds new`) Errors:**

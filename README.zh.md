@@ -119,12 +119,13 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 
 ## 相关文档
 
+- [**Terminology**](docs/dominds-terminology.md) — 专有术语（Taskdoc/差遣牒、Teammate Tellask/队友诉请、tellask 语法等）
 - [**CLI Usage Guide**](docs/cli-usage.md) — 命令行工具及使用方法
 - [**Design**](docs/design.md) — 架构设计与核心抽象
 - [**Dialog System**](docs/dialog-system.md) — 对话系统与流式事件
 - [**Dialog Persistence**](docs/dialog-persistence.md) — 磁盘持久化存储结构
 - [**Interruption & Resumption**](docs/interruption-resumption.md) — 任务中断与恢复语义
-- [**Encapsulated Task Docs**](docs/encapsulated-task-doc.md) — `*.tsk/` 差遣牒说明
+- [**Encapsulated Taskdocs**](docs/encapsulated-taskdoc.md) — `*.tsk/` 差遣牒（Taskdoc）说明
 - [**Auth**](docs/auth.md) — 认证机制与访问模型（WebUI + API）
 - [**Context Health**](docs/context-health.md) — 上下文健康监测（token 使用与提醒策略）
 - [**Team Mgmt Toolset**](docs/team-mgmt-toolset.md) — 团队管理工具集

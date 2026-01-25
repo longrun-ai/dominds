@@ -220,7 +220,7 @@ You interact with teammates and "tellask" tools using a primitive line-prefix gr
 - Within a tellask block:
   - Headline: starts from the first tellask line (after removing \`!?\`); subsequent lines starting with \`!?@\` extend the headline (multiline headline).
   - Body: all tellask lines that start with \`!?\` but NOT \`!?@\` compose the body in order.
-- By default, a tellask block targets exactly one destination (the \`@name\` in the first line). However, for *teammate calls*, multiple teammate call signs appearing inside the headline (including multiline headlines) are treated as collective targets: Dominds will fan this out into one call per teammate with the same headLine/callBody payload. If you include \`!topic <topicId>\`, it must appear at most once in the headline and applies to all targets. For multiple tool calls, you must still write multiple tellask blocks separated by normal lines.
+- By default, a tellask block targets exactly one destination (the \`@name\` in the first line). However, for *teammate tellasks*, multiple teammate call signs appearing inside the headline (including multiline headlines) are treated as collective targets: Dominds will fan this out into one tellask per teammate with the same headLine/callBody payload. If you include \`!topic <topicId>\`, it must appear at most once in the headline and applies to all targets. For multiple tool calls, you must still write multiple tellask blocks separated by normal lines.
 
 ### Function Tools
 - You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments that strictly matches the tool schema (no extra fields, include all required fields).${input.funcToolRulesText}
@@ -228,7 +228,7 @@ You interact with teammates and "tellask" tools using a primitive line-prefix gr
 ${input.funcToolUsageText || 'No function tools available.'}
 
 ### Function Calling vs Tellask
-- Do not use native function-calling for teammates (teammate calls must use tellask).
+- Do not use native function-calling for teammates (teammate tellasks must use tellask).
 - Do not call tools via tellask text (\`!?@tool ...\`). All tools (including dialog control) must use native function-calling.
 
 ### Anti-pattern Cheat Sheet
@@ -236,8 +236,8 @@ ${input.funcToolUsageText || 'No function tools available.'}
 - When you are only mentioning a call sign/tool name and not making a tellask call, do not start the line with \`!?\`; wrap it in backticks if needed (e.g., \`\`!?@pangu\`\`).
 - Mention IDs may include dots for namespacing (e.g., \`@team.lead\`). A trailing dot is treated as punctuation and ignored (e.g., \`@team.lead.\` still targets \`@team.lead\`).
 
-### Teammate Calls
-- Prefer multi-teammate calls for parallel expertise. Keep requests specific and role-aware.
+### Teammate Tellasks
+- Prefer multi-teammate tellasks for parallel expertise. Keep requests specific and role-aware.
 
 ### Special Teammate Aliases
 - \`!?@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog agentId and creates a NEW ephemeral subdialog (default; most common).
@@ -245,7 +245,7 @@ ${input.funcToolUsageText || 'No function tools available.'}
 - \`!?@super\`: Supdialog call (Type A) **primary syntax**. Only valid inside a subdialog; calls the direct parent dialog (supdialog), suspending this subdialog temporarily and then resuming with the parent's response. Must be used with NO \`!topic\`.
   - \`!?@<supdialogAgentId>\` (no \`!topic\`) is a tolerated semantic fallback, but prefer \`!?@super\` especially when IDs might be identical (e.g., FBR self-subdialogs), to avoid ambiguity and accidental self-call confusion.
 
-### Toolset Prompts & Teammate Calls (Tellask)
+### Toolset Prompts & Teammate Tellasks (Tellask)
 
 ${input.toolUsageText}${
     input.intrinsicToolInstructions

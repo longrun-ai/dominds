@@ -43,14 +43,14 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
   const firstMention = args.firstMention;
   if (language === 'zh') {
     return (
-      `错误：诉请（tellask）仅用于队友调用（\`!?@<teammate>\`）。\n` +
+      `错误：诉请（tellask）仅用于队友诉请（\`!?@<teammate>\`）。\n` +
       `- 当前目标：\`@${firstMention}\` 不是已知队友呼号。\n` +
       `- 若你要调用工具：请使用原生 function-calling（函数工具），不要在文本中输出 \`!?@tool\`。\n` +
       `- 若你要找队友：请确认呼号（如 \`!?@pangu\` / \`!?@super\` / \`!?@self\`）。`
     );
   }
   return (
-    `Error: tellask is reserved for teammate calls (\`!?@<teammate>\`).\n` +
+    `Error: tellask is reserved for teammate tellasks (\`!?@<teammate>\`).\n` +
     `- Current target: \`@${firstMention}\` is not a known teammate call sign.\n` +
     `- If you intended to call a tool: use native function-calling; do not emit \`!?@tool\` in text.\n` +
     `- If you intended to call a teammate: double-check the call sign (e.g. \`!?@pangu\` / \`!?@super\` / \`!?@self\`).`
@@ -71,9 +71,9 @@ export function formatContextHealthReminderText(
 ): string {
   if (language === 'zh') {
     const distillLines = [
-      '建议：用函数工具 `change_mind` 把“提炼摘要”写回差遣牒（selector 选 `!progress`），然后再用函数工具 `clear_mind` 清理噪音开启新回合。',
+      '建议：用函数工具 `change_mind` 把“提炼摘要”写回差遣牒（selector 选 `progress`），然后再用函数工具 `clear_mind` 清理噪音开启新回合。',
       '',
-      '提炼摘要（写入 `!progress` 即可；无需复制粘贴代码块）：',
+      '提炼摘要（写入 `progress` 即可；无需复制粘贴代码块）：',
       '## 提炼摘要',
       '- 目标：',
       '- 关键决策：',
@@ -84,7 +84,7 @@ export function formatContextHealthReminderText(
 
     const options = [
       '- 可选动作（按当前意图自行选择）：',
-      '  - 把关键事实/决策写入差遣牒（`change_mind({\"selector\":\"!progress\",\"content\":...})`）',
+      '  - 把关键事实/决策写入差遣牒（`change_mind({\"selector\":\"progress\",\"content\":...})`）',
       '  - 收窄范围/减少输出噪音（例如减少大段粘贴、减少无关回显）',
       '  - 接受风险继续（例如为了保持连续性）',
     ];
@@ -116,9 +116,9 @@ export function formatContextHealthReminderText(
   }
 
   const distillLines = [
-    'Suggested flow: write a short distillation into the task doc via the function tool `change_mind` (selector `!progress`), then use the function tool `clear_mind` to start a new round with less noise.',
+    'Suggested flow: write a short distillation into the Taskdoc via the function tool `change_mind` (selector `progress`), then use the function tool `clear_mind` to start a new round with less noise.',
     '',
-    'Distilled context (put this into `!progress`; no code block copy needed):',
+    'Distilled context (put this into `progress`; no code block copy needed):',
     '## Distilled context',
     '- Goal:',
     '- Key decisions:',
@@ -129,7 +129,7 @@ export function formatContextHealthReminderText(
 
   const options = [
     '- Options (choose based on your intent):',
-    '  - Write key facts/decisions into the task doc (`change_mind({\"selector\":\"!progress\",\"content\":...})`)',
+    '  - Write key facts/decisions into the Taskdoc (`change_mind({\"selector\":\"progress\",\"content\":...})`)',
     '  - Narrow scope / reduce output noise (avoid large pastes, avoid irrelevant tool echoes)',
     '  - Continue as-is if you accept the risk',
   ];
@@ -170,10 +170,10 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
 - 删除：delete_reminder({ "reminder_no": 1 })
 
 建议做法（可选）：
-- 先用 change_mind({ "selector": "!progress", "content": "..." }) 把关键事实/决策写回差遣牒
+- 先用 change_mind({ "selector": "progress", "content": "..." }) 把关键事实/决策写回差遣牒
 - 然后用 clear_mind({ "reminder_content": "" }) 开启新回合以清理噪音
 
-提炼模板（写入差遣牒的 \`!progress\` 段）：
+提炼模板（写入差遣牒的 \`progress\` 段）：
 ## 提炼摘要
 - 目标：
 - 关键决策：
@@ -191,10 +191,10 @@ Quick actions:
 - Delete: delete_reminder({ "reminder_no": 1 })
 
 Suggested flow (optional):
-- First, write a short distillation into the task doc via change_mind({ "selector": "!progress", "content": "..." })
+- First, write a short distillation into the Taskdoc via change_mind({ "selector": "progress", "content": "..." })
 - Then use clear_mind({ "reminder_content": "" }) to start a new round with less noise
 
-Distill template (put this into the task doc \`!progress\` section):
+Distill template (put this into the Taskdoc \`progress\` section):
 ## Distilled context
 - Goal:
 - Key decisions:
@@ -318,8 +318,8 @@ export function formatDomindsNoteInvalidMultiTeammateTargets(
   }
   return (
     'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
-    `Dominds note: This teammate call includes unknown teammate id(s): ${unknown}\n\n` +
-    'In teammate calls, teammate mentions inside the headline are treated as collective targets and fanned out (shared headLine+callBody).\n' +
+    `Dominds note: This teammate tellask includes unknown teammate id(s): ${unknown}\n\n` +
+    'In teammate tellasks, teammate mentions inside the headline are treated as collective targets and fanned out (shared headLine+callBody).\n' +
     'Confirm those ids exist in the team roster; if you meant a literal `@something`, wrap it in backticks (e.g., `@something`).'
   );
 }
@@ -344,12 +344,12 @@ export function formatDomindsNoteMultipleTopicDirectives(language: LanguageCode)
     return (
       'ERR_MULTIPLE_TOPIC_DIRECTIVES\n' +
       'Dominds 提示：同一条诉请的 headline 中出现了多个 `!topic` 指令。\n\n' +
-      '规则：每条诉请最多只能包含一个 `!topic <topicId>`（对 collective teammate call，该 topic 会对所有目标队友生效）。'
+      '规则：每条诉请最多只能包含一个 `!topic <topicId>`（对 collective teammate tellask，该 topic 会对所有目标队友生效）。'
     );
   }
   return (
     'ERR_MULTIPLE_TOPIC_DIRECTIVES\n' +
     'Dominds note: Multiple `!topic` directives were found in the headline.\n\n' +
-    'Rule: a tellask call may include at most one `!topic <topicId>` (for collective teammate calls, the same topic applies to all targets).'
+    'Rule: a tellask may include at most one `!topic <topicId>` (for collective teammate tellasks, the same topic applies to all targets).'
   );
 }

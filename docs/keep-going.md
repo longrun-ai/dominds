@@ -6,7 +6,7 @@ Dominds root dialogs are intended for long-run operation. A root dialog “stopp
 is often not what operators want: they want the agent to keep pushing forward until it either:
 
 - legitimately suspends for a human decision (Q4H), or
-- legitimately suspends waiting for subdialogs (teammate calls/backfill).
+- legitimately suspends waiting for subdialogs (tellask/backfill).
 
 This document specifies a runtime mechanism (“keep-going”) that, for **root/main dialogs only**,
 prevents the dialog from stopping: whenever the driver would otherwise stop, it auto-sends a short
@@ -22,16 +22,14 @@ is legitimately suspended (Q4H or pending subdialogs).
 
 ## Non-goals
 
-- Changing tool contracts (e.g., forcing `backfeeding=true`).
 - Auto-completing / auto-marking a dialog as done.
 - Applying this behavior to subdialogs (subdialogs remain scoped and should report back to their caller).
 
 ## Definitions
 
 - **Root/main dialog**: a `RootDialog` (`dlg.id.rootId === dlg.id.selfId`), the primary conversation thread.
-- **Subdialog**: a `SubDialog`, created for teammate calls / scoped work.
+- **Subdialog**: a `SubDialog`, created for tellask / scoped work.
 - **Q4H**: “Questions for Human”, initiated via `!?@human`, which suspends dialog progression until the human responds.
-- **Backfeeding**: a tellask-tool property indicating whether tool execution produces messages that are injected back into the model context.
 
 ## Expected “normal” completion path (recommended)
 

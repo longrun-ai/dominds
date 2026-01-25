@@ -6,7 +6,7 @@ This document provides detailed implementation specifications for the Dominds di
 
 1. [Terminology](#terminology)
 2. [Backend-Driven Architecture](#backend-driven-architecture)
-3. [3-Type Teammate Call Taxonomy](#3-type-teammate-call-taxonomy)
+3. [3-Type Teammate Tellask Taxonomy](#3-type-teammate-tellask-taxonomy)
 4. [Core Mechanisms](#core-mechanisms)
 5. [Q4H: Questions for Human](#q4h-questions-for-human)
 6. [Dialog Hierarchy & Subdialogs](#dialog-hierarchy--subdialogs)
@@ -24,17 +24,21 @@ This document provides detailed implementation specifications for the Dominds di
 
 ## Terminology
 
+This chapter defines the implementation-facing terms used throughout this document.
+For bilingual / user-facing naming conventions, see `dominds/docs/dominds-terminology.md`.
+For Taskdoc package structure and encapsulation rules, see `dominds/docs/encapsulated-task-doc.md`.
+
 ### Supdialog
 
 A **supdialog** (short for "super dialog") is the supdialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
 
-A supdialog may receive **supdialog calls** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can call back to the supdialog, which provides responses that feed back into the subdialog's context.
+A supdialog may receive **supdialog Tellasks** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back to the supdialog (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
 
 ### Subdialog
 
 A **subdialog** is a specialized dialog spawned by a supdialog to handle specific subtasks. Subdialogs operate with fresh context, focusing on targeted objectives while maintaining a communication link back to their supdialog.
 
-**Supdialog Calls**: A subdialog can call its supdialog to request clarification during task execution. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
+**Supdialog Tellasks**: A subdialog can Tellask its supdialog to request clarification during task execution. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
 
 ### Main Dialog (Root Dialog)
 
@@ -42,7 +46,7 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's conversation messages where the `!?@human` call was recorded.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's conversation messages where the `!?@human` Tellask was recorded.
 
 ### Subdialog Index (subdlg.yaml)
 
@@ -56,9 +60,9 @@ A **subdlg.yaml** file indexes pending subdialogs that a supdialog is waiting fo
 
 The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!topicId` as its key format and is never deleted during the dialog lifecycle. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
 
-### Teammate Call
+### Teammate Tellask
 
-A **teammate call** is a tellask tool invocation that triggers communication with another agent or subdialog. Teammate calls have three distinct patterns with different semantics (see Section 3).
+A **teammate Tellask** is a Dominds specific syntax that triggers communication with another agent as subdialog. Teammate Tellasks have three distinct patterns with different semantics (see Section 3).
 
 ---
 
@@ -121,20 +125,20 @@ This ensures crash recovery and enables the backend to resume from any persisted
 
 ---
 
-## 3-Type Teammate Call Taxonomy
+## 3-Type Teammate Tellask Taxonomy
 
-This section documents the three distinct types of teammate calls in the Dominds system, their syntax, behaviors, and use cases.
+This section documents the three distinct types of teammate Tellasks in the Dominds system, their syntax, behaviors, and use cases.
 
 ```mermaid
 flowchart TD
-  M[LLM emits !?@mention] --> Q{Is this a subdialog calling its direct parent?}
-  Q -- yes --> A[TYPE A: Supdialog call<br/>Primary: !?@super (NO !topic)<br/>Fallback: !?@&lt;supdialogAgentId&gt; (NO !topic)]
+  M[LLM emits !?@mention] --> Q{Is this a subdialog telling its direct supdialog?}
+  Q -- yes --> A[TYPE A: Supdialog Tellask<br/>(`TellaskBack` / 回问诉请)<br/>Primary: !?@super (NO !topic)<br/>Fallback: !?@&lt;supdialogAgentId&gt; (NO !topic)]
   Q -- no --> T{Is !topic present?}
-  T -- yes --> B[TYPE B: Registered subdialog call<br/>!?@agentId !topic topicId]
-  T -- no --> C[TYPE C: Transient subdialog call<br/>!?@agentId]
+  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !topic topicId]
+  T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>!?@agentId]
 ```
 
-### TYPE A: Supdialog Call
+### TYPE A: Supdialog Tellask (Type A / `TellaskBack` / 回问诉请)
 
 **Primary syntax**: `!?@super` (NO `!topic`) — `!?@super !topic ...` is a **syntax error**
 
@@ -172,7 +176,7 @@ Result:
 - sub-001 resumes with orchestrator's response
 ```
 
-### TYPE B: Registered Subdialog Call
+### TYPE B: Registered Subdialog Tellask (Type B / `Tellask Session` / 长线诉请)
 
 **Syntax**: `!?@<anyAgentId> !topic <topic-id>` (note the space before `!topic`)
 
@@ -202,24 +206,23 @@ headline text is ignored for topic ID parsing.
 
 **Current Caller Tracking (important for reuse):**
 
-When a registered subdialog is called again (same `agentId!topicId`), the caller can be a **different
-dialog** (root or another subdialog). On every Type B call, the subdialog’s metadata is updated with:
+When a registered subdialog is Tellasked again (same `agentId!topicId`), the caller can be a **different dialog** (root or another subdialog). On every Type B Tellask, the subdialog’s metadata is updated with:
 
 - The **current caller dialog ID** (so responses route back to the _latest_ caller)
-- The **call info** (headline/body, origin role, origin member, callId)
+- The **Tellask info** (headline/body, origin role, origin member, callId)
 
-This makes Type B subdialogs reusable across multiple call sites without losing correct response routing.
+This makes Type B subdialogs reusable across multiple Tellask sites without losing correct response routing.
 
-**Call Context on Resume**:
+**Tellask Context on Resume**:
 
-- On every TYPE B call (new or resumed), the parent-provided `headLine`/`callBody`
+- On every TYPE B Tellask (new or resumed), the parent-provided `headLine`/`callBody`
   is appended to the subdialog as a new user message before the subdialog is driven.
-  This ensures the subdialog receives the latest request context for each call.
-- System-injected resume prompts are context only and are **not parsed** for teammate/tool calls.
+  This ensures the subdialog receives the latest request context for each Tellask.
+- System-injected resume prompts are context only and are **not parsed** for teammate/tool Tellasks.
 
 **Key Characteristics**:
 
-- Registry lookup is performed on each call
+- Registry lookup is performed on each Tellask
 - Enables **resumption** of previous subdialogs
 - Registered subdialogs persist in the registry until root completion
 - Registry is root-dialog scoped (not accessible to subdialogs)
@@ -252,7 +255,7 @@ Result (second call):
 - orchestrator resumes
 ```
 
-### TYPE C: Transient Subdialog Call
+### TYPE C: Transient Subdialog Tellask (Type C / `Fresh Tellask` / 一次性诉请)
 
 **Syntax**: `!?@<nonSupdialogAgentId>` (NO `!topic`)
 
@@ -265,15 +268,15 @@ Result (second call):
 
 1. Current dialog **suspends**
 2. Create **NEW subdialog** with the specified agentId
-3. Drive the new subdialog (it is FULL-FLEDGED - can make supcalls, teammate calls, tool calls)
+3. Drive the new subdialog (it is FULL-FLEDGED - can make supcalls, teammate Tellasks, tool calls)
 4. Subdialog response flows back to parent
 5. Parent **resumes** with subdialog's response
 
 **Key Characteristics**:
 
 - **No registry lookup** - always creates a new subdialog
-- **Not registered** - no persistence across calls
-- The subdialog itself is fully capable (can make supcalls, teammate calls, tool calls)
+- **Not registered** - no persistence across Tellasks
+- The subdialog itself is fully capable (can make supcalls, teammate Tellasks, tool calls)
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -287,7 +290,7 @@ LLM emits: @code-reviewer Please review this PR
 Result:
 - orchestrator suspends
 - Create NEW subdialog with agentId "code-reviewer"
-- Drive the code-reviewer subdialog (it can make its own calls, tools, etc.)
+- Drive the code-reviewer subdialog (it can make its own Tellasks, tools, etc.)
 - code-reviewer completes with review findings
 - orchestrator resumes with review in context
 
@@ -302,16 +305,16 @@ Result:
 
 ### Comparison Summary
 
-| Aspect                     | TYPE A: Supdialog Call            | TYPE B: Registered Subdialog      | TYPE C: Transient Subdialog       |
-| -------------------------- | --------------------------------- | --------------------------------- | --------------------------------- |
-| **Syntax**                 | `!?@<supdialogAgentId>`           | `!?@<anyAgentId> !topic <id>`     | `!?@<nonSupdialogAgentId>`        |
-| **!topic**                 | Not allowed                       | Required                          | Not allowed                       |
-| **Registry Lookup**        | No (uses `subdialog.supdialog`)   | Yes (`agentId!topicId`)           | No (never registered)             |
-| **Resumption**             | No (supdialog not a subdialog)    | Yes (lookup finds existing)       | No (always new)                   |
-| **Registration**           | Not applicable                    | Created AND registered            | Never registered                  |
-| **Parent Behavior**        | Subdialog suspends                | Parent suspends                   | Parent suspends                   |
-| **Subdialog Capabilities** | Full (supcalls, teammates, tools) | Full (supcalls, teammates, tools) | Full (supcalls, teammates, tools) |
-| **Use Case**               | Clarification from parent         | Resume persistent subtask         | One-off independent task          |
+| Aspect                     | TYPE A: Supdialog Tellask (`TellaskBack`) | TYPE B: Registered Subdialog Tellask (`Tellask Session`) | TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) |
+| -------------------------- | ----------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
+| **Syntax**                 | `!?@<supdialogAgentId>`                   | `!?@<anyAgentId> !topic <id>`                            | `!?@<nonSupdialogAgentId>`                            |
+| **!topic**                 | Not allowed                               | Required                                                 | Not allowed                                           |
+| **Registry Lookup**        | No (uses `subdialog.supdialog`)           | Yes (`agentId!topicId`)                                  | No (never registered)                                 |
+| **Resumption**             | No (supdialog not a subdialog)            | Yes (lookup finds existing)                              | No (always new)                                       |
+| **Registration**           | Not applicable                            | Created AND registered                                   | Never registered                                      |
+| **Parent Behavior**        | Subdialog suspends                        | Parent suspends                                          | Parent suspends                                       |
+| **Subdialog Capabilities** | Full (supcalls, teammates, tools)         | Full (supcalls, teammates, tools)                        | Full (supcalls, teammates, tools)                     |
+| **Use Case**               | Clarification from parent (`TellaskBack`) | Resume persistent subtask (`Tellask Session`)            | One-off independent task (`Fresh Tellask`)            |
 
 ---
 
@@ -336,17 +339,17 @@ flowchart TD
 
 ### Key Design Principles
 
-1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `!?@human` call was recorded. They do not survive `clear_mind`.
+1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `!?@human` Tellask was recorded. They do not survive `clear_mind`.
 
 2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
 
 3. **Subdialog Q4H Autonomy**: Subdialogs can ask Q4H questions directly, not as a proxy for parent. User navigates to subdialog's conversation to answer inline.
 
-4. **UI Renders Q4H Like Teammate Calls**: The UI treats Q4H similarly to other teammate calls - with navigation linking to the call site in the dialog conversation. The user answers inline using the same input textarea used for regular messages.
+4. **UI Renders Q4H Like Teammate Tellasks**: The UI treats Q4H similarly to other teammate Tellasks - with navigation linking to the Tellask site in the dialog conversation. The user answers inline using the same input textarea used for regular messages.
 
-5. **Subdialog Response Supply**: Subdialogs write their responses to the _current caller’s_ context via persistence (not callbacks). For TYPE B, each call updates the subdialog’s `assignmentFromSup` with the latest caller + callInfo, so the response is routed to the most recent caller (root or subdialog). This enables detached operation, reuse, and crash recovery.
+5. **Subdialog Response Supply**: Subdialogs write their responses to the _current Tellasker’s_ context via persistence (not callbacks). For TYPE B, each Tellask updates the subdialog’s `assignmentFromSup` with the latest Tellasker + tellaskInfo, so the response is routed to the most recent Tellasker (root or subdialog). This enables detached operation, reuse, and crash recovery.
 
-6. **Subdialog Registry**: Registered subdialogs (TYPE B calls) are tracked in a root-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on root load.
+6. **Subdialog Registry**: Registered subdialogs (TYPE B Tellasks) are tracked in a root-dialog-scoped registry. The registry persists across `clear_mind` operations and is rebuilt on root load.
 
 7. **State Preservation Contract**:
    - `clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
@@ -367,7 +370,7 @@ Q4H (Questions for Human) is the mechanism by which dialogs can suspend executio
 /**
  * HumanQuestion - index entry persisted in q4h.yaml per dialog
  * NOTE: This is an INDEX, not the source of truth. The actual question
- * content is in the dialog's conversation messages where the @human call was recorded
+ * content is in the dialog's conversation messages where the @human Tellask was recorded
  * (invoked via !?@human).
  */
 interface HumanQuestion {
@@ -380,7 +383,7 @@ interface HumanQuestion {
 
 **Storage Location**: `<dialog-path>/q4h.yaml` - serves as an index for quick lookup
 
-**Source of Truth**: The actual `!?@human` call is stored in the dialog's conversation messages (round JSONL files), where the question was asked.
+**Source of Truth**: The actual `!?@human` Tellask is stored in the dialog's conversation messages (round JSONL files), where the question was asked.
 
 ### Q4H Mechanism Flow
 
@@ -404,7 +407,7 @@ sequenceDiagram
 
 ### When Does a Dialog Raise Q4H?
 
-Q4H is raised when the `!?@human` teammate call is invoked by ANY dialog (root or subdialog) on its own right:
+Q4H is raised when the `!?@human` teammate Tellask is invoked by ANY dialog (root or subdialog) on its own right:
 
 ```typescript
 // From main/llm/driver.ts, executeTellaskCall function
@@ -421,7 +424,7 @@ const isQ4H = firstMention === 'human';
 ### Q4H Recording Process
 
 ```typescript
-// When !?@human is detected as a teammate call
+// When !?@human is detected as a teammate Tellask
 async function recordQuestionForHuman(
   dlg: Dialog,
   headLine: string,
@@ -471,8 +474,8 @@ postDialogEvent(dialog, questionsCountUpdateEvt);
 1. Receives `questions_count_update` event
 2. Reads `q4h.yaml` to get question index entries
 3. Displays Q4H indicator/badge on dialog
-4. Questions link to their call sites in the conversation
-5. User clicks link to navigate to call site, answers inline
+4. Questions link to their Tellask sites in the conversation
+5. User clicks link to navigate to Tellask site, answers inline
 
 ### How User Answers Q4H (Agent-Pull Model)
 
@@ -495,12 +498,12 @@ interface DriveDialogByUserAnswerRequest {
 **Process (Agent-Pull Model)**:
 
 1. User sees Q4H indicator/badge in UI
-2. User clicks Q4H in panel/list, navigates to the `@human` call site
+2. User clicks Q4H in panel/list, navigates to the `@human` Tellask site
 3. User types answer in the input textarea (same as regular messages)
 4. Frontend sends `drive_dialog_by_user_answer` packet
 5. Backend validates `questionId` against q4h.yaml
 6. Backend clears the answered Q4H from q4h.yaml index
-7. Backend calls `driveDialogStream()` with human response as prompt
+7. Backend invokes `driveDialogStream()` with human response as prompt
 8. Agent resumes generation with new context (agent-pull satisfied)
 
 **Key Design Points**:
@@ -663,8 +666,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 Example:
 
 ```text
-Call the function tool `clear_mind` with:
-{ "reminder_content": "The conversation has too much debug output." }
+Invoke the function tool `clear_mind` with:
 ```
 
 **Behavior**:
@@ -674,7 +676,7 @@ Call the function tool `clear_mind` with:
 - **Clears all Q4H questions** (critical!)
 - Preserves subdialog registry (root dialog only)
 - Has no effect on supdialog
-- Redirects attention to task document
+- Redirects attention to Taskdoc
 - A system-generated new-round prompt is queued and used as the **first `role=user` message** in the new round
 - Starts a new conversation round
 
@@ -682,38 +684,37 @@ Call the function tool `clear_mind` with:
 
 - Operation is scoped to the current dialog only
 - Subdialogs are not affected by parent's `clear_mind`
-- Task document remains unchanged and accessible
+- Taskdoc remains unchanged and accessible
 - Reminders provide continuity across the clarity operation
 
 ### `change_mind`
 
-**Purpose**: Update the shared task document content that all dialogs in the dialog tree reference (no round reset).
+**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (no round reset).
 
 **Function tool arguments**:
 
-- `selector: "!goals" | "!constraints" | "!progress"`
+- `selector: "goals" | "constraints" | "progress"`
 - `content: string`
 
 Example:
 
 ```text
-Call the function tool `change_mind` with:
-{ "selector": "!goals", "content": "- Do X\\n- Do Y\\n" }
+Invoke the function tool `change_mind` with:
 ```
 
 **Behavior**:
 
-- Updates the workspace task document content (exactly one section file in a `*.tsk/` package)
-- **Does not change the task document path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
+- Updates the workspace Taskdoc content (exactly one section file in a `*.tsk/` Taskdoc package)
+- **Does not change the Taskdoc path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
 - **Does not start a new dialog round.** If a round reset is desired, use `clear_mind` separately.
 - Does not clear messages, reminders, Q4H, or registry by itself
-- Affects all participant agents (main and subdialogs) referencing the same task document
+- Affects all participant agents (main and subdialogs) referencing the same Taskdoc
 
 **Implementation Notes**:
 
-- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the parent via a supdialog call (`!?@super`) to update the shared task doc.
-- For `*.tsk/` packages, the task doc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`
+- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the parent via a supdialog Tellask (`!?@super`) to update the shared Taskdoc.
+- For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See `dominds/docs/encapsulated-task-doc.md`.
 
 ---
 
@@ -745,7 +746,7 @@ Call the function tool `change_mind` with:
 
 ### Overview
 
-The **subdialog registry** is a root-dialog-scoped data structure that maintains persistent references to registered subdialogs created via TYPE B (Registered Subdialog Call) teammate calls.
+The **subdialog registry** is a root-dialog-scoped data structure that maintains persistent references to registered subdialogs created via TYPE B (Registered Subdialog Tellask / `Tellask Session`) teammate Tellasks.
 
 ### Key Characteristics
 
@@ -773,7 +774,7 @@ researcher!market-analysis:
 
 ```mermaid
 flowchart TD
-  Call[TYPE B call: !?@agentId !topic topicId] --> Key[Compute key: agentId!topicId]
+  Tellask[TYPE B Tellask: !?@agentId !topic topicId] --> Key[Compute key: agentId!topicId]
   Key --> Lookup{Registry hit?}
   Lookup -- yes --> Resume[Restore + drive existing subdialog]
   Lookup -- no --> Create[Create + register + drive new subdialog]
@@ -815,7 +816,7 @@ interface SubdialogRegistry {
     agentId: string; // Agent identifier
     topicId: string; // Topic identifier
     createdAt: string; // ISO timestamp
-    lastAccessed?: string; // ISO timestamp (updated on each call)
+    lastAccessed?: string; // ISO timestamp (updated on each Tellask)
     locked: boolean; // Mutex state - is someone driving this right now?
   };
 }
@@ -844,7 +845,7 @@ The complete Dialog class implementation with all methods, properties, and detai
 - **Mental Clarity Operations**: `startNewRound(newRoundPrompt)` method (clears messages, clears Q4H, increments round, queues new round prompt for the next drive)
 - **Subdialog Management**: Creation and coordination of specialized subtasks
 - **Q4H Management**: `updateQuestions4Human()` method for question tracking
-- **Memory Access**: Integration with task documents and team/agent memories
+- **Memory Access**: Integration with Taskdocs and team/agent memories
 - **Registry Management** (RootDialog only): Registration and lookup of subdialogs
 
 ### Main Dialog Resolution
@@ -902,8 +903,8 @@ interface RegistryMethods {
 
 **Context Inheritance**: New subdialogs automatically receive:
 
-- Reference to the same workspace task doc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
-- Supdialog tellask call context (headLine + callBody) explaining their purpose
+- Reference to the same workspace Taskdoc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
+- Supdialog Tellask context (headLine + callBody) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories
 
@@ -911,7 +912,7 @@ interface RegistryMethods {
 
 **Navigation**: Each subdialog maintains a reference to its parent, enabling upward traversal to the main dialog.
 
-**Registry**: Registered subdialogs (TYPE B calls) are tracked in the root dialog's registry and persist across restarts.
+**Registry**: Registered subdialogs (TYPE B Tellasks) are tracked in the root dialog's registry and persist across restarts.
 
 ### Lifecycle Management
 
@@ -932,17 +933,17 @@ interface RegistryMethods {
 
 **Upward Communication**: Subdialogs communicate results, questions, and escalations to their supdialogs.
 
-- **Clarification Requests (TYPE A)**: A subdialog may call its supdialog to request clarification while working on its subtask. The supdialog provides guidance, and the subdialog continues with updated context.
-- **Subtask Response**: When a subdialog produces a final "saying" content block (no pending Q4H), that message is treated as the response to the **current caller** recorded in `assignmentFromSup` (root or another subdialog). This keeps responses aligned with the most recent call site.
+- **Clarification Requests (TYPE A / `TellaskBack`)**: A subdialog may Tellask its supdialog to request clarification while working on its subtask. The supdialog provides guidance, and the subdialog continues with updated context.
+- **Subtask Response**: When a subdialog produces a final "saying" content block (no pending Q4H), that message is treated as the response to the **current caller** recorded in `assignmentFromSup` (root or another subdialog). This keeps responses aligned with the most recent Tellask site.
 - **Q4H Escalation**: If a subdialog has Q4H, it suspends. The user can answer via the UI, which triggers continuation of the subdialog only.
-- **Registered Subdialogs (TYPE B)**: A parent can resume a previously created registered subdialog, enabling ongoing task continuation.
-- **Transient Subdialogs (TYPE C)**: A parent can spawn a one-off subdialog for independent tasks that don't require persistence.
+- **Registered Subdialogs (TYPE B / `Tellask Session`)**: A parent can resume a previously created registered subdialog, enabling ongoing task continuation.
+- **Transient Subdialogs (TYPE C / `Fresh Tellask`)**: A parent can spawn a one-off subdialog for independent tasks that don't require persistence.
 
 **Downward Communication**: Supdialogs provide context, objectives, and guidance to subdialogs.
 
 **Lateral Communication**: Sibling subdialogs coordinate through their shared supdialog.
 
-**Broadcast Communication**: Main dialog (root dialog) can communicate changes (like workspace task document file updates) to all dialogs through the task document reference.
+**Broadcast Communication**: Main dialog (root dialog) can communicate changes (like workspace Taskdoc file updates) to all dialogs through the Taskdoc reference.
 
 ---
 
@@ -968,7 +969,7 @@ interface RegistryMethods {
 
 ### Memory Synchronization
 
-**Task Document Propagation**: Changes to the workspace task document file are immediately visible to all dialogs that reference it.
+**Taskdoc Propagation**: Changes to the workspace Taskdoc file are immediately visible to all dialogs that reference it.
 
 **Memory Updates**: Team and agent memories are updated asynchronously and eventually consistent across all dialogs.
 
@@ -993,7 +994,7 @@ interface RegistryMethods {
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — per-subdialog Q4H index (cleared by clarity)
 
-**Task Doc Storage**: Task docs are workspace artifacts referenced by dialogs through paths. Task docs MUST be encapsulated `*.tsk/` task packages.
+**Taskdoc Storage**: Taskdocs are workspace artifacts referenced by dialogs through paths. Taskdocs MUST be encapsulated `*.tsk/` Taskdoc packages.
 
 **Memory Storage**: Team and agent memories are stored in dedicated files within the workspace.
 
@@ -1013,17 +1014,13 @@ interface RegistryMethods {
 
 **Context Awareness**: Agents have full access to their dialog context, memories, hierarchy position, pending Q4H from subdialogs, and (for root dialogs) the subdialog registry.
 
-**Teammate Call Capability**: Agents can invoke all three types of teammate calls:
+**Teammate Tellask Capability**: Agents can invoke all three types of teammate Tellasks:
 
-- TYPE A: Call supdialog for clarification
-- TYPE B: Call/Resume registered subdialogs
-- TYPE C: Spawn transient subdialogs
+- TYPE A / `TellaskBack`: Tellask supdialog for clarification
+- TYPE B / `Tellask Session`: Tellask/resume registered subdialogs
+- TYPE C / `Fresh Tellask`: Spawn transient subdialogs
 
-**Tool Access**: All mental clarity tools, Q4H capability, and teammate call tools are available to agents for autonomous cognitive management.
-
----
-
-## State Diagrams
+**Tool Access**: All mental clarity tools, Q4H capability, and teammate Tellask tools are available to agents for autonomous cognitive management.
 
 ### Dialog State Machine
 
@@ -1059,12 +1056,12 @@ flowchart TD
   E -- no --> I
 ```
 
-### Teammate Call State Transitions
+### Teammate Tellask State Transitions
 
 These diagrams focus on **control flow** and avoid box-art alignment so they stay readable even when
-renderers wrap long lines.
+rendered in different markdown viewers.
 
-#### TYPE A: Supdialog Call (`!?@super`, no `!topic`)
+#### TYPE A: Supdialog Tellask (`TellaskBack`) (`!?@super`, no `!topic`)
 
 ```mermaid
 sequenceDiagram
@@ -1078,7 +1075,7 @@ sequenceDiagram
   Driver-->>Sub: resume subdialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Call (`!?@agentId !topic topicId`, or `!?@self !topic topicId`)
+#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`!?@agentId !topic topicId`, or `!?@self !topic topicId`)
 
 ```mermaid
 sequenceDiagram
@@ -1103,7 +1100,7 @@ sequenceDiagram
   end
 ```
 
-#### TYPE C: Transient Subdialog Call (`!?@agentId`, or `!?@self`)
+#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`!?@agentId`, or `!?@self`)
 
 ```mermaid
 sequenceDiagram
@@ -1122,7 +1119,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[!?@human call emitted] --> B[Append HumanQuestion entry to q4h.yaml]
+  A[!?@human Tellask emitted] --> B[Append HumanQuestion entry to q4h.yaml]
   B --> C[Emit questions_count_update]
   C --> D[UI shows Q4H badge / list]
   D --> E{How is it cleared?}
@@ -1213,7 +1210,7 @@ sequenceDiagram
   Sub-->>Sup: supply response (resume root)
 ```
 
-### 3. Registered Subdialog Call (TYPE B)
+### 3. Registered Subdialog Tellask (TYPE B / `Tellask Session` / 长线诉请)
 
 ```mermaid
 sequenceDiagram
@@ -1243,7 +1240,7 @@ sequenceDiagram
 | Reminders     | Preserved                                   |
 | Registry      | Preserved                                   |
 
-`change_mind` is not a clarity operation; it updates task document content in-place and does not clear messages/Q4H/reminders/registry.
+`change_mind` is not a clarity operation; it updates Taskdoc content in-place and does not clear messages/Q4H/reminders/registry.
 
 ---
 
@@ -1273,7 +1270,7 @@ sequenceDiagram
 
 **Health Checks**: Regular validation of dialog hierarchy integrity, Q4H persistence, registry consistency, and memory.
 
-**Debugging Support**: Comprehensive logging and inspection tools for troubleshooting teammate calls, registry operations, and Q4H flows.
+**Debugging Support**: Comprehensive logging and inspection tools for troubleshooting teammate Tellasks, registry operations, and Q4H flows.
 
 ---
 
@@ -1291,18 +1288,18 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 | **Reminders**          | Persistent working memory     | Yes              | N/A           |
 | **Subdialog Registry** | Registered subdialog tracking | Yes              | Never deleted |
 
-### Three Types of Teammate Calls
+### Three Types of Teammate Tellasks
 
-| Type       | Syntax                     | Registry                | Use Case                  |
-| ---------- | -------------------------- | ----------------------- | ------------------------- |
-| **TYPE A** | `!?@<supdialogAgentId>`    | No                      | Clarification from parent |
-| **TYPE B** | `!?@<agentId> !topic <id>` | Yes (lookup + register) | Resume persistent subtask |
-| **TYPE C** | `!?@<nonSupdialogAgentId>` | No                      | One-off independent task  |
+| Type (internal) | User-facing term  | Syntax                    | Registry          | Use Case                   |
+| --------------- | ----------------- | ------------------------- | ----------------- | -------------------------- |
+| TYPE A          | `TellaskBack`     | `!?@super` / `!?@<supId>` | no registry       | clarification (ask origin) |
+| TYPE B          | `Tellask Session` | `!?@agentId !topic <id>`  | `agentId!topicId` | resumable multi-turn work  |
+| TYPE C          | `Fresh Tellask`   | `!?@agentId`              | not registered    | one-shot / non-resumable   |
 
 ### Class Responsibility
 
-- **RootDialog**: Manages registry, can make all three teammate call types
-- **SubDialog**: Has supdialog reference, can make TYPE A and TYPE C directly; TYPE B routes through the root registry and updates caller context on each call
+- **RootDialog**: Manages registry, can make all three teammate Tellask types
+- **SubDialog**: Has supdialog reference, can make TYPE A and TYPE C directly; TYPE B routes through the root registry and updates caller context on each Tellask
 
 ### Persistence Guarantees
 

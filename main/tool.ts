@@ -4,7 +4,7 @@
  * Tool type definitions and argument validation helpers.
  * Dominds tools are function tools (`func`) only.
  *
- * NOTE: "tellask" is reserved for teammate calls / dialog orchestration and is
+ * NOTE: "tellask" is reserved for teammate tellasks / dialog orchestration and is
  * not a tool type.
  */
 import type { Dialog } from './dialog';

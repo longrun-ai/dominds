@@ -4,8 +4,8 @@
  * TUI subcommand for dominds CLI
  *
  * Usage:
- *   dominds tui [options] <task-doc-path> [prompts...]
- *   dominds run [options] <task-doc-path> [prompts...]
+ *   dominds tui [options] <taskdoc-path> [prompts...]
+ *   dominds run [options] <taskdoc-path> [prompts...]
  *
  * Options:
  *   -m, --member <id>: Specify team member ID to use as agent
@@ -38,18 +38,18 @@ function showVersion() {
 function showHelp() {
   console.log(`dominds v${getPackageVersion()}`);
   console.log('');
-  console.log('Usage: dominds tui [options] [task-doc] [prompt]');
-  console.log('       dominds run [options] [task-doc] [prompt]');
+  console.log('Usage: dominds tui [options] [taskdoc] [prompt]');
+  console.log('       dominds run [options] [taskdoc] [prompt]');
   console.log('');
-  console.log('Start or continue a dialog with an AI team member using a task document.');
+  console.log('Start or continue a dialog with an AI team member using a Taskdoc.');
   console.log('');
   console.log(
     "Note: Workspace directory is `process.cwd()`. Use 'dominds -C <dir> tui ...' to run in another workspace.",
   );
   console.log('');
   console.log('Arguments:');
-  console.log('  <task-doc-path>    Path to task document (required for dialog)');
-  console.log('  [prompts...]       Optional initial prompts');
+  console.log('  <taskdoc-path>    Path to Taskdoc (required for dialog)');
+  console.log('  [prompts...]      Optional initial prompts');
   console.log('');
   console.log('Options:');
   console.log('  -m <member>            Specify team member');
@@ -65,7 +65,7 @@ function showHelp() {
   console.log('  dominds tui --list');
   console.log('  dominds tui --version');
   console.log('');
-  console.log('Note: All bare arguments (without -- prefix) are treated as task documents');
+  console.log('Note: All bare arguments (without -- prefix) are treated as Taskdocs');
   console.log('      or prompts, ensuring no conflicts with user files.');
 }
 
@@ -172,7 +172,7 @@ async function main() {
       const normalized = args.taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '');
       if (!normalized.endsWith('.tsk')) {
         throw new Error(
-          `task-doc-path must be a Task Doc directory ending in '.tsk' (got: '${args.taskDocPath}')`,
+          `taskdoc-path must be a Taskdoc directory ending in '.tsk' (got: '${args.taskDocPath}')`,
         );
       }
     }

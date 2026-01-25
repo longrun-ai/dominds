@@ -167,7 +167,7 @@ export interface FullRemindersEvent {
   reminders: ReminderContent[];
 }
 
-// Teammate response event - separate bubble for @teammate calls
+// Teammate response event - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export interface TeammateResponseEvent {
   type: 'teammate_response_evt';

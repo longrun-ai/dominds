@@ -26,7 +26,7 @@ MCP support should be implemented by composing existing primitives rather than i
 system:
 
 - Dominds tools are function tools (`FuncTool`) only (see `dominds/main/tool.ts`).
-  - NOTE: “tellask” is reserved for teammate calls / dialog orchestration and is not a tool type.
+  - NOTE: “tellask” is reserved for teammate tellask / dialog orchestration and is not a tool type.
 - Tools and toolsets are globally registered via `registerTool` / `registerToolset` in
   `dominds/main/tools/registry.ts` (with built-ins registered during module initialization).
 - Team members resolve toolsets into concrete tool lists at runtime via `Team.Member.listTools()` in
@@ -36,8 +36,6 @@ system:
   driver (`dominds/main/llm/driver.ts`).
 - Function tool calls can be executed concurrently (the driver `Promise.all()`s them), so any MCP
   client wrapper must safely handle parallel in-flight requests.
-
-## Concurrency & Client Leasing (Important)
 
 Many real-world MCP servers are **not safe to share concurrently** across multiple dialogs/agents.
 Examples include servers that keep mutable session state, maintain implicit “current page” handles,

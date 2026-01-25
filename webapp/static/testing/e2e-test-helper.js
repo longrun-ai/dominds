@@ -1821,7 +1821,7 @@ async function waitForInputEnabledState(enabled, timeoutMs = 15000) {
  *
  * Defaults are chosen for ux-stories stability:
  * - No incomplete generation bubbles
- * - No pending teammate calls
+ * - No pending teammate tellasks
  *
  * Options:
  * - requireInputEnabled: boolean | null
@@ -2674,7 +2674,7 @@ function detectFuncCall(toolName) {
 }
 
 /**
- * Gets all pending teammate calls (calls still waiting for response).
+ * Gets all pending teammate tellasks (tellasks still waiting for response).
  * @returns {Array<{element: HTMLElement, firstMention: string, isHuman: boolean, callSiteId: number | null}>}
  */
 function getPendingTeammateCalls() {
@@ -2813,7 +2813,7 @@ function getLatestTeammateCallSiteId() {
 }
 
 /**
- * Waits for a new teammate call site to appear after a known call-site ID.
+ * Waits for a new teammate tellask site to appear after a known call-site ID.
  * @param {Object} options - Options object
  * @param {number} [options.timeoutMs=60000] - Maximum wait time
  * @param {number} [options.after] - Only return call sites with ID > after
@@ -2854,7 +2854,7 @@ async function waitForTeammateCallSiteId(options = {}) {
 }
 
 /**
- * Waits for all pending teammate calls to complete.
+ * Waits for all pending teammate tellasks to complete.
  * @param {number} [timeoutMs=60000] - Maximum wait time
  * @returns {Promise<boolean>} True if completed, false if timeout
  */
@@ -3056,7 +3056,7 @@ function setGlobal() {
     },
     // DOM observation utilities
     domObs,
-    // Teammate calls
+    // Teammate tellasks
     getPendingTeammateCalls,
     getLatestTeammateCallSiteId,
     waitForPendingTeammateCalls,
