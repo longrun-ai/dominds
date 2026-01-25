@@ -70,11 +70,18 @@ updated: 2026-01-24
 
 ### 4.2 原始写入工具（例外）
 
+- `create_new_file`（函数工具）：创建新文件（不走 preview/apply），允许空内容。  
+  设计定位：解决“创建空文件/新文件”不应被迫走增量编辑；同时避免误用 `overwrite_entire_file`（它的语义是覆盖既有文件）。  
+  行为：若目标已存在则拒绝（`FILE_EXISTS`/`NOT_A_FILE`）；不存在则创建父目录并写入内容。  
+  规范化：若 `content` 非空且末尾缺少 `\n`，则补齐并在输出中显示 `normalized_trailing_newline_added=true`。  
+  输出：成功/失败均为 YAML（便于脚本化与回归）。
+
 - `overwrite_entire_file`（函数工具）：整文件覆盖写入（**不走 preview/apply**）。  
+  使用建议：先用 `read_file` 获取 `guardrail_total_lines/guardrail_total_bytes` 作为 `known_old_total_lines/known_old_total_bytes` 的对账输入（避免空文件 display 行数=1 的误解）。  
   设计定位：用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 preview/apply。  
   护栏（强制）：必须提供 `known_old_total_lines/known_old_total_bytes`（旧文件快照）才允许执行；若对账不匹配则拒绝覆盖。  
   护栏（默认拒绝）：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 preview/apply（避免把 patch 文本误写进文件）。  
-  限制：不负责创建文件；创建请用 `preview_file_append create=true` → `apply_file_modification`。
+  限制：不负责创建文件；创建空文件/新文件请用 `create_new_file`；创建“带非空初始内容”的新文件可用 `preview_file_append create=true` → `apply_file_modification`。
 
 ### 4.3 增量编辑（preview-first）
 
@@ -114,15 +121,16 @@ updated: 2026-01-24
 
 - `preview_file_modification`：支持 `existing_hunk_id`，但该 id 必须已存在、归属当前成员、且模式匹配（不能拿别的 preview 模式的 id 来覆写）。
 - `preview_file_append` / `preview_insert_after` / `preview_insert_before`：同样支持 `existing_hunk_id` 覆写同模式预览。
-- `preview_block_replace`：当前实现**不支持** `existing_hunk_id`（每次都会生成新 id）。
+- `preview_block_replace`：支持 `existing_hunk_id` 覆写同模式预览（同 owner / 同 kind；跨模式拒绝）。
 - 所有 plan 工具都**不允许自定义新 id**：只能通过“省略/清空 `existing_hunk_id`”来生成新规划；只有当你想覆写既有规划时才传入 `existing_hunk_id`。
 
-> Codex provider 要求函数工具 schema 的参数字段全部 `required`。因此对于语义上“可选”的字段，统一用哨兵值表达“未指定”：
+> 注意：有些 provider（例如 Codex）会要求函数工具的参数字段都“必填”（schema 全 required）。  
+> 如果你用的是这类 provider，但语义上想表达“未指定/使用默认”，再用哨兵值表达“未指定”；否则（大多数 provider）**省略可选字段即可**：
 >
 > - `existing_hunk_id: ""`：不覆写旧规划（生成新 hunk）。
 > - `occurrence: ""` 或 `0`：不指定 occurrence。
-> - `match: ""`：使用默认 `contains`。
-> - `read_file({ range: "", max_lines: 0, show_linenos: true })`：分别表示“不指定范围 / 使用默认 500 行 / 显示行号”。
+> - `match: ""`：使用默认 `contains`（注意：`match` 是 match mode，不是要匹配的文本/正则）。
+> - `read_file({ range: "", max_lines: 0 })`：分别表示“不指定范围 / 使用默认 500 行”。
 > - `overwrite_entire_file({ content_format: "" })`：表示“未显式声明内容格式”（此时若正文强特征疑似 diff/patch 将默认拒绝写入）。
 > - `ripgrep_*({ path: "", case: "", max_files: 0, max_results: 0 })`：分别表示“默认路径 '.' / 默认 smart-case / 使用默认上限”。
 
@@ -194,6 +202,15 @@ updated: 2026-01-24
 - `replace|delete`（range）：`applied_range.start|end` + `lines.*`
 - `block_replace`：`block_range` / `replace_slice` / `lines.*`
 
+### 8.5 read_file / overwrite_entire_file（结构化头部）
+
+为提升可脚本化与回归稳定性：
+
+- `read_file` 输出开头包含 YAML header（随后是代码块正文），其中会同时给出：
+  - `display_total_lines`（用于阅读稳定性：空文件显示为 1 行空行）
+  - `guardrail_total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
+- `overwrite_entire_file` 的成功/失败输出均使用 YAML（便于程序化处理与重试）。
+
 ## 9. 错误与拒绝（稳定方向）
 
 ### 9.1 preview 阶段（常见）
@@ -218,7 +235,7 @@ updated: 2026-01-24
 
 ```text
 Call the function tool `preview_insert_after` with:
-{ "path": "docs/spec.md", "anchor": "## Configuration", "occurrence": 1, "match": "", "existing_hunk_id": "", "content": "### Defaults\n- provider: codex\n" }
+{ "path": "docs/spec.md", "anchor": "## Configuration", "content": "### Defaults\n- provider: codex\n" }
 ```
 
 消息 2：
@@ -232,7 +249,7 @@ Call the function tool `apply_file_modification` with:
 
 ```text
 Call the function tool `preview_file_append` with:
-{ "path": "notes/prompt.md", "create": true, "existing_hunk_id": "", "content": "## Tools\n- Use preview_* + apply_file_modification for incremental edits.\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\n- Use preview_* + apply_file_modification for incremental edits.\n" }
 ```
 
 ```text
@@ -244,7 +261,7 @@ Call the function tool `apply_file_modification` with:
 
 ```text
 Call the function tool `preview_file_modification` with:
-{ "path": "README.md", "range": "10~12", "existing_hunk_id": "", "content": "New line 10\nNew line 11\n" }
+{ "path": "README.md", "range": "10~12", "content": "New line 10\nNew line 11\n" }
 ```
 
 ```text
@@ -256,7 +273,7 @@ Call the function tool `apply_file_modification` with:
 
 ```text
 Call the function tool `preview_block_replace` with:
-{ "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "occurrence": "", "include_anchors": true, "match": "", "require_unique": true, "strict": true, "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
+{ "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
 ```
 
 ```text
@@ -280,4 +297,6 @@ This is the design doc for `ws_mod` text editing as implemented.
 - Tool calls in one message run in parallel → **preview → apply must be two messages**.
 - Applies are serialized per file in-process (queue by `createdAtMs`, then `hunkId`).
 - `hunk_id` is TTL-limited and in-memory; apply checks ownership and access.
+- `create_new_file` creates a new file (empty content allowed) and refuses to overwrite existing files (YAML-only output).
 - `overwrite_entire_file` is the exception full-file overwrite tool, guarded by `known_old_total_lines/known_old_total_bytes`, and it refuses diff/patch-like content by default unless `content_format='diff'|'patch'`.
+- Some providers (e.g. Codex) may require “all fields present” in function calls; for those providers only, use sentinels like empty strings / 0 to express “unset/default”. For most providers, omit optional fields naturally.

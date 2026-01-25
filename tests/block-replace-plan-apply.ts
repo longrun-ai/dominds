@@ -54,12 +54,28 @@ async function main(): Promise<void> {
       content: 'new\n',
     });
     const hunk1 = extractHunkId(plan1);
+    const plan1b = await previewBlockReplaceTool.call(dlg, alice, {
+      path: 'doc.md',
+      start_anchor: '<!-- BEGIN AUTO -->',
+      end_anchor: '<!-- END AUTO -->',
+      occurrence: '',
+      include_anchors: true,
+      match: '',
+      require_unique: true,
+      strict: true,
+      existing_hunk_id: hunk1,
+      content: 'newer\n',
+    });
+    const hunk1b = extractHunkId(plan1b);
+    assert.equal(hunk1b, hunk1);
+    assert.ok(plan1b.includes('reused_hunk_id: true'));
+
     const apply1 = await applyFileModificationTool.call(dlg, alice, { hunk_id: hunk1 });
     assert.ok(apply1.includes('status: ok'));
     const after1 = await readText(path.join(tmpRoot, 'doc.md'));
     assert.equal(
       after1,
-      ['# Title', '<!-- BEGIN AUTO -->', 'new', '<!-- END AUTO -->', ''].join('\n'),
+      ['# Title', '<!-- BEGIN AUTO -->', 'newer', '<!-- END AUTO -->', ''].join('\n'),
     );
 
     // Apply rejects if the file changes between plan and apply.

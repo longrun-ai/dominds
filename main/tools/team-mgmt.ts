@@ -59,6 +59,33 @@ function fail(result: string, messages?: ChatMessage[]): string {
   return result;
 }
 
+function yamlQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function formatYamlCodeBlock(yaml: string): string {
+  return `\`\`\`yaml\n${yaml}\n\`\`\``;
+}
+
+function normalizeFileWriteBody(inputBody: string): {
+  normalizedBody: string;
+  addedTrailingNewlineToContent: boolean;
+} {
+  if (inputBody === '' || inputBody.endsWith('\n')) {
+    return { normalizedBody: inputBody, addedTrailingNewlineToContent: false };
+  }
+  return { normalizedBody: `${inputBody}\n`, addedTrailingNewlineToContent: true };
+}
+
+function countLogicalLines(text: string): number {
+  if (text === '') return 0;
+  const parts = text.split('\n');
+  if (parts.length > 0 && parts[parts.length - 1] === '') {
+    parts.pop();
+  }
+  return parts.length;
+}
+
 function normalizePathToken(raw: string): string {
   return raw.trim().replace(/\\/g, '/').replace(/^\/+/, '');
 }
@@ -596,6 +623,159 @@ export const teamMgmtReadFileTool: FuncTool = {
   },
 };
 
+export const teamMgmtCreateNewFileTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_create_new_file',
+  description: `Create a new file under ${MINDS_DIR}/ (no preview/apply). Refuses to overwrite existing files.`,
+  descriptionI18n: {
+    en: `Create a new file under ${MINDS_DIR}/ (no preview/apply). Refuses to overwrite existing files.`,
+    zh: `在 ${MINDS_DIR}/ 下创建一个新文件（不走 preview/apply）。若文件已存在则拒绝覆写。`,
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string' },
+      content: { type: 'string' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    const t =
+      language === 'zh'
+        ? {
+            invalidArgs: (msg: string) => `参数不正确：${msg}`,
+            fileExists: '文件已存在，拒绝创建。',
+            notAFile: '路径已存在但不是文件（可能是目录），拒绝创建。',
+            nextOverwrite:
+              '下一步：先用 team_mgmt_read_file 获取 guardrail_total_lines/guardrail_total_bytes，然后再调用 team_mgmt_overwrite_entire_file 覆盖写入。',
+            ok: '已创建新文件。',
+          }
+        : {
+            invalidArgs: (msg: string) => `Invalid args: ${msg}`,
+            fileExists: 'File already exists; refusing to create.',
+            notAFile: 'Path exists but is not a file (e.g. a directory); refusing to create.',
+            nextOverwrite:
+              'Next: call team_mgmt_read_file to get guardrail_total_lines/guardrail_total_bytes, then use team_mgmt_overwrite_entire_file to overwrite.',
+            ok: 'Created new file.',
+          };
+
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const pathValue = args['path'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      if (!rawPath) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: create_new_file`,
+            `error: INVALID_ARGS`,
+            `summary: ${yamlQuote(t.invalidArgs('Path required'))}`,
+          ].join('\n'),
+        );
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const rel = toMindsRelativePath(rawPath);
+      const { abs } = ensureMindsScopedPath(rel);
+      if (rel === MINDS_DIR) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: create_new_file`,
+            `path: ${yamlQuote(rel)}`,
+            `error: NOT_A_FILE`,
+            `summary: ${yamlQuote(t.notAFile)}`,
+          ].join('\n'),
+        );
+        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+
+      const contentValue = args['content'];
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+      const initialContent = typeof contentValue === 'string' ? contentValue : '';
+
+      try {
+        const st = await fs.stat(abs);
+        if (!st.isFile()) {
+          const out = formatYamlCodeBlock(
+            [
+              `status: error`,
+              `mode: create_new_file`,
+              `path: ${yamlQuote(rel)}`,
+              `error: NOT_A_FILE`,
+              `summary: ${yamlQuote(t.notAFile)}`,
+            ].join('\n'),
+          );
+          return fail(out, [{ type: 'environment_msg', role: 'user', content: out }]);
+        }
+
+        const out = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: create_new_file`,
+            `path: ${yamlQuote(rel)}`,
+            `error: FILE_EXISTS`,
+            `summary: ${yamlQuote(t.fileExists)}`,
+            `next: ${yamlQuote(t.nextOverwrite)}`,
+          ].join('\n'),
+        );
+        return fail(out, [{ type: 'environment_msg', role: 'user', content: out }]);
+      } catch (err: unknown) {
+        if (!isFsErrWithCode(err) || err.code !== 'ENOENT') throw err;
+      }
+
+      const { normalizedBody, addedTrailingNewlineToContent } =
+        normalizeFileWriteBody(initialContent);
+      await fs.mkdir(path.dirname(abs), { recursive: true });
+      await fs.writeFile(abs, normalizedBody, 'utf8');
+
+      const newTotalBytes = Buffer.byteLength(normalizedBody, 'utf8');
+      const newTotalLines = countLogicalLines(normalizedBody);
+      const normalizedNewlineAdded = addedTrailingNewlineToContent && normalizedBody !== '';
+      const summary =
+        language === 'zh'
+          ? `${t.ok} path=${rel}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
+          : `${t.ok} path=${rel}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
+      const out = formatYamlCodeBlock(
+        [
+          `status: ok`,
+          `mode: create_new_file`,
+          `path: ${yamlQuote(rel)}`,
+          `new_total_lines: ${newTotalLines}`,
+          `new_total_bytes: ${newTotalBytes}`,
+          `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
+          `summary: ${yamlQuote(summary)}`,
+        ].join('\n'),
+      );
+      return ok(out, [{ type: 'environment_msg', role: 'user', content: out }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      const out = formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: create_new_file`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(msg)}`,
+        ].join('\n'),
+      );
+      return fail(out, [{ type: 'environment_msg', role: 'user', content: out }]);
+    }
+  },
+};
+
 export const teamMgmtOverwriteEntireFileTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_overwrite_entire_file',
@@ -949,6 +1129,7 @@ export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
       match: { type: 'string' },
       require_unique: { type: 'boolean' },
       strict: { type: 'boolean' },
+      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
     },
   },
@@ -1002,6 +1183,10 @@ export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
       if (strictValue !== undefined && typeof strictValue !== 'boolean') {
         throw new Error('Invalid strict (expected boolean)');
       }
+      const existingHunkIdValue = args['existing_hunk_id'];
+      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
+        throw new Error('Invalid existing_hunk_id (expected string)');
+      }
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
@@ -1014,6 +1199,7 @@ export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
         ...(matchValue !== undefined ? { match: matchValue } : {}),
         ...(requireUniqueValue !== undefined ? { require_unique: requireUniqueValue } : {}),
         ...(strictValue !== undefined ? { strict: strictValue } : {}),
+        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
         content: contentValue,
       });
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -2053,7 +2239,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 获取旧文件快照（total_lines/bytes），再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
+        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 guardrail_total_lines/guardrail_total_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -2098,7 +2284,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same preview, call `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` to capture old stats (total_lines/bytes), then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same preview, call `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read guardrail_total_lines/guardrail_total_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
     ) +
     '\n' +
@@ -2762,6 +2948,7 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtValidateTeamCfgTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
+  teamMgmtCreateNewFileTool,
   teamMgmtOverwriteEntireFileTool,
   teamMgmtPreviewFileAppendTool,
   teamMgmtPreviewInsertAfterTool,

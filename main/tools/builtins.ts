@@ -40,6 +40,7 @@ import {
 import { teamMgmtTools } from './team-mgmt';
 import {
   applyFileModificationTool,
+  createNewFileTool,
   overwriteEntireFileTool,
   previewBlockReplaceTool,
   previewFileAppendTool,
@@ -56,6 +57,7 @@ registerTool(mkDirTool);
 registerTool(moveFileTool);
 registerTool(moveDirTool);
 registerTool(readFileTool);
+registerTool(createNewFileTool);
 registerTool(overwriteEntireFileTool);
 registerTool(previewFileModificationTool);
 registerTool(applyFileModificationTool);
@@ -178,6 +180,7 @@ registerToolset('ws_mod', [
   moveFileTool,
   moveDirTool,
   readFileTool,
+  createNewFileTool,
   overwriteEntireFileTool,
   previewFileAppendTool,
   previewInsertAfterTool,
@@ -208,6 +211,7 @@ setToolsetMeta('codex_style_tools', {
 registerToolset('team-mgmt', [...teamMgmtTools]);
 setToolsetMeta('team-mgmt', {
   descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
+  promptFilesI18n: { en: './prompts/team_mgmt.en.md', zh: './prompts/team_mgmt.zh.md' },
 });
 registerToolset('diag', [verifyTellaskParsingTool]);
 setToolsetMeta('diag', {

@@ -10,20 +10,24 @@
 - 并行约束：同一轮生成中的多个工具调用可能并行执行；**preview → apply 必须分两轮**（除非未来有顺序编排器）。
 - 输出以 YAML + unified diff 为主：低注意力可复核（`summary` + `evidence`/`apply_evidence`）。
 - 规范化：所有写入遵循“每行以 `\n` 结尾（含最后一行）”；EOF 换行会被补齐并通过 `normalized.*` 字段呈现。
-- 例外：`overwrite_entire_file` 是“整文件覆盖写入”的函数工具（会直接写盘，不走 preview/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏，并且在正文疑似 diff/patch 且未显式声明 `content_format=diff|patch` 时默认拒绝。仅用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 preview/apply。
+- 例外：`overwrite_entire_file` 是“整文件覆盖写入”的函数工具（会直接写盘，不走 preview/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `guardrail_total_lines/guardrail_total_bytes`），并且在正文疑似 diff/patch 且未显式声明 `content_format=diff|patch` 时默认拒绝。仅用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 preview/apply。
+  - 复制参数建议：对账参数请直接用 `read_file` 的 `guardrail_total_lines/guardrail_total_bytes`（不要用 `display_total_lines`）。
+- 例外：`create_new_file` 只负责“创建新文件”（允许空内容），不做增量编辑、不走 preview/apply；若文件已存在会拒绝（避免误用覆盖写入语义）。
 
 ## 该用哪个 `preview_*`
 
 - 精确范围改动（行号范围）：`preview_file_modification({ path, range, content, existing_hunk_id })`
 - 末尾追加：`preview_file_append({ path, content, create, existing_hunk_id })`
 - 锚点插入：`preview_insert_after|preview_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
-- 双锚点块替换：`preview_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`
+- 双锚点块替换：`preview_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
+- 创建新文件（允许空内容）：`create_new_file({ path, content })`
 
-> Codex provider 要求所有函数工具参数字段都“必填”（schema 全 required）。当你想表达“未指定/使用默认”时，用哨兵值：
+> 注意：有些 provider（例如 Codex）会要求所有函数工具参数字段都“必填”（schema 全 required）。  
+> 如果你用的是这类 provider，但语义上想表达“未指定/使用默认”，再用哨兵值；否则（大多数 provider）省略可选字段即可：
 >
 > - `existing_hunk_id: ""` 表示不覆写旧规划（生成新 hunk）。
 > - `occurrence: ""` 或 `0` 表示不指定 occurrence（当候选不唯一时会被要求显式指定）。
-> - `match: ""` 表示默认 `contains`。
+> - `match: ""` 表示默认 `contains`（注意：`match` 是 match mode，不是要匹配的文本/正则）。
 
 ## hunk id 规则（重要）
 
@@ -43,7 +47,7 @@
 
 ```text
 Call the function tool `preview_insert_after` with:
-{ "path": "docs/spec.md", "anchor": "## Configuration", "occurrence": 1, "match": "", "existing_hunk_id": "", "content": "### Defaults\\n- provider: codex\\n" }
+{ "path": "docs/spec.md", "anchor": "## Configuration", "content": "### Defaults\\n- provider: codex\\n" }
 ```
 
 2. Apply（必须单独一轮/单独一步）：
@@ -59,21 +63,21 @@ Call the function tool `apply_file_modification` with:
 
 ```text
 Call the function tool `preview_file_append` with:
-{ "path": "notes/prompt.md", "create": true, "existing_hunk_id": "", "content": "## Tools\\n- Use preview_* + apply_file_modification for incremental edits.\\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\\n- Use preview_* + apply_file_modification for incremental edits.\\n" }
 ```
 
 - 行号范围替换（`content` 可为空字符串表示删除）：
 
 ```text
 Call the function tool `preview_file_modification` with:
-{ "path": "README.md", "range": "10~12", "existing_hunk_id": "", "content": "New line 10\\nNew line 11\\n" }
+{ "path": "README.md", "range": "10~12", "content": "New line 10\\nNew line 11\\n" }
 ```
 
 - 双锚点块替换：
 
 ```text
 Call the function tool `preview_block_replace` with:
-{ "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "occurrence": "", "include_anchors": true, "match": "", "require_unique": true, "strict": true, "content": "NEW BLOCK LINE 1\\nNEW BLOCK LINE 2\\n" }
+{ "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\\nNEW BLOCK LINE 2\\n" }
 ```
 
 ## 常见失败与下一步

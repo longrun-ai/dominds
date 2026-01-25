@@ -17,6 +17,8 @@
     "team-yaml-parsing": "tsx team-yaml-parsing.ts",
     "preview-file-modification-hunkid": "tsx plan-file-modification-hunkid.ts",
     "block-replace-preview-apply": "tsx block-replace-plan-apply.ts",
+    "create-new-file": "tsx create-new-file.ts",
+    "team-mgmt-create-new-file": "tsx team-mgmt-create-new-file.ts",
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",

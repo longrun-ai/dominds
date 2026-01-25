@@ -303,7 +303,7 @@ type PlannedRangeModification = {
   readonly oldLines: ReadonlyArray<string>;
   readonly newLines: ReadonlyArray<string>;
   readonly unifiedDiff: string;
-  // Present when action='append'. Used to detect drift between plan and apply.
+  // Used to detect drift between plan and apply.
   readonly plannedFileDigestSha256?: string;
 };
 
@@ -389,6 +389,7 @@ type PlannedBlockReplace = {
   readonly newLines: ReadonlyArray<string>;
   readonly unifiedDiff: string;
   readonly normalized: FileEofNewlineNormalization;
+  readonly plannedFileDigestSha256?: string;
 };
 
 const PLANNED_MOD_TTL_MS = 60 * 60 * 1000; // ~1 hour
@@ -650,6 +651,7 @@ async function readFileContentBounded(
   options: ReadFileOptions,
 ): Promise<{
   totalLines: number;
+  guardrailTotalLines: number;
   formattedContent: string;
   shownLines: number;
   truncatedByMaxLines: boolean;
@@ -668,6 +670,9 @@ async function readFileContentBounded(
   const stream = fsSync.createReadStream(absPath, { encoding: 'utf8' });
   let leftover = '';
   let currentLineNumber = 1;
+  let guardrailNewlineCount = 0;
+  let guardrailSawAny = false;
+  let guardrailLastChar = '';
 
   const tryAddLine = (line: string, lineNumber: number): void => {
     if (lineNumber < rangeStart || lineNumber > rangeEnd) return;
@@ -695,6 +700,13 @@ async function readFileContentBounded(
     stream.on('error', (err: unknown) => reject(err));
     stream.on('data', (chunk: string | Buffer) => {
       const chunkText = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      if (chunkText.length > 0) {
+        guardrailSawAny = true;
+        for (let i = 0; i < chunkText.length; i += 1) {
+          if (chunkText[i] === '\n') guardrailNewlineCount += 1;
+        }
+        guardrailLastChar = chunkText[chunkText.length - 1] ?? '';
+      }
       const combined = leftover + chunkText;
       const parts = combined.split('\n');
       const nextLeftover = parts.pop();
@@ -715,8 +727,15 @@ async function readFileContentBounded(
         totalLines++;
       }
 
+      const guardrailTotalLines = (() => {
+        if (!guardrailSawAny) return 0;
+        if (guardrailLastChar === '\n') return guardrailNewlineCount;
+        return guardrailNewlineCount + 1;
+      })();
+
       resolve({
         totalLines,
+        guardrailTotalLines,
         formattedContent: outLines.join('\n'),
         shownLines,
         truncatedByMaxLines,
@@ -770,7 +789,8 @@ export const readFileTool = {
           hintUseRangeNext: (relPath: string, start: number, end: number) => string;
           hintLargeFileStrategy: (relPath: string) => string;
           sizeLabel: string;
-          totalLinesLabel: string;
+          displayTotalLinesLabel: string;
+          guardrailTotalLinesLabel: string;
           failedToRead: (msg: string) => string;
           invalidFormatMultiToolCalls: (toolName: string) => string;
         }
@@ -781,18 +801,18 @@ export const readFileTool = {
         formatError:
           '请使用正确的函数工具参数调用 `read_file`。\n\n' +
           '**期望格式：** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          '说明（Codex provider 要求函数工具参数字段全部 `required`）：\n' +
+          '注意：大多数 provider 可省略可选字段；但如果你的 provider 要求函数工具参数字段都“必填”（例如 Codex），可用哨兵值表达“未指定/默认”。\n' +
           '- `range: \"\"` 表示不指定范围\n' +
           '- `max_lines: 0` 表示使用默认值（500）\n\n' +
-          '**示例：**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
+          '**示例：**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **错误：** ${msg}\n\n` +
           '请使用正确的函数工具参数调用 `read_file`。\n\n' +
           '**期望格式：** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          '说明（Codex provider 要求函数工具参数字段全部 `required`）：\n' +
+          '注意：大多数 provider 可省略可选字段；但如果你的 provider 要求函数工具参数字段都“必填”（例如 Codex），可用哨兵值表达“未指定/默认”。\n' +
           '- `range: \"\"` 表示不指定范围\n' +
           '- `max_lines: 0` 表示使用默认值（500）\n\n' +
-          '**示例：**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
+          '**示例：**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         fileLabel: '文件',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
           `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
@@ -805,7 +825,8 @@ export const readFileTool = {
         hintLargeFileStrategy: (relPath: string) =>
           `💡 **大文件策略：** 建议分多轮分析：每轮读取一段、完成总结后，在新一轮先调用函数工具 \`clear_mind({ \"reminder_content\": \"\" })\`（降低上下文占用），再继续读取下一段（例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`、\`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`）。\n\n`,
         sizeLabel: '大小',
-        totalLinesLabel: '总行数',
+        displayTotalLinesLabel: '总行数（display）',
+        guardrailTotalLinesLabel: '对账行数（guardrail）',
         failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
           `INVALID_FORMAT：检测到疑似把多个工具调用文本混入了 \`read_file\` 的输入（例如出现 \`${toolName}\`）。\n\n` +
@@ -816,18 +837,18 @@ export const readFileTool = {
         formatError:
           'Please call the function tool `read_file` with valid arguments.\n\n' +
           '**Expected:** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          'Note (Codex provider requires all args to be `required`):\n' +
+          'Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex), use sentinel values for “unset/default”.\n' +
           '- use `range: \"\"` for unset\n' +
           '- use `max_lines: 0` for default (500)\n\n' +
-          '**Examples:**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
+          '**Examples:**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **Error:** ${msg}\n\n` +
           'Please call the function tool `read_file` with valid arguments.\n\n' +
           '**Expected:** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          'Note (Codex provider requires all args to be `required`):\n' +
+          'Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex), use sentinel values for “unset/default”.\n' +
           '- use `range: \"\"` for unset\n' +
           '- use `max_lines: 0` for default (500)\n\n' +
-          '**Examples:**\n```text\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\", \"max_lines\": 0, \"show_linenos\": true }\n{ \"path\": \"src/main.ts\", \"range\": \"300~\", \"max_lines\": 800, \"show_linenos\": false }\n```',
+          '**Examples:**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         fileLabel: 'File',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
           `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
@@ -840,7 +861,8 @@ export const readFileTool = {
         hintLargeFileStrategy: (relPath: string) =>
           `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice, summarize, then start a new round and call the function tool \`clear_mind({ \"reminder_content\": \"\" })\` (less context) before reading the next slice (e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`, then \`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`).\n\n`,
         sizeLabel: 'Size',
-        totalLinesLabel: 'Total lines',
+        displayTotalLinesLabel: 'Total lines (display)',
+        guardrailTotalLinesLabel: 'Total lines (guardrail)',
         failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
           `INVALID_FORMAT: Detected what looks like tool-call text mixed into \`read_file\` input (e.g. \`${toolName}\`).\n\n` +
@@ -990,8 +1012,28 @@ export const readFileTool = {
       const stat = await fs.stat(file);
       const contentSummary = await readFileContentBounded(file, options);
 
-      // Create markdown response
-      let markdown = `📄 **${labels.fileLabel}:** \`${rel}\`\n`;
+      const headerSummary =
+        language === 'zh'
+          ? `read_file：${rel}；size=${stat.size} bytes；display_total_lines=${contentSummary.totalLines}；guardrail_total_lines=${contentSummary.guardrailTotalLines}；shown=${contentSummary.shownLines}.`
+          : `read_file: ${rel}; size=${stat.size} bytes; display_total_lines=${contentSummary.totalLines}; guardrail_total_lines=${contentSummary.guardrailTotalLines}; shown=${contentSummary.shownLines}.`;
+
+      const yaml = [
+        `status: ok`,
+        `mode: read_file`,
+        `path: ${yamlQuote(rel)}`,
+        `size_bytes: ${stat.size}`,
+        `guardrail_total_bytes: ${stat.size}`,
+        `display_total_lines: ${contentSummary.totalLines}`,
+        `guardrail_total_lines: ${contentSummary.guardrailTotalLines}`,
+        `shown_lines: ${contentSummary.shownLines}`,
+        `truncated_by_max_lines: ${contentSummary.truncatedByMaxLines}`,
+        `truncated_by_char_limit: ${contentSummary.truncatedByCharLimit}`,
+        `summary: ${yamlQuote(headerSummary)}`,
+      ].join('\n');
+
+      // Create markdown response (human-friendly body after a structured YAML header)
+      let markdown = `${formatYamlCodeBlock(yaml)}\n\n`;
+      markdown += `📄 **${labels.fileLabel}:** \`${rel}\`\n`;
 
       if (maxLinesRangeMismatch) {
         markdown += labels.warningMaxLinesRangeMismatch(
@@ -1025,7 +1067,8 @@ export const readFileTool = {
       }
 
       markdown += `**${labels.sizeLabel}:** ${stat.size} bytes\n`;
-      markdown += `**${labels.totalLinesLabel}:** ${contentSummary.totalLines}\n`;
+      markdown += `**${labels.displayTotalLinesLabel}:** ${contentSummary.totalLines}\n`;
+      markdown += `**${labels.guardrailTotalLinesLabel}:** ${contentSummary.guardrailTotalLines}\n`;
       markdown += '\n';
 
       // Add file content with code block formatting
@@ -1086,6 +1129,22 @@ const overwriteEntireFileSchema = {
   },
   required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
 } as const;
+
+function parseCreateNewFileArgs(args: ToolArguments): { path: string; content: string } {
+  const pathValue = args['path'];
+  if (typeof pathValue !== 'string' || pathValue.trim() === '') {
+    throw new Error('Invalid `path` (expected non-empty string)');
+  }
+
+  const contentValue = args['content'];
+  if (contentValue === undefined) {
+    return { path: pathValue, content: '' };
+  }
+  if (typeof contentValue !== 'string') {
+    throw new Error('Invalid `content` (expected string)');
+  }
+  return { path: pathValue, content: contentValue };
+}
 
 function parseOverwriteContentFormat(value: unknown): OverwriteContentFormat | undefined {
   if (value === undefined) return undefined;
@@ -1164,6 +1223,166 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
   };
 }
 
+export const createNewFileTool: FuncTool = {
+  type: 'func',
+  name: 'create_new_file',
+  description: 'Create a new file (no preview/apply). Refuses to overwrite existing files.',
+  descriptionI18n: {
+    en: 'Create a new file (no preview/apply). Refuses to overwrite existing files.',
+    zh: '创建一个新文件（不走 preview/apply）。若文件已存在则拒绝覆写。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: { type: 'string', description: 'Workspace-relative path to create.' },
+      content: {
+        type: 'string',
+        description:
+          'Optional initial content. Empty string is allowed. If non-empty and missing a trailing newline, Dominds will append one.',
+      },
+    },
+    required: ['path'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
+    const language = getWorkLanguage();
+    const t =
+      language === 'zh'
+        ? {
+            invalidArgs: (msg: string) => `参数不正确：${msg}`,
+            fileExists: '文件已存在，拒绝创建。',
+            notAFile: '路径已存在但不是文件（可能是目录），拒绝创建。',
+            nextOverwrite:
+              '下一步：先用 read_file 获取 guardrail_total_lines/guardrail_total_bytes，然后再调用 overwrite_entire_file 覆盖写入。',
+            ok: '已创建新文件。',
+          }
+        : {
+            invalidArgs: (msg: string) => `Invalid args: ${msg}`,
+            fileExists: 'File already exists; refusing to create.',
+            notAFile: 'Path exists but is not a file (e.g. a directory); refusing to create.',
+            nextOverwrite:
+              'Next: call read_file to get guardrail_total_lines/guardrail_total_bytes, then use overwrite_entire_file to overwrite.',
+            ok: 'Created new file.',
+          };
+
+    const parsed = (() => {
+      try {
+        return parseCreateNewFileArgs(args);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { __error: msg } as const;
+      }
+    })();
+    if ('__error' in parsed) {
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: create_new_file`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(t.invalidArgs(parsed.__error))}`,
+        ].join('\n'),
+      );
+    }
+
+    if (!hasWriteAccess(caller, parsed.path)) {
+      return getAccessDeniedMessage('write', parsed.path, language);
+    }
+
+    let absPath: string;
+    try {
+      absPath = ensureInsideWorkspace(parsed.path);
+    } catch (err: unknown) {
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: create_new_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: INVALID_PATH`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+        ].join('\n'),
+      );
+    }
+
+    if (fsSync.existsSync(absPath)) {
+      let s: fsSync.Stats;
+      try {
+        s = fsSync.statSync(absPath);
+      } catch (err: unknown) {
+        return formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: create_new_file`,
+            `path: ${yamlQuote(parsed.path)}`,
+            `error: FAILED`,
+            `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+          ].join('\n'),
+        );
+      }
+
+      if (!s.isFile()) {
+        return formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: create_new_file`,
+            `path: ${yamlQuote(parsed.path)}`,
+            `error: NOT_A_FILE`,
+            `summary: ${yamlQuote(t.notAFile)}`,
+          ].join('\n'),
+        );
+      }
+
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: create_new_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: FILE_EXISTS`,
+          `summary: ${yamlQuote(t.fileExists)}`,
+          `next: ${yamlQuote(t.nextOverwrite)}`,
+        ].join('\n'),
+      );
+    }
+
+    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(
+      parsed.content,
+    );
+    try {
+      fsSync.mkdirSync(path.dirname(absPath), { recursive: true });
+      fsSync.writeFileSync(absPath, normalizedBody, 'utf8');
+    } catch (err: unknown) {
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: create_new_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+        ].join('\n'),
+      );
+    }
+
+    const newTotalBytes = Buffer.byteLength(normalizedBody, 'utf8');
+    const newTotalLines = splitTextToLinesForEditing(normalizedBody).length;
+    const normalizedNewlineAdded = addedTrailingNewlineToContent && normalizedBody !== '';
+    const okSummary =
+      language === 'zh'
+        ? `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
+        : `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
+    return formatYamlCodeBlock(
+      [
+        `status: ok`,
+        `mode: create_new_file`,
+        `path: ${yamlQuote(parsed.path)}`,
+        `new_total_lines: ${newTotalLines}`,
+        `new_total_bytes: ${newTotalBytes}`,
+        `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
+        `summary: ${yamlQuote(okSummary)}`,
+      ].join('\n'),
+    );
+  },
+};
+
 export const overwriteEntireFileTool: FuncTool = {
   type: 'func',
   name: 'overwrite_entire_file',
@@ -1177,64 +1396,55 @@ export const overwriteEntireFileTool: FuncTool = {
   argsValidation: 'dominds',
   call: async (_dlg, caller, args: ToolArguments): Promise<string> => {
     const language = getWorkLanguage();
-    const labels =
+    const t =
       language === 'zh'
         ? {
-            fileNotFound: (p: string) =>
-              `错误：文件不存在：\`${p}\`。创建文件请使用 preview/apply（例如 preview_file_append create=true）。`,
-            notAFile: (p: string) => `错误：路径不是文件：\`${p}\`。`,
-            statsMismatch: (
-              p: string,
-              knownLines: number,
-              knownBytes: number,
-              actualLines: number,
-              actualBytes: number,
-            ) =>
-              `错误：旧文件快照不匹配，拒绝覆盖写入：\`${p}\`。\n` +
-              `- known_old_total_lines: ${knownLines}\n` +
-              `- known_old_total_bytes: ${knownBytes}\n` +
-              `- actual_old_total_lines: ${actualLines}\n` +
-              `- actual_old_total_bytes: ${actualBytes}\n` +
-              `下一步：先 read_file / list_dir 获取最新状态，再重试。`,
+            invalidArgs: (msg: string) => `参数不正确：${msg}`,
+            fileNotFound:
+              '文件不存在；创建文件请使用 preview/apply（例如 preview_file_append create=true）。',
+            notAFile: '路径不是文件。',
+            statsMismatch: '旧文件快照不匹配，拒绝覆盖写入。',
+            nextRefreshStats:
+              '下一步：先 read_file / list_dir 获取最新状态（行数用 read_file 的 guardrail_total_lines），再重试。',
             suspiciousDiff:
-              '错误：检测到疑似 diff/patch 正文，且未显式声明 `content_format`。\n' +
-              '为避免把 patch 文本误写进文件，默认拒绝。\n' +
-              '下一步：改用 preview_* → apply_file_modification；或若你确实要保存 diff/patch 字面量，请设置 content_format=diff|patch。',
-            ok: (p: string, normalized: boolean, newLines: number, newBytes: number) =>
-              `✅ 已覆盖写入：\`${p}\`\n` +
-              `- new_total_lines: ${newLines}\n` +
-              `- new_total_bytes: ${newBytes}\n` +
-              (normalized ? '- normalized: added trailing newline\n' : ''),
+              '检测到疑似 diff/patch 正文，且未显式声明 content_format；为避免把 patch 文本误写进文件，默认拒绝。',
+            nextUsePreviewApply:
+              '下一步：改用 preview_* → apply_file_modification；或若确实要保存 diff/patch 字面量，请设置 content_format=diff|patch。',
+            ok: '已覆盖写入。',
           }
         : {
-            fileNotFound: (p: string) =>
-              `Error: file not found: \`${p}\`. To create a file, use preview/apply (e.g. preview_file_append create=true).`,
-            notAFile: (p: string) => `Error: path is not a file: \`${p}\`.`,
-            statsMismatch: (
-              p: string,
-              knownLines: number,
-              knownBytes: number,
-              actualLines: number,
-              actualBytes: number,
-            ) =>
-              `Error: known_old_stats mismatch; refusing to overwrite: \`${p}\`.\n` +
-              `- known_old_total_lines: ${knownLines}\n` +
-              `- known_old_total_bytes: ${knownBytes}\n` +
-              `- actual_old_total_lines: ${actualLines}\n` +
-              `- actual_old_total_bytes: ${actualBytes}\n` +
-              `Next: read_file / list_dir to refresh stats, then retry.`,
+            invalidArgs: (msg: string) => `Invalid args: ${msg}`,
+            fileNotFound:
+              'File not found; to create a file, use preview/apply (e.g. preview_file_append create=true).',
+            notAFile: 'Path is not a file.',
+            statsMismatch: 'known_old_total_lines/bytes mismatch; refusing to overwrite.',
+            nextRefreshStats:
+              'Next: read_file / list_dir to refresh stats (use read_file guardrail_total_lines for known_old_total_lines), then retry.',
             suspiciousDiff:
-              'Error: content looks like a diff/patch, but `content_format` was not provided.\n' +
-              'To avoid accidentally overwriting a file with patch text, this call is rejected by default.\n' +
+              'Content looks like a diff/patch, but content_format was not provided; rejected by default to prevent accidental overwrites.',
+            nextUsePreviewApply:
               "Next: use preview_* → apply_file_modification; or if you intentionally want to store diff/patch text literally, set content_format='diff'|'patch'.",
-            ok: (p: string, normalized: boolean, newLines: number, newBytes: number) =>
-              `ok: overwrote \`${p}\`\n` +
-              `new_total_lines: ${newLines}\n` +
-              `new_total_bytes: ${newBytes}\n` +
-              (normalized ? 'normalized: added trailing newline\n' : ''),
+            ok: 'Overwrote file.',
           };
 
-    const parsed = parseOverwriteEntireFileArgs(args);
+    const parsed = (() => {
+      try {
+        return parseOverwriteEntireFileArgs(args);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { __error: msg } as const;
+      }
+    })();
+    if ('__error' in parsed) {
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(t.invalidArgs(parsed.__error))}`,
+        ].join('\n'),
+      );
+    }
 
     if (!hasWriteAccess(caller, parsed.path)) {
       return getAccessDeniedMessage('write', parsed.path, language);
@@ -1244,7 +1454,15 @@ export const overwriteEntireFileTool: FuncTool = {
     try {
       absPath = ensureInsideWorkspace(parsed.path);
     } catch (err: unknown) {
-      return err instanceof Error ? err.message : String(err);
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: INVALID_PATH`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+        ].join('\n'),
+      );
     }
 
     let s: fsSync.Stats;
@@ -1257,37 +1475,88 @@ export const overwriteEntireFileTool: FuncTool = {
         'code' in err &&
         (err as { code?: unknown }).code === 'ENOENT'
       ) {
-        return labels.fileNotFound(parsed.path);
+        return formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: overwrite_entire_file`,
+            `path: ${yamlQuote(parsed.path)}`,
+            `error: FILE_NOT_FOUND`,
+            `summary: ${yamlQuote(t.fileNotFound)}`,
+          ].join('\n'),
+        );
       }
-      return err instanceof Error ? err.message : String(err);
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+        ].join('\n'),
+      );
     }
-    if (!s.isFile()) return labels.notAFile(parsed.path);
+    if (!s.isFile()) {
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: NOT_A_FILE`,
+          `summary: ${yamlQuote(t.notAFile)}`,
+        ].join('\n'),
+      );
+    }
 
     const actualOldTotalBytes = s.size;
     let actualOldTotalLines: number;
     try {
       actualOldTotalLines = await countFileLinesUtf8(absPath);
     } catch (err: unknown) {
-      return err instanceof Error ? err.message : String(err);
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+        ].join('\n'),
+      );
     }
 
     if (
       parsed.knownOldTotalBytes !== actualOldTotalBytes ||
       parsed.knownOldTotalLines !== actualOldTotalLines
     ) {
-      return labels.statsMismatch(
-        parsed.path,
-        parsed.knownOldTotalLines,
-        parsed.knownOldTotalBytes,
-        actualOldTotalLines,
-        actualOldTotalBytes,
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: STATS_MISMATCH`,
+          `known_old_total_lines: ${parsed.knownOldTotalLines}`,
+          `known_old_total_bytes: ${parsed.knownOldTotalBytes}`,
+          `actual_old_total_lines: ${actualOldTotalLines}`,
+          `actual_old_total_bytes: ${actualOldTotalBytes}`,
+          `summary: ${yamlQuote(t.statsMismatch)}`,
+          `next: ${yamlQuote(t.nextRefreshStats)}`,
+        ].join('\n'),
       );
     }
 
     if (parsed.contentFormat !== 'diff' && parsed.contentFormat !== 'patch') {
       // Only refuse when content_format is omitted (or a non-diff format), and content is strongly diff-like.
       if (detectStrongDiffOrPatchMarkers(parsed.content)) {
-        return labels.suspiciousDiff;
+        return formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: overwrite_entire_file`,
+            `path: ${yamlQuote(parsed.path)}`,
+            `error: SUSPICIOUS_DIFF`,
+            `content_format: ${yamlQuote(parsed.contentFormat ?? '')}`,
+            `summary: ${yamlQuote(t.suspiciousDiff)}`,
+            `next: ${yamlQuote(t.nextUsePreviewApply)}`,
+          ].join('\n'),
+        );
       }
     }
 
@@ -1297,19 +1566,38 @@ export const overwriteEntireFileTool: FuncTool = {
     try {
       await fs.writeFile(absPath, normalizedBody, 'utf8');
     } catch (err: unknown) {
-      return err instanceof Error ? err.message : String(err);
+      return formatYamlCodeBlock(
+        [
+          `status: error`,
+          `mode: overwrite_entire_file`,
+          `path: ${yamlQuote(parsed.path)}`,
+          `error: FAILED`,
+          `summary: ${yamlQuote(err instanceof Error ? err.message : String(err))}`,
+        ].join('\n'),
+      );
     }
 
     const newTotalBytes = Buffer.byteLength(normalizedBody, 'utf8');
     const newTotalLines = splitTextToLinesForEditing(normalizedBody).length;
-    return labels
-      .ok(
-        parsed.path,
-        addedTrailingNewlineToContent && normalizedBody !== '',
-        newTotalLines,
-        newTotalBytes,
-      )
-      .trimEnd();
+    const normalizedNewlineAdded = addedTrailingNewlineToContent && normalizedBody !== '';
+    const okSummary =
+      language === 'zh'
+        ? `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
+        : `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
+    return formatYamlCodeBlock(
+      [
+        `status: ok`,
+        `mode: overwrite_entire_file`,
+        `path: ${yamlQuote(parsed.path)}`,
+        `known_old_total_lines: ${parsed.knownOldTotalLines}`,
+        `known_old_total_bytes: ${parsed.knownOldTotalBytes}`,
+        `new_total_lines: ${newTotalLines}`,
+        `new_total_bytes: ${newTotalBytes}`,
+        `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
+        `content_format: ${yamlQuote(parsed.contentFormat ?? '')}`,
+        `summary: ${yamlQuote(okSummary)}`,
+      ].join('\n'),
+    );
   },
 };
 
@@ -1325,7 +1613,7 @@ async function runPreviewFileModification(
     language === 'zh'
       ? {
           invalidFormat:
-            '错误：参数不正确。\n\n期望：调用函数工具 `preview_file_modification({ path, range, existing_hunk_id, content })`。\n（Codex provider 要求参数字段全部 required：`existing_hunk_id: \"\"` 表示生成新 hunk；`content: \"\"` 可用于删除范围内内容。）',
+            '错误：参数不正确。\n\n期望：调用函数工具 `preview_file_modification({ path, range, existing_hunk_id, content })`。\n（注意：大多数 provider 可省略可选字段；但如果你的 provider 要求“字段全必填”（例如 Codex），则：`existing_hunk_id: \"\"` 表示生成新 hunk；`content: \"\"` 可用于删除范围内内容。）',
           filePathRequired: '错误：需要提供文件路径。',
           rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
           fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
@@ -1340,7 +1628,7 @@ async function runPreviewFileModification(
         }
       : {
           invalidFormat:
-            'Error: Invalid args.\n\nExpected: call the function tool `preview_file_modification({ path, range, existing_hunk_id, content })`.\n(Codex provider requires all args to be required: `existing_hunk_id: \"\"` means generate a new hunk; `content: \"\"` can be used to delete the range.)',
+            'Error: Invalid args.\n\nExpected: call the function tool `preview_file_modification({ path, range, existing_hunk_id, content })`.\n(Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex): `existing_hunk_id: \"\"` means generate a new hunk; `content: \"\"` can be used to delete the range.)',
           filePathRequired: 'Error: File path is required.',
           rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
           fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
@@ -1465,7 +1753,7 @@ async function runPreviewFileModification(
       oldLines,
       newLines,
       unifiedDiff,
-      plannedFileDigestSha256: action === 'append' ? sha256HexUtf8(currentContent) : undefined,
+      plannedFileDigestSha256: sha256HexUtf8(currentContent),
     };
     plannedModsById.set(hunkId, planned);
 
@@ -2245,7 +2533,10 @@ export const previewInsertAfterTool: FuncTool = {
       path: { type: 'string' },
       anchor: { type: 'string' },
       occurrence: { type: ['integer', 'string'] },
-      match: { type: 'string' },
+      match: {
+        type: 'string',
+        description: "Anchor match mode: 'contains' (default) or 'equals'.",
+      },
       existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
     },
@@ -2331,7 +2622,10 @@ export const previewInsertBeforeTool: FuncTool = {
       path: { type: 'string' },
       anchor: { type: 'string' },
       occurrence: { type: ['integer', 'string'] },
-      match: { type: 'string' },
+      match: {
+        type: 'string',
+        description: "Anchor match mode: 'contains' (default) or 'equals'.",
+      },
       existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
     },
@@ -2571,10 +2865,11 @@ async function runApplyFileModification(
               // Append is always applied at EOF; drift is reported via digest.
               if (p.kind === 'append' || (p.kind === 'range' && p.action === 'append')) {
                 const currentDigest = sha256HexUtf8(currentContent);
-                const plannedDigest =
-                  p.kind === 'append' ? p.plannedFileDigestSha256 : p.plannedFileDigestSha256;
+                const plannedDigest = p.plannedFileDigestSha256;
                 const contextMatch =
-                  plannedDigest && plannedDigest === currentDigest ? 'exact' : 'fuzz';
+                  plannedDigest !== undefined && plannedDigest === currentDigest ? 'exact' : 'fuzz';
+                const fileChangedSincePreview =
+                  plannedDigest !== undefined && plannedDigest !== currentDigest;
 
                 const currentLinesRaw = splitFileTextToLines(currentContent);
                 const baseLines = isEmptyFileLines(currentLinesRaw) ? [] : currentLinesRaw;
@@ -2599,7 +2894,7 @@ async function runApplyFileModification(
                     ? `Apply：append 第 ${appendStartLine}–${appendEndLine} 行（+${appendedLineCount} 行）；匹配=${contextMatch}；hunk_id=${id}.`
                     : `Apply: append lines ${appendStartLine}–${appendEndLine} (+${appendedLineCount} lines); matched ${contextMatch}; hunk_id=${id}.`;
 
-                const yaml = [
+                const yamlLines = [
                   `status: ok`,
                   `mode: apply_file_modification`,
                   `path: ${yamlQuote(p.relPath)}`,
@@ -2613,12 +2908,22 @@ async function runApplyFileModification(
                   `  new: ${appendedLineCount}`,
                   `  delta: ${appendedLineCount}`,
                   `context_match: ${contextMatch}`,
+                ];
+                if (contextMatch === 'fuzz') {
+                  yamlLines.push(
+                    `file_changed_since_preview: ${fileChangedSincePreview}`,
+                    `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                    `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                  );
+                }
+                yamlLines.push(
                   `apply_evidence:`,
                   `  before_tail: ${yamlBlockScalarLines(evidenceBeforeTail, '    ')}`,
                   `  appended_preview: ${yamlBlockScalarLines(evidenceAppendPreview, '    ')}`,
                   `  after_tail: ${yamlBlockScalarLines(evidenceAfterTail, '    ')}`,
                   `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
+                );
+                const yaml = yamlLines.join('\n');
 
                 const content =
                   `${labels.applied(p.relPath, id)}\n\n` +
@@ -2689,6 +2994,11 @@ async function runApplyFileModification(
                   }
                 }
 
+                const currentDigest = sha256HexUtf8(currentContent);
+                const plannedDigest = p.plannedFileDigestSha256;
+                const fileChangedSincePreview =
+                  plannedDigest !== undefined && plannedDigest !== currentDigest;
+
                 const nextLines = [...currentLines];
                 nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
                 const nextText = joinLinesForWrite(nextLines);
@@ -2719,7 +3029,7 @@ async function runApplyFileModification(
                     ? `Apply：insert 第 ${insertedAtLine} 起 +${insertedLineCount} 行；匹配=${contextMatch}；hunk_id=${id}.`
                     : `Apply: insert +${insertedLineCount} lines at line ${insertedAtLine}; matched ${contextMatch}; hunk_id=${id}.`;
 
-                const yaml = [
+                const yamlLines = [
                   `status: ok`,
                   `mode: apply_file_modification`,
                   `path: ${yamlQuote(p.relPath)}`,
@@ -2730,12 +3040,22 @@ async function runApplyFileModification(
                   `inserted_at_line: ${insertedAtLine}`,
                   `inserted_line_count: ${insertedLineCount}`,
                   `context_match: ${contextMatch}`,
+                ];
+                if (contextMatch === 'fuzz') {
+                  yamlLines.push(
+                    `file_changed_since_preview: ${fileChangedSincePreview}`,
+                    `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                    `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                  );
+                }
+                yamlLines.push(
                   `apply_evidence:`,
                   `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
                   `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
                   `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
                   `summary: ${yamlQuote(summary)}`,
-                ].join('\n');
+                );
+                const yaml = yamlLines.join('\n');
 
                 const content =
                   `${labels.applied(p.relPath, id)}\n\n` +
@@ -2804,6 +3124,11 @@ async function runApplyFileModification(
                 }
               }
 
+              const currentDigest = sha256HexUtf8(currentContent);
+              const plannedDigest = p.plannedFileDigestSha256;
+              const fileChangedSincePreview =
+                plannedDigest !== undefined && plannedDigest !== currentDigest;
+
               const nextLines = [...currentLines];
               nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
               const nextText = joinLinesForWrite(nextLines);
@@ -2837,7 +3162,7 @@ async function runApplyFileModification(
                   ? `Apply：${action} 第 ${startLine}–${endLine} 行（old=${linesOld}, new=${linesNew}, delta=${delta}）；匹配=${contextMatch}；hunk_id=${id}.`
                   : `Apply: ${action} lines ${startLine}–${endLine} (old=${linesOld}, new=${linesNew}, delta=${delta}); matched ${contextMatch}; hunk_id=${id}.`;
 
-              const yaml = [
+              const yamlLines = [
                 `status: ok`,
                 `mode: apply_file_modification`,
                 `path: ${yamlQuote(p.relPath)}`,
@@ -2852,12 +3177,22 @@ async function runApplyFileModification(
                 `  new: ${linesNew}`,
                 `  delta: ${delta}`,
                 `context_match: ${contextMatch}`,
+              ];
+              if (contextMatch === 'fuzz') {
+                yamlLines.push(
+                  `file_changed_since_preview: ${fileChangedSincePreview}`,
+                  `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                  `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                );
+              }
+              yamlLines.push(
                 `apply_evidence:`,
                 `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
                 `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
                 `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
                 `summary: ${yamlQuote(summary)}`,
-              ].join('\n');
+              );
+              const yaml = yamlLines.join('\n');
 
               const content =
                 `${labels.applied(p.relPath, id)}\n\n` +
@@ -2971,6 +3306,10 @@ async function runApplyFileModification(
             }
 
             const currentContent = fsSync.readFileSync(p.absPath, 'utf8');
+            const currentDigest = sha256HexUtf8(currentContent);
+            const plannedDigest = p.plannedFileDigestSha256;
+            const fileChangedSincePreview =
+              plannedDigest !== undefined && plannedDigest !== currentDigest;
             const fileEofHasNewline = currentContent === '' || currentContent.endsWith('\n');
             const normalizedFileEofNewlineAdded =
               currentContent !== '' && !currentContent.endsWith('\n');
@@ -3132,7 +3471,7 @@ async function runApplyFileModification(
                 ? `Apply：block_replace old=${oldCount}, new=${newCount}, delta=${delta}；匹配=${contextMatch}；hunk_id=${id}.`
                 : `Apply: block_replace old=${oldCount}, new=${newCount}, delta=${delta}; matched ${contextMatch}; hunk_id=${id}.`;
 
-            const yaml = [
+            const yamlLines = [
               `status: ok`,
               `mode: apply_file_modification`,
               `path: ${yamlQuote(p.relPath)}`,
@@ -3149,6 +3488,15 @@ async function runApplyFileModification(
               `  new: ${newCount}`,
               `  delta: ${delta}`,
               `context_match: ${contextMatch}`,
+            ];
+            if (contextMatch === 'fuzz') {
+              yamlLines.push(
+                `file_changed_since_preview: ${fileChangedSincePreview}`,
+                `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+              );
+            }
+            yamlLines.push(
               `normalized:`,
               `  file_eof_has_newline: ${fileEofHasNewline}`,
               `  content_eof_has_newline: ${p.normalized.contentEofHasNewline}`,
@@ -3160,7 +3508,8 @@ async function runApplyFileModification(
               `  new_preview: ${yamlFlowStringArray(newPreview)}`,
               `  after_preview: ${yamlFlowStringArray([lines[selected.end0] ?? ''])}`,
               `summary: ${yamlQuote(summary)}`,
-            ].join('\n');
+            );
+            const yaml = yamlLines.join('\n');
 
             const content =
               `${labels.applied(p.relPath, id)}\n\n` +
@@ -3219,6 +3568,7 @@ async function runPreviewBlockReplace(
     filePath: string;
     startAnchor: string;
     endAnchor: string;
+    requestedId: string | undefined;
     occurrence: Occurrence;
     occurrenceSpecified: boolean;
     includeAnchors: boolean;
@@ -3233,6 +3583,7 @@ async function runPreviewBlockReplace(
   const startAnchor = options.startAnchor;
   const endAnchor = options.endAnchor;
   const inputBody = options.inputBody;
+  const requestedId = options.requestedId;
   const occurrence = options.occurrence;
   const occurrenceSpecified = options.occurrenceSpecified;
   const includeAnchors = options.includeAnchors;
@@ -3281,6 +3632,50 @@ async function runPreviewBlockReplace(
     pruneExpiredPlannedBlockReplaces(Date.now());
 
     const fullPath = ensureInsideWorkspace(filePath);
+
+    if (requestedId) {
+      const existingBlockReplace = plannedBlockReplacesById.get(requestedId);
+      if (!existingBlockReplace) {
+        const wrongMode = plannedModsById.has(requestedId);
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: preview_block_replace`,
+            `path: ${yamlQuote(filePath)}`,
+            `hunk_id: ${yamlQuote(requestedId)}`,
+            `error: ${wrongMode ? 'WRONG_MODE' : 'HUNK_NOT_FOUND'}`,
+            `summary: ${yamlQuote(
+              wrongMode
+                ? language === 'zh'
+                  ? '该 hunk id 不是由 preview_block_replace 生成的，不能用该工具覆写。'
+                  : 'This hunk was not generated by preview_block_replace; cannot overwrite.'
+                : language === 'zh'
+                  ? '该 hunk id 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 existing_hunk_id 设为空字符串。'
+                  : 'Hunk not found (expired or already applied). Custom new ids are not allowed; set existing_hunk_id to an empty string to generate a new one.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (existingBlockReplace.plannedBy !== caller.id) {
+        const content = formatYamlCodeBlock(
+          [
+            `status: error`,
+            `mode: preview_block_replace`,
+            `path: ${yamlQuote(filePath)}`,
+            `hunk_id: ${yamlQuote(requestedId)}`,
+            `error: WRONG_OWNER`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '该 hunk id 不是由当前成员规划的，不能覆写。'
+                : 'This hunk was planned by a different member; cannot overwrite.',
+            )}`,
+          ].join('\n'),
+        );
+        return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+    }
+
     if (!fsSync.existsSync(fullPath)) {
       const content = formatYamlCodeBlock(
         [
@@ -3436,6 +3831,7 @@ async function runPreviewBlockReplace(
 
     const nowMs = Date.now();
     const hunkId = (() => {
+      if (requestedId) return requestedId;
       for (let i = 0; i < 10; i += 1) {
         const id = generateHunkId();
         if (!plannedModsById.has(id) && !plannedBlockReplacesById.has(id)) return id;
@@ -3466,6 +3862,7 @@ async function runPreviewBlockReplace(
       newLines: replacementLines,
       unifiedDiff,
       normalized,
+      plannedFileDigestSha256: sha256HexUtf8(existing),
     };
     plannedBlockReplacesById.set(hunkId, planned);
 
@@ -3494,6 +3891,7 @@ async function runPreviewBlockReplace(
       `candidates_count: ${candidatesCount}`,
       `occurrence_resolved: ${yamlQuote(occurrenceResolved)}`,
       `hunk_id: ${yamlQuote(hunkId)}`,
+      `reused_hunk_id: ${requestedId ? 'true' : 'false'}`,
       `expires_at_ms: ${planned.expiresAtMs}`,
       `block_range:`,
       `  start_line: ${selected.start0 + 1}`,
@@ -3553,9 +3951,13 @@ export const previewBlockReplaceTool: FuncTool = {
       end_anchor: { type: 'string' },
       occurrence: { type: ['integer', 'string'] },
       include_anchors: { type: 'boolean' },
-      match: { type: 'string' },
+      match: {
+        type: 'string',
+        description: "Anchor match mode: 'contains' (default) or 'equals'.",
+      },
       require_unique: { type: 'boolean' },
       strict: { type: 'boolean' },
+      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
     },
     required: ['path', 'start_anchor', 'end_anchor', 'content'],
@@ -3565,6 +3967,9 @@ export const previewBlockReplaceTool: FuncTool = {
     const filePath = requireNonEmptyStringArg(args, 'path');
     const startAnchor = requireNonEmptyStringArg(args, 'start_anchor');
     const endAnchor = requireNonEmptyStringArg(args, 'end_anchor');
+    const existingHunkId = normalizeExistingHunkId(
+      optionalNonEmptyStringArg(args, 'existing_hunk_id'),
+    );
     const content = optionalStringArg(args, 'content') ?? '';
 
     let occurrence: Occurrence = { kind: 'index', index1: 1 };
@@ -3612,10 +4017,18 @@ export const previewBlockReplaceTool: FuncTool = {
 
     const strict = optionalBooleanArg(args, 'strict') ?? true;
 
+    const requestedId = existingHunkId;
+    if (requestedId !== undefined && !isValidHunkId(requestedId)) {
+      throw new Error(
+        "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+      );
+    }
+
     const res = await runPreviewBlockReplace(caller, {
       filePath,
       startAnchor,
       endAnchor,
+      requestedId,
       occurrence,
       occurrenceSpecified,
       includeAnchors,
