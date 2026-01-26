@@ -5,6 +5,8 @@
   "type": "commonjs",
   "description": "Dominds test scripts",
   "scripts": {
+    "parsing": "tsx tellask/parsing.ts",
+    "realtime": "tsx tellask/realtime.ts",
     "auth": "tsx auth.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
