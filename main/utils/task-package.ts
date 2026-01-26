@@ -25,10 +25,48 @@ export interface TaskPackageSectionsState {
   progress: TaskPackageSectionState;
 }
 
+export const BEAR_IN_MIND_SECTIONS = [
+  'contracts',
+  'acceptance',
+  'grants',
+  'runbook',
+  'decisions',
+  'risks',
+] as const;
+
+export type BearInMindSection = (typeof BEAR_IN_MIND_SECTIONS)[number];
+
+export type TaskPackageBearInMindSectionsState = Record<BearInMindSection, TaskPackageSectionState>;
+
+export type TaskPackageBearInMindState =
+  | { kind: 'absent' }
+  | {
+      kind: 'present';
+      sections: TaskPackageBearInMindSectionsState;
+      extraEntries: readonly string[];
+    }
+  | { kind: 'invalid'; reason: 'not_a_directory' };
+
+export type TaskPackageLayoutViolation =
+  | { kind: 'top_level_file_under_subdir'; filename: string; foundAt: string }
+  | { kind: 'bearinmind_file_outside_bearinmind'; filename: string; foundAt: string }
+  | { kind: 'bearinmind_extra_entry'; foundAt: string }
+  | { kind: 'bearinmind_not_directory'; foundAt: string }
+  | { kind: 'scan_limit_exceeded'; maxEntries: number };
+
 const sectionToFilename: Record<TaskPackageSection, string> = {
   goals: 'goals.md',
   constraints: 'constraints.md',
   progress: 'progress.md',
+};
+
+const bearInMindSectionToFilename: Record<BearInMindSection, string> = {
+  contracts: 'contracts.md',
+  acceptance: 'acceptance.md',
+  grants: 'grants.md',
+  runbook: 'runbook.md',
+  decisions: 'decisions.md',
+  risks: 'risks.md',
 };
 
 function normalizeTaskPackagePath(taskDocPath: string): string {
@@ -49,6 +87,10 @@ export function taskPackageSectionFromSelector(selector: string): TaskPackageSec
 
 export function taskPackageFilenameForSection(section: TaskPackageSection): string {
   return sectionToFilename[section];
+}
+
+export function bearInMindFilenameForSection(section: BearInMindSection): string {
+  return bearInMindSectionToFilename[section];
 }
 
 async function fileExists(fullPath: string): Promise<boolean> {
@@ -98,78 +140,231 @@ export async function readTaskPackageSections(
   return { goals, constraints, progress };
 }
 
-function formatSectionBody(section: TaskPackageSection, state: TaskPackageSectionState): string {
+function formatSectionBodyI18n(state: TaskPackageSectionState): string {
+  // Injection must be deterministic and treat section bodies as opaque markdown.
+  // If a required file is missing, inject an empty body (status should be shown elsewhere).
   if (state.kind === 'present') return state.content;
-  if (section === 'goals')
-    return '*Missing `goals.md`. Create it with `change_mind` (selector `goals`).*';
-  if (section === 'constraints')
-    return '*Missing `constraints.md`. Create it with `change_mind` (selector `constraints`).*';
-  if (section === 'progress')
-    return '*Missing `progress.md`. Create it with `change_mind` (selector `progress`).*';
-  const _exhaustive: never = section;
-  return String(_exhaustive);
+  return '';
 }
 
-function formatSectionBodyI18n(
-  language: LanguageCode,
-  section: TaskPackageSection,
-  state: TaskPackageSectionState,
-): string {
-  if (state.kind === 'present') return state.content;
-  if (language === 'zh') {
-    if (section === 'goals')
-      return '*缺少 `goals.md`。请用 `change_mind`（selector 为 `goals`）创建。*';
-    if (section === 'constraints')
-      return '*缺少 `constraints.md`。请用 `change_mind`（selector 为 `constraints`）创建。*';
-    if (section === 'progress')
-      return '*缺少 `progress.md`。请用 `change_mind`（selector 为 `progress`）创建。*';
-    const _exhaustiveZh: never = section;
-    return String(_exhaustiveZh);
-  }
-  return formatSectionBody(section, state);
+function formatBearInMindBody(state: TaskPackageSectionState): string | null {
+  if (state.kind !== 'present') return null;
+  if (state.content.trim() === '') return null;
+  return state.content;
 }
 
 export function formatEffectiveTaskDocFromSections(
   language: LanguageCode,
   sections: TaskPackageSectionsState,
+  bearInMind?: TaskPackageBearInMindState,
 ): string {
   // Deterministic framing only; section bodies are treated as opaque markdown.
   if (language === 'zh') {
+    const bearBlocks: string[] = [];
+    if (bearInMind?.kind === 'present') {
+      for (const section of BEAR_IN_MIND_SECTIONS) {
+        const body = formatBearInMindBody(bearInMind.sections[section]);
+        if (!body) continue;
+        bearBlocks.push(`### ${bearInMindFilenameForSection(section)}`, body);
+      }
+    }
+    const bearInMindBlock =
+      bearBlocks.length > 0 ? [`## Bear In Mind`, ...bearBlocks, ``].join('\n') : '';
+
     return [
-      `# 差遣牒`,
+      `# 差遣牒（对话树）`,
       ``,
-      `> 我们的差遣牒由三个分段构成：目标/约束/进展。`,
-      `> 全队共享：\`goals\` / \`constraints\` / \`progress\` 对所有队友与子对话可见。更新时禁止覆盖/抹掉他人条目；建议为自己维护的条目标注责任人（如 \`- [owner:@<id>] ...\`）。`,
-      `> 维护方式：每次 \`change_mind\` 必须指定一个分段（selector 为 \`goals\` / \`constraints\` / \`progress\`）。每次调用会替换该分段全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一条消息中连续调用多次 \`change_mind\` 来一次更新多个分段。`,
-      `> 注意：子对话中不允许 \`change_mind\`；需要更新时请把“合并好的分段全文替换稿”诉请差遣牒维护人（见注入的差遣牒状态区块里的 @id）执行（禁止覆盖/抹掉他人条目）。`,
+      `## Goals`,
+      formatSectionBodyI18n(sections.goals),
       ``,
-      `## 目标 (通过 \`change_mind\`，selector=\`goals\` 维护)`,
-      formatSectionBodyI18n(language, 'goals', sections.goals),
+      `## Constraints`,
+      formatSectionBodyI18n(sections.constraints),
       ``,
-      `## 约束 (通过 \`change_mind\`，selector=\`constraints\` 维护)`,
-      formatSectionBodyI18n(language, 'constraints', sections.constraints),
-      ``,
-      `## 进展 (通过 \`change_mind\`，selector=\`progress\` 维护)`,
-      formatSectionBodyI18n(language, 'progress', sections.progress),
+      ...(bearInMindBlock ? [bearInMindBlock] : []),
+      `## Progress`,
+      formatSectionBodyI18n(sections.progress),
     ].join('\n');
   }
+  const bearBlocks: string[] = [];
+  if (bearInMind?.kind === 'present') {
+    for (const section of BEAR_IN_MIND_SECTIONS) {
+      const body = formatBearInMindBody(bearInMind.sections[section]);
+      if (!body) continue;
+      bearBlocks.push(`### ${bearInMindFilenameForSection(section)}`, body);
+    }
+  }
+  const bearInMindBlock =
+    bearBlocks.length > 0 ? [`## Bear In Mind`, ...bearBlocks, ``].join('\n') : '';
+
   return [
-    `# Taskdoc`,
+    `# Taskdoc (Dialog Tree)`,
     ``,
-    `> Our Taskdoc is composed of exactly 3 sections: Goals / Constraints / Progress.`,
-    `> Team-shared: \`goals\` / \`constraints\` / \`progress\` are visible to all teammates and subdialogs. Do not overwrite/delete other contributors; add an owner marker for entries you maintain (e.g. \`- [owner:@<id>] ...\`).`,
-    `> Maintenance: each \`change_mind\` call must target one section (selector \`goals\` / \`constraints\` / \`progress\`). Each call replaces the entire section, so always start from current content and merge/compress. You may include multiple \`change_mind\` calls in a single message to update multiple sections.`,
-    `> Note: subdialogs cannot call \`change_mind\`; ask the Taskdoc maintainer (see the injected Taskdoc status block for the @id) with a fully merged full-section replacement draft (do not overwrite/delete other contributors).`,
+    `## Goals`,
+    formatSectionBodyI18n(sections.goals),
     ``,
-    `## Goals (maintained via \`change_mind\`, selector=\`goals\`)`,
-    formatSectionBodyI18n(language, 'goals', sections.goals),
+    `## Constraints`,
+    formatSectionBodyI18n(sections.constraints),
     ``,
-    `## Constraints (maintained via \`change_mind\`, selector=\`constraints\`)`,
-    formatSectionBodyI18n(language, 'constraints', sections.constraints),
-    ``,
-    `## Progress (maintained via \`change_mind\`, selector=\`progress\`)`,
-    formatSectionBodyI18n(language, 'progress', sections.progress),
+    ...(bearInMindBlock ? [bearInMindBlock] : []),
+    `## Progress`,
+    formatSectionBodyI18n(sections.progress),
   ].join('\n');
+}
+
+async function readBearInMindSections(
+  taskPackageDirFullPath: string,
+): Promise<TaskPackageBearInMindState> {
+  const bearDir = path.join(taskPackageDirFullPath, 'bearinmind');
+  try {
+    const st = await fs.promises.stat(bearDir);
+    if (!st.isDirectory()) {
+      return { kind: 'invalid', reason: 'not_a_directory' };
+    }
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return { kind: 'absent' };
+    }
+    throw err;
+  }
+
+  const sections: TaskPackageBearInMindSectionsState = {
+    contracts: { kind: 'missing' },
+    acceptance: { kind: 'missing' },
+    grants: { kind: 'missing' },
+    runbook: { kind: 'missing' },
+    decisions: { kind: 'missing' },
+    risks: { kind: 'missing' },
+  };
+  for (const section of BEAR_IN_MIND_SECTIONS) {
+    sections[section] = await readSectionFile(
+      path.join(bearDir, bearInMindFilenameForSection(section)),
+    );
+  }
+
+  const extraEntries: string[] = [];
+  const allowed = new Set(Object.values(bearInMindSectionToFilename));
+  const entries = await fs.promises.readdir(bearDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    if (!allowed.has(entry.name)) {
+      extraEntries.push(entry.name);
+    }
+  }
+
+  return { kind: 'present', sections, extraEntries };
+}
+
+export async function validateTaskPackageLayout(
+  taskPackageDirFullPath: string,
+): Promise<TaskPackageLayoutViolation[]> {
+  const violations: TaskPackageLayoutViolation[] = [];
+  const maxEntries = 2048;
+  let seenEntries = 0;
+
+  const topLevelFilenames = new Set(Object.values(sectionToFilename));
+  const bearFilenames = new Set(Object.values(bearInMindSectionToFilename));
+  const allowedBearDirEntries = new Set(Object.values(bearInMindSectionToFilename));
+
+  const stack: { absDir: string; relDir: string }[] = [
+    { absDir: taskPackageDirFullPath, relDir: '' },
+  ];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) break;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(cur.absDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      seenEntries++;
+      if (seenEntries > maxEntries) {
+        violations.push({ kind: 'scan_limit_exceeded', maxEntries });
+        return violations;
+      }
+
+      const relPath = cur.relDir ? path.posix.join(cur.relDir, entry.name) : entry.name;
+      const absPath = path.join(cur.absDir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (cur.relDir === 'bearinmind') {
+          violations.push({ kind: 'bearinmind_extra_entry', foundAt: relPath });
+        }
+        stack.push({ absDir: absPath, relDir: relPath.replace(/\\/g, '/') });
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        if (cur.relDir === 'bearinmind') {
+          violations.push({ kind: 'bearinmind_extra_entry', foundAt: relPath });
+        }
+        continue;
+      }
+
+      if (cur.relDir === 'bearinmind' && !allowedBearDirEntries.has(entry.name)) {
+        violations.push({ kind: 'bearinmind_extra_entry', foundAt: relPath });
+      }
+
+      if (topLevelFilenames.has(entry.name) && cur.relDir !== '') {
+        violations.push({
+          kind: 'top_level_file_under_subdir',
+          filename: entry.name,
+          foundAt: relPath,
+        });
+      }
+
+      if (bearFilenames.has(entry.name)) {
+        if (cur.relDir !== 'bearinmind') {
+          violations.push({
+            kind: 'bearinmind_file_outside_bearinmind',
+            filename: entry.name,
+            foundAt: relPath,
+          });
+        }
+      }
+    }
+  }
+
+  // Special-case: bearinmind exists but is not a directory.
+  const bearDir = path.join(taskPackageDirFullPath, 'bearinmind');
+  try {
+    const st = await fs.promises.stat(bearDir);
+    if (!st.isDirectory()) {
+      violations.push({ kind: 'bearinmind_not_directory', foundAt: 'bearinmind' });
+    }
+  } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      // ok
+    } else {
+      // ignore unexpected validation errors to avoid blocking prompt injection
+    }
+  }
+
+  return violations;
+}
+
+export async function readTaskPackageForInjection(taskPackageDirFullPath: string): Promise<{
+  sections: TaskPackageSectionsState;
+  bearInMind: TaskPackageBearInMindState;
+  violations: TaskPackageLayoutViolation[];
+}> {
+  const sections = await readTaskPackageSections(taskPackageDirFullPath);
+  const bearInMind = await readBearInMindSections(taskPackageDirFullPath);
+  const violations = await validateTaskPackageLayout(taskPackageDirFullPath);
+  return { sections, bearInMind, violations };
 }
 
 export async function updateTaskPackageSection(params: {

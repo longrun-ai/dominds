@@ -40,6 +40,7 @@ import {
   personalScopeLabel,
   sharedMemoriesHeader,
   sharedScopeLabel,
+  taskdocCanonicalCopy,
 } from './minds-i18n';
 import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 
@@ -441,6 +442,7 @@ export async function loadAgentMinds(
     ].join('\n');
   })();
   const memorySystemPrompt = `${memorySystemTitle}\n\n${memorySystemBody}`;
+  const taskdocPolicyPrompt = taskdocCanonicalCopy(workingLanguage);
 
   // Generate tool usage text (shell policy + memory system + toolset prompts).
   let toolUsageText: string;
@@ -448,7 +450,7 @@ export async function loadAgentMinds(
   let funcToolRulesText: string = '';
 
   toolUsageText = (() => {
-    const prefix = [shellPolicyPrompt, memorySystemPrompt, toolsetPromptText]
+    const prefix = [shellPolicyPrompt, memorySystemPrompt, taskdocPolicyPrompt, toolsetPromptText]
       .filter((b) => b.trim() !== '')
       .join('\n\n');
     return prefix;

@@ -217,6 +217,14 @@ async function scanDirForTaskDocs(params: {
         let totalSize = 0;
         let lastModified = dirStats.mtime;
         const sectionFiles = ['goals.md', 'constraints.md', 'progress.md'] as const;
+        const bearInMindFiles = [
+          'contracts.md',
+          'acceptance.md',
+          'grants.md',
+          'runbook.md',
+          'decisions.md',
+          'risks.md',
+        ] as const;
 
         for (const filename of sectionFiles) {
           try {
@@ -226,6 +234,17 @@ async function scanDirForTaskDocs(params: {
             if (st.mtime > lastModified) lastModified = st.mtime;
           } catch {
             // Missing files are allowed; package may be created lazily.
+          }
+        }
+
+        for (const filename of bearInMindFiles) {
+          try {
+            const sectionPath = path.join(entryAbs, 'bearinmind', filename);
+            const st = await fsPromises.stat(sectionPath);
+            totalSize += st.size;
+            if (st.mtime > lastModified) lastModified = st.mtime;
+          } catch {
+            // Optional.
           }
         }
 

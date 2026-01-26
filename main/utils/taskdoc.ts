@@ -11,7 +11,10 @@ import { getWorkLanguage } from '../shared/runtime-language';
 import {
   formatEffectiveTaskDocFromSections,
   isTaskPackagePath,
-  readTaskPackageSections,
+  readTaskPackageForInjection,
+  type TaskPackageBearInMindState,
+  type TaskPackageLayoutViolation,
+  type TaskPackageSectionsState,
 } from './task-package';
 
 /**
@@ -80,13 +83,17 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     // Task Docs (`*.tsk/`) are directory-based, but the content is still injected deterministically.
     // General file tools must NOT be used to access anything under `*.tsk/`.
 
-    const sections = await (async () => {
+    const pkg = await (async (): Promise<{
+      sections: TaskPackageSectionsState;
+      bearInMind: TaskPackageBearInMindState;
+      violations: TaskPackageLayoutViolation[];
+    }> => {
       try {
         const st = await fs.promises.stat(fullPath);
         if (!st.isDirectory()) {
           throw new Error(`Task Doc path exists but is not a directory: '${taskDocPath}'`);
         }
-        return await readTaskPackageSections(fullPath);
+        return await readTaskPackageForInjection(fullPath);
       } catch (err: unknown) {
         if (
           typeof err === 'object' &&
@@ -95,23 +102,89 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           (err as { code?: unknown }).code === 'ENOENT'
         ) {
           return {
-            goals: { kind: 'missing' as const },
-            constraints: { kind: 'missing' as const },
-            progress: { kind: 'missing' as const },
+            sections: {
+              goals: { kind: 'missing' as const },
+              constraints: { kind: 'missing' as const },
+              progress: { kind: 'missing' as const },
+            },
+            bearInMind: { kind: 'absent' as const },
+            violations: [],
           };
         }
         throw err;
       }
     })();
 
-    const goalsStatus = sections.goals.kind === 'present' ? 'present' : 'missing';
-    const constraintsStatus = sections.constraints.kind === 'present' ? 'present' : 'missing';
-    const progressStatus = sections.progress.kind === 'present' ? 'present' : 'missing';
+    const goalsStatus = pkg.sections.goals.kind === 'present' ? 'present' : 'missing';
+    const constraintsStatus = pkg.sections.constraints.kind === 'present' ? 'present' : 'missing';
+    const progressStatus = pkg.sections.progress.kind === 'present' ? 'present' : 'missing';
+    const bearInMindStatus: 'absent' | 'present' | 'invalid' =
+      pkg.bearInMind.kind === 'absent'
+        ? 'absent'
+        : pkg.bearInMind.kind === 'invalid'
+          ? 'invalid'
+          : 'present';
+
+    const formatViolation = (v: TaskPackageLayoutViolation): string => {
+      if (language === 'zh') {
+        switch (v.kind) {
+          case 'top_level_file_under_subdir':
+            return `- 违规：顶层文件 \`${v.filename}\` 不得出现在子目录下（发现于：\`${v.foundAt}\`）`;
+          case 'bearinmind_file_outside_bearinmind':
+            return `- 违规：\`${v.filename}\` 只能出现在 \`bearinmind/\` 下（发现于：\`${v.foundAt}\`）`;
+          case 'bearinmind_extra_entry':
+            return `- 违规：\`bearinmind/\` 下不允许额外条目（发现于：\`${v.foundAt}\`）`;
+          case 'bearinmind_not_directory':
+            return `- 违规：\`bearinmind\` 必须是目录（发现：\`${v.foundAt}\`）`;
+          case 'scan_limit_exceeded':
+            return `- 警告：差遣牒包过大，结构检查提前中止（max_entries=${v.maxEntries}）`;
+          default: {
+            const _exhaustive: never = v;
+            return String(_exhaustive);
+          }
+        }
+      }
+
+      switch (v.kind) {
+        case 'top_level_file_under_subdir':
+          return `- Violation: top-level file \`${v.filename}\` must not appear under any subdirectory (found at: \`${v.foundAt}\`)`;
+        case 'bearinmind_file_outside_bearinmind':
+          return `- Violation: \`${v.filename}\` must only appear under \`bearinmind/\` (found at: \`${v.foundAt}\`)`;
+        case 'bearinmind_extra_entry':
+          return `- Violation: extra entries are not allowed under \`bearinmind/\` (found at: \`${v.foundAt}\`)`;
+        case 'bearinmind_not_directory':
+          return `- Violation: \`bearinmind\` must be a directory (found: \`${v.foundAt}\`)`;
+        case 'scan_limit_exceeded':
+          return `- Warning: task package too large; layout validation stopped early (max_entries=${v.maxEntries})`;
+        default: {
+          const _exhaustive: never = v;
+          return String(_exhaustive);
+        }
+      }
+    };
+
+    const violationsBlock = (() => {
+      if (pkg.violations.length === 0) return '';
+      const title =
+        language === 'zh'
+          ? `**结构违规（需要人工修复）：**`
+          : `**Layout violations (fix manually):**`;
+      return [title, ...pkg.violations.map(formatViolation)].join('\n');
+    })();
+
     const statusBlock = (() => {
       if (language === 'zh') {
         const goalsZh = goalsStatus === 'present' ? '存在' : '缺失';
         const constraintsZh = constraintsStatus === 'present' ? '存在' : '缺失';
         const progressZh = progressStatus === 'present' ? '存在' : '缺失';
+        const bearZh =
+          bearInMindStatus === 'absent' ? '无' : bearInMindStatus === 'invalid' ? '无效' : '存在';
+        const bearExtrasLine =
+          pkg.bearInMind.kind === 'present' && pkg.bearInMind.extraEntries.length > 0
+            ? `- \`bearinmind/\` 发现额外条目（不会被注入）：${pkg.bearInMind.extraEntries
+                .map((n) => `\`${n}\``)
+                .join(', ')}`
+            : '';
         const maintenanceLine = isSubdialog
           ? `- 子对话中不允许 \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供你已合并好的“分段全文替换稿”（用于替换对应分段全文；禁止覆盖/抹掉他人条目）。`
           : `- 维护方式：用函数工具 \`change_mind\` 指定分段（selector: \`goals\` / \`constraints\` / \`progress\`）。每次调用会替换该分段全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一轮中多次调用来一次更新多个分段（禁止覆盖/抹掉他人条目）。`;
@@ -127,16 +200,31 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           `- \`goals.md\`：${goalsZh}`,
           `- \`constraints.md\`：${constraintsZh}`,
           `- \`progress.md\`：${progressZh}`,
+          `- \`bearinmind/\`（可选注入）：${bearZh}`,
+          ...(bearExtrasLine ? [bearExtrasLine] : []),
           ``,
           `若某个分段缺失，请用函数工具 \`change_mind\` 创建（不要用通用文件工具）：`,
           `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
           `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
           `- \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\``,
+          ...(violationsBlock ? ['', violationsBlock] : []),
         ].join('\n');
       }
       const maintenanceLine = isSubdialog
         ? `- Subdialogs cannot call \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
         : `- Maintenance: in this dialog, use the function tool \`change_mind\` to target one section (selector: \`goals\` / \`constraints\` / \`progress\`). Each call replaces the entire section, so always start from the current injected content and merge/compress. You may call \`change_mind\` multiple times in a single turn to update multiple sections (do not overwrite/delete other contributors).`;
+      const bearEn =
+        bearInMindStatus === 'absent'
+          ? 'absent'
+          : bearInMindStatus === 'invalid'
+            ? 'invalid'
+            : 'present';
+      const bearExtrasLine =
+        pkg.bearInMind.kind === 'present' && pkg.bearInMind.extraEntries.length > 0
+          ? `- Extra entries detected under \`bearinmind/\` (NOT injected): ${pkg.bearInMind.extraEntries
+              .map((n) => `\`${n}\``)
+              .join(', ')}`
+          : '';
       return [
         `**Taskdoc Constitution (Encapsulated \`*.tsk/\`):**`,
         `- Our Taskdoc is a \`*.tsk/\` directory with exactly 3 sections: \`goals\` / \`constraints\` / \`progress\`.`,
@@ -149,14 +237,17 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         `- \`goals.md\`: ${goalsStatus}`,
         `- \`constraints.md\`: ${constraintsStatus}`,
         `- \`progress.md\`: ${progressStatus}`,
+        `- \`bearinmind/\` (optional injection): ${bearEn}`,
+        ...(bearExtrasLine ? [bearExtrasLine] : []),
         ``,
         `If any section is missing, create it with the function tool \`change_mind\` (never via general file tools):`,
         `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
         `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
         `- \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\``,
+        ...(violationsBlock ? ['', violationsBlock] : []),
       ].join('\n');
     })();
-    const effectiveDoc = formatEffectiveTaskDocFromSections(language, sections);
+    const effectiveDoc = formatEffectiveTaskDocFromSections(language, pkg.sections, pkg.bearInMind);
 
     const bytes = Buffer.byteLength(effectiveDoc, 'utf8');
     const maxSize = 100 * 1024; // 100KB

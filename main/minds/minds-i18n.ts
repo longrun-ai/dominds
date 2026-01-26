@@ -44,6 +44,40 @@ export function funcToolRulesText(language: LanguageCode): string {
     : `\n- Use native function-calling for all function tools listed; do not attempt tellask lines (e.g., \`!?@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
 }
 
+export function taskdocCanonicalCopy(language: LanguageCode): string {
+  if (language === 'zh') {
+    return [
+      '**Taskdoc 封装与访问限制**',
+      '',
+      '- 任何 `.tsk/` 目录及其子路径（`**/*.tsk/**`）都是封装状态：禁止使用任何通用文件工具读取/写入/列目录（例如 `read_file` / `write_file` / `list_dir` 等）。',
+      '- 更新 Taskdoc 只能使用函数工具 `change_mind`（按分段整段替换）。',
+      '',
+      '**Taskdoc 自动注入规则（系统提示）**',
+      '',
+      '- 系统提示会把“有效 Taskdoc”自动注入到模型上下文中。',
+      '- 一定会注入顶层三段：`goals.md`、`constraints.md`、`progress.md`（按此顺序）。',
+      '- 可选注入 `bearinmind/`（仅固定白名单，最多 6 个文件）：`contracts.md`、`acceptance.md`、`grants.md`、`runbook.md`、`decisions.md`、`risks.md`。',
+      '- 若存在 `bearinmind/` 注入块，它会以 `## Bear In Mind` 出现在 `## Constraints` 与 `## Progress` 之间，并按以上固定顺序拼接。',
+      '- 除此之外，`.tsk/` 内任何其他目录/文件都不会被自动注入。',
+    ].join('\n');
+  }
+
+  return [
+    '**Taskdoc encapsulation & access restrictions**',
+    '',
+    '- Any `.tsk/` directory and its subpaths (`**/*.tsk/**`) are encapsulated state: general file tools MUST NOT read/write/list them (e.g. `read_file` / `write_file` / `list_dir`).',
+    '- Taskdoc updates MUST go through the function tool `change_mind` (whole-section replace).',
+    '',
+    '**Taskdoc auto-injection rules (system prompt)**',
+    '',
+    '- The system prompt auto-injects the “effective Taskdoc” into the model context.',
+    '- It always injects the three top-level sections in order: `goals.md`, `constraints.md`, `progress.md`.',
+    '- It may also inject `bearinmind/` (fixed whitelist only; max 6 files): `contracts.md`, `acceptance.md`, `grants.md`, `runbook.md`, `decisions.md`, `risks.md`.',
+    '- If present, the injected block appears as `## Bear In Mind` between `## Constraints` and `## Progress`, and the files are concatenated in the fixed order above.',
+    '- No other directories/files inside `.tsk/` are auto-injected.',
+  ].join('\n');
+}
+
 export function memoryPreambleLabels(language: LanguageCode): {
   pathLabel: string;
   lastModifiedLabel: string;
