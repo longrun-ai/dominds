@@ -165,6 +165,17 @@ async function main(): Promise<void> {
       ),
       'problem for alice having shell tools without being in shell_specialists should exist',
     );
+    assert.ok(
+      !snapshot3.problems.some((p) => {
+        const prefix =
+          'team/team_yaml_error/shell_specialists/non_specialist_has_shell_tools/' as const;
+        if (!p.id.startsWith(prefix)) return false;
+        const memberId = p.id.slice(prefix.length);
+        const member = team3.getMember(memberId);
+        return member !== undefined && member.hidden === true;
+      }),
+      'hidden members should not be validated by shell_specialists policy',
+    );
 
     {
       const { systemPrompt, agentTools } = await loadAgentMinds('alice');

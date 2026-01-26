@@ -478,10 +478,15 @@ export namespace Team {
     }
 
     function enforceShellSpecialistsPolicy(team: Team): void {
+      // Hidden members are system-managed (or otherwise not user-facing). Their tool access is
+      // governed by runtime policy rather than `.minds/team.yaml` validation, so we skip them.
+      const isExemptHiddenMember = (member: Team.Member): boolean => member.hidden === true;
+
       const specialists = team.shellSpecialists;
 
       if (specialists.length === 0) {
         for (const member of Object.values(team.members)) {
+          if (isExemptHiddenMember(member)) continue;
           const shellTools = listShellTools(member);
           if (shellTools.length === 0) continue;
           addIssue(
@@ -504,6 +509,7 @@ export namespace Team {
           );
           continue;
         }
+        if (isExemptHiddenMember(member)) continue;
         const shellTools = listShellTools(member);
         if (shellTools.length === 0) {
           addIssue(
@@ -515,6 +521,7 @@ export namespace Team {
       }
 
       for (const member of Object.values(team.members)) {
+        if (isExemptHiddenMember(member)) continue;
         if (specialistSet.has(member.id)) continue;
         const shellTools = listShellTools(member);
         if (shellTools.length === 0) continue;

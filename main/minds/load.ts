@@ -55,7 +55,10 @@ function isShellToolName(name: string): name is ShellToolName {
 function listShellSpecialistMemberIds(team: Team): string[] {
   const out: string[] = [];
   for (const id of team.shellSpecialists) {
-    if (team.getMember(id)) out.push(id);
+    const member = team.getMember(id);
+    if (!member) continue;
+    if (member.hidden === true) continue;
+    out.push(id);
   }
   return out;
 }
@@ -243,7 +246,9 @@ export async function loadAgentMinds(
 
   // Compose tool list from member's resolved toolsets and tools + built-in human tool
   // Get base tools from agent (excluding intrinsic dialog control tools which are always injected)
-  const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id);
+  // shell_specialists is intended for visible teammates only. Hidden members are exempt from this
+  // policy and may carry shell tools.
+  const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id) || agent.hidden === true;
 
   const baseAgentTools: Tool[] = (() => {
     const tools = agent.listTools();
