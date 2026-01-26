@@ -321,7 +321,7 @@ function buildChatGptRequest(
     input,
     tools: options.tools ?? [],
     tool_choice: 'auto',
-    parallel_tool_calls: options.parallel_tool_calls ?? false,
+    parallel_tool_calls: options.parallel_tool_calls ?? true,
     reasoning: options.reasoning ?? null,
     store: options.store ?? false,
     stream: true,

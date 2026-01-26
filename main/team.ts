@@ -76,6 +76,7 @@ export namespace Team {
     user?: string; // User identifier for abuse monitoring
     reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'; // For o1/reasoning models
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
+    parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (when supported).
   };
 
   export interface ModelParams {
@@ -757,6 +758,7 @@ export namespace Team {
     'user',
     'reasoning_effort',
     'verbosity',
+    'parallel_tool_calls',
   ] as const;
   const MODEL_PARAMS_CODEX_KEYS = MODEL_PARAMS_OPENAI_KEYS;
   const MODEL_PARAMS_ANTHROPIC_KEYS = [
@@ -800,6 +802,7 @@ export namespace Team {
     const hintsAtMember: Record<string, string> = {
       reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_effort\`? (not supported at ${atPrefix} root)`,
       verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
+      parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
     };
 
     const unknownAtMember = listUnknownKeys(memberObj, MEMBER_KEYS);
@@ -823,6 +826,7 @@ export namespace Team {
     const hintsAtModelParams: Record<string, string> = {
       reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
       verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
+      parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
       temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
       top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
       max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` (top-level), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
@@ -1397,6 +1401,7 @@ export namespace Team {
       asOptionalStop(params.stop, `${at2}.stop`);
       asOptionalLogitBias(params.logit_bias, `${at2}.logit_bias`);
       asOptionalString(params.user, `${at2}.user`);
+      asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
 
       const reasoningEffort = params.reasoning_effort;
       if (

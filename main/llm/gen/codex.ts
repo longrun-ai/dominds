@@ -139,6 +139,7 @@ function buildCodexRequest(
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   let reasoning: ChatGptReasoning | null = null;
   let text: ChatGptTextControls | undefined;
+  const parallelToolCalls = codexParams?.parallel_tool_calls ?? true;
 
   if (codexParams && codexParams.reasoning_effort) {
     reasoning = {
@@ -157,7 +158,7 @@ function buildCodexRequest(
     input,
     tools: funcTools.map(funcToolToCodex),
     tool_choice: 'auto',
-    parallel_tool_calls: false,
+    parallel_tool_calls: parallelToolCalls,
     reasoning,
     store: false,
     stream: true,

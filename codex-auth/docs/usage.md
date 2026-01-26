@@ -12,6 +12,9 @@ import { createChatGptContinuationRequest, createChatGptStartRequest } from '@lo
 const payload = createChatGptStartRequest({
   model: 'gpt-5.2-codex',
   instructions: 'You are Codex CLI.',
+  // Allow the model to emit multiple tool calls in the same turn.
+  // (Default: true)
+  parallel_tool_calls: true,
   userText: 'hello',
 });
 
@@ -32,6 +35,10 @@ import type { ChatGptResponsesStreamEvent } from '@longrun-ai/codex-auth';
 
 const event = JSON.parse(data) as ChatGptResponsesStreamEvent;
 ```
+
+`parallel_tool_calls` defaults to `true` in `createChatGptStartRequest` /
+`createChatGptContinuationRequest`. Set it to `false` if your runtime cannot
+handle multiple in-flight tool calls safely.
 
 Idiomatic event handling uses a discriminated-union switch so TypeScript can
 verify exhaustive handling:
