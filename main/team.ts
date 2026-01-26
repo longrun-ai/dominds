@@ -459,7 +459,6 @@ export namespace Team {
       reconcileProblemsByPrefix(TEAM_YAML_PROBLEM_PREFIX, desired);
     };
 
-
     const SHELL_TOOL_NAMES = ['shell_cmd', 'stop_daemon', 'get_daemon_output'] as const;
     type ShellToolName = (typeof SHELL_TOOL_NAMES)[number];
 
@@ -540,6 +539,7 @@ export namespace Team {
         shellSpecialists: [],
         members: { fuxi, pangu },
       });
+    };
 
     try {
       await fs.access(TEAM_YAML_PATH);
@@ -710,7 +710,12 @@ export namespace Team {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  const TEAM_ROOT_KEYS = ['member_defaults', 'default_responder', 'shell_specialists', 'members'] as const;
+  const TEAM_ROOT_KEYS = [
+    'member_defaults',
+    'default_responder',
+    'shell_specialists',
+    'members',
+  ] as const;
   const MEMBER_KEYS = [
     'name',
     'provider',
@@ -1157,7 +1162,10 @@ export namespace Team {
         shellSpecialists = [];
       } else {
         try {
-          const parsed = asOptionalStringOrStringArray(v, 'shell_specialists');
+          const parsed = requireDefined(
+            asOptionalStringOrStringArray(v, 'shell_specialists'),
+            'shell_specialists',
+          );
           // Normalize: drop empties and de-dupe while preserving order.
           const seen = new Set<string>();
           shellSpecialists = [];

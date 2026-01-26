@@ -31,7 +31,7 @@
 ### Taskdoc（差遣牒）
 
 - EN: The shared task specification for a dialog tree. In Dominds, it is represented as an encapsulated `*.tsk/` Taskdoc package (not a single mutable Markdown file).
-- ZH: 对话树共享的任务说明。在 Dominds 中，它对应一个封装的 `*.tsk/` Taskdoc package（而不是单个可随意改写的 Markdown 文件）。
+- ZH: 对话树共享的任务说明。在 Dominds 中，它对应一个封装的 `*.tsk/` 任务包（Taskdoc package）（而不是单个可随意改写的 Markdown 文件）。
 
 ### Taskdoc package (`*.tsk/`) / Taskdoc 任务包
 

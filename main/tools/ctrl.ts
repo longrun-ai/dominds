@@ -26,6 +26,7 @@
 
 import * as path from 'path';
 import type { Dialog } from '../dialog';
+import { SubDialog } from '../dialog';
 import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
@@ -46,7 +47,6 @@ type CtrlMessages = Readonly<{
   invalidReminderPosition: (reminderNoHuman: string, totalPlusOne: number) => string;
   invalidFormatUpdate: string;
   invalidFormatChangeMind: string;
-  changeMindOnlyInMainDialog: string;
   tooManyArgsChangeMind: string;
   taskDocContentRequired: string;
   noTaskDocPathConfigured: string;
@@ -72,8 +72,6 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         '错误：参数不正确。用法：update_reminder({ reminder_no: number, content: string })',
       invalidFormatChangeMind:
         '错误：参数不正确。用法：change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
-      changeMindOnlyInMainDialog:
-        '错误：change_mind 仅允许在主对话中使用（子对话中不可用）。若你需要改变整体差遣牒，请向主对话发起 supdialog call（!?@super）请求主对话执行 change_mind。',
       tooManyArgsChangeMind:
         '错误：参数不正确。用法：change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
       taskDocContentRequired:
@@ -110,8 +108,6 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       'Error: Invalid args. Use: update_reminder({ reminder_no: number, content: string })',
     invalidFormatChangeMind:
       'Error: Invalid args. Use: change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
-    changeMindOnlyInMainDialog:
-      'Error: change_mind is only available in the main dialog (not in subdialogs). If you need to update the shared Taskdoc, ask the parent via a supdialog call (!?@super) and have the main dialog run change_mind.',
     tooManyArgsChangeMind:
       'Error: Invalid args. Use: change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
     taskDocContentRequired:
@@ -283,10 +279,11 @@ export const clearMindTool: FuncTool = {
 export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
-  description: 'Update the current task package section (`*.tsk/`) without resetting the round.',
+  description:
+    'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without resetting the round. Each call replaces the entire section; merge carefully and avoid overwriting other contributors.',
   descriptionI18n: {
-    en: 'Update the current task package section (`*.tsk/`) without resetting the round.',
-    zh: '更新当前差遣牒（`*.tsk/`）的指定章节（不重置轮次）。',
+    en: 'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without resetting the round. Each call replaces the entire section; merge carefully and avoid overwriting other contributors. Note: Taskdoc is injected into context; do not try to read `*.tsk/` via general file tools.',
+    zh: '在主对话中更新全队共享差遣牒（`*.tsk/`）的指定章节（不重置轮次）。每次调用会替换该章节全文；更新前必须基于现有内容做合并/压缩，避免覆盖他人条目；建议为自己维护的条目标注责任人（如 `[owner:@<id>]`）。注意：差遣牒内容已被注入到上下文中；不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
   },
   parameters: {
     type: 'object',
@@ -307,7 +304,17 @@ export const changeMindTool: FuncTool = {
     const t = getCtrlMessages(language);
 
     if (dlg.supdialog !== undefined) {
-      return t.changeMindOnlyInMainDialog;
+      const maintainerId = dlg instanceof SubDialog ? dlg.rootDialog.agentId : dlg.agentId;
+      if (language === 'zh') {
+        return (
+          `错误：\`change_mind\` 仅允许在主对话中使用（子对话中不可用）。\n` +
+          `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`change_mind\`，并提供你已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
+        );
+      }
+      return (
+        `Error: \`change_mind\` is only available in the main dialog (not in subdialogs).\n` +
+        `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
+      );
     }
 
     const selectorValue = args['selector'];

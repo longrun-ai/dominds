@@ -55,13 +55,17 @@ function formatContextHealthOwnerHeader(args: {
 
     if (!snapshot) {
       lines.push('- 状态：未知（尚未获取上下文统计）');
-      lines.push('- 现在就做：用提醒项收敛关键细节（update_reminder）→ change_mind(progress) → clear_mind');
+      lines.push(
+        '- 现在就做：用提醒项收敛关键细节（update_reminder）→ change_mind(progress) → clear_mind',
+      );
       return lines.join('\n');
     }
 
     if (snapshot.kind !== 'available') {
       lines.push('- 状态：未知（token 统计不可用）');
-      lines.push('- 现在就做：用提醒项收敛关键细节（update_reminder）→ change_mind(progress) → clear_mind');
+      lines.push(
+        '- 现在就做：用提醒项收敛关键细节（update_reminder）→ change_mind(progress) → clear_mind',
+      );
       return lines.join('\n');
     }
 
@@ -72,7 +76,9 @@ function formatContextHealthOwnerHeader(args: {
       }
       case 'caution': {
         lines.push('- 状态：🟡 黄（必须尽快清理）');
-        lines.push('- 硬规程：先 update_reminder 收敛工作集 → 再 change_mind(progress) → 然后 clear_mind');
+        lines.push(
+          '- 硬规程：先 update_reminder 收敛工作集 → 再 change_mind(progress) → 然后 clear_mind',
+        );
         return lines.join('\n');
       }
       case 'critical': {
@@ -82,7 +88,9 @@ function formatContextHealthOwnerHeader(args: {
             `- 倒数：剩余 ${remainingGenTurns} 次生成机会；到 0 系统将被动开启新一轮/新回合以保持稳定性`,
           );
         }
-        lines.push('- 禁止继续推进实现：先 update_reminder 收敛工作集 → 再 change_mind(progress) → 然后 clear_mind');
+        lines.push(
+          '- 禁止继续推进实现：先 update_reminder 收敛工作集 → 再 change_mind(progress) → 然后 clear_mind',
+        );
         return lines.join('\n');
       }
       default: {
@@ -90,7 +98,6 @@ function formatContextHealthOwnerHeader(args: {
         return _exhaustive;
       }
     }
-  }
   }
 
   const lines: string[] = [

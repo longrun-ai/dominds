@@ -1382,7 +1382,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         // Finally, render reminders and place them immediately before the last 'user' message
         // so they are salient for the next response without polluting earlier context.
         const taskDocMsg: ChatMessage | undefined = dlg.taskDocPath
-          ? await formatTaskDocContent(dlg.taskDocPath)
+          ? await formatTaskDocContent(dlg)
           : undefined;
 
         const ctxMsgs: ChatMessage[] = [

@@ -130,8 +130,8 @@ ${input.teamIntro}
 ${input.funcToolUsageText || '没有可用的函数工具。'}
 
 ### 函数工具调用 vs 诉请
-- 不要对队友诉请使用原生 function-calling（队友诉请必须用 tellask）。
-- 不要在文本中用 tellask（`!?@...`）调用函数工具：函数工具（包括对话控制/文件/文本编辑等）一律使用原生 function-calling。
+- 原生 function-calling 不能用于队友诉请：队友诉请必须使用 tellask。
+- tellask 文本不能用于函数工具调用：函数工具（包括对话控制/文件/文本编辑等）一律使用原生 function-calling。
 ### 语法小抄（反模式）
 - 不要在 \`!?\` 前加项目符号、引用、编号或缩进（例如 \`- !?@tool\`、\`> !?@tool\`、\`  !?@tool\`）。
 - 当你只是提到呼号/工具名而不是发起诉请：不要让该行以 \`!?\` 开头；必要时用反引号包裹（例如 \`\`!?@pangu\`\`）。
@@ -151,32 +151,30 @@ ${input.toolUsageText}${
         : '\n'
     }
 ### 示例
-### 示例
-- 队友诉请：让 `@cmdr` 运行命令（推荐写法）
-```plain-text
-!?@cmdr !topic lint-types
+- 队友诉请：让 shell 专员运行命令（推荐写法）
+\`\`\`plain-text
+!?@<shell-specialist> !topic lint-types
 !?请在 repo root 执行：pnpm -C dominds lint:types
 !?回贴：exit_code + stdout/stderr（可截断，但需包含所有 TS error 行）
-```
+\`\`\`
 
 - 队友诉请：带正文（普通行会自动结束该诉请块）
-```plain-text
+\`\`\`plain-text
 !?@ux !topic ux-checklist
 !?请基于本 PR 的改动给出手工验收清单（严重度 + 复现步骤）。
 OK —— 我会等待你的结果，然后继续推进。
-```
+\`\`\`
 
-- 反例：只写“我会请 @cmdr 运行”，但没有诉请块（不会触发执行）
-```plain-text
-我会请 @cmdr 运行 pnpm -C dominds lint:types。
-```
+- 反例：只写“我会请 shell 专员运行”，但没有诉请块（不会触发执行）
+\`\`\`plain-text
+我会请 shell 专员运行 pnpm -C dominds lint:types。
+\`\`\`
 
-- 反例：声称“已运行/已通过”，但没有看到 `@cmdr` 的回执（禁止）
-```plain-text
-我已经让 @cmdr 跑过了，lint:types 没问题。
-```
+- 反例：声称“已运行/已通过”，但没有看到回执（禁止）
+\`\`\`plain-text
+我已经让 shell 专员跑过了，lint:types 没问题。
+\`\`\`
 
-### 并发与编排
 ### 并发与编排
 - 同一条回复中的所有诉请会并发执行；在同一轮中，它们无法看到彼此的输出。
 - 让每个诉请都自给自足。
@@ -232,8 +230,8 @@ You interact with teammates and "tellask" tools using a primitive line-prefix gr
 ${input.funcToolUsageText || 'No function tools available.'}
 
 ### Function Calling vs Tellask
-- Do not use native function-calling for teammates (teammate tellasks must use tellask).
-- Do not call tools via tellask text (\`!?@tool ...\`). All tools (including dialog control) must use native function-calling.
+- Native function-calling cannot be used to tellask teammates: teammate tellasks must use tellask.
+- Tellask text cannot invoke function tools: all tools (including dialog control) must use native function-calling.
 
 ### Anti-pattern Cheat Sheet
 - Do NOT prefix tellask lines with bullets, blockquotes, numbering, or indentation (e.g., \`- !?@tool\`, \`> !?@tool\`, \`  !?@tool\`).

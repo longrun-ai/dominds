@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { loadAgentMinds } from '../main/minds/load';
 import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
 import { Team } from '../main/team';
+import '../main/tools/builtins';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -125,6 +127,77 @@ async function main(): Promise<void> {
     assert.ok(
       mdUnknown.detail.errorText.includes('member_defaults.model_params.codex.reasoning_effort'),
     );
+
+    // shell_specialists policy:
+    // - must list the only members allowed to have shell tools
+    // - should surface misconfig as Problems (fail-open runtime)
+    // - at runtime, non-specialists must not receive shell tools
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: openai',
+        '  model: gpt-4',
+        'default_responder: alice',
+        'shell_specialists: cmdr',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    toolsets: [os]',
+        '  cmdr:',
+        '    name: Commander',
+        '    toolsets: [os]',
+        '',
+      ].join('\n'),
+    );
+
+    const team3 = await Team.load();
+    assert.ok(team3.getMember('alice'), 'alice should be loaded');
+    assert.ok(team3.getMember('cmdr'), 'cmdr should be loaded');
+    assert.deepEqual(team3.shellSpecialists, ['cmdr']);
+
+    const snapshot3 = getProblemsSnapshot();
+    assert.ok(
+      snapshot3.problems.some(
+        (p) =>
+          p.id === 'team/team_yaml_error/shell_specialists/non_specialist_has_shell_tools/alice',
+      ),
+      'problem for alice having shell tools without being in shell_specialists should exist',
+    );
+
+    {
+      const { systemPrompt, agentTools } = await loadAgentMinds('alice');
+      const toolNames = agentTools
+        .filter((t) => t.type === 'func')
+        .map((t) => t.name)
+        .sort();
+
+      assert.ok(!toolNames.includes('shell_cmd'), 'alice should not receive shell_cmd');
+      assert.ok(!toolNames.includes('stop_daemon'), 'alice should not receive stop_daemon');
+      assert.ok(
+        !toolNames.includes('get_daemon_output'),
+        'alice should not receive get_daemon_output',
+      );
+      assert.ok(
+        systemPrompt.includes('Shell specialist teammates: @cmdr'),
+        'system prompt should point to the configured shell specialist',
+      );
+      assert.ok(
+        systemPrompt.includes('### Memory System (Important)'),
+        'system prompt should include the memory system guidance',
+      );
+    }
+
+    {
+      const { agentTools } = await loadAgentMinds('cmdr');
+      const toolNames = agentTools
+        .filter((t) => t.type === 'func')
+        .map((t) => t.name)
+        .sort();
+
+      assert.ok(toolNames.includes('shell_cmd'), 'cmdr should receive shell_cmd');
+    }
 
     console.log('✅ team-yaml-parsing tests passed');
   } finally {

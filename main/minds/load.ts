@@ -7,7 +7,7 @@
 import type { Dirent } from 'fs';
 import { access, readFile, readdir, stat } from 'fs/promises';
 import path from 'path';
-import { Dialog } from '../dialog';
+import { Dialog, SubDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getTextForLanguage } from '../shared/i18n/text';
@@ -45,56 +45,79 @@ import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
 
-function listShellCapableMembers(team: Team): string[] {
-  const ids: string[] = [];
-  for (const member of Object.values(team.members)) {
-    const tools = member.listTools();
-    const hasShell = tools.some(
-      (t) =>
-        t.type === 'func' &&
-        (t.name === 'shell_cmd' || t.name === 'stop_daemon' || t.name === 'get_daemon_output'),
-    );
-    if (hasShell) {
-      ids.push(member.id);
-    }
+const SHELL_TOOL_NAMES = ['shell_cmd', 'stop_daemon', 'get_daemon_output'] as const;
+type ShellToolName = (typeof SHELL_TOOL_NAMES)[number];
+
+function isShellToolName(name: string): name is ShellToolName {
+  return (SHELL_TOOL_NAMES as readonly string[]).includes(name);
+}
+
+function listShellSpecialistMemberIds(team: Team): string[] {
+  const out: string[] = [];
+  for (const id of team.shellSpecialists) {
+    if (team.getMember(id)) out.push(id);
   }
-  return ids;
+  return out;
 }
 
 function buildShellPolicyPrompt(options: {
   language: LanguageCode;
+  agentIsShellSpecialist: boolean;
   agentHasShellTools: boolean;
-  shellCapableMemberIds: string[];
+  shellSpecialistMemberIds: string[];
 }): string {
-  const { language, agentHasShellTools, shellCapableMemberIds } = options;
+  const { language, agentIsShellSpecialist, agentHasShellTools, shellSpecialistMemberIds } =
+    options;
   const title =
     language === 'zh' ? '### Shell 执行策略（重要）' : '### Shell Execution Policy (Important)';
 
-  const shellPeers =
-    shellCapableMemberIds.length > 0
-      ? shellCapableMemberIds.map((id) => `@${id}`).join(', ')
+  const shellSpecialists =
+    shellSpecialistMemberIds.length > 0
+      ? shellSpecialistMemberIds.map((id) => `@${id}`).join(', ')
       : language === 'zh'
-        ? '（未发现任何具备 shell 能力的队友）'
-        : '(no shell-capable teammates found)';
+        ? '（未配置 shell 专员）'
+        : '(no shell specialists configured)';
 
-  if (agentHasShellTools) {
+  if (agentIsShellSpecialist && agentHasShellTools) {
     const body =
       language === 'zh'
         ? [
-            '你具备 shell 执行能力（高风险）。使用前必须先做风险识别与最小化：',
+            '你是本队的 shell 专员，具备 shell 执行能力（高风险）。使用前必须先做风险识别与最小化：',
             '- 说明目的、预期输出/验证方式、预期工作目录与影响面。',
             '- 优先选择只读命令；写入/删除/网络/权限相关操作必须解释理由与安全边界。',
             '- 如果不确定命令后果，先提出更安全的替代方案或向人类/队友确认。',
             '',
-            `同队具备 shell 能力的成员：${shellPeers}`,
+            '当队友请求你执行命令时：请先复述你将执行的命令与风险边界，再执行，并按结构化格式回传 command/exit_code/stdout/stderr。',
+            '',
+            `本队 shell 专员列表：${shellSpecialists}`,
           ].join('\n')
         : [
-            'You have shell execution capability (high-risk). Before using it, do risk identification and minimize blast radius:',
+            'You are a designated shell specialist and have shell execution capability (high-risk). Before using it, do risk identification and minimize blast radius:',
             '- State intent, expected output/verification, expected working directory, and scope of impact.',
             '- Prefer read-only commands; for writes/deletes/network/privilege-related actions, justify and state safety boundaries.',
             '- If unsure about consequences, propose a safer alternative or confirm with a human/teammate first.',
             '',
-            `Shell-capable teammates: ${shellPeers}`,
+            'When teammates ask you to run commands: restate the exact command and guardrails, then execute, and report back with a structured receipt: command/exit_code/stdout/stderr.',
+            '',
+            `Shell specialists in this team: ${shellSpecialists}`,
+          ].join('\n');
+    return `${title}\n\n${body}`.trim();
+  }
+
+  if (agentIsShellSpecialist && !agentHasShellTools) {
+    const body =
+      language === 'zh'
+        ? [
+            '你被配置为 shell 专员，但当前没有可用的 shell 工具（团队配置错误）。',
+            '在未修复配置前：不要声称自己执行过命令；如需验证，请让人类修复 team.yaml 或把 shell 能力授予正确的成员。',
+            '',
+            `本队 shell 专员列表：${shellSpecialists}`,
+          ].join('\n')
+        : [
+            'You are configured as a shell specialist, but you do not currently have shell tools available (team configuration error).',
+            'Until it is fixed: do not claim you ran any command; ask a human to fix team.yaml or grant shell tools to the correct specialist member.',
+            '',
+            `Shell specialists in this team: ${shellSpecialists}`,
           ].join('\n');
     return `${title}\n\n${body}`.trim();
   }
@@ -102,28 +125,29 @@ function buildShellPolicyPrompt(options: {
   const body =
     language === 'zh'
       ? [
-          '你不具备 shell 工具（本环境仅 @cmdr 等专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
+          '你不具备 shell 工具（本环境仅 shell 专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
           '当你确实需要 shell 执行时：请转交给具备 shell 能力的专员队友，并提供充分理由与可审查的命令提案：',
           '- 你要达成的目标（why）',
           '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
           '- 风险评估与安全边界（risk & guardrails）',
-          `可转交的 shell 专员队友：${shellPeers}`,
+          `可转交的 shell 专员队友：${shellSpecialists}`,
           '',
-          '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@cmdr` 行），不要只说“我会请 @cmdr 运行”。',
-          '重要：在你看到 @cmdr 的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
+          '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
+          '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
         ].join('\n')
       : [
-          'You do not have shell tools configured: do not fabricate/assume command output, and do not ask the system to execute commands directly.',
-          'When you truly need shell execution, delegate to a shell-capable specialist teammate with a justified, reviewable proposal:',
+          'You do not have shell tools configured (shell execution is restricted to designated specialists): do not fabricate/assume command output, and do not ask the system to execute commands directly.',
+          'When you truly need shell execution, delegate to a shell specialist teammate with a justified, reviewable proposal:',
           '- Goal (why)',
           '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
           '- Risk assessment and guardrails (risk & guardrails)',
           '',
-          `Shell-capable specialist teammates: ${shellPeers}`,
+          `Shell specialist teammates: ${shellSpecialists}`,
           '',
-          'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@cmdr` line) in the same message; do not just say “I will ask @cmdr to run it”.',
-          'Important: do not claim “ran/passed/no errors” until you see @cmdr’s receipt (command/exit_code/stdout/stderr).',
+          'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
+          'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
         ].join('\n');
+  return `${title}\n\n${body}`.trim();
 }
 
 async function readAgentMindResult(id: string, fn: string): Promise<ReadAgentMindResult> {
@@ -219,7 +243,15 @@ export async function loadAgentMinds(
 
   // Compose tool list from member's resolved toolsets and tools + built-in human tool
   // Get base tools from agent (excluding intrinsic dialog control tools which are always injected)
-  const baseAgentTools: Tool[] = agent.listTools();
+  const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id);
+
+  const baseAgentTools: Tool[] = (() => {
+    const tools = agent.listTools();
+    if (agentIsShellSpecialist) return tools;
+    return tools.filter(
+      (t) => !(t.type === 'func' && typeof t.name === 'string' && isShellToolName(t.name)),
+    );
+  })();
 
   // Inject intrinsic dialog control tools as function tools (available to all agents).
   const intrinsicFuncTools: FuncTool[] = [
@@ -247,18 +279,20 @@ export async function loadAgentMinds(
 
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
-  const agentHasShellTools = funcTools.some(
-    (t) => t.name === 'shell_cmd' || t.name === 'stop_daemon' || t.name === 'get_daemon_output',
-  );
-  const shellCapableMemberIds = listShellCapableMembers(team);
+  const agentHasShellTools = funcTools.some((t) => isShellToolName(t.name));
+  const shellSpecialistMemberIds = listShellSpecialistMemberIds(team);
   const shellPolicyPrompt = buildShellPolicyPrompt({
     language: workingLanguage,
+    agentIsShellSpecialist,
     agentHasShellTools,
-    shellCapableMemberIds,
+    shellSpecialistMemberIds,
   });
 
   const toolsetPromptText = (() => {
-    const toolsetNames = agent.listResolvedToolsetNames();
+    const toolsetNames = agent.listResolvedToolsetNames().filter((name) => {
+      if (name === 'os') return agentIsShellSpecialist;
+      return true;
+    });
     const blocks = toolsetNames
       .map((toolsetName) => {
         const promptI18n = getToolsetPromptI18n(toolsetName);
@@ -277,31 +311,137 @@ export async function loadAgentMinds(
     return blocks.join('\n\n');
   })();
 
-  // Generate tool usage text (shell policy + reminder working-set policy + toolset prompts).
+  const memorySystemTitle =
+    workingLanguage === 'zh' ? '### 记忆系统（重要）' : '### Memory System (Important)';
+  const TEAM_MEMORY_TOOL_NAMES = [
+    'add_team_memory',
+    'replace_team_memory',
+    'drop_team_memory',
+    'clear_team_memory',
+  ] as const;
+  type TeamMemoryToolName = (typeof TEAM_MEMORY_TOOL_NAMES)[number];
+  const PERSONAL_MEMORY_TOOL_NAMES = [
+    'add_memory',
+    'replace_memory',
+    'drop_memory',
+    'clear_memory',
+  ] as const;
+  type PersonalMemoryToolName = (typeof PERSONAL_MEMORY_TOOL_NAMES)[number];
+
+  function isTeamMemoryToolName(name: string): name is TeamMemoryToolName {
+    return (TEAM_MEMORY_TOOL_NAMES as readonly string[]).includes(name);
+  }
+
+  function isPersonalMemoryToolName(name: string): name is PersonalMemoryToolName {
+    return (PERSONAL_MEMORY_TOOL_NAMES as readonly string[]).includes(name);
+  }
+
+  const agentHasTeamMemoryTools = funcTools.some((t) => isTeamMemoryToolName(t.name));
+  const agentHasPersonalMemoryTools = funcTools.some((t) => isPersonalMemoryToolName(t.name));
+  const isSubdialog = dialog !== undefined && dialog.supdialog !== undefined;
+  const taskdocMaintainerId =
+    dialog && dialog instanceof SubDialog ? dialog.rootDialog.agentId : agent.id;
+
+  const memorySystemBody = (() => {
+    if (workingLanguage === 'zh') {
+      const teamMemoryLine = '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。';
+
+      const personalMemoryLine =
+        '- 个人记忆：稳定的个人习惯/偏好与职责域知识；可维护你职责范围内的“工作区索引”（关键文档/代码的准确路径 + 必要要点），以减少重复读文件；不要记录具体任务状态。';
+
+      return [
+        '你的聊天记录与工具输出是临时信息：会快速累积、很快过时，并增加你的认知负担。在同一轮对话中，除了 `clear_mind` 以外你无法真正丢弃这些历史。',
+        '`clear_mind` 会开启新一轮/新回合（保留差遣牒、提醒项与记忆层），从而卸掉这部分认知负载并继续推进。因此你必须先把关键信息提炼到高价值载体：',
+        '- 差遣牒（Taskdoc，`*.tsk/`）：全队共享的任务契约（goals/constraints/progress）；保持足够短，每轮都应可通读。',
+        `- 更新差遣牒的任意分段时：每次调用会替换该分段全文；你必须先对照“上下文中注入的当前内容”做合并/压缩；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${agent.id}] ...\` 或用 \`### @${agent.id}\` 分块）。`,
+        '- 其中 `progress` 是全队共享公告牌：用于“阶段性进度快照”（关键决策/当前状态/下一步），不是流水账。',
+        '- 重要：差遣牒内容会被系统以内联形式注入到上下文中（本轮生成视角下即为最新）。需要回顾时请直接基于上下文里的差遣牒内容回顾与决策，不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
+        '- 提醒项（工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。',
+        teamMemoryLine,
+        personalMemoryLine,
+        '',
+        ...(isSubdialog
+          ? [
+              `你当前处于子对话：此处不允许 \`change_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${taskdocMaintainerId}\` 执行更新，并给出你已合并好的“新全文/替换稿”（用于替换对应章节全文）。不要声称已更新，除非看到回执。`,
+            ]
+          : [
+              '你当前处于主对话：你负责综合维护全队共享差遣牒（尤其是 progress 公告牌）。当队友/子对话提出更新建议时，及时合并、压缩并保持清晰。',
+            ]),
+        ...(agentHasTeamMemoryTools
+          ? [
+              '提示：你具备团队记忆工具（`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`），可在必要时维护团队记忆（谨慎、少量、只写稳定约定）。',
+            ]
+          : []),
+        ...(agentHasPersonalMemoryTools
+          ? [
+              '提示：你具备个人记忆工具（`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`）。除了稳定习惯/偏好外，还应维护你职责域的“工作区索引”（关键文档/代码的准确路径 + 最小必要要点，如入口文件/关键符号/约定），使你在职责范围内收到任务时默认不必再读工作区文件即可直接分析并下手改文档/代码；一旦你修改了相关文件或发现记忆有过期/冲突，必须立刻用 `replace_memory` 把对应条目更新为最新事实。',
+            ]
+          : []),
+        ...(isSubdialog
+          ? [
+              `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒更新提案并诉请 \`@${taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`,
+            ]
+          : [
+              '工作流：先做事 → 再提炼（`update_reminder` + `change_mind(progress)`）→ 然后 `clear_mind` 清空噪音。',
+            ]),
+        '当 context health 变黄/红：立刻停止继续大实现/大阅读；先提炼，再 clear。',
+        '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；细节只保留必要摘录放提醒项。',
+      ].join('\n');
+    }
+
+    const teamMemoryLine = '- Team memory: stable shared conventions (cross-task).';
+
+    const personalMemoryLine =
+      '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts) to reduce repeat file reads; do not store per-task state.';
+
+    return [
+      'Chat history and tool outputs are temporary: they accumulate quickly, become stale, and increase cognitive load. Within a round, you cannot truly drop that history except via `clear_mind`.',
+      '`clear_mind` starts a new round while preserving Taskdoc, reminders, and memory layers. Therefore, before clearing, distill key information into durable layers:',
+      '- Taskdoc (`*.tsk/`): team-shared task contract (goals/constraints/progress). Keep it small enough to read every round.',
+      `- When updating any Taskdoc section: each call replaces the entire section; always start from the current injected content and merge/compress; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${agent.id}] ...\` or a \`### @${agent.id}\` block).`,
+      '- Taskdoc `progress` is the team’s shared bulletin board: distilled milestone snapshots (key decisions/current status/next steps), not raw logs.',
+      '- Important: the Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc instead of trying to read files under `*.tsk/` via general file tools (they will be rejected).',
+      '- Reminders (working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small (often 1–3 items), prefer `update_reminder` to compress/merge; delete when obsolete.',
+      teamMemoryLine,
+      personalMemoryLine,
+      '',
+      ...(isSubdialog
+        ? [
+            `You are currently in a subdialog: \`change_mind\` is not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${taskdocMaintainerId}\` with a fully merged replacement draft (full-section replacement). Do not claim it is updated until you see a receipt.`,
+          ]
+        : [
+            'You are currently in the main dialog: you are responsible for keeping the team-shared Taskdoc coherent and up to date (especially the progress bulletin board). Merge proposals from teammates/subdialogs promptly and keep it concise.',
+          ]),
+      ...(agentHasTeamMemoryTools
+        ? [
+            'Hint: you have team-memory tools (`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`) and may maintain team memory when it is truly stable and worth sharing.',
+          ]
+        : []),
+      ...(agentHasPersonalMemoryTools
+        ? [
+            'Hint: you have personal-memory tools (`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`). Beyond stable habits/preferences, maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts like entrypoints/key symbols/contracts) so tasks within your scope can be solved by memory without re-reading files. If you changed those files or detect staleness/conflicts, immediately `replace_memory` to keep it accurate.',
+          ]
+        : []),
+      ...(isSubdialog
+        ? [
+            `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft a merged replacement and ask \`@${taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`,
+          ]
+        : [
+            'Workflow: do work → distill (`update_reminder` + `change_mind(progress)`) → then `clear_mind` to drop noise.',
+          ]),
+      'When context health turns yellow/red: treat it as a hard stop; distill first, then clear.',
+      'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; keep only essential excerpts in reminders.',
+    ].join('\n');
+  })();
+  const memorySystemPrompt = `${memorySystemTitle}\n\n${memorySystemBody}`;
+
+  // Generate tool usage text (shell policy + memory system + toolset prompts).
   let toolUsageText: string;
   let funcToolUsageText: string = '';
   let funcToolRulesText: string = '';
 
-  const remindersPolicyTitle =
-    workingLanguage === 'zh'
-      ? '### 提醒项（工作集）使用策略（重要）'
-      : '### Reminder Working-Set Policy (Important)';
-  const remindersPolicyBody =
-    workingLanguage === 'zh'
-      ? [
-          '提醒项不是“噪音”，而是你跨新一轮/新回合携带的工作集（worklog）。',
-          '你应主动维护少量高价值提醒项：优先 update_reminder 压缩/合并；不再需要就 delete_reminder。',
-          '当上下文健康变黄/红：先收敛提醒项内容，再 change_mind(progress) 提炼，然后 clear_mind。',
-        ].join('\n')
-      : [
-          'Reminders are not “noise”; they are your cross-round working set (worklog).',
-          'Actively curate a small set of high-value reminders: prefer update_reminder to compress/merge; delete when no longer needed.',
-          'At yellow/red context health: compress reminders first, then change_mind(progress), then clear_mind.',
-        ].join('\n');
-  const remindersPolicyPrompt = `${remindersPolicyTitle}\n\n${remindersPolicyBody}`;
-
   toolUsageText = (() => {
-    const prefix = [shellPolicyPrompt, remindersPolicyPrompt, toolsetPromptText]
+    const prefix = [shellPolicyPrompt, memorySystemPrompt, toolsetPromptText]
       .filter((b) => b.trim() !== '')
       .join('\n\n');
     return prefix;
