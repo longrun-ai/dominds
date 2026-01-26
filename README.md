@@ -211,6 +211,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Terminology](docs/dominds-terminology.md)** — Canonical vocabulary across prompts and implementation docs (Taskdoc, Teammate Tellask, etc.)
 - **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
 - **[Design](docs/design.md)** — Architecture and key abstractions
+- **[Memory System](docs/memory-system.md)** — Taskdoc, reminders, team/personal memory, and hygiene loop
 - **[Dialog System](docs/dialog-system.md)** — Dialog runtime model and streaming
 - **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle
 - **[Interruption & Resumption](docs/interruption-resumption.md)** — Stop/resume semantics
@@ -223,7 +224,6 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[i18n](docs/i18n.md)** — Language and localization rules
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
 - **[Mottos](docs/mottos.md)** — Short guiding statements
-
 ### Getting Help
 
 - Open an issue on [GitHub](https://github.com/longrun-ai/dominds/issues) for bugs or feature requests

@@ -407,8 +407,8 @@ export const shellCmdReminderOwner: ReminderOwner = {
       return {
         type: 'transient_guide_msg',
         role: 'assistant',
-        content: `🔔 **System Reminder #${index + 1}** - Process Management Context
-I need to evaluate this reminder's current relevance to system operations and call the function tool \`delete_reminder\` with \`{ "reminder_no": ${index + 1} }\` if the context has changed or the task is complete.
+        content: `🔔 **System-managed reminder item #${index + 1}** - Process Management
+This reminder is system-managed and should update/drop automatically based on the underlying process lifecycle.
 ---
 ${reminder.content}`,
       };
@@ -423,7 +423,7 @@ ${reminder.content}`,
         type: 'transient_guide_msg',
         role: 'assistant',
         content: `⚰️ **Process Lifecycle Alert #${index + 1}** - Daemon Terminated (PID ${pid})
-This daemon process has completed its lifecycle and is no longer running. I should clean up this tracking reminder by calling \`delete_reminder\` with \`{ "reminder_no": ${index + 1} }\` to maintain system hygiene.`,
+This daemon process has completed its lifecycle and is no longer running. This reminder should auto-drop (or can be ignored).`,
       };
     }
 
@@ -442,7 +442,7 @@ This daemon process has completed its lifecycle and is no longer running. I shou
       type: 'transient_guide_msg',
       role: 'assistant',
       content: `🔄 **Active Daemon Monitor #${index + 1}** - PID ${pid} (Uptime: ${uptimeStr})
-This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. Call \`delete_reminder\` with \`{ "reminder_no": ${index + 1} }\` when monitoring is no longer needed or if the process should be terminated.
+This daemon process is actively running and requires periodic assessment. I should check its health, resource usage, and operational status. This reminder is system-managed and will update/drop automatically.
 
 **Current Status:**
 ${statusInfo}`,

@@ -56,6 +56,7 @@ import type {
   WebSocketMessage,
   WelcomeMessage,
 } from '../shared/types/wire';
+import { escapeHtml } from '../shared/utils/html.js';
 import { bumpDialogsLastModified } from '../utils/dialog-last-modified';
 import { marked } from '../utils/markdownRenderer';
 import './archived-dialog-list.js';
@@ -851,6 +852,9 @@ export class DomindsApp extends HTMLElement {
     const optimalRatio = this.clamp01(
       snapshot.effectiveOptimalMaxTokens / snapshot.modelContextLimitTokens,
     );
+    const criticalRatio = this.clamp01(
+      snapshot.effectiveCriticalMaxTokens / snapshot.modelContextLimitTokens,
+    );
 
     const endAngleRad = startAngleRad + hardRatio * 2 * Math.PI;
     const endX = cx + r * Math.cos(endAngleRad);
@@ -862,15 +866,20 @@ export class DomindsApp extends HTMLElement {
       ? `M ${cx} ${cy} L ${cx} ${cy - r} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY} Z`
       : '';
 
-    const markAngleRad = startAngleRad + optimalRatio * 2 * Math.PI;
-    const markX = cx + r * Math.cos(markAngleRad);
-    const markY = cy + r * Math.sin(markAngleRad);
+    const optimalMarkAngleRad = startAngleRad + optimalRatio * 2 * Math.PI;
+    const optimalMarkX = cx + r * Math.cos(optimalMarkAngleRad);
+    const optimalMarkY = cy + r * Math.sin(optimalMarkAngleRad);
+
+    const criticalMarkAngleRad = startAngleRad + criticalRatio * 2 * Math.PI;
+    const criticalMarkX = cx + r * Math.cos(criticalMarkAngleRad);
+    const criticalMarkY = cy + r * Math.sin(criticalMarkAngleRad);
 
     return `
       <svg class="ctx-usage-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" focusable="false">
         ${hasWedge ? `<path class="ctx-usage-wedge" d="${wedgePath}" />` : ''}
         <circle class="ctx-usage-ring" cx="${cx}" cy="${cy}" r="${r}" fill="none" />
-        <line class="ctx-usage-mark" x1="${cx}" y1="${cy}" x2="${markX}" y2="${markY}" />
+        <line class="ctx-usage-mark-optimal" x1="${cx}" y1="${cy}" x2="${optimalMarkX}" y2="${optimalMarkY}" />
+        <line class="ctx-usage-mark-critical" x1="${cx}" y1="${cy}" x2="${criticalMarkX}" y2="${criticalMarkY}" />
       </svg>
     `;
   }
@@ -879,37 +888,46 @@ export class DomindsApp extends HTMLElement {
     const el = this.shadowRoot?.querySelector('#toolbar-context-health');
     if (!(el instanceof HTMLElement)) return;
 
+    const tooltip = this.shadowRoot?.querySelector('#toolbar-context-health-tooltip');
+
     const snapshot = this.toolbarContextHealth;
     if (!snapshot) {
       el.setAttribute('data-level', 'unknown');
       const label = formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
-      el.title = label;
       el.setAttribute('aria-label', label);
       el.innerHTML = this.renderContextUsageIcon(null);
+      if (tooltip instanceof HTMLElement) {
+        tooltip.textContent = label;
+      }
       return;
     }
 
     if (snapshot.kind !== 'available') {
       el.setAttribute('data-level', 'unknown');
       const label = formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
-      el.title = label;
       el.setAttribute('aria-label', label);
       el.innerHTML = this.renderContextUsageIcon(snapshot);
+      if (tooltip instanceof HTMLElement) {
+        tooltip.textContent = label;
+      }
       return;
     }
 
-    const overOptimal = snapshot.promptTokens > snapshot.effectiveOptimalMaxTokens;
-    el.setAttribute('data-level', overOptimal ? 'caution' : 'healthy');
+    const level = snapshot.level;
+
+    el.setAttribute('data-level', level);
     el.innerHTML = this.renderContextUsageIcon(snapshot);
     const label = formatContextUsageTitle(this.uiLanguage, {
       kind: 'known',
       promptTokens: snapshot.promptTokens,
       hardPercentText: this.formatPercent(snapshot.hardUtil),
       modelContextLimitTokens: snapshot.modelContextLimitTokens,
-      overOptimal,
+      level,
     });
-    el.title = label;
     el.setAttribute('aria-label', label);
+    if (tooltip instanceof HTMLElement) {
+      tooltip.textContent = label;
+    }
   }
 
   private dialogKey(rootId: string, selfId: string): string {
@@ -1108,7 +1126,6 @@ export class DomindsApp extends HTMLElement {
       #toolbar-context-health {
         cursor: default;
         font-variant-numeric: tabular-nums;
-        pointer-events: none;
         width: 20px;
         height: 20px;
         padding: 0;
@@ -1126,6 +1143,10 @@ export class DomindsApp extends HTMLElement {
 
       #toolbar-context-health[data-level='caution'] {
         color: color-mix(in srgb, #b45309 85%, var(--dominds-fg, #333333));
+      }
+
+      #toolbar-context-health[data-level='critical'] {
+        color: var(--dominds-danger, #721c24);
       }
 
       #toolbar-context-health[data-level='unknown'] {
@@ -1151,11 +1172,55 @@ export class DomindsApp extends HTMLElement {
         opacity: 0.6;
       }
 
-          .ctx-usage-mark {
-            stroke: var(--dominds-fg, #333333);
+          .ctx-usage-mark-optimal {
+            stroke: color-mix(in srgb, #f59e0b 85%, var(--dominds-fg, #333333));
             stroke-width: 1.2;
-            opacity: 0.65;
+            opacity: 0.8;
           }
+
+          .ctx-usage-mark-critical {
+            stroke: var(--dominds-danger, #721c24);
+            stroke-width: 1.2;
+            opacity: 0.8;
+          }
+      #toolbar-context-health-wrap {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      #toolbar-context-health-wrap .toolbar-tooltip {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--dominds-fg, #333333);
+        color: var(--dominds-bg, #ffffff);
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        line-height: 1.25;
+        white-space: pre;
+        max-width: min(420px, 90vw);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+        z-index: 1000;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
+      }
+
+      #toolbar-context-health-wrap .toolbar-tooltip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: var(--dominds-fg, #333333);
+      }
+
+      #toolbar-context-health-wrap:hover .toolbar-tooltip {
+        opacity: 1;
+      }
 
       .problems-panel {
         position: fixed;
@@ -2374,11 +2439,10 @@ export class DomindsApp extends HTMLElement {
             promptTokens: this.toolbarContextHealth.promptTokens,
             hardPercentText: this.formatPercent(this.toolbarContextHealth.hardUtil),
             modelContextLimitTokens: this.toolbarContextHealth.modelContextLimitTokens,
-            overOptimal:
-              this.toolbarContextHealth.promptTokens >
-              this.toolbarContextHealth.effectiveOptimalMaxTokens,
+            level: this.toolbarContextHealth.level,
           })
         : formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+    const contextUsageTooltipText = escapeHtml(contextUsageTitle);
     const uiLanguageMatch = getUiLanguageMatchState({
       uiLanguage: this.uiLanguage,
       serverWorkLanguage: this.serverWorkLanguage,
@@ -2553,7 +2617,10 @@ export class DomindsApp extends HTMLElement {
 	                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 	              </button>
 		            </div>
-	              <div class="badge-button" id="toolbar-context-health" data-level="unknown" title="${contextUsageTitle}" aria-label="${contextUsageTitle}" style="margin-left: 12px;">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
+                <div id="toolbar-context-health-wrap" style="position: relative; margin-left: 12px;">
+	              <div class="badge-button" id="toolbar-context-health" data-level="unknown" aria-label="${contextUsageTitle}" style="">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
+                  <div class="toolbar-tooltip" id="toolbar-context-health-tooltip">${contextUsageTooltipText}</div>
+                </div>
 		          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
 		            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
 		              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
@@ -4929,9 +4996,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return escapeHtml(text);
   }
 
   private getProblemsTopSeverity(): 'info' | 'warning' | 'error' {

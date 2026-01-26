@@ -11,21 +11,28 @@ Dominds already has:
 - **Reminders** on the dialog object (`Dialog.addReminder`, `Dialog.processReminderUpdates`)
 - A first-class **ReminderOwner** mechanism (`ReminderOwner.updateReminder` → `drop|keep|update`)
 - Model metadata that includes a per-model **context length** (`context_length` in `dominds/main/llm/defaults.yaml`)
+- A config surface for **`optimal_max_tokens`** and **`critical_max_tokens`** (optional per-model fields)
 
 Dominds does **not** yet have:
 
 - A normalized, persisted **token usage record** per generation (streaming generators currently do
   not plumb token usage into dialog state).
-- A config surface for **`optimal_max_tokens`** (this doc proposes adding it as an optional field).
 
 ## Goals
 
 - Collect **token usage stats** from LLM provider wrappers after each generation.
-- Compute a simple **context health** signal (percent-of-limit) from provider stats + model metadata.
-- When the dialog context is “too large”, add a **reminder** urging the agent to “clear its mind”
-  (Dominds does not auto-compact context: distill important information into the Taskdoc and/or reminders, then call the function tool `clear_mind({ "reminder_content": "" })` to restart with minimal context).
+- Compute a simple **context health** signal from provider stats + model metadata.
+- When the dialog context is “too large”, add a **reminder** urging the agent to “clear its mind”.
+  - Dominds does not auto-compact context.
+  - The safe workflow is: distill important information into the Taskdoc and/or reminders, then call
+    the function tool `clear_mind({ "reminder_content": "" })` to restart with minimal context.
 - Avoid reminder spam via a **reminder owner** mechanism; stop reminding once the dialog is back in a
   healthy range.
+- When the dialog is **critical** for too long, enforce stability via a **generation-turn countdown**:
+  - Start a **5 generation-turn** countdown while still critical.
+  - Decrement once per generation while still critical.
+  - When the countdown reaches **0**, Dominds auto-starts a **new round** (equivalent to `clear_mind`)
+    and clears Q4H for stability.
 
 ## Non-goals
 
@@ -43,10 +50,16 @@ Dominds does **not** yet have:
 - **Prompt tokens**: tokens in the input prompt sent to the model for a generation.
 - **Completion tokens**: tokens produced by the model for that generation.
 - **Total tokens**: prompt + completion (if the provider reports it).
+
+### Thresholds
+
 - **`optimal_max_tokens`**: an optional per-model “soft ceiling” for prompt/context size.
   - If explicitly configured, Dominds uses it directly.
-  - If not configured, Dominds treats it as **50% of the model hard context limit**
-    (`floor(modelContextLimitTokens * 0.5)`).
+  - If not configured, Dominds defaults to **100,000** tokens.
+- **`critical_max_tokens`**: an optional per-model “critical ceiling” for prompt/context size.
+  - If explicitly configured, Dominds uses it directly.
+  - If not configured, Dominds defaults to **90% of the model hard context limit**
+    (`floor(modelContextLimitTokens * 0.9)`).
 
 Notes:
 
@@ -78,52 +91,31 @@ For context health, the limit should be sourced from:
 1. `context_length` if present
 2. Otherwise `input_length` (as a conservative fallback for prompt-size monitoring)
 
-### Where token usage should be sourced in current Dominds
-
-Today’s streaming generators do not surface usage into dialog state:
-
-- `dominds/main/llm/gen/anthropic.ts` receives streaming events where usage exists (see “Usage info
-  captured but not currently used”) but does not propagate it.
-- `dominds/main/llm/gen/codex.ts` similarly streams without persisting a usage summary.
-
-This feature therefore requires a small API addition between:
-
-- `LlmGenerator.genToReceiver(...)` (generator)
-- `LlmStreamReceiver` / `llm/driver.ts` (driver)
-- dialog persistence + UI events (state propagation)
-
-### Persistence strategy (based on current storage types)
-
-Current persistence has no “usage per generation” record. The cleanest options are:
-
-- Extend `GenFinishRecord` (or add a new `gen_usage_record`) in
-  `dominds/main/shared/types/storage.ts`, then append it from `llm/driver.ts` when the generator
-  yields usage.
-- Avoid encoding usage into reminder text; reminders are user-facing and shouldn’t carry telemetry.
-
 ## Health Computation
 
-Dominds computes two utilization ratios:
+Dominds computes ratios:
 
 - `hardUtil = promptTokens / modelContextLimitTokens`
 - `optimalUtil = promptTokens / effectiveOptimalMaxTokens`
 
 Where:
 
-- `effectiveOptimalMaxTokens = optimal_max_tokens ?? floor(modelContextLimitTokens * 0.5)`
+- `effectiveOptimalMaxTokens = optimal_max_tokens ?? 100_000`
+- `effectiveCriticalMaxTokens = critical_max_tokens ?? floor(modelContextLimitTokens * 0.9)`
+
+### Levels
+
+Levels are derived from the two thresholds:
+
+- **Healthy (green)**: `promptTokens <= effectiveOptimalMaxTokens`
+- **Caution (yellow)**: `promptTokens > effectiveOptimalMaxTokens`
+- **Critical (red)**: `promptTokens > effectiveCriticalMaxTokens`
 
 ### Trigger condition (reminder)
 
-Add a “clear your mind” reminder when **either** is true:
+Add a context-health reminder when:
 
-- `hardUtil > 0.50` (prompt exceeds 50% of the model context window)
-- `promptTokens > effectiveOptimalMaxTokens` (prompt exceeds the optimal ceiling; defaults to 50% of
-  hard max when not configured)
-
-Rationale:
-
-- `optimal_max_tokens` lets a team choose a lower operational ceiling (quality/latency/cost) while
-  still respecting the model’s real limits.
+- `level !== 'healthy'`
 
 ### Clear condition (stop reminding)
 
@@ -131,14 +123,13 @@ Use the reminder owner mechanism to stop the reminder when the **next dialog rou
 
 - `promptTokens < effectiveOptimalMaxTokens`
 
-This uses the default `effectiveOptimalMaxTokens = 50% of hard max` when `optimal_max_tokens` is not
-explicitly configured.
-
 ## Reminder Owner Semantics
 
 Context-health reminders should use the existing `ReminderOwner` mechanism.
 
 - Implement a dedicated `ReminderOwner` with `name: 'context_health'`.
+- Owned reminders are **system-managed** and should not include generic “delete this reminder”
+  instructions; that guidance is reserved for non-owned reminders only.
 
 Rules:
 
@@ -158,6 +149,25 @@ Implication for this feature:
 - The context health reminder should be an **owned reminder** (e.g. owner name `context_health`)
   whose content is derived from the latest token stats each time reminders are rendered.
 
+## Reminder copy (UX)
+
+When crossing thresholds, reminders should guide the agent toward safe, low-friction recovery.
+
+### Over optimal (yellow)
+
+- Clarify that `clear_mind` does **not** delete the Taskdoc (`*.tsk/`) and does **not** delete existing
+  reminders.
+- Encourage the agent to safely clear to reduce context size.
+- If the agent still worries about losing context: put a large “safety reminder item” into
+  `clear_mind({ "reminder_content": "..." })` so the new round carries key details.
+
+### Over critical (red)
+
+- Use urgent wording: if the agent does not `clear_mind` immediately, the dialog is likely to hit
+  technical failures (generation errors, stalls, inability to continue).
+- Include the critical countdown and the auto-new-round behavior at countdown 0 so the user is
+  informed about the forced stability mechanism.
+
 ## UI (Webapp) Expectations
 
 ### “Context health” indicator (high priority)
@@ -169,32 +179,29 @@ Show a small, always-visible indicator in the dialog UI that includes:
 
 Suggested visual states:
 
-- **Healthy**: prompt tokens ≤ `effectiveOptimalMaxTokens`
-- **Caution**: prompt tokens > `effectiveOptimalMaxTokens`
-
-### Extra context stats (low priority)
-
-Potential additional signals to surface later:
-
-- Number of turns/messages in the dialog
-- Count/size of large tool outputs included in context
-- “Recent tool activity” footprint (e.g., last N tool results included)
+- **Healthy** (green)
+- **Caution** (yellow)
+- **Critical** (red)
+- **Unknown** (gray)
 
 ## Implementation Outline
 
-1. **Refactor LLM provider wrappers** to return token stats after each generation (including prompt
+1. Refactor LLM provider wrappers to return token stats after each generation (including prompt
    token count when the provider reports it).
 2. Thread usage stats into the dialog state (persist alongside dialog turns).
-3. Implement the **context health monitor** to:
-   - compute utilization,
+3. Implement the context health monitor to:
+   - compute utilization and levels,
    - manage the `context_health` reminder owner lifecycle.
 4. Add a minimal UI indicator that consumes the dialog’s context health state.
 
 ## Acceptance Criteria
 
 - After every LLM generation, Dominds records token usage stats (or “unavailable”) with the turn.
-- When prompt tokens exceed 50% of the model limit, or exceed `effectiveOptimalMaxTokens`, the agent
-  receives a “clear your mind” reminder (once per active condition via reminder owner).
+- Context health thresholds:
+  - `optimal_max_tokens` defaults to `100_000` when not configured.
+  - `critical_max_tokens` defaults to `floor(modelContextLimitTokens * 0.9)` when not configured.
+- When `level !== 'healthy'`, the agent receives a context-health reminder (once per active condition
+  via reminder owner), with distinct copy for over-optimal vs over-critical.
 - The reminder is automatically cleared once a subsequent round’s prompt tokens are below
   `effectiveOptimalMaxTokens`.
-- UI shows context health as a percentage with “unknown” handling when usage is unavailable.
+- UI shows context health with green/yellow/red (and “unknown” handling when usage is unavailable).

@@ -102,13 +102,15 @@ function buildShellPolicyPrompt(options: {
   const body =
     language === 'zh'
       ? [
-          '你当前未配置 shell 工具：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
+          '你不具备 shell 工具（本环境仅 @cmdr 等专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
           '当你确实需要 shell 执行时：请转交给具备 shell 能力的专员队友，并提供充分理由与可审查的命令提案：',
           '- 你要达成的目标（why）',
           '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
           '- 风险评估与安全边界（risk & guardrails）',
-          '',
           `可转交的 shell 专员队友：${shellPeers}`,
+          '',
+          '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@cmdr` 行），不要只说“我会请 @cmdr 运行”。',
+          '重要：在你看到 @cmdr 的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
         ].join('\n')
       : [
           'You do not have shell tools configured: do not fabricate/assume command output, and do not ask the system to execute commands directly.',
@@ -118,9 +120,10 @@ function buildShellPolicyPrompt(options: {
           '- Risk assessment and guardrails (risk & guardrails)',
           '',
           `Shell-capable specialist teammates: ${shellPeers}`,
+          '',
+          'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@cmdr` line) in the same message; do not just say “I will ask @cmdr to run it”.',
+          'Important: do not claim “ran/passed/no errors” until you see @cmdr’s receipt (command/exit_code/stdout/stderr).',
         ].join('\n');
-
-  return `${title}\n\n${body}`.trim();
 }
 
 async function readAgentMindResult(id: string, fn: string): Promise<ReadAgentMindResult> {
@@ -274,13 +277,31 @@ export async function loadAgentMinds(
     return blocks.join('\n\n');
   })();
 
-  // Generate tool usage text (shell policy + toolset prompts; tools themselves are function tools).
+  // Generate tool usage text (shell policy + reminder working-set policy + toolset prompts).
   let toolUsageText: string;
   let funcToolUsageText: string = '';
   let funcToolRulesText: string = '';
 
+  const remindersPolicyTitle =
+    workingLanguage === 'zh'
+      ? '### 提醒项（工作集）使用策略（重要）'
+      : '### Reminder Working-Set Policy (Important)';
+  const remindersPolicyBody =
+    workingLanguage === 'zh'
+      ? [
+          '提醒项不是“噪音”，而是你跨新一轮/新回合携带的工作集（worklog）。',
+          '你应主动维护少量高价值提醒项：优先 update_reminder 压缩/合并；不再需要就 delete_reminder。',
+          '当上下文健康变黄/红：先收敛提醒项内容，再 change_mind(progress) 提炼，然后 clear_mind。',
+        ].join('\n')
+      : [
+          'Reminders are not “noise”; they are your cross-round working set (worklog).',
+          'Actively curate a small set of high-value reminders: prefer update_reminder to compress/merge; delete when no longer needed.',
+          'At yellow/red context health: compress reminders first, then change_mind(progress), then clear_mind.',
+        ].join('\n');
+  const remindersPolicyPrompt = `${remindersPolicyTitle}\n\n${remindersPolicyBody}`;
+
   toolUsageText = (() => {
-    const prefix = [shellPolicyPrompt, toolsetPromptText]
+    const prefix = [shellPolicyPrompt, remindersPolicyPrompt, toolsetPromptText]
       .filter((b) => b.trim() !== '')
       .join('\n\n');
     return prefix;

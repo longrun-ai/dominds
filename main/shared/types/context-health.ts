@@ -18,6 +18,8 @@ export type ContextHealthSnapshot =
       modelContextLimitTokens?: number;
       effectiveOptimalMaxTokens?: number;
       optimalMaxTokensConfigured?: number;
+      effectiveCriticalMaxTokens?: number;
+      criticalMaxTokensConfigured?: number;
     }
   | {
       kind: 'available';
@@ -27,6 +29,8 @@ export type ContextHealthSnapshot =
       modelContextLimitTokens: number;
       effectiveOptimalMaxTokens: number;
       optimalMaxTokensConfigured?: number;
+      effectiveCriticalMaxTokens: number;
+      criticalMaxTokensConfigured?: number;
       hardUtil: number;
       optimalUtil: number;
       level: ContextHealthLevel;

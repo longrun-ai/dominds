@@ -26,12 +26,28 @@ export function formatReminderItemGuide(
   content: string,
 ): string {
   if (language === 'zh') {
-    return `这里是提醒 #${index}。我应判断它是否仍然相关；如果不相关，应立即调用函数工具 \`delete_reminder\`：\`{ \"reminder_no\": ${index} }\`。
+    return `这里是提醒项 #${index}（工作集/工作日志的一部分）。
+
+原则：提醒项应该是“高价值且不过时”的信息；我应优先用 update_reminder 维护它，避免堆很多条。
+- 保留且仍然需要：把内容压缩为要点并 update_reminder（不要无限增大）。
+- 已过时/不再需要：再 delete_reminder。
+
+快速操作：
+- 更新：update_reminder({ "reminder_no": ${index}, "content": "..." })
+- 删除：delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
   }
 
-  return `Here I have reminder #${index}. I should assess whether it's still relevant; if not, I should immediately call the function tool \`delete_reminder\` with \`{ \"reminder_no\": ${index} }\`.
+  return `Here is reminder item #${index} (part of your working set / worklog).
+
+Principle: reminders should be high-value and not stale; prefer update_reminder (curate) over creating many items.
+- Still needed: compress and update_reminder (do not grow without bound).
+- Not needed: delete_reminder.
+
+Quick actions:
+- Update: update_reminder({ "reminder_no": ${index}, "content": "..." })
+- Delete: delete_reminder({ "reminder_no": ${index} })
 ---
 ${content}`;
 }
@@ -63,6 +79,10 @@ export type ContextHealthReminderTextArgs =
     }
   | {
       kind: 'over_optimal';
+    }
+  | {
+      kind: 'over_critical';
+      remainingGenTurns: number;
     };
 
 export function formatContextHealthReminderText(
@@ -70,43 +90,38 @@ export function formatContextHealthReminderText(
   args: ContextHealthReminderTextArgs,
 ): string {
   if (language === 'zh') {
-    const distillLines = [
-      '建议：用函数工具 `change_mind` 把“提炼摘要”写回差遣牒（selector 选 `progress`），然后再用函数工具 `clear_mind` 清理噪音开启新回合。',
-      '',
-      '提炼摘要（写入 `progress` 即可；无需复制粘贴代码块）：',
-      '## 提炼摘要',
-      '- 目标：',
-      '- 关键决策：',
-      '- 已改文件：',
-      '- 下一步：',
-      '- 未决问题：',
-    ];
-
-    const options = [
-      '- 可选动作（按当前意图自行选择）：',
-      '  - 把关键事实/决策写入差遣牒（`change_mind({\"selector\":\"progress\",\"content\":...})`）',
-      '  - 收窄范围/减少输出噪音（例如减少大段粘贴、减少无关回显）',
-      '  - 接受风险继续（例如为了保持连续性）',
-    ];
-
     switch (args.kind) {
       case 'usage_unknown':
         return [
-          '上下文健康：上一轮生成的 token 使用量未知。',
+          '📋',
+          '🧠 上下文健康：⚪ 未知（上一轮 token 统计不可用）',
           '',
-          '- 原因：当上下文接近模型上限或统计未知时，质量与稳定性更容易波动。',
-          ...options,
+          '说明：当上下文接近模型上限或统计未知时，质量与稳定性更容易波动。',
           '',
-          ...distillLines,
+          '建议：先 change_mind 更新差遣牒 progress（提炼摘要），再 clear_mind 开启新一轮以清理噪音。',
         ].join('\n');
       case 'over_optimal':
         return [
-          '上下文健康：对话上下文已偏大。',
+          '📋',
+          '🧠 上下文健康：🟡 黄（现在就停手：先提炼，再清理）',
           '',
-          '- 原因：上下文过大会降低质量并拖慢响应。',
-          ...options,
+          '禁止继续推进实现或继续读大文件输出。先把“必须保留的细节”收敛到少量提醒项（优先 update_reminder 压缩/合并），再 change_mind(progress) 写 5 行提炼摘要，然后 clear_mind 开启新一轮/新回合。',
           '',
-          ...distillLines,
+          '说明：clear_mind 不会清空差遣牒（`*.tsk/`），也不会清理现有提醒项；可放心开启新一轮/新回合。',
+          '',
+          '如果你担心丢细节：不要继续堆对话历史；把关键细节写进提醒项（提醒项是跨新一轮/新回合的工作集）。',
+        ].join('\n');
+      case 'over_critical':
+        return [
+          '📋',
+          '🧠 上下文健康：🔴 红（硬闸门：立刻提炼，否则会被动新开一轮/新回合）',
+          '',
+          `倒数：还剩 ${args.remainingGenTurns} 次生成机会；到 0 系统将被动开启新一轮/新回合以保持稳定性（等同 clear_mind：清空本轮对话消息；差遣牒与提醒项不受影响）。`,
+          '',
+          '禁止继续推进实现。必须立刻执行：',
+          '- 先用 update_reminder 把“必须保留的细节”压缩/合并到少量提醒项（工作集）',
+          '- 再 change_mind(progress) 写 5 行提炼摘要',
+          '- 然后 clear_mind 开启新一轮/新回合',
         ].join('\n');
       default: {
         const _exhaustiveCheck: never = args;
@@ -115,43 +130,45 @@ export function formatContextHealthReminderText(
     }
   }
 
-  const distillLines = [
-    'Suggested flow: write a short distillation into the Taskdoc via the function tool `change_mind` (selector `progress`), then use the function tool `clear_mind` to start a new round with less noise.',
+  const clearMindSafetyLines = [
+    'Note: calling the function tool `clear_mind` does NOT delete the Taskdoc (`*.tsk/`) and does NOT delete existing reminder items.',
+    'So it is safe to distill key facts into the Taskdoc/reminders and then `clear_mind` immediately.',
     '',
-    'Distilled context (put this into `progress`; no code block copy needed):',
-    '## Distilled context',
-    '- Goal:',
-    '- Key decisions:',
-    '- Files touched:',
-    '- Next steps:',
-    '- Open questions:',
-  ];
-
-  const options = [
-    '- Options (choose based on your intent):',
-    '  - Write key facts/decisions into the Taskdoc (`change_mind({\"selector\":\"progress\",\"content\":...})`)',
-    '  - Narrow scope / reduce output noise (avoid large pastes, avoid irrelevant tool echoes)',
-    '  - Continue as-is if you accept the risk',
+    'If I am still worried about losing context:',
+    '- I can put a long “safety reminder item” into `clear_mind({ "reminder_content": "..." })` so the new round carries key facts/decisions/next steps.',
   ];
 
   switch (args.kind) {
     case 'usage_unknown':
       return [
-        'Context health: token usage for the last generation is unknown.',
+        '📋',
+        'Context health: unknown (token usage for the last generation is unavailable).',
         '',
-        '- Why: When context is near limits or usage is unknown, quality and stability can drift.',
-        ...options,
+        'Why: When context is near limits or usage is unknown, quality and stability can drift.',
         '',
-        ...distillLines,
+        'Suggested: `change_mind` (selector `progress`) then `clear_mind` to start a new round with less noise.',
       ].join('\n');
     case 'over_optimal':
       return [
-        'Context health: your dialog context is getting large.',
+        '📋',
+        'Context health: 🟡 caution (your dialog context is getting large).',
         '',
-        '- Why: Large prompts can degrade quality and slow responses.',
-        ...options,
+        'Why: Large prompts can degrade quality and slow responses.',
         '',
-        ...distillLines,
+        ...clearMindSafetyLines,
+        '',
+        'Suggested: `change_mind` (selector `progress`) then `clear_mind` to start a new round with less noise.',
+      ].join('\n');
+    case 'over_critical':
+      return [
+        '📋',
+        'Context health: 🔴 critical (high risk: generation may fail/stall/become unusable).',
+        '',
+        `Countdown: ${args.remainingGenTurns} generation turns left; at 0 the system will auto-start a new round for stability (equivalent to \`clear_mind\`).`,
+        '',
+        ...clearMindSafetyLines,
+        '',
+        'Must prioritize: `change_mind` (selector `progress`) → `clear_mind`.',
       ].join('\n');
     default: {
       const _exhaustiveCheck: never = args;
@@ -159,21 +176,29 @@ export function formatContextHealthReminderText(
     }
   }
 }
-
 export function formatReminderIntro(language: LanguageCode, count: number): string {
   if (language === 'zh') {
-    return `⚠️ 我当前有 ${count} 条提醒（请优先处理）。
+    return `⚠️ 我当前有 ${count} 条提醒项（这是跨新一轮/新回合的工作集；请主动维护）。
+
+推荐工作流（优先级从高到低）：
+1) 需要长期携带的关键细节：写进提醒项（尽量少量几条，优先 update_reminder 维护单条“工作集提醒项”）。
+2) 任务契约/关键决策/下一步：写进差遣牒（change_mind 的 progress 段，保持简短）。
+3) 大段对话与工具调用历史：当成噪音，必要时 clear_mind 清掉。
 
 快速操作：
 - 新增：add_reminder({ "content": "...", "position": 0 })（position=0 表示默认追加；也可填 1..N 指定插入位置）
 - 更新：update_reminder({ "reminder_no": 1, "content": "..." })
 - 删除：delete_reminder({ "reminder_no": 1 })
 
-建议做法（可选）：
-- 先用 change_mind({ "selector": "progress", "content": "..." }) 把关键事实/决策写回差遣牒
-- 然后用 clear_mind({ "reminder_content": "" }) 开启新回合以清理噪音
+注意：
+- 系统托管提醒项（有 owner）会自动更新/消失；通常不需要 delete_reminder。
 
-提炼模板（写入差遣牒的 \`progress\` 段）：
+建议（上下文健康黄/红时必须执行）：
+- 先把“必须保留的细节”收敛到少量提醒项（update_reminder 压缩/合并）
+- 再 change_mind(progress) 写 5 行提炼摘要
+- 然后 clear_mind 开启新一轮/新回合（差遣牒与提醒项不会丢）
+
+提炼模板（写入差遣牒的 progress 段）：
 ## 提炼摘要
 - 目标：
 - 关键决策：
@@ -183,24 +208,49 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
   }
 
   const plural = count > 1 ? 's' : '';
-  return `⚠️ I currently have ${count} reminder${plural} (please review).
+  return `⚠️ I currently have ${count} reminder item${plural} (this is your cross-round working set; actively curate it).
+
+Recommended flow (highest priority first):
+1) Key details worth carrying: put them into reminders (keep it small; prefer update_reminder on a single “worklog” item).
+2) Task contract / key decisions / next steps: put into the Taskdoc (change_mind selector progress; keep it short).
+3) Long chat/tool history: treat as noise; clear_mind when needed.
 
 Quick actions:
 - Add: add_reminder({ "content": "...", "position": 0 }) (position=0 means append; or set 1..N to insert)
 - Update: update_reminder({ "reminder_no": 1, "content": "..." })
 - Delete: delete_reminder({ "reminder_no": 1 })
 
-Suggested flow (optional):
-- First, write a short distillation into the Taskdoc via change_mind({ "selector": "progress", "content": "..." })
-- Then use clear_mind({ "reminder_content": "" }) to start a new round with less noise
+Note:
+- System-managed reminders (with an owner) auto-update/auto-drop; you typically do not need delete_reminder.
 
-Distill template (put this into the Taskdoc \`progress\` section):
+Suggested (mandatory at yellow/red context health):
+- First, compress/merge reminders into a small set (update_reminder)
+- Then distill 5 lines into Taskdoc progress (change_mind)
+- Then clear_mind to start a new round (Taskdoc and reminders are preserved)
+
+Distill template (Taskdoc progress):
 ## Distilled context
 - Goal:
 - Key decisions:
 - Files touched:
 - Next steps:
 - Open questions:`;
+}
+export function formatContextHealthAutoNewRoundPrompt(
+  language: LanguageCode,
+  nextRound: number,
+): string {
+  if (language === 'zh') {
+    return (
+      '上下文健康：倒数已归零。系统已自动开启新一轮以保持稳定性（等同 clear_mind：清空本轮对话消息；差遣牒与提醒项不受影响）。\n' +
+      `这是对话的第 #${nextRound} 轮，请继续执行任务。`
+    );
+  }
+  return (
+    'Context health: countdown reached zero. The system auto-started a new round for stability ' +
+    "(equivalent to clear_mind: clears this round's dialog messages; Taskdoc and reminder items are preserved).\n" +
+    `This is round #${nextRound}. Please continue the task.`
+  );
 }
 
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {

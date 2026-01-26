@@ -31,6 +31,7 @@ import { DialogPersistence } from '../persistence';
 import { removeProblem, upsertProblem } from '../problems';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import {
+  formatContextHealthAutoNewRoundPrompt,
   formatDomindsNoteDirectSelfCall,
   formatDomindsNoteInvalidMultiTeammateTargets,
   formatDomindsNoteInvalidTopicDirective,
@@ -44,7 +45,11 @@ import {
   formatUserFacingLanguageGuide,
 } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
-import type { ContextHealthSnapshot, LlmUsageStats } from '../shared/types/context-health';
+import type {
+  ContextHealthLevel,
+  ContextHealthSnapshot,
+  LlmUsageStats,
+} from '../shared/types/context-health';
 import type { NewQ4HAskedEvent } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
@@ -468,6 +473,30 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
     return { kind: 'fatal', message: 'Aborted.' };
   }
 
+  {
+    const msg =
+      err instanceof Error
+        ? err.message && err.message.length > 0
+          ? err.message
+          : err.name
+        : typeof err === 'string'
+          ? err
+          : undefined;
+    if (typeof msg === 'string' && msg.length > 0) {
+      const lower = msg.toLowerCase();
+      if (lower.includes('terminated')) {
+        return { kind: 'retriable', message: msg };
+      }
+      if (
+        lower.includes('timeout') ||
+        lower.includes('timed out') ||
+        lower.includes('rate limit')
+      ) {
+        return { kind: 'retriable', message: msg };
+      }
+    }
+  }
+
   if (isPlainObject(err)) {
     const status =
       'status' in err && typeof err.status === 'number'
@@ -513,6 +542,9 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
     }
 
     const lower = msg.toLowerCase();
+    if (lower.includes('terminated')) {
+      return { kind: 'retriable', message: msg };
+    }
     if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('rate limit')) {
       return { kind: 'retriable', message: msg };
     }
@@ -596,7 +628,9 @@ async function runLlmRequestWithRetry<T>(params: {
       }
 
       // Exponential backoff with cap. (No jitter for determinism.)
-      const backoffMs = Math.min(5000, 500 * 2 ** attempt);
+      // We intentionally use a larger cap because transient provider termination errors often
+      // recover only after a few seconds.
+      const backoffMs = Math.min(30_000, 1000 * 2 ** attempt);
       log.warn(`Retrying LLM request after retriable error`, {
         provider: params.provider,
         attempt: attempt + 1,
@@ -634,20 +668,47 @@ function resolveModelContextLimitTokens(modelInfo: ModelInfo | undefined): numbe
 function resolveEffectiveOptimalMaxTokens(args: {
   modelInfo: ModelInfo | undefined;
   modelContextLimitTokens: number;
-}): { effectiveOptimalMaxTokens: number; optimalMaxTokensConfigured?: number } {
-  const configured =
+}): {
+  effectiveOptimalMaxTokens: number;
+  optimalMaxTokensConfigured?: number;
+  effectiveCriticalMaxTokens: number;
+  criticalMaxTokensConfigured?: number;
+} {
+  const configuredOptimal =
     args.modelInfo &&
     typeof args.modelInfo.optimal_max_tokens === 'number' &&
     Number.isFinite(args.modelInfo.optimal_max_tokens)
       ? Math.floor(args.modelInfo.optimal_max_tokens)
       : undefined;
-  const configuredClamped = configured !== undefined && configured > 0 ? configured : undefined;
-  const defaultOptimal = Math.max(1, Math.floor(args.modelContextLimitTokens * 0.5));
+
+  const optimalMaxTokensConfigured =
+    configuredOptimal !== undefined && configuredOptimal > 0 ? configuredOptimal : undefined;
+
+  const configuredCritical =
+    args.modelInfo &&
+    typeof args.modelInfo.critical_max_tokens === 'number' &&
+    Number.isFinite(args.modelInfo.critical_max_tokens)
+      ? Math.floor(args.modelInfo.critical_max_tokens)
+      : undefined;
+
+  const criticalMaxTokensConfigured =
+    configuredCritical !== undefined && configuredCritical > 0 ? configuredCritical : undefined;
+
+  // Default threshold (when not configured): 100K.
+  const defaultOptimal = 100_000;
   const effectiveOptimalMaxTokens =
-    configuredClamped !== undefined ? configuredClamped : defaultOptimal;
+    optimalMaxTokensConfigured !== undefined ? optimalMaxTokensConfigured : defaultOptimal;
+
+  // Default threshold (when not configured): 90% of hard max.
+  const defaultCritical = Math.max(1, Math.floor(args.modelContextLimitTokens * 0.9));
+  const effectiveCriticalMaxTokens =
+    criticalMaxTokensConfigured !== undefined ? criticalMaxTokensConfigured : defaultCritical;
+
   return {
     effectiveOptimalMaxTokens,
-    optimalMaxTokensConfigured: configuredClamped,
+    optimalMaxTokensConfigured,
+    effectiveCriticalMaxTokens,
+    criticalMaxTokensConfigured,
   };
 }
 
@@ -662,11 +723,15 @@ function computeContextHealthSnapshot(args: {
     return { kind: 'unavailable', reason: 'model_limit_unavailable' };
   }
 
-  const { effectiveOptimalMaxTokens, optimalMaxTokensConfigured } =
-    resolveEffectiveOptimalMaxTokens({
-      modelInfo,
-      modelContextLimitTokens,
-    });
+  const {
+    effectiveOptimalMaxTokens,
+    optimalMaxTokensConfigured,
+    effectiveCriticalMaxTokens,
+    criticalMaxTokensConfigured,
+  } = resolveEffectiveOptimalMaxTokens({
+    modelInfo,
+    modelContextLimitTokens,
+  });
 
   if (args.usage.kind !== 'available') {
     return {
@@ -675,12 +740,20 @@ function computeContextHealthSnapshot(args: {
       modelContextLimitTokens,
       effectiveOptimalMaxTokens,
       optimalMaxTokensConfigured,
+      effectiveCriticalMaxTokens,
+      criticalMaxTokensConfigured,
     };
   }
 
   const hardUtil = args.usage.promptTokens / modelContextLimitTokens;
   const optimalUtil = args.usage.promptTokens / effectiveOptimalMaxTokens;
-  const level = hardUtil <= 0.5 ? 'healthy' : hardUtil <= 0.75 ? 'caution' : 'critical';
+
+  const level: ContextHealthLevel =
+    args.usage.promptTokens > effectiveCriticalMaxTokens
+      ? 'critical'
+      : args.usage.promptTokens > effectiveOptimalMaxTokens
+        ? 'caution'
+        : 'healthy';
 
   return {
     kind: 'available',
@@ -690,6 +763,8 @@ function computeContextHealthSnapshot(args: {
     modelContextLimitTokens,
     effectiveOptimalMaxTokens,
     optimalMaxTokensConfigured,
+    effectiveCriticalMaxTokens,
+    criticalMaxTokensConfigured,
     hardUtil,
     optimalUtil,
     level,
@@ -725,8 +800,7 @@ async function applyContextHealthMonitor(
     return;
   }
 
-  const shouldRemind =
-    snapshot.hardUtil > 0.5 || snapshot.promptTokens > snapshot.effectiveOptimalMaxTokens;
+  const shouldRemind = snapshot.level !== 'healthy';
 
   if (shouldRemind && !hasContextHealthReminder) {
     dlg.addReminder('Context health reminder', contextHealthReminderOwner);
@@ -736,6 +810,54 @@ async function applyContextHealthMonitor(
   if (hasContextHealthReminder) {
     await dlg.processReminderUpdates();
   }
+}
+
+function getContextHealthCriticalCountdownRemainingTurns(dlg: Dialog): number | undefined {
+  for (const reminder of dlg.reminders) {
+    if (!reminder.owner || reminder.owner.name !== contextHealthReminderOwner.name) continue;
+    const meta = reminder.meta;
+    if (!isRecord(meta)) continue;
+    if (meta['kind'] !== 'critical_countdown') continue;
+    const remaining = meta['remainingGenTurns'];
+    if (typeof remaining !== 'number' || !Number.isFinite(remaining)) continue;
+    return Math.floor(remaining);
+  }
+  return undefined;
+}
+
+async function maybeAutoStartNewRoundForContextHealth(args: {
+  dlg: Dialog;
+  pendingPrompt: HumanPrompt | undefined;
+}): Promise<HumanPrompt | undefined> {
+  const { dlg, pendingPrompt } = args;
+  const snapshot = dlg.getLastContextHealth();
+  if (!snapshot || snapshot.kind !== 'available') return pendingPrompt;
+  if (snapshot.level !== 'critical') return pendingPrompt;
+
+  const remaining = getContextHealthCriticalCountdownRemainingTurns(dlg);
+  if (remaining !== 0) return pendingPrompt;
+
+  const indices: number[] = [];
+  for (let i = 0; i < dlg.reminders.length; i++) {
+    const reminder = dlg.reminders[i];
+    if (reminder.owner && reminder.owner.name === contextHealthReminderOwner.name) {
+      indices.push(i);
+    }
+  }
+  for (let i = indices.length - 1; i >= 0; i--) {
+    dlg.deleteReminder(indices[i]);
+  }
+  if (indices.length > 0) {
+    await dlg.processReminderUpdates();
+  }
+
+  const nextRound = dlg.currentRound + 1;
+  const basePrompt = formatContextHealthAutoNewRoundPrompt(getWorkLanguage(), nextRound);
+  const combinedPrompt = pendingPrompt
+    ? `${basePrompt}\n---\n${pendingPrompt.content}`
+    : basePrompt;
+  await dlg.startNewRound(combinedPrompt);
+  return resolveUpNextPrompt(dlg);
 }
 
 // === UNIFIED STREAMING HANDLERS ===
@@ -1087,6 +1209,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       genIterNo++;
       throwIfAborted(abortSignal, dlg.id);
 
+      try {
+        pendingPrompt = await maybeAutoStartNewRoundForContextHealth({ dlg, pendingPrompt });
+      } catch (err) {
+        log.warn('Context health auto-new-round failed', err, { dialogId: dlg.id.valueOf() });
+      }
+
       // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
       const { team, agent, systemPrompt, memories, agentTools } = await loadAgentMinds(
         dlg.agentId,
@@ -1361,7 +1489,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               dlg,
               provider,
               abortSignal,
-              maxRetries: 3,
+              maxRetries: 5,
               canRetry: () => true,
               doRequest: async () => {
                 return await llmGen.genMoreMessages(
@@ -1640,7 +1768,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               dlg,
               provider,
               abortSignal,
-              maxRetries: 2,
+              maxRetries: 5,
               canRetry: () => !sawAnyStreamContent,
               doRequest: async () => {
                 return await llmGen.genToReceiver(

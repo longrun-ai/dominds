@@ -182,6 +182,7 @@ export abstract class Dialog {
   protected _uiLanguage: LanguageCode;
   protected _lastUserLanguageCode: LanguageCode;
   protected _lastContextHealth?: ContextHealthSnapshot;
+  protected _lastContextHealthGenseq?: number;
   // Prompt queued for the next round drive (set by startNewRound).
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
   // Track whether the current round's initial events (user_text, generating_start)
@@ -244,14 +245,23 @@ export abstract class Dialog {
     this._uiLanguage = getWorkLanguage();
     this._lastUserLanguageCode = getWorkLanguage();
     this._lastContextHealth = initialState?.contextHealth;
+    this._lastContextHealthGenseq = undefined;
   }
 
   public setLastContextHealth(snapshot: ContextHealthSnapshot): void {
     this._lastContextHealth = snapshot;
+    // Track the generation sequence that produced this snapshot, so reminder owners
+    // can distinguish pre-generation updates (previous snapshot) from post-generation
+    // updates (current snapshot) without relying on heuristics.
+    this._lastContextHealthGenseq = this._activeGenSeq;
   }
 
   public getLastContextHealth(): ContextHealthSnapshot | undefined {
     return this._lastContextHealth;
+  }
+
+  public getLastContextHealthGenseq(): number | undefined {
+    return this._lastContextHealthGenseq;
   }
 
   public get remindersVer() {
@@ -765,7 +775,7 @@ export abstract class Dialog {
 
   public async notifyGeneratingFinish(contextHealth?: ContextHealthSnapshot): Promise<void> {
     if (contextHealth) {
-      this._lastContextHealth = contextHealth;
+      this.setLastContextHealth(contextHealth);
     }
     try {
       await this.dlgStore.notifyGeneratingFinish(this, contextHealth);

@@ -20,11 +20,13 @@ import { getTool, getToolset, listToolsets } from './tools/registry';
 export class Team {
   readonly memberDefaults: Team.Member;
   defaultResponder?: string;
+  shellSpecialists: string[];
   readonly members: Record<string, Team.Member>;
 
   constructor(params: {
     memberDefaults?: Team.Member;
     defaultResponder?: string;
+    shellSpecialists?: string[];
     members?: Record<string, Team.Member>;
   }) {
     this.memberDefaults =
@@ -34,6 +36,7 @@ export class Team {
         name: 'Defaulter',
       });
     this.defaultResponder = params.defaultResponder;
+    this.shellSpecialists = params.shellSpecialists ?? [];
     this.members = params.members || {};
   }
 
@@ -80,13 +83,13 @@ export namespace Team {
     max_tokens?: number; // Maximum tokens to generate (provider-agnostic)
 
     // Codex provider (apiType: codex) parameters.
+    // Codex provider (apiType: codex) parameters.
     // Preferred for `provider: codex` in `.minds/team.yaml`.
     codex?: OpenAiStyleModelParams;
 
-    // Legacy OpenAI-style parameters (kept for backward compatibility).
+    // OpenAI-style parameters.
     // Some providers may still document params under this namespace.
     openai?: OpenAiStyleModelParams;
-
     // Anthropic specific parameters
     anthropic?: {
       temperature?: number; // 0-1, controls randomness
@@ -98,12 +101,6 @@ export namespace Team {
     };
   }
 
-  /**
-   * Represents a team member or a member defaults object.
-   *
-   * All fields are optional so this class can also be used to hold defaults
-   * (e.g., member_defaults in team.yaml).
-   */
   /**
    * Team.Member
    *
@@ -462,6 +459,73 @@ export namespace Team {
       reconcileProblemsByPrefix(TEAM_YAML_PROBLEM_PREFIX, desired);
     };
 
+
+    const SHELL_TOOL_NAMES = ['shell_cmd', 'stop_daemon', 'get_daemon_output'] as const;
+    type ShellToolName = (typeof SHELL_TOOL_NAMES)[number];
+
+    function isShellToolName(name: string): name is ShellToolName {
+      return (SHELL_TOOL_NAMES as readonly string[]).includes(name);
+    }
+
+    function listShellTools(member: Team.Member): ShellToolName[] {
+      const out: ShellToolName[] = [];
+      for (const t of member.listTools()) {
+        if (t.type !== 'func') continue;
+        if (!isShellToolName(t.name)) continue;
+        if (out.includes(t.name)) continue;
+        out.push(t.name);
+      }
+      return out;
+    }
+
+    function enforceShellSpecialistsPolicy(team: Team): void {
+      const specialists = team.shellSpecialists;
+
+      if (specialists.length === 0) {
+        for (const member of Object.values(team.members)) {
+          const shellTools = listShellTools(member);
+          if (shellTools.length === 0) continue;
+          addIssue(
+            `shell_specialists/forbidden_member/${sanitizeProblemIdSegment(member.id)}`,
+            'Invalid .minds/team.yaml: shell tools are present but shell_specialists is empty/null.',
+            `member '${member.id}' has shell tools (${shellTools.join(', ')}) but shell_specialists is empty; set shell_specialists to include '${member.id}' or remove shell tools from that member.`,
+          );
+        }
+        return;
+      }
+
+      const specialistSet = new Set(specialists);
+      for (const id of specialists) {
+        const member = team.getMember(id);
+        if (!member) {
+          addIssue(
+            `shell_specialists/unknown_member/${sanitizeProblemIdSegment(id)}`,
+            'Invalid .minds/team.yaml: shell_specialists contains an unknown member id.',
+            `shell_specialists includes '${id}', but no such member exists in team.members.`,
+          );
+          continue;
+        }
+        const shellTools = listShellTools(member);
+        if (shellTools.length === 0) {
+          addIssue(
+            `shell_specialists/missing_shell_tools/${sanitizeProblemIdSegment(id)}`,
+            'Invalid .minds/team.yaml: shell specialist has no shell tools.',
+            `shell_specialists includes '${id}', but member '${id}' has no shell tools. Grant toolset 'os' (or tools ${SHELL_TOOL_NAMES.join(', ')}) to '${id}'.`,
+          );
+        }
+      }
+
+      for (const member of Object.values(team.members)) {
+        if (specialistSet.has(member.id)) continue;
+        const shellTools = listShellTools(member);
+        if (shellTools.length === 0) continue;
+        addIssue(
+          `shell_specialists/non_specialist_has_shell_tools/${sanitizeProblemIdSegment(member.id)}`,
+          'Invalid .minds/team.yaml: non-shell-specialist member has shell tools.',
+          `member '${member.id}' has shell tools (${shellTools.join(', ')}) but is not listed in shell_specialists.`,
+        );
+      }
+    }
     const buildBootstrapTeam = async (): Promise<Team> => {
       try {
         await applyBootstrapMemberDefaults(md);
@@ -473,9 +537,9 @@ export namespace Team {
       return new Team({
         memberDefaults: md,
         defaultResponder: 'fuxi',
+        shellSpecialists: [],
         members: { fuxi, pangu },
       });
-    };
 
     try {
       await fs.access(TEAM_YAML_PATH);
@@ -527,11 +591,12 @@ export namespace Team {
     team.members['pangu'] = pangu;
 
     const configuredDefaultResponder = team.defaultResponder;
-
     // Normalize default responder (even if team.yaml omitted it).
     const def = team.getDefaultResponder();
     team.defaultResponder = def ? def.id : 'fuxi';
 
+    // Shell specialists policy is fail-open at runtime but must surface errors to Problems panel.
+    enforceShellSpecialistsPolicy(team);
     // If member_defaults provider/model are missing after parsing, try to recover from llm.yaml.
     try {
       await applyBootstrapMemberDefaults(md);
@@ -645,7 +710,7 @@ export namespace Team {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  const TEAM_ROOT_KEYS = ['member_defaults', 'default_responder', 'members'] as const;
+  const TEAM_ROOT_KEYS = ['member_defaults', 'default_responder', 'shell_specialists', 'members'] as const;
   const MEMBER_KEYS = [
     'name',
     'provider',
@@ -1070,7 +1135,6 @@ export namespace Team {
         }
       }
     }
-
     // default_responder
     let defResp: string | undefined;
     if (teamObj.default_responder !== undefined) {
@@ -1085,6 +1149,34 @@ export namespace Team {
       }
     }
 
+    // shell_specialists
+    let shellSpecialists: string[] = [];
+    if (teamObj.shell_specialists !== undefined) {
+      const v = teamObj.shell_specialists;
+      if (v === null) {
+        shellSpecialists = [];
+      } else {
+        try {
+          const parsed = asOptionalStringOrStringArray(v, 'shell_specialists');
+          // Normalize: drop empties and de-dupe while preserving order.
+          const seen = new Set<string>();
+          shellSpecialists = [];
+          for (const id of parsed) {
+            const trimmed = id.trim();
+            if (trimmed === '') continue;
+            if (seen.has(trimmed)) continue;
+            seen.add(trimmed);
+            shellSpecialists.push(trimmed);
+          }
+        } catch (err: unknown) {
+          pushIssue(
+            'shell_specialists/type',
+            'Invalid .minds/team.yaml: shell_specialists must be string|string[] or null.',
+            asErrorText(err),
+          );
+        }
+      }
+    }
     const membersRec: Record<string, Team.Member> = {};
     const rawMembers = teamObj.members;
     const membersObj: Record<string, unknown> = (() => {
@@ -1144,7 +1236,12 @@ export namespace Team {
     }
 
     return {
-      team: new Team({ memberDefaults: md, defaultResponder: defResp, members: membersRec }),
+      team: new Team({
+        memberDefaults: md,
+        defaultResponder: defResp,
+        shellSpecialists,
+        members: membersRec,
+      }),
       issues,
     };
   }

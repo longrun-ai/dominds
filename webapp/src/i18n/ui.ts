@@ -609,7 +609,7 @@ export type ContextUsageTitleArgs =
       promptTokens: number;
       hardPercentText: string;
       modelContextLimitTokens: number;
-      overOptimal: boolean;
+      level: 'healthy' | 'caution' | 'critical';
     };
 
 export function formatContextUsageTitle(
@@ -622,7 +622,8 @@ export function formatContextUsageTitle(
         case 'unknown':
           return '上下文占用：未知';
         case 'known': {
-          const suffix = args.overOptimal ? ' • 超过最佳值' : '';
+          const suffix =
+            args.level === 'healthy' ? ' • 绿' : args.level === 'caution' ? ' • 黄' : ' • 红';
           return `上下文占用：${args.promptTokens}（${args.hardPercentText} / ${args.modelContextLimitTokens}）${suffix}`;
         }
         default: {
@@ -636,7 +637,12 @@ export function formatContextUsageTitle(
         case 'unknown':
           return 'Context usage: unknown';
         case 'known': {
-          const suffix = args.overOptimal ? ' • over optimal' : '';
+          const suffix =
+            args.level === 'caution'
+              ? ' • over optimal'
+              : args.level === 'critical'
+                ? ' • high risk'
+                : '';
           return `Context usage: ${args.promptTokens} (${args.hardPercentText} of ${args.modelContextLimitTokens})${suffix}`;
         }
         default: {

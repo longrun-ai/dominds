@@ -87,6 +87,7 @@ export interface ModelInfo {
   input_length?: number;
   output_length?: number;
   optimal_max_tokens?: number;
+  critical_max_tokens?: number;
   context_window?: string;
   [key: string]: unknown;
 }
