@@ -61,6 +61,13 @@ export class DomindsDialogContainer extends HTMLElement {
   private markdownSection?: DomindsMarkdownSection;
   private callingSection?: HTMLElement;
 
+  // Smart auto-scroll:
+  // - Auto-scroll only when user is already at (or near) the bottom.
+  // - If user scrolls up to read history, stop auto-scrolling until they return to bottom.
+  private autoScrollEnabled = true;
+  private scrollContainer: HTMLElement | null = null;
+  private boundOnScrollContainerScroll: (() => void) | null = null;
+
   // Best-effort cache to recover tool-call streaming sections by genseq.
   // Tool-call chunk events don't carry callId, so this is scoped to per-genseq recovery only.
   private toolCallingSectionBySeq = new Map<number, HTMLElement>();
@@ -99,6 +106,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const parsed = normalizeLanguageCode(this.getAttribute('ui-language') || '');
     this.uiLanguage = parsed ?? 'en';
     this.render();
+    this.ensureScrollContainerListener();
     await this.loadTeamConfiguration();
     const sr = this.shadowRoot;
     if (sr) {
@@ -139,7 +147,44 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    this.detachScrollContainerListener();
     this.cleanup();
+  }
+
+  private detachScrollContainerListener(): void {
+    const container = this.scrollContainer;
+    const listener = this.boundOnScrollContainerScroll;
+    if (container && listener) {
+      container.removeEventListener('scroll', listener);
+    }
+    this.scrollContainer = null;
+    this.boundOnScrollContainerScroll = null;
+  }
+
+  private ensureScrollContainerListener(): void {
+    const container = this.parentElement instanceof HTMLElement ? this.parentElement : null;
+    if (!container) return;
+    if (this.scrollContainer === container && this.boundOnScrollContainerScroll) return;
+
+    this.detachScrollContainerListener();
+    this.scrollContainer = container;
+    this.boundOnScrollContainerScroll = () => {
+      const current = this.scrollContainer;
+      if (!current) return;
+      this.autoScrollEnabled = this.isScrollContainerAtBottom(current);
+    };
+    container.addEventListener('scroll', this.boundOnScrollContainerScroll, { passive: true });
+
+    // Initialize based on current scroll position.
+    this.autoScrollEnabled = this.isScrollContainerAtBottom(container);
+  }
+
+  private isScrollContainerAtBottom(container: HTMLElement): boolean {
+    // Use a small threshold to avoid flicker around exact bottom due to sub-pixel layout and
+    // incremental streaming DOM updates.
+    const thresholdPx = 32;
+    const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return remaining <= thresholdPx;
   }
 
   private async loadTeamConfiguration(): Promise<void> {
@@ -168,6 +213,9 @@ export class DomindsDialogContainer extends HTMLElement {
 
   public async setDialog(dialog: DialogContext): Promise<void> {
     this.suppressEvents = true;
+    // Dialog navigation is a user-initiated context switch; reset auto-scroll so the freshly
+    // loaded dialog can follow streaming output until the user scrolls up.
+    this.autoScrollEnabled = true;
     // Save current dialog as previous before cleanup
     // This allows events for the "old" dialog to be processed during navigation race conditions
     if (this.currentDialog) {
@@ -188,6 +236,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   public clearDialog(): void {
     this.suppressEvents = true;
+    this.autoScrollEnabled = true;
     this.cleanup();
     this.currentDialog = undefined;
     this.render();
@@ -217,6 +266,8 @@ export class DomindsDialogContainer extends HTMLElement {
   public async setCurrentRound(round: number): Promise<void> {
     if (!this.currentDialog) return;
     this.suppressEvents = true;
+    // Round navigation replays content; default to following the newest output unless user scrolls up.
+    this.autoScrollEnabled = true;
     this.cleanup();
     this.currentRound = round;
     this.wsManager.sendRaw({
@@ -928,7 +979,10 @@ export class DomindsDialogContainer extends HTMLElement {
         // Found the func-call section - show result inside it
         const resultEl = funcCallSection.querySelector('.func-call-result') as HTMLElement | null;
         if (resultEl) {
-          resultEl.textContent = event.content;
+          const raw = String(event.content || '');
+          resultEl.innerHTML = renderDomindsMarkdown(raw);
+          resultEl.setAttribute('data-raw-md', raw);
+          resultEl.classList.add('markdown-content');
           resultEl.classList.add('completed');
           resultEl.style.display = 'block';
         }
@@ -2149,7 +2203,10 @@ export class DomindsDialogContainer extends HTMLElement {
         padding: 8px;
         border-radius: 6px;
         font-size: 12px;
-        white-space: pre-wrap;
+        line-height: 1.4;
+        white-space: normal;
+        max-height: calc(20 * 1.4em + 16px);
+        overflow: auto;
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
@@ -2346,8 +2403,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private scrollToBottom(): void {
     // Scroll the parent element (.conversation-scroll-area) which has overflow-y: auto
-    const scrollContainer = this.parentElement as HTMLElement;
+    this.ensureScrollContainerListener();
+    const scrollContainer = this.scrollContainer;
     if (!scrollContainer) return;
+    if (!this.autoScrollEnabled) return;
 
     const doScroll = () => {
       const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
