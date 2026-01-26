@@ -781,7 +781,7 @@ export const readFileTool = {
           fileLabel: string;
           warningTruncatedByMaxLines: (shown: number, maxLines: number) => string;
           warningTruncatedByCharLimit: (shown: number, maxChars: number) => string;
-          warningMaxLinesRangeMismatch: (
+          warningTruncatedByMaxLinesWithRange: (
             maxLines: number,
             rangeLines: number,
             used: number,
@@ -818,8 +818,8 @@ export const readFileTool = {
           `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
         warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
           `⚠️ **警告：** 输出已截断（字符总数上限约 ${maxChars}，当前显示 ${shown} 行）\n\n`,
-        warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
-          `⚠️ **警告：** \`max_lines\`（${maxLines}）与 \`range\`（共 ${rangeLines} 行）不一致，将按更小值 ${used} 处理。\n\n`,
+        warningTruncatedByMaxLinesWithRange: (maxLines: number, rangeLines: number, used: number) =>
+          `⚠️ **警告：** 输出将被 \`max_lines\`（${maxLines}）截断：\`range\` 共 ${rangeLines} 行，仅返回前 ${used} 行。\n\n`,
         hintUseRangeNext: (relPath: string, start: number, end: number) =>
           `💡 **提示：** 可继续调用 \`read_file\` 读取下一段，例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"${start}~${end}\", \"max_lines\": 0, \"show_linenos\": true })\`\n\n`,
         hintLargeFileStrategy: (relPath: string) =>
@@ -854,8 +854,8 @@ export const readFileTool = {
           `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
         warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
           `⚠️ **Warning:** Output was truncated (~${maxChars} character cap; showing ${shown} lines)\n\n`,
-        warningMaxLinesRangeMismatch: (maxLines: number, rangeLines: number, used: number) =>
-          `⚠️ **Warning:** \`max_lines\` (${maxLines}) contradicts \`range\` (${rangeLines} lines); using the smaller limit (${used}).\n\n`,
+        warningTruncatedByMaxLinesWithRange: (maxLines: number, rangeLines: number, used: number) =>
+          `⚠️ **Warning:** Output will be truncated by \`max_lines\` (${maxLines}): \`range\` has ${rangeLines} lines; returning only the first ${used}.\n\n`,
         hintUseRangeNext: (relPath: string, start: number, end: number) =>
           `💡 **Hint:** Call \`read_file\` again to continue reading, e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"${start}~${end}\", \"max_lines\": 0, \"show_linenos\": true })\`\n\n`,
         hintLargeFileStrategy: (relPath: string) =>
@@ -991,17 +991,6 @@ export const readFileTool = {
     const flags = { maxLinesSpecified, rangeSpecified };
 
     try {
-      let maxLinesRangeMismatch: { maxLines: number; rangeLines: number; used: number } | null =
-        null;
-      if (flags.maxLinesSpecified && flags.rangeSpecified && options.rangeEnd !== undefined) {
-        const rangeStart = options.rangeStart ?? 1;
-        const rangeLines = options.rangeEnd - rangeStart + 1;
-        if (rangeLines > 0 && rangeLines < options.maxLines) {
-          maxLinesRangeMismatch = { maxLines: options.maxLines, rangeLines, used: rangeLines };
-          options.maxLines = rangeLines;
-        }
-      }
-
       // Check member access permissions
       if (!hasReadAccess(caller, rel)) {
         const content = getAccessDeniedMessage('read', rel, language);
@@ -1011,6 +1000,21 @@ export const readFileTool = {
       const file = ensureInsideWorkspace(rel);
       const stat = await fs.stat(file);
       const contentSummary = await readFileContentBounded(file, options);
+
+      const maxLinesRangeMismatch: { maxLines: number; rangeLines: number; used: number } | null =
+        contentSummary.truncatedByMaxLines &&
+        flags.maxLinesSpecified &&
+        flags.rangeSpecified &&
+        options.rangeEnd !== undefined
+          ? (() => {
+              const rangeStart = options.rangeStart ?? 1;
+              const rangeLines = options.rangeEnd - rangeStart + 1;
+              if (rangeLines > options.maxLines) {
+                return { maxLines: options.maxLines, rangeLines, used: options.maxLines };
+              }
+              return null;
+            })()
+          : null;
 
       const headerSummary =
         language === 'zh'
@@ -1036,7 +1040,7 @@ export const readFileTool = {
       markdown += `📄 **${labels.fileLabel}:** \`${rel}\`\n`;
 
       if (maxLinesRangeMismatch) {
-        markdown += labels.warningMaxLinesRangeMismatch(
+        markdown += labels.warningTruncatedByMaxLinesWithRange(
           maxLinesRangeMismatch.maxLines,
           maxLinesRangeMismatch.rangeLines,
           maxLinesRangeMismatch.used,
@@ -1048,7 +1052,7 @@ export const readFileTool = {
           contentSummary.shownLines,
           READ_FILE_CONTENT_CHAR_LIMIT,
         );
-      } else if (contentSummary.truncatedByMaxLines) {
+      } else if (contentSummary.truncatedByMaxLines && !maxLinesRangeMismatch) {
         markdown += labels.warningTruncatedByMaxLines(contentSummary.shownLines, options.maxLines);
       }
 
