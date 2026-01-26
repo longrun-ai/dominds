@@ -1,8 +1,16 @@
 {
   "name": "@dominds/codex-auth",
+  "publishConfig": {
+    "access": "public"
+  },
   "version": "0.1.0",
   "description": "ChatGPT OAuth helpers compatible with Codex auth.json",
   "license": "LGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/longrun-ai/dominds.git",
+    "directory": "codex-auth"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
