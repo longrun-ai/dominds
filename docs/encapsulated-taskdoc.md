@@ -93,7 +93,8 @@ The function tool `change_mind` updates **exactly one** section file of the Task
 Critically:
 
 - `change_mind` **MUST NOT** start a new dialog round.
-- If a round reset is desired, call the function tool `clear_mind({ "reminder_content": "" })` (or other round-control mechanisms) separately.
+- If a round reset is desired, call the function tool `clear_mind({ "reminder_content": "<re-entry package>" })` (or other round-control mechanisms) separately.
+  - Recommendation: include a short, scannable re-entry package so the agent can resume after the new round.
 
 ### Arguments (v2)
 

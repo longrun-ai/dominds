@@ -11,6 +11,8 @@
 export interface HumanQuestion {
   /** UUID - index entry identifier, NOT source of truth */
   readonly id: string;
+  /** Question kind discriminator for UI behavior */
+  readonly kind: 'generic' | 'keep_going_budget_exhausted' | 'context_health_critical';
   /** Question headline/title */
   readonly headLine: string;
   /** Detailed question context */

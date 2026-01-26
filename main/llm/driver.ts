@@ -31,7 +31,6 @@ import { DialogPersistence } from '../persistence';
 import { removeProblem, upsertProblem } from '../problems';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import {
-  formatContextHealthAutoNewRoundPrompt,
   formatDomindsNoteDirectSelfCall,
   formatDomindsNoteInvalidMultiTeammateTargets,
   formatDomindsNoteInvalidTopicDirective,
@@ -42,6 +41,7 @@ import {
   formatDomindsNoteTellaskForTeammatesOnly,
   formatReminderIntro,
   formatReminderItemGuide,
+  formatUserFacingContextHealthV2RemediationGuide,
   formatUserFacingLanguageGuide,
 } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
@@ -64,7 +64,6 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
 import { FuncTool, Tool, validateArgs, type ToolArguments } from '../tool';
-import { contextHealthReminderOwner } from '../tools/context-health';
 import { generateDialogID } from '../utils/id';
 import { formatTaskDocContent } from '../utils/taskdoc';
 import {
@@ -288,6 +287,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
   const questionId = `q4h-${generateDialogID()}`;
   const question: HumanQuestion = {
     id: questionId,
+    kind: 'keep_going_budget_exhausted',
     headLine: '@human',
     bodyContent:
       `Keep-going budget exhausted (max ${maxInjectCount}).\n\n` +
@@ -309,6 +309,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
     type: 'new_q4h_asked',
     question: {
       id: question.id,
+      kind: question.kind,
       selfId: dlg.id.selfId,
       headLine: question.headLine,
       bodyContent: question.bodyContent,
@@ -771,93 +772,324 @@ function computeContextHealthSnapshot(args: {
   };
 }
 
-async function applyContextHealthMonitor(
-  dlg: Dialog,
-  snapshot: ContextHealthSnapshot,
-): Promise<void> {
-  const contextHealthReminderIndices: number[] = [];
-  for (let i = 0; i < dlg.reminders.length; i++) {
-    const reminder = dlg.reminders[i];
-    if (reminder.owner && reminder.owner.name === contextHealthReminderOwner.name) {
-      contextHealthReminderIndices.push(i);
-    }
-  }
+type ContextHealthV2RuntimeState = {
+  lastCautionGuideInjectedAtGenSeq?: number;
+};
 
-  // Defensive: ensure owner-level de-dupe (at most one reminder per owner).
-  // This prevents legacy or buggy sessions from accumulating multiple context_health reminders.
-  if (contextHealthReminderIndices.length > 1) {
-    for (let i = contextHealthReminderIndices.length - 1; i >= 1; i--) {
-      dlg.deleteReminder(contextHealthReminderIndices[i]);
-    }
-  }
+const contextHealthV2StateByDialogKey: Map<string, ContextHealthV2RuntimeState> = new Map();
 
-  let hasContextHealthReminder = contextHealthReminderIndices.length > 0;
-
-  if (snapshot.kind !== 'available') {
-    if (hasContextHealthReminder) {
-      await dlg.processReminderUpdates();
-    }
-    return;
-  }
-
-  const shouldRemind = snapshot.level !== 'healthy';
-
-  if (shouldRemind && !hasContextHealthReminder) {
-    dlg.addReminder('Context health reminder', contextHealthReminderOwner);
-    hasContextHealthReminder = true;
-  }
-
-  if (hasContextHealthReminder) {
-    await dlg.processReminderUpdates();
-  }
+function getContextHealthV2State(dlg: Dialog): ContextHealthV2RuntimeState {
+  const key = dlg.id.key();
+  const existing = contextHealthV2StateByDialogKey.get(key);
+  if (existing) return existing;
+  const created: ContextHealthV2RuntimeState = {};
+  contextHealthV2StateByDialogKey.set(key, created);
+  return created;
 }
 
-function getContextHealthCriticalCountdownRemainingTurns(dlg: Dialog): number | undefined {
-  for (const reminder of dlg.reminders) {
-    if (!reminder.owner || reminder.owner.name !== contextHealthReminderOwner.name) continue;
-    const meta = reminder.meta;
-    if (!isRecord(meta)) continue;
-    if (meta['kind'] !== 'critical_countdown') continue;
-    const remaining = meta['remainingGenTurns'];
-    if (typeof remaining !== 'number' || !Number.isFinite(remaining)) continue;
-    return Math.floor(remaining);
-  }
-  return undefined;
+function resetContextHealthV2State(dlg: Dialog): void {
+  contextHealthV2StateByDialogKey.delete(dlg.id.key());
 }
 
-async function maybeAutoStartNewRoundForContextHealth(args: {
+function shouldInjectCautionRemediationGuide(dlg: Dialog): boolean {
+  const state = getContextHealthV2State(dlg);
+  const genSeq = dlg.activeGenSeq;
+  if (genSeq === undefined) return true;
+  const lastInjected = state.lastCautionGuideInjectedAtGenSeq;
+  if (lastInjected === undefined) return true;
+  return genSeq - lastInjected >= 10;
+}
+
+type ContextHealthV2RemediationOutcome =
+  | { kind: 'proceed'; ctxMsgs: ChatMessage[] }
+  | {
+      kind: 'continue';
+      nextPrompt: HumanPrompt | undefined;
+      contextHealthForGen?: ContextHealthSnapshot;
+    }
+  | { kind: 'suspend'; contextHealthForGen?: ContextHealthSnapshot };
+
+async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
+  const language = getWorkLanguage();
+  const questionId = `q4h-${generateDialogID()}`;
+  const question: HumanQuestion = {
+    id: questionId,
+    kind: 'context_health_critical',
+    headLine: '@human',
+    bodyContent:
+      language === 'zh'
+        ? [
+            '上下文健康已进入 🔴 红（critical），且 agent 在最多 3 次强制清理尝试中都未能调用 clear_mind。',
+            '',
+            '为避免继续污染对话状态，系统已暂停该对话（suspended）。',
+            '',
+            '请人工介入：',
+            '- 检查当前对话/系统提示是否存在冲突或工具不可用导致 agent 无法调用 clear_mind；',
+            '- 修复后，再通过 UI 恢复/继续该对话（或手动触发 clear_mind）。',
+          ].join('\n')
+        : [
+            'Context health is 🔴 critical, and the agent failed to call clear_mind within 3 forced-clear attempts.',
+            '',
+            'To avoid further state pollution, the dialog is now suspended.',
+            '',
+            'Please intervene:',
+            '- Check whether the system prompt/tooling is preventing clear_mind calls;',
+            '- Fix the issue, then resume the dialog in the UI (or manually trigger clear_mind).',
+          ].join('\n'),
+    askedAt: formatUnifiedTimestamp(new Date()),
+    callSiteRef: {
+      round: dlg.currentRound,
+      messageIndex: dlg.msgs.length,
+    },
+  };
+
+  const existingQuestions = await DialogPersistence.loadQuestions4HumanState(dlg.id);
+  existingQuestions.push(question);
+  await DialogPersistence._saveQuestions4HumanState(dlg.id, existingQuestions);
+
+  const newQuestionEvent: NewQ4HAskedEvent = {
+    type: 'new_q4h_asked',
+    question: {
+      id: question.id,
+      kind: question.kind,
+      selfId: dlg.id.selfId,
+      headLine: question.headLine,
+      bodyContent: question.bodyContent,
+      askedAt: question.askedAt,
+      callSiteRef: question.callSiteRef,
+      rootId: dlg.id.rootId,
+      agentId: dlg.agentId,
+      taskDocPath: dlg.taskDocPath,
+    },
+  };
+  postDialogEvent(dlg, newQuestionEvent);
+}
+
+async function applyContextHealthV2Remediation(args: {
   dlg: Dialog;
-  pendingPrompt: HumanPrompt | undefined;
-}): Promise<HumanPrompt | undefined> {
-  const { dlg, pendingPrompt } = args;
+  agent: Team.Member;
+  agentTools: Tool[];
+  providerCfg: ProviderConfig;
+  provider: string;
+  systemPrompt: string;
+  funcTools: FuncTool[];
+  ctxMsgs: ChatMessage[];
+  llmGen: NonNullable<ReturnType<typeof getLlmGenerator>>;
+  abortSignal: AbortSignal;
+  model: string;
+}): Promise<ContextHealthV2RemediationOutcome> {
+  const { dlg } = args;
   const snapshot = dlg.getLastContextHealth();
-  if (!snapshot || snapshot.kind !== 'available') return pendingPrompt;
-  if (snapshot.level !== 'critical') return pendingPrompt;
+  if (!snapshot || snapshot.kind !== 'available') {
+    resetContextHealthV2State(dlg);
+    return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
+  }
 
-  const remaining = getContextHealthCriticalCountdownRemainingTurns(dlg);
-  if (remaining !== 0) return pendingPrompt;
+  if (snapshot.level === 'healthy') {
+    resetContextHealthV2State(dlg);
+    return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
+  }
 
-  const indices: number[] = [];
-  for (let i = 0; i < dlg.reminders.length; i++) {
-    const reminder = dlg.reminders[i];
-    if (reminder.owner && reminder.owner.name === contextHealthReminderOwner.name) {
-      indices.push(i);
+  if (snapshot.level === 'caution') {
+    if (!shouldInjectCautionRemediationGuide(dlg)) {
+      return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
     }
-  }
-  for (let i = indices.length - 1; i >= 0; i--) {
-    dlg.deleteReminder(indices[i]);
-  }
-  if (indices.length > 0) {
-    await dlg.processReminderUpdates();
+    const guide: ChatMessage = {
+      type: 'environment_msg',
+      role: 'user',
+      content: formatUserFacingContextHealthV2RemediationGuide(getWorkLanguage(), {
+        kind: 'caution',
+      }),
+    };
+    const state = getContextHealthV2State(dlg);
+    if (dlg.activeGenSeq !== undefined) {
+      state.lastCautionGuideInjectedAtGenSeq = dlg.activeGenSeq;
+    }
+    return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, guide] };
   }
 
-  const nextRound = dlg.currentRound + 1;
-  const basePrompt = formatContextHealthAutoNewRoundPrompt(getWorkLanguage(), nextRound);
-  const combinedPrompt = pendingPrompt
-    ? `${basePrompt}\n---\n${pendingPrompt.content}`
-    : basePrompt;
-  await dlg.startNewRound(combinedPrompt);
-  return resolveUpNextPrompt(dlg);
+  if (snapshot.level === 'critical') {
+    // Forced-clear loop (max 3 attempts). Discard assistant output unless it calls clear_mind with
+    // a non-empty reminder_content (重入包). Only log failures; do not persist assistant output.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      throwIfAborted(args.abortSignal, dlg.id);
+
+      const guide: ChatMessage = {
+        type: 'environment_msg',
+        role: 'user',
+        content: formatUserFacingContextHealthV2RemediationGuide(getWorkLanguage(), {
+          kind: 'critical',
+          attempt,
+          maxAttempts: 3,
+        }),
+      };
+
+      let nonStreamResult: { messages: ChatMessage[]; usage: LlmUsageStats };
+      try {
+        nonStreamResult = await runLlmRequestWithRetry({
+          dlg,
+          provider: args.provider,
+          abortSignal: args.abortSignal,
+          maxRetries: 5,
+          canRetry: () => true,
+          doRequest: async () => {
+            return await args.llmGen.genMoreMessages(
+              args.providerCfg,
+              args.agent,
+              args.systemPrompt,
+              args.funcTools,
+              [...args.ctxMsgs, guide],
+              dlg.activeGenSeq,
+              args.abortSignal,
+            );
+          },
+        });
+      } catch (err) {
+        log.warn('Context health critical forced-clear LLM attempt failed', err, {
+          dialogId: dlg.id.valueOf(),
+          attempt,
+        });
+        continue;
+      }
+
+      const funcCalls = nonStreamResult.messages.filter(
+        (m): m is FuncCallMsg => m.type === 'func_call_msg',
+      );
+      const nonEmptySaying = nonStreamResult.messages.some(
+        (m) =>
+          m.type === 'saying_msg' && typeof m.content === 'string' && m.content.trim().length > 0,
+      );
+      const hasOtherFuncCalls = funcCalls.some((c) => c.name !== 'clear_mind');
+      const clearMindCalls = funcCalls.filter((c) => c.name === 'clear_mind');
+
+      if (nonEmptySaying || hasOtherFuncCalls || clearMindCalls.length !== 1) {
+        log.warn(
+          'Discarding assistant output in context health critical (missing clear_mind-only)',
+          {
+            dialogId: dlg.id.valueOf(),
+            attempt,
+            sawSaying: nonEmptySaying,
+            funcCallNames: funcCalls.map((c) => c.name),
+          },
+        );
+        continue;
+      }
+
+      const clearCall = clearMindCalls[0];
+      const clearTool = args.agentTools.find(
+        (t): t is FuncTool => t.type === 'func' && t.name === 'clear_mind',
+      );
+      if (!clearTool) {
+        log.warn('clear_mind tool not found in agent tools during critical remediation', {
+          dialogId: dlg.id.valueOf(),
+        });
+        continue;
+      }
+
+      let rawArgs: unknown = {};
+      if (typeof clearCall.arguments === 'string' && clearCall.arguments.trim()) {
+        try {
+          rawArgs = JSON.parse(clearCall.arguments);
+        } catch (parseErr) {
+          rawArgs = null;
+          log.warn('Failed to parse clear_mind arguments as JSON during critical remediation', {
+            dialogId: dlg.id.valueOf(),
+            arguments: clearCall.arguments,
+            error: parseErr,
+          });
+        }
+      } else if (isPlainObject(clearCall.arguments)) {
+        rawArgs = clearCall.arguments;
+      }
+
+      const argsValidation = validateFuncToolArguments(clearTool, rawArgs);
+      if (!argsValidation.ok) {
+        log.warn(
+          'Discarding assistant output in context health critical (invalid clear_mind args)',
+          {
+            dialogId: dlg.id.valueOf(),
+            attempt,
+            error: argsValidation.error,
+          },
+        );
+        continue;
+      }
+
+      const reminderValue = argsValidation.args['reminder_content'];
+      const reminderContent = typeof reminderValue === 'string' ? reminderValue.trim() : '';
+      if (!reminderContent) {
+        log.warn(
+          'Discarding assistant output in context health critical (empty clear_mind.reminder_content)',
+          { dialogId: dlg.id.valueOf(), attempt },
+        );
+        continue;
+      }
+
+      // Accepted: update context health snapshot for this generation (usage-based) and execute clear_mind.
+      const contextHealthForGen = computeContextHealthSnapshot({
+        providerCfg: args.providerCfg,
+        model: args.model,
+        usage: nonStreamResult.usage,
+      });
+      dlg.setLastContextHealth(contextHealthForGen);
+
+      const argsStr =
+        typeof clearCall.arguments === 'string'
+          ? clearCall.arguments
+          : JSON.stringify(clearCall.arguments ?? {});
+      try {
+        await dlg.funcCallRequested(clearCall.id, clearCall.name, argsStr);
+      } catch (err) {
+        log.warn('Failed to emit func_call_requested for critical remediation clear_mind', err);
+      }
+      try {
+        await dlg.persistFunctionCall(
+          clearCall.id,
+          clearCall.name,
+          argsValidation.args,
+          clearCall.genseq,
+        );
+      } catch (err) {
+        log.warn('Failed to persist clear_mind function call for critical remediation', err);
+      }
+
+      let funcResult: FuncResultMsg;
+      try {
+        const content = await clearTool.call(dlg, args.agent, argsValidation.args);
+        funcResult = {
+          type: 'func_result_msg',
+          id: clearCall.id,
+          name: clearCall.name,
+          content: String(content),
+          role: 'tool',
+          genseq: clearCall.genseq,
+        };
+      } catch (err) {
+        funcResult = {
+          type: 'func_result_msg',
+          id: clearCall.id,
+          name: clearCall.name,
+          content: `Function '${clearCall.name}' execution failed: ${showErrorToAi(err)}`,
+          role: 'tool',
+          genseq: clearCall.genseq,
+        };
+      }
+
+      await dlg.receiveFuncResult(funcResult);
+
+      // Keep tool context available for the next iteration.
+      await dlg.addChatMessages(clearCall, funcResult);
+
+      const nextPrompt = resolveUpNextPrompt(dlg);
+      return { kind: 'continue', nextPrompt, contextHealthForGen };
+    }
+
+    await suspendForContextHealthCritical(dlg);
+    return { kind: 'suspend' };
+  }
+
+  const _exhaustive: never = snapshot.level;
+  return _exhaustive;
 }
 
 // === UNIFIED STREAMING HANDLERS ===
@@ -1209,12 +1441,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       genIterNo++;
       throwIfAborted(abortSignal, dlg.id);
 
-      try {
-        pendingPrompt = await maybeAutoStartNewRoundForContextHealth({ dlg, pendingPrompt });
-      } catch (err) {
-        log.warn('Context health auto-new-round failed', err, { dialogId: dlg.id.valueOf() });
-      }
-
       // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
       const { team, agent, systemPrompt, memories, agentTools } = await loadAgentMinds(
         dlg.agentId,
@@ -1481,6 +1707,35 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
         }
 
+        const remediation = await applyContextHealthV2Remediation({
+          dlg,
+          agent,
+          agentTools,
+          providerCfg,
+          provider,
+          systemPrompt,
+          funcTools,
+          ctxMsgs,
+          llmGen,
+          abortSignal,
+          model,
+        });
+        if (remediation.kind === 'continue') {
+          if (remediation.contextHealthForGen) {
+            contextHealthForGen = remediation.contextHealthForGen;
+          }
+          pendingPrompt = remediation.nextPrompt;
+          continue;
+        }
+        if (remediation.kind === 'suspend') {
+          if (remediation.contextHealthForGen) {
+            contextHealthForGen = remediation.contextHealthForGen;
+          }
+          suspendForHuman = true;
+          break;
+        }
+        const ctxMsgsForGen = remediation.ctxMsgs;
+
         if (agent.streaming === false) {
           let nonStreamResult: { messages: ChatMessage[]; usage: LlmUsageStats };
           try {
@@ -1497,7 +1752,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   agent,
                   systemPrompt,
                   funcTools,
-                  ctxMsgs,
+                  ctxMsgsForGen,
                   dlg.activeGenSeq,
                   abortSignal,
                 );
@@ -1520,7 +1775,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             usage: nonStreamResult.usage,
           });
           dlg.setLastContextHealth(contextHealthForGen);
-          await applyContextHealthMonitor(dlg, contextHealthForGen);
 
           const nonStreamMsgs = nonStreamResult.messages;
           const assistantMsgs = nonStreamMsgs.filter(
@@ -1691,6 +1945,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             await dlg.addChatMessages(...funcResults);
           }
 
+          if (dlg.hasUpNext()) {
+            pendingPrompt = resolveUpNextPrompt(dlg);
+            continue;
+          }
+
           if (suspendForHuman) {
             try {
               // Q4H suspension resets keep-going budget so post-Q4H continuation gets a fresh counter.
@@ -1776,7 +2035,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   agent,
                   systemPrompt,
                   funcTools,
-                  ctxMsgs,
+                  ctxMsgsForGen,
                   {
                     thinkingStart: async () => {
                       throwIfAborted(abortSignal, dlg.id);
@@ -1888,7 +2147,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             usage: streamResult.usage,
           });
           dlg.setLastContextHealth(contextHealthForGen);
-          await applyContextHealthMonitor(dlg, contextHealthForGen);
 
           // Execute collected calls concurrently after streaming completes
           const collectedCalls = parser.getCollectedCalls();
@@ -2054,6 +2312,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
 
           await dlg.addChatMessages(...newMsgs);
+
+          if (dlg.hasUpNext()) {
+            pendingPrompt = resolveUpNextPrompt(dlg);
+            continue;
+          }
 
           // After tool execution, check latest remindersVer with published info,
           // publish new version to propagate updated reminders to ui
@@ -3116,6 +3379,7 @@ async function executeTellaskCall(
       const questionId = `q4h-${generateDialogID()}`;
       const question: HumanQuestion = {
         id: questionId,
+        kind: 'generic',
         headLine: headLine.trim(),
         bodyContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
@@ -3138,6 +3402,7 @@ async function executeTellaskCall(
         type: 'new_q4h_asked',
         question: {
           id: question.id,
+          kind: question.kind,
           selfId: dlg.id.selfId,
           headLine: question.headLine,
           bodyContent: question.bodyContent,

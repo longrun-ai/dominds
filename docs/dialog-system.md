@@ -26,7 +26,7 @@ This document provides detailed implementation specifications for the Dominds di
 
 This chapter defines the implementation-facing terms used throughout this document.
 For bilingual / user-facing naming conventions, see `dominds/docs/dominds-terminology.md`.
-For Taskdoc package structure and encapsulation rules, see `dominds/docs/encapsulated-task-doc.md`.
+For Taskdoc package structure and encapsulation rules, see `dominds/docs/encapsulated-taskdoc.md`.
 
 ### Supdialog
 
@@ -714,7 +714,7 @@ Invoke the function tool `change_mind` with:
 **Implementation Notes**:
 
 - `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the parent via a supdialog Tellask (`!?@super`) to update the shared Taskdoc.
-- For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See `dominds/docs/encapsulated-task-doc.md`.
+- For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See `dominds/docs/encapsulated-taskdoc.md`.
 
 ---
 

@@ -9,6 +9,7 @@ import { getWebSocketManager } from '../services/websocket.js';
 import type { LanguageCode } from '../shared/types/language';
 import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogRunState } from '../shared/types/run-state.js';
+import type { Q4HKind } from '../shared/types/storage.js';
 import type { DialogIdent } from '../shared/types/wire.js';
 import { escapeHtmlAttr } from '../shared/utils/html.js';
 import { generateShortId } from '../shared/utils/id.js';
@@ -19,6 +20,7 @@ import { generateShortId } from '../shared/utils/id.js';
  */
 export interface Q4HQuestion {
   id: string;
+  kind: Q4HKind;
   headLine: string;
   bodyContent: string;
   askedAt: string;
@@ -825,6 +827,9 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.props.disabled) {
       throw new Error('Input is disabled');
     }
+    if (this.isBlockedByContextHealthCritical()) {
+      throw new Error('Send is disabled (context health critical)');
+    }
 
     // Generate message ID
     const msgId = generateShortId();
@@ -893,17 +898,41 @@ export class DomindsQ4HInput extends HTMLElement {
       return;
     }
 
+    const blocked = this.isBlockedByContextHealthCritical();
     const hasContent = this.textInput.value.trim().length > 0;
-    const canSend = hasContent && !this.props.disabled && !!this.currentDialog;
+    const canSend = hasContent && !this.props.disabled && !blocked && !!this.currentDialog;
 
     this.sendButton.disabled = !canSend;
+  }
+
+  private isBlockedByContextHealthCritical(): boolean {
+    const selectedQuestionId = this.selectedQuestionId;
+    if (selectedQuestionId !== null) {
+      for (const q of this.questions) {
+        if (q.id === selectedQuestionId) {
+          return q.kind === 'context_health_critical';
+        }
+      }
+      return false;
+    }
+
+    const currentDialog = this.currentDialog;
+    if (!currentDialog) return false;
+
+    for (const q of this.questions) {
+      if (q.dialogContext.selfId === currentDialog.selfId && q.kind === 'context_health_critical') {
+        return true;
+      }
+    }
+    return false;
   }
 
   private updateUI(): void {
     if (!this.inputWrapper || !this.textInput) return;
 
     // Update disabled state
-    const shouldDisable = this.props.disabled || !this.currentDialog;
+    const shouldDisable =
+      this.props.disabled || this.isBlockedByContextHealthCritical() || !this.currentDialog;
     this.inputWrapper.classList.toggle('disabled', shouldDisable);
     this.textInput.disabled = shouldDisable;
 

@@ -277,6 +277,7 @@ export interface ReminderStateFile {
 
 export interface HumanQuestion {
   id: string;
+  kind: Q4HKind;
   headLine: string;
   bodyContent: string;
   askedAt: string;
@@ -285,6 +286,8 @@ export interface HumanQuestion {
     messageIndex: number;
   };
 }
+
+export type Q4HKind = 'generic' | 'keep_going_budget_exhausted' | 'context_health_critical';
 
 export interface Questions4HumanFile {
   questions: HumanQuestion[];

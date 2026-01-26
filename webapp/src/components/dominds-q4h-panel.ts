@@ -92,6 +92,7 @@ export class DomindsQ4HPanel extends HTMLElement {
           questionId: this.selectedQuestionId,
           dialogId: dialogContext.selfId,
           rootId: dialogContext.rootId,
+          kind: question.kind,
           headLine: question.headLine,
           bodyContent: question.bodyContent,
         },

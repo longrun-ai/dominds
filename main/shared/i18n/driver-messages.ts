@@ -73,108 +73,85 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
   );
 }
 
-export type ContextHealthReminderTextArgs =
-  | {
-      kind: 'usage_unknown';
-    }
-  | {
-      kind: 'over_optimal';
-    }
-  | {
-      kind: 'over_critical';
-      remainingGenTurns: number;
-    };
+export type ContextHealthV2RemediationGuideArgs =
+  | { kind: 'caution' }
+  | { kind: 'critical'; attempt: number; maxAttempts: number };
 
-export function formatContextHealthReminderText(
+export function formatUserFacingContextHealthV2RemediationGuide(
   language: LanguageCode,
-  args: ContextHealthReminderTextArgs,
+  args: ContextHealthV2RemediationGuideArgs,
 ): string {
+  const reentryTemplateZh = [
+    '## 重入包（可多行；按任务规模伸缩）',
+    '- 目标/范围：',
+    '- 当前进展：',
+    '- 关键决策/约束：',
+    '- 已改动点（文件/模块）：',
+    '- 下一步（可执行）：',
+    '- 未决问题/风险：',
+  ].join('\n');
+
+  const reentryTemplateEn = [
+    '## Re-entry package (multi-line; scale by task size)',
+    '- Goal/scope:',
+    '- Current progress:',
+    '- Key decisions/constraints:',
+    '- Changes (files/modules):',
+    '- Next steps (actionable):',
+    '- Open questions/risks:',
+  ].join('\n');
+
   if (language === 'zh') {
-    switch (args.kind) {
-      case 'usage_unknown':
-        return [
-          '📋',
-          '🧠 上下文健康：⚪ 未知（上一轮 token 统计不可用）',
-          '',
-          '说明：当上下文接近模型上限或统计未知时，质量与稳定性更容易波动。',
-          '',
-          '建议：先 change_mind 更新差遣牒 progress（提炼摘要），再 clear_mind 开启新一轮以清理噪音。',
-        ].join('\n');
-      case 'over_optimal':
-        return [
-          '📋',
-          '🧠 上下文健康：🟡 黄（现在就停手：先提炼，再清理）',
-          '',
-          '禁止继续推进实现或继续读大文件输出。先把“必须保留的细节”收敛到少量提醒项（优先 update_reminder 压缩/合并），再 change_mind(progress) 写提炼摘要（不限制行数；按任务规模与参与人数调整篇幅），然后 clear_mind 开启新一轮/新回合。',
-          '',
-          '说明：clear_mind 不会清空差遣牒（`*.tsk/`），也不会清理现有提醒项；可放心开启新一轮/新回合。',
-          '',
-          '如果你担心丢细节：不要继续堆对话历史；把关键细节写进提醒项（提醒项是跨新一轮/新回合的工作集）。',
-        ].join('\n');
-      case 'over_critical':
-        return [
-          '📋',
-          '🧠 上下文健康：🔴 红（硬闸门：立刻提炼，否则会被动新开一轮/新回合）',
-          '',
-          `倒数：还剩 ${args.remainingGenTurns} 次生成机会；到 0 系统将被动开启新一轮/新回合以保持稳定性（等同 clear_mind：清空本轮对话消息；差遣牒与提醒项不受影响）。`,
-          '',
-          '禁止继续推进实现。必须立刻执行：',
-          '- 先用 update_reminder 把“必须保留的细节”压缩/合并到少量提醒项（工作集）',
-          '- 再 change_mind(progress) 写提炼摘要（不限制行数；覆盖：目标 / 关键决策 / 已改动点 / 下一步 / 未决问题）',
-          '- 然后 clear_mind 开启新一轮/新回合',
-        ].join('\n');
-      default: {
-        const _exhaustiveCheck: never = args;
-        return _exhaustiveCheck;
-      }
+    if (args.kind === 'caution') {
+      return [
+        '上下文健康：🟡 黄（v2 remediation）',
+        '',
+        '你必须在本轮选择其一（同一份“重入包”内容）：',
+        '- clear_mind({ "reminder_content": "<重入包>" })  （推荐）',
+        '- add_reminder({ "content": "<重入包>", "position": 0 })',
+        '',
+        '提示：若你仍处于黄且没有 clear_mind，系统会每 10 次生成再提醒一次（直到清理）。',
+        '',
+        reentryTemplateZh,
+      ].join('\n');
     }
+
+    return [
+      `上下文健康：🔴 红（v2 remediation / 强制清理 ${args.attempt}/${args.maxAttempts}）`,
+      '',
+      '你必须且只能调用：',
+      '- clear_mind({ "reminder_content": "<重入包>" })',
+      '',
+      '硬约束：reminder_content 必须非空，并且必须包含可扫读、可行动的“重入包”。',
+      '',
+      reentryTemplateZh,
+    ].join('\n');
   }
 
-  const clearMindSafetyLines = [
-    'Note: calling the function tool `clear_mind` does NOT delete the Taskdoc (`*.tsk/`) and does NOT delete existing reminder items.',
-    'So it is safe to distill key facts into the Taskdoc/reminders and then `clear_mind` immediately.',
+  if (args.kind === 'caution') {
+    return [
+      'Context health: 🟡 caution (v2 remediation)',
+      '',
+      'You must choose exactly one action in this turn (same “re-entry package” content):',
+      '- clear_mind({ "reminder_content": "<re-entry package>" })  (preferred)',
+      '- add_reminder({ "content": "<re-entry package>", "position": 0 })',
+      '',
+      'Note: if still caution and you did not clear_mind, the system reinjects this guidance every 10 generations until cleared.',
+      '',
+      reentryTemplateEn,
+    ].join('\n');
+  }
+
+  return [
+    `Context health: 🔴 critical (v2 remediation / forced clear ${args.attempt}/${args.maxAttempts})`,
     '',
-    'If I am still worried about losing context:',
-    '- I can put a long “safety reminder item” into `clear_mind({ "reminder_content": "..." })` so the new round carries key facts/decisions/next steps.',
-  ];
-
-  switch (args.kind) {
-    case 'usage_unknown':
-      return [
-        '📋',
-        'Context health: unknown (token usage for the last generation is unavailable).',
-        '',
-        'Why: When context is near limits or usage is unknown, quality and stability can drift.',
-        '',
-        'Suggested: `change_mind` (selector `progress`) then `clear_mind` to start a new round with less noise.',
-      ].join('\n');
-    case 'over_optimal':
-      return [
-        '📋',
-        'Context health: 🟡 caution (your dialog context is getting large).',
-        '',
-        'Why: Large prompts can degrade quality and slow responses.',
-        '',
-        ...clearMindSafetyLines,
-        '',
-        'Suggested: `change_mind` (selector `progress`) then `clear_mind` to start a new round with less noise.',
-      ].join('\n');
-    case 'over_critical':
-      return [
-        '📋',
-        'Context health: 🔴 critical (high risk: generation may fail/stall/become unusable).',
-        '',
-        `Countdown: ${args.remainingGenTurns} generation turns left; at 0 the system will auto-start a new round for stability (equivalent to \`clear_mind\`).`,
-        '',
-        ...clearMindSafetyLines,
-        '',
-        'Must prioritize: `change_mind` (selector `progress`) → `clear_mind`.',
-      ].join('\n');
-    default: {
-      const _exhaustiveCheck: never = args;
-      return _exhaustiveCheck;
-    }
-  }
+    'You must call (and only call):',
+    '- clear_mind({ "reminder_content": "<re-entry package>" })',
+    '',
+    'Hard requirement: reminder_content must be non-empty and must contain a scannable, actionable re-entry package.',
+    '',
+    reentryTemplateEn,
+  ].join('\n');
 }
 export function formatReminderIntro(language: LanguageCode, count: number): string {
   if (language === 'zh') {
@@ -235,23 +212,6 @@ Distill template (Taskdoc progress):
 - Files touched:
 - Next steps:
 - Open questions:`;
-}
-
-export function formatContextHealthAutoNewRoundPrompt(
-  language: LanguageCode,
-  nextRound: number,
-): string {
-  if (language === 'zh') {
-    return (
-      '上下文健康：倒数已归零。系统已自动开启新一轮以保持稳定性（等同 clear_mind：清空本轮对话消息；差遣牒与提醒项不受影响）。\n' +
-      `这是对话的第 #${nextRound} 轮，请继续执行任务。`
-    );
-  }
-  return (
-    'Context health: countdown reached zero. The system auto-started a new round for stability ' +
-    "(equivalent to clear_mind: clears this round's dialog messages; Taskdoc and reminder items are preserved).\n" +
-    `This is round #${nextRound}. Please continue the task.`
-  );
 }
 
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {

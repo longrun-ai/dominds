@@ -2810,6 +2810,7 @@ export class DomindsApp extends HTMLElement {
         questionId: string | null;
         dialogId: string;
         rootId: string;
+        kind?: string;
         headLine: string;
         bodyContent: string;
       }>;
@@ -5949,6 +5950,7 @@ export class DomindsApp extends HTMLElement {
       for (const question of context.questions) {
         q4hQuestions.push({
           id: question.id,
+          kind: question.kind,
           headLine: question.headLine,
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,

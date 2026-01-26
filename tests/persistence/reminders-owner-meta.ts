@@ -35,14 +35,14 @@ function assertRecord(value: unknown): asserts value is Record<string, unknown> 
 
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
-    const contextHealthOwner = getReminderOwner('context_health');
-    assert.ok(contextHealthOwner, 'Expected context_health ReminderOwner to be registered');
+    const mcpLeaseOwner = getReminderOwner('mcpLease');
+    assert.ok(mcpLeaseOwner, 'Expected mcpLease ReminderOwner to be registered');
     const shellCmdOwner = getReminderOwner('shellCmd');
     assert.ok(shellCmdOwner, 'Expected shellCmd ReminderOwner to be registered');
 
     const dialogId = new DialogID('11/22/33334444');
     await DialogPersistence._saveReminderState(dialogId, [
-      { content: 'Context health reminder', owner: contextHealthOwner },
+      { content: 'MCP lease reminder', owner: mcpLeaseOwner },
       {
         content: 'Daemon reminder',
         owner: shellCmdOwner,
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     assert.equal(reminders.length, 2);
 
     assertRecord(reminders[0]);
-    assert.equal(reminders[0]['ownerName'], 'context_health');
+    assert.equal(reminders[0]['ownerName'], 'mcpLease');
 
     assertRecord(reminders[1]);
     assert.equal(reminders[1]['ownerName'], 'shellCmd');
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     const loaded = await DialogPersistence.loadReminderState(dialogId);
     assert.equal(loaded.length, 2);
     assert.ok(loaded[0].owner, 'Expected owner to be rehydrated for reminder[0]');
-    assert.equal(loaded[0].owner.name, 'context_health');
+    assert.equal(loaded[0].owner.name, 'mcpLease');
     assert.ok(loaded[1].owner, 'Expected owner to be rehydrated for reminder[1]');
     assert.equal(loaded[1].owner.name, 'shellCmd');
     assertRecord(loaded[1].meta);

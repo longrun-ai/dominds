@@ -6,7 +6,6 @@
  * Entry points (server/cli) must import this module once to populate registries.
  */
 import { applyPatchTool } from './apply-patch';
-import { contextHealthReminderOwner } from './context-health';
 import {
   addReminderTool,
   changeMindTool,
@@ -220,5 +219,4 @@ setToolsetMeta('diag', {
 
 // Register ReminderOwners
 registerReminderOwner(shellCmdReminderOwner);
-registerReminderOwner(contextHealthReminderOwner);
 registerReminderOwner(mcpLeaseReminderOwner);

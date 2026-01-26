@@ -4,35 +4,27 @@ This document specifies a **context health monitor** feature for Dominds: a smal
 that helps the agent (and user) avoid degraded performance when the conversation’s prompt/context is
 getting too large relative to the model’s context window.
 
-## Current Code Reality (as of now)
+## Current Code Reality (as of 2026-01-26)
 
 Dominds already has:
 
-- **Reminders** on the dialog object (`Dialog.addReminder`, `Dialog.processReminderUpdates`)
-- A first-class **ReminderOwner** mechanism (`ReminderOwner.updateReminder` → `drop|keep|update`)
-- Model metadata that includes a per-model **context length** (`context_length` in `dominds/main/llm/defaults.yaml`)
-- A config surface for **`optimal_max_tokens`** and **`critical_max_tokens`** (optional per-model fields)
-
-Dominds does **not** yet have:
-
-- A normalized, persisted **token usage record** per generation (streaming generators currently do
-  not plumb token usage into dialog state).
+- A **provider usage stats** path (per generation) from the LLM wrappers.
+- A computed and persisted **context health snapshot** per generation turn (derived from usage +
+  per-model metadata).
+- A minimal **UI indicator** surface consuming the dialog’s context health state.
 
 ## Goals
 
 - Collect **token usage stats** from LLM provider wrappers after each generation.
 - Compute a simple **context health** signal from provider stats + model metadata.
-- When the dialog context is “too large”, add a **reminder** urging the agent to “clear its mind”.
-  - Dominds does not auto-compact context.
-  - The safe workflow is: distill important information into the Taskdoc and/or reminders, then call
-    the function tool `clear_mind({ "reminder_content": "" })` to restart with minimal context.
-- Avoid reminder spam via a **reminder owner** mechanism; stop reminding once the dialog is back in a
-  healthy range.
-- When the dialog is **critical** for too long, enforce stability via a **generation-turn countdown**:
-  - Start a **5 generation-turn** countdown while still critical.
-  - Decrement once per generation while still critical.
-  - When the countdown reaches **0**, Dominds auto-starts a **new round** (equivalent to `clear_mind`)
-    and clears Q4H for stability.
+- When the dialog context is “too large”, enforce a **v2 remediation** workflow that is short,
+  executable, and regression-testable:
+  - Use **non-persisted role=user guidance injection** on the next LLM generation turn (do not write
+    the injected guidance into dialog history/events).
+  - In **critical**, enforce stability via a **forced-clear loop** (max 3 attempts) that discards
+    assistant output unless the model calls `clear_mind` with a non-empty re-entry package.
+  - After 3 failed forced attempts, escalate to **Q4H(kind=context_health_critical)** and suspend the
+    dialog; WebUI disables send for that kind.
 
 ## Non-goals
 
@@ -111,62 +103,44 @@ Levels are derived from the two thresholds:
 - **Caution (yellow)**: `promptTokens > effectiveOptimalMaxTokens`
 - **Critical (red)**: `promptTokens > effectiveCriticalMaxTokens`
 
-### Trigger condition (reminder)
+## v2 Remediation Semantics (Driver-enforced)
 
-Add a context-health reminder when:
+### Re-entry package (“重入包”)
 
-- `level !== 'healthy'`
+The remediation workflow centers around a _re-entry package_ (a scannable, actionable bundle of
+context that survives a new round).
 
-### Clear condition (stop reminding)
+Recommended structure (multi-line; scale by task size):
 
-Use the reminder owner mechanism to stop the reminder when the **next dialog round** has:
+- Goal/scope
+- Current progress
+- Key decisions/constraints
+- Changes (files/modules)
+- Next steps (actionable)
+- Open questions/risks
 
-- `promptTokens < effectiveOptimalMaxTokens`
+### Caution (yellow)
 
-## Reminder Owner Semantics
+When `level === 'caution'`, the driver injects a **role=user** guidance message into the _next_ LLM
+generation turn (not persisted) that forces a **binary choice** using the same re-entry package:
 
-Context-health reminders should use the existing `ReminderOwner` mechanism.
+- `clear_mind({ "reminder_content": "<re-entry package>" })` (preferred)
+- `add_reminder({ "content": "<re-entry package>", "position": 0 })`
 
-- Implement a dedicated `ReminderOwner` with `name: 'context_health'`.
-- Owned reminders are **system-managed** and should not include generic “delete this reminder”
-  instructions; that guidance is reserved for non-owned reminders only.
+If the agent does not `clear_mind` and the dialog remains in `caution`, the driver re-injects the
+guidance every **10 generation turns** until cleared.
 
-Rules:
+### Critical (red)
 
-- If a reminder with owner `context_health` is already present for the dialog, do not emit additional
-  reminders each turn.
-- When the clear condition is met, drop the reminder by returning `treatment: 'drop'` from
-  `updateReminder(...)`.
+When `level === 'critical'`, the driver enters a **forced-clear loop** (max **3** attempts) on the
+next generation turn:
 
-### Persistence caveat (current implementation)
-
-Reminders are persisted to `reminders.json` including `owner` and `meta` (so owned reminders can be
-rehydrated after restart). For owned reminders, the persisted `content` is treated as a snapshot and
-must be ignored; owned reminder text should be rendered on-demand via the `ReminderOwner`.
-
-Implication for this feature:
-
-- The context health reminder should be an **owned reminder** (e.g. owner name `context_health`)
-  whose content is derived from the latest token stats each time reminders are rendered.
-
-## Reminder copy (UX)
-
-When crossing thresholds, reminders should guide the agent toward safe, low-friction recovery.
-
-### Over optimal (yellow)
-
-- Clarify that `clear_mind` does **not** delete the Taskdoc (`*.tsk/`) and does **not** delete existing
-  reminders.
-- Encourage the agent to safely clear to reduce context size.
-- If the agent still worries about losing context: put a large “safety reminder item” into
-  `clear_mind({ "reminder_content": "..." })` so the new round carries key details.
-
-### Over critical (red)
-
-- Use urgent wording: if the agent does not `clear_mind` immediately, the dialog is likely to hit
-  technical failures (generation errors, stalls, inability to continue).
-- Include the critical countdown and the auto-new-round behavior at countdown 0 so the user is
-  informed about the forced stability mechanism.
+- The injected guidance is **clear-only**: the model must call `clear_mind` with a **non-empty**
+  `reminder_content` containing a re-entry package.
+- If the model output does not include such a `clear_mind` call, the driver **discards the assistant
+  output** (log only; do not persist into dialog history/events) and retries.
+- After 3 failed attempts, the driver triggers **Q4H** with `kind=context_health_critical`, and the
+  dialog becomes **suspended** (driver stops attempting generations).
 
 ## UI (Webapp) Expectations
 
@@ -184,15 +158,19 @@ Suggested visual states:
 - **Critical** (red)
 - **Unknown** (gray)
 
+### Q4H(kind=context_health_critical) send gating
+
+When a dialog is suspended for `kind=context_health_critical`, WebUI must disable sending for that
+kind (do not allow “answering” it as a normal Q4H).
+
 ## Implementation Outline
 
 1. Refactor LLM provider wrappers to return token stats after each generation (including prompt
    token count when the provider reports it).
 2. Thread usage stats into the dialog state (persist alongside dialog turns).
-3. Implement the context health monitor to:
-   - compute utilization and levels,
-   - manage the `context_health` reminder owner lifecycle.
-4. Add a minimal UI indicator that consumes the dialog’s context health state.
+3. Implement the context health monitor computation and persist it per generation.
+4. Implement v2 remediation (role=user guidance injection + critical forced-clear loop + Q4H(kind)).
+5. Add minimal regression guards for the v2 behavior (types + gating).
 
 ## Acceptance Criteria
 
@@ -200,8 +178,11 @@ Suggested visual states:
 - Context health thresholds:
   - `optimal_max_tokens` defaults to `100_000` when not configured.
   - `critical_max_tokens` defaults to `floor(modelContextLimitTokens * 0.9)` when not configured.
-- When `level !== 'healthy'`, the agent receives a context-health reminder (once per active condition
-  via reminder owner), with distinct copy for over-optimal vs over-critical.
-- The reminder is automatically cleared once a subsequent round’s prompt tokens are below
-  `effectiveOptimalMaxTokens`.
+- v2 remediation:
+  - `caution`: driver injects role=user guidance for the next generation turn only (non-persisted),
+    offering exactly two choices (clear_mind vs add_reminder) with the same re-entry package content.
+    If not cleared, re-inject every 10 generation turns while still caution.
+  - `critical`: driver enforces a forced-clear loop (max 3 attempts). If no valid clear_mind call is
+    present, discard output (log only; no persistence). After 3 failures, fire
+    Q4H(kind=context_health_critical) and suspend the dialog; WebUI disables send for that kind.
 - UI shows context health with green/yellow/red (and “unknown” handling when usage is unavailable).
