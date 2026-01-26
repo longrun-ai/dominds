@@ -6,7 +6,7 @@ Node-friendly helpers for ChatGPT OAuth that are compatible with Codex
 ## Install
 
 ```sh
-pnpm add @dominds/codex-auth
+pnpm add @longrun-ai/codex-auth
 ```
 
 ## Library Usage
@@ -17,7 +17,7 @@ import {
   createChatGptClientFromManager,
   createChatGptStartRequest,
   runLoginServer,
-} from '@dominds/codex-auth';
+} from '@longrun-ai/codex-auth';
 
 const manager = new AuthManager();
 const auth = await manager.auth();
@@ -42,7 +42,7 @@ console.log(raw);
 Continue a conversation from stored history:
 
 ```ts
-import { createChatGptContinuationRequest } from '@dominds/codex-auth';
+import { createChatGptContinuationRequest } from '@longrun-ai/codex-auth';
 
 const history = JSON.parse(historyJson);
 const followup = createChatGptContinuationRequest({
@@ -58,7 +58,7 @@ await client.trigger(followup, receiver);
 `ChatGptResponsesStreamEvent`.
 
 ```ts
-import type { ChatGptEventReceiver, ChatGptResponsesStreamEvent } from '@dominds/codex-auth';
+import type { ChatGptEventReceiver, ChatGptResponsesStreamEvent } from '@longrun-ai/codex-auth';
 
 const receiver: ChatGptEventReceiver = {
   onEvent(event: ChatGptResponsesStreamEvent) {
@@ -106,38 +106,38 @@ The package ships a CLI that inspects `auth.json` and reports status.
 It runs a ChatGPT chat probe unless `--no-verify` is used.
 
 ```sh
-pnpm dlx @dominds/codex-auth --json
+pnpm dlx @longrun-ai/codex-auth --json
 ```
 
 Refresh tokens (if available):
 
 ```sh
-pnpm dlx @dominds/codex-auth --refresh
+pnpm dlx @longrun-ai/codex-auth --refresh
 ```
 
 Skip the verification request (no LLM call):
 
 ```sh
-pnpm dlx @dominds/codex-auth --no-verify
+pnpm dlx @longrun-ai/codex-auth --no-verify
 ```
 
 Dump SSE events from the verification request:
 
 ```sh
-pnpm dlx @dominds/codex-auth --verbose
+pnpm dlx @longrun-ai/codex-auth --verbose
 ```
 
 Override model or base URL:
 
 ```sh
-pnpm dlx @dominds/codex-auth --model gpt-5.2-codex \
+pnpm dlx @longrun-ai/codex-auth --model gpt-5.2-codex \
   --chatgpt-base-url https://chatgpt.com/backend-api/
 ```
 
 Override `CODEX_HOME`:
 
 ```sh
-pnpm dlx @dominds/codex-auth --codex-home /path/to/.codex
+pnpm dlx @longrun-ai/codex-auth --codex-home /path/to/.codex
 ```
 
 ## Notes

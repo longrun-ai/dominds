@@ -1,5 +1,5 @@
 {
-  "name": "@dominds/codex-auth",
+  "name": "@longrun-ai/codex-auth",
   "publishConfig": {
     "access": "public"
   },

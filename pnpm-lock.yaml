@@ -11,7 +11,7 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.67.0
         version: 0.67.1(zod@4.3.5)
-      '@dominds/codex-auth':
+      '@longrun-ai/codex-auth':
         specifier: workspace:*
         version: link:codex-auth
       '@modelcontextprotocol/sdk':

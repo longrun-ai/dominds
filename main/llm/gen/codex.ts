@@ -13,7 +13,7 @@ import type {
   ChatGptResponsesRequest,
   ChatGptResponsesStreamEvent,
   ChatGptTextControls,
-} from '@dominds/codex-auth';
+} from '@longrun-ai/codex-auth';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
@@ -185,9 +185,10 @@ export class CodexGen implements LlmGenerator {
     const codexHome = codexHomeValue.startsWith('~')
       ? process.env['HOME'] + codexHomeValue.substring(1)
       : codexHomeValue;
-    // NOTE: `@dominds/codex-auth` is an ESM package (`"type": "module"`). The Dominds backend is
+    // NOTE: `@longrun-ai/codex-auth` is an ESM package (`"type": "module"`). The Dominds backend is
     // compiled as CommonJS, so Node.js requires a dynamic `import()` for runtime access here.
-    const codexAuth: typeof import('@dominds/codex-auth') = await import('@dominds/codex-auth');
+    const codexAuth: typeof import('@longrun-ai/codex-auth') =
+      await import('@longrun-ai/codex-auth');
     const manager = new codexAuth.AuthManager({ codexHome });
     const client = await codexAuth.createChatGptClientFromManager(manager, {
       baseUrl: providerConfig.baseUrl,

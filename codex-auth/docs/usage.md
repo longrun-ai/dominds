@@ -7,7 +7,7 @@ request schema and `ResponseItem` shape. The helpers below provide an idiomatic
 way to start or continue a conversation.
 
 ```ts
-import { createChatGptContinuationRequest, createChatGptStartRequest } from '@dominds/codex-auth';
+import { createChatGptContinuationRequest, createChatGptStartRequest } from '@longrun-ai/codex-auth';
 
 const payload = createChatGptStartRequest({
   model: 'gpt-5.2-codex',
@@ -28,7 +28,7 @@ Streaming responses return SSE events. Each JSON `data:` payload maps to
 `ChatGptResponsesStreamEvent` (exported from the package).
 
 ```ts
-import type { ChatGptResponsesStreamEvent } from '@dominds/codex-auth';
+import type { ChatGptResponsesStreamEvent } from '@longrun-ai/codex-auth';
 
 const event = JSON.parse(data) as ChatGptResponsesStreamEvent;
 ```
@@ -37,7 +37,7 @@ Idiomatic event handling uses a discriminated-union switch so TypeScript can
 verify exhaustive handling:
 
 ```ts
-import type { ChatGptEventReceiver, ChatGptResponsesStreamEvent } from '@dominds/codex-auth';
+import type { ChatGptEventReceiver, ChatGptResponsesStreamEvent } from '@longrun-ai/codex-auth';
 
 const receiver: ChatGptEventReceiver = {
   onEvent(event: ChatGptResponsesStreamEvent) {
