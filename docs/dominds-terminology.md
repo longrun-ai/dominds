@@ -165,8 +165,8 @@ Example / 示例（概念）:
 
 Example / 示例（概念）:
 
-- EN: `!?@cmdr Please run a single build and paste the failure output.`
-- ZH: `!?@cmdr 请运行一次构建并回贴失败信息。`
+- EN: `!?@<shell-specialist> Please run a single build and paste the failure output.`
+- ZH: `!?@<shell-specialist> 请运行一次构建并回贴失败信息。`
 
 ### 系统提示可复用的一句话（One-Sentence Summary for System Prompts）
 

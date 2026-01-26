@@ -105,7 +105,7 @@ export function formatContextHealthReminderText(
           '📋',
           '🧠 上下文健康：🟡 黄（现在就停手：先提炼，再清理）',
           '',
-          '禁止继续推进实现或继续读大文件输出。先把“必须保留的细节”收敛到少量提醒项（优先 update_reminder 压缩/合并），再 change_mind(progress) 写 5 行提炼摘要，然后 clear_mind 开启新一轮/新回合。',
+          '禁止继续推进实现或继续读大文件输出。先把“必须保留的细节”收敛到少量提醒项（优先 update_reminder 压缩/合并），再 change_mind(progress) 写提炼摘要（不限制行数；按任务规模与参与人数调整篇幅），然后 clear_mind 开启新一轮/新回合。',
           '',
           '说明：clear_mind 不会清空差遣牒（`*.tsk/`），也不会清理现有提醒项；可放心开启新一轮/新回合。',
           '',
@@ -120,7 +120,7 @@ export function formatContextHealthReminderText(
           '',
           '禁止继续推进实现。必须立刻执行：',
           '- 先用 update_reminder 把“必须保留的细节”压缩/合并到少量提醒项（工作集）',
-          '- 再 change_mind(progress) 写 5 行提炼摘要',
+          '- 再 change_mind(progress) 写提炼摘要（不限制行数；覆盖：目标 / 关键决策 / 已改动点 / 下一步 / 未决问题）',
           '- 然后 clear_mind 开启新一轮/新回合',
         ].join('\n');
       default: {
@@ -195,7 +195,7 @@ export function formatReminderIntro(language: LanguageCode, count: number): stri
 
 建议（上下文健康黄/红时必须执行）：
 - 先把“必须保留的细节”收敛到少量提醒项（update_reminder 压缩/合并）
-- 再 change_mind(progress) 写 5 行提炼摘要
+- 再 change_mind(progress) 写提炼摘要（不限制行数；覆盖：目标 / 关键决策 / 已改动点 / 下一步 / 未决问题）
 - 然后 clear_mind 开启新一轮/新回合（差遣牒与提醒项不会丢）
 
 提炼模板（写入差遣牒的 progress 段）：
@@ -225,7 +225,7 @@ Note:
 
 Suggested (mandatory at yellow/red context health):
 - First, compress/merge reminders into a small set (update_reminder)
-- Then distill 5 lines into Taskdoc progress (change_mind)
+- Then distill into Taskdoc progress (change_mind) (no fixed length; scale by task size)
 - Then clear_mind to start a new round (Taskdoc and reminders are preserved)
 
 Distill template (Taskdoc progress):
@@ -236,6 +236,7 @@ Distill template (Taskdoc progress):
 - Next steps:
 - Open questions:`;
 }
+
 export function formatContextHealthAutoNewRoundPrompt(
   language: LanguageCode,
   nextRound: number,
@@ -257,6 +258,7 @@ export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): s
   if (language === 'zh') {
     return (
       'Dominds 提示：`!?@super` 只在子对话（subdialog）中有效，用于诉请直接父对话（supdialog）。' +
+      '补充：父对话不一定是主对话/根对话；差遣牒（`*.tsk/`）通常由主对话/根对话维护人统一更新。' +
       '你当前不在子对话中，因此没有父对话可诉请。'
     );
   }
