@@ -26,7 +26,7 @@ export function formatReminderItemGuide(
   content: string,
 ): string {
   if (language === 'zh') {
-    return `这里是提醒项 #${index}（工作集/工作日志的一部分）。
+    return `【提醒项 #${index}｜高优先级工作集】
 
 原则：提醒项应该是“高价值且不过时”的信息；我应优先用 update_reminder 维护它，避免堆很多条。
 - 保留且仍然需要：把内容压缩为要点并 update_reminder（不要无限增大）。
@@ -39,7 +39,7 @@ export function formatReminderItemGuide(
 ${content}`;
   }
 
-  return `Here is reminder item #${index} (part of your working set / worklog).
+  return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
 
 Principle: reminders should be high-value and not stale; prefer update_reminder (curate) over creating many items.
 - Still needed: compress and update_reminder (do not grow without bound).
@@ -73,13 +73,14 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
   );
 }
 
-export type ContextHealthV2RemediationGuideArgs =
-  | { kind: 'caution' }
+export type ContextHealthV3RemediationGuideArgs =
+  | { kind: 'caution'; mode: 'soft'; graceRemaining: number; graceTotal: number }
+  | { kind: 'caution'; mode: 'hard_curate' }
   | { kind: 'critical'; attempt: number; maxAttempts: number };
 
-export function formatUserFacingContextHealthV2RemediationGuide(
+export function formatUserFacingContextHealthV3RemediationGuide(
   language: LanguageCode,
-  args: ContextHealthV2RemediationGuideArgs,
+  args: ContextHealthV3RemediationGuideArgs,
 ): string {
   const reentryTemplateZh = [
     '## 重入包（可多行；按任务规模伸缩）',
@@ -102,22 +103,42 @@ export function formatUserFacingContextHealthV2RemediationGuide(
   ].join('\n');
 
   if (language === 'zh') {
-    if (args.kind === 'caution') {
+    if (args.kind === 'caution' && args.mode === 'soft') {
       return [
-        '上下文健康：🟡 黄（v2 remediation）',
+        '上下文健康：🟡 黄（v3 remediation / 缓冲期）',
         '',
-        '你必须在本轮选择其一（同一份“重入包”内容）：',
-        '- clear_mind({ "reminder_content": "<重入包>" })  （推荐）',
-        '- add_reminder({ "content": "<重入包>", "position": 0 })',
+        '你刚刚超过 optimal 阈值。为避免过早 clear_mind 导致大量重读，你可以先继续工作一小段时间。',
+        `缓冲期剩余：${args.graceRemaining}/${args.graceTotal} 次生成。`,
         '',
-        '提示：若你仍处于黄且没有 clear_mind，系统会每 10 次生成再提醒一次（直到清理）。',
+        '建议：从现在开始把“重入包草稿”持续维护在提醒项里（update_reminder / add_reminder），等信息更明朗后再 clear_mind。',
+        '当缓冲期结束且仍处于黄：系统会按 cadence（默认每 10 次生成）注入一次“维护提醒项”的硬提醒（要求至少调用一次 update_reminder/add_reminder）。',
+        '',
+        reentryTemplateZh,
+      ].join('\n');
+    }
+
+    if (args.kind === 'caution' && args.mode === 'hard_curate') {
+      return [
+        '上下文健康：🟡 黄（v3 remediation / 维护提醒项）',
+        '',
+        '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
+        '目标：把“重入包草稿”维护进提醒项，让我能在信息足够时 **自主** clear_mind 进入新一轮/新回合。',
+        '',
+        '建议你在提醒项里明确写出：',
+        '“基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入下一轮对话”。',
+        '',
+        '可选动作（至少一个，允许多次调用）：',
+        '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
+        '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
+        '',
+        '提示：若你仍处于黄且没有完成提醒项维护，系统会按 cadence（默认每 10 次生成）再次提醒（直到缓解）。',
         '',
         reentryTemplateZh,
       ].join('\n');
     }
 
     return [
-      `上下文健康：🔴 红（v2 remediation / 强制清理 ${args.attempt}/${args.maxAttempts}）`,
+      `上下文健康：🔴 红（v3 remediation / 强制清理 ${args.attempt}/${args.maxAttempts}）`,
       '',
       '你必须且只能调用：',
       '- clear_mind({ "reminder_content": "<重入包>" })',
@@ -128,22 +149,42 @@ export function formatUserFacingContextHealthV2RemediationGuide(
     ].join('\n');
   }
 
-  if (args.kind === 'caution') {
+  if (args.kind === 'caution' && args.mode === 'soft') {
     return [
-      'Context health: 🟡 caution (v2 remediation)',
+      'Context health: 🟡 caution (v3 remediation / grace period)',
       '',
-      'You must choose exactly one action in this turn (same “re-entry package” content):',
-      '- clear_mind({ "reminder_content": "<re-entry package>" })  (preferred)',
-      '- add_reminder({ "content": "<re-entry package>", "position": 0 })',
+      'You just crossed the optimal threshold. To avoid clearing too early (and re-reading a lot), you may continue briefly.',
+      `Grace remaining: ${args.graceRemaining}/${args.graceTotal} generations.`,
       '',
-      'Note: if still caution and you did not clear_mind, the system reinjects this guidance every 10 generations until cleared.',
+      'Suggestion: start drafting and curating a re-entry package in reminders (update_reminder / add_reminder), then clear_mind when it becomes scannable and actionable.',
+      'Once the grace period ends (and still caution), the system will inject a hard reminder-curation prompt on a cadence (default: every 10 generations), requiring at least one update_reminder/add_reminder call.',
+      '',
+      reentryTemplateEn,
+    ].join('\n');
+  }
+
+  if (args.kind === 'caution' && args.mode === 'hard_curate') {
+    return [
+      'Context health: 🟡 caution (v3 remediation / curate reminders)',
+      '',
+      'In this turn, you must call at least one reminder-curation tool (prefer update_reminder; add_reminder is also OK).',
+      'Goal: maintain a re-entry-package draft inside reminders so you can later clear_mind autonomously when it becomes actionable.',
+      '',
+      'Suggested phrasing inside the reminder(s):',
+      '“Based on the above, we still need … to complete the re-entry package, so we can safely clear_mind and start a new round.”',
+      '',
+      'Allowed actions (at least one; multiple calls are OK):',
+      '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
+      '- add_reminder({ "content": "<new reminder>", "position": 0 })',
+      '',
+      'Note: if still caution and you did not curate reminders, the system reinjects this guidance on the configured cadence (default: every 10 generations) until relieved.',
       '',
       reentryTemplateEn,
     ].join('\n');
   }
 
   return [
-    `Context health: 🔴 critical (v2 remediation / forced clear ${args.attempt}/${args.maxAttempts})`,
+    `Context health: 🔴 critical (v3 remediation / forced clear ${args.attempt}/${args.maxAttempts})`,
     '',
     'You must call (and only call):',
     '- clear_mind({ "reminder_content": "<re-entry package>" })',

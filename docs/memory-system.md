@@ -92,6 +92,13 @@ Reminders are the best place for **details that are worth paying prompt tokens f
 
 - Reminders are **dialog-local** (your working set for this dialog/agent). They are not a team-wide bulletin board.
 
+**Injection semantics (important)**:
+
+- Reminders are **injected into the LLM context every generation**.
+- In current code, reminders are rendered primarily as **`role=user` environment guidance** near the last user message.
+  This is intentional for salience: reminders should be hard to ignore.
+- Reminder injection is **not persisted** into dialog history/events (it is context-only).
+
 **Recommended structure for a single “worklog reminder item”**:
 
 - Last updated: timestamp (human-readable)

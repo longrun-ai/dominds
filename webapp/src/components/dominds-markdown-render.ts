@@ -116,7 +116,10 @@ md.renderer.rules.fence = (tokens, idx): string => {
   return `<dominds-code-block language="${escapeHtmlText(attrLanguage)}">${escapeHtmlText(code)}</dominds-code-block>`;
 };
 
-export function renderDomindsMarkdown(input: string, _opts: MarkdownRenderKind = { kind: 'chat' }): string {
+export function renderDomindsMarkdown(
+  input: string,
+  _opts: MarkdownRenderKind = { kind: 'chat' },
+): string {
   try {
     const rendered = md.render(input);
     return DOMPurify.sanitize(rendered, domPurifyConfig);

@@ -88,6 +88,7 @@ export interface ModelInfo {
   output_length?: number;
   optimal_max_tokens?: number;
   critical_max_tokens?: number;
+  caution_remediation_cadence_generations?: number;
   context_window?: string;
   [key: string]: unknown;
 }

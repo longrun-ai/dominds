@@ -17,7 +17,7 @@ Dominds already has:
 
 - Collect **token usage stats** from LLM provider wrappers after each generation.
 - Compute a simple **context health** signal from provider stats + model metadata.
-- When the dialog context is “too large”, enforce a **v2 remediation** workflow that is short,
+- When the dialog context is “too large”, enforce a **v3 remediation** workflow that is short,
   executable, and regression-testable:
   - Use **non-persisted role=user guidance injection** on the next LLM generation turn (do not write
     the injected guidance into dialog history/events).
@@ -52,6 +52,10 @@ Dominds already has:
   - If explicitly configured, Dominds uses it directly.
   - If not configured, Dominds defaults to **90% of the model hard context limit**
     (`floor(modelContextLimitTokens * 0.9)`).
+
+- **`caution_remediation_cadence_generations`**: optional per-model cadence for caution remediation guidance.
+  - If explicitly configured, Dominds uses it directly.
+  - If not configured, Dominds defaults to **10 generations**.
 
 Notes:
 
@@ -103,7 +107,7 @@ Levels are derived from the two thresholds:
 - **Caution (yellow)**: `promptTokens > effectiveOptimalMaxTokens`
 - **Critical (red)**: `promptTokens > effectiveCriticalMaxTokens`
 
-## v2 Remediation Semantics (Driver-enforced)
+## v3 Remediation Semantics (Driver-enforced)
 
 ### Re-entry package (“重入包”)
 
@@ -122,13 +126,30 @@ Recommended structure (multi-line; scale by task size):
 ### Caution (yellow)
 
 When `level === 'caution'`, the driver injects a **role=user** guidance message into the _next_ LLM
-generation turn (not persisted) that forces a **binary choice** using the same re-entry package:
+generation turn (not persisted).
 
-- `clear_mind({ "reminder_content": "<re-entry package>" })` (preferred)
-- `add_reminder({ "content": "<re-entry package>", "position": 0 })`
+Current behavior:
 
-If the agent does not `clear_mind` and the dialog remains in `caution`, the driver re-injects the
-guidance every **10 generation turns** until cleared.
+- On first entering caution, Dominds offers a **bounded grace period** (continue briefly) to avoid
+  forcing premature `clear_mind`.
+- After the grace period ends, Dominds injects a cadence-based guidance (default: every **10**
+  generations; configurable per model) that requires the agent to **curate reminders**:
+  - Call at least one of: `update_reminder` (preferred) / `add_reminder`.
+  - Maintain a re-entry-package draft inside reminders.
+  - Include “what’s still missing before we can safely clear_mind” so the agent can decide to clear
+    autonomously when the draft becomes scannable/actionable.
+
+**Known UX issue (current)**:
+
+- For complex, long-running tasks, forcing an immediate `clear_mind` as soon as the dialog crosses the
+  `optimal_max_tokens` soft ceiling can be counterproductive: the agent may not yet have enough clarity
+  to produce a good re-entry package, and clearing early often leads to re-reading many files.
+
+**Planned improvement**:
+
+- Allow a bounded “continue without clearing for a bit” option in `caution` so the agent can keep working
+  briefly, then clear when it can distill a higher-quality re-entry package.
+- Keep `critical` behavior unchanged (forced-clear loop + Q4H escalation).
 
 ### Critical (red)
 
@@ -169,8 +190,8 @@ kind (do not allow “answering” it as a normal Q4H).
    token count when the provider reports it).
 2. Thread usage stats into the dialog state (persist alongside dialog turns).
 3. Implement the context health monitor computation and persist it per generation.
-4. Implement v2 remediation (role=user guidance injection + critical forced-clear loop + Q4H(kind)).
-5. Add minimal regression guards for the v2 behavior (types + gating).
+4. Implement v3 remediation (role=user guidance injection + caution reminder-curation cadence + critical forced-clear loop + Q4H(kind)).
+5. Add minimal regression guards for the v3 behavior (types + gating).
 
 ## Acceptance Criteria
 
@@ -178,10 +199,11 @@ kind (do not allow “answering” it as a normal Q4H).
 - Context health thresholds:
   - `optimal_max_tokens` defaults to `100_000` when not configured.
   - `critical_max_tokens` defaults to `floor(modelContextLimitTokens * 0.9)` when not configured.
-- v2 remediation:
-  - `caution`: driver injects role=user guidance for the next generation turn only (non-persisted),
-    offering exactly two choices (clear_mind vs add_reminder) with the same re-entry package content.
-    If not cleared, re-inject every 10 generation turns while still caution.
+- v3 remediation:
+  - `caution`: driver injects role=user guidance for the next generation turn only (non-persisted).
+    After a bounded grace period, it requires reminder curation on a cadence (default: every 10 generations;
+    configurable per model): the agent must call at least one of `update_reminder` / `add_reminder` and
+    maintain a re-entry-package draft, including what is still missing before it can safely `clear_mind`.
   - `critical`: driver enforces a forced-clear loop (max 3 attempts). If no valid clear_mind call is
     present, discard output (log only; no persistence). After 3 failures, fire
     Q4H(kind=context_health_critical) and suspend the dialog; WebUI disables send for that kind.

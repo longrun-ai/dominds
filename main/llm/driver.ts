@@ -41,7 +41,7 @@ import {
   formatDomindsNoteTellaskForTeammatesOnly,
   formatReminderIntro,
   formatReminderItemGuide,
-  formatUserFacingContextHealthV2RemediationGuide,
+  formatUserFacingContextHealthV3RemediationGuide,
   formatUserFacingLanguageGuide,
 } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
@@ -772,35 +772,57 @@ function computeContextHealthSnapshot(args: {
   };
 }
 
-type ContextHealthV2RuntimeState = {
+type ContextHealthV3RuntimeState = {
   lastCautionGuideInjectedAtGenSeq?: number;
+  cautionGraceRemaining?: number;
+  lastSeenLevel?: ContextHealthLevel;
+  lastCautionRequiredCurationInjectedAtGenSeq?: number;
 };
 
-const contextHealthV2StateByDialogKey: Map<string, ContextHealthV2RuntimeState> = new Map();
+const contextHealthV3StateByDialogKey: Map<string, ContextHealthV3RuntimeState> = new Map();
 
-function getContextHealthV2State(dlg: Dialog): ContextHealthV2RuntimeState {
+function getContextHealthV3State(dlg: Dialog): ContextHealthV3RuntimeState {
   const key = dlg.id.key();
-  const existing = contextHealthV2StateByDialogKey.get(key);
+  const existing = contextHealthV3StateByDialogKey.get(key);
   if (existing) return existing;
-  const created: ContextHealthV2RuntimeState = {};
-  contextHealthV2StateByDialogKey.set(key, created);
+  const created: ContextHealthV3RuntimeState = {};
+  contextHealthV3StateByDialogKey.set(key, created);
   return created;
 }
 
-function resetContextHealthV2State(dlg: Dialog): void {
-  contextHealthV2StateByDialogKey.delete(dlg.id.key());
+function resetContextHealthV3State(dlg: Dialog): void {
+  contextHealthV3StateByDialogKey.delete(dlg.id.key());
 }
 
-function shouldInjectCautionRemediationGuide(dlg: Dialog): boolean {
-  const state = getContextHealthV2State(dlg);
+const defaultCautionGraceGenerations = 3;
+const defaultCautionHardCadenceGenerations = 10;
+
+function shouldInjectCautionRemediationGuide(args: {
+  dlg: Dialog;
+  providerCfg: ProviderConfig;
+  model: string;
+}): boolean {
+  const { dlg } = args;
+  const state = getContextHealthV3State(dlg);
+  const modelInfo: ModelInfo | undefined = args.providerCfg.models[args.model];
+  const cadence =
+    modelInfo &&
+    typeof modelInfo.caution_remediation_cadence_generations === 'number' &&
+    Number.isFinite(modelInfo.caution_remediation_cadence_generations)
+      ? Math.floor(modelInfo.caution_remediation_cadence_generations)
+      : undefined;
+  const effectiveCadence =
+    typeof cadence === 'number' && Number.isFinite(cadence) && cadence > 0
+      ? Math.floor(cadence)
+      : defaultCautionHardCadenceGenerations;
   const genSeq = dlg.activeGenSeq;
   if (genSeq === undefined) return true;
   const lastInjected = state.lastCautionGuideInjectedAtGenSeq;
   if (lastInjected === undefined) return true;
-  return genSeq - lastInjected >= 10;
+  return genSeq - lastInjected >= effectiveCadence;
 }
 
-type ContextHealthV2RemediationOutcome =
+type ContextHealthV3RemediationOutcome =
   | { kind: 'proceed'; ctxMsgs: ChatMessage[] }
   | {
       kind: 'continue';
@@ -865,7 +887,7 @@ async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
   postDialogEvent(dlg, newQuestionEvent);
 }
 
-async function applyContextHealthV2Remediation(args: {
+async function applyContextHealthV3Remediation(args: {
   dlg: Dialog;
   agent: Team.Member;
   agentTools: Tool[];
@@ -877,38 +899,69 @@ async function applyContextHealthV2Remediation(args: {
   llmGen: NonNullable<ReturnType<typeof getLlmGenerator>>;
   abortSignal: AbortSignal;
   model: string;
-}): Promise<ContextHealthV2RemediationOutcome> {
+}): Promise<ContextHealthV3RemediationOutcome> {
   const { dlg } = args;
   const snapshot = dlg.getLastContextHealth();
   if (!snapshot || snapshot.kind !== 'available') {
-    resetContextHealthV2State(dlg);
+    resetContextHealthV3State(dlg);
     return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
   }
 
   if (snapshot.level === 'healthy') {
-    resetContextHealthV2State(dlg);
+    resetContextHealthV3State(dlg);
     return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
   }
 
   if (snapshot.level === 'caution') {
-    if (!shouldInjectCautionRemediationGuide(dlg)) {
+    const state = getContextHealthV3State(dlg);
+    if (state.lastSeenLevel !== 'caution') {
+      state.cautionGraceRemaining = defaultCautionGraceGenerations;
+      state.lastSeenLevel = 'caution';
+    }
+    if (typeof state.cautionGraceRemaining === 'number' && state.cautionGraceRemaining > 0) {
+      const guide: ChatMessage = {
+        type: 'environment_msg',
+        role: 'user',
+        content: formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
+          kind: 'caution',
+          mode: 'soft',
+          graceRemaining: state.cautionGraceRemaining,
+          graceTotal: defaultCautionGraceGenerations,
+        }),
+      };
+      state.cautionGraceRemaining--;
+      return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, guide] };
+    }
+
+    if (
+      !shouldInjectCautionRemediationGuide({
+        dlg,
+        providerCfg: args.providerCfg,
+        model: args.model,
+      })
+    ) {
       return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
     }
+
+    // Hard remediation at cadence: require reminder curation (no forced clear_mind).
     const guide: ChatMessage = {
       type: 'environment_msg',
       role: 'user',
-      content: formatUserFacingContextHealthV2RemediationGuide(getWorkLanguage(), {
+      content: formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
         kind: 'caution',
+        mode: 'hard_curate',
       }),
     };
-    const state = getContextHealthV2State(dlg);
     if (dlg.activeGenSeq !== undefined) {
       state.lastCautionGuideInjectedAtGenSeq = dlg.activeGenSeq;
+      state.lastCautionRequiredCurationInjectedAtGenSeq = dlg.activeGenSeq;
     }
     return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, guide] };
   }
 
   if (snapshot.level === 'critical') {
+    const state = getContextHealthV3State(dlg);
+    state.lastSeenLevel = 'critical';
     // Forced-clear loop (max 3 attempts). Discard assistant output unless it calls clear_mind with
     // a non-empty reminder_content (重入包). Only log failures; do not persist assistant output.
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -917,7 +970,7 @@ async function applyContextHealthV2Remediation(args: {
       const guide: ChatMessage = {
         type: 'environment_msg',
         role: 'user',
-        content: formatUserFacingContextHealthV2RemediationGuide(getWorkLanguage(), {
+        content: formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
           kind: 'critical',
           attempt,
           maxAttempts: 3,
@@ -1642,8 +1695,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     return await reminder.owner.renderReminder(dlg, reminder, index);
                   }
                   return {
-                    type: 'transient_guide_msg',
-                    role: 'assistant',
+                    type: 'environment_msg',
+                    role: 'user',
                     content: formatReminderItemGuide(
                       getWorkLanguage(),
                       index + 1,
@@ -1654,13 +1707,18 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               )
             : [];
 
-        const reminderIntro: ChatMessage = {
-          type: 'transient_guide_msg',
-          role: 'assistant',
-          content: formatReminderIntro(getWorkLanguage(), dlg.reminders.length),
-        };
+        // Keep the reminder intro as a transient guide (assistant role), but only inject it
+        // when there are actual reminders to avoid constant prompt bloat.
+        const reminderIntro: ChatMessage | undefined =
+          renderedReminders.length > 0
+            ? {
+                type: 'transient_guide_msg',
+                role: 'assistant',
+                content: formatReminderIntro(getWorkLanguage(), dlg.reminders.length),
+              }
+            : undefined;
 
-        if (renderedReminders.length > 0 || dlg.reminders.length === 0) {
+        if (renderedReminders.length > 0) {
           let insertIndex = -1;
           for (let i = ctxMsgs.length - 1; i >= 0; i--) {
             const m = ctxMsgs[i];
@@ -1674,9 +1732,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             }
           }
           if (insertIndex >= 0) {
-            ctxMsgs.splice(insertIndex, 0, reminderIntro, ...renderedReminders);
+            ctxMsgs.splice(
+              insertIndex,
+              0,
+              ...(reminderIntro ? [reminderIntro] : []),
+              ...renderedReminders,
+            );
           } else {
-            ctxMsgs.push(reminderIntro, ...renderedReminders);
+            if (reminderIntro) ctxMsgs.push(reminderIntro);
+            ctxMsgs.push(...renderedReminders);
           }
         }
 
@@ -1707,7 +1771,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
         }
 
-        const remediation = await applyContextHealthV2Remediation({
+        const remediation = await applyContextHealthV3Remediation({
           dlg,
           agent,
           agentTools,
