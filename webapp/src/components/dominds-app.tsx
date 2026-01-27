@@ -1106,6 +1106,42 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-success, #28a745);
       }
 
+      #toolbar-emergency-stop:disabled {
+        background: color-mix(in srgb, #22c55e 14%, var(--dominds-bg, #ffffff));
+        border-color: color-mix(in srgb, #22c55e 22%, var(--dominds-border, #e0e0e0));
+      }
+
+      #toolbar-emergency-stop:not(:disabled) {
+        background: color-mix(in srgb, #22c55e 55%, var(--dominds-bg, #ffffff));
+        border-color: color-mix(in srgb, #22c55e 65%, var(--dominds-border, #e0e0e0));
+      }
+
+      #toolbar-emergency-stop span {
+        color: var(--dominds-fg, #333333);
+      }
+
+      #toolbar-emergency-stop:hover:not(:disabled) {
+        border-color: color-mix(in srgb, #22c55e 80%, var(--dominds-border, #e0e0e0));
+      }
+
+      #toolbar-resume-all:disabled {
+        background: color-mix(in srgb, #ef4444 14%, var(--dominds-bg, #ffffff));
+        border-color: color-mix(in srgb, #ef4444 22%, var(--dominds-border, #e0e0e0));
+      }
+
+      #toolbar-resume-all:not(:disabled) {
+        background: color-mix(in srgb, #ef4444 55%, var(--dominds-bg, #ffffff));
+        border-color: color-mix(in srgb, #ef4444 65%, var(--dominds-border, #e0e0e0));
+      }
+
+      #toolbar-resume-all span {
+        color: var(--dominds-fg, #333333);
+      }
+
+      #toolbar-resume-all:hover:not(:disabled) {
+        border-color: color-mix(in srgb, #ef4444 80%, var(--dominds-border, #e0e0e0));
+      }
+
       .header-pill-button.problems[data-severity='info'] {
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
