@@ -106,38 +106,38 @@ The package ships a CLI that inspects `auth.json` and reports status.
 It runs a ChatGPT chat probe unless `--no-verify` is used.
 
 ```sh
-pnpm dlx @longrun-ai/codex-auth --json
+npx @longrun-ai/codex-auth --json
 ```
 
 Refresh tokens (if available):
 
 ```sh
-pnpm dlx @longrun-ai/codex-auth --refresh
+npx @longrun-ai/codex-auth --refresh
 ```
 
 Skip the verification request (no LLM call):
 
 ```sh
-pnpm dlx @longrun-ai/codex-auth --no-verify
+npx @longrun-ai/codex-auth --no-verify
 ```
 
 Dump SSE events from the verification request:
 
 ```sh
-pnpm dlx @longrun-ai/codex-auth --verbose
+npx @longrun-ai/codex-auth --verbose
 ```
 
 Override model or base URL:
 
 ```sh
-pnpm dlx @longrun-ai/codex-auth --model gpt-5.2-codex \
+npx @longrun-ai/codex-auth --model gpt-5.2-codex \
   --chatgpt-base-url https://chatgpt.com/backend-api/
 ```
 
 Override `CODEX_HOME`:
 
 ```sh
-pnpm dlx @longrun-ai/codex-auth --codex-home /path/to/.codex
+npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 ```
 
 ## Notes
