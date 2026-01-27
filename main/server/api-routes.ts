@@ -25,6 +25,7 @@ import {
   buildSetupStatusResponse,
   handleWriteShellEnv,
   handleWriteTeamYaml,
+  handleWriteWorkspaceLlmYaml,
 } from './setup-routes';
 
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
@@ -77,6 +78,26 @@ export async function handleApiRoute(
     if (pathname === '/api/setup/workspace-llm-yaml' && req.method === 'GET') {
       const payload = await buildSetupFileResponse('workspace_llm_yaml');
       respondJson(res, payload.success ? 200 : 404, payload);
+      return true;
+    }
+
+    // Setup: create/overwrite .minds/llm.yaml with raw YAML
+    if (pathname === '/api/setup/write-workspace-llm-yaml' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const result = await handleWriteWorkspaceLlmYaml(rawBody);
+      if (result.kind === 'ok') {
+        respondJson(res, 200, result.response);
+        return true;
+      }
+      if (result.kind === 'conflict') {
+        respondJson(res, 409, { success: false, path: result.path, error: result.errorText });
+        return true;
+      }
+      if (result.kind === 'bad_request') {
+        respondJson(res, 400, { success: false, path: result.path, error: result.errorText });
+        return true;
+      }
+      respondJson(res, 500, { success: false, path: result.path, error: result.errorText });
       return true;
     }
 

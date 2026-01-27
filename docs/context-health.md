@@ -21,10 +21,12 @@ Dominds already has:
   executable, and regression-testable:
   - Use **non-persisted role=user guidance injection** on the next LLM generation turn (do not write
     the injected guidance into dialog history/events).
-  - In **critical**, enforce stability via a **forced-clear loop** (max 3 attempts) that discards
-    assistant output unless the model calls `clear_mind` with a non-empty re-entry package.
-  - After 3 failed forced attempts, escalate to **Q4H(kind=context_health_critical)** and suspend the
-    dialog; WebUI disables send for that kind.
+  - In **critical**, enforce stability via a **countdown remediation** (max 5 turns):
+    - Each turn injects a **recorded role=user prompt** (UI-visible as a user prompt) that instructs
+      the agent to curate reminders (`update_reminder`/`add_reminder`) and then `clear_mind`.
+    - The prompt includes a countdown: “after N turns the system will auto-clear_mind”.
+    - When the countdown reaches 0, Dominds **automatically** executes `clear_mind` (no Q4H; no
+      suspension) to keep long-running autonomy stable.
 
 ## Non-goals
 
@@ -149,19 +151,24 @@ Current behavior:
 
 - Allow a bounded “continue without clearing for a bit” option in `caution` so the agent can keep working
   briefly, then clear when it can distill a higher-quality re-entry package.
-- Keep `critical` behavior unchanged (forced-clear loop + Q4H escalation).
+- `critical` now uses a countdown remediation (recorded role=user prompt + auto clear_mind).
 
 ### Critical (red)
 
-When `level === 'critical'`, the driver enters a **forced-clear loop** (max **3** attempts) on the
-next generation turn:
+When `level === 'critical'`, the driver enters a **countdown remediation** (max **5** turns):
 
-- The injected guidance is **clear-only**: the model must call `clear_mind` with a **non-empty**
-  `reminder_content` containing a re-entry package.
-- If the model output does not include such a `clear_mind` call, the driver **discards the assistant
-  output** (log only; do not persist into dialog history/events) and retries.
-- After 3 failed attempts, the driver triggers **Q4H** with `kind=context_health_critical`, and the
-  dialog becomes **suspended** (driver stops attempting generations).
+- On each turn, the driver records a **role=user prompt** (persisted as a user message) that is
+  visible in the UI as a user prompt. This prompt tells the agent to:
+  - curate reminders via `update_reminder` / `add_reminder` (best-effort re-entry package), and
+  - then call `clear_mind` to start a new round.
+- The prompt includes a countdown: after **N** turns the system will automatically clear.
+- When the countdown reaches 0, the driver **automatically calls** `clear_mind` (with empty args; no
+  requirement on `reminder_content`), starting a new round without suspending.
+
+Rationale:
+
+- `caution` already nudges best-effort re-entry package drafting in reminders.
+- In `critical`, we prefer to keep the dialog running long-term without human intervention.
 
 ## UI (Webapp) Expectations
 
@@ -181,8 +188,8 @@ Suggested visual states:
 
 ### Q4H(kind=context_health_critical) send gating
 
-When a dialog is suspended for `kind=context_health_critical`, WebUI must disable sending for that
-kind (do not allow “answering” it as a normal Q4H).
+This kind is retained as a reserved discriminator, but v3 no longer uses Q4H for critical context
+health remediation by default.
 
 ## Implementation Outline
 
@@ -190,7 +197,7 @@ kind (do not allow “answering” it as a normal Q4H).
    token count when the provider reports it).
 2. Thread usage stats into the dialog state (persist alongside dialog turns).
 3. Implement the context health monitor computation and persist it per generation.
-4. Implement v3 remediation (role=user guidance injection + caution reminder-curation cadence + critical forced-clear loop + Q4H(kind)).
+4. Implement v3 remediation (role=user guidance injection + caution reminder-curation cadence + critical countdown + auto clear_mind).
 5. Add minimal regression guards for the v3 behavior (types + gating).
 
 ## Acceptance Criteria
@@ -204,7 +211,7 @@ kind (do not allow “answering” it as a normal Q4H).
     After a bounded grace period, it requires reminder curation on a cadence (default: every 10 generations;
     configurable per model): the agent must call at least one of `update_reminder` / `add_reminder` and
     maintain a re-entry-package draft, including what is still missing before it can safely `clear_mind`.
-  - `critical`: driver enforces a forced-clear loop (max 3 attempts). If no valid clear_mind call is
-    present, discard output (log only; no persistence). After 3 failures, fire
-    Q4H(kind=context_health_critical) and suspend the dialog; WebUI disables send for that kind.
+  - `critical`: driver runs a countdown remediation (max 5 turns) using **recorded role=user prompts**.
+    Each prompt includes a countdown and instructs reminder curation + `clear_mind`. When the countdown
+    reaches 0, the driver auto-executes `clear_mind` and starts a new round (no Q4H, no suspension).
 - UI shows context health with green/yellow/red (and “unknown” handling when usage is unavailable).

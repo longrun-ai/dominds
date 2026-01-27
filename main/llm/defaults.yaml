@@ -19,12 +19,16 @@ providers:
           description: Maximum tokens to generate (provider-agnostic override).
       codex:
         reasoning_effort:
+          prominent: true
+          default: high
           # Trade latency/cost for quality on reasoning-capable models.
           # Allowed: none | minimal | low | medium | high | xhigh
           type: enum
           values: [none, minimal, low, medium, high, xhigh]
           description: Reasoning effort level (when supported by the model).
         verbosity:
+          prominent: true
+          default: medium
           # Control response detail level on GPT-5 series models.
           # Allowed: low | medium | high
           type: enum

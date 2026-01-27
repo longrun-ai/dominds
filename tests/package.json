@@ -17,8 +17,6 @@
     "task-package": "tsx task-package.ts",
     "taskdoc-search": "tsx taskdoc-search.ts",
     "team-yaml-parsing": "tsx team-yaml-parsing.ts",
-    "preview-file-modification-hunkid": "tsx plan-file-modification-hunkid.ts",
-    "block-replace-preview-apply": "tsx block-replace-plan-apply.ts",
     "create-new-file": "tsx create-new-file.ts",
     "team-mgmt-create-new-file": "tsx team-mgmt-create-new-file.ts",
     "func-call": "tsx provider/func-call.ts",
@@ -29,7 +27,8 @@
     "diag-tool": "tsx toolsets/diag.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
-    "webapp-run-control-visual": "tsx webapp/run-control-visual.ts"
+    "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
+    "context-health-critical-countdown": "tsx context-health/critical-countdown.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

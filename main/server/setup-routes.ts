@@ -9,11 +9,15 @@ import { createLogger } from '../log';
 import {
   type SetupFileKind,
   type SetupFileResponse,
+  type SetupProminentEnumModelParam,
+  type SetupProminentModelParamNamespace,
   type SetupStatusResponse,
   type SetupWriteShellEnvRequest,
   type SetupWriteShellEnvResponse,
   type SetupWriteTeamYamlRequest,
   type SetupWriteTeamYamlResponse,
+  type SetupWriteWorkspaceLlmYamlRequest,
+  type SetupWriteWorkspaceLlmYamlResponse,
 } from '../shared/types/setup';
 
 const log = createLogger('setup-routes');
@@ -219,6 +223,64 @@ export async function handleWriteTeamYaml(
   }
 }
 
+export async function handleWriteWorkspaceLlmYaml(
+  rawBody: string,
+): Promise<
+  | { kind: 'ok'; response: SetupWriteWorkspaceLlmYamlResponse }
+  | { kind: 'conflict'; errorText: string; path: string }
+  | { kind: 'bad_request'; errorText: string; path: string }
+  | { kind: 'error'; errorText: string; path: string }
+> {
+  const outPath = WORKSPACE_LLM_YAML_PATH;
+
+  let parsed: unknown;
+  try {
+    parsed = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    return { kind: 'bad_request', errorText: 'Invalid JSON body', path: outPath };
+  }
+
+  const req = parseWriteWorkspaceLlmYamlRequest(parsed);
+  if (!req) {
+    return { kind: 'bad_request', errorText: 'Invalid request body', path: outPath };
+  }
+
+  // Guardrails: ensure it is valid YAML and has a providers object.
+  try {
+    const parsedYaml: unknown = YAML.parse(req.raw);
+    if (!isRecord(parsedYaml) || !isRecord(parsedYaml['providers'])) {
+      return {
+        kind: 'bad_request',
+        errorText: 'Invalid llm.yaml: expected a top-level providers object',
+        path: outPath,
+      };
+    }
+  } catch {
+    return { kind: 'bad_request', errorText: 'Invalid YAML content', path: outPath };
+  }
+
+  const exists = await fileExists(outPath);
+  if (exists && req.overwrite !== true) {
+    return { kind: 'conflict', errorText: 'llm.yaml already exists', path: outPath };
+  }
+
+  try {
+    await fsPromises.mkdir(path.dirname(outPath), { recursive: true });
+    await fsPromises.writeFile(outPath, req.raw.endsWith('\n') ? req.raw : `${req.raw}\n`, 'utf-8');
+    return {
+      kind: 'ok',
+      response: {
+        success: true,
+        path: outPath,
+        action: exists ? 'overwritten' : 'created',
+      },
+    };
+  } catch (error) {
+    log.error('Failed to write llm.yaml', error);
+    return { kind: 'error', errorText: 'Failed to write llm.yaml', path: outPath };
+  }
+}
+
 async function loadBuiltinProviders(): Promise<BuiltinProvidersLoadResult> {
   try {
     const raw = await fsPromises.readFile(BUILTIN_DEFAULTS_YAML_PATH, 'utf-8');
@@ -288,7 +350,8 @@ async function buildProviderSummaries(
       };
     });
 
-    const summary = {
+    const prominent = extractProminentEnumModelParams(cfg.model_param_options);
+    const summary: SetupStatusResponse['providers'][number] = {
       providerKey,
       name: cfg.name,
       apiType: cfg.apiType,
@@ -298,6 +361,7 @@ async function buildProviderSummaries(
       apiMgmtUrl: cfg.api_mgmt_url,
       envVar: { isSet: envVarIsSet, bashrcHas, zshrcHas },
       models,
+      ...(prominent.length > 0 ? { prominentModelParams: prominent } : {}),
     };
 
     // Keep YAML order stable, but list env-var-ready providers first.
@@ -309,6 +373,61 @@ async function buildProviderSummaries(
   }
 
   return [...envSet, ...envMissing];
+}
+
+function extractProminentEnumModelParams(
+  modelParamOptions: ProviderConfig['model_param_options'],
+): SetupProminentEnumModelParam[] {
+  if (!modelParamOptions) return [];
+
+  const out: SetupProminentEnumModelParam[] = [];
+  const sections: Array<[SetupProminentEnumModelParam['namespace'], Record<string, unknown>]> = [];
+
+  const addSection = (
+    namespace: SetupProminentEnumModelParam['namespace'],
+    section: unknown,
+  ): void => {
+    if (section && typeof section === 'object') {
+      sections.push([namespace, section as Record<string, unknown>]);
+    }
+  };
+
+  addSection('general', modelParamOptions.general);
+  addSection('codex', modelParamOptions.codex);
+  addSection('openai', modelParamOptions.openai);
+  addSection('anthropic', modelParamOptions.anthropic);
+
+  for (const [namespace, section] of sections) {
+    for (const [key, optUnknown] of Object.entries(section)) {
+      if (!optUnknown || typeof optUnknown !== 'object') continue;
+      const opt = optUnknown as {
+        type?: unknown;
+        prominent?: unknown;
+        description?: unknown;
+        values?: unknown;
+        default?: unknown;
+      };
+      if (opt.type !== 'enum') continue;
+      if (opt.prominent !== true) continue;
+      if (typeof opt.description !== 'string') continue;
+      if (!Array.isArray(opt.values) || !opt.values.every((v) => typeof v === 'string')) continue;
+
+      const defaultValue =
+        typeof opt.default === 'string' && (opt.values as string[]).includes(opt.default)
+          ? opt.default
+          : undefined;
+
+      out.push({
+        namespace,
+        key,
+        description: opt.description,
+        values: opt.values as string[],
+        ...(defaultValue ? { defaultValue } : {}),
+      });
+    }
+  }
+
+  return out;
 }
 
 function orderedProviderEntries(
@@ -526,14 +645,65 @@ function parseWriteTeamYamlRequest(value: unknown): SetupWriteTeamYamlRequest | 
   if (typeof provider !== 'string' || provider === '') return null;
   if (typeof model !== 'string' || model === '') return null;
   if (typeof overwrite !== 'boolean') return null;
-  return { provider, model, overwrite };
+
+  const modelParamsUnknown = value['modelParams'];
+  const modelParams = parseOptionalTeamModelParams(modelParamsUnknown);
+  if (modelParamsUnknown !== undefined && !modelParams) return null;
+
+  return modelParams ? { provider, model, overwrite, modelParams } : { provider, model, overwrite };
+}
+
+function parseWriteWorkspaceLlmYamlRequest(
+  value: unknown,
+): SetupWriteWorkspaceLlmYamlRequest | null {
+  if (!isRecord(value)) return null;
+  const raw = value['raw'];
+  const overwrite = value['overwrite'];
+  if (typeof raw !== 'string') return null;
+  if (typeof overwrite !== 'boolean') return null;
+  return { raw, overwrite };
 }
 
 function buildMinimalTeamYaml(req: SetupWriteTeamYamlRequest): string {
   // Minimal config, intentionally no members.
-  return (
-    ['member_defaults:', `  provider: ${req.provider}`, `  model: ${req.model}`].join('\n') + '\n'
-  );
+  const memberDefaults: Record<string, unknown> = {
+    provider: req.provider,
+    model: req.model,
+  };
+  if (req.modelParams && Object.keys(req.modelParams).length > 0) {
+    memberDefaults['model_params'] = req.modelParams;
+  }
+
+  const doc = { member_defaults: memberDefaults };
+  return YAML.stringify(doc);
+}
+
+function parseOptionalTeamModelParams(
+  value: unknown,
+): SetupWriteTeamYamlRequest['modelParams'] | null {
+  if (value === undefined) return null;
+  if (!isRecord(value)) return null;
+
+  const out: Partial<Record<SetupProminentModelParamNamespace, Record<string, string>>> = {};
+
+  for (const [namespace, nsUnknown] of Object.entries(value)) {
+    if (
+      namespace !== 'general' &&
+      namespace !== 'codex' &&
+      namespace !== 'openai' &&
+      namespace !== 'anthropic'
+    )
+      return null;
+    if (!isRecord(nsUnknown)) return null;
+    const nsOut: Record<string, string> = {};
+    for (const [k, v] of Object.entries(nsUnknown)) {
+      if (typeof v !== 'string') return null;
+      nsOut[k] = v;
+    }
+    if (Object.keys(nsOut).length > 0) out[namespace] = nsOut;
+  }
+
+  return Object.keys(out).length > 0 ? out : {};
 }
 
 function isSafeEnvVarName(name: string): boolean {

@@ -626,10 +626,10 @@ export const teamMgmtReadFileTool: FuncTool = {
 export const teamMgmtCreateNewFileTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_create_new_file',
-  description: `Create a new file under ${MINDS_DIR}/ (no preview/apply). Refuses to overwrite existing files.`,
+  description: `Create a new file under ${MINDS_DIR}/ (no prepare/apply). Refuses to overwrite existing files.`,
   descriptionI18n: {
-    en: `Create a new file under ${MINDS_DIR}/ (no preview/apply). Refuses to overwrite existing files.`,
-    zh: `在 ${MINDS_DIR}/ 下创建一个新文件（不走 preview/apply）。若文件已存在则拒绝覆写。`,
+    en: `Create a new file under ${MINDS_DIR}/ (no prepare/apply). Refuses to overwrite existing files.`,
+    zh: `在 ${MINDS_DIR}/ 下创建一个新文件（不走 prepare/apply）。若文件已存在则拒绝覆写。`,
   },
   parameters: {
     type: 'object',
@@ -2086,6 +2086,14 @@ function fmtCodeBlock(lang: string, lines: string[]): string {
   return `\n\n\`\`\`${lang}\n${body}\n\`\`\`\n`;
 }
 
+function fmtSubHeader(title: string): string {
+  return `\n## ${title}\n`;
+}
+
+function fmtKeyList(keys: readonly string[]): string {
+  return keys.map((k) => `\`${k}\``).join(' / ');
+}
+
 async function loadBuiltinLlmDefaultsText(): Promise<string> {
   const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
   const raw = await fs.readFile(defaultsPath, 'utf-8');
@@ -2136,6 +2144,7 @@ async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
     for (const [paramName, paramUnknown] of Object.entries(section)) {
       if (typeof paramUnknown !== 'object' || paramUnknown === null) continue;
       const opt = paramUnknown as Record<string, unknown>;
+      const prominent = opt['prominent'] === true;
       const typeUnknown = opt['type'];
       const type = typeof typeUnknown === 'string' ? typeUnknown : undefined;
       const valuesUnknown = opt['values'];
@@ -2147,6 +2156,7 @@ async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
       const min = typeof minUnknown === 'number' ? minUnknown : undefined;
       const maxUnknown = opt['max'];
       const max = typeof maxUnknown === 'number' ? maxUnknown : undefined;
+      const defaultUnknown = opt['default'];
 
       const extras: string[] = [];
       if (type) extras.push(type);
@@ -2154,8 +2164,44 @@ async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
       if (min !== undefined || max !== undefined) {
         extras.push(`${min !== undefined ? min : ''}..${max !== undefined ? max : ''}`.trim());
       }
+      if (defaultUnknown !== undefined) {
+        let defaultText: string | null = null;
+        if (type === 'enum' && typeof defaultUnknown === 'string') {
+          defaultText = defaultUnknown;
+        } else if (
+          (type === 'number' || type === 'integer') &&
+          typeof defaultUnknown === 'number'
+        ) {
+          defaultText = String(defaultUnknown);
+        } else if (type === 'boolean' && typeof defaultUnknown === 'boolean') {
+          defaultText = defaultUnknown ? 'true' : 'false';
+        } else if (type === 'string' && typeof defaultUnknown === 'string') {
+          defaultText = defaultUnknown;
+        } else if (
+          type === 'string_array' &&
+          Array.isArray(defaultUnknown) &&
+          defaultUnknown.every((v) => typeof v === 'string')
+        ) {
+          defaultText = (defaultUnknown as string[]).join('|');
+        } else if (
+          type === 'record_number' &&
+          typeof defaultUnknown === 'object' &&
+          defaultUnknown
+        ) {
+          const rec = defaultUnknown as Record<string, unknown>;
+          const entries = Object.entries(rec).filter(([, v]) => typeof v === 'number');
+          if (entries.length > 0) {
+            defaultText = entries
+              .slice(0, 6)
+              .map(([k, v]) => `${k}=${v}`)
+              .join('|');
+          }
+        }
+        if (defaultText) extras.push(`default=${defaultText}`);
+      }
 
-      parts.push(extras.length > 0 ? `${paramName} (${extras.join(', ')})` : paramName);
+      const name = prominent ? `${paramName} [prominent]` : paramName;
+      parts.push(extras.length > 0 ? `${name} (${extras.join(', ')})` : name);
     }
     return parts.join(', ');
   };
@@ -2183,14 +2229,17 @@ async function loadBuiltinLlmModelParamOptionsText(): Promise<string> {
 }
 
 function renderMemberProperties(language: LanguageCode): string {
+  const memberKeys = fmtKeyList(Team.TEAM_YAML_MEMBER_KEYS);
   if (language === 'zh') {
     return (
       fmtHeader('成员字段（members.<id>）') +
       fmtList([
+        `字段白名单（以当前实现为准）：${memberKeys}`,
         '`name` / `icon` / `gofor`',
         '`gofor`：该长期 agent 的职责速记卡（建议 5 行内），用于快速路由/提醒：写清“负责什么 / 不负责什么 / 主要交付物 / 优先级”。推荐用 YAML list（3–6 条）；也支持 YAML object（单对象多键值，value 必须是 string），string 仅适合单句。对象的渲染顺序跟 YAML key 写入顺序一致（当前实现/依赖）。详细规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。',
         '`provider` / `model` / `model_params`',
         '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
+        '`diligence-push-max`：keep-going 上限（number）。也接受兼容别名 `diligence_push_max`，但请优先用 `diligence-push-max`。',
         '`streaming`',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
         '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
@@ -2200,10 +2249,12 @@ function renderMemberProperties(language: LanguageCode): string {
   return (
     fmtHeader('Member Properties (members.<id>)') +
     fmtList([
+      `Allow-list (per current implementation): ${memberKeys}`,
       '`name` / `icon` / `gofor`',
       '`gofor`: a short responsibility flashcard (≤ 5 lines) for a long-lived agent; use it for fast routing/reminders (owns / does-not-own / key deliverables / priorities). Prefer a YAML list (3–6 items); YAML object is also allowed (single object with multiple keys, string values only). Object rendering order follows the YAML key order (implementation-dependent). Use a string only for a single sentence. Put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.',
       '`provider` / `model` / `model_params`',
       '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
+      '`diligence-push-max`: keep-going cap (number). Compatibility alias `diligence_push_max` is accepted, but prefer `diligence-push-max`.',
       '`streaming`',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
       '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
@@ -2218,6 +2269,7 @@ function renderTeamManual(language: LanguageCode): string {
     'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
     'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
+    '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. If any member has shell tools (e.g. toolset `os` / tools like `shell_exec`), they must be listed in shell_specialists; null/empty means “no shell specialists”.',
     'hidden: true marks a shadow member (not listed in system prompt)',
     "toolsets supports '*' and '!<toolset>' exclusions (e.g. ['*','!team-mgmt'])",
   ];
@@ -2233,6 +2285,7 @@ function renderTeamManual(language: LanguageCode): string {
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
+        '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。如某成员获得了 shell 工具（例如 toolset `os` 或 tools 里的 `shell_exec` 等），则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示（运行期 fail-open，但你仍应修复）。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
@@ -2241,6 +2294,15 @@ function renderTeamManual(language: LanguageCode): string {
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
         '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
+      ]) +
+      fmtSubHeader('Schema Snapshot（自动生成，来自当前解析器白名单）') +
+      fmtList([
+        `顶层字段（root）：${fmtKeyList(Team.TEAM_YAML_ROOT_KEYS)}`,
+        `成员字段（members.<id>）：${fmtKeyList(Team.TEAM_YAML_MEMBER_KEYS)}`,
+        `model_params 顶层字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ROOT_KEYS)}`,
+        `model_params.codex 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_CODEX_KEYS)}`,
+        `model_params.openai 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS)}`,
+        `model_params.anthropic 字段：${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS)}`,
       ]) +
       '\n' +
       '最小模板：\n' +
@@ -2284,9 +2346,18 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same preview, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same prepared diff, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
     ) +
+    fmtSubHeader('Schema Snapshot (generated from parser allow-list)') +
+    fmtList([
+      `Root keys: ${fmtKeyList(Team.TEAM_YAML_ROOT_KEYS)}`,
+      `members.<id> keys: ${fmtKeyList(Team.TEAM_YAML_MEMBER_KEYS)}`,
+      `model_params keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ROOT_KEYS)}`,
+      `model_params.codex keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_CODEX_KEYS)}`,
+      `model_params.openai keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS)}`,
+      `model_params.anthropic keys: ${fmtKeyList(Team.TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS)}`,
+    ]) +
     '\n' +
     'Minimal template:\n' +
     '```yaml\n' +
@@ -2418,7 +2489,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
-        '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。通用文件工具（read/list/replace/rm/preview/apply）必须禁止访问该目录树。',
+        '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。通用文件工具（read/list/replace/rm/prepare/apply）必须禁止访问该目录树。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小权限写法示例（仅示意）',
@@ -2441,7 +2512,7 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
-      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via the function tool `change_mind` only. General file tools (read/list/replace/rm/preview/apply) must be blocked from that directory tree.',
+      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via the function tool `change_mind` only. General file tools (read/list/replace/rm/prepare/apply) must be blocked from that directory tree.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Least-privilege example (illustrative)',
@@ -2536,6 +2607,9 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
         '`model_params` 是运行时参数；`model_param_options`（在 `.minds/llm.yaml` 或内置 defaults 中）是文档/说明用途，用来描述可用参数范围（不保证强制校验）。',
         '常见参数示例（不同 provider 支持不同）：例如 `reasoning_effort`、`verbosity`、`temperature`、`max_tokens` 等。对内置 `codex` provider，这些参数应写在 `model_params.codex.*` 下。',
         '常见坑：不要把 `reasoning_effort` / `verbosity` 直接写在 `member_defaults` 或 `members.<id>` 根上（会被忽略，并会被 team.yaml 校验提示）；应写在 `model_params.codex.*` 下。',
+        '`model_param_options.<ns>.<param>.prominent: true`：表示“初始化/团队管理时应显式讨论并选定”的参数。不要依赖 provider/model 的隐含默认值。',
+        '`model_param_options.<ns>.<param>.default`：为该参数提供建议默认值；`/setup` 会将其作为预选值展示（仍建议与用户确认是否需要调整）。',
+        '最低要求：当 `member_defaults.provider` 选中某 provider 时，至少确保其 prominent=true 的参数在 `member_defaults.model_params.<ns>.*` 下都有明确取值；再进一步讨论是否需要对不同成员（`members.<id>.model_params...`）做差异化。',
         '风险提示：部分参数可能影响成本/延迟/输出稳定性（例如 temperature、max tokens 等）。参数是否透传/是否会被校验或裁剪，以当前实现为准。',
       ]) +
       '\n' +
@@ -2564,6 +2638,9 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
       '`model_params` is runtime config; `model_param_options` (in `.minds/llm.yaml` or built-in defaults) is documentation-only to describe supported knobs (not guaranteed to be strictly validated).',
       'Common examples (provider-dependent): e.g. `reasoning_effort`, `verbosity`, `temperature`, `max_tokens`, etc. For the built-in `codex` provider, these go under `model_params.codex.*`.',
       'Common pitfall: do not put `reasoning_effort` / `verbosity` directly under `member_defaults` or `members.<id>` (they are ignored and will be flagged by team.yaml validation); put them under `model_params.codex.*`.',
+      '`model_param_options.<ns>.<param>.prominent: true` means “discuss and pick explicitly during bootstrap/team management”. Do not rely on implicit provider/model defaults.',
+      '`model_param_options.<ns>.<param>.default` provides a recommended default; `/setup` may preselect it (still discuss with the user if it needs to change).',
+      'Minimum: when `member_defaults.provider` selects a provider, ensure all `prominent: true` params are explicitly set under `member_defaults.model_params.<ns>.*`. Then decide if you need per-member overrides (`members.<id>.model_params...`).',
       'Risk note: some knobs may affect cost/latency/output stability (e.g. temperature, max tokens). Whether params are passed through / validated / clamped follows current implementation.',
     ]) +
     '\n' +
@@ -2594,13 +2671,13 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     language === 'zh'
       ? fmtList([
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
-          '按 provider 选择匹配的 toolsets：当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，优先给 `codex_style_tools`（`apply_patch`）；如果还需要“读工作区”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。其他 provider 或采用 Dominds 原生工具习惯时，优先给 `ws_read` / `ws_mod`（Tellask 预览→应用工作流）。',
+          '按 provider 选择匹配的 toolsets：当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，优先给 `codex_style_tools`（`apply_patch`）；如果还需要“读工作区”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。其他 provider 或采用 Dominds 原生工具习惯时，优先给 `ws_read` / `ws_mod`（txt prepare→apply 工作流：prepare_* → apply_file_modification）。',
           '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”）。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
       : fmtList([
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
-          'Pick toolsets to match the provider: for `provider: codex` (Codex CLI-style prompts/tool names), prefer `codex_style_tools` (`apply_patch`); if you also need “read the workspace”, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators. For other providers or when using Dominds-native tool habits, prefer `ws_read` / `ws_mod` (Tellask preview→apply workflow).',
+          'Pick toolsets to match the provider: for `provider: codex` (Codex CLI-style prompts/tool names), prefer `codex_style_tools` (`apply_patch`); if you also need “read the workspace”, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators. For other providers or when using Dominds-native tool habits, prefer `ws_read` / `ws_mod` (txt prepare→apply workflow: prepare_* → apply_file_modification).',
           'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”). For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
           'Three common patterns (in `.minds/team.yaml` under `members.<id>.toolsets`):',
         ]);

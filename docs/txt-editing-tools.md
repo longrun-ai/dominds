@@ -17,17 +17,17 @@ updated: 2026-01-24
   - toolset 元信息（含 prompt）：`dominds/main/tools/builtins.ts`、`dominds/main/tools/registry.ts`、`dominds/main/tools/prompts/*`
   - prompt 注入机制：`dominds/main/tools/registry.ts`、`dominds/main/minds/load.ts`
 
-## 1. 背景：为什么要“preview-first + 单 apply”
+## 1. 背景：为什么要“prepare-first + 单 apply”
 
 历史上文本编辑工具存在“直接写入 vs 先 plan 再 apply”等多套心智并存，导致：
 
 - agent 在低注意力状态下容易“误写”或难以复核（缺少 diff/evidence）。
-- preview→apply 之间存在竞态：同一条消息中工具并行执行，可能出现“preview 基于旧文件，但另一工具已写入”的时序问题。
+- prepare→apply 之间存在竞态：同一条消息中工具并行执行，可能出现“prepare 基于旧文件，但另一工具已写入”的时序问题。
 - apply 入口分裂，学习成本高、回归成本高。
 
 因此统一为：
 
-- **preview-first**：所有增量编辑先预览（可审阅 diff + evidence + hunk_id）。
+- **prepare-first**：所有增量编辑先规划（输出可审阅 diff + evidence + hunk_id）。
 - **single apply**：所有计划类编辑仅通过 `apply_file_modification({ "hunk_id": "<hunk_id>" })` 落盘。
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除（无 alias、无兼容层）。
 
@@ -37,7 +37,7 @@ updated: 2026-01-24
 
 - 把增量编辑统一为：`prepare_*` → `apply_file_modification`。
 - 提供可复核输出：YAML summary + evidence（plan）/apply_evidence（apply） + unified diff。
-- 明确并发/时序约束：避免在同一条消息中把 preview 与 apply 混在一起。
+- 明确并发/时序约束：避免在同一条消息中把 prepare 与 apply 混在一起。
 - 给出稳定的失败模式与下一步建议（尤其是锚点歧义与 apply rejected）。
 
 ### 2.2 非目标
@@ -218,7 +218,7 @@ updated: 2026-01-24
 
 ## 9. 错误与拒绝（稳定方向）
 
-### 9.1 preview 阶段（常见）
+### 9.1 prepare 阶段（常见）
 
 - `FILE_NOT_FOUND`：文件不存在（某些工具如 append 可用 `create=true` 处理）。
 - `CONTENT_REQUIRED`：正文为空但该工具需要正文（insert/append/block_replace）。

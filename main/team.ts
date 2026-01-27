@@ -718,13 +718,13 @@ export namespace Team {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  const TEAM_ROOT_KEYS = [
+  export const TEAM_YAML_ROOT_KEYS = [
     'member_defaults',
     'default_responder',
     'shell_specialists',
     'members',
   ] as const;
-  const MEMBER_KEYS = [
+  export const TEAM_YAML_MEMBER_KEYS = [
     'name',
     'provider',
     'model',
@@ -743,8 +743,13 @@ export namespace Team {
     'hidden',
   ] as const;
 
-  const MODEL_PARAMS_ROOT_KEYS = ['max_tokens', 'codex', 'openai', 'anthropic'] as const;
-  const MODEL_PARAMS_OPENAI_KEYS = [
+  export const TEAM_YAML_MODEL_PARAMS_ROOT_KEYS = [
+    'max_tokens',
+    'codex',
+    'openai',
+    'anthropic',
+  ] as const;
+  export const TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS = [
     'temperature',
     'max_tokens',
     'top_p',
@@ -760,8 +765,8 @@ export namespace Team {
     'verbosity',
     'parallel_tool_calls',
   ] as const;
-  const MODEL_PARAMS_CODEX_KEYS = MODEL_PARAMS_OPENAI_KEYS;
-  const MODEL_PARAMS_ANTHROPIC_KEYS = [
+  export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS;
+  export const TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS = [
     'temperature',
     'max_tokens',
     'top_p',
@@ -805,7 +810,7 @@ export namespace Team {
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
     };
 
-    const unknownAtMember = listUnknownKeys(memberObj, MEMBER_KEYS);
+    const unknownAtMember = listUnknownKeys(memberObj, TEAM_YAML_MEMBER_KEYS);
     if (unknownAtMember.length > 0) {
       pushIssue(
         `${idPrefix}/unknown_fields`,
@@ -832,7 +837,7 @@ export namespace Team {
       max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` (top-level), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
     };
 
-    const unknownAtModelParams = listUnknownKeys(rawModelParams, MODEL_PARAMS_ROOT_KEYS);
+    const unknownAtModelParams = listUnknownKeys(rawModelParams, TEAM_YAML_MODEL_PARAMS_ROOT_KEYS);
     if (unknownAtModelParams.length > 0) {
       pushIssue(
         `${idPrefix}/model_params/unknown_fields`,
@@ -843,7 +848,7 @@ export namespace Team {
 
     const rawCodex = rawModelParams.codex;
     if (rawCodex !== undefined && isRecordValue(rawCodex)) {
-      const unknownAtCodex = listUnknownKeys(rawCodex, MODEL_PARAMS_CODEX_KEYS);
+      const unknownAtCodex = listUnknownKeys(rawCodex, TEAM_YAML_MODEL_PARAMS_CODEX_KEYS);
       if (unknownAtCodex.length > 0) {
         pushIssue(
           `${idPrefix}/model_params/codex/unknown_fields`,
@@ -855,7 +860,7 @@ export namespace Team {
 
     const rawOpenai = rawModelParams.openai;
     if (rawOpenai !== undefined && isRecordValue(rawOpenai)) {
-      const unknownAtOpenai = listUnknownKeys(rawOpenai, MODEL_PARAMS_OPENAI_KEYS);
+      const unknownAtOpenai = listUnknownKeys(rawOpenai, TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS);
       if (unknownAtOpenai.length > 0) {
         pushIssue(
           `${idPrefix}/model_params/openai/unknown_fields`,
@@ -867,7 +872,10 @@ export namespace Team {
 
     const rawAnthropic = rawModelParams.anthropic;
     if (rawAnthropic !== undefined && isRecordValue(rawAnthropic)) {
-      const unknownAtAnthropic = listUnknownKeys(rawAnthropic, MODEL_PARAMS_ANTHROPIC_KEYS);
+      const unknownAtAnthropic = listUnknownKeys(
+        rawAnthropic,
+        TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS,
+      );
       if (unknownAtAnthropic.length > 0) {
         pushIssue(
           `${idPrefix}/model_params/anthropic/unknown_fields`,
@@ -1114,7 +1122,7 @@ export namespace Team {
       return {};
     })();
 
-    const unknownRootKeys = listUnknownKeys(teamObj, TEAM_ROOT_KEYS);
+    const unknownRootKeys = listUnknownKeys(teamObj, TEAM_YAML_ROOT_KEYS);
     if (unknownRootKeys.length > 0) {
       pushIssue(
         'root/unknown_fields',

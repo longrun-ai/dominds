@@ -76,7 +76,12 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
 export type ContextHealthV3RemediationGuideArgs =
   | { kind: 'caution'; mode: 'soft'; graceRemaining: number; graceTotal: number }
   | { kind: 'caution'; mode: 'hard_curate' }
-  | { kind: 'critical'; attempt: number; maxAttempts: number };
+  | {
+      kind: 'critical';
+      mode: 'countdown';
+      promptsRemainingAfterThis: number;
+      promptsTotal: number;
+    };
 
 export function formatUserFacingContextHealthV3RemediationGuide(
   language: LanguageCode,
@@ -125,7 +130,7 @@ export function formatUserFacingContextHealthV3RemediationGuide(
         '目标：把“重入包草稿”维护进提醒项，让我能在信息足够时 **自主** clear_mind 进入新一轮/新回合。',
         '',
         '建议你在提醒项里明确写出：',
-        '“基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入下一轮对话”。',
+        '“基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入新一轮/新回合”。',
         '',
         '可选动作（至少一个，允许多次调用）：',
         '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -138,12 +143,20 @@ export function formatUserFacingContextHealthV3RemediationGuide(
     }
 
     return [
-      `上下文健康：🔴 红（v3 remediation / 强制清理 ${args.attempt}/${args.maxAttempts}）`,
+      `上下文健康：🔴 红（v3 remediation / 倒数清理）`,
       '',
-      '你必须且只能调用：',
-      '- clear_mind({ "reminder_content": "<重入包>" })',
+      `为保持长程自动运行，系统将连续最多 ${args.promptsTotal} 轮以 role=user 的“用户 prompt”形式提醒你尽快收敛重入包并清理。`,
       '',
-      '硬约束：reminder_content 必须非空，并且必须包含可扫读、可行动的“重入包”。',
+      `倒数：本轮之后还剩 ${args.promptsRemainingAfterThis} 轮。若在倒数结束前仍未 clear_mind，系统将自动强制 clear_mind，并开启新一轮/新回合（不触发 Q4H，不暂停对话）。`,
+      '',
+      '你应在本轮尽快执行（允许多次调用）：',
+      '1) 用 update_reminder / add_reminder 把“重入包（best effort）”维护进提醒项（压缩为少量、高价值条目）。',
+      '2) 然后 clear_mind 开启新一轮/新回合，让后续工作在更小的上下文中继续。',
+      '',
+      '快速操作：',
+      '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
+      '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
+      '- clear_mind({ "reminder_content": "" })  （可选：为空也可；系统会保留已维护的提醒项）',
       '',
       reentryTemplateZh,
     ].join('\n');
@@ -184,12 +197,20 @@ export function formatUserFacingContextHealthV3RemediationGuide(
   }
 
   return [
-    `Context health: 🔴 critical (v3 remediation / forced clear ${args.attempt}/${args.maxAttempts})`,
+    `Context health: 🔴 critical (v3 remediation / countdown clear)`,
     '',
-    'You must call (and only call):',
-    '- clear_mind({ "reminder_content": "<re-entry package>" })',
+    `To keep long-running autonomy stable, the system will (at most) inject up to ${args.promptsTotal} role=user “user prompts” to nudge you to curate a re-entry package and clear soon.`,
     '',
-    'Hard requirement: reminder_content must be non-empty and must contain a scannable, actionable re-entry package.',
+    `Countdown: ${args.promptsRemainingAfterThis} turns remaining after this. If you still do not clear_mind before the countdown ends, the system will automatically force clear_mind and start a new round (no Q4H, no suspension).`,
+    '',
+    'In this turn, do this as soon as possible (multiple calls are OK):',
+    '1) Curate reminders via update_reminder / add_reminder to maintain a best-effort re-entry package.',
+    '2) Then clear_mind to start a new round so work continues with a smaller context.',
+    '',
+    'Quick actions:',
+    '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
+    '- add_reminder({ "content": "<new reminder>", "position": 0 })',
+    '- clear_mind({ "reminder_content": "" })  (optional: empty is OK; curated reminders are preserved)',
     '',
     reentryTemplateEn,
   ].join('\n');

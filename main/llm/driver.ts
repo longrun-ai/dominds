@@ -783,6 +783,7 @@ type ContextHealthV3RuntimeState = {
   cautionGraceRemaining?: number;
   lastSeenLevel?: ContextHealthLevel;
   lastCautionRequiredCurationInjectedAtGenSeq?: number;
+  criticalCountdownRemaining?: number;
 };
 
 const contextHealthV3StateByDialogKey: Map<string, ContextHealthV3RuntimeState> = new Map();
@@ -802,6 +803,7 @@ function resetContextHealthV3State(dlg: Dialog): void {
 
 const defaultCautionGraceGenerations = 3;
 const defaultCautionHardCadenceGenerations = 10;
+const defaultCriticalCountdownGenerations = 5;
 
 function shouldInjectCautionRemediationGuide(args: {
   dlg: Dialog;
@@ -847,7 +849,7 @@ async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
     bodyContent:
       language === 'zh'
         ? [
-            '上下文健康已进入 🔴 红（critical），且 agent 在最多 3 次强制清理尝试中都未能调用 clear_mind。',
+            '上下文健康已进入 🔴 红（critical），且 critical remediation 无法自动完成。',
             '',
             '为避免继续污染对话状态，系统已暂停该对话（suspended）。',
             '',
@@ -856,7 +858,7 @@ async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
             '- 修复后，再通过 UI 恢复/继续该对话（或手动触发 clear_mind）。',
           ].join('\n')
         : [
-            'Context health is 🔴 critical, and the agent failed to call clear_mind within 3 forced-clear attempts.',
+            'Context health is 🔴 critical, and critical remediation could not complete automatically.',
             '',
             'To avoid further state pollution, the dialog is now suspended.',
             '',
@@ -905,6 +907,7 @@ async function applyContextHealthV3Remediation(args: {
   llmGen: NonNullable<ReturnType<typeof getLlmGenerator>>;
   abortSignal: AbortSignal;
   model: string;
+  hadUserPromptThisGen: boolean;
 }): Promise<ContextHealthV3RemediationOutcome> {
   const { dlg } = args;
   const snapshot = dlg.getLastContextHealth();
@@ -923,6 +926,7 @@ async function applyContextHealthV3Remediation(args: {
     if (state.lastSeenLevel !== 'caution') {
       state.cautionGraceRemaining = defaultCautionGraceGenerations;
       state.lastSeenLevel = 'caution';
+      state.criticalCountdownRemaining = undefined;
     }
     if (typeof state.cautionGraceRemaining === 'number' && state.cautionGraceRemaining > 0) {
       const guide: ChatMessage = {
@@ -967,74 +971,21 @@ async function applyContextHealthV3Remediation(args: {
 
   if (snapshot.level === 'critical') {
     const state = getContextHealthV3State(dlg);
-    state.lastSeenLevel = 'critical';
-    // Forced-clear loop (max 3 attempts). Discard assistant output unless it calls clear_mind with
-    // a non-empty reminder_content (重入包). Only log failures; do not persist assistant output.
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      throwIfAborted(args.abortSignal, dlg.id);
+    if (state.lastSeenLevel !== 'critical') {
+      state.lastSeenLevel = 'critical';
+      state.criticalCountdownRemaining = defaultCriticalCountdownGenerations;
+      state.cautionGraceRemaining = undefined;
+    }
 
-      const guide: ChatMessage = {
-        type: 'environment_msg',
-        role: 'user',
-        content: formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
-          kind: 'critical',
-          attempt,
-          maxAttempts: 3,
-        }),
-      };
+    const promptsBeforeAutoClear =
+      typeof state.criticalCountdownRemaining === 'number' &&
+      Number.isFinite(state.criticalCountdownRemaining)
+        ? Math.floor(state.criticalCountdownRemaining)
+        : defaultCriticalCountdownGenerations;
 
-      let nonStreamResult: { messages: ChatMessage[]; usage: LlmUsageStats };
-      try {
-        nonStreamResult = await runLlmRequestWithRetry({
-          dlg,
-          provider: args.provider,
-          abortSignal: args.abortSignal,
-          maxRetries: 5,
-          canRetry: () => true,
-          doRequest: async () => {
-            return await args.llmGen.genMoreMessages(
-              args.providerCfg,
-              args.agent,
-              args.systemPrompt,
-              args.funcTools,
-              [...args.ctxMsgs, guide],
-              dlg.activeGenSeq,
-              args.abortSignal,
-            );
-          },
-        });
-      } catch (err) {
-        log.warn('Context health critical forced-clear LLM attempt failed', err, {
-          dialogId: dlg.id.valueOf(),
-          attempt,
-        });
-        continue;
-      }
-
-      const funcCalls = nonStreamResult.messages.filter(
-        (m): m is FuncCallMsg => m.type === 'func_call_msg',
-      );
-      const nonEmptySaying = nonStreamResult.messages.some(
-        (m) =>
-          m.type === 'saying_msg' && typeof m.content === 'string' && m.content.trim().length > 0,
-      );
-      const hasOtherFuncCalls = funcCalls.some((c) => c.name !== 'clear_mind');
-      const clearMindCalls = funcCalls.filter((c) => c.name === 'clear_mind');
-
-      if (nonEmptySaying || hasOtherFuncCalls || clearMindCalls.length !== 1) {
-        log.warn(
-          'Discarding assistant output in context health critical (missing clear_mind-only)',
-          {
-            dialogId: dlg.id.valueOf(),
-            attempt,
-            sawSaying: nonEmptySaying,
-            funcCallNames: funcCalls.map((c) => c.name),
-          },
-        );
-        continue;
-      }
-
-      const clearCall = clearMindCalls[0];
+    if (promptsBeforeAutoClear <= 0) {
+      // Countdown exhausted: force clear_mind automatically (no Q4H) to keep long-running
+      // autonomy stable.
       const clearTool = args.agentTools.find(
         (t): t is FuncTool => t.type === 'func' && t.name === 'clear_mind',
       );
@@ -1042,109 +993,115 @@ async function applyContextHealthV3Remediation(args: {
         log.warn('clear_mind tool not found in agent tools during critical remediation', {
           dialogId: dlg.id.valueOf(),
         });
-        continue;
+        // Keep countdown running even if tooling is misconfigured.
+        await suspendForContextHealthCritical(dlg);
+        return { kind: 'suspend' };
       }
 
-      let rawArgs: unknown = {};
-      if (typeof clearCall.arguments === 'string' && clearCall.arguments.trim()) {
-        try {
-          rawArgs = JSON.parse(clearCall.arguments);
-        } catch (parseErr) {
-          rawArgs = null;
-          log.warn('Failed to parse clear_mind arguments as JSON during critical remediation', {
-            dialogId: dlg.id.valueOf(),
-            arguments: clearCall.arguments,
-            error: parseErr,
-          });
-        }
-      } else if (isPlainObject(clearCall.arguments)) {
-        rawArgs = clearCall.arguments;
-      }
+      const funcId = `auto-clear-${generateDialogID()}`;
+      const callGenseq = dlg.activeGenSeq;
+      const toolArgs: ToolArguments = {};
+      const argsStr = JSON.stringify(toolArgs);
+      const funcCall: FuncCallMsg = {
+        type: 'func_call_msg',
+        role: 'assistant',
+        genseq: callGenseq,
+        id: funcId,
+        name: 'clear_mind',
+        arguments: argsStr,
+      };
 
-      const argsValidation = validateFuncToolArguments(clearTool, rawArgs);
-      if (!argsValidation.ok) {
-        log.warn(
-          'Discarding assistant output in context health critical (invalid clear_mind args)',
-          {
-            dialogId: dlg.id.valueOf(),
-            attempt,
-            error: argsValidation.error,
-          },
-        );
-        continue;
-      }
-
-      const reminderValue = argsValidation.args['reminder_content'];
-      const reminderContent = typeof reminderValue === 'string' ? reminderValue.trim() : '';
-      if (!reminderContent) {
-        log.warn(
-          'Discarding assistant output in context health critical (empty clear_mind.reminder_content)',
-          { dialogId: dlg.id.valueOf(), attempt },
-        );
-        continue;
-      }
-
-      // Accepted: update context health snapshot for this generation (usage-based) and execute clear_mind.
-      const contextHealthForGen = computeContextHealthSnapshot({
-        providerCfg: args.providerCfg,
-        model: args.model,
-        usage: nonStreamResult.usage,
-      });
-      dlg.setLastContextHealth(contextHealthForGen);
-
-      const argsStr =
-        typeof clearCall.arguments === 'string'
-          ? clearCall.arguments
-          : JSON.stringify(clearCall.arguments ?? {});
       try {
-        await dlg.funcCallRequested(clearCall.id, clearCall.name, argsStr);
+        await dlg.funcCallRequested(funcId, 'clear_mind', argsStr);
       } catch (err) {
-        log.warn('Failed to emit func_call_requested for critical remediation clear_mind', err);
+        log.warn('Failed to emit func_call_requested for critical auto-clear clear_mind', err);
       }
       try {
-        await dlg.persistFunctionCall(
-          clearCall.id,
-          clearCall.name,
-          argsValidation.args,
-          clearCall.genseq,
-        );
+        await dlg.persistFunctionCall(funcId, 'clear_mind', toolArgs, callGenseq);
       } catch (err) {
-        log.warn('Failed to persist clear_mind function call for critical remediation', err);
+        log.warn('Failed to persist clear_mind function call for critical auto-clear', err);
       }
 
       let funcResult: FuncResultMsg;
       try {
-        const content = await clearTool.call(dlg, args.agent, argsValidation.args);
+        const content = await clearTool.call(dlg, args.agent, toolArgs);
         funcResult = {
           type: 'func_result_msg',
-          id: clearCall.id,
-          name: clearCall.name,
+          id: funcId,
+          name: 'clear_mind',
           content: String(content),
           role: 'tool',
-          genseq: clearCall.genseq,
+          genseq: callGenseq,
         };
       } catch (err) {
         funcResult = {
           type: 'func_result_msg',
-          id: clearCall.id,
-          name: clearCall.name,
-          content: `Function '${clearCall.name}' execution failed: ${showErrorToAi(err)}`,
+          id: funcId,
+          name: 'clear_mind',
+          content: `Function 'clear_mind' execution failed: ${showErrorToAi(err)}`,
           role: 'tool',
-          genseq: clearCall.genseq,
+          genseq: callGenseq,
         };
       }
 
       await dlg.receiveFuncResult(funcResult);
+      await dlg.addChatMessages(funcCall, funcResult);
 
-      // Keep tool context available for the next iteration.
-      await dlg.addChatMessages(clearCall, funcResult);
-
+      resetContextHealthV3State(dlg);
       const nextPrompt = resolveUpNextPrompt(dlg);
-      return { kind: 'continue', nextPrompt, contextHealthForGen };
+      return { kind: 'continue', nextPrompt };
     }
 
-    await suspendForContextHealthCritical(dlg);
-    return { kind: 'suspend' };
+    const guideText = formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
+      kind: 'critical',
+      mode: 'countdown',
+      promptsRemainingAfterThis: promptsBeforeAutoClear - 1,
+      promptsTotal: defaultCriticalCountdownGenerations,
+    });
+
+    state.criticalCountdownRemaining = promptsBeforeAutoClear - 1;
+
+    // Prefer a recorded prompt (visible in UI as user prompt) when there isn't already a
+    // user prompt in this generation.
+    if (!args.hadUserPromptThisGen) {
+      const msgId = generateShortId();
+      const userLanguageCode = getWorkLanguage();
+      const promptMsg: ChatMessage = {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: dlg.activeGenSeq,
+        msgId,
+        grammar: 'markdown',
+        content: guideText,
+      };
+
+      await dlg.addChatMessages(promptMsg);
+      await dlg.persistUserMessage(guideText, msgId, 'markdown', userLanguageCode);
+      await emitUserMarkdown(dlg, guideText);
+      try {
+        postDialogEvent(dlg, {
+          type: 'end_of_user_saying_evt',
+          round: dlg.currentRound,
+          genseq: dlg.activeGenSeq,
+          msgId,
+          content: guideText,
+          grammar: 'markdown',
+          userLanguageCode,
+        });
+      } catch (err) {
+        log.warn('Failed to emit end_of_user_saying_evt for critical countdown prompt', err);
+      }
+
+      return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, promptMsg] };
+    }
+
+    // Fallback: still guide the LLM even if we cannot safely emit a second user prompt for UI.
+    const guide: ChatMessage = {
+      type: 'environment_msg',
+      role: 'user',
+      content: guideText,
+    };
+    return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, guide] };
   }
 
   const _exhaustive: never = snapshot.level;
@@ -1790,6 +1747,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           llmGen,
           abortSignal,
           model,
+          hadUserPromptThisGen: currentPrompt !== undefined,
         });
         if (remediation.kind === 'continue') {
           if (remediation.contextHealthForGen) {

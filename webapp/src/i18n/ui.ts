@@ -162,8 +162,24 @@ export type UiStrings = {
   setupWriteTeamYamlOverwrite: string;
   setupProvidersTitle: string;
   setupProvidersHelp: string;
-  setupViewDefaultsYaml: string;
+  setupProvidersGroupConfigured: string;
+  setupProvidersGroupUnconfigured: string;
   setupViewWorkspaceLlmYaml: string;
+  setupViewBuiltinProvidersExample: string;
+  setupWorkspaceLlmTitle: string;
+  setupWorkspaceLlmHelp: string;
+  setupWriteWorkspaceLlmYaml: string;
+  setupOverwriteWorkspaceLlmYaml: string;
+  setupWorkspaceLlmTextareaPlaceholder: string;
+  setupWorkspaceLlmWriteSuccessPrefix: string;
+  setupWorkspaceLlmContentRequired: string;
+  setupWorkspaceLlmWriteFailed: string;
+  setupMemberDefaultsTitle: string;
+  setupModelParamsTitle: string;
+  setupOverwriteConfirmTitle: string;
+  setupOverwriteConfirmBody: string;
+  setupOverwriteConfirmCancel: string;
+  setupOverwriteConfirmConfirm: string;
   setupTeamTitle: string;
   setupTeamFileLabel: string;
   setupTeamProviderLabel: string;
@@ -186,6 +202,8 @@ export type UiStrings = {
   setupFileModalSelectToCopy: string;
   setupFileModalCopy: string;
   setupSelectProviderModelFirst: string;
+  setupSelectProminentModelParamsFirst: string;
+  setupTeamModelParamsHint: string;
   setupReqMissingTeamYaml: string;
   setupReqInvalidTeamYaml: string;
   setupReqMissingDefaultsFields: string;
@@ -316,7 +334,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       selectMemberTitle: '选择成员',
       editMemberTitle: '编辑成员',
       teamMembersRefresh: '刷新',
-      teamMembersSearchPlaceholder: '搜索名称、@id、provider、model…',
+      teamMembersSearchPlaceholder: '搜索名称、@id、提供商、模型…',
       teamMembersShowHidden: '显示隐藏成员',
       teamMembersVisibleSection: '可见',
       teamMembersHiddenSection: '隐藏',
@@ -326,9 +344,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       teamMembersCopyMention: '复制 @mention',
       teamMembersCopiedPrefix: '已复制：',
       teamMembersCopyFailedPrefix: '复制失败：',
-      teamMembersUnknownProvider: '未知 provider',
+      teamMembersUnknownProvider: '未知提供商',
       teamMembersUnknownModel: '未知 model',
-      teamMembersProviderLabel: 'Provider',
+      teamMembersProviderLabel: '提供商',
       teamMembersModelLabel: 'Model',
       teamMembersStreamingLabel: 'Streaming',
       teamMembersSpecializesLabel: '擅长',
@@ -357,10 +375,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupAuthRequired: '需要认证才能访问设置页。',
       setupWriteTeamYamlCreate: '创建 team.yaml',
       setupWriteTeamYamlOverwrite: '覆盖 team.yaml',
-      setupProvidersTitle: 'Providers（来自 defaults.yaml）',
-      setupProvidersHelp: '先配置 provider 的环境变量（必要时写入 shell rc），再使用该 provider。',
-      setupViewDefaultsYaml: '查看 defaults.yaml',
+      setupProvidersTitle: '内置LLM提供商',
+      setupProvidersHelp: '先配置提供商的环境变量（必要时写入 shell rc），再使用该提供商。',
+      setupProvidersGroupConfigured: '已配置',
+      setupProvidersGroupUnconfigured: '未配置',
       setupViewWorkspaceLlmYaml: '查看 .minds/llm.yaml',
+      setupViewBuiltinProvidersExample: '查看内置配置示例',
       setupTeamTitle: '团队配置',
       setupTeamFileLabel: '文件',
       setupTeamProviderLabel: 'member_defaults.provider',
@@ -370,8 +390,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupSummaryRequired: '需要设置',
       setupSummaryShell: 'Shell',
       setupSummaryDefaultRc: '默认 rc',
-      setupProviderApiKeys: 'API Keys',
-      setupProviderDocs: '文档',
+      setupProviderApiKeys: '管理鉴权信息（API Key）',
+      setupProviderDocs: '访问模型文档',
       setupProviderBaseUrl: 'Base URL',
       setupProviderEnvVar: '环境变量',
       setupProviderEnvVarSet: '已设置',
@@ -382,14 +402,33 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupFileModalLoading: '加载中…',
       setupFileModalSelectToCopy: '可直接选择复制，或点击“复制”按钮。',
       setupFileModalCopy: '复制',
-      setupSelectProviderModelFirst: '请先选择 provider 与 model。',
+      setupSelectProviderModelFirst: '请先选择提供商与模型。',
+      setupSelectProminentModelParamsFirst: '请先为 prominent 模型参数选择取值。',
+      setupTeamModelParamsHint: '',
       setupReqMissingTeamYaml: '缺少 team.yaml（请先创建并设置 member_defaults.provider/model）。',
       setupReqInvalidTeamYaml: 'team.yaml 无效：',
       setupReqMissingDefaultsFields: 'team.yaml 缺少字段：',
-      setupReqUnknownProvider: '未知 provider：',
+      setupReqUnknownProvider: '未知提供商：',
       setupReqUnknownModel: '未知 model：',
       setupReqMissingProviderEnv: '缺少环境变量：',
-      setupReqOk: 'team provider/model 与环境变量已就绪。',
+      setupReqOk: '提供商/模型与环境变量已就绪。',
+
+      setupWorkspaceLlmTitle: '工作区自定义 LLM 提供商',
+      setupWorkspaceLlmHelp:
+        '用于为当前工作区新增/覆盖 providers（例如接入小米大模型平台）。写入后点刷新以重新计算 Providers 列表。',
+      setupWriteWorkspaceLlmYaml: '写入 llm.yaml',
+      setupOverwriteWorkspaceLlmYaml: '覆盖 llm.yaml',
+      setupWorkspaceLlmTextareaPlaceholder:
+        "# Example: Xiaomi MiMo\n# Tech spec: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n# API keys: https://platform.xiaomimimo.com/\n\nproviders:\n  xiaomimimo.com:\n    name: Xiaomi MiMo\n    apiType: anthropic\n    baseUrl: https://api.xiaomimimo.com/anthropic\n    apiKeyEnvVar: MIMO_API_KEY\n    tech_spec_url: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n    api_mgmt_url: https://platform.xiaomimimo.com/\n    models:\n      mimo-v2-flash:\n        name: MiMo V2 Flash\n        context_length: 262144\n        input_length: 262144\n        output_length: 262144\n        context_window: '256K'\n",
+      setupWorkspaceLlmWriteSuccessPrefix: '已写入：',
+      setupWorkspaceLlmContentRequired: '请先在文本框中填写 llm.yaml 内容。',
+      setupWorkspaceLlmWriteFailed: '写入 .minds/llm.yaml 失败。',
+      setupMemberDefaultsTitle: '默认成员设置',
+      setupModelParamsTitle: '模型参数',
+      setupOverwriteConfirmTitle: '确认覆盖？',
+      setupOverwriteConfirmBody: '将覆盖 {path}，原有内容将丢失且不可恢复。',
+      setupOverwriteConfirmCancel: '取消',
+      setupOverwriteConfirmConfirm: '确认覆盖',
     };
   }
 
@@ -553,11 +592,13 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupAuthRequired: 'Auth required to access setup.',
     setupWriteTeamYamlCreate: 'Create team.yaml',
     setupWriteTeamYamlOverwrite: 'Overwrite team.yaml',
-    setupProvidersTitle: 'Providers (from defaults.yaml)',
+    setupProvidersTitle: 'Built-in LLM providers',
     setupProvidersHelp:
       'Set the provider env var (and persist to your shell rc) before using the provider.',
-    setupViewDefaultsYaml: 'View defaults.yaml',
+    setupProvidersGroupConfigured: 'Configured',
+    setupProvidersGroupUnconfigured: 'Unconfigured',
     setupViewWorkspaceLlmYaml: 'View .minds/llm.yaml',
+    setupViewBuiltinProvidersExample: 'View built-in config example',
     setupTeamTitle: 'Team Configuration',
     setupTeamFileLabel: 'File',
     setupTeamProviderLabel: 'member_defaults.provider',
@@ -568,8 +609,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupSummaryRequired: 'Setup Required',
     setupSummaryShell: 'Shell',
     setupSummaryDefaultRc: 'Default rc',
-    setupProviderApiKeys: 'API keys',
-    setupProviderDocs: 'Docs',
+    setupProviderApiKeys: 'Manage auth (API Key)',
+    setupProviderDocs: 'Open model docs',
     setupProviderBaseUrl: 'Base URL',
     setupProviderEnvVar: 'Env var',
     setupProviderEnvVarSet: 'set',
@@ -581,6 +622,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupFileModalSelectToCopy: 'Select to copy, or use the Copy button.',
     setupFileModalCopy: 'Copy',
     setupSelectProviderModelFirst: 'Please select a provider and model first.',
+    setupSelectProminentModelParamsFirst: 'Please select values for prominent model params first.',
+    setupTeamModelParamsHint: '',
     setupReqMissingTeamYaml:
       'Missing team.yaml (create it and set member_defaults.provider/model).',
     setupReqInvalidTeamYaml: 'Invalid team.yaml: ',
@@ -589,6 +632,23 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupReqUnknownModel: 'Unknown model: ',
     setupReqMissingProviderEnv: 'Missing env var: ',
     setupReqOk: 'Team provider/model and provider env var look configured.',
+
+    setupWorkspaceLlmTitle: 'Workspace custom LLM providers',
+    setupWorkspaceLlmHelp:
+      'Add/override providers for this workspace (e.g. Xiaomi MiMo). After writing, click Refresh to recompute the Providers list.',
+    setupWriteWorkspaceLlmYaml: 'Write llm.yaml',
+    setupOverwriteWorkspaceLlmYaml: 'Overwrite llm.yaml',
+    setupWorkspaceLlmTextareaPlaceholder:
+      "# Example: Xiaomi MiMo\n# Tech spec: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n# API keys: https://platform.xiaomimimo.com/\n\nproviders:\n  xiaomimimo.com:\n    name: Xiaomi MiMo\n    apiType: anthropic\n    baseUrl: https://api.xiaomimimo.com/anthropic\n    apiKeyEnvVar: MIMO_API_KEY\n    tech_spec_url: https://platform.xiaomimimo.com/#/docs/api/text-generation/anthropic-api\n    api_mgmt_url: https://platform.xiaomimimo.com/\n    models:\n      mimo-v2-flash:\n        name: MiMo V2 Flash\n        context_length: 262144\n        input_length: 262144\n        output_length: 262144\n        context_window: '256K'\n",
+    setupWorkspaceLlmWriteSuccessPrefix: 'Wrote: ',
+    setupWorkspaceLlmContentRequired: 'Please fill in the llm.yaml content first.',
+    setupWorkspaceLlmWriteFailed: 'Failed to write .minds/llm.yaml.',
+    setupMemberDefaultsTitle: 'Member defaults',
+    setupModelParamsTitle: 'Model params',
+    setupOverwriteConfirmTitle: 'Confirm overwrite?',
+    setupOverwriteConfirmBody: 'This will overwrite {path}. Existing content will be lost.',
+    setupOverwriteConfirmCancel: 'Cancel',
+    setupOverwriteConfirmConfirm: 'Overwrite',
   };
 }
 

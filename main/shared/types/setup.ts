@@ -48,6 +48,16 @@ export type SetupProviderModelSummary = {
   verified: boolean;
 };
 
+export type SetupProminentModelParamNamespace = 'general' | 'codex' | 'openai' | 'anthropic';
+
+export type SetupProminentEnumModelParam = {
+  namespace: SetupProminentModelParamNamespace;
+  key: string;
+  description: string;
+  values: string[];
+  defaultValue?: string;
+};
+
 export type SetupProviderSummary = {
   providerKey: string;
   name: string;
@@ -58,6 +68,7 @@ export type SetupProviderSummary = {
   apiMgmtUrl?: string;
   envVar: { isSet: boolean; bashrcHas: boolean; zshrcHas: boolean };
   models: SetupProviderModelSummary[];
+  prominentModelParams?: SetupProminentEnumModelParam[];
 };
 
 export type SetupStatusResponse =
@@ -107,8 +118,20 @@ export type SetupWriteTeamYamlRequest = {
   provider: string;
   model: string;
   overwrite: boolean;
+  // Written to `.minds/team.yaml` at `member_defaults.model_params.<namespace>.*`.
+  // For bootstrap: prefer explicitly setting params marked as `prominent: true` in defaults.
+  modelParams?: Partial<Record<SetupProminentModelParamNamespace, Record<string, string>>>;
 };
 
 export type SetupWriteTeamYamlResponse =
+  | { success: true; path: string; action: 'created' | 'overwritten' }
+  | { success: false; path: string; error: string };
+
+export type SetupWriteWorkspaceLlmYamlRequest = {
+  raw: string;
+  overwrite: boolean;
+};
+
+export type SetupWriteWorkspaceLlmYamlResponse =
   | { success: true; path: string; action: 'created' | 'overwritten' }
   | { success: false; path: string; error: string };

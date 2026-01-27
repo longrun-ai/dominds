@@ -15,6 +15,8 @@ import {
   SetupWriteShellEnvResponse,
   SetupWriteTeamYamlRequest,
   SetupWriteTeamYamlResponse,
+  SetupWriteWorkspaceLlmYamlRequest,
+  SetupWriteWorkspaceLlmYamlResponse,
   ToolsetInfo,
 } from '../shared/types';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -380,6 +382,12 @@ export class ApiClient {
     req: SetupWriteTeamYamlRequest,
   ): Promise<ApiResponse<SetupWriteTeamYamlResponse>> {
     return this.request('/api/setup/write-team-yaml', { method: 'POST', body: req });
+  }
+
+  async writeWorkspaceLlmYaml(
+    req: SetupWriteWorkspaceLlmYamlRequest,
+  ): Promise<ApiResponse<SetupWriteWorkspaceLlmYamlResponse>> {
+    return this.request('/api/setup/write-workspace-llm-yaml', { method: 'POST', body: req });
   }
 
   /**

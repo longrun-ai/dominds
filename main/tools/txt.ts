@@ -1112,7 +1112,7 @@ const overwriteEntireFileSchema = {
     content_format: {
       type: 'string',
       description:
-        "Optional content format hint. If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use preview/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
+        "Optional content format hint. If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use prepare/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
     },
   },
   required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
@@ -1217,10 +1217,10 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
 export const createNewFileTool: FuncTool = {
   type: 'func',
   name: 'create_new_file',
-  description: 'Create a new file (no preview/apply). Refuses to overwrite existing files.',
+  description: 'Create a new file (no prepare/apply). Refuses to overwrite existing files.',
   descriptionI18n: {
-    en: 'Create a new file (no preview/apply). Refuses to overwrite existing files.',
-    zh: '创建一个新文件（不走 preview/apply）。若文件已存在则拒绝覆写。',
+    en: 'Create a new file (no prepare/apply). Refuses to overwrite existing files.',
+    zh: '创建一个新文件（不走 prepare/apply）。若文件已存在则拒绝覆写。',
   },
   parameters: {
     type: 'object',
@@ -3523,7 +3523,7 @@ async function runApplyFileModification(
 export const applyFileModificationTool: FuncTool = {
   type: 'func',
   name: 'apply_file_modification',
-  description: 'Apply a previewed file modification by hunk id (writes the file).',
+  description: 'Apply a prepared file modification by hunk id (writes the file).',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -3778,7 +3778,7 @@ async function runPrepareBlockReplace(
           `summary: ${yamlQuote(
             language === 'zh'
               ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 prepare_file_range_edit（行号范围）。'
-              : 'Nested/ambiguous anchors detected. Refusing to preview; normalize anchors or use prepare_file_range_edit (line range).',
+              : 'Nested/ambiguous anchors detected. Refusing to prepare; normalize anchors or use prepare_file_range_edit (line range).',
           )}`,
         ].join('\n'),
       );

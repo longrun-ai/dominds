@@ -93,43 +93,51 @@ export interface ModelInfo {
   [key: string]: unknown;
 }
 
+type ModelParamOptionBase = {
+  description: string;
+  // Documentation hint: if true, UIs/manuals should call this out and prefer requiring an explicit
+  // choice (instead of silently relying on provider/model defaults).
+  prominent?: boolean;
+};
+
 export type ModelParamOption =
-  | {
+  | (ModelParamOptionBase & {
       type: 'number';
-      description: string;
       min?: number;
       max?: number;
-    }
-  | {
+      default?: number;
+    })
+  | (ModelParamOptionBase & {
       type: 'integer';
-      description: string;
       min?: number;
       max?: number;
-    }
-  | {
+      default?: number;
+    })
+  | (ModelParamOptionBase & {
       type: 'boolean';
-      description: string;
-    }
-  | {
+      default?: boolean;
+    })
+  | (ModelParamOptionBase & {
       type: 'string';
-      description: string;
-    }
-  | {
+      default?: string;
+    })
+  | (ModelParamOptionBase & {
       type: 'string_array';
-      description: string;
-    }
-  | {
+      default?: string[];
+    })
+  | (ModelParamOptionBase & {
       type: 'record_number';
-      description: string;
-    }
-  | {
+      default?: Record<string, number>;
+    })
+  | (ModelParamOptionBase & {
       type: 'enum';
-      description: string;
       values: string[];
-    };
+      default?: string;
+    });
 
 export type ProviderModelParamOptions = {
   general?: Record<string, ModelParamOption>;
+  codex?: Record<string, ModelParamOption>;
   openai?: Record<string, ModelParamOption>;
   anthropic?: Record<string, ModelParamOption>;
 };
