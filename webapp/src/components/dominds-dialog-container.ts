@@ -1551,16 +1551,35 @@ export class DomindsDialogContainer extends HTMLElement {
     } catch {
       // Not JSON, use as-is
     }
-    el.innerHTML = `
-      <div class="func-call-header">
-        <span class="func-call-icon">⚡</span>
-        <span class="func-call-title">Function: ${funcName}</span>
-      </div>
-      <div class="func-call-content">
-        <pre class="func-call-arguments">${argsDisplay}</pre>
-        <div class="func-call-result" style="display:none"></div>
-      </div>
-    `;
+
+    const headerEl = document.createElement('div');
+    headerEl.className = 'func-call-header';
+
+    const iconEl = document.createElement('span');
+    iconEl.className = 'func-call-icon';
+    iconEl.textContent = '⚡';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'func-call-title';
+    titleEl.textContent = `Function: ${funcName}`;
+
+    headerEl.append(iconEl, titleEl);
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'func-call-content';
+
+    const argsEl = document.createElement('pre');
+    argsEl.className = 'func-call-arguments';
+    // SECURITY: tool/function arguments can contain arbitrary strings (including `<dominds-app>`).
+    // Use `textContent` to prevent HTML/custom element interpretation.
+    argsEl.textContent = argsDisplay;
+
+    const resultEl = document.createElement('div');
+    resultEl.className = 'func-call-result';
+    resultEl.style.display = 'none';
+
+    contentEl.append(argsEl, resultEl);
+    el.append(headerEl, contentEl);
     return el;
   }
 
