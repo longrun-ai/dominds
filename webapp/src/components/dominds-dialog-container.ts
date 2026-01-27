@@ -67,6 +67,9 @@ export class DomindsDialogContainer extends HTMLElement {
   private autoScrollEnabled = true;
   private scrollContainer: HTMLElement | null = null;
   private boundOnScrollContainerScroll: (() => void) | null = null;
+  private autoScrollResizeObserver: ResizeObserver | null = null;
+  private autoScrollResizeScrollRaf: number | null = null;
+  private autoScrollResizeObservedEl: HTMLElement | null = null;
 
   // Best-effort cache to recover tool-call streaming sections by genseq.
   // Tool-call chunk events don't carry callId, so this is scoped to per-genseq recovery only.
@@ -288,6 +291,7 @@ export class DomindsDialogContainer extends HTMLElement {
    */
   public resetForRound(round: number): void {
     this.clearGenerationGlow();
+    this.stopAutoScrollObservation();
     // Reset per-round rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
@@ -307,6 +311,7 @@ export class DomindsDialogContainer extends HTMLElement {
   // Clean up current state and DOM content
   private cleanup(): void {
     this.clearGenerationGlow();
+    this.stopAutoScrollObservation();
     this.previousDialog = undefined;
     this.runState = null;
     this.generationBubble = undefined;
@@ -323,6 +328,33 @@ export class DomindsDialogContainer extends HTMLElement {
     if (messages) {
       messages.innerHTML = '';
     }
+  }
+
+  private stopAutoScrollObservation(): void {
+    if (this.autoScrollResizeScrollRaf !== null) {
+      cancelAnimationFrame(this.autoScrollResizeScrollRaf);
+      this.autoScrollResizeScrollRaf = null;
+    }
+    this.autoScrollResizeObserver?.disconnect();
+    this.autoScrollResizeObserver = null;
+    this.autoScrollResizeObservedEl = null;
+  }
+
+  private startAutoScrollObservation(el: HTMLElement): void {
+    if (this.autoScrollResizeObservedEl === el && this.autoScrollResizeObserver) return;
+    this.stopAutoScrollObservation();
+    if (typeof ResizeObserver === 'undefined') return;
+
+    this.autoScrollResizeObservedEl = el;
+    this.autoScrollResizeObserver = new ResizeObserver(() => {
+      if (!this.autoScrollEnabled) return;
+      if (this.autoScrollResizeScrollRaf !== null) return;
+      this.autoScrollResizeScrollRaf = requestAnimationFrame(() => {
+        this.autoScrollResizeScrollRaf = null;
+        this.scrollToBottom();
+      });
+    });
+    this.autoScrollResizeObserver.observe(el);
   }
 
   private clearGenerationGlow(): void {
@@ -598,6 +630,8 @@ export class DomindsDialogContainer extends HTMLElement {
         existingBubble.setAttribute('data-finalized', 'false');
         this.setBubbleTimestamp(existingBubble, timestamp);
         this.activeGenSeq = seq;
+        this.startAutoScrollObservation(existingBubble);
+        this.scrollToBottom();
         return;
       }
 
@@ -623,11 +657,14 @@ export class DomindsDialogContainer extends HTMLElement {
       container.appendChild(bubble);
     }
     this.generationBubble = bubble;
+    this.startAutoScrollObservation(bubble);
+    this.scrollToBottom();
   }
 
   private ensureGenerationBubbleForSeq(seq: number, timestamp: string): HTMLElement | null {
     const currentBubble = this.generationBubble;
     if (currentBubble && currentBubble.getAttribute('data-seq') === String(seq)) {
+      this.startAutoScrollObservation(currentBubble);
       return currentBubble;
     }
 
@@ -638,6 +675,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (existing) {
       this.generationBubble = existing;
       this.activeGenSeq = seq;
+      this.startAutoScrollObservation(existing);
       return existing;
     }
 

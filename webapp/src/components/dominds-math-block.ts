@@ -1,4 +1,11 @@
-import katex from 'katex';
+import katex, { type StrictFunction } from 'katex';
+
+const katexStrict: StrictFunction = (errorCode, _errorMsg, _token) => {
+  // Dominds content often includes inline `$...$` that may contain Unicode text (e.g. 中文).
+  // KaTeX renders this fine but (by default) warns loudly; suppress this specific warning.
+  if (errorCode === 'unicodeTextInMathMode') return 'ignore';
+  return 'warn';
+};
 
 /**
  * Custom Web Component for Math Rendering using KaTeX
@@ -59,6 +66,7 @@ export class DomindsMathBlock extends HTMLElement {
         ${katex.renderToString(this._tex, {
           displayMode: this._displayMode,
           throwOnError: false,
+          strict: katexStrict,
         })}
       `;
     } catch (error) {

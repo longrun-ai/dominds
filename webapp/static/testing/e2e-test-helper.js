@@ -217,10 +217,42 @@ function getDialogListShadow() {
   return dialogList && dialogList.shadowRoot ? dialogList.shadowRoot : null;
 }
 
+function getConversationScrollArea() {
+  const shadow = getAppShadow();
+  if (!shadow) return null;
+  return shadow.querySelector('.conversation-scroll-area');
+}
+
+function isScrollAtBottom(container, thresholdPx = 32) {
+  if (!container) return false;
+  const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+  return remaining <= thresholdPx;
+}
+
 function getMessageContainer() {
   const dialogContainer = getDialogContainer();
   if (!dialogContainer || !dialogContainer.shadowRoot) return null;
   return dialogContainer.shadowRoot.querySelector('.messages');
+}
+
+/**
+ * Waits until a generating bubble exists and the conversation scroll area is at bottom.
+ * Useful for verifying auto-scroll behavior around generation bubble insertion.
+ */
+async function waitForGenBubbleAutoScroll(options = {}) {
+  const { timeoutMs = 2000, thresholdPx = 32 } = options;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const dialogContainer = getDialogContainer();
+    const shadow = dialogContainer && dialogContainer.shadowRoot ? dialogContainer.shadowRoot : null;
+    const hasGenBubble = shadow ? !!shadow.querySelector('.generation-bubble.generating') : false;
+    const scrollArea = getConversationScrollArea();
+    if (hasGenBubble && isScrollAtBottom(scrollArea, thresholdPx)) {
+      return true;
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  throw new Error('Timed out waiting for generation bubble auto-scroll to bottom');
 }
 
 function getTeammateMessages() {
@@ -3063,6 +3095,10 @@ function setGlobal() {
     waitForTeammateCallSiteId,
     waitForVisibleMessageCount,
     waitForTeammateResponse,
+    // Scroll helpers
+    getConversationScrollArea,
+    isScrollAtBottom,
+    waitForGenBubbleAutoScroll,
   };
   window.__e2e__ = g;
 

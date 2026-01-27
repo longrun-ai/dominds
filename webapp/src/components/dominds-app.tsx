@@ -58,11 +58,11 @@ import type {
 } from '../shared/types/wire';
 import { escapeHtml } from '../shared/utils/html.js';
 import { bumpDialogsLastModified } from '../utils/dialog-last-modified';
-import { marked } from '../utils/markdownRenderer';
 import './archived-dialog-list.js';
 import { ArchivedDialogList } from './archived-dialog-list.js';
 import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
+import { renderDomindsMarkdown } from './dominds-markdown-render';
 import './dominds-q4h-input';
 import type { DomindsQ4HInput, Q4HQuestion } from './dominds-q4h-input';
 import './dominds-team-members.js';
@@ -364,7 +364,7 @@ export class DomindsApp extends HTMLElement {
           describedUiLanguage: optionLanguage,
           serverWorkLanguage: this.serverWorkLanguage,
         });
-        tip.innerHTML = marked.parse(tipMarkdown) as string;
+        tip.innerHTML = renderDomindsMarkdown(tipMarkdown, { kind: 'tooltip' });
       }
 
       if (optionLanguage === this.uiLanguage) {
@@ -2503,7 +2503,7 @@ export class DomindsApp extends HTMLElement {
           describedUiLanguage: optionLanguage,
           serverWorkLanguage: this.serverWorkLanguage,
         });
-        const tipHtml = marked.parse(tipMarkdown) as string;
+        const tipHtml = renderDomindsMarkdown(tipMarkdown, { kind: 'tooltip' });
         const selected = optionLanguage === this.uiLanguage;
         return `
           <button type="button" class="ui-language-menu-item" data-language="${optionLanguage}" data-lang-match="${optionMatch.kind}" data-selected="${
