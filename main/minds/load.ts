@@ -381,7 +381,7 @@ export async function loadAgentMinds(
           : []),
         ...(agentHasPersonalMemoryTools
           ? [
-              '提示：你具备个人记忆工具（`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`）。除了稳定习惯/偏好外，还应维护你职责域的“工作区索引”（关键文档/代码的准确路径 + 最小必要要点，如入口文件/关键符号/约定），使你在职责范围内收到任务时默认不必再读工作区文件即可直接分析并下手改文档/代码；一旦你修改了相关文件或发现记忆有过期/冲突，必须立刻用 `replace_memory` 把对应条目更新为最新事实。',
+              '提示：你具备个人记忆工具（`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`）。目标：维护你职责域的“工作区索引”（关键文档/代码的准确路径 + 最小必要要点，如入口文件/关键符号/约定），让你在职责范围内尽量做到“0 次 ripgrep 就能开始干活”；一旦你修改了相关文件或发现记忆有过期/冲突，必须立刻用 `replace_memory` 把对应条目更新为最新事实。',
             ]
           : []),
         ...(isSubdialog
@@ -427,7 +427,7 @@ export async function loadAgentMinds(
         : []),
       ...(agentHasPersonalMemoryTools
         ? [
-            'Hint: you have personal-memory tools (`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`). Beyond stable habits/preferences, maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts like entrypoints/key symbols/contracts) so tasks within your scope can be solved by memory without re-reading files. If you changed those files or detect staleness/conflicts, immediately `replace_memory` to keep it accurate.',
+            'Hint: you have personal-memory tools (`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`). Goal: maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts like entrypoints/key symbols/contracts) so you can start work with 0 ripgrep within your scope. If you changed those files or detect staleness/conflicts, immediately `replace_memory` to keep it accurate.',
           ]
         : []),
       ...(isSubdialog
