@@ -481,11 +481,12 @@ export class DomindsDialogContainer extends HTMLElement {
             this.handleProtocolError('generating_finish_evt missing required field: genseq');
             break;
           }
+          const llmGenModel = typeof event.llmGenModel === 'string' ? event.llmGenModel : undefined;
           // Delegate to handleGeneratingFinish which handles all cases gracefully:
           // - missing bubble: logs warning, cleans up state, returns
           // - seq mismatch: logs warning but proceeds
           // - valid case: completes the bubble
-          this.handleGeneratingFinish(event.genseq);
+          this.handleGeneratingFinish(event.genseq, llmGenModel);
           this.activeGenSeq = undefined;
           this.clearGenerationGlow();
         }
@@ -683,7 +684,7 @@ export class DomindsDialogContainer extends HTMLElement {
     return this.generationBubble ?? null;
   }
 
-  private handleGeneratingFinish(seq: number): void {
+  private handleGeneratingFinish(seq: number, llmGenModel?: string): void {
     const bubble = this.generationBubble;
     if (!bubble) {
       // Gracefully handle orphan finish - no active generation bubble
@@ -701,6 +702,16 @@ export class DomindsDialogContainer extends HTMLElement {
         });
       }
       return;
+    }
+
+    if (typeof llmGenModel === 'string') {
+      const trimmed = llmGenModel.trim();
+      if (trimmed.length > 0) {
+        const modelEl = bubble.querySelector('.bubble-author-model');
+        if (modelEl instanceof HTMLElement) {
+          modelEl.textContent = trimmed;
+        }
+      }
     }
 
     const attrSeq = bubble.getAttribute('data-seq');
@@ -1386,12 +1397,17 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private buildGenerationBubbleHeaderHtml(timestamp: string): string {
     const authorLabel = this.getAuthorLabel('assistant');
+    const safeAuthorLabel = this.escapeHtml(authorLabel);
+    const safeTimestamp = this.escapeHtml(timestamp);
     return `
       <div class="bubble-header">
         <div class="bubble-title">
-          <div class="bubble-author">${authorLabel}</div>
+          <div class="bubble-author">
+            <span class="bubble-author-name">${safeAuthorLabel}</span>
+            <span class="bubble-author-model"></span>
+          </div>
         </div>
-        <div class="timestamp">${timestamp}</div>
+        <div class="timestamp">${safeTimestamp}</div>
       </div>
     `;
   }
@@ -1674,6 +1690,15 @@ export class DomindsDialogContainer extends HTMLElement {
     // Ultimate fallback
     return `🤖 @${id}`;
   }
+
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
   // addMessageToDOM was removed - use direct container.appendChild() instead
 
   private render(): void {
@@ -1885,6 +1910,17 @@ export class DomindsDialogContainer extends HTMLElement {
       .bubble-author { 
         font-weight: 600; 
         color: var(--dominds-fg, var(--color-fg-primary, #333)); 
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .bubble-author-model {
+        font-size: 0.8em;
+        font-weight: 500;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        opacity: 0.85;
       }
 
       .bubble-title {

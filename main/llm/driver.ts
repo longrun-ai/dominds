@@ -719,9 +719,13 @@ function computeContextHealthSnapshot(args: {
   usage: LlmUsageStats;
 }): ContextHealthSnapshot {
   const modelInfo: ModelInfo | undefined = args.providerCfg.models[args.model];
+  const modelContextWindowText =
+    modelInfo && typeof modelInfo.context_window === 'string'
+      ? modelInfo.context_window
+      : undefined;
   const modelContextLimitTokens = resolveModelContextLimitTokens(modelInfo);
   if (modelContextLimitTokens === null) {
-    return { kind: 'unavailable', reason: 'model_limit_unavailable' };
+    return { kind: 'unavailable', reason: 'model_limit_unavailable', modelContextWindowText };
   }
 
   const {
@@ -738,6 +742,7 @@ function computeContextHealthSnapshot(args: {
     return {
       kind: 'unavailable',
       reason: 'usage_unavailable',
+      modelContextWindowText,
       modelContextLimitTokens,
       effectiveOptimalMaxTokens,
       optimalMaxTokensConfigured,
@@ -761,6 +766,7 @@ function computeContextHealthSnapshot(args: {
     promptTokens: args.usage.promptTokens,
     completionTokens: args.usage.completionTokens,
     totalTokens: args.usage.totalTokens,
+    modelContextWindowText,
     modelContextLimitTokens,
     effectiveOptimalMaxTokens,
     optimalMaxTokensConfigured,
@@ -1560,6 +1566,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       let suspendForHuman = false;
       let promptContent = '';
       let contextHealthForGen: ContextHealthSnapshot | undefined;
+      let llmGenModelForGen: string = model;
 
       try {
         throwIfAborted(abortSignal, dlg.id);
@@ -1801,7 +1808,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         const ctxMsgsForGen = remediation.ctxMsgs;
 
         if (agent.streaming === false) {
-          let nonStreamResult: { messages: ChatMessage[]; usage: LlmUsageStats };
+          let nonStreamResult: {
+            messages: ChatMessage[];
+            usage: LlmUsageStats;
+            llmGenModel?: string;
+          };
           try {
             throwIfAborted(abortSignal, dlg.id);
             nonStreamResult = await runLlmRequestWithRetry({
@@ -1830,6 +1841,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             throw err;
           }
 
+          if (
+            typeof nonStreamResult.llmGenModel === 'string' &&
+            nonStreamResult.llmGenModel.trim() !== ''
+          ) {
+            llmGenModelForGen = nonStreamResult.llmGenModel.trim();
+          }
           if (!agent.model) {
             throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
           }
@@ -2085,7 +2102,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           // Direct streaming parser that forwards events without state tracking
           const parser = new TellaskStreamParser(receiver);
 
-          let streamResult: { usage: LlmUsageStats } | undefined;
+          let streamResult: { usage: LlmUsageStats; llmGenModel?: string } | undefined;
           try {
             streamResult = await runLlmRequestWithRetry({
               dlg,
@@ -2201,6 +2218,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           if (!streamResult) {
             throw new Error('Internal error: missing stream result after successful generation');
+          }
+          if (
+            typeof streamResult.llmGenModel === 'string' &&
+            streamResult.llmGenModel.trim() !== ''
+          ) {
+            llmGenModelForGen = streamResult.llmGenModel.trim();
           }
           if (!agent.model) {
             throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
@@ -2446,7 +2469,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           }
         }
       } finally {
-        await dlg.notifyGeneratingFinish(contextHealthForGen);
+        await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
       }
     }
 

@@ -773,12 +773,15 @@ export abstract class Dialog {
     await this.dlgStore.notifyGeneratingStart(this);
   }
 
-  public async notifyGeneratingFinish(contextHealth?: ContextHealthSnapshot): Promise<void> {
+  public async notifyGeneratingFinish(
+    contextHealth?: ContextHealthSnapshot,
+    llmGenModel?: string,
+  ): Promise<void> {
     if (contextHealth) {
       this.setLastContextHealth(contextHealth);
     }
     try {
-      await this.dlgStore.notifyGeneratingFinish(this, contextHealth);
+      await this.dlgStore.notifyGeneratingFinish(this, contextHealth, llmGenModel);
     } catch (err) {
       log.warn('notifyGeneratingFinish failed', undefined, {
         genseq: this._activeGenSeq,
@@ -1322,6 +1325,7 @@ export abstract class DialogStore {
   public async notifyGeneratingFinish(
     _dialog: Dialog,
     _contextHealth?: ContextHealthSnapshot,
+    _llmGenModel?: string,
   ): Promise<void> {}
 
   // Explicit phase notifications (driver-driven)

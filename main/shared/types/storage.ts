@@ -251,6 +251,7 @@ export interface GenFinishRecord {
   type: 'gen_finish_record';
   genseq: number;
   contextHealth?: ContextHealthSnapshot;
+  llmGenModel?: string;
 }
 
 // === REMINDER AND QUESTIONS STORAGE ===

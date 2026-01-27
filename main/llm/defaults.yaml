@@ -20,9 +20,9 @@ providers:
       codex:
         reasoning_effort:
           # Trade latency/cost for quality on reasoning-capable models.
-          # Allowed: minimal | low | medium | high
+          # Allowed: none | minimal | low | medium | high | xhigh
           type: enum
-          values: [minimal, low, medium, high]
+          values: [none, minimal, low, medium, high, xhigh]
           description: Reasoning effort level (when supported by the model).
         verbosity:
           # Control response detail level on GPT-5 series models.
@@ -347,7 +347,7 @@ providers:
       openai:
         reasoning_effort:
           type: enum
-          values: [minimal, low, medium, high]
+          values: [none, minimal, low, medium, high, xhigh]
           description: Reasoning effort level (when supported by the model).
         verbosity:
           type: enum

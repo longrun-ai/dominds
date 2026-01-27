@@ -306,7 +306,7 @@ responses:
     }
     await receiver.sayingFinish();
 
-    return { usage };
+    return { usage, llmGenModel: modelName };
   }
 
   async genMoreMessages(
@@ -400,7 +400,7 @@ responses:
         };
       }
 
-      return { messages: [thinking, saying], usage };
+      return { messages: [thinking, saying], usage, llmGenModel: modelName };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const saying: SayingMsg = {
@@ -416,7 +416,11 @@ responses:
         content: `[${modelName}] error: ${errMsg}`,
         genseq,
       };
-      return { messages: [thinking, saying], usage: { kind: 'unavailable' } };
+      return {
+        messages: [thinking, saying],
+        usage: { kind: 'unavailable' },
+        llmGenModel: modelName,
+      };
     }
   }
 }

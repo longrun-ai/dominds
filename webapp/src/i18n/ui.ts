@@ -609,8 +609,31 @@ export type ContextUsageTitleArgs =
       promptTokens: number;
       hardPercentText: string;
       modelContextLimitTokens: number;
+      modelContextWindowText?: string;
       level: 'healthy' | 'caution' | 'critical';
+      optimalTokens: number;
+      optimalPercentText: string;
+      optimalConfigured: boolean;
+      criticalTokens: number;
+      criticalPercentText: string;
+      criticalConfigured: boolean;
     };
+
+function formatTokenCountCompact(tokens: number): string {
+  if (!Number.isFinite(tokens)) return '∞';
+  const n = Math.max(0, Math.floor(tokens));
+  if (n < 1000) return String(n);
+
+  if (n < 1_000_000) {
+    const k = n / 1000;
+    const text = k < 10 ? k.toFixed(1) : k.toFixed(0);
+    return `${text.endsWith('.0') ? text.slice(0, -2) : text}K`;
+  }
+
+  const m = n / 1_000_000;
+  const text = m < 10 ? m.toFixed(1) : m.toFixed(0);
+  return `${text.endsWith('.0') ? text.slice(0, -2) : text}M`;
+}
 
 export function formatContextUsageTitle(
   language: LanguageCode,
@@ -620,11 +643,23 @@ export function formatContextUsageTitle(
     case 'zh': {
       switch (args.kind) {
         case 'unknown':
-          return '上下文占用：未知';
+          return '上下文情况：未知';
         case 'known': {
-          const suffix =
-            args.level === 'healthy' ? ' • 绿' : args.level === 'caution' ? ' • 黄' : ' • 红';
-          return `上下文占用：${args.promptTokens}（${args.hardPercentText} / ${args.modelContextLimitTokens}）${suffix}`;
+          const optimalSource = args.optimalConfigured ? '配置' : '默认';
+          const criticalSource = args.criticalConfigured ? '配置' : '默认';
+          const levelText =
+            args.level === 'healthy' ? '充裕' : args.level === 'caution' ? '吃紧' : '告急';
+          const limitText =
+            typeof args.modelContextWindowText === 'string' &&
+            args.modelContextWindowText.trim() !== ''
+              ? args.modelContextWindowText.trim()
+              : formatTokenCountCompact(args.modelContextLimitTokens);
+          return [
+            `上下文情况 • ${levelText}`,
+            `输入：${formatTokenCountCompact(args.promptTokens)}（${args.hardPercentText}；上限 ${limitText}）`,
+            `软线：${formatTokenCountCompact(args.optimalTokens)}（${args.optimalPercentText}；${optimalSource}）`,
+            `红线：${formatTokenCountCompact(args.criticalTokens)}（${args.criticalPercentText}；${criticalSource}）`,
+          ].join('\n');
         }
         default: {
           const _exhaustive: never = args;
@@ -635,15 +670,27 @@ export function formatContextUsageTitle(
     case 'en': {
       switch (args.kind) {
         case 'unknown':
-          return 'Context usage: unknown';
+          return 'Context status: unknown';
         case 'known': {
-          const suffix =
-            args.level === 'caution'
-              ? ' • over optimal'
-              : args.level === 'critical'
-                ? ' • high risk'
-                : '';
-          return `Context usage: ${args.promptTokens} (${args.hardPercentText} of ${args.modelContextLimitTokens})${suffix}`;
+          const optimalSource = args.optimalConfigured ? 'config' : 'default';
+          const criticalSource = args.criticalConfigured ? 'config' : 'default';
+          const levelText =
+            args.level === 'healthy'
+              ? 'healthy'
+              : args.level === 'caution'
+                ? 'caution'
+                : 'critical';
+          const limitText =
+            typeof args.modelContextWindowText === 'string' &&
+            args.modelContextWindowText.trim() !== ''
+              ? args.modelContextWindowText.trim()
+              : formatTokenCountCompact(args.modelContextLimitTokens);
+          return [
+            `Context status • ${levelText}`,
+            `Prompt: ${formatTokenCountCompact(args.promptTokens)} (${args.hardPercentText}; limit ${limitText})`,
+            `Soft: ${formatTokenCountCompact(args.optimalTokens)} (${args.optimalPercentText}; ${optimalSource})`,
+            `Critical: ${formatTokenCountCompact(args.criticalTokens)} (${args.criticalPercentText}; ${criticalSource})`,
+          ].join('\n');
         }
         default: {
           const _exhaustive: never = args;

@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
     const readEmpty = await readFileTool.call(dlg, alice, { path: 'a.txt' });
     assert.ok(readEmpty.includes('mode: read_file'));
-    assert.ok(readEmpty.includes('guardrail_total_lines: 0'));
+    assert.ok(readEmpty.includes('total_lines: 0'));
 
     // Existing file: refuse with FILE_EXISTS and a next-step hint.
     const exists = await createNewFileTool.call(dlg, alice, { path: 'a.txt', content: '' });

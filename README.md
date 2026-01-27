@@ -84,6 +84,22 @@ npm install -g dominds
 dominds --help
 ```
 
+You can also run Dominds with **no global install** (useful for quick trials / CI / keeping your machine clean):
+
+```bash
+# Run the latest release (downloads to npm cache, then executes)
+npx -y dominds@latest --help
+npx -y dominds@latest
+
+# Or pin an exact version (more reproducible)
+# npx -y dominds@1.2.3
+```
+
+Notes:
+
+- `npx dominds` does **not** necessarily mean “always latest”: if your project already has `dominds` installed, or your npm cache already contains an older version, `npx` may reuse that.
+- If you want “resolve whatever `latest` points to”, use `dominds@latest` explicitly. It may still reuse the cached copy of that same version (expected).
+
 For development and any sort of open source contribution, use the in-tree dev wrapper workspace:
 
 https://github.com/longrun-ai/dominds-feat-dev

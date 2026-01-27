@@ -36,11 +36,11 @@ import {
 import {
   applyFileModificationTool,
   overwriteEntireFileTool,
-  previewBlockReplaceTool,
-  previewFileAppendTool,
-  previewFileModificationTool,
-  previewInsertAfterTool,
-  previewInsertBeforeTool,
+  prepareFileAppendTool,
+  prepareFileBlockReplaceTool,
+  prepareFileInsertAfterTool,
+  prepareFileInsertBeforeTool,
+  prepareFileRangeEditTool,
   readFileTool,
 } from './txt';
 
@@ -650,7 +650,7 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
             fileExists: '文件已存在，拒绝创建。',
             notAFile: '路径已存在但不是文件（可能是目录），拒绝创建。',
             nextOverwrite:
-              '下一步：先用 team_mgmt_read_file 获取 guardrail_total_lines/guardrail_total_bytes，然后再调用 team_mgmt_overwrite_entire_file 覆盖写入。',
+              '下一步：先用 team_mgmt_read_file 获取 total_lines/size_bytes，然后再调用 team_mgmt_overwrite_entire_file 覆盖写入。',
             ok: '已创建新文件。',
           }
         : {
@@ -658,7 +658,7 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
             fileExists: 'File already exists; refusing to create.',
             notAFile: 'Path exists but is not a file (e.g. a directory); refusing to create.',
             nextOverwrite:
-              'Next: call team_mgmt_read_file to get guardrail_total_lines/guardrail_total_bytes, then use team_mgmt_overwrite_entire_file to overwrite.',
+              'Next: call team_mgmt_read_file to get total_lines/size_bytes, then use team_mgmt_overwrite_entire_file to overwrite.',
             ok: 'Created new file.',
           };
 
@@ -864,13 +864,13 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
   },
 };
 
-export const teamMgmtPreviewFileAppendTool: FuncTool = {
+export const teamMgmtPrepareFileAppendTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_preview_file_append',
-  description: `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_prepare_file_append',
+  description: `Prepare an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
   descriptionI18n: {
-    en: `Preview an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `预览 ${MINDS_DIR}/ 下“末尾追加”修改（不会立刻写入）。`,
+    en: `Prepare an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `规划 ${MINDS_DIR}/ 下“末尾追加”修改（不会立刻写入）。`,
   },
   parameters: {
     type: 'object',
@@ -919,7 +919,7 @@ export const teamMgmtPreviewFileAppendTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await previewFileAppendTool.call(dlg, proxyCaller, {
+      const content = await prepareFileAppendTool.call(dlg, proxyCaller, {
         path: rel,
         ...(create !== undefined ? { create } : {}),
         ...(existingHunkId ? { existing_hunk_id: existingHunkId } : {}),
@@ -936,13 +936,13 @@ export const teamMgmtPreviewFileAppendTool: FuncTool = {
   },
 };
 
-export const teamMgmtPreviewInsertAfterTool: FuncTool = {
+export const teamMgmtPrepareInsertAfterTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_preview_insert_after',
-  description: `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_prepare_file_insert_after',
+  description: `Prepare an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
   descriptionI18n: {
-    en: `Preview an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按锚点预览 ${MINDS_DIR}/ 下“在其后插入”修改（不会立刻写入）。`,
+    en: `Prepare an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按锚点规划 ${MINDS_DIR}/ 下“在其后插入”修改（不会立刻写入）。`,
   },
   parameters: {
     type: 'object',
@@ -1003,7 +1003,7 @@ export const teamMgmtPreviewInsertAfterTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await previewInsertAfterTool.call(dlg, proxyCaller, {
+      const content = await prepareFileInsertAfterTool.call(dlg, proxyCaller, {
         path: rel,
         anchor,
         ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
@@ -1022,13 +1022,13 @@ export const teamMgmtPreviewInsertAfterTool: FuncTool = {
   },
 };
 
-export const teamMgmtPreviewInsertBeforeTool: FuncTool = {
+export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_preview_insert_before',
-  description: `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_prepare_file_insert_before',
+  description: `Prepare an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
   descriptionI18n: {
-    en: `Preview an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按锚点预览 ${MINDS_DIR}/ 下“在其前插入”修改（不会立刻写入）。`,
+    en: `Prepare an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按锚点规划 ${MINDS_DIR}/ 下“在其前插入”修改（不会立刻写入）。`,
   },
   parameters: {
     type: 'object',
@@ -1089,7 +1089,7 @@ export const teamMgmtPreviewInsertBeforeTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await previewInsertBeforeTool.call(dlg, proxyCaller, {
+      const content = await prepareFileInsertBeforeTool.call(dlg, proxyCaller, {
         path: rel,
         anchor,
         ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
@@ -1108,13 +1108,13 @@ export const teamMgmtPreviewInsertBeforeTool: FuncTool = {
   },
 };
 
-export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
+export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_preview_block_replace',
-  description: `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_prepare_file_block_replace',
+  description: `Prepare a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
   descriptionI18n: {
-    en: `Preview a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按锚点预览 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。`,
+    en: `Prepare a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按锚点规划 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。`,
   },
   parameters: {
     type: 'object',
@@ -1190,7 +1190,7 @@ export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await previewBlockReplaceTool.call(dlg, proxyCaller, {
+      const content = await prepareFileBlockReplaceTool.call(dlg, proxyCaller, {
         path: rel,
         start_anchor: startAnchor,
         end_anchor: endAnchor,
@@ -1213,13 +1213,13 @@ export const teamMgmtPreviewBlockReplaceTool: FuncTool = {
   },
 };
 
-export const teamMgmtPreviewFileModificationTool: FuncTool = {
+export const teamMgmtPrepareFileRangeEditTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_preview_file_modification',
-  description: `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_prepare_file_range_edit',
+  description: `Prepare a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
   descriptionI18n: {
-    en: `Preview a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按行号范围预览 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。`,
+    en: `Prepare a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
+    zh: `按行号范围规划 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。`,
   },
   parameters: {
     type: 'object',
@@ -1262,7 +1262,7 @@ export const teamMgmtPreviewFileModificationTool: FuncTool = {
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await previewFileModificationTool.call(dlg, proxyCaller, {
+      const content = await prepareFileRangeEditTool.call(dlg, proxyCaller, {
         path: rel,
         range: rangeSpec,
         ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
@@ -2239,7 +2239,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
-        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 guardrail_total_lines/guardrail_total_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
+        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
       '\n' +
@@ -2284,7 +2284,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
-        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same preview, call `team_mgmt_preview_file_modification({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read guardrail_total_lines/guardrail_total_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same preview, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
     ) +
     '\n' +
@@ -2950,11 +2950,11 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtReadFileTool,
   teamMgmtCreateNewFileTool,
   teamMgmtOverwriteEntireFileTool,
-  teamMgmtPreviewFileAppendTool,
-  teamMgmtPreviewInsertAfterTool,
-  teamMgmtPreviewInsertBeforeTool,
-  teamMgmtPreviewBlockReplaceTool,
-  teamMgmtPreviewFileModificationTool,
+  teamMgmtPrepareFileAppendTool,
+  teamMgmtPrepareInsertAfterTool,
+  teamMgmtPrepareInsertBeforeTool,
+  teamMgmtPrepareBlockReplaceTool,
+  teamMgmtPrepareFileRangeEditTool,
   teamMgmtApplyFileModificationTool,
   teamMgmtMkDirTool,
   teamMgmtMoveFileTool,

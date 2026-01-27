@@ -39,6 +39,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function tryExtractApiReturnedModel(value: unknown): string | undefined {
+  // NOTE: External API payload; a runtime check is unavoidable.
+  if (!isRecord(value)) return undefined;
+  if (!('model' in value)) return undefined;
+  const model = value.model;
+  if (typeof model !== 'string') return undefined;
+  const trimmed = model.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function isToolUseBlock(value: unknown): value is ToolUseBlock {
   return (
     isRecord(value) &&
@@ -425,6 +435,7 @@ export class AnthropicGen implements LlmGenerator {
     let sayingStarted = false;
     let thinkingStarted = false;
     let usage: LlmUsageStats = { kind: 'unavailable' };
+    let returnedModel: string | undefined;
 
     for await (const event of stream) {
       if (abortSignal?.aborted) {
@@ -564,6 +575,9 @@ export class AnthropicGen implements LlmGenerator {
         }
 
         case 'message_start': {
+          if (returnedModel === undefined) {
+            returnedModel = tryExtractApiReturnedModel(event.message);
+          }
           const startUsage = event.message.usage;
           const cacheCreation =
             typeof startUsage.cache_creation_input_tokens === 'number'
@@ -644,7 +658,7 @@ export class AnthropicGen implements LlmGenerator {
       }
     }
 
-    return { usage };
+    return { usage, llmGenModel: returnedModel };
   }
 
   async genMoreMessages(
@@ -704,6 +718,7 @@ export class AnthropicGen implements LlmGenerator {
     if (!response) {
       throw new Error('No response from Anthropic API');
     }
+    const returnedModel = typeof response.model === 'string' ? response.model : undefined;
 
     const responseUsage = response.usage;
     const cacheCreation =
@@ -724,6 +739,10 @@ export class AnthropicGen implements LlmGenerator {
       totalTokens: promptTokens + completionTokens,
     };
 
-    return { messages: anthropicToChatMessages(response, genseq), usage };
+    return {
+      messages: anthropicToChatMessages(response, genseq),
+      usage,
+      llmGenModel: returnedModel,
+    };
   }
 }

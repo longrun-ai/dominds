@@ -74,7 +74,7 @@ export namespace Team {
     stop?: string | string[]; // Stop sequences
     logit_bias?: Record<string, number>; // Modify likelihood of specific tokens
     user?: string; // User identifier for abuse monitoring
-    reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'; // For o1/reasoning models
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (when supported).
   };
@@ -1406,13 +1406,15 @@ export namespace Team {
       const reasoningEffort = params.reasoning_effort;
       if (
         reasoningEffort !== undefined &&
+        reasoningEffort !== 'none' &&
         reasoningEffort !== 'minimal' &&
         reasoningEffort !== 'low' &&
         reasoningEffort !== 'medium' &&
-        reasoningEffort !== 'high'
+        reasoningEffort !== 'high' &&
+        reasoningEffort !== 'xhigh'
       ) {
         throw new Error(
-          `Invalid ${at2}.reasoning_effort: expected minimal|low|medium|high (got ${describeValueType(
+          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh (got ${describeValueType(
             reasoningEffort,
           )})`,
         );

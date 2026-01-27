@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/shared/runtime-language';
 import { Team } from '../main/team';
-import { previewFileModificationTool } from '../main/tools/txt';
+import { prepareFileRangeEditTool } from '../main/tools/txt';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
       write_dirs: ['**'],
     });
 
-    const out1 = await previewFileModificationTool.call(dlg, alice, {
+    const out1 = await prepareFileRangeEditTool.call(dlg, alice, {
       path: 'a.txt',
       range: '1~1',
       existing_hunk_id: '',
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     const hunkId = extractHunkId(out1);
 
     // Custom ids are not allowed: unknown id should fail.
-    const out2 = await previewFileModificationTool.call(dlg, alice, {
+    const out2 = await prepareFileRangeEditTool.call(dlg, alice, {
       path: 'a.txt',
       range: '1~1',
       existing_hunk_id: 'deadbeef',
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     assert.ok(out2.includes('Custom new ids are not allowed'));
 
     // Revising an existing hunk id (generated previously) should succeed.
-    const out3 = await previewFileModificationTool.call(dlg, alice, {
+    const out3 = await prepareFileRangeEditTool.call(dlg, alice, {
       path: 'a.txt',
       range: '1~1',
       existing_hunk_id: hunkId,
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       read_dirs: ['**'],
       write_dirs: ['**'],
     });
-    const out4 = await previewFileModificationTool.call(dlg, bob, {
+    const out4 = await prepareFileRangeEditTool.call(dlg, bob, {
       path: 'a.txt',
       range: '1~1',
       existing_hunk_id: hunkId,
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     });
     assert.ok(out4.includes('planned by a different member'));
 
-    console.log('✅ preview-file-modification-hunkid tests passed');
+    console.log('✅ prepare-file-modification-hunkid tests passed');
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

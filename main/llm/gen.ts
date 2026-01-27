@@ -5,11 +5,13 @@ import { ChatMessage, ProviderConfig } from './client';
 
 export interface LlmStreamResult {
   usage: LlmUsageStats;
+  llmGenModel?: string;
 }
 
 export interface LlmBatchResult {
   messages: ChatMessage[];
   usage: LlmUsageStats;
+  llmGenModel?: string;
 }
 
 export interface LlmStreamReceiver {

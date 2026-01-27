@@ -922,7 +922,18 @@ export class DomindsApp extends HTMLElement {
       promptTokens: snapshot.promptTokens,
       hardPercentText: this.formatPercent(snapshot.hardUtil),
       modelContextLimitTokens: snapshot.modelContextLimitTokens,
+      modelContextWindowText: snapshot.modelContextWindowText,
       level,
+      optimalTokens: snapshot.effectiveOptimalMaxTokens,
+      optimalPercentText: this.formatPercent(
+        snapshot.effectiveOptimalMaxTokens / snapshot.modelContextLimitTokens,
+      ),
+      optimalConfigured: snapshot.optimalMaxTokensConfigured !== undefined,
+      criticalTokens: snapshot.effectiveCriticalMaxTokens,
+      criticalPercentText: this.formatPercent(
+        snapshot.effectiveCriticalMaxTokens / snapshot.modelContextLimitTokens,
+      ),
+      criticalConfigured: snapshot.criticalMaxTokensConfigured !== undefined,
     });
     el.setAttribute('aria-label', label);
     if (tooltip instanceof HTMLElement) {
@@ -1114,10 +1125,15 @@ export class DomindsApp extends HTMLElement {
       #toolbar-emergency-stop:not(:disabled) {
         background: color-mix(in srgb, #22c55e 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 65%, var(--dominds-border, #e0e0e0));
+        cursor: default;
       }
 
       #toolbar-emergency-stop span {
         color: var(--dominds-fg, #333333);
+      }
+
+      #toolbar-emergency-stop:not(:disabled) svg {
+        cursor: pointer;
       }
 
       #toolbar-emergency-stop:hover:not(:disabled) {
@@ -1132,10 +1148,15 @@ export class DomindsApp extends HTMLElement {
       #toolbar-resume-all:not(:disabled) {
         background: color-mix(in srgb, #ef4444 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 65%, var(--dominds-border, #e0e0e0));
+        cursor: default;
       }
 
       #toolbar-resume-all span {
         color: var(--dominds-fg, #333333);
+      }
+
+      #toolbar-resume-all:not(:disabled) svg {
+        cursor: pointer;
       }
 
       #toolbar-resume-all:hover:not(:disabled) {
@@ -1226,17 +1247,21 @@ export class DomindsApp extends HTMLElement {
 
       #toolbar-context-health-wrap .toolbar-tooltip {
         position: absolute;
-        bottom: calc(100% + 6px);
-        left: 50%;
-        transform: translateX(-50%);
+        top: calc(100% + 6px);
+        right: 0;
+        left: auto;
+        transform: none;
         background: var(--dominds-fg, #333333);
         color: var(--dominds-bg, #ffffff);
         padding: 6px 8px;
         border-radius: 6px;
         font-size: 11px;
         line-height: 1.25;
-        white-space: pre;
-        max-width: min(420px, 90vw);
+        text-align: left;
+        width: max-content;
+        white-space: pre-line;
+        overflow-wrap: normal;
+        max-width: min(420px, calc(100vw - 24px));
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.15s ease;
@@ -1247,11 +1272,12 @@ export class DomindsApp extends HTMLElement {
       #toolbar-context-health-wrap .toolbar-tooltip::after {
         content: '';
         position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
+        bottom: 100%;
+        right: 6px;
+        left: auto;
+        transform: none;
         border: 6px solid transparent;
-        border-top-color: var(--dominds-fg, #333333);
+        border-bottom-color: var(--dominds-fg, #333333);
       }
 
       #toolbar-context-health-wrap:hover .toolbar-tooltip {
@@ -2475,7 +2501,20 @@ export class DomindsApp extends HTMLElement {
             promptTokens: this.toolbarContextHealth.promptTokens,
             hardPercentText: this.formatPercent(this.toolbarContextHealth.hardUtil),
             modelContextLimitTokens: this.toolbarContextHealth.modelContextLimitTokens,
+            modelContextWindowText: this.toolbarContextHealth.modelContextWindowText,
             level: this.toolbarContextHealth.level,
+            optimalTokens: this.toolbarContextHealth.effectiveOptimalMaxTokens,
+            optimalPercentText: this.formatPercent(
+              this.toolbarContextHealth.effectiveOptimalMaxTokens /
+                this.toolbarContextHealth.modelContextLimitTokens,
+            ),
+            optimalConfigured: this.toolbarContextHealth.optimalMaxTokensConfigured !== undefined,
+            criticalTokens: this.toolbarContextHealth.effectiveCriticalMaxTokens,
+            criticalPercentText: this.formatPercent(
+              this.toolbarContextHealth.effectiveCriticalMaxTokens /
+                this.toolbarContextHealth.modelContextLimitTokens,
+            ),
+            criticalConfigured: this.toolbarContextHealth.criticalMaxTokensConfigured !== undefined,
           })
         : formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
     const contextUsageTooltipText = escapeHtml(contextUsageTitle);
@@ -3001,6 +3040,9 @@ export class DomindsApp extends HTMLElement {
       // Global run controls
       const emergencyStop = target.closest('#toolbar-emergency-stop') as HTMLButtonElement | null;
       if (emergencyStop) {
+        const emergencyStopIcon = target.closest('#toolbar-emergency-stop svg');
+        if (!emergencyStopIcon) return;
+
         if (this.proceedingDialogsCount > 0) {
           const ok = window.confirm(
             `${getUiStrings(this.uiLanguage).emergencyStop} (${this.proceedingDialogsCount})?`,
@@ -3014,6 +3056,9 @@ export class DomindsApp extends HTMLElement {
 
       const resumeAll = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
       if (resumeAll) {
+        const resumeAllIcon = target.closest('#toolbar-resume-all svg');
+        if (!resumeAllIcon) return;
+
         if (this.resumableDialogsCount > 0) {
           this.wsManager.sendRaw({ type: 'resume_all' });
         }

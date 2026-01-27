@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/shared/runtime-language';
 import { Team } from '../main/team';
-import { applyFileModificationTool, previewBlockReplaceTool } from '../main/tools/txt';
+import { applyFileModificationTool, prepareBlockReplaceTool } from '../main/tools/txt';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const plan1 = await previewBlockReplaceTool.call(dlg, alice, {
+    const plan1 = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'doc.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
       content: 'new\n',
     });
     const hunk1 = extractHunkId(plan1);
-    const plan1b = await previewBlockReplaceTool.call(dlg, alice, {
+    const plan1b = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'doc.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       path.join(tmpRoot, 'doc2.md'),
       ['# Title', '<!-- BEGIN AUTO -->', 'old', '<!-- END AUTO -->', ''].join('\n'),
     );
-    const plan2 = await previewBlockReplaceTool.call(dlg, alice, {
+    const plan2 = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'doc2.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
         '',
       ].join('\n'),
     );
-    const planAmb = await previewBlockReplaceTool.call(dlg, alice, {
+    const planAmb = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'amb.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
 
     // Plan fails on missing anchors.
     await writeText(path.join(tmpRoot, 'missing.md'), ['no anchors', ''].join('\n'));
-    const planMissing = await previewBlockReplaceTool.call(dlg, alice, {
+    const planMissing = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'missing.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     assert.ok(planMissing.includes('error: ANCHOR_NOT_FOUND'));
 
     // Occurrence out of range.
-    const planOor = await previewBlockReplaceTool.call(dlg, alice, {
+    const planOor = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'amb.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',
@@ -159,7 +159,7 @@ async function main(): Promise<void> {
     assert.ok(planOor.includes('error: OCCURRENCE_OUT_OF_RANGE'));
 
     // Empty body fails with CONTENT_REQUIRED.
-    const planEmpty = await previewBlockReplaceTool.call(dlg, alice, {
+    const planEmpty = await prepareBlockReplaceTool.call(dlg, alice, {
       path: 'doc.md',
       start_anchor: '<!-- BEGIN AUTO -->',
       end_anchor: '<!-- END AUTO -->',

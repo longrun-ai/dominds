@@ -2,7 +2,7 @@
  * Module: tools/txt
  *
  * Text file tooling for reading and modifying workspace files.
- * Provides `read_file`, `overwrite_entire_file`, `preview_file_modification`, and `apply_file_modification`.
+ * Provides `read_file`, `overwrite_entire_file`, `prepare_*`, and `apply_file_modification`.
  */
 import crypto from 'crypto';
 import fsSync from 'fs';
@@ -651,7 +651,6 @@ async function readFileContentBounded(
   options: ReadFileOptions,
 ): Promise<{
   totalLines: number;
-  guardrailTotalLines: number;
   formattedContent: string;
   shownLines: number;
   truncatedByMaxLines: boolean;
@@ -670,9 +669,6 @@ async function readFileContentBounded(
   const stream = fsSync.createReadStream(absPath, { encoding: 'utf8' });
   let leftover = '';
   let currentLineNumber = 1;
-  let guardrailNewlineCount = 0;
-  let guardrailSawAny = false;
-  let guardrailLastChar = '';
 
   const tryAddLine = (line: string, lineNumber: number): void => {
     if (lineNumber < rangeStart || lineNumber > rangeEnd) return;
@@ -700,13 +696,6 @@ async function readFileContentBounded(
     stream.on('error', (err: unknown) => reject(err));
     stream.on('data', (chunk: string | Buffer) => {
       const chunkText = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      if (chunkText.length > 0) {
-        guardrailSawAny = true;
-        for (let i = 0; i < chunkText.length; i += 1) {
-          if (chunkText[i] === '\n') guardrailNewlineCount += 1;
-        }
-        guardrailLastChar = chunkText[chunkText.length - 1] ?? '';
-      }
       const combined = leftover + chunkText;
       const parts = combined.split('\n');
       const nextLeftover = parts.pop();
@@ -720,22 +709,15 @@ async function readFileContentBounded(
     });
     stream.on('end', () => {
       // Canonical line semantics:
-      // - empty file yields 1 empty line (line 1)
+      // - empty file yields 0 lines
       // - trailing '\n' does NOT yield an extra empty "terminator" line
-      if (leftover !== '' || totalLines === 0) {
+      if (leftover !== '') {
         tryAddLine(leftover, currentLineNumber);
         totalLines++;
       }
 
-      const guardrailTotalLines = (() => {
-        if (!guardrailSawAny) return 0;
-        if (guardrailLastChar === '\n') return guardrailNewlineCount;
-        return guardrailNewlineCount + 1;
-      })();
-
       resolve({
         totalLines,
-        guardrailTotalLines,
         formattedContent: outLines.join('\n'),
         shownLines,
         truncatedByMaxLines,
@@ -789,8 +771,8 @@ export const readFileTool = {
           hintUseRangeNext: (relPath: string, start: number, end: number) => string;
           hintLargeFileStrategy: (relPath: string) => string;
           sizeLabel: string;
-          displayTotalLinesLabel: string;
-          guardrailTotalLinesLabel: string;
+          totalLinesLabel: string;
+          emptyFileLabel: string;
           failedToRead: (msg: string) => string;
           invalidFormatMultiToolCalls: (toolName: string) => string;
         }
@@ -825,8 +807,8 @@ export const readFileTool = {
         hintLargeFileStrategy: (relPath: string) =>
           `💡 **大文件策略：** 建议分多轮分析：每轮读取一段、完成总结并整理“重入包”后，在新一轮调用函数工具 \`clear_mind({ \"reminder_content\": \"<重入包>\" })\`（降低上下文占用，同时保留可扫读、可行动的恢复信息），再继续读取下一段（例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`、\`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`）。\n\n`,
         sizeLabel: '大小',
-        displayTotalLinesLabel: '总行数（display）',
-        guardrailTotalLinesLabel: '对账行数（guardrail）',
+        totalLinesLabel: '总行数',
+        emptyFileLabel: '<空文件>',
         failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
           `INVALID_FORMAT：检测到疑似把多个工具调用文本混入了 \`read_file\` 的输入（例如出现 \`${toolName}\`）。\n\n` +
@@ -861,8 +843,8 @@ export const readFileTool = {
         hintLargeFileStrategy: (relPath: string) =>
           `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice, summarize, and prepare a re-entry package; then start a new round and call the function tool \`clear_mind({ \"reminder_content\": \"<re-entry package>\" })\` (less context, while preserving scannable resume info) before reading the next slice (e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`, then \`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`).\n\n`,
         sizeLabel: 'Size',
-        displayTotalLinesLabel: 'Total lines (display)',
-        guardrailTotalLinesLabel: 'Total lines (guardrail)',
+        totalLinesLabel: 'Total lines',
+        emptyFileLabel: '<empty file>',
         failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
           `INVALID_FORMAT: Detected what looks like tool-call text mixed into \`read_file\` input (e.g. \`${toolName}\`).\n\n` +
@@ -1018,17 +1000,15 @@ export const readFileTool = {
 
       const headerSummary =
         language === 'zh'
-          ? `read_file：${rel}；size=${stat.size} bytes；display_total_lines=${contentSummary.totalLines}；guardrail_total_lines=${contentSummary.guardrailTotalLines}；shown=${contentSummary.shownLines}.`
-          : `read_file: ${rel}; size=${stat.size} bytes; display_total_lines=${contentSummary.totalLines}; guardrail_total_lines=${contentSummary.guardrailTotalLines}; shown=${contentSummary.shownLines}.`;
+          ? `read_file：${rel}；size=${stat.size} bytes；total_lines=${contentSummary.totalLines}；shown=${contentSummary.shownLines}.`
+          : `read_file: ${rel}; size=${stat.size} bytes; total_lines=${contentSummary.totalLines}; shown=${contentSummary.shownLines}.`;
 
       const yaml = [
         `status: ok`,
         `mode: read_file`,
         `path: ${yamlQuote(rel)}`,
         `size_bytes: ${stat.size}`,
-        `guardrail_total_bytes: ${stat.size}`,
-        `display_total_lines: ${contentSummary.totalLines}`,
-        `guardrail_total_lines: ${contentSummary.guardrailTotalLines}`,
+        `total_lines: ${contentSummary.totalLines}`,
         `shown_lines: ${contentSummary.shownLines}`,
         `truncated_by_max_lines: ${contentSummary.truncatedByMaxLines}`,
         `truncated_by_char_limit: ${contentSummary.truncatedByCharLimit}`,
@@ -1071,17 +1051,21 @@ export const readFileTool = {
       }
 
       markdown += `**${labels.sizeLabel}:** ${stat.size} bytes\n`;
-      markdown += `**${labels.displayTotalLinesLabel}:** ${contentSummary.totalLines}\n`;
-      markdown += `**${labels.guardrailTotalLinesLabel}:** ${contentSummary.guardrailTotalLines}\n`;
+      markdown += `**${labels.totalLinesLabel}:** ${contentSummary.totalLines}\n`;
+      if (contentSummary.totalLines === 0) {
+        markdown += `\n${labels.emptyFileLabel}\n`;
+      }
       markdown += '\n';
 
-      // Add file content with code block formatting
-      markdown += '```\n';
-      markdown += contentSummary.formattedContent;
-      if (!contentSummary.formattedContent.endsWith('\n')) {
-        markdown += '\n';
+      if (contentSummary.totalLines > 0) {
+        // Add file content with code block formatting
+        markdown += '```\n';
+        markdown += contentSummary.formattedContent;
+        if (!contentSummary.formattedContent.endsWith('\n')) {
+          markdown += '\n';
+        }
+        markdown += '```';
       }
-      markdown += '```';
 
       return markdown;
     } catch (error: unknown) {
@@ -1220,6 +1204,9 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
 
   return {
     path: pathValue,
+    // Guardrails are expected to come from `read_file`'s YAML header:
+    // - `total_lines` → known_old_total_lines
+    // - `size_bytes`  → known_old_total_bytes
     knownOldTotalLines: knownOldTotalLinesValue,
     knownOldTotalBytes: knownOldTotalBytesValue,
     content: contentValue,
@@ -1258,7 +1245,7 @@ export const createNewFileTool: FuncTool = {
             fileExists: '文件已存在，拒绝创建。',
             notAFile: '路径已存在但不是文件（可能是目录），拒绝创建。',
             nextOverwrite:
-              '下一步：先用 read_file 获取 guardrail_total_lines/guardrail_total_bytes，然后再调用 overwrite_entire_file 覆盖写入。',
+              '下一步：先用 read_file 获取 total_lines/size_bytes，然后再调用 overwrite_entire_file 覆盖写入。',
             ok: '已创建新文件。',
           }
         : {
@@ -1266,7 +1253,7 @@ export const createNewFileTool: FuncTool = {
             fileExists: 'File already exists; refusing to create.',
             notAFile: 'Path exists but is not a file (e.g. a directory); refusing to create.',
             nextOverwrite:
-              'Next: call read_file to get guardrail_total_lines/guardrail_total_bytes, then use overwrite_entire_file to overwrite.',
+              'Next: call read_file to get total_lines/size_bytes, then use overwrite_entire_file to overwrite.',
             ok: 'Created new file.',
           };
 
@@ -1405,29 +1392,27 @@ export const overwriteEntireFileTool: FuncTool = {
         ? {
             invalidArgs: (msg: string) => `参数不正确：${msg}`,
             fileNotFound:
-              '文件不存在；创建文件请使用 preview/apply（例如 preview_file_append create=true）。',
+              '文件不存在；创建文件请使用 prepare/apply（例如 prepare_file_append create=true）。',
             notAFile: '路径不是文件。',
             statsMismatch: '旧文件快照不匹配，拒绝覆盖写入。',
-            nextRefreshStats:
-              '下一步：先 read_file / list_dir 获取最新状态（行数用 read_file 的 guardrail_total_lines），再重试。',
+            nextRefreshStats: '下一步：先 read_file 获取最新 total_lines/size_bytes，再重试。',
             suspiciousDiff:
               '检测到疑似 diff/patch 正文，且未显式声明 content_format；为避免把 patch 文本误写进文件，默认拒绝。',
             nextUsePreviewApply:
-              '下一步：改用 preview_* → apply_file_modification；或若确实要保存 diff/patch 字面量，请设置 content_format=diff|patch。',
+              '下一步：改用 prepare_* → apply_file_modification；或若确实要保存 diff/patch 字面量，请设置 content_format=diff|patch。',
             ok: '已覆盖写入。',
           }
         : {
             invalidArgs: (msg: string) => `Invalid args: ${msg}`,
             fileNotFound:
-              'File not found; to create a file, use preview/apply (e.g. preview_file_append create=true).',
+              'File not found; to create a file, use prepare/apply (e.g. prepare_file_append create=true).',
             notAFile: 'Path is not a file.',
             statsMismatch: 'known_old_total_lines/bytes mismatch; refusing to overwrite.',
-            nextRefreshStats:
-              'Next: read_file / list_dir to refresh stats (use read_file guardrail_total_lines for known_old_total_lines), then retry.',
+            nextRefreshStats: 'Next: call read_file to refresh total_lines/size_bytes, then retry.',
             suspiciousDiff:
               'Content looks like a diff/patch, but content_format was not provided; rejected by default to prevent accidental overwrites.',
             nextUsePreviewApply:
-              "Next: use preview_* → apply_file_modification; or if you intentionally want to store diff/patch text literally, set content_format='diff'|'patch'.",
+              "Next: use prepare_* → apply_file_modification; or if you intentionally want to store diff/patch text literally, set content_format='diff'|'patch'.",
             ok: 'Overwrote file.',
           };
 
@@ -1605,7 +1590,7 @@ export const overwriteEntireFileTool: FuncTool = {
   },
 };
 
-async function runPreviewFileModification(
+async function runPrepareFileRangeEdit(
   caller: ToolCaller,
   filePath: string,
   rangeSpec: string,
@@ -1617,7 +1602,7 @@ async function runPreviewFileModification(
     language === 'zh'
       ? {
           invalidFormat:
-            '错误：参数不正确。\n\n期望：调用函数工具 `preview_file_modification({ path, range, existing_hunk_id, content })`。\n（注意：大多数 provider 可省略可选字段；但如果你的 provider 要求“字段全必填”（例如 Codex），则：`existing_hunk_id: \"\"` 表示生成新 hunk；`content: \"\"` 可用于删除范围内内容。）',
+            '错误：参数不正确。\n\n期望：调用函数工具 `prepare_file_range_edit({ path, range, existing_hunk_id, content })`。\n（注意：大多数 provider 可省略可选字段；但如果你的 provider 要求“字段全必填”（例如 Codex），则：`existing_hunk_id: ""` 表示生成新 hunk；`content: ""` 可用于删除范围内内容。）',
           filePathRequired: '错误：需要提供文件路径。',
           rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
           fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
@@ -1632,7 +1617,7 @@ async function runPreviewFileModification(
         }
       : {
           invalidFormat:
-            'Error: Invalid args.\n\nExpected: call the function tool `preview_file_modification({ path, range, existing_hunk_id, content })`.\n(Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex): `existing_hunk_id: \"\"` means generate a new hunk; `content: \"\"` can be used to delete the range.)',
+            'Error: Invalid args.\n\nExpected: call the function tool `prepare_file_range_edit({ path, range, existing_hunk_id, content })`.\n(Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex): `existing_hunk_id: ""` means generate a new hunk; `content: ""` can be used to delete the range.)',
           filePathRequired: 'Error: File path is required.',
           rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
           fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
@@ -1660,7 +1645,6 @@ async function runPreviewFileModification(
     return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
   }
 
-  // Check write access
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
     return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
@@ -1683,19 +1667,17 @@ async function runPreviewFileModification(
       if (existing.kind !== 'range') {
         const content =
           language === 'zh'
-            ? `错误：hunk id \`${requestedId}\` 不是由 preview_file_modification 生成的，不能用该工具覆写。`
-            : `Error: hunk id \`${requestedId}\` was not generated by preview_file_modification; cannot overwrite with this tool.`;
+            ? `错误：hunk id \`${requestedId}\` 不是由 prepare_file_range_edit 生成的，不能用该工具覆写。`
+            : `Error: hunk id \`${requestedId}\` was not generated by prepare_file_range_edit; cannot overwrite with this tool.`;
         return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
       }
     }
 
-    // Check if file exists
     if (!fsSync.existsSync(fullPath)) {
       const content = labels.fileDoesNotExist(filePath);
       return wrapTxtToolResult(language, [{ type: 'environment_msg', role: 'user', content }]);
     }
 
-    // Read current file content
     const currentContent = fsSync.readFileSync(fullPath, 'utf8');
     const currentLines = splitFileTextToLines(currentContent);
 
@@ -1766,8 +1748,8 @@ async function runPreviewFileModification(
 
     const reviseHint =
       language === 'zh'
-        ? `（可选：用同一工具重新规划并覆写该 hunk：\`preview_file_modification({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`。）`
-        : `Optional: revise by re-running the same tool to overwrite this hunk: \`preview_file_modification({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`.`;
+        ? `（可选：用同一工具重新规划并覆写该 hunk：\`prepare_file_range_edit({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`。）`
+        : `Optional: revise by re-running the same tool to overwrite this hunk: \`prepare_file_range_edit({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`.`;
 
     const resolvedStart = range.kind === 'append' ? range.startLine : range.startLine;
     const resolvedEnd =
@@ -1793,7 +1775,7 @@ async function runPreviewFileModification(
 
     const yaml = [
       `status: ok`,
-      `mode: preview_file_modification`,
+      `mode: prepare_file_range_edit`,
       `path: ${yamlQuote(filePath)}`,
       `hunk_id: ${yamlQuote(hunkId)}`,
       `expires_at_ms: ${planned.expiresAtMs}`,
@@ -1838,10 +1820,10 @@ async function runPreviewFileModification(
   }
 }
 
-export const previewFileModificationTool: FuncTool = {
+export const prepareFileRangeEditTool: FuncTool = {
   type: 'func',
-  name: 'preview_file_modification',
-  description: 'Preview a single-file edit by line range (does not write).',
+  name: 'prepare_file_range_edit',
+  description: 'Prepare a single-file edit by line range (does not write).',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -1869,12 +1851,12 @@ export const previewFileModificationTool: FuncTool = {
       );
     }
 
-    const res = await runPreviewFileModification(caller, filePath, range, requestedId, content);
+    const res = await runPrepareFileRangeEdit(caller, filePath, range, requestedId, content);
     return unwrapTxtToolResult(res);
   },
 };
 
-async function runPreviewFileAppend(
+async function runPrepareFileAppend(
   caller: ToolCaller,
   filePath: string,
   inputBody: string,
@@ -1885,11 +1867,9 @@ async function runPreviewFileAppend(
     const content = formatYamlCodeBlock(
       [
         `status: error`,
-        `mode: preview_file_append`,
+        `mode: prepare_file_append`,
         `error: PATH_REQUIRED`,
-        `summary: ${yamlQuote(
-          language === 'zh' ? '需要提供文件路径。' : 'File path is required.',
-        )}`,
+        `summary: ${yamlQuote(language === 'zh' ? '需要提供文件路径。' : 'File path is required.')}`,
       ].join('\n'),
     );
     return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -1902,7 +1882,7 @@ async function runPreviewFileAppend(
     const content = formatYamlCodeBlock(
       [
         `status: error`,
-        `mode: preview_file_append`,
+        `mode: prepare_file_append`,
         `path: ${yamlQuote(filePath)}`,
         `error: CONTENT_REQUIRED`,
         `summary: ${yamlQuote(
@@ -1919,7 +1899,7 @@ async function runPreviewFileAppend(
     const content = formatYamlCodeBlock(
       [
         `status: error`,
-        `mode: preview_file_append`,
+        `mode: prepare_file_append`,
         `path: ${yamlQuote(filePath)}`,
         `error: INVALID_HUNK_ID`,
         `summary: ${yamlQuote(
@@ -1943,7 +1923,7 @@ async function runPreviewFileAppend(
         const content = formatYamlCodeBlock(
           [
             `status: error`,
-            `mode: preview_file_append`,
+            `mode: prepare_file_append`,
             `path: ${yamlQuote(filePath)}`,
             `hunk_id: ${yamlQuote(requestedId)}`,
             `error: HUNK_NOT_FOUND`,
@@ -1960,7 +1940,7 @@ async function runPreviewFileAppend(
         const content = formatYamlCodeBlock(
           [
             `status: error`,
-            `mode: preview_file_append`,
+            `mode: prepare_file_append`,
             `path: ${yamlQuote(filePath)}`,
             `hunk_id: ${yamlQuote(requestedId)}`,
             `error: WRONG_OWNER`,
@@ -1977,14 +1957,14 @@ async function runPreviewFileAppend(
         const content = formatYamlCodeBlock(
           [
             `status: error`,
-            `mode: preview_file_append`,
+            `mode: prepare_file_append`,
             `path: ${yamlQuote(filePath)}`,
             `hunk_id: ${yamlQuote(requestedId)}`,
             `error: WRONG_MODE`,
             `summary: ${yamlQuote(
               language === 'zh'
-                ? '该 hunk id 不是由 preview_file_append 生成的，不能用该工具覆写。'
-                : 'This hunk was not generated by preview_file_append; cannot overwrite.',
+                ? '该 hunk id 不是由 prepare_file_append 生成的，不能用该工具覆写。'
+                : 'This hunk was not generated by prepare_file_append; cannot overwrite.',
             )}`,
           ].join('\n'),
         );
@@ -1997,7 +1977,7 @@ async function runPreviewFileAppend(
       const content = formatYamlCodeBlock(
         [
           `status: error`,
-          `mode: preview_file_append`,
+          `mode: prepare_file_append`,
           `path: ${yamlQuote(filePath)}`,
           `error: FILE_NOT_FOUND`,
           `summary: ${yamlQuote(
@@ -2090,7 +2070,7 @@ async function runPreviewFileAppend(
 
     const yaml = [
       `status: ok`,
-      `mode: preview_file_append`,
+      `mode: prepare_file_append`,
       `path: ${yamlQuote(filePath)}`,
       `hunk_id: ${yamlQuote(hunkId)}`,
       `expires_at_ms: ${planned.expiresAtMs}`,
@@ -2126,7 +2106,7 @@ async function runPreviewFileAppend(
     const content = formatYamlCodeBlock(
       [
         `status: error`,
-        `mode: preview_file_append`,
+        `mode: prepare_file_append`,
         `path: ${yamlQuote(filePath)}`,
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
@@ -2150,7 +2130,7 @@ async function planInsertionCommon(
   },
 ): Promise<TxtToolCallResult> {
   const language = getWorkLanguage();
-  const mode = position === 'after' ? 'preview_insert_after' : 'preview_insert_before';
+  const mode = position === 'after' ? 'prepare_file_insert_after' : 'prepare_file_insert_before';
 
   const filePath = options.filePath;
   const anchor = options.anchor;
@@ -2281,8 +2261,8 @@ async function planInsertionCommon(
             `error: WRONG_MODE`,
             `summary: ${yamlQuote(
               language === 'zh'
-                ? '该 hunk id 不是由 plan_insert_* 生成的，不能用该工具覆写。'
-                : 'This hunk was not generated by plan_insert_*; cannot overwrite.',
+                ? '该 hunk id 不是由 prepare_file_insert_* 生成的，不能用该工具覆写。'
+                : 'This hunk was not generated by prepare_file_insert_*; cannot overwrite.',
             )}`,
           ].join('\n'),
         );
@@ -2308,12 +2288,12 @@ async function planInsertionCommon(
           `mode: ${mode}`,
           `path: ${yamlQuote(filePath)}`,
           `anchor: ${yamlQuote(anchor)}`,
-          `error: ANCHOR_AMBIGUOUS`,
           `candidates_count: ${matchLines.length}`,
+          `error: ANCHOR_AMBIGUOUS`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '锚点出现多次且未指定 occurrence；拒绝规划。请指定 occurrence 或改用 preview_file_modification。'
-              : 'Anchor appears multiple times and occurrence is not specified; refusing to plan. Specify occurrence or use preview_file_modification.',
+              ? '锚点出现多次且未指定 occurrence；拒绝规划。请指定 occurrence 或改用 prepare_file_range_edit。'
+              : 'Anchor appears multiple times and occurrence is not specified; refusing to plan. Specify occurrence or use prepare_file_range_edit.',
           )}`,
         ].join('\n'),
       );
@@ -2330,8 +2310,8 @@ async function planInsertionCommon(
           `error: ANCHOR_NOT_FOUND`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '锚点未找到；请改用 preview_file_modification 或选择更可靠的 anchor。'
-              : 'Anchor not found; use preview_file_modification or choose a different anchor.',
+              ? '锚点未找到；请改用 prepare_file_range_edit 或选择更可靠的 anchor。'
+              : 'Anchor not found; use prepare_file_range_edit or choose a different anchor.',
           )}`,
         ].join('\n'),
       );
@@ -2526,10 +2506,10 @@ async function planInsertionCommon(
   }
 }
 
-export const previewInsertAfterTool: FuncTool = {
+export const prepareFileInsertAfterTool: FuncTool = {
   type: 'func',
-  name: 'preview_insert_after',
-  description: 'Preview an insertion after an anchor line (does not write).',
+  name: 'prepare_file_insert_after',
+  description: 'Prepare a file insertion after an anchor line (does not write).',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -2615,10 +2595,10 @@ export const previewInsertAfterTool: FuncTool = {
   },
 };
 
-export const previewInsertBeforeTool: FuncTool = {
+export const prepareFileInsertBeforeTool: FuncTool = {
   type: 'func',
-  name: 'preview_insert_before',
-  description: 'Preview an insertion before an anchor line (does not write).',
+  name: 'prepare_file_insert_before',
+  description: 'Prepare a file insertion before an anchor line (does not write).',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -3566,7 +3546,7 @@ export const applyFileModificationTool: FuncTool = {
     return unwrapTxtToolResult(res);
   },
 };
-async function runPreviewBlockReplace(
+async function runPrepareBlockReplace(
   caller: ToolCaller,
   options: {
     filePath: string;
@@ -3599,7 +3579,7 @@ async function runPreviewBlockReplace(
     const content = formatYamlCodeBlock(
       [
         `status: error`,
-        `mode: preview_block_replace`,
+        `mode: prepare_file_block_replace`,
         `error: INVALID_FORMAT`,
         `summary: ${yamlQuote(
           language === 'zh'
@@ -3619,7 +3599,7 @@ async function runPreviewBlockReplace(
       [
         `status: error`,
         `path: ${yamlQuote(filePath)}`,
-        `mode: preview_block_replace`,
+        `mode: prepare_file_block_replace`,
         `error: CONTENT_REQUIRED`,
         `summary: ${yamlQuote(
           language === 'zh'
@@ -3644,15 +3624,15 @@ async function runPreviewBlockReplace(
         const content = formatYamlCodeBlock(
           [
             `status: error`,
-            `mode: preview_block_replace`,
+            `mode: prepare_file_block_replace`,
             `path: ${yamlQuote(filePath)}`,
             `hunk_id: ${yamlQuote(requestedId)}`,
             `error: ${wrongMode ? 'WRONG_MODE' : 'HUNK_NOT_FOUND'}`,
             `summary: ${yamlQuote(
               wrongMode
                 ? language === 'zh'
-                  ? '该 hunk id 不是由 preview_block_replace 生成的，不能用该工具覆写。'
-                  : 'This hunk was not generated by preview_block_replace; cannot overwrite.'
+                  ? '该 hunk id 不是由 prepare_file_block_replace 生成的，不能用该工具覆写。'
+                  : 'This hunk was not generated by prepare_file_block_replace; cannot overwrite.'
                 : language === 'zh'
                   ? '该 hunk id 不存在（可能已过期/已被应用）。不支持自定义新 id；要生成新 id，请将 existing_hunk_id 设为空字符串。'
                   : 'Hunk not found (expired or already applied). Custom new ids are not allowed; set existing_hunk_id to an empty string to generate a new one.',
@@ -3665,7 +3645,7 @@ async function runPreviewBlockReplace(
         const content = formatYamlCodeBlock(
           [
             `status: error`,
-            `mode: preview_block_replace`,
+            `mode: prepare_file_block_replace`,
             `path: ${yamlQuote(filePath)}`,
             `hunk_id: ${yamlQuote(requestedId)}`,
             `error: WRONG_OWNER`,
@@ -3685,7 +3665,7 @@ async function runPreviewBlockReplace(
         [
           `status: error`,
           `path: ${yamlQuote(filePath)}`,
-          `mode: preview_block_replace`,
+          `mode: prepare_file_block_replace`,
           `error: FILE_NOT_FOUND`,
           `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File does not exist.')}`,
         ].join('\n'),
@@ -3723,15 +3703,15 @@ async function runPreviewBlockReplace(
         [
           `status: error`,
           `path: ${yamlQuote(filePath)}`,
-          `mode: preview_block_replace`,
+          `mode: prepare_file_block_replace`,
           `start_anchor: ${yamlQuote(startAnchor)}`,
           `end_anchor: ${yamlQuote(endAnchor)}`,
           `candidates_count: 0`,
           `error: ANCHOR_NOT_FOUND`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '锚点未找到或无法配对。请改用 preview_file_modification（行号范围精确编辑）。'
-              : 'Anchors not found or not paired. Use preview_file_modification (line-range precise edits).',
+              ? '锚点未找到或无法配对。请改用 prepare_file_range_edit（行号范围精确编辑）。'
+              : 'Anchors not found or not paired. Use prepare_file_range_edit (line-range precise edits).',
           )}`,
         ].join('\n'),
       );
@@ -3743,15 +3723,15 @@ async function runPreviewBlockReplace(
         [
           `status: error`,
           `path: ${yamlQuote(filePath)}`,
-          `mode: preview_block_replace`,
+          `mode: prepare_file_block_replace`,
           `start_anchor: ${yamlQuote(startAnchor)}`,
           `end_anchor: ${yamlQuote(endAnchor)}`,
           `candidates_count: ${candidatesCount}`,
           `error: ANCHOR_AMBIGUOUS`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 preview_file_modification（行号范围）。`
-              : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use preview_file_modification (line range).`,
+              ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 prepare_file_range_edit（行号范围）。`
+              : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use prepare_file_range_edit (line range).`,
           )}`,
         ].join('\n'),
       );
@@ -3770,7 +3750,7 @@ async function runPreviewBlockReplace(
         [
           `status: error`,
           `path: ${yamlQuote(filePath)}`,
-          `mode: preview_block_replace`,
+          `mode: prepare_file_block_replace`,
           `start_anchor: ${yamlQuote(startAnchor)}`,
           `end_anchor: ${yamlQuote(endAnchor)}`,
           `candidates_count: ${candidatesCount}`,
@@ -3790,15 +3770,15 @@ async function runPreviewBlockReplace(
         [
           `status: error`,
           `path: ${yamlQuote(filePath)}`,
-          `mode: preview_block_replace`,
+          `mode: prepare_file_block_replace`,
           `start_anchor: ${yamlQuote(startAnchor)}`,
           `end_anchor: ${yamlQuote(endAnchor)}`,
           `candidates_count: ${candidatesCount}`,
           `error: ANCHOR_AMBIGUOUS`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 preview_file_modification（行号范围）。'
-              : 'Nested/ambiguous anchors detected. Refusing to preview; normalize anchors or use preview_file_modification (line range).',
+              ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 prepare_file_range_edit（行号范围）。'
+              : 'Nested/ambiguous anchors detected. Refusing to preview; normalize anchors or use prepare_file_range_edit (line range).',
           )}`,
         ].join('\n'),
       );
@@ -3883,7 +3863,7 @@ async function runPreviewBlockReplace(
 
     const yaml = [
       `status: ok`,
-      `mode: preview_block_replace`,
+      `mode: prepare_file_block_replace`,
       `path: ${yamlQuote(filePath)}`,
       `action: block_replace`,
       `start_anchor: ${yamlQuote(startAnchor)}`,
@@ -3933,7 +3913,7 @@ async function runPreviewBlockReplace(
       [
         `status: error`,
         `path: ${yamlQuote(filePath)}`,
-        `mode: preview_block_replace`,
+        `mode: prepare_file_block_replace`,
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n'),
@@ -3942,10 +3922,10 @@ async function runPreviewBlockReplace(
   }
 }
 
-export const previewBlockReplaceTool: FuncTool = {
+export const prepareFileBlockReplaceTool: FuncTool = {
   type: 'func',
-  name: 'preview_block_replace',
-  description: 'Preview a block replacement between anchors (does not write).',
+  name: 'prepare_file_block_replace',
+  description: 'Prepare a block replacement between anchors in a file (does not write).',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -4028,7 +4008,7 @@ export const previewBlockReplaceTool: FuncTool = {
       );
     }
 
-    const res = await runPreviewBlockReplace(caller, {
+    const res = await runPrepareBlockReplace(caller, {
       filePath,
       startAnchor,
       endAnchor,
@@ -4045,10 +4025,10 @@ export const previewBlockReplaceTool: FuncTool = {
   },
 };
 
-export const previewFileAppendTool: FuncTool = {
+export const prepareFileAppendTool: FuncTool = {
   type: 'func',
-  name: 'preview_file_append',
-  description: 'Preview an append-to-EOF edit (does not write).',
+  name: 'prepare_file_append',
+  description: 'Prepare an append-to-EOF edit (does not write).',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -4076,7 +4056,7 @@ export const previewFileAppendTool: FuncTool = {
       );
     }
 
-    const res = await runPreviewFileAppend(caller, filePath, content, {
+    const res = await runPrepareFileAppend(caller, filePath, content, {
       create: create ?? true,
       requestedId,
     });

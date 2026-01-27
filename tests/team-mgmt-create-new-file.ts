@@ -33,7 +33,7 @@ async function main(): Promise<void> {
 
     const read = await teamMgmtReadFileTool.call(dlg, alice, { path: 'team.yaml' });
     assert.ok(read.includes('mode: read_file'));
-    assert.ok(read.includes('guardrail_total_lines: 0'));
+    assert.ok(read.includes('total_lines: 0'));
 
     // Existing file should be refused.
     const exists = await teamMgmtCreateNewFileTool.call(dlg, alice, {

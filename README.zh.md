@@ -39,6 +39,22 @@ npm install -g dominds
 dominds --help
 ```
 
+也可以选择 **无需全局安装** 的方式运行（适合临时试用 / CI / 不想污染环境）：
+
+```bash
+# 运行最新版（会临时下载到 npm cache 并执行）
+npx -y dominds@latest --help
+npx -y dominds@latest
+
+# 或固定到某个版本（更利于复现）
+# npx -y dominds@1.2.3
+```
+
+说明：
+
+- 仅写 `npx dominds` **不一定**会自动跑“最新版”：如果你本地项目已安装了 `dominds`，或 npm cache 已存在旧版本，`npx` 可能会直接复用已有版本。
+- 想要“每次都按 latest 标签解析版本”，请显式写 `dominds@latest`；它仍可能复用 cache 中已下载的同版本（属于正常行为）。
+
 ### 开发与贡献（树内工作流 / in-tree 工作流）
 
 若你计划为 Dominds 开源项目贡献代码，建议使用树内包装器（in-tree wrapper）工作区：

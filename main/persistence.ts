@@ -520,6 +520,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async notifyGeneratingFinish(
     dialog: Dialog,
     contextHealth?: ContextHealthSnapshot,
+    llmGenModel?: string,
   ): Promise<void> {
     const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
     const genseq = dialog.activeGenSeq;
@@ -532,6 +533,7 @@ export class DiskFileDialogStore extends DialogStore {
         type: 'gen_finish_record',
         genseq: genseq,
         contextHealth,
+        llmGenModel,
       };
       await this.appendEvent(round, ev);
 
@@ -540,6 +542,7 @@ export class DiskFileDialogStore extends DialogStore {
         type: 'generating_finish_evt',
         round,
         genseq: genseq,
+        llmGenModel,
       };
       postDialogEvent(dialog, genFinishEvt);
 
@@ -1336,6 +1339,7 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'generating_finish_evt',
           round,
           genseq: event.genseq,
+          llmGenModel: typeof event.llmGenModel === 'string' ? event.llmGenModel : undefined,
           dialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,

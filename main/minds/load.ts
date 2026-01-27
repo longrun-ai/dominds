@@ -68,10 +68,16 @@ function buildShellPolicyPrompt(options: {
   language: LanguageCode;
   agentIsShellSpecialist: boolean;
   agentHasShellTools: boolean;
+  agentHasReadonlyShell: boolean;
   shellSpecialistMemberIds: string[];
 }): string {
-  const { language, agentIsShellSpecialist, agentHasShellTools, shellSpecialistMemberIds } =
-    options;
+  const {
+    language,
+    agentIsShellSpecialist,
+    agentHasShellTools,
+    agentHasReadonlyShell,
+    shellSpecialistMemberIds,
+  } = options;
   const title =
     language === 'zh' ? '### Shell 执行策略（重要）' : '### Shell Execution Policy (Important)';
 
@@ -128,29 +134,58 @@ function buildShellPolicyPrompt(options: {
 
   const body =
     language === 'zh'
-      ? [
-          '你不具备 shell 工具（本环境仅 shell 专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
-          '当你确实需要 shell 执行时：请转交给具备 shell 能力的专员队友，并提供充分理由与可审查的命令提案：',
-          '- 你要达成的目标（why）',
-          '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
-          '- 风险评估与安全边界（risk & guardrails）',
-          `可转交的 shell 专员队友：${shellSpecialists}`,
-          '',
-          '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
-          '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
-        ].join('\n')
-      : [
-          'You do not have shell tools configured (shell execution is restricted to designated specialists): do not fabricate/assume command output, and do not ask the system to execute commands directly.',
-          'When you truly need shell execution, delegate to a shell specialist teammate with a justified, reviewable proposal:',
-          '- Goal (why)',
-          '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
-          '- Risk assessment and guardrails (risk & guardrails)',
-          '',
-          `Shell specialist teammates: ${shellSpecialists}`,
-          '',
-          'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
-          'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
-        ].join('\n');
+      ? agentHasReadonlyShell
+        ? [
+            '你不具备高权限 shell 工具（shell_cmd/stop_daemon/get_daemon_output）。',
+            '你已被明确授权使用 `readonly_shell` 自行执行只读命令（仅允许白名单命令前缀）：请直接调用，不要去寻找 shell 专员代跑。',
+            '',
+            '当你需要的命令不在白名单内，或需要写入/删除/网络/长时间运行/进程管理等高风险能力时：再转交给具备 shell 工具的专员队友，并提供充分理由与可审查的命令提案：',
+            '- 你要达成的目标（why）',
+            '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
+            '- 风险评估与安全边界（risk & guardrails）',
+            `可转交的 shell 专员队友：${shellSpecialists}`,
+            '',
+            '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
+            '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
+          ].join('\n')
+        : [
+            '你不具备 shell 工具（本环境仅 shell 专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
+            '当你确实需要 shell 执行时：请转交给具备 shell 能力的专员队友，并提供充分理由与可审查的命令提案：',
+            '- 你要达成的目标（why）',
+            '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
+            '- 风险评估与安全边界（risk & guardrails）',
+            `可转交的 shell 专员队友：${shellSpecialists}`,
+            '',
+            '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
+            '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
+          ].join('\n')
+      : agentHasReadonlyShell
+        ? [
+            'You do not have high-risk shell tools (shell_cmd/stop_daemon/get_daemon_output).',
+            'You are explicitly authorized to use `readonly_shell` yourself for read-only inspection via its small allowlist. Call it directly; do not go looking for a shell specialist to run it for you.',
+            '',
+            'When the command you need is not in the allowlist, or you need high-risk capabilities like writes/deletes/network/long-running jobs/process management: delegate to a shell specialist teammate with a justified, reviewable proposal:',
+            '- Goal (why)',
+            '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
+            '- Risk assessment and guardrails (risk & guardrails)',
+            '',
+            `Shell specialist teammates: ${shellSpecialists}`,
+            '',
+            'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
+            'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
+          ].join('\n')
+        : [
+            'You do not have shell tools configured (shell execution is restricted to designated specialists): do not fabricate/assume command output, and do not ask the system to execute commands directly.',
+            'When you truly need shell execution, delegate to a shell specialist teammate with a justified, reviewable proposal:',
+            '- Goal (why)',
+            '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
+            '- Risk assessment and guardrails (risk & guardrails)',
+            '',
+            `Shell specialist teammates: ${shellSpecialists}`,
+            '',
+            'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
+            'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
+          ].join('\n');
   return `${title}\n\n${body}`.trim();
 }
 
@@ -286,11 +321,13 @@ export async function loadAgentMinds(
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
   const agentHasShellTools = funcTools.some((t) => isShellToolName(t.name));
+  const agentHasReadonlyShell = funcTools.some((t) => t.name === 'readonly_shell');
   const shellSpecialistMemberIds = listShellSpecialistMemberIds(team);
   const shellPolicyPrompt = buildShellPolicyPrompt({
     language: workingLanguage,
     agentIsShellSpecialist,
     agentHasShellTools,
+    agentHasReadonlyShell,
     shellSpecialistMemberIds,
   });
 

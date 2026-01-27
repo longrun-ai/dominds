@@ -15,6 +15,7 @@ export type ContextHealthSnapshot =
   | {
       kind: 'unavailable';
       reason: 'usage_unavailable' | 'model_limit_unavailable';
+      modelContextWindowText?: string;
       modelContextLimitTokens?: number;
       effectiveOptimalMaxTokens?: number;
       optimalMaxTokensConfigured?: number;
@@ -26,6 +27,7 @@ export type ContextHealthSnapshot =
       promptTokens: number;
       completionTokens: number;
       totalTokens?: number;
+      modelContextWindowText?: string;
       modelContextLimitTokens: number;
       effectiveOptimalMaxTokens: number;
       optimalMaxTokensConfigured?: number;

@@ -53,6 +53,7 @@ export type GeneratingStartEvent = LlmGenDlgEvent & {
 
 export type GeneratingFinishEvent = LlmGenDlgEvent & {
   type: 'generating_finish_evt';
+  llmGenModel?: string;
 };
 
 export type ContextHealthEvent = LlmGenDlgEvent & {

@@ -66,6 +66,101 @@ class ScrollingBuffer {
   }
 }
 
+class HeadTailByteBuffer {
+  private readonly maxBytes: number;
+  private readonly headBudget: number;
+  private readonly tailBudget: number;
+  private readonly head: Buffer[] = [];
+  private readonly tail: Buffer[] = [];
+  private headBytes = 0;
+  private tailBytes = 0;
+  private omittedBytes = 0;
+
+  constructor(maxBytes: number) {
+    this.maxBytes = Math.max(0, Math.floor(maxBytes));
+    this.headBudget = Math.floor(this.maxBytes / 2);
+    this.tailBudget = this.maxBytes - this.headBudget;
+  }
+
+  addBytes(chunk: Buffer): void {
+    if (this.maxBytes === 0) {
+      this.omittedBytes += chunk.length;
+      return;
+    }
+
+    if (this.headBytes < this.headBudget) {
+      const remainingHead = this.headBudget - this.headBytes;
+      if (chunk.length <= remainingHead) {
+        this.head.push(chunk);
+        this.headBytes += chunk.length;
+        return;
+      }
+
+      const headPart = chunk.subarray(0, remainingHead);
+      const tailPart = chunk.subarray(remainingHead);
+      if (headPart.length > 0) {
+        this.head.push(headPart);
+        this.headBytes += headPart.length;
+      }
+      this.pushToTail(tailPart);
+      return;
+    }
+
+    this.pushToTail(chunk);
+  }
+
+  addText(text: string): void {
+    this.addBytes(Buffer.from(text));
+  }
+
+  private pushToTail(chunk: Buffer): void {
+    if (this.tailBudget === 0) {
+      this.omittedBytes += chunk.length;
+      return;
+    }
+
+    if (chunk.length >= this.tailBudget) {
+      this.omittedBytes += this.tailBytes;
+      this.tail.length = 0;
+      this.tailBytes = 0;
+
+      const kept = chunk.subarray(chunk.length - this.tailBudget);
+      const omitted = chunk.length - kept.length;
+      this.omittedBytes += omitted;
+
+      if (kept.length > 0) {
+        this.tail.push(kept);
+        this.tailBytes = kept.length;
+      }
+      return;
+    }
+
+    this.tail.push(chunk);
+    this.tailBytes += chunk.length;
+    while (this.tailBytes > this.tailBudget && this.tail.length > 0) {
+      const dropped = this.tail.shift();
+      if (!dropped) break;
+      this.tailBytes -= dropped.length;
+      this.omittedBytes += dropped.length;
+    }
+  }
+
+  getOmittedBytes(): number {
+    return this.omittedBytes;
+  }
+
+  isEmpty(): boolean {
+    return this.headBytes === 0 && this.tailBytes === 0;
+  }
+
+  getContent(): string {
+    const chunks: Buffer[] = [];
+    chunks.push(...this.head);
+    chunks.push(...this.tail);
+    return Buffer.concat(chunks).toString();
+  }
+}
+
 // Daemon process tracking with scrolling buffers
 interface DaemonProcess {
   pid: number;
@@ -90,6 +185,11 @@ interface ShellCmdArgs {
   shell?: string;
   bufferSize?: number;
   timeoutSeconds?: number;
+}
+
+interface ReadonlyShellArgs {
+  command: string;
+  timeoutMs?: number;
 }
 
 // Stop daemon arguments interface
@@ -221,6 +321,49 @@ function parseShellCmdArgs(args: ToolArguments): ShellCmdArgs {
   };
 }
 
+function parseReadonlyShellArgs(args: ToolArguments): ReadonlyShellArgs {
+  const command = args.command;
+  if (typeof command !== 'string' || command.trim() === '') {
+    throw new Error('readonly_shell.command must be a string');
+  }
+
+  const timeoutAlias = args.timeout;
+  if (timeoutAlias !== undefined && typeof timeoutAlias !== 'number') {
+    throw new Error('readonly_shell.timeout must be a number if provided');
+  }
+
+  const timeoutMs = args.timeout_ms;
+  if (timeoutMs !== undefined && typeof timeoutMs !== 'number') {
+    throw new Error('readonly_shell.timeout_ms must be a number if provided');
+  }
+
+  return {
+    command,
+    timeoutMs:
+      timeoutMs === undefined
+        ? timeoutAlias === undefined
+          ? undefined
+          : timeoutAlias === 0
+            ? undefined
+            : Number.isInteger(timeoutAlias) && timeoutAlias > 0
+              ? timeoutAlias
+              : (() => {
+                  throw new Error(
+                    'readonly_shell.timeout must be a positive integer (or 0 for default)',
+                  );
+                })()
+        : timeoutMs === 0
+          ? undefined
+          : Number.isInteger(timeoutMs) && timeoutMs > 0
+            ? timeoutMs
+            : (() => {
+                throw new Error(
+                  'readonly_shell.timeout_ms must be a positive integer (or 0 for default)',
+                );
+              })(),
+  };
+}
+
 function parseStopDaemonArgs(args: ToolArguments): StopDaemonArgs {
   const pid = args.pid;
   if (typeof pid !== 'number') {
@@ -262,6 +405,26 @@ const shellCmdSchema: JsonSchema = {
     timeoutSeconds: {
       type: 'number',
       description: 'Timeout in seconds to wait for process completion (default: 5)',
+    },
+  },
+  required: ['command'],
+  additionalProperties: false,
+};
+
+const readonlyShellSchema: JsonSchema = {
+  type: 'object',
+  properties: {
+    command: {
+      type: 'string',
+      description: 'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, git show)',
+    },
+    timeout_ms: {
+      type: 'number',
+      description: 'Maximum time in milliseconds the command is allowed to run (default: 10000)',
+    },
+    timeout: {
+      type: 'number',
+      description: 'Alias for timeout_ms',
     },
   },
   required: ['command'],
@@ -552,6 +715,139 @@ export const shellCmdTool: FuncTool = {
       childProcess.on('error', (error) => {
         clearTimeout(timeoutHandle);
         resolve(t.failedToExecute(error.message));
+      });
+    });
+  },
+};
+
+const readonlyShellAllowedPrefixes = ['cat', 'rg', 'sed', 'ls', 'nl', 'wc', 'git show'] as const;
+
+function isAllowedReadonlyShellCommand(command: string): boolean {
+  const trimmed = command.trimStart();
+  for (const prefix of readonlyShellAllowedPrefixes) {
+    if (trimmed === prefix || trimmed.startsWith(`${prefix} `)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export const readonlyShellTool: FuncTool = {
+  type: 'func',
+  name: 'readonly_shell',
+  description:
+    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). This tool performs only a simple command prefix check and does not do deeper safety validation.',
+  descriptionI18n: {
+    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). You are explicitly authorized to call this tool yourself (no delegation). This tool performs only a simple command prefix check and does not do deeper safety validation.',
+    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、git show）。你已被明确授权自行调用该工具（无需委派）。该工具只做简单的命令前缀判断，不做更深入的安全校验。',
+  },
+  parameters: readonlyShellSchema,
+  async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
+    const language = getWorkLanguage();
+    const t = getOsToolMessages(language);
+    const parsedArgs = parseReadonlyShellArgs(args);
+    const { command, timeoutMs = 10_000 } = parsedArgs;
+
+    if (!isAllowedReadonlyShellCommand(command)) {
+      const allowedList = readonlyShellAllowedPrefixes.join(', ');
+      return language === 'zh'
+        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n收到：${command}`
+        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nGot: ${command}`;
+    }
+
+    const stdoutBuffer = new HeadTailByteBuffer(1024 * 1024);
+    const stderrBuffer = new HeadTailByteBuffer(1024 * 1024);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (content: string): void => {
+        if (settled) return;
+        settled = true;
+        resolve(content.trim());
+      };
+
+      const childProcess = spawn('bash', ['-c', command], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      childProcess.stdout?.on('data', (data: Buffer) => {
+        stdoutBuffer.addBytes(data);
+      });
+
+      childProcess.stderr?.on('data', (data: Buffer) => {
+        stderrBuffer.addBytes(data);
+      });
+
+      const timeoutHandle = setTimeout(() => {
+        try {
+          childProcess.kill('SIGTERM');
+        } catch {
+          // ignore
+        }
+
+        const omittedBytes = stdoutBuffer.getOmittedBytes() + stderrBuffer.getOmittedBytes();
+
+        const fenceConsole = '```console';
+        const fenceEnd = '```';
+        const timeoutMsg =
+          language === 'zh'
+            ? `⏱️ 命令超时（${timeoutMs}ms），已发送 SIGTERM。\n`
+            : `⏱️ Command timed out (${timeoutMs}ms); SIGTERM sent.\n`;
+        const truncationNotice =
+          omittedBytes > 0
+            ? language === 'zh'
+              ? `⚠️  输出已截断，约省略 ${omittedBytes} 字节\n`
+              : `⚠️  Output truncated; ~${omittedBytes} bytes omitted\n`
+            : '';
+
+        let result = `${timeoutMsg}${truncationNotice}`.trimEnd();
+
+        const stdoutContent = stdoutBuffer.getContent();
+        const stderrContent = stderrBuffer.getContent();
+
+        if (stdoutContent) {
+          result += `\n\n${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}`;
+        }
+
+        if (stderrContent) {
+          result += `\n\n${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
+        }
+
+        finish(result);
+      }, timeoutMs);
+
+      childProcess.on('close', (code) => {
+        clearTimeout(timeoutHandle);
+
+        const omittedBytes = stdoutBuffer.getOmittedBytes() + stderrBuffer.getOmittedBytes();
+        const truncationNotice =
+          omittedBytes > 0
+            ? language === 'zh'
+              ? `\n⚠️  输出已截断，约省略 ${omittedBytes} 字节`
+              : `\n⚠️  Output truncated; ~${omittedBytes} bytes omitted`
+            : '';
+
+        const stdoutContent = stdoutBuffer.getContent();
+        const stderrContent = stderrBuffer.getContent();
+
+        const fenceConsole = '```console';
+        const fenceEnd = '```';
+        let result = t.commandCompleted(code, truncationNotice);
+
+        if (stdoutContent) {
+          result += `${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}\n\n`;
+        }
+
+        if (stderrContent) {
+          result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
+        }
+
+        finish(result);
+      });
+
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutHandle);
+        finish(t.failedToExecute(error.message));
       });
     });
   },

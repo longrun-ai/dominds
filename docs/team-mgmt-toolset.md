@@ -90,25 +90,25 @@ The `team-mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scope
 
 Recommended tools (names are suggestions; use `snake_case` to match existing tools):
 
-| Tool name                             | Based on | Purpose                                                                           | Default allowlist scope |
-| ------------------------------------- | -------- | --------------------------------------------------------------------------------- | ----------------------- |
-| `team_mgmt_list_dir`                  | `fs`     | List directories/files under `.minds/`                                            | `.minds/**`             |
-| `team_mgmt_read_file`                 | `txt`    | Read a text file under `.minds/`                                                  | `.minds/**`             |
-| `team_mgmt_create_new_file`           | `txt`    | Create a new file under `.minds/` (empty content allowed; refuses overwrite)      | `.minds/**`             |
-| `team_mgmt_overwrite_entire_file`     | `txt`    | Overwrite an existing file under `.minds/` (guarded exception path)               | `.minds/**`             |
-| `team_mgmt_preview_file_modification` | `txt`    | Preview a single-file edit by line range under `.minds/` (returns a diff hunk id) | `.minds/**`             |
-| `team_mgmt_preview_file_append`       | `txt`    | Preview an append-to-EOF edit under `.minds/` (returns a diff hunk id)            | `.minds/**`             |
-| `team_mgmt_preview_insert_after`      | `txt`    | Preview inserting after an anchor under `.minds/` (returns a diff hunk id)        | `.minds/**`             |
-| `team_mgmt_preview_insert_before`     | `txt`    | Preview inserting before an anchor under `.minds/` (returns a diff hunk id)       | `.minds/**`             |
-| `team_mgmt_preview_block_replace`     | `txt`    | Preview a block replace between anchors under `.minds/` (returns a diff hunk id)  | `.minds/**`             |
-| `team_mgmt_apply_file_modification`   | `txt`    | Apply a planned modification by hunk id under `.minds/`                           | `.minds/**`             |
-| `team_mgmt_mk_dir`                    | `fs`     | Create directories under `.minds/`                                                | `.minds/**`             |
-| `team_mgmt_move_file`                 | `fs`     | Move/rename files under `.minds/`                                                 | `.minds/**`             |
-| `team_mgmt_move_dir`                  | `fs`     | Move/rename directories under `.minds/`                                           | `.minds/**`             |
-| `team_mgmt_rm_file`                   | `fs`     | Delete files under `.minds/`                                                      | `.minds/**`             |
-| `team_mgmt_rm_dir`                    | `fs`     | Delete directories under `.minds/`                                                | `.minds/**`             |
-| `team_mgmt_validate_team_cfg`         | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel              | `.minds/**`             |
-| `team_mgmt_manual`                    | new      | Built-in “how-to” manual (see below)                                              | N/A                     |
+| Tool name                              | Based on | Purpose                                                                           | Default allowlist scope |
+| -------------------------------------- | -------- | --------------------------------------------------------------------------------- | ----------------------- |
+| `team_mgmt_list_dir`                   | `fs`     | List directories/files under `.minds/`                                            | `.minds/**`             |
+| `team_mgmt_read_file`                  | `txt`    | Read a text file under `.minds/`                                                  | `.minds/**`             |
+| `team_mgmt_create_new_file`            | `txt`    | Create a new file under `.minds/` (empty content allowed; refuses overwrite)      | `.minds/**`             |
+| `team_mgmt_overwrite_entire_file`      | `txt`    | Overwrite an existing file under `.minds/` (guarded exception path)               | `.minds/**`             |
+| `team_mgmt_prepare_file_range_edit`    | `txt`    | Prepare a single-file edit by line range under `.minds/` (returns a diff hunk id) | `.minds/**`             |
+| `team_mgmt_prepare_file_append`        | `txt`    | Prepare an append-to-EOF edit under `.minds/` (returns a diff hunk id)            | `.minds/**`             |
+| `team_mgmt_prepare_file_insert_after`  | `txt`    | Prepare inserting after an anchor under `.minds/` (returns a diff hunk id)        | `.minds/**`             |
+| `team_mgmt_prepare_file_insert_before` | `txt`    | Prepare inserting before an anchor under `.minds/` (returns a diff hunk id)       | `.minds/**`             |
+| `team_mgmt_prepare_file_block_replace` | `txt`    | Prepare a block replace between anchors under `.minds/` (returns a diff hunk id)  | `.minds/**`             |
+| `team_mgmt_apply_file_modification`    | `txt`    | Apply a planned modification by hunk id under `.minds/`                           | `.minds/**`             |
+| `team_mgmt_mk_dir`                     | `fs`     | Create directories under `.minds/`                                                | `.minds/**`             |
+| `team_mgmt_move_file`                  | `fs`     | Move/rename files under `.minds/`                                                 | `.minds/**`             |
+| `team_mgmt_move_dir`                   | `fs`     | Move/rename directories under `.minds/`                                           | `.minds/**`             |
+| `team_mgmt_rm_file`                    | `fs`     | Delete files under `.minds/`                                                      | `.minds/**`             |
+| `team_mgmt_rm_dir`                     | `fs`     | Delete directories under `.minds/`                                                | `.minds/**`             |
+| `team_mgmt_validate_team_cfg`          | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel              | `.minds/**`             |
+| `team_mgmt_manual`                     | new      | Built-in “how-to” manual (see below)                                              | N/A                     |
 
 Notes:
 

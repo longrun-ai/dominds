@@ -35,7 +35,7 @@ updated: 2026-01-24
 
 ### 2.1 目标
 
-- 把增量编辑统一为：`preview_*` → `apply_file_modification`。
+- 把增量编辑统一为：`prepare_*` → `apply_file_modification`。
 - 提供可复核输出：YAML summary + evidence（plan）/apply_evidence（apply） + unified diff。
 - 明确并发/时序约束：避免在同一条消息中把 preview 与 apply 混在一起。
 - 给出稳定的失败模式与下一步建议（尤其是锚点歧义与 apply rejected）。
@@ -70,26 +70,26 @@ updated: 2026-01-24
 
 ### 4.2 原始写入工具（例外）
 
-- `create_new_file`（函数工具）：创建新文件（不走 preview/apply），允许空内容。  
+- `create_new_file`（函数工具）：创建新文件（不走 prepare/apply），允许空内容。  
   设计定位：解决“创建空文件/新文件”不应被迫走增量编辑；同时避免误用 `overwrite_entire_file`（它的语义是覆盖既有文件）。  
   行为：若目标已存在则拒绝（`FILE_EXISTS`/`NOT_A_FILE`）；不存在则创建父目录并写入内容。  
   规范化：若 `content` 非空且末尾缺少 `\n`，则补齐并在输出中显示 `normalized_trailing_newline_added=true`。  
   输出：成功/失败均为 YAML（便于脚本化与回归）。
 
-- `overwrite_entire_file`（函数工具）：整文件覆盖写入（**不走 preview/apply**）。  
-  使用建议：先用 `read_file` 获取 `guardrail_total_lines/guardrail_total_bytes` 作为 `known_old_total_lines/known_old_total_bytes` 的对账输入（避免空文件 display 行数=1 的误解）。  
-  设计定位：用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 preview/apply。  
+- `overwrite_entire_file`（函数工具）：整文件覆盖写入（**不走 prepare/apply**）。  
+  使用建议：先用 `read_file` 获取 `total_lines/size_bytes` 作为 `known_old_total_lines/known_old_total_bytes` 的对账输入。  
+  设计定位：用于“新内容很小（例如 <100 行）”或“明确为重置/生成物”的场景；其他情况优先 prepare/apply。  
   护栏（强制）：必须提供 `known_old_total_lines/known_old_total_bytes`（旧文件快照）才允许执行；若对账不匹配则拒绝覆盖。  
-  护栏（默认拒绝）：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 preview/apply（避免把 patch 文本误写进文件）。  
-  限制：不负责创建文件；创建空文件/新文件请用 `create_new_file`；创建“带非空初始内容”的新文件可用 `preview_file_append create=true` → `apply_file_modification`。
+  护栏（默认拒绝）：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 prepare/apply（避免把 patch 文本误写进文件）。  
+  限制：不负责创建文件；创建空文件/新文件请用 `create_new_file`；创建“带非空初始内容”的新文件可用 `prepare_file_append create=true` → `apply_file_modification`。
 
-### 4.3 增量编辑（preview-first）
+### 4.3 增量编辑（prepare-first）
 
-- `preview_file_modification`：按行号范围预览 replace/delete/append（append 通过 `N~` 且 `N=(last_line+1)`）。
-- `preview_file_append`：预览追加到 EOF（可选 `create=true|false`）。
-- `preview_insert_after` / `preview_insert_before`：按锚点行预览插入（preview 阶段严格处理歧义；锚点多次出现必须指定 `occurrence`）。
-- `preview_block_replace`：按 start/end 锚点预览块替换（可配置 `include_anchors` / `require_unique` / `strict` / `occurrence` 等）。
-- `apply_file_modification`：唯一 apply，能应用来自上述任意 `preview_*` 的 hunk（range/append/insert/block_replace）。
+- `prepare_file_range_edit`：按行号范围预览 replace/delete/append（append 通过 `N~` 且 `N=(last_line+1)`）。
+- `prepare_file_append`：预览追加到 EOF（可选 `create=true|false`）。
+- `prepare_file_insert_after` / `prepare_file_insert_before`：按锚点行预览插入（prepare 阶段严格处理歧义；锚点多次出现必须指定 `occurrence`）。
+- `prepare_file_block_replace`：按 start/end 锚点预览块替换（可配置 `include_anchors` / `require_unique` / `strict` / `occurrence` 等）。
+- `apply_file_modification`：唯一 apply，能应用来自上述任意 `prepare_*` 的 hunk（range/append/insert/block_replace）。
 
 ## 5. 关键并发约束与顺序建议
 
@@ -97,7 +97,7 @@ updated: 2026-01-24
 
 同一条消息中的多个工具调用会并行执行，互相不可见输出/写入。因此：
 
-- **preview → apply 必须分两条消息**（否则 apply 可能“看不到”本轮刚生成的 hunk）。
+- **prepare → apply 必须分两条消息**（否则 apply 可能“看不到”本轮刚生成的 hunk）。
 
 ### 5.2 apply 的并发安全（当前实现）
 
@@ -119,9 +119,9 @@ updated: 2026-01-24
 
 支持“带 `existing_hunk_id` 重新 plan 覆写”的工具与规则：
 
-- `preview_file_modification`：支持 `existing_hunk_id`，但该 id 必须已存在、归属当前成员、且模式匹配（不能拿别的 preview 模式的 id 来覆写）。
-- `preview_file_append` / `preview_insert_after` / `preview_insert_before`：同样支持 `existing_hunk_id` 覆写同模式预览。
-- `preview_block_replace`：支持 `existing_hunk_id` 覆写同模式预览（同 owner / 同 kind；跨模式拒绝）。
+- `prepare_file_range_edit`：支持 `existing_hunk_id`，但该 id 必须已存在、归属当前成员、且模式匹配（不能拿别的 prepare 模式的 id 来覆写）。
+- `prepare_file_append` / `prepare_file_insert_after` / `prepare_file_insert_before`：同样支持 `existing_hunk_id` 覆写同模式预览。
+- `prepare_file_block_replace`：支持 `existing_hunk_id` 覆写同模式预览（同 owner / 同 kind；跨模式拒绝）。
 - 所有 plan 工具都**不允许自定义新 id**：只能通过“省略/清空 `existing_hunk_id`”来生成新规划；只有当你想覆写既有规划时才传入 `existing_hunk_id`。
 
 > 注意：有些 provider（例如 Codex）会要求函数工具的参数字段都“必填”（schema 全 required）。  
@@ -146,7 +146,7 @@ updated: 2026-01-24
 
 ### 7.2 空行风格（仅可观测）
 
-对 append/insert，preview 阶段会输出 `blankline_style` 与 `style_warning`，用于提示“可能产生双空行/粘行”等风险；当前不主动改变正文空行风格。
+对 append/insert，prepare 阶段会输出 `blankline_style` 与 `style_warning`，用于提示“可能产生双空行/粘行”等风险；当前不主动改变正文空行风格。
 
 ## 8. YAML 输出契约（以当前实现为准）
 
@@ -155,7 +155,7 @@ updated: 2026-01-24
 ### 8.1 Plan（共同字段）
 
 - `status: ok|error`
-- `mode: preview_file_modification|preview_file_append|preview_insert_after|preview_insert_before|preview_block_replace`
+- `mode: prepare_file_range_edit|prepare_file_append|prepare_file_insert_after|prepare_file_insert_before|prepare_file_block_replace`
 - `path`
 - `hunk_id`、`expires_at_ms`
 - `action: replace|delete|append|insert|block_replace`
@@ -165,20 +165,20 @@ updated: 2026-01-24
 
 ### 8.2 Plan（按工具/动作的关键字段）
 
-- `preview_file_modification`：
+- `prepare_file_range_edit`：
   - `range.input` / `range.resolved.start|end`
   - `lines.old|new|delta`
   - `evidence.before|range|after`
-- `preview_file_append`：
+- `prepare_file_append`：
   - `file_line_count_before|after`、`appended_line_count`
   - `blankline_style.file_trailing_blank_line_count` / `content_leading_blank_line_count`
   - `evidence_preview.before_tail|append_preview|after_tail`
-- `preview_insert_*`：
+- `prepare_file_insert_*`：
   - `position`、`anchor`、`match`
   - `candidates_count`、`occurrence_resolved`
   - `inserted_at_line`、`inserted_line_count`、`lines.old|new|delta`
   - `blankline_style.*`、`evidence_preview.*`
-- `preview_block_replace`：
+- `prepare_file_block_replace`：
   - `start_anchor` / `end_anchor` / `match`
   - `include_anchors` / `require_unique` / `strict`
   - `candidates_count` / `occurrence_resolved`
@@ -206,9 +206,14 @@ updated: 2026-01-24
 
 为提升可脚本化与回归稳定性：
 
-- `read_file` 输出开头包含 YAML header（随后是代码块正文），其中会同时给出：
-  - `display_total_lines`（用于阅读稳定性：空文件显示为 1 行空行）
-  - `guardrail_total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
+- `read_file` 输出开头包含 YAML header（随后是代码块正文），其中会给出：
+  - `total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
+- `overwrite_entire_file` 的成功/失败输出均使用 YAML（便于程序化处理与重试）。
+
+为提升可脚本化与回归稳定性：
+
+- `read_file` 输出开头包含 YAML header（随后是代码块正文），其中会给出：
+  - `total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
 - `overwrite_entire_file` 的成功/失败输出均使用 YAML（便于程序化处理与重试）。
 
 ## 9. 错误与拒绝（稳定方向）
@@ -224,55 +229,27 @@ updated: 2026-01-24
 
 - `HUNK_NOT_FOUND`：hunk 过期/已应用/不存在。
 - `WRONG_OWNER`：hunk 非当前成员规划。
-- `FILE_NOT_FOUND`：目标文件不存在（对不允许创建的动作直接拒绝）。
-- `context_match: rejected` + `APPLY_REJECTED_*`：无法安全定位或内容不一致；必须重新 plan。
 
-## 10. 复制即用模板（按当前工具契约）
+## 10. 示例（copy/paste 可用）
 
-### 10.1 锚点后插入（plan + apply，两条消息）
-
-消息 1：
+- 末尾追加：
 
 ```text
-Call the function tool `preview_insert_after` with:
-{ "path": "docs/spec.md", "anchor": "## Configuration", "content": "### Defaults\n- provider: codex\n" }
+Call the function tool `prepare_file_append` with:
+{ "path": "notes/prompt.md", "content": "## Tools\n- Use prepare_* + apply_file_modification for incremental edits.\n" }
 ```
 
-消息 2：
+- 行号范围替换（`content` 可为空字符串表示删除）：
 
 ```text
-Call the function tool `apply_file_modification` with:
-{ "hunk_id": "<hunk_id>" }
-```
-
-### 10.2 末尾追加（plan + apply）
-
-```text
-Call the function tool `preview_file_append` with:
-{ "path": "notes/prompt.md", "content": "## Tools\n- Use preview_* + apply_file_modification for incremental edits.\n" }
-```
-
-```text
-Call the function tool `apply_file_modification` with:
-{ "hunk_id": "<hunk_id>" }
-```
-
-### 10.3 行号范围替换（正文可为空表示 delete）
-
-```text
-Call the function tool `preview_file_modification` with:
+Call the function tool `prepare_file_range_edit` with:
 { "path": "README.md", "range": "10~12", "content": "New line 10\nNew line 11\n" }
 ```
 
-```text
-Call the function tool `apply_file_modification` with:
-{ "hunk_id": "<hunk_id>" }
-```
-
-### 10.4 双锚点块替换
+- 双锚点块替换：
 
 ```text
-Call the function tool `preview_block_replace` with:
+Call the function tool `prepare_file_block_replace` with:
 { "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
 ```
 
@@ -283,8 +260,8 @@ Call the function tool `apply_file_modification` with:
 
 ## 11. 与 `.minds/` 的关系（team-mgmt 版本）
 
-`.minds/` 属于团队配置与工作区记忆的核心，通常应通过 `team-mgmt` toolset 的镜像工具操作（例如 `team_mgmt_preview_insert_after` 等）。  
-本设计文档的“preview-first + 单 apply”心智模型保持一致，但路径与权限语义由 team-mgmt 工具包装层决定（详见 team-mgmt 文档/工具说明）。
+`.minds/` 属于团队配置与工作区记忆的核心，通常应通过 `team-mgmt` toolset 的镜像工具操作（例如 `team_mgmt_prepare_file_insert_after` 等）。  
+本设计文档的“prepare-first + 单 apply”心智模型保持一致，但路径与权限语义由 team-mgmt 工具包装层决定（详见 team-mgmt 文档/工具说明）。
 
 ---
 
@@ -292,9 +269,9 @@ Call the function tool `apply_file_modification` with:
 
 This is the design doc for `ws_mod` text editing as implemented.
 
-- Incremental edits are **preview-first** (`preview_*` returns YAML + unified diff + `hunk_id`) and **single-apply** (`apply_file_modification({hunk_id})` is the only apply entrypoint).
+- Incremental edits are **prepare-first** (`prepare_*` returns YAML + unified diff + `hunk_id`) and **single-apply** (`apply_file_modification({hunk_id})` is the only apply entrypoint).
 - Legacy direct-write edit tools are removed (no compat): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
-- Tool calls in one message run in parallel → **preview → apply must be two messages**.
+- Tool calls in one message run in parallel → **prepare → apply must be two messages**.
 - Applies are serialized per file in-process (queue by `createdAtMs`, then `hunkId`).
 - `hunk_id` is TTL-limited and in-memory; apply checks ownership and access.
 - `create_new_file` creates a new file (empty content allowed) and refuses to overwrite existing files (YAML-only output).

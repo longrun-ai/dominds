@@ -28,6 +28,22 @@ const codexFallbackInstructions = 'You are Codex CLI.';
 
 type CodexPromptLoader = (model: string) => Promise<string | null>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function tryExtractApiReturnedModel(value: unknown): string | undefined {
+  // NOTE: This payload is derived from an external API / transport layer.
+  // Some upstream variants include `model`, but the exported TS types may not.
+  // A runtime check is unavoidable here.
+  if (!isRecord(value)) return undefined;
+  if (!('model' in value)) return undefined;
+  const model = value.model;
+  if (typeof model !== 'string') return undefined;
+  const trimmed = model.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 async function resolveCodexInstructions(
   model: string,
   systemPrompt: string,
@@ -215,12 +231,16 @@ export class CodexGen implements LlmGenerator {
     let thinkingStarted = false;
     let sawOutputText = false;
     let usage: LlmUsageStats = { kind: 'unavailable' };
+    let returnedModel: string | undefined;
 
     const eventReceiver: ChatGptEventReceiver = {
       onEvent: async (event: ChatGptResponsesStreamEvent) => {
         switch (event.type) {
           case 'response.created':
           case 'response.in_progress':
+            if (returnedModel === undefined) {
+              returnedModel = tryExtractApiReturnedModel(event.response);
+            }
             return;
           case 'response.failed': {
             const error = event.response.error;
@@ -341,6 +361,9 @@ export class CodexGen implements LlmGenerator {
               await receiver.thinkingFinish();
               thinkingStarted = false;
             }
+            if (returnedModel === undefined) {
+              returnedModel = tryExtractApiReturnedModel(event.response);
+            }
             const responseUsage = event.response.usage;
             if (
               responseUsage &&
@@ -381,7 +404,7 @@ export class CodexGen implements LlmGenerator {
       }
     }
 
-    return { usage };
+    return { usage, llmGenModel: returnedModel };
   }
 
   async genMoreMessages(

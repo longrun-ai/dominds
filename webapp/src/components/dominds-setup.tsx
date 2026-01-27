@@ -52,6 +52,8 @@ export class DomindsSetup extends HTMLElement {
   private fileModal: FileModalState = { kind: 'closed' };
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
 
+  private backendWorkspace: string = '';
+
   private selectedProviderKey: string | null = null;
   private selectedModelKey: string | null = null;
   private envInputs: Record<string, string> = {};
@@ -64,7 +66,36 @@ export class DomindsSetup extends HTMLElement {
   connectedCallback(): void {
     this.initializeAuth();
     this.render();
+    void this.loadWorkspaceInfo();
     void this.loadStatus();
+  }
+
+  private async loadWorkspaceInfo(): Promise<void> {
+    try {
+      const resp = await this.apiClient.getHealth();
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.authState =
+            this.authState.kind === 'active'
+              ? { kind: 'prompt', reason: 'rejected' }
+              : { kind: 'prompt', reason: 'missing' };
+          this.setAuthNone();
+          this.state = { kind: 'auth_required' };
+          this.backendWorkspace = '';
+          this.render();
+          return;
+        }
+        throw new Error(resp.error || 'Failed to load workspace info');
+      }
+
+      const data = resp.data;
+      this.backendWorkspace = data && typeof data.workspace === 'string' ? data.workspace : '';
+      this.render();
+    } catch (error: unknown) {
+      console.error('Failed to load workspace info:', error);
+      this.backendWorkspace = '';
+      this.render();
+    }
   }
 
   private getStoredUiLanguage(): LanguageCode | null {
@@ -229,6 +260,9 @@ export class DomindsSetup extends HTMLElement {
             <span>Dominds</span>
             </a>
           <span class="setup-badge">${escapeHtml(t.setupTitle)}</span>
+          <div class="workspace-indicator" title="${escapeHtmlAttr(t.backendWorkspaceTitle)}">
+            📁 ${escapeHtml(this.backendWorkspace || t.backendWorkspaceLoading)}
+          </div>
           <div class="spacer"></div>
           <select id="setup-lang-select" class="select select-compact" title="${escapeHtmlAttr(
             t.uiLanguageSelectTitle,
@@ -253,7 +287,7 @@ export class DomindsSetup extends HTMLElement {
 
     const refresh = this.shadowRoot.querySelector('#refresh-btn');
     if (refresh instanceof HTMLButtonElement) {
-      refresh.onclick = () => void this.loadStatus();
+      refresh.onclick = () => void Promise.all([this.loadStatus(), this.loadWorkspaceInfo()]);
     }
 
     const goBtn = this.shadowRoot.querySelector('#go-btn');
@@ -827,6 +861,11 @@ export class DomindsSetup extends HTMLElement {
       :host{display:block;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#eaeaea;}
       .page{min-height:100vh;background:#0b0f14;padding:18px;}
       .header{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+      .workspace-indicator{font-size:11px;color:rgba(234,234,234,.75);font-family:'SF Mono',Monaco,'Cascadia Code','Roboto Mono',Consolas,'Courier New',monospace;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);padding:4px 8px;border-radius:6px;max-width:360px;overflow-x:auto;white-space:nowrap;}
+      .workspace-indicator::-webkit-scrollbar{height:4px;}
+      .workspace-indicator::-webkit-scrollbar-track{background:rgba(255,255,255,.06);}
+      .workspace-indicator::-webkit-scrollbar-thumb{background:rgba(234,234,234,.35);border-radius:2px;}
+      .workspace-indicator::-webkit-scrollbar-thumb:hover{background:rgba(234,234,234,.55);}
       .logo{display:flex;align-items:center;gap:10px;color:#eaeaea;text-decoration:none;font-weight:650;}
       .logo img{display:block;}
       .setup-badge{font-size:12px;font-weight:650;padding:3px 8px;border-radius:999px;border:1px solid #2d3a4e;background:#0e1420;color:#9fb0c6;}

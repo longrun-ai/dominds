@@ -27,7 +27,13 @@ import {
   replaceMemoryTool,
   replaceSharedMemoryTool,
 } from './mem';
-import { getDaemonOutputTool, shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from './os';
+import {
+  getDaemonOutputTool,
+  readonlyShellTool,
+  shellCmdReminderOwner,
+  shellCmdTool,
+  stopDaemonTool,
+} from './os';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
 import {
   ripgrepCountTool,
@@ -41,11 +47,11 @@ import {
   applyFileModificationTool,
   createNewFileTool,
   overwriteEntireFileTool,
-  previewBlockReplaceTool,
-  previewFileAppendTool,
-  previewFileModificationTool,
-  previewInsertAfterTool,
-  previewInsertBeforeTool,
+  prepareFileAppendTool,
+  prepareFileBlockReplaceTool,
+  prepareFileInsertAfterTool,
+  prepareFileInsertBeforeTool,
+  prepareFileRangeEditTool,
   readFileTool,
 } from './txt';
 
@@ -58,12 +64,12 @@ registerTool(moveDirTool);
 registerTool(readFileTool);
 registerTool(createNewFileTool);
 registerTool(overwriteEntireFileTool);
-registerTool(previewFileModificationTool);
+registerTool(prepareFileRangeEditTool);
 registerTool(applyFileModificationTool);
-registerTool(previewFileAppendTool);
-registerTool(previewInsertAfterTool);
-registerTool(previewInsertBeforeTool);
-registerTool(previewBlockReplaceTool);
+registerTool(prepareFileAppendTool);
+registerTool(prepareFileInsertAfterTool);
+registerTool(prepareFileInsertBeforeTool);
+registerTool(prepareFileBlockReplaceTool);
 
 // Ripgrep tools
 registerTool(ripgrepFilesTool);
@@ -74,6 +80,7 @@ registerTool(ripgrepSearchTool);
 
 // OS tools
 registerTool(shellCmdTool);
+registerTool(readonlyShellTool);
 registerTool(stopDaemonTool);
 registerTool(getDaemonOutputTool);
 
@@ -181,11 +188,11 @@ registerToolset('ws_mod', [
   readFileTool,
   createNewFileTool,
   overwriteEntireFileTool,
-  previewFileAppendTool,
-  previewInsertAfterTool,
-  previewInsertBeforeTool,
-  previewBlockReplaceTool,
-  previewFileModificationTool,
+  prepareFileAppendTool,
+  prepareFileInsertAfterTool,
+  prepareFileInsertBeforeTool,
+  prepareFileBlockReplaceTool,
+  prepareFileRangeEditTool,
   applyFileModificationTool,
   ripgrepFilesTool,
   ripgrepSnippetsTool,
@@ -199,12 +206,15 @@ setToolsetMeta('ws_mod', {
 });
 
 // Codex-focused toolsets (function tools only; suitable for Codex provider)
-registerToolset('codex_style_tools', [applyPatchTool]);
+registerToolset('codex_style_tools', [applyPatchTool, readonlyShellTool]);
 setToolsetMeta('codex_style_tools', {
-  descriptionI18n: { en: 'Codex-style tools (apply_patch)', zh: 'Codex 风格工具（apply_patch）' },
+  descriptionI18n: {
+    en: 'Codex-style tools (apply_patch + readonly_shell)',
+    zh: 'Codex 风格工具（apply_patch + readonly_shell）',
+  },
   promptI18n: {
-    en: 'Use `apply_patch` (Codex-style patch format) to modify files. Paths must be relative to the workspace. This tool enforces Dominds directory allow/deny lists.',
-    zh: '使用 `apply_patch`（Codex 风格 patch 格式）修改文件。路径必须相对工作区根目录。本工具会按成员的目录权限（allow/deny）做访问控制。',
+    en: 'Use `apply_patch` (Codex-style patch format) to modify files. Use `readonly_shell` for simple workspace inspection via a small allowlist (cat/rg/sed/ls/nl/wc/git show). You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Paths must be relative to the workspace. `apply_patch` enforces Dominds directory allow/deny lists.',
+    zh: '使用 `apply_patch`（Codex 风格 patch 格式）修改文件；使用 `readonly_shell` 做少量只读命令行检查（仅允许 cat/rg/sed/ls/nl/wc/git show）。你已被明确授权自行调用 `readonly_shell`，不要把它委派给 shell 专员。路径必须相对工作区根目录。`apply_patch` 会按成员的目录权限（allow/deny）做访问控制。',
   },
 });
 registerToolset('team-mgmt', [...teamMgmtTools]);
