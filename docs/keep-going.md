@@ -60,14 +60,13 @@ generation iteration.
 
 ### Boundedness
 
-To avoid infinite loops, keep-going has a per-dialog budget (**max-num-prompts**) that controls how
-many auto-continued diligence prompts can be injected for a given dialog before the runtime forces a
+To avoid infinite loops, keep-going has a per-dialog budget (per-member `diligence-push-max`) that controls
+how many auto-continued diligence prompts can be injected for a given dialog before the runtime forces a
 Q4H suspension.
 
-- Default: **30**
-- Configurable per-rtws via diligence file frontmatter key `max-num-prompts` (see below)
-- If `< 1`, keep-going is effectively disabled for that workspace
-- Also capped per-member via `diligence-push-max` in `.minds/team.yaml` (effective max is the minimum)
+- Default: **3**
+- If `< 1`, keep-going is effectively disabled for that member
+- Configurable per-member via `diligence-push-max` in `.minds/team.yaml`
 
 ### Reset on Q4H
 
@@ -86,7 +85,10 @@ infinite auto-continue loops.
 Keep-going can be disabled per-rtws in either of these ways:
 
 - If the selected diligence file exists but its content is empty/whitespace, keep-going is disabled (no injection).
-- If the selected diligence file frontmatter sets `max-num-prompts: 0` (or any `< 1`), keep-going is disabled (no injection).
+
+Keep-going can be disabled per-member in either of these ways:
+
+- If `diligence-push-max < 1`, keep-going is disabled for that member (no injection).
 
 ## Diligence prompt resolution
 
@@ -100,23 +102,8 @@ Resolution order:
 
 If the first existing file in the above order has empty/whitespace content, **disable** keep-going.
 
-### Frontmatter: `max-num-prompts`
-
-The resolved diligence file may start with YAML frontmatter:
-
-```md
----
-max-num-prompts: 30
----
-
-<diligence prompt body…>
-```
-
-Rules:
-
-- If the key is missing, `max-num-prompts` defaults to **30** (even when the file exists).
-- If the key is present and `< 1`, keep-going is disabled for that workspace.
-- If no diligence file exists at all, dominds uses the built-in fallback prompt and `max-num-prompts: 30`.
+Note: YAML frontmatter in diligence files is **ignored** by the runtime. If present, it is treated as
+non-content metadata and stripped from the prompt body.
 
 ### Team member cap: `diligence-push-max`
 
@@ -130,8 +117,7 @@ members:
 
 Rules:
 
-- If missing, `diligence-push-max` defaults to **30** for that member.
-- The effective `maxInjectCount` is `min(max-num-prompts, diligence-push-max)`.
+- If missing, `diligence-push-max` defaults to **3** for that member.
 - If `diligence-push-max < 1`, keep-going is disabled for that member (no injection), even if the diligence file exists.
 - Built-in shadow members `fuxi` and `pangu` default to `diligence-push-max: 0` unless explicitly overridden in team.yaml.
 

@@ -13,7 +13,6 @@ import type { AssignmentFromSup } from '../dialog';
 import { Dialog, DialogID, RootDialog, SubDialog } from '../dialog';
 
 import { inspect } from 'util';
-import YAML from 'yaml';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
@@ -108,7 +107,7 @@ const DILIGENCE_FALLBACK_TEXT: Readonly<Record<LanguageCode, string>> = {
   ].join('\n'),
 };
 
-const DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS = 30;
+const DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS = 3;
 
 function isNodeErrorWithCode(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
@@ -122,51 +121,16 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   return DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseMarkdownFrontmatter(raw: string): {
-  meta: Record<string, unknown> | null;
-  body: string;
-} {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) {
-    return { meta: null, body: raw };
-  }
-  const frontmatterRaw = match[1] ?? '';
-  const body = match[2] ?? '';
-
-  try {
-    const parsed: unknown = YAML.parse(frontmatterRaw);
-    return { meta: isRecord(parsed) ? parsed : null, body };
-  } catch (error: unknown) {
-    log.warn('Failed to parse diligence frontmatter; ignoring frontmatter', error);
-    return { meta: null, body };
-  }
-}
-
-function parseMaxNumPrompts(meta: Record<string, unknown> | null): number | undefined {
-  if (!meta) return undefined;
-  const value = meta['max-num-prompts'];
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value.trim());
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  if (value !== undefined) {
-    log.warn('Invalid max-num-prompts in diligence frontmatter; using default', { value });
-  }
-  return undefined;
+function stripMarkdownFrontmatter(raw: string): string {
+  // We no longer honor frontmatter config in diligence files.
+  // If frontmatter exists, strip it to preserve backward compatibility with old files.
+  const match = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?([\s\S]*)$/);
+  return match ? (match[1] ?? '') : raw;
 }
 
 type RtwsDiligenceResolution =
-  | { kind: 'disabled'; reason: 'empty_file' | 'empty_body' | 'max_lt_one' }
-  | { kind: 'enabled'; diligenceText: string; maxNumPrompts: number };
+  | { kind: 'disabled'; reason: 'empty_file' | 'empty_body' }
+  | { kind: 'enabled'; diligenceText: string };
 
 async function resolveRtwsDiligenceConfig(
   workLanguage: LanguageCode,
@@ -188,29 +152,21 @@ async function resolveRtwsDiligenceConfig(
       return {
         kind: 'enabled',
         diligenceText: DILIGENCE_FALLBACK_TEXT[workLanguage],
-        maxNumPrompts: DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS,
       };
     }
 
     const trimmed = raw.trim();
     // Existing empty file explicitly disables keep-going.
-    // Semantics: treat empty file as max-num-prompts = 0.
     if (trimmed === '') {
       return { kind: 'disabled', reason: 'empty_file' };
     }
 
-    const { meta, body } = parseMarkdownFrontmatter(raw);
-    const maxNumPrompts = parseMaxNumPrompts(meta) ?? DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS;
-    if (maxNumPrompts < 1) {
-      return { kind: 'disabled', reason: 'max_lt_one' };
-    }
-
-    const bodyTrimmed = body.trim();
+    const bodyTrimmed = stripMarkdownFrontmatter(raw).trim();
     if (bodyTrimmed === '') {
       return { kind: 'disabled', reason: 'empty_body' };
     }
 
-    return { kind: 'enabled', diligenceText: bodyTrimmed, maxNumPrompts };
+    return { kind: 'enabled', diligenceText: bodyTrimmed };
   }
 
   const langSpecific = await resolveFromFile(langSpecificPath);
@@ -227,7 +183,6 @@ async function resolveRtwsDiligenceConfig(
   return {
     kind: 'enabled',
     diligenceText: DILIGENCE_FALLBACK_TEXT[workLanguage],
-    maxNumPrompts: DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS,
   };
 }
 
@@ -254,7 +209,7 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
     return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
   }
 
-  const maxInjectCount = Math.min(resolved.maxNumPrompts, options.diligencePushMax);
+  const maxInjectCount = options.diligencePushMax;
   if (maxInjectCount < 1) {
     return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
   }

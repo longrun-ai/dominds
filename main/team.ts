@@ -118,7 +118,6 @@ export namespace Team {
     tools?: string[];
     model_params?: ModelParams;
     // Keep-going: per-member cap on how many diligence prompts can be auto-sent before forcing Q4H.
-    // Effective maxInjectCount = min(rtws diligence frontmatter max-num-prompts, this value).
     diligence_push_max?: number;
     read_dirs?: string[];
     write_dirs?: string[];
