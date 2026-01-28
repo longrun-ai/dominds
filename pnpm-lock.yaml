@@ -12,8 +12,8 @@ importers:
         specifier: ^0.67.0
         version: 0.67.1(zod@4.3.5)
       '@longrun-ai/codex-auth':
-        specifier: workspace:*
-        version: link:codex-auth
+        specifier: ^0.2.0
+        version: 0.2.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.2
         version: 1.25.2(hono@4.11.4)(zod@4.3.5)
@@ -467,6 +467,11 @@ packages:
 
   '@iconify/utils@3.1.0':
     resolution: {integrity: sha512-Zlzem1ZXhI1iHeeERabLNzBHdOa4VhQbqAcOQaMKuTuyZCpwKbC2R4Dd0Zo3g9EAc+Y4fiarO8HIHRAth7+skw==}
+
+  '@longrun-ai/codex-auth@0.2.0':
+    resolution: {integrity: sha512-IAA+NVRcgTTweZD3Kd0ms/iidKjpPONkLKSoRQNKonydt5KuIlaFsW/U0bkIEJDg39K7ghE23jxXojq0o3Tn9w==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   '@mermaid-js/parser@0.6.3':
     resolution: {integrity: sha512-lnjOhe7zyHjc+If7yT4zoedx2vo4sHaTmtkl1+or8BRTnCtDmcTpAjpzDSfCZrshM5bCoz0GyidzadJAH1xobA==}
@@ -1795,6 +1800,10 @@ snapshots:
       '@antfu/install-pkg': 1.1.0
       '@iconify/types': 2.0.0
       mlly: 1.8.0
+
+  '@longrun-ai/codex-auth@0.2.0':
+    dependencies:
+      undici: 6.23.0
 
   '@mermaid-js/parser@0.6.3':
     dependencies:
