@@ -19,6 +19,7 @@ import {
   SetupWriteWorkspaceLlmYamlResponse,
   ToolsetInfo,
 } from '../shared/types';
+import type { LanguageCode } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 export interface FrontendTeamMember {
@@ -48,6 +49,21 @@ export interface ApiResponse<T> {
   message?: string;
   timestamp?: string;
 }
+
+export type DiligenceFileResponse = {
+  success: boolean;
+  path: string;
+  raw: string;
+  error?: string;
+};
+
+export type DocsReadResponse = {
+  success: boolean;
+  name: string;
+  path?: string;
+  raw?: string;
+  error?: string;
+};
 
 interface ApiError extends Error {
   status?: number;
@@ -416,6 +432,30 @@ export class ApiClient {
   > {
     // Cache-bust to avoid stale registry results across rapid UI toggles.
     return this.request(`/api/tools-registry?ts=${Date.now()}`);
+  }
+
+  async getRtwsDiligence(lang: LanguageCode): Promise<ApiResponse<DiligenceFileResponse>> {
+    return this.request(`/api/rtws/diligence?lang=${encodeURIComponent(lang)}`);
+  }
+
+  async writeRtwsDiligence(
+    lang: LanguageCode,
+    req: { raw: string; overwrite: boolean },
+  ): Promise<ApiResponse<{ success: boolean; path: string; error?: string }>> {
+    const overwrite = req.overwrite ? '1' : '0';
+    return this.request(
+      `/api/rtws/diligence?lang=${encodeURIComponent(lang)}&overwrite=${overwrite}`,
+      {
+        method: 'POST',
+        body: { raw: req.raw },
+      },
+    );
+  }
+
+  async readDocsMarkdown(name: string, lang: LanguageCode): Promise<ApiResponse<DocsReadResponse>> {
+    return this.request(
+      `/api/docs/read?name=${encodeURIComponent(name)}&lang=${encodeURIComponent(lang)}`,
+    );
   }
 
   /**

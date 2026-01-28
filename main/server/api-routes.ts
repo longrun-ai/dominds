@@ -12,6 +12,7 @@ import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import type { ApiMoveDialogsRequest } from '../shared/types';
+import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -31,6 +32,16 @@ import {
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
 
 const log = createLogger('api-routes');
+
+function getErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const maybe = (error as { code?: unknown }).code;
+  return typeof maybe === 'string' ? maybe : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export interface ApiRouteContext {
   clients?: Set<WebSocket>;
@@ -200,12 +211,166 @@ export async function handleApiRoute(
       return await handleGetToolsRegistry(res);
     }
 
+    // Read rtws diligence prompt (workspace file).
+    if (pathname === '/api/rtws/diligence' && req.method === 'GET') {
+      return await handleGetRtwsDiligence(req, res);
+    }
+
+    // Write rtws diligence prompt (workspace file).
+    if (pathname === '/api/rtws/diligence' && req.method === 'POST') {
+      return await handleWriteRtwsDiligence(req, res);
+    }
+
+    // Read Dominds docs markdown (from dominds install root, NOT rtws).
+    if (pathname === '/api/docs/read' && req.method === 'GET') {
+      return await handleReadDocsMarkdown(req, res);
+    }
+
     return false; // Route not handled
   } catch (error) {
     log.error('Error handling API route:', error);
     respondJson(res, 500, { error: 'Internal server error' });
     return true;
   }
+}
+
+function resolveRtwsDiligencePath(lang: string | null): string {
+  const parsed = typeof lang === 'string' ? normalizeLanguageCode(lang) : null;
+  if (parsed === 'zh') return path.resolve(process.cwd(), '.minds', 'diligence.zh.md');
+  if (parsed === 'en') return path.resolve(process.cwd(), '.minds', 'diligence.en.md');
+  return path.resolve(process.cwd(), '.minds', 'diligence.md');
+}
+
+async function handleGetRtwsDiligence(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+  const lang = urlObj.searchParams.get('lang');
+  const primaryPath = resolveRtwsDiligencePath(lang);
+  const genericPath = path.resolve(process.cwd(), '.minds', 'diligence.md');
+
+  const candidates = [primaryPath, genericPath];
+  for (const filePath of candidates) {
+    try {
+      const raw = await fsPromises.readFile(filePath, 'utf-8');
+      respondJson(res, 200, { success: true, path: filePath, raw });
+      return true;
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        continue;
+      }
+      log.error('Failed to read diligence file', error);
+      respondJson(res, 500, { success: false, error: 'Failed to read diligence file' });
+      return true;
+    }
+  }
+
+  respondJson(res, 200, { success: true, path: primaryPath, raw: '' });
+  return true;
+}
+
+async function handleWriteRtwsDiligence(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+  const lang = urlObj.searchParams.get('lang');
+  const overwrite = urlObj.searchParams.get('overwrite');
+  const overwriteBool = overwrite === '1' || overwrite === 'true';
+  const filePath = resolveRtwsDiligencePath(lang);
+
+  let parsed: unknown;
+  try {
+    const rawBody = await readRequestBody(req);
+    parsed = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    respondJson(res, 400, { success: false, error: 'Invalid JSON' });
+    return true;
+  }
+  if (!isRecord(parsed) || typeof parsed.raw !== 'string') {
+    respondJson(res, 400, { success: false, error: 'Body must be { raw: string }' });
+    return true;
+  }
+
+  try {
+    const existing = await fsPromises.readFile(filePath, 'utf-8').then(
+      () => true,
+      (e: unknown) => (getErrorCode(e) === 'ENOENT' ? false : Promise.reject(e)),
+    );
+    if (existing && !overwriteBool) {
+      respondJson(res, 409, {
+        success: false,
+        path: filePath,
+        error: 'File exists; retry with overwrite=1 to confirm overwrite',
+      });
+      return true;
+    }
+
+    await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
+    await fsPromises.writeFile(filePath, parsed.raw, 'utf-8');
+    respondJson(res, 200, { success: true, path: filePath });
+    return true;
+  } catch (error: unknown) {
+    log.error('Failed to write diligence file', error);
+    respondJson(res, 500, { success: false, error: 'Failed to write diligence file' });
+    return true;
+  }
+}
+
+const DOCS_WHITELIST = new Set<string>([
+  'design.md',
+  'dialog-system.md',
+  'keep-going.md',
+  'auth.md',
+  'dominds-terminology.md',
+  'encapsulated-taskdoc.md',
+  'memory-system.md',
+  'team-tools-view.md',
+  'mcp-support.md',
+  'context-health.md',
+]);
+
+async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+  const name = urlObj.searchParams.get('name');
+  const lang = urlObj.searchParams.get('lang');
+  const parsedLang = typeof lang === 'string' ? normalizeLanguageCode(lang) : null;
+
+  if (typeof name !== 'string' || name.trim() === '') {
+    respondJson(res, 400, { success: false, error: 'Missing name' });
+    return true;
+  }
+  if (!DOCS_WHITELIST.has(name)) {
+    respondJson(res, 403, { success: false, error: `Unsupported doc name: ${name}` });
+    return true;
+  }
+
+  const serverRoot = path.resolve(__dirname, '..', '..');
+  const docsDir = path.resolve(serverRoot, 'docs');
+
+  const basePath = path.resolve(docsDir, name);
+  const ext = '.md';
+  const stem = name.endsWith(ext) ? name.slice(0, -ext.length) : name;
+  const candidateLocalized =
+    parsedLang === null ? null : path.resolve(docsDir, `${stem}.${parsedLang}${ext}`);
+
+  const candidates = candidateLocalized ? [candidateLocalized, basePath] : [basePath];
+
+  for (const filePath of candidates) {
+    try {
+      const raw = await fsPromises.readFile(filePath, 'utf-8');
+      respondJson(res, 200, { success: true, name, path: filePath, raw });
+      return true;
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        continue;
+      }
+      log.error('Failed to read docs file', error);
+      respondJson(res, 500, { success: false, error: 'Failed to read docs file' });
+      return true;
+    }
+  }
+
+  respondJson(res, 404, { success: false, error: 'Doc not found' });
+  return true;
 }
 
 async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
@@ -621,6 +786,7 @@ async function handleCreateDialog(
         functionCallCount: 0,
         subdialogCount: 0,
         runState: { kind: 'idle_waiting_user' },
+        disableDiligencePush: false,
       },
     }));
 

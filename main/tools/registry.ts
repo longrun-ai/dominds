@@ -6,6 +6,7 @@
 import fsSync from 'fs';
 import path from 'path';
 import type { I18nText } from '../shared/types/i18n';
+import type { ToolsetSource } from '../shared/types/tools-registry';
 import type { ReminderOwner, Tool } from '../tool';
 
 // Global public registry of tools, shared across the application
@@ -15,6 +16,7 @@ export const toolsRegistry: Map<string, Tool> = new Map<string, Tool>();
 export const toolsetsRegistry: Map<string, Tool[]> = new Map<string, Tool[]>();
 
 export type ToolsetMeta = {
+  source?: ToolsetSource;
   descriptionI18n?: I18nText;
   /**
    * Toolset-level prompt injected into the agent system prompt when the member

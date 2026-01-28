@@ -139,7 +139,8 @@ function isDialogLatestFile(value: unknown): value is DialogLatestFile {
   return (
     typeof value.currentRound === 'number' &&
     typeof value.lastModified === 'string' &&
-    (value.status === 'active' || value.status === 'completed' || value.status === 'archived')
+    (value.status === 'active' || value.status === 'completed' || value.status === 'archived') &&
+    (value.disableDiligencePush === undefined || typeof value.disableDiligencePush === 'boolean')
   );
 }
 
@@ -270,6 +271,7 @@ export class DiskFileDialogStore extends DialogStore {
         functionCallCount: 0,
         subdialogCount: 0,
         runState: { kind: 'idle_waiting_user' },
+        disableDiligencePush: false,
       },
     }));
 

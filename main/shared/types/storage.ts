@@ -116,6 +116,12 @@ export interface DialogLatestFile {
    * Persisted to survive process restarts.
    */
   runState?: DialogRunState;
+
+  /**
+   * Disable keep-going (diligence auto-continue) for this dialog.
+   * Persisted to survive process restarts.
+   */
+  disableDiligencePush?: boolean;
 }
 
 // === ROUND TRACKING ===

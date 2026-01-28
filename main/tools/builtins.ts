@@ -124,6 +124,7 @@ registerTool(verifyTellaskParsingTool);
 // Register well-known toolsets
 registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, clearMemoryTool]);
 setToolsetMeta('memory', {
+  source: 'dominds',
   descriptionI18n: { en: 'Personal memory tools', zh: '个人记忆工具' },
 });
 registerToolset('team_memory', [
@@ -133,6 +134,7 @@ registerToolset('team_memory', [
   clearSharedMemoryTool,
 ]);
 setToolsetMeta('team_memory', {
+  source: 'dominds',
   descriptionI18n: { en: 'Shared team memory tools', zh: '团队共享记忆工具' },
 });
 registerToolset('control', [
@@ -143,6 +145,7 @@ registerToolset('control', [
   changeMindTool,
 ]);
 setToolsetMeta('control', {
+  source: 'dominds',
   descriptionI18n: { en: 'Dialog control tools', zh: '对话控制工具' },
 });
 registerToolset('os', [
@@ -154,6 +157,7 @@ registerToolset('os', [
   envUnsetTool,
 ]);
 setToolsetMeta('os', {
+  source: 'dominds',
   descriptionI18n: { en: 'Shell and process tools', zh: '命令行与进程工具' },
 });
 registerToolset('mcp_admin', [
@@ -164,6 +168,7 @@ registerToolset('mcp_admin', [
   envUnsetTool,
 ]);
 setToolsetMeta('mcp_admin', {
+  source: 'dominds',
   descriptionI18n: { en: 'MCP administration tools', zh: 'MCP 管理工具' },
 });
 registerToolset('ws_read', [
@@ -176,6 +181,7 @@ registerToolset('ws_read', [
   ripgrepSearchTool,
 ]);
 setToolsetMeta('ws_read', {
+  source: 'dominds',
   descriptionI18n: { en: 'Workspace read-only tools', zh: '工作区只读工具' },
 });
 registerToolset('ws_mod', [
@@ -201,6 +207,7 @@ registerToolset('ws_mod', [
   ripgrepSearchTool,
 ]);
 setToolsetMeta('ws_mod', {
+  source: 'dominds',
   descriptionI18n: { en: 'Workspace read/write tools', zh: '工作区读写工具' },
   promptFilesI18n: { en: './prompts/ws_mod.en.md', zh: './prompts/ws_mod.zh.md' },
 });
@@ -208,6 +215,7 @@ setToolsetMeta('ws_mod', {
 // Codex-focused toolsets (function tools only; suitable for Codex provider)
 registerToolset('codex_style_tools', [applyPatchTool, readonlyShellTool]);
 setToolsetMeta('codex_style_tools', {
+  source: 'dominds',
   descriptionI18n: {
     en: 'Codex-style tools (apply_patch + readonly_shell)',
     zh: 'Codex 风格工具（apply_patch + readonly_shell）',
@@ -219,11 +227,13 @@ setToolsetMeta('codex_style_tools', {
 });
 registerToolset('team-mgmt', [...teamMgmtTools]);
 setToolsetMeta('team-mgmt', {
+  source: 'dominds',
   descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
   promptFilesI18n: { en: './prompts/team_mgmt.en.md', zh: './prompts/team_mgmt.zh.md' },
 });
 registerToolset('diag', [verifyTellaskParsingTool]);
 setToolsetMeta('diag', {
+  source: 'dominds',
   descriptionI18n: { en: 'Diagnostics tools', zh: '诊断工具' },
 });
 

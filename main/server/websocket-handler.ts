@@ -18,11 +18,13 @@ import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
+import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
   CreateDialogRequest,
   DialogReadyMessage,
+  DiligencePushUpdatedMessage,
   DisplayDialogRequest,
   DisplayRemindersRequest,
   DisplayRoundRequest,
@@ -35,6 +37,7 @@ import type {
   Q4HStateResponse,
   ResumeAllRequest,
   ResumeDialogRequest,
+  SetDiligencePushRequest,
   WebSocketMessage,
 } from '../shared/types';
 import type { DialogEvent, NewQ4HAskedEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
@@ -49,6 +52,14 @@ import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
 import type { AuthConfig } from './auth';
 import { getWebSocketAuthCheck } from './auth';
+
+function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
+  const member = team.getMember(agentId);
+  if (member && member.diligence_push_max !== undefined) {
+    return member.diligence_push_max;
+  }
+  return DEFAULT_DILIGENCE_PUSH_MAX;
+}
 
 const log = createLogger('websocket-handler');
 
@@ -168,6 +179,10 @@ export async function handleWebSocketMessage(
         await handleDisplayDialog(ws, packet);
         break;
 
+      case 'set_diligence_push':
+        await handleSetDiligencePush(ws, packet);
+        break;
+
       case 'get_q4h_state':
         await handleGetQ4HState(ws, packet);
         break;
@@ -219,6 +234,98 @@ export async function handleWebSocketMessage(
       JSON.stringify({
         type: 'error',
         message: error instanceof Error ? error.message : 'Unknown error',
+      }),
+    );
+  }
+}
+
+async function handleSetDiligencePush(
+  ws: WebSocket,
+  packet: SetDiligencePushRequest,
+): Promise<void> {
+  try {
+    const { dialog, disableDiligencePush } = packet as unknown as {
+      dialog?: unknown;
+      disableDiligencePush?: unknown;
+    };
+    if (!isRecord(dialog)) {
+      ws.send(JSON.stringify({ type: 'error', message: 'dialog is required' }));
+      return;
+    }
+    const selfId = typeof dialog.selfId === 'string' ? dialog.selfId : null;
+    const rootId = typeof dialog.rootId === 'string' ? dialog.rootId : null;
+    if (!selfId || !rootId) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message:
+            'Invalid dialog identifiers for set_diligence_push: selfId/rootId must be strings',
+        }),
+      );
+      return;
+    }
+    if (typeof disableDiligencePush !== 'boolean') {
+      ws.send(JSON.stringify({ type: 'error', message: 'disableDiligencePush must be a boolean' }));
+      return;
+    }
+
+    const dialogIdObj = new DialogID(selfId, rootId);
+
+    // Locate dialog status (running/completed/archived) for persistence.
+    const statuses: Array<'running' | 'completed' | 'archived'> = [
+      'running',
+      'completed',
+      'archived',
+    ];
+    let foundStatus: 'running' | 'completed' | 'archived' | null = null;
+    for (const status of statuses) {
+      const meta = await DialogPersistence.loadDialogMetadata(dialogIdObj, status);
+      if (!meta) continue;
+      foundStatus = status;
+      break;
+    }
+    if (!foundStatus) {
+      ws.send(
+        JSON.stringify({ type: 'error', message: `Dialog ${dialogIdObj.valueOf()} not found` }),
+      );
+      return;
+    }
+
+    await DialogPersistence.mutateDialogLatest(
+      dialogIdObj,
+      (previous) => ({
+        kind: 'patch',
+        patch: { disableDiligencePush },
+      }),
+      foundStatus,
+    );
+
+    // Update live in-memory instance if it's loaded.
+    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, foundStatus);
+    if (rootDialog) {
+      const target =
+        dialogIdObj.selfId === dialogIdObj.rootId
+          ? rootDialog
+          : await ensureDialogLoaded(rootDialog, dialogIdObj, foundStatus);
+      if (target) {
+        target.disableDiligencePush = disableDiligencePush;
+      }
+    }
+
+    const msg: DiligencePushUpdatedMessage = {
+      type: 'diligence_push_updated',
+      dialog: { selfId, rootId },
+      disableDiligencePush,
+      timestamp: formatUnifiedTimestamp(new Date()),
+    };
+    ws.send(JSON.stringify(msg));
+  } catch (error: unknown) {
+    log.warn('Failed to handle set_diligence_push', error);
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message:
+          error instanceof Error ? error.message : 'Unknown error updating diligence push setting',
       }),
     );
   }
@@ -325,10 +432,12 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         functionCallCount: 0,
         subdialogCount: 0,
         runState: { kind: 'idle_waiting_user' },
+        disableDiligencePush: false,
       },
     }));
 
     // Send dialog_ready with full info so frontend can track the active dialog
+    const team = await Team.load();
     const response: DialogReadyMessage = {
       type: 'dialog_ready',
       dialog: {
@@ -337,6 +446,8 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       },
       agentId: finalAgentId,
       taskDocPath: taskDocPath,
+      disableDiligencePush: false,
+      diligencePushMax: resolveMemberDiligencePushMax(team, finalAgentId),
     };
     ws.send(JSON.stringify(response));
 
@@ -483,6 +594,8 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     await setupWebSocketSubscription(ws, dialog);
 
     // Send dialog_ready with full info so frontend knows the current dialog ID
+    const team = await Team.load();
+    const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, foundStatus);
     const dialogReadyResponse: DialogReadyMessage = {
       type: 'dialog_ready',
       dialog: {
@@ -494,6 +607,8 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       supdialogId: metadata.supdialogId,
       topicId: metadata.topicId,
       assignmentFromSup: metadata.assignmentFromSup,
+      disableDiligencePush: latest?.disableDiligencePush ?? false,
+      diligencePushMax: resolveMemberDiligencePushMax(team, metadata.agentId),
     };
     ws.send(JSON.stringify(dialogReadyResponse));
 

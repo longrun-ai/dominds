@@ -85,6 +85,11 @@ export type UiStrings = {
   q4hInputPlaceholder: string;
   q4hEnterToSendTitle: string;
   q4hCtrlEnterToSendTitle: string;
+
+  keepGoingTabTitle: string;
+  keepGoingWorkspaceNote: string;
+  domindsDocsTabTitle: string;
+  save: string;
   send: string;
   stop: string;
   stopping: string;
@@ -144,6 +149,8 @@ export type UiStrings = {
   toolsTitle: string;
   toolsEmpty: string;
   toolsRefresh: string;
+  toolsGroupDominds: string;
+  toolsGroupMcp: string;
   toolsSectionFunction: string;
 
   daemonLabel: string;
@@ -301,6 +308,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hInputPlaceholder: '输入你的回答…',
       q4hEnterToSendTitle: '按 Enter 发送（Cmd/Ctrl+Enter 换行）',
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
+
+      keepGoingTabTitle: '鞭策',
+      keepGoingWorkspaceNote: '编辑鞭策提示会影响整个工作区（rtws）。保存需要二次确认。',
+      domindsDocsTabTitle: 'Dominds 文档',
+      save: '保存',
       send: '发送',
       stop: '停止',
       stopping: '停止中…',
@@ -360,6 +372,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toolsTitle: '工具',
       toolsEmpty: '暂无工具',
       toolsRefresh: '刷新',
+      toolsGroupDominds: 'Dominds 工具',
+      toolsGroupMcp: 'MCP 工具',
       toolsSectionFunction: '函数工具',
 
       daemonLabel: '守护进程',
@@ -518,6 +532,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hInputPlaceholder: 'Type your answer...',
     q4hEnterToSendTitle: 'Enter to send (Cmd/Ctrl+Enter for newline)',
     q4hCtrlEnterToSendTitle: 'Cmd/Ctrl+Enter to send (Enter for newline)',
+
+    keepGoingTabTitle: 'Keep-going',
+    keepGoingWorkspaceNote:
+      'Editing the keep-going prompt affects the entire workspace (rtws). Saving requires confirmation.',
+    domindsDocsTabTitle: 'Dominds Docs',
+    save: 'Save',
     send: 'Send',
     stop: 'Stop',
     stopping: 'Stopping…',
@@ -577,6 +597,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toolsTitle: 'Tools',
     toolsEmpty: 'No tools',
     toolsRefresh: 'Refresh',
+    toolsGroupDominds: 'Dominds Tools',
+    toolsGroupMcp: 'MCP Tools',
     toolsSectionFunction: 'Function Tools',
 
     daemonLabel: 'Daemon',

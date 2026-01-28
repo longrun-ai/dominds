@@ -1,7 +1,9 @@
 /**
  * Q4H (Questions for Human) Input Component
- * Combined question list with inline input area
- * Displays pending questions and handles user answers via WebSocket
+ *
+ * Owns only the input + answer routing (selected question id).
+ * The Q4H question list UI is rendered by the bottom-panel Q4H tab
+ * (`dominds-q4h-panel`).
  */
 
 import { getUiStrings } from '../i18n/ui';
@@ -11,13 +13,8 @@ import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogRunState } from '../shared/types/run-state.js';
 import type { Q4HKind } from '../shared/types/storage.js';
 import type { DialogIdent } from '../shared/types/wire.js';
-import { escapeHtmlAttr } from '../shared/utils/html.js';
 import { generateShortId } from '../shared/utils/id.js';
 
-/**
- * Q4H Question interface for the input component
- * Combines question data with its dialog context
- */
 export interface Q4HQuestion {
   id: string;
   kind: Q4HKind;
@@ -27,9 +24,6 @@ export interface Q4HQuestion {
   dialogContext: Q4HDialogContext;
 }
 
-/**
- * Props interface for the Q4H input component
- */
 interface Q4HInputProps {
   disabled?: boolean;
   placeholder?: string;
@@ -40,13 +34,9 @@ export class DomindsQ4HInput extends HTMLElement {
   private wsManager = getWebSocketManager();
   private uiLanguage: LanguageCode = 'en';
 
-  // Internal state
   private questions: Q4HQuestion[] = [];
   private selectedQuestionId: string | null = null;
-  private expandedQuestions: Set<string> = new Set();
-  private collapsedQuestions: Set<string> = new Set();
-  private isListExpanded = false; // Start collapsed, auto-expand when questions arrive
-  private sendOnEnter = true; // Default to Enter to send
+  private sendOnEnter = true;
   private isComposing = false;
   private inputUiRafId: number | null = null;
   private escPrimedAtMs: number | null = null;
@@ -58,12 +48,9 @@ export class DomindsQ4HInput extends HTMLElement {
   private currentDialog: DialogIdent | null = null;
   private runState: DialogRunState | null = null;
 
-  // DOM elements (initialized after render)
   private textInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
   private inputWrapper!: HTMLElement;
-  private questionListContainer!: HTMLElement;
-  private questionFooter!: HTMLElement;
 
   constructor() {
     super();
@@ -76,8 +63,6 @@ export class DomindsQ4HInput extends HTMLElement {
     this.updateUI();
   }
 
-  // ==================== Public API Methods ====================
-
   public setUiLanguage(language: LanguageCode): void {
     this.uiLanguage = language;
     const t = getUiStrings(language);
@@ -86,21 +71,8 @@ export class DomindsQ4HInput extends HTMLElement {
       this.textInput.placeholder = t.q4hInputPlaceholder;
     }
 
-    // Update empty-state text if present
     const root = this.shadowRoot;
     if (!root) return;
-
-    const empty = root.querySelector('.empty-state') as HTMLElement | null;
-    if (empty) empty.textContent = t.q4hNoPending;
-
-    // Update footer label (preserve badge)
-    const label = root.querySelector('.question-footer-label') as HTMLElement | null;
-    if (label) {
-      const badge = label.querySelector('.q4h-count-badge');
-      label.textContent = '';
-      label.append(document.createTextNode(`${t.q4hPendingQuestions} `));
-      if (badge) label.appendChild(badge);
-    }
 
     const toggle = root.querySelector('.send-on-enter-toggle') as HTMLButtonElement | null;
     if (toggle) {
@@ -108,154 +80,32 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  /**
-   * Full replace - used only for initial page load when backend sends all questions at once
-   */
   public setQuestions(questions: Q4HQuestion[]): void {
-    const hadQuestions = this.questions.length > 0;
-    const hasQuestions = questions.length > 0;
+    this.questions = questions;
 
-    // Auto-expand when first question arrives
-    if (!hadQuestions && hasQuestions) {
-      this.isListExpanded = true;
-      this.updateListVisibility();
-
-      // Notify parent about state change to show resize-handle
-      this.dispatchEvent(
-        new CustomEvent('q4h-toggle', {
-          detail: { expanded: true },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+    if (this.selectedQuestionId !== null) {
+      const stillExists = this.questions.some((q) => q.id === this.selectedQuestionId);
+      if (!stillExists) this.selectedQuestionId = null;
     }
 
-    const newIds = new Set(questions.map((q) => q.id));
-
-    // Remove questions not in new list
-    for (const existing of this.questions) {
-      if (!newIds.has(existing.id)) {
-        this.removeQuestion(existing.id);
-      }
-    }
-
-    // Add new questions (rebuild internal state from scratch for full replace)
-    this.questions = [];
-    // Clear all existing cards before rebuilding to prevent duplicates
-    this.clearAllQuestionCards();
-    // Remove empty state if present before adding questions
-    if (this.questionListContainer) {
-      const emptyState = this.questionListContainer.querySelector('.empty-state');
-      if (emptyState) emptyState.remove();
-    }
-    for (const q of questions) {
-      this.questions.push(q);
-      this.appendQuestionCard(q);
-    }
-
-    // Auto-collapse when last question answered (goes to 0)
-    if (hadQuestions && !hasQuestions) {
-      this.isListExpanded = false;
-    }
-
-    this.updateCountBadge();
+    this.updateUI();
+    this.updateSendButton();
   }
 
-  /**
-   * Add a single question - for incremental realtime updates
-   */
-  public addQuestion(question: Q4HQuestion): void {
-    const hadQuestions = this.questions.length > 0;
-    const exists = this.questions.find((q) => q.id === question.id);
-    if (!exists) {
-      // Auto-expand when first question added
-      if (!hadQuestions) {
-        this.isListExpanded = true;
-        // Notify parent about state change to show resize-handle
-        this.dispatchEvent(
-          new CustomEvent('q4h-toggle', {
-            detail: { expanded: true },
-            bubbles: true,
-            composed: true,
-          }),
-        );
-      }
-      this.questions.push(question);
-      this.appendQuestionCard(question);
-      this.updateCountBadge();
-      this.updateQuestionListVisibility();
-    }
-  }
-
-  /**
-   * Remove a question by ID - when answered
-   */
-  public removeQuestion(questionId: string): boolean {
-    const hadQuestions = this.questions.length > 0;
-    const index = this.questions.findIndex((q) => q.id === questionId);
-    if (index < 0) return false;
-
-    this.questions.splice(index, 1);
-
-    if (this.selectedQuestionId === questionId) {
-      this.selectedQuestionId = null;
-    }
-
-    // Auto-collapse when last question removed
-    if (hadQuestions && this.questions.length === 0) {
-      this.isListExpanded = false;
-    }
-
-    this.removeQuestionCard(questionId);
-    this.updateCountBadge();
-    this.updateQuestionListVisibility();
-
-    return true;
-  }
-
-  /**
-   * Get all current questions (read-only)
-   */
   public getQuestions(): readonly Q4HQuestion[] {
     return this.questions;
   }
 
-  /**
-   * Get count of pending questions
-   */
   public getQuestionCount(): number {
     return this.questions.length;
   }
 
-  /**
-   * Programmatically select a question
-   * Automatically expands the selected question
-   */
   public selectQuestion(questionId: string | null): void {
     if (questionId === this.selectedQuestionId) return;
-
-    // Remember expand/collapse state of previously selected question
-    if (this.selectedQuestionId) {
-      if (this.expandedQuestions.has(this.selectedQuestionId)) {
-        this.collapsedQuestions.add(this.selectedQuestionId);
-        this.expandedQuestions.delete(this.selectedQuestionId);
-      } else {
-        this.collapsedQuestions.delete(this.selectedQuestionId);
-      }
-    }
-
     this.selectedQuestionId = questionId;
+    this.updateUI();
+    this.updateSendButton();
 
-    // Auto-expand newly selected question
-    if (questionId) {
-      this.expandedQuestions.add(questionId);
-      this.collapsedQuestions.delete(questionId);
-    }
-
-    // Preserve input value and height across re-render via safeRender
-    this.safeRender();
-
-    // Dispatch selection change event
     const question = this.questions.find((q) => q.id === questionId);
     if (question) {
       this.dispatchEvent(
@@ -274,41 +124,10 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  /**
-   * Get the currently selected question ID
-   */
   public getSelectedQuestionId(): string | null {
     return this.selectedQuestionId;
   }
 
-  /**
-   * Expand a specific question
-   */
-  public expandQuestion(questionId: string): void {
-    this.expandedQuestions.add(questionId);
-    this.collapsedQuestions.delete(questionId);
-    this.safeRender();
-  }
-
-  /**
-   * Collapse a specific question
-   */
-  public collapseQuestion(questionId: string): void {
-    this.expandedQuestions.delete(questionId);
-    this.collapsedQuestions.add(questionId);
-    this.safeRender();
-  }
-
-  /**
-   * Check if a question is expanded
-   */
-  public getQuestionExpandState(questionId: string): boolean {
-    return this.expandedQuestions.has(questionId);
-  }
-
-  /**
-   * Set the current dialog for message sending
-   */
   public setDialog(dialog: DialogIdent): void {
     if (typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
       this.showError('Invalid dialog id: selfId/rootId must be strings');
@@ -324,26 +143,17 @@ export class DomindsQ4HInput extends HTMLElement {
     this.updateUI();
   }
 
-  /**
-   * Set the authoritative dialog run state (Send ↔ Stop).
-   */
   public setRunState(runState: DialogRunState | null): void {
     this.runState = runState;
     this.updateSendButton();
     this.safeRender();
   }
 
-  /**
-   * Enable or disable the input area
-   */
   public setDisabled(disabled: boolean): void {
     this.props.disabled = disabled;
     this.updateUI();
   }
 
-  /**
-   * Focus the text input
-   */
   public focusInput(): void {
     if (this.textInput) {
       this.textInput.focus();
@@ -352,9 +162,6 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  /**
-   * Clear the input field
-   */
   public clear(): void {
     if (this.textInput) {
       this.textInput.value = '';
@@ -363,16 +170,10 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  /**
-   * Get current input value
-   */
   public getValue(): string {
     return this.textInput?.value || '';
   }
 
-  /**
-   * Set input value programmatically
-   */
   public setValue(value: string): void {
     if (this.textInput) {
       this.textInput.value = value;
@@ -380,11 +181,6 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  // ==================== Private Methods ====================
-
-  /**
-   * Re-render while preserving input state
-   */
   private safeRender(): void {
     if (this.inputUiRafId !== null) {
       window.cancelAnimationFrame(this.inputUiRafId);
@@ -425,219 +221,49 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  private toggleQuestion(questionId: string): void {
-    if (this.expandedQuestions.has(questionId)) {
-      this.expandedQuestions.delete(questionId);
-      this.collapsedQuestions.add(questionId);
-    } else {
-      this.expandedQuestions.add(questionId);
-      this.collapsedQuestions.delete(questionId);
-    }
-    this.safeRender();
+  private autoResizeTextarea(): void {
+    if (!this.textInput) return;
+    this.textInput.style.height = 'auto';
+    const scrollHeight = this.textInput.scrollHeight;
+    const minHeight = 48;
+    const maxHeight = 120;
+    this.textInput.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
   }
 
-  private toggleSelection(questionId: string): void {
-    if (this.selectedQuestionId === questionId) {
-      // Deselect if already selected
-      this.selectQuestion(null);
-    } else {
-      // Select new question (auto-expands)
-      this.selectQuestion(questionId);
-    }
+  private scheduleInputUiUpdate(): void {
+    if (this.inputUiRafId !== null) return;
+    this.inputUiRafId = window.requestAnimationFrame(() => {
+      this.inputUiRafId = null;
+      this.updateSendButton();
+      if (!this.isComposing) {
+        this.autoResizeTextarea();
+      }
+    });
   }
 
-  private navigateToCallSite(question: Q4HQuestion): void {
+  private showError(message: string): void {
+    if (this.inputWrapper) {
+      this.inputWrapper.style.borderColor = 'var(--dominds-danger, #dc3545)';
+      this.inputWrapper.style.boxShadow = '0 0 0 3px rgba(220, 53, 69, 0.1)';
+
+      setTimeout(() => {
+        this.inputWrapper.style.borderColor = '';
+        this.inputWrapper.style.boxShadow = '';
+      }, 3000);
+    }
+
     this.dispatchEvent(
-      new CustomEvent('q4h-navigate-call-site', {
-        detail: {
-          questionId: question.id,
-          dialogId: question.dialogContext.selfId,
-          rootId: question.dialogContext.rootId,
-          round: 1,
-          messageIndex: 0,
-        },
+      new CustomEvent('input-error', {
+        detail: { message, type: 'error' },
         bubbles: true,
         composed: true,
       }),
     );
   }
 
-  /**
-   * Append a new question card to the list
-   */
-  private appendQuestionCard(question: Q4HQuestion): void {
-    if (!this.shadowRoot || !this.questionListContainer) {
-      this.render();
-      this.setupEventListeners();
-      return;
-    }
-
-    // Check if card already exists to prevent duplicates
-    const existingCard = this.questionListContainer.querySelector(
-      `.q4h-question-card[data-question-id="${question.id}"]`,
-    );
-    if (existingCard) {
-      return; // Card already exists, skip adding
-    }
-
-    // Remove empty state if present
-    const emptyState = this.questionListContainer.querySelector('.empty-state');
-    if (emptyState) {
-      emptyState.remove();
-    }
-
-    const cardElement = this.renderQuestionCardElement(question);
-    this.questionListContainer.appendChild(cardElement);
-    this.setupCardEventListeners(cardElement);
-  }
-
-  /**
-   * Remove a question card from the DOM
-   */
-  private removeQuestionCard(questionId: string): void {
-    if (!this.shadowRoot) return;
-
-    const card = this.shadowRoot.querySelector(
-      `.q4h-question-card[data-question-id="${questionId}"]`,
-    );
-    card?.remove();
-  }
-
-  /**
-   * Clear all question cards from the DOM (used before full rebuild)
-   */
-  private clearAllQuestionCards(): void {
-    if (!this.shadowRoot || !this.questionListContainer) return;
-    const cards = this.questionListContainer.querySelectorAll('.q4h-question-card');
-    cards.forEach((card) => card.remove());
-  }
-
-  /**
-   * Update the live count badge with bump animation
-   */
-  private updateCountBadge(): void {
-    const badge = this.shadowRoot?.querySelector('.q4h-count-badge');
-    if (badge) {
-      const count = this.questions.length;
-      badge.textContent = String(count);
-
-      // Bump animation
-      badge.classList.remove('bump');
-      void (badge as HTMLElement).offsetWidth; // Trigger reflow
-      badge.classList.add('bump');
-    }
-  }
-
-  /**
-   * Create a DOM element from question card template
-   */
-  private renderQuestionCardElement(question: Q4HQuestion): HTMLElement {
-    const template = document.createElement('template');
-    template.innerHTML = this.renderQuestionCard(question);
-    const element = template.content.firstElementChild;
-    if (!element) {
-      throw new Error('Failed to render question card: template produced no elements');
-    }
-    return element as HTMLElement;
-  }
-
-  /**
-   * Setup event listeners for a single card element
-   */
-  private setupCardEventListeners(card: HTMLElement): void {
-    // Expand icon
-    const expandIcon = card.querySelector('.q4h-expand-icon');
-    expandIcon?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const questionId = card.getAttribute('data-question-id');
-      if (questionId) {
-        this.toggleQuestion(questionId);
-      }
-    });
-
-    // Checkbox and header
-    const header = card.querySelector('.q4h-question-header');
-    const checkbox = card.querySelector('.q4h-checkbox');
-    (header || checkbox)?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const questionId = card.getAttribute('data-question-id');
-      if (questionId) {
-        this.toggleSelection(questionId);
-      }
-    });
-
-    // External link
-    const externalLink = card.querySelector('.q4h-external-link');
-    externalLink?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const questionId = card.getAttribute('data-question-id');
-      const question = this.questions.find((q) => q.id === questionId);
-      if (question) {
-        this.navigateToCallSite(question);
-      }
-    });
-  }
-
-  /**
-   * Update question list visibility based on question count
-   */
-  private updateQuestionListVisibility(): void {
-    if (!this.questionListContainer) return;
-
-    const hasQuestions = this.questions.length > 0;
-    const emptyState = this.questionListContainer.querySelector('.empty-state');
-
-    if (hasQuestions && emptyState) {
-      emptyState.remove();
-    } else if (!hasQuestions && !emptyState) {
-      const t = getUiStrings(this.uiLanguage);
-      const emptyDiv = document.createElement('div');
-      emptyDiv.className = 'empty-state';
-      emptyDiv.textContent = t.q4hNoPending;
-      this.questionListContainer.appendChild(emptyDiv);
-    }
-  }
-
   private setupEventListeners(): void {
     if (!this.shadowRoot) return;
 
-    // Expand icon click handlers
-    this.shadowRoot.querySelectorAll('.q4h-expand-icon').forEach((icon) => {
-      icon.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const card = icon.closest('.q4h-question-card');
-        const questionId = card?.getAttribute('data-question-id');
-        if (questionId) {
-          this.toggleQuestion(questionId);
-        }
-      });
-    });
-
-    // Checkbox and header click handlers (toggle selection)
-    this.shadowRoot.querySelectorAll('.q4h-checkbox, .q4h-question-header').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const card = el.closest('.q4h-question-card');
-        const questionId = card?.getAttribute('data-question-id');
-        if (questionId) {
-          this.toggleSelection(questionId);
-        }
-      });
-    });
-
-    // External link handlers
-    this.shadowRoot.querySelectorAll('.q4h-external-link').forEach((link) => {
-      link.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const questionId = link.getAttribute('data-question-id');
-        const question = this.questions.find((q) => q.id === questionId);
-        if (question) {
-          this.navigateToCallSite(question);
-        }
-      });
-    });
-
-    // Text input handlers
     if (this.textInput) {
       this.isComposing = false;
       this.textInput.addEventListener('compositionstart', () => {
@@ -656,7 +282,6 @@ export class DomindsQ4HInput extends HTMLElement {
         this.escPrimedAtMs = null;
         this.scheduleInputUiUpdate();
       });
-
       this.textInput.addEventListener('input', () => {
         this.scheduleInputUiUpdate();
       });
@@ -695,29 +320,24 @@ export class DomindsQ4HInput extends HTMLElement {
         if (e.key === 'Enter' && isIme) {
           return;
         }
+
         if (this.sendOnEnter) {
-          // Send on Enter (unless modifier keys are pressed)
           if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             void this.handlePrimaryAction();
           } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            // Manually insert newline for Ctrl+Enter or Cmd+Enter as Chrome doesn't by default
             e.preventDefault();
             document.execCommand('insertText', false, '\n');
           }
-          // Shift+Enter works natively
         } else {
-          // Send on Ctrl+Enter or Cmd+Enter
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             void this.handlePrimaryAction();
           }
-          // Enter and Shift+Enter work natively to create new line
         }
       });
     }
 
-    // Toggle send on enter button handler
     const toggleBtn = this.shadowRoot.querySelector('.send-on-enter-toggle');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', () => {
@@ -727,58 +347,10 @@ export class DomindsQ4HInput extends HTMLElement {
       });
     }
 
-    // Send button handler
     if (this.sendButton) {
       this.sendButton.addEventListener('click', () => {
         void this.handlePrimaryAction();
       });
-    }
-
-    // Question footer click handler (toggle list)
-    this.questionFooter = this.shadowRoot.querySelector('.question-footer')!;
-    if (this.questionFooter) {
-      this.questionFooter.addEventListener('click', () => {
-        this.toggleList();
-      });
-    }
-  }
-
-  /**
-   * Toggle the question list expanded/collapsed state
-   */
-  private toggleList(): void {
-    this.isListExpanded = !this.isListExpanded;
-    this.updateListVisibility();
-
-    // Notify parent about state change
-    this.dispatchEvent(
-      new CustomEvent('q4h-toggle', {
-        detail: { expanded: this.isListExpanded },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  /**
-   * Update list visibility based on expanded state
-   */
-  private updateListVisibility(): void {
-    if (!this.questionListContainer || !this.questionFooter) return;
-
-    // Update list collapse state
-    if (this.isListExpanded) {
-      this.questionListContainer.classList.remove('collapsed');
-    } else {
-      this.questionListContainer.classList.add('collapsed');
-    }
-
-    // Update arrow rotation (90deg anti-clockwise: right → up)
-    const arrow = this.questionFooter.querySelector('.q4h-toggle-arrow');
-    if (arrow) {
-      (arrow as HTMLElement).style.transform = this.isListExpanded
-        ? 'rotate(-90deg)'
-        : 'rotate(0deg)';
     }
   }
 
@@ -805,7 +377,7 @@ export class DomindsQ4HInput extends HTMLElement {
         return;
       }
       await this.sendMessage();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Primary action failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Action failed';
       this.showError(errorMessage);
@@ -815,7 +387,6 @@ export class DomindsQ4HInput extends HTMLElement {
   private async sendMessage(): Promise<{ success: true; msgId: string }> {
     const content = this.textInput.value.trim();
 
-    // Validate input
     if (!content) {
       throw new Error('Message content is empty');
     }
@@ -831,7 +402,6 @@ export class DomindsQ4HInput extends HTMLElement {
       throw new Error('Send is disabled (context health critical)');
     }
 
-    // Generate message ID
     const msgId = generateShortId();
 
     try {
@@ -840,7 +410,6 @@ export class DomindsQ4HInput extends HTMLElement {
       const restoreFocus = active === this.textInput || active === this.sendButton;
 
       if (this.selectedQuestionId) {
-        // Send as Q4H answer
         this.wsManager.sendRaw({
           type: 'drive_dialog_by_user_answer',
           dialog: this.currentDialog,
@@ -851,7 +420,6 @@ export class DomindsQ4HInput extends HTMLElement {
           userLanguageCode: this.uiLanguage,
         });
       } else {
-        // Send as regular message
         this.wsManager.sendRaw({
           type: 'drive_dlg_by_user_msg',
           dialog: this.currentDialog,
@@ -861,7 +429,6 @@ export class DomindsQ4HInput extends HTMLElement {
         });
       }
 
-      // Clear input and dispatch event
       this.clear();
       this.dispatchEvent(
         new CustomEvent('usersend', {
@@ -880,7 +447,7 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       return { success: true, msgId };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to send message:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       this.showError(errorMessage);
@@ -901,7 +468,6 @@ export class DomindsQ4HInput extends HTMLElement {
     const blocked = this.isBlockedByContextHealthCritical();
     const hasContent = this.textInput.value.trim().length > 0;
     const canSend = hasContent && !this.props.disabled && !blocked && !!this.currentDialog;
-
     this.sendButton.disabled = !canSend;
   }
 
@@ -930,71 +496,13 @@ export class DomindsQ4HInput extends HTMLElement {
   private updateUI(): void {
     if (!this.inputWrapper || !this.textInput) return;
 
-    // Update disabled state
     const shouldDisable =
       this.props.disabled || this.isBlockedByContextHealthCritical() || !this.currentDialog;
     this.inputWrapper.classList.toggle('disabled', shouldDisable);
+    this.inputWrapper.classList.toggle('q4h-active', this.selectedQuestionId !== null);
     this.textInput.disabled = shouldDisable;
-
-    // Update send button
     this.updateSendButton();
-
-    // Update list visibility
-    this.updateListVisibility();
   }
-
-  private autoResizeTextarea(): void {
-    if (!this.textInput) return;
-
-    this.textInput.style.height = 'auto';
-    const scrollHeight = this.textInput.scrollHeight;
-    const minHeight = 48; // 2 rows
-    const maxHeight = 120;
-
-    this.textInput.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
-  }
-
-  private scheduleInputUiUpdate(): void {
-    if (this.inputUiRafId !== null) return;
-    this.inputUiRafId = window.requestAnimationFrame(() => {
-      this.inputUiRafId = null;
-      this.updateSendButton();
-      // Avoid layout thrash during IME composition; resize after composition ends.
-      if (!this.isComposing) {
-        this.autoResizeTextarea();
-      }
-    });
-  }
-
-  private showError(message: string): void {
-    // Add visual error indicator
-    if (this.inputWrapper) {
-      this.inputWrapper.style.borderColor = 'var(--dominds-danger, #dc3545)';
-      this.inputWrapper.style.boxShadow = '0 0 0 3px rgba(220, 53, 69, 0.1)';
-
-      setTimeout(() => {
-        this.inputWrapper.style.borderColor = '';
-        this.inputWrapper.style.boxShadow = '';
-      }, 3000);
-    }
-
-    // Dispatch error event
-    this.dispatchEvent(
-      new CustomEvent('input-error', {
-        detail: { message, type: 'error' },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  // ==================== Render Methods ====================
 
   private render(): void {
     if (!this.shadowRoot) return;
@@ -1007,43 +515,22 @@ export class DomindsQ4HInput extends HTMLElement {
       ${html}
     `;
 
-    // Get element references
     this.textInput = this.shadowRoot.querySelector('.message-input')!;
     this.sendButton = this.shadowRoot.querySelector('.send-button')!;
     this.inputWrapper = this.shadowRoot.querySelector('.input-wrapper')!;
-    this.questionListContainer = this.shadowRoot.querySelector('.question-list')!;
-    this.questionFooter = this.shadowRoot.querySelector('.question-footer')!;
   }
 
   private getComponentHTML(): string {
     const t = getUiStrings(this.uiLanguage);
-    const questionCount = this.questions.length;
     const state = this.runState;
     const isProceeding =
       state !== null && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested');
     const isStopping = state !== null && state.kind === 'proceeding_stop_requested';
     const primaryTitle = isProceeding ? (isStopping ? t.stopping : t.stop) : t.send;
     const primaryClass = isProceeding ? 'send-button stop' : 'send-button';
+
     return `
       <div class="q4h-input-container">
-        <div class="question-list ${this.isListExpanded ? '' : 'collapsed'}">
-          ${
-            questionCount > 0
-              ? this.renderQuestions()
-              : `<div class="empty-state">${t.q4hNoPending}</div>`
-          }
-        </div>
-        <div class="question-footer">
-          <div class="question-footer-content">
-            <span class="q4h-toggle-arrow" style="transform: ${this.isListExpanded ? 'rotate(-90deg)' : 'rotate(0deg)'}"></span>
-            <span class="question-footer-label">
-              ${t.q4hPendingQuestions}
-              <span class="q4h-count-badge">
-                ${questionCount}
-              </span>
-            </span>
-          </div>
-        </div>
         <div class="input-section">
           <div class="input-wrapper ${this.selectedQuestionId !== null ? 'q4h-active' : ''} ${this.props.disabled ? 'disabled' : ''}">
             <textarea
@@ -1092,7 +579,6 @@ export class DomindsQ4HInput extends HTMLElement {
         color-scheme: inherit;
       }
 
-      /* Main container */
       .q4h-input-container {
         display: flex;
         flex-direction: column;
@@ -1105,324 +591,6 @@ export class DomindsQ4HInput extends HTMLElement {
         box-sizing: border-box;
       }
 
-      /* Question list area - scrollable */
-      .question-list {
-        flex: 1 1 auto;
-        overflow-y: auto;
-        min-height: 0;
-        padding: 8px 16px;
-      }
-
-      .question-list:empty {
-        display: none;
-      }
-
-      .question-list.collapsed {
-        flex: 0 0 0;
-        max-height: 0;
-        overflow: hidden;
-        padding-top: 0;
-        padding-bottom: 0;
-        margin: 0;
-        border: none;
-      }
-
-      /* Empty state */
-      .empty-state {
-        padding: 20px;
-        text-align: center;
-        color: var(--color-fg-tertiary, #64748b);
-        font-size: 13px;
-      }
-
-      /* Footer with count badge */
-      .question-footer {
-        display: flex;
-        flex: none;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px 16px;
-        border-top: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--color-bg-secondary, #f8fafc);
-        cursor: pointer;
-        position: relative;
-        z-index: 2;
-      }
-
-      .question-footer:hover {
-        background: var(--color-bg-tertiary, #f1f5f9);
-      }
-
-      /* Toggle arrow - points right when collapsed, up when expanded */
-      .q4h-toggle-arrow {
-        width: 0;
-        height: 0;
-        border-top: 5px solid transparent;
-        border-bottom: 5px solid transparent;
-        border-left: 6px solid var(--color-fg-tertiary, #64748b);
-        transition: transform 0.2s ease;
-        flex-shrink: 0;
-        margin-right: 8px;
-      }
-
-      .question-footer-content {
-        display: flex;
-        align-items: center;
-      }
-
-      .question-footer-label {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--color-fg-secondary, #475569);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      /* Count badge */
-      .q4h-count-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 20px;
-        height: 20px;
-        padding: 0 6px;
-        background: var(--dominds-primary, #007acc);
-        color: white;
-        font-size: 12px;
-        font-weight: 600;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px color-mix(in srgb, var(--dominds-primary, #007acc) 30%, transparent);
-      }
-
-      .q4h-count-badge.bump {
-        animation: countBump 0.3s ease-out;
-      }
-
-      @keyframes countBump {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.3); }
-        100% { transform: scale(1); }
-      }
-
-      /* Question card styles */
-      .q4h-question-card {
-        background: var(--color-bg-secondary, #ffffff);
-        border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 8px;
-        margin-bottom: 6px;
-        overflow: hidden;
-        transition: all 0.2s ease;
-      }
-
-      .q4h-question-card:hover {
-        border-color: var(--color-accent-primary, #007acc);
-        box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent-primary, #007acc) 15%, transparent);
-      }
-
-      /* Selected state - accent background */
-      .q4h-question-card.selected {
-        border-color: var(--dominds-primary, #007acc);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 25%, transparent);
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--color-bg-secondary, #ffffff));
-      }
-
-      .q4h-question-card.selected:hover {
-        border-color: var(--dominds-primary, #007acc);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
-      }
-
-      .q4h-question-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        cursor: pointer;
-      }
-
-      .q4h-question-header:hover {
-        background: var(--color-bg-tertiary, #f8fafc);
-      }
-
-      .q4h-question-card.selected .q4h-question-header:hover {
-        background: transparent;
-      }
-
-      .q4h-expand-icon {
-        font-size: 10px;
-        color: var(--color-fg-tertiary, #64748b);
-        transition: transform 0.2s ease;
-        width: 16px;
-        flex-shrink: 0;
-      }
-
-      .q4h-external-link {
-        font-size: 14px;
-        color: var(--color-fg-tertiary, #64748b);
-        cursor: pointer;
-        padding: 2px 4px;
-        margin-left: auto;
-        transition: color 0.2s ease;
-        flex-shrink: 0;
-      }
-
-      .q4h-external-link:hover {
-        color: var(--dominds-primary, #007acc);
-      }
-
-      .q4h-question-card.expanded .q4h-expand-icon {
-        transform: rotate(90deg);
-      }
-
-      .q4h-checkbox {
-        width: 18px;
-        height: 18px;
-        border: 2px solid var(--color-border-primary, #94a3b8);
-        border-radius: 4px;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s ease;
-        background: transparent;
-      }
-
-      .q4h-question-card.selected .q4h-checkbox {
-        background: var(--dominds-primary, #007acc);
-        border-color: var(--dominds-primary, #007acc);
-      }
-
-      .q4h-checkbox-check {
-        display: none;
-        color: white;
-        font-size: 12px;
-        line-height: 1;
-      }
-
-      .q4h-question-card.selected .q4h-checkbox-check {
-        display: block;
-      }
-
-      .q4h-question-title {
-        flex: 1;
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--color-fg-primary, #0f172a);
-        line-height: 1.35;
-        display: flex;
-        gap: 10px;
-        align-items: baseline;
-        min-width: 0;
-      }
-
-      .q4h-question-origin-left {
-        display: inline-flex;
-        gap: 6px;
-        align-items: baseline;
-        flex: 1;
-        min-width: 0;
-      }
-
-      .q4h-question-origin {
-        white-space: nowrap;
-      }
-
-      .q4h-question-origin-id {
-        white-space: nowrap;
-      }
-
-      .q4h-question-origin-taskdoc {
-        color: var(--color-fg-tertiary, #64748b);
-        font-weight: 500;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        min-width: 0;
-        max-width: 44ch;
-      }
-
-      .q4h-question-origin-asked-at {
-        color: var(--color-fg-tertiary, #64748b);
-        font-weight: 500;
-        white-space: nowrap;
-        margin-left: auto;
-        text-align: right;
-        flex-shrink: 0;
-      }
-
-      .q4h-question-origin-asked-at::before {
-        content: '•';
-        color: var(--color-fg-tertiary, #64748b);
-        font-weight: 400;
-        margin: 0 6px 0 10px;
-      }
-
-      .q4h-question-origin-sep {
-        color: var(--color-fg-tertiary, #64748b);
-        font-weight: 400;
-        white-space: nowrap;
-      }
-
-      .q4h-question-body {
-        display: none;
-        padding: 0 10px 10px;
-        border-top: 1px solid var(--color-border-primary, #e2e8f0);
-      }
-
-      .q4h-question-card.expanded .q4h-question-body {
-        display: block;
-      }
-
-      .q4h-question-call {
-        margin-top: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .q4h-question-call-headline {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-        font-size: 12px;
-        color: var(--color-fg-primary, #0f172a);
-        background: var(--color-bg-tertiary, #f8fafc);
-        border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 6px;
-        padding: 6px 8px;
-        white-space: pre-wrap;
-      }
-
-      .q4h-question-call-body {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-        font-size: 12px;
-        color: var(--color-fg-secondary, #475569);
-        background: var(--color-bg-tertiary, #f8fafc);
-        border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 6px;
-        padding: 8px;
-        margin: 0;
-        white-space: pre-wrap;
-      }
-
-      .q4h-goto-site-btn {
-        margin-top: 12px;
-        padding: 8px 14px;
-        background: var(--color-accent-primary, #007acc);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      }
-
-      .q4h-goto-site-btn:hover {
-        background: color-mix(in srgb, var(--color-accent-primary, #007acc) 85%, black);
-      }
-
-      /* Input section */
       .input-section {
         flex: none;
         border-top: 1px solid var(--color-border-primary, #e2e8f0);
@@ -1430,10 +598,6 @@ export class DomindsQ4HInput extends HTMLElement {
         background: inherit;
         position: relative;
         z-index: 1;
-      }
-
-      .q4h-question-card.selected ~ .input-section {
-        border-top-color: transparent;
       }
 
       .input-wrapper {
@@ -1482,12 +646,11 @@ export class DomindsQ4HInput extends HTMLElement {
         font-weight: bold;
       }
 
-      /* Q4H active state - accent background, no top border */
       .input-wrapper.q4h-active {
         background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--color-bg-secondary, #ffffff));
         border-color: var(--dominds-primary, #007acc);
-        border-top-color: transparent; /* Remove top border when Q4H selected */
-        border-radius: 0 0 24px 24px; /* Remove top rounded corners when Q4H selected */
+        border-top-color: transparent;
+        border-radius: 0 0 24px 24px;
       }
 
       .input-wrapper.q4h-active:focus-within {
@@ -1583,51 +746,10 @@ export class DomindsQ4HInput extends HTMLElement {
         width: 16px;
         height: 16px;
       }
-
-    `;
-  }
-
-  private renderQuestions(): string {
-    return this.questions.map((question) => this.renderQuestionCard(question)).join('');
-  }
-
-  private renderQuestionCard(question: Q4HQuestion): string {
-    const isExpanded = this.expandedQuestions.has(question.id);
-    const isSelected = this.selectedQuestionId === question.id;
-    const expandedClass = isExpanded ? 'expanded' : '';
-    const selectedClass = isSelected ? 'selected' : '';
-
-    return `
-      <div class="q4h-question-card ${expandedClass} ${selectedClass}" data-question-id="${question.id}" data-dialog-id="${question.dialogContext.selfId}" data-root-id="${question.dialogContext.rootId}" data-agent-id="${question.dialogContext.agentId}" data-asked-at="${question.askedAt}">
-        <div class="q4h-question-header" data-question-id="${question.id}">
-          <span class="q4h-checkbox">
-            <span class="q4h-checkbox-check">✓</span>
-          </span>
-          <span class="q4h-expand-icon">▶</span>
-          <span class="q4h-question-title">
-            <span class="q4h-question-origin-left">
-              <span class="q4h-question-origin">@${this.escapeHtml(question.dialogContext.agentId)}</span>
-              <span class="q4h-question-origin-sep">•</span>
-              <span class="q4h-question-origin-id">${this.escapeHtml(question.dialogContext.selfId)}</span>
-              <span class="q4h-question-origin-sep">•</span>
-              <span class="q4h-question-origin-taskdoc" title="${escapeHtmlAttr(question.dialogContext.taskDocPath)}">${this.escapeHtml(question.dialogContext.taskDocPath)}</span>
-            </span>
-            <span class="q4h-question-origin-asked-at">${this.escapeHtml(question.askedAt)}</span>
-          </span>
-          <span class="q4h-external-link" data-question-id="${question.id}">↗</span>
-        </div>
-        <div class="q4h-question-body">
-          <div class="q4h-question-call">
-            <code class="q4h-question-call-headline">${this.escapeHtml(question.headLine)}</code>
-            <pre class="q4h-question-call-body">${this.escapeHtml(question.bodyContent)}</pre>
-          </div>
-        </div>
-      </div>
     `;
   }
 }
 
-// Register the custom element
 if (!customElements.get('dominds-q4h-input')) {
   customElements.define('dominds-q4h-input', DomindsQ4HInput);
 }

@@ -22,6 +22,7 @@
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
+    "openai-streaming": "tsx provider/openai-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
     "diag-tool": "tsx toolsets/diag.ts",

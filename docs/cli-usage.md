@@ -482,8 +482,8 @@ Dialogs are stored in the `.dialogs/` directory with the following structure:
 Each dialog directory contains:
 
 - `dialog.yaml` - Dialog metadata
-- `round.curr` - Current round tracking
-- `*.jsonl` - Streamed message files
+- `latest.yaml` - Current round + lastModified tracking
+- `round-001.jsonl` (and further rounds) - Streamed message files
 - `subdialogs/` - Nested subdialogs
 
 ## Error Handling

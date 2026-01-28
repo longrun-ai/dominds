@@ -2,6 +2,8 @@ import type { I18nText } from './i18n';
 
 export type ToolKind = 'func';
 
+export type ToolsetSource = 'dominds' | 'mcp';
+
 export type ToolInfo = {
   name: string;
   kind: ToolKind;
@@ -11,6 +13,7 @@ export type ToolInfo = {
 
 export type ToolsetInfo = {
   name: string;
+  source: ToolsetSource;
   descriptionI18n?: I18nText;
   tools: ToolInfo[];
 };

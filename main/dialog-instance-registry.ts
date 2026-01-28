@@ -20,6 +20,8 @@ export async function getOrRestoreRootDialog(
   const rootState = await DialogPersistence.restoreDialog(rootDialogId, status);
   if (!rootState) return undefined;
 
+  const latest = await DialogPersistence.loadDialogLatest(rootDialogId, status);
+
   const rootStore = new DiskFileDialogStore(rootDialogId);
   const rootDialog = new RootDialog(
     rootStore,
@@ -33,6 +35,7 @@ export async function getOrRestoreRootDialog(
       contextHealth: rootState.contextHealth,
     },
   );
+  rootDialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
   rootDialog.setPersistenceStatus(status);
   globalDialogRegistry.register(rootDialog);
 
@@ -73,6 +76,8 @@ export async function ensureDialogLoaded(
   const state = await DialogPersistence.restoreDialog(targetId, status);
   if (!state) return undefined;
 
+  const latest = await DialogPersistence.loadDialogLatest(targetId, status);
+
   const assignmentFromSup = state.metadata.assignmentFromSup;
   if (!assignmentFromSup) return undefined;
 
@@ -106,6 +111,7 @@ export async function ensureDialogLoaded(
       contextHealth: state.contextHealth,
     },
   );
+  subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
   if (subdialog.topicId) {
     rootDialog.registerSubdialog(subdialog);
   }

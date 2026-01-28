@@ -736,10 +736,10 @@ export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
   description:
-    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). This tool performs only a simple command prefix check and does not do deeper safety validation.',
+    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). Commands outside the allowlist are rejected.',
   descriptionI18n: {
-    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). You are explicitly authorized to call this tool yourself (no delegation). This tool performs only a simple command prefix check and does not do deeper safety validation.',
-    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、git show）。你已被明确授权自行调用该工具（无需委派）。该工具只做简单的命令前缀判断，不做更深入的安全校验。',
+    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
+    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、git show）。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {

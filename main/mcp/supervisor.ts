@@ -727,6 +727,7 @@ function registerServer(state: ServerState): void {
   }
   registerToolset(state.toolsetName, state.tools);
   setToolsetMeta(state.toolsetName, {
+    source: 'mcp',
     descriptionI18n: {
       en: `MCP server: ${state.serverId}`,
       zh: `MCP 服务器：${state.serverId}`,

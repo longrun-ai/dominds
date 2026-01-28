@@ -43,6 +43,8 @@ export type WebSocketMessage =
   | ProblemsSnapshotMessage
   | CreateDialogRequest
   | DisplayDialogRequest
+  | SetDiligencePushRequest
+  | DiligencePushUpdatedMessage
   | GetQ4HStateRequest
   | Q4HStateResponse
   | DialogsMovedMessage
@@ -94,6 +96,19 @@ export interface CreateDialogRequest {
 export interface DisplayDialogRequest {
   type: 'display_dialog';
   dialog: DialogIdent;
+}
+
+export interface SetDiligencePushRequest {
+  type: 'set_diligence_push';
+  dialog: DialogIdent;
+  disableDiligencePush: boolean;
+}
+
+export interface DiligencePushUpdatedMessage {
+  type: 'diligence_push_updated';
+  dialog: DialogIdent;
+  disableDiligencePush: boolean;
+  timestamp: string;
 }
 
 export interface DriveDialogRequest {
@@ -211,4 +226,6 @@ export interface DialogReadyMessage {
   supdialogId?: string;
   topicId?: string;
   assignmentFromSup?: AssignmentFromSup;
+  disableDiligencePush?: boolean;
+  diligencePushMax?: number;
 }

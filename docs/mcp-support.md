@@ -281,7 +281,7 @@ Design:
 The projection layer is an LLM wrapper API that lives between:
 
 - `Team.Member.listTools()` (tool registry output)
-- LLM generators (e.g. `dominds/main/llm/gen/codex.ts`, `dominds/main/llm/gen/anthropic.ts`)
+- LLM generators (e.g. `dominds/main/llm/gen/codex.ts`, `dominds/main/llm/gen/anthropic.ts`, `dominds/main/llm/gen/openai.ts`)
 
 Rules:
 

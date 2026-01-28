@@ -7,6 +7,7 @@ import { LlmGenerator } from '../gen';
 import { AnthropicGen } from './anthropic';
 import { CodexGen } from './codex';
 import { MockGen } from './mock';
+import { OpenAiGen } from './openai';
 
 export const generatorsRegistry: Map<string, LlmGenerator> = new Map<string, LlmGenerator>();
 
@@ -26,4 +27,5 @@ export function getLlmGenerator(apiType: string): LlmGenerator | undefined {
   registerLlmGenerator(new AnthropicGen());
   registerLlmGenerator(new CodexGen());
   registerLlmGenerator(new MockGen());
+  registerLlmGenerator(new OpenAiGen());
 })();

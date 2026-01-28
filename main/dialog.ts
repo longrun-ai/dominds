@@ -204,6 +204,9 @@ export abstract class Dialog {
   // Intentionally not persisted: this is a per-process safety valve, not dialog state.
   public diligenceAutoContinueCount: number = 0;
 
+  // Keep-going disable switch (persisted via latest.yaml; default = false).
+  public disableDiligencePush: boolean = false;
+
   private readonly _mutex: AsyncFifoMutex;
 
   // Current callId for tellask tool-call correlation
