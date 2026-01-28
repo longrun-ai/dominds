@@ -428,6 +428,9 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
           : undefined;
     if (typeof msg === 'string' && msg.length > 0) {
       const lower = msg.toLowerCase();
+      if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
+        return { kind: 'retriable', message: msg };
+      }
       if (lower.includes('terminated')) {
         return { kind: 'retriable', message: msg };
       }
@@ -479,6 +482,11 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
         'ENOTFOUND',
         'ENETUNREACH',
         'EHOSTUNREACH',
+        // undici / Node.js fetch
+        'UND_ERR_CONNECT_TIMEOUT',
+        'UND_ERR_HEADERS_TIMEOUT',
+        'UND_ERR_BODY_TIMEOUT',
+        'UND_ERR_SOCKET',
       ]);
       if (retriableCodes.has(code)) {
         return { kind: 'retriable', code, message: msg };
@@ -486,6 +494,9 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
     }
 
     const lower = msg.toLowerCase();
+    if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
+      return { kind: 'retriable', message: msg };
+    }
     if (lower.includes('terminated')) {
       return { kind: 'retriable', message: msg };
     }
