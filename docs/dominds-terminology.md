@@ -9,10 +9,10 @@
 
 ## Table of Contents
 
-- [Audience / 读者](#audience)
-- [通用语境（General Context Vocabulary）](#general-context)
-- [使用者语境（User-Facing Vocabulary）](#user-facing)
-- [系统实现语境（Implementation-Facing Vocabulary）](#implementation-facing)
+- [Audience / 读者](#audience--读者)
+- [通用语境（General Context Vocabulary）](#通用语境general-context-vocabulary)
+- [使用者语境（User-Facing Vocabulary）](#使用者语境user-facing-vocabulary)
+- [系统实现语境（Implementation-Facing Vocabulary）](#系统实现语境implementation-facing-vocabulary)
 
 ---
 
@@ -113,8 +113,6 @@ Example / 示例（概念）:
 ##### 会话键指令（Session Key Directive）
 
 - EN (directive; headline only): `!tellaskSession <key>`
-- EN (compatibility note): As of today, the implementation uses `!topic <topic-id>` for resumable context. `!tellaskSession <key>` is a proposed user-facing naming/alias; until it is implemented, use `!topic` in actual Tellasks.
-- ZH（兼容性备注）: 目前实现侧用于“可恢复上下文”的指令仍是 `!topic <topic-id>`；`!tellaskSession <key>` 是提议中的对外命名/别名。该别名落地前，实际诉请中请继续使用 `!topic`。
 - ZH（指令；仅 headline）: `!tellaskSession <key>`
 
 - EN (parameter name concept): `tellaskSession` (parameter names are English-only; not i18n’d)
@@ -218,19 +216,16 @@ Example / 示例（概念）:
 - EN: The implementation may still use the internal labels **Type A/B/C** to classify teammate-tellask patterns.
 - ZH: 实现层仍可能使用 **Type A/B/C** 作为队友诉请形态的内部分类。
 
-- EN: Type A: supdialog call (subdialog calling its direct supdialog); primary syntax `!?@super` (NO `!topic`).
-- ZH: Type A：supdialog call（子对话回问其直接 supdialog）；主语法 `!?@super`（不带 `!topic`）。
+- EN: Type A: supdialog call (subdialog calling its direct supdialog); primary syntax `!?@super` (NO `!tellaskSession`).
+- ZH: Type A：supdialog call（子对话回问其直接 supdialog）；主语法 `!?@super`（不带 `!tellaskSession`）。
 
-- EN: Type B: registered subdialog call (resumable) keyed by `agentId!topicId`.
-- ZH: Type B：registered subdialog call（可恢复），用 `agentId!topicId` 作为 registry key。
+- EN: Type B: registered subdialog call (resumable) keyed by `agentId!tellaskSession`.
+- ZH: Type B：registered subdialog call（可恢复），用 `agentId!tellaskSession` 作为 registry key。
 
 - EN: Type C: transient subdialog call (one-shot), not registered.
 - ZH: Type C：transient subdialog call（一次性），不注册到 registry。
 
-### `!topic` / 会话键指令（current implementation)
+### `!tellaskSession` / 会话键指令
 
-- EN: In the current implementation, resumable registered subdialogs use `!topic <topic-id>` in the Tellask headline.
-- ZH: 当前实现中，可恢复的注册子对话使用 Tellask headline 内的 `!topic <topic-id>`。
-
-- EN: Proposed user-facing naming: `!tellaskSession <key>` as an alias of `!topic`.
-- ZH: 提议的使用者命名：`!tellaskSession <key>` 作为 `!topic` 的别名。
+- EN: Resumable registered subdialogs use `!tellaskSession <key>` in the Tellask headline.
+- ZH: 可恢复的注册子对话使用 Tellask headline 内的 `!tellaskSession <key>`。

@@ -14,6 +14,7 @@
  * - update_reminder: Update reminder content
  * - clear_mind: Start a new round, optionally add a reminder
  * - change_mind: Update a `.tsk/` task doc section without starting a new round
+ * - recall_taskdoc: Read a Taskdoc section from `*.tsk/` by (category, selector)
  *
  * USAGE CONTEXT:
  * Can both be triggered by an agent autonomously, or by human with role='user' msg,
@@ -24,6 +25,7 @@
  * humans should better have clickable UI widgets to draft reminder manips
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog } from '../dialog';
 import { SubDialog } from '../dialog';
@@ -33,10 +35,10 @@ import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import type { FuncTool, ToolArguments } from '../tool';
 import {
+  bearInMindFilenameForSection,
   isTaskPackagePath,
-  taskPackageSectionFromSelector,
-  updateTaskPackageSection,
-  type TaskPackageSection,
+  parseTaskPackageChangeMindTarget,
+  updateTaskPackageByChangeMindTarget,
 } from '../utils/task-package';
 
 type CtrlMessages = Readonly<{
@@ -48,12 +50,19 @@ type CtrlMessages = Readonly<{
   invalidFormatUpdate: string;
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
+  invalidFormatRecallTaskdoc: string;
   taskDocContentRequired: string;
   noTaskDocPathConfigured: string;
   pathMustBeWithinWorkspace: string;
   invalidTaskDocPath: (taskDocPath: string) => string;
   selectorRequired: string;
+  categoryRequired: string;
   invalidSelector: (selector: string) => string;
+  invalidCategory: (category: string) => string;
+  invalidCategorySelector: (selector: string) => string;
+  topLevelSelectorRequiresNoCategory: (category: string, selector: string) => string;
+  bearInMindSelectorRequiresBearInMindCategory: (category: string, selector: string) => string;
+  taskDocSectionMissing: (relativePath: string) => string;
   clearedRoundPrompt: (nextRound: number) => string;
 }>;
 
@@ -71,9 +80,11 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       invalidFormatUpdate:
         '错误：参数不正确。用法：update_reminder({ reminder_no: number, content: string })',
       invalidFormatChangeMind:
-        '错误：参数不正确。用法：change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
+        '错误：参数不正确。用法：change_mind({ selector: string, category?: string, content: string })',
       tooManyArgsChangeMind:
-        '错误：参数不正确。用法：change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
+        '错误：参数不正确。用法：change_mind({ selector: string, category?: string, content: string })',
+      invalidFormatRecallTaskdoc:
+        '错误：参数不正确。用法：recall_taskdoc({ category: string, selector: string })',
       taskDocContentRequired:
         '错误：需要提供差遣牒内容（content）。\n' +
         '可复制示例：\n' +
@@ -87,9 +98,20 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       pathMustBeWithinWorkspace: '错误：路径必须位于工作区内',
       invalidTaskDocPath: (taskDocPath) =>
         `错误：差遣牒路径 '${taskDocPath}' 无效。期望为 \`*.tsk/\` 目录。`,
-      selectorRequired: '错误：Task packages 需要目标选择器：goals | constraints | progress',
+      selectorRequired: '错误：需要提供选择器（selector）。',
+      categoryRequired: '错误：需要提供章节目录（category）。',
       invalidSelector: (selector) =>
-        `错误：选择器 '${selector}' 无效。用法：goals | constraints | progress`,
+        `错误：选择器 '${selector}' 无效。用法：顶层 goals | constraints | progress；bearinmind 下 contracts | acceptance | grants | runbook | decisions | risks；或任意合法 identifier（例如 \`ux.checklist\`）。`,
+      invalidCategory: (category) =>
+        `错误：目录名（category）'${category}' 无效。必须匹配 \`^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$\`。`,
+      invalidCategorySelector: (selector) =>
+        `错误：目录内选择器（selector）'${selector}' 无效。必须匹配 \`^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$\`。`,
+      topLevelSelectorRequiresNoCategory: (category, selector) =>
+        `错误：选择器 '${selector}' 是顶层保留分段（goals/constraints/progress），不得与 category='${category}' 一起使用。`,
+      bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
+        `错误：选择器 '${selector}' 仅允许在 category='bearinmind' 下使用（当前 category='${category}'）。`,
+      taskDocSectionMissing: (relativePath) =>
+        `未找到：\`${relativePath}\`。\n\n可用 \`change_mind\` 创建或更新该章节（它会整段替换）：\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
       clearedRoundPrompt: (nextRound) =>
         `这是对话的第 #${nextRound} 轮，你刚清理了思路，请继续执行任务。`,
     };
@@ -107,9 +129,11 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     invalidFormatUpdate:
       'Error: Invalid args. Use: update_reminder({ reminder_no: number, content: string })',
     invalidFormatChangeMind:
-      'Error: Invalid args. Use: change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
+      'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
     tooManyArgsChangeMind:
-      'Error: Invalid args. Use: change_mind({ selector: "goals"|"constraints"|"progress", content: string })',
+      'Error: Invalid args. Use: change_mind({ selector: string, category?: string, content: string })',
+    invalidFormatRecallTaskdoc:
+      'Error: Invalid args. Use: recall_taskdoc({ category: string, selector: string })',
     taskDocContentRequired:
       'Error: Taskdoc content is required (content).\n' +
       'Copy/paste example:\n' +
@@ -123,10 +147,20 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     pathMustBeWithinWorkspace: 'Error: Path must be within workspace',
     invalidTaskDocPath: (taskDocPath) =>
       `Error: Invalid Taskdoc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
-    selectorRequired:
-      'Error: Taskdoc packages require a target selector: goals | constraints | progress',
+    selectorRequired: 'Error: selector is required.',
+    categoryRequired: 'Error: category is required.',
     invalidSelector: (selector) =>
-      `Error: Invalid selector '${selector}'. Use: goals | constraints | progress`,
+      `Error: Invalid selector '${selector}'. Use: top-level goals|constraints|progress; under bearinmind: contracts|acceptance|grants|runbook|decisions|risks; or any identifier (e.g. \`ux.checklist\`).`,
+    invalidCategory: (category) =>
+      `Error: Invalid category '${category}'. Must match \`^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$\`.`,
+    invalidCategorySelector: (selector) =>
+      `Error: Invalid category selector '${selector}'. Must match \`^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$\`.`,
+    topLevelSelectorRequiresNoCategory: (category, selector) =>
+      `Error: Selector '${selector}' is reserved for top-level sections (goals/constraints/progress) and must not be used with category='${category}'.`,
+    bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
+      `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
+    taskDocSectionMissing: (relativePath) =>
+      `Not found: \`${relativePath}\`.\n\nUse \`change_mind\` to create/update it (whole-section replace):\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
     clearedRoundPrompt: (nextRound) =>
       `This is round #${nextRound} of the dialog, you just cleared your mind and please proceed with the task.`,
   };
@@ -297,8 +331,13 @@ export const changeMindTool: FuncTool = {
     properties: {
       selector: {
         type: 'string',
-        enum: ['goals', 'constraints', 'progress'],
-        description: 'Target section selector.',
+        description:
+          'Target section selector. Top-level: goals|constraints|progress. Under category="bearinmind": contracts|acceptance|grants|runbook|decisions|risks. For other categories: any identifier.',
+      },
+      category: {
+        type: 'string',
+        description:
+          'Optional category directory within the Taskdoc package. When present, selector targets <category>/<selector>.md.',
       },
       content: { type: 'string', description: 'New section content.' },
     },
@@ -326,6 +365,9 @@ export const changeMindTool: FuncTool = {
     const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
     if (!selector) return t.selectorRequired;
 
+    const categoryValue = args['category'];
+    const category = typeof categoryValue === 'string' ? categoryValue.trim() : undefined;
+
     const contentValue = args['content'];
     const newTaskDocContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!newTaskDocContent) return t.taskDocContentRequired;
@@ -340,15 +382,160 @@ export const changeMindTool: FuncTool = {
 
     if (!isTaskPackagePath(taskDocPath)) return t.invalidTaskDocPath(taskDocPath);
 
-    const section: TaskPackageSection | null = taskPackageSectionFromSelector(selector);
-    if (!section) return t.invalidSelector(selector);
+    const parsed = parseTaskPackageChangeMindTarget({ selector, category });
+    if (parsed.kind !== 'ok') {
+      const e = parsed.error;
+      switch (e.kind) {
+        case 'selector_required':
+          return t.selectorRequired;
+        case 'invalid_category_name':
+          return t.invalidCategory(e.category);
+        case 'invalid_category_selector':
+          return t.invalidCategorySelector(e.selector);
+        case 'invalid_top_level_selector':
+          return t.invalidSelector(e.selector);
+        case 'invalid_bearinmind_selector':
+          return t.invalidSelector(e.selector);
+        case 'top_level_selector_requires_no_category':
+          return t.topLevelSelectorRequiresNoCategory(e.category, e.selector);
+        case 'bearinmind_selector_requires_bearinmind_category':
+          return t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector);
+        default: {
+          const _exhaustive: never = e;
+          return String(_exhaustive);
+        }
+      }
+    }
 
-    await updateTaskPackageSection({
+    await updateTaskPackageByChangeMindTarget({
       taskPackageDirFullPath: fullPath,
-      section,
+      target: parsed.target,
       content: newTaskDocContent,
       updatedBy: caller.id,
     });
     return formatToolActionResult(language, 'mindChanged');
+  },
+};
+
+export const recallTaskdocTool: FuncTool = {
+  type: 'func',
+  name: 'recall_taskdoc',
+  description:
+    'Read a Taskdoc section from an encapsulated `*.tsk/` package by (category, selector). Use this when the section is not auto-injected and general file tools cannot access `*.tsk/`.',
+  descriptionI18n: {
+    en: 'Read a Taskdoc section from an encapsulated `*.tsk/` package by (category, selector). Use this when the section is not auto-injected and general file tools cannot access `*.tsk/`.',
+    zh: '按 (category, selector) 读取封装差遣牒（`*.tsk/`）中“不会自动注入上下文”的章节。用于在通用文件工具无法读取 `*.tsk/` 的前提下显式取回章节内容。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['category', 'selector'],
+    properties: {
+      category: { type: 'string', description: 'Category directory within the Taskdoc.' },
+      selector: { type: 'string', description: 'Section selector within the category.' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<string> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
+
+    const categoryValue = args['category'];
+    const category = typeof categoryValue === 'string' ? categoryValue.trim() : '';
+    if (category === '') return t.categoryRequired;
+
+    const selectorValue = args['selector'];
+    const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
+    if (selector === '') return t.selectorRequired;
+
+    // Task doc path is immutable for the dialog lifecycle.
+    const taskDocPath = dlg.taskDocPath;
+    if (!taskDocPath) return t.noTaskDocPathConfigured;
+
+    const workspaceRoot = path.resolve(process.cwd());
+    const fullPath = path.resolve(workspaceRoot, taskDocPath);
+    if (!fullPath.startsWith(workspaceRoot)) return t.pathMustBeWithinWorkspace;
+
+    if (!isTaskPackagePath(taskDocPath)) return t.invalidTaskDocPath(taskDocPath);
+
+    const parsed = parseTaskPackageChangeMindTarget({ selector, category });
+    if (parsed.kind !== 'ok') {
+      const e = parsed.error;
+      switch (e.kind) {
+        case 'selector_required':
+          return t.selectorRequired;
+        case 'invalid_category_name':
+          return t.invalidCategory(e.category);
+        case 'invalid_category_selector':
+          return t.invalidCategorySelector(e.selector);
+        case 'invalid_top_level_selector':
+          return t.invalidSelector(e.selector);
+        case 'invalid_bearinmind_selector':
+          return t.invalidSelector(e.selector);
+        case 'top_level_selector_requires_no_category':
+          return t.topLevelSelectorRequiresNoCategory(e.category, e.selector);
+        case 'bearinmind_selector_requires_bearinmind_category':
+          return t.bearInMindSelectorRequiresBearInMindCategory(e.category, e.selector);
+        default: {
+          const _exhaustive: never = e;
+          return String(_exhaustive);
+        }
+      }
+    }
+
+    const target = parsed.target;
+    const relPath = (() => {
+      switch (target.kind) {
+        case 'bearinmind':
+          return path.join('bearinmind', bearInMindFilenameForSection(target.section));
+        case 'category':
+          return path.join(target.category, `${target.selector}.md`);
+        case 'top_level':
+          return null;
+        default: {
+          const _exhaustive: never = target;
+          return _exhaustive;
+        }
+      }
+    })();
+
+    if (relPath === null) {
+      return t.invalidFormatRecallTaskdoc;
+    }
+
+    const sectionPath = path.resolve(fullPath, relPath);
+    if (!sectionPath.startsWith(fullPath)) {
+      return t.pathMustBeWithinWorkspace;
+    }
+
+    try {
+      const st = await fs.promises.stat(sectionPath);
+      if (!st.isFile()) {
+        return t.taskDocSectionMissing(relPath);
+      }
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return t.taskDocSectionMissing(relPath);
+      }
+      throw err;
+    }
+
+    const content = await fs.promises.readFile(sectionPath, 'utf8');
+    const bytes = Buffer.byteLength(content, 'utf8');
+    const maxSize = 100 * 1024;
+    const clipped = bytes > maxSize ? content.slice(0, maxSize) : content;
+    const note =
+      bytes > maxSize
+        ? language === 'zh'
+          ? `\n\n⚠️ 已截断：内容过大（${bytes} bytes），仅回显前 ${maxSize} bytes。`
+          : `\n\n⚠️ Truncated: content is too large (${bytes} bytes); showing first ${maxSize} bytes.`
+        : '';
+
+    return `**recall_taskdoc:** \`${relPath}\`\n\n---\n${clipped}\n---${note}`;
   },
 };

@@ -271,7 +271,6 @@ support is disabled (no dynamic MCP toolsets are registered).
 Reference specs:
 
 - MCP behavior and semantics: `dominds/docs/mcp-support.md`
-- Tools view UX and Problems panel: `dominds/docs/team-tools-view.md`
 
 ### Mapping: server → toolset (and granting it)
 

@@ -1,3 +1,4 @@
+import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 
@@ -18,24 +19,49 @@ type FetchState =
 function buildDocTabs(): readonly DocTab[] {
   return [
     {
-      key: 'design',
-      titleI18n: { zh: '设计', en: 'Design' },
-      docName: 'design.md',
+      key: 'terminology',
+      titleI18n: { zh: '术语', en: 'Terminology' },
+      docName: 'dominds-terminology',
     },
     {
-      key: 'dialog-system',
-      titleI18n: { zh: '对话系统', en: 'Dialog System' },
-      docName: 'dialog-system.md',
+      key: 'cli-usage',
+      titleI18n: { zh: 'CLI 使用指南', en: 'CLI Usage Guide' },
+      docName: 'cli-usage',
+    },
+    {
+      key: 'mcp-support',
+      titleI18n: { zh: 'MCP 支持', en: 'MCP Support' },
+      docName: 'mcp-support',
+    },
+    {
+      key: 'encapsulated-taskdocs',
+      titleI18n: { zh: '差遣牒（Taskdoc）封装', en: 'Encapsulated Taskdocs' },
+      docName: 'encapsulated-taskdoc',
+    },
+    {
+      key: 'context-health',
+      titleI18n: { zh: '上下文健康', en: 'Context Health' },
+      docName: 'context-health',
     },
     {
       key: 'keep-going',
-      titleI18n: { zh: '鞭策（Keep-going）', en: 'Keep-going' },
-      docName: 'keep-going.md',
+      titleI18n: { zh: '鞭策机制', en: 'Keep-going' },
+      docName: 'keep-going',
     },
     {
-      key: 'auth',
-      titleI18n: { zh: '认证', en: 'Auth' },
-      docName: 'auth.md',
+      key: 'design',
+      titleI18n: { zh: 'Dominds 设计', en: 'Dominds Design' },
+      docName: 'design',
+    },
+    {
+      key: 'mottos',
+      titleI18n: { zh: '警世名言', en: 'Mottos' },
+      docName: 'mottos',
+    },
+    {
+      key: 'oec-philosophy',
+      titleI18n: { zh: 'OEC 哲学', en: 'OEC Philosophy' },
+      docName: 'OEC-philosophy',
     },
   ] as const;
 }
@@ -76,8 +102,9 @@ export class DomindsDocsPanel extends HTMLElement {
       const api = getApiClient();
       const resp = await api.readDocsMarkdown(active.docName, this.uiLanguage);
       if (!resp.success) {
+        const t = getUiStrings(this.uiLanguage);
         if (resp.status === 401) {
-          this.fetchState = { kind: 'error', message: 'Unauthorized' };
+          this.fetchState = { kind: 'error', message: t.unauthorized };
         } else {
           const statusText = typeof resp.status === 'number' ? `HTTP ${resp.status}` : 'HTTP error';
           this.fetchState = { kind: 'error', message: resp.error ?? statusText };
@@ -124,7 +151,8 @@ export class DomindsDocsPanel extends HTMLElement {
 
     let bodyHtml = '';
     if (this.fetchState.kind === 'loading') {
-      bodyHtml = `<div class="muted">Loading…</div>`;
+      const t = getUiStrings(this.uiLanguage);
+      bodyHtml = `<div class="muted">${this.escapeHtml(t.loading)}</div>`;
     } else if (this.fetchState.kind === 'error') {
       bodyHtml = `<div class="error">${this.escapeHtml(this.fetchState.message)}</div>`;
     } else if (this.fetchState.kind === 'ready') {
@@ -147,6 +175,35 @@ export class DomindsDocsPanel extends HTMLElement {
         if (typeof k === 'string' && k) this.onSelectTab(k);
       });
     });
+
+    const body = root.querySelector('.docs-body');
+    if (body instanceof HTMLElement) {
+      body.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const link = target.closest('a');
+        if (!(link instanceof HTMLAnchorElement)) return;
+        const href = link.getAttribute('href');
+        if (typeof href !== 'string') return;
+        // Prevent internal ToC links (e.g. #中文标题) from being treated as normal navigation.
+        // Even if we can't locate the target heading, keep the browser on the same page.
+        if (!href.startsWith('#')) return;
+        let id = href.slice(1);
+        try {
+          id = decodeURIComponent(id);
+        } catch {
+          // keep raw
+        }
+        if (!id) {
+          e.preventDefault();
+          return;
+        }
+        const anchor = body.querySelector(`#${CSS.escape(id)}`);
+        e.preventDefault();
+        if (!(anchor instanceof HTMLElement)) return;
+        anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
   }
 
   private getStyles(): string {

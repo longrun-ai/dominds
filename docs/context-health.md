@@ -4,7 +4,7 @@ This document specifies a **context health monitor** feature for Dominds: a smal
 that helps the agent (and user) avoid degraded performance when the conversation’s prompt/context is
 getting too large relative to the model’s context window.
 
-## Current Code Reality (as of 2026-01-26)
+## Current Code Reality (as of 2026-01-28)
 
 Dominds already has:
 
@@ -19,12 +19,12 @@ Dominds already has:
 - Compute a simple **context health** signal from provider stats + model metadata.
 - When the dialog context is “too large”, enforce a **v3 remediation** workflow that is short,
   executable, and regression-testable:
-  - Use **non-persisted role=user guidance injection** on the next LLM generation turn (do not write
-    the injected guidance into dialog history/events).
+  - In **caution**, record an auto-inserted **role=user prompt** as a normal, persisted user message
+    (UI-visible and rendered as a normal user instruction).
   - In **critical**, enforce stability via a **countdown remediation** (max 5 turns):
     - Each turn injects a **recorded role=user prompt** (UI-visible as a user prompt) that instructs
       the agent to curate reminders (`update_reminder`/`add_reminder`) and then `clear_mind`.
-    - The prompt includes a countdown: “after N turns the system will auto-clear_mind”.
+    - The prompt includes a countdown signal (how many reminders remain before auto-`clear_mind`).
     - When the countdown reaches 0, Dominds **automatically** executes `clear_mind` (no Q4H; no
       suspension) to keep long-running autonomy stable.
 
@@ -116,42 +116,28 @@ Levels are derived from the two thresholds:
 The remediation workflow centers around a _re-entry package_ (a scannable, actionable bundle of
 context that survives a new round).
 
-Recommended structure (multi-line; scale by task size):
+Recommended structure (multi-line; scale by task size; focus on details not covered in Taskdoc):
 
-- Goal/scope
-- Current progress
-- Key decisions/constraints
-- Changes (files/modules)
-- Next steps (actionable)
-- Open questions/risks
+- First actionable step
+- Key pointers (files/symbols/search terms)
+- Run/verify (commands, ports, env vars)
+- Easy-to-lose ephemeral details (paths/ids/urls/sample inputs)
 
 ### Caution (yellow)
 
-When `level === 'caution'`, the driver injects a **role=user** guidance message into the _next_ LLM
-generation turn (not persisted).
+When `level === 'caution'`, the driver auto-inserts a **role=user** guidance prompt into the _next_
+LLM generation turn, and **persists it as a normal user message** so the UI renders it as a normal
+user instruction.
 
 Current behavior:
 
-- On first entering caution, Dominds offers a **bounded grace period** (continue briefly) to avoid
-  forcing premature `clear_mind`.
-- After the grace period ends, Dominds injects a cadence-based guidance (default: every **10**
-  generations; configurable per model) that requires the agent to **curate reminders**:
-  - Call at least one of: `update_reminder` (preferred) / `add_reminder`.
-  - Maintain a re-entry-package draft inside reminders.
-  - Include “what’s still missing before we can safely clear_mind” so the agent can decide to clear
-    autonomously when the draft becomes scannable/actionable.
-
-**Known UX issue (current)**:
-
-- For complex, long-running tasks, forcing an immediate `clear_mind` as soon as the dialog crosses the
-  `optimal_max_tokens` soft ceiling can be counterproductive: the agent may not yet have enough clarity
-  to produce a good re-entry package, and clearing early often leads to re-reading many files.
-
-**Planned improvement**:
-
-- Allow a bounded “continue without clearing for a bit” option in `caution` so the agent can keep working
-  briefly, then clear when it can distill a higher-quality re-entry package.
-- `critical` now uses a countdown remediation (recorded role=user prompt + auto clear_mind).
+- On entering `caution`, Dominds inserts the prompt once (entry injection).
+- While still `caution`, Dominds reinserts the prompt on a cadence (default: every **10**
+  generations; configurable per model).
+- Each inserted prompt requires the agent to **curate reminders** (at least one call):
+  - `update_reminder` (preferred) / `add_reminder`
+  - Maintain a re-entry-package draft inside reminders
+  - Then `clear_mind` when it becomes scannable/actionable
 
 ### Critical (red)
 
@@ -186,6 +172,11 @@ Suggested visual states:
 - **Critical** (red)
 - **Unknown** (gray)
 
+Note (zh UI copy):
+
+- `caution` → “吃紧”
+- `critical` → “告急”
+
 ### Q4H(kind=context_health_critical) send gating
 
 This kind is retained as a reserved discriminator, but v3 no longer uses Q4H for critical context
@@ -197,7 +188,7 @@ health remediation by default.
    token count when the provider reports it).
 2. Thread usage stats into the dialog state (persist alongside dialog turns).
 3. Implement the context health monitor computation and persist it per generation.
-4. Implement v3 remediation (role=user guidance injection + caution reminder-curation cadence + critical countdown + auto clear_mind).
+4. Implement v3 remediation (persisted role=user prompt insertion + caution reminder-curation cadence + critical countdown + auto clear_mind).
 5. Add minimal regression guards for the v3 behavior (types + gating).
 
 ## Acceptance Criteria
@@ -207,10 +198,10 @@ health remediation by default.
   - `optimal_max_tokens` defaults to `100_000` when not configured.
   - `critical_max_tokens` defaults to `floor(modelContextLimitTokens * 0.9)` when not configured.
 - v3 remediation:
-  - `caution`: driver injects role=user guidance for the next generation turn only (non-persisted).
-    After a bounded grace period, it requires reminder curation on a cadence (default: every 10 generations;
-    configurable per model): the agent must call at least one of `update_reminder` / `add_reminder` and
-    maintain a re-entry-package draft, including what is still missing before it can safely `clear_mind`.
+  - `caution`: driver inserts a persisted role=user prompt (UI-visible user instruction).
+    On entering `caution` it inserts once; while still `caution` it reinserts on a cadence (default: every
+    10 generations; configurable per model). Each time, the agent must call at least one of
+    `update_reminder` / `add_reminder` and maintain a re-entry-package draft, then `clear_mind` when ready.
   - `critical`: driver runs a countdown remediation (max 5 turns) using **recorded role=user prompts**.
     Each prompt includes a countdown and instructs reminder curation + `clear_mind`. When the countdown
     reaches 0, the driver auto-executes `clear_mind` and starts a new round (no Q4H, no suspension).

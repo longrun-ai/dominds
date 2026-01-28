@@ -22,6 +22,7 @@ import {
   writeAuthKeyToLocalStorage,
 } from '../services/auth';
 import { getWebSocketManager } from '../services/websocket.js';
+import { DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import type {
   ApiMoveDialogsRequest,
   ApiRootDialogResponse,
@@ -65,10 +66,12 @@ import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-docs-panel';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
+import './dominds-prompts-panel';
 import './dominds-q4h-input';
 import type { DomindsQ4HInput, Q4HQuestion } from './dominds-q4h-input';
 import './dominds-q4h-panel';
 import type { DomindsQ4HPanel } from './dominds-q4h-panel';
+import './dominds-team-manual-panel';
 import './dominds-team-members.js';
 import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './dominds-team-members.js';
 import './done-dialog-list.js';
@@ -143,37 +146,125 @@ export class DomindsApp extends HTMLElement {
   private q4hQuestions: HumanQuestion[] = [];
   private q4hDialogContexts: Q4HDialogContext[] = [];
 
-  // Resize handle state
-  private isResizing = false;
-  private resizeStartY = 0;
-  private resizeStartConversationHeight = 0;
-  private resizeStartQ4HHeight = 0;
-  private lastQ4HExpandedHeight = 400; // Default expanded height when none saved
-
   // Bottom panel: tabs + content
-  private bottomPanelTab: 'q4h' | 'diligence' | 'docs' = 'q4h';
+  private bottomPanelTab: 'q4h' | 'diligence' | 'docs' | 'team-manual' | 'prompts' = 'q4h';
   private bottomPanelExpanded: boolean = false;
+  private bottomPanelHeightPx: number = 280;
+  private bottomPanelUserResized: boolean = false;
+  private bottomPanelIsResizing: boolean = false;
+  private bottomPanelResizeStartY: number = 0;
+  private bottomPanelResizeStartHeight: number = 0;
+  private bottomPanelResizeLastHeight: number = 0;
+
+  private getStoredBottomPanelHeightPx(): number | null {
+    try {
+      const stored = localStorage.getItem('dominds-bottom-panel-height-px');
+      if (!stored) return null;
+      const parsed = Number(stored);
+      if (!Number.isFinite(parsed)) return null;
+      const asInt = Math.floor(parsed);
+      if (asInt < 50 || asInt > 5000) return null;
+      return asInt;
+    } catch (error: unknown) {
+      console.warn('Failed to read bottom panel height from localStorage', error);
+      return null;
+    }
+  }
+
+  private persistBottomPanelHeightPx(heightPx: number): void {
+    try {
+      localStorage.setItem('dominds-bottom-panel-height-px', String(Math.floor(heightPx)));
+    } catch (error: unknown) {
+      console.warn('Failed to persist bottom panel height to localStorage', error);
+    }
+  }
+
+  private autoFitBottomPanelForExpandedQ4HCard(questionId: string): void {
+    if (this.bottomPanelUserResized) return;
+    const sr = this.shadowRoot;
+    if (!sr) return;
+
+    const bottomPanel = sr.querySelector('#bottom-panel');
+    if (!(bottomPanel instanceof HTMLElement)) return;
+
+    const q4hPanel = sr.querySelector('#q4h-panel');
+    if (!(q4hPanel instanceof HTMLElement)) return;
+
+    const q4hRoot = q4hPanel.shadowRoot;
+    if (!q4hRoot) return;
+
+    const card = q4hRoot.querySelector(
+      `.q4h-question-card[data-question-id="${CSS.escape(questionId)}"]`,
+    );
+    if (!(card instanceof HTMLElement)) return;
+
+    const max = Math.floor(window.innerHeight * 0.6);
+    const desired = Math.min(
+      max,
+      Math.max(420, Math.ceil(card.getBoundingClientRect().height + 24)),
+    );
+    if (desired <= this.bottomPanelHeightPx + 4) return;
+
+    this.bottomPanelHeightPx = desired;
+    bottomPanel.style.setProperty('--bottom-panel-height', `${this.bottomPanelHeightPx}px`);
+  }
 
   private disableDiligencePush: boolean = false;
   private diligencePushMax: number | null = null;
+  private diligencePushLastShown: number | null = null;
   private diligenceRtwsText: string = '';
   private diligenceRtwsDirty: boolean = false;
 
   private updateBottomPanelFooterUi(): void {
     const sr = this.shadowRoot;
     if (!sr) return;
+
+    const q4hTab = sr.querySelector('button.bp-tab[data-bp-tab="q4h"]') as HTMLButtonElement | null;
+    if (q4hTab) {
+      const badge = q4hTab.querySelector('.bp-badge') as HTMLElement | null;
+      if (badge) {
+        badge.textContent = String(this.q4hQuestionCount);
+        badge.setAttribute('data-has-questions', this.q4hQuestionCount > 0 ? 'true' : 'false');
+      }
+    }
+
+    const q4hEmpty = sr.querySelector('.bp-q4h-empty') as HTMLElement | null;
+    if (q4hEmpty) {
+      q4hEmpty.classList.toggle('hidden', this.q4hQuestionCount !== 0);
+    }
     const diligenceTab = sr.querySelector(
       'button.bp-tab[data-bp-tab="diligence"]',
     ) as HTMLButtonElement | null;
     if (!diligenceTab) return;
 
-    const check = diligenceTab.querySelector('.bp-check') as HTMLElement | null;
-    if (check) check.textContent = this.disableDiligencePush ? '☐' : '☑';
+    const checkbox = diligenceTab.querySelector('#diligence-toggle') as HTMLInputElement | null;
+    if (checkbox) checkbox.checked = !this.disableDiligencePush;
 
     const badges = diligenceTab.querySelectorAll('.bp-badge');
     const badge = badges.length > 0 ? (badges[badges.length - 1] as HTMLElement) : null;
-    if (badge)
-      badge.textContent = this.diligencePushMax === null ? '—' : String(this.diligencePushMax);
+    if (badge) {
+      const max = this.diligencePushMax;
+      if (typeof max === 'number' && Number.isFinite(max)) {
+        const next = Math.min(99, Math.floor(max));
+        badge.textContent = String(next);
+        badge.setAttribute('data-has-remaining', next > 0 ? 'true' : 'false');
+        if (this.diligencePushLastShown !== next) {
+          this.diligencePushLastShown = next;
+          badge.classList.remove('pulse');
+          void badge.offsetWidth;
+          badge.classList.add('pulse');
+        }
+      } else {
+        badge.textContent = '—';
+        badge.setAttribute('data-has-remaining', 'false');
+        this.diligencePushLastShown = null;
+      }
+    }
+
+    const q4hPanel = sr.querySelector('#q4h-panel') as HTMLElement | null;
+    if (q4hPanel) {
+      q4hPanel.classList.toggle('hidden', this.q4hQuestionCount === 0);
+    }
   }
 
   private get hasQuestions(): boolean {
@@ -189,6 +280,14 @@ export class DomindsApp extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
+
+    const storedHeight = this.getStoredBottomPanelHeightPx();
+    if (storedHeight !== null) {
+      const min = 120;
+      const max = Math.max(min, Math.floor(window.innerHeight * 0.6));
+      this.bottomPanelHeightPx = Math.max(min, Math.min(max, storedHeight));
+      this.bottomPanelUserResized = true;
+    }
   }
 
   private applyUiLanguageToDom(): void {
@@ -1199,10 +1298,16 @@ export class DomindsApp extends HTMLElement {
         border-color: color-mix(in srgb, #ef4444 80%, var(--dominds-border, #e0e0e0));
       }
 
-      .header-pill-button.problems[data-severity='info'] {
-        background: var(--dominds-bg, #ffffff);
-        color: var(--dominds-fg, #333333);
-      }
+	      .header-pill-button.problems[data-severity='info'] {
+	        background: var(--dominds-bg, #ffffff);
+	        color: var(--dominds-fg, #333333);
+	      }
+
+	      .header-pill-button.problems[data-has-problems='true'][data-severity='info'] {
+	        background: color-mix(in srgb, var(--dominds-primary, #007acc) 18%, var(--dominds-bg, #ffffff));
+	        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 45%, var(--dominds-border, #e0e0e0));
+	        color: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, var(--dominds-fg, #333333));
+	      }
 
       .header-pill-button.problems[data-severity='warning'] {
         background: color-mix(in srgb, #f59e0b 14%, var(--dominds-bg, #ffffff));
@@ -1376,10 +1481,17 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-primary, #007acc);
       }
 
-      .problems-list {
-        padding: 10px 12px;
-        overflow: auto;
-      }
+	      .problems-list {
+	        padding: 10px 12px;
+	        overflow: auto;
+	      }
+
+	      .problems-list.empty {
+	        display: flex;
+	        flex-direction: column;
+	        justify-content: center;
+	        min-height: 96px;
+	      }
 
       .problem-item {
         border: 1px solid var(--dominds-border, #e0e0e0);
@@ -1922,6 +2034,11 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
       }
 
+      .icon-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .icon-button:hover {
         background: var(--dominds-hover, #f0f0f0);
       }
@@ -1957,51 +2074,83 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-danger, #dc3545);
       }
 
-      .dialog-section {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        overflow: hidden;
-        position: relative;
-      }
+	      .dialog-section {
+	        display: flex;
+	        flex-direction: column;
+	        flex: 1;
+	        min-height: 0;
+	        overflow: hidden;
+	        position: relative;
+	      }
 
       /* Conversation area scrolls independently */
-      .conversation-scroll-area {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-        contain: content;
-        transition: height 0.3s ease-out;
-      }
+	      .conversation-scroll-area {
+	        flex: 1;
+	        min-height: 0;
+	        overflow-y: auto;
+	        contain: content;
+	      }
 
-      .q4h-input-section {
-        transition: height 0.3s ease-out, max-height 0.3s ease-out;
-      }
+	      .q4h-input-wrap {
+	        flex-shrink: 0;
+	        display: flex;
+	        flex-direction: column;
+	      }
 
-      .q4h-input-wrap {
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-      }
+	      .bottom-panel {
+	        display: flex;
+	        flex-direction: column;
+	        flex-shrink: 0;
+	        border-left: 1px solid var(--color-border-primary, #e2e8f0);
+	        border-right: 1px solid var(--color-border-primary, #e2e8f0);
+	        border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
+	        background: var(--dominds-bg, #ffffff);
+	      }
 
-      .bottom-panel {
-        display: flex;
-        flex-direction: column;
-        flex-shrink: 0;
-        border-left: 1px solid var(--color-border-primary, #e2e8f0);
-        border-right: 1px solid var(--color-border-primary, #e2e8f0);
-        border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--dominds-bg, #ffffff);
-      }
+	      .bottom-panel-resize-handle {
+	        height: 16px;
+	        cursor: ns-resize;
+	        display: flex;
+	        align-items: center;
+	        justify-content: center;
+	        flex: none;
+	        background: var(--dominds-bg, #ffffff);
+	        border-top: 1px solid var(--color-border-primary, #e2e8f0);
+	        touch-action: none;
+	        user-select: none;
+	      }
 
-      .bottom-panel-footer {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        padding: 8px 12px;
-        border-top: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--color-bg-secondary, #f8fafc);
-      }
+	      .bottom-panel-resize-handle.hidden {
+	        display: none;
+	      }
+
+	      .bottom-panel-resize-handle::before {
+	        content: '';
+	        width: 44px;
+	        height: 3px;
+	        border-radius: 999px;
+	        background: var(--dominds-border, #e0e0e0);
+	      }
+
+	      .bottom-panel-resize-handle:hover::before {
+	        background: var(--dominds-primary, #007acc);
+	      }
+
+	      .bottom-panel-footer {
+	        display: flex;
+	        gap: 8px;
+	        align-items: center;
+	        padding: 8px 12px;
+	        border-top: 1px solid var(--color-border-primary, #e2e8f0);
+	        background: var(--color-bg-secondary, #f8fafc);
+	      }
+
+	      .bp-tabs-right {
+	        display: inline-flex;
+	        gap: 8px;
+	        align-items: center;
+	        margin-left: auto;
+	      }
 
       .bp-tab {
         appearance: none;
@@ -2017,59 +2166,144 @@ export class DomindsApp extends HTMLElement {
         gap: 8px;
       }
 
-      .bp-tab.active {
-        border-color: var(--dominds-primary, #007acc);
-        color: var(--dominds-primary, #007acc);
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 15%, transparent);
-      }
+	      .bp-tab.active {
+	        border-color: var(--dominds-primary, #007acc);
+	        color: var(--dominds-primary, #007acc);
+	        box-shadow: 0 0 0 2px color-mix(in srgb, var(--dominds-primary, #007acc) 15%, transparent);
+	      }
 
-      .bp-check {
-        display: inline-flex;
-        width: 16px;
-        justify-content: center;
-        font-size: 13px;
-        line-height: 1;
-      }
 
-      .bp-badge {
-        display: inline-flex;
-        min-width: 26px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: var(--color-bg-tertiary, #f1f5f9);
-        color: var(--color-fg-tertiary, #64748b);
-        font-size: 11px;
-        border: 1px solid var(--color-border-primary, #e2e8f0);
-      }
+	      .bp-checkbox {
+	        width: 16px;
+	        height: 16px;
+	        margin: 0;
+	        cursor: pointer;
+	        accent-color: var(--dominds-primary, #007acc);
+	      }
 
-      .bp-toggle {
-        appearance: none;
-        border: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--dominds-bg, #ffffff);
-        color: var(--color-fg-secondary, #475569);
-        border-radius: 999px;
-        padding: 4px 10px;
-        cursor: pointer;
-      }
+	      .bp-badge {
+	        display: inline-flex;
+	        min-width: 26px;
+	        padding: 2px 8px;
+	        border-radius: 999px;
+	        background: var(--color-bg-tertiary, #f1f5f9);
+	        color: var(--color-fg-tertiary, #64748b);
+	        font-size: 11px;
+	        border: 1px solid var(--color-border-primary, #e2e8f0);
+	        justify-content: center;
+	        text-align: center;
+	        font-variant-numeric: tabular-nums;
+	      }
 
-      .bottom-panel-content {
-        display: none;
-        max-height: 280px;
-        overflow: hidden;
-      }
+	      .bp-badge.pulse {
+	        animation: bpBadgePulse 220ms ease-out;
+	      }
+
+	      @keyframes bpBadgePulse {
+	        0% { transform: scale(1); }
+	        40% { transform: scale(1.12); }
+	        100% { transform: scale(1); }
+	      }
+
+	      button.bp-tab[data-bp-tab='diligence'] .bp-badge {
+	        width: 24px;
+	        min-width: 24px;
+	        padding: 2px 0;
+	        box-sizing: border-box;
+	      }
+
+	      button.bp-tab[data-bp-tab='diligence'] .bp-badge[data-has-remaining='true'] {
+	        background: color-mix(in srgb, var(--dominds-primary, #007acc) 80%, var(--dominds-bg, #ffffff));
+	        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, var(--dominds-border, #e0e0e0));
+	        color: white;
+	      }
+
+	      button.bp-tab[data-bp-tab='diligence'] .bp-badge.pulse {
+	        animation: bpBadgePulseStrong 420ms ease-out;
+	      }
+
+	      @keyframes bpBadgePulseStrong {
+	        0% {
+	          transform: scale(1);
+	          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
+	          filter: none;
+	        }
+	        35% {
+	          transform: scale(1.2);
+	          box-shadow: 0 0 0 6px rgba(0, 122, 204, 0.18);
+	          filter: brightness(1.08);
+	        }
+	        100% {
+	          transform: scale(1);
+	          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
+	          filter: none;
+	        }
+	      }
+
+	      button.bp-tab[data-bp-tab='q4h'] .bp-badge[data-has-questions='true'] {
+	        background: color-mix(in srgb, var(--dominds-primary, #007acc) 80%, var(--dominds-bg, #ffffff));
+	        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, var(--dominds-border, #e0e0e0));
+	        color: white;
+	      }
+
+	      .bottom-panel-content {
+	        display: none;
+	        height: var(--bottom-panel-height, 280px);
+	        min-height: 0;
+	        overflow: hidden;
+	        flex-direction: column;
+	      }
 
       .bottom-panel.expanded .bottom-panel-content {
-        display: block;
+        display: flex;
       }
 
-      .bp-content.hidden {
-        display: none;
-      }
+	      .bp-content.hidden {
+	        display: none;
+	      }
 
-      .bp-content {
-        border-top: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--dominds-bg, #ffffff);
-      }
+	      #q4h-panel.hidden {
+	        display: none;
+	      }
+
+	      .bp-content {
+	        display: flex;
+	        flex-direction: column;
+	        flex: 1;
+	        min-height: 0;
+	        overflow: hidden;
+	        border-top: 1px solid var(--color-border-primary, #e2e8f0);
+	        background: var(--dominds-bg, #ffffff);
+	      }
+
+	      .bp-q4h dominds-q4h-panel {
+	        flex: 1;
+	        min-height: 0;
+	      }
+
+	      .bp-docs dominds-docs-panel,
+	      .bp-team-manual dominds-team-manual-panel,
+	      .bp-prompts dominds-prompts-panel {
+	        flex: 1;
+	        min-height: 0;
+	        min-width: 0;
+	        max-width: 100%;
+	      }
+
+	      .bp-q4h-empty {
+	        padding: 18px 12px;
+	        color: var(--color-fg-tertiary, #64748b);
+	        font-size: 12px;
+	        flex: 1;
+	        min-height: 0;
+	        display: flex;
+	        align-items: center;
+	        justify-content: center;
+	      }
+
+	      .bp-q4h-empty.hidden {
+	        display: none;
+	      }
 
       .bp-diligence-row {
         display: flex;
@@ -2086,14 +2320,15 @@ export class DomindsApp extends HTMLElement {
         color: var(--color-fg-tertiary, #64748b);
       }
 
-      .bp-textarea {
-        width: 100%;
-        box-sizing: border-box;
-        height: 210px;
-        padding: 10px 12px;
-        border: none;
-        outline: none;
-        resize: none;
+	      .bp-textarea {
+	        width: 100%;
+	        box-sizing: border-box;
+	        flex: 1;
+	        min-height: 0;
+	        padding: 10px 12px;
+	        border: none;
+	        outline: none;
+	        resize: none;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
           'Courier New', monospace;
         font-size: 12px;
@@ -2102,52 +2337,13 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-bg, #ffffff);
       }
 
-      .q4h-readonly-banner {
-        padding: 10px 12px;
-        border-top: 1px solid var(--dominds-border, #e0e0e0);
-        background: var(--dominds-toolbar-bg, #f8f9fa);
-        color: var(--dominds-muted, #666666);
-        font-size: 13px;
-      }
-
-      .resizing .conversation-scroll-area,
-      .resizing .q4h-input-section {
-        transition: none !important;
-      }
-
-      /* Q4H collapse is driven by bottom panel state; avoid hiding the panel itself. */
-
-      /* Resize handle between conversation and q4h-input */
-      .resize-handle {
-        height: 6px;
-        background: transparent;
-        cursor: row-resize;
-        position: relative;
-        flex-shrink: 0;
-        z-index: 10;
-      }
-
-      .resize-handle::after {
-        content: '';
-        position: absolute;
-        top: 2px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 40px;
-        height: 2px;
-        background: var(--dominds-border, #e0e0e0);
-        border-radius: 1px;
-        transition: background 0.2s;
-      }
-
-      .resize-handle:hover::after,
-      .resize-handle.resizing::after {
-        background: var(--dominds-primary, #007acc);
-      }
-
-      .resize-handle.resizing {
-        cursor: row-resize;
-      }
+	      .q4h-readonly-banner {
+	        padding: 10px 12px;
+	        border-top: 1px solid var(--dominds-border, #e0e0e0);
+	        background: var(--dominds-toolbar-bg, #f8f9fa);
+	        color: var(--dominds-muted, #666666);
+	        font-size: 13px;
+	      }
 
       .loading {
         display: flex;
@@ -2727,10 +2923,10 @@ export class DomindsApp extends HTMLElement {
                 <span>${String(this.resumableDialogsCount)}</span>
               </button>
             </div>
-            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
-              <span>${String(this.problems.length)}</span>
-            </button>
+	            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
+	              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
+	              <span>${String(this.problems.length)}</span>
+	            </button>
 	            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
             <div class="ui-language-menu">
               <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
@@ -2887,46 +3083,75 @@ export class DomindsApp extends HTMLElement {
               <div class="conversation-scroll-area">
                 <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
               </div>
-              <div class="resize-handle" id="resize-handle"></div>
-              <div class="bottom-panel ${this.bottomPanelExpanded ? 'expanded' : 'collapsed'}" id="bottom-panel">
-                <div class="bottom-panel-footer" id="bottom-panel-footer">
-                  <button class="bp-tab ${this.bottomPanelTab === 'q4h' ? 'active' : ''}" type="button" data-bp-tab="q4h">
-                    ${t.q4hPendingQuestions}
-                    <span class="bp-badge">${String(this.q4hQuestionCount)}</span>
-                  </button>
-                  <button class="bp-tab ${this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
-                    <span class="bp-check" aria-hidden="true">${this.disableDiligencePush ? '☐' : '☑'}</span>
-                    <span>${t.keepGoingTabTitle}</span>
-                    <span class="bp-badge">${this.diligencePushMax === null ? '—' : String(this.diligencePushMax)}</span>
-                  </button>
-                  <button class="bp-tab ${this.bottomPanelTab === 'docs' ? 'active' : ''}" type="button" data-bp-tab="docs">${t.domindsDocsTabTitle}</button>
-                  <div style="flex:1"></div>
-                  <button class="bp-toggle" type="button" id="bottom-panel-toggle" aria-label="toggle">${this.bottomPanelExpanded ? '▾' : '▴'}</button>
-                </div>
-                <div class="bottom-panel-content" id="bottom-panel-content">
-                  <div class="bp-content bp-q4h ${this.bottomPanelTab === 'q4h' ? '' : 'hidden'}">
-                    <dominds-q4h-panel id="q4h-panel"></dominds-q4h-panel>
-                  </div>
-                  <div class="bp-content bp-diligence ${this.bottomPanelTab === 'diligence' ? '' : 'hidden'}">
-                    <div class="bp-diligence-row">
-                      <div class="bp-diligence-help">${t.keepGoingWorkspaceNote}</div>
-                      <button class="btn" id="diligence-reload" type="button">${t.refreshReminders}</button>
-                      <button class="btn preferred" id="diligence-save" type="button" ${this.diligenceRtwsDirty ? '' : 'disabled'}>${t.save}</button>
-                    </div>
-                    <textarea id="diligence-textarea" class="bp-textarea" spellcheck="false"></textarea>
-                  </div>
-                  <div class="bp-content bp-docs ${this.bottomPanelTab === 'docs' ? '' : 'hidden'}">
-                    <dominds-docs-panel id="docs-panel"></dominds-docs-panel>
-                  </div>
-                </div>
-              </div>
-              <div class="q4h-input-wrap">
-                <div id="q4h-readonly-banner" class="q4h-readonly-banner hidden">${t.readOnlyDialogInputDisabled}</div>
-                <dominds-q4h-input
-                  id="q4h-input"
-                  class="q4h-input-section"
-                ></dominds-q4h-input>
-              </div>
+	              <div class="bottom-panel ${this.bottomPanelExpanded ? 'expanded' : 'collapsed'}" id="bottom-panel">
+	                <div class="bottom-panel-resize-handle ${this.bottomPanelExpanded ? '' : 'hidden'}" id="bottom-panel-resize-handle" role="separator" aria-orientation="horizontal"></div>
+	                <div class="bottom-panel-content" id="bottom-panel-content">
+	                  <div class="bp-content bp-q4h ${this.bottomPanelTab === 'q4h' ? '' : 'hidden'}">
+	                    <div class="bp-q4h-empty ${this.q4hQuestionCount === 0 ? '' : 'hidden'}">${t.q4hNoPending}</div>
+	                    <dominds-q4h-panel id="q4h-panel" class="${this.q4hQuestionCount === 0 ? 'hidden' : ''}"></dominds-q4h-panel>
+	                  </div>
+	                  <div class="bp-content bp-diligence ${this.bottomPanelTab === 'diligence' ? '' : 'hidden'}">
+	                    <div class="bp-diligence-row">
+	                      <div class="bp-diligence-help">${t.keepGoingWorkspaceNote}</div>
+	                      <button class="icon-button" id="diligence-reload" type="button" title="${t.keepGoingReloadTitle}" aria-label="${t.keepGoingReloadTitle}">
+	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
+	                      </button>
+	                      <button class="icon-button" id="diligence-save" type="button" ${this.diligenceRtwsDirty ? '' : 'disabled'} title="${t.keepGoingSaveTitle}" aria-label="${t.keepGoingSaveTitle}">
+	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+	                      </button>
+	                    </div>
+	                    <textarea id="diligence-textarea" class="bp-textarea" spellcheck="false"></textarea>
+	                  </div>
+	                  <div class="bp-content bp-docs ${this.bottomPanelTab === 'docs' ? '' : 'hidden'}">
+	                    <dominds-docs-panel id="docs-panel"></dominds-docs-panel>
+	                  </div>
+	                  <div class="bp-content bp-team-manual ${this.bottomPanelTab === 'team-manual' ? '' : 'hidden'}">
+	                    <dominds-team-manual-panel id="team-manual-panel"></dominds-team-manual-panel>
+	                  </div>
+	                  <div class="bp-content bp-prompts ${this.bottomPanelTab === 'prompts' ? '' : 'hidden'}">
+	                    <dominds-prompts-panel id="prompts-panel"></dominds-prompts-panel>
+	                  </div>
+	                </div>
+	                <div class="bottom-panel-footer" id="bottom-panel-footer">
+	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'q4h' ? 'active' : ''}" type="button" data-bp-tab="q4h">
+	                    <span class="bp-badge" data-has-questions="${this.q4hQuestionCount > 0 ? 'true' : 'false'}">${String(this.q4hQuestionCount)}</span>
+	                    ${t.q4hPendingQuestions}
+	                  </button>
+	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
+	                    <input
+	                      id="diligence-toggle"
+	                      class="bp-checkbox"
+	                      type="checkbox"
+	                      aria-label="${t.keepGoingToggleAriaLabel}"
+	                      ${this.disableDiligencePush ? '' : 'checked'}
+	                    />
+	                    <span>${t.keepGoingTabTitle}</span>
+	                    <span class="bp-badge" data-has-remaining="${
+                        typeof this.diligencePushMax === 'number' &&
+                        Number.isFinite(this.diligencePushMax) &&
+                        Math.floor(this.diligencePushMax) > 0
+                          ? 'true'
+                          : 'false'
+                      }">${
+                        typeof this.diligencePushMax === 'number' &&
+                        Number.isFinite(this.diligencePushMax)
+                          ? String(Math.min(99, Math.floor(this.diligencePushMax)))
+                          : '—'
+                      }</span>
+	                  </button>
+	                  <div class="bp-tabs-right">
+	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'prompts' ? 'active' : ''}" type="button" data-bp-tab="prompts">${t.promptTemplatesTabTitle}</button>
+	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'team-manual' ? 'active' : ''}" type="button" data-bp-tab="team-manual">${t.teamMgmtManualTabTitle}</button>
+	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'docs' ? 'active' : ''}" type="button" data-bp-tab="docs">${t.domindsDocsTabTitle}</button>
+	                  </div>
+	                </div>
+	              </div>
+	              <div class="q4h-input-wrap">
+	                <div id="q4h-readonly-banner" class="q4h-readonly-banner hidden">${t.readOnlyDialogInputDisabled}</div>
+	                <dominds-q4h-input
+	                  id="q4h-input"
+	                ></dominds-q4h-input>
+	              </div>
             </div>
           </main>
         </div>
@@ -2949,6 +3174,31 @@ export class DomindsApp extends HTMLElement {
       const msg = ce.detail?.message || 'Notice';
       const kind = ce.detail?.kind || 'error';
       this.showToast(msg, kind);
+    });
+
+    // Auth escalation from child panels (HTTP 401)
+    this.shadowRoot.addEventListener('auth-required', () => {
+      this.onAuthRejected('api');
+    });
+
+    // Prompt template insertion from prompts panel
+    this.shadowRoot.addEventListener('prompt-template-insert', (e: Event) => {
+      const ce = e as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      const content = detail && typeof detail['content'] === 'string' ? detail['content'] : '';
+      if (!content) return;
+      const input = this.q4hInput;
+      if (!input) return;
+
+      if (typeof input.insertPromptTemplate === 'function') {
+        input.insertPromptTemplate(content);
+      } else {
+        const current = input.getValue();
+        const next = current.trim().length === 0 ? content : `${current}\n\n${content}`;
+        input.setValue(next);
+      }
+      input.focusInput();
     });
 
     // Input area error events (e.g., no dialog selected)
@@ -3074,8 +3324,21 @@ export class DomindsApp extends HTMLElement {
         bodyContent: string;
       }>;
       const questionId = ce.detail?.questionId ?? null;
+      const dialogId = ce.detail?.dialogId;
+      const rootId = ce.detail?.rootId;
       const input = this.q4hInput;
       if (!input) return;
+      if (
+        questionId &&
+        typeof dialogId === 'string' &&
+        typeof rootId === 'string' &&
+        dialogId &&
+        rootId
+      ) {
+        input.setDialog({ selfId: dialogId, rootId });
+      } else if (!questionId && this.currentDialog) {
+        input.setDialog({ selfId: this.currentDialog.selfId, rootId: this.currentDialog.rootId });
+      }
       // Avoid infinite recursion: `DomindsQ4HInput.selectQuestion()` dispatches
       // `q4h-select-question`, which bubbles to this handler.
       if (!event.composedPath().includes(input)) {
@@ -3288,15 +3551,6 @@ export class DomindsApp extends HTMLElement {
   private setupElementEventListeners(): void {
     if (!this.shadowRoot) return;
 
-    // Resize handle listeners - crucial to re-attach after render
-    const resizeHandle = this.shadowRoot.querySelector('#resize-handle');
-    if (resizeHandle) {
-      resizeHandle.addEventListener('mousedown', (e) => this.startResize(e as MouseEvent));
-      resizeHandle.addEventListener('touchstart', (e) => this.startResize(e as TouchEvent), {
-        passive: false,
-      });
-    }
-
     // Dialog container listeners
     const dialogContainerEl = this.shadowRoot.querySelector('#dialog-container') as HTMLElement;
     if (dialogContainerEl) {
@@ -3398,36 +3652,150 @@ export class DomindsApp extends HTMLElement {
 
     // Bottom panel (tabs + expand)
     const bottomPanel = this.shadowRoot.querySelector('#bottom-panel') as HTMLElement | null;
-    const toggleBtn = this.shadowRoot.querySelector(
-      '#bottom-panel-toggle',
-    ) as HTMLButtonElement | null;
-    if (toggleBtn && bottomPanel) {
-      toggleBtn.addEventListener('click', (e) => {
+    if (bottomPanel) {
+      bottomPanel.style.setProperty('--bottom-panel-height', `${this.bottomPanelHeightPx}px`);
+    }
+
+    const setBottomPanelExpanded = (expanded: boolean): void => {
+      if (!bottomPanel) return;
+      if (this.bottomPanelExpanded === expanded) return;
+      this.bottomPanelExpanded = expanded;
+      bottomPanel.classList.toggle('expanded', expanded);
+      bottomPanel.classList.toggle('collapsed', !expanded);
+      const handle = this.shadowRoot?.querySelector('#bottom-panel-resize-handle');
+      if (handle instanceof HTMLElement) handle.classList.toggle('hidden', !expanded);
+      if (expanded) {
+        this.setQ4HPanelExpanded(true);
+        void this.ensureBottomPanelLoaded();
+      } else {
+        this.setQ4HPanelExpanded(false);
+      }
+
+      // Keep footer tab highlight consistent with expanded/collapsed state.
+      this.shadowRoot?.querySelectorAll<HTMLElement>('button.bp-tab').forEach((b) => {
+        const k = b.getAttribute('data-bp-tab');
+        const active =
+          expanded &&
+          (k === 'q4h' ||
+            k === 'diligence' ||
+            k === 'docs' ||
+            k === 'team-manual' ||
+            k === 'prompts') &&
+          k === this.bottomPanelTab;
+        b.classList.toggle('active', active);
+      });
+    };
+
+    const bottomPanelResizeHandle = this.shadowRoot.querySelector(
+      '#bottom-panel-resize-handle',
+    ) as HTMLElement | null;
+    if (bottomPanelResizeHandle && bottomPanel) {
+      bottomPanelResizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
         e.preventDefault();
-        this.bottomPanelExpanded = !this.bottomPanelExpanded;
-        bottomPanel.classList.toggle('expanded', this.bottomPanelExpanded);
-        bottomPanel.classList.toggle('collapsed', !this.bottomPanelExpanded);
-        toggleBtn.textContent = this.bottomPanelExpanded ? '▾' : '▴';
-        if (this.bottomPanelExpanded) {
-          this.setQ4HPanelExpanded(true);
-          void this.ensureBottomPanelLoaded();
-        } else {
-          this.setQ4HPanelExpanded(false);
+        e.stopPropagation();
+        if (!this.bottomPanelExpanded) {
+          setBottomPanelExpanded(true);
         }
+        this.bottomPanelIsResizing = true;
+        this.bottomPanelResizeStartY = e.clientY;
+        this.bottomPanelResizeStartHeight = this.bottomPanelHeightPx;
+        this.bottomPanelResizeLastHeight = this.bottomPanelHeightPx;
+
+        let hasPointerCapture = false;
+        try {
+          bottomPanelResizeHandle.setPointerCapture(e.pointerId);
+          hasPointerCapture = true;
+        } catch {
+          // ignore
+        }
+
+        const onMove = (evt: PointerEvent) => {
+          if (!this.bottomPanelIsResizing) return;
+          const delta = evt.clientY - this.bottomPanelResizeStartY;
+          const next = this.bottomPanelResizeStartHeight - delta;
+
+          const min = 120;
+          const max = Math.floor(window.innerHeight * 0.6);
+          this.bottomPanelHeightPx = Math.max(min, Math.min(max, next));
+          if (Math.abs(this.bottomPanelHeightPx - this.bottomPanelResizeLastHeight) >= 2) {
+            this.bottomPanelUserResized = true;
+            this.bottomPanelResizeLastHeight = this.bottomPanelHeightPx;
+          }
+          bottomPanel.style.setProperty('--bottom-panel-height', `${this.bottomPanelHeightPx}px`);
+        };
+
+        const onUp = () => {
+          if (!this.bottomPanelIsResizing) return;
+          this.bottomPanelIsResizing = false;
+
+          bottomPanelResizeHandle.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointermove', onMove);
+          try {
+            bottomPanelResizeHandle.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          bottomPanelResizeHandle.removeEventListener('pointerup', onUp);
+          bottomPanelResizeHandle.removeEventListener('pointercancel', onUp);
+          bottomPanelResizeHandle.removeEventListener('lostpointercapture', onUp);
+          window.removeEventListener('pointerup', onUp);
+
+          if (this.bottomPanelUserResized) {
+            this.persistBottomPanelHeightPx(this.bottomPanelHeightPx);
+          }
+        };
+
+        bottomPanelResizeHandle.addEventListener('pointermove', onMove);
+        if (!hasPointerCapture) {
+          window.addEventListener('pointermove', onMove);
+        }
+        bottomPanelResizeHandle.addEventListener('pointerup', onUp);
+        bottomPanelResizeHandle.addEventListener('pointercancel', onUp);
+        bottomPanelResizeHandle.addEventListener('lostpointercapture', onUp);
+
+        // Fallback: in some browsers, pointerup may not be delivered to the capture element
+        // if the pointer is released outside the window.
+        window.addEventListener('pointerup', onUp);
       });
     }
+
+    this.shadowRoot.addEventListener('q4h-question-expanded', (event: Event) => {
+      if (!bottomPanel) return;
+      setBottomPanelExpanded(true);
+      if (this.bottomPanelUserResized) return;
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as { questionId?: unknown }) : null;
+      const questionId = detail && typeof detail.questionId === 'string' ? detail.questionId : '';
+      if (!questionId) return;
+      requestAnimationFrame(() => {
+        this.autoFitBottomPanelForExpandedQ4HCard(questionId);
+      });
+    });
 
     this.shadowRoot.querySelectorAll<HTMLButtonElement>('button.bp-tab').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         const tab = btn.dataset.bpTab;
-        if (tab !== 'q4h' && tab !== 'diligence' && tab !== 'docs') return;
+        if (
+          tab !== 'q4h' &&
+          tab !== 'diligence' &&
+          tab !== 'docs' &&
+          tab !== 'team-manual' &&
+          tab !== 'prompts'
+        )
+          return;
+        if (this.bottomPanelExpanded && this.bottomPanelTab === tab) {
+          setBottomPanelExpanded(false);
+          return;
+        }
         this.bottomPanelTab = tab;
 
         // Update tab UI
         this.shadowRoot?.querySelectorAll<HTMLElement>('.bp-tab').forEach((b) => {
           const k = b.getAttribute('data-bp-tab');
-          b.classList.toggle('active', k === tab);
+          b.classList.toggle('active', this.bottomPanelExpanded && k === tab);
         });
         this.shadowRoot?.querySelectorAll<HTMLElement>('.bp-content').forEach((c) => {
           c.classList.add('hidden');
@@ -3436,27 +3804,19 @@ export class DomindsApp extends HTMLElement {
         if (content instanceof HTMLElement) content.classList.remove('hidden');
 
         // Auto-expand when switching tabs.
-        if (!this.bottomPanelExpanded && bottomPanel && toggleBtn) {
-          this.bottomPanelExpanded = true;
-          bottomPanel.classList.add('expanded');
-          bottomPanel.classList.remove('collapsed');
-          toggleBtn.textContent = '▾';
-          this.setQ4HPanelExpanded(true);
+        if (!this.bottomPanelExpanded) {
+          setBottomPanelExpanded(true);
         }
         void this.ensureBottomPanelLoaded();
       });
     });
 
-    const diligenceTab = this.shadowRoot.querySelector('button.bp-tab[data-bp-tab="diligence"]');
-    if (diligenceTab instanceof HTMLButtonElement) {
-      diligenceTab.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement | null;
-        if (!target) return;
-        if (target.closest('.bp-check')) {
-          e.preventDefault();
-          e.stopPropagation();
-          void this.toggleDiligenceDisable();
-        }
+    const diligenceCheckbox = this.shadowRoot.querySelector('#diligence-toggle');
+    if (diligenceCheckbox instanceof HTMLInputElement) {
+      diligenceCheckbox.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.toggleDiligenceDisable();
       });
     }
 
@@ -3513,6 +3873,24 @@ export class DomindsApp extends HTMLElement {
       }
       return;
     }
+
+    if (this.bottomPanelTab === 'team-manual') {
+      const panel = this.shadowRoot?.querySelector('#team-manual-panel');
+      if (panel && 'setUiLanguage' in panel) {
+        const maybe = panel as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
+        if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
+      }
+      return;
+    }
+
+    if (this.bottomPanelTab === 'prompts') {
+      const panel = this.shadowRoot?.querySelector('#prompts-panel');
+      if (panel && 'setUiLanguage' in panel) {
+        const maybe = panel as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
+        if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
+      }
+      return;
+    }
   }
 
   private async toggleDiligenceDisable(): Promise<void> {
@@ -3521,6 +3899,8 @@ export class DomindsApp extends HTMLElement {
       return;
     }
     const next = !this.disableDiligencePush;
+    this.disableDiligencePush = next;
+    this.updateBottomPanelFooterUi();
     this.wsManager.sendRaw({
       type: 'set_diligence_push',
       dialog: { selfId: this.currentDialog.selfId, rootId: this.currentDialog.rootId },
@@ -3544,56 +3924,21 @@ export class DomindsApp extends HTMLElement {
     const payload = resp.data;
     if (!payload || !payload.success) return;
     const raw = typeof payload.raw === 'string' ? payload.raw : '';
-    this.diligenceRtwsText = raw;
+    const fallback = DILIGENCE_FALLBACK_TEXT[this.uiLanguage];
+    this.diligenceRtwsText = raw.trim() === '' ? fallback : raw;
     this.diligenceRtwsDirty = false;
     const textarea = this.shadowRoot?.querySelector('#diligence-textarea');
-    if (textarea instanceof HTMLTextAreaElement) textarea.value = raw;
+    if (textarea instanceof HTMLTextAreaElement) textarea.value = this.diligenceRtwsText;
     const saveBtn = this.shadowRoot?.querySelector('#diligence-save');
     if (saveBtn instanceof HTMLButtonElement) saveBtn.disabled = true;
   }
 
   private setQ4HPanelExpanded(expanded: boolean): void {
-    if (!this.shadowRoot) return;
-    const dialogSection = this.shadowRoot.querySelector('.dialog-section') as HTMLElement | null;
-    const conversationArea = this.shadowRoot.querySelector(
-      '.conversation-scroll-area',
-    ) as HTMLElement | null;
-
-    const input = this.shadowRoot.querySelector('#q4h-input') as HTMLElement | null;
-    const bottomPanel = this.shadowRoot.querySelector('#bottom-panel') as HTMLElement | null;
-
-    if (!dialogSection || !input || !bottomPanel) return;
-
-    if (expanded) {
-      dialogSection.classList.remove('q4h-collapsed');
-      // Restore input height if we have a saved height.
-      if (this.lastQ4HExpandedHeight > 130) {
-        input.style.height = `${this.lastQ4HExpandedHeight}px`;
-        input.style.maxHeight = `${this.lastQ4HExpandedHeight}px`;
-        input.style.flex = 'none';
-      } else {
-        input.style.height = '400px';
-        input.style.maxHeight = '1000px';
-        input.style.flex = 'none';
-      }
-
-      if (conversationArea) {
-        conversationArea.style.height = '';
-        conversationArea.style.flex = '1';
-      }
-    } else {
-      const currentHeight = input.getBoundingClientRect().height;
-      if (currentHeight > 130) this.lastQ4HExpandedHeight = currentHeight;
-
-      dialogSection.classList.add('q4h-collapsed');
-      input.style.height = '';
-      input.style.maxHeight = '';
-      input.style.flex = '';
-      if (conversationArea) {
-        conversationArea.style.height = '';
-        conversationArea.style.flex = '';
-      }
-    }
+    // Legacy behavior: this used to resize the input/conversation split.
+    // After consolidating the bottom panel into a footer-tab layout, the input size is controlled
+    // exclusively by `dominds-q4h-input` (auto-resize + manual handle).
+    // Keep this method as a no-op to avoid refactoring call sites mid-flight.
+    void expanded;
   }
 
   private async saveRtwsDiligenceText(): Promise<void> {
@@ -3611,9 +3956,10 @@ export class DomindsApp extends HTMLElement {
       this.showToast(first.error ?? 'Save failed', 'error');
       return;
     }
+    const confirmOverwrite = window.confirm(t.keepGoingOverwriteConfirm);
+    if (!confirmOverwrite) return;
+
     if (first.status === 409) {
-      const confirmOverwrite = window.confirm(t.keepGoingWorkspaceNote);
-      if (!confirmOverwrite) return;
       const second = await this.apiClient.writeRtwsDiligence(this.uiLanguage, {
         raw: this.diligenceRtwsText,
         overwrite: true,
@@ -4137,7 +4483,7 @@ export class DomindsApp extends HTMLElement {
                 lastModified: subdialog.lastModified,
                 runState: effectiveRunState,
                 supdialogId: rootId, // Link to parent
-                topicId: subdialog.topicId,
+                tellaskSession: subdialog.tellaskSession,
               });
             }
           }
@@ -5496,6 +5842,7 @@ export class DomindsApp extends HTMLElement {
     const btn = sr.querySelector('#toolbar-problems-toggle') as HTMLButtonElement | null;
     if (btn) {
       btn.setAttribute('data-severity', this.getProblemsTopSeverity());
+      btn.setAttribute('data-has-problems', this.problems.length > 0 ? 'true' : 'false');
       const count = btn.querySelector('span');
       if (count) {
         count.textContent = String(this.problems.length);
@@ -5509,6 +5856,7 @@ export class DomindsApp extends HTMLElement {
     const list = sr.querySelector('#problems-list') as HTMLElement | null;
     if (list) {
       list.innerHTML = this.renderProblemsListHtml();
+      list.classList.toggle('empty', this.problems.length === 0);
     }
   }
 
@@ -5671,7 +6019,7 @@ export class DomindsApp extends HTMLElement {
           agentName: readyMsg.agentId, // agentId serves as the name for display
           taskDocPath: readyMsg.taskDocPath,
           supdialogId: readyMsg.supdialogId,
-          topicId: readyMsg.topicId,
+          tellaskSession: readyMsg.tellaskSession,
           assignmentFromSup: readyMsg.assignmentFromSup,
         };
 
@@ -5682,6 +6030,7 @@ export class DomindsApp extends HTMLElement {
             ? readyMsg.diligencePushMax
             : null;
         this.diligenceRtwsDirty = false;
+        this.updateBottomPanelFooterUi();
 
         const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
         if (dialogContainer instanceof DomindsDialogContainer) {
@@ -5700,6 +6049,20 @@ export class DomindsApp extends HTMLElement {
           docsPanel.setUiLanguage(this.uiLanguage);
         }
 
+        const teamManualPanel = this.shadowRoot?.querySelector('#team-manual-panel') as unknown as {
+          setUiLanguage?: (lang: LanguageCode) => void;
+        };
+        if (teamManualPanel && typeof teamManualPanel.setUiLanguage === 'function') {
+          teamManualPanel.setUiLanguage(this.uiLanguage);
+        }
+
+        const promptsPanel = this.shadowRoot?.querySelector('#prompts-panel') as unknown as {
+          setUiLanguage?: (lang: LanguageCode) => void;
+        };
+        if (promptsPanel && typeof promptsPanel.setUiLanguage === 'function') {
+          promptsPanel.setUiLanguage(this.uiLanguage);
+        }
+
         const key = this.dialogKey(readyMsg.dialog.rootId, readyMsg.dialog.selfId);
         this.toolbarContextHealth = this.contextHealthByDialogKey.get(key) ?? null;
         this.updateContextHealthUi();
@@ -5714,6 +6077,20 @@ export class DomindsApp extends HTMLElement {
           evt.dialog.rootId === this.currentDialog.rootId
         ) {
           this.disableDiligencePush = evt.disableDiligencePush;
+          this.updateBottomPanelFooterUi();
+        }
+        return true;
+      }
+      case 'diligence_budget_evt': {
+        if (
+          this.currentDialog &&
+          message.dialog.selfId === this.currentDialog.selfId &&
+          message.dialog.rootId === this.currentDialog.rootId
+        ) {
+          const remaining = message.remainingCount;
+          this.diligencePushMax =
+            typeof remaining === 'number' && Number.isFinite(remaining) ? remaining : null;
+          this.disableDiligencePush = message.disableDiligencePush;
           this.updateBottomPanelFooterUi();
         }
         return true;
@@ -5884,7 +6261,7 @@ export class DomindsApp extends HTMLElement {
                   lastModified: sd.lastModified,
                   runState: sdEffectiveRunState,
                   supdialogId: root.id,
-                  topicId: sd.topicId,
+                  tellaskSession: sd.tellaskSession,
                 });
                 if (sdEffectiveRunState) {
                   this.dialogRunStatesByKey.set(
@@ -6460,6 +6837,8 @@ export class DomindsApp extends HTMLElement {
     ) {
       (panel as DomindsQ4HPanel).setQuestions(this.q4hQuestionCount, this.q4hDialogContexts);
     }
+
+    this.updateBottomPanelFooterUi();
   }
 
   /**
@@ -6613,128 +6992,7 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  // ========== Resize Handle Methods ==========
-  private boundDoResize = (e: MouseEvent | TouchEvent): void => {
-    this.doResize(e);
-  };
-
-  private boundStopResize = (): void => {
-    this.stopResize();
-  };
-
-  private startResize(e: MouseEvent | TouchEvent): void {
-    e.preventDefault();
-    e.stopPropagation();
-    this.isResizing = true;
-
-    const conversationArea = this.shadowRoot?.querySelector(
-      '.conversation-scroll-area',
-    ) as HTMLElement;
-    const q4hInput = this.shadowRoot?.querySelector('#q4h-input') as HTMLElement;
-
-    this.resizeStartY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
-    this.resizeStartConversationHeight = conversationArea?.offsetHeight || 0;
-    this.resizeStartQ4HHeight = q4hInput?.offsetHeight || 0;
-
-    const resizeHandle = this.shadowRoot?.querySelector('#resize-handle');
-    const appContainer = this.shadowRoot?.querySelector('.app-container');
-    if (resizeHandle) {
-      resizeHandle.classList.add('resizing');
-    }
-    if (appContainer) {
-      appContainer.classList.add('resizing');
-    }
-
-    // Attach document-level listeners
-    document.addEventListener('mousemove', this.boundDoResize);
-    document.addEventListener('touchmove', this.boundDoResize, { passive: false });
-    document.addEventListener('mouseup', this.boundStopResize);
-    document.addEventListener('touchend', this.boundStopResize);
-  }
-
-  private doResize(e: MouseEvent | TouchEvent): void {
-    if (!this.isResizing) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const currentY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
-    const deltaY = currentY - this.resizeStartY;
-
-    const conversationArea = this.shadowRoot?.querySelector(
-      '.conversation-scroll-area',
-    ) as HTMLElement;
-    const q4hInput = this.shadowRoot?.querySelector('#q4h-input') as HTMLElement;
-
-    // Calculate new heights
-    let newConversationHeight = this.resizeStartConversationHeight + deltaY;
-    let newQ4HHeight = this.resizeStartQ4HHeight - deltaY;
-
-    // Constrain heights
-    const minConversationHeight = 100;
-    const minQ4HHeight = 130;
-    const maxConversationHeight = 1200;
-    const maxQ4HHeight = 1000;
-
-    // Ensure we don't exceed limits while maintaining the relationship
-    if (newQ4HHeight > maxQ4HHeight) {
-      newQ4HHeight = maxQ4HHeight;
-      newConversationHeight =
-        this.resizeStartConversationHeight + (this.resizeStartQ4HHeight - maxQ4HHeight);
-    } else if (newQ4HHeight < minQ4HHeight) {
-      newQ4HHeight = minQ4HHeight;
-      newConversationHeight =
-        this.resizeStartConversationHeight + (this.resizeStartQ4HHeight - minQ4HHeight);
-    }
-
-    if (newConversationHeight < minConversationHeight) {
-      newConversationHeight = minConversationHeight;
-      newQ4HHeight =
-        this.resizeStartQ4HHeight + (this.resizeStartConversationHeight - minConversationHeight);
-    } else if (newConversationHeight > maxConversationHeight) {
-      newConversationHeight = maxConversationHeight;
-      newQ4HHeight =
-        this.resizeStartQ4HHeight + (this.resizeStartConversationHeight - maxConversationHeight);
-    }
-
-    // Final clamping just in case
-    newConversationHeight = Math.max(
-      minConversationHeight,
-      Math.min(maxConversationHeight, newConversationHeight),
-    );
-    newQ4HHeight = Math.max(minQ4HHeight, Math.min(maxQ4HHeight, newQ4HHeight));
-
-    // Apply new heights using CSS variables or direct style
-    if (conversationArea) {
-      conversationArea.style.flex = 'none';
-      conversationArea.style.height = `${newConversationHeight}px`;
-    }
-    if (q4hInput) {
-      q4hInput.style.flex = 'none';
-      q4hInput.style.height = `${newQ4HHeight}px`;
-      q4hInput.style.maxHeight = `${newQ4HHeight}px`;
-    }
-  }
-
-  private stopResize(): void {
-    if (this.isResizing) {
-      this.isResizing = false;
-
-      // Remove document-level listeners
-      document.removeEventListener('mousemove', this.boundDoResize);
-      document.removeEventListener('touchmove', this.boundDoResize);
-      document.removeEventListener('mouseup', this.boundStopResize);
-      document.removeEventListener('touchend', this.boundStopResize);
-
-      const resizeHandle = this.shadowRoot?.querySelector('#resize-handle');
-      const appContainer = this.shadowRoot?.querySelector('.app-container');
-      if (resizeHandle) {
-        resizeHandle.classList.remove('resizing');
-      }
-      if (appContainer) {
-        appContainer.classList.remove('resizing');
-      }
-    }
-  }
+  // Resize handle removed: input is resized via a dedicated handle inside `dominds-q4h-input`.
 }
 
 // Register the custom element

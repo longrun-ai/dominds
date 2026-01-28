@@ -74,8 +74,7 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
 }
 
 export type ContextHealthV3RemediationGuideArgs =
-  | { kind: 'caution'; mode: 'soft'; graceRemaining: number; graceTotal: number }
-  | { kind: 'caution'; mode: 'hard_curate' }
+  | { kind: 'caution'; mode: 'soft' }
   | {
       kind: 'critical';
       mode: 'countdown';
@@ -88,66 +87,49 @@ export function formatUserFacingContextHealthV3RemediationGuide(
   args: ContextHealthV3RemediationGuideArgs,
 ): string {
   const reentryTemplateZh = [
-    '## 重入包（可多行；按任务规模伸缩）',
-    '- 目标/范围：',
-    '- 当前进展：',
-    '- 关键决策/约束：',
-    '- 已改动点（文件/模块）：',
-    '- 下一步（可执行）：',
-    '- 未决问题/风险：',
+    '## 重入包（差遣牒未提及的工作交接细节）',
+    '- 继续工作的第一步（可执行）：',
+    '- 关键定位（文件/符号/搜索词）：',
+    '- 运行/验证（命令、端口、环境变量）：',
+    '- 易丢失的临时细节（路径/ID/URL/样例输入）：',
   ].join('\n');
 
   const reentryTemplateEn = [
-    '## Re-entry package (multi-line; scale by task size)',
-    '- Goal/scope:',
-    '- Current progress:',
-    '- Key decisions/constraints:',
-    '- Changes (files/modules):',
-    '- Next steps (actionable):',
-    '- Open questions/risks:',
+    '## Re-entry package (handoff details not covered in Taskdoc)',
+    '- First actionable step:',
+    '- Key pointers (files/symbols/search terms):',
+    '- Run/verify (commands, ports, env vars):',
+    '- Easy-to-lose ephemeral details (paths/ids/urls/sample inputs):',
   ].join('\n');
 
   if (language === 'zh') {
     if (args.kind === 'caution' && args.mode === 'soft') {
       return [
-        '上下文健康：🟡 黄（v3 remediation / 缓冲期）',
+        '上下文状态：🟡 吃紧',
         '',
-        '你刚刚超过 optimal 阈值。为避免过早 clear_mind 导致大量重读，你可以先继续工作一小段时间。',
-        `缓冲期剩余：${args.graceRemaining}/${args.graceTotal} 次生成。`,
+        '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担和判断力干扰因素。',
         '',
-        '建议：从现在开始把“重入包草稿”持续维护在提醒项里（update_reminder / add_reminder），等信息更明朗后再 clear_mind。',
-        '当缓冲期结束且仍处于黄：系统会按 cadence（默认每 10 次生成）注入一次“维护提醒项”的硬提醒（要求至少调用一次 update_reminder/add_reminder）。',
-        '',
-        reentryTemplateZh,
-      ].join('\n');
-    }
-
-    if (args.kind === 'caution' && args.mode === 'hard_curate') {
-      return [
-        '上下文健康：🟡 黄（v3 remediation / 维护提醒项）',
+        '你只有通过调用 clear_mind 才能丢弃这些垃圾信息，恢复清醒的头脑。',
+        '“重入包”是你在下一轮对话中无间断继续工作的关键，所以你需要尽快把它准备好。',
         '',
         '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
-        '目标：把“重入包草稿”维护进提醒项，让我能在信息足够时 **自主** clear_mind 进入新一轮/新回合。',
+        '目标：把“重入包草稿”维护进提醒项，让你尽快建立信心和意愿 **自主** clear_mind 进入新一轮/新回合。',
         '',
-        '建议你在提醒项里明确写出：',
+        '同时建议你在提醒项里明确写出：',
         '“基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入新一轮/新回合”。',
         '',
         '可选动作（至少一个，允许多次调用）：',
         '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
         '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
         '',
-        '提示：若你仍处于黄且没有完成提醒项维护，系统会按 cadence（默认每 10 次生成）再次提醒（直到缓解）。',
-        '',
-        reentryTemplateZh,
+        '提示：在你自主调用 clear_mind 之前，系统会时常再次提醒你。',
       ].join('\n');
     }
 
     return [
-      `上下文健康：🔴 红（v3 remediation / 倒数清理）`,
+      `上下文状态：🔴 告急`,
       '',
-      `为保持长程自动运行，系统将连续最多 ${args.promptsTotal} 轮以 role=user 的“用户 prompt”形式提醒你尽快收敛重入包并清理。`,
-      '',
-      `倒数：本轮之后还剩 ${args.promptsRemainingAfterThis} 轮。若在倒数结束前仍未 clear_mind，系统将自动强制 clear_mind，并开启新一轮/新回合（不触发 Q4H，不暂停对话）。`,
+      `为保持长程自动运行，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，然后将自动强制 clear_mind 以开启新一轮/新回合对话。`,
       '',
       '你应在本轮尽快执行（允许多次调用）：',
       '1) 用 update_reminder / add_reminder 把“重入包（best effort）”维护进提醒项（压缩为少量、高价值条目）。',
@@ -156,6 +138,8 @@ export function formatUserFacingContextHealthV3RemediationGuide(
       '快速操作：',
       '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
       '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
+      '',
+      '然后建议你主动执行：',
       '- clear_mind({ "reminder_content": "" })  （可选：为空也可；系统会保留已维护的提醒项）',
       '',
       reentryTemplateZh,
@@ -164,118 +148,44 @@ export function formatUserFacingContextHealthV3RemediationGuide(
 
   if (args.kind === 'caution' && args.mode === 'soft') {
     return [
-      'Context health: 🟡 caution (v3 remediation / grace period)',
+      'Context state: 🟡 caution',
       '',
-      'You just crossed the optimal threshold. To avoid clearing too early (and re-reading a lot), you may continue briefly.',
-      `Grace remaining: ${args.graceRemaining}/${args.graceTotal} generations.`,
+      'Impact: the dialog contains lots of stale tool calls/results, which becomes cognitive noise and can degrade your judgment.',
       '',
-      'Suggestion: start drafting and curating a re-entry package in reminders (update_reminder / add_reminder), then clear_mind when it becomes scannable and actionable.',
-      'Once the grace period ends (and still caution), the system will inject a hard reminder-curation prompt on a cadence (default: every 10 generations), requiring at least one update_reminder/add_reminder call.',
-      '',
-      reentryTemplateEn,
-    ].join('\n');
-  }
-
-  if (args.kind === 'caution' && args.mode === 'hard_curate') {
-    return [
-      'Context health: 🟡 caution (v3 remediation / curate reminders)',
+      'You can only drop this noise by calling clear_mind.',
+      'A “re-entry package” is the key to continuing work without interruption after starting a new round, so you should prepare it as soon as possible.',
       '',
       'In this turn, you must call at least one reminder-curation tool (prefer update_reminder; add_reminder is also OK).',
-      'Goal: maintain a re-entry-package draft inside reminders so you can later clear_mind autonomously when it becomes actionable.',
-      '',
-      'Suggested phrasing inside the reminder(s):',
-      '“Based on the above, we still need … to complete the re-entry package, so we can safely clear_mind and start a new round.”',
+      'Goal: maintain a re-entry-package draft inside reminders so you can confidently clear_mind autonomously and start a new round.',
       '',
       'Allowed actions (at least one; multiple calls are OK):',
       '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
       '- add_reminder({ "content": "<new reminder>", "position": 0 })',
       '',
-      'Note: if still caution and you did not curate reminders, the system reinjects this guidance on the configured cadence (default: every 10 generations) until relieved.',
-      '',
-      reentryTemplateEn,
+      'Note: until you clear_mind, the system will periodically remind you again.',
     ].join('\n');
   }
 
   return [
-    `Context health: 🔴 critical (v3 remediation / countdown clear)`,
+    `Context state: 🔴 critical`,
     '',
-    `To keep long-running autonomy stable, the system will (at most) inject up to ${args.promptsTotal} role=user “user prompts” to nudge you to curate a re-entry package and clear soon.`,
-    '',
-    `Countdown: ${args.promptsRemainingAfterThis} turns remaining after this. If you still do not clear_mind before the countdown ends, the system will automatically force clear_mind and start a new round (no Q4H, no suspension).`,
+    `To keep long-running autonomy stable, the system will remind you at most ${args.promptsRemainingAfterThis} more time(s), then it will automatically force clear_mind to start a new round/new turn dialog.`,
     '',
     'In this turn, do this as soon as possible (multiple calls are OK):',
+    '',
     '1) Curate reminders via update_reminder / add_reminder to maintain a best-effort re-entry package.',
     '2) Then clear_mind to start a new round so work continues with a smaller context.',
     '',
     'Quick actions:',
     '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
     '- add_reminder({ "content": "<new reminder>", "position": 0 })',
+    '',
+    'Then, you should proactively execute:',
     '- clear_mind({ "reminder_content": "" })  (optional: empty is OK; curated reminders are preserved)',
     '',
     reentryTemplateEn,
   ].join('\n');
 }
-export function formatReminderIntro(language: LanguageCode, count: number): string {
-  if (language === 'zh') {
-    return `⚠️ 我当前有 ${count} 条提醒项（这是跨新一轮/新回合的工作集；请主动维护）。
-
-推荐工作流（优先级从高到低）：
-1) 需要长期携带的关键细节：写进提醒项（尽量少量几条，优先 update_reminder 维护单条“工作集提醒项”）。
-2) 任务契约/关键决策/下一步：写进差遣牒（change_mind 的 progress 段，保持简短）。
-3) 大段对话与工具调用历史：当成噪音，必要时 clear_mind 清掉。
-
-快速操作：
-- 新增：add_reminder({ "content": "...", "position": 0 })（position=0 表示默认追加；也可填 1..N 指定插入位置）
-- 更新：update_reminder({ "reminder_no": 1, "content": "..." })
-- 删除：delete_reminder({ "reminder_no": 1 })
-
-注意：
-- 系统托管提醒项（有 owner）会自动更新/消失；通常不需要 delete_reminder。
-
-建议（上下文健康黄/红时必须执行）：
-- 先把“必须保留的细节”收敛到少量提醒项（update_reminder 压缩/合并）
-- 再 change_mind(progress) 写提炼摘要（不限制行数；覆盖：目标 / 关键决策 / 已改动点 / 下一步 / 未决问题）
-- 然后 clear_mind 开启新一轮/新回合（差遣牒与提醒项不会丢）
-
-提炼模板（写入差遣牒的 progress 段）：
-## 提炼摘要
-- 目标：
-- 关键决策：
-- 已改文件：
-- 下一步：
-- 未决问题：`;
-  }
-
-  const plural = count > 1 ? 's' : '';
-  return `⚠️ I currently have ${count} reminder item${plural} (this is your cross-round working set; actively curate it).
-
-Recommended flow (highest priority first):
-1) Key details worth carrying: put them into reminders (keep it small; prefer update_reminder on a single “worklog” item).
-2) Task contract / key decisions / next steps: put into the Taskdoc (change_mind selector progress; keep it short).
-3) Long chat/tool history: treat as noise; clear_mind when needed.
-
-Quick actions:
-- Add: add_reminder({ "content": "...", "position": 0 }) (position=0 means append; or set 1..N to insert)
-- Update: update_reminder({ "reminder_no": 1, "content": "..." })
-- Delete: delete_reminder({ "reminder_no": 1 })
-
-Note:
-- System-managed reminders (with an owner) auto-update/auto-drop; you typically do not need delete_reminder.
-
-Suggested (mandatory at yellow/red context health):
-- First, compress/merge reminders into a small set (update_reminder)
-- Then distill into Taskdoc progress (change_mind) (no fixed length; scale by task size)
-- Then clear_mind to start a new round (Taskdoc and reminders are preserved)
-
-Distill template (Taskdoc progress):
-## Distilled context
-- Goal:
-- Key decisions:
-- Files touched:
-- Next steps:
-- Open questions:`;
-}
-
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (
@@ -290,16 +200,16 @@ export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): s
   );
 }
 
-export function formatDomindsNoteSuperNoTopic(language: LanguageCode): string {
+export function formatDomindsNoteSuperNoTellaskSession(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!?@super` 是 Type A 的 supdialog 诉请，不接受 `!topic`。' +
-      '请使用不带 `!topic` 的 `!?@super`；或使用 `!?@self !topic <topicId>` / `!?@<agentId> !topic <topicId>` 来触发 Type B。'
+      'Dominds 提示：`!?@super` 是 Type A 的 supdialog 诉请，不接受 `!tellaskSession`。' +
+      '请使用不带 `!tellaskSession` 的 `!?@super`；或使用 `!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>` 来触发 Type B。'
     );
   }
   return (
-    'Dominds note: `!?@super` is a Type A supdialog call and does not accept `!topic`. ' +
-    'Use `!?@super` with NO `!topic`, or use `!?@self !topic <topicId>` / `!?@<agentId> !topic <topicId>` for Type B.'
+    'Dominds note: `!?@super` is a Type A supdialog call and does not accept `!tellaskSession`. ' +
+    'Use `!?@super` with NO `!tellaskSession`, or use `!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>` for Type B.'
   );
 }
 
@@ -307,14 +217,14 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   if (language === 'zh') {
     return (
       'Dominds 提示：该诉请目标是当前 agent（自诉请/self-call）。' +
-      'Fresh Boots Reasoning 通常应使用 `!?@self`（不带 `!topic`）来创建一次性的 fresh boots 会话；' +
-      '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !topic <topicId>`。该诉请将继续执行。'
+      'Fresh Boots Reasoning 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的 fresh boots 会话；' +
+      '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
     );
   }
   return (
     'Dominds note: This call targets the current agent (self-call). ' +
-    'Fresh Boots Reasoning should usually use `!?@self` (no `!topic`) for an ephemeral fresh boots session; use ' +
-    '`!?@self !topic <topicId>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.'
+    'Fresh Boots Reasoning should usually use `!?@self` (no `!tellaskSession`) for an ephemeral fresh boots session; use ' +
+    '`!?@self !tellaskSession <tellaskSession>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.'
   );
 }
 
@@ -398,32 +308,32 @@ export function formatDomindsNoteInvalidMultiTeammateTargets(
   );
 }
 
-export function formatDomindsNoteInvalidTopicDirective(language: LanguageCode): string {
+export function formatDomindsNoteInvalidTellaskSessionDirective(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'ERR_INVALID_TOPIC_DIRECTIVE\n' +
-      'Dominds 提示：检测到 `!topic` 指令，但 topicId 无效。\n\n' +
-      '规则：`!topic <topicId>` 的 topicId 必须满足 `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`。'
+      'ERR_INVALID_TELLASK_SESSION_DIRECTIVE\n' +
+      'Dominds 提示：检测到 `!tellaskSession` 指令，但 tellaskSession 无效。\n\n' +
+      '规则：`!tellaskSession <tellaskSession>` 的 tellaskSession 必须满足 `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`。'
     );
   }
   return (
-    'ERR_INVALID_TOPIC_DIRECTIVE\n' +
-    'Dominds note: Detected a `!topic` directive, but the topicId is invalid.\n\n' +
-    'Rule: `!topic <topicId>` must match `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`.'
+    'ERR_INVALID_TELLASK_SESSION_DIRECTIVE\n' +
+    'Dominds note: Detected a `!tellaskSession` directive, but the tellaskSession is invalid.\n\n' +
+    'Rule: `!tellaskSession <tellaskSession>` must match `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`.'
   );
 }
 
-export function formatDomindsNoteMultipleTopicDirectives(language: LanguageCode): string {
+export function formatDomindsNoteMultipleTellaskSessionDirectives(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'ERR_MULTIPLE_TOPIC_DIRECTIVES\n' +
-      'Dominds 提示：同一条诉请的 headline 中出现了多个 `!topic` 指令。\n\n' +
-      '规则：每条诉请最多只能包含一个 `!topic <topicId>`（对 collective teammate tellask，该 topic 会对所有目标队友生效）。'
+      'ERR_MULTIPLE_TELLASK_SESSION_DIRECTIVES\n' +
+      'Dominds 提示：同一条诉请的 headline 中出现了多个 `!tellaskSession` 指令。\n\n' +
+      '规则：每条诉请最多只能包含一个 `!tellaskSession <tellaskSession>`（对 collective teammate tellask，该 tellaskSession 会对所有目标队友生效）。'
     );
   }
   return (
-    'ERR_MULTIPLE_TOPIC_DIRECTIVES\n' +
-    'Dominds note: Multiple `!topic` directives were found in the headline.\n\n' +
-    'Rule: a tellask may include at most one `!topic <topicId>` (for collective teammate tellasks, the same topic applies to all targets).'
+    'ERR_MULTIPLE_TELLASK_SESSION_DIRECTIVES\n' +
+    'Dominds note: Multiple `!tellaskSession` directives were found in the headline.\n\n' +
+    'Rule: a tellask may include at most one `!tellaskSession <tellaskSession>` (for collective teammate tellasks, the same tellaskSession applies to all targets).'
   );
 }

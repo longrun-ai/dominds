@@ -543,7 +543,7 @@ export class RunningDialogList extends HTMLElement {
       kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
     const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
     const updatedAt = dialog.lastModified || '';
-    const topicMark = dialog.topicId ?? '';
+    const tellaskSessionMark = dialog.tellaskSession ?? '';
 
     if (kind === 'sub') {
       return `
@@ -553,12 +553,12 @@ export class RunningDialogList extends HTMLElement {
           data-self-id="${dialog.selfId ?? ''}"
         >
           <div class="dialog-row dialog-subrow">
-            <span class="dialog-title">@${dialog.agentId}</span>
-            <span class="dialog-meta-right">
-              ${badges}
-              <span class="dialog-topic">${topicMark}</span>
-            </span>
-          </div>
+              <span class="dialog-title">@${dialog.agentId}</span>
+              <span class="dialog-meta-right">
+                ${badges}
+                <span class="dialog-topic">${tellaskSessionMark}</span>
+              </span>
+            </div>
           <div class="dialog-row dialog-submeta">
             <span class="dialog-meta-right">
               <span class="dialog-status">${dialogId}</span>
@@ -827,7 +827,7 @@ export class RunningDialogList extends HTMLElement {
       agentName: '',
       taskDocPath: dialog.taskDocPath,
       supdialogId: dialog.supdialogId,
-      topicId: dialog.topicId,
+      tellaskSession: dialog.tellaskSession,
     };
 
     this.props.onSelect(dialogInfo);

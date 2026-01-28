@@ -17,6 +17,14 @@ export interface DialogRunStateEvent {
   runState: DialogRunState;
 }
 
+export interface DiligenceBudgetEvent {
+  type: 'diligence_budget_evt';
+  maxInjectCount: number;
+  injectedCount: number;
+  remainingCount: number;
+  disableDiligencePush: boolean;
+}
+
 export interface DialogRunStateMarkerEvent {
   type: 'dlg_run_state_marker_evt';
   kind: 'interrupted' | 'resumed';
@@ -258,6 +266,7 @@ export type DialogEvent =
   // Run state
   | DialogRunStateEvent
   | DialogRunStateMarkerEvent
+  | DiligenceBudgetEvent
   // Thinking stream
   | ThinkingStartEvent
   | ThinkingChunkEvent

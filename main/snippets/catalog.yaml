@@ -1,0 +1,5 @@
+daily:
+  name: Daily
+  name-zh: 日常
+  snippets:
+    - starting

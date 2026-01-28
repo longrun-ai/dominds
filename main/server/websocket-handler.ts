@@ -605,7 +605,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       agentId: metadata.agentId,
       taskDocPath: metadata.taskDocPath,
       supdialogId: metadata.supdialogId,
-      topicId: metadata.topicId,
+      tellaskSession: metadata.tellaskSession,
       assignmentFromSup: metadata.assignmentFromSup,
       disableDiligencePush: latest?.disableDiligencePush ?? false,
       diligencePushMax: resolveMemberDiligencePushMax(team, metadata.agentId),

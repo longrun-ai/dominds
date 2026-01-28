@@ -13,12 +13,13 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 
-import type { ChatMessage } from '../llm/client';
+import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/client';
 import { LlmConfig } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
 import { getProblemsSnapshot } from '../problems';
-import { getWorkLanguage } from '../shared/runtime-language';
+import type { TeamMgmtManualTopicKey } from '../shared/team-mgmt-manual';
+import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team-mgmt-manual';
 import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -246,6 +247,197 @@ function formatModelCheckResult(r: ModelCheckResult): string {
   return `- ${r.model}: ❌ ${r.details ?? 'failed'}`;
 }
 
+type WorkspaceLlmProvidersLoadResult =
+  | { kind: 'missing' }
+  | { kind: 'invalid'; error: string }
+  | { kind: 'present'; providers: Record<string, ProviderConfig> };
+
+function escapeRegexChar(ch: string): string {
+  // Escape characters with special meaning in JS RegExp patterns.
+  return /[\\^$.*+?()[\]{}|]/.test(ch) ? `\\${ch}` : ch;
+}
+
+function wildcardMatch(value: string, pattern: string): boolean {
+  const p = pattern.trim() === '' ? '*' : pattern.trim();
+  let re = '^';
+  for (const ch of p) {
+    if (ch === '*') re += '.*';
+    else if (ch === '?') re += '.';
+    else re += escapeRegexChar(ch);
+  }
+  re += '$';
+  return new RegExp(re).test(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
+function isEnvVarConfigured(envVar: string): boolean {
+  const raw = process.env[envVar];
+  return typeof raw === 'string' && raw.trim().length > 0;
+}
+
+function getProviderModelsForListing(providerCfg: ProviderConfig): Record<string, unknown> {
+  const rec = providerCfg as unknown as Record<string, unknown>;
+  const modelsUnknown = rec['models'];
+  if (typeof modelsUnknown !== 'object' || modelsUnknown === null) return {};
+  if (Array.isArray(modelsUnknown)) return {};
+  return modelsUnknown as Record<string, unknown>;
+}
+
+function formatProviderEnvStatusLine(providerCfg: ProviderConfig): string {
+  const envVar = providerCfg.apiKeyEnvVar;
+  const configured = isEnvVarConfigured(envVar);
+  if (configured) return `apiKeyEnvVar: ${envVar} (configured)`;
+  if (providerCfg.apiType === 'codex') {
+    return `apiKeyEnvVar: ${envVar} (not set; may still work for codex via default ~/.codex)`;
+  }
+  return `apiKeyEnvVar: ${envVar} (NOT set)`;
+}
+
+function listModelIds(models: Record<string, unknown>, maxModels: number): string {
+  const ids = Object.keys(models).sort((a, b) => a.localeCompare(b));
+  if (ids.length === 0) return '(none)';
+  const max = maxModels > 0 ? maxModels : 30;
+  const head = ids.slice(0, max);
+  return `${head.join(', ')}${ids.length > head.length ? ', ...' : ''}`;
+}
+
+async function loadBuiltinLlmProviders(): Promise<Record<string, ProviderConfig>> {
+  const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
+  const raw = await fs.readFile(defaultsPath, 'utf-8');
+  const parsed: unknown = YAML.parse(raw);
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('Invalid defaults.yaml');
+  }
+  const rec = parsed as Record<string, unknown>;
+  const providersUnknown = rec['providers'];
+  if (typeof providersUnknown !== 'object' || providersUnknown === null) {
+    throw new Error('Invalid defaults.yaml (missing providers)');
+  }
+  return providersUnknown as Record<string, ProviderConfig>;
+}
+
+async function loadWorkspaceLlmProviders(): Promise<WorkspaceLlmProvidersLoadResult> {
+  const cfgPath = `${MINDS_DIR}/llm.yaml`;
+  try {
+    await fs.access(cfgPath);
+  } catch (err: unknown) {
+    if (isFsErrWithCode(err) && err.code === 'ENOENT') return { kind: 'missing' };
+    return { kind: 'invalid', error: err instanceof Error ? err.message : String(err) };
+  }
+
+  try {
+    const raw = await fs.readFile(cfgPath, 'utf-8');
+    const parsed: unknown = YAML.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return { kind: 'invalid', error: 'Invalid llm.yaml (expected root object)' };
+    }
+    const rec = parsed as Record<string, unknown>;
+    const providersUnknown = rec['providers'];
+    if (typeof providersUnknown !== 'object' || providersUnknown === null) {
+      return { kind: 'invalid', error: 'Invalid llm.yaml (missing providers object)' };
+    }
+    return { kind: 'present', providers: providersUnknown as Record<string, ProviderConfig> };
+  } catch (err: unknown) {
+    return { kind: 'invalid', error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function formatModelInfoSummary(info: unknown): string {
+  if (typeof info !== 'object' || info === null) return '';
+  const rec = info as Record<string, unknown>;
+  const parts: string[] = [];
+  const nameUnknown = rec['name'];
+  if (isNonEmptyString(nameUnknown)) parts.push(`name=${nameUnknown}`);
+  const contextLengthUnknown = rec['context_length'];
+  if (typeof contextLengthUnknown === 'number') parts.push(`ctx=${contextLengthUnknown}`);
+  const inputLengthUnknown = rec['input_length'];
+  if (typeof inputLengthUnknown === 'number') parts.push(`in=${inputLengthUnknown}`);
+  const outputLengthUnknown = rec['output_length'];
+  if (typeof outputLengthUnknown === 'number') parts.push(`out=${outputLengthUnknown}`);
+  const optimalMaxTokensUnknown = rec['optimal_max_tokens'];
+  if (typeof optimalMaxTokensUnknown === 'number')
+    parts.push(`optimal_max_tokens=${optimalMaxTokensUnknown}`);
+  const criticalMaxTokensUnknown = rec['critical_max_tokens'];
+  if (typeof criticalMaxTokensUnknown === 'number')
+    parts.push(`critical_max_tokens=${criticalMaxTokensUnknown}`);
+  const contextWindowUnknown = rec['context_window'];
+  if (isNonEmptyString(contextWindowUnknown)) parts.push(`context_window=${contextWindowUnknown}`);
+  return parts.join(' ');
+}
+
+function formatModelParamOptionLine(
+  paramName: string,
+  opt: ModelParamOption,
+  language: LanguageCode,
+): string {
+  const extras: string[] = [];
+  if (opt.prominent === true) extras.push(language === 'zh' ? 'prominent' : 'prominent');
+  switch (opt.type) {
+    case 'number': {
+      const range = `${opt.min ?? ''}..${opt.max ?? ''}`.trim();
+      if (range !== '..') extras.push(range);
+      if (typeof opt.default === 'number') extras.push(`default=${opt.default}`);
+      break;
+    }
+    case 'integer': {
+      const range = `${opt.min ?? ''}..${opt.max ?? ''}`.trim();
+      if (range !== '..') extras.push(range);
+      if (typeof opt.default === 'number') extras.push(`default=${opt.default}`);
+      break;
+    }
+    case 'boolean': {
+      if (typeof opt.default === 'boolean')
+        extras.push(`default=${opt.default ? 'true' : 'false'}`);
+      break;
+    }
+    case 'string': {
+      if (typeof opt.default === 'string') extras.push(`default=${opt.default}`);
+      break;
+    }
+    case 'string_array': {
+      if (Array.isArray(opt.default) && opt.default.every((v) => typeof v === 'string')) {
+        extras.push(`default=[${opt.default.join(',')}]`);
+      }
+      break;
+    }
+    case 'record_number': {
+      if (typeof opt.default === 'object' && opt.default !== null) {
+        const entries = Object.entries(opt.default).filter(([, v]) => typeof v === 'number');
+        if (entries.length > 0) {
+          extras.push(
+            `default={${entries
+              .slice(0, 6)
+              .map(([k, v]) => `${k}:${v}`)
+              .join(',')}}`,
+          );
+        }
+      }
+      break;
+    }
+    case 'enum': {
+      extras.push(opt.values.join('|'));
+      if (typeof opt.default === 'string') extras.push(`default=${opt.default}`);
+      break;
+    }
+    default: {
+      const _exhaustive: never = opt;
+      throw new Error(`Unhandled ModelParamOption: ${String(_exhaustive)}`);
+    }
+  }
+
+  const desc = opt.description.trim();
+  const descShort = desc.length > 180 ? `${desc.slice(0, 180)}…` : desc;
+  const suffix = extras.length > 0 ? ` (${extras.join(', ')})` : '';
+  return `- \`${paramName}\`: \`${opt.type}\`${suffix}${descShort ? ` — ${descShort}` : ''}`;
+}
+
 export const teamMgmtCheckProviderTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_check_provider',
@@ -314,8 +506,8 @@ export const teamMgmtCheckProviderTool: FuncTool = {
       if (!providerCfg) {
         const msg =
           language === 'zh'
-            ? `Provider 不存在：\`${providerKey}\`。请检查 \`.minds/llm.yaml\`（或内置 defaults）。`
-            : `Provider not found: \`${providerKey}\`. Check \`.minds/llm.yaml\` (or built-in defaults).`;
+            ? `Provider 不存在：\`${providerKey}\`。请检查 \`.minds/llm.yaml\`（或内置 defaults）。也可先用 \`team_mgmt_list_providers({})\` 查看当前可用 provider keys。`
+            : `Provider not found: \`${providerKey}\`. Check \`.minds/llm.yaml\` (or built-in defaults). You can also run \`team_mgmt_list_providers({})\` to see available provider keys.`;
         return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
       }
 
@@ -365,8 +557,8 @@ export const teamMgmtCheckProviderTool: FuncTool = {
       if (model !== undefined && !Object.prototype.hasOwnProperty.call(providerCfg.models, model)) {
         const msg =
           language === 'zh'
-            ? `Model 不存在：\`${model}\` 不在 provider \`${providerKey}\` 的 models 列表中。请先更新 \`.minds/llm.yaml\` 或选择一个已配置的 model key。`
-            : `Model not found: \`${model}\` is not in provider \`${providerKey}\` models. Update \`.minds/llm.yaml\` or choose a configured model key.`;
+            ? `Model 不存在：\`${model}\` 不在 provider \`${providerKey}\` 的 models 列表中。请先更新 \`.minds/llm.yaml\` 或选择一个已配置的 model key。也可用 \`team_mgmt_list_models({ provider_pattern: \"${providerKey}\", model_pattern: \"*\" })\` 查看该 provider 下已有模型。`
+            : `Model not found: \`${model}\` is not in provider \`${providerKey}\` models. Update \`.minds/llm.yaml\` or choose a configured model key. You can also run \`team_mgmt_list_models({ provider_pattern: \"${providerKey}\", model_pattern: \"*\" })\` to see configured models under that provider.`;
         return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
       }
 
@@ -477,6 +669,444 @@ export const teamMgmtCheckProviderTool: FuncTool = {
             : `Tip: to perform a real connectivity test, set \`live: true\`. Example: \`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true, max_models: 0 })\``;
         lines.push(hint + '\n');
       }
+
+      const content = lines.join('');
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtListProvidersTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_list_providers',
+  description:
+    'List built-in and workspace LLM providers, their env-var readiness, and configured models.',
+  descriptionI18n: {
+    en: 'List built-in and workspace LLM providers, their env-var readiness, and configured models.',
+    zh: '列出内置与工作区 LLM providers，并显示 env var 是否已配置、以及该 provider 下有哪些模型。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      provider_pattern: { type: 'string' },
+      include_builtin: { type: 'boolean' },
+      include_workspace: { type: 'boolean' },
+      show_models: { type: 'boolean' },
+      max_models: { type: 'integer' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    try {
+      const providerPatternValue = args['provider_pattern'];
+      const providerPattern =
+        typeof providerPatternValue === 'string' && providerPatternValue.trim() !== ''
+          ? providerPatternValue.trim()
+          : '*';
+
+      const includeBuiltinValue = args['include_builtin'];
+      const includeBuiltin =
+        includeBuiltinValue === undefined ? true : includeBuiltinValue === true;
+      if (includeBuiltinValue !== undefined && typeof includeBuiltinValue !== 'boolean') {
+        throw new Error('Invalid include_builtin (expected boolean)');
+      }
+
+      const includeWorkspaceValue = args['include_workspace'];
+      const includeWorkspace =
+        includeWorkspaceValue === undefined ? true : includeWorkspaceValue === true;
+      if (includeWorkspaceValue !== undefined && typeof includeWorkspaceValue !== 'boolean') {
+        throw new Error('Invalid include_workspace (expected boolean)');
+      }
+
+      const showModelsValue = args['show_models'];
+      const showModels = showModelsValue === undefined ? true : showModelsValue === true;
+      if (showModelsValue !== undefined && typeof showModelsValue !== 'boolean') {
+        throw new Error('Invalid show_models (expected boolean)');
+      }
+
+      const maxModelsValue = args['max_models'];
+      const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 30;
+      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue < 0)) {
+        throw new Error('Invalid max_models (expected integer >= 0)');
+      }
+
+      const builtinProviders = includeBuiltin ? await loadBuiltinLlmProviders() : {};
+      const workspaceProvidersResult = includeWorkspace
+        ? await loadWorkspaceLlmProviders()
+        : { kind: 'missing' as const };
+      const workspaceProviders =
+        workspaceProvidersResult.kind === 'present' ? workspaceProvidersResult.providers : {};
+
+      const contentLines: string[] = [];
+      const title = language === 'zh' ? 'LLM Provider 列表' : 'LLM Providers';
+      contentLines.push(fmtHeader(title));
+      contentLines.push(
+        language === 'zh'
+          ? '说明：工作区 `.minds/llm.yaml` 的同名 provider key 会覆盖内置 defaults。\n'
+          : 'Note: workspace `.minds/llm.yaml` overrides built-in defaults when provider keys match.\n',
+      );
+
+      if (includeWorkspace) {
+        contentLines.push(
+          fmtSubHeader(
+            language === 'zh' ? '工作区（.minds/llm.yaml）' : 'Workspace (.minds/llm.yaml)',
+          ),
+        );
+        if (workspaceProvidersResult.kind === 'missing') {
+          contentLines.push(
+            language === 'zh'
+              ? `（未发现 \`${MINDS_DIR}/llm.yaml\`；仅列出内置 defaults）\n`
+              : `(\`${MINDS_DIR}/llm.yaml\` not found; showing built-in defaults only)\n`,
+          );
+        } else if (workspaceProvidersResult.kind === 'invalid') {
+          contentLines.push(
+            language === 'zh'
+              ? `（解析失败：${workspaceProvidersResult.error}）\n`
+              : `(Parse failed: ${workspaceProvidersResult.error})\n`,
+          );
+        } else {
+          const keys = Object.keys(workspaceProviders).sort((a, b) => a.localeCompare(b));
+          if (keys.length === 0) {
+            contentLines.push(language === 'zh' ? '(空)\n' : '(empty)\n');
+          } else {
+            const items: string[] = [];
+            for (const providerKey of keys) {
+              if (!wildcardMatch(providerKey, providerPattern)) continue;
+              const providerCfg = workspaceProviders[providerKey];
+              const envLine = formatProviderEnvStatusLine(providerCfg);
+              const overridesBuiltin = Object.prototype.hasOwnProperty.call(
+                builtinProviders,
+                providerKey,
+              );
+              const models = getProviderModelsForListing(providerCfg);
+              const modelCount = Object.keys(models).length;
+              const modelsText = showModels ? listModelIds(models, maxModels) : '';
+              const modelsSuffix = showModels
+                ? `models(${modelCount}): ${modelsText}`
+                : `models(${modelCount})`;
+              items.push(
+                `\`${providerKey}\` (apiType: \`${providerCfg.apiType}\`) — ${envLine} — ${modelsSuffix}${
+                  overridesBuiltin
+                    ? language === 'zh'
+                      ? ' — 覆盖内置 defaults'
+                      : ' — overrides built-in'
+                    : ''
+                }`,
+              );
+            }
+            contentLines.push(fmtList(items));
+          }
+        }
+      }
+
+      if (includeBuiltin) {
+        contentLines.push(
+          fmtSubHeader(
+            language === 'zh'
+              ? '内置（dominds/main/llm/defaults.yaml）'
+              : 'Built-in (dominds/main/llm/defaults.yaml)',
+          ),
+        );
+        const keys = Object.keys(builtinProviders).sort((a, b) => a.localeCompare(b));
+        if (keys.length === 0) {
+          contentLines.push(language === 'zh' ? '(空)\n' : '(empty)\n');
+        } else {
+          const items: string[] = [];
+          for (const providerKey of keys) {
+            if (!wildcardMatch(providerKey, providerPattern)) continue;
+            const providerCfg = builtinProviders[providerKey];
+            const envLine = formatProviderEnvStatusLine(providerCfg);
+            const overriddenByWorkspace =
+              workspaceProvidersResult.kind === 'present' &&
+              Object.prototype.hasOwnProperty.call(workspaceProviders, providerKey);
+            const models = getProviderModelsForListing(providerCfg);
+            const modelCount = Object.keys(models).length;
+            const modelsText = showModels ? listModelIds(models, maxModels) : '';
+            const modelsSuffix = showModels
+              ? `models(${modelCount}): ${modelsText}`
+              : `models(${modelCount})`;
+            items.push(
+              `\`${providerKey}\` (apiType: \`${providerCfg.apiType}\`) — ${envLine} — ${modelsSuffix}${
+                overriddenByWorkspace
+                  ? language === 'zh'
+                    ? ' — 被工作区覆盖'
+                    : ' — overridden by workspace'
+                  : ''
+              }`,
+            );
+          }
+          contentLines.push(fmtList(items));
+        }
+      }
+
+      const content = contentLines.join('');
+      return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+type ListModelsSource = 'effective' | 'builtin' | 'workspace';
+
+export const teamMgmtListModelsTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_list_models',
+  description:
+    'List models filtered by provider/model wildcard, and show model info + provider model-parameter options.',
+  descriptionI18n: {
+    en: 'List models filtered by provider/model wildcard, and show model info + provider model-parameter options.',
+    zh: '按 provider/model 通配符过滤列出模型，并展示模型信息与该 provider 的 model_param_options（模型参数说明）。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      source: { type: 'string', enum: ['effective', 'builtin', 'workspace'] },
+      provider_pattern: { type: 'string' },
+      model_pattern: { type: 'string' },
+      include_param_options: { type: 'boolean' },
+      max_models: { type: 'integer' },
+      max_models_per_provider: { type: 'integer' },
+      max_params: { type: 'integer' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    try {
+      const sourceValue = args['source'];
+      const source: ListModelsSource =
+        sourceValue === 'builtin' || sourceValue === 'workspace' || sourceValue === 'effective'
+          ? sourceValue
+          : 'effective';
+      if (sourceValue !== undefined && typeof sourceValue !== 'string') {
+        throw new Error('Invalid source (expected string)');
+      }
+
+      const providerPatternValue = args['provider_pattern'];
+      const providerPattern =
+        typeof providerPatternValue === 'string' && providerPatternValue.trim() !== ''
+          ? providerPatternValue.trim()
+          : '*';
+
+      const modelPatternValue = args['model_pattern'];
+      const modelPattern =
+        typeof modelPatternValue === 'string' && modelPatternValue.trim() !== ''
+          ? modelPatternValue.trim()
+          : '*';
+
+      const includeParamOptionsValue = args['include_param_options'];
+      const includeParamOptions =
+        includeParamOptionsValue === undefined ? true : includeParamOptionsValue === true;
+      if (includeParamOptionsValue !== undefined && typeof includeParamOptionsValue !== 'boolean') {
+        throw new Error('Invalid include_param_options (expected boolean)');
+      }
+
+      const maxModelsValue = args['max_models'];
+      const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 200;
+      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue < 0)) {
+        throw new Error('Invalid max_models (expected integer >= 0)');
+      }
+
+      const maxModelsPerProviderValue = args['max_models_per_provider'];
+      const maxModelsPerProvider =
+        isInteger(maxModelsPerProviderValue) && maxModelsPerProviderValue > 0
+          ? maxModelsPerProviderValue
+          : 50;
+      if (
+        maxModelsPerProviderValue !== undefined &&
+        (!isInteger(maxModelsPerProviderValue) || maxModelsPerProviderValue < 0)
+      ) {
+        throw new Error('Invalid max_models_per_provider (expected integer >= 0)');
+      }
+
+      const maxParamsValue = args['max_params'];
+      const maxParams = isInteger(maxParamsValue) && maxParamsValue > 0 ? maxParamsValue : 80;
+      if (maxParamsValue !== undefined && (!isInteger(maxParamsValue) || maxParamsValue < 0)) {
+        throw new Error('Invalid max_params (expected integer >= 0)');
+      }
+
+      let providers: Record<string, ProviderConfig> = {};
+      let sourceLabel = source;
+      if (source === 'effective') {
+        const cfg = await LlmConfig.load();
+        providers = cfg.providers;
+      } else if (source === 'builtin') {
+        providers = await loadBuiltinLlmProviders();
+      } else {
+        const workspace = await loadWorkspaceLlmProviders();
+        if (workspace.kind === 'missing') {
+          const msg =
+            language === 'zh'
+              ? `未发现 \`${MINDS_DIR}/llm.yaml\`，无法列出 workspace source 的 models。`
+              : `\`${MINDS_DIR}/llm.yaml\` not found; cannot list models for workspace source.`;
+          return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+        if (workspace.kind === 'invalid') {
+          const msg =
+            language === 'zh'
+              ? `解析 \`${MINDS_DIR}/llm.yaml\` 失败：${workspace.error}`
+              : `Failed to parse \`${MINDS_DIR}/llm.yaml\`: ${workspace.error}`;
+          return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+        providers = workspace.providers;
+        sourceLabel = 'workspace';
+      }
+
+      const providerKeys = Object.keys(providers).sort((a, b) => a.localeCompare(b));
+      const lines: string[] = [];
+      lines.push(fmtHeader(language === 'zh' ? 'LLM 模型列表' : 'LLM Models'));
+      lines.push(
+        fmtList([
+          `source: \`${sourceLabel}\``,
+          `provider_pattern: \`${providerPattern}\``,
+          `model_pattern: \`${modelPattern}\``,
+        ]),
+      );
+
+      let totalListed = 0;
+      let providerMatched = 0;
+      for (const providerKey of providerKeys) {
+        if (!wildcardMatch(providerKey, providerPattern)) continue;
+        const providerCfg = providers[providerKey];
+        providerMatched++;
+
+        const envLine = formatProviderEnvStatusLine(providerCfg);
+        const models = getProviderModelsForListing(providerCfg);
+        const modelIds = Object.keys(models).sort((a, b) => a.localeCompare(b));
+        const matchedModelIds = modelIds.filter((m) => wildcardMatch(m, modelPattern));
+
+        lines.push(fmtSubHeader(`provider: ${providerKey}`));
+        lines.push(
+          fmtList([
+            `apiType: \`${providerCfg.apiType}\``,
+            envLine,
+            `models_total: ${modelIds.length}`,
+            `models_matched: ${matchedModelIds.length}`,
+          ]),
+        );
+
+        if (matchedModelIds.length === 0) {
+          lines.push(language === 'zh' ? '(无匹配模型)\n' : '(no matching models)\n');
+          continue;
+        }
+
+        const perProviderLimit =
+          maxModelsPerProvider > 0 ? maxModelsPerProvider : matchedModelIds.length;
+        const remainingGlobal =
+          maxModels > 0 ? Math.max(0, maxModels - totalListed) : matchedModelIds.length;
+        const limit = Math.min(perProviderLimit, remainingGlobal, matchedModelIds.length);
+        const toShow = matchedModelIds.slice(0, limit);
+
+        const modelLines: string[] = [];
+        for (const modelKey of toShow) {
+          const infoUnknown = models[modelKey];
+          const summary = formatModelInfoSummary(infoUnknown);
+          modelLines.push(summary ? `\`${modelKey}\` — ${summary}` : `\`${modelKey}\``);
+        }
+        lines.push(fmtList(modelLines));
+        totalListed += toShow.length;
+
+        if (limit < matchedModelIds.length) {
+          const skipped = matchedModelIds.length - limit;
+          lines.push(
+            language === 'zh'
+              ? `（该 provider 省略 ${skipped} 个模型；可调大 max_models_per_provider / max_models）\n`
+              : `(skipped ${skipped} models for this provider; raise max_models_per_provider / max_models)\n`,
+          );
+        }
+
+        if (maxModels > 0 && totalListed >= maxModels) {
+          lines.push(
+            language === 'zh'
+              ? `（达到 max_models=${maxModels} 上限，已停止列出更多模型）\n`
+              : `(hit max_models=${maxModels} limit; stopped listing more models)\n`,
+          );
+          break;
+        }
+
+        if (includeParamOptions) {
+          const mpo = providerCfg.model_param_options;
+          const general = mpo ? mpo.general : undefined;
+          let specific: Record<string, ModelParamOption> | undefined;
+          if (mpo) {
+            if (providerCfg.apiType === 'codex') specific = mpo.codex;
+            else if (providerCfg.apiType === 'openai') specific = mpo.openai;
+            else if (providerCfg.apiType === 'anthropic') specific = mpo.anthropic;
+            else specific = undefined;
+          }
+
+          lines.push(
+            fmtSubHeader(
+              language === 'zh' ? 'model_param_options（模型参数说明）' : 'model_param_options',
+            ),
+          );
+          if (!general && !specific) {
+            lines.push(language === 'zh' ? '(未配置)\n' : '(not configured)\n');
+          } else {
+            if (general) {
+              const keys = Object.keys(general).sort((a, b) => a.localeCompare(b));
+              const limited = maxParams > 0 ? keys.slice(0, maxParams) : keys;
+              const items = limited.map((k) => formatModelParamOptionLine(k, general[k], language));
+              lines.push(fmtSubHeader(language === 'zh' ? 'general（通用）' : 'general'));
+              lines.push(items.join('\n') + '\n');
+              if (limited.length < keys.length) {
+                lines.push(
+                  language === 'zh'
+                    ? `（general 省略 ${keys.length - limited.length} 个参数；可调大 max_params）\n`
+                    : `(general skipped ${keys.length - limited.length} params; raise max_params)\n`,
+                );
+              }
+            }
+
+            if (specific) {
+              const keys = Object.keys(specific).sort((a, b) => a.localeCompare(b));
+              const limited = maxParams > 0 ? keys.slice(0, maxParams) : keys;
+              const items = limited.map((k) =>
+                formatModelParamOptionLine(k, specific[k], language),
+              );
+              lines.push(
+                fmtSubHeader(
+                  language === 'zh'
+                    ? `${providerCfg.apiType}（provider 专有）`
+                    : `${providerCfg.apiType}`,
+                ),
+              );
+              lines.push(items.join('\n') + '\n');
+              if (limited.length < keys.length) {
+                lines.push(
+                  language === 'zh'
+                    ? `（${providerCfg.apiType} 省略 ${keys.length - limited.length} 个参数；可调大 max_params）\n`
+                    : `(${providerCfg.apiType} skipped ${keys.length - limited.length} params; raise max_params)\n`,
+                );
+              }
+            }
+          }
+        }
+      }
+
+      if (providerMatched === 0) {
+        lines.push(language === 'zh' ? '（没有匹配的 provider）\n' : '(no matching providers)\n');
+      }
+
+      const summaryTitle = language === 'zh' ? 'Summary' : 'Summary';
+      lines.push(
+        fmtSubHeader(summaryTitle) +
+          fmtList([`providers_matched: ${providerMatched}`, `models_listed: ${totalListed}`]),
+      );
 
       const content = lines.join('');
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -2055,18 +2685,7 @@ export const teamMgmtRmDirTool: FuncTool = {
   },
 };
 
-type ManualTopic =
-  | 'topics'
-  | 'llm'
-  | 'model-params'
-  | 'mcp'
-  | 'team'
-  | 'minds'
-  | 'permissions'
-  | 'troubleshooting'
-  | 'toolsets'
-  | 'member-properties'
-  | 'builtin-defaults';
+type ManualTopic = TeamMgmtManualTopicKey;
 
 function fmtHeader(title: string): string {
   return `# ${title}\n`;
@@ -2268,6 +2887,7 @@ function renderTeamManual(language: LanguageCode): string {
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
     'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
     'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
+    'to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })`',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
     '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. If any member has shell tools (e.g. toolset `os` / tools like `shell_exec`), they must be listed in shell_specialists; null/empty means “no shell specialists”.',
     'hidden: true marks a shadow member (not listed in system prompt)',
@@ -2289,6 +2909,7 @@ function renderTeamManual(language: LanguageCode): string {
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
+        '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
@@ -2572,9 +3193,10 @@ function renderTroubleshooting(language: LanguageCode): string {
     return (
       fmtHeader('排障（症状 → 原因 → 解决步骤）') +
       fmtList([
-        '改 provider/model 前总是先做：运行 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })`，确认 provider key 存在且环境变量已配置。',
+        '改 provider/model 前总是先做：先用 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` 确认 key 是否存在，再运行 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` 做可用性检查（env + 可选 live）。',
         '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
+        '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
         '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
         '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：打开 Problems 面板查看错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
@@ -2583,9 +3205,10 @@ function renderTroubleshooting(language: LanguageCode): string {
   return (
     fmtHeader('Troubleshooting (symptom → cause → steps)') +
     fmtList([
-      'Always do this before changing provider/model: run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` to verify the provider key and env vars.',
+      'Before changing provider/model: use `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm keys exist, then run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` for a readiness check (env + optional live).',
       'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
+      'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
       'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `read_dirs/write_dirs/no_*` config.',
       'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: check Problems panel; use `mcp_restart`; call `mcp_release` when done.',
     ])
@@ -2605,6 +3228,7 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
       fmtList([
         '`model_params` 写在 `.minds/team.yaml` 的 `member_defaults` 或 `members.<id>` 下，用来控制采样/推理/输出风格。',
         '`model_params` 是运行时参数；`model_param_options`（在 `.minds/llm.yaml` 或内置 defaults 中）是文档/说明用途，用来描述可用参数范围（不保证强制校验）。',
+        '想查看某个 provider 的“有效配置” `model_param_options`：优先用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })`（会把 general + provider 专有参数一起列出）。',
         '常见参数示例（不同 provider 支持不同）：例如 `reasoning_effort`、`verbosity`、`temperature`、`max_tokens` 等。对内置 `codex` provider，这些参数应写在 `model_params.codex.*` 下。',
         '常见坑：不要把 `reasoning_effort` / `verbosity` 直接写在 `member_defaults` 或 `members.<id>` 根上（会被忽略，并会被 team.yaml 校验提示）；应写在 `model_params.codex.*` 下。',
         '`model_param_options.<ns>.<param>.prominent: true`：表示“初始化/团队管理时应显式讨论并选定”的参数。不要依赖 provider/model 的隐含默认值。',
@@ -2636,6 +3260,7 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
     fmtList([
       '`model_params` lives in `.minds/team.yaml` under `member_defaults` or `members.<id>` to control sampling/reasoning/output style.',
       '`model_params` is runtime config; `model_param_options` (in `.minds/llm.yaml` or built-in defaults) is documentation-only to describe supported knobs (not guaranteed to be strictly validated).',
+      'To inspect a provider’s effective `model_param_options`, prefer `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"<providerKey>\", model_pattern: \"*\", include_param_options: true })` (lists both general and provider-specific options).',
       'Common examples (provider-dependent): e.g. `reasoning_effort`, `verbosity`, `temperature`, `max_tokens`, etc. For the built-in `codex` provider, these go under `model_params.codex.*`.',
       'Common pitfall: do not put `reasoning_effort` / `verbosity` directly under `member_defaults` or `members.<id>` (they are ignored and will be flagged by team.yaml validation); put them under `model_params.codex.*`.',
       '`model_param_options.<ns>.<param>.prominent: true` means “discuss and pick explicitly during bootstrap/team management”. Do not rely on implicit provider/model defaults.',
@@ -2849,7 +3474,7 @@ export const teamMgmtManualTool: FuncTool = {
   },
   argsValidation: 'dominds',
   async call(dlg, _caller, args: ToolArguments): Promise<string> {
-    const language = getWorkLanguage();
+    const language = getUserLang(dlg);
     const topicsValue = args['topics'];
     const topicsRaw: string[] =
       topicsValue === undefined
@@ -2864,23 +3489,11 @@ export const teamMgmtManualTool: FuncTool = {
     for (const token0 of topicsRaw) {
       const token = token0.trim().startsWith('!') ? token0.trim().slice(1) : token0.trim();
       if (token === '') continue;
-      switch (token) {
-        case 'topics':
-        case 'llm':
-        case 'model-params':
-        case 'mcp':
-        case 'team':
-        case 'minds':
-        case 'permissions':
-        case 'troubleshooting':
-        case 'toolsets':
-        case 'member-properties':
-        case 'builtin-defaults':
-          topics.push(token);
-          break;
-        default:
-          throw new Error(`Unknown topic: ${token0}`);
+      if (isTeamMgmtManualTopicKey(token)) {
+        topics.push(token);
+        continue;
       }
+      throw new Error(`Unknown topic: ${token0}`);
     }
     const msgPrefix =
       language === 'zh'
@@ -2888,25 +3501,27 @@ export const teamMgmtManualTool: FuncTool = {
         : `(Generated: ${formatUnifiedTimestamp(new Date())})\n\n`;
 
     const renderIndex = (): string => {
+      const topicTitle = (key: TeamMgmtManualTopicKey): string =>
+        getTeamMgmtManualTopicTitle(language, key);
       if (language === 'zh') {
         return (
           fmtHeader('Team Management Manual') +
           msgPrefix +
           fmtList([
-            '`team_mgmt_manual({ topics: ["topics"] })`：主题索引（你在这里）',
-            '新手最常见流程：先写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`。',
+            `\`team_mgmt_manual({ topics: ["topics"] })\`：${topicTitle('topics')}（你在这里）`,
+            '新手最常见流程：先 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })` 确认 provider/model keys → 再写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`。',
             '',
-            '`team_mgmt_manual({ topics: ["team"] })`：.minds/team.yaml（团队花名册、工具集、目录权限入口）',
-            '`team_mgmt_manual({ topics: ["minds"] })`：.minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）',
-            '`team_mgmt_manual({ topics: ["permissions"] })`：目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）',
-            '`team_mgmt_manual({ topics: ["toolsets"] })`：toolsets 列表（当前已注册 toolsets；常见三种授权模式）',
-            '`team_mgmt_manual({ topics: ["llm"] })`：.minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）',
-            '`team_mgmt_manual({ topics: ["mcp"] })`：.minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）',
-            '`team_mgmt_manual({ topics: ["troubleshooting"] })`：排障（按症状定位；优先用 check_provider）',
+            `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
+            `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
+            `\`team_mgmt_manual({ topics: ["permissions"] })\`：${topicTitle('permissions')} — 目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）`,
+            `\`team_mgmt_manual({ topics: ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
+            `\`team_mgmt_manual({ topics: ["llm"] })\`：${topicTitle('llm')} — .minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）`,
+            `\`team_mgmt_manual({ topics: ["mcp"] })\`：${topicTitle('mcp')} — .minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）`,
+            `\`team_mgmt_manual({ topics: ["troubleshooting"] })\`：${topicTitle('troubleshooting')} — 按症状定位；优先 list_providers/list_models → check_provider`,
             '',
-            '`team_mgmt_manual({ topics: ["team","member-properties"] })`：成员字段表（members.<id> 字段参考）',
-            '`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })`：内置 defaults 摘要（内置 provider/model 概览与合并语义）',
-            '`team_mgmt_manual({ topics: ["llm","model-params"] })`：模型参数参考（model_params / model_param_options）',
+            `\`team_mgmt_manual({ topics: ["team","member-properties"] })\`：${topicTitle('team')} + ${topicTitle('member-properties')} — 成员字段表（members.<id> 字段参考）`,
+            `\`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })\`：${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — 内置 defaults 摘要（内置 provider/model 概览与合并语义）`,
+            `\`team_mgmt_manual({ topics: ["llm","model-params"] })\`：${topicTitle('llm')} + ${topicTitle('model-params')} — 模型参数参考（model_params / model_param_options）`,
           ])
         );
       }
@@ -2914,20 +3529,20 @@ export const teamMgmtManualTool: FuncTool = {
         fmtHeader('Team Management Manual') +
         msgPrefix +
         fmtList([
-          '`team_mgmt_manual({ topics: ["topics"] })`: topic index (you are here)',
-          'Common starter flow: write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`. ',
+          `\`team_mgmt_manual({ topics: ["topics"] })\`: ${topicTitle('topics')} (you are here)`,
+          'Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`. ',
           '',
-          '`team_mgmt_manual({ topics: ["team"] })`: `.minds/team.yaml` (roster/toolsets/permissions entrypoint)',
-          '`team_mgmt_manual({ topics: ["minds"] })`: `.minds/team/<id>/*` (persona/knowledge/lessons assets)',
-          '`team_mgmt_manual({ topics: ["permissions"] })`: directory permissions (semantics + conflict rules)',
-          '`team_mgmt_manual({ topics: ["toolsets"] })`: toolsets list (registered toolsets + common patterns)',
-          '`team_mgmt_manual({ topics: ["llm"] })`: `.minds/llm.yaml` (provider keys, env var boundaries)',
-          '`team_mgmt_manual({ topics: ["mcp"] })`: `.minds/mcp.yaml` (serverId→toolset, hot reload, leasing, minimal templates)',
-          '`team_mgmt_manual({ topics: ["troubleshooting"] })`: troubleshooting (symptom → steps; start with check_provider)',
+          `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
+          `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
+          `\`team_mgmt_manual({ topics: ["permissions"] })\`: ${topicTitle('permissions')} — directory permissions (semantics + conflict rules)`,
+          `\`team_mgmt_manual({ topics: ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
+          `\`team_mgmt_manual({ topics: ["llm"] })\`: ${topicTitle('llm')} — .minds/llm.yaml (provider keys, env var boundaries)`,
+          `\`team_mgmt_manual({ topics: ["mcp"] })\`: ${topicTitle('mcp')} — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)`,
+          `\`team_mgmt_manual({ topics: ["troubleshooting"] })\`: ${topicTitle('troubleshooting')} — symptom → steps; start with list_providers/list_models, then check_provider`,
           '',
-          '`team_mgmt_manual({ topics: ["team","member-properties"] })`: member field reference (members.<id>)',
-          '`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })`: built-in defaults summary (what/when/merge behavior)',
-          '`team_mgmt_manual({ topics: ["llm","model-params"] })`: `model_params` and `model_param_options` reference',
+          `\`team_mgmt_manual({ topics: ["team","member-properties"] })\`: ${topicTitle('team')} + ${topicTitle('member-properties')} — member field reference (members.<id>)`,
+          `\`team_mgmt_manual({ topics: ["llm","builtin-defaults"] })\`: ${topicTitle('llm')} + ${topicTitle('builtin-defaults')} — built-in defaults summary (what/when/merge behavior)`,
+          `\`team_mgmt_manual({ topics: ["llm","model-params"] })\`: ${topicTitle('llm')} + ${topicTitle('model-params')} — \`model_params\` and \`model_param_options\` reference`,
         ])
       );
     };
@@ -2965,6 +3580,7 @@ export const teamMgmtManualTool: FuncTool = {
             ? fmtHeader('.minds/llm.yaml') +
               fmtList([
                 '定义 provider key → model 映射（用于 `.minds/team.yaml` 的 `member_defaults.provider` / `members.<id>.provider` 引用）。',
+                '快速自检：用 `team_mgmt_list_providers({})` 列出内置/工作区 provider keys、env var 是否配置；用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` 列出“合并后”的模型与 `model_param_options`。',
                 '最小示例：\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\n然后在 `.minds/team.yaml` 里引用 `provider: my_provider` / `model: my_model`。',
 
                 '覆盖/合并语义：`.minds/llm.yaml` 会在内置 defaults 之上做覆盖（以当前实现为准）；定义一个 provider key 并不意味着“禁用其他内置 provider”。',
@@ -2976,6 +3592,7 @@ export const teamMgmtManualTool: FuncTool = {
             : fmtHeader('.minds/llm.yaml') +
               fmtList([
                 'Defines provider keys → model keys (referenced by `.minds/team.yaml` via `member_defaults.provider` / `members.<id>.provider`).',
+                'Quick checks: use `team_mgmt_list_providers({})` to list built-in/workspace providers + env-var readiness; use `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` to list merged models and `model_param_options`.',
                 'Minimal example:\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\nThen reference `provider: my_provider` and `model: my_model` in `.minds/team.yaml`.',
 
                 'Merge/override: `.minds/llm.yaml` overrides built-in defaults (per current implementation); defining one provider does not imply disabling other built-in providers.',
@@ -3022,6 +3639,8 @@ export const teamMgmtManualTool: FuncTool = {
 export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtManualTool,
   teamMgmtCheckProviderTool,
+  teamMgmtListProvidersTool,
+  teamMgmtListModelsTool,
   teamMgmtValidateTeamCfgTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,

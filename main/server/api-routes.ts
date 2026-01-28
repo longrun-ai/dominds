@@ -11,6 +11,8 @@ import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import { DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
+import { getWorkLanguage } from '../shared/runtime-language';
 import type { ApiMoveDialogsRequest } from '../shared/types';
 import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
@@ -21,6 +23,13 @@ import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
 import { listTaskDocumentsInWorkspace } from '../utils/taskdoc-search';
+import {
+  handleGetBuiltinPrompts,
+  handleGetPromptCatalog,
+  handleGetWorkspacePrompts,
+  handleSaveWorkspacePrompt,
+  handleTeamMgmtManual,
+} from './prompts-routes';
 import {
   buildSetupFileResponse,
   buildSetupStatusResponse,
@@ -226,6 +235,38 @@ export async function handleApiRoute(
       return await handleReadDocsMarkdown(req, res);
     }
 
+    if (pathname === '/api/prompts/builtin' && req.method === 'GET') {
+      const payload = await handleGetBuiltinPrompts();
+      respondJson(res, payload.success ? 200 : 500, payload);
+      return true;
+    }
+
+    if (pathname === '/api/prompts/workspace' && req.method === 'GET') {
+      const payload = await handleGetWorkspacePrompts();
+      respondJson(res, payload.success ? 200 : 500, payload);
+      return true;
+    }
+
+    if (pathname === '/api/prompts/catalog' && req.method === 'GET') {
+      const payload = await handleGetPromptCatalog();
+      respondJson(res, payload.success ? 200 : 500, payload);
+      return true;
+    }
+
+    if (pathname === '/api/prompts/workspace' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const payload = await handleSaveWorkspacePrompt(rawBody);
+      respondJson(res, payload.success ? 200 : 400, payload);
+      return true;
+    }
+
+    if (pathname === '/api/team-mgmt/manual' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const payload = await handleTeamMgmtManual(rawBody);
+      respondJson(res, payload.success ? 200 : 400, payload);
+      return true;
+    }
+
     return false; // Route not handled
   } catch (error) {
     log.error('Error handling API route:', error);
@@ -251,7 +292,7 @@ async function handleGetRtwsDiligence(req: IncomingMessage, res: ServerResponse)
   for (const filePath of candidates) {
     try {
       const raw = await fsPromises.readFile(filePath, 'utf-8');
-      respondJson(res, 200, { success: true, path: filePath, raw });
+      respondJson(res, 200, { success: true, path: filePath, raw, source: 'workspace' });
       return true;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
@@ -263,7 +304,14 @@ async function handleGetRtwsDiligence(req: IncomingMessage, res: ServerResponse)
     }
   }
 
-  respondJson(res, 200, { success: true, path: primaryPath, raw: '' });
+  const fallbackLang = typeof lang === 'string' ? normalizeLanguageCode(lang) : null;
+  const wl = fallbackLang ?? getWorkLanguage();
+  respondJson(res, 200, {
+    success: true,
+    path: primaryPath,
+    raw: DILIGENCE_FALLBACK_TEXT[wl],
+    source: 'builtin',
+  });
   return true;
 }
 
@@ -316,16 +364,30 @@ async function handleWriteRtwsDiligence(
 }
 
 const DOCS_WHITELIST = new Set<string>([
+  'design',
+  'dialog-system',
+  'keep-going',
+  'auth',
+  'dominds-terminology',
+  'cli-usage',
+  'mottos',
+  'encapsulated-taskdoc',
+  'memory-system',
+  'mcp-support',
+  'context-health',
+  'OEC-philosophy',
   'design.md',
   'dialog-system.md',
   'keep-going.md',
   'auth.md',
   'dominds-terminology.md',
+  'cli-usage.md',
+  'mottos.md',
   'encapsulated-taskdoc.md',
   'memory-system.md',
-  'team-tools-view.md',
   'mcp-support.md',
   'context-health.md',
+  'OEC-philosophy.md',
 ]);
 
 async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -346,9 +408,9 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
   const serverRoot = path.resolve(__dirname, '..', '..');
   const docsDir = path.resolve(serverRoot, 'docs');
 
-  const basePath = path.resolve(docsDir, name);
   const ext = '.md';
   const stem = name.endsWith(ext) ? name.slice(0, -ext.length) : name;
+  const basePath = path.resolve(docsDir, `${stem}${ext}`);
   const candidateLocalized =
     parsedLang === null ? null : path.resolve(docsDir, `${stem}.${parsedLang}${ext}`);
 
@@ -357,7 +419,7 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
   for (const filePath of candidates) {
     try {
       const raw = await fsPromises.readFile(filePath, 'utf-8');
-      respondJson(res, 200, { success: true, name, path: filePath, raw });
+      respondJson(res, 200, { success: true, name: stem, path: filePath, raw });
       return true;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
@@ -630,7 +692,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       createdAt: string;
       lastModified: string;
       runState?: DialogLatestFile['runState'];
-      topicId?: string;
+      tellaskSession?: string;
     }> = [];
 
     // Recursively find all subdialog directories (handles nested paths like c1/78/4c3d759a)
@@ -694,7 +756,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
             createdAt: meta.createdAt,
             lastModified: subLatest?.lastModified || meta.createdAt,
             runState: subLatest?.runState,
-            topicId: meta.topicId,
+            tellaskSession: meta.tellaskSession,
           });
         }
       }

@@ -50,7 +50,8 @@ export function taskdocCanonicalCopy(language: LanguageCode): string {
       '**Taskdoc 封装与访问限制**',
       '',
       '- 任何 `.tsk/` 目录及其子路径（`**/*.tsk/**`）都是封装状态：禁止使用任何通用文件工具读取/写入/列目录（例如 `read_file` / `write_file` / `list_dir` 等）。',
-      '- 更新 Taskdoc 只能使用函数工具 `change_mind`（按分段整段替换）。',
+      '- 更新 Taskdoc 只能使用函数工具 `change_mind`（按章节整段替换；顶层用 `selector`，额外章节用 `category + selector`）。',
+      '- 读取“不会自动注入上下文”的额外章节，只能使用函数工具 `recall_taskdoc({ category, selector })`。',
       '',
       '**Taskdoc 自动注入规则（系统提示）**',
       '',
@@ -58,7 +59,7 @@ export function taskdocCanonicalCopy(language: LanguageCode): string {
       '- 一定会注入顶层三段：`goals.md`、`constraints.md`、`progress.md`（按此顺序）。',
       '- 可选注入 `bearinmind/`（仅固定白名单，最多 6 个文件）：`contracts.md`、`acceptance.md`、`grants.md`、`runbook.md`、`decisions.md`、`risks.md`。',
       '- 若存在 `bearinmind/` 注入块，它会以 `## Bear In Mind` 出现在 `## Constraints` 与 `## Progress` 之间，并按以上固定顺序拼接。',
-      '- 除此之外，`.tsk/` 内任何其他目录/文件都不会被自动注入。',
+      '- 除此之外，`.tsk/` 内任何其他目录/文件都不会被自动注入正文（系统只会注入一个“额外章节索引”用于提示；需要时用 `recall_taskdoc` 显式读取）。',
     ].join('\n');
   }
 
@@ -66,7 +67,8 @@ export function taskdocCanonicalCopy(language: LanguageCode): string {
     '**Taskdoc encapsulation & access restrictions**',
     '',
     '- Any `.tsk/` directory and its subpaths (`**/*.tsk/**`) are encapsulated state: general file tools MUST NOT read/write/list them (e.g. `read_file` / `write_file` / `list_dir`).',
-    '- Taskdoc updates MUST go through the function tool `change_mind` (whole-section replace).',
+    '- Taskdoc updates MUST go through the function tool `change_mind` (whole-section replace; use top-level `selector`, or `category + selector` for extra sections).',
+    '- To read extra sections that are NOT auto-injected, use the function tool `recall_taskdoc({ category, selector })`.',
     '',
     '**Taskdoc auto-injection rules (system prompt)**',
     '',
@@ -74,7 +76,7 @@ export function taskdocCanonicalCopy(language: LanguageCode): string {
     '- It always injects the three top-level sections in order: `goals.md`, `constraints.md`, `progress.md`.',
     '- It may also inject `bearinmind/` (fixed whitelist only; max 6 files): `contracts.md`, `acceptance.md`, `grants.md`, `runbook.md`, `decisions.md`, `risks.md`.',
     '- If present, the injected block appears as `## Bear In Mind` between `## Constraints` and `## Progress`, and the files are concatenated in the fixed order above.',
-    '- No other directories/files inside `.tsk/` are auto-injected.',
+    '- No other directories/files inside `.tsk/` are auto-injected as body content (only an “extra sections index” may be injected for discoverability; use `recall_taskdoc` when needed).',
   ].join('\n');
 }
 

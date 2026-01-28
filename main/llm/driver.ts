@@ -33,13 +33,12 @@ import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/d
 import {
   formatDomindsNoteDirectSelfCall,
   formatDomindsNoteInvalidMultiTeammateTargets,
-  formatDomindsNoteInvalidTopicDirective,
+  formatDomindsNoteInvalidTellaskSessionDirective,
   formatDomindsNoteMalformedTellaskCall,
-  formatDomindsNoteMultipleTopicDirectives,
-  formatDomindsNoteSuperNoTopic,
+  formatDomindsNoteMultipleTellaskSessionDirectives,
+  formatDomindsNoteSuperNoTellaskSession,
   formatDomindsNoteSuperOnlyInSubdialog,
   formatDomindsNoteTellaskForTeammatesOnly,
-  formatReminderIntro,
   formatReminderItemGuide,
   formatUserFacingContextHealthV3RemediationGuide,
   formatUserFacingLanguageGuide,
@@ -294,7 +293,7 @@ type PendingSubdialogRecordType = {
   headLine: string;
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
-  topicId?: string;
+  tellaskSession?: string;
 };
 
 export interface ResumptionContext {
@@ -734,9 +733,7 @@ function computeContextHealthSnapshot(args: {
 
 type ContextHealthV3RuntimeState = {
   lastCautionGuideInjectedAtGenSeq?: number;
-  cautionGraceRemaining?: number;
   lastSeenLevel?: ContextHealthLevel;
-  lastCautionRequiredCurationInjectedAtGenSeq?: number;
   criticalCountdownRemaining?: number;
 };
 
@@ -755,7 +752,6 @@ function resetContextHealthV3State(dlg: Dialog): void {
   contextHealthV3StateByDialogKey.delete(dlg.id.key());
 }
 
-const defaultCautionGraceGenerations = 3;
 const defaultCautionHardCadenceGenerations = 10;
 const defaultCriticalCountdownGenerations = 5;
 
@@ -803,7 +799,7 @@ async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
     bodyContent:
       language === 'zh'
         ? [
-            '上下文健康已进入 🔴 红（critical），且 critical remediation 无法自动完成。',
+            '上下文健康已进入 🔴 告急（critical），且 critical remediation 无法自动完成。',
             '',
             '为避免继续污染对话状态，系统已暂停该对话（suspended）。',
             '',
@@ -878,23 +874,8 @@ async function applyContextHealthV3Remediation(args: {
   if (snapshot.level === 'caution') {
     const state = getContextHealthV3State(dlg);
     if (state.lastSeenLevel !== 'caution') {
-      state.cautionGraceRemaining = defaultCautionGraceGenerations;
       state.lastSeenLevel = 'caution';
       state.criticalCountdownRemaining = undefined;
-    }
-    if (typeof state.cautionGraceRemaining === 'number' && state.cautionGraceRemaining > 0) {
-      const guide: ChatMessage = {
-        type: 'environment_msg',
-        role: 'user',
-        content: formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
-          kind: 'caution',
-          mode: 'soft',
-          graceRemaining: state.cautionGraceRemaining,
-          graceTotal: defaultCautionGraceGenerations,
-        }),
-      };
-      state.cautionGraceRemaining--;
-      return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, guide] };
     }
 
     if (
@@ -907,19 +888,56 @@ async function applyContextHealthV3Remediation(args: {
       return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
     }
 
-    // Hard remediation at cadence: require reminder curation (no forced clear_mind).
-    const guide: ChatMessage = {
-      type: 'environment_msg',
-      role: 'user',
-      content: formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
-        kind: 'caution',
-        mode: 'hard_curate',
-      }),
-    };
-    if (dlg.activeGenSeq !== undefined) {
-      state.lastCautionGuideInjectedAtGenSeq = dlg.activeGenSeq;
-      state.lastCautionRequiredCurationInjectedAtGenSeq = dlg.activeGenSeq;
+    // Caution remediation at cadence (including the entry injection): require reminder curation
+    // (no forced clear_mind).
+    const activeGenSeq = dlg.activeGenSeqOrUndefined;
+    if (activeGenSeq === undefined) {
+      return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
     }
+
+    const guideText = formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
+      kind: 'caution',
+      mode: 'soft',
+    });
+
+    state.lastCautionGuideInjectedAtGenSeq = activeGenSeq;
+
+    // Prefer a recorded user prompt (visible in UI) when there isn't already a user prompt
+    // in this generation.
+    if (!args.hadUserPromptThisGen) {
+      const msgId = generateShortId();
+      const userLanguageCode = getWorkLanguage();
+      const promptMsg: ChatMessage = {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: activeGenSeq,
+        msgId,
+        grammar: 'markdown',
+        content: guideText,
+      };
+
+      await dlg.addChatMessages(promptMsg);
+      await dlg.persistUserMessage(guideText, msgId, 'markdown', userLanguageCode);
+      await emitUserMarkdown(dlg, guideText);
+      try {
+        postDialogEvent(dlg, {
+          type: 'end_of_user_saying_evt',
+          round: dlg.currentRound,
+          genseq: activeGenSeq,
+          msgId,
+          content: guideText,
+          grammar: 'markdown',
+          userLanguageCode,
+        });
+      } catch (err) {
+        log.warn('Failed to emit end_of_user_saying_evt for caution guide prompt', err);
+      }
+
+      return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, promptMsg] };
+    }
+
+    // Fallback: still guide the LLM even if we cannot safely emit a second user prompt for UI.
+    const guide: ChatMessage = { type: 'environment_msg', role: 'user', content: guideText };
     return { kind: 'proceed', ctxMsgs: [...args.ctxMsgs, guide] };
   }
 
@@ -928,7 +946,6 @@ async function applyContextHealthV3Remediation(args: {
     if (state.lastSeenLevel !== 'critical') {
       state.lastSeenLevel = 'critical';
       state.criticalCountdownRemaining = defaultCriticalCountdownGenerations;
-      state.cautionGraceRemaining = undefined;
     }
 
     const promptsBeforeAutoClear =
@@ -1625,17 +1642,6 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               )
             : [];
 
-        // Keep the reminder intro as a transient guide (assistant role), but only inject it
-        // when there are actual reminders to avoid constant prompt bloat.
-        const reminderIntro: ChatMessage | undefined =
-          renderedReminders.length > 0
-            ? {
-                type: 'transient_guide_msg',
-                role: 'assistant',
-                content: formatReminderIntro(getWorkLanguage(), dlg.reminders.length),
-              }
-            : undefined;
-
         if (renderedReminders.length > 0) {
           let insertIndex = -1;
           for (let i = ctxMsgs.length - 1; i >= 0; i--) {
@@ -1650,14 +1656,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             }
           }
           if (insertIndex >= 0) {
-            ctxMsgs.splice(
-              insertIndex,
-              0,
-              ...(reminderIntro ? [reminderIntro] : []),
-              ...renderedReminders,
-            );
+            ctxMsgs.splice(insertIndex, 0, ...renderedReminders);
           } else {
-            if (reminderIntro) ctxMsgs.push(reminderIntro);
             ctxMsgs.push(...renderedReminders);
           }
         }
@@ -1981,6 +1981,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
               dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
+              if (prepared.kind !== 'disabled') {
+                postDialogEvent(dlg, {
+                  type: 'diligence_budget_evt',
+                  maxInjectCount: prepared.maxInjectCount,
+                  injectedCount: prepared.nextInjectedCount,
+                  remainingCount: Math.max(0, prepared.maxInjectCount - prepared.nextInjectedCount),
+                  disableDiligencePush: dlg.disableDiligencePush,
+                });
+              }
               if (prepared.kind === 'budget_exhausted') {
                 await suspendForKeepGoingBudgetExhausted({
                   dlg,
@@ -2558,7 +2567,7 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
  * Result of parsing a teammate tellask pattern.
  * Three types based on the tellask headline syntax:
  * - Type A: @<supdialogAgentId> - subdialog calling its direct parent (supdialog suspension)
- * - Type B: @<agentId> !topic <topicId> - creates/resumes registered subdialog
+ * - Type B: @<agentId> !tellaskSession <tellaskSession> - creates/resumes registered subdialog
  * - Type C: @<agentId> - creates transient unregistered subdialog
  */
 export type TeammateTellaskParseResult =
@@ -2578,19 +2587,19 @@ export interface TeammateTellaskTypeA {
 }
 
 /**
- * Type B: Registered subdialog call with topic.
- * Syntax: @<agentId> !topic <topicId>
+ * Type B: Registered subdialog call with tellaskSession.
+ * Syntax: @<agentId> !tellaskSession <tellaskSession>
  * Creates or resumes a registered subdialog, tracked in registry.yaml.
  */
 export interface TeammateTellaskTypeB {
   type: 'B';
   agentId: string;
-  topicId: string;
+  tellaskSession: string;
 }
 
 /**
  * Type C: Transient subdialog call (unregistered).
- * Syntax: @<agentId> (without !topic)
+ * Syntax: @<agentId> (without !tellaskSession)
  * Creates a one-off subdialog that moves to done/ on completion.
  */
 export interface TeammateTellaskTypeC {
@@ -2598,41 +2607,41 @@ export interface TeammateTellaskTypeC {
   agentId: string;
 }
 
-function isValidTopicId(topicId: string): boolean {
-  const segments = topicId.split('.');
+function isValidTellaskSession(tellaskSession: string): boolean {
+  const segments = tellaskSession.split('.');
   if (segments.length === 0) return false;
   return segments.every((segment) => /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(segment));
 }
 
-type TopicDirectiveParse =
+type TellaskSessionDirectiveParse =
   | { kind: 'none' }
-  | { kind: 'one'; topicId: string }
+  | { kind: 'one'; tellaskSession: string }
   | { kind: 'invalid' }
   | { kind: 'multiple' };
 
-function parseTopicDirectiveFromHeadline(headLine: string): TopicDirectiveParse {
-  const re = /(^|\s)!topic\s+([^\s]+)/g;
+function parseTellaskSessionDirectiveFromHeadline(headLine: string): TellaskSessionDirectiveParse {
+  const re = /(^|\s)!tellaskSession\s+([^\s]+)/g;
   const ids: string[] = [];
   for (const match of headLine.matchAll(re)) {
     const raw = match[2] ?? '';
     const candidate = raw.trim();
     const m = candidate.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)*)/);
-    const topicId = (m?.[1] ?? '').trim();
-    if (!isValidTopicId(topicId)) {
+    const tellaskSession = (m?.[1] ?? '').trim();
+    if (!isValidTellaskSession(tellaskSession)) {
       return { kind: 'invalid' };
     }
-    ids.push(topicId);
+    ids.push(tellaskSession);
   }
 
   const unique = Array.from(new Set(ids));
   if (unique.length === 0) return { kind: 'none' };
-  if (unique.length === 1) return { kind: 'one', topicId: unique[0] ?? '' };
+  if (unique.length === 1) return { kind: 'one', tellaskSession: unique[0] ?? '' };
   return { kind: 'multiple' };
 }
 
-function extractSingleTopicIdFromHeadline(headLine: string): string | null {
-  const parsed = parseTopicDirectiveFromHeadline(headLine);
-  if (parsed.kind === 'one') return parsed.topicId;
+function extractSingleTellaskSessionFromHeadline(headLine: string): string | null {
+  const parsed = parseTellaskSessionDirectiveFromHeadline(headLine);
+  if (parsed.kind === 'one') return parsed.tellaskSession;
   return null;
 }
 
@@ -2641,7 +2650,7 @@ function extractSingleTopicIdFromHeadline(headLine: string): string | null {
  *
  * Patterns:
  * - @<supdialogAgentId> (in subdialog context, matching supdialog.agentId) → Type A (supdialog suspension)
- * - @<agentId> !topic <topicId> → Type B (registered subdialog)
+ * - @<agentId> !tellaskSession <tellaskSession> → Type B (registered subdialog)
  * - @<agentId> → Type C (transient subdialog)
  *
  * @param firstMention The first teammate mention extracted by the streaming parser (e.g., "teammate")
@@ -2662,12 +2671,12 @@ export function parseTeammateTellask(
   // mentions.
   if (firstMention === 'self') {
     const agentId = currentDialog?.agentId ?? 'self';
-    const topicId = extractSingleTopicIdFromHeadline(headLine);
-    if (topicId) {
+    const tellaskSession = extractSingleTellaskSessionFromHeadline(headLine);
+    if (tellaskSession) {
       return {
         type: 'B',
         agentId,
-        topicId,
+        tellaskSession,
       };
     }
     return {
@@ -2676,12 +2685,12 @@ export function parseTeammateTellask(
     };
   }
 
-  const topicId = extractSingleTopicIdFromHeadline(headLine);
-  if (topicId) {
+  const tellaskSession = extractSingleTellaskSessionFromHeadline(headLine);
+  if (tellaskSession) {
     return {
       type: 'B',
       agentId: firstMention,
-      topicId,
+      tellaskSession,
     };
   }
 
@@ -2936,11 +2945,11 @@ export async function createSubdialogForSupdialog(
  * Create a Type B registered subdialog with registry lookup/register.
  * Creates or resumes a registered subdialog tracked in registry.yaml.
  *
- * Type B: @<agentId> !topic <topicId> - Creates/resumes registered subdialog.
+ * Type B: @<agentId> !tellaskSession <tellaskSession> - Creates/resumes registered subdialog.
  *
  * @param rootDialog The root dialog making the call
  * @param agentId The agent to handle the subdialog
- * @param topicId The topic identifier for registry lookup
+ * @param tellaskSession The tellask session key for registry lookup
  * @param headLine The headline for the subdialog
  * @param callBody The body content for the subdialog
  * @returns Promise resolving when subdialog is created/registered
@@ -3263,7 +3272,7 @@ async function executeTellaskCall(
   options?: {
     allowMultiTeammateTargets?: boolean;
     collectiveTargets?: string[];
-    skipTopicDirectiveValidation?: boolean;
+    skipTellaskSessionDirectiveValidation?: boolean;
   },
 ): Promise<{
   toolOutputs: ChatMessage[];
@@ -3317,10 +3326,10 @@ async function executeTellaskCall(
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
 
-      if (options?.skipTopicDirectiveValidation !== true) {
-        const topicDirective = parseTopicDirectiveFromHeadline(headLine);
-        if (topicDirective.kind === 'multiple') {
-          const msg = formatDomindsNoteMultipleTopicDirectives(getWorkLanguage());
+      if (options?.skipTellaskSessionDirectiveValidation !== true) {
+        const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(headLine);
+        if (tellaskSessionDirective.kind === 'multiple') {
+          const msg = formatDomindsNoteMultipleTellaskSessionDirectives(getWorkLanguage());
           toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
           toolOutputs.push({
             type: 'call_result_msg',
@@ -3334,8 +3343,8 @@ async function executeTellaskCall(
           dlg.clearCurrentCallId();
           return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
-        if (topicDirective.kind === 'invalid') {
-          const msg = formatDomindsNoteInvalidTopicDirective(getWorkLanguage());
+        if (tellaskSessionDirective.kind === 'invalid') {
+          const msg = formatDomindsNoteInvalidTellaskSessionDirective(getWorkLanguage());
           toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
           toolOutputs.push({
             type: 'call_result_msg',
@@ -3356,7 +3365,7 @@ async function executeTellaskCall(
           return await executeTellaskCall(dlg, agent, targetId, headLine, body, callId, {
             allowMultiTeammateTargets: false,
             collectiveTargets: knownTargets,
-            skipTopicDirectiveValidation: true,
+            skipTellaskSessionDirectiveValidation: true,
           });
         }),
       );
@@ -3448,11 +3457,11 @@ async function executeTellaskCall(
       return { toolOutputs, suspend: false, subdialogsCreated: [] };
     }
 
-    if (options?.skipTopicDirectiveValidation !== true) {
-      const topicDirective = parseTopicDirectiveFromHeadline(headLine);
+    if (options?.skipTellaskSessionDirectiveValidation !== true) {
+      const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(headLine);
 
-      if (isSuperAlias && topicDirective.kind !== 'none') {
-        const response = formatDomindsNoteSuperNoTopic(getWorkLanguage());
+      if (isSuperAlias && tellaskSessionDirective.kind !== 'none') {
+        const response = formatDomindsNoteSuperNoTellaskSession(getWorkLanguage());
         try {
           await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
             response,
@@ -3461,7 +3470,7 @@ async function executeTellaskCall(
             originMemberId: dlg.agentId,
           });
         } catch (err) {
-          log.warn('Failed to emit @super !topic syntax error response', err, {
+          log.warn('Failed to emit @super !tellaskSession syntax error response', err, {
             dialogId: dlg.id.selfId,
             agentId: dlg.agentId,
           });
@@ -3469,8 +3478,8 @@ async function executeTellaskCall(
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
 
-      if (topicDirective.kind === 'multiple') {
-        const msg = formatDomindsNoteMultipleTopicDirectives(getWorkLanguage());
+      if (tellaskSessionDirective.kind === 'multiple') {
+        const msg = formatDomindsNoteMultipleTellaskSessionDirectives(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push({
           type: 'call_result_msg',
@@ -3484,8 +3493,8 @@ async function executeTellaskCall(
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
-      if (topicDirective.kind === 'invalid') {
-        const msg = formatDomindsNoteInvalidTopicDirective(getWorkLanguage());
+      if (tellaskSessionDirective.kind === 'invalid') {
+        const msg = formatDomindsNoteInvalidTellaskSessionDirective(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push({
           type: 'call_result_msg',
@@ -3624,7 +3633,7 @@ async function executeTellaskCall(
         // Fall through to Type C handling
       }
     } else if (parseResult.type === 'B') {
-      // Type B: Registered subdialog with topic (root registry, caller can be root or subdialog)
+      // Type B: Registered subdialog with tellaskSession (root registry, caller can be root or subdialog)
       const callerDialog = dlg;
       let rootDialog: RootDialog | undefined;
       if (dlg instanceof RootDialog) {
@@ -3642,7 +3651,7 @@ async function executeTellaskCall(
             originMemberId: dlg.agentId,
             callerDialogId: callerDialog.id.selfId,
             callId,
-            topicId: parseResult.topicId,
+            tellaskSession: parseResult.tellaskSession,
             collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
           });
 
@@ -3652,7 +3661,7 @@ async function executeTellaskCall(
             headLine,
             targetAgentId: parseResult.agentId,
             callType: 'C',
-            topicId: parseResult.topicId,
+            tellaskSession: parseResult.tellaskSession,
           };
           await withSuspensionStateLock(dlg.id, async () => {
             const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
@@ -3698,7 +3707,7 @@ async function executeTellaskCall(
 
         const existingSubdialog = rootDialog.lookupSubdialog(
           parseResult.agentId,
-          parseResult.topicId,
+          parseResult.tellaskSession,
         );
 
         const pendingOwner = callerDialog;
@@ -3728,7 +3737,7 @@ async function executeTellaskCall(
             headLine,
             targetAgentId: parseResult.agentId,
             callType: 'B',
-            topicId: parseResult.topicId,
+            tellaskSession: parseResult.tellaskSession,
           };
           await withSuspensionStateLock(pendingOwner.id, async () => {
             const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
@@ -3751,7 +3760,7 @@ async function executeTellaskCall(
             originMemberId,
             callerDialogId: callerDialog.id.selfId,
             callId,
-            topicId: parseResult.topicId,
+            tellaskSession: parseResult.tellaskSession,
             collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
           });
           rootDialog.registerSubdialog(sub);
@@ -3763,7 +3772,7 @@ async function executeTellaskCall(
             headLine,
             targetAgentId: parseResult.agentId,
             callType: 'B',
-            topicId: parseResult.topicId,
+            tellaskSession: parseResult.tellaskSession,
           };
           await withSuspensionStateLock(pendingOwner.id, async () => {
             const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);

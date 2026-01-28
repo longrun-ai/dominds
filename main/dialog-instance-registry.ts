@@ -103,7 +103,7 @@ export async function ensureDialogLoaded(
     targetId,
     state.metadata.agentId,
     assignmentFromSup,
-    state.metadata.topicId,
+    state.metadata.tellaskSession,
     {
       messages: state.messages,
       reminders: state.reminders,
@@ -112,7 +112,7 @@ export async function ensureDialogLoaded(
     },
   );
   subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
-  if (subdialog.topicId) {
+  if (subdialog.tellaskSession) {
     rootDialog.registerSubdialog(subdialog);
   }
   return subdialog;

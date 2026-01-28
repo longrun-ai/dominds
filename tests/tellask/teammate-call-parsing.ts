@@ -10,21 +10,21 @@ function assertEqual(actual: unknown, expected: unknown, message: string): void 
 
 async function main(): Promise<void> {
   assertEqual(
-    parseTeammateTellask('pangu', '@pangu !topic env-check\n'),
-    { type: 'B', agentId: 'pangu', topicId: 'env-check' },
-    'parses single !topic directive in headline',
+    parseTeammateTellask('pangu', '@pangu !tellaskSession env-check\n'),
+    { type: 'B', agentId: 'pangu', tellaskSession: 'env-check' },
+    'parses single !tellaskSession directive in headline',
   );
 
   assertEqual(
-    parseTeammateTellask('pangu', '@pangu !topic env.check_1\n@ more context\n'),
-    { type: 'B', agentId: 'pangu', topicId: 'env.check_1' },
-    'parses !topic directive across multiline headline',
+    parseTeammateTellask('pangu', '@pangu !tellaskSession env.check_1\n@ more context\n'),
+    { type: 'B', agentId: 'pangu', tellaskSession: 'env.check_1' },
+    'parses !tellaskSession directive across multiline headline',
   );
 
   assertEqual(
     parseTeammateTellask('pangu', '@pangu hello\n'),
     { type: 'C', agentId: 'pangu' },
-    'no !topic => type C',
+    'no !tellaskSession => type C',
   );
 
   console.log('teammate tellask parsing tests: PASS');

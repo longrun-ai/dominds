@@ -2,6 +2,7 @@
 
 export * from './language';
 export * from './problems';
+export * from './prompts';
 export * from './setup';
 export * from './tools-registry';
 export * from './wire';
@@ -20,7 +21,7 @@ export interface DialogInfo {
   agentName: string;
   taskDocPath: string;
   supdialogId?: string;
-  topicId?: string;
+  tellaskSession?: string;
   assignmentFromSup?: AssignmentFromSup;
 }
 
@@ -36,7 +37,7 @@ export interface ApiRootDialogResponse {
   lastModified: string;
   runState?: DialogRunState;
   supdialogId?: string; // Optional: supdialog ID for subdialogs in flattened lists
-  topicId?: string;
+  tellaskSession?: string;
   subdialogCount?: number; // Number of subdialogs (only present in root dialog responses)
 }
 
@@ -50,7 +51,7 @@ export interface ApiSubdialogResponse {
   createdAt: string;
   lastModified: string;
   runState?: DialogRunState;
-  topicId?: string;
+  tellaskSession?: string;
 }
 
 export interface ApiDialogHierarchyResponse {

@@ -224,7 +224,7 @@ export interface DialogReadyMessage {
   agentId: string;
   taskDocPath: string;
   supdialogId?: string;
-  topicId?: string;
+  tellaskSession?: string;
   assignmentFromSup?: AssignmentFromSup;
   disableDiligencePush?: boolean;
   diligencePushMax?: number;

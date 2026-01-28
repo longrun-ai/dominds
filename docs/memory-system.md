@@ -41,7 +41,8 @@ Related vocabulary guide: `dominds/docs/dominds-terminology.md`.
 
 - Persists across rounds.
 - Always meant to be small enough to read every turn.
-- Edited only via `change_mind({ selector, content })` (only available in the main dialog; subdialogs must ask the Taskdoc maintainer agent to update — the maintainer @id is printed in the injected Taskdoc status block).
+- Edited only via `change_mind({ selector, category?, content })` (only available in the main dialog; subdialogs must ask the Taskdoc maintainer agent to update — the maintainer @id is printed in the injected Taskdoc status block).
+- Extra Taskdoc sections (non-auto-injected) can be read via `recall_taskdoc({ category, selector })`.
 - **Shared across teammates** (within the same workspace/taskdoc): every teammate/subdialog sees the same Taskdoc (`goals` / `constraints` / `progress`).
 
 **Shared editing rules (important)**:

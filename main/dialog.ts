@@ -103,7 +103,7 @@ export interface PendingSubdialog {
   headLine: string;
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
-  topicId?: string;
+  tellaskSession?: string;
 }
 
 /**
@@ -441,7 +441,7 @@ export abstract class Dialog {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      topicId?: string;
+      tellaskSession?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog>;
@@ -1045,7 +1045,7 @@ export abstract class Dialog {
  */
 export class SubDialog extends Dialog {
   public readonly rootDialog: RootDialog;
-  public readonly topicId?: string;
+  public readonly tellaskSession?: string;
   public assignmentFromSup: AssignmentFromSup;
   protected readonly _supdialog: Dialog;
 
@@ -1056,12 +1056,12 @@ export class SubDialog extends Dialog {
     id: DialogID | undefined,
     agentId: string,
     assignmentFromSup: AssignmentFromSup,
-    topicId?: string,
+    tellaskSession?: string,
     initialState?: DialogInitParams['initialState'],
   ) {
     super(dlgStore, taskDocPath, id, agentId, initialState);
     this.rootDialog = rootDialog;
-    this.topicId = topicId;
+    this.tellaskSession = tellaskSession;
     this.assignmentFromSup = assignmentFromSup;
     const resolvedSupdialog = rootDialog.lookupDialog(assignmentFromSup.callerDialogId);
     if (resolvedSupdialog && resolvedSupdialog.id.selfId === this.id.selfId) {
@@ -1111,7 +1111,7 @@ export class SubDialog extends Dialog {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      topicId?: string;
+      tellaskSession?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
@@ -1128,7 +1128,7 @@ export class RootDialog extends Dialog {
 
   // Tracks all dialogs in this dialog tree for O(1) lookup
   private _localRegistry: Map<string, Dialog> = new Map();
-  // Tracks TYPE B registered subdialogs by agentId!topicId
+  // Tracks TYPE B registered subdialogs by agentId!tellaskSession
   private _subdialogRegistry: Map<string, SubDialog> = new Map();
 
   constructor(
@@ -1179,37 +1179,37 @@ export class RootDialog extends Dialog {
   }
 
   /**
-   * Generate a registry key from agentId and topicId.
+   * Generate a registry key from agentId and tellaskSession.
    */
-  static makeSubdialogKey(agentId: string, topicId: string): string {
-    return `${agentId}!${topicId}`;
+  static makeSubdialogKey(agentId: string, tellaskSession: string): string {
+    return `${agentId}!${tellaskSession}`;
   }
 
   /**
    * Register a TYPE B subdialog for resumption.
    */
   registerSubdialog(subdialog: SubDialog): void {
-    if (!subdialog.topicId) {
+    if (!subdialog.tellaskSession) {
       return;
     }
-    const key = RootDialog.makeSubdialogKey(subdialog.agentId, subdialog.topicId);
+    const key = RootDialog.makeSubdialogKey(subdialog.agentId, subdialog.tellaskSession);
     this._subdialogRegistry.set(key, subdialog);
     this.registerDialog(subdialog);
   }
 
   /**
-   * Lookup a TYPE B subdialog by agentId and topicId.
+   * Lookup a TYPE B subdialog by agentId and tellaskSession.
    */
-  lookupSubdialog(agentId: string, topicId: string): SubDialog | undefined {
-    const key = RootDialog.makeSubdialogKey(agentId, topicId);
+  lookupSubdialog(agentId: string, tellaskSession: string): SubDialog | undefined {
+    const key = RootDialog.makeSubdialogKey(agentId, tellaskSession);
     return this._subdialogRegistry.get(key);
   }
 
   /**
    * Remove a TYPE B subdialog from registry.
    */
-  unregisterSubdialog(agentId: string, topicId: string): boolean {
-    const key = RootDialog.makeSubdialogKey(agentId, topicId);
+  unregisterSubdialog(agentId: string, tellaskSession: string): boolean {
+    const key = RootDialog.makeSubdialogKey(agentId, tellaskSession);
     const subdialog = this._subdialogRegistry.get(key);
     if (subdialog) {
       this._localRegistry.delete(subdialog.id.selfId);
@@ -1236,7 +1236,7 @@ export class RootDialog extends Dialog {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      topicId?: string;
+      tellaskSession?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
@@ -1251,7 +1251,7 @@ export class RootDialog extends Dialog {
       key,
       subdialogId: subdialog.id,
       agentId: subdialog.agentId,
-      topicId: subdialog.topicId,
+      tellaskSession: subdialog.tellaskSession,
     }));
     await this.dlgStore.saveSubdialogRegistry(this.id, entries, this.status);
   }
@@ -1288,7 +1288,7 @@ export abstract class DialogStore {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      topicId?: string;
+      tellaskSession?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
@@ -1309,7 +1309,7 @@ export abstract class DialogStore {
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
       },
-      options.topicId,
+      options.tellaskSession,
     );
   }
 
@@ -1407,7 +1407,7 @@ export abstract class DialogStore {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      topicId?: string;
+      tellaskSession?: string;
     }>,
     _status: 'running' | 'completed' | 'archived',
   ): Promise<void> {}

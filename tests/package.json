@@ -29,7 +29,8 @@
     "memory-access": "tsx toolsets/memory-access.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
-    "context-health-critical-countdown": "tsx context-health/critical-countdown.ts"
+    "context-health-critical-countdown": "tsx context-health/critical-countdown.ts",
+    "context-health-caution-guide": "tsx context-health/caution-guide.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

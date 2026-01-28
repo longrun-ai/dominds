@@ -11,6 +11,8 @@
  *   tui      - Start Text User Interface
  *   run      - Run task dialog (alias for tui)
  *   read     - Read team configuration
+ *   create   - Create a new workspace from a template
+ *   new      - Alias for create
  *   help     - Show help
  *
  * Global installation:
@@ -21,6 +23,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { main as createMain } from './cli/create';
 import { main as readMain } from './cli/read';
 import { main as tuiMain } from './cli/tui';
 import { main as webuiMain } from './cli/webui';
@@ -43,6 +46,8 @@ Subcommands:
   tui [options]      Start Text User Interface
   run [options]      Run task dialog (alias for tui)
   read [options]     Read team configuration
+  create [options]   Create a new workspace from a template
+  new [options]      Alias for create
   help               Show this help message
 
 Examples:
@@ -52,6 +57,7 @@ Examples:
   dominds tui --help         # Show TUI help
   dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
+  dominds create web-scaffold my-project   # Create workspace from a template
 
 Installation:
   pnpm add -g dominds
@@ -120,7 +126,8 @@ async function main(): Promise<void> {
     subcommandArgs.includes('--help') ||
     (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
     (subcommand === 'run' && subcommandArgs.includes('-h')) ||
-    (subcommand === 'read' && subcommandArgs.includes('-h'));
+    (subcommand === 'read' && subcommandArgs.includes('-h')) ||
+    ((subcommand === 'create' || subcommand === 'new') && subcommandArgs.includes('-h'));
 
   if (!shouldSkipRtwsSetup) {
     if (parsed.chdir) {
@@ -153,6 +160,10 @@ async function main(): Promise<void> {
     case 'read':
       await runSubcommand('read', subcommandArgs);
       break;
+    case 'create':
+    case 'new':
+      await runSubcommand('create', subcommandArgs);
+      break;
     default:
       console.error(`Error: Unknown subcommand '${subcommand}'`);
       console.error(`Run 'dominds help' for usage information.`);
@@ -174,6 +185,8 @@ async function runSubcommand(subcommand: string, args: string[]): Promise<void> 
       await tuiMain();
     } else if (subcommand === 'read') {
       await readMain();
+    } else if (subcommand === 'create') {
+      await createMain();
     } else {
       console.error(`Error: Subcommand '${subcommand}' not implemented`);
       process.exit(1);

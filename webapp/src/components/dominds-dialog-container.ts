@@ -28,7 +28,7 @@ import { DomindsMarkdownSection } from './dominds-markdown-section';
 type DialogContext = DialogIdent & {
   agentId?: string;
   supdialogId?: string;
-  topicId?: string;
+  tellaskSession?: string;
   assignmentFromSup?: AssignmentFromSup;
 };
 

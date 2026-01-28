@@ -36,8 +36,20 @@ export class DomindsQ4HPanel extends HTMLElement {
   public setQuestions(count: number, dialogContexts: Q4HDialogContext[]): void {
     this.props.count = count;
     this.props.dialogContexts = dialogContexts;
+    if (this.selectedQuestionId !== null) {
+      let stillExists = false;
+      for (const ctx of dialogContexts) {
+        for (const q of ctx.questions) {
+          if (q.id === this.selectedQuestionId) {
+            stillExists = true;
+            break;
+          }
+        }
+        if (stillExists) break;
+      }
+      if (!stillExists) this.selectedQuestionId = null;
+    }
     this.render();
-    this.setupEventListeners();
   }
 
   /**
@@ -61,13 +73,43 @@ export class DomindsQ4HPanel extends HTMLElement {
   }
 
   private toggleQuestion(questionId: string): void {
-    if (this.expandedQuestions.has(questionId)) {
+    const wasExpanded = this.expandedQuestions.has(questionId);
+    if (wasExpanded) {
       this.expandedQuestions.delete(questionId);
-    } else {
-      this.expandedQuestions.add(questionId);
+      this.render();
+      return;
     }
+
+    this.expandedQuestions.add(questionId);
     this.render();
-    this.setupEventListeners();
+    this.dispatchEvent(
+      new CustomEvent('q4h-question-expanded', {
+        detail: { questionId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private applySelectionUi(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const selectedId = this.selectedQuestionId;
+    root.querySelectorAll<HTMLElement>('.q4h-question-card').forEach((card) => {
+      const id = card.getAttribute('data-question-id');
+      const selected = selectedId !== null && id === selectedId;
+      card.classList.toggle('selected', selected);
+    });
+
+    if (selectedId !== null) {
+      const selectedCard = root.querySelector(
+        `.q4h-question-card[data-question-id="${CSS.escape(selectedId)}"]`,
+      );
+      if (selectedCard instanceof HTMLElement) {
+        selectedCard.classList.toggle('expanded', this.expandedQuestions.has(selectedId));
+        selectedCard.scrollIntoView({ block: 'nearest' });
+      }
+    }
   }
 
   /**
@@ -76,14 +118,25 @@ export class DomindsQ4HPanel extends HTMLElement {
    * Dispatches event for parent component to handle the selection
    */
   private selectQuestion(question: HumanQuestion, dialogContext: Q4HDialogContext): void {
+    const wasSelected = this.selectedQuestionId !== null;
     // Toggle selection: if already selected, deselect it
     if (this.selectedQuestionId === question.id) {
       this.selectedQuestionId = null;
     } else {
       this.selectedQuestionId = question.id;
     }
-    this.render();
-    this.setupEventListeners();
+
+    if (!wasSelected && this.selectedQuestionId === question.id) {
+      this.expandedQuestions.add(question.id);
+      this.dispatchEvent(
+        new CustomEvent('q4h-question-expanded', {
+          detail: { questionId: question.id },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+    this.applySelectionUi();
 
     // Dispatch selection event for parent components
     this.dispatchEvent(
@@ -105,6 +158,13 @@ export class DomindsQ4HPanel extends HTMLElement {
   private setupEventListeners(): void {
     if (!this.shadowRoot) return;
 
+    // Prevent text selection while clicking/dragging inside the list.
+    this.shadowRoot.querySelectorAll('.q4h-checkbox, .q4h-question-title').forEach((el) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
+    });
+
     // Expand icon - toggle expand/collapse
     this.shadowRoot.querySelectorAll('.q4h-expand-icon').forEach((icon) => {
       icon.addEventListener('click', (e) => {
@@ -117,9 +177,10 @@ export class DomindsQ4HPanel extends HTMLElement {
       });
     });
 
-    // Checkbox and title - toggle selection
+    // Checkbox and title - toggle selection (use pointerdown to avoid losing the event if the panel re-renders).
     this.shadowRoot.querySelectorAll('.q4h-checkbox, .q4h-question-title').forEach((el) => {
-      el.addEventListener('click', (e) => {
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
         e.stopPropagation();
         const card = el.closest('.q4h-question-card');
         if (!card) return;
@@ -206,6 +267,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       ${html}
     `;
     this.setupEventListeners();
+    this.applySelectionUi();
   }
 
   getStyles(): string {
@@ -226,7 +288,8 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       .q4h-panel-content {
         padding: 8px 16px;
-        max-height: 150px;
+        height: 100%;
+        min-height: 0;
         overflow-y: auto;
       }
 

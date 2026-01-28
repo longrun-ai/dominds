@@ -159,8 +159,8 @@ TASK_DOC Structure:
 **In dominds (recommended syntax)**
 
 - Fresh Boots Reasoning (FBR) is **common**, and should usually be done via **transient self-subdialogs**.
-- Use `@self` (no `!topic`) for the default “fresh boots” session: isolate one sub-problem, answer, and return.
-- Use `@self !topic <topic-id>` **rarely**, only when you explicitly want a **resumable** long-lived fresh-boots workspace
+- Use `@self` (no `!tellaskSession`) for the default “fresh boots” session: isolate one sub-problem, answer, and return.
+- Use `@self !tellaskSession <tellaskSession>` **rarely**, only when you explicitly want a **resumable** long-lived fresh-boots workspace
   for a multi-step sub-problem.
 
 **Traditional vs. Fresh Boots Approach**

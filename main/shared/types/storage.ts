@@ -41,8 +41,8 @@ export interface RootDialogMetadataFile {
   /** Root dialogs have no parent */
   supdialogId?: undefined;
 
-  /** Root dialogs do not have a topic */
-  topicId?: undefined;
+  /** Root dialogs do not have a tellask session */
+  tellaskSession?: undefined;
 
   /** Root dialogs have no assignment */
   assignmentFromSup?: undefined;
@@ -64,8 +64,8 @@ export interface SubdialogMetadataFile {
   /** Parent dialog ID for subdialogs */
   supdialogId: string;
 
-  /** Topic identifier for registered subdialogs (Type B) */
-  topicId?: string;
+  /** Tellask session key for registered subdialogs (Type B) */
+  tellaskSession?: string;
 
   /** Assignment context from supdialog for subdialogs */
   assignmentFromSup: {
@@ -371,8 +371,8 @@ export interface DialogListItem {
 
   /** Parent dialog info for subdialogs */
   supdialogId?: string;
-  /** Topic identifier for registered subdialogs (Type B) */
-  topicId?: string;
+  /** Tellask session key for registered subdialogs (Type B) */
+  tellaskSession?: string;
   assignmentFromSup?: {
     headLine: string;
     callBody: string;

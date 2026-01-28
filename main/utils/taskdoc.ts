@@ -13,6 +13,7 @@ import {
   isTaskPackagePath,
   readTaskPackageForInjection,
   type TaskPackageBearInMindState,
+  type TaskPackageExtraSectionsState,
   type TaskPackageLayoutViolation,
   type TaskPackageSectionsState,
 } from './task-package';
@@ -86,6 +87,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     const pkg = await (async (): Promise<{
       sections: TaskPackageSectionsState;
       bearInMind: TaskPackageBearInMindState;
+      extraSections: TaskPackageExtraSectionsState;
       violations: TaskPackageLayoutViolation[];
     }> => {
       try {
@@ -108,6 +110,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
               progress: { kind: 'missing' as const },
             },
             bearInMind: { kind: 'absent' as const },
+            extraSections: { kind: 'present' as const, categories: [], truncated: false },
             violations: [],
           };
         }
@@ -173,6 +176,59 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     })();
 
     const statusBlock = (() => {
+      const extraSectionsBlock = (() => {
+        const extra = pkg.extraSections;
+        if (language === 'zh') {
+          if (extra.kind === 'unavailable') {
+            return [
+              `**额外章节索引（不会自动注入）：**`,
+              `- ⚠️ 暂不可用：无法扫描差遣牒包的额外章节目录（reason=${extra.reason}）。`,
+              `- 若你确定存在额外章节，请直接尝试：\`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\``,
+            ].join('\n');
+          }
+
+          const entries: string[] = [];
+          for (const cat of extra.categories) {
+            for (const selector of cat.selectors) {
+              entries.push(
+                `- \`${cat.category}/${selector}.md\`（读：\`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`；写：\`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\"})\`）`,
+              );
+            }
+          }
+
+          const header = `**额外章节索引（不会自动注入；需要时用 \`recall_taskdoc\` 显式读取）：**`;
+          const body = entries.length > 0 ? entries : ['- （无）'];
+          const truncatedLine = extra.truncated
+            ? `- ⚠️ 已截断：目录条目过多，仅展示前 64 项。`
+            : '';
+          return [header, ...body, ...(truncatedLine ? [truncatedLine] : [])].join('\n');
+        }
+
+        if (extra.kind === 'unavailable') {
+          return [
+            `**Extra sections index (NOT auto-injected):**`,
+            `- ⚠️ Unavailable: failed to scan extra section directories (reason=${extra.reason}).`,
+            `- If you believe an extra section exists, try: \`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\``,
+          ].join('\n');
+        }
+
+        const entries: string[] = [];
+        for (const cat of extra.categories) {
+          for (const selector of cat.selectors) {
+            entries.push(
+              `- \`${cat.category}/${selector}.md\` (read: \`recall_taskdoc({\"category\":\"${cat.category}\",\"selector\":\"${selector}\"})\`; update: \`change_mind({\"category\":\"${cat.category}\",\"selector\":\"${selector}\",\"content\":\"...\"})\`)`,
+            );
+          }
+        }
+
+        const header = `**Extra sections index (NOT auto-injected; use \`recall_taskdoc\` when needed):**`;
+        const body = entries.length > 0 ? entries : ['- (none)'];
+        const truncatedLine = extra.truncated
+          ? `- ⚠️ Truncated: too many entries; showing first 64.`
+          : '';
+        return [header, ...body, ...(truncatedLine ? [truncatedLine] : [])].join('\n');
+      })();
+
       if (language === 'zh') {
         const goalsZh = goalsStatus === 'present' ? '存在' : '缺失';
         const constraintsZh = constraintsStatus === 'present' ? '存在' : '缺失';
@@ -187,10 +243,10 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
             : '';
         const maintenanceLine = isSubdialog
           ? `- 子对话中不允许 \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供你已合并好的“分段全文替换稿”（用于替换对应分段全文；禁止覆盖/抹掉他人条目）。`
-          : `- 维护方式：用函数工具 \`change_mind\` 指定分段（selector: \`goals\` / \`constraints\` / \`progress\`）。每次调用会替换该分段全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一轮中多次调用来一次更新多个分段（禁止覆盖/抹掉他人条目）。`;
+          : `- 维护方式：用函数工具 \`change_mind\` 指定分段（顶层 selector: \`goals\` / \`constraints\` / \`progress\`；或 category+selector 指定额外章节）。每次调用会替换该章节全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一轮中多次调用来一次更新多个章节（禁止覆盖/抹掉他人条目）。`;
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
-          `- 我们的差遣牒是一个 \`*.tsk/\` 目录，分为 3 个分段：\`goals\` / \`constraints\` / \`progress\`。`,
+          `- 我们的差遣牒是一个 \`*.tsk/\` 目录：顶层 3 个分段（\`goals\` / \`constraints\` / \`progress\`）一定会自动注入；\`bearinmind/\`（固定白名单）可选自动注入；其他章节不会自动注入，仅以“目录索引”形式提示并需用 \`recall_taskdoc\` 显式读取。`,
           `- 全队共享：三个分段对所有队友与子对话可见。更新时禁止覆盖/抹掉他人条目；建议为自己维护的条目标注责任人（如 \`- [owner:@<id>] ...\`）。`,
           `- 差遣牒维护人（负责执行 \`change_mind\`）：@${taskdocMaintainerId}`,
           `- 重要：差遣牒内容已被系统以内联形式注入到上下文中（本轮生成视角下即为最新）。请直接基于上下文里的差遣牒回顾与决策，不要试图用通用文件工具读取 \`*.tsk/\` 下的文件（会被拒绝）。`,
@@ -203,6 +259,8 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           `- \`bearinmind/\`（可选注入）：${bearZh}`,
           ...(bearExtrasLine ? [bearExtrasLine] : []),
           ``,
+          extraSectionsBlock,
+          ``,
           `若某个分段缺失，请用函数工具 \`change_mind\` 创建（不要用通用文件工具）：`,
           `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,
           `- \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\``,
@@ -212,7 +270,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
       }
       const maintenanceLine = isSubdialog
         ? `- Subdialogs cannot call \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
-        : `- Maintenance: in this dialog, use the function tool \`change_mind\` to target one section (selector: \`goals\` / \`constraints\` / \`progress\`). Each call replaces the entire section, so always start from the current injected content and merge/compress. You may call \`change_mind\` multiple times in a single turn to update multiple sections (do not overwrite/delete other contributors).`;
+        : `- Maintenance: in this dialog, use the function tool \`change_mind\` to target one section (top-level selector: \`goals\` / \`constraints\` / \`progress\`, or category+selector for extra sections). Each call replaces the entire section, so always start from the current injected content and merge/compress. You may call \`change_mind\` multiple times in a single turn to update multiple sections (do not overwrite/delete other contributors).`;
       const bearEn =
         bearInMindStatus === 'absent'
           ? 'absent'
@@ -227,7 +285,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           : '';
       return [
         `**Taskdoc Constitution (Encapsulated \`*.tsk/\`):**`,
-        `- Our Taskdoc is a \`*.tsk/\` directory with exactly 3 sections: \`goals\` / \`constraints\` / \`progress\`.`,
+        `- Our Taskdoc is a \`*.tsk/\` directory: it always auto-injects the 3 top-level sections (\`goals\` / \`constraints\` / \`progress\`); it may auto-inject \`bearinmind/\` (fixed whitelist); any other sections are NOT auto-injected and must be read via \`recall_taskdoc\` (only an index is shown).`,
         `- Team-shared: all 3 sections are visible to teammates and subdialogs. Do not overwrite/delete other contributors; add an owner marker for entries you maintain (e.g. \`- [owner:@<id>] ...\`).`,
         `- Taskdoc maintainer (runs \`change_mind\`): @${taskdocMaintainerId}`,
         `- Important: Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc; do not try to read files under \`*.tsk/\` via general file tools (they will be rejected).`,
@@ -239,6 +297,8 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
         `- \`progress.md\`: ${progressStatus}`,
         `- \`bearinmind/\` (optional injection): ${bearEn}`,
         ...(bearExtrasLine ? [bearExtrasLine] : []),
+        ``,
+        extraSectionsBlock,
         ``,
         `If any section is missing, create it with the function tool \`change_mind\` (never via general file tools):`,
         `- \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\``,

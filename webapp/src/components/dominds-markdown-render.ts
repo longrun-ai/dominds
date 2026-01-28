@@ -6,6 +6,22 @@ import './dominds-mermaid-block';
 
 type MarkdownRenderKind = { kind: 'chat' } | { kind: 'tooltip' };
 
+function slugifyHeadingId(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const normalized = trimmed
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  // VSCode/GitHub-style heading slug:
+  // - keep unicode letters/digits, whitespace, and hyphens
+  // - drop punctuation (including fullwidth punctuation like `（ ）`)
+  // - replace each whitespace char with `-` (do not collapse consecutive `-`)
+  const cleaned = normalized.replace(/[^\p{Letter}\p{Number}\s-]+/gu, '');
+  return cleaned.replace(/\s/g, '-').replace(/^-+|-+$/g, '');
+}
+
 function escapeHtmlText(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -82,6 +98,7 @@ const allowedCustomElementAttrs = new Set<string>(['language', 'display']);
 const domPurifyConfig: DomPurifyConfig = {
   RETURN_TRUSTED_TYPE: false,
   ALLOW_DATA_ATTR: false,
+  ALLOW_ARIA_ATTR: true,
   CUSTOM_ELEMENT_HANDLING: {
     tagNameCheck: (tagName: string) => allowedCustomElements.has(tagName),
     attributeNameCheck: (attributeName: string, tagName?: string) => {
@@ -92,13 +109,36 @@ const domPurifyConfig: DomPurifyConfig = {
     allowCustomizedBuiltInElements: false,
   },
   ADD_TAGS: [...allowedCustomElements],
-  ADD_ATTR: [...allowedCustomElementAttrs],
+  ADD_ATTR: [...allowedCustomElementAttrs, 'id'],
 };
 
 const md = new MarkdownIt({
   html: false,
   breaks: true,
   linkify: true,
+});
+
+md.core.ruler.push('dominds_heading_ids', (state) => {
+  const used = new Set<string>();
+  for (let i = 0; i < state.tokens.length; i += 1) {
+    const token = state.tokens[i];
+    if (!token) continue;
+    if (token.type !== 'heading_open') continue;
+    const inline = state.tokens[i + 1];
+    if (!inline || inline.type !== 'inline') continue;
+
+    const rawText = inline.content;
+    const base = slugifyHeadingId(rawText);
+    if (!base) continue;
+    let id = base;
+    let attempt = 2;
+    while (used.has(id)) {
+      id = `${base}-${attempt}`;
+      attempt += 1;
+    }
+    used.add(id);
+    token.attrSet('id', id);
+  }
 });
 
 installDomindsMathBlockRule(md);

@@ -58,7 +58,7 @@ A **subdlg.yaml** file indexes pending subdialogs that a supdialog is waiting fo
 
 ### Subdialog Registry
 
-The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!topicId` as its key format and is never deleted during the dialog lifecycle. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
+The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!tellaskSession` as its key format and is never deleted during the dialog lifecycle. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
 
 ### Teammate Tellask
 
@@ -83,7 +83,7 @@ A server-wide mapping of `rootId → RootDialog` objects. This is the single sou
 A per-root mapping of `selfId → Dialog` objects. This registry contains the root dialog itself plus all loaded subdialogs, enabling O(1) lookup of any dialog within a hierarchy.
 
 **Subdialog Registry (Per RootDialog)**
-A per-root mapping of `agentId!topicId → Subdialog` objects. This registry tracks TYPE B registered subdialogs for resumption across multiple interactions. TYPE C transient subdialogs are never registered.
+A per-root mapping of `agentId!tellaskSession → Subdialog` objects. This registry tracks TYPE B registered subdialogs for resumption across multiple interactions. TYPE C transient subdialogs are never registered.
 
 ### Per-Dialog Mutex
 
@@ -132,17 +132,17 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 ```mermaid
 flowchart TD
   M[LLM emits !?@mention] --> Q{Is this a subdialog telling its direct supdialog?}
-  Q -- yes --> A[TYPE A: Supdialog Tellask<br/>(`TellaskBack` / 回问诉请)<br/>Primary: !?@super (NO !topic)<br/>Fallback: !?@&lt;supdialogAgentId&gt; (NO !topic)]
-  Q -- no --> T{Is !topic present?}
-  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !topic topicId]
+  Q -- yes --> A[TYPE A: Supdialog Tellask<br/>(`TellaskBack` / 回问诉请)<br/>Primary: !?@super (NO !tellaskSession)<br/>Fallback: !?@&lt;supdialogAgentId&gt; (NO !tellaskSession)]
+  Q -- no --> T{Is !tellaskSession present?}
+  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !tellaskSession tellaskSession]
   T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>!?@agentId]
 ```
 
 ### TYPE A: Supdialog Tellask (Type A / `TellaskBack` / 回问诉请)
 
-**Primary syntax**: `!?@super` (NO `!topic`) — `!?@super !topic ...` is a **syntax error**
+**Primary syntax**: `!?@super` (NO `!tellaskSession`) — `!?@super !tellaskSession ...` is a **syntax error**
 
-**Tolerated fallback**: `!?@<supdialogAgentId>` (NO `!topic`)
+**Tolerated fallback**: `!?@<supdialogAgentId>` (NO `!tellaskSession`)
 
 **Behavior**:
 
@@ -178,35 +178,35 @@ Result:
 
 ### TYPE B: Registered Subdialog Tellask (Type B / `Tellask Session` / 长线诉请)
 
-**Syntax**: `!?@<anyAgentId> !topic <topic-id>` (note the space before `!topic`)
+**Syntax**: `!?@<anyAgentId> !tellaskSession <tellaskSession>` (note the space before `!tellaskSession`)
 
-**Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `!?@self !topic <topic-id>`
+**Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `!?@self !tellaskSession <tellaskSession>`
 
 - `!?@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
 - This is an **unambiguous** syntax for self-calls and helps avoid accidental `@teammate`→`@teammate` self-calls caused by
   echoing/quoting prior call headlines.
-- **FBR itself should be common**, but the `!topic`-addressed variant should be rare. Prefer `!?@self` (TYPE C, transient)
-  for most FBR usage. Use `!?@self !topic ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
+- **FBR itself should be common**, but the `!tellaskSession`-addressed variant should be rare. Prefer `!?@self` (TYPE C, transient)
+  for most FBR usage. Use `!?@self !tellaskSession ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
   for a multi-step sub-problem.
 
-**Topic ID Schema**: `<topic-id>` uses the same identifier schema as `<mention-id>`:
+**Tellask Session Key Schema**: `<tellaskSession>` uses the same identifier schema as `<mention-id>`:
 `[a-zA-Z][a-zA-Z0-9_-]*`. Parsing stops at whitespace or punctuation; any trailing
-headline text is ignored for topic ID parsing.
+headline text is ignored for tellaskSession parsing.
 
-**Registry Key**: `agentId!topicId`
+**Registry Key**: `agentId!tellaskSession`
 
 **Behavior**:
 
-1. Check registry for existing subdialog with key `agentId!topicId`
+1. Check registry for existing subdialog with key `agentId!tellaskSession`
 2. **If exists**: Resume the registered subdialog
-3. **If not exists**: Create NEW subdialog AND register it with key `agentId!topicId`
+3. **If not exists**: Create NEW subdialog AND register it with key `agentId!tellaskSession`
 4. Parent dialog **suspends** while subdialog runs
 5. Subdialog response flows back to parent
 6. Parent **resumes** with subdialog's response
 
 **Current Caller Tracking (important for reuse):**
 
-When a registered subdialog is Tellasked again (same `agentId!topicId`), the caller can be a **different dialog** (root or another subdialog). On every Type B Tellask, the subdialog’s metadata is updated with:
+When a registered subdialog is Tellasked again (same `agentId!tellaskSession`), the caller can be a **different dialog** (root or another subdialog). On every Type B Tellask, the subdialog’s metadata is updated with:
 
 - The **current caller dialog ID** (so responses route back to the _latest_ caller)
 - The **Tellask info** (headline/body, origin role, origin member, callId)
@@ -233,7 +233,7 @@ This makes Type B subdialogs reusable across multiple Tellask sites without losi
 Root dialog: orchestrator
 Registry: {} (empty)
 
-LLM emits: !?@researcher !topic market-analysis
+LLM emits: !?@researcher !tellaskSession market-analysis
 
 Result (first call):
 - Registry lookup: no "researcher!market-analysis" exists
@@ -244,7 +244,7 @@ Result (first call):
 - Response flows back to orchestrator
 - orchestrator resumes
 
-LLM emits again: !?@researcher !topic market-analysis
+LLM emits again: !?@researcher !tellaskSession market-analysis
 
 Result (second call):
 - Registry lookup: "researcher!market-analysis" exists
@@ -257,7 +257,7 @@ Result (second call):
 
 ### TYPE C: Transient Subdialog Tellask (Type C / `Fresh Tellask` / 一次性诉请)
 
-**Syntax**: `!?@<nonSupdialogAgentId>` (NO `!topic`)
+**Syntax**: `!?@<nonSupdialogAgentId>` (NO `!tellaskSession`)
 
 **Fresh Boots Reasoning (FBR) self-call syntax (default; most common)**: `!?@self`
 
@@ -307,9 +307,9 @@ Result:
 
 | Aspect                     | TYPE A: Supdialog Tellask (`TellaskBack`) | TYPE B: Registered Subdialog Tellask (`Tellask Session`) | TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) |
 | -------------------------- | ----------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
-| **Syntax**                 | `!?@<supdialogAgentId>`                   | `!?@<anyAgentId> !topic <id>`                            | `!?@<nonSupdialogAgentId>`                            |
-| **!topic**                 | Not allowed                               | Required                                                 | Not allowed                                           |
-| **Registry Lookup**        | No (uses `subdialog.supdialog`)           | Yes (`agentId!topicId`)                                  | No (never registered)                                 |
+| **Syntax**                 | `!?@<supdialogAgentId>`                   | `!?@<anyAgentId> !tellaskSession <id>`                   | `!?@<nonSupdialogAgentId>`                            |
+| **!tellaskSession**        | Not allowed                               | Required                                                 | Not allowed                                           |
+| **Registry Lookup**        | No (uses `subdialog.supdialog`)           | Yes (`agentId!tellaskSession`)                           | No (never registered)                                 |
 | **Resumption**             | No (supdialog not a subdialog)            | Yes (lookup finds existing)                              | No (always new)                                       |
 | **Registration**           | Not applicable                            | Created AND registered                                   | Never registered                                      |
 | **Parent Behavior**        | Subdialog suspends                        | Parent suspends                                          | Parent suspends                                       |
@@ -753,7 +753,7 @@ The **subdialog registry** is a root-dialog-scoped data structure that maintains
 | Aspect          | Description                                            |
 | --------------- | ------------------------------------------------------ |
 | **Scope**       | Root dialog only (not accessible to subdialogs)        |
-| **Key Format**  | `agentId!topicId` (single-level Map)                   |
+| **Key Format**  | `agentId!tellaskSession` (single-level Map)            |
 | **Storage**     | `registry.yaml` in root dialog directory               |
 | **Lifecycle**   | Never deleted during dialog lifetime                   |
 | **Persistence** | Moves with root to `done/` when root completes         |
@@ -767,14 +767,14 @@ Example `registry.yaml` (conceptual):
 researcher!market-analysis:
   subdialogId: uuid-123
   agentId: researcher
-  topicId: market-analysis
+  tellaskSession: market-analysis
   createdAt: 2025-12-27T10:00:00Z
   lastAccessed: 2025-12-27T11:30:00Z
 ```
 
 ```mermaid
 flowchart TD
-  Tellask[TYPE B Tellask: !?@agentId !topic topicId] --> Key[Compute key: agentId!topicId]
+  Tellask[TYPE B Tellask: !?@agentId !tellaskSession tellaskSession] --> Key[Compute key: agentId!tellaskSession]
   Key --> Lookup{Registry hit?}
   Lookup -- yes --> Resume[Restore + drive existing subdialog]
   Lookup -- no --> Create[Create + register + drive new subdialog]
@@ -790,7 +790,7 @@ flowchart TD
 
 - `RootDialog`
   - Owns the TYPE B subdialog registry (`registry.yaml`)
-  - Creates/registers/looks up registered subdialogs (`agentId!topicId`)
+  - Creates/registers/looks up registered subdialogs (`agentId!tellaskSession`)
 - `SubDialog`
   - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`!?@super`)
   - Cannot access or mutate the root registry (by design)
@@ -814,7 +814,7 @@ interface SubdialogRegistry {
   [key: string]: {
     subdialogId: string; // UUID of the subdialog
     agentId: string; // Agent identifier
-    topicId: string; // Topic identifier
+    tellaskSession: string; // Tellask session key
     createdAt: string; // ISO timestamp
     lastAccessed?: string; // ISO timestamp (updated on each Tellask)
     locked: boolean; // Mutex state - is someone driving this right now?
@@ -1061,7 +1061,7 @@ flowchart TD
 These diagrams focus on **control flow** and avoid box-art alignment so they stay readable even when
 rendered in different markdown viewers.
 
-#### TYPE A: Supdialog Tellask (`TellaskBack`) (`!?@super`, no `!topic`)
+#### TYPE A: Supdialog Tellask (`TellaskBack`) (`!?@super`, no `!tellaskSession`)
 
 ```mermaid
 sequenceDiagram
@@ -1075,7 +1075,7 @@ sequenceDiagram
   Driver-->>Sub: resume subdialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`!?@agentId !topic topicId`, or `!?@self !topic topicId`)
+#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`!?@agentId !tellaskSession tellaskSession`, or `!?@self !tellaskSession tellaskSession`)
 
 ```mermaid
 sequenceDiagram
@@ -1084,8 +1084,8 @@ sequenceDiagram
   participant Reg as Root subdialog registry
   participant Sub as Registered subdialog
 
-  Caller->>Driver: emits `!?@agentId !topic topicId`
-  Driver->>Reg: lookup `agentId!topicId`
+  Caller->>Driver: emits `!?@agentId !tellaskSession tellaskSession`
+  Driver->>Reg: lookup `agentId!tellaskSession`
   alt registry hit
     Reg-->>Driver: existing subdialog selfId
     Driver->>Sub: restore + drive
@@ -1216,7 +1216,7 @@ sequenceDiagram
 sequenceDiagram
   participant Root as Root Dialog
   participant Store as Persistence (registry.yaml + dialogs/)
-  participant Sub as Subdialog (@researcher !topic market)
+  participant Sub as Subdialog (@researcher !tellaskSession market)
 
   Root->>Store: lookup registry key "researcher!market"
   alt not found
@@ -1290,11 +1290,11 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 
 ### Three Types of Teammate Tellasks
 
-| Type (internal) | User-facing term  | Syntax                    | Registry          | Use Case                   |
-| --------------- | ----------------- | ------------------------- | ----------------- | -------------------------- |
-| TYPE A          | `TellaskBack`     | `!?@super` / `!?@<supId>` | no registry       | clarification (ask origin) |
-| TYPE B          | `Tellask Session` | `!?@agentId !topic <id>`  | `agentId!topicId` | resumable multi-turn work  |
-| TYPE C          | `Fresh Tellask`   | `!?@agentId`              | not registered    | one-shot / non-resumable   |
+| Type (internal) | User-facing term  | Syntax                            | Registry                 | Use Case                   |
+| --------------- | ----------------- | --------------------------------- | ------------------------ | -------------------------- |
+| TYPE A          | `TellaskBack`     | `!?@super` / `!?@<supId>`         | no registry              | clarification (ask origin) |
+| TYPE B          | `Tellask Session` | `!?@agentId !tellaskSession <id>` | `agentId!tellaskSession` | resumable multi-turn work  |
+| TYPE C          | `Fresh Tellask`   | `!?@agentId`                      | not registered           | one-shot / non-resumable   |
 
 ### Class Responsibility
 

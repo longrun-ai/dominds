@@ -118,7 +118,7 @@ Injection MUST be deterministic and bounded:
 
 - Always inject the top-level three sections (`goals.md`, `constraints.md`, `progress.md`).
 - Optionally inject a `## Bear In Mind` block **only** from the fixed-whitelist `bearinmind/` directory.
-- No other subdirectories or files are injected.
+- No other subdirectories or files are injected as body content (an index of extra sections may be shown for discoverability; the content must be read via `recall_taskdoc`).
 
 If present, the injected `## Bear In Mind` block MUST appear **between** `## Constraints` and `## Progress`.
 
@@ -145,7 +145,8 @@ Below is the canonical copy. If you need to rephrase it for UI layout, you MUST 
 **Taskdoc 封装与访问限制**
 
 - 任何 `.tsk/` 目录及其子路径（`**/*.tsk/**`）都是封装状态：禁止使用任何通用文件工具读取/写入/列目录（例如 `read_file` / `write_file` / `list_dir` 等）。
-- 更新 Taskdoc 只能使用函数工具 `change_mind`（按分段整段替换）。
+- 更新 Taskdoc 只能使用函数工具 `change_mind`（按章节整段替换；顶层用 `selector`，额外章节用 `category + selector`）。
+- 读取“不会自动注入上下文”的额外章节，只能使用函数工具 `recall_taskdoc({ category, selector })`。
 
 **Taskdoc 自动注入规则（系统提示）**
 
@@ -153,14 +154,15 @@ Below is the canonical copy. If you need to rephrase it for UI layout, you MUST 
 - 一定会注入顶层三段：`goals.md`、`constraints.md`、`progress.md`（按此顺序）。
 - 可选注入 `bearinmind/`（仅固定白名单，最多 6 个文件）：`contracts.md`、`acceptance.md`、`grants.md`、`runbook.md`、`decisions.md`、`risks.md`。
 - 若存在 `bearinmind/` 注入块，它会以 `## Bear In Mind` 出现在 `## Constraints` 与 `## Progress` 之间，并按以上固定顺序拼接。
-- 除此之外，`.tsk/` 内任何其他目录/文件都不会被自动注入。
+- 除此之外，`.tsk/` 内任何其他目录/文件都不会被自动注入正文（系统只会注入一个“额外章节索引”用于提示；需要时用 `recall_taskdoc` 显式读取）。
 
 #### Reference copy (en; must match zh)
 
 **Taskdoc encapsulation & access restrictions**
 
 - Any `.tsk/` directory and its subpaths (`**/*.tsk/**`) are encapsulated state: general file tools MUST NOT read/write/list them (e.g. `read_file` / `write_file` / `list_dir`).
-- Taskdoc updates MUST go through the function tool `change_mind` (whole-section replace).
+- Taskdoc updates MUST go through the function tool `change_mind` (whole-section replace; use top-level `selector`, or `category + selector` for extra sections).
+- To read extra sections that are NOT auto-injected, use the function tool `recall_taskdoc({ category, selector })`.
 
 **Taskdoc auto-injection rules (system prompt)**
 
@@ -168,7 +170,7 @@ Below is the canonical copy. If you need to rephrase it for UI layout, you MUST 
 - It always injects the three top-level sections in order: `goals.md`, `constraints.md`, `progress.md`.
 - It may also inject `bearinmind/` (fixed whitelist only; max 6 files): `contracts.md`, `acceptance.md`, `grants.md`, `runbook.md`, `decisions.md`, `risks.md`.
 - If present, the injected block appears as `## Bear In Mind` between `## Constraints` and `## Progress`, and the files are concatenated in the fixed order above.
-- No other directories/files inside `.tsk/` are auto-injected.
+- No other directories/files inside `.tsk/` are auto-injected as body content (only an “extra sections index” may be injected for discoverability; use `recall_taskdoc` when needed).
 
 Notes:
 
@@ -185,43 +187,66 @@ Critically:
 - If a round reset is desired, call the function tool `clear_mind({ "reminder_content": "<re-entry package>" })` (or other round-control mechanisms) separately.
   - Recommendation: include a short, scannable re-entry package so the agent can resume after the new round.
 
-### Arguments (v2, current)
+### Arguments (current)
 
-`change_mind` takes a required target selector:
+`change_mind` updates **exactly one** Taskdoc section by **replacing its entire contents**.
+
+It takes:
+
+- `selector` (required)
+- `content` (required)
+- `category` (optional)
+
+When `category` is missing/empty, `selector` targets the **top-level** section files:
 
 - `goals`
 - `constraints`
 - `progress`
 
-Note: In v2, `category` is not part of the tool contract.
-
-### Arguments (design proposal: namespaced sections via `category`)
-
-To support additional sections without breaking the core schema, Dominds MAY extend `change_mind` with an optional `category` argument.
-
-This is a **design proposal** and may not be implemented in the current release.
-
-Behavior:
-
-- When `category` is missing/empty, `selector` targets the **top-level** files.
-- When `category` is provided, `selector` targets a file under `<category>/` inside the Taskdoc package.
+When `category` is provided, `selector` targets a file under `<category>/` inside the Taskdoc package.
 
 Reserved selectors and their allowed locations:
 
 - Top-level only (no category): `goals`, `constraints`, `progress`
 - `category="bearinmind"` only: `contracts`, `acceptance`, `grants`, `runbook`, `decisions`, `risks`
 
+Other categories:
+
+- `category` MUST be a safe identifier (e.g. `ux`, `ux.checklists`)
+- `selector` MUST be a safe identifier
+- Target file path is `<category>/<selector>.md`
+
 Hard prohibitions:
 
 - `goals|constraints|progress` MUST NOT be written under any category directory.
 - `contracts|acceptance|grants|runbook|decisions|risks` MUST NOT be written outside `category="bearinmind"`.
-- No other category is auto-injected into the system prompt.
+- No other category is auto-injected into the system prompt (only an index may be shown).
 
-Example (design):
+### `recall_taskdoc` (read-only; for non-auto-injected sections)
+
+Because general file tools cannot read anything under `*.tsk/`, Dominds provides a dedicated read tool:
+
+```
+recall_taskdoc({ category, selector })
+```
+
+Behavior:
+
+- Reads `bearinmind/<whitelisted>.md` or `<category>/<selector>.md`.
+- The top-level three sections (`goals` / `constraints` / `progress`) are already auto-injected, so `recall_taskdoc` does not read them.
+
+Example (bearinmind):
 
 ```text
 Call the function tool `change_mind` with:
 { "selector": "grants", "category": "bearinmind", "content": "- Allowed: ...\n- Disallowed: ...\n" }
+```
+
+Example (extra category):
+
+```text
+Call the function tool `recall_taskdoc` with:
+{ "category": "ux", "selector": "checklist" }
 ```
 
 Example:
@@ -286,4 +311,3 @@ If a workspace previously used single-file `.md` Taskdocs, they MUST be migrated
 
 - Where should the Taskdoc package live by default (under dialog persistence, next to the initiating entrypoint, or a dedicated workspace dir)?
 - Should `change_mind` allow explicitly setting an empty section body (for intentional clearing)?
-- Do we need a first-class “view task section” command/tool for text-only clients, given file tools cannot read `.tsk/`?

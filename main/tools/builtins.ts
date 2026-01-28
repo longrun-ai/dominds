@@ -11,6 +11,7 @@ import {
   changeMindTool,
   clearMindTool,
   deleteReminderTool,
+  recallTaskdocTool,
   updateReminderTool,
 } from './ctrl';
 import { verifyTellaskParsingTool } from './diag';
@@ -112,6 +113,7 @@ registerTool(deleteReminderTool);
 registerTool(updateReminderTool);
 registerTool(clearMindTool);
 registerTool(changeMindTool);
+registerTool(recallTaskdocTool);
 
 // Team management tools (scoped to `.minds/**`)
 for (const tool of teamMgmtTools) {
@@ -143,6 +145,7 @@ registerToolset('control', [
   updateReminderTool,
   clearMindTool,
   changeMindTool,
+  recallTaskdocTool,
 ]);
 setToolsetMeta('control', {
   source: 'dominds',

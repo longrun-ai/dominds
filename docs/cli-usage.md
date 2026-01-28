@@ -303,6 +303,8 @@ dominds create web-scaffold \
                  my-project
 ```
 
+When `--repo-url` is provided, `dominds create` clones the template, then sets the cloned workspace’s `origin` remote to the provided URL and keeps the original template URL as a separate `template` remote for reference.
+
 **Template Resolution:**
 
 Short template names are resolved using the `DOMINDS_TEMPLATE_BASE` environment variable:

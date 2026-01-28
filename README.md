@@ -226,20 +226,21 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 
 - **[Terminology](docs/dominds-terminology.md)** — Canonical vocabulary across prompts and implementation docs (Taskdoc, Teammate Tellask, etc.)
 - **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
+- **[MCP Support](docs/mcp-support.md)** — MCP tool integration
+- **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — `*.tsk/` Taskdoc packages and parsing
+- **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
+- **[Keep-going](docs/keep-going.md)** — Auto-continue (diligence) mechanism
 - **[Design](docs/design.md)** — Architecture and key abstractions
-- **[Memory System](docs/memory-system.md)** — Taskdoc, reminders, team/personal memory, and hygiene loop
+- **[Mottos](docs/mottos.md)** — Short guiding statements
+- **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
+
+- **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — Managing team members via tools
+- **[i18n](docs/i18n.md)** — Language and localization rules
 - **[Dialog System](docs/dialog-system.md)** — Dialog runtime model and streaming
 - **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle
 - **[Interruption & Resumption](docs/interruption-resumption.md)** — Stop/resume semantics
-- **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — `*.tsk/` Taskdoc packages and parsing
 - **[Auth](docs/auth.md)** — Authentication and access model
-- **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
-- **[MCP Support](docs/mcp-support.md)** — MCP tool integration
-- **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — Managing team members via tools
-- **[Team Tools View](docs/team-tools-view.md)** — Inspecting tool availability
-- **[i18n](docs/i18n.md)** — Language and localization rules
-- **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
-- **[Mottos](docs/mottos.md)** — Short guiding statements
+
 ### Getting Help
 
 - Open an issue on [GitHub](https://github.com/longrun-ai/dominds/issues) for bugs or feature requests

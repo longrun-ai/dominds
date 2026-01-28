@@ -25,6 +25,12 @@ export interface TaskPackageSectionsState {
   progress: TaskPackageSectionState;
 }
 
+const taskPackageIdentifierRe = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)*$/;
+
+function isTaskPackageIdentifier(value: string): boolean {
+  return taskPackageIdentifierRe.test(value);
+}
+
 export const BEAR_IN_MIND_SECTIONS = [
   'contracts',
   'acceptance',
@@ -47,12 +53,43 @@ export type TaskPackageBearInMindState =
     }
   | { kind: 'invalid'; reason: 'not_a_directory' };
 
+export type TaskPackageExtraCategory = Readonly<{
+  category: string;
+  selectors: readonly string[];
+}>;
+
+export type TaskPackageExtraSectionsState =
+  | { kind: 'unavailable'; reason: 'scan_error' }
+  | { kind: 'present'; categories: readonly TaskPackageExtraCategory[]; truncated: boolean };
+
 export type TaskPackageLayoutViolation =
   | { kind: 'top_level_file_under_subdir'; filename: string; foundAt: string }
   | { kind: 'bearinmind_file_outside_bearinmind'; filename: string; foundAt: string }
   | { kind: 'bearinmind_extra_entry'; foundAt: string }
   | { kind: 'bearinmind_not_directory'; foundAt: string }
   | { kind: 'scan_limit_exceeded'; maxEntries: number };
+
+export type TaskPackageChangeMindTarget =
+  | { kind: 'top_level'; section: TaskPackageSection }
+  | { kind: 'bearinmind'; section: BearInMindSection }
+  | { kind: 'category'; category: string; selector: string };
+
+export type TaskPackageChangeMindTargetError =
+  | { kind: 'selector_required' }
+  | { kind: 'invalid_category_name'; category: string }
+  | { kind: 'invalid_category_selector'; selector: string }
+  | { kind: 'invalid_top_level_selector'; selector: string }
+  | { kind: 'invalid_bearinmind_selector'; selector: string }
+  | { kind: 'top_level_selector_requires_no_category'; category: string; selector: string }
+  | {
+      kind: 'bearinmind_selector_requires_bearinmind_category';
+      category: string;
+      selector: string;
+    };
+
+export type TaskPackageChangeMindTargetParseResult =
+  | { kind: 'ok'; target: TaskPackageChangeMindTarget }
+  | { kind: 'err'; error: TaskPackageChangeMindTargetError };
 
 const sectionToFilename: Record<TaskPackageSection, string> = {
   goals: 'goals.md',
@@ -85,12 +122,136 @@ export function taskPackageSectionFromSelector(selector: string): TaskPackageSec
   return null;
 }
 
+export function bearInMindSectionFromSelector(selector: string): BearInMindSection | null {
+  const normalized = selector.startsWith('!') ? selector.slice(1) : selector;
+  if (normalized === 'contracts') return normalized;
+  if (normalized === 'acceptance') return normalized;
+  if (normalized === 'grants') return normalized;
+  if (normalized === 'runbook') return normalized;
+  if (normalized === 'decisions') return normalized;
+  if (normalized === 'risks') return normalized;
+  return null;
+}
+
+export function parseTaskPackageChangeMindTarget(params: {
+  selector: string;
+  category?: string;
+}): TaskPackageChangeMindTargetParseResult {
+  const selector = params.selector.trim();
+  if (selector === '') {
+    return { kind: 'err', error: { kind: 'selector_required' } };
+  }
+
+  const categoryValue = typeof params.category === 'string' ? params.category.trim() : '';
+  const category = categoryValue !== '' ? categoryValue : null;
+
+  // Category missing/empty => top-level only.
+  if (category === null) {
+    const topLevel = taskPackageSectionFromSelector(selector);
+    if (topLevel !== null) {
+      return { kind: 'ok', target: { kind: 'top_level', section: topLevel } };
+    }
+    return { kind: 'err', error: { kind: 'invalid_top_level_selector', selector } };
+  }
+
+  // Category present => validate category name first.
+  if (!isTaskPackageIdentifier(category)) {
+    return { kind: 'err', error: { kind: 'invalid_category_name', category } };
+  }
+
+  if (category === 'bearinmind') {
+    const bear = bearInMindSectionFromSelector(selector);
+    if (bear !== null) {
+      return { kind: 'ok', target: { kind: 'bearinmind', section: bear } };
+    }
+
+    // Reserved top-level selectors must not be nested under any category.
+    const topLevel = taskPackageSectionFromSelector(selector);
+    if (topLevel !== null) {
+      return {
+        kind: 'err',
+        error: { kind: 'top_level_selector_requires_no_category', category, selector },
+      };
+    }
+
+    return { kind: 'err', error: { kind: 'invalid_bearinmind_selector', selector } };
+  }
+
+  // Reserved top-level selectors must not be nested under any category.
+  const topLevel = taskPackageSectionFromSelector(selector);
+  if (topLevel !== null) {
+    return {
+      kind: 'err',
+      error: { kind: 'top_level_selector_requires_no_category', category, selector },
+    };
+  }
+
+  // Reserved bearinmind selectors must only appear under category="bearinmind".
+  const bear = bearInMindSectionFromSelector(selector);
+  if (bear !== null) {
+    return {
+      kind: 'err',
+      error: { kind: 'bearinmind_selector_requires_bearinmind_category', category, selector },
+    };
+  }
+
+  const normalizedSelector = selector.startsWith('!') ? selector.slice(1) : selector;
+  if (!isTaskPackageIdentifier(normalizedSelector)) {
+    return { kind: 'err', error: { kind: 'invalid_category_selector', selector } };
+  }
+
+  return {
+    kind: 'ok',
+    target: { kind: 'category', category, selector: normalizedSelector },
+  };
+}
+
 export function taskPackageFilenameForSection(section: TaskPackageSection): string {
   return sectionToFilename[section];
 }
 
 export function bearInMindFilenameForSection(section: BearInMindSection): string {
   return bearInMindSectionToFilename[section];
+}
+
+export async function updateTaskPackageByChangeMindTarget(params: {
+  taskPackageDirFullPath: string;
+  target: TaskPackageChangeMindTarget;
+  content: string;
+  updatedBy?: string;
+}): Promise<void> {
+  const { taskPackageDirFullPath, target, content, updatedBy } = params;
+  await ensureTaskPackage(taskPackageDirFullPath, updatedBy);
+
+  switch (target.kind) {
+    case 'top_level': {
+      await updateTaskPackageSection({
+        taskPackageDirFullPath,
+        section: target.section,
+        content,
+        updatedBy,
+      });
+      return;
+    }
+    case 'bearinmind': {
+      const dir = path.join(taskPackageDirFullPath, 'bearinmind');
+      await fs.promises.mkdir(dir, { recursive: true });
+      const filePath = path.join(dir, bearInMindFilenameForSection(target.section));
+      await fs.promises.writeFile(filePath, content, 'utf8');
+      return;
+    }
+    case 'category': {
+      const dir = path.join(taskPackageDirFullPath, target.category);
+      await fs.promises.mkdir(dir, { recursive: true });
+      const filePath = path.join(dir, `${target.selector}.md`);
+      await fs.promises.writeFile(filePath, content, 'utf8');
+      return;
+    }
+    default: {
+      const _exhaustive: never = target;
+      return _exhaustive;
+    }
+  }
 }
 
 async function fileExists(fullPath: string): Promise<boolean> {
@@ -359,12 +520,14 @@ export async function validateTaskPackageLayout(
 export async function readTaskPackageForInjection(taskPackageDirFullPath: string): Promise<{
   sections: TaskPackageSectionsState;
   bearInMind: TaskPackageBearInMindState;
+  extraSections: TaskPackageExtraSectionsState;
   violations: TaskPackageLayoutViolation[];
 }> {
   const sections = await readTaskPackageSections(taskPackageDirFullPath);
   const bearInMind = await readBearInMindSections(taskPackageDirFullPath);
+  const extraSections = await readTaskPackageExtraSectionsIndex(taskPackageDirFullPath);
   const violations = await validateTaskPackageLayout(taskPackageDirFullPath);
-  return { sections, bearInMind, violations };
+  return { sections, bearInMind, extraSections, violations };
 }
 
 export async function updateTaskPackageSection(params: {
@@ -378,4 +541,76 @@ export async function updateTaskPackageSection(params: {
 
   const filePath = path.join(taskPackageDirFullPath, taskPackageFilenameForSection(section));
   await fs.promises.writeFile(filePath, content, 'utf8');
+}
+
+async function readTaskPackageExtraSectionsIndex(
+  taskPackageDirFullPath: string,
+): Promise<TaskPackageExtraSectionsState> {
+  const maxEntries = 64;
+  let total = 0;
+
+  try {
+    const dirents = await fs.promises.readdir(taskPackageDirFullPath, { withFileTypes: true });
+    const categoryToSelectors = new Map<string, Set<string>>();
+
+    for (const entry of dirents) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith('.')) continue;
+      if (entry.name === 'bearinmind') continue;
+      if (!isTaskPackageIdentifier(entry.name)) continue;
+
+      const category = entry.name;
+      const catAbs = path.join(taskPackageDirFullPath, category);
+      let catEntries: fs.Dirent[];
+      try {
+        catEntries = await fs.promises.readdir(catAbs, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const child of catEntries) {
+        if (total >= maxEntries) {
+          return {
+            kind: 'present',
+            categories: materializeExtraCategories(categoryToSelectors),
+            truncated: true,
+          };
+        }
+        if (!child.isFile()) continue;
+        if (child.name.startsWith('.')) continue;
+        if (!child.name.endsWith('.md')) continue;
+
+        const selector = child.name.slice(0, -3);
+        if (!isTaskPackageIdentifier(selector)) continue;
+        if (taskPackageSectionFromSelector(selector) !== null) continue;
+        if (bearInMindSectionFromSelector(selector) !== null) continue;
+
+        const set = categoryToSelectors.get(category) ?? new Set<string>();
+        set.add(selector);
+        categoryToSelectors.set(category, set);
+        total++;
+      }
+    }
+
+    return {
+      kind: 'present',
+      categories: materializeExtraCategories(categoryToSelectors),
+      truncated: false,
+    };
+  } catch {
+    return { kind: 'unavailable', reason: 'scan_error' };
+  }
+}
+
+function materializeExtraCategories(
+  categoryToSelectors: Map<string, Set<string>>,
+): readonly TaskPackageExtraCategory[] {
+  const categories = Array.from(categoryToSelectors.entries())
+    .filter(([, selectors]) => selectors.size > 0)
+    .map(([category, selectors]) => ({
+      category,
+      selectors: Array.from(selectors.values()).sort(),
+    }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+  return categories;
 }

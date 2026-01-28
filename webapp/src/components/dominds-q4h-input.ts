@@ -30,9 +30,16 @@ interface Q4HInputProps {
   maxLength?: number;
 }
 
+const RESIZE_HANDLE_ARIA_LABEL_I18N = {
+  zh: '调整输入区高度',
+  en: 'Resize input height',
+} as const;
+
 export class DomindsQ4HInput extends HTMLElement {
   private wsManager = getWebSocketManager();
   private uiLanguage: LanguageCode = 'en';
+
+  private static readonly SEND_ON_ENTER_STORAGE_KEY = 'dominds-send-on-enter';
 
   private questions: Q4HQuestion[] = [];
   private selectedQuestionId: string | null = null;
@@ -47,10 +54,22 @@ export class DomindsQ4HInput extends HTMLElement {
   };
   private currentDialog: DialogIdent | null = null;
   private runState: DialogRunState | null = null;
+  private primaryActionMode: 'send' | 'stop' | 'stopping' = 'send';
 
   private textInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
   private inputWrapper!: HTMLElement;
+
+  private resizeHandle!: HTMLDivElement;
+  private manualHeightPx: number | null = null;
+  private manualResizeMinPx: number = 0;
+  private manualResizeMaxPx: number = 0;
+  private manualResizeStartY: number = 0;
+  private manualResizeStartHeight: number = 0;
+  private isManualResizing: boolean = false;
+  private boundManualMove?: (e: PointerEvent) => void;
+  private boundManualUp?: (e: PointerEvent) => void;
+  private activePointerId: number | null = null;
 
   constructor() {
     super();
@@ -58,9 +77,81 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   connectedCallback(): void {
+    this.restoreSendOnEnterPreference();
     this.render();
     this.setupEventListeners();
     this.updateUI();
+    this.recomputeResizeBounds();
+    this.applyManualHeight();
+    // Ensure initial textarea height is stable (avoid "growing a bit" on first blur).
+    this.scheduleInputUiUpdate();
+  }
+
+  private restoreSendOnEnterPreference(): void {
+    try {
+      const raw = localStorage.getItem(DomindsQ4HInput.SEND_ON_ENTER_STORAGE_KEY);
+      if (raw === '1') {
+        this.sendOnEnter = true;
+      } else if (raw === '0') {
+        this.sendOnEnter = false;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private persistSendOnEnterPreference(): void {
+    try {
+      localStorage.setItem(DomindsQ4HInput.SEND_ON_ENTER_STORAGE_KEY, this.sendOnEnter ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }
+
+  disconnectedCallback(): void {
+    if (this.boundOnWindowResize) {
+      window.removeEventListener('resize', this.boundOnWindowResize);
+    }
+  }
+
+  private boundOnWindowResize = (): void => {
+    this.recomputeResizeBounds();
+    this.applyManualHeight();
+  };
+
+  private recomputeResizeBounds(): void {
+    const lineHeight = this.getMessageInputLineHeightPx();
+    const minLines = 3;
+    const minTextHeight = lineHeight * minLines;
+    const minHost = Math.ceil(minTextHeight + 32 + 24);
+    const maxHost = Math.floor(window.innerHeight * 0.5);
+    this.manualResizeMinPx = Math.max(120, minHost);
+    this.manualResizeMaxPx = Math.max(this.manualResizeMinPx, maxHost);
+  }
+
+  private getMessageInputLineHeightPx(): number {
+    if (!this.textInput) return 20;
+    const computed = window.getComputedStyle(this.textInput);
+    const lh = Number.parseFloat(computed.lineHeight);
+    if (Number.isFinite(lh) && lh > 0) return lh;
+    const fs = Number.parseFloat(computed.fontSize);
+    if (Number.isFinite(fs) && fs > 0) return fs * 1.4;
+    return 20;
+  }
+
+  private applyManualHeight(): void {
+    if (this.manualHeightPx === null) {
+      this.style.height = '';
+      this.style.maxHeight = '';
+      return;
+    }
+    const clamped = Math.max(
+      this.manualResizeMinPx,
+      Math.min(this.manualResizeMaxPx, this.manualHeightPx),
+    );
+    this.manualHeightPx = clamped;
+    this.style.height = `${clamped}px`;
+    this.style.maxHeight = `${clamped}px`;
   }
 
   public setUiLanguage(language: LanguageCode): void {
@@ -78,6 +169,8 @@ export class DomindsQ4HInput extends HTMLElement {
     if (toggle) {
       toggle.title = this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle;
     }
+
+    this.applyPrimaryActionMode();
   }
 
   public setQuestions(questions: Q4HQuestion[]): void {
@@ -145,8 +238,50 @@ export class DomindsQ4HInput extends HTMLElement {
 
   public setRunState(runState: DialogRunState | null): void {
     this.runState = runState;
+    this.applyPrimaryActionMode();
     this.updateSendButton();
-    this.safeRender();
+  }
+
+  private applyPrimaryActionMode(): void {
+    if (!this.sendButton) return;
+    const t = getUiStrings(this.uiLanguage);
+    const state = this.runState;
+    const nextMode: 'send' | 'stop' | 'stopping' =
+      state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')
+        ? state.kind === 'proceeding_stop_requested'
+          ? 'stopping'
+          : 'stop'
+        : 'send';
+
+    if (nextMode === this.primaryActionMode) {
+      const title = nextMode === 'send' ? t.send : nextMode === 'stop' ? t.stop : t.stopping;
+      this.sendButton.title = title;
+      this.sendButton.setAttribute('aria-label', title);
+      return;
+    }
+
+    this.primaryActionMode = nextMode;
+    const title = nextMode === 'send' ? t.send : nextMode === 'stop' ? t.stop : t.stopping;
+    this.sendButton.title = title;
+    this.sendButton.setAttribute('aria-label', title);
+
+    this.sendButton.classList.toggle('stop', nextMode !== 'send');
+
+    if (nextMode === 'send') {
+      this.sendButton.innerHTML = `
+        <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      `;
+    } else {
+      this.sendButton.innerHTML = `
+        <svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+        </svg>
+      `;
+    }
   }
 
   public setDisabled(disabled: boolean): void {
@@ -179,6 +314,32 @@ export class DomindsQ4HInput extends HTMLElement {
       this.textInput.value = value;
       this.updateSendButton();
     }
+  }
+
+  public insertPromptTemplate(content: string): void {
+    if (!this.textInput) return;
+    const template = typeof content === 'string' ? content : '';
+    if (template.trim() === '') return;
+
+    const textarea = this.textInput;
+    const value = textarea.value;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+
+    const needsPrefix = before.trim().length > 0 && !/\s$/.test(before);
+    const needsSuffix = after.trim().length > 0 && !/^\s/.test(after);
+    const prefix = needsPrefix ? '\n\n' : '';
+    const suffix = needsSuffix ? '\n\n' : '';
+
+    const inserted = `${prefix}${template}${suffix}`;
+    textarea.value = `${before}${inserted}${after}`;
+
+    const nextPos = before.length + inserted.length;
+    textarea.setSelectionRange(nextPos, nextPos);
+    this.updateSendButton();
+    this.scheduleInputUiUpdate();
   }
 
   private safeRender(): void {
@@ -225,8 +386,9 @@ export class DomindsQ4HInput extends HTMLElement {
     if (!this.textInput) return;
     this.textInput.style.height = 'auto';
     const scrollHeight = this.textInput.scrollHeight;
-    const minHeight = 48;
-    const maxHeight = 120;
+    const lineHeight = this.getMessageInputLineHeightPx();
+    const minHeight = Math.ceil(lineHeight * 3);
+    const maxHeight = Math.ceil(lineHeight * 20);
     this.textInput.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
   }
 
@@ -235,7 +397,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.inputUiRafId = window.requestAnimationFrame(() => {
       this.inputUiRafId = null;
       this.updateSendButton();
-      if (!this.isComposing) {
+      if (!this.isComposing && this.manualHeightPx === null) {
         this.autoResizeTextarea();
       }
     });
@@ -263,6 +425,9 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private setupEventListeners(): void {
     if (!this.shadowRoot) return;
+
+    window.removeEventListener('resize', this.boundOnWindowResize);
+    window.addEventListener('resize', this.boundOnWindowResize);
 
     if (this.textInput) {
       this.isComposing = false;
@@ -342,6 +507,7 @@ export class DomindsQ4HInput extends HTMLElement {
     if (toggleBtn) {
       toggleBtn.addEventListener('click', () => {
         this.sendOnEnter = !this.sendOnEnter;
+        this.persistSendOnEnterPreference();
         this.safeRender();
         this.focusInput();
       });
@@ -350,6 +516,56 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.sendButton) {
       this.sendButton.addEventListener('click', () => {
         void this.handlePrimaryAction();
+      });
+    }
+
+    if (this.resizeHandle) {
+      this.resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.recomputeResizeBounds();
+        if (this.textInput) {
+          // Clear any inline height set by auto-resize so the textarea can stretch.
+          this.textInput.style.height = '';
+        }
+        const current = this.getBoundingClientRect().height;
+        const startHeight = this.manualHeightPx ?? current;
+        this.manualResizeStartHeight = startHeight;
+        this.manualResizeStartY = e.clientY;
+        this.isManualResizing = true;
+        this.activePointerId = e.pointerId;
+        this.manualHeightPx = startHeight;
+        this.applyManualHeight();
+
+        this.resizeHandle.setPointerCapture(e.pointerId);
+
+        this.boundManualMove = (evt: PointerEvent) => {
+          if (!this.isManualResizing) return;
+          const delta = evt.clientY - this.manualResizeStartY;
+          const next = this.manualResizeStartHeight - delta;
+          this.manualHeightPx = next;
+          this.applyManualHeight();
+        };
+        this.boundManualUp = () => {
+          this.isManualResizing = false;
+          if (this.activePointerId !== null) {
+            try {
+              this.resizeHandle.releasePointerCapture(this.activePointerId);
+            } catch {
+              // ignore
+            }
+          }
+          this.activePointerId = null;
+          if (this.boundManualMove) {
+            this.resizeHandle.removeEventListener('pointermove', this.boundManualMove);
+          }
+          this.boundManualMove = undefined;
+          this.boundManualUp = undefined;
+        };
+
+        this.resizeHandle.addEventListener('pointermove', this.boundManualMove);
+        this.resizeHandle.addEventListener('pointerup', this.boundManualUp, { once: true });
+        this.resizeHandle.addEventListener('pointercancel', this.boundManualUp, { once: true });
       });
     }
   }
@@ -460,10 +676,13 @@ export class DomindsQ4HInput extends HTMLElement {
 
     const state = this.runState;
     if (state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')) {
+      this.applyPrimaryActionMode();
       const canStop = !this.props.disabled && !!this.currentDialog;
       this.sendButton.disabled = state.kind === 'proceeding_stop_requested' || !canStop;
       return;
     }
+
+    this.applyPrimaryActionMode();
 
     const blocked = this.isBlockedByContextHealthCritical();
     const hasContent = this.textInput.value.trim().length > 0;
@@ -518,6 +737,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.textInput = this.shadowRoot.querySelector('.message-input')!;
     this.sendButton = this.shadowRoot.querySelector('.send-button')!;
     this.inputWrapper = this.shadowRoot.querySelector('.input-wrapper')!;
+    this.resizeHandle = this.shadowRoot.querySelector('.input-resize-handle')!;
   }
 
   private getComponentHTML(): string {
@@ -532,6 +752,7 @@ export class DomindsQ4HInput extends HTMLElement {
     return `
       <div class="q4h-input-container">
         <div class="input-section">
+          <div class="input-resize-handle" role="separator" aria-orientation="horizontal" aria-label="${RESIZE_HANDLE_ARIA_LABEL_I18N[this.uiLanguage]}"></div>
           <div class="input-wrapper ${this.selectedQuestionId !== null ? 'q4h-active' : ''} ${this.props.disabled ? 'disabled' : ''}">
             <textarea
               class="message-input"
@@ -575,6 +796,7 @@ export class DomindsQ4HInput extends HTMLElement {
         flex-direction: column;
         width: 100%;
         min-height: 0;
+        max-height: 50vh;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         color-scheme: inherit;
       }
@@ -591,8 +813,43 @@ export class DomindsQ4HInput extends HTMLElement {
         box-sizing: border-box;
       }
 
+      .input-resize-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 16px;
+        cursor: ns-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        z-index: 2;
+      }
+
+      .input-resize-handle::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+      }
+
+      .input-resize-handle::before {
+        content: '';
+        width: 44px;
+        height: 3px;
+        border-radius: 999px;
+        background: var(--dominds-border, #e0e0e0);
+      }
+
+      .input-resize-handle:hover::before {
+        background: var(--dominds-primary, #007acc);
+      }
+
       .input-section {
-        flex: none;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
         border-top: 1px solid var(--color-border-primary, #e2e8f0);
         padding: 16px;
         background: inherit;
@@ -602,7 +859,9 @@ export class DomindsQ4HInput extends HTMLElement {
 
       .input-wrapper {
         display: flex;
-        align-items: flex-end;
+        align-items: stretch;
+        flex: 1;
+        min-height: 0;
         gap: 8px;
         background: var(--dominds-input-bg, #f8f9fa);
         border: 2px solid var(--dominds-border, #e0e0e0);
@@ -617,6 +876,7 @@ export class DomindsQ4HInput extends HTMLElement {
         flex-direction: column;
         align-items: center;
         gap: 8px;
+        align-self: flex-end;
         padding-bottom: 8px;
       }
 
@@ -681,10 +941,8 @@ export class DomindsQ4HInput extends HTMLElement {
         color: var(--dominds-fg, #333333);
         resize: none;
         min-height: 48px;
-        max-height: 120px;
         font-family: inherit;
         white-space: pre-wrap;
-        height: auto;
         overflow-y: auto;
       }
 

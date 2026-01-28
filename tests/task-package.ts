@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import type { DialogStore } from '../main/dialog';
 import { RootDialog } from '../main/dialog';
+import type { Team } from '../main/team';
+import { recallTaskdocTool } from '../main/tools/ctrl';
 import { readTaskPackageSections, updateTaskPackageSection } from '../main/utils/task-package';
 import { formatTaskDocContent } from '../main/utils/taskdoc';
 
@@ -115,6 +117,23 @@ async function main(): Promise<void> {
     assert.ok(!msg3.content.includes('NO\n'));
     assert.ok(msg3.content.indexOf('## Constraints') < msg3.content.indexOf('## Bear In Mind'));
     assert.ok(msg3.content.indexOf('## Bear In Mind') < msg3.content.indexOf('## Progress'));
+
+    // 4) Extra categories are not auto-injected as content, but should appear as an index entry,
+    // and should be readable via `recall_taskdoc`.
+    await fs.mkdir(path.join(taskDir, 'ux'), { recursive: true });
+    await fs.writeFile(path.join(taskDir, 'ux', 'checklist.md'), 'UX\n', 'utf-8');
+
+    const msg4 = await formatTaskDocContent(dlg);
+    assert.ok(typeof msg4.content === 'string');
+    assert.ok(msg4.content.includes('**Extra sections index'));
+    assert.ok(msg4.content.includes('`ux/checklist.md`'));
+
+    const recall = await recallTaskdocTool.call(dlg, {} as unknown as Team.Member, {
+      category: 'ux',
+      selector: 'checklist',
+    });
+    assert.ok(recall.includes('`ux/checklist.md`'));
+    assert.ok(recall.includes('UX\n'));
 
     console.log('✅ task-package tests passed');
   } finally {

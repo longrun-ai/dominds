@@ -88,7 +88,29 @@ export type UiStrings = {
 
   keepGoingTabTitle: string;
   keepGoingWorkspaceNote: string;
+  keepGoingToggleAriaLabel: string;
+  keepGoingReloadTitle: string;
+  keepGoingSaveTitle: string;
+  keepGoingOverwriteConfirm: string;
+  teamMgmtManualTabTitle: string;
+  promptTemplatesTabTitle: string;
   domindsDocsTabTitle: string;
+  teamMgmtTopicsTitle: string;
+  teamMgmtLoadFailed: string;
+
+  promptTemplatesBuiltinTitle: string;
+  promptTemplatesWorkspaceTitle: string;
+  promptTemplatesInsert: string;
+  promptTemplatesNewTitle: string;
+  promptTemplatesEditorTitle: string;
+  promptTemplatesFileNameLabel: string;
+  promptTemplatesNameLabel: string;
+  promptTemplatesDescriptionLabel: string;
+  promptTemplatesContentLabel: string;
+  promptTemplatesSave: string;
+  promptTemplatesSaveFailed: string;
+  promptTemplatesLoadFailed: string;
+  unauthorized: string;
   save: string;
   send: string;
   stop: string;
@@ -310,8 +332,31 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
 
       keepGoingTabTitle: '鞭策',
-      keepGoingWorkspaceNote: '编辑鞭策提示会影响整个工作区（rtws）。保存需要二次确认。',
+      keepGoingWorkspaceNote: '注意：修改鞭策语是全工作区（rtws）生效！',
+      keepGoingToggleAriaLabel: '启用鞭策（取消勾选=禁用）',
+      keepGoingReloadTitle: '加载最新鞭策语',
+      keepGoingSaveTitle: '保存到工作区',
+      keepGoingOverwriteConfirm: '将覆盖工作区鞭策语，确认保存？',
+      teamMgmtManualTabTitle: '团队管理手册',
+      promptTemplatesTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
+
+      teamMgmtTopicsTitle: '主题',
+      teamMgmtLoadFailed: '加载团队管理手册失败',
+
+      promptTemplatesBuiltinTitle: '内置模板',
+      promptTemplatesWorkspaceTitle: '工作区模板（.minds/prompts/）',
+      promptTemplatesInsert: '插入',
+      promptTemplatesNewTitle: '新增模板',
+      promptTemplatesEditorTitle: '预览/编辑',
+      promptTemplatesFileNameLabel: '文件名（可选）',
+      promptTemplatesNameLabel: '名称',
+      promptTemplatesDescriptionLabel: '描述（可选）',
+      promptTemplatesContentLabel: '内容',
+      promptTemplatesSave: '保存',
+      promptTemplatesSaveFailed: '保存提示词模板失败',
+      promptTemplatesLoadFailed: '加载提示词模板失败',
+      unauthorized: '未认证',
       save: '保存',
       send: '发送',
       stop: '停止',
@@ -450,7 +495,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     logoGitHubTitle: 'Open Dominds on GitHub (new window)',
     backendWorkspaceTitle: 'Backend Runtime Workspace',
     backendWorkspaceLoading: 'Loading...',
-    loading: 'Loading...',
+    loading: 'Loading…',
     uiLanguageSelectTitle: 'UI language (also used to prompt agent replies)',
     themeToggleTitle: 'Switch theme',
     problemsButtonTitle: 'Problems',
@@ -535,8 +580,31 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
     keepGoingTabTitle: 'Keep-going',
     keepGoingWorkspaceNote:
-      'Editing the keep-going prompt affects the entire workspace (rtws). Saving requires confirmation.',
+      'Note: editing the keep-going prompt affects the entire workspace (rtws)!',
+    keepGoingToggleAriaLabel: 'Enable keep-going (uncheck to disable)',
+    keepGoingReloadTitle: 'Load latest keep-going prompt',
+    keepGoingSaveTitle: 'Save to workspace',
+    keepGoingOverwriteConfirm: 'This will overwrite the workspace keep-going prompt. Save anyway?',
+    teamMgmtManualTabTitle: 'Team Manual',
+    promptTemplatesTabTitle: 'Prompt Templates',
     domindsDocsTabTitle: 'Dominds Docs',
+
+    teamMgmtTopicsTitle: 'Topics',
+    teamMgmtLoadFailed: 'Failed to load team manual',
+
+    promptTemplatesBuiltinTitle: 'Built-in Templates',
+    promptTemplatesWorkspaceTitle: 'Workspace Templates (.minds/prompts/)',
+    promptTemplatesInsert: 'Insert',
+    promptTemplatesNewTitle: 'New Template',
+    promptTemplatesEditorTitle: 'Preview/Edit',
+    promptTemplatesFileNameLabel: 'File name (optional)',
+    promptTemplatesNameLabel: 'Name',
+    promptTemplatesDescriptionLabel: 'Description (optional)',
+    promptTemplatesContentLabel: 'Content',
+    promptTemplatesSave: 'Save',
+    promptTemplatesSaveFailed: 'Failed to save prompt template',
+    promptTemplatesLoadFailed: 'Failed to load prompt templates',
+    unauthorized: 'Unauthorized',
     save: 'Save',
     send: 'Send',
     stop: 'Stop',

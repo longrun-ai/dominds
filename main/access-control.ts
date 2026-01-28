@@ -273,14 +273,20 @@ export function getAccessDeniedMessage(
     if (language === 'zh') {
       lines.push(`- 说明：\`*.tsk/\` 是封装差遣牒。通用文件工具不得读/写/列目录/删除其中内容。`);
       lines.push(
-        `- 提示：使用函数工具 \`change_mind\` 更新差遣牒分段，例如：\`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\`。`,
+        `- 提示：写入/更新请使用函数工具 \`change_mind\`（顶层：\`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\"})\`；额外章节：\`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`）。`,
+      );
+      lines.push(
+        `- 提示：读取额外章节请使用函数工具 \`recall_taskdoc\`：\`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\`。`,
       );
     } else {
       lines.push(
         `- Note: \`*.tsk/\` is an encapsulated Taskdoc. General file tools must not read/write/list/delete it.`,
       );
       lines.push(
-        `- Hint: Use the function tool \`change_mind\` to update task sections, e.g. \`change_mind({\"selector\":\"goals\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"constraints\",\"content\":\"...\"})\` / \`change_mind({\"selector\":\"progress\",\"content\":\"...\"})\`.`,
+        `- Hint: For updates, use the function tool \`change_mind\` (top-level: \`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\"})\`; extra sections: \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`).`,
+      );
+      lines.push(
+        `- Hint: To read extra sections, use \`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\`.`,
       );
     }
   }

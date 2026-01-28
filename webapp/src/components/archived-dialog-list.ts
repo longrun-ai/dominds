@@ -447,7 +447,7 @@ export class ArchivedDialogList extends HTMLElement {
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
     const dialogId = dialog.selfId ?? dialog.rootId;
     const updatedAt = dialog.lastModified || '';
-    const topicMark = dialog.topicId ?? '';
+    const tellaskSessionMark = dialog.tellaskSession ?? '';
 
     return `
       <div
@@ -458,7 +458,7 @@ export class ArchivedDialogList extends HTMLElement {
         <div class="dialog-row dialog-subrow">
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
-            <span class="dialog-topic">${topicMark}</span>
+            <span class="dialog-topic">${tellaskSessionMark}</span>
           </span>
         </div>
         <div class="dialog-row dialog-submeta">
@@ -685,7 +685,7 @@ export class ArchivedDialogList extends HTMLElement {
       agentName: '',
       taskDocPath: dialog.taskDocPath,
       supdialogId: dialog.supdialogId,
-      topicId: dialog.topicId,
+      tellaskSession: dialog.tellaskSession,
     };
 
     this.props.onSelect(dialogInfo);

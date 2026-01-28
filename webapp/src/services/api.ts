@@ -20,6 +20,14 @@ import {
   ToolsetInfo,
 } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
+import type {
+  PromptCatalogResponse,
+  PromptTemplatesResponse,
+  SaveWorkspacePromptTemplateRequest,
+  SaveWorkspacePromptTemplateResponse,
+  TeamMgmtManualRequest,
+  TeamMgmtManualResponse,
+} from '../shared/types/prompts';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 export interface FrontendTeamMember {
@@ -54,6 +62,7 @@ export type DiligenceFileResponse = {
   success: boolean;
   path: string;
   raw: string;
+  source?: 'builtin' | 'workspace';
   error?: string;
 };
 
@@ -160,7 +169,8 @@ export class ApiClient {
         throw timeoutError;
       }
 
-      const apiError = error as ApiError;
+      const apiError: ApiError =
+        error instanceof Error ? (error as ApiError) : (new Error('Unknown error') as ApiError);
       console.error(`API request failed: ${method} ${url}`, apiError);
 
       return {
@@ -453,9 +463,32 @@ export class ApiClient {
   }
 
   async readDocsMarkdown(name: string, lang: LanguageCode): Promise<ApiResponse<DocsReadResponse>> {
+    const normalized = name.endsWith('.md') ? name.slice(0, -'.md'.length) : name;
     return this.request(
-      `/api/docs/read?name=${encodeURIComponent(name)}&lang=${encodeURIComponent(lang)}`,
+      `/api/docs/read?name=${encodeURIComponent(normalized)}&lang=${encodeURIComponent(lang)}`,
     );
+  }
+
+  async getBuiltinPromptTemplates(): Promise<ApiResponse<PromptTemplatesResponse>> {
+    return this.request('/api/prompts/builtin');
+  }
+
+  async getWorkspacePromptTemplates(): Promise<ApiResponse<PromptTemplatesResponse>> {
+    return this.request('/api/prompts/workspace');
+  }
+
+  async getPromptCatalog(): Promise<ApiResponse<PromptCatalogResponse>> {
+    return this.request('/api/prompts/catalog');
+  }
+
+  async saveWorkspacePromptTemplate(
+    req: SaveWorkspacePromptTemplateRequest,
+  ): Promise<ApiResponse<SaveWorkspacePromptTemplateResponse>> {
+    return this.request('/api/prompts/workspace', { method: 'POST', body: req });
+  }
+
+  async teamMgmtManual(req: TeamMgmtManualRequest): Promise<ApiResponse<TeamMgmtManualResponse>> {
+    return this.request('/api/team-mgmt/manual', { method: 'POST', body: req });
   }
 
   /**

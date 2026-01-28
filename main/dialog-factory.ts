@@ -41,7 +41,7 @@ export class DialogFactory {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      topicId?: string;
+      tellaskSession?: string;
     },
     initialState?: DialogInitParams['initialState'],
   ): SubDialog {
@@ -61,7 +61,7 @@ export class DialogFactory {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
       },
-      options.topicId,
+      options.tellaskSession,
       initialState,
     );
   }

@@ -21,6 +21,7 @@ import {
   changeMindTool,
   clearMindTool,
   deleteReminderTool,
+  recallTaskdocTool,
   updateReminderTool,
 } from '../tools/ctrl';
 import { getToolsetPromptI18n } from '../tools/registry';
@@ -300,6 +301,7 @@ export async function loadAgentMinds(
     deleteReminderTool,
     updateReminderTool,
     clearMindTool,
+    recallTaskdocTool,
   ];
   // change_mind is only available in main dialogs (not subdialogs).
   if (dialog === undefined || dialog.supdialog === undefined) {

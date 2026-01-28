@@ -21,8 +21,8 @@ async function main(): Promise<void> {
   assert.ok(zh.includes('提醒项'), 'zh guide should mention reminders as “提醒项”');
   assert.ok(zh.includes('新一轮/新回合'), 'zh guide should use “新一轮/新回合” phrasing');
   assert.ok(
-    zh.includes('本轮之后还剩 4 轮'),
-    'zh guide should include countdown number (4) in copy',
+    zh.includes('最多再提醒你 4 次'),
+    'zh guide should include reminder countdown number (4) in copy',
   );
   assert.ok(!zh.includes('轮次'), 'zh guide should avoid “轮次”');
 
@@ -32,10 +32,10 @@ async function main(): Promise<void> {
     promptsRemainingAfterThis: 0,
     promptsTotal: 5,
   });
-  assert.ok(en.includes('Countdown:'), 'en guide should mention Countdown');
+  assert.ok(en.includes('Context state: 🔴 critical'), 'en guide should include critical headline');
   assert.ok(
-    en.includes('0 turns remaining after this'),
-    'en guide should include countdown number (0)',
+    en.includes('at most 0 more time'),
+    'en guide should include reminder countdown number (0)',
   );
 
   console.log('OK');

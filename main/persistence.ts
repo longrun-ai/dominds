@@ -113,7 +113,7 @@ function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFi
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
   if (value.supdialogId !== undefined) return false;
-  if (value.topicId !== undefined) return false;
+  if (value.tellaskSession !== undefined) return false;
   if (value.assignmentFromSup !== undefined) return false;
   return true;
 }
@@ -125,7 +125,7 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
   if (typeof value.supdialogId !== 'string') return false;
-  if (value.topicId !== undefined && typeof value.topicId !== 'string') return false;
+  if (value.tellaskSession !== undefined && typeof value.tellaskSession !== 'string') return false;
   if (!isAssignmentFromSup(value.assignmentFromSup)) return false;
   return true;
 }
@@ -213,7 +213,7 @@ export class DiskFileDialogStore extends DialogStore {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      topicId?: string;
+      tellaskSession?: string;
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
@@ -235,7 +235,7 @@ export class DiskFileDialogStore extends DialogStore {
         callerDialogId: options.callerDialogId,
         callId: options.callId,
       },
-      options.topicId,
+      options.tellaskSession,
     );
 
     // Initial subdialog user prompt is now persisted at first drive (driver.ts)
@@ -248,7 +248,7 @@ export class DiskFileDialogStore extends DialogStore {
       taskDocPath: supdialog.taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
       supdialogId: supdialog.id.selfId,
-      topicId: options.topicId,
+      tellaskSession: options.tellaskSession,
       assignmentFromSup: {
         headLine,
         callBody,
@@ -939,7 +939,7 @@ export class DiskFileDialogStore extends DialogStore {
       headLine: record.headLine,
       targetAgentId: record.targetAgentId,
       callType: record.callType,
-      topicId: record.topicId,
+      tellaskSession: record.tellaskSession,
     }));
   }
 
@@ -949,7 +949,7 @@ export class DiskFileDialogStore extends DialogStore {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      topicId?: string;
+      tellaskSession?: string;
     }>,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
@@ -963,11 +963,11 @@ export class DiskFileDialogStore extends DialogStore {
     const entries = await DialogPersistence.loadSubdialogRegistry(rootDialog.id, status);
 
     for (const entry of entries) {
-      if (!entry.topicId) continue;
+      if (!entry.tellaskSession) continue;
 
       const existing = rootDialog.lookupDialog(entry.subdialogId.selfId);
       if (existing) {
-        if (existing instanceof SubDialog && existing.topicId) {
+        if (existing instanceof SubDialog && existing.tellaskSession) {
           rootDialog.registerSubdialog(existing);
         }
         continue;
@@ -987,7 +987,7 @@ export class DiskFileDialogStore extends DialogStore {
         new DialogID(entry.subdialogId.selfId, rootDialog.id.rootId),
         subdialogState.metadata.agentId,
         assignmentFromSup,
-        entry.topicId,
+        entry.tellaskSession,
         {
           messages: subdialogState.messages,
           reminders: subdialogState.reminders,
@@ -2546,7 +2546,7 @@ export class DialogPersistence {
       headLine: string;
       targetAgentId: string;
       callType: 'A' | 'B' | 'C';
-      topicId?: string;
+      tellaskSession?: string;
     }>,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
@@ -2578,7 +2578,7 @@ export class DialogPersistence {
       headLine: string;
       targetAgentId: string;
       callType: 'A' | 'B' | 'C';
-      topicId?: string;
+      tellaskSession?: string;
     }>
   > {
     try {
@@ -3818,7 +3818,7 @@ export class DialogPersistence {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      topicId?: string;
+      tellaskSession?: string;
     }>,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
@@ -3832,7 +3832,7 @@ export class DialogPersistence {
         key: entry.key,
         subdialogId: entry.subdialogId.selfId,
         agentId: entry.agentId,
-        topicId: entry.topicId,
+        tellaskSession: entry.tellaskSession,
       }));
 
       const tempFile = registryFilePath + '.tmp';
@@ -3856,7 +3856,7 @@ export class DialogPersistence {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      topicId?: string;
+      tellaskSession?: string;
     }>
   > {
     try {
@@ -3879,7 +3879,7 @@ export class DialogPersistence {
           key: entry.key as string,
           subdialogId: new DialogID(entry.subdialogId as string, rootDialogId.rootId),
           agentId: entry.agentId as string,
-          topicId: entry.topicId as string | undefined,
+          tellaskSession: entry.tellaskSession as string | undefined,
         };
       });
 

@@ -10,6 +10,11 @@ export default defineConfig({
     host: '127.0.0.1',
     strictPort: true, // Force port 5555, no alternative ports
     open: false,
+    fs: {
+      // Allow importing small shared TS modules from the Dominds monorepo (e.g. `../main/shared/*`).
+      // This keeps certain “shared constants” as a single source of truth across backend + frontend.
+      allow: [path.resolve(__dirname, '..')],
+    },
     hmr: {
       overlay: true,
     },
