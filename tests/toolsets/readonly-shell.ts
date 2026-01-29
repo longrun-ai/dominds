@@ -100,6 +100,39 @@ async function main(): Promise<void> {
     assertNotIncludes(outAwk, '❌ readonly_shell', 'Expected awk to be accepted');
   });
 
+  await runTest('allows git -C relative status', async () => {
+    const out = await readonlyShellTool.call(dlg, caller, {
+      command: 'git -C dominds status --porcelain',
+      timeout_ms: 2_000,
+    });
+    assertNotIncludes(out, '❌ readonly_shell', 'Expected git -C <relative> status to be accepted');
+  });
+
+  await runTest('rejects git -C absolute path', async () => {
+    const out = await readonlyShellTool.call(dlg, caller, {
+      command: 'git -C / status',
+      timeout_ms: 2_000,
+    });
+    assertIncludes(out, '❌ readonly_shell', 'Expected absolute -C path to be rejected');
+    assertIncludes(out, 'git -C <relative-path>', 'Expected hint about git -C usage');
+  });
+
+  await runTest('allows cd && chain inside rtws', async () => {
+    const out = await readonlyShellTool.call(dlg, caller, {
+      command: 'cd dominds && git status --porcelain',
+      timeout_ms: 2_000,
+    });
+    assertNotIncludes(out, '❌ readonly_shell', 'Expected cd && chain to be accepted');
+  });
+
+  await runTest('rejects cd with parent traversal', async () => {
+    const out = await readonlyShellTool.call(dlg, caller, {
+      command: 'cd .. && ls',
+      timeout_ms: 2_000,
+    });
+    assertIncludes(out, '❌ readonly_shell', 'Expected cd .. to be rejected');
+  });
+
   await runTest('deny message allowlist mentions find', async () => {
     const out = await readonlyShellTool.call(dlg, caller, {
       command: 'ps aux',

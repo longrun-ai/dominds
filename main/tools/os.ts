@@ -417,7 +417,7 @@ const readonlyShellSchema: JsonSchema = {
     command: {
       type: 'string',
       description:
-        'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq)',
+        'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq; also allows: git -C <relative-path> <show|status|diff|log|blame> ...; also allows: cd <relative-path> && <allowed command...> (or ||))',
     },
     timeout_ms: {
       type: 'number',
@@ -764,6 +764,48 @@ const readonlyShellAllowedPrefixes = [
 
 function isAllowedReadonlyShellCommand(command: string): boolean {
   const trimmed = command.trimStart();
+  return isAllowedReadonlyShellCommandInternal(trimmed, 0);
+}
+
+function isAllowedReadonlyShellCommandInternal(command: string, depth: number): boolean {
+  if (depth > 8) return false;
+  const trimmed = command.trimStart();
+
+  if (trimmed.startsWith('cd ')) {
+    const parsed = parseCdChain(trimmed);
+    if (!parsed) return false;
+
+    const dir = parsed.dir.replace(/^["']|["']$/g, '');
+    if (!isSafeRelativePath(dir)) return false;
+
+    return isAllowedReadonlyShellCommandInternal(parsed.rest, depth + 1);
+  }
+
+  if (trimmed.startsWith('git -C ')) {
+    // Allow a narrow, read-only subset of `git -C <dir> <subcommand> ...` as long as <dir> looks
+    // like a safe *relative* path (no absolute paths / parent traversal). This avoids accidentally
+    // inspecting outside the rtws with `git -C /...`.
+    const tokens = trimmed.split(/\s+/g);
+    // Expected: git -C <dir> <subcommand> ...
+    if (tokens.length >= 4 && tokens[0] === 'git' && tokens[1] === '-C') {
+      const dirRaw = tokens[2] ?? '';
+      const dir = dirRaw.replace(/^["']|["']$/g, '');
+      const subcommand = tokens[3] ?? '';
+
+      if (isSafeRelativePath(dir)) {
+        if (
+          subcommand === 'show' ||
+          subcommand === 'status' ||
+          subcommand === 'diff' ||
+          subcommand === 'log' ||
+          subcommand === 'blame'
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
   for (const prefix of readonlyShellAllowedPrefixes) {
     if (trimmed === prefix || trimmed.startsWith(`${prefix} `)) {
       return true;
@@ -772,14 +814,58 @@ function isAllowedReadonlyShellCommand(command: string): boolean {
   return false;
 }
 
+function isSafeRelativePath(dir: string): boolean {
+  const hasParentTraversal = /(^|[\\/])\.\.([\\/]|$)/.test(dir);
+  const isAbsoluteOrHome =
+    dir.startsWith('/') ||
+    dir.startsWith('~') ||
+    /^[A-Za-z]:[\\/]/.test(dir) ||
+    dir.startsWith('\\\\');
+  return !isAbsoluteOrHome && !hasParentTraversal && dir.trim() !== '';
+}
+
+function parseCdChain(command: string): Readonly<{ dir: string; rest: string }> | null {
+  // Supports: cd <dir> && <rest>   or   cd <dir> || <rest>
+  // `<dir>` may be single/double-quoted; `<rest>` must be non-empty.
+  if (!command.startsWith('cd ')) return null;
+
+  let i = 2;
+  while (i < command.length && /\s/.test(command[i] ?? '')) i++;
+  if (i >= command.length) return null;
+
+  const start = i;
+  const first = command[i] ?? '';
+  if (first === '"' || first === "'") {
+    const quote = first;
+    i++;
+    while (i < command.length && command[i] !== quote) i++;
+    if (i >= command.length) return null;
+    i++; // consume closing quote
+  } else {
+    while (i < command.length && !/\s/.test(command[i] ?? '')) i++;
+  }
+
+  const dir = command.slice(start, i).trim();
+  if (dir === '') return null;
+
+  while (i < command.length && /\s/.test(command[i] ?? '')) i++;
+  const op = command.slice(i, i + 2);
+  if (op !== '&&' && op !== '||') return null;
+  i += 2;
+  while (i < command.length && /\s/.test(command[i] ?? '')) i++;
+  const rest = command.slice(i).trimStart();
+  if (rest === '') return null;
+  return { dir, rest };
+}
+
 export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
   description:
-    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq). Commands outside the allowlist are rejected.',
+    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Commands outside the allowlist are rejected.',
   descriptionI18n: {
-    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq). You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
-    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、head、tail、stat、file、uname、whoami、id、echo、pwd、which、date、diff、realpath、readlink、printf、cut、sort、uniq、tr、awk、shasum、sha256sum、md5sum、uuid、git show、git status、git diff、git log、git blame、find、tree、jq）。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
+    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
+    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、head、tail、stat、file、uname、whoami、id、echo、pwd、which、date、diff、realpath、readlink、printf、cut、sort、uniq、tr、awk、shasum、sha256sum、md5sum、uuid、git show、git status、git diff、git log、git blame、find、tree、jq；另支持：git -C <相对路径> <show|status|diff|log|blame> ...；另支持：cd <相对路径> && <允许命令...>（或 ||））。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
@@ -797,8 +883,8 @@ export const readonlyShellTool: FuncTool = {
     if (!isAllowedReadonlyShellCommand(command)) {
       const allowedList = readonlyShellAllowedPrefixes.join(', ');
       return language === 'zh'
-        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n收到：${command}`
-        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nGot: ${command}`;
+        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n收到：${command}`
+        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nGot: ${command}`;
     }
 
     const stdoutBuffer = new HeadTailByteBuffer(1024 * 1024);
