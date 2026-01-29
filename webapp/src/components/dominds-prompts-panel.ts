@@ -132,9 +132,7 @@ export class DomindsPromptsPanel extends HTMLElement {
       ? p.slice('.minds/prompts/'.length)
       : p.startsWith('snippets/')
         ? p.slice('snippets/'.length)
-        : p.startsWith('main/snippets/')
-          ? p.slice('main/snippets/'.length)
-          : '';
+        : '';
     if (!rel) return '';
 
     const parts = rel.split('/').filter((x) => x !== '');

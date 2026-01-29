@@ -1,6 +1,6 @@
 {
   "name": "dominds",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "in-tree developer team with self-improving mindsets",
   "type": "commonjs",
   "private": false,
@@ -19,6 +19,7 @@
     "test": "echo 'Dominds backend: Use lint:types for type checking.'",
     "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "prepare": "pnpm run build:deps",
+    "prepublishOnly": "pnpm run build",
     "build": "pnpm run build:deps && pnpm run build:backend && pnpm run build:frontend",
     "clean": "rm -rf ./dist",
     "lint": "pnpm run lint:types && pnpm run format:check",
@@ -26,7 +27,7 @@
     "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
     "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
     "build:deps": "pnpm -C codex-auth build",
-    "build:backend": "tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && mkdir -p dist/tools && cp -r main/tools/prompts dist/tools/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null",
+    "build:backend": "tsc -p main/tsconfig.json && mkdir -p dist/llm dist/minds dist/tools dist/snippets dist/docs && cp main/llm/defaults.yaml dist/llm/ && cp -r main/minds/builtin dist/minds/ && cp -r main/tools/prompts dist/tools/ && cp -r snippets/. dist/snippets/ && cp -r docs/. dist/docs/ && chmod +x ./dist/cli.js ./dist/cli/*.js 2>/dev/null",
     "build:frontend": "pnpm -C webapp exec vite build"
   },
   "repository": {

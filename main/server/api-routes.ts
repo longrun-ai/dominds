@@ -406,7 +406,7 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
   }
 
   const serverRoot = path.resolve(__dirname, '..', '..');
-  const docsDir = path.resolve(serverRoot, 'docs');
+  const docsDir = path.resolve(serverRoot, 'dist', 'docs');
 
   const ext = '.md';
   const stem = name.endsWith(ext) ? name.slice(0, -ext.length) : name;
@@ -416,7 +416,17 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
 
   const candidates = candidateLocalized ? [candidateLocalized, basePath] : [basePath];
 
-  for (const filePath of candidates) {
+  // Back-compat/dev fallback: source tree may exist in development runs.
+  // In published builds we expect docs to live under dist/docs.
+  const docsDirFallback = path.resolve(serverRoot, 'docs');
+  const basePathFallback = path.resolve(docsDirFallback, `${stem}${ext}`);
+  const candidateLocalizedFallback =
+    parsedLang === null ? null : path.resolve(docsDirFallback, `${stem}.${parsedLang}${ext}`);
+  const candidatesFallback = candidateLocalizedFallback
+    ? [candidateLocalizedFallback, basePathFallback]
+    : [basePathFallback];
+
+  for (const filePath of [...candidates, ...candidatesFallback]) {
     try {
       const raw = await fsPromises.readFile(filePath, 'utf-8');
       respondJson(res, 200, { success: true, name: stem, path: filePath, raw });

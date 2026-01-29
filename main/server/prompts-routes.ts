@@ -128,11 +128,14 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
   const workspace = await readWorkspacePromptTemplates();
 
   const serverRoot = path.resolve(__dirname, '..', '..');
-  const builtinCatalogAbs = path.resolve(serverRoot, 'main', 'snippets', 'catalog.yaml');
+  const builtinCatalogAbs = path.resolve(serverRoot, 'dist', 'snippets', 'catalog.yaml');
+  const builtinCatalogFallbackAbs = path.resolve(serverRoot, 'snippets', 'catalog.yaml');
   const rtwsRoot = path.resolve(process.cwd());
   const workspaceCatalogAbs = path.resolve(rtwsRoot, '.minds', 'prompts', 'catalog.yaml');
 
-  const builtinCatalog = await loadCatalogFromPath(builtinCatalogAbs);
+  const builtinCatalog =
+    (await loadCatalogFromPath(builtinCatalogAbs)) ??
+    (await loadCatalogFromPath(builtinCatalogFallbackAbs));
   const workspaceCatalog = await loadCatalogFromPath(workspaceCatalogAbs);
 
   if (!builtinCatalog && !workspaceCatalog) {
@@ -148,9 +151,9 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
   const builtinByToken = new Map<string, PromptTemplate>();
   for (const tpl of builtin) {
     const p = typeof tpl.path === 'string' ? tpl.path : '';
-    if (!p.startsWith('snippets/') && !p.startsWith('main/snippets/')) continue;
+    if (!p.startsWith('snippets/')) continue;
     const noExt = stripLangSuffixFromSnippetId(p);
-    const token = noExt.replace(/^snippets\//, '').replace(/^main\/snippets\//, '');
+    const token = noExt.replace(/^snippets\//, '');
     if (!builtinByToken.has(token)) builtinByToken.set(token, tpl);
   }
 
@@ -334,8 +337,8 @@ async function listMarkdownFilesRecursively(dirAbs: string): Promise<string[]> {
 async function readBuiltinPromptTemplates(): Promise<PromptTemplate[]> {
   const serverRoot = path.resolve(__dirname, '..', '..');
   const candidates = [
-    path.resolve(serverRoot, 'main', 'snippets'),
     path.resolve(serverRoot, 'dist', 'snippets'),
+    path.resolve(serverRoot, 'snippets'),
   ];
   let snippetsDir: string | null = null;
   for (const dir of candidates) {
@@ -368,8 +371,7 @@ async function readBuiltinPromptTemplates(): Promise<PromptTemplate[]> {
         description: parsed.kind === 'parsed' ? parsed.description : undefined,
         content: parsed.kind === 'parsed' ? parsed.body : raw,
         source: 'builtin',
-        path:
-          path.basename(snippetsDir) === 'snippets' ? `snippets/${rel}` : `main/snippets/${rel}`,
+        path: `snippets/${rel}`,
       });
     } catch {
       // ignore unreadable file
