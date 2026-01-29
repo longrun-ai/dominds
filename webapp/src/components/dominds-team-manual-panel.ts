@@ -122,7 +122,6 @@ export class DomindsTeamManualPanel extends HTMLElement {
       <style>${this.getStyles()}</style>
       <div class="wrap">
         <div class="topics">
-          <div class="topics-title">${this.escapeHtml(t.teamMgmtTopicsTitle)}</div>
           <div class="topics-buttons">${topicsHtml}</div>
         </div>
         <div class="body">${bodyHtml}</div>
@@ -171,7 +170,6 @@ export class DomindsTeamManualPanel extends HTMLElement {
       :host{display:flex;flex-direction:column;min-height:0;width:100%;}
       .wrap{display:flex;flex-direction:column;min-height:0;width:100%;}
       .topics{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--color-border-primary,#e2e8f0);background:var(--color-bg-secondary,#f8fafc);}
-      .topics-title{font-size:12px;color:var(--color-fg-tertiary,#64748b);}
       .topics-buttons{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
       .topic{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer;}
       .topic.active{border-color:var(--dominds-primary,#007acc);color:var(--dominds-primary,#007acc);box-shadow:0 0 0 2px color-mix(in srgb, var(--dominds-primary,#007acc) 18%, transparent);}
