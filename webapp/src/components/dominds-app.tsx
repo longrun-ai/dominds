@@ -214,6 +214,7 @@ export class DomindsApp extends HTMLElement {
   private diligencePushLastShown: number | null = null;
   private diligenceRtwsText: string = '';
   private diligenceRtwsDirty: boolean = false;
+  private diligenceRtwsSource: 'builtin' | 'workspace' = 'builtin';
 
   private updateBottomPanelFooterUi(): void {
     const sr = this.shadowRoot;
@@ -3094,10 +3095,13 @@ export class DomindsApp extends HTMLElement {
 	                    <div class="bp-diligence-row">
 	                      <div class="bp-diligence-help">${t.keepGoingWorkspaceNote}</div>
 	                      <button class="icon-button" id="diligence-reload" type="button" title="${t.keepGoingReloadTitle}" aria-label="${t.keepGoingReloadTitle}">
-	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
+	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 16.5a4.5 4.5 0 0 0-1.9-8.7 6 6 0 0 0-11.7 1.7A4 4 0 0 0 4 16.5"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg>
 	                      </button>
 	                      <button class="icon-button" id="diligence-save" type="button" ${this.diligenceRtwsDirty ? '' : 'disabled'} title="${t.keepGoingSaveTitle}" aria-label="${t.keepGoingSaveTitle}">
 	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+	                      </button>
+	                      <button class="icon-button" id="diligence-reset" type="button" title="${t.keepGoingResetTitle}" aria-label="${t.keepGoingResetTitle}">
+	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
 	                      </button>
 	                    </div>
 	                    <textarea id="diligence-textarea" class="bp-textarea" spellcheck="false"></textarea>
@@ -3242,7 +3246,8 @@ export class DomindsApp extends HTMLElement {
 
       const input = this.q4hInput;
       if (!input) {
-        this.showToast('Input not available', 'warning');
+        const t = getUiStrings(this.uiLanguage);
+        this.showToast(t.inputNotAvailableToast, 'warning');
         return;
       }
 
@@ -3846,6 +3851,14 @@ export class DomindsApp extends HTMLElement {
         void this.saveRtwsDiligenceText();
       });
     }
+
+    const diligenceReset = this.shadowRoot.querySelector('#diligence-reset');
+    if (diligenceReset instanceof HTMLButtonElement) {
+      diligenceReset.addEventListener('click', (e) => {
+        e.preventDefault();
+        void this.resetRtwsDiligenceText();
+      });
+    }
   }
 
   private async ensureBottomPanelLoaded(): Promise<void> {
@@ -3895,7 +3908,8 @@ export class DomindsApp extends HTMLElement {
 
   private async toggleDiligenceDisable(): Promise<void> {
     if (!this.currentDialog) {
-      this.showToast('No active dialog', 'warning');
+      const t = getUiStrings(this.uiLanguage);
+      this.showToast(t.noActiveDialogToast, 'warning');
       return;
     }
     const next = !this.disableDiligencePush;
@@ -3925,12 +3939,42 @@ export class DomindsApp extends HTMLElement {
     if (!payload || !payload.success) return;
     const raw = typeof payload.raw === 'string' ? payload.raw : '';
     const fallback = DILIGENCE_FALLBACK_TEXT[this.uiLanguage];
+    this.diligenceRtwsSource = payload.source === 'workspace' ? 'workspace' : 'builtin';
     this.diligenceRtwsText = raw.trim() === '' ? fallback : raw;
     this.diligenceRtwsDirty = false;
     const textarea = this.shadowRoot?.querySelector('#diligence-textarea');
     if (textarea instanceof HTMLTextAreaElement) textarea.value = this.diligenceRtwsText;
     const saveBtn = this.shadowRoot?.querySelector('#diligence-save');
     if (saveBtn instanceof HTMLButtonElement) saveBtn.disabled = true;
+  }
+
+  private async resetRtwsDiligenceText(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
+    const confirmText = this.diligenceRtwsDirty
+      ? t.keepGoingResetConfirmDirty
+      : t.keepGoingResetConfirm;
+    const ok = window.confirm(confirmText);
+    if (!ok) return;
+
+    const resp = await this.apiClient.deleteRtwsDiligence(this.uiLanguage);
+    if (!resp.success) {
+      if (resp.status === 401) {
+        this.onAuthRejected('api');
+        return;
+      }
+      this.showToast(resp.error ?? t.keepGoingResetFailedToast, 'error');
+      return;
+    }
+    const payload = resp.data;
+    if (!payload || !payload.success) {
+      this.showToast(t.keepGoingResetFailedToast, 'error');
+      return;
+    }
+
+    // After deleting workspace overrides, reload to display builtin fallback.
+    this.diligenceRtwsDirty = false;
+    await this.loadRtwsDiligenceText(true);
+    this.showToast(t.keepGoingResetToast, 'info');
   }
 
   private setQ4HPanelExpanded(expanded: boolean): void {
@@ -3953,32 +3997,33 @@ export class DomindsApp extends HTMLElement {
         this.onAuthRejected('api');
         return;
       }
-      this.showToast(first.error ?? 'Save failed', 'error');
-      return;
-    }
-    const confirmOverwrite = window.confirm(t.keepGoingOverwriteConfirm);
-    if (!confirmOverwrite) return;
+      if (first.status === 409) {
+        const confirmOverwrite = window.confirm(t.keepGoingOverwriteConfirm);
+        if (!confirmOverwrite) return;
 
-    if (first.status === 409) {
-      const second = await this.apiClient.writeRtwsDiligence(this.uiLanguage, {
-        raw: this.diligenceRtwsText,
-        overwrite: true,
-      });
-      if (!second.success) {
-        if (second.status === 401) {
-          this.onAuthRejected('api');
+        const second = await this.apiClient.writeRtwsDiligence(this.uiLanguage, {
+          raw: this.diligenceRtwsText,
+          overwrite: true,
+        });
+        if (!second.success) {
+          if (second.status === 401) {
+            this.onAuthRejected('api');
+            return;
+          }
+          const statusText =
+            typeof second.status === 'number' ? `HTTP ${second.status}` : 'HTTP error';
+          this.showToast(`${t.keepGoingSaveFailedToast}: ${second.error ?? statusText}`, 'error');
           return;
         }
-        const statusText =
-          typeof second.status === 'number' ? `HTTP ${second.status}` : 'HTTP error';
-        this.showToast(`Save failed: ${second.error ?? statusText}`, 'error');
+      } else {
+        this.showToast(first.error ?? t.keepGoingSaveFailedToast, 'error');
         return;
       }
     }
     this.diligenceRtwsDirty = false;
     const saveBtn = this.shadowRoot?.querySelector('#diligence-save');
     if (saveBtn instanceof HTMLButtonElement) saveBtn.disabled = true;
-    this.showToast('Saved', 'info');
+    this.showToast(t.keepGoingSaveToast, 'info');
   }
 
   private async loadInitialData(): Promise<void> {
@@ -6150,7 +6195,8 @@ export class DomindsApp extends HTMLElement {
       // Validate message structure
       if (!message || typeof message !== 'object') {
         console.error('🔔 [ERROR] Invalid message format received:', message);
-        this.showToast('Received invalid message format. Please refresh the page.', 'error');
+        const t = getUiStrings(this.uiLanguage);
+        this.showToast(t.invalidMessageFormatToast, 'error');
         return;
       }
 
@@ -6376,13 +6422,14 @@ export class DomindsApp extends HTMLElement {
           const selfId = dialog.selfId;
           const rootId = dialog.rootId;
           const key = this.dialogKey(rootId, selfId);
-          this.dialogRunStatesByKey.set(key, runState as DialogRunState);
+          const typedRunState = runState as DialogRunState;
+          this.dialogRunStatesByKey.set(key, typedRunState);
 
           // Update dialog list entry if present
           this.dialogs = (this.dialogs || []).map((d) => {
             const dSelf = d.selfId ? d.selfId : d.rootId;
             if (d.rootId === rootId && dSelf === selfId) {
-              return { ...d, runState: runState as DialogRunState };
+              return { ...d, runState: typedRunState };
             }
             return d;
           });
@@ -6397,8 +6444,19 @@ export class DomindsApp extends HTMLElement {
               setRunState?: (state: DialogRunState | null) => void;
             };
             if (input && typeof input.setRunState === 'function') {
-              input.setRunState(runState as DialogRunState);
+              input.setRunState(typedRunState);
             }
+          }
+
+          // Q4H is global, but new_q4h_asked is delivered only via the currently subscribed dialog stream.
+          // When ANY dialog transitions into a blocked state requiring human input, refresh the global Q4H
+          // snapshot so the bottom-panel Q4H badge/panel stays correct even if we missed the event stream.
+          if (
+            typedRunState.kind === 'blocked' &&
+            (typedRunState.reason.kind === 'needs_human_input' ||
+              typedRunState.reason.kind === 'needs_human_input_and_subdialogs')
+          ) {
+            this.wsManager.sendRaw({ type: 'get_q4h_state' });
           }
 
           this.recomputeRunControlCounts();

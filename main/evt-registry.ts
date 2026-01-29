@@ -16,12 +16,28 @@ export interface DialogEventRegistry {
   createSubChan(dialogId: DialogID): SubChan<TypedDialogEvent>;
   removePubChan(dialogId: DialogID): void;
   postEvent(dlg: Dialog, event: DialogEvent & Partial<DialogEventBase>): void;
+  postEventById(dialogId: DialogID, event: DialogEvent): void;
   createTypedEvent(dialogId: DialogID, event: DialogEvent): TypedDialogEvent;
 }
 
 class DialogEventRegistryImpl implements DialogEventRegistry {
   private pubChans: Map<string, PubChan<TypedDialogEvent>> = new Map();
   private readonly log = createLogger('evt-registry');
+
+  // Q4H (Questions for Human) is globally visible in the WebUI.
+  // These events must reach ALL connected clients, not only those subscribed to a specific dialog stream.
+  private q4hBroadcaster: ((evt: TypedDialogEvent) => void) | null = null;
+
+  setQ4HBroadcaster(fn: ((evt: TypedDialogEvent) => void) | null): void {
+    this.q4hBroadcaster = fn;
+  }
+
+  private broadcastIfQ4H(evt: TypedDialogEvent): void {
+    // Only broadcast Q4H events; all other dialog events remain dialog-scoped streams.
+    if (evt.type !== 'new_q4h_asked' && evt.type !== 'q4h_answered') return;
+    const fn = this.q4hBroadcaster;
+    if (fn) fn(evt);
+  }
 
   /**
    * Get or create a PubChan for a specific dialog ID
@@ -69,7 +85,15 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
    */
   postEvent(dlg: Dialog, event: DialogEvent): void {
     const typedEvent = this.createTypedEvent(dlg.id, event);
+    this.broadcastIfQ4H(typedEvent);
     const chan = this.getPubChan(dlg.id);
+    chan.write(typedEvent);
+  }
+
+  postEventById(dialogId: DialogID, event: DialogEvent): void {
+    const typedEvent = this.createTypedEvent(dialogId, event);
+    this.broadcastIfQ4H(typedEvent);
+    const chan = this.getPubChan(dialogId);
     chan.write(typedEvent);
   }
 
@@ -97,6 +121,10 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
 // Export singleton instance
 export const dialogEventRegistry = new DialogEventRegistryImpl();
 
+export function setQ4HBroadcaster(fn: ((evt: TypedDialogEvent) => void) | null): void {
+  dialogEventRegistry.setQ4HBroadcaster(fn);
+}
+
 // Export helper function to import in other modules
 export function postDialogEvent(dlg: Dialog, event: DialogEvent): void {
   dialogEventRegistry.postEvent(dlg, event);
@@ -107,9 +135,7 @@ export function postDialogEvent(dlg: Dialog, event: DialogEvent): void {
  * Useful for posting subdialog events when only the subdialog ID is available.
  */
 export function postDialogEventById(dialogId: DialogID, event: DialogEvent): void {
-  const typedEvent = dialogEventRegistry.createTypedEvent(dialogId, event);
-  const chan = dialogEventRegistry.getPubChan(dialogId);
-  chan.write(typedEvent);
+  dialogEventRegistry.postEventById(dialogId, event);
 }
 
 // Helper functions to create events with simpler API

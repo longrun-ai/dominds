@@ -66,6 +66,13 @@ export type DiligenceFileResponse = {
   error?: string;
 };
 
+export type DeleteDiligenceResponse = {
+  success: boolean;
+  deleted?: string[];
+  missing?: string[];
+  error?: string;
+};
+
 export type DocsReadResponse = {
   success: boolean;
   name: string;
@@ -446,6 +453,12 @@ export class ApiClient {
 
   async getRtwsDiligence(lang: LanguageCode): Promise<ApiResponse<DiligenceFileResponse>> {
     return this.request(`/api/rtws/diligence?lang=${encodeURIComponent(lang)}`);
+  }
+
+  async deleteRtwsDiligence(lang: LanguageCode): Promise<ApiResponse<DeleteDiligenceResponse>> {
+    return this.request(`/api/rtws/diligence?lang=${encodeURIComponent(lang)}`, {
+      method: 'DELETE',
+    });
   }
 
   async writeRtwsDiligence(

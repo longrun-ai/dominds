@@ -52,6 +52,20 @@ Quick actions:
 ${content}`;
 }
 
+export function formatQ4HKeepGoingBudgetExhausted(
+  language: LanguageCode,
+  args: { maxInjectCount: number },
+): string {
+  const maxInjectCount = args.maxInjectCount;
+  if (language === 'zh') {
+    return [`鞭策过 ${maxInjectCount} 次了，智能体还是在扛，你看怎么办吧。`].join('\n');
+  }
+
+  return [
+    `After ${maxInjectCount} pushes for diligence, the agent is still not going, you handle it.`,
+  ].join('\n');
+}
+
 export function formatDomindsNoteTellaskForTeammatesOnly(
   language: LanguageCode,
   args: { firstMention: string },

@@ -230,6 +230,11 @@ export async function handleApiRoute(
       return await handleWriteRtwsDiligence(req, res);
     }
 
+    // Delete rtws diligence prompt (workspace file).
+    if (pathname === '/api/rtws/diligence' && req.method === 'DELETE') {
+      return await handleDeleteRtwsDiligence(req, res);
+    }
+
     // Read Dominds docs markdown (from dominds install root, NOT rtws).
     if (pathname === '/api/docs/read' && req.method === 'GET') {
       return await handleReadDocsMarkdown(req, res);
@@ -361,6 +366,39 @@ async function handleWriteRtwsDiligence(
     respondJson(res, 500, { success: false, error: 'Failed to write diligence file' });
     return true;
   }
+}
+
+async function handleDeleteRtwsDiligence(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+  const lang = urlObj.searchParams.get('lang');
+
+  const primaryPath = resolveRtwsDiligencePath(lang);
+  const genericPath = path.resolve(process.cwd(), '.minds', 'diligence.md');
+  const candidates = Array.from(new Set([primaryPath, genericPath]));
+
+  const deleted: string[] = [];
+  const missing: string[] = [];
+
+  for (const filePath of candidates) {
+    try {
+      await fsPromises.unlink(filePath);
+      deleted.push(filePath);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        missing.push(filePath);
+        continue;
+      }
+      log.error('Failed to delete diligence file', error);
+      respondJson(res, 500, { success: false, error: 'Failed to delete diligence file' });
+      return true;
+    }
+  }
+
+  respondJson(res, 200, { success: true, deleted, missing });
+  return true;
 }
 
 const DOCS_WHITELIST = new Set<string>([

@@ -13,7 +13,7 @@ import {
   requestInterruptDialog,
   setRunStateBroadcaster,
 } from '../dialog-run-state';
-import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
+import { dialogEventRegistry, postDialogEvent, setQ4HBroadcaster } from '../evt-registry';
 import { driveDialogStream } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -1144,6 +1144,17 @@ export function setupWebSocketServer(
   // Broadcast dialog run-state changes to all connected clients so multi-tab views converge.
   setRunStateBroadcaster((msg: WebSocketMessage) => {
     const data = JSON.stringify(msg);
+    for (const ws of clients) {
+      if (ws.readyState === 1) {
+        ws.send(data);
+      }
+    }
+  });
+
+  // Broadcast Q4H events globally: Q4H is workspace-global state in the WebUI.
+  // Without this, a client can miss Q4H updates when it's not subscribed to the originating dialog stream.
+  setQ4HBroadcaster((evt) => {
+    const data = JSON.stringify(evt);
     for (const ws of clients) {
       if (ws.readyState === 1) {
         ws.send(data);

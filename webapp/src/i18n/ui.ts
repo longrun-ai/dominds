@@ -91,7 +91,18 @@ export type UiStrings = {
   keepGoingToggleAriaLabel: string;
   keepGoingReloadTitle: string;
   keepGoingSaveTitle: string;
+  keepGoingResetTitle: string;
   keepGoingOverwriteConfirm: string;
+  keepGoingResetConfirm: string;
+  keepGoingResetConfirmDirty: string;
+  keepGoingResetToast: string;
+  keepGoingResetFailedToast: string;
+  keepGoingSaveToast: string;
+  keepGoingSaveFailedToast: string;
+
+  inputNotAvailableToast: string;
+  noActiveDialogToast: string;
+  invalidMessageFormatToast: string;
   teamMgmtManualTabTitle: string;
   promptTemplatesTabTitle: string;
   domindsDocsTabTitle: string;
@@ -336,7 +347,19 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       keepGoingToggleAriaLabel: '启用鞭策（取消勾选=禁用）',
       keepGoingReloadTitle: '加载最新鞭策语',
       keepGoingSaveTitle: '保存到工作区',
+      keepGoingResetTitle: '重置为内置鞭策语（删除工作区鞭策语文件）',
       keepGoingOverwriteConfirm: '将覆盖工作区鞭策语，确认保存？',
+      keepGoingResetConfirm: '将删除工作区鞭策语文件，并恢复为系统内置鞭策语。确认重置？',
+      keepGoingResetConfirmDirty:
+        '你有未保存的修改。将删除工作区鞭策语文件并丢弃未保存的修改。确认重置？',
+      keepGoingResetToast: '已重置为内置鞭策语。',
+      keepGoingResetFailedToast: '重置鞭策语失败',
+      keepGoingSaveToast: '已保存到工作区。',
+      keepGoingSaveFailedToast: '保存鞭策语失败',
+
+      inputNotAvailableToast: '输入组件不可用。',
+      noActiveDialogToast: '当前没有活跃对话。',
+      invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
       teamMgmtManualTabTitle: '团队管理手册',
       promptTemplatesTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
@@ -584,7 +607,20 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     keepGoingToggleAriaLabel: 'Enable keep-going (uncheck to disable)',
     keepGoingReloadTitle: 'Load latest keep-going prompt',
     keepGoingSaveTitle: 'Save to workspace',
+    keepGoingResetTitle: 'Reset to built-in keep-going prompt (delete workspace file)',
     keepGoingOverwriteConfirm: 'This will overwrite the workspace keep-going prompt. Save anyway?',
+    keepGoingResetConfirm:
+      'This will delete the workspace keep-going prompt file and restore the built-in keep-going prompt. Reset anyway?',
+    keepGoingResetConfirmDirty:
+      'You have unsaved changes. This will delete the workspace keep-going prompt file and discard your edits. Reset anyway?',
+    keepGoingResetToast: 'Reset to the built-in keep-going prompt.',
+    keepGoingResetFailedToast: 'Failed to reset keep-going prompt',
+    keepGoingSaveToast: 'Saved to workspace.',
+    keepGoingSaveFailedToast: 'Failed to save keep-going prompt',
+
+    inputNotAvailableToast: 'Input is not available.',
+    noActiveDialogToast: 'No active dialog.',
+    invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
     teamMgmtManualTabTitle: 'Team Manual',
     promptTemplatesTabTitle: 'Prompt Templates',
     domindsDocsTabTitle: 'Dominds Docs',

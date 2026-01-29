@@ -39,6 +39,7 @@ import {
   formatDomindsNoteSuperNoTellaskSession,
   formatDomindsNoteSuperOnlyInSubdialog,
   formatDomindsNoteTellaskForTeammatesOnly,
+  formatQ4HKeepGoingBudgetExhausted,
   formatReminderItemGuide,
   formatUserFacingContextHealthV3RemediationGuide,
   formatUserFacingLanguageGuide,
@@ -227,15 +228,12 @@ async function suspendForKeepGoingBudgetExhausted(options: {
 }): Promise<void> {
   const { dlg, maxInjectCount } = options;
   const questionId = `q4h-${generateDialogID()}`;
+  const language = dlg.getLastUserLanguageCode();
   const question: HumanQuestion = {
     id: questionId,
     kind: 'keep_going_budget_exhausted',
     headLine: '@human',
-    bodyContent:
-      `Keep-going budget exhausted (max ${maxInjectCount}).\n\n` +
-      'Please confirm what to do next:\n' +
-      '- Reply with “continue” to allow the agent to keep going, or\n' +
-      '- Reply with “stop” if you want to stop this dialog here.\n',
+    bodyContent: formatQ4HKeepGoingBudgetExhausted(language, { maxInjectCount }),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
       round: dlg.currentRound,
@@ -2375,6 +2373,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
               dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
+              if (prepared.kind !== 'disabled') {
+                postDialogEvent(dlg, {
+                  type: 'diligence_budget_evt',
+                  maxInjectCount: prepared.maxInjectCount,
+                  injectedCount: prepared.nextInjectedCount,
+                  remainingCount: Math.max(0, prepared.maxInjectCount - prepared.nextInjectedCount),
+                  disableDiligencePush: dlg.disableDiligencePush,
+                });
+              }
               if (prepared.kind === 'budget_exhausted') {
                 await suspendForKeepGoingBudgetExhausted({
                   dlg,
