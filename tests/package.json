@@ -11,6 +11,7 @@
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
     "persistence-reminders-owner-meta": "tsx persistence/reminders-owner-meta.ts",
+    "persistence-jsonl-tail-truncation": "tsx persistence/jsonl-tail-truncation.ts",
     "tellask:parsing": "tsx tellask/parsing.ts",
     "teammate-call:parsing": "tsx tellask/teammate-call-parsing.ts",
     "tellask:realtime": "tsx tellask/realtime.ts",

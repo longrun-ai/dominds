@@ -1814,11 +1814,21 @@ export class DialogPersistence {
   private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
 
+  private static readonly roundAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
+
   private static getLatestWriteBackMutex(key: string): AsyncFifoMutex {
     const existing = this.latestWriteBackMutexes.get(key);
     if (existing) return existing;
     const created = new AsyncFifoMutex();
     this.latestWriteBackMutexes.set(key, created);
+    return created;
+  }
+
+  private static getRoundAppendMutex(key: string): AsyncFifoMutex {
+    const existing = this.roundAppendMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.roundAppendMutexes.set(key, created);
     return created;
   }
 
@@ -2203,6 +2213,8 @@ export class DialogPersistence {
     event: PersistedDialogRecord,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
+    const appendMutexKey = `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|round:${round}`;
+    const release = await this.getRoundAppendMutex(appendMutexKey).acquire();
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const roundFilename = this.getRoundFilename(round);
@@ -2211,7 +2223,9 @@ export class DialogPersistence {
       // Ensure directory exists
       await fs.promises.mkdir(dialogPath, { recursive: true });
 
-      // Atomic append operation
+      // Serialize appends per dialog+round file. Concurrent `appendFile` calls can interleave and
+      // corrupt JSONL lines (e.g. tool results appended in parallel), which later manifests as
+      // `Unterminated string in JSON ...` during resume.
       const eventLine = JSON.stringify(event) + '\n';
       await fs.promises.appendFile(roundFilePath, eventLine, 'utf-8');
 
@@ -2230,6 +2244,8 @@ export class DialogPersistence {
     } catch (error) {
       log.error(`Failed to append event to dialog ${dialogId} round ${round}:`, error);
       throw error;
+    } finally {
+      release();
     }
   }
 
@@ -2250,9 +2266,33 @@ export class DialogPersistence {
         const content = await fs.promises.readFile(roundFilePath, 'utf-8');
         const events: PersistedDialogRecord[] = [];
 
-        for (const line of content.trim().split('\n')) {
-          if (line.trim()) {
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line.trim()) continue;
+          try {
             events.push(JSON.parse(line));
+          } catch (err) {
+            const isLastNonEmptyLine = (() => {
+              for (let j = lines.length - 1; j > i; j--) {
+                if (lines[j].trim().length > 0) return false;
+              }
+              return true;
+            })();
+            const msg = err instanceof Error ? err.message : String(err);
+            // If the last JSONL line was truncated (e.g. process crash mid-append), ignore it so
+            // dialogs remain resumable. Do not mask corruption in the middle of the file.
+            if (
+              isLastNonEmptyLine &&
+              (msg.includes('Unterminated string in JSON') ||
+                msg.includes('Unexpected end of JSON input'))
+            ) {
+              log.warn(
+                `Ignoring truncated JSONL tail for dialog ${dialogId} round ${round} at line ${i + 1}: ${msg}`,
+              );
+              break;
+            }
+            throw err;
           }
         }
 
