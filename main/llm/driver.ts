@@ -1824,9 +1824,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const funcCalls = nonStreamMsgs.filter(
             (m): m is FuncCallMsg => m.type === 'func_call_msg',
           );
-          const funcResults: FuncResultMsg[] = [];
-
-          const functionPromises = funcCalls.map(async (func) => {
+          const functionPromises = funcCalls.map(async (func): Promise<FuncResultMsg> => {
             throwIfAborted(abortSignal, dlg.id);
             // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
             // This is critical for correct grouping in reconstructAnthropicContext()
@@ -1854,7 +1852,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 genseq: callGenseq,
               };
               await dlg.receiveFuncResult(errorResult);
-              return;
+              return errorResult;
             }
 
             let rawArgs: unknown = {};
@@ -1922,20 +1920,22 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             }
 
             await dlg.receiveFuncResult(result);
-            funcResults.push(result);
+            return result;
           });
 
-          const allFuncResults = await Promise.all(functionPromises);
+          const funcResults = await Promise.all(functionPromises);
 
           await Promise.resolve();
 
           // Add function calls AND results to dialog messages so LLM sees tool context in next iteration
           // Both are needed: func_call_msg for the tool definition, func_result_msg for the output
           if (funcCalls.length > 0) {
-            await dlg.addChatMessages(...funcCalls);
-          }
-          if (funcResults.length > 0) {
-            await dlg.addChatMessages(...funcResults);
+            const paired: ChatMessage[] = [];
+            for (let i = 0; i < funcCalls.length; i++) {
+              paired.push(funcCalls[i]);
+              paired.push(funcResults[i]);
+            }
+            await dlg.addChatMessages(...paired);
           }
 
           if (dlg.hasUpNext()) {
@@ -2210,7 +2210,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           const funcResults: FuncResultMsg[] = [];
           if (streamedFuncCalls.length > 0) {
-            const functionPromises = streamedFuncCalls.map(async (func) => {
+            const functionPromises = streamedFuncCalls.map(async (func): Promise<FuncResultMsg> => {
               throwIfAborted(abortSignal, dlg.id);
               // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
               // This is critical for correct grouping in reconstructAnthropicContext()
@@ -2238,7 +2238,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   genseq: callGenseq,
                 };
                 await dlg.receiveFuncResult(errorResult);
-                return;
+                return errorResult;
               }
 
               let rawArgs: unknown = {};
@@ -2306,17 +2306,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               }
 
               await dlg.receiveFuncResult(result);
-              funcResults.push(result);
+              return result;
             });
 
-            await Promise.all(functionPromises);
+            funcResults.push(...(await Promise.all(functionPromises)));
           }
 
           if (streamedFuncCalls.length > 0) {
-            newMsgs.push(...streamedFuncCalls);
-          }
-          if (funcResults.length > 0) {
-            newMsgs.push(...funcResults);
+            for (let i = 0; i < streamedFuncCalls.length; i++) {
+              newMsgs.push(streamedFuncCalls[i]);
+              if (i < funcResults.length) {
+                newMsgs.push(funcResults[i]);
+              }
+            }
           }
 
           await dlg.addChatMessages(...newMsgs);

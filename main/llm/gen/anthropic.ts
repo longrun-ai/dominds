@@ -19,7 +19,7 @@ import { getWorkLanguage } from '../../shared/runtime-language';
 import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, ProviderConfig } from '../client';
+import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 const log = createLogger('llm/anthropic');
@@ -80,59 +80,114 @@ function funcToolToAnthropic(funcTool: FuncTool): Tool {
  * Relies on natural storage order - func_result always follows func_call.
  */
 
+function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
+  // Some Anthropic-compatible endpoints reject tool results unless they appear immediately after
+  // their matching tool_use. Dominds may temporarily produce call blocks followed by result blocks
+  // (due to parallel execution), so we interleave obvious runs here.
+  const out: ChatMessage[] = [];
+
+  let i = 0;
+  while (i < context.length) {
+    const msg = context[i];
+    if (msg.type !== 'func_call_msg') {
+      out.push(msg);
+      i++;
+      continue;
+    }
+
+    const calls: FuncCallMsg[] = [];
+    while (i < context.length && context[i].type === 'func_call_msg') {
+      calls.push(context[i] as FuncCallMsg);
+      i++;
+    }
+
+    const results: FuncResultMsg[] = [];
+    while (i < context.length && context[i].type === 'func_result_msg') {
+      results.push(context[i] as FuncResultMsg);
+      i++;
+    }
+
+    if (results.length === 0) {
+      out.push(...calls);
+      continue;
+    }
+
+    const resultsById = new Map<string, FuncResultMsg[]>();
+    for (const result of results) {
+      const existing = resultsById.get(result.id);
+      if (existing) {
+        existing.push(result);
+      } else {
+        resultsById.set(result.id, [result]);
+      }
+    }
+
+    const used = new Set<FuncResultMsg>();
+    for (const call of calls) {
+      out.push(call);
+      const queue = resultsById.get(call.id);
+      if (queue && queue.length > 0) {
+        const next = queue.shift();
+        if (next) {
+          out.push(next);
+          used.add(next);
+        }
+      }
+    }
+
+    for (const result of results) {
+      if (!used.has(result)) {
+        out.push(result);
+      }
+    }
+  }
+
+  return out;
+}
+
+function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
+  const normalized = normalizeToolCallPairs(context);
+  const messages: MessageParam[] = [];
+
+  let lastToolUseId: string | null = null;
+  for (const msg of normalized) {
+    if (msg.type === 'func_call_msg') {
+      messages.push(chatMessageToAnthropic(msg));
+      lastToolUseId = msg.id;
+      continue;
+    }
+
+    if (msg.type === 'func_result_msg') {
+      // Many Anthropic-compatible providers require the tool result to directly follow the
+      // matching tool_use. If it doesn't, downgrade to a plain text message so the request
+      // remains valid (and still conveys the tool output to the model).
+      if (lastToolUseId === msg.id) {
+        messages.push(chatMessageToAnthropic(msg));
+      } else {
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}` },
+          ],
+        });
+      }
+      lastToolUseId = null;
+      continue;
+    }
+
+    messages.push(chatMessageToAnthropic(msg));
+    lastToolUseId = null;
+  }
+
+  return messages;
+}
+
 /**
  * Reconstruct Anthropic context from persisted messages.
  * Relies on natural storage order - func_result always follows func_call.
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
-  const reconstructed: MessageParam[] = [];
-
-  for (const msg of persistedMessages) {
-    // User text messages
-    if (msg.role === 'user' && !msg.type.startsWith('func_')) {
-      reconstructed.push({
-        role: 'user',
-        content: [{ type: 'text', text: msg.content }],
-      });
-    }
-    // Assistant text/thinking
-    else if (
-      msg.role === 'assistant' &&
-      (msg.type === 'saying_msg' || msg.type === 'thinking_msg')
-    ) {
-      reconstructed.push({
-        role: 'assistant',
-        content: [{ type: 'text', text: msg.content }],
-      });
-    }
-    // Tool call -> immediately followed by tool_result (natural order)
-    else if (msg.type === 'func_call_msg') {
-      reconstructed.push({
-        role: 'assistant',
-        content: [
-          {
-            type: 'tool_use',
-            id: msg.id,
-            name: msg.name,
-            input: JSON.parse(msg.arguments || '{}'),
-          },
-        ],
-      });
-    } else if (msg.type === 'func_result_msg') {
-      reconstructed.push({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: msg.id,
-            content: msg.content,
-          },
-        ],
-      });
-    }
-  }
-
-  return reconstructed;
+  return buildAnthropicRequestMessages(persistedMessages);
 }
 
 /**
@@ -384,7 +439,7 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestMessages: MessageParam[] = context.map(chatMessageToAnthropic);
+    const requestMessages: MessageParam[] = buildAnthropicRequestMessages(context);
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -675,7 +730,7 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestMessages: MessageParam[] = context.map(chatMessageToAnthropic);
+    const requestMessages: MessageParam[] = buildAnthropicRequestMessages(context);
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const maxTokens = agent.model_params?.max_tokens;

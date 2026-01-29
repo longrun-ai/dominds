@@ -20,7 +20,7 @@ import { getWorkLanguage } from '../../shared/runtime-language';
 import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, ProviderConfig } from '../client';
+import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 const log = createLogger('llm/codex');
@@ -129,6 +129,114 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
   }
 }
 
+function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
+  // Codex/OpenAI-compatible backends may reject `function_call_output` items unless they appear
+  // immediately after their matching `function_call`. Dominds can temporarily produce a call block
+  // followed by a result block when tools run in parallel, so we interleave obvious runs here.
+  const out: ChatMessage[] = [];
+
+  let i = 0;
+  while (i < context.length) {
+    const msg = context[i];
+    if (msg.type !== 'func_call_msg') {
+      out.push(msg);
+      i++;
+      continue;
+    }
+
+    const calls: FuncCallMsg[] = [];
+    while (i < context.length && context[i].type === 'func_call_msg') {
+      calls.push(context[i] as FuncCallMsg);
+      i++;
+    }
+
+    const results: FuncResultMsg[] = [];
+    while (i < context.length && context[i].type === 'func_result_msg') {
+      results.push(context[i] as FuncResultMsg);
+      i++;
+    }
+
+    if (results.length === 0) {
+      out.push(...calls);
+      continue;
+    }
+
+    const resultsById = new Map<string, FuncResultMsg[]>();
+    for (const result of results) {
+      const existing = resultsById.get(result.id);
+      if (existing) {
+        existing.push(result);
+      } else {
+        resultsById.set(result.id, [result]);
+      }
+    }
+
+    const used = new Set<FuncResultMsg>();
+    for (const call of calls) {
+      out.push(call);
+      const queue = resultsById.get(call.id);
+      if (queue && queue.length > 0) {
+        const next = queue.shift();
+        if (next) {
+          out.push(next);
+          used.add(next);
+        }
+      }
+    }
+
+    for (const result of results) {
+      if (!used.has(result)) {
+        out.push(result);
+      }
+    }
+  }
+
+  return out;
+}
+
+function buildCodexInput(context: ChatMessage[]): ChatGptResponseItem[] {
+  const normalized = normalizeToolCallPairs(context);
+  const input: ChatGptResponseItem[] = [];
+
+  let lastFuncCallId: string | null = null;
+  for (const msg of normalized) {
+    if (msg.type === 'func_call_msg') {
+      input.push({
+        type: 'function_call',
+        name: msg.name,
+        arguments: msg.arguments,
+        call_id: msg.id,
+      });
+      lastFuncCallId = msg.id;
+      continue;
+    }
+
+    if (msg.type === 'func_result_msg') {
+      if (lastFuncCallId === msg.id) {
+        input.push({
+          type: 'function_call_output',
+          call_id: msg.id,
+          output: msg.content,
+        });
+      } else {
+        input.push(
+          messageItem('user', `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`),
+        );
+      }
+      lastFuncCallId = null;
+      continue;
+    }
+
+    const items = chatMessageToCodexItems(msg);
+    for (const item of items) {
+      input.push(item);
+    }
+    lastFuncCallId = null;
+  }
+
+  return input;
+}
+
 function buildCodexRequest(
   agent: Team.Member,
   instructions: string,
@@ -145,12 +253,7 @@ function buildCodexRequest(
     // Codex backend rejects system messages; pass extra instructions as prior assistant context.
     input.push(messageItem('assistant', assistantPrelude));
   }
-  for (const msg of context) {
-    const items = chatMessageToCodexItems(msg);
-    for (const item of items) {
-      input.push(item);
-    }
-  }
+  input.push(...buildCodexInput(context));
 
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   let reasoning: ChatGptReasoning | null = null;

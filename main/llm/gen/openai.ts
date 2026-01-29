@@ -22,7 +22,7 @@ import { getWorkLanguage } from '../../shared/runtime-language';
 import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, ProviderConfig } from '../client';
+import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 const log = createLogger('llm/openai');
@@ -111,6 +111,109 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
       return _exhaustive;
     }
   }
+}
+
+function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
+  // Providers differ in how strictly they validate tool call/result ordering. In particular,
+  // OpenAI-compatible endpoints may reject `function_call_output` items unless they appear
+  // immediately after their matching `function_call`.
+  //
+  // Dominds may produce call blocks followed by result blocks (due to parallel execution). This
+  // normalizer interleaves obvious call/result runs so we can emit a valid input sequence.
+  const out: ChatMessage[] = [];
+
+  let i = 0;
+  while (i < context.length) {
+    const msg = context[i];
+    if (msg.type !== 'func_call_msg') {
+      out.push(msg);
+      i++;
+      continue;
+    }
+
+    const calls: FuncCallMsg[] = [];
+    while (i < context.length && context[i].type === 'func_call_msg') {
+      calls.push(context[i] as FuncCallMsg);
+      i++;
+    }
+
+    const results: FuncResultMsg[] = [];
+    while (i < context.length && context[i].type === 'func_result_msg') {
+      results.push(context[i] as FuncResultMsg);
+      i++;
+    }
+
+    if (results.length === 0) {
+      out.push(...calls);
+      continue;
+    }
+
+    const resultsById = new Map<string, FuncResultMsg[]>();
+    for (const result of results) {
+      const existing = resultsById.get(result.id);
+      if (existing) {
+        existing.push(result);
+      } else {
+        resultsById.set(result.id, [result]);
+      }
+    }
+
+    const used = new Set<FuncResultMsg>();
+    for (const call of calls) {
+      out.push(call);
+      const queue = resultsById.get(call.id);
+      if (queue && queue.length > 0) {
+        const next = queue.shift();
+        if (next) {
+          out.push(next);
+          used.add(next);
+        }
+      }
+    }
+
+    for (const result of results) {
+      if (!used.has(result)) {
+        out.push(result);
+      }
+    }
+  }
+
+  return out;
+}
+
+function buildOpenAiRequestInput(context: ChatMessage[]): ResponseInputItem[] {
+  const normalized = normalizeToolCallPairs(context);
+  const input: ResponseInputItem[] = [];
+
+  let lastFuncCallId: string | null = null;
+  for (const msg of normalized) {
+    if (msg.type === 'func_call_msg') {
+      input.push(chatMessageToOpenAiInputItem(msg));
+      lastFuncCallId = msg.id;
+      continue;
+    }
+
+    if (msg.type === 'func_result_msg') {
+      // Many OpenAI-compatible providers require the tool result to directly follow the matching
+      // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
+      if (lastFuncCallId === msg.id) {
+        input.push(chatMessageToOpenAiInputItem(msg));
+      } else {
+        input.push({
+          type: 'message',
+          role: 'user',
+          content: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+        });
+      }
+      lastFuncCallId = null;
+      continue;
+    }
+
+    input.push(chatMessageToOpenAiInputItem(msg));
+    lastFuncCallId = null;
+  }
+
+  return input;
 }
 
 function parseOpenAiUsage(usage: unknown): LlmUsageStats {
@@ -250,7 +353,7 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestInput: ResponseInputItem[] = context.map(chatMessageToOpenAiInputItem);
+    const requestInput: ResponseInputItem[] = buildOpenAiRequestInput(context);
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -487,7 +590,7 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestInput: ResponseInputItem[] = context.map(chatMessageToOpenAiInputItem);
+    const requestInput: ResponseInputItem[] = buildOpenAiRequestInput(context);
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
 
