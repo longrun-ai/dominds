@@ -144,5 +144,7 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 
 - Default `CODEX_HOME` is `~/.codex` unless overridden.
 - The CLI uses the same file schema as Codex Rust.
+- Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
+  `reasoning` (and typically includes `reasoning.encrypted_content`).
 - Proxy env vars are detected via `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   (case-insensitive). If set, the verification request uses them.

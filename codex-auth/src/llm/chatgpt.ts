@@ -315,6 +315,14 @@ function buildChatGptRequest(
   options: ChatGptConversationConfig,
   input: ChatGptResponseItem[],
 ): ChatGptResponsesRequest {
+  const requestedReasoning: ChatGptReasoning | null = options.reasoning ?? null;
+  const reasoning: ChatGptReasoning | null =
+    requestedReasoning && requestedReasoning.summary === undefined
+      ? { ...requestedReasoning, summary: 'auto' }
+      : requestedReasoning;
+  const include: ChatGptInclude[] =
+    options.include ?? (reasoning ? ['reasoning.encrypted_content'] : []);
+
   return {
     model: options.model,
     instructions: options.instructions,
@@ -322,10 +330,10 @@ function buildChatGptRequest(
     tools: options.tools ?? [],
     tool_choice: 'auto',
     parallel_tool_calls: options.parallel_tool_calls ?? true,
-    reasoning: options.reasoning ?? null,
+    reasoning,
     store: options.store ?? false,
     stream: true,
-    include: options.include ?? [],
+    include,
     prompt_cache_key: options.prompt_cache_key,
     text: options.text,
   };

@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { Response as UndiciResponse } from 'undici';
 import {
   AuthDotJson,
   DEFAULT_CHATGPT_BASE_URL,
@@ -32,6 +33,7 @@ interface DoctorOptions {
   json: boolean;
   verify: boolean;
   verbose: boolean;
+  probeReasoning: boolean;
   model?: string;
   chatgptBaseUrl?: string;
   chatgptModel?: string;
@@ -43,10 +45,14 @@ function parseArgs(argv: string[]): DoctorOptions {
     json: false,
     verify: true,
     verbose: false,
+    probeReasoning: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === '--') {
+      continue;
+    }
     if (arg === '--refresh') {
       options.refresh = true;
       continue;
@@ -65,6 +71,14 @@ function parseArgs(argv: string[]): DoctorOptions {
     }
     if (arg === '--verbose' || arg === '-verbose' || arg === '-v') {
       options.verbose = true;
+      continue;
+    }
+    if (arg === '--probe-reasoning' || arg === '--probe-thinking') {
+      options.probeReasoning = true;
+      continue;
+    }
+    if (arg === '--no-probe-reasoning' || arg === '--no-probe-thinking') {
+      options.probeReasoning = false;
       continue;
     }
     if (arg === '--model') {
@@ -109,13 +123,15 @@ function printHelp(): void {
   console.log(`codex-auth doctor
 
 Usage:
-  codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose]
+  codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose] [--probe-reasoning]
 
 Options:
   --codex-home PATH   Override CODEX_HOME
   --refresh           Refresh ChatGPT tokens if possible
   --json              Emit JSON output
   --verbose           Dump SSE events as pretty-printed JSON (aliases: -v, -verbose)
+  --probe-reasoning   Extra probe request enabling reasoning + include to check whether the
+                      backend streams response.reasoning_* events (aliases: --probe-thinking)
   --model NAME        Override ChatGPT verification model (alias for --chatgpt-model)
   --base-url URL      Alias for --chatgpt-base-url
   --chatgpt-base-url URL  Override ChatGPT base URL
@@ -151,6 +167,24 @@ interface VerifyResult {
   error?: string;
   responseId?: string;
   models?: string[];
+}
+
+type EventCountByType = Partial<Record<ChatGptResponsesStreamEvent['type'], number>>;
+
+interface StreamProbeResult {
+  ok: boolean;
+  skipped?: boolean;
+  status?: number;
+  error?: string;
+  x_reasoning_included?: boolean | null;
+  reasoning_tokens?: number | null;
+  saw_output_text_delta?: boolean;
+  saw_reasoning_summary_text_delta?: boolean;
+  saw_reasoning_text_delta?: boolean;
+  saw_reasoning_summary_part_added?: boolean;
+  saw_reasoning_item?: boolean;
+  saw_any_reasoning_event?: boolean;
+  event_counts?: EventCountByType;
 }
 
 function buildReport(codexHome: string, auth: AuthDotJson | null) {
@@ -377,6 +411,83 @@ function logChatGptEvent(event: ChatGptResponsesStreamEvent): void {
   console.log(JSON.stringify(event, null, 2));
 }
 
+function incrementCount(counts: EventCountByType, eventType: ChatGptResponsesStreamEvent['type']) {
+  const previous = counts[eventType] ?? 0;
+  counts[eventType] = previous + 1;
+}
+
+function parseTruthyHeader(value: string | null): boolean | null {
+  if (value === null) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false;
+  }
+  return null;
+}
+
+async function emitChatGptEvents(
+  response: UndiciResponse,
+  receiver: ChatGptEventReceiver,
+): Promise<void> {
+  if (!response.body) {
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let dataLines: string[] = [];
+
+  const emit = async () => {
+    if (dataLines.length === 0) {
+      return;
+    }
+    const data = dataLines.join('\n');
+    dataLines = [];
+    if (!data) {
+      return;
+    }
+    let event: ChatGptResponsesStreamEvent;
+    try {
+      event = JSON.parse(data) as ChatGptResponsesStreamEvent;
+    } catch {
+      return;
+    }
+    await receiver.onEvent(event);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line === '') {
+        await emit();
+        continue;
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).trimStart());
+      }
+    }
+
+    if (done) {
+      break;
+    }
+  }
+
+  if (buffer.length > 0) {
+    dataLines.push(buffer.trim());
+  }
+  await emit();
+}
+
 function selectChatGptModel(
   options: DoctorOptions,
 ): { model: string; instructions: string } | undefined {
@@ -473,6 +584,158 @@ async function verifyChatGptConversation(
   }
 }
 
+async function probeChatGptReasoningStream(
+  options: DoctorOptions,
+  codexHome: string,
+  auth: AuthDotJson | null,
+  selection: { model: string; instructions: string } | undefined,
+): Promise<StreamProbeResult> {
+  if (!options.verify || !options.probeReasoning) {
+    return { ok: false, skipped: true };
+  }
+  if (!auth) {
+    return { ok: false, error: 'auth.json missing' };
+  }
+  if (!selection) {
+    return { ok: false, skipped: true };
+  }
+
+  const accessToken = auth.tokens?.access_token;
+  const accountId = getAccountId(auth);
+  if (!accessToken) {
+    return { ok: false, error: 'chatgpt access token missing' };
+  }
+  if (!accountId) {
+    return { ok: false, error: 'chatgpt account id missing' };
+  }
+
+  const baseUrl =
+    options.chatgptBaseUrl ??
+    process.env.CODEX_AUTH_DOCTOR_CHATGPT_BASE_URL ??
+    DEFAULT_CHATGPT_BASE_URL;
+  const model = selection.model;
+  const instructions = selection.instructions;
+  const conversationId = randomUUID();
+  const client = new ChatGptClient(
+    { accessToken, accountId },
+    {
+      baseUrl,
+      codexHome,
+    },
+  );
+
+  const req: ChatGptResponsesRequest = createChatGptStartRequest({
+    model,
+    instructions,
+    // This probe is specifically for diagnosing whether "thinking" / reasoning events stream.
+    // We request a reasoning summary and include encrypted reasoning (Codex Rust does this when
+    // reasoning is enabled).
+    reasoning: { effort: 'high', summary: 'detailed' },
+    include: ['reasoning.encrypted_content'],
+    userText:
+      'Puzzle: I have a two-digit number. The sum of its digits is 9. Reversing the digits increases the number by 27. What is the number? Output only the number.',
+    prompt_cache_key: conversationId,
+  });
+
+  const eventCounts: EventCountByType = {};
+  let sawOutputTextDelta = false;
+  let sawReasoningSummaryTextDelta = false;
+  let sawReasoningTextDelta = false;
+  let sawReasoningSummaryPartAdded = false;
+  let sawReasoningItem = false;
+  let reasoningTokens: number | null = null;
+
+  const receiver: ChatGptEventReceiver = {
+    onEvent: async (event: ChatGptResponsesStreamEvent) => {
+      incrementCount(eventCounts, event.type);
+
+      switch (event.type) {
+        case 'response.completed': {
+          const usage = event.response.usage;
+          const details = usage?.output_tokens_details;
+          if (details && typeof details.reasoning_tokens === 'number') {
+            reasoningTokens = details.reasoning_tokens;
+          }
+          break;
+        }
+        case 'response.output_text.delta':
+          if (event.delta.length > 0) {
+            sawOutputTextDelta = true;
+          }
+          break;
+        case 'response.reasoning_summary_text.delta':
+          if (event.delta.length > 0) {
+            sawReasoningSummaryTextDelta = true;
+          }
+          break;
+        case 'response.reasoning_text.delta':
+          if (event.delta.length > 0) {
+            sawReasoningTextDelta = true;
+          }
+          break;
+        case 'response.reasoning_summary_part.added':
+          sawReasoningSummaryPartAdded = true;
+          break;
+        case 'response.output_item.added':
+        case 'response.output_item.done':
+          if (event.item.type === 'reasoning') {
+            sawReasoningItem = true;
+          }
+          break;
+        default:
+          break;
+      }
+
+      if (options.verbose && !options.json) {
+        logChatGptEvent(event);
+      }
+    },
+  };
+
+  try {
+    const response = await client.responses(req, {
+      headers: {
+        conversation_id: conversationId,
+        session_id: conversationId,
+      },
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      return {
+        ok: false,
+        status: response.status,
+        error: summarizeErrorBody(body || response.statusText),
+      };
+    }
+
+    const xReasoningIncluded = parseTruthyHeader(response.headers.get('x-reasoning-included'));
+    await emitChatGptEvents(response, receiver);
+
+    const sawAnyReasoningEvent =
+      sawReasoningSummaryTextDelta ||
+      sawReasoningTextDelta ||
+      sawReasoningSummaryPartAdded ||
+      sawReasoningItem;
+
+    return {
+      ok: true,
+      status: response.status,
+      x_reasoning_included: xReasoningIncluded,
+      reasoning_tokens: reasoningTokens,
+      saw_output_text_delta: sawOutputTextDelta,
+      saw_reasoning_summary_text_delta: sawReasoningSummaryTextDelta,
+      saw_reasoning_text_delta: sawReasoningTextDelta,
+      saw_reasoning_summary_part_added: sawReasoningSummaryPartAdded,
+      saw_reasoning_item: sawReasoningItem,
+      saw_any_reasoning_event: sawAnyReasoningEvent,
+      event_counts: eventCounts,
+    };
+  } catch (error) {
+    return { ok: false, error: describeError(error) };
+  }
+}
+
 function getAccountId(auth: AuthDotJson): string | undefined {
   if (auth.tokens?.account_id) {
     return auth.tokens.account_id;
@@ -515,14 +778,17 @@ async function main(): Promise<void> {
 
   const report = buildReport(codexHome, auth);
   let chatgptVerify: VerifyResult | undefined;
+  let chatgptReasoningProbe: StreamProbeResult | undefined;
   try {
     const selection = selectChatGptModel(options);
     chatgptVerify = await verifyChatGptConversation(options, codexHome, auth, selection);
+    chatgptReasoningProbe = await probeChatGptReasoningStream(options, codexHome, auth, selection);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     chatgptVerify = { ok: false, error: message };
   }
   report.chatgpt_verify = chatgptVerify;
+  report.chatgpt_reasoning_probe = chatgptReasoningProbe;
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));
@@ -591,6 +857,40 @@ async function main(): Promise<void> {
       }
       if (chatgptVerify.error) {
         console.log(`- chatgpt error: ${chatgptVerify.error}`);
+      }
+    }
+  }
+
+  if (chatgptReasoningProbe) {
+    if (chatgptReasoningProbe.skipped) {
+      console.log('- chatgpt reasoning probe: skipped');
+    } else if (chatgptReasoningProbe.ok) {
+      console.log('- chatgpt reasoning probe: success');
+      if (chatgptReasoningProbe.x_reasoning_included !== null) {
+        console.log(
+          `- x-reasoning-included: ${chatgptReasoningProbe.x_reasoning_included ? 'true' : 'false'}`,
+        );
+      } else {
+        console.log('- x-reasoning-included: unset/unknown');
+      }
+      if (typeof chatgptReasoningProbe.reasoning_tokens === 'number') {
+        console.log(`- reasoning tokens: ${chatgptReasoningProbe.reasoning_tokens}`);
+      }
+      console.log(
+        `- saw reasoning events: ${chatgptReasoningProbe.saw_any_reasoning_event ? 'yes' : 'no'}`,
+      );
+      if (!chatgptReasoningProbe.saw_any_reasoning_event) {
+        console.log(
+          '- hint: reasoning events require `reasoning` + (usually) `include: ["reasoning.encrypted_content"]`; model/account may also disable them.',
+        );
+      }
+    } else {
+      console.log('- chatgpt reasoning probe: failed');
+      if (chatgptReasoningProbe.status) {
+        console.log(`- chatgpt status: ${chatgptReasoningProbe.status}`);
+      }
+      if (chatgptReasoningProbe.error) {
+        console.log(`- chatgpt error: ${chatgptReasoningProbe.error}`);
       }
     }
   }

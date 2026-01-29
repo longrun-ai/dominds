@@ -259,11 +259,14 @@ function buildCodexRequest(
   let reasoning: ChatGptReasoning | null = null;
   let text: ChatGptTextControls | undefined;
   const parallelToolCalls = codexParams?.parallel_tool_calls ?? true;
+  let include: ChatGptResponsesRequest['include'] = [];
 
   if (codexParams && codexParams.reasoning_effort) {
     reasoning = {
       effort: codexParams.reasoning_effort,
+      summary: 'auto',
     };
+    include = ['reasoning.encrypted_content'];
   }
   if (codexParams && codexParams.verbosity) {
     text = {
@@ -281,7 +284,7 @@ function buildCodexRequest(
     reasoning,
     store: false,
     stream: true,
-    include: [],
+    include,
     text,
   };
 }

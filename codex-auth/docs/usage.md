@@ -12,6 +12,10 @@ import { createChatGptContinuationRequest, createChatGptStartRequest } from '@lo
 const payload = createChatGptStartRequest({
   model: 'gpt-5.2-codex',
   instructions: 'You are Codex CLI.',
+  // Enable reasoning summaries / thinking stream (when supported by the backend + model).
+  // If `reasoning` is provided, codex-auth will default `reasoning.summary` to `'auto'` and
+  // automatically add `include: ['reasoning.encrypted_content']` unless you override `include`.
+  reasoning: { effort: 'high', summary: 'auto' },
   // Allow the model to emit multiple tool calls in the same turn.
   // (Default: true)
   parallel_tool_calls: true,
