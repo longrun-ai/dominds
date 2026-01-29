@@ -17,7 +17,7 @@ export type WorkspaceProblem =
       kind: 'team_workspace_config_error';
       source: 'team';
       id: string;
-      severity: 'error';
+      severity: 'error' | 'warning';
       timestamp: string;
       message: string;
       detail: {

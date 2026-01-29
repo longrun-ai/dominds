@@ -17,7 +17,7 @@ import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/clien
 import { LlmConfig } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
-import { getProblemsSnapshot } from '../problems';
+import { getProblemsSnapshot, reconcileProblemsByPrefix } from '../problems';
 import type { TeamMgmtManualTopicKey } from '../shared/team-mgmt-manual';
 import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team-mgmt-manual';
 import type { LanguageCode } from '../shared/types/language';
@@ -78,6 +78,90 @@ function normalizeFileWriteBody(inputBody: string): {
   return { normalizedBody: `${inputBody}\n`, addedTrailingNewlineToContent: true };
 }
 
+function isEmptyLine(line: string): boolean {
+  return line.trim() === '';
+}
+
+function lintTeamYamlStyle(raw: string): string[] {
+  const out: string[] = [];
+  const lines = raw.split(/\r?\n/);
+  // 1) File should end with exactly one trailing newline (split leaves last empty).
+  if (raw !== '' && !raw.endsWith('\n')) {
+    out.push('- team.yaml should end with a trailing newline.');
+  }
+
+  // 2) Warn about large runs of blank lines (prefer single blank line between blocks).
+  let maxBlankRun = 0;
+  let cur = 0;
+  for (const line of lines) {
+    if (isEmptyLine(line)) {
+      cur++;
+      maxBlankRun = Math.max(maxBlankRun, cur);
+    } else {
+      cur = 0;
+    }
+  }
+  if (maxBlankRun >= 3) {
+    out.push(
+      '- team.yaml has 3+ consecutive blank lines; prefer a single blank line between blocks.',
+    );
+  }
+
+  // 3) Warn if there is no blank line separating adjacent top-level member blocks.
+  // This is a best-effort heuristic: we treat "  <id>:" (2-space indent) as a member key.
+  const memberKeyRe = /^  [A-Za-z0-9_-]+:\s*$/;
+  let prevMemberLine: number | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (!memberKeyRe.test(line)) continue;
+    if (prevMemberLine !== null) {
+      const between = lines.slice(prevMemberLine + 1, i);
+      const hasBlank = between.some((l) => isEmptyLine(l));
+      if (!hasBlank) {
+        out.push(
+          `- team.yaml: members blocks should be separated by a blank line (between lines ${prevMemberLine + 1} and ${i + 1}).`,
+        );
+      }
+    }
+    prevMemberLine = i;
+  }
+
+  return out;
+}
+
+async function lintTeamYamlStyleProblems(): Promise<void> {
+  const cwd = path.resolve(process.cwd());
+  const teamYamlAbs = path.resolve(cwd, TEAM_YAML_REL);
+  try {
+    const st = await fs.stat(teamYamlAbs);
+    if (!st.isFile()) return;
+  } catch (err: unknown) {
+    if (isFsErrWithCode(err) && err.code === 'ENOENT') return;
+    throw err;
+  }
+
+  const raw = await fs.readFile(teamYamlAbs, 'utf8');
+  const warnings = lintTeamYamlStyle(raw);
+  const STYLE_PREFIX = TEAM_YAML_PROBLEM_PREFIX + 'style/';
+  if (warnings.length === 0) {
+    reconcileProblemsByPrefix(STYLE_PREFIX, []);
+    return;
+  }
+
+  const now = formatUnifiedTimestamp(new Date());
+  reconcileProblemsByPrefix(STYLE_PREFIX, [
+    {
+      kind: 'team_workspace_config_error',
+      source: 'team',
+      id: STYLE_PREFIX + 'formatting',
+      severity: 'warning',
+      timestamp: now,
+      message: `Style warnings in ${TEAM_YAML_REL}.`,
+      detail: { filePath: TEAM_YAML_REL, errorText: warnings.join('\n') },
+    },
+  ]);
+}
+
 function countLogicalLines(text: string): number {
   if (text === '') return 0;
   const parts = text.split('\n');
@@ -126,6 +210,7 @@ function makeMindsOnlyAccessMember(caller: Team.Member): Team.Member {
     name: caller.name,
     read_dirs: [...MINDS_ALLOW],
     write_dirs: [...MINDS_ALLOW],
+    internal_allow_minds: true,
   });
 }
 
@@ -2907,6 +2992,12 @@ function renderTeamManual(language: LanguageCode): string {
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
         '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。如某成员获得了 shell 工具（例如 toolset `os` 或 tools 里的 `shell_exec` 等），则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示（运行期 fail-open，但你仍应修复）。',
 
+        '风格提醒：保持 `team.yaml` 的可读性。推荐用空行分隔段落/成员块，避免连续多行空行；每次修改后运行 `team_mgmt_validate_team_cfg({})` 以便在 Problems 面板看到错误与风格提醒。',
+
+        '默认策略（可被用户覆盖）：\n' +
+          '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
+          '2) 切换成员的 LLM `provider/model` 时，应同步切换到与该 provider 习惯匹配的工具集（例如 Codex 风格 vs Dominds 原生工具），除非用户明确要求保留原工具集。',
+
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
@@ -2966,6 +3057,8 @@ function renderTeamManual(language: LanguageCode): string {
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
+        'Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.',
+        'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, also switch to the provider-appropriate toolsets (Codex-style vs Dominds-native) unless the user explicitly asks to keep the existing toolsets.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same prepared diff, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
@@ -3110,7 +3203,9 @@ function renderPermissionsManual(language: LanguageCode): string {
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
-        '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。通用文件工具（read/list/replace/rm/prepare/apply）必须禁止访问该目录树。',
+        '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。任何通用文件工具都无法访问该目录树（硬编码无条件拒绝）。',
+        '`.minds/**` 是工作区的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team-mgmt`）可访问它。',
+        '说明：如果你在 `team.yaml` 的 allow-list（`read_dirs`/`write_dirs`）里写了 `.minds/**` 或 `*.tsk/**` 试图绕过限制，运行时会忽略并上报 err 级别问题。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小权限写法示例（仅示意）',
@@ -3118,8 +3213,8 @@ function renderPermissionsManual(language: LanguageCode): string {
         '  coder:',
         '    read_dirs: ["dominds/**"]',
         '    write_dirs: ["dominds/**"]',
-        '    no_read_dirs: [".minds/**", "*.tsk/**"]',
-        '    no_write_dirs: [".minds/**", "*.tsk/**"]',
+        '    no_read_dirs: [".minds/**"]',
+        '    no_write_dirs: [".minds/**"]',
       ])
     );
   }
@@ -3133,7 +3228,9 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
-      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via the function tool `change_mind` only. General file tools (read/list/replace/rm/prepare/apply) must be blocked from that directory tree.',
+      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via the function tool `change_mind` only. It is hard-denied for all general file tools.',
+      '`.minds/**` stores workspace team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team-mgmt`) may access it.',
+      'Note: If you try to whitelist `.minds/**` or `*.tsk/**` via `read_dirs`/`write_dirs`, the runtime ignores it and reports an error-level Problem.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Least-privilege example (illustrative)',
@@ -3141,8 +3238,8 @@ function renderPermissionsManual(language: LanguageCode): string {
       '  coder:',
       '    read_dirs: ["dominds/**"]',
       '    write_dirs: ["dominds/**"]',
-      '    no_read_dirs: [".minds/**", "*.tsk/**"]',
-      '    no_write_dirs: [".minds/**", "*.tsk/**"]',
+      '    no_read_dirs: [".minds/**"]',
+      '    no_write_dirs: [".minds/**"]',
     ])
   );
 }
@@ -3398,6 +3495,9 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
       // Team.load() is fail-open (always returns a usable team) and publishes any team.yaml issues
       // to the Problems panel.
       await Team.load();
+
+      // Non-blocking style lint (keeps team.yaml readable).
+      await lintTeamYamlStyleProblems();
 
       const snapshot = getProblemsSnapshot();
       const teamProblems = listTeamYamlProblems(snapshot.problems);

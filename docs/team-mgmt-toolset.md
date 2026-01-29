@@ -416,6 +416,10 @@ Best practices:
 - Make `member_defaults` conservative. Grant additional tools/dirs on a per-member basis.
 - Prefer toolsets over individually enumerating tools unless you need a one-off tool.
 - Keep `.minds/team.yaml` ownership tight; only the team manager should be able to edit it.
+- Avoid repeating built-in constraints in `team.yaml`:
+  - `*.tsk/**` (encapsulated Taskdocs) are hard-denied for all general file tools.
+  - `.minds/**` is hard-denied for general file tools; only the dedicated `team-mgmt` toolset can access it.
+    Put these in `no_*` only when you need extra explicitness; they are enforced regardless.
 
 ## Managing `.minds/team/<member>/*.md` (agent minds)
 

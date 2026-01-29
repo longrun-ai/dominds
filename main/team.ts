@@ -127,6 +127,11 @@ export namespace Team {
     streaming?: boolean;
     hidden?: boolean;
 
+    // Internal-only flag: allow `.minds/**` access for tool implementations that are explicitly
+    // scoped to `.minds/` (e.g. the `team-mgmt` toolset). This must NOT be configurable from
+    // `.minds/team.yaml`.
+    internal_allow_minds?: boolean;
+
     constructor(params: {
       id: string;
       name: string;
@@ -144,6 +149,7 @@ export namespace Team {
       icon?: string;
       streaming?: boolean;
       hidden?: boolean;
+      internal_allow_minds?: boolean;
     }) {
       this.id = params.id;
       this.name = params.name;
@@ -164,6 +170,8 @@ export namespace Team {
       if (params.icon !== undefined) this.icon = params.icon;
       if (params.streaming !== undefined) this.streaming = params.streaming;
       if (params.hidden !== undefined) this.hidden = params.hidden;
+      if (params.internal_allow_minds !== undefined)
+        this.internal_allow_minds = params.internal_allow_minds;
 
       // TypeScript class-field initialization may define optional fields as own-properties with
       // `undefined`, which breaks prototype-chain defaults. Clean them up.
@@ -183,6 +191,7 @@ export namespace Team {
         'icon',
         'streaming',
         'hidden',
+        'internal_allow_minds',
       ] as const;
       for (const key of unsettableKeys) {
         if (Object.prototype.hasOwnProperty.call(self, key) && self[key] === undefined) {
@@ -911,6 +920,48 @@ export namespace Team {
     hidden?: boolean;
   };
 
+  function normalizePatternToken(raw: string): string {
+    return raw.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  }
+
+  function isForbiddenBuiltinAllowListPattern(raw: string): boolean {
+    const token = normalizePatternToken(raw);
+    // `.minds/**` is reserved workspace state: general file tools must not access it.
+    if (/(^|\/)\.minds(\/|$)/.test(token)) return true;
+    // `*.tsk/**` is encapsulated Taskdoc state: general file tools must not access it.
+    if (/\.tsk(\/|$)/.test(token)) return true;
+    return false;
+  }
+
+  function sanitizeAllowListsForBuiltinScopes(
+    pushIssue: (id: string, message: string, errorText: string) => void,
+    idPrefix: string,
+    atPrefix: string,
+    overrides: MemberOverrides,
+  ): void {
+    const sanitizeList = (field: 'read_dirs' | 'write_dirs'): void => {
+      const patterns = overrides[field];
+      if (!patterns || patterns.length === 0) return;
+      const forbidden = patterns.filter((p) => isForbiddenBuiltinAllowListPattern(p));
+      if (forbidden.length === 0) return;
+
+      overrides[field] = patterns.filter((p) => !isForbiddenBuiltinAllowListPattern(p));
+      pushIssue(
+        `${idPrefix}/${field}/forbidden_builtin_scopes`,
+        `Invalid .minds/team.yaml: ${atPrefix}.${field} contains forbidden built-in scopes. These entries are ignored.`,
+        forbidden
+          .map(
+            (p) =>
+              `- ${atPrefix}.${field}: pattern '${p}' is forbidden (built-in hard deny for .minds/** and *.tsk/**).`,
+          )
+          .join('\n'),
+      );
+    };
+
+    sanitizeList('read_dirs');
+    sanitizeList('write_dirs');
+  }
+
   function parseMemberOverrides(
     rv: Record<string, unknown>,
     at: string,
@@ -1148,6 +1199,12 @@ export namespace Team {
         );
         const parsedMd = parseMemberOverrides(rawMemberDefaults, 'member_defaults');
         if (parsedMd.kind === 'ok') {
+          sanitizeAllowListsForBuiltinScopes(
+            pushIssue,
+            'member_defaults',
+            'member_defaults',
+            parsedMd.overrides,
+          );
           applyOverrides(md, parsedMd.overrides);
         } else {
           pushIssue(
@@ -1246,6 +1303,13 @@ export namespace Team {
         }
         continue;
       }
+
+      sanitizeAllowListsForBuiltinScopes(
+        pushIssue,
+        `members/${idSeg}`,
+        memberAt,
+        parsedMember.overrides,
+      );
 
       if (id === 'fuxi' || id === 'pangu') {
         const shadowMember = id === 'fuxi' ? shadow.fuxi : shadow.pangu;

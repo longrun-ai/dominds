@@ -17,6 +17,11 @@ function isEncapsulatedTaskPath(targetPath: string): boolean {
   return /(^|\/)[^/]+\.tsk(\/|$)/.test(normalized);
 }
 
+function isMindsPath(targetPath: string): boolean {
+  const normalized = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized === '.minds' || normalized.startsWith('.minds/');
+}
+
 /**
  * Directory-specific pattern matching for access control.
  * This function determines if a target path (file or directory) should be controlled
@@ -157,8 +162,17 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
   // Get relative path from workspace root
   const relativePath = path.relative(cwd, resolvedPath);
 
-  // Task Docs (`*.tsk/`) are encapsulated and forbidden to all general file tools.
+  // Task Docs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
+    return false;
+  }
+
+  // Minds (`.minds/**`) is reserved workspace state.
+  // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
+  // may bypass this via an internal-only flag.
+  const isMinds = isMindsPath(relativePath);
+  const allowMindsBypass = member.internal_allow_minds === true;
+  if (isMinds && !allowMindsBypass) {
     return false;
   }
 
@@ -172,6 +186,8 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
 
   // Check whitelist (read_dirs)
   const whitelist = member.read_dirs || [];
+
+  // Note: `.minds/**` is handled above as a hard deny (unless internal bypass is enabled).
 
   // If no whitelist is defined, allow access (after blacklist check)
   if (whitelist.length === 0) {
@@ -211,8 +227,17 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
   // Get relative path from workspace root
   const relativePath = path.relative(cwd, resolvedPath);
 
-  // Task Docs (`*.tsk/`) are encapsulated and forbidden to all general file tools.
+  // Task Docs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
+    return false;
+  }
+
+  // Minds (`.minds/**`) is reserved workspace state.
+  // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
+  // may bypass this via an internal-only flag.
+  const isMinds = isMindsPath(relativePath);
+  const allowMindsBypass = member.internal_allow_minds === true;
+  if (isMinds && !allowMindsBypass) {
     return false;
   }
 
@@ -226,6 +251,8 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
 
   // Check whitelist (write_dirs)
   const whitelist = member.write_dirs || [];
+
+  // Note: `.minds/**` is handled above as a hard deny (unless internal bypass is enabled).
 
   // If no whitelist is defined, allow access (after blacklist check)
   if (whitelist.length === 0) {
@@ -271,7 +298,9 @@ export function getAccessDeniedMessage(
   if (isEncapsulatedTaskPath(targetPath)) {
     lines.push('');
     if (language === 'zh') {
-      lines.push(`- 说明：\`*.tsk/\` 是封装差遣牒。通用文件工具不得读/写/列目录/删除其中内容。`);
+      lines.push(
+        `- 说明：\`*.tsk/\` 是封装差遣牒。通用文件工具无法读/写/列目录/删除其中内容（硬编码无条件拒绝）。`,
+      );
       lines.push(
         `- 提示：写入/更新请使用函数工具 \`change_mind\`（顶层：\`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\"})\`；额外章节：\`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`）。`,
       );
@@ -280,13 +309,32 @@ export function getAccessDeniedMessage(
       );
     } else {
       lines.push(
-        `- Note: \`*.tsk/\` is an encapsulated Taskdoc. General file tools must not read/write/list/delete it.`,
+        `- Note: \`*.tsk/\` is an encapsulated Taskdoc. It is hard-denied for all general file tools.`,
       );
       lines.push(
         `- Hint: For updates, use the function tool \`change_mind\` (top-level: \`change_mind({\"selector\":\"goals|constraints|progress\",\"content\":\"...\"})\`; extra sections: \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\`).`,
       );
       lines.push(
         `- Hint: To read extra sections, use \`recall_taskdoc({\"category\":\"<category>\",\"selector\":\"<selector>\"})\`.`,
+      );
+    }
+  }
+
+  if (isMindsPath(targetPath)) {
+    lines.push('');
+    if (language === 'zh') {
+      lines.push(
+        `- 说明：\`.minds/\` 是工作区的“团队配置/记忆/资产”目录，通用文件工具无法读写（硬编码无条件拒绝）。`,
+      );
+      lines.push(
+        `- 提示：如需修改 \`.minds/**\`，建议使用 \`team-mgmt\` 工具集（或由团队管理员成员代管）。`,
+      );
+    } else {
+      lines.push(
+        `- Note: \`.minds/\` stores workspace team config/memory/assets and is hard-denied for general file tools.`,
+      );
+      lines.push(
+        `- Hint: To modify \`.minds/**\`, use the \`team-mgmt\` toolset (or delegate to a team-manager member).`,
       );
     }
   }

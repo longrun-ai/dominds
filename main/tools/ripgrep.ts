@@ -105,6 +105,11 @@ function buildAccessControlGlobs(member: Team.Member): { include: string[]; excl
   exclude.push('**/*.tsk');
   exclude.push('**/*.tsk/**');
 
+  // `.minds/**` is reserved workspace state and is hard-denied for general file tools.
+  // Dedicated `.minds/`-scoped tools (team-mgmt) should be used for managing it.
+  exclude.push('.minds');
+  exclude.push('.minds/**');
+
   return { include, exclude };
 }
 

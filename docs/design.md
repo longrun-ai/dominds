@@ -547,9 +547,12 @@ dominds dialog start --taskdoc-path tasks/auth-system.tsk
 **Development Phase**:
 
 - Multiple dialog trees can reference the same Taskdoc
-- Team members collaborate by updating the same file
+- Team members collaborate by updating the same Taskdoc (via `change_mind` operations)
 - Progress tracking persists across conversations
 - Requirements evolve through `change_mind` operations
+- Workspace hard rules:
+  - `*.tsk/**` is encapsulated Taskdoc state and is hard-denied for all general file tools.
+  - `.minds/**` is reserved workspace state (team config/memory/assets) and is hard-denied for all general file tools; manage it via dedicated tools like `team-mgmt`.
 
 **Collaboration Example**:
 
