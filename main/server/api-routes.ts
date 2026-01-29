@@ -24,19 +24,20 @@ import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
 import { listTaskDocumentsInWorkspace } from '../utils/taskdoc-search';
 import {
-  handleGetBuiltinPrompts,
-  handleGetPromptCatalog,
-  handleGetWorkspacePrompts,
-  handleSaveWorkspacePrompt,
-  handleTeamMgmtManual,
-} from './prompts-routes';
-import {
   buildSetupFileResponse,
   buildSetupStatusResponse,
   handleWriteShellEnv,
   handleWriteTeamYaml,
   handleWriteWorkspaceLlmYaml,
 } from './setup-routes';
+import {
+  handleCreateWorkspaceSnippetGroup,
+  handleGetBuiltinSnippets,
+  handleGetSnippetCatalog,
+  handleGetWorkspaceSnippets,
+  handleSaveWorkspaceSnippet,
+  handleTeamMgmtManual,
+} from './snippets-routes';
 
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
 
@@ -240,27 +241,34 @@ export async function handleApiRoute(
       return await handleReadDocsMarkdown(req, res);
     }
 
-    if (pathname === '/api/prompts/builtin' && req.method === 'GET') {
-      const payload = await handleGetBuiltinPrompts();
+    if (pathname === '/api/snippets/builtin' && req.method === 'GET') {
+      const payload = await handleGetBuiltinSnippets();
       respondJson(res, payload.success ? 200 : 500, payload);
       return true;
     }
 
-    if (pathname === '/api/prompts/workspace' && req.method === 'GET') {
-      const payload = await handleGetWorkspacePrompts();
+    if (pathname === '/api/snippets/workspace' && req.method === 'GET') {
+      const payload = await handleGetWorkspaceSnippets();
       respondJson(res, payload.success ? 200 : 500, payload);
       return true;
     }
 
-    if (pathname === '/api/prompts/catalog' && req.method === 'GET') {
-      const payload = await handleGetPromptCatalog();
+    if (pathname === '/api/snippets/catalog' && req.method === 'GET') {
+      const payload = await handleGetSnippetCatalog();
       respondJson(res, payload.success ? 200 : 500, payload);
       return true;
     }
 
-    if (pathname === '/api/prompts/workspace' && req.method === 'POST') {
+    if (pathname === '/api/snippets/workspace' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
-      const payload = await handleSaveWorkspacePrompt(rawBody);
+      const payload = await handleSaveWorkspaceSnippet(rawBody);
+      respondJson(res, payload.success ? 200 : 400, payload);
+      return true;
+    }
+
+    if (pathname === '/api/snippets/groups' && req.method === 'POST') {
+      const rawBody = await readRequestBody(req);
+      const payload = await handleCreateWorkspaceSnippetGroup(rawBody);
       respondJson(res, payload.success ? 200 : 400, payload);
       return true;
     }

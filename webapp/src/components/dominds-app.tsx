@@ -66,11 +66,11 @@ import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-docs-panel';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
-import './dominds-prompts-panel';
 import './dominds-q4h-input';
 import type { DomindsQ4HInput, Q4HQuestion } from './dominds-q4h-input';
 import './dominds-q4h-panel';
 import type { DomindsQ4HPanel } from './dominds-q4h-panel';
+import './dominds-snippets-panel';
 import './dominds-team-manual-panel';
 import './dominds-team-members.js';
 import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './dominds-team-members.js';
@@ -147,7 +147,7 @@ export class DomindsApp extends HTMLElement {
   private q4hDialogContexts: Q4HDialogContext[] = [];
 
   // Bottom panel: tabs + content
-  private bottomPanelTab: 'q4h' | 'diligence' | 'docs' | 'team-manual' | 'prompts' = 'q4h';
+  private bottomPanelTab: 'q4h' | 'diligence' | 'docs' | 'team-manual' | 'snippets' = 'q4h';
   private bottomPanelExpanded: boolean = false;
   private bottomPanelHeightPx: number = 280;
   private bottomPanelUserResized: boolean = false;
@@ -2284,7 +2284,7 @@ export class DomindsApp extends HTMLElement {
 
 	      .bp-docs dominds-docs-panel,
 	      .bp-team-manual dominds-team-manual-panel,
-	      .bp-prompts dominds-prompts-panel {
+		      .bp-snippets dominds-snippets-panel {
 	        flex: 1;
 	        min-height: 0;
 	        min-width: 0;
@@ -3112,8 +3112,8 @@ export class DomindsApp extends HTMLElement {
 	                  <div class="bp-content bp-team-manual ${this.bottomPanelTab === 'team-manual' ? '' : 'hidden'}">
 	                    <dominds-team-manual-panel id="team-manual-panel"></dominds-team-manual-panel>
 	                  </div>
-	                  <div class="bp-content bp-prompts ${this.bottomPanelTab === 'prompts' ? '' : 'hidden'}">
-	                    <dominds-prompts-panel id="prompts-panel"></dominds-prompts-panel>
+	                  <div class="bp-content bp-snippets ${this.bottomPanelTab === 'snippets' ? '' : 'hidden'}">
+	                    <dominds-snippets-panel id="snippets-panel"></dominds-snippets-panel>
 	                  </div>
 	                </div>
 	                <div class="bottom-panel-footer" id="bottom-panel-footer">
@@ -3144,7 +3144,7 @@ export class DomindsApp extends HTMLElement {
                       }</span>
 	                  </button>
 	                  <div class="bp-tabs-right">
-	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'prompts' ? 'active' : ''}" type="button" data-bp-tab="prompts">${t.promptTemplatesTabTitle}</button>
+	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'snippets' ? 'active' : ''}" type="button" data-bp-tab="snippets">${t.promptTemplatesTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'team-manual' ? 'active' : ''}" type="button" data-bp-tab="team-manual">${t.teamMgmtManualTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'docs' ? 'active' : ''}" type="button" data-bp-tab="docs">${t.domindsDocsTabTitle}</button>
 	                  </div>
@@ -3185,8 +3185,8 @@ export class DomindsApp extends HTMLElement {
       this.onAuthRejected('api');
     });
 
-    // Prompt template insertion from prompts panel
-    this.shadowRoot.addEventListener('prompt-template-insert', (e: Event) => {
+    // Template insertion from snippets panel
+    this.shadowRoot.addEventListener('snippet-insert', (e: Event) => {
       const ce = e as CustomEvent<unknown>;
       const detail =
         ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
@@ -3685,7 +3685,7 @@ export class DomindsApp extends HTMLElement {
             k === 'diligence' ||
             k === 'docs' ||
             k === 'team-manual' ||
-            k === 'prompts') &&
+            k === 'snippets') &&
           k === this.bottomPanelTab;
         b.classList.toggle('active', active);
       });
@@ -3788,7 +3788,7 @@ export class DomindsApp extends HTMLElement {
           tab !== 'diligence' &&
           tab !== 'docs' &&
           tab !== 'team-manual' &&
-          tab !== 'prompts'
+          tab !== 'snippets'
         )
           return;
         if (this.bottomPanelExpanded && this.bottomPanelTab === tab) {
@@ -3896,8 +3896,8 @@ export class DomindsApp extends HTMLElement {
       return;
     }
 
-    if (this.bottomPanelTab === 'prompts') {
-      const panel = this.shadowRoot?.querySelector('#prompts-panel');
+    if (this.bottomPanelTab === 'snippets') {
+      const panel = this.shadowRoot?.querySelector('#snippets-panel');
       if (panel && 'setUiLanguage' in panel) {
         const maybe = panel as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
         if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
@@ -6101,11 +6101,11 @@ export class DomindsApp extends HTMLElement {
           teamManualPanel.setUiLanguage(this.uiLanguage);
         }
 
-        const promptsPanel = this.shadowRoot?.querySelector('#prompts-panel') as unknown as {
+        const snippetsPanel = this.shadowRoot?.querySelector('#snippets-panel') as unknown as {
           setUiLanguage?: (lang: LanguageCode) => void;
         };
-        if (promptsPanel && typeof promptsPanel.setUiLanguage === 'function') {
-          promptsPanel.setUiLanguage(this.uiLanguage);
+        if (snippetsPanel && typeof snippetsPanel.setUiLanguage === 'function') {
+          snippetsPanel.setUiLanguage(this.uiLanguage);
         }
 
         const key = this.dialogKey(readyMsg.dialog.rootId, readyMsg.dialog.selfId);

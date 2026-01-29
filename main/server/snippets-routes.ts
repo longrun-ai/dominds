@@ -3,32 +3,32 @@ import path from 'path';
 import YAML from 'yaml';
 import { createLogger } from '../log';
 
-type PromptTemplateSource = 'builtin' | 'workspace';
+type SnippetTemplateSource = 'builtin' | 'workspace';
 
-type PromptTemplate = {
+type SnippetTemplate = {
   id: string;
   name: string;
   description?: string;
   content: string;
-  source: PromptTemplateSource;
+  source: SnippetTemplateSource;
   path?: string;
 };
 
-type PromptCatalogGroup = {
+type SnippetCatalogGroup = {
   key: string;
   titleI18n: { en: string; zh: string };
-  templates: PromptTemplate[];
+  templates: SnippetTemplate[];
 };
 
-type PromptCatalogResponse =
-  | { success: true; groups: PromptCatalogGroup[] }
+type SnippetCatalogResponse =
+  | { success: true; groups: SnippetCatalogGroup[] }
   | { success: false; error: string };
 
-type PromptTemplatesResponse =
-  | { success: true; templates: PromptTemplate[] }
+type SnippetTemplatesResponse =
+  | { success: true; templates: SnippetTemplate[] }
   | { success: false; error: string };
 
-type SaveWorkspacePromptTemplateRequest = {
+type SaveWorkspaceSnippetTemplateRequest = {
   groupKey: string;
   fileName?: string;
   uiLanguage: 'en' | 'zh';
@@ -37,8 +37,17 @@ type SaveWorkspacePromptTemplateRequest = {
   content: string;
 };
 
-type SaveWorkspacePromptTemplateResponse =
-  | { success: true; template: PromptTemplate }
+type SaveWorkspaceSnippetTemplateResponse =
+  | { success: true; template: SnippetTemplate }
+  | { success: false; error: string };
+
+type CreateWorkspaceSnippetGroupRequest = {
+  title: string;
+  uiLanguage: 'en' | 'zh';
+};
+
+type CreateWorkspaceSnippetGroupResponse =
+  | { success: true; groupKey: string }
   | { success: false; error: string };
 
 type TeamMgmtManualRequest = { topics?: string[]; uiLanguage: 'en' | 'zh' };
@@ -47,7 +56,7 @@ type TeamMgmtManualResponse =
   | { success: true; markdown: string }
   | { success: false; error: string };
 
-const log = createLogger('prompts-routes');
+const log = createLogger('snippets-routes');
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -59,7 +68,7 @@ function requireNonEmptyString(value: unknown): string | null {
 
 function parseSaveWorkspacePromptTemplateRequest(
   raw: unknown,
-): SaveWorkspacePromptTemplateRequest | null {
+): SaveWorkspaceSnippetTemplateRequest | null {
   if (!isRecord(raw)) return null;
   const groupKey = requireNonEmptyString(raw['groupKey']);
   const uiLanguageRaw = raw['uiLanguage'];
@@ -76,6 +85,17 @@ function parseSaveWorkspacePromptTemplateRequest(
   const description =
     typeof descriptionRaw === 'string' && descriptionRaw.trim() !== '' ? descriptionRaw : undefined;
   return { name, uiLanguage, fileName, description, content, groupKey };
+}
+
+function parseCreateWorkspaceSnippetGroupRequest(
+  raw: unknown,
+): CreateWorkspaceSnippetGroupRequest | null {
+  if (!isRecord(raw)) return null;
+  const title = requireNonEmptyString(raw['title']);
+  const uiLanguageRaw = raw['uiLanguage'];
+  const uiLanguage = uiLanguageRaw === 'zh' || uiLanguageRaw === 'en' ? uiLanguageRaw : null;
+  if (!title || !uiLanguage) return null;
+  return { title: title.trim(), uiLanguage };
 }
 
 function buildWorkspaceTemplateTokenFromName(name: string): string {
@@ -123,15 +143,15 @@ function stripLangSuffixFromSnippetId(id: string): string {
   return id;
 }
 
-async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
-  const builtin = await readBuiltinPromptTemplates();
-  const workspace = await readWorkspacePromptTemplates();
+async function buildSnippetCatalog(): Promise<SnippetCatalogGroup[]> {
+  const builtin = await readBuiltinSnippets();
+  const workspace = await readWorkspaceSnippets();
 
   const serverRoot = path.resolve(__dirname, '..', '..');
   const builtinCatalogAbs = path.resolve(serverRoot, 'dist', 'snippets', 'catalog.yaml');
   const builtinCatalogFallbackAbs = path.resolve(serverRoot, 'snippets', 'catalog.yaml');
   const rtwsRoot = path.resolve(process.cwd());
-  const workspaceCatalogAbs = path.resolve(rtwsRoot, '.minds', 'prompts', 'catalog.yaml');
+  const workspaceCatalogAbs = path.resolve(rtwsRoot, '.minds', 'snippets', 'catalog.yaml');
 
   const builtinCatalog =
     (await loadCatalogFromPath(builtinCatalogAbs)) ??
@@ -148,7 +168,7 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
     ];
   }
 
-  const builtinByToken = new Map<string, PromptTemplate>();
+  const builtinByToken = new Map<string, SnippetTemplate>();
   for (const tpl of builtin) {
     const p = typeof tpl.path === 'string' ? tpl.path : '';
     if (!p.startsWith('snippets/')) continue;
@@ -157,11 +177,11 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
     if (!builtinByToken.has(token)) builtinByToken.set(token, tpl);
   }
 
-  const workspaceByGroupAndToken = new Map<string, PromptTemplate>();
+  const workspaceByGroupAndToken = new Map<string, SnippetTemplate>();
   for (const tpl of workspace) {
     const p = typeof tpl.path === 'string' ? tpl.path : '';
-    if (!p.startsWith('.minds/prompts/')) continue;
-    const rel = p.slice('.minds/prompts/'.length);
+    if (!p.startsWith('.minds/snippets/')) continue;
+    const rel = p.slice('.minds/snippets/'.length);
     const parts = rel.split('/').filter((x) => x !== '');
     const groupKey = parts[0];
     const rest = parts.slice(1).join('/');
@@ -181,7 +201,7 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
     }
   }
 
-  const groups: PromptCatalogGroup[] = [];
+  const groups: SnippetCatalogGroup[] = [];
   for (const groupKey of keys) {
     const metaBuiltin = builtinCatalog ? builtinCatalog[groupKey] : undefined;
     const metaWorkspace = workspaceCatalog ? workspaceCatalog[groupKey] : undefined;
@@ -193,7 +213,7 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
       metaBuiltin?.name ??
       groupKey;
 
-    const templates: PromptTemplate[] = [];
+    const templates: SnippetTemplate[] = [];
     if (metaBuiltin && Array.isArray(metaBuiltin.snippets)) {
       for (const raw of metaBuiltin.snippets) {
         if (typeof raw !== 'string') continue;
@@ -213,7 +233,7 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
       }
     }
 
-    if (templates.length === 0) continue;
+    // Keep empty groups so the UI can show newly-created workspace groups before adding snippets.
 
     // If a workspace template uses the same display name as a builtin template,
     // prefer the workspace version to support "override" via same-name saves.
@@ -221,7 +241,7 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
     for (const tpl of templates) {
       if (tpl.source === 'workspace') workspaceNames.add(tpl.name);
     }
-    const filtered: PromptTemplate[] = [];
+    const filtered: SnippetTemplate[] = [];
     const seenNames = new Set<string>();
     for (const tpl of templates) {
       if (tpl.source === 'builtin' && workspaceNames.has(tpl.name)) {
@@ -248,6 +268,61 @@ async function buildPromptCatalog(): Promise<PromptCatalogGroup[]> {
   }
 
   return groups;
+}
+
+async function ensureWorkspaceCatalogGroup(
+  snippetsDirAbs: string,
+  request: CreateWorkspaceSnippetGroupRequest,
+): Promise<CreateWorkspaceSnippetGroupResponse> {
+  const title = request.title.trim();
+  if (title === '') return { success: false, error: 'Missing title' };
+
+  const base = sanitizeWorkspaceTemplateFileName(title);
+  if (base === 'all') {
+    return { success: false, error: "Group key 'all' is reserved" };
+  }
+
+  const catalogAbs = path.resolve(snippetsDirAbs, 'catalog.yaml');
+  let catalog: ParsedCatalog = {};
+  try {
+    const raw = await fs.readFile(catalogAbs, 'utf-8');
+    const parsed = parseCatalogYaml(raw);
+    if (parsed) catalog = parsed;
+  } catch {
+    // ignore
+  }
+
+  let groupKey = base;
+  if (isRecord(catalog[groupKey])) {
+    // Auto-suffix for uniqueness.
+    for (let i = 2; i < 1000; i += 1) {
+      const candidate = `${base}-${i}`;
+      if (!isRecord(catalog[candidate])) {
+        groupKey = candidate;
+        break;
+      }
+    }
+    if (groupKey === base) {
+      return { success: false, error: 'Failed to allocate unique group key' };
+    }
+  }
+
+  const meta: Record<string, unknown> = {
+    snippets: [],
+  };
+  if (request.uiLanguage === 'zh') {
+    meta['name-zh'] = title;
+    meta['name'] = title;
+  } else {
+    meta['name'] = title;
+    meta['name-zh'] = title;
+  }
+  catalog[groupKey] = meta as ParsedCatalog[string];
+
+  await fs.mkdir(snippetsDirAbs, { recursive: true });
+  await fs.writeFile(catalogAbs, YAML.stringify(catalog), 'utf-8');
+
+  return { success: true, groupKey };
 }
 
 function parseTeamMgmtManualRequest(raw: unknown): TeamMgmtManualRequest | null {
@@ -334,7 +409,7 @@ async function listMarkdownFilesRecursively(dirAbs: string): Promise<string[]> {
   return out;
 }
 
-async function readBuiltinPromptTemplates(): Promise<PromptTemplate[]> {
+async function readBuiltinSnippets(): Promise<SnippetTemplate[]> {
   const serverRoot = path.resolve(__dirname, '..', '..');
   const candidates = [
     path.resolve(serverRoot, 'dist', 'snippets'),
@@ -355,7 +430,7 @@ async function readBuiltinPromptTemplates(): Promise<PromptTemplate[]> {
   if (!snippetsDir) return [];
 
   const files = await listMarkdownFilesRecursively(snippetsDir);
-  const templates: PromptTemplate[] = [];
+  const templates: SnippetTemplate[] = [];
   for (const abs of files) {
     if (path.basename(abs).toLowerCase() === 'readme.md') continue;
     try {
@@ -380,16 +455,17 @@ async function readBuiltinPromptTemplates(): Promise<PromptTemplate[]> {
   return templates;
 }
 
-async function readWorkspacePromptTemplates(): Promise<PromptTemplate[]> {
+async function readWorkspaceSnippets(): Promise<SnippetTemplate[]> {
   const rtwsRoot = path.resolve(process.cwd());
-  const promptsDir = path.resolve(rtwsRoot, '.minds', 'prompts');
-  const files = await listMarkdownFilesRecursively(promptsDir);
-  const templates: PromptTemplate[] = [];
+  const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
+  const files = await listMarkdownFilesRecursively(snippetsDir);
+  const templates: SnippetTemplate[] = [];
   for (const abs of files) {
+    if (path.basename(abs).toLowerCase() === 'catalog.yaml') continue;
     try {
       const raw = await fs.readFile(abs, 'utf-8');
       const parsed = parseFrontmatter(raw);
-      const rel = path.relative(promptsDir, abs).replace(/\\/g, '/');
+      const rel = path.relative(snippetsDir, abs).replace(/\\/g, '/');
       templates.push({
         id: `workspace:${safeTemplateIdFromPath(rel)}`,
         name:
@@ -399,7 +475,7 @@ async function readWorkspacePromptTemplates(): Promise<PromptTemplate[]> {
         description: parsed.kind === 'parsed' ? parsed.description : undefined,
         content: parsed.kind === 'parsed' ? parsed.body : raw,
         source: 'workspace',
-        path: `.minds/prompts/${rel}`,
+        path: `.minds/snippets/${rel}`,
       });
     } catch {
       // ignore
@@ -416,11 +492,11 @@ function sanitizeWorkspaceTemplateFileName(name: string): string {
 }
 
 async function upsertWorkspaceCatalogEntry(
-  promptsDirAbs: string,
+  snippetsDirAbs: string,
   groupKey: string,
   token: string,
 ): Promise<void> {
-  const catalogAbs = path.resolve(promptsDirAbs, 'catalog.yaml');
+  const catalogAbs = path.resolve(snippetsDirAbs, 'catalog.yaml');
 
   let catalog: ParsedCatalog = {};
   try {
@@ -444,43 +520,43 @@ async function upsertWorkspaceCatalogEntry(
   meta['snippets'] = snippets;
   catalog[groupKey] = meta;
 
-  await fs.mkdir(promptsDirAbs, { recursive: true });
+  await fs.mkdir(snippetsDirAbs, { recursive: true });
   await fs.writeFile(catalogAbs, YAML.stringify(catalog), 'utf-8');
 }
 
-export async function handleGetBuiltinPrompts(): Promise<PromptTemplatesResponse> {
+export async function handleGetBuiltinSnippets(): Promise<SnippetTemplatesResponse> {
   try {
-    const templates = await readBuiltinPromptTemplates();
+    const templates = await readBuiltinSnippets();
     return { success: true, templates };
   } catch (error: unknown) {
-    log.error('Failed to read builtin prompts', error);
-    return { success: false, error: 'Failed to load builtin prompts' };
+    log.error('Failed to read builtin snippets', error);
+    return { success: false, error: 'Failed to load builtin snippets' };
   }
 }
 
-export async function handleGetWorkspacePrompts(): Promise<PromptTemplatesResponse> {
+export async function handleGetWorkspaceSnippets(): Promise<SnippetTemplatesResponse> {
   try {
-    const templates = await readWorkspacePromptTemplates();
+    const templates = await readWorkspaceSnippets();
     return { success: true, templates };
   } catch (error: unknown) {
-    log.error('Failed to read workspace prompts', error);
-    return { success: false, error: 'Failed to load workspace prompts' };
+    log.error('Failed to read workspace snippets', error);
+    return { success: false, error: 'Failed to load workspace snippets' };
   }
 }
 
-export async function handleGetPromptCatalog(): Promise<PromptCatalogResponse> {
+export async function handleGetSnippetCatalog(): Promise<SnippetCatalogResponse> {
   try {
-    const groups = await buildPromptCatalog();
+    const groups = await buildSnippetCatalog();
     return { success: true, groups };
   } catch (error: unknown) {
-    log.error('Failed to build prompt catalog', error);
-    return { success: false, error: 'Failed to load prompt catalog' };
+    log.error('Failed to build snippet catalog', error);
+    return { success: false, error: 'Failed to load snippet catalog' };
   }
 }
 
-export async function handleSaveWorkspacePrompt(
+export async function handleSaveWorkspaceSnippet(
   rawBody: string,
-): Promise<SaveWorkspacePromptTemplateResponse> {
+): Promise<SaveWorkspaceSnippetTemplateResponse> {
   let parsed: unknown;
   try {
     parsed = rawBody ? JSON.parse(rawBody) : {};
@@ -491,7 +567,7 @@ export async function handleSaveWorkspacePrompt(
   if (!req) return { success: false, error: 'Invalid request body' };
 
   const rtwsRoot = path.resolve(process.cwd());
-  const promptsDir = path.resolve(rtwsRoot, '.minds', 'prompts');
+  const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   const safeName =
     typeof req.fileName === 'string' && req.fileName.trim() !== ''
       ? sanitizeWorkspaceTemplateFileName(req.fileName)
@@ -499,8 +575,8 @@ export async function handleSaveWorkspacePrompt(
   const langSuffix = req.uiLanguage;
   const fileBasename = safeName.endsWith(`.${langSuffix}`) ? safeName : `${safeName}.${langSuffix}`;
   const groupKey = sanitizeWorkspaceTemplateFileName(req.groupKey);
-  const fileAbs = path.resolve(promptsDir, groupKey, `${fileBasename}.md`);
-  if (!ensureInsideDir(promptsDir, fileAbs)) {
+  const fileAbs = path.resolve(snippetsDir, groupKey, `${fileBasename}.md`);
+  if (!ensureInsideDir(snippetsDir, fileAbs)) {
     return { success: false, error: 'Invalid template name' };
   }
   try {
@@ -514,13 +590,13 @@ export async function handleSaveWorkspacePrompt(
     const serialized = `---\n${header}\n---\n\n${req.content.trimEnd()}\n`;
     await fs.writeFile(fileAbs, serialized, 'utf-8');
     await upsertWorkspaceCatalogEntry(
-      promptsDir,
+      snippetsDir,
       groupKey,
       typeof req.fileName === 'string' && req.fileName.trim() !== ''
         ? buildWorkspaceTemplateTokenFromFileName(req.fileName)
         : buildWorkspaceTemplateTokenFromName(req.name),
     );
-    const rel = path.relative(promptsDir, fileAbs).replace(/\\/g, '/');
+    const rel = path.relative(snippetsDir, fileAbs).replace(/\\/g, '/');
     return {
       success: true,
       template: {
@@ -529,12 +605,34 @@ export async function handleSaveWorkspacePrompt(
         description: typeof req.description === 'string' ? req.description : undefined,
         content: req.content,
         source: 'workspace',
-        path: `.minds/prompts/${rel}`,
+        path: `.minds/snippets/${rel}`,
       },
     };
   } catch (error: unknown) {
-    log.error('Failed to save workspace prompt', error);
-    return { success: false, error: 'Failed to save prompt template' };
+    log.error('Failed to save workspace snippet', error);
+    return { success: false, error: 'Failed to save snippet template' };
+  }
+}
+
+export async function handleCreateWorkspaceSnippetGroup(
+  rawBody: string,
+): Promise<CreateWorkspaceSnippetGroupResponse> {
+  let parsed: unknown;
+  try {
+    parsed = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    return { success: false, error: 'Invalid JSON body' };
+  }
+  const req = parseCreateWorkspaceSnippetGroupRequest(parsed);
+  if (!req) return { success: false, error: 'Invalid request body' };
+
+  const rtwsRoot = path.resolve(process.cwd());
+  const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
+  try {
+    return await ensureWorkspaceCatalogGroup(snippetsDir, req);
+  } catch (error: unknown) {
+    log.error('Failed to create workspace snippet group', error);
+    return { success: false, error: 'Failed to create snippet group' };
   }
 }
 

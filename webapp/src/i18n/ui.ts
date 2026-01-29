@@ -368,7 +368,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       teamMgmtLoadFailed: '加载团队管理手册失败',
 
       promptTemplatesBuiltinTitle: '内置模板',
-      promptTemplatesWorkspaceTitle: '工作区模板（.minds/prompts/）',
+      promptTemplatesWorkspaceTitle: '工作区模板（.minds/snippets/）',
       promptTemplatesInsert: '插入',
       promptTemplatesNewTitle: '新增模板',
       promptTemplatesEditorTitle: '预览/编辑',
@@ -629,7 +629,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     teamMgmtLoadFailed: 'Failed to load team manual',
 
     promptTemplatesBuiltinTitle: 'Built-in Templates',
-    promptTemplatesWorkspaceTitle: 'Workspace Templates (.minds/prompts/)',
+    promptTemplatesWorkspaceTitle: 'Workspace Templates (.minds/snippets/)',
     promptTemplatesInsert: 'Insert',
     promptTemplatesNewTitle: 'New Template',
     promptTemplatesEditorTitle: 'Preview/Edit',

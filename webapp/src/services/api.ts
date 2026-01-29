@@ -21,13 +21,15 @@ import {
 } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 import type {
-  PromptCatalogResponse,
-  PromptTemplatesResponse,
-  SaveWorkspacePromptTemplateRequest,
-  SaveWorkspacePromptTemplateResponse,
+  CreateWorkspaceSnippetGroupRequest,
+  CreateWorkspaceSnippetGroupResponse,
+  SaveWorkspaceSnippetTemplateRequest,
+  SaveWorkspaceSnippetTemplateResponse,
+  SnippetCatalogResponse,
+  SnippetTemplatesResponse,
   TeamMgmtManualRequest,
   TeamMgmtManualResponse,
-} from '../shared/types/prompts';
+} from '../shared/types/snippets';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 export interface FrontendTeamMember {
@@ -482,22 +484,28 @@ export class ApiClient {
     );
   }
 
-  async getBuiltinPromptTemplates(): Promise<ApiResponse<PromptTemplatesResponse>> {
-    return this.request('/api/prompts/builtin');
+  async getBuiltinSnippets(): Promise<ApiResponse<SnippetTemplatesResponse>> {
+    return this.request('/api/snippets/builtin');
   }
 
-  async getWorkspacePromptTemplates(): Promise<ApiResponse<PromptTemplatesResponse>> {
-    return this.request('/api/prompts/workspace');
+  async getWorkspaceSnippets(): Promise<ApiResponse<SnippetTemplatesResponse>> {
+    return this.request('/api/snippets/workspace');
   }
 
-  async getPromptCatalog(): Promise<ApiResponse<PromptCatalogResponse>> {
-    return this.request('/api/prompts/catalog');
+  async getSnippetCatalog(): Promise<ApiResponse<SnippetCatalogResponse>> {
+    return this.request('/api/snippets/catalog');
   }
 
-  async saveWorkspacePromptTemplate(
-    req: SaveWorkspacePromptTemplateRequest,
-  ): Promise<ApiResponse<SaveWorkspacePromptTemplateResponse>> {
-    return this.request('/api/prompts/workspace', { method: 'POST', body: req });
+  async createWorkspaceSnippetGroup(
+    req: CreateWorkspaceSnippetGroupRequest,
+  ): Promise<ApiResponse<CreateWorkspaceSnippetGroupResponse>> {
+    return this.request('/api/snippets/groups', { method: 'POST', body: req });
+  }
+
+  async saveWorkspaceSnippet(
+    req: SaveWorkspaceSnippetTemplateRequest,
+  ): Promise<ApiResponse<SaveWorkspaceSnippetTemplateResponse>> {
+    return this.request('/api/snippets/workspace', { method: 'POST', body: req });
   }
 
   async teamMgmtManual(req: TeamMgmtManualRequest): Promise<ApiResponse<TeamMgmtManualResponse>> {

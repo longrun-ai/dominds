@@ -37,8 +37,8 @@ You have read/write access to the workspace, but **all incremental text edits mu
 ## Apply semantics (context_match)
 
 - `exact`: file matches the prepared context exactly.
-- `fuzz`: file drifted but target can still be located safely.
-- `rejected`: target is not unique or unsafe; re-prepare.
+- `fuzz`: file drifted but still safe to apply; the output includes `file_changed_since_preview` and digests for review.
+- `rejected`: cannot locate uniquely or unsafe; re-prepare.
 
 ## Two-step template
 

@@ -2,8 +2,8 @@
 
 export * from './language';
 export * from './problems';
-export * from './prompts';
 export * from './setup';
+export * from './snippets';
 export * from './tools-registry';
 export * from './wire';
 
