@@ -31,7 +31,7 @@ type AnthropicContentBlock = AnthropicMessageContent[number];
 type ActiveToolUse = {
   id: string;
   name: string;
-  inputParts: string[];
+  inputJson: string;
   initialInput: unknown;
 };
 
@@ -179,7 +179,7 @@ function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
     lastToolUseId = null;
   }
 
-  return messages;
+  return mergeAdjacentMessagesByRole(messages);
 }
 
 /**
@@ -188,6 +188,57 @@ function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
   return buildAnthropicRequestMessages(persistedMessages);
+}
+
+function contentToBlocks(content: MessageParam['content']): AnthropicContentBlock[] {
+  if (typeof content === 'string') {
+    return [{ type: 'text', text: content }];
+  }
+  return content as unknown as AnthropicContentBlock[];
+}
+
+function mergeAdjacentMessagesByRole(messages: MessageParam[]): MessageParam[] {
+  // Many Anthropic-compatible endpoints are strict about role alternation. Dominds stores messages
+  // at a finer granularity (thinking/saying/tool-use as separate entries), which can produce
+  // consecutive messages with the same role. Merge adjacent same-role messages into a single
+  // message with concatenated content blocks to improve compatibility.
+  const merged: MessageParam[] = [];
+
+  for (const msg of messages) {
+    const contentBlocks = contentToBlocks(msg.content);
+    if (contentBlocks.length === 0) continue;
+
+    const prev = merged.length > 0 ? merged[merged.length - 1] : null;
+    if (prev && prev.role === msg.role) {
+      const prevBlocks = contentToBlocks(prev.content);
+      prev.content = [...prevBlocks, ...contentBlocks];
+      continue;
+    }
+
+    merged.push({ role: msg.role, content: contentBlocks });
+  }
+
+  return merged;
+}
+
+function applyInputJsonDelta(state: ActiveToolUse, partialJson: string): void {
+  if (partialJson.length === 0) return;
+  if (state.inputJson.length === 0) {
+    state.inputJson = partialJson;
+    return;
+  }
+
+  // Some Anthropic-compatible providers stream `partial_json` as the full JSON accumulated so far
+  // (cumulative), while Anthropic streams deltas. Support both.
+  if (partialJson.startsWith(state.inputJson)) {
+    state.inputJson = partialJson;
+    return;
+  }
+  if (state.inputJson.startsWith(partialJson)) {
+    return;
+  }
+
+  state.inputJson += partialJson;
 }
 
 /**
@@ -505,7 +556,7 @@ export class AnthropicGen implements LlmGenerator {
             currentToolUse = {
               id: contentBlock.id,
               name: contentBlock.name,
-              inputParts: [],
+              inputJson: '',
               initialInput: contentBlock.input,
             };
           }
@@ -576,9 +627,7 @@ export class AnthropicGen implements LlmGenerator {
           } else if (delta.type === 'input_json_delta') {
             const partialJson = delta.partial_json;
             if (currentToolUse) {
-              if (partialJson.length > 0) {
-                currentToolUse.inputParts.push(partialJson);
-              }
+              applyInputJsonDelta(currentToolUse, partialJson);
             } else if (partialJson.length > 0) {
               log.warn(
                 'ANTH input_json_delta without active tool_use',
@@ -613,8 +662,8 @@ export class AnthropicGen implements LlmGenerator {
               );
             } else {
               let argsJson = '';
-              if (currentToolUse.inputParts.length > 0) {
-                argsJson = currentToolUse.inputParts.join('');
+              if (currentToolUse.inputJson.trim().length > 0) {
+                argsJson = currentToolUse.inputJson;
               } else {
                 const stringified = JSON.stringify(currentToolUse.initialInput);
                 argsJson =

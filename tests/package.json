@@ -24,6 +24,8 @@
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "openai-streaming": "tsx provider/openai-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
+    "anthropic-context-normalization": "tsx provider/anthropic-context-normalization.ts",
+    "openai-context-normalization": "tsx provider/openai-context-normalization.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
     "diag-tool": "tsx toolsets/diag.ts",
     "readonly-shell": "tsx toolsets/readonly-shell.ts",

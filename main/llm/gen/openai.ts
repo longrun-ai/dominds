@@ -181,6 +181,41 @@ function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
   return out;
 }
 
+function mergeAdjacentOpenAiMessages(input: ResponseInputItem[]): ResponseInputItem[] {
+  // Some OpenAI-compatible proxies are stricter than OpenAI itself and may behave poorly with
+  // long runs of same-role `message` items (Dominds persists thinking/saying as separate msgs).
+  // Merge adjacent message items by role to improve compatibility and reduce token overhead.
+  const merged: ResponseInputItem[] = [];
+
+  for (const item of input) {
+    if (
+      !isRecord(item) ||
+      item.type !== 'message' ||
+      (item.role !== 'user' && item.role !== 'assistant') ||
+      typeof item.content !== 'string'
+    ) {
+      merged.push(item);
+      continue;
+    }
+
+    const prev = merged.length > 0 ? merged[merged.length - 1] : null;
+    if (
+      prev &&
+      isRecord(prev) &&
+      prev.type === 'message' &&
+      prev.role === item.role &&
+      typeof prev.content === 'string'
+    ) {
+      prev.content = `${prev.content}\n${item.content}`.trim();
+      continue;
+    }
+
+    merged.push(item);
+  }
+
+  return merged;
+}
+
 function buildOpenAiRequestInput(context: ChatMessage[]): ResponseInputItem[] {
   const normalized = normalizeToolCallPairs(context);
   const input: ResponseInputItem[] = [];
@@ -213,7 +248,7 @@ function buildOpenAiRequestInput(context: ChatMessage[]): ResponseInputItem[] {
     lastFuncCallId = null;
   }
 
-  return input;
+  return mergeAdjacentOpenAiMessages(input);
 }
 
 function parseOpenAiUsage(usage: unknown): LlmUsageStats {
@@ -231,6 +266,10 @@ function parseOpenAiUsage(usage: unknown): LlmUsageStats {
     completionTokens: outputTokens,
     totalTokens: typeof totalTokens === 'number' ? totalTokens : inputTokens + outputTokens,
   };
+}
+
+export function buildOpenAiRequestInputWrapper(context: ChatMessage[]): ResponseInputItem[] {
+  return buildOpenAiRequestInput(context);
 }
 
 function extractOutputMessageText(item: ResponseOutputItem): string {
@@ -387,6 +426,45 @@ export class OpenAiGen implements LlmGenerator {
     let usage: LlmUsageStats = { kind: 'unavailable' };
     let returnedModel: string | undefined;
 
+    type ActiveFuncCall = {
+      itemId: string;
+      callId: string;
+      name: string;
+      argsJson: string;
+      emitted: boolean;
+    };
+
+    function applyArgsDelta(state: ActiveFuncCall, chunk: string): void {
+      if (chunk.length === 0) return;
+      if (state.argsJson.length === 0) {
+        state.argsJson = chunk;
+        return;
+      }
+      // Support both delta and cumulative streaming implementations.
+      if (chunk.startsWith(state.argsJson)) {
+        state.argsJson = chunk;
+        return;
+      }
+      if (state.argsJson.startsWith(chunk)) {
+        return;
+      }
+      state.argsJson += chunk;
+    }
+
+    async function maybeEmitFuncCall(
+      state: ActiveFuncCall,
+      receiver_: LlmStreamReceiver,
+    ): Promise<void> {
+      if (state.emitted) return;
+      if (state.callId.trim().length === 0) return;
+      if (state.name.trim().length === 0) return;
+      const args = state.argsJson.trim().length > 0 ? state.argsJson : '{}';
+      state.emitted = true;
+      await receiver_.funcCall(state.callId, state.name, args);
+    }
+
+    const activeFuncCallsByItemId = new Map<string, ActiveFuncCall>();
+
     try {
       const stream: AsyncIterable<ResponseStreamEvent> = await client.responses.create(payload, {
         ...(abortSignal ? { signal: abortSignal } : {}),
@@ -503,11 +581,32 @@ export class OpenAiGen implements LlmGenerator {
             const item = event.item;
 
             if (isRecord(item) && item.type === 'function_call') {
+              const itemId = typeof item.id === 'string' ? item.id : '';
               const callId = typeof item.call_id === 'string' ? item.call_id : '';
               const name = typeof item.name === 'string' ? item.name : '';
               const args = typeof item.arguments === 'string' ? item.arguments : '';
-              if (callId.length > 0 && name.length > 0) {
-                await receiver.funcCall(callId, name, args);
+
+              if (itemId.length > 0) {
+                const existing = activeFuncCallsByItemId.get(itemId);
+                const state: ActiveFuncCall =
+                  existing ??
+                  ({
+                    itemId,
+                    callId: '',
+                    name: '',
+                    argsJson: '',
+                    emitted: false,
+                  } satisfies ActiveFuncCall);
+
+                if (callId.length > 0) state.callId = callId;
+                if (name.length > 0) state.name = name;
+                if (args.length > 0) state.argsJson = args;
+
+                activeFuncCallsByItemId.set(itemId, state);
+                await maybeEmitFuncCall(state, receiver);
+              } else if (callId.length > 0 && name.length > 0) {
+                // Fallback: emit directly when item lacks an ID (should not happen on OpenAI).
+                await receiver.funcCall(callId, name, args.length > 0 ? args : '{}');
               }
               break;
             }
@@ -531,11 +630,77 @@ export class OpenAiGen implements LlmGenerator {
           }
 
           // Ignored events (kept explicit for future debugging)
-          case 'response.output_item.added':
+          case 'response.output_item.added': {
+            const item = event.item;
+            if (isRecord(item) && item.type === 'function_call') {
+              const itemId = typeof item.id === 'string' ? item.id : '';
+              if (itemId.length > 0) {
+                const existing = activeFuncCallsByItemId.get(itemId);
+                const state: ActiveFuncCall =
+                  existing ??
+                  ({
+                    itemId,
+                    callId: '',
+                    name: '',
+                    argsJson: '',
+                    emitted: false,
+                  } satisfies ActiveFuncCall);
+
+                const callId = typeof item.call_id === 'string' ? item.call_id : '';
+                const name = typeof item.name === 'string' ? item.name : '';
+                const args = typeof item.arguments === 'string' ? item.arguments : '';
+                if (callId.length > 0) state.callId = callId;
+                if (name.length > 0) state.name = name;
+                if (args.length > 0) state.argsJson = args;
+                activeFuncCallsByItemId.set(itemId, state);
+              }
+            }
+            break;
+          }
           case 'response.content_part.added':
           case 'response.content_part.done':
-          case 'response.function_call_arguments.delta':
-          case 'response.function_call_arguments.done':
+            break;
+          case 'response.function_call_arguments.delta': {
+            const itemId = event.item_id;
+            const delta = event.delta;
+            if (itemId.length > 0 && delta.length > 0) {
+              const existing = activeFuncCallsByItemId.get(itemId);
+              const state: ActiveFuncCall =
+                existing ??
+                ({
+                  itemId,
+                  callId: '',
+                  name: '',
+                  argsJson: '',
+                  emitted: false,
+                } satisfies ActiveFuncCall);
+              applyArgsDelta(state, delta);
+              activeFuncCallsByItemId.set(itemId, state);
+            }
+            break;
+          }
+          case 'response.function_call_arguments.done': {
+            const itemId = event.item_id;
+            const name = event.name;
+            const args = event.arguments;
+            if (itemId.length > 0) {
+              const existing = activeFuncCallsByItemId.get(itemId);
+              const state: ActiveFuncCall =
+                existing ??
+                ({
+                  itemId,
+                  callId: '',
+                  name: '',
+                  argsJson: '',
+                  emitted: false,
+                } satisfies ActiveFuncCall);
+              if (name.length > 0) state.name = name;
+              if (args.length > 0) state.argsJson = args;
+              activeFuncCallsByItemId.set(itemId, state);
+              await maybeEmitFuncCall(state, receiver);
+            }
+            break;
+          }
           case 'response.refusal.delta':
           case 'response.refusal.done':
           case 'response.output_text.annotation.added':
