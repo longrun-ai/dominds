@@ -26,6 +26,7 @@
     "codex-streaming": "tsx provider/codex-streaming.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
     "diag-tool": "tsx toolsets/diag.ts",
+    "readonly-shell": "tsx toolsets/readonly-shell.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",

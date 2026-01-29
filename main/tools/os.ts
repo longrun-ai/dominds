@@ -416,7 +416,8 @@ const readonlyShellSchema: JsonSchema = {
   properties: {
     command: {
       type: 'string',
-      description: 'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, git show)',
+      description:
+        'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq)',
     },
     timeout_ms: {
       type: 'number',
@@ -720,7 +721,46 @@ export const shellCmdTool: FuncTool = {
   },
 };
 
-const readonlyShellAllowedPrefixes = ['cat', 'rg', 'sed', 'ls', 'nl', 'wc', 'git show'] as const;
+const readonlyShellAllowedPrefixes = [
+  'cat',
+  'rg',
+  'sed',
+  'ls',
+  'nl',
+  'wc',
+  'head',
+  'tail',
+  'stat',
+  'file',
+  'uname',
+  'whoami',
+  'id',
+  'echo',
+  'pwd',
+  'which',
+  'date',
+  'diff',
+  'realpath',
+  'readlink',
+  'printf',
+  'cut',
+  'sort',
+  'uniq',
+  'tr',
+  'awk',
+  'shasum',
+  'sha256sum',
+  'md5sum',
+  'uuid',
+  'git show',
+  'git status',
+  'git diff',
+  'git log',
+  'git blame',
+  'find',
+  'tree',
+  'jq',
+] as const;
 
 function isAllowedReadonlyShellCommand(command: string): boolean {
   const trimmed = command.trimStart();
@@ -736,10 +776,10 @@ export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
   description:
-    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). Commands outside the allowlist are rejected.',
+    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq). Commands outside the allowlist are rejected.',
   descriptionI18n: {
-    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, git show). You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
-    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、git show）。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
+    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq). You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
+    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、head、tail、stat、file、uname、whoami、id、echo、pwd、which、date、diff、realpath、readlink、printf、cut、sort、uniq、tr、awk、shasum、sha256sum、md5sum、uuid、git show、git status、git diff、git log、git blame、find、tree、jq）。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
@@ -747,6 +787,12 @@ export const readonlyShellTool: FuncTool = {
     const t = getOsToolMessages(language);
     const parsedArgs = parseReadonlyShellArgs(args);
     const { command, timeoutMs = 10_000 } = parsedArgs;
+
+    if (command.includes('\n') || command.includes('\r')) {
+      return language === 'zh'
+        ? `❌ readonly_shell 不建议执行多行脚本式命令（检测到换行符）。请用单行命令（允许 |、&&、||）。\n收到：${command}`
+        : `❌ readonly_shell does not allow multi-line script-style commands (newline detected). Use a single-line command (|, &&, || are allowed).\nGot: ${command}`;
+    }
 
     if (!isAllowedReadonlyShellCommand(command)) {
       const allowedList = readonlyShellAllowedPrefixes.join(', ');
