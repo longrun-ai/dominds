@@ -412,7 +412,7 @@ async function handleDeleteRtwsDiligence(
 const DOCS_WHITELIST = new Set<string>([
   'design',
   'dialog-system',
-  'keep-going',
+  'diligence-push',
   'auth',
   'dominds-terminology',
   'cli-usage',
@@ -424,7 +424,7 @@ const DOCS_WHITELIST = new Set<string>([
   'OEC-philosophy',
   'design.md',
   'dialog-system.md',
-  'keep-going.md',
+  'diligence-push.md',
   'auth.md',
   'dominds-terminology.md',
   'cli-usage.md',

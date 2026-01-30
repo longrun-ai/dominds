@@ -75,7 +75,7 @@ ${input.lessons}
 ${input.teamIntro}
 
 ## 交互能力
-你与队友的诉请（tellask）交互，使用一种极简的逐行前缀语法（对任意分片的流式输出鲁棒）。
+你与队友的诉请（tellask）交互，使用一种极简的逐行前缀语法，在任意分片的流式输出场景下都能稳定工作。
 
 ### 诉请（tellask）语法（务必精确遵守）
 **TL;DR（最重要的 6 条硬规则）**
@@ -138,7 +138,7 @@ ${input.funcToolUsageText || '没有可用的函数工具。'}
 - mention ID 允许包含点号用于命名空间（例如 \`@team.lead\`）。末尾的点号视为标点并忽略（例如 \`@team.lead.\` 仍然指向 \`@team.lead\`）。
 
 ### 特殊队友别名
-- \`!?@self\`：Fresh Boots Reasoning（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的 subdialog（默认；最常用）。
+- \`!?@self\`：扪心自问（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的 subdialog（默认；最常用）。
 - \`!?@self !tellaskSession <tellaskSession>\`：带 tellaskSession 的 FBR 自诉请（少用）。仅当你明确需要可恢复的长期 workspace 时使用。
 - \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!tellaskSession\`。
 - \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!tellaskSession\`。

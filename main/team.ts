@@ -117,7 +117,7 @@ export namespace Team {
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
-    // Keep-going: per-member cap on how many diligence prompts can be auto-sent before forcing Q4H.
+    // Diligence Push: per-member cap on how many diligence prompts can be auto-sent before forcing Q4H.
     diligence_push_max?: number;
     read_dirs?: string[];
     write_dirs?: string[];

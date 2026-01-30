@@ -287,7 +287,7 @@ export const clearMindTool: FuncTool = {
   description: 'Clear dialog mind and start a new round, optionally adding a reminder.',
   descriptionI18n: {
     en: 'Clear dialog mind and start a new round, optionally adding a reminder.',
-    zh: '清空思路并开始新一轮，可选添加一条提醒。',
+    zh: '清理头脑并开始新一轮，可选添加一条提醒。',
   },
   parameters: {
     type: 'object',

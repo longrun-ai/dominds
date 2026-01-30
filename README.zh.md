@@ -140,7 +140,7 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - **[MCP Support](docs/mcp-support.md)** — MCP 工具集成指南
 - **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — 差遣牒（Taskdoc）封装
 - **[Context Health](docs/context-health.md)** — 上下文健康维护
-- **[Keep-going](docs/keep-going.md)** — 鞭策机制
+- **[鞭策](docs/diligence-push.zh.md)** — 鞭策机制
 - **[Design](docs/design.md)** — Dominds 架构设计与核心抽象
 - **[Mottos](docs/mottos.md)** — 警世名言
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — 全方位优化管理法

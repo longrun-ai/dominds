@@ -44,9 +44,9 @@ function buildDocTabs(): readonly DocTab[] {
       docName: 'context-health',
     },
     {
-      key: 'keep-going',
-      titleI18n: { zh: '鞭策机制', en: 'Keep-going' },
-      docName: 'keep-going',
+      key: 'diligence-push',
+      titleI18n: { zh: '鞭策机制', en: 'Diligence Push' },
+      docName: 'diligence-push',
     },
     {
       key: 'design',

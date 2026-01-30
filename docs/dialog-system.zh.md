@@ -156,7 +156,7 @@ flowchart TD
 - 使用 `subdialog.supdialog` 引用（无注册表查找）
 - 无需注册 — 上位对话关系是固有的
 - 上位对话始终是层级中的直接父级
-- `!?@super` 是**规范**的 TYPE A 语法：它始终解析为直接父级，即使父级的 `agentId` 与子对话的 `agentId` 相同（对于 Fresh Boots Reasoning 自子对话很常见）。
+- `!?@super` 是**规范**的 TYPE A 语法：它始终解析为直接父级，即使父级的 `agentId` 与子对话的 `agentId` 相同（对于扪心自问 自子对话很常见）。
 - 显式的 `!?@<supdialogAgentId>` 形式作为向后兼容的语义回退被接受，但在 FBR/自子对话情况下更容易出错。
 
 **示例**：
@@ -178,7 +178,7 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 
 **语法**：`!?@<anyAgentId> !tellaskSession <tellaskSession>`（注意 `!tellaskSession` 前的空格）
 
-**Fresh Boots Reasoning (FBR) 自调用语法（罕见；可恢复）**：`!?@self !tellaskSession <tellaskSession>`
+**扪心自问 (FBR) 自调用语法（罕见；可恢复）**：`!?@self !tellaskSession <tellaskSession>`
 
 - `!?@self` 是一个显式的"相同角色"调用，指向**当前对话的 agentId**（不是单独队友）。
 - 这是自调用的**明确**语法，有助于避免因回声/引用先前调用标题而导致的意外 `@teammate`→`@teammate` 自调用。
@@ -252,10 +252,10 @@ LLM 再次发出：!?@researcher !tellaskSession market-analysis
 
 **语法**：`!?@<nonSupdialogAgentId>`（无 `!tellaskSession`）
 
-**Fresh Boots Reasoning (FBR) 自调用语法（默认；最常见）**：`!?@self`
+**扪心自问 (FBR) 自调用语法（默认；最常见）**：`!?@self`
 
 - `!?@self` 指向当前对话的 agentId，并创建一个具有相同角色/配置的**新的临时子对话**。
-- 对于大多数 Fresh Boots Reasoning 会话使用此方式：隔离单个子问题，产生答案，然后返回。
+- 对于大多数扪心自问 会话使用此方式：隔离单个子问题，产生答案，然后返回。
 
 **行为**：
 

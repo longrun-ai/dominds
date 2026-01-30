@@ -28,22 +28,114 @@
 - EN: Terms in this chapter are used across both user-facing prompts and implementation docs. They are “common ground” vocabulary.
 - ZH: 本章术语会同时出现在对外提示与实现文档中，属于“共同语境”的统一口径。
 
+### 用词原则：者 / 器 与 -or / -er
+
+#### 中文：用"者"指代智能体角色，用"器"指代软件工具
+
+- EN: When referring to a **role played by an agent** (intelligent actor), use the suffix **"-者"** (e.g., "管理者" instead of "管理器").
+- ZH: 当指代**智能体承担的角色**时，用 **"-者"**（例如："团队管理者"而非"团队管理器"）。
+
+- EN: When referring to a **software tool or utility**, use the suffix **"-器"** (e.g., "调度器", "解析器").
+- ZH: 当指代**软件工具/组件**时，用 **"-器"**（例如："调度器"、"解析器"）。
+
+- EN: The distinction prevents ambiguity between automated agents and static tools.
+- ZH: 区分智能体（动态角色）与工具（静态组件）。
+
+#### 英文：优先使用 -or 而非 -er
+
+- EN: For agent roles, prefer **"-or"** (e.g., "operator", "monitor") over **"-er"** (e.g., "manager", "handler").
+- ZH: 智能体角色优先用 **"-or"** 结尾（例如：operator、monitor），避免用 **"-er"**（manager、handler）。
+
+- EN: "-or" denotes an active agent/actor; "-er" can imply a passive instrument.
+- ZH: "-or" 暗示主动的行为者；"-er" 更偏向被动工具。
+
+### Dialog Course（对话程）
+
+- EN: **Dialog course** (ZH: **对话程**) is the Dominds-specific term for **one execution cycle of a dialog**. It replaces the generic "round" or "turn" to avoid confusion with LLM-generated "rounds" and business "iterations".
+- ZH: **对话程（dialog course）**是 Dominds 的专有术语，指**对话的一次执行周期**。用于替代泛化的"轮/轮次"，避免与 LLM 生成的"轮次"及业务"迭代轮次"混淆。
+
+- EN: Key properties:
+  - One dialog course = one complete drive cycle (trigger → planning → action → result).
+  - Distinct from "LLM round" (one model inference) and "business iteration" (one unit of work).
+  - Used for observability: "dialog has completed 42 courses".
+  - The term "course" implies a **dynamic process with direction**, not a static segment.
+- ZH: 关键特性：
+  - 一个对话程 = 一次完整的驱动周期（触发 → 规划 → 执行 → 结果）。
+  - 区别于"LLM 轮次"（一次模型推理）和"业务迭代"（一个工作单元）。
+  - 用于可观测性描述："对话已完成 42 程"。
+  - "程"字暗示**动态进程、有方向性**，而非静态片段。
+
+- EN: Do NOT use "round", "turn", or "轮次" when referring to dialog courses in Dominds context.
+- ZH: 在 Dominds 语境中指代对话程时，**不要使用** "round"、"turn"、"轮次" 等泛化词。
+
 ### Taskdoc（差遣牒）
 
-- EN: The shared task specification for a dialog tree. In Dominds, it is represented as an encapsulated `*.tsk/` Taskdoc package (not a single mutable Markdown file).
-- ZH: 对话树共享的任务说明。在 Dominds 中，它对应一个封装的 `*.tsk/` 任务包（Taskdoc package）（而不是单个可随意改写的 Markdown 文件）。
+- EN: **Taskdoc** (ZH: **差遣牒**) is Dominds's task encapsulation format: a directory ending in `.tsk/` that contains three required sections: `goals.md`, `constraints.md`, and `progress.md`.
+- ZH: **差遣牒（Taskdoc）** 是 Dominds 的任务封装格式：以 `.tsk/` 结尾的目录，包含三个必需分段：`goals.md`、`constraints.md`、`progress.md`。
 
-### Taskdoc package (`*.tsk/`) / Taskdoc 任务包
+- EN: Taskdocs are "single source of truth" for team-shared task contracts. They MUST be edited via the explicit control tool `change_mind`; generic file tools are **banned** from reading/writing anything under `**/*.tsk/`.
+- ZH: 差遣牒是全队共享任务契约的"单一事实来源"。必须通过显式控制工具 `change_mind` 进行修改；通用文件工具**禁止**读/写 `**/*.tsk/` 下的任何内容。
 
-- EN: A directory ending in `.tsk/` that contains three required section files: `goals.md`, `constraints.md`, and `progress.md`.
-- ZH: 以 `.tsk/` 结尾的目录，包含三个必需分段文件：`goals.md`、`constraints.md`、`progress.md`。
-
-### Taskdoc section selector / Taskdoc 分段选择器
+#### Section selector / 分段选择器
 
 - EN: The selector passed to `change_mind`: `goals` / `constraints` / `progress`.
 - ZH: `change_mind` 的分段选择器：`goals` / `constraints` / `progress`。
 
-### Encapsulation / 封装
+### Continuation Package / 接续包
+
+- EN: A scannable, actionable info package helping agents resume after `clear_mind`. Contains: (1) first step, (2) key info (files/symbols), (3) run info (commands/ports), (4) volatile details (paths/IDs/URLs).
+- ZH: 可扫描、可操作的信息包，帮助智能体在 `clear_mind` 后快速接续工作。包含：① 第一步操作，② 关键定位信息，③ 运行/验证信息，④ 临时细节（路径/ID/URL）。
+- ZH 术语：**接续包**（禁止使用"恢复包"、"检查点包"等变体）。
+
+### clear_mind（清理头脑）
+
+- EN: A function tool that clears the agent's short-term working memory (conversation history, tool outputs) while preserving Taskdoc, reminders, and memories. Used when context health degrades and a fresh start is needed.
+- ZH: 一个函数工具，用于清空智能体的短期工作记忆（对话历史、工具输出），同时保留差遣牒、提醒项与记忆层。用于上下文健康度下降、需要重新开始时。
+
+- EN: After `clear_mind`, the agent should have a "Continuation Package" prepared for quick resumption.
+- ZH: `clear_mind` 后，智能体应准备好"接续包"以便快速接续工作。
+
+### Q4H（Question for Human）
+
+- EN: A mechanism for raising questions to humans, initiated via `!?@human`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**
+- ZH: 一种通过 `!?@human` 向人类提问的机制，暂停对话进度直到人类响应。**统一使用"Q4H"（大写 Q、数字 4、大写 H）；禁止使用"Q-for-H"、"QforH"、"每四小时"等变体。**
+
+### Diligence Push（鞭策）
+
+- EN: A proactive continuation mechanism that nudges the agent when it's idle or blocked, using configurable prompts and budget limits. **Always use "Diligence Push"; never use "keep-going", "勤奋", "proactive-push", or "auto-continue".**
+- ZH: 一种主动继续机制，在智能体空闲或阻塞时通过可配置的提示词和预算上限进行"鞭策"。**统一使用"Diligence Push"；禁止使用"Keep-Going"、"勤奋"、"自动继续"、"push"等变体。**
+
+- EN: Related terms: "diligence prompt" (prompt file), "diligence-push-max" config, "diligence push injection" (prompt injection).
+- ZH: 相关术语："diligence prompt"（提示词文件）、"diligence-push-max"（配置项）、"diligence push 注入"（注入机制）。
+
+### Teammate / 队友
+
+- EN: An agent participant in the Dominds dialog system. **Always use "teammate" when referring to agent participants; avoid "member", "agent peer", or "collaborator" in this context.**
+- ZH: Dominds 对话系统中的智能体参与者。**统一使用"队友"（teammate）指代智能体参与者；避免使用"成员"、"智能体同伴"、"协作者"等变体。**
+
+- EN: Contrast with "team member" which refers to organizational structure topics.
+- ZH: 与"团队成员"（team member）形成对比；后者用于谈论组织结构架设话题。
+
+### Memory（分层记忆）
+
+- EN: The persistent knowledge store in Dominds, consisting of layers: personal memory, team memory, and shared minds. **Always use "Memory" (singular) as the concept name; use "minds" (plural) only when referring to the directory/collection.**
+- ZH: Dominds 中的持久化知识库，由多个层级组成：个人记忆、团队记忆、共享记忆。**统一使用"Memory"（单数）作为概念名；只有指代目录/集合时才使用"minds"（复数）形式。**
+
+- EN: Do NOT use "Mind" as a synonym; "Mind" refers to the entire persistent store (the concept), while "memory" refers to individual entries within it.
+- ZH: 不要用"Mind"作为同义词；"Memory"指代整个持久化知识库这一概念，而"memory"指代其中的单个条目。
+
+### Tellask（诉请）
+
+- EN: A Dominds-specific interaction unit: a structured request addressed to a dialog participant. **Always use "Tellask" (noun) or "tellask" (verb); never use "ask", "request", "query", or "invocation".**
+- ZH: Dominds 的专有交互单元：一个对对话参与方发出的结构化请求。**统一使用"Tellask"（名词）或"tellask"（动词）；避免使用"询问"、"请求"、"查询"、"调用"等变体。**
+
+### Fresh Boots Reasoning（扪心自问）
+
+- EN: A reasoning approach where the agent starts from first principles without relying on prior context. **Use "Fresh Boots Reasoning" or its abbreviation "FBR" interchangeably; never use "bootstrapping" or "fresh start reasoning".**
+- ZH: 一种从第一性原理出发、不依赖先前上下文的推理方式。**统一使用全称"扪心自问"或缩写"FBR"；禁止使用"自举推理"、"从零思考"等变体。**
+
+- EN: Named after the metaphor of a newborn animal taking its first steps.
+- ZH: 取自新生动物迈出第一步的隐喻。
 
 - EN: General file tools MUST NOT read/write/list/move/delete anything under `**/*.tsk/`. Taskdoc edits must go through the explicit control tool `change_mind`.
 - ZH: 通用文件工具不得读/写/列出/移动/删除 `**/*.tsk/` 下的任何内容；差遣牒的修改必须通过显式控制工具 `change_mind` 完成。
@@ -63,12 +155,12 @@
 - EN: `Fresh Tellask` | ZH: `一次性诉请`
 - EN: `Taskdoc` | ZH: `差遣牒`
 - EN: `Taskdoc package (*.tsk/)` | ZH: `任务包`
-- EN: `!tellaskSession <key>` | ZH: 会话键指令（只写在 headline）
+- EN: `!tellaskSession <slug>` | ZH: 会话 Slug（只写在 headline）
 
 ### Tellask（诉请）
 
-- EN: **Tellask** is a Dominds-specific interaction unit: a structured request addressed to a dialog participant (a teammate agent or an upstream dialog).
-- ZH: **Tellask（诉请）**是 Dominds 的专有交互单元：一个对“对话参与方（队友智能体 / 上游对话）”发出的结构化请求。
+- EN: **Tellask** is a Dominds-specific interaction unit: a structured request addressed to an agent.
+- ZH: **Tellask（诉请）**是 Dominds 的专有交互单元：一个对智能体发出的结构化请求。
 
 - EN: A Tellask is not casual chat; it is a collaboration action that Dominds can drive, route, and coordinate (including suspend/resume).
 - ZH: Tellask 不是随意聊天，而是一种可被 Dominds 驱动、路由、并由系统协调（包括挂起/恢复）的协作动作。
@@ -110,30 +202,30 @@ Example / 示例（概念）:
 - EN (meaning): Multi-turn collaboration with **resumable context**, suitable for debugging, design alignment, iterative fixes, and sustained UX walkthroughs.
 - ZH（含义）: 用于 **可恢复/可续用上下文** 的多轮协作，适合 debug、设计对齐、迭代修复、持续走查等。
 
-##### 会话键指令（Session Key Directive）
+##### 会话 Slug（Session Slug）
 
-- EN (directive; headline only): `!tellaskSession <key>`
-- ZH（指令；仅 headline）: `!tellaskSession <key>`
+- EN (directive; headline only): `!tellaskSession <slug>`
+- ZH（指令；仅 headline）: `!tellaskSession <slug>`
 
-- EN (parameter name concept): `tellaskSession` (parameter names are English-only; not i18n’d)
+- EN (parameter name concept): `tellaskSession` (parameter names are English-only; not i18n'd)
 - ZH（参数名概念）: `tellaskSession`（参数名只用英文，不做 i18n）
 
-- EN (key format): short, stable, human-readable (e.g. `ws-schema-v2`, `tooling-read-file-ux`).
-- ZH（key 格式）: 简短、稳定、可读（例如 `ws-schema-v2`、`tooling-read-file-ux`）。
+- EN (slug format): short, stable, human-readable (e.g. `ws-schema-v2`, `tooling-read-file-ux`).
+- ZH（slug 格式）: 简短、稳定、可读（例如 `ws-schema-v2`、`tooling-read-file-ux`）。
 
 - EN (placement rule): Put `!tellaskSession` in the Tellask headline; do not put it on a second line (it would become body text).
 - ZH（位置规则）: `!tellaskSession` 必须写在诉请 headline 中；不要放到第二行（否则会进入 body 变成普通文本）。
 
 ##### 多人会话（Multi-Party Sessions）
 
-- EN: The same `<key>` can be reused across multiple teammates to organize a multi-party collaboration session; this is a recommended communication pattern.
-- ZH: 同一个 `<key>` 可以复用于多个队友，用于组织一次“多人协作会话”；这是推荐的沟通模式。
+- EN: The same `<slug>` can be reused across multiple teammates to organize a multi-party collaboration session; this is a recommended communication pattern.
+- ZH: 同一个 `<slug>` 可以复用于多个队友，用于组织一次"多人协作会话"；这是推荐的沟通模式。
 
 - EN (user mental model): You are hosting one session and inviting multiple participants.
 - ZH（直觉心智模型）: 你在主持一场 session，并邀请多位参与者加入。
 
-- EN (important nuance): Each teammate maintains its own session context; reusing the same `<key>` is a coordination convention that keeps the workstream aligned across participants.
-- ZH（重要细节）: 每个队友各自维护其 session 上下文；复用同一 `<key>` 是一种“编组/对齐工作流”的协作约定，用于让多方围绕同一条工作线持续推进。
+- EN (important nuance): Each teammate maintains its own session context; reusing the same `<slug>` is a coordination convention that keeps the workstream aligned across participants.
+- ZH（重要细节）: 每个队友各自维护其 session 上下文；复用同一 `<slug>` 是一种"编组/对齐工作流"的协作约定，用于让多方围绕同一条工作线持续推进。
 
 Example / 示例（概念）:
 
@@ -158,8 +250,8 @@ Example / 示例（概念）:
 - EN (key property): “Fresh/one-shot” is not only “new context”; it also means **no continuation semantics** — later Tellasks are not expected to resume the same workspace.
 - ZH（关键性质）: “Fresh/一次性”不仅表示“新开上下文”，更表示：**没有后续续话语义** —— 后续诉请不应被期待能续到同一工作区。
 
-- EN (practical guidance): If you need a follow-up after a Fresh Tellask, treat it as a new request and restate necessary context; if you need iterative follow-ups, use `Tellask Session` with `!tellaskSession <key>`.
-- ZH（实践建议）: 如果你在一次性诉请后还要追问，应当把追问当作全新请求并补齐必要上下文；如果你需要可迭代的追问/推进，请使用 `Tellask Session` 并提供 `!tellaskSession <key>`。
+- EN (practical guidance): If you need a follow-up after a Fresh Tellask, treat it as a new request and restate necessary context; if you need iterative follow-ups, use `Tellask Session` with `!tellaskSession <slug>`.
+- ZH（实践建议）: 如果你在一次性诉请后还要追问，应当把追问当作全新请求并补齐必要上下文；如果你需要可迭代的追问/推进，请使用 `Tellask Session` 并提供 `!tellaskSession <slug>`。
 
 Example / 示例（概念）:
 
@@ -168,8 +260,8 @@ Example / 示例（概念）:
 
 ### 系统提示可复用的一句话（One-Sentence Summary for System Prompts）
 
-- EN: `TellaskBack` asks the origin dialog for clarification; `Tellask Session` uses `!tellaskSession <key>` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
-- ZH: `TellaskBack` 回问发起方澄清；`Tellask Session` 用 `!tellaskSession <key>` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
+- EN: `TellaskBack` asks the origin dialog for clarification; `Tellask Session` uses `!tellaskSession <slug>` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
+- ZH: `TellaskBack` 回问发起方澄清；`Tellask Session` 用 `!tellaskSession <slug>` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
 
 ### 为何保留 `!` 前缀？（Why keep the `!` prefix?）
 
@@ -205,11 +297,6 @@ Example / 示例（概念）:
 
 - EN: A **root dialog** (aka **main dialog**) is the top-level dialog with no supdialog.
 - ZH: **根对话（root dialog / main dialog）**是层级最顶层的对话，不存在 supdialog。
-
-### Teammate Tellask / 队友诉请
-
-- EN: A **teammate tellask** (or simply **tellask**) is a Tellask invocation that triggers communication with another agent or subdialog.
-- ZH: **队友诉请（teammate tellask）**（或简称 **tellask**）是触发与另一个智能体或子对话通信的 Tellask 诉请。
 
 ### Type A/B/C (internal taxonomy) / 内部分类
 

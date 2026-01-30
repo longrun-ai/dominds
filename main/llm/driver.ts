@@ -140,7 +140,7 @@ async function resolveRtwsDiligenceConfig(
     }
 
     const trimmed = raw.trim();
-    // Existing empty file explicitly disables keep-going.
+    // Existing empty file explicitly disables Diligence Push.
     if (trimmed === '') {
       return { kind: 'disabled', reason: 'empty_file' };
     }
@@ -1943,12 +1943,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           if (suspendForHuman) {
             try {
-              // Q4H suspension resets keep-going budget so post-Q4H continuation gets a fresh counter.
+              // Q4H suspension resets Diligence Push budget so post-Q4H continuation gets a fresh counter.
               if (await dlg.hasPendingQ4H()) {
                 dlg.diligenceAutoContinueCount = 0;
               }
             } catch (err) {
-              log.warn('Failed to check Q4H state for keep-going reset', err, {
+              log.warn('Failed to check Q4H state for Diligence Push reset', err, {
                 dialogId: dlg.id.valueOf(),
               });
             }
@@ -1961,7 +1961,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             assistantToolOutputsCount > 0 ||
             (funcResults.length > 0 && funcCalls.length === 0);
           if (!shouldContinue) {
-            // Keep-going (root dialog only): prevent ALL stopping except legitimate suspension.
+            // Diligence Push (root dialog only): prevent ALL stopping except legitimate suspension.
             // If disabled (empty diligence file) or budget exhausted, we suspend via Q4H.
             if (dlg instanceof RootDialog) {
               const suspension = await dlg.getSuspensionStatus();
@@ -2341,12 +2341,12 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
           if (suspendForHuman) {
             try {
-              // Q4H suspension resets keep-going budget so post-Q4H continuation gets a fresh counter.
+              // Q4H suspension resets Diligence Push budget so post-Q4H continuation gets a fresh counter.
               if (await dlg.hasPendingQ4H()) {
                 dlg.diligenceAutoContinueCount = 0;
               }
             } catch (err) {
-              log.warn('Failed to check Q4H state for keep-going reset', err, {
+              log.warn('Failed to check Q4H state for Diligence Push reset', err, {
                 dialogId: dlg.id.valueOf(),
               });
             }
@@ -2356,7 +2356,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const shouldContinue =
             toolOutputsCount > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
           if (!shouldContinue) {
-            // Keep-going (root dialog only): prevent ALL stopping except legitimate suspension.
+            // Diligence Push (root dialog only): prevent ALL stopping except legitimate suspension.
             if (dlg instanceof RootDialog) {
               const suspension = await dlg.getSuspensionStatus();
               if (!suspension.canDrive) {

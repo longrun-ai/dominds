@@ -118,7 +118,7 @@ export interface DialogLatestFile {
   runState?: DialogRunState;
 
   /**
-   * Disable keep-going (diligence auto-continue) for this dialog.
+   * Disable Diligence Push for this dialog.
    * Persisted to survive process restarts.
    */
   disableDiligencePush?: boolean;

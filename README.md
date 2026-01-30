@@ -229,7 +229,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[MCP Support](docs/mcp-support.md)** — MCP tool integration
 - **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — `*.tsk/` Taskdoc packages and parsing
 - **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
-- **[Keep-going](docs/keep-going.md)** — Auto-continue (diligence) mechanism
+- **[Diligence Push](docs/diligence-push.md)** — Auto-continue (diligence) mechanism
 - **[Design](docs/design.md)** — Architecture and key abstractions
 - **[Mottos](docs/mottos.md)** — Short guiding statements
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance

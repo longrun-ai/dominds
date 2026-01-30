@@ -26,19 +26,27 @@ export function formatReminderItemGuide(
   content: string,
 ): string {
   if (language === 'zh') {
-    return `【提醒项 #${index}｜高优先级工作集】
-
-原则：提醒项应该是“高价值且不过时”的信息；我应优先用 update_reminder 维护它，避免堆很多条。
-- 保留且仍然需要：把内容压缩为要点并 update_reminder（不要无限增大）。
-- 已过时/不再需要：再 delete_reminder。
-
-快速操作：
-- 更新：update_reminder({ "reminder_no": ${index}, "content": "..." })
-- 删除：delete_reminder({ "reminder_no": ${index} })
----
-${content}`;
+    return [
+      '上下文状态：🟡 吃紧',
+      '',
+      '影响：对话历史中的工具调用/结果已过时，影响你的判断。',
+      '',
+      '你只有通过调用 clear_mind 才能丢弃过时信息，恢复清晰思维。',
+      '"重入包"是你在下一轮无缝继续工作的关键，请尽快准备好。',
+      '',
+      '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
+      '目标：把"重入包草稿"维护进提醒项，让你有信心主动 clear_mind 进入新回合。',
+      '',
+      '同时建议你在提醒项里明确写出：',
+      '"基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入新回合"。',
+      '',
+      '可选动作（至少一个，允许多次调用）：',
+      '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
+      '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
+      '',
+      '提示：在你自主调用 clear_mind 之前，系统会时常再次提醒你。',
+    ].join('\n');
   }
-
   return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
 
 Principle: reminders should be high-value and not stale; prefer update_reminder (curate) over creating many items.
@@ -58,7 +66,10 @@ export function formatQ4HKeepGoingBudgetExhausted(
 ): string {
   const maxInjectCount = args.maxInjectCount;
   if (language === 'zh') {
-    return [`鞭策过 ${maxInjectCount} 次了，智能体还是在扛，你看怎么办吧。`].join('\n');
+    return [
+      `🤖 鞭策了 ${maxInjectCount} 次，这智能体跟钉子户似的就是不挪窝，`,
+      '我也没办法了，你自己看着办吧。（Q4H 已挂起）',
+    ].join('\n');
   }
 
   return [
@@ -141,13 +152,13 @@ export function formatUserFacingContextHealthV3RemediationGuide(
     }
 
     return [
-      `上下文状态：🔴 告急`,
+      '上下文状态：🔴 告急',
       '',
-      `为保持长程自动运行，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，然后将自动强制 clear_mind 以开启新一轮/新回合对话。`,
+      `为保持长程自治，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动强制 clear_mind 开启新回合。`,
       '',
       '你应在本轮尽快执行（允许多次调用）：',
-      '1) 用 update_reminder / add_reminder 把“重入包（best effort）”维护进提醒项（压缩为少量、高价值条目）。',
-      '2) 然后 clear_mind 开启新一轮/新回合，让后续工作在更小的上下文中继续。',
+      '1) 用 update_reminder / add_reminder 把"重入包（尽最大努力）"维护进提醒项（压缩为少量、高价值条目）。',
+      '2) 然后 clear_mind 开启新回合，让后续工作在更小上下文中继续。',
       '',
       '快速操作：',
       '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -203,9 +214,9 @@ export function formatUserFacingContextHealthV3RemediationGuide(
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!?@super` 只在子对话（subdialog）中有效，用于诉请直接父对话（supdialog）。' +
-      '补充：父对话不一定是主对话/根对话；差遣牒（`*.tsk/`）通常由主对话/根对话维护人统一更新。' +
-      '你当前不在子对话中，因此没有父对话可诉请。'
+      'Dominds 提示：`!?@super` 只在子对话中有效，用于向直接父对话（supdialog）发起诉请。\n' +
+      '你当前不在子对话中，因此没有父对话可诉请。\n' +
+      '（注：父对话不一定是根对话；差遣牒 `*.tsk/` 通常由根对话维护人统一更新。）'
     );
   }
   return (
@@ -231,7 +242,7 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   if (language === 'zh') {
     return (
       'Dominds 提示：该诉请目标是当前 agent（自诉请/self-call）。' +
-      'Fresh Boots Reasoning 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的 fresh boots 会话；' +
+      '扪心自问 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的 fresh boots 会话；' +
       '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
     );
   }
@@ -310,8 +321,8 @@ export function formatDomindsNoteInvalidMultiTeammateTargets(
     return (
       'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
       `Dominds 提示：这条队友诉请包含未知队友呼号：${unknown}\n\n` +
-      '在队友诉请中，headline 里出现的队友呼号会被视为 collective targets 并被 fan-out（共享同一 headLine+callBody）。\n' +
-      '请确认这些呼号是否存在于团队目录中；若你只是想写字面量 `@something`，请用反引号包裹（例如 `@something`）。'
+      '在队友诉请中，headline 里出现的队友呼号会被视为 collective targets 并被分发（所有目标共享同一 headLine+callBody）。\n' +
+      '请确认这些呼号是否存在于团队目录中；若你只是想写字面上的 @something，请用反引号包裹（例如 `@something`）。'
     );
   }
   return (

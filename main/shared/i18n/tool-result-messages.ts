@@ -28,7 +28,7 @@ export function formatToolActionResult(language: LanguageCode, action: ToolActio
       case 'cleared':
         return '已清空';
       case 'mindCleared':
-        return '已清理思路';
+        return '已清理头脑';
       case 'mindChanged':
         return '已更新思路';
       default: {

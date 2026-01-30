@@ -601,22 +601,23 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hEnterToSendTitle: 'Enter to send (Cmd/Ctrl+Enter for newline)',
     q4hCtrlEnterToSendTitle: 'Cmd/Ctrl+Enter to send (Enter for newline)',
 
-    keepGoingTabTitle: 'Keep-going',
+    keepGoingTabTitle: 'Diligence Push',
     keepGoingWorkspaceNote:
-      'Note: editing the keep-going prompt affects the entire workspace (rtws)!',
-    keepGoingToggleAriaLabel: 'Enable keep-going (uncheck to disable)',
-    keepGoingReloadTitle: 'Load latest keep-going prompt',
+      'Note: editing the Diligence Push prompt affects the entire workspace (rtws)!',
+    keepGoingToggleAriaLabel: 'Enable Diligence Push (uncheck to disable)',
+    keepGoingReloadTitle: 'Load latest Diligence Push prompt',
     keepGoingSaveTitle: 'Save to workspace',
-    keepGoingResetTitle: 'Reset to built-in keep-going prompt (delete workspace file)',
-    keepGoingOverwriteConfirm: 'This will overwrite the workspace keep-going prompt. Save anyway?',
+    keepGoingResetTitle: 'Reset to built-in Diligence Push prompt (delete workspace file)',
+    keepGoingOverwriteConfirm:
+      'This will overwrite the workspace Diligence Push prompt. Save anyway?',
     keepGoingResetConfirm:
-      'This will delete the workspace keep-going prompt file and restore the built-in keep-going prompt. Reset anyway?',
+      'This will delete the workspace Diligence Push prompt file and restore the built-in Diligence Push prompt. Reset anyway?',
     keepGoingResetConfirmDirty:
-      'You have unsaved changes. This will delete the workspace keep-going prompt file and discard your edits. Reset anyway?',
-    keepGoingResetToast: 'Reset to the built-in keep-going prompt.',
-    keepGoingResetFailedToast: 'Failed to reset keep-going prompt',
+      'You have unsaved changes. This will delete the workspace Diligence Push prompt file and discard your edits. Reset anyway?',
+    keepGoingResetToast: 'Reset to the built-in Diligence Push prompt.',
+    keepGoingResetFailedToast: 'Failed to reset Diligence Push prompt',
     keepGoingSaveToast: 'Saved to workspace.',
-    keepGoingSaveFailedToast: 'Failed to save keep-going prompt',
+    keepGoingSaveFailedToast: 'Failed to save Diligence Push prompt',
 
     inputNotAvailableToast: 'Input is not available.',
     noActiveDialogToast: 'No active dialog.',
