@@ -33,12 +33,13 @@
     "diag-tool": "tsx toolsets/diag.ts",
     "readonly-shell": "tsx toolsets/readonly-shell.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
+    "reminder-format": "tsx reminders/reminder-format.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
     "context-health-critical-countdown": "tsx context-health/critical-countdown.ts",
     "context-health-caution-guide": "tsx context-health/caution-guide.ts",
-    "q4h-global-broadcast": "tsx keep-going/q4h-global-broadcast.ts",
-    "q4h-keep-going-i18n": "tsx keep-going/q4h-keep-going-i18n.ts"
+    "q4h-global-broadcast": "tsx diligence-push/q4h-global-broadcast.ts",
+    "q4h-diligence-push-i18n": "tsx diligence-push/q4h-diligence-push-i18n.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

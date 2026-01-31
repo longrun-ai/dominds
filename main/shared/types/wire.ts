@@ -4,7 +4,6 @@
 import type { TypedDialogEvent } from './dialog';
 import type { LanguageCode } from './language';
 import type { GetProblemsRequest, ProblemsSnapshotMessage } from './problems';
-import type { Q4HKind } from './storage';
 
 export type { GetProblemsRequest, ProblemsSnapshotMessage } from './problems';
 
@@ -166,7 +165,6 @@ export interface Q4HStateResponse {
   type: 'q4h_state_response';
   questions: Array<{
     id: string;
-    kind: Q4HKind;
     selfId: string;
     rootId: string;
     agentId: string;

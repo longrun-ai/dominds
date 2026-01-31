@@ -35,7 +35,6 @@ async function main(): Promise<void> {
       type: 'new_q4h_asked',
       question: {
         id: 'q1',
-        kind: 'keep_going_budget_exhausted',
         selfId: dlgId.selfId,
         headLine: '@human',
         bodyContent: 'Please confirm.',

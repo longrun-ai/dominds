@@ -644,7 +644,6 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           type: 'new_q4h_asked',
           question: {
             id: q.id,
-            kind: q.kind,
             selfId: q.selfId,
             rootId: q.rootId,
             agentId: q.agentId,
@@ -686,7 +685,6 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
     // `selfId` + `rootId` uniquely identify the originating dialog (including subdialogs).
     const questions = allQuestions.map((q) => ({
       id: q.id,
-      kind: q.kind,
       selfId: q.selfId,
       rootId: q.rootId,
       agentId: q.agentId,

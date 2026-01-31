@@ -56,7 +56,6 @@ import type {
   HumanTextRecord,
   PersistedDialogRecord,
   ProviderData,
-  Q4HKind,
   Questions4HumanFile,
   ReminderStateFile,
   RootDialogMetadataFile,
@@ -80,14 +79,6 @@ function getErrorCode(error: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
-}
-
-function normalizeQ4HKind(value: unknown): Q4HKind {
-  return value === 'keep_going_budget_exhausted' ||
-    value === 'context_health_critical' ||
-    value === 'generic'
-    ? value
-    : 'generic';
 }
 
 function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['assignmentFromSup'] {
@@ -2545,10 +2536,7 @@ export class DialogPersistence {
       try {
         const content = await fs.promises.readFile(questionsFilePath, 'utf-8');
         const questionsState: Questions4HumanFile = yaml.parse(content);
-        return questionsState.questions.map((q) => ({
-          ...q,
-          kind: normalizeQ4HKind(q.kind),
-        }));
+        return questionsState.questions;
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
           // q4h.yaml doesn't exist - return empty array
@@ -2569,7 +2557,6 @@ export class DialogPersistence {
   static async loadAllQ4HState(): Promise<
     Array<{
       id: string;
-      kind: Q4HKind;
       selfId: string;
       rootId: string;
       agentId: string;
@@ -2585,7 +2572,6 @@ export class DialogPersistence {
       const dialogIds = await this.listAllDialogIds('running');
       const allQuestions: Array<{
         id: string;
-        kind: Q4HKind;
         selfId: string;
         rootId: string;
         agentId: string;

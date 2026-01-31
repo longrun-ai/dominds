@@ -39,7 +39,7 @@ import {
   formatDomindsNoteSuperNoTellaskSession,
   formatDomindsNoteSuperOnlyInSubdialog,
   formatDomindsNoteTellaskForTeammatesOnly,
-  formatQ4HKeepGoingBudgetExhausted,
+  formatQ4HDiligencePushBudgetExhausted,
   formatReminderItemGuide,
   formatUserFacingContextHealthV3RemediationGuide,
   formatUserFacingLanguageGuide,
@@ -231,9 +231,8 @@ async function suspendForKeepGoingBudgetExhausted(options: {
   const language = dlg.getLastUserLanguageCode();
   const question: HumanQuestion = {
     id: questionId,
-    kind: 'keep_going_budget_exhausted',
     headLine: '@human',
-    bodyContent: formatQ4HKeepGoingBudgetExhausted(language, { maxInjectCount }),
+    bodyContent: formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount }),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
       course: dlg.currentCourse,
@@ -249,7 +248,6 @@ async function suspendForKeepGoingBudgetExhausted(options: {
     type: 'new_q4h_asked',
     question: {
       id: question.id,
-      kind: question.kind,
       selfId: dlg.id.selfId,
       headLine: question.headLine,
       bodyContent: question.bodyContent,
@@ -787,62 +785,6 @@ type ContextHealthV3RemediationOutcome =
     }
   | { kind: 'suspend'; contextHealthForGen?: ContextHealthSnapshot };
 
-async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
-  const language = getWorkLanguage();
-  const questionId = `q4h-${generateDialogID()}`;
-  const question: HumanQuestion = {
-    id: questionId,
-    kind: 'context_health_critical',
-    headLine: '@human',
-    bodyContent:
-      language === 'zh'
-        ? [
-            '上下文健康已进入 🔴 告急（critical），且 critical remediation 无法自动完成。',
-            '',
-            '为避免继续污染对话状态，系统已暂停该对话（suspended）。',
-            '',
-            '请人工介入：',
-            '- 检查当前对话/系统提示是否存在冲突或工具不可用导致 agent 无法调用 clear_mind；',
-            '- 修复后，再通过 UI 恢复/继续该对话（或手动触发 clear_mind）。',
-          ].join('\n')
-        : [
-            'Context health is 🔴 critical, and critical remediation could not complete automatically.',
-            '',
-            'To avoid further state pollution, the dialog is now suspended.',
-            '',
-            'Please intervene:',
-            '- Check whether the system prompt/tooling is preventing clear_mind calls;',
-            '- Fix the issue, then resume the dialog in the UI (or manually trigger clear_mind).',
-          ].join('\n'),
-    askedAt: formatUnifiedTimestamp(new Date()),
-    callSiteRef: {
-      course: dlg.currentCourse,
-      messageIndex: dlg.msgs.length,
-    },
-  };
-
-  const existingQuestions = await DialogPersistence.loadQuestions4HumanState(dlg.id);
-  existingQuestions.push(question);
-  await DialogPersistence._saveQuestions4HumanState(dlg.id, existingQuestions);
-
-  const newQuestionEvent: NewQ4HAskedEvent = {
-    type: 'new_q4h_asked',
-    question: {
-      id: question.id,
-      kind: question.kind,
-      selfId: dlg.id.selfId,
-      headLine: question.headLine,
-      bodyContent: question.bodyContent,
-      askedAt: question.askedAt,
-      callSiteRef: question.callSiteRef,
-      rootId: dlg.id.rootId,
-      agentId: dlg.agentId,
-      taskDocPath: dlg.taskDocPath,
-    },
-  };
-  postDialogEvent(dlg, newQuestionEvent);
-}
-
 async function applyContextHealthV3Remediation(args: {
   dlg: Dialog;
   agent: Team.Member;
@@ -953,68 +895,19 @@ async function applyContextHealthV3Remediation(args: {
         : defaultCriticalCountdownGenerations;
 
     if (promptsBeforeAutoClear <= 0) {
-      // Countdown exhausted: force clear_mind automatically (no Q4H) to keep long-running
-      // autonomy stable.
-      const clearTool = args.agentTools.find(
-        (t): t is FuncTool => t.type === 'func' && t.name === 'clear_mind',
-      );
-      if (!clearTool) {
-        log.warn('clear_mind tool not found in agent tools during critical remediation', {
-          dialogId: dlg.id.valueOf(),
-        });
-        // Keep countdown running even if tooling is misconfigured.
-        await suspendForContextHealthCritical(dlg);
-        return { kind: 'suspend' };
-      }
+      // Countdown exhausted: force-start a new course directly. Do not simulate an LLM tool call
+      // because this is system remediation, not agent action.
+      const language = getWorkLanguage();
+      const newCoursePrompt =
+        language === 'zh'
+          ? '系统因上下文已告急（critical）而自动开启新一轮/新回合对话，请继续推进任务。'
+          : 'System auto-started a new round because context health is critical. Please continue the task.';
 
-      const funcId = `auto-clear-${generateDialogID()}`;
-      const callGenseq = dlg.activeGenSeq;
-      const toolArgs: ToolArguments = {};
-      const argsStr = JSON.stringify(toolArgs);
-      const funcCall: FuncCallMsg = {
-        type: 'func_call_msg',
-        role: 'assistant',
-        genseq: callGenseq,
-        id: funcId,
-        name: 'clear_mind',
-        arguments: argsStr,
-      };
+      await dlg.startNewCourse(newCoursePrompt);
 
-      try {
-        await dlg.funcCallRequested(funcId, 'clear_mind', argsStr);
-      } catch (err) {
-        log.warn('Failed to emit func_call_requested for critical auto-clear clear_mind', err);
-      }
-      try {
-        await dlg.persistFunctionCall(funcId, 'clear_mind', toolArgs, callGenseq);
-      } catch (err) {
-        log.warn('Failed to persist clear_mind function call for critical auto-clear', err);
-      }
-
-      let funcResult: FuncResultMsg;
-      try {
-        const content = await clearTool.call(dlg, args.agent, toolArgs);
-        funcResult = {
-          type: 'func_result_msg',
-          id: funcId,
-          name: 'clear_mind',
-          content: String(content),
-          role: 'tool',
-          genseq: callGenseq,
-        };
-      } catch (err) {
-        funcResult = {
-          type: 'func_result_msg',
-          id: funcId,
-          name: 'clear_mind',
-          content: `Function 'clear_mind' execution failed: ${showErrorToAi(err)}`,
-          role: 'tool',
-          genseq: callGenseq,
-        };
-      }
-
-      await dlg.receiveFuncResult(funcResult);
-      await dlg.addChatMessages(funcCall, funcResult);
+      // Context health snapshot is inherently tied to the previous prompt/context. After clearing,
+      // invalidate it so the next generation can recompute without stale remediation.
+      dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
 
       resetContextHealthV3State(dlg);
       const nextPrompt = resolveUpNextPrompt(dlg);
@@ -3396,7 +3289,6 @@ async function executeTellaskCall(
       const questionId = `q4h-${generateDialogID()}`;
       const question: HumanQuestion = {
         id: questionId,
-        kind: 'generic',
         headLine: headLine.trim(),
         bodyContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
@@ -3419,7 +3311,6 @@ async function executeTellaskCall(
         type: 'new_q4h_asked',
         question: {
           id: question.id,
-          kind: question.kind,
           selfId: dlg.id.selfId,
           headLine: question.headLine,
           bodyContent: question.bodyContent,

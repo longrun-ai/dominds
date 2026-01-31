@@ -29,7 +29,7 @@ async function readNextEventWithTimeout(
   return ev;
 }
 
-async function driveToKeepGoingBudgetExhaustedQ4H(options: {
+async function driveToDiligencePushBudgetExhaustedQ4H(options: {
   baseDir: string;
   dialogId: string;
   userLanguageCode: 'zh' | 'en';
@@ -93,11 +93,10 @@ async function driveToKeepGoingBudgetExhaustedQ4H(options: {
     const ev = await readNextEventWithTimeout(ch, 50);
     if (!ev) continue;
     if (ev.type !== 'new_q4h_asked') continue;
-    if (ev.question.kind !== 'keep_going_budget_exhausted') continue;
     return ev.question.bodyContent;
   }
 
-  throw new Error('Timed out waiting for keep_going_budget_exhausted new_q4h_asked');
+  throw new Error('Timed out waiting for diligence_push_budget_exhausted new_q4h_asked');
 }
 
 async function main(): Promise<void> {
@@ -106,33 +105,35 @@ async function main(): Promise<void> {
   process.chdir(tmpBase);
 
   try {
-    const zhBody = await driveToKeepGoingBudgetExhaustedQ4H({
+    const zhBody = await driveToDiligencePushBudgetExhaustedQ4H({
       baseDir: tmpBase,
       dialogId: 'dlg-q4h-i18n-zh',
       userLanguageCode: 'zh',
     });
-    if (!zhBody.includes('鞭策过')) {
-      throw new Error(`Expected zh Q4H body to contain 鞭策过, got:\n${zhBody}`);
+    if (!zhBody.includes('Diligence Push') || !zhBody.includes('已触发')) {
+      throw new Error(
+        `Expected zh Q4H body to contain "Diligence Push" and "已触发", got:\n${zhBody}`,
+      );
     }
     if (!zhBody.includes('`continue`') || !zhBody.includes('`stop`')) {
       throw new Error(`Expected zh Q4H body to include \`continue\` and \`stop\`, got:\n${zhBody}`);
     }
 
-    const enBody = await driveToKeepGoingBudgetExhaustedQ4H({
+    const enBody = await driveToDiligencePushBudgetExhaustedQ4H({
       baseDir: tmpBase,
       dialogId: 'dlg-q4h-i18n-en',
       userLanguageCode: 'en',
     });
-    if (!enBody.includes('Keep-going budget exhausted')) {
+    if (!enBody.includes('Diligence Push attempts') || !enBody.includes('still not proceeding')) {
       throw new Error(
-        `Expected en Q4H body to contain Keep-going budget exhausted, got:\n${enBody}`,
+        `Expected en Q4H body to contain "Diligence Push attempts" and "still not proceeding", got:\n${enBody}`,
       );
     }
     if (!enBody.includes('`continue`') || !enBody.includes('`stop`')) {
       throw new Error(`Expected en Q4H body to include \`continue\` and \`stop\`, got:\n${enBody}`);
     }
 
-    console.log('q4h keep-going i18n: PASS');
+    console.log('q4h diligence push i18n: PASS');
   } finally {
     process.chdir(originalCwd);
   }
@@ -140,6 +141,6 @@ async function main(): Promise<void> {
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`q4h keep-going i18n: FAIL\n${message}`);
+  console.error(`q4h diligence push i18n: FAIL\n${message}`);
   process.exit(1);
 });

@@ -9,7 +9,7 @@
 import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogInterruptionReason, DialogRunState } from './run-state';
-import type { Q4HKind, UserTextGrammar } from './storage';
+import type { UserTextGrammar } from './storage';
 import type { TellaskCallValidation } from './tellask';
 
 export interface DialogRunStateEvent {
@@ -215,7 +215,6 @@ export interface NewQ4HAskedEvent {
   type: 'new_q4h_asked';
   question: {
     id: string;
-    kind: Q4HKind;
     selfId: string;
     headLine: string;
     bodyContent: string;

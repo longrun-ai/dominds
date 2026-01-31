@@ -27,24 +27,16 @@ export function formatReminderItemGuide(
 ): string {
   if (language === 'zh') {
     return [
-      '上下文状态：🟡 吃紧',
+      `提醒项 #${index}（高优先级工作集）`,
       '',
-      '影响：对话历史中的工具调用/结果已过时，影响你的判断。',
+      '原则：提醒项要短、要新、要能直接指导下一步行动。及时维护；不需要就删。',
       '',
-      '你只有通过调用 clear_mind 才能丢弃过时信息，恢复清晰思维。',
-      '"接续包"是你在下一程无缝继续工作的关键，请尽快准备好。',
+      '快捷操作：',
+      `- 更新：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
+      `- 删除：delete_reminder({ "reminder_no": ${index} })`,
       '',
-      '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
-      '目标：把"接续包草稿"维护进提醒项，让你有信心主动 clear_mind 进入新一程。',
-      '',
-      '同时建议你在提醒项里明确写出：',
-      '"基于以上信息，还差……就可以完成接续包，从而安全 clear_mind 进入新一程"。',
-      '',
-      '可选动作（至少一个，允许多次调用）：',
-      '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
-      '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
-      '',
-      '提示：在你自主调用 clear_mind 之前，系统会时常再次提醒你。',
+      '---',
+      content,
     ].join('\n');
   }
   return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
@@ -60,20 +52,27 @@ Quick actions:
 ${content}`;
 }
 
-export function formatQ4HKeepGoingBudgetExhausted(
+export function formatQ4HDiligencePushBudgetExhausted(
   language: LanguageCode,
   args: { maxInjectCount: number },
 ): string {
   const maxInjectCount = args.maxInjectCount;
   if (language === 'zh') {
     return [
-      `🤖 鞭策了 ${maxInjectCount} 次，这智能体跟钉子户似的就是不挪窝，`,
-      '我也没办法了，你自己看着办吧。（Q4H 已挂起）',
+      `Diligence Push 已触发 ${maxInjectCount} 次，智能体仍未继续推进。`,
+      '',
+      '请选择后续动作：',
+      '- `continue`：继续推进',
+      '- `stop`：停止推进',
     ].join('\n');
   }
 
   return [
-    `After ${maxInjectCount} pushes for diligence, the agent is still not going, you handle it.`,
+    `After ${maxInjectCount} Diligence Push attempts, the agent is still not proceeding.`,
+    '',
+    'Choose next action:',
+    '- `continue` to keep going',
+    '- `stop` to stop',
   ].join('\n');
 }
 
@@ -135,13 +134,13 @@ export function formatUserFacingContextHealthV3RemediationGuide(
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担和判断力干扰因素。',
         '',
         '你只有通过调用 clear_mind 才能丢弃这些垃圾信息，恢复清醒的头脑。',
-        '“接续包”是你在下一程对话中无间断继续工作的关键，所以你需要尽快把它准备好。',
+        '“接续包”是你在新一轮/新回合对话中无间断继续工作的关键，所以你需要尽快把它准备好。',
         '',
         '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
-        '目标：把“接续包草稿”维护进提醒项，让你尽快建立信心和意愿 **自主** clear_mind 进入新一程。',
+        '目标：把“接续包草稿”维护进提醒项，让你尽快建立信心和意愿 **自主** clear_mind 开启新一轮/新回合对话。',
         '',
         '同时建议你在提醒项里明确写出：',
-        '“基于以上信息，还差……就可以完成接续包，从而安全 clear_mind 进入新一程”。',
+        '“基于以上信息，还差……就可以完成接续包，从而安全 clear_mind 开启新一轮/新回合对话”。',
         '',
         '可选动作（至少一个，允许多次调用）：',
         '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -154,11 +153,11 @@ export function formatUserFacingContextHealthV3RemediationGuide(
     return [
       '上下文状态：🔴 告急',
       '',
-      `为保持长程自治，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动强制 clear_mind 开启新一程。`,
+      `为保持长程自治，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动开启新一轮/新回合对话（相当于清理头脑）。`,
       '',
       '你应在本轮尽快执行（允许多次调用）：',
       '1) 用 update_reminder / add_reminder 把"接续包（尽最大努力）"维护进提醒项（压缩为少量、高价值条目）。',
-      '2) 然后 clear_mind 开启新一程，让后续工作在更小上下文中继续。',
+      '2) 然后 clear_mind 开启新一轮/新回合对话，让后续工作在更小上下文中继续。',
       '',
       '快速操作：',
       '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -194,7 +193,7 @@ export function formatUserFacingContextHealthV3RemediationGuide(
   return [
     `Context state: 🔴 critical`,
     '',
-    `To keep long-running autonomy stable, the system will remind you at most ${args.promptsRemainingAfterThis} more time(s), then it will automatically force clear_mind to start a new course.`,
+    `To keep long-running autonomy stable, the system will remind you at most ${args.promptsRemainingAfterThis} more time(s), then it will automatically start a new round (equivalent to clearing the dialog noise).`,
     '',
     'In this turn, do this as soon as possible (multiple calls are OK):',
     '',
