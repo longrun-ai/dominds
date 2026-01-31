@@ -101,7 +101,7 @@
 - ZH: 一种短期、高频的工作项，与当前运行绑定（不持久化）。提醒项帮助智能体追踪下一步、关键细节或待办事项。通过 `add_reminder`、`update_reminder`、`delete_reminder` 函数工具管理。
 - ZH 术语：**提醒项**（禁止使用"便签"、"备注"、"待办"等变体）。
 
-### Q4H（Question for Human）
+### Q4H (Question for Human) （向人类的诉请）
 
 - EN: A mechanism for raising questions to humans, initiated via `!?@human`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**
 - ZH: 一种通过 `!?@human` 向人类提问的机制，暂停对话进度直到人类响应。**统一使用"Q4H"（大写 Q、数字 4、大写 H）；禁止使用"Q-for-H"、"QforH"、"每四小时"等变体。**
@@ -109,7 +109,7 @@
 ### Diligence Push（鞭策）
 
 - EN: A proactive continuation mechanism that nudges the agent when it's idle or blocked, using configurable prompts and budget limits. **Always use "Diligence Push"; never use "keep-going", "勤奋", "proactive-push", or "auto-continue".**
-- ZH: 一种主动继续机制，在智能体空闲或阻塞时通过可配置的提示词和预算上限进行"鞭策"。**统一使用"Diligence Push"；禁止使用"Keep-Going"、"勤奋"、"自动继续"、"push"等变体。**
+- ZH: 一种主动继续机制，在智能体空闲或阻塞时通过可配置的提示词和预算上限进行"鞭策"。**统一使用"鞭策"；禁止使用"保持运行"、"勤奋"、"自动继续"、"催促"等变体。**
 
 - EN: Related terms: "diligence prompt" (prompt file), "diligence-push-max" config, "diligence push injection" (prompt injection).
 - ZH: 相关术语："diligence prompt"（提示词文件）、"diligence-push-max"（配置项）、"diligence push 注入"（注入机制）。
