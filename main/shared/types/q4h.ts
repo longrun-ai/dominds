@@ -21,9 +21,9 @@ export interface HumanQuestion {
   readonly askedAt: string;
   /** Reference to the @human call site in conversation */
   readonly callSiteRef: {
-    /** Round number where @human was called */
-    round: number;
-    /** Message index within the round */
+    /** Course number where @human was called */
+    course: number;
+    /** Message index within the course */
     messageIndex: number;
   };
 }
@@ -86,8 +86,8 @@ export interface Q4HNavigationDetail {
   selfId: string;
   /** Root dialog ID for context */
   rootId: string;
-  /** Round number of the @human call site */
-  round: number;
-  /** Message index within the round */
+  /** Course number of the @human call site */
+  course: number;
+  /** Message index within the course */
   messageIndex: number;
 }

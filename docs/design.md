@@ -116,7 +116,7 @@ This fundamental problem manifests in several ways:
 
 **4. Compounding Compression Loss**
 
-- Each compaction round loses more information
+- Each compaction pass loses more information
 - Accuracy degrades with each compression cycle
 - Eventually becomes counterproductive
 
@@ -409,8 +409,8 @@ For detailed implementation specifications, including core tools, technical arch
 
 **Key Implementation Components**:
 
-- **`clear_mind`**: Function tool for clearing conversational noise and starting a new round
-- **`change_mind`**: Function tool for updating authoritative Taskdocs across dialog hierarchies (no round reset)
+- **`clear_mind`**: Function tool for clearing conversational noise and starting a new course
+- **`change_mind`**: Function tool for updating authoritative Taskdocs across dialog hierarchies (no course reset)
 - **Reminder Management**: Dialog-scoped working memory that persists across clarity operations
 - **Hierarchical Dialog Architecture**: Tree-structured dialogs with flat storage and autonomous management
 - **Memory Layers**: Dialog-scoped and workspace-persistent memory with autonomous evolution

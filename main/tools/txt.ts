@@ -805,7 +805,7 @@ export const readFileTool = {
         hintUseRangeNext: (relPath: string, start: number, end: number) =>
           `💡 **提示：** 可继续调用 \`read_file\` 读取下一段，例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"${start}~${end}\", \"max_lines\": 0, \"show_linenos\": true })\`\n\n`,
         hintLargeFileStrategy: (relPath: string) =>
-          `💡 **大文件策略：** 建议分多轮分析：每轮读取一段、完成总结并整理“重入包”后，在新一轮调用函数工具 \`clear_mind({ \"reminder_content\": \"<重入包>\" })\`（降低上下文占用，同时保留可扫读、可行动的恢复信息），再继续读取下一段（例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`、\`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`）。\n\n`,
+          `💡 **大文件策略：** 建议分多程分析：每程读取一段、完成总结并整理“接续包”后，在新一程调用函数工具 \`clear_mind({ \"reminder_content\": \"<接续包>\" })\`（降低上下文占用，同时保留可扫读、可行动的恢复信息），再继续读取下一段（例如：\`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`、\`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`）。\n\n`,
         sizeLabel: '大小',
         totalLinesLabel: '总行数',
         emptyFileLabel: '<空文件>',
@@ -841,7 +841,7 @@ export const readFileTool = {
         hintUseRangeNext: (relPath: string, start: number, end: number) =>
           `💡 **Hint:** Call \`read_file\` again to continue reading, e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"${start}~${end}\", \"max_lines\": 0, \"show_linenos\": true })\`\n\n`,
         hintLargeFileStrategy: (relPath: string) =>
-          `💡 **Large file strategy:** Analyze in multiple rounds: each round read a slice, summarize, and prepare a re-entry package; then start a new round and call the function tool \`clear_mind({ \"reminder_content\": \"<re-entry package>\" })\` (less context, while preserving scannable resume info) before reading the next slice (e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`, then \`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`).\n\n`,
+          `💡 **Large file strategy:** Analyze in multiple courses: each course read a slice, summarize, and prepare a continuation package; then start a new course and call the function tool \`clear_mind({ \"reminder_content\": \"<continuation package>\" })\` (less context, while preserving scannable resume info) before reading the next slice (e.g. \`read_file({ \"path\": \"${relPath}\", \"range\": \"1~500\", \"max_lines\": 0, \"show_linenos\": true })\`, then \`read_file({ \"path\": \"${relPath}\", \"range\": \"201~400\", \"max_lines\": 0, \"show_linenos\": true })\`).\n\n`,
         sizeLabel: 'Size',
         totalLinesLabel: 'Total lines',
         emptyFileLabel: '<empty file>',

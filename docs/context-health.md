@@ -111,10 +111,10 @@ Levels are derived from the two thresholds:
 
 ## v3 Remediation Semantics (Driver-enforced)
 
-### Re-entry package (“重入包”)
+### Continuation package (“接续包”)
 
-The remediation workflow centers around a _re-entry package_ (a scannable, actionable bundle of
-context that survives a new round).
+The remediation workflow centers around a _continuation package_ (a scannable, actionable bundle of
+context that survives a new course).
 
 Recommended structure (multi-line; scale by task size; focus on details not covered in Taskdoc):
 
@@ -136,7 +136,7 @@ Current behavior:
   generations; configurable per model).
 - Each inserted prompt requires the agent to **curate reminders** (at least one call):
   - `update_reminder` (preferred) / `add_reminder`
-  - Maintain a re-entry-package draft inside reminders
+  - Maintain a continuation-package draft inside reminders
   - Then `clear_mind` when it becomes scannable/actionable
 
 ### Critical (red)
@@ -145,15 +145,15 @@ When `level === 'critical'`, the driver enters a **countdown remediation** (max 
 
 - On each turn, the driver records a **role=user prompt** (persisted as a user message) that is
   visible in the UI as a user prompt. This prompt tells the agent to:
-  - curate reminders via `update_reminder` / `add_reminder` (best-effort re-entry package), and
-  - then call `clear_mind` to start a new round.
+  - curate reminders via `update_reminder` / `add_reminder` (best-effort continuation package), and
+  - then call `clear_mind` to start a new course.
 - The prompt includes a countdown: after **N** turns the system will automatically clear.
 - When the countdown reaches 0, the driver **automatically calls** `clear_mind` (with empty args; no
-  requirement on `reminder_content`), starting a new round without suspending.
+  requirement on `reminder_content`), starting a new course without suspending.
 
 Rationale:
 
-- `caution` already nudges best-effort re-entry package drafting in reminders.
+- `caution` already nudges best-effort continuation package drafting in reminders.
 - In `critical`, we prefer to keep the dialog running long-term without human intervention.
 
 ## UI (Webapp) Expectations
@@ -201,8 +201,8 @@ health remediation by default.
   - `caution`: driver inserts a persisted role=user prompt (UI-visible user instruction).
     On entering `caution` it inserts once; while still `caution` it reinserts on a cadence (default: every
     10 generations; configurable per model). Each time, the agent must call at least one of
-    `update_reminder` / `add_reminder` and maintain a re-entry-package draft, then `clear_mind` when ready.
+    `update_reminder` / `add_reminder` and maintain a continuation-package draft, then `clear_mind` when ready.
   - `critical`: driver runs a countdown remediation (max 5 turns) using **recorded role=user prompts**.
     Each prompt includes a countdown and instructs reminder curation + `clear_mind`. When the countdown
-    reaches 0, the driver auto-executes `clear_mind` and starts a new round (no Q4H, no suspension).
+    reaches 0, the driver auto-executes `clear_mind` and starts a new course (no Q4H, no suspension).
 - UI shows context health with green/yellow/red (and “unknown” handling when usage is unavailable).

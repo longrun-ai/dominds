@@ -8,7 +8,7 @@ function makeBaseDialog(overrides: Partial<ApiRootDialogResponse>): ApiRootDialo
     agentId: 'agent',
     taskDocPath: 'tasks/demo.tsk',
     status: 'running',
-    currentRound: 1,
+    currentCourse: 1,
     createdAt: 't0',
     lastModified: 't0',
     ...overrides,

@@ -914,10 +914,10 @@ function captureCurrentDialogState(shadow, app) {
   const titleEl = shadow.querySelector('#current-dialog-title');
   const titleText = titleEl?.textContent?.trim() || '';
 
-  // Round navigation state
+  // Course navigation state
   const prevBtn = shadow.querySelector('#toolbar-prev');
   const nextBtn = shadow.querySelector('#toolbar-next');
-  const roundText = shadow.querySelector('#round-nav span');
+  const courseText = shadow.querySelector('#course-nav span');
 
   // Check if a dialog is actually selected (language-agnostic).
   // Title-based placeholder checks are not stable across UI languages.
@@ -929,7 +929,7 @@ function captureCurrentDialogState(shadow, app) {
     hasRealDialog,
     placeholder: dialogInfo === null,
     dialogInfo,
-    round: roundText?.textContent?.trim() || '',
+    course: courseText?.textContent?.trim() || '',
     prevEnabled: !prevBtn?.hasAttribute?.('disabled'),
     nextEnabled: !nextBtn?.hasAttribute?.('disabled'),
   };
@@ -1286,7 +1286,7 @@ function computeDeltaForClass(previous, current) {
     current.currentDialog?.hasRealDialog,
   );
   detectChange('currentDialog.title', previous.currentDialog?.title, current.currentDialog?.title);
-  detectChange('currentDialog.round', previous.currentDialog?.round, current.currentDialog?.round);
+  detectChange('currentDialog.course', previous.currentDialog?.course, current.currentDialog?.course);
 
   detectChange('chat.messageCount', previous.chat?.messageCount, current.chat?.messageCount);
   detectChange(
@@ -1396,8 +1396,8 @@ function formatFullState(state) {
   // Current dialog (most important)
   if (state.currentDialog?.hasRealDialog) {
     lines.push(`  📂 Dialog: "${state.currentDialog.title}"`);
-    if (state.currentDialog.round) {
-      lines.push(`     Round: ${state.currentDialog.round}`);
+    if (state.currentDialog.course) {
+      lines.push(`     Course: ${state.currentDialog.course}`);
     }
   } else {
     lines.push(`  📂 No dialog selected`);
@@ -1826,7 +1826,7 @@ async function waitForDialogSelected(expected, timeoutMs = 15000) {
   return true;
 }
 
-async function waitForRoundNavMatch(pattern, timeoutMs = 15000) {
+async function waitForCourseNavMatch(pattern, timeoutMs = 15000) {
   const toRegex = (p) => {
     if (p instanceof RegExp) return p;
     return new RegExp(String(p));
@@ -1834,7 +1834,7 @@ async function waitForRoundNavMatch(pattern, timeoutMs = 15000) {
   const re = toRegex(pattern);
   await waitUntil(() => {
     const snap = snapshotDomindsUI();
-    const text = snap.currentDialog?.round || '';
+    const text = snap.currentDialog?.course || '';
     return typeof text === 'string' && re.test(text);
   }, timeoutMs);
   return true;
@@ -1896,7 +1896,7 @@ async function openSubdialogAndWait(rootId, subdialogId, options = {}) {
     () => getCurrentDialogTitle().includes(String(subdialogId)),
     options.timeoutMs || 15000,
   );
-  await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
+  await waitForCourseNavMatch(/^C\s+\d+$/, options.timeoutMs || 15000);
   if (typeof options.requireInputEnabled === 'boolean') {
     await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
   }
@@ -1919,16 +1919,16 @@ async function navigateToParentAndWait(options = {}) {
     return Array.isArray(after) && after.length < before.length;
   }, options.timeoutMs || 15000);
   const expectedParent = before.length >= 2 ? before[before.length - 2] : null;
-  if (expectedParent?.selfId) {
-    await waitUntil(
-      () => getCurrentDialogTitle().includes(String(expectedParent.selfId)),
-      options.timeoutMs || 15000,
-    );
-  }
-  await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
-  if (typeof options.requireInputEnabled === 'boolean') {
-    await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
-  }
+	  if (expectedParent?.selfId) {
+	    await waitUntil(
+	      () => getCurrentDialogTitle().includes(String(expectedParent.selfId)),
+	      options.timeoutMs || 15000,
+	    );
+	  }
+	  await waitForCourseNavMatch(/^C\s+\d+$/, options.timeoutMs || 15000);
+	  if (typeof options.requireInputEnabled === 'boolean') {
+	    await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
+	  }
   if (typeof options.minVisibleMessages === 'number') {
     await waitForVisibleMessageCount(options.minVisibleMessages, options.timeoutMs || 60000);
   }
@@ -1961,7 +1961,7 @@ async function selectDialogAndWait(dialogText, options = {}) {
     () => getCurrentDialogTitle().includes(String(dialogText)),
     options.timeoutMs || 15000,
   );
-  await waitForRoundNavMatch(/^R\s+\d+$/, options.timeoutMs || 15000);
+  await waitForCourseNavMatch(/^C\s+\d+$/, options.timeoutMs || 15000);
   if (typeof options.requireInputEnabled === 'boolean') {
     await waitForInputEnabledState(options.requireInputEnabled, options.timeoutMs || 15000);
   }
@@ -3052,7 +3052,7 @@ function setGlobal() {
     openSubdialog,
     openSubdialogAndWait,
     waitForDialogSelected,
-    waitForRoundNavMatch,
+    waitForCourseNavMatch,
     waitForInputEnabledState,
     waitForDialogIdle,
     getSubdialogHierarchy,

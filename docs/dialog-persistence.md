@@ -9,7 +9,7 @@ The persistence layer is fully implemented and active with modern TypeScript typ
 ### Current State
 
 - **✅ Fully Implemented**: Modern storage system with strong TypeScript types in `main/shared/types/storage.ts`
-- **✅ latest.yaml Support**: Current round and lastModified tracking for accurate UI timestamps
+- **✅ latest.yaml Support**: Current course and lastModified tracking for accurate UI timestamps
 - **✅ Append-Only Events**: JSONL-based event streaming with atomic operations
 - **✅ Strong Type Safety**: Discriminated unions and type guards for compile-time verification
 - **✅ Real File I/O**: Dialog sessions persist under `.dialogs/run|done|archive` with modern file formats
@@ -17,7 +17,7 @@ The persistence layer is fully implemented and active with modern TypeScript typ
 
 ### Key Features
 
-- **latest.yaml**: Tracks current round, lastModified timestamps, message counts, and dialog status
+- **latest.yaml**: Tracks current course, lastModified timestamps, message counts, and dialog status
 - **Strong Typing**: Modern TypeScript patterns with discriminated unions and type guards
 - **Atomic Operations**: All file operations are atomic to prevent corruption
 - **Efficient Timestamps**: UI displays accurate lastModified times from persisted records
@@ -179,28 +179,28 @@ This design balances the need for clear hierarchical relationships with efficien
 ```
 .dialogs/run/<rootDialogId>/
 ├── dialog.yaml               # Dialog metadata with strong typing
-├── latest.yaml               # Current round and lastModified tracking
+├── latest.yaml               # Current course and lastModified tracking
 ├── reminders.json            # Persistent reminders
-├── <round>.jsonl             # Streamed messages for each round
-├── <round>.yaml              # Round metadata
+├── <course>.jsonl            # Streamed messages for each course
+├── <course>.yaml             # Course metadata
 └── subdialogs/               # Flat subdialog storage
     ├── <subDialogId1>/       # First-level subdialog
     │   ├── dialog.yaml       # Subdialog metadata
     │   ├── latest.yaml       # Subdialog current state
     │   ├── reminders.json    # Subdialog reminders
-    │   ├── <round>.jsonl     # Subdialog events
-    │   └── <round>.yaml      # Subdialog round metadata
+    │   ├── <course>.jsonl    # Subdialog events
+    │   └── <course>.yaml     # Subdialog course metadata
     └── <subDialogId2>/       # Another subdialog
         ├── dialog.yaml
         ├── latest.yaml
         ├── reminders.json
-        ├── <round>.jsonl
-        └── <round>.yaml
+        ├── <course>.jsonl
+        └── <course>.yaml
 ```
 
 **Key Features**:
 
-- **latest.yaml**: Modern tracking file with current round, lastModified, and status
+- **latest.yaml**: Modern tracking file with current course, lastModified, and status
 - **Strong Typing**: All files use TypeScript interfaces from `main/shared/types/storage.ts`
 - **Atomic Updates**: latest.yaml updated atomically on all dialog modifications
 - **UI Integration**: Timestamps from latest.yaml display correctly in dialog list
@@ -248,10 +248,10 @@ assignmentFromSup: # Assignment context from parent
 Modern tracking file for current dialog state and UI timestamps:
 
 ```yaml
-currentRound: 3 # Current round number (1-based)
+currentCourse: 3 # Current course number (1-based)
 lastModified: '2024-01-15T11:45:00Z' # ISO timestamp of last activity
-messageCount: 12 # Total messages in current round
-functionCallCount: 3 # Total function calls in current round
+messageCount: 12 # Total messages in current course
+functionCallCount: 3 # Total function calls in current course
 subdialogCount: 1 # Total subdialogs created
 status: 'active' # Current dialog status
 ```
@@ -259,16 +259,16 @@ status: 'active' # Current dialog status
 **Automatic Updates**: `latest.yaml` is automatically updated on:
 
 - New message events
-- Round transitions
+- Course transitions
 - Function call results
 - Subdialog creation
 - Any dialog modification
 
 **UI Integration**: Dialog list displays `lastModified` timestamp from this file for accurate sorting and display.
 
-### Round Tracking (`round.curr`)
+### Course Tracking (`course.curr`)
 
-Simple text file containing the current round number:
+Simple text file containing the current course number:
 
 ```
 3
@@ -350,10 +350,10 @@ Each line contains a single message in JSON format. **Note: Stream error events 
 # Note: dlg_stream_error events are filtered out and NOT written to JSONL files
 ```
 
-### Round Metadata (`.yaml`)
+### Course Metadata (`.yaml`)
 
 ```yaml
-round: 3
+course: 3
 started_at: '2024-01-15T11:30:00Z'
 completed_at: '2024-01-15T11:45:00Z'
 message_count: 12
@@ -385,7 +385,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 **Stream errors are NOT persisted to disk files and NOT restored to UI:**
 
-- **No Disk Persistence**: Stream error events (`dlg_stream_error`) are NOT written to `round-*.jsonl` files
+- **No Disk Persistence**: Stream error events (`dlg_stream_error`) are NOT written to `course-*.jsonl` files
 - **No UI Restoration**: Error sections (`.error-section`) appear only during active streaming and are NOT restored when dialogs are reloaded from disk
 - **Log-Only**: Error details appear in backend logs (`logs/backend-stdout.log`) for debugging but are excluded from persistent storage
 - **Transient UI State**: Error sections in generation bubbles are transient UI elements that disappear on dialog reload
@@ -399,7 +399,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 **Implementation Notes**:
 
-- Backend filters out `dlg_stream_error` events before writing to `round-*.jsonl`
+- Backend filters out `dlg_stream_error` events before writing to `course-*.jsonl`
 - Frontend treats error sections as ephemeral UI state, not persisted content
 - Dialog reload reconstructs only persisted content (user messages, thinking, saying, code blocks)
 - Error handling remains functional during active streaming sessions
@@ -416,15 +416,15 @@ The following operations are implemented.
 2. Create `DialogID` instance with `selfDlgId` and `rootDlgId` (rootDlgId defaults to selfDlgId for root dialogs)
 3. Create dialog directory structure
 4. Write initial `dialog.yaml` metadata with the serialized DialogID
-5. Initialize `round.curr` to 1
+5. Initialize `latest.yaml` to `currentCourse: 1`
 6. Create empty `reminders.json`
 7. Set Taskdoc path reference
 
 ### Message Persistence
 
-1. Append message to current round's `.jsonl` file
-2. Update round metadata if round is complete
-3. Increment round counter if starting new round
+1. Append message to current course's `.jsonl` file
+2. Update course metadata if a course is completed
+3. Increment course counter if starting a new course
 4. Ensure atomic writes to prevent corruption
 
 ### Subdialog Creation
@@ -442,7 +442,7 @@ The following operations are implemented.
 ### Dialog Completion
 
 1. Update dialog status to "completed"
-2. Finalize all round metadata
+2. Finalize all course metadata
 3. For root dialogs:
    - Move dialog directory from `run/` to `done/`
    - Include all subdialogs in the move
@@ -546,7 +546,7 @@ The persistence layer has been **completely modernized** with no backward compat
 
 #### ✅ latest.yaml Support
 
-- **Real-time Tracking**: Current round and lastModified timestamps
+- **Real-time Tracking**: Current course and lastModified timestamps
 - **Atomic Updates**: Automatically updated on all dialog modifications
 - **UI Integration**: Dialog list displays accurate timestamps from persisted records
 - **Status Management**: Tracks dialog status, message counts, and subdialog counts

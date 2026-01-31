@@ -78,7 +78,7 @@ This fundamental problem manifests in several ways:
 
 **4. Compounding Compression Loss**
 
-- Each compaction round loses more information
+- Each compaction pass loses more information
 - Accuracy degrades with each compression cycle
 - Eventually becomes counterproductive
 

@@ -20,6 +20,7 @@ import { getWorkLanguage } from './shared/runtime-language';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
   ContextHealthEvent,
+  CourseEvent,
   FuncCallStartEvent,
   FunctionResultEvent,
   GeneratingFinishEvent,
@@ -28,7 +29,6 @@ import type {
   MarkdownFinishEvent,
   MarkdownStartEvent,
   Q4HAnsweredEvent,
-  RoundEvent,
   StreamErrorEvent,
   SubdialogEvent,
   TeammateResponseEvent,
@@ -134,14 +134,91 @@ function isDialogMetadataFile(value: unknown): value is DialogMetadataFile {
   return isRootDialogMetadataFile(value) || isSubdialogMetadataFile(value);
 }
 
-function isDialogLatestFile(value: unknown): value is DialogLatestFile {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.currentRound === 'number' &&
-    typeof value.lastModified === 'string' &&
-    (value.status === 'active' || value.status === 'completed' || value.status === 'archived') &&
-    (value.disableDiligencePush === undefined || typeof value.disableDiligencePush === 'boolean')
-  );
+function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
+  if (!isRecord(value)) return null;
+
+  if (typeof value.currentCourse !== 'number') return null;
+  const currentCourse = value.currentCourse;
+
+  if (typeof value.lastModified !== 'string') return null;
+  if (value.status !== 'active' && value.status !== 'completed' && value.status !== 'archived')
+    return null;
+  if (value.disableDiligencePush !== undefined && typeof value.disableDiligencePush !== 'boolean')
+    return null;
+  if (value.messageCount !== undefined && typeof value.messageCount !== 'number') return null;
+  if (value.functionCallCount !== undefined && typeof value.functionCallCount !== 'number')
+    return null;
+  if (value.subdialogCount !== undefined && typeof value.subdialogCount !== 'number') return null;
+  if (value.generating !== undefined && typeof value.generating !== 'boolean') return null;
+  if (value.needsDrive !== undefined && typeof value.needsDrive !== 'boolean') return null;
+
+  const runStateRaw = (value as Record<string, unknown>).runState;
+  const runState: DialogLatestFile['runState'] | null = (() => {
+    if (runStateRaw === undefined) return undefined;
+    if (!isRecord(runStateRaw)) return null;
+    if (typeof runStateRaw.kind !== 'string') return null;
+    const kind = runStateRaw.kind;
+    if (kind === 'idle_waiting_user') return { kind: 'idle_waiting_user' } as const;
+    if (kind === 'proceeding') return { kind: 'proceeding' } as const;
+    if (kind === 'proceeding_stop_requested') {
+      const reason = runStateRaw.reason;
+      if (reason !== 'user_stop' && reason !== 'emergency_stop') return null;
+      return { kind: 'proceeding_stop_requested', reason } as const;
+    }
+    if (kind === 'interrupted') {
+      const reason = runStateRaw.reason;
+      if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
+      switch (reason.kind) {
+        case 'user_stop':
+          return { kind: 'interrupted', reason: { kind: 'user_stop' } } as const;
+        case 'emergency_stop':
+          return { kind: 'interrupted', reason: { kind: 'emergency_stop' } } as const;
+        case 'server_restart':
+          return { kind: 'interrupted', reason: { kind: 'server_restart' } } as const;
+        case 'system_stop': {
+          const detail = (reason as Record<string, unknown>).detail;
+          if (typeof detail !== 'string') return null;
+          return { kind: 'interrupted', reason: { kind: 'system_stop', detail } } as const;
+        }
+        default:
+          return null;
+      }
+    }
+    if (kind === 'blocked') {
+      const reason = runStateRaw.reason;
+      if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
+      switch (reason.kind) {
+        case 'needs_human_input':
+          return { kind: 'blocked', reason: { kind: 'needs_human_input' } } as const;
+        case 'waiting_for_subdialogs':
+          return { kind: 'blocked', reason: { kind: 'waiting_for_subdialogs' } } as const;
+        case 'needs_human_input_and_subdialogs':
+          return { kind: 'blocked', reason: { kind: 'needs_human_input_and_subdialogs' } } as const;
+        default:
+          return null;
+      }
+    }
+    if (kind === 'terminal') {
+      const status = runStateRaw.status;
+      if (status !== 'completed' && status !== 'archived') return null;
+      return { kind: 'terminal', status };
+    }
+    return null;
+  })();
+  if (runState === null) return null;
+
+  return {
+    currentCourse,
+    lastModified: value.lastModified,
+    messageCount: value.messageCount,
+    functionCallCount: value.functionCallCount,
+    subdialogCount: value.subdialogCount,
+    status: value.status,
+    generating: value.generating,
+    needsDrive: value.needsDrive,
+    runState,
+    disableDiligencePush: value.disableDiligencePush,
+  };
 }
 
 function isSubdialogResponseRecord(value: unknown): value is {
@@ -170,14 +247,14 @@ function isSubdialogResponseRecord(value: unknown): value is {
 
 export interface DialogPersistenceState {
   metadata: DialogMetadataFile;
-  currentRound: number;
+  currentCourse: number;
   messages: ChatMessage[];
   reminders: Reminder[];
   contextHealth?: ContextHealthSnapshot;
 }
 
 export interface Questions4Human {
-  round: number;
+  course: number;
   questions: HumanQuestion[];
   createdAt: string;
   updatedAt: string;
@@ -264,7 +341,7 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.mutateDialogLatest(subdialogId, () => ({
       kind: 'replace',
       next: {
-        currentRound: 1,
+        currentCourse: 1,
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
         messageCount: 0,
@@ -277,7 +354,7 @@ export class DiskFileDialogStore extends DialogStore {
 
     // Supdialog clarification context is persisted in subdialog metadata (supdialogCall)
 
-    const parentRound = await DialogPersistence.getCurrentRoundNumber(supdialog.id);
+    const parentCourse = await DialogPersistence.getCurrentCourseNumber(supdialog.id);
     const subdialogCreatedEvt: SubdialogEvent = {
       type: 'subdialog_created_evt',
       dialog: {
@@ -285,7 +362,7 @@ export class DiskFileDialogStore extends DialogStore {
         rootId: subdialogId.rootId,
       },
       timestamp: new Date().toISOString(),
-      round: parentRound,
+      course: parentCourse,
       parentDialog: {
         selfId: supdialog.id.selfId,
         rootId: supdialog.id.rootId,
@@ -309,7 +386,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle function call results (includes logging)
    */
   public async receiveFuncResult(dialog: Dialog, funcResult: FuncResultMsg): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Persist function result record
     const funcResultRecord: FuncResultRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -319,7 +396,7 @@ export class DiskFileDialogStore extends DialogStore {
       content: funcResult.content,
       genseq: dialog.activeGenSeq,
     };
-    await this.appendEvent(round, funcResultRecord);
+    await this.appendEvent(course, funcResultRecord);
 
     // Send event to frontend
     const funcResultEvt: FunctionResultEvent = {
@@ -327,7 +404,7 @@ export class DiskFileDialogStore extends DialogStore {
       id: funcResult.id,
       name: funcResult.name,
       content: funcResult.content,
-      round,
+      course,
     };
     postDialogEvent(dialog, funcResultEvt);
   }
@@ -361,7 +438,7 @@ export class DiskFileDialogStore extends DialogStore {
     status: 'completed' | 'failed',
     callId: string,
   ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     // Persist record WITH callId for replay correlation
     const ev: ToolCallResultRecord = {
@@ -374,7 +451,7 @@ export class DiskFileDialogStore extends DialogStore {
       calling_genseq,
       callId,
     };
-    await this.appendEvent(round, ev);
+    await this.appendEvent(course, ev);
 
     // Emit ToolCallResponseEvent WITH callId for UI correlation
     const toolResponseEvt: ToolCallResponseEvent = {
@@ -383,7 +460,7 @@ export class DiskFileDialogStore extends DialogStore {
       headLine,
       status,
       result,
-      round,
+      course,
       calling_genseq,
       callId,
     };
@@ -418,7 +495,7 @@ export class DiskFileDialogStore extends DialogStore {
       originMemberId: string;
     },
   ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     const calleeDialogSelfId = calleeDialogId ? calleeDialogId.selfId : undefined;
     const response = options.response;
@@ -446,7 +523,7 @@ export class DiskFileDialogStore extends DialogStore {
       callId,
       originMemberId,
     };
-    await this.appendEvent(round, ev);
+    await this.appendEvent(course, ev);
 
     const teammateResponseEvt: TeammateResponseEvent = {
       type: 'teammate_response_evt',
@@ -455,7 +532,7 @@ export class DiskFileDialogStore extends DialogStore {
       headLine,
       status,
       result,
-      round,
+      course,
       calling_genseq,
       response,
       agentId,
@@ -473,10 +550,10 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Append event to round JSONL file (delegate to DialogPersistence)
+   * Append event to course JSONL file (delegate to DialogPersistence)
    */
-  private async appendEvent(round: number, event: PersistedDialogRecord): Promise<void> {
-    await DialogPersistence.appendEvent(this.dialogId, round, event);
+  private async appendEvent(course: number, event: PersistedDialogRecord): Promise<void> {
+    await DialogPersistence.appendEvent(this.dialogId, course, event);
   }
 
   /**
@@ -485,7 +562,7 @@ export class DiskFileDialogStore extends DialogStore {
    * to ensure proper event ordering on the frontend.
    */
   public async notifyGeneratingStart(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
     try {
       const ev: PersistedDialogRecord = {
@@ -493,7 +570,7 @@ export class DiskFileDialogStore extends DialogStore {
         type: 'gen_start_record',
         genseq: genseq,
       };
-      await this.appendEvent(round, ev);
+      await this.appendEvent(course, ev);
 
       // Emit generating_start_evt event
       // This event MUST be emitted and processed before any substream events
@@ -501,7 +578,7 @@ export class DiskFileDialogStore extends DialogStore {
       // thinking/markdown/calling events
       const genStartEvt: GeneratingStartEvent = {
         type: 'generating_start_evt',
-        round,
+        course,
         genseq: genseq,
       };
       postDialogEvent(dialog, genStartEvt);
@@ -524,7 +601,7 @@ export class DiskFileDialogStore extends DialogStore {
     contextHealth?: ContextHealthSnapshot,
     llmGenModel?: string,
   ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
     if (genseq === undefined) {
       throw new Error('Missing active genseq for notifyGeneratingFinish');
@@ -537,12 +614,12 @@ export class DiskFileDialogStore extends DialogStore {
         contextHealth,
         llmGenModel,
       };
-      await this.appendEvent(round, ev);
+      await this.appendEvent(course, ev);
 
       // Emit generating_finish_evt event (this was missing, causing double triggering issue)
       const genFinishEvt: GeneratingFinishEvent = {
         type: 'generating_finish_evt',
-        round,
+        course,
         genseq: genseq,
         llmGenModel,
       };
@@ -551,7 +628,7 @@ export class DiskFileDialogStore extends DialogStore {
       if (contextHealth) {
         const ctxEvt: ContextHealthEvent = {
           type: 'context_health_evt',
-          round,
+          course,
           genseq,
           contextHealth,
         };
@@ -582,8 +659,8 @@ export class DiskFileDialogStore extends DialogStore {
     this.sayingContent += chunk;
   }
   public async sayingFinish(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
-    const sayingContent = this.sayingContent.trim();
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const sayingContent = this.sayingContent;
     // Persist saying content as a message event
     if (sayingContent) {
       const sayingMessageEvent: AgentWordsRecord = {
@@ -592,77 +669,78 @@ export class DiskFileDialogStore extends DialogStore {
         genseq: dialog.activeGenSeq,
         content: sayingContent,
       };
-      await this.appendEvent(round, sayingMessageEvent);
+      await this.appendEvent(course, sayingMessageEvent);
     }
   }
 
   public async thinkingStart(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Reset thinking content tracker
     this.thinkingContent = '';
     const thinkingStartEvt: ThinkingStartEvent = {
       type: 'thinking_start_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, thinkingStartEvt);
   }
   public async thinkingChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Collect thinking content for persistence
     this.thinkingContent += chunk;
     const thinkingChunkEvt: ThinkingChunkEvent = {
       type: 'thinking_chunk_evt',
       chunk,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, thinkingChunkEvt);
   }
   public async thinkingFinish(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Persist thinking content as a message event
-    if (this.thinkingContent.trim()) {
+    const thinkingContent = this.thinkingContent;
+    if (thinkingContent) {
       const thinkingMessageEvent: AgentThoughtRecord = {
         ts: formatUnifiedTimestamp(new Date()),
         type: 'agent_thought_record',
         genseq: dialog.activeGenSeq,
-        content: this.thinkingContent.trim(),
+        content: thinkingContent,
       };
-      await this.appendEvent(round, thinkingMessageEvent);
+      await this.appendEvent(course, thinkingMessageEvent);
     }
     const thinkingFinishEvt: ThinkingFinishEvent = {
       type: 'thinking_finish_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, thinkingFinishEvt);
   }
 
   public async markdownStart(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const markdownStartEvt: MarkdownStartEvent = {
       type: 'markdown_start_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, markdownStartEvt);
   }
   public async markdownChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: MarkdownChunkEvent = {
       type: 'markdown_chunk_evt',
       chunk,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
   public async markdownFinish(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: MarkdownFinishEvent = {
       type: 'markdown_finish_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
@@ -670,74 +748,74 @@ export class DiskFileDialogStore extends DialogStore {
 
   // Tellask call streaming methods
   public async callingStart(dialog: Dialog, validation: TellaskCallValidation): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallStartEvent = {
       type: 'tool_call_start_evt',
       validation,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingHeadlineChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallHeadlineChunkEvent = {
       type: 'tool_call_headline_chunk_evt',
       chunk,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingHeadlineFinish(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallHeadlineFinishEvent = {
       type: 'tool_call_headline_finish_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingBodyStart(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallBodyStartEvent = {
       type: 'tool_call_body_start_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingBodyChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallBodyChunkEvent = {
       type: 'tool_call_body_chunk_evt',
       chunk,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingBodyFinish(dialog: Dialog): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallBodyFinishEvent = {
       type: 'tool_call_body_finish_evt',
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
   }
 
   public async callingFinish(dialog: Dialog, callId: string): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: ToolCallFinishEvent = {
       type: 'tool_call_finish_evt',
       callId,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, evt);
@@ -750,13 +828,13 @@ export class DiskFileDialogStore extends DialogStore {
     funcName: string,
     argumentsStr: string,
   ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const funcCallEvt: FuncCallStartEvent = {
       type: 'func_call_requested_evt',
       funcId,
       funcName,
       arguments: argumentsStr,
-      round,
+      course,
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, funcCallEvt);
@@ -768,13 +846,13 @@ export class DiskFileDialogStore extends DialogStore {
   public async streamError(dialog: Dialog, error: string): Promise<void> {
     log.error(`Dialog stream error '${error}'`, new Error(), { dialog });
 
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = typeof dialog.activeGenSeq === 'number' ? dialog.activeGenSeq : undefined;
 
     // Enhanced stream error event with better error classification
     const streamErrorEvent: StreamErrorEvent = {
       type: 'stream_error_evt',
-      round,
+      course,
       genseq,
       error,
     };
@@ -783,29 +861,29 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Start new round (append-only JSONL + exceptional reminder persistence)
+   * Start new course (append-only JSONL + exceptional reminder persistence)
    */
-  public async startNewRound(dialog: Dialog, _newRoundPrompt: string): Promise<void> {
-    const previousRound = dialog.currentRound;
-    const newRound = previousRound + 1;
+  public async startNewCourse(dialog: Dialog, _newCoursePrompt: string): Promise<void> {
+    const previousCourse = dialog.currentCourse;
+    const newCourse = previousCourse + 1;
 
-    // Persist reminders state for new round (exceptional overwrite)
+    // Persist reminders state for new course (exceptional overwrite)
     // Use the currently attached dialog's reminders to avoid stale state
     await this.persistReminders(dialog, dialog.reminders || []);
 
-    // Update latest.yaml with new round (lastModified is set by persistence layer)
+    // Update latest.yaml with new course (lastModified is set by persistence layer)
     await DialogPersistence.mutateDialogLatest(this.dialogId, () => ({
       kind: 'patch',
-      patch: { currentRound: newRound },
+      patch: { currentCourse: newCourse },
     }));
 
-    // Post round update event
-    const roundUpdateEvt: RoundEvent = {
-      type: 'round_update',
-      round: newRound,
-      totalRounds: newRound,
+    // Post course update event
+    const courseUpdateEvt: CourseEvent = {
+      type: 'course_update',
+      course: newCourse,
+      totalCourses: newCourse,
     };
-    postDialogEvent(dialog, roundUpdateEvt);
+    postDialogEvent(dialog, courseUpdateEvt);
   }
 
   /**
@@ -828,7 +906,7 @@ export class DiskFileDialogStore extends DialogStore {
     grammar: UserTextGrammar,
     userLanguageCode?: LanguageCode,
   ): Promise<void> {
-    const round = dialog.currentRound;
+    const course = dialog.currentCourse;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
     const genseq = dialog.activeGenSeqOrUndefined ?? 1;
 
@@ -841,7 +919,7 @@ export class DiskFileDialogStore extends DialogStore {
       grammar,
       userLanguageCode,
     };
-    await this.appendEvent(round, humanEv);
+    await this.appendEvent(course, humanEv);
 
     // Note: end_of_user_saying_evt is now emitted by llm/driver.ts after tellask calls complete
   }
@@ -856,7 +934,7 @@ export class DiskFileDialogStore extends DialogStore {
     type: 'thinking_msg' | 'saying_msg',
     provider_data?: ProviderData,
   ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
 
     const event: AgentThoughtRecord | AgentWordsRecord =
       type === 'thinking_msg'
@@ -874,7 +952,7 @@ export class DiskFileDialogStore extends DialogStore {
             content: content || '',
           };
 
-    await this.appendEvent(round, event);
+    await this.appendEvent(course, event);
   }
 
   /**
@@ -887,7 +965,7 @@ export class DiskFileDialogStore extends DialogStore {
     arguments_: ToolArguments,
     genseq: number,
   ): Promise<void> {
-    const round = dialog.activeGenRoundOrUndefined ?? dialog.currentRound;
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
 
     const funcCallEvent: FuncCallRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -898,7 +976,7 @@ export class DiskFileDialogStore extends DialogStore {
       arguments: arguments_,
     };
 
-    await this.appendEvent(round, funcCallEvent);
+    await this.appendEvent(course, funcCallEvent);
 
     // NOTE: func_call_evt REMOVED - persistence uses FuncCallRecord directly
     // UI display uses func_call_requested_evt instead
@@ -991,7 +1069,7 @@ export class DiskFileDialogStore extends DialogStore {
         {
           messages: subdialogState.messages,
           reminders: subdialogState.reminders,
-          currentRound: subdialogState.currentRound,
+          currentCourse: subdialogState.currentCourse,
         },
       );
       rootDialog.registerSubdialog(subdialog);
@@ -1029,17 +1107,17 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Load current round number from persisted metadata
+   * Load current course number from persisted metadata
    */
-  public async loadCurrentRound(dialogId: DialogID): Promise<number> {
-    return await DialogPersistence.getCurrentRoundNumber(dialogId, 'running');
+  public async loadCurrentCourse(dialogId: DialogID): Promise<number> {
+    return await DialogPersistence.getCurrentCourseNumber(dialogId, 'running');
   }
 
   /**
    * Get next sequence number for generation
    */
-  public async getNextSeq(dialogId: DialogID, round: number): Promise<number> {
-    return await DialogPersistence.getNextSeq(dialogId, round, 'running');
+  public async getNextSeq(dialogId: DialogID, course: number): Promise<number> {
+    return await DialogPersistence.getNextSeq(dialogId, course, 'running');
   }
 
   /**
@@ -1048,36 +1126,36 @@ export class DiskFileDialogStore extends DialogStore {
    * Unlike replayDialogEvents(), this sends events directly to ws.send() instead of postDialogEvent()
    * @param ws - WebSocket connection to send events to
    * @param dialog - Dialog object containing metadata
-   * @param round - Optional round number (uses dialog.currentRound if not provided)
-   * @param totalRounds - Optional total rounds count (defaults to round/currentRound)
+   * @param course - Optional course number (uses dialog.currentCourse if not provided)
+   * @param totalCourses - Optional total courses count (defaults to course/currentCourse)
    */
   public async sendDialogEventsDirectly(
     ws: WebSocket,
     dialog: Dialog,
-    round?: number,
-    totalRounds?: number,
+    course?: number,
+    totalCourses?: number,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
-      // Use provided round or fallback to dialog.currentRound (which may be stale for new Dialog objects)
-      const currentRound = round ?? dialog.currentRound;
-      const effectiveTotalRounds = totalRounds ?? currentRound;
-      const persistenceEvents = await DialogPersistence.readRoundEvents(
+      // Use provided course or fallback to dialog.currentCourse (which may be stale for new Dialog objects)
+      const currentCourse = course ?? dialog.currentCourse;
+      const effectiveTotalCourses = totalCourses ?? currentCourse;
+      const persistenceEvents = await DialogPersistence.readCourseEvents(
         dialog.id,
-        currentRound,
+        currentCourse,
         status,
       );
 
-      // Send round_update event directly to this WebSocket only
+      // Send course_update event directly to this WebSocket only
       ws.send(
         JSON.stringify({
-          type: 'round_update',
+          type: 'course_update',
           dialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
           },
-          round: currentRound,
-          totalRounds: effectiveTotalRounds,
+          course: currentCourse,
+          totalCourses: effectiveTotalCourses,
         }),
       );
 
@@ -1085,7 +1163,7 @@ export class DiskFileDialogStore extends DialogStore {
 
       // Send each persistence event directly to the requesting WebSocket
       for (const event of persistenceEvents) {
-        await this.sendEventDirectlyToWebSocket(ws, dialog, currentRound, event);
+        await this.sendEventDirectlyToWebSocket(ws, dialog, currentCourse, event);
       }
 
       // Rehydrate reminders from dialog state
@@ -1108,7 +1186,7 @@ export class DiskFileDialogStore extends DialogStore {
   private async sendEventDirectlyToWebSocket(
     ws: WebSocket,
     dialog: Dialog,
-    round: number,
+    course: number,
     event: PersistedDialogRecord,
   ): Promise<void> {
     switch (event.type) {
@@ -1126,7 +1204,7 @@ export class DiskFileDialogStore extends DialogStore {
                   ws.send(
                     JSON.stringify({
                       type: 'markdown_start_evt',
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1140,7 +1218,7 @@ export class DiskFileDialogStore extends DialogStore {
                     JSON.stringify({
                       type: 'markdown_chunk_evt',
                       chunk,
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1153,7 +1231,7 @@ export class DiskFileDialogStore extends DialogStore {
                   ws.send(
                     JSON.stringify({
                       type: 'markdown_finish_evt',
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1167,7 +1245,7 @@ export class DiskFileDialogStore extends DialogStore {
                     JSON.stringify({
                       type: 'tool_call_start_evt',
                       validation,
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1181,7 +1259,7 @@ export class DiskFileDialogStore extends DialogStore {
                     JSON.stringify({
                       type: 'tool_call_headline_chunk_evt',
                       chunk,
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1194,7 +1272,7 @@ export class DiskFileDialogStore extends DialogStore {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_headline_finish_evt',
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1207,7 +1285,7 @@ export class DiskFileDialogStore extends DialogStore {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_body_start_evt',
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1221,7 +1299,7 @@ export class DiskFileDialogStore extends DialogStore {
                     JSON.stringify({
                       type: 'tool_call_body_chunk_evt',
                       chunk,
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1234,7 +1312,7 @@ export class DiskFileDialogStore extends DialogStore {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_body_finish_evt',
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1248,7 +1326,7 @@ export class DiskFileDialogStore extends DialogStore {
                     JSON.stringify({
                       type: 'tool_call_finish_evt',
                       callId: _callId,
-                      round,
+                      course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                       timestamp: event.ts,
@@ -1267,7 +1345,7 @@ export class DiskFileDialogStore extends DialogStore {
               ws.send(
                 JSON.stringify({
                   type: 'markdown_start_evt',
-                  round,
+                  course,
                   genseq,
                   dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                   timestamp: event.ts,
@@ -1277,7 +1355,7 @@ export class DiskFileDialogStore extends DialogStore {
                 JSON.stringify({
                   type: 'markdown_chunk_evt',
                   chunk: content,
-                  round,
+                  course,
                   genseq,
                   dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                   timestamp: event.ts,
@@ -1286,7 +1364,7 @@ export class DiskFileDialogStore extends DialogStore {
               ws.send(
                 JSON.stringify({
                   type: 'markdown_finish_evt',
-                  round,
+                  course,
                   genseq,
                   dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
                   timestamp: event.ts,
@@ -1301,7 +1379,7 @@ export class DiskFileDialogStore extends DialogStore {
           ws.send(
             JSON.stringify({
               type: 'end_of_user_saying_evt',
-              round,
+              course,
               genseq,
               msgId: event.msgId,
               content,
@@ -1319,7 +1397,7 @@ export class DiskFileDialogStore extends DialogStore {
         // Create generating_start_evt event using persisted genseq directly
         const genStartWireEvent = {
           type: 'generating_start_evt',
-          round,
+          course,
           genseq: event.genseq,
           dialog: {
             selfId: dialog.id.selfId,
@@ -1339,7 +1417,7 @@ export class DiskFileDialogStore extends DialogStore {
         // Create generating_finish_evt event using persisted genseq directly
         const genFinishWireEvent = {
           type: 'generating_finish_evt',
-          round,
+          course,
           genseq: event.genseq,
           llmGenModel: typeof event.llmGenModel === 'string' ? event.llmGenModel : undefined,
           dialog: {
@@ -1357,7 +1435,7 @@ export class DiskFileDialogStore extends DialogStore {
         if (event.contextHealth) {
           const ctxWireEvent = {
             type: 'context_health_evt',
-            round,
+            course,
             genseq: event.genseq,
             contextHealth: event.contextHealth,
             dialog: {
@@ -1380,7 +1458,7 @@ export class DiskFileDialogStore extends DialogStore {
           // Start thinking phase
           const thinkingStartEvent = {
             type: 'thinking_start_evt',
-            round,
+            course,
             genseq: event.genseq,
             dialog: {
               selfId: dialog.id.selfId,
@@ -1398,7 +1476,7 @@ export class DiskFileDialogStore extends DialogStore {
             const thinkingChunkEvent = {
               type: 'thinking_chunk_evt',
               chunk,
-              round,
+              course,
               genseq: event.genseq,
               dialog: {
                 selfId: dialog.id.selfId,
@@ -1414,7 +1492,7 @@ export class DiskFileDialogStore extends DialogStore {
           // Finish thinking phase
           const thinkingFinishEvent = {
             type: 'thinking_finish_evt',
-            round,
+            course,
             genseq: event.genseq,
             dialog: {
               selfId: dialog.id.selfId,
@@ -1440,7 +1518,7 @@ export class DiskFileDialogStore extends DialogStore {
                 ws.send(
                   JSON.stringify({
                     type: 'markdown_start_evt',
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1457,7 +1535,7 @@ export class DiskFileDialogStore extends DialogStore {
                   JSON.stringify({
                     type: 'markdown_chunk_evt',
                     chunk,
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1473,7 +1551,7 @@ export class DiskFileDialogStore extends DialogStore {
                 ws.send(
                   JSON.stringify({
                     type: 'markdown_finish_evt',
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1490,7 +1568,7 @@ export class DiskFileDialogStore extends DialogStore {
                   JSON.stringify({
                     type: 'tool_call_start_evt',
                     validation,
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1507,7 +1585,7 @@ export class DiskFileDialogStore extends DialogStore {
                   JSON.stringify({
                     type: 'tool_call_headline_chunk_evt',
                     chunk,
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1523,7 +1601,7 @@ export class DiskFileDialogStore extends DialogStore {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_headline_finish_evt',
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1539,7 +1617,7 @@ export class DiskFileDialogStore extends DialogStore {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_body_start_evt',
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1556,7 +1634,7 @@ export class DiskFileDialogStore extends DialogStore {
                   JSON.stringify({
                     type: 'tool_call_body_chunk_evt',
                     chunk,
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1572,7 +1650,7 @@ export class DiskFileDialogStore extends DialogStore {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_body_finish_evt',
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1589,7 +1667,7 @@ export class DiskFileDialogStore extends DialogStore {
                   JSON.stringify({
                     type: 'tool_call_finish_evt',
                     callId,
-                    round,
+                    course,
                     genseq: event.genseq,
                     dialog: {
                       selfId: dialog.id.selfId,
@@ -1620,7 +1698,7 @@ export class DiskFileDialogStore extends DialogStore {
           funcId: event.id,
           funcName: event.name,
           arguments: JSON.stringify(event.arguments),
-          round,
+          course,
           genseq: event.genseq,
           dialog: {
             selfId: dialog.id.selfId,
@@ -1642,7 +1720,7 @@ export class DiskFileDialogStore extends DialogStore {
           id: event.id,
           name: event.name,
           content: event.content,
-          round,
+          course,
           dialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
@@ -1660,6 +1738,7 @@ export class DiskFileDialogStore extends DialogStore {
         // Handle subdialog creation requests
         const subdialogCreatedEvent = {
           type: 'subdialog_created_evt',
+          course,
           dialog: {
             // Add dialog field for proper event routing
             selfId: event.subDialogId,
@@ -1694,7 +1773,7 @@ export class DiskFileDialogStore extends DialogStore {
           status: event.status,
           result: event.result,
           callId: event.callId || '',
-          round,
+          course,
           calling_genseq: event.calling_genseq,
           dialog: {
             selfId: dialog.id.selfId,
@@ -1729,7 +1808,7 @@ export class DiskFileDialogStore extends DialogStore {
           agentId: event.agentId,
           callId: event.callId,
           originMemberId: event.originMemberId,
-          round,
+          course,
           calling_genseq: event.calling_genseq,
           dialog: {
             selfId: dialog.id.selfId,
@@ -1789,8 +1868,8 @@ type LatestWriteBackEntry =
       inFlight: Promise<void>;
     };
 
-type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentRound' | 'lastModified'>> & {
-  currentRound?: number;
+type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentCourse' | 'lastModified'>> & {
+  currentCourse?: number;
   lastModified?: string;
 };
 
@@ -1814,7 +1893,7 @@ export class DialogPersistence {
   private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
 
-  private static readonly roundAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
 
   private static getLatestWriteBackMutex(key: string): AsyncFifoMutex {
     const existing = this.latestWriteBackMutexes.get(key);
@@ -1824,11 +1903,11 @@ export class DialogPersistence {
     return created;
   }
 
-  private static getRoundAppendMutex(key: string): AsyncFifoMutex {
-    const existing = this.roundAppendMutexes.get(key);
+  private static getCourseAppendMutex(key: string): AsyncFifoMutex {
+    const existing = this.courseAppendMutexes.get(key);
     if (existing) return existing;
     const created = new AsyncFifoMutex();
-    this.roundAppendMutexes.set(key, created);
+    this.courseAppendMutexes.set(key, created);
     return created;
   }
 
@@ -1861,7 +1940,7 @@ export class DialogPersistence {
         JSON.stringify(
           {
             metadata: state.metadata,
-            currentRound: state.currentRound,
+            currentCourse: state.currentCourse,
             messages: state.messages,
             reminders: state.reminders,
             savedAt: formatUnifiedTimestamp(new Date()),
@@ -1895,9 +1974,14 @@ export class DialogPersistence {
 
       const stateData = JSON.parse(await fs.promises.readFile(stateFile, 'utf-8'));
 
+      const currentCourse =
+        typeof (stateData as { currentCourse?: unknown }).currentCourse === 'number'
+          ? (stateData as { currentCourse: number }).currentCourse
+          : 1;
+
       return {
         metadata: stateData.metadata,
-        currentRound: stateData.currentRound,
+        currentCourse,
         messages: stateData.messages,
         reminders: stateData.reminders || [],
       };
@@ -2202,32 +2286,32 @@ export class DialogPersistence {
     return result;
   }
 
-  // === NEW JSONL ROUND-BASED METHODS ===
+  // === NEW JSONL COURSE-BASED METHODS ===
 
   /**
-   * Append event to round JSONL file (append-only pattern)
+   * Append event to course JSONL file (append-only pattern)
    */
   static async appendEvent(
     dialogId: DialogID,
-    round: number,
+    course: number,
     event: PersistedDialogRecord,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    const appendMutexKey = `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|round:${round}`;
-    const release = await this.getRoundAppendMutex(appendMutexKey).acquire();
+    const appendMutexKey = `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|course:${course}`;
+    const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
-      const roundFilename = this.getRoundFilename(round);
-      const roundFilePath = path.join(dialogPath, roundFilename);
+      const courseFilename = this.getCourseFilename(course);
+      const courseFilePath = path.join(dialogPath, courseFilename);
 
       // Ensure directory exists
       await fs.promises.mkdir(dialogPath, { recursive: true });
 
-      // Serialize appends per dialog+round file. Concurrent `appendFile` calls can interleave and
+      // Serialize appends per dialog+course file. Concurrent `appendFile` calls can interleave and
       // corrupt JSONL lines (e.g. tool results appended in parallel), which later manifests as
       // `Unterminated string in JSON ...` during resume.
       const eventLine = JSON.stringify(event) + '\n';
-      await fs.promises.appendFile(roundFilePath, eventLine, 'utf-8');
+      await fs.promises.appendFile(courseFilePath, eventLine, 'utf-8');
 
       // Update latest.yaml with new lastModified timestamp
       await this.mutateDialogLatest(
@@ -2236,13 +2320,13 @@ export class DialogPersistence {
           kind: 'patch',
           patch: {
             lastModified: formatUnifiedTimestamp(new Date()),
-            currentRound: round,
+            currentCourse: course,
           },
         }),
         status,
       );
     } catch (error) {
-      log.error(`Failed to append event to dialog ${dialogId} round ${round}:`, error);
+      log.error(`Failed to append event to dialog ${dialogId} course ${course}:`, error);
       throw error;
     } finally {
       release();
@@ -2250,20 +2334,19 @@ export class DialogPersistence {
   }
 
   /**
-   * Read all events from round JSONL file
+   * Read all events from course JSONL file
    */
-  static async readRoundEvents(
+  static async readCourseEvents(
     dialogId: DialogID,
-    round: number,
+    course: number,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<PersistedDialogRecord[]> {
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
-      const roundFilename = this.getRoundFilename(round);
-      const roundFilePath = path.join(dialogPath, roundFilename);
+      const courseFilePath = path.join(dialogPath, this.getCourseFilename(course));
 
       try {
-        const content = await fs.promises.readFile(roundFilePath, 'utf-8');
+        const content = await fs.promises.readFile(courseFilePath, 'utf-8');
         const events: PersistedDialogRecord[] = [];
 
         const lines = content.split('\n');
@@ -2288,7 +2371,7 @@ export class DialogPersistence {
                 msg.includes('Unexpected end of JSON input'))
             ) {
               log.warn(
-                `Ignoring truncated JSONL tail for dialog ${dialogId} round ${round} at line ${i + 1}: ${msg}`,
+                `Ignoring truncated JSONL tail for dialog ${dialogId} course ${course} at line ${i + 1}: ${msg}`,
               );
               break;
             }
@@ -2299,26 +2382,26 @@ export class DialogPersistence {
         return events;
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
-          // Round file doesn't exist - return empty array
+          // Course file doesn't exist - return empty array
           return [];
         }
         throw error;
       }
     } catch (error) {
-      log.error(`Failed to read round events for dialog ${dialogId} round ${round}:`, error);
+      log.error(`Failed to read course events for dialog ${dialogId} course ${course}:`, error);
       throw error;
     }
   }
 
   /**
-   * Compute next sequence number for a round by scanning existing events
+   * Compute next sequence number for a course by scanning existing events
    */
   static async getNextSeq(
     dialogId: DialogID,
-    round: number,
+    course: number,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<number> {
-    const events = await this.readRoundEvents(dialogId, round, status);
+    const events = await this.readCourseEvents(dialogId, course, status);
     let maxSeq = 0;
     for (const ev of events) {
       if ('genseq' in ev && typeof ev.genseq === 'number' && ev.genseq > maxSeq) {
@@ -2329,18 +2412,18 @@ export class DialogPersistence {
   }
 
   /**
-   * Get current round number from latest.yaml (performance optimization)
+   * Get current course number from latest.yaml (performance optimization)
    * UI navigation can assume natural numbering schema back to 1
    */
-  static async getCurrentRoundNumber(
+  static async getCurrentCourseNumber(
     dialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<number> {
     try {
       const latest = await this.loadDialogLatest(dialogId, status);
-      return latest?.currentRound || 1;
+      return latest?.currentCourse || 1;
     } catch (error) {
-      log.error(`Failed to get current round for dialog ${dialogId}:`, error);
+      log.error(`Failed to get current course for dialog ${dialogId}:`, error);
       return 1;
     }
   }
@@ -2494,7 +2577,7 @@ export class DialogPersistence {
       headLine: string;
       bodyContent: string;
       askedAt: string;
-      callSiteRef: { round: number; messageIndex: number };
+      callSiteRef: { course: number; messageIndex: number };
     }>
   > {
     try {
@@ -2510,7 +2593,7 @@ export class DialogPersistence {
         headLine: string;
         bodyContent: string;
         askedAt: string;
-        callSiteRef: { round: number; messageIndex: number };
+        callSiteRef: { course: number; messageIndex: number };
       }> = [];
 
       for (const dialogIdObj of dialogIds) {
@@ -3117,7 +3200,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Save latest.yaml with current round and lastModified info
+   * Save latest.yaml with current course and lastModified info
    */
   private static async writeDialogLatestToDisk(
     dialogId: DialogID,
@@ -3143,7 +3226,7 @@ export class DialogPersistence {
       // Rename with retry logic for filesystem sync issues
       await this.renameWithRetry(tempFile, latestFilePath, yamlContent);
 
-      // todo: publish RoundEvent here or where more suitable?
+      // todo: publish CourseEvent here or where more suitable?
     } catch (error) {
       log.error(`Failed to save latest.yaml for dialog ${dialogId.selfId}:`, error);
       throw error;
@@ -3190,7 +3273,7 @@ export class DialogPersistence {
   }
 
   /**
-   * Load latest.yaml for current round and lastModified info
+   * Load latest.yaml for current course and lastModified info
    */
   static async loadDialogLatest(
     dialogId: DialogID,
@@ -3207,10 +3290,11 @@ export class DialogPersistence {
 
       const content = await fs.promises.readFile(latestFilePath, 'utf-8');
       const parsed: unknown = yaml.parse(content);
-      if (!isDialogLatestFile(parsed)) {
+      const latest = parseDialogLatestFile(parsed);
+      if (!latest) {
         throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
       }
-      return parsed;
+      return latest;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
@@ -3240,7 +3324,7 @@ export class DialogPersistence {
       const existing = (staged
         ? staged.latest
         : await this.loadDialogLatestFromDisk(dialogId, status)) || {
-        currentRound: 1,
+        currentCourse: 1,
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
       };
@@ -3305,10 +3389,11 @@ export class DialogPersistence {
 
       const content = await fs.promises.readFile(latestFilePath, 'utf-8');
       const parsed: unknown = yaml.parse(content);
-      if (!isDialogLatestFile(parsed)) {
+      const latest = parseDialogLatestFile(parsed);
+      if (!latest) {
         throw new Error(`Invalid latest.yaml in ${latestFilePath}`);
       }
-      return parsed;
+      return latest;
     } catch (error) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
@@ -3442,19 +3527,19 @@ export class DialogPersistence {
   // === FILE SYSTEM UTILITIES ===
 
   /**
-   * Get round filename from round number
+   * Get course filename from course number
    */
-  static getRoundFilename(round: number): string {
-    return `round-${round.toString().padStart(3, '0')}.jsonl`;
+  static getCourseFilename(course: number): string {
+    return `course-${course.toString().padStart(3, '0')}.jsonl`;
   }
 
   /**
-   * Extract round number from filename
+   * Extract course number from filename
    */
-  static getRoundFromFilename(filename: string): number {
-    const match = filename.match(/^round-(\d+)\.jsonl$/);
+  static getCourseFromFilename(filename: string): number {
+    const match = filename.match(/^course-(\d+)\.jsonl$/);
     if (!match) {
-      throw new Error(`Invalid round filename: ${filename}`);
+      throw new Error(`Invalid course filename: ${filename}`);
     }
     return parseInt(match[1], 10);
   }
@@ -3472,12 +3557,12 @@ export class DialogPersistence {
 
   static async loadQuestions4Human(
     dialogId: DialogID,
-    round: number,
+    course: number,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<Questions4Human | null> {
     const questions = await this.loadQuestions4HumanState(dialogId, status);
     return {
-      round,
+      course,
       questions,
       createdAt: formatUnifiedTimestamp(new Date()),
       updatedAt: formatUnifiedTimestamp(new Date()),
@@ -3549,8 +3634,8 @@ export class DialogPersistence {
   }
 
   /**
-   * Restore dialog from disk using JSONL events (optimized: only latest round loaded)
-   * For historical rounds, use loadRoundEvents() on-demand for UI navigation
+   * Restore dialog from disk using JSONL events (optimized: only latest course loaded)
+   * For historical courses, use loadCourseEvents() on-demand for UI navigation
    */
   static async restoreDialog(
     dialogId: DialogID,
@@ -3564,15 +3649,15 @@ export class DialogPersistence {
       }
 
       const reminders = await this.loadReminderState(dialogId, status);
-      // Only load latest round for dialog state restoration
-      const currentRound = await this.getCurrentRoundNumber(dialogId, status);
-      const latestEvents = await this.readRoundEvents(dialogId, currentRound, status);
+      // Only load latest course for dialog state restoration
+      const currentCourse = await this.getCurrentCourseNumber(dialogId, status);
+      const latestEvents = await this.readCourseEvents(dialogId, currentCourse, status);
 
       const reconstructedState = await this.rebuildFromEvents(
         latestEvents,
         metadata,
         reminders,
-        currentRound,
+        currentCourse,
       );
 
       return reconstructedState;
@@ -3583,24 +3668,24 @@ export class DialogPersistence {
   }
 
   /**
-   * Load specific round events for UI navigation (on-demand)
+   * Load specific course events for UI navigation (on-demand)
    */
-  static async loadRoundEvents(
+  static async loadCourseEvents(
     dialogId: DialogID,
-    round: number,
+    course: number,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<PersistedDialogRecord[]> {
-    return await this.readRoundEvents(dialogId, round, status);
+    return await this.readCourseEvents(dialogId, course, status);
   }
 
   /**
-   * Reconstruct dialog state from JSONL events (optimized: only latest round needed)
+   * Reconstruct dialog state from JSONL events (optimized: only latest course needed)
    */
   static async rebuildFromEvents(
     events: PersistedDialogRecord[],
     metadata: DialogMetadataFile,
     reminders: Reminder[],
-    currentRound: number,
+    currentCourse: number,
   ): Promise<DialogPersistenceState> {
     // Events are already in chronological order from JSONL file (append-only pattern)
     const messages: ChatMessage[] = [];
@@ -3727,7 +3812,7 @@ export class DialogPersistence {
 
     return {
       metadata,
-      currentRound,
+      currentCourse,
       messages,
       reminders,
       contextHealth,

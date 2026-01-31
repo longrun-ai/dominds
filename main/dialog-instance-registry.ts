@@ -31,7 +31,7 @@ export async function getOrRestoreRootDialog(
     {
       messages: rootState.messages,
       reminders: rootState.reminders,
-      currentRound: rootState.currentRound,
+      currentCourse: rootState.currentCourse,
       contextHealth: rootState.contextHealth,
     },
   );
@@ -107,7 +107,7 @@ export async function ensureDialogLoaded(
     {
       messages: state.messages,
       reminders: state.reminders,
-      currentRound: state.currentRound,
+      currentCourse: state.currentCourse,
       contextHealth: state.contextHealth,
     },
   );

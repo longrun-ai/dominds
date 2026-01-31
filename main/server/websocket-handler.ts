@@ -25,9 +25,9 @@ import type {
   CreateDialogRequest,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
+  DisplayCourseRequest,
   DisplayDialogRequest,
   DisplayRemindersRequest,
-  DisplayRoundRequest,
   DriveDialogByUserAnswer,
   DriveDialogRequest,
   EmergencyStopRequest,
@@ -191,8 +191,8 @@ export async function handleWebSocketMessage(
         await handleDisplayReminders(ws, packet);
         break;
 
-      case 'display_round':
-        await handleDisplayRound(ws, packet);
+      case 'display_course':
+        await handleDisplayCourse(ws, packet);
         break;
 
       case 'drive_dlg_by_user_msg':
@@ -425,7 +425,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     await DialogPersistence.mutateDialogLatest(new DialogID(dialogId.selfId), () => ({
       kind: 'replace',
       next: {
-        currentRound: 1,
+        currentCourse: 1,
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
         messageCount: 0,
@@ -545,9 +545,9 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       throw new Error('Dialog not found');
     }
 
-    const decidedRound =
-      (await DialogPersistence.getCurrentRoundNumber(dialogIdObj, foundStatus)) ||
-      (dialogState.currentRound ?? 1);
+    const decidedCourse =
+      (await DialogPersistence.getCurrentCourseNumber(dialogIdObj, foundStatus)) ||
+      (dialogState.currentCourse ?? 1);
 
     const enableLive = foundStatus === 'running';
     const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, foundStatus);
@@ -571,15 +571,15 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
 
     // CRITICAL FIX: Send dialog events directly to requesting WebSocket only
     // This bypasses PubChan to ensure only the requesting session receives restoration events
-    // Pass decidedRound explicitly since dialog.currentRound defaults to 1 for new Dialog objects
+    // Pass decidedCourse explicitly since dialog.currentCourse defaults to 1 for new Dialog objects
     try {
       const dialogStore = dialog.dlgStore;
       if (dialogStore instanceof DiskFileDialogStore) {
         await dialogStore.sendDialogEventsDirectly(
           ws,
           dialog,
-          decidedRound,
-          decidedRound,
+          decidedCourse,
+          decidedCourse,
           foundStatus,
         );
       } else {
@@ -740,11 +740,11 @@ async function handleDisplayReminders(
   }
 }
 
-async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): Promise<void> {
+async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest): Promise<void> {
   try {
-    const { dialog, round } = packet;
-    if (!dialog || typeof round !== 'number') {
-      throw new Error('dialog and round are required');
+    const { dialog, course } = packet;
+    if (!dialog || typeof course !== 'number') {
+      throw new Error('dialog and course are required');
     }
 
     // Extract dialog ID from DialogIdent
@@ -756,7 +756,7 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
       ws.send(
         JSON.stringify({
           type: 'error',
-          message: 'Invalid dialog identifiers for display_round: selfId/rootId must be strings',
+          message: 'Invalid dialog identifiers for display_course: selfId/rootId must be strings',
         }),
       );
       return;
@@ -781,12 +781,12 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
       }
 
       if (!foundStatus || !metadata) {
-        log.warn('Metadata not found for display_round', undefined, { dialogId: dialogId.selfId });
+        log.warn('Metadata not found for display_course', undefined, { dialogId: dialogId.selfId });
         return;
       }
 
-      const totalRounds =
-        (await DialogPersistence.getCurrentRoundNumber(dialogId, foundStatus)) || round;
+      const totalCourses =
+        (await DialogPersistence.getCurrentCourseNumber(dialogId, foundStatus)) || course;
 
       const rootDialog = await getOrRestoreRootDialog(dialogId.rootId, foundStatus);
       if (!rootDialog) return;
@@ -799,16 +799,16 @@ async function handleDisplayRound(ws: WebSocket, packet: DisplayRoundRequest): P
 
       const store = dialog.dlgStore;
       if (!(store instanceof DiskFileDialogStore)) {
-        throw new Error('Unexpected dialog store type for display_round');
+        throw new Error('Unexpected dialog store type for display_course');
       }
-      // Send the requested round's persisted events directly to this WebSocket.
+      // Send the requested course's persisted events directly to this WebSocket.
       // This is a UI navigation operation; do not emit via PubChan.
-      await store.sendDialogEventsDirectly(ws, dialog, round, totalRounds, foundStatus);
+      await store.sendDialogEventsDirectly(ws, dialog, course, totalCourses, foundStatus);
     } catch (err) {
-      log.warn('Failed to send dialog events for display_round', err);
+      log.warn('Failed to send dialog events for display_course', err);
     }
   } catch (error) {
-    log.warn('Failed to handle display_round', error);
+    log.warn('Failed to handle display_course', error);
   }
 }
 

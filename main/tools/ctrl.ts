@@ -12,8 +12,8 @@
  * - add_reminder: Add a reminder
  * - delete_reminder: Delete a reminder by number
  * - update_reminder: Update reminder content
- * - clear_mind: Start a new round, optionally add a reminder
- * - change_mind: Update a `.tsk/` task doc section without starting a new round
+ * - clear_mind: Start a new course, optionally add a reminder
+ * - change_mind: Update a `.tsk/` task doc section without starting a new course
  * - recall_taskdoc: Read a Taskdoc section from `*.tsk/` by (category, selector)
  *
  * USAGE CONTEXT:
@@ -63,7 +63,7 @@ type CtrlMessages = Readonly<{
   topLevelSelectorRequiresNoCategory: (category: string, selector: string) => string;
   bearInMindSelectorRequiresBearInMindCategory: (category: string, selector: string) => string;
   taskDocSectionMissing: (relativePath: string) => string;
-  clearedRoundPrompt: (nextRound: number) => string;
+  clearedCoursePrompt: (nextCourse: number) => string;
 }>;
 
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
@@ -112,8 +112,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         `错误：选择器 '${selector}' 仅允许在 category='bearinmind' 下使用（当前 category='${category}'）。`,
       taskDocSectionMissing: (relativePath) =>
         `未找到：\`${relativePath}\`。\n\n可用 \`change_mind\` 创建或更新该章节（它会整段替换）：\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
-      clearedRoundPrompt: (nextRound) =>
-        `这是对话的第 #${nextRound} 轮，你刚清理了思路，请继续执行任务。`,
+      clearedCoursePrompt: (nextCourse) =>
+        `你刚清理头脑，开启了第 ${nextCourse} 程对话，请继续推进任务。`,
     };
   }
 
@@ -161,8 +161,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
     taskDocSectionMissing: (relativePath) =>
       `Not found: \`${relativePath}\`.\n\nUse \`change_mind\` to create/update it (whole-section replace):\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
-    clearedRoundPrompt: (nextRound) =>
-      `This is round #${nextRound} of the dialog, you just cleared your mind and please proceed with the task.`,
+    clearedCoursePrompt: (nextCourse) =>
+      `This is course #${nextCourse} of the dialog. You just cleared your mind; please proceed with the task.`,
   };
 }
 
@@ -284,16 +284,19 @@ export const updateReminderTool: FuncTool = {
 export const clearMindTool: FuncTool = {
   type: 'func',
   name: 'clear_mind',
-  description: 'Clear dialog mind and start a new round, optionally adding a reminder.',
+  description: 'Clear dialog mind and start a new course, optionally adding a reminder.',
   descriptionI18n: {
-    en: 'Clear dialog mind and start a new round, optionally adding a reminder.',
-    zh: '清理头脑并开始新一轮，可选添加一条提醒。',
+    en: 'Clear dialog mind and start a new course. Prepare a "Continuation Package" (first step, key location info, run/verification info, volatile details) as reminder_content so you can resume quickly.',
+    zh: '清理头脑并开启新一程对话。建议准备一个"接续包"（① 第一步操作，② 关键定位信息，③ 运行/验证信息，④ 临时细节）作为 reminder_content，以便快速接续。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
     properties: {
-      reminder_content: { type: 'string', description: 'Optional reminder content to add.' },
+      reminder_content: {
+        type: 'string',
+        description: 'Optional reminder content (Continuation Package) to add.',
+      },
     },
   },
   argsValidation: 'dominds',
@@ -305,7 +308,7 @@ export const clearMindTool: FuncTool = {
     if (reminderContent) {
       dlg.addReminder(reminderContent);
     }
-    await dlg.startNewRound(t.clearedRoundPrompt(dlg.currentRound + 1));
+    await dlg.startNewCourse(t.clearedCoursePrompt(dlg.currentCourse + 1));
 
     // Context health snapshot is inherently tied to the previous prompt/context.
     // After clearing, invalidate it so the next generation can recompute without
@@ -319,10 +322,10 @@ export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
   description:
-    'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without resetting the round. Each call replaces the entire section; merge carefully and avoid overwriting other contributors.',
+    'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without resetting the course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors.',
   descriptionI18n: {
-    en: 'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without resetting the round. Each call replaces the entire section; merge carefully and avoid overwriting other contributors. Note: Taskdoc is injected into context; do not try to read `*.tsk/` via general file tools.',
-    zh: '在主对话中更新全队共享差遣牒（`*.tsk/`）的指定章节（不重置轮次）。每次调用会替换该章节全文；更新前必须基于现有内容做合并/压缩，避免覆盖他人条目；建议为自己维护的条目标注责任人（如 `[owner:@<id>]`）。注意：差遣牒内容已被注入到上下文中；不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
+    en: 'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without resetting the course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors. Note: Taskdoc is injected into context; do not try to read `*.tsk/` via general file tools.',
+    zh: '在主对话中更新全队共享差遣牒（`*.tsk/`）的指定章节（不重置对话程）。每次调用会替换该章节全文；更新前必须基于现有内容做合并/压缩，避免覆盖他人条目；建议为自己维护的条目标注责任人（如 `[owner:@<id>]`）。注意：差遣牒内容已被注入到上下文中；不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
   },
   parameters: {
     type: 'object',

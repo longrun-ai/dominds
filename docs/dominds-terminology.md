@@ -95,6 +95,12 @@
 - EN: After `clear_mind`, the agent should have a "Continuation Package" prepared for quick resumption.
 - ZH: `clear_mind` 后，智能体应准备好"接续包"以便快速接续工作。
 
+### Reminder（提醒项）
+
+- EN: A short-lived, high-frequency work item tied to the current run (not persisted). Reminders help agents track next steps, critical details, or pending tasks. They are managed by the `add_reminder`, `update_reminder`, `delete_reminder` function tools.
+- ZH: 一种短期、高频的工作项，与当前运行绑定（不持久化）。提醒项帮助智能体追踪下一步、关键细节或待办事项。通过 `add_reminder`、`update_reminder`、`delete_reminder` 函数工具管理。
+- ZH 术语：**提醒项**（禁止使用"便签"、"备注"、"待办"等变体）。
+
 ### Q4H（Question for Human）
 
 - EN: A mechanism for raising questions to humans, initiated via `!?@human`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**

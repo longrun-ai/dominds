@@ -441,9 +441,9 @@ export async function loadAgentMinds(
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts) to reduce repeat file reads; do not store per-task state.';
 
     return [
-      'Chat history and tool outputs are temporary: they accumulate quickly, become stale, and increase cognitive load. Within a round, you cannot truly drop that history except via `clear_mind`.',
-      '`clear_mind` starts a new round while preserving Taskdoc, reminders, and memory layers. Therefore, before clearing, distill key information into durable layers:',
-      '- Taskdoc (`*.tsk/`): team-shared task contract (goals/constraints/progress). Keep it small enough to read every round.',
+      'Chat history and tool outputs are temporary: they accumulate quickly, become stale, and increase cognitive load. Within a course, you cannot truly drop that history except via `clear_mind`.',
+      '`clear_mind` starts a new course while preserving Taskdoc, reminders, and memory layers. Therefore, before clearing, distill key information into durable layers:',
+      '- Taskdoc (`*.tsk/`): team-shared task contract (goals/constraints/progress). Keep it small enough to read every course.',
       `- When updating any Taskdoc section: each call replaces the entire section; always start from the current injected content and merge/compress; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${agent.id}] ...\` or a \`### @${agent.id}\` block).`,
       '- Taskdoc `progress` is the team’s shared bulletin board: distilled milestone snapshots (key decisions/current status/next steps), not raw logs.',
       '- Important: the Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc instead of trying to read files under `*.tsk/` via general file tools (they will be rejected).',

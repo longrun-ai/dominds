@@ -40,7 +40,7 @@ async function main(): Promise<void> {
         headLine: '@human',
         bodyContent: 'Please confirm.',
         askedAt: '2026-01-29 00:00:00',
-        callSiteRef: { round: 1, messageIndex: 1 },
+        callSiteRef: { course: 1, messageIndex: 1 },
         rootId: dlgId.rootId,
         agentId: 'tester',
         taskDocPath: 'task.md',

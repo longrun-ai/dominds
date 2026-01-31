@@ -184,7 +184,7 @@ dominds
 
 Dominds is designed for long-running product development and operations, with a “division of labor” constitution:
 
-- Reduce **agent mental overhead** by dividing and distributing work across a team of specialized agents, and by using more effective **dialog round control** (instead of brittle context condensation) to shed conversational/tool-call noise when a dialog becomes cluttered.
+- Reduce **agent mental overhead** by dividing and distributing work across a team of specialized agents, and by using more effective **dialog course control** (instead of brittle context condensation) to shed conversational/tool-call noise when a dialog becomes cluttered.
 - Prevent **tool misuse** by putting side-effectful tools only in the hands of well-prompted specialist agents, via least-privilege toolsets/policies.
 - Prevent **staleness** (agents acting on outdated assumptions) by encoding decisions, conventions, configuration, and key repo facts into version-tracked workspace artifacts intended to be loaded into agent context (team-shared and agent-individual memory, task docs, and dialog-local reminders), rather than leaving them as “undiscovered” knowledge scattered across the repo.
 

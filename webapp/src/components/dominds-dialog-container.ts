@@ -43,7 +43,7 @@ export class DomindsDialogContainer extends HTMLElement {
   // Events may arrive for the "old" dialog briefly after navigation
   private previousDialog?: DialogContext;
 
-  // During dialog/round navigation, we intentionally clear the DOM. Late streaming events can still
+  // During dialog/course navigation, we intentionally clear the DOM. Late streaming events can still
   // arrive during that window; suppress them to avoid protocol errors from missing sections.
   private suppressEvents = false;
 
@@ -52,7 +52,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // State tracking
-  private currentRound?: number;
+  private currentCourse?: number;
   private activeGenSeq?: number;
 
   // DOM references
@@ -266,38 +266,38 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentDialog = merged;
   }
 
-  public async setCurrentRound(round: number): Promise<void> {
+  public async setCurrentCourse(course: number): Promise<void> {
     if (!this.currentDialog) return;
     this.suppressEvents = true;
-    // Round navigation replays content; default to following the newest output unless user scrolls up.
+    // Course navigation replays content; default to following the newest output unless user scrolls up.
     this.autoScrollEnabled = true;
     this.cleanup();
-    this.currentRound = round;
+    this.currentCourse = course;
     this.wsManager.sendRaw({
-      type: 'display_round',
+      type: 'display_course',
       dialog: this.currentDialog,
-      round: round,
+      course: course,
     });
     this.render();
     this.suppressEvents = false;
   }
 
   /**
-   * Reset the dialog container for an in-place round transition (new round started).
-   * This clears all bubbles/sections from the previous round so the UI only shows the new round.
+   * Reset the dialog container for an in-place course transition (new course started).
+   * This clears all bubbles/sections from the previous course so the UI only shows the new course.
    *
-   * Unlike setCurrentRound(), this does NOT request a round replay from the backend;
-   * it relies on live events that follow the round_update event.
+   * Unlike setCurrentCourse(), this does NOT request a course replay from the backend;
+   * it relies on live events that follow the course_update event.
    */
-  public resetForRound(round: number): void {
+  public resetForCourse(course: number): void {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
-    // Reset per-round rendering state, but keep currentDialog/previousDialog intact.
+    // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
-    this.currentRound = round;
+    this.currentCourse = course;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
     this.pendingToolCallResponsesByCallId.clear();
@@ -318,7 +318,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
-    this.currentRound = undefined;
+    this.currentCourse = undefined;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
     this.pendingToolCallResponsesByCallId.clear();
@@ -416,14 +416,14 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    const currentRound = this.currentRound;
-    if (currentRound !== undefined) {
-      // After a round transition (round_update -> resetForRound), the backend can still emit
-      // late events from the previous round. The UX rule is "one round in the timeline",
-      // so we must drop out-of-round events instead of trying to attach them to missing bubbles.
-      if ('round' in event && typeof (event as { round?: unknown }).round === 'number') {
-        const round = (event as { round: number }).round;
-        if (round !== currentRound) {
+    const currentCourse = this.currentCourse;
+    if (currentCourse !== undefined) {
+      // After a course transition (course_update -> resetForCourse), the backend can still emit
+      // late events from the previous course. The UX rule is "one course in the timeline",
+      // so we must drop out-of-course events instead of trying to attach them to missing bubbles.
+      if ('course' in event && typeof (event as { course?: unknown }).course === 'number') {
+        const course = (event as { course: number }).course;
+        if (course !== currentCourse) {
           return;
         }
       }
@@ -449,7 +449,7 @@ export class DomindsDialogContainer extends HTMLElement {
         {
           // Render <hr/> separator between user content and AI response
           const ev: EndOfUserSayingEvent = event;
-          if (typeof ev.round !== 'number' || typeof ev.genseq !== 'number') {
+          if (typeof ev.course !== 'number' || typeof ev.genseq !== 'number') {
             this.handleProtocolError('end_of_user_saying_evt missing required fields');
             break;
           }
@@ -463,13 +463,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // LLM Generation Signals (frontend bubble management)
       case 'generating_start_evt':
-        if (typeof event.round !== 'number') {
-          this.handleProtocolError('generating_start_evt missing required field: round');
+        if (typeof event.course !== 'number') {
+          this.handleProtocolError('generating_start_evt missing required field: course');
         }
         if (typeof event.genseq !== 'number') {
           this.handleProtocolError('generating_start_evt missing required field: genseq');
         }
-        this.currentRound = event.round;
+        this.currentCourse = event.course;
         this.activeGenSeq = event.genseq;
         this.setGenerationGlowActive(true);
         // Mark generation as started - this ensures substreams arrive in correct order
@@ -557,12 +557,12 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // Function results
       case 'func_result_evt':
-        if (this.generationBubble && this.currentRound !== event.round) {
-          this.handleProtocolError('func_result event.round mismatch with active generation');
+        if (this.generationBubble && this.currentCourse !== event.course) {
+          this.handleProtocolError('func_result event.course mismatch with active generation');
           console.error('Function result mismatch', {
             activeSeq: this.activeGenSeq,
-            round: this.currentRound,
-            evtRound: event.round,
+            course: this.currentCourse,
+            evtCourse: event.course,
           });
           return;
         }
@@ -606,8 +606,8 @@ export class DomindsDialogContainer extends HTMLElement {
           console.error('Stream error mismatch', {
             activeSeq: this.activeGenSeq,
             seq: event.genseq,
-            round: this.currentRound,
-            evtRound: event.round,
+            course: this.currentCourse,
+            evtCourse: event.course,
           });
         }
         this.handleError(String(event.error));
@@ -914,7 +914,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.handleProtocolError(
         `tool_call_headline_chunk_evt received without calling section ${JSON.stringify({
           genseq,
-          round: this.currentRound,
+          course: this.currentCourse,
         })}`,
       );
       return;
@@ -930,7 +930,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.handleProtocolError(
         `tool_call_headline_finish_evt received without calling section ${JSON.stringify({
           genseq,
-          round: this.currentRound,
+          course: this.currentCourse,
         })}`,
       );
       return;
@@ -942,11 +942,11 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleToolCallBodyStart(genseq: number): void {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      // This can happen when the UI intentionally clears DOM during navigation/round transitions,
+      // This can happen when the UI intentionally clears DOM during navigation/course transitions,
       // or when replay/streaming events arrive late. Treat as a tolerated orphan event.
       console.warn('tool_call_body_start_evt received without calling section', {
         genseq,
-        round: this.currentRound,
+        course: this.currentCourse,
       });
       return;
     }
@@ -959,7 +959,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!callingSection) {
       console.warn('tool_call_body_chunk_evt received without calling section', {
         genseq,
-        round: this.currentRound,
+        course: this.currentCourse,
       });
       return;
     }
@@ -973,7 +973,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!callingSection) {
       console.warn('tool_call_body_finish_evt received without calling section', {
         genseq,
-        round: this.currentRound,
+        course: this.currentCourse,
       });
       return;
     }
@@ -987,7 +987,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.handleProtocolError(
         `tool_call_finish_evt received without calling section ${JSON.stringify({
           genseq: event.genseq,
-          round: this.currentRound,
+          course: this.currentCourse,
           callId: event.callId,
         })}`,
       );
@@ -1071,10 +1071,10 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses callId for correlation
   //   - Uses this handler (handleToolCallResponse)
   private handleToolCallResponse(event: ToolCallResponseEvent): void {
-    // Ignore late tool responses for a different round than the one currently displayed.
-    // This can happen when a dialog-control tool (e.g., clear_mind) triggers a round transition
-    // and the UI clears the previous round before the response event arrives.
-    if (typeof this.currentRound === 'number' && event.round !== this.currentRound) {
+    // Ignore late tool responses for a different course than the one currently displayed.
+    // This can happen when a dialog-control tool (e.g., clear_mind) triggers a course transition
+    // and the UI clears the previous course before the response event arrives.
+    if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
       return;
     }
 

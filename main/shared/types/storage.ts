@@ -83,16 +83,16 @@ export type DialogMetadataFile = RootDialogMetadataFile | SubdialogMetadataFile;
 // === LATEST STATUS STORAGE (latest.yaml) ===
 
 export interface DialogLatestFile {
-  /** Current round number (1-based) */
-  currentRound: number;
+  /** Current course number (1-based) */
+  currentCourse: number;
 
   /** ISO timestamp of last activity/modification */
   lastModified: string;
 
-  /** Total number of messages in current round */
+  /** Total number of messages in current course */
   messageCount?: number;
 
-  /** Total number of function calls in current round */
+  /** Total number of function calls in current course */
   functionCallCount?: number;
 
   /** Total number of subdialogs created */
@@ -124,31 +124,31 @@ export interface DialogLatestFile {
   disableDiligencePush?: boolean;
 }
 
-// === ROUND TRACKING ===
+// === COURSE TRACKING ===
 
-export interface RoundMetadataFile {
-  /** Round number */
-  round: number;
+export interface CourseMetadataFile {
+  /** Course number */
+  course: number;
 
-  /** ISO timestamp when round started */
+  /** ISO timestamp when course started */
   startedAt: string;
 
-  /** ISO timestamp when round completed (if finished) */
+  /** ISO timestamp when course completed (if finished) */
   completedAt?: string;
 
-  /** Number of messages in this round */
+  /** Number of messages in this course */
   messageCount: number;
 
-  /** Number of function calls in this round */
+  /** Number of function calls in this course */
   functionCallCount: number;
 
-  /** Number of subdialogs created in this round */
+  /** Number of subdialogs created in this course */
   subdialogCount: number;
 
-  /** Round status */
+  /** Course status */
   status: 'active' | 'completed';
 
-  /** Optional task document for this round */
+  /** Optional task document for this course */
   taskDoc?: string;
 }
 
@@ -289,7 +289,7 @@ export interface HumanQuestion {
   bodyContent: string;
   askedAt: string;
   callSiteRef: {
-    round: number;
+    course: number;
     messageIndex: number;
   };
 }
@@ -325,8 +325,8 @@ export interface DialogDirectoryStructure {
   /** Path to latest.yaml */
   latestPath: string;
 
-  /** Path to round.curr */
-  roundCurrPath: string;
+  /** Path to course.curr */
+  courseCurrPath: string;
 
   /** Path to reminders.json */
   remindersPath: string;
@@ -334,11 +334,11 @@ export interface DialogDirectoryStructure {
   /** Path to questions-for-human.json */
   questionsPath: string;
 
-  /** Pattern for round JSONL files */
-  roundJsonlPattern: string;
+  /** Pattern for course JSONL files */
+  courseJsonlPattern: string;
 
-  /** Pattern for round YAML metadata files */
-  roundYamlPattern: string;
+  /** Pattern for course YAML metadata files */
+  courseYamlPattern: string;
 
   /** Path to subdialogs directory (for root dialogs only) */
   subdialogsPath?: string;
@@ -362,7 +362,7 @@ export interface DialogListItem {
   lastModified: string;
 
   /** Current state */
-  currentRound: number;
+  currentCourse: number;
   messageCount: number;
   subdialogCount: number;
 

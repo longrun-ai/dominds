@@ -376,7 +376,7 @@ interface HumanQuestion {
 
 **存储位置**：`<dialog-path>/q4h.yaml` - 作为快速查找的索引
 
-**真理之源**：实际的 `!?@human` Tellask 存储在对话的对话消息中（round JSONL 文件），即提出问题的地方。
+**真理之源**：实际的 `!?@human` Tellask 存储在对话的对话消息中（course JSONL 文件），即提出问题的地方。
 
 ### Q4H 机制流程
 
@@ -457,7 +457,7 @@ const questionsCountUpdateEvt: QuestionsCountUpdateEvent = {
     selfId: dialog.id.selfId,
     rootId: dialog.id.rootId,
   },
-  round: dialog.currentRound,
+  course: dialog.currentCourse,
 };
 postDialogEvent(dialog, questionsCountUpdateEvt);
 ```
@@ -581,7 +581,7 @@ flowchart TD
 - `.dialogs/run/<root-id>/latest.yaml`
 - `.dialogs/run/<root-id>/reminders.json`
 - `.dialogs/run/<root-id>/q4h.yaml`
-- `.dialogs/run/<root-id>/round-001.jsonl`（以及更多轮次）
+- `.dialogs/run/<root-id>/course-001.jsonl`（以及更多对话程）
 - `.dialogs/run/<root-id>/subdialogs/<sub-id>/dialog.yaml`
 - `.dialogs/run/<root-id>/subdialogs/<sub-id>/q4h.yaml`
 - `.dialogs/run/<root-id>/registry.yaml`（仅根；TYPE B 注册表）
@@ -644,9 +644,9 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 1. 清除所有聊天消息
 2. 清除所有 Q4H 问题
-3. 增加轮次计数器
+3. 增加对话程计数器
 4. 更新对话的时间戳
-5. 将 `newRoundPrompt` 排队到 `dlg.upNext`，以便驱动程序可以启动新的协程并将其用作下一轮的**第一个 `role=user` 消息**
+5. 将 `newRoundPrompt` 排队到 `dlg.upNext`，以便驱动程序可以启动新的协程并将其用作下一程的**第一个 `role=user` 消息**
 
 ### `clear_mind`
 
@@ -670,8 +670,8 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 - 保留子对话注册表（仅限根对话）
 - 对上位对话没有影响
 - 将注意力重定向到 Taskdoc
-- 系统生成的新轮次提示已排队并用作新轮的**第一个 `role=user` 消息**
-- 开始新的对话轮次
+- 系统生成的新一程对话开启提示已排队，作为下一程对话的首个 role=user 消息
+- 开启新一程对话
 
 **实现说明**：
 
@@ -982,7 +982,7 @@ interface RegistryMethods {
 - `<dialog-root>/reminders.json` — 持久化提醒存储
 - `<dialog-root>/q4h.yaml` — Q4H 索引（被清晰工具清除）
 - `<dialog-root>/registry.yaml` — 子对话注册表（仅限根对话）
-- `<dialog-root>/round-001.jsonl`（以及更多轮次）— 流式消息文件
+- `<dialog-root>/course-001.jsonl`（以及更多对话程）— 流式消息文件
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — 每个子对话的 Q4H 索引（被清晰清除）
 

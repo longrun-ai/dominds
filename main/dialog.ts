@@ -137,7 +137,7 @@ export interface DialogInitParams {
   initialState?: {
     messages?: ChatMessage[];
     reminders?: Reminder[];
-    currentRound?: number;
+    currentCourse?: number;
     createdAt?: string;
     updatedAt?: string;
     contextHealth?: ContextHealthSnapshot;
@@ -164,7 +164,7 @@ export abstract class Dialog {
   public readonly dlgStore: DialogStore;
 
   // relative path to a specific workspace (usually .md) file,
-  // used as mission/plan/progress doc of a round of a dialog
+  // used as mission/plan/progress doc of a course of a dialog
   public readonly taskDocPath: string; // Task Doc path is immutable for the dialog lifecycle
 
   readonly id: DialogID;
@@ -173,19 +173,19 @@ export abstract class Dialog {
   readonly msgs: ChatMessage[];
 
   // Persistence state
-  protected _currentRound: number = 1;
+  protected _currentCourse: number = 1;
   protected _remindersVer: number = 0;
   protected _activeGenSeq?: number;
-  protected _activeGenRound?: number;
+  protected _activeGenCourse?: number;
   protected _createdAt: string;
   protected _updatedAt: string;
   protected _uiLanguage: LanguageCode;
   protected _lastUserLanguageCode: LanguageCode;
   protected _lastContextHealth?: ContextHealthSnapshot;
   protected _lastContextHealthGenseq?: number;
-  // Prompt queued for the next round drive (set by startNewRound).
+  // Prompt queued for the next course drive (set by startNewCourse).
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
-  // Track whether the current round's initial events (user_text, generating_start)
+  // Track whether the current course's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_response_evt arrives
   // only after parent events are emitted.
   protected _generationStarted: boolean = false;
@@ -244,7 +244,7 @@ export abstract class Dialog {
     const now = formatUnifiedTimestamp(new Date());
     this._createdAt = initialState?.createdAt || now;
     this._updatedAt = initialState?.updatedAt || now;
-    this._currentRound = initialState?.currentRound || 1;
+    this._currentCourse = initialState?.currentCourse || 1;
     this._uiLanguage = getWorkLanguage();
     this._lastUserLanguageCode = getWorkLanguage();
     this._lastContextHealth = initialState?.contextHealth;
@@ -609,10 +609,10 @@ export abstract class Dialog {
   public abstract get status(): 'running' | 'completed' | 'archived';
 
   /**
-   * Get current round number
+   * Get current course number
    */
-  public get currentRound(): number {
-    return this._currentRound;
+  public get currentCourse(): number {
+    return this._currentCourse;
   }
 
   /**
@@ -629,12 +629,12 @@ export abstract class Dialog {
     return this._activeGenSeq;
   }
 
-  public get activeGenRoundOrUndefined(): number | undefined {
-    return this._activeGenRound;
+  public get activeGenCourseOrUndefined(): number | undefined {
+    return this._activeGenCourse;
   }
 
   /**
-   * Check if generation has started for the current round.
+   * Check if generation has started for the current course.
    * Used to ensure subdialog_final_response_evt arrives after parent events.
    */
   public get generationStarted(): boolean {
@@ -686,7 +686,7 @@ export abstract class Dialog {
   private setUpNextPrompt(prompt: string): void {
     const trimmed = prompt.trim();
     if (!trimmed) {
-      throw new Error('newRoundPrompt is required to start a new round');
+      throw new Error('Prompt is required to start a new course');
     }
     this._upNext = {
       prompt: trimmed,
@@ -708,14 +708,14 @@ export abstract class Dialog {
   }
 
   /**
-   * Start a new round - clears conversational noise, Q4H, and increments round counter.
-   * Queues a new-round prompt for the driver to consume on the next drive cycle.
+   * Start a new course - clears conversational noise, Q4H, and increments course counter.
+   * Queues a new-course prompt for the driver to consume on the next drive cycle.
    * This is the single entry point for mental clarity operations (clear_mind, change_mind).
    */
-  public async startNewRound(newRoundPrompt: string): Promise<void> {
-    const trimmedPrompt = newRoundPrompt.trim();
+  public async startNewCourse(newCoursePrompt: string): Promise<void> {
+    const trimmedPrompt = newCoursePrompt.trim();
     if (!trimmedPrompt) {
-      throw new Error('newRoundPrompt is required to start a new round');
+      throw new Error('newCoursePrompt is required to start a new course');
     }
 
     // Clear all messages and Q4H questions for mental clarity
@@ -723,20 +723,20 @@ export abstract class Dialog {
 
     await this.dlgStore.clearQuestions4Human(this);
 
-    // Delegate to DialogStore for round start persistence
+    // Delegate to DialogStore for course start persistence
     if (this.dlgStore) {
-      await this.dlgStore.startNewRound(this, trimmedPrompt);
+      await this.dlgStore.startNewCourse(this, trimmedPrompt);
     }
 
-    const storeRound = this.dlgStore
-      ? await this.dlgStore.loadCurrentRound(this.id)
-      : this._currentRound + 1;
-    this._currentRound = storeRound;
+    const storeCourse = this.dlgStore
+      ? await this.dlgStore.loadCurrentCourse(this.id)
+      : this._currentCourse + 1;
+    this._currentCourse = storeCourse;
     this._updatedAt = formatUnifiedTimestamp(new Date());
 
     // Principle: user should see what the model sees.
-    // For subdialogs, include the original supdialog assignment together with the new-round prompt
-    // as the first user message in the new round (persisted by the driver).
+    // For subdialogs, include the original supdialog assignment together with the new-course prompt
+    // as the first user message in the new course (persisted by the driver).
     const combinedPrompt =
       this instanceof SubDialog
         ? `${formatAssignmentFromSupdialog({
@@ -757,15 +757,15 @@ export abstract class Dialog {
   }
 
   public async notifyGeneratingStart(): Promise<void> {
-    // Capture the generation's starting round so any events emitted during this generation
-    // remain attributed to the correct round even if a tool mutates dialog.currentRound
+    // Capture the generation's starting course so any events emitted during this generation
+    // remain attributed to the correct course even if a tool mutates dialog.currentCourse
     // mid-generation (e.g., clear_mind).
-    this._activeGenRound = this.currentRound;
+    this._activeGenCourse = this.currentCourse;
     if (typeof this._activeGenSeq === 'number') {
       this._activeGenSeq++;
     } else {
       // Get next sequence number from store
-      const genseq = await this.dlgStore.getNextSeq(this.id, this.currentRound);
+      const genseq = await this.dlgStore.getNextSeq(this.id, this.currentCourse);
       this._activeGenSeq = genseq;
     }
 
@@ -792,10 +792,10 @@ export abstract class Dialog {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-    // Reset generation tracking for the next round
+    // Reset generation tracking for the next course
     this._generationStarted = false;
     this._generationStartedGenseq = 0;
-    this._activeGenRound = undefined;
+    this._activeGenCourse = undefined;
   }
 
   public async streamError(error: string): Promise<void> {
@@ -1020,7 +1020,7 @@ export abstract class Dialog {
         headLine,
         status: 'completed',
         result: formattedResult,
-        round: this.currentRound,
+        course: this.currentCourse,
         response,
         agentId: responderAgentId ?? responderId,
         callId,
@@ -1440,10 +1440,10 @@ export abstract class DialogStore {
   ): Promise<void> {}
 
   /**
-   * Load current round number from persisted metadata
+   * Load current course number from persisted metadata
    * This method should be implemented by subclasses to read from storage
    */
-  public async loadCurrentRound(_dialogId: DialogID): Promise<number> {
+  public async loadCurrentCourse(_dialogId: DialogID): Promise<number> {
     // Default implementation returns 1
     return 1;
   }
@@ -1452,7 +1452,7 @@ export abstract class DialogStore {
    * Get next sequence number for generation
    * This method should be implemented by subclasses for sequence allocation
    */
-  public async getNextSeq(_dialogId: DialogID, _round: number): Promise<number> {
+  public async getNextSeq(_dialogId: DialogID, _course: number): Promise<number> {
     // Default implementation returns 1
     return 1;
   }
@@ -1496,9 +1496,9 @@ export abstract class DialogStore {
   ): Promise<void> {}
 
   /**
-   * Start a new round in storage
+   * Start a new course in storage
    */
-  public async startNewRound(_dialog: Dialog, _newRoundPrompt: string): Promise<void> {}
+  public async startNewCourse(_dialog: Dialog, _newCoursePrompt: string): Promise<void> {}
 
   /**
    * Handle stream error

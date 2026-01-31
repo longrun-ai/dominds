@@ -111,8 +111,8 @@ export class DomindsApp extends HTMLElement {
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
   private currentTheme: 'light' | 'dark' = this.getCurrentTheme();
   private backendWorkspace: string = '';
-  private toolbarCurrentRound: number = 1;
-  private toolbarTotalRounds: number = 1;
+  private toolbarCurrentCourse: number = 1;
+  private toolbarTotalCourses: number = 1;
   private toolbarReminders: ReminderContent[] = [];
   private toolbarRemindersCollapsed: boolean = true;
   private contextHealthByDialogKey = new Map<string, ContextHealthSnapshot>();
@@ -377,9 +377,9 @@ export class DomindsApp extends HTMLElement {
     }
 
     const prev = this.shadowRoot.querySelector('#toolbar-prev') as HTMLButtonElement | null;
-    if (prev) prev.setAttribute('aria-label', t.previousRound);
+    if (prev) prev.setAttribute('aria-label', t.previousCourse);
     const next = this.shadowRoot.querySelector('#toolbar-next') as HTMLButtonElement | null;
-    if (next) next.setAttribute('aria-label', t.nextRound);
+    if (next) next.setAttribute('aria-label', t.nextCourse);
 
     const remToggle = this.shadowRoot.querySelector(
       '#toolbar-reminders-toggle',
@@ -914,7 +914,7 @@ export class DomindsApp extends HTMLElement {
 
   /**
    * Surgical update: Update only the toolbar display elements.
-   * Use this when dialog is loaded or round changes.
+   * Use this when dialog is loaded or course changes.
    */
   private updateToolbarDisplay(): void {
     const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement | null;
@@ -922,7 +922,7 @@ export class DomindsApp extends HTMLElement {
     const remBtnCount = this.shadowRoot?.querySelector(
       '#toolbar-reminders-toggle span',
     ) as HTMLElement | null;
-    const roundLabel = this.shadowRoot?.querySelector('#round-nav span') as HTMLElement | null;
+    const courseLabel = this.shadowRoot?.querySelector('#course-nav span') as HTMLElement | null;
     const stopCount = this.shadowRoot?.querySelector(
       '#toolbar-emergency-stop span',
     ) as HTMLElement | null;
@@ -936,10 +936,10 @@ export class DomindsApp extends HTMLElement {
       '#toolbar-resume-all',
     ) as HTMLButtonElement | null;
 
-    if (prevBtn) prevBtn.disabled = this.toolbarCurrentRound <= 1;
-    if (nextBtn) nextBtn.disabled = this.toolbarCurrentRound >= this.toolbarTotalRounds;
+    if (prevBtn) prevBtn.disabled = this.toolbarCurrentCourse <= 1;
+    if (nextBtn) nextBtn.disabled = this.toolbarCurrentCourse >= this.toolbarTotalCourses;
     if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
-    if (roundLabel) roundLabel.textContent = `R ${this.toolbarCurrentRound}`;
+    if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
     if (stopCount) stopCount.textContent = String(this.proceedingDialogsCount);
     if (resumeCount) resumeCount.textContent = String(this.resumableDialogsCount);
     if (stopBtn) stopBtn.disabled = this.proceedingDialogsCount === 0;
@@ -2009,7 +2009,7 @@ export class DomindsApp extends HTMLElement {
         min-width: 0;
       }
 
-      #round-nav {
+      #course-nav {
         display: flex;
         align-items: center;
         flex-shrink: 0;
@@ -3032,12 +3032,12 @@ export class DomindsApp extends HTMLElement {
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div style="flex: 1;"></div>
-	              <div id="round-nav">
-	                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentRound > 1 ? '' : 'disabled'} aria-label="${t.previousRound}">
+	              <div id="course-nav">
+	                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentCourse > 1 ? '' : 'disabled'} aria-label="${t.previousCourse}">
 	                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
 	                </button>
-	              <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">R ${this.toolbarCurrentRound}</span>
-	              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentRound < this.toolbarTotalRounds ? '' : 'disabled'} aria-label="${t.nextRound}">
+	              <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">C ${this.toolbarCurrentCourse}</span>
+	              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentCourse < this.toolbarTotalCourses ? '' : 'disabled'} aria-label="${t.nextCourse}">
 	                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
 	              </button>
 		            </div>
@@ -3308,12 +3308,12 @@ export class DomindsApp extends HTMLElement {
         questionId: string;
         dialogId: string;
         rootId: string;
-        round: number;
+        course: number;
         messageIndex: number;
       }>;
-      const { questionId, dialogId, rootId, round, messageIndex } = ce.detail || {};
+      const { questionId, dialogId, rootId, course, messageIndex } = ce.detail || {};
       if (questionId && dialogId && rootId) {
-        this.navigateToQ4HCallSite(questionId, dialogId, rootId, round, messageIndex);
+        this.navigateToQ4HCallSite(questionId, dialogId, rootId, course, messageIndex);
       }
     });
 
@@ -3416,33 +3416,33 @@ export class DomindsApp extends HTMLElement {
       // Toolbar navigation
       const prevBtn = target.closest('#toolbar-prev') as HTMLButtonElement | null;
       if (prevBtn) {
-        if (this.toolbarCurrentRound > 1) {
+        if (this.toolbarCurrentCourse > 1) {
           const dc = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
-          if (dc && typeof dc.setCurrentRound === 'function') {
-            await dc.setCurrentRound(this.toolbarCurrentRound - 1);
+          if (dc && typeof dc.setCurrentCourse === 'function') {
+            await dc.setCurrentCourse(this.toolbarCurrentCourse - 1);
           }
-          this.toolbarCurrentRound = Math.max(1, this.toolbarCurrentRound - 1);
-          this.updateToolbarRoundDisplay();
+          this.toolbarCurrentCourse = Math.max(1, this.toolbarCurrentCourse - 1);
+          this.updateToolbarCourseDisplay();
         }
         return;
       }
 
       const nextBtn = target.closest('#toolbar-next') as HTMLButtonElement | null;
       if (nextBtn) {
-        if (this.toolbarCurrentRound < this.toolbarTotalRounds) {
+        if (this.toolbarCurrentCourse < this.toolbarTotalCourses) {
           const dc = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
-          if (dc && typeof dc.setCurrentRound === 'function') {
-            await dc.setCurrentRound(this.toolbarCurrentRound + 1);
+          if (dc && typeof dc.setCurrentCourse === 'function') {
+            await dc.setCurrentCourse(this.toolbarCurrentCourse + 1);
           }
-          this.toolbarCurrentRound = Math.min(
-            this.toolbarTotalRounds,
-            this.toolbarCurrentRound + 1,
+          this.toolbarCurrentCourse = Math.min(
+            this.toolbarTotalCourses,
+            this.toolbarCurrentCourse + 1,
           );
-          this.updateToolbarRoundDisplay();
+          this.updateToolbarCourseDisplay();
         }
         return;
       }
@@ -3537,16 +3537,16 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Helper to update the toolbar round navigation display
+   * Helper to update the toolbar course navigation display
    */
-  private updateToolbarRoundDisplay(): void {
+  private updateToolbarCourseDisplay(): void {
     if (!this.shadowRoot) return;
     const prev = this.shadowRoot.querySelector('#toolbar-prev') as HTMLButtonElement;
     const next = this.shadowRoot.querySelector('#toolbar-next') as HTMLButtonElement;
-    if (prev) prev.disabled = !(this.toolbarCurrentRound > 1);
-    if (next) next.disabled = !(this.toolbarCurrentRound < this.toolbarTotalRounds);
-    const label = this.shadowRoot.querySelector('#round-nav span') as HTMLElement;
-    if (label) label.textContent = `R ${this.toolbarCurrentRound}`;
+    if (prev) prev.disabled = !(this.toolbarCurrentCourse > 1);
+    if (next) next.disabled = !(this.toolbarCurrentCourse < this.toolbarTotalCourses);
+    const label = this.shadowRoot.querySelector('#course-nav span') as HTMLElement;
+    if (label) label.textContent = `C ${this.toolbarCurrentCourse}`;
   }
 
   /**
@@ -3559,20 +3559,20 @@ export class DomindsApp extends HTMLElement {
     // Dialog container listeners
     const dialogContainerEl = this.shadowRoot.querySelector('#dialog-container') as HTMLElement;
     if (dialogContainerEl) {
-      dialogContainerEl.addEventListener('round-selected', (e: Event) => {
+      dialogContainerEl.addEventListener('course-selected', (e: Event) => {
         const detail = (e as CustomEvent).detail || {};
-        const round = detail.round;
-        const totalRounds = detail.totalRounds;
-        const latest = typeof totalRounds === 'number' ? totalRounds : round;
-        this.toolbarCurrentRound = round || this.toolbarCurrentRound;
-        this.toolbarTotalRounds = latest || this.toolbarTotalRounds;
-        this.updateToolbarRoundDisplay();
+        const course = detail.course;
+        const totalCourses = detail.totalCourses;
+        const latest = typeof totalCourses === 'number' ? totalCourses : course;
+        this.toolbarCurrentCourse = course || this.toolbarCurrentCourse;
+        this.toolbarTotalCourses = latest || this.toolbarTotalCourses;
+        this.updateToolbarCourseDisplay();
 
         const input = this.q4hInput as HTMLElement & {
           setDisabled?: (disabled: boolean) => void;
         };
         if (input && typeof input.setDisabled === 'function') {
-          input.setDisabled(round !== latest);
+          input.setDisabled(course !== latest);
         }
       });
     }
@@ -4496,7 +4496,7 @@ export class DomindsApp extends HTMLElement {
               agentId: h.root.agentId,
               taskDocPath: h.root.taskDocPath,
               status: h.root.status,
-              currentRound: h.root.currentRound,
+              currentCourse: h.root.currentCourse,
               createdAt: h.root.createdAt,
               lastModified: h.root.lastModified,
               runState: rootRunState ?? d.runState,
@@ -4523,7 +4523,7 @@ export class DomindsApp extends HTMLElement {
                 agentId: subdialog.agentId,
                 taskDocPath: subdialog.taskDocPath,
                 status: subdialog.status,
-                currentRound: subdialog.currentRound,
+                currentCourse: subdialog.currentCourse,
                 createdAt: subdialog.createdAt,
                 lastModified: subdialog.lastModified,
                 runState: effectiveRunState,
@@ -6212,31 +6212,31 @@ export class DomindsApp extends HTMLElement {
 
       // Handle dialog-specific events using discriminated unions
       switch (message.type) {
-        case 'round_update': {
-          // Update toolbar round information
-          this.toolbarCurrentRound = message.round;
-          this.toolbarTotalRounds = message.totalRounds;
+        case 'course_update': {
+          // Update toolbar course information
+          this.toolbarCurrentCourse = message.course;
+          this.toolbarTotalCourses = message.totalCourses;
           const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement;
           const nextBtn = this.shadowRoot?.querySelector('#toolbar-next') as HTMLButtonElement;
-          if (prevBtn) prevBtn.disabled = !(this.toolbarCurrentRound > 1);
-          if (nextBtn) nextBtn.disabled = !(this.toolbarCurrentRound < this.toolbarTotalRounds);
-          const roundLabel = this.shadowRoot?.querySelector('#round-nav span') as HTMLElement;
-          if (roundLabel) roundLabel.textContent = `R ${this.toolbarCurrentRound}`;
-          const latest = message.totalRounds;
+          if (prevBtn) prevBtn.disabled = !(this.toolbarCurrentCourse > 1);
+          if (nextBtn) nextBtn.disabled = !(this.toolbarCurrentCourse < this.toolbarTotalCourses);
+          const courseLabel = this.shadowRoot?.querySelector('#course-nav span') as HTMLElement;
+          if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
+          const latest = message.totalCourses;
           const input = this.q4hInput as HTMLElement & {
             setDisabled?: (disabled: boolean) => void;
           };
           if (input && typeof input.setDisabled === 'function') {
-            input.setDisabled(this.toolbarCurrentRound !== latest);
+            input.setDisabled(this.toolbarCurrentCourse !== latest);
           }
-          // UX principle: the user should only see one round at a time in the chat timeline.
-          // When the round changes (either via new round start or explicit round navigation),
-          // clear the dialog container so it can be refilled with bubbles for that round only.
+          // UX principle: the user should only see one course at a time in the chat timeline.
+          // When the course changes (either via new course start or explicit course navigation),
+          // clear the dialog container so it can be refilled with bubbles for that course only.
           const dc = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
-          if (dc && typeof dc.resetForRound === 'function') {
-            dc.resetForRound(message.round);
+          if (dc && typeof dc.resetForCourse === 'function') {
+            dc.resetForCourse(message.course);
           }
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
@@ -6280,7 +6280,7 @@ export class DomindsApp extends HTMLElement {
                 agentId: root.agentId,
                 taskDocPath: root.taskDocPath,
                 status: root.status,
-                currentRound: root.currentRound,
+                currentCourse: root.currentCourse,
                 createdAt: root.createdAt,
                 lastModified: root.lastModified,
                 runState:
@@ -6302,7 +6302,7 @@ export class DomindsApp extends HTMLElement {
                   agentId: sd.agentId,
                   taskDocPath: sd.taskDocPath,
                   status: sd.status,
-                  currentRound: sd.currentRound,
+                  currentCourse: sd.currentCourse,
                   createdAt: sd.createdAt,
                   lastModified: sd.lastModified,
                   runState: sdEffectiveRunState,
@@ -7006,7 +7006,7 @@ export class DomindsApp extends HTMLElement {
     questionId: string,
     dialogId: string,
     rootId: string,
-    round: number,
+    course: number,
     messageIndex: number,
   ): void {
     // Navigate to the dialog if needed
@@ -7023,18 +7023,18 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    // Navigate to the specific round and scroll to call site
+    // Navigate to the specific course and scroll to call site
     // The actual scrolling will be handled by the dialog container
     const dialogContainer = this.shadowRoot?.querySelector(
       '#dialog-container',
     ) as DomindsDialogContainer | null;
     if (dialogContainer) {
-      // Navigate to the round if needed
-      void dialogContainer.setCurrentRound(round);
+      // Navigate to the course if needed
+      void dialogContainer.setCurrentCourse(course);
       // Scroll to call site - dispatch event for dialog container to handle
       dialogContainer.dispatchEvent(
         new CustomEvent('scroll-to-call-site', {
-          detail: { round, messageIndex },
+          detail: { course, messageIndex },
           bubbles: true,
           composed: true,
         }),

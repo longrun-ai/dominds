@@ -236,7 +236,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
     bodyContent: formatQ4HKeepGoingBudgetExhausted(language, { maxInjectCount }),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
-      round: dlg.currentRound,
+      course: dlg.currentCourse,
       messageIndex: dlg.msgs.length,
     },
   };
@@ -325,7 +325,7 @@ export interface SubdialogInfo {
   agentId: string;
   headLine: string;
   status: 'active' | 'suspended' | 'completed' | 'failed';
-  round: number;
+  course: number;
   createdAt: string;
 }
 
@@ -816,7 +816,7 @@ async function suspendForContextHealthCritical(dlg: Dialog): Promise<void> {
           ].join('\n'),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
-      round: dlg.currentRound,
+      course: dlg.currentCourse,
       messageIndex: dlg.msgs.length,
     },
   };
@@ -920,7 +920,7 @@ async function applyContextHealthV3Remediation(args: {
       try {
         postDialogEvent(dlg, {
           type: 'end_of_user_saying_evt',
-          round: dlg.currentRound,
+          course: dlg.currentCourse,
           genseq: activeGenSeq,
           msgId,
           content: guideText,
@@ -1050,7 +1050,7 @@ async function applyContextHealthV3Remediation(args: {
       try {
         postDialogEvent(dlg, {
           type: 'end_of_user_saying_evt',
-          round: dlg.currentRound,
+          course: dlg.currentCourse,
           genseq: dlg.activeGenSeq,
           msgId,
           content: guideText,
@@ -1426,13 +1426,13 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       genIterNo++;
       throwIfAborted(abortSignal, dlg.id);
 
-      // reload the agent's minds from disk every round, in case the disk files changed by human or ai meanwhile
+      // reload the agent's minds from disk every course, in case the disk files changed by human or ai meanwhile
       const { team, agent, systemPrompt, memories, agentTools } = await loadAgentMinds(
         dlg.agentId,
         dlg,
       );
 
-      // reload cfgs every round, in case it's been updated by human or ai meanwhile
+      // reload cfgs every course, in case it's been updated by human or ai meanwhile
 
       // Validate streaming configuration
       try {
@@ -1551,7 +1551,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           try {
             postDialogEvent(dlg, {
               type: 'end_of_user_saying_evt',
-              round: dlg.currentRound,
+              course: dlg.currentCourse,
               genseq: dlg.activeGenSeq,
               msgId,
               content: promptContent,
@@ -2485,7 +2485,7 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
   subdialogs: Map<string, Dialog>;
   summary: {
     totalMessages: number;
-    totalRounds: number;
+    totalCourses: number;
     completionStatus: 'incomplete' | 'complete' | 'failed';
   };
 }> {
@@ -2542,19 +2542,19 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
 
     // Calculate summary statistics
     let totalMessages = rootDialog.msgs.length;
-    let totalRounds = rootDialog.currentRound;
+    let totalCourses = rootDialog.currentCourse;
     for (const dlg of subdialogs.values()) {
       totalMessages += dlg.msgs.length;
-      if (dlg.currentRound > totalRounds) totalRounds = dlg.currentRound;
+      if (dlg.currentCourse > totalCourses) totalCourses = dlg.currentCourse;
     }
 
     const summary: {
       totalMessages: number;
-      totalRounds: number;
+      totalCourses: number;
       completionStatus: 'failed' | 'incomplete' | 'complete';
     } = {
       totalMessages,
-      totalRounds,
+      totalCourses,
       completionStatus: 'incomplete',
     };
 
@@ -2587,7 +2587,7 @@ export type TeammateTellaskParseResult =
 /**
  * Type A: Supdialog suspension call.
  * Syntax: @<supdialogAgentId> (when subdialog calls its direct parent)
- * Suspends the subdialog, drives the supdialog for one round, returns response to subdialog.
+ * Suspends the subdialog, drives the supdialog for one course, returns response to subdialog.
  * Only triggered when the @agentId matches the current dialog's supdialog.agentId.
  */
 export interface TeammateTellaskTypeA {
@@ -3401,7 +3401,7 @@ async function executeTellaskCall(
         bodyContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
         callSiteRef: {
-          round: dlg.currentRound,
+          course: dlg.currentCourse,
           messageIndex: dlg.msgs.length,
         },
       };
@@ -3545,7 +3545,7 @@ async function executeTellaskCall(
     }
 
     // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
-    // This suspends the subdialog, drives the supdialog for one round, then returns to subdialog
+    // This suspends the subdialog, drives the supdialog for one course, then returns to subdialog
     if (parseResult.type === 'A') {
       // Type A is only valid from a subdialog (calling back to its supdialog).
       if (dlg instanceof SubDialog) {
@@ -3577,7 +3577,7 @@ async function executeTellaskCall(
             msgId: generateShortId(),
             grammar: 'markdown',
           };
-          // Drive the supdialog for one round (queue if already driving)
+          // Drive the supdialog for one course (queue if already driving)
           await driveDialogStream(supdialog, supPrompt, true);
 
           // Extract response from supdialog's last assistant message

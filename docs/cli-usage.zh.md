@@ -485,7 +485,7 @@ dominds tui research.md "Begin analysis"  # 使用 TUI 进行专注工作
 
 - `dialog.yaml` - 对话元数据
 - `latest.yaml` - 当前轮次 + lastModified 跟踪
-- `round-001.jsonl`（以及更多轮次）- 流式消息文件
+- `course-001.jsonl`（以及更多对话程）- 流式消息文件
 - `subdialogs/` - 嵌套子对话
 
 ## 错误处理

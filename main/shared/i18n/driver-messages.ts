@@ -32,13 +32,13 @@ export function formatReminderItemGuide(
       '影响：对话历史中的工具调用/结果已过时，影响你的判断。',
       '',
       '你只有通过调用 clear_mind 才能丢弃过时信息，恢复清晰思维。',
-      '"重入包"是你在下一轮无缝继续工作的关键，请尽快准备好。',
+      '"接续包"是你在下一程无缝继续工作的关键，请尽快准备好。',
       '',
       '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
-      '目标：把"重入包草稿"维护进提醒项，让你有信心主动 clear_mind 进入新回合。',
+      '目标：把"接续包草稿"维护进提醒项，让你有信心主动 clear_mind 进入新一程。',
       '',
       '同时建议你在提醒项里明确写出：',
-      '"基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入新回合"。',
+      '"基于以上信息，还差……就可以完成接续包，从而安全 clear_mind 进入新一程"。',
       '',
       '可选动作（至少一个，允许多次调用）：',
       '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -111,16 +111,16 @@ export function formatUserFacingContextHealthV3RemediationGuide(
   language: LanguageCode,
   args: ContextHealthV3RemediationGuideArgs,
 ): string {
-  const reentryTemplateZh = [
-    '## 重入包（差遣牒未提及的工作交接细节）',
+  const continuationTemplateZh = [
+    '## 接续包（差遣牒未提及的工作交接细节）',
     '- 继续工作的第一步（可执行）：',
     '- 关键定位（文件/符号/搜索词）：',
     '- 运行/验证（命令、端口、环境变量）：',
     '- 易丢失的临时细节（路径/ID/URL/样例输入）：',
   ].join('\n');
 
-  const reentryTemplateEn = [
-    '## Re-entry package (handoff details not covered in Taskdoc)',
+  const continuationTemplateEn = [
+    '## Continuation package (handoff details not covered in Taskdoc)',
     '- First actionable step:',
     '- Key pointers (files/symbols/search terms):',
     '- Run/verify (commands, ports, env vars):',
@@ -135,13 +135,13 @@ export function formatUserFacingContextHealthV3RemediationGuide(
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担和判断力干扰因素。',
         '',
         '你只有通过调用 clear_mind 才能丢弃这些垃圾信息，恢复清醒的头脑。',
-        '“重入包”是你在下一轮对话中无间断继续工作的关键，所以你需要尽快把它准备好。',
+        '“接续包”是你在下一程对话中无间断继续工作的关键，所以你需要尽快把它准备好。',
         '',
         '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
-        '目标：把“重入包草稿”维护进提醒项，让你尽快建立信心和意愿 **自主** clear_mind 进入新一轮/新回合。',
+        '目标：把“接续包草稿”维护进提醒项，让你尽快建立信心和意愿 **自主** clear_mind 进入新一程。',
         '',
         '同时建议你在提醒项里明确写出：',
-        '“基于以上信息，还差……就可以完成重入包，从而安全 clear_mind 进入新一轮/新回合”。',
+        '“基于以上信息，还差……就可以完成接续包，从而安全 clear_mind 进入新一程”。',
         '',
         '可选动作（至少一个，允许多次调用）：',
         '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -154,11 +154,11 @@ export function formatUserFacingContextHealthV3RemediationGuide(
     return [
       '上下文状态：🔴 告急',
       '',
-      `为保持长程自治，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动强制 clear_mind 开启新回合。`,
+      `为保持长程自治，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动强制 clear_mind 开启新一程。`,
       '',
       '你应在本轮尽快执行（允许多次调用）：',
-      '1) 用 update_reminder / add_reminder 把"重入包（尽最大努力）"维护进提醒项（压缩为少量、高价值条目）。',
-      '2) 然后 clear_mind 开启新回合，让后续工作在更小上下文中继续。',
+      '1) 用 update_reminder / add_reminder 把"接续包（尽最大努力）"维护进提醒项（压缩为少量、高价值条目）。',
+      '2) 然后 clear_mind 开启新一程，让后续工作在更小上下文中继续。',
       '',
       '快速操作：',
       '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
@@ -167,7 +167,7 @@ export function formatUserFacingContextHealthV3RemediationGuide(
       '然后建议你主动执行：',
       '- clear_mind({ "reminder_content": "" })  （可选：为空也可；系统会保留已维护的提醒项）',
       '',
-      reentryTemplateZh,
+      continuationTemplateZh,
     ].join('\n');
   }
 
@@ -178,10 +178,10 @@ export function formatUserFacingContextHealthV3RemediationGuide(
       'Impact: the dialog contains lots of stale tool calls/results, which becomes cognitive noise and can degrade your judgment.',
       '',
       'You can only drop this noise by calling clear_mind.',
-      'A “re-entry package” is the key to continuing work without interruption after starting a new round, so you should prepare it as soon as possible.',
+      'A “continuation package” is the key to continuing work without interruption after starting a new course, so you should prepare it as soon as possible.',
       '',
       'In this turn, you must call at least one reminder-curation tool (prefer update_reminder; add_reminder is also OK).',
-      'Goal: maintain a re-entry-package draft inside reminders so you can confidently clear_mind autonomously and start a new round.',
+      'Goal: maintain a continuation-package draft inside reminders so you can confidently clear_mind autonomously and start a new course.',
       '',
       'Allowed actions (at least one; multiple calls are OK):',
       '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
@@ -194,12 +194,12 @@ export function formatUserFacingContextHealthV3RemediationGuide(
   return [
     `Context state: 🔴 critical`,
     '',
-    `To keep long-running autonomy stable, the system will remind you at most ${args.promptsRemainingAfterThis} more time(s), then it will automatically force clear_mind to start a new round/new turn dialog.`,
+    `To keep long-running autonomy stable, the system will remind you at most ${args.promptsRemainingAfterThis} more time(s), then it will automatically force clear_mind to start a new course.`,
     '',
     'In this turn, do this as soon as possible (multiple calls are OK):',
     '',
-    '1) Curate reminders via update_reminder / add_reminder to maintain a best-effort re-entry package.',
-    '2) Then clear_mind to start a new round so work continues with a smaller context.',
+    '1) Curate reminders via update_reminder / add_reminder to maintain a best-effort continuation package.',
+    '2) Then clear_mind to start a new course so work continues with a smaller context.',
     '',
     'Quick actions:',
     '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
@@ -208,7 +208,7 @@ export function formatUserFacingContextHealthV3RemediationGuide(
     'Then, you should proactively execute:',
     '- clear_mind({ "reminder_content": "" })  (optional: empty is OK; curated reminders are preserved)',
     '',
-    reentryTemplateEn,
+    continuationTemplateEn,
   ].join('\n');
 }
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {

@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     const aRoot = 'dlg-a';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', aRoot, 'dialog.yaml'), { id: aRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', aRoot, 'latest.yaml'), {
-      currentRound: 1,
+      currentCourse: 1,
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     const bRoot = 'dlg-b';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'dialog.yaml'), { id: bRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'latest.yaml'), {
-      currentRound: 1,
+      currentCourse: 1,
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
           headLine: 'Need input',
           bodyContent: 'Answer me',
           askedAt: new Date().toISOString(),
-          callSiteRef: { round: 1, messageIndex: 0 },
+          callSiteRef: { course: 1, messageIndex: 0 },
         },
       ],
       updatedAt: new Date().toISOString(),

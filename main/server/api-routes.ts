@@ -615,7 +615,7 @@ async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
       agentId: string;
       taskDocPath: string;
       status: 'running' | 'completed' | 'archived';
-      currentRound: number;
+      currentCourse: number;
       createdAt: string;
       lastModified: string;
       runState?: DialogLatestFile['runState'];
@@ -628,7 +628,7 @@ async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
         const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(id), status);
         if (!meta) continue;
 
-        // Load latest.yaml for currentRound and lastModified timestamp
+        // Load latest.yaml for currentCourse and lastModified timestamp
         const latest = await DialogPersistence.loadDialogLatest(new DialogID(id), status);
 
         // Count subdialogs for this root dialog
@@ -641,7 +641,7 @@ async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
           agentId: meta.agentId,
           taskDocPath: meta.taskDocPath,
           status,
-          currentRound: latest?.currentRound || 1,
+          currentCourse: latest?.currentCourse || 1,
           createdAt: meta.createdAt,
           lastModified: latest?.lastModified || meta.createdAt,
           runState: latest?.runState,
@@ -717,7 +717,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       return true;
     }
 
-    // Load latest.yaml for root dialog currentRound and lastModified timestamp
+    // Load latest.yaml for root dialog currentCourse and lastModified timestamp
     const rootLatest: DialogLatestFile | null = await DialogPersistence.loadDialogLatest(
       new DialogID(rootId),
       foundStatus,
@@ -728,7 +728,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       agentId: rootMeta.agentId,
       taskDocPath: rootMeta.taskDocPath,
       status: foundStatus,
-      currentRound: rootLatest?.currentRound || 1,
+      currentCourse: rootLatest?.currentCourse || 1,
       createdAt: rootMeta.createdAt,
       lastModified: rootLatest?.lastModified || rootMeta.createdAt,
       runState: rootLatest?.runState,
@@ -744,7 +744,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       agentId: string;
       taskDocPath: string;
       status: 'running' | 'completed' | 'archived';
-      currentRound: number;
+      currentCourse: number;
       createdAt: string;
       lastModified: string;
       runState?: DialogLatestFile['runState'];
@@ -796,7 +796,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
           foundStatus,
         );
         if (meta) {
-          // Load latest.yaml for subdialog currentRound and lastModified timestamp
+          // Load latest.yaml for subdialog currentCourse and lastModified timestamp
           const subLatest = await DialogPersistence.loadDialogLatest(
             new DialogID(subId, rootId),
             foundStatus,
@@ -808,7 +808,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
             agentId: meta.agentId,
             taskDocPath: meta.taskDocPath,
             status: foundStatus,
-            currentRound: subLatest?.currentRound || 1,
+            currentCourse: subLatest?.currentCourse || 1,
             createdAt: meta.createdAt,
             lastModified: subLatest?.lastModified || meta.createdAt,
             runState: subLatest?.runState,
@@ -897,7 +897,7 @@ async function handleCreateDialog(
     await DialogPersistence.mutateDialogLatest(new DialogID(dialogId.selfId), () => ({
       kind: 'replace',
       next: {
-        currentRound: 1,
+        currentCourse: 1,
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
         messageCount: 0,
@@ -1174,7 +1174,7 @@ async function handleGetDialog(res: ServerResponse, dialog: DialogIdent): Promis
       return true;
     }
 
-    const currentRound = await DialogPersistence.getCurrentRoundNumber(
+    const currentCourse = await DialogPersistence.getCurrentCourseNumber(
       new DialogID(dialog.selfId, dialog.rootId),
       'running',
     );
@@ -1184,7 +1184,7 @@ async function handleGetDialog(res: ServerResponse, dialog: DialogIdent): Promis
       agentId: metadata.agentId,
       status: 'running',
       createdAt: metadata.createdAt,
-      currentRound,
+      currentCourse,
     };
 
     respondJson(res, 200, { success: true, dialog: dialogData });

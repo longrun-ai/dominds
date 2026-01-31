@@ -436,14 +436,14 @@ members:
 ## Dynamic Reload Design (Runtime Adaptation)
 
 This section designs a safe, practical hot-reload mechanism that fits Dominds’ **global tool(set)
-registry** and the fact that agents re-resolve tools each generation round.
+registry** and the fact that agents re-resolve tools each generation.
 
 ### Detection: How to notice changes
 
 Use one of:
 
 1. **File watch**: watch `.minds/mcp.yaml` via `fs.watch()` and trigger reload on `change` / `rename`.
-2. **Polling fallback**: record `mtimeMs` from `fs.stat()` and compare periodically (or on each round
+2. **Polling fallback**: record `mtimeMs` from `fs.stat()` and compare periodically (or on each generation
    in `loadAgentMinds()`).
 
 Recommendation: implement both (watch for fast feedback; poll for reliability).
@@ -462,8 +462,8 @@ Reload should be implemented as:
 3. Diff desired vs current runtime model.
 4. Apply mutations to the registries in a short critical section.
 
-The critical insight is: **tool objects are captured into `agentTools` per round**. Registry changes
-only affect future rounds (or other dialogs) when they call `Team.Member.listTools()` again.
+The critical insight is: **tool objects are captured into `agentTools` per generation**. Registry changes
+only affect future generations (or other dialogs) when they call `Team.Member.listTools()` again.
 
 ### Registry ownership tracking (required)
 
@@ -541,14 +541,14 @@ If reload fails (invalid YAML, missing env var, server spawn fails, tool schema 
 
 If a member references a toolset that disappears (e.g. `playwright` removed), then
 `Team.Member.listTools()` will warn “Toolset not found” and the agent simply won’t have those tools
-in that round. This is acceptable; a separate UX improvement can surface the missing toolset in UI.
+in that generation. This is acceptable; a separate UX improvement can surface the missing toolset in UI.
 
 ### Optional: Versioning
 
 Maintain a monotonically increasing `mcpRegistryVersion` updated after each successful reload.
 This can be useful for:
 
-- Debug logs (“agent round used MCP version N”)
+- Debug logs (“agent generation used MCP version N”)
 - UI status display (“MCP config loaded at …”)
 
 ## Validation & Error Handling

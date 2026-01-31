@@ -32,7 +32,7 @@ export interface ApiRootDialogResponse {
   agentId: string;
   taskDocPath: string;
   status: 'running' | 'completed' | 'archived';
-  currentRound: number;
+  currentCourse: number;
   createdAt: string;
   lastModified: string;
   runState?: DialogRunState;
@@ -47,7 +47,7 @@ export interface ApiSubdialogResponse {
   agentId: string;
   taskDocPath: string;
   status: 'running' | 'completed' | 'archived';
-  currentRound: number;
+  currentCourse: number;
   createdAt: string;
   lastModified: string;
   runState?: DialogRunState;
@@ -62,7 +62,7 @@ export interface ApiDialogHierarchyResponse {
       agentId: string;
       taskDocPath: string;
       status: 'running' | 'completed' | 'archived';
-      currentRound: number;
+      currentCourse: number;
       createdAt: string;
       lastModified: string;
       runState?: DialogRunState;

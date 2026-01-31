@@ -63,7 +63,7 @@ export class DomindsQ4HPanel extends HTMLElement {
           questionId: question.id,
           dialogId: dialogContext.selfId,
           rootId: dialogContext.rootId,
-          round: question.callSiteRef.round,
+          course: question.callSiteRef.course,
           messageIndex: question.callSiteRef.messageIndex,
         },
         bubbles: true,
@@ -234,17 +234,17 @@ export class DomindsQ4HPanel extends HTMLElement {
         const questionId = target.getAttribute('data-question-id');
         const dialogId = target.getAttribute('data-dialog-id');
         const rootId = target.getAttribute('data-root-id');
-        const round = target.getAttribute('data-round');
+        const course = target.getAttribute('data-course');
         const messageIndex = target.getAttribute('data-message-index');
 
-        if (questionId && dialogId && rootId && round && messageIndex) {
+        if (questionId && dialogId && rootId && course && messageIndex) {
           this.dispatchEvent(
             new CustomEvent('q4h-navigate-call-site', {
               detail: {
                 questionId,
                 dialogId,
                 rootId,
-                round: parseInt(round, 10),
+                course: parseInt(course, 10),
                 messageIndex: parseInt(messageIndex, 10),
               },
               bubbles: true,
@@ -582,7 +582,7 @@ export class DomindsQ4HPanel extends HTMLElement {
             data-question-id="${question.id}"
             data-dialog-id="${dialogContext.selfId}"
             data-root-id="${dialogContext.rootId}"
-            data-round="${question.callSiteRef.round}"
+            data-course="${question.callSiteRef.course}"
             data-message-index="${question.callSiteRef.messageIndex}"
           >
             Go to call site →

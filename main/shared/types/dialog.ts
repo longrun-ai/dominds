@@ -33,7 +33,7 @@ export interface DialogRunStateMarkerEvent {
 
 export interface SubdialogEvent extends DialogEventBase {
   type: 'subdialog_created_evt';
-  round: number;
+  course: number;
   parentDialog: {
     selfId: string;
     rootId: string;
@@ -50,7 +50,7 @@ export interface SubdialogEvent extends DialogEventBase {
 
 export interface StreamErrorEvent {
   type: 'stream_error_evt';
-  round: number;
+  course: number;
   error: string;
   genseq?: number;
 }
@@ -108,7 +108,7 @@ export type FuncCallStartEvent = LlmGenDlgEvent & {
   funcName: string;
   funcId: string;
   arguments: string; // JSON stringified
-  round: number;
+  course: number;
   genseq: number;
 };
 
@@ -117,7 +117,7 @@ export interface FunctionResultEvent {
   id: string;
   name: string;
   content: string;
-  round: number;
+  course: number;
   genseq?: number;
 }
 
@@ -157,7 +157,7 @@ export type ToolCallFinishEvent = LlmGenDlgEvent & {
 
 export interface ToolCallResponseEvent {
   type: 'tool_call_response_evt';
-  round: number;
+  course: number;
   calling_genseq?: number;
   responderId: string;
   headLine: string;
@@ -180,7 +180,7 @@ export interface FullRemindersEvent {
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export interface TeammateResponseEvent {
   type: 'teammate_response_evt';
-  round: number;
+  course: number;
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
@@ -197,7 +197,7 @@ export interface TeammateResponseEvent {
 // Used by frontend to render <hr/> separator between user content and AI response
 export interface EndOfUserSayingEvent {
   type: 'end_of_user_saying_evt';
-  round: number;
+  course: number;
   genseq: number;
   msgId: string;
   content: string;
@@ -205,10 +205,10 @@ export interface EndOfUserSayingEvent {
   userLanguageCode?: LanguageCode;
 }
 
-export interface RoundEvent {
-  type: 'round_update';
-  round: number;
-  totalRounds: number;
+export interface CourseEvent {
+  type: 'course_update';
+  course: number;
+  totalCourses: number;
 }
 
 export interface NewQ4HAskedEvent {
@@ -221,7 +221,7 @@ export interface NewQ4HAskedEvent {
     bodyContent: string;
     askedAt: string;
     callSiteRef: {
-      round: number;
+      course: number;
       messageIndex: number;
     };
     rootId: string;
@@ -248,7 +248,7 @@ export interface DialogEventBase {
 }
 
 export interface LlmGenDlgEvent {
-  round: number;
+  course: number;
   genseq: number;
 }
 
@@ -296,7 +296,7 @@ export type DialogEvent =
   // User events
   | EndOfUserSayingEvent
   | FullRemindersEvent
-  | RoundEvent
+  | CourseEvent
   | NewQ4HAskedEvent
   | Q4HAnsweredEvent
   // Errors

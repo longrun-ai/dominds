@@ -165,7 +165,7 @@ In early 1985, CEO Zhang Ruimin gathered all employees at the Qingdao Refrigerat
 
 Fast-paced clearance is crucial in agentic DevOps working. OEC principles translate directly to automated system management:
 
-### **Dialog Round Management**
+### **Dialog Course Management**
 
 - **Daily Reset**: Start new dialog rounds with updated task documentation and fresh chat logs
 - **Clear Context**: Ensure all agents work with optimal clarity and updated information

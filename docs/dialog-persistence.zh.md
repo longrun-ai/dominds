@@ -180,21 +180,21 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ├── dialog.yaml               # 带强类型的对话元数据
 ├── latest.yaml               # 当前轮次和 lastModified 跟踪
 ├── reminders.json            # 持久化提醒项
-├── <round>.jsonl             # 每个轮次的流式消息
-├── <round>.yaml              # 轮次元数据
+├── <course>.jsonl            # 每个对话程的流式消息
+├── <course>.yaml             # 对话程元数据
 └── subdialogs/               # 扁平子对话存储
     ├── <subDialogId1>/       # 第一级子对话
     │   ├── dialog.yaml       # 子对话元数据
     │   ├── latest.yaml       # 子对话当前状态
     │   ├── reminders.json    # 子对话提醒项
-    │   ├── <round>.jsonl     # 子对话事件
-    │   └── <round>.yaml      # 子对话轮次元数据
+    │   ├── <course>.jsonl    # 子对话事件
+    │   └── <course>.yaml     # 子对话对话程元数据
     └── <subDialogId2>/       # 另一个子对话
         ├── dialog.yaml
         ├── latest.yaml
         ├── reminders.json
-        ├── <round>.jsonl
-        └── <round>.yaml
+        ├── <course>.jsonl
+        └── <course>.yaml
 ```
 
 **关键特性**：
@@ -247,7 +247,7 @@ assignmentFromSup: # 来自父级的任务上下文
 用于当前对话状态和 UI 时间戳的现代跟踪文件：
 
 ```yaml
-currentRound: 3 # 当前轮次编号（基于 1）
+currentCourse: 3 # 当前对话程编号（基于 1）
 lastModified: '2024-01-15T11:45:00Z' # 最后活动的 ISO 时间戳
 messageCount: 12 # 当前轮次中的总消息数
 functionCallCount: 3 # 当前轮次中的总函数调用数
@@ -265,7 +265,7 @@ status: 'active' # 当前对话状态
 
 **UI 集成**：对话列表显示来自此文件的 `lastModified` 时间戳，用于准确排序和显示。
 
-### 轮次跟踪 (`round.curr`)
+### 对话程跟踪 (`course.curr`)
 
 包含当前轮次编号的简单文本文件：
 
@@ -352,7 +352,7 @@ status: 'active' # 当前对话状态
 ### 轮次元数据 (`.yaml`)
 
 ```yaml
-round: 3
+course: 3
 started_at: '2024-01-15T11:30:00Z'
 completed_at: '2024-01-15T11:45:00Z'
 message_count: 12
@@ -383,7 +383,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 **流错误不会持久化到磁盘文件，也不会恢复到 UI：**
 
-- **无磁盘持久化**：流错误事件（`dlg_stream_error`）不会写入 `round-*.jsonl` 文件
+- **无磁盘持久化**：流错误事件（`dlg_stream_error`）不会写入 `course-*.jsonl` 文件
 - **无 UI 恢复**：错误部分（`.error-section`）仅在活动流式传输期间出现，对话从磁盘重新加载时不会恢复
 - **仅日志记录**：错误详情出现在后端日志（`logs/backend-stdout.log`）中用于调试，但排除在持久化存储之外
 - **临时 UI 状态**：生成气泡中的错误部分是临时 UI 元素，在对话重新加载时消失
@@ -397,7 +397,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 **实现说明**：
 
-- 后端在写入 `round-*.jsonl` 之前过滤掉 `dlg_stream_error` 事件
+- 后端在写入 `course-*.jsonl` 之前过滤掉 `dlg_stream_error` 事件
 - 前端将错误部分视为临时 UI 状态，而非持久化内容
 - 对话重新加载仅重建持久化内容（用户消息、思考、说法、代码块）
 - 错误处理在活动流式会话期间保持功能
@@ -414,15 +414,15 @@ taskdocChecksum: 'sha256:abc123...'
 2. 创建具有 `selfDlgId` 和 `rootDlgId` 的 `DialogID` 实例（根对话的 rootDlgId 默认为 selfDlgId）
 3. 创建对话目录结构
 4. 使用序列化的 DialogID 写入初始 `dialog.yaml` 元数据
-5. 将 `round.curr` 初始化为 1
+5. 将 `latest.yaml` 初始化为 `currentCourse: 1`
 6. 创建空的 `reminders.json`
 7. 设置任务文档路径引用
 
 ### 消息持久化
 
-1. 将消息追加到当前轮次的 `.jsonl` 文件
-2. 如果轮次完成则更新轮次元数据
-3. 如果开始新轮次则增加轮次计数器
+1. 将消息追加到当前对话程的 `.jsonl` 文件
+2. 如果对话程完成则更新对话程元数据
+3. 对话程编号 +1
 4. 确保原子写入以防止损坏
 
 ### 子对话创建

@@ -33,8 +33,8 @@ export type UiStrings = {
   newDialogTitle: string;
   currentDialogPlaceholder: string;
 
-  previousRound: string;
-  nextRound: string;
+  previousCourse: string;
+  nextCourse: string;
 
   reminders: string;
   refreshReminders: string;
@@ -288,8 +288,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       newDialogTitle: '新建对话',
       currentDialogPlaceholder: '👈 从选择或创建一个对话开始',
 
-      previousRound: '上一轮',
-      nextRound: '下一轮',
+      previousCourse: '上一程',
+      nextCourse: '下一程',
 
       reminders: '提醒',
       refreshReminders: '刷新提醒',
@@ -547,8 +547,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     newDialogTitle: 'New Dialog',
     currentDialogPlaceholder: '👈 Select or create a dialog to start',
 
-    previousRound: 'Previous Round',
-    nextRound: 'Next Round',
+    previousCourse: 'Previous Course',
+    nextCourse: 'Next Course',
 
     reminders: 'Reminders',
     refreshReminders: 'Refresh Reminders',

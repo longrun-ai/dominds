@@ -8,7 +8,7 @@ with a stable schema and a strict access policy.
 ## Goals
 
 - **Clarity**: separate “what we want” (goals) from “what we must obey” (constraints) and “where we are” (progress).
-- **Durability**: make task state persist across long-running work and across dialog round resets.
+- **Durability**: make task state persist across long-running work and across dialog course resets.
 - **Auditability**: make task changes explicit and attributable to a single, intentional action.
 - **Safety**: prevent accidental or tool-driven reads/writes that bypass intended UX and control points.
 - **Shareability**: ensure the Taskdoc is visible/consistent across the entire dialog tree (root + subdialogs).
@@ -177,15 +177,15 @@ Notes:
 - The effective Taskdoc MUST be deterministic (no hidden reformatting beyond the above framing).
 - Empty sections are allowed but the files still exist.
 
-## `change_mind` Semantics (No Round Reset)
+## `change_mind` Semantics (No Course Reset)
 
 The function tool `change_mind` updates **exactly one** section file of the Taskdoc package by **replacing its entire contents**.
 
 Critically:
 
-- `change_mind` **MUST NOT** start a new dialog round.
-- If a round reset is desired, call the function tool `clear_mind({ "reminder_content": "<re-entry package>" })` (or other round-control mechanisms) separately.
-  - Recommendation: include a short, scannable re-entry package so the agent can resume after the new round.
+- `change_mind` **MUST NOT** start a new dialog course.
+- If a course reset is desired, call the function tool `clear_mind({ "reminder_content": "<continuation package>" })` (or other course-control mechanisms) separately.
+  - Recommendation: include a short, scannable continuation package so the agent can resume after the new course.
 
 ### Arguments (current)
 

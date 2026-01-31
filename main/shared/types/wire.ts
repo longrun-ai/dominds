@@ -55,7 +55,7 @@ export type WebSocketMessage =
   | ResumeDialogRequest
   | ResumeAllRequest
   | DisplayRemindersRequest
-  | DisplayRoundRequest
+  | DisplayCourseRequest
   | DriveDialogRequest
   | DriveDialogByUserAnswer
   | DialogReadyMessage
@@ -152,10 +152,10 @@ export interface DisplayRemindersRequest {
   dialog: DialogIdent;
 }
 
-export interface DisplayRoundRequest {
-  type: 'display_round';
+export interface DisplayCourseRequest {
+  type: 'display_course';
   dialog: DialogIdent;
-  round: number;
+  course: number;
 }
 
 export interface GetQ4HStateRequest {
@@ -175,7 +175,7 @@ export interface Q4HStateResponse {
     bodyContent: string;
     askedAt: string;
     callSiteRef: {
-      round: number;
+      course: number;
       messageIndex: number;
     };
   }>;

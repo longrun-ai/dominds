@@ -383,7 +383,7 @@ interface HumanQuestion {
 
 **Storage Location**: `<dialog-path>/q4h.yaml` - serves as an index for quick lookup
 
-**Source of Truth**: The actual `!?@human` Tellask is stored in the dialog's conversation messages (round JSONL files), where the question was asked.
+**Source of Truth**: The actual `!?@human` Tellask is stored in the dialog's conversation messages (course JSONL files), where the question was asked.
 
 ### Q4H Mechanism Flow
 
@@ -464,7 +464,7 @@ const questionsCountUpdateEvt: QuestionsCountUpdateEvent = {
     selfId: dialog.id.selfId,
     rootId: dialog.id.rootId,
   },
-  round: dialog.currentRound,
+  course: dialog.currentCourse,
 };
 postDialogEvent(dialog, questionsCountUpdateEvt);
 ```
@@ -588,7 +588,7 @@ flowchart TD
 - `.dialogs/run/<root-id>/latest.yaml`
 - `.dialogs/run/<root-id>/reminders.json`
 - `.dialogs/run/<root-id>/q4h.yaml`
-- `.dialogs/run/<root-id>/round-001.jsonl` (and further rounds)
+- `.dialogs/run/<root-id>/course-001.jsonl` (and further courses)
 - `.dialogs/run/<root-id>/subdialogs/<sub-id>/dialog.yaml`
 - `.dialogs/run/<root-id>/subdialogs/<sub-id>/q4h.yaml`
 - `.dialogs/run/<root-id>/registry.yaml` (root only; Type B registry)
@@ -647,13 +647,13 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ## Dialog Control Tools
 
-**Implementation**: `clear_mind` delegates to `Dialog.startNewRound(newRoundPrompt)`, which:
+**Implementation**: `clear_mind` delegates to `Dialog.startNewCourse(newCoursePrompt)`, which:
 
 1. Clears all chat messages
 2. Clears all Q4H questions
-3. Increments the round counter
+3. Increments the course counter
 4. Updates the dialog's timestamp
-5. Queues `newRoundPrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next round
+5. Queues `newCoursePrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next course
 
 ### `clear_mind`
 
@@ -677,8 +677,8 @@ Invoke the function tool `clear_mind` with:
 - Preserves subdialog registry (root dialog only)
 - Has no effect on supdialog
 - Redirects attention to Taskdoc
-- A system-generated new-round prompt is queued and used as the **first `role=user` message** in the new round
-- Starts a new conversation round
+- A system-generated new-course prompt is queued and used as the **first `role=user` message** in the new course
+- Starts a new conversation course
 
 **Implementation Notes**:
 
@@ -689,7 +689,7 @@ Invoke the function tool `clear_mind` with:
 
 ### `change_mind`
 
-**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (no round reset).
+**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (no course reset).
 
 **Function tool arguments**:
 
@@ -707,7 +707,7 @@ Invoke the function tool `change_mind` with:
 - Updates the workspace Taskdoc content (exactly one section file in a `*.tsk/` Taskdoc package)
 - **Does not change the Taskdoc path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
-- **Does not start a new dialog round.** If a round reset is desired, use `clear_mind` separately.
+- **Does not start a new dialog course.** If a course reset is desired, use `clear_mind` separately.
 - Does not clear messages, reminders, Q4H, or registry by itself
 - Affects all participant agents (main and subdialogs) referencing the same Taskdoc
 
@@ -842,7 +842,7 @@ The complete Dialog class implementation with all methods, properties, and detai
 
 - **Hierarchy Support**: Parent-child relationships for subdialog management
 - **Memory Management**: Persistent reminders and ephemeral chat messages
-- **Mental Clarity Operations**: `startNewRound(newRoundPrompt)` method (clears messages, clears Q4H, increments round, queues new round prompt for the next drive)
+- **Mental Clarity Operations**: `startNewCourse(newCoursePrompt)` method (clears messages, clears Q4H, increments course, queues new course prompt for the next drive)
 - **Subdialog Management**: Creation and coordination of specialized subtasks
 - **Q4H Management**: `updateQuestions4Human()` method for question tracking
 - **Memory Access**: Integration with Taskdocs and team/agent memories
@@ -859,7 +859,7 @@ The persistence layer handles:
 - **Dialog Storage**: `dominds/main/persistence.ts`
 - **Q4H Storage**: `q4h.yaml` per dialog (cleared by clear_mind)
 - **Reminder Storage**: `reminders.json` per dialog
-- **Event Persistence**: Round-based JSONL files
+- **Event Persistence**: Course-based JSONL files
 - **Registry Storage**: `registry.yaml` per root dialog
 
 **Q4H Persistence Methods**:
@@ -986,11 +986,11 @@ interface RegistryMethods {
 **Dialog Storage**: Each dialog corresponds to a directory structure containing:
 
 - `<dialog-root>/dialog.yaml` — dialog metadata and configuration
-- `<dialog-root>/latest.yaml` — current round tracking and status
+- `<dialog-root>/latest.yaml` — current course tracking and status
 - `<dialog-root>/reminders.json` — persistent reminder storage
 - `<dialog-root>/q4h.yaml` — Q4H index (cleared by clarity tools)
 - `<dialog-root>/registry.yaml` — subdialog registry (root dialogs only)
-- `<dialog-root>/round-001.jsonl` (and further rounds) — streamed message files
+- `<dialog-root>/course-001.jsonl` (and further courses) — streamed message files
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — per-subdialog Q4H index (cleared by clarity)
 
@@ -1233,12 +1233,12 @@ sequenceDiagram
 
 ### 4. Clarity Operations Preserve Registry
 
-| State Element | Effect of `clear_mind`                      |
-| ------------- | ------------------------------------------- |
-| Messages      | Cleared (new round / fresh message context) |
-| Q4H           | Cleared                                     |
-| Reminders     | Preserved                                   |
-| Registry      | Preserved                                   |
+| State Element | Effect of `clear_mind`                       |
+| ------------- | -------------------------------------------- |
+| Messages      | Cleared (new course / fresh message context) |
+| Q4H           | Cleared                                      |
+| Reminders     | Preserved                                    |
+| Registry      | Preserved                                    |
 
 `change_mind` is not a clarity operation; it updates Taskdoc content in-place and does not clear messages/Q4H/reminders/registry.
 

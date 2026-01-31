@@ -15,14 +15,14 @@ async function main() {
   process.chdir(tmp);
   try {
     const dialogId = new DialogID('jsonl-test');
-    const round = 1;
+    const course = 1;
 
-    // Stress append concurrency: without per-round serialization, JSONL lines can interleave.
+    // Stress append concurrency: without per-course serialization, JSONL lines can interleave.
     await Promise.all(
       Array.from({ length: 50 }, async (_, i) => {
         await DialogPersistence.appendEvent(
           dialogId,
-          round,
+          course,
           {
             ts: `2026/01/30-00:00:${String(i % 60).padStart(2, '0')}`,
             type: 'agent_words_record',
@@ -35,17 +35,17 @@ async function main() {
     );
 
     const dialogPath = DialogPersistence.getDialogEventsPath(dialogId, 'running');
-    const roundFilename = DialogPersistence.getRoundFilename(round);
-    const roundFilePath = path.join(dialogPath, roundFilename);
+    const courseFilename = DialogPersistence.getCourseFilename(course);
+    const courseFilePath = path.join(dialogPath, courseFilename);
 
     // Simulate process crash mid-append (truncated JSONL tail).
     await fs.appendFile(
-      roundFilePath,
+      courseFilePath,
       '{"ts":"2026/01/30-00:01:00","type":"agent_words_record","genseq":1,"content":"unterminated',
       'utf-8',
     );
 
-    const events = await DialogPersistence.readRoundEvents(dialogId, round, 'running');
+    const events = await DialogPersistence.readCourseEvents(dialogId, course, 'running');
     assert(events.length === 50, `Expected 50 events, got ${events.length}`);
 
     console.log('✓ JSONL tail truncation tolerance test passed');
