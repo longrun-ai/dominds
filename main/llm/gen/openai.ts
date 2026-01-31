@@ -206,7 +206,7 @@ function mergeAdjacentOpenAiMessages(input: ResponseInputItem[]): ResponseInputI
       prev.role === item.role &&
       typeof prev.content === 'string'
     ) {
-      prev.content = `${prev.content}\n${item.content}`.trim();
+      prev.content = `${prev.content}\n${item.content}`;
       continue;
     }
 

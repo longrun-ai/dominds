@@ -35,6 +35,11 @@ type ActiveToolUse = {
   initialInput: unknown;
 };
 
+export type AnthropicStreamConsumeResult = {
+  usage: LlmUsageStats;
+  llmGenModel?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -440,6 +445,224 @@ function validateReconstructedContext(messages: MessageParam[]): void {
   }
 }
 
+export async function consumeAnthropicStream(
+  stream: AsyncIterable<MessageStreamEvent>,
+  receiver: LlmStreamReceiver,
+  abortSignal?: AbortSignal,
+): Promise<AnthropicStreamConsumeResult> {
+  // Stream lifecycle management using SDK start/stop events
+  let currentContentBlock: AnthropicMessageContent[number] | null = null;
+  let currentToolUse: ActiveToolUse | null = null;
+  let sayingStarted = false;
+  let thinkingStarted = false;
+  let usage: LlmUsageStats = { kind: 'unavailable' };
+  let returnedModel: string | undefined;
+
+  for await (const event of stream) {
+    if (abortSignal?.aborted) {
+      throw new Error('AbortError');
+    }
+    switch (event.type) {
+      case 'content_block_start': {
+        const contentBlock = event.content_block;
+
+        // Track tool use so we can emit function calls once JSON is complete
+        if (contentBlock.type === 'tool_use') {
+          currentToolUse = {
+            id: contentBlock.id,
+            name: contentBlock.name,
+            inputJson: '',
+            initialInput: contentBlock.input,
+          };
+        }
+
+        currentContentBlock = contentBlock;
+        break;
+      }
+
+      case 'content_block_delta': {
+        // Only process deltas for known content blocks
+        if (!currentContentBlock) {
+          log.warn(
+            'ANTH unexpected content_block_delta without active content block',
+            new Error('Delta received before content_block_start'),
+            {
+              deltaType: event.delta.type,
+            },
+          );
+          break;
+        }
+
+        const delta = event.delta;
+
+        // Handle all RawContentBlockDelta types from Anthropic SDK
+        if (delta.type === 'text_delta') {
+          const textDelta = delta.text ?? '';
+          if (textDelta) {
+            // Important: Anthropic may emit multiple `text` content blocks per message. If we finish
+            // per-block, downstream persistence may trim each segment and wipe indentation at the
+            // start of later blocks (e.g. function parameter lists). Treat all text blocks within
+            // a message as a single "saying" stream; close it on `message_stop`.
+            if (!sayingStarted) {
+              sayingStarted = true;
+              await receiver.sayingStart();
+            }
+            await receiver.sayingChunk(textDelta);
+          }
+        } else if (delta.type === 'thinking_delta') {
+          const thinkingDelta = delta.thinking ?? '';
+          if (thinkingDelta) {
+            // Same rationale as text blocks: close thinking only on `message_stop`.
+            if (!thinkingStarted) {
+              thinkingStarted = true;
+              await receiver.thinkingStart();
+            }
+            await receiver.thinkingChunk(thinkingDelta);
+          }
+        } else if (delta.type === 'citations_delta') {
+          // Handle CitationsDelta - typically just logging for now
+        } else if (delta.type === 'signature_delta') {
+          // Handle SignatureDelta - typically just logging for now
+        } else if (delta.type === 'input_json_delta') {
+          const partialJson = delta.partial_json;
+          if (currentToolUse) {
+            applyInputJsonDelta(currentToolUse, partialJson);
+          } else if (partialJson.length > 0) {
+            log.warn(
+              'ANTH input_json_delta without active tool_use',
+              new Error('Input JSON delta received without active tool_use block'),
+              {
+                hasCurrentBlock: currentContentBlock !== null,
+                blockType: currentContentBlock ? currentContentBlock.type : 'none',
+              },
+            );
+          }
+        }
+        break;
+      }
+
+      case 'content_block_stop': {
+        if (!currentContentBlock) {
+          break;
+        }
+
+        if (currentContentBlock.type === 'tool_use') {
+          if (!currentToolUse) {
+            log.warn(
+              'ANTH tool_use stop without active tool_use',
+              new Error('Tool_use block stopped without active tool tracking'),
+            );
+          } else {
+            let argsJson = '';
+            if (currentToolUse.inputJson.trim().length > 0) {
+              argsJson = currentToolUse.inputJson;
+            } else {
+              const stringified = JSON.stringify(currentToolUse.initialInput);
+              argsJson =
+                typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
+            }
+            await receiver.funcCall(currentToolUse.id, currentToolUse.name, argsJson);
+          }
+          currentToolUse = null;
+        }
+
+        currentContentBlock = null;
+        break;
+      }
+
+      case 'message_start': {
+        if (returnedModel === undefined) {
+          returnedModel = tryExtractApiReturnedModel(event.message);
+        }
+        const startUsage = event.message.usage;
+        const cacheCreation =
+          typeof startUsage.cache_creation_input_tokens === 'number'
+            ? startUsage.cache_creation_input_tokens
+            : 0;
+        const cacheRead =
+          typeof startUsage.cache_read_input_tokens === 'number'
+            ? startUsage.cache_read_input_tokens
+            : 0;
+        const promptTokens = startUsage.input_tokens + cacheCreation + cacheRead;
+        const completionTokens = startUsage.output_tokens;
+        usage = {
+          kind: 'available',
+          promptTokens,
+          completionTokens,
+          totalTokens: promptTokens + completionTokens,
+        };
+        break;
+      }
+
+      case 'message_delta': {
+        const deltaUsage = event.usage;
+        const inputTokens =
+          typeof deltaUsage.input_tokens === 'number' ? deltaUsage.input_tokens : null;
+        const cacheCreation =
+          typeof deltaUsage.cache_creation_input_tokens === 'number'
+            ? deltaUsage.cache_creation_input_tokens
+            : 0;
+        const cacheRead =
+          typeof deltaUsage.cache_read_input_tokens === 'number'
+            ? deltaUsage.cache_read_input_tokens
+            : 0;
+        if (usage.kind === 'available') {
+          const promptTokens: number =
+            inputTokens !== null ? inputTokens + cacheCreation + cacheRead : usage.promptTokens;
+          const completionTokens = deltaUsage.output_tokens;
+          usage = {
+            kind: 'available',
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+          };
+        } else if (inputTokens !== null) {
+          const promptTokens: number = inputTokens + cacheCreation + cacheRead;
+          const completionTokens = deltaUsage.output_tokens;
+          usage = {
+            kind: 'available',
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+          };
+        }
+        break;
+      }
+
+      case 'message_stop': {
+        currentContentBlock = null;
+        currentToolUse = null;
+
+        if (sayingStarted) {
+          await receiver.sayingFinish();
+          sayingStarted = false;
+        }
+        if (thinkingStarted) {
+          await receiver.thinkingFinish();
+          thinkingStarted = false;
+        }
+
+        break;
+      }
+
+      // Note: input_json_delta is handled within content_block_delta as part of input_json_delta delta type
+
+      default: {
+        // Handle unexpected events with proper type checking
+        const unknownEvent: unknown = event;
+        const eventType =
+          isRecord(unknownEvent) && typeof unknownEvent.type === 'string' ? unknownEvent.type : '';
+        log.warn('ANTH unexpected llm event', new Error('Unknown event type'), {
+          eventType: eventType.length > 0 ? eventType : 'unknown',
+        });
+        break;
+      }
+    }
+  }
+
+  return { usage, llmGenModel: returnedModel };
+}
+
 /**
  * Reconstruct Anthropic context from persisted messages with genseq tracking.
  * This function groups messages by generation sequence and converts them to
@@ -534,235 +757,7 @@ export class AnthropicGen implements LlmGenerator {
     const stream: AsyncIterable<MessageStreamEvent> = client.messages.stream(
       streamParams as unknown as MessageCreateParamsStreaming,
     );
-
-    // Stream lifecycle management using SDK start/stop events
-    let currentContentBlock: AnthropicMessageContent[number] | null = null;
-    let currentToolUse: ActiveToolUse | null = null;
-    let sayingStarted = false;
-    let thinkingStarted = false;
-    let usage: LlmUsageStats = { kind: 'unavailable' };
-    let returnedModel: string | undefined;
-
-    for await (const event of stream) {
-      if (abortSignal?.aborted) {
-        throw new Error('AbortError');
-      }
-      switch (event.type) {
-        case 'content_block_start': {
-          const contentBlock = event.content_block;
-
-          // Track tool use so we can emit function calls once JSON is complete
-          if (contentBlock.type === 'tool_use') {
-            currentToolUse = {
-              id: contentBlock.id,
-              name: contentBlock.name,
-              inputJson: '',
-              initialInput: contentBlock.input,
-            };
-          }
-
-          // Create and yield appropriate stream based on content block type
-          if (contentBlock.type === 'text') {
-            if (!sayingStarted) {
-              sayingStarted = true;
-              await receiver.sayingStart();
-            }
-          } else if (contentBlock.type === 'thinking') {
-            if (!thinkingStarted) {
-              thinkingStarted = true;
-              await receiver.thinkingStart();
-            }
-          } else if (contentBlock.type === 'tool_use') {
-            // Tool use has no streaming text output
-          } else {
-            // Unexpected content block type
-            log.warn(
-              'ANTH unexpected content_block_start',
-              new Error('Unknown content block type'),
-              {
-                blockType: contentBlock.type,
-              },
-            );
-          }
-
-          currentContentBlock = contentBlock;
-          break;
-        }
-
-        case 'content_block_delta': {
-          // Only process deltas for known content blocks
-          if (!currentContentBlock) {
-            log.warn(
-              'ANTH unexpected content_block_delta without active content block',
-              new Error('Delta received before content_block_start'),
-              {
-                deltaType: event.delta.type,
-              },
-            );
-            break;
-          }
-
-          const delta = event.delta;
-
-          // Handle all RawContentBlockDelta types from Anthropic SDK
-          if (delta.type === 'text_delta') {
-            const textDelta = delta.text ?? '';
-            if (textDelta) {
-              await receiver.sayingChunk(textDelta);
-            }
-          } else if (delta.type === 'thinking_delta') {
-            // Lazily start thinking section if delta arrives before content_block_start
-            if (!thinkingStarted) {
-              thinkingStarted = true;
-              await receiver.thinkingStart();
-            }
-            const thinkingDelta = delta.thinking ?? '';
-            if (thinkingDelta) {
-              await receiver.thinkingChunk(thinkingDelta);
-            }
-          } else if (delta.type === 'citations_delta') {
-            // Handle CitationsDelta - typically just logging for now
-          } else if (delta.type === 'signature_delta') {
-            // Handle SignatureDelta - typically just logging for now
-          } else if (delta.type === 'input_json_delta') {
-            const partialJson = delta.partial_json;
-            if (currentToolUse) {
-              applyInputJsonDelta(currentToolUse, partialJson);
-            } else if (partialJson.length > 0) {
-              log.warn(
-                'ANTH input_json_delta without active tool_use',
-                new Error('Input JSON delta received without active tool_use block'),
-                {
-                  hasCurrentBlock: currentContentBlock !== null,
-                  blockType: currentContentBlock ? currentContentBlock.type : 'none',
-                },
-              );
-            }
-          }
-          break;
-        }
-
-        case 'content_block_stop': {
-          if (!currentContentBlock) {
-            break;
-          }
-          if (currentContentBlock.type === 'thinking') {
-            await receiver.thinkingFinish();
-            thinkingStarted = false;
-          }
-          if (currentContentBlock.type === 'text') {
-            await receiver.sayingFinish();
-            sayingStarted = false;
-          }
-          if (currentContentBlock.type === 'tool_use') {
-            if (!currentToolUse) {
-              log.warn(
-                'ANTH tool_use stop without active tool_use',
-                new Error('Tool_use block stopped without active tool tracking'),
-              );
-            } else {
-              let argsJson = '';
-              if (currentToolUse.inputJson.trim().length > 0) {
-                argsJson = currentToolUse.inputJson;
-              } else {
-                const stringified = JSON.stringify(currentToolUse.initialInput);
-                argsJson =
-                  typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
-              }
-              await receiver.funcCall(currentToolUse.id, currentToolUse.name, argsJson);
-            }
-            currentToolUse = null;
-          }
-
-          currentContentBlock = null;
-          break;
-        }
-
-        case 'message_start': {
-          if (returnedModel === undefined) {
-            returnedModel = tryExtractApiReturnedModel(event.message);
-          }
-          const startUsage = event.message.usage;
-          const cacheCreation =
-            typeof startUsage.cache_creation_input_tokens === 'number'
-              ? startUsage.cache_creation_input_tokens
-              : 0;
-          const cacheRead =
-            typeof startUsage.cache_read_input_tokens === 'number'
-              ? startUsage.cache_read_input_tokens
-              : 0;
-          const promptTokens = startUsage.input_tokens + cacheCreation + cacheRead;
-          const completionTokens = startUsage.output_tokens;
-          usage = {
-            kind: 'available',
-            promptTokens,
-            completionTokens,
-            totalTokens: promptTokens + completionTokens,
-          };
-          break;
-        }
-
-        case 'message_delta': {
-          const deltaUsage = event.usage;
-          const inputTokens =
-            typeof deltaUsage.input_tokens === 'number' ? deltaUsage.input_tokens : null;
-          const cacheCreation =
-            typeof deltaUsage.cache_creation_input_tokens === 'number'
-              ? deltaUsage.cache_creation_input_tokens
-              : 0;
-          const cacheRead =
-            typeof deltaUsage.cache_read_input_tokens === 'number'
-              ? deltaUsage.cache_read_input_tokens
-              : 0;
-          if (usage.kind === 'available') {
-            const promptTokens: number =
-              inputTokens !== null ? inputTokens + cacheCreation + cacheRead : usage.promptTokens;
-            const completionTokens = deltaUsage.output_tokens;
-            usage = {
-              kind: 'available',
-              promptTokens,
-              completionTokens,
-              totalTokens: promptTokens + completionTokens,
-            };
-          } else if (inputTokens !== null) {
-            const promptTokens: number = inputTokens + cacheCreation + cacheRead;
-            const completionTokens = deltaUsage.output_tokens;
-            usage = {
-              kind: 'available',
-              promptTokens,
-              completionTokens,
-              totalTokens: promptTokens + completionTokens,
-            };
-          }
-          break;
-        }
-
-        case 'message_stop': {
-          currentContentBlock = null;
-          currentToolUse = null;
-
-          // Note: thinking_finish and saying_finish are handled via content_block_stop events
-          break;
-        }
-
-        // Note: input_json_delta is handled within content_block_delta as part of input_json_delta delta type
-
-        default: {
-          // Handle unexpected events with proper type checking
-          const unknownEvent: unknown = event;
-          const eventType =
-            isRecord(unknownEvent) && typeof unknownEvent.type === 'string'
-              ? unknownEvent.type
-              : 'unknown';
-          log.warn('ANTH unexpected llm event', new Error('Unknown event type'), {
-            eventType,
-          });
-          break;
-        }
-      }
-    }
-
-    return { usage, llmGenModel: returnedModel };
+    return consumeAnthropicStream(stream, receiver, abortSignal);
   }
 
   async genMoreMessages(
