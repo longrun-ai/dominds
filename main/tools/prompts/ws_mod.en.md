@@ -19,6 +19,8 @@ You have read/write access to the workspace, but **all incremental text edits mu
 - Append to EOF: `prepare_file_append({ path, content, create, existing_hunk_id })`
 - Anchor insertion: `prepare_file_insert_after|prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
 - Block replace between anchors: `prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
+  - `include_anchors: true` (default): keep the anchor lines; replace only the content between them (start/end lines are preserved).
+  - `include_anchors: false`: replacement range includes the anchor lines (start/end lines are deleted and replaced).
 - Create a new file (empty allowed): `create_new_file({ path, content })`
 
 > Note: some providers (e.g. Codex) require all function-tool parameters to be present (schema all required).
@@ -83,4 +85,5 @@ Call the function tool `prepare_file_block_replace` with:
 
 - `ANCHOR_AMBIGUOUS`: anchor appears multiple times and occurrence was not specified; set `occurrence` or use a range (`prepare_file_range_edit`).
 - `ANCHOR_NOT_FOUND`: anchor not found; locate via `read_file` / `ripgrep_snippets`.
-- apply `context_match: rejected`: file drift made the target non-unique; re-prepare (narrow range or add more context).
+- apply `context_match: rejected`: file drift made the target non-unique/unsafe; re-prepare (narrow range or add more context).
+- If apply fails: the output includes the failure reason and key diagnostics; follow it to re-prepare (narrow range, add context, or specify `occurrence` as needed).

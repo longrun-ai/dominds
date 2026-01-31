@@ -20,6 +20,8 @@
 - 末尾追加：`prepare_file_append({ path, content, create, existing_hunk_id })`
 - 锚点插入：`prepare_file_insert_after|prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
 - 双锚点块替换：`prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
+  - `include_anchors: true`（默认）：**保留 anchor 行**，仅替换两者之间的内容（start/end 行不被删除）。
+  - `include_anchors: false`：替换范围**包含** start/end anchor 行（会删除并以新内容替换）。
 - 创建新文件（允许空内容）：`create_new_file({ path, content })`
 
 > 注意：有些 provider（例如 Codex）会要求所有函数工具参数字段都"必填"（schema 全 required）。
@@ -84,4 +86,5 @@ Call the function tool `prepare_file_block_replace` with:
 
 - `ANCHOR_AMBIGUOUS`：锚点多次出现且未指定 occurrence；请指定 occurrence 或改用行号范围（`prepare_file_range_edit`）。
 - `ANCHOR_NOT_FOUND`：锚点未找到；必要时先 `read_file` 或用 `ripgrep_snippets` 定位。
-- apply `context_match: rejected`：文件已被修改导致无法唯一定位；请重新 prepare（缩小范围或增加上下文）。
+- apply `context_match: rejected`：文件已被修改导致无法唯一定位/不安全；请重新 prepare（缩小范围或增加上下文）。
+- apply 失败：输出会包含失败原因与关键诊断信息；按提示重新 prepare（必要时缩小范围、增加上下文或指定 `occurrence`）。

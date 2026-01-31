@@ -2857,6 +2857,13 @@ async function runApplyFileModification(
 
                 const currentLinesRaw = splitFileTextToLines(currentContent);
                 const baseLines = isEmptyFileLines(currentLinesRaw) ? [] : currentLinesRaw;
+                const unifiedDiff = buildUnifiedSingleHunkDiff(
+                  p.relPath,
+                  baseLines,
+                  baseLines.length,
+                  0,
+                  p.newLines,
+                );
                 const nextLines = [...baseLines, ...p.newLines];
                 const nextText = joinLinesForWrite(nextLines);
                 fsSync.mkdirSync(path.dirname(p.absPath), { recursive: true });
@@ -2912,7 +2919,7 @@ async function runApplyFileModification(
                 const content =
                   `${labels.applied(p.relPath, id)}\n\n` +
                   `${formatYamlCodeBlock(yaml)}\n\n` +
-                  `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+                  `\`\`\`diff\n${unifiedDiff}\`\`\``;
                 resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
                 return;
               }
@@ -2926,6 +2933,13 @@ async function runApplyFileModification(
                 } else {
                   const all = findAllMatches(currentLines, p.oldLines);
                   if (all.length === 0) {
+                    const currentDigest = sha256HexUtf8(currentContent);
+                    const plannedDigest = p.plannedFileDigestSha256;
+                    const fileChangedSincePreview =
+                      plannedDigest !== undefined && plannedDigest !== currentDigest;
+                    const plannedOldPreview = buildRangePreview(p.oldLines);
+                    const plannedContextBeforePreview = buildRangePreview(p.contextBefore);
+                    const plannedContextAfterPreview = buildRangePreview(p.contextAfter);
                     const summary =
                       language === 'zh'
                         ? 'Apply rejected：文件内容已变化，无法定位该 hunk 目标位置；请重新 plan。'
@@ -2937,6 +2951,17 @@ async function runApplyFileModification(
                       `hunk_id: ${yamlQuote(id)}`,
                       `context_match: rejected`,
                       `error: CONTENT_CHANGED`,
+                      `file_changed_since_preview: ${fileChangedSincePreview}`,
+                      `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                      `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                      `evidence_preview:`,
+                      `  planned_old_preview: ${yamlFlowStringArray(plannedOldPreview)}`,
+                      `  planned_context_before_preview: ${yamlFlowStringArray(
+                        plannedContextBeforePreview,
+                      )}`,
+                      `  planned_context_after_preview: ${yamlFlowStringArray(
+                        plannedContextAfterPreview,
+                      )}`,
                       `summary: ${yamlQuote(summary)}`,
                     ].join('\n');
                     const content = formatYamlCodeBlock(yaml);
@@ -2956,6 +2981,17 @@ async function runApplyFileModification(
                     if (filtered.length === 1) {
                       startIndex0 = filtered[0];
                     } else {
+                      const currentDigest = sha256HexUtf8(currentContent);
+                      const plannedDigest = p.plannedFileDigestSha256;
+                      const fileChangedSincePreview =
+                        plannedDigest !== undefined && plannedDigest !== currentDigest;
+                      const candidates = filtered.length > 0 ? filtered : all;
+                      const candidateLines = candidates
+                        .slice(0, 6)
+                        .map((start0) => `line ${start0 + 1}: ${currentLines[start0] ?? ''}`);
+                      const plannedOldPreview = buildRangePreview(p.oldLines);
+                      const plannedContextBeforePreview = buildRangePreview(p.contextBefore);
+                      const plannedContextAfterPreview = buildRangePreview(p.contextAfter);
                       const summary =
                         language === 'zh'
                           ? 'Apply rejected：hunk 目标位置不唯一（多处匹配）；请缩小范围或增加上下文后重新 plan。'
@@ -2967,6 +3003,20 @@ async function runApplyFileModification(
                         `hunk_id: ${yamlQuote(id)}`,
                         `context_match: rejected`,
                         `error: AMBIGUOUS_MATCH`,
+                        `file_changed_since_preview: ${fileChangedSincePreview}`,
+                        `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                        `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                        `candidates_count_all: ${all.length}`,
+                        `candidates_count_filtered: ${filtered.length}`,
+                        `evidence_preview:`,
+                        `  planned_old_preview: ${yamlFlowStringArray(plannedOldPreview)}`,
+                        `  planned_context_before_preview: ${yamlFlowStringArray(
+                          plannedContextBeforePreview,
+                        )}`,
+                        `  planned_context_after_preview: ${yamlFlowStringArray(
+                          plannedContextAfterPreview,
+                        )}`,
+                        `candidates_preview: ${yamlBlockScalarLines(candidateLines, '    ')}`,
                         `summary: ${yamlQuote(summary)}`,
                       ].join('\n');
                       const content = formatYamlCodeBlock(yaml);
@@ -2982,6 +3032,13 @@ async function runApplyFileModification(
                 const plannedDigest = p.plannedFileDigestSha256;
                 const fileChangedSincePreview =
                   plannedDigest !== undefined && plannedDigest !== currentDigest;
+                const unifiedDiff = buildUnifiedSingleHunkDiff(
+                  p.relPath,
+                  currentLines,
+                  startIndex0,
+                  p.deleteCount,
+                  p.newLines,
+                );
 
                 const nextLines = [...currentLines];
                 nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
@@ -3044,7 +3101,7 @@ async function runApplyFileModification(
                 const content =
                   `${labels.applied(p.relPath, id)}\n\n` +
                   `${formatYamlCodeBlock(yaml)}\n\n` +
-                  `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+                  `\`\`\`diff\n${unifiedDiff}\`\`\``;
                 resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
                 return;
               }
@@ -3058,6 +3115,13 @@ async function runApplyFileModification(
               } else {
                 const all = findAllMatches(currentLines, p.oldLines);
                 if (all.length === 0) {
+                  const currentDigest = sha256HexUtf8(currentContent);
+                  const plannedDigest = p.plannedFileDigestSha256;
+                  const fileChangedSincePreview =
+                    plannedDigest !== undefined && plannedDigest !== currentDigest;
+                  const plannedOldPreview = buildRangePreview(p.oldLines);
+                  const plannedContextBeforePreview = buildRangePreview(p.contextBefore);
+                  const plannedContextAfterPreview = buildRangePreview(p.contextAfter);
                   const summary =
                     language === 'zh'
                       ? 'Apply rejected：文件内容已变化，无法定位该 hunk 目标位置；请重新 plan。'
@@ -3069,6 +3133,17 @@ async function runApplyFileModification(
                     `hunk_id: ${yamlQuote(id)}`,
                     `context_match: rejected`,
                     `error: CONTENT_CHANGED`,
+                    `file_changed_since_preview: ${fileChangedSincePreview}`,
+                    `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                    `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                    `evidence_preview:`,
+                    `  planned_old_preview: ${yamlFlowStringArray(plannedOldPreview)}`,
+                    `  planned_context_before_preview: ${yamlFlowStringArray(
+                      plannedContextBeforePreview,
+                    )}`,
+                    `  planned_context_after_preview: ${yamlFlowStringArray(
+                      plannedContextAfterPreview,
+                    )}`,
                     `summary: ${yamlQuote(summary)}`,
                   ].join('\n');
                   const content = formatYamlCodeBlock(yaml);
@@ -3088,6 +3163,17 @@ async function runApplyFileModification(
                   if (filtered.length === 1) {
                     startIndex0 = filtered[0];
                   } else {
+                    const currentDigest = sha256HexUtf8(currentContent);
+                    const plannedDigest = p.plannedFileDigestSha256;
+                    const fileChangedSincePreview =
+                      plannedDigest !== undefined && plannedDigest !== currentDigest;
+                    const candidates = filtered.length > 0 ? filtered : all;
+                    const candidateLines = candidates
+                      .slice(0, 6)
+                      .map((start0) => `line ${start0 + 1}: ${currentLines[start0] ?? ''}`);
+                    const plannedOldPreview = buildRangePreview(p.oldLines);
+                    const plannedContextBeforePreview = buildRangePreview(p.contextBefore);
+                    const plannedContextAfterPreview = buildRangePreview(p.contextAfter);
                     const summary =
                       language === 'zh'
                         ? 'Apply rejected：hunk 目标位置不唯一（多处匹配）；请缩小范围或增加上下文后重新 plan。'
@@ -3099,6 +3185,20 @@ async function runApplyFileModification(
                       `hunk_id: ${yamlQuote(id)}`,
                       `context_match: rejected`,
                       `error: AMBIGUOUS_MATCH`,
+                      `file_changed_since_preview: ${fileChangedSincePreview}`,
+                      `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                      `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                      `candidates_count_all: ${all.length}`,
+                      `candidates_count_filtered: ${filtered.length}`,
+                      `evidence_preview:`,
+                      `  planned_old_preview: ${yamlFlowStringArray(plannedOldPreview)}`,
+                      `  planned_context_before_preview: ${yamlFlowStringArray(
+                        plannedContextBeforePreview,
+                      )}`,
+                      `  planned_context_after_preview: ${yamlFlowStringArray(
+                        plannedContextAfterPreview,
+                      )}`,
+                      `candidates_preview: ${yamlBlockScalarLines(candidateLines, '    ')}`,
                       `summary: ${yamlQuote(summary)}`,
                     ].join('\n');
                     const content = formatYamlCodeBlock(yaml);
@@ -3112,6 +3212,13 @@ async function runApplyFileModification(
               const plannedDigest = p.plannedFileDigestSha256;
               const fileChangedSincePreview =
                 plannedDigest !== undefined && plannedDigest !== currentDigest;
+              const unifiedDiff = buildUnifiedSingleHunkDiff(
+                p.relPath,
+                currentLines,
+                startIndex0,
+                p.deleteCount,
+                p.newLines,
+              );
 
               const nextLines = [...currentLines];
               nextLines.splice(startIndex0, p.deleteCount, ...p.newLines);
@@ -3181,7 +3288,7 @@ async function runApplyFileModification(
               const content =
                 `${labels.applied(p.relPath, id)}\n\n` +
                 `${formatYamlCodeBlock(yaml)}\n\n` +
-                `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+                `\`\`\`diff\n${unifiedDiff}\`\`\``;
               resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
             } catch (error: unknown) {
               const content = labels.applyFailed(
@@ -3318,6 +3425,12 @@ async function runApplyFileModification(
             }
 
             if (pairs.length === 0) {
+              const startMatchPreview = startMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
+              const endMatchPreview = endMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
               const summary =
                 language === 'zh'
                   ? 'Apply rejected：anchors 未找到或无法配对；请重新 plan。'
@@ -3329,6 +3442,18 @@ async function runApplyFileModification(
                 `hunk_id: ${yamlQuote(id)}`,
                 `context_match: rejected`,
                 `error: APPLY_REJECTED_ANCHOR_NOT_FOUND`,
+                `start_anchor: ${yamlQuote(p.startAnchor)}`,
+                `end_anchor: ${yamlQuote(p.endAnchor)}`,
+                `match: ${yamlQuote(p.match)}`,
+                `start_anchor_match_count: ${startMatches.length}`,
+                `end_anchor_match_count: ${endMatches.length}`,
+                `candidates_count: 0`,
+                `file_changed_since_preview: ${fileChangedSincePreview}`,
+                `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                `match_preview:`,
+                `  start_anchor_matches_preview: ${yamlBlockScalarLines(startMatchPreview, '    ')}`,
+                `  end_anchor_matches_preview: ${yamlBlockScalarLines(endMatchPreview, '    ')}`,
                 `summary: ${yamlQuote(summary)}`,
               ].join('\n');
               const content = formatYamlCodeBlock(yaml);
@@ -3337,6 +3462,12 @@ async function runApplyFileModification(
             }
 
             if (!p.occurrenceSpecified && p.requireUnique && pairs.length !== 1) {
+              const startMatchPreview = startMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
+              const endMatchPreview = endMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
               const summary =
                 language === 'zh'
                   ? `Apply rejected：anchors 歧义（${pairs.length} 个候选块）；请重新 plan 并指定 occurrence。`
@@ -3349,6 +3480,17 @@ async function runApplyFileModification(
                 `context_match: rejected`,
                 `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
                 `candidates_count: ${pairs.length}`,
+                `start_anchor: ${yamlQuote(p.startAnchor)}`,
+                `end_anchor: ${yamlQuote(p.endAnchor)}`,
+                `match: ${yamlQuote(p.match)}`,
+                `start_anchor_match_count: ${startMatches.length}`,
+                `end_anchor_match_count: ${endMatches.length}`,
+                `file_changed_since_preview: ${fileChangedSincePreview}`,
+                `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                `match_preview:`,
+                `  start_anchor_matches_preview: ${yamlBlockScalarLines(startMatchPreview, '    ')}`,
+                `  end_anchor_matches_preview: ${yamlBlockScalarLines(endMatchPreview, '    ')}`,
                 `summary: ${yamlQuote(summary)}`,
               ].join('\n');
               const content = formatYamlCodeBlock(yaml);
@@ -3363,6 +3505,12 @@ async function runApplyFileModification(
             })();
 
             if (!selected) {
+              const startMatchPreview = startMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
+              const endMatchPreview = endMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
               const summary =
                 language === 'zh'
                   ? 'Apply rejected：occurrence 超出范围；请重新 plan。'
@@ -3375,6 +3523,20 @@ async function runApplyFileModification(
                 `context_match: rejected`,
                 `error: APPLY_REJECTED_OCCURRENCE_OUT_OF_RANGE`,
                 `candidates_count: ${pairs.length}`,
+                `requested_occurrence: ${yamlQuote(
+                  p.occurrence.kind === 'last' ? 'last' : String(p.occurrence.index1),
+                )}`,
+                `start_anchor: ${yamlQuote(p.startAnchor)}`,
+                `end_anchor: ${yamlQuote(p.endAnchor)}`,
+                `match: ${yamlQuote(p.match)}`,
+                `start_anchor_match_count: ${startMatches.length}`,
+                `end_anchor_match_count: ${endMatches.length}`,
+                `file_changed_since_preview: ${fileChangedSincePreview}`,
+                `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                `match_preview:`,
+                `  start_anchor_matches_preview: ${yamlBlockScalarLines(startMatchPreview, '    ')}`,
+                `  end_anchor_matches_preview: ${yamlBlockScalarLines(endMatchPreview, '    ')}`,
                 `summary: ${yamlQuote(summary)}`,
               ].join('\n');
               const content = formatYamlCodeBlock(yaml);
@@ -3385,6 +3547,12 @@ async function runApplyFileModification(
             const nestedStart = startMatches.some((s) => s > selected.start0 && s < selected.end0);
             const nestedEnd = endMatches.some((e) => e > selected.start0 && e < selected.end0);
             if (nestedStart || nestedEnd) {
+              const startMatchPreview = startMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
+              const endMatchPreview = endMatches
+                .slice(0, 6)
+                .map((idx0) => `line ${idx0 + 1}: ${lines[idx0] ?? ''}`);
               const summary =
                 language === 'zh'
                   ? 'Apply rejected：检测到嵌套/歧义锚点；请重新 plan。'
@@ -3396,6 +3564,20 @@ async function runApplyFileModification(
                 `hunk_id: ${yamlQuote(id)}`,
                 `context_match: rejected`,
                 `error: APPLY_REJECTED_ANCHOR_AMBIGUOUS`,
+                `start_anchor: ${yamlQuote(p.startAnchor)}`,
+                `end_anchor: ${yamlQuote(p.endAnchor)}`,
+                `match: ${yamlQuote(p.match)}`,
+                `start_anchor_match_count: ${startMatches.length}`,
+                `end_anchor_match_count: ${endMatches.length}`,
+                `candidates_count: ${pairs.length}`,
+                `nested_start_anchor_found: ${nestedStart}`,
+                `nested_end_anchor_found: ${nestedEnd}`,
+                `file_changed_since_preview: ${fileChangedSincePreview}`,
+                `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                `match_preview:`,
+                `  start_anchor_matches_preview: ${yamlBlockScalarLines(startMatchPreview, '    ')}`,
+                `  end_anchor_matches_preview: ${yamlBlockScalarLines(endMatchPreview, '    ')}`,
                 `summary: ${yamlQuote(summary)}`,
               ].join('\n');
               const content = formatYamlCodeBlock(yaml);
@@ -3417,6 +3599,8 @@ async function runApplyFileModification(
                 language === 'zh'
                   ? 'Apply rejected：文件内容已变化（目标块内容与规划时不一致）；请重新 plan。'
                   : 'Apply rejected: file content changed (target block no longer matches the planned content); re-plan.';
+              const plannedOldPreview = buildRangePreview(p.oldLines);
+              const currentOldPreview = buildRangePreview(currentOldLines);
               const yaml = [
                 `status: error`,
                 `mode: apply_file_modification`,
@@ -3424,6 +3608,18 @@ async function runApplyFileModification(
                 `hunk_id: ${yamlQuote(id)}`,
                 `context_match: rejected`,
                 `error: APPLY_REJECTED_CONTENT_CHANGED`,
+                `file_changed_since_preview: ${fileChangedSincePreview}`,
+                `planned_file_digest_sha256: ${yamlQuote(plannedDigest ?? '')}`,
+                `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
+                `planned_replace_slice:`,
+                `  start_line: ${p.replaceStart0 + 1}`,
+                `  delete_count: ${p.deleteCount}`,
+                `current_replace_slice:`,
+                `  start_line: ${replaceStart0 + 1}`,
+                `  delete_count: ${replaceDeleteCount}`,
+                `evidence_preview:`,
+                `  planned_old_preview: ${yamlFlowStringArray(plannedOldPreview)}`,
+                `  current_old_preview: ${yamlFlowStringArray(currentOldPreview)}`,
                 `summary: ${yamlQuote(summary)}`,
               ].join('\n');
               const content = formatYamlCodeBlock(yaml);
@@ -3431,6 +3627,13 @@ async function runApplyFileModification(
               return;
             }
 
+            const unifiedDiff = buildUnifiedSingleHunkDiff(
+              p.relPath,
+              lines,
+              replaceStart0,
+              replaceDeleteCount,
+              p.newLines,
+            );
             const outLines = [...lines];
             outLines.splice(replaceStart0, replaceDeleteCount, ...p.newLines);
             const out = joinLinesForTextWrite(outLines);
@@ -3498,7 +3701,7 @@ async function runApplyFileModification(
             const content =
               `${labels.applied(p.relPath, id)}\n\n` +
               `${formatYamlCodeBlock(yaml)}\n\n` +
-              `\`\`\`diff\n${p.unifiedDiff}\`\`\``;
+              `\`\`\`diff\n${unifiedDiff}\`\`\``;
             resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
           } catch (error: unknown) {
             const content = labels.applyFailed(
@@ -3933,14 +4136,24 @@ export const prepareFileBlockReplaceTool: FuncTool = {
       path: { type: 'string' },
       start_anchor: { type: 'string' },
       end_anchor: { type: 'string' },
-      occurrence: { type: ['integer', 'string'] },
-      include_anchors: { type: 'boolean' },
+      occurrence: {
+        type: ['integer', 'string'],
+        description: "1-based occurrence index (e.g. 1, 2) or 'last'.",
+      },
+      include_anchors: {
+        type: 'boolean',
+        description:
+          'When true (default), keep the start/end anchor lines and replace only the content between them. When false, the replacement range includes the anchor lines.',
+      },
       match: {
         type: 'string',
         description: "Anchor match mode: 'contains' (default) or 'equals'.",
       },
-      require_unique: { type: 'boolean' },
-      strict: { type: 'boolean' },
+      require_unique: {
+        type: 'boolean',
+        description: 'When true (default), require unique match.',
+      },
+      strict: { type: 'boolean', description: 'When true (default), reject ambiguous plans.' },
       existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
     },
