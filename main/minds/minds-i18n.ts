@@ -40,8 +40,8 @@ export function funcToolUsageLabels(language: LanguageCode): {
 
 export function funcToolRulesText(language: LanguageCode): string {
   return language === 'zh'
-    ? `\n- 对所有函数工具一律使用原生 function-calling；不要尝试用诉请行（例如 \`!?@name\`）调用它们。\n- 参数必须是严格 JSON：与 schema 精确匹配，包含所有 required 字段，不允许额外字段。`
-    : `\n- Use native function-calling for all function tools listed; do not attempt tellask lines (e.g., \`!?@name\`) for these.\n- Provide strict JSON arguments that match the tool schema exactly; include all required fields; no extra fields.`;
+    ? '\n- 对所有函数工具使用标准工具调用方式，不要在文本中写 `!?@name` 来调用。\n- 参数必须是标准 JSON 格式：与接口定义精确匹配，包含所有必填字段，不能有多余字段。'
+    : '\n- Use standard tool calls for all function tools; do not use `!?@name` syntax.\n- Use valid JSON that matches the tool schema; include all required fields; no extra fields.';
 }
 
 export function taskdocCanonicalCopy(language: LanguageCode): string {

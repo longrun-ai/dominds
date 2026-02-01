@@ -89,6 +89,8 @@ updated: 2026-01-24
 - `prepare_file_append`：预览追加到 EOF（可选 `create=true|false`）。
 - `prepare_file_insert_after` / `prepare_file_insert_before`：按锚点行预览插入（prepare 阶段严格处理歧义；锚点多次出现必须指定 `occurrence`）。
 - `prepare_file_block_replace`：按 start/end 锚点预览块替换（可配置 `include_anchors` / `require_unique` / `strict` / `occurrence` 等）。
+  - `include_anchors=true`（默认）：保留 start/end anchor 行，仅替换两者之间的内容。
+  - `include_anchors=false`：替换范围包含 start/end anchor 行（会删除 anchor 行并以新内容替换）。
 - `apply_file_modification`：唯一 apply，能应用来自上述任意 `prepare_*` 的 hunk（range/append/insert/block_replace）。
 
 ## 5. 关键并发约束与顺序建议
@@ -193,7 +195,7 @@ updated: 2026-01-24
 - `action`
 - `context_match: exact|fuzz|rejected`
 - `apply_evidence`（必须）
-- `summary` -（通常）紧随 YAML 的 unified diff（来自规划）
+- `summary` - 紧随 YAML 的 unified diff（基于 apply 时“当前文件 + 解析到的目标位置”重算；若 `context_match=exact` 则与 plan diff 一致）
 
 ### 8.4 Apply（按动作的关键字段）
 

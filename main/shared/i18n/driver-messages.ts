@@ -58,21 +58,11 @@ export function formatQ4HDiligencePushBudgetExhausted(
 ): string {
   const maxInjectCount = args.maxInjectCount;
   if (language === 'zh') {
-    return [
-      `Diligence Push 已触发 ${maxInjectCount} 次，智能体仍未继续推进。`,
-      '',
-      '请选择后续动作：',
-      '- `continue`：继续推进',
-      '- `stop`：停止推进',
-    ].join('\n');
+    return [`[系统通知] 已经鞭策了 ${maxInjectCount} 次，智能体仍不听劝。`].join('\n');
   }
 
   return [
-    `After ${maxInjectCount} Diligence Push attempts, the agent is still not proceeding.`,
-    '',
-    'Choose next action:',
-    '- `continue` to keep going',
-    '- `stop` to stop',
+    `[System notification] After ${maxInjectCount} Diligence Push attempts, the agent is still not moved.`,
   ].join('\n');
 }
 
@@ -105,111 +95,75 @@ export type ContextHealthV3RemediationGuideArgs =
       promptsRemainingAfterThis: number;
       promptsTotal: number;
     };
-
 export function formatUserFacingContextHealthV3RemediationGuide(
   language: LanguageCode,
   args: ContextHealthV3RemediationGuideArgs,
 ): string {
-  const continuationTemplateZh = [
-    '## 接续包（差遣牒未提及的工作交接细节）',
-    '- 继续工作的第一步（可执行）：',
-    '- 关键定位（文件/符号/搜索词）：',
-    '- 运行/验证（命令、端口、环境变量）：',
-    '- 易丢失的临时细节（路径/ID/URL/样例输入）：',
-  ].join('\n');
-
-  const continuationTemplateEn = [
-    '## Continuation package (handoff details not covered in Taskdoc)',
-    '- First actionable step:',
-    '- Key pointers (files/symbols/search terms):',
-    '- Run/verify (commands, ports, env vars):',
-    '- Easy-to-lose ephemeral details (paths/ids/urls/sample inputs):',
-  ].join('\n');
-
   if (language === 'zh') {
     if (args.kind === 'caution' && args.mode === 'soft') {
       return [
-        '上下文状态：🟡 吃紧',
+        '[系统通知] 上下文状态：🟡 吃紧',
         '',
-        '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担和判断力干扰因素。',
+        '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
-        '你只有通过调用 clear_mind 才能丢弃这些垃圾信息，恢复清醒的头脑。',
-        '“接续包”是你在新一轮/新回合对话中无间断继续工作的关键，所以你需要尽快把它准备好。',
+        '行动：尽快准备接续包（下一步行动 + 关键定位信息），维护进提醒项。',
         '',
-        '你必须在本轮至少调用一次提醒项维护工具（优先 update_reminder；也可 add_reminder）。',
-        '目标：把“接续包草稿”维护进提醒项，让你尽快建立信心和意愿 **自主** clear_mind 开启新一轮/新回合对话。',
+        '然后主动 clear_mind，开启新一轮对话继续工作。',
         '',
-        '同时建议你在提醒项里明确写出：',
-        '“基于以上信息，还差……就可以完成接续包，从而安全 clear_mind 开启新一轮/新回合对话”。',
-        '',
-        '可选动作（至少一个，允许多次调用）：',
-        '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
-        '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
-        '',
-        '提示：在你自主调用 clear_mind 之前，系统会时常再次提醒你。',
+        '操作：',
+        '- update_reminder({ "reminder_no": 1, "content": "..." })（推荐）',
+        '- add_reminder({ "content": "...", "position": 0 })',
       ].join('\n');
     }
 
     return [
-      '上下文状态：🔴 告急',
+      '[系统通知] 上下文状态：🔴 告急',
       '',
-      `为保持长程自治，系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动开启新一轮/新回合对话（相当于清理头脑）。`,
+      `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新对话。`,
       '',
-      '你应在本轮尽快执行（允许多次调用）：',
-      '1) 用 update_reminder / add_reminder 把"接续包（尽最大努力）"维护进提醒项（压缩为少量、高价值条目）。',
-      '2) 然后 clear_mind 开启新一轮/新回合对话，让后续工作在更小上下文中继续。',
+      '行动：尽快把接续包维护进提醒项，然后 clear_mind。',
       '',
-      '快速操作：',
-      '- update_reminder({ "reminder_no": 1, "content": "<维护后的提醒项>" })  （推荐）',
-      '- add_reminder({ "content": "<新增的提醒项>", "position": 0 })',
+      '操作：',
+      '- update_reminder({ "reminder_no": 1, "content": "..." })',
+      '- add_reminder({ "content": "...", "position": 0 })',
+      '- clear_mind({})',
       '',
-      '然后建议你主动执行：',
-      '- clear_mind({ "reminder_content": "" })  （可选：为空也可；系统会保留已维护的提醒项）',
-      '',
-      continuationTemplateZh,
+      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式。',
     ].join('\n');
   }
 
   if (args.kind === 'caution' && args.mode === 'soft') {
     return [
-      'Context state: 🟡 caution',
+      '[System notification] Context state: 🟡 caution',
       '',
-      'Impact: the dialog contains lots of stale tool calls/results, which becomes cognitive noise and can degrade your judgment.',
+      'Impact: stale tool calls/results in dialog history are creating cognitive noise.',
       '',
-      'You can only drop this noise by calling clear_mind.',
-      'A “continuation package” is the key to continuing work without interruption after starting a new course, so you should prepare it as soon as possible.',
+      'Action: prepare a continuation package (next step + key pointers) and maintain it in reminders.',
       '',
-      'In this turn, you must call at least one reminder-curation tool (prefer update_reminder; add_reminder is also OK).',
-      'Goal: maintain a continuation-package draft inside reminders so you can confidently clear_mind autonomously and start a new course.',
+      'Then proactively clear_mind to start a new conversation.',
       '',
-      'Allowed actions (at least one; multiple calls are OK):',
-      '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
-      '- add_reminder({ "content": "<new reminder>", "position": 0 })',
-      '',
-      'Note: until you clear_mind, the system will periodically remind you again.',
+      'Operations:',
+      '- update_reminder({ "reminder_no": 1, "content": "..." })',
+      '- add_reminder({ "content": "...", "position": 0 })',
     ].join('\n');
   }
 
   return [
-    `Context state: 🔴 critical`,
+    '[System notification] Context state: 🔴 critical',
     '',
-    `To keep long-running autonomy stable, the system will remind you at most ${args.promptsRemainingAfterThis} more time(s), then it will automatically start a new round (equivalent to clearing the dialog noise).`,
+    `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
-    'In this turn, do this as soon as possible (multiple calls are OK):',
+    'Action: maintain a continuation package in reminders, then clear_mind.',
     '',
-    '1) Curate reminders via update_reminder / add_reminder to maintain a best-effort continuation package.',
-    '2) Then clear_mind to start a new course so work continues with a smaller context.',
+    'Operations:',
+    '- update_reminder({ "reminder_no": 1, "content": "..." })',
+    '- add_reminder({ "content": "...", "position": 0 })',
+    '- clear_mind({})',
     '',
-    'Quick actions:',
-    '- update_reminder({ "reminder_no": 1, "content": "<updated reminder>" })  (preferred)',
-    '- add_reminder({ "content": "<new reminder>", "position": 0 })',
-    '',
-    'Then, you should proactively execute:',
-    '- clear_mind({ "reminder_content": "" })  (optional: empty is OK; curated reminders are preserved)',
-    '',
-    continuationTemplateEn,
+    'Continuation package: next step + key pointers + run/verify info.',
   ].join('\n');
 }
+
 export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (

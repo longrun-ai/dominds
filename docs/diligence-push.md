@@ -17,7 +17,7 @@ is legitimately suspended (Q4H or pending subdialogs).
 
 - Prevent root dialogs from stopping except for legitimate suspension states (Q4H / subdialogs).
 - Keep behavior predictable and bounded (no infinite loops).
-- Make the nudge text configurable per workspace (rtws) and language.
+- Make the Diligence Push text configurable per workspace (rtws) and language.
 - Provide a clear, user-controlled "disable" mechanism.
 
 ## Non-goals
@@ -123,7 +123,7 @@ Rules:
 
 ## UX notes
 
-- Diligence-push is a runtime-only nudge, but it should be **visible**: the diligence prompt is rendered
+- Diligence-push is a runtime-only Diligence Push, but it should be **visible**: the diligence prompt is rendered
   as a normal user message bubble (auto-sent by the runtime) so operators can understand why an
   extra iteration occurred.
 - Users should observe that the agent continues with a brief follow-up after tool-only operations.

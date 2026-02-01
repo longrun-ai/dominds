@@ -15,6 +15,7 @@
     "tellask:parsing": "tsx tellask/parsing.ts",
     "teammate-call:parsing": "tsx tellask/teammate-call-parsing.ts",
     "tellask:realtime": "tsx tellask/realtime.ts",
+    "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-subdialog-dedupe.ts",
     "task-package": "tsx task-package.ts",
     "taskdoc-search": "tsx taskdoc-search.ts",
     "team-yaml-parsing": "tsx team-yaml-parsing.ts",

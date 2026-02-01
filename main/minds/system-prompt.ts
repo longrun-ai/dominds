@@ -58,7 +58,11 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 
 ## 语言模式
 - 你的内部工作语言是简体中文（用于系统提示、工具调用规则、队友/子对话叙事格式等）。
-- 你可能会收到一条短的引导信息，形如“用户可见回复语言：X”。当你对用户作答时，请优先遵循该引导；若未给出引导，则使用工作语言作答。
+- 你可能会收到一条短的引导信息，形如"用户可见回复语言：X"。当你对用户作答时，请优先遵循该引导；若未给出引导，则使用工作语言作答。
+
+## 消息类型
+- 以 \`[系统通知]\` 或 \`[System notification]\` 开头的消息是**系统通知**，不是用户输入。
+- 系统通知不需要你直接回复给用户，但需要你根据通知内容执行相应的操作（如维护提醒项、调用 clear_mind 等）。
 
 ## 角色设定
 ${input.persona}
@@ -197,7 +201,11 @@ OK —— 我会等待你的结果，然后继续推进。
 
 ## Language Mode
 - Your internal working language is English (system prompt, tool rules, teammate/subdialog narrative formatting).
-- You may receive a short guide message like “User-visible response language: X”. When replying to the user, follow that guide; if absent, respond in the working language.
+- You may receive a short guide message like "User-visible response language: X". When replying to the user, follow that guide; if absent, respond in the working language.
+
+## Message Types
+- Messages starting with \`[系统通知]\` or \`[System notification]\` are **system notifications**, not user input.
+System notifications convey important state changes (e.g., context caution/critical, Diligence Push triggered). Read carefully and follow the instructions.
 
 ## Persona
 ${input.persona}

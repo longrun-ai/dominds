@@ -69,51 +69,50 @@ type CtrlMessages = Readonly<{
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
   if (language === 'zh') {
     return {
-      invalidFormatDelete: '错误：参数不正确。用法：delete_reminder({ reminder_no: number })',
+      invalidFormatDelete: '参数格式不对。用法：delete_reminder({ reminder_no: number })',
       reminderDoesNotExist: (reminderNoHuman, total) =>
-        `错误：提醒编号 ${reminderNoHuman} 不存在。可用范围：1-${total}`,
+        `提醒 #${reminderNoHuman} 不存在。现有提醒：1-${total}`,
       invalidFormatAdd:
-        '错误：参数不正确。用法：add_reminder({ content: string, position: number })（position=0 表示默认追加）',
-      reminderContentEmpty: '错误：提醒内容不能为空',
+        '参数格式不对。用法：add_reminder({ content: string, position: number })（position=0 表示追加）',
+      reminderContentEmpty: '提醒内容不能为空',
       invalidReminderPosition: (reminderNoHuman, totalPlusOne) =>
-        `错误：提醒插入位置 ${reminderNoHuman} 无效。有效范围：1-${totalPlusOne}`,
+        `位置 ${reminderNoHuman} 无效。有效范围：1-${totalPlusOne}`,
       invalidFormatUpdate:
-        '错误：参数不正确。用法：update_reminder({ reminder_no: number, content: string })',
+        '参数格式不对。用法：update_reminder({ reminder_no: number, content: string })',
       invalidFormatChangeMind:
-        '错误：参数不正确。用法：change_mind({ selector: string, category?: string, content: string })',
+        '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
       tooManyArgsChangeMind:
-        '错误：参数不正确。用法：change_mind({ selector: string, category?: string, content: string })',
+        '参数格式不对。用法：change_mind({ selector: string, category?: string, content: string })',
       invalidFormatRecallTaskdoc:
-        '错误：参数不正确。用法：recall_taskdoc({ category: string, selector: string })',
+        '参数格式不对。用法：recall_taskdoc({ category: string, selector: string })',
       taskDocContentRequired:
-        '错误：需要提供差遣牒内容（content）。\n' +
-        '可复制示例：\n' +
+        '需要提供差遣牒内容（content）。\n' +
+        '示例：\n' +
         '```json\n' +
         '{\n' +
         '  "selector": "progress",\n' +
         '  "content": "- 关键决策：...\\n- 下一步：..."\n' +
         '}\n' +
         '```',
-      noTaskDocPathConfigured: '错误：此对话未配置差遣牒路径',
-      pathMustBeWithinWorkspace: '错误：路径必须位于工作区内',
-      invalidTaskDocPath: (taskDocPath) =>
-        `错误：差遣牒路径 '${taskDocPath}' 无效。期望为 \`*.tsk/\` 目录。`,
-      selectorRequired: '错误：需要提供选择器（selector）。',
-      categoryRequired: '错误：需要提供章节目录（category）。',
+      noTaskDocPathConfigured: '此对话未配置差遣牒路径',
+      pathMustBeWithinWorkspace: '路径必须在工作区内',
+      invalidTaskDocPath: (taskDocPath) => `差遣牒路径 '${taskDocPath}' 无效。应为 *.tsk/ 目录。`,
+      selectorRequired: '需要提供选择器（selector）。',
+      categoryRequired: '需要提供章节目录（category）。',
       invalidSelector: (selector) =>
-        `错误：选择器 '${selector}' 无效。用法：顶层 goals | constraints | progress；bearinmind 下 contracts | acceptance | grants | runbook | decisions | risks；或任意合法 identifier（例如 \`ux.checklist\`）。`,
+        `选择器 '${selector}' 无效。可用：顶层 goals | constraints | progress；bearinmind 下 contracts | acceptance | grants | runbook | decisions | risks；或任意标识符（如 ux.checklist）。`,
       invalidCategory: (category) =>
-        `错误：目录名（category）'${category}' 无效。必须匹配 \`^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$\`。`,
+        `目录名 '${category}' 无效。需匹配 ^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]*)*$。`,
       invalidCategorySelector: (selector) =>
-        `错误：目录内选择器（selector）'${selector}' 无效。必须匹配 \`^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$\`。`,
+        `选择器 '${selector}' 无效。需匹配 ^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]*)*$。`,
       topLevelSelectorRequiresNoCategory: (category, selector) =>
-        `错误：选择器 '${selector}' 是顶层保留分段（goals/constraints/progress），不得与 category='${category}' 一起使用。`,
+        `选择器 '${selector}' 是顶层保留分段（goals/constraints/progress），不能与 category='${category}' 一起用。`,
       bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
-        `错误：选择器 '${selector}' 仅允许在 category='bearinmind' 下使用（当前 category='${category}'）。`,
+        `选择器 '${selector}' 只能在 category='bearinmind' 下用（当前 category='${category}'）。`,
       taskDocSectionMissing: (relativePath) =>
-        `未找到：\`${relativePath}\`。\n\n可用 \`change_mind\` 创建或更新该章节（它会整段替换）：\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
+        `未找到：${relativePath}。\n\n用 change_mind 创建或更新：\n- change_mind({"category":string,"selector":string,"content":string})`,
       clearedCoursePrompt: (nextCourse) =>
-        `你刚清理头脑，开启了第 ${nextCourse} 程对话，请继续推进任务。`,
+        `你刚清理头脑，开启了第 ${nextCourse + 1} 程对话，请继续推进任务。`,
     };
   }
 
@@ -162,7 +161,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     taskDocSectionMissing: (relativePath) =>
       `Not found: \`${relativePath}\`.\n\nUse \`change_mind\` to create/update it (whole-section replace):\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
     clearedCoursePrompt: (nextCourse) =>
-      `This is course #${nextCourse} of the dialog. You just cleared your mind; please proceed with the task.`,
+      `This is course #${nextCourse + 1} of the dialog. You just cleared your mind; please proceed with the task.`,
   };
 }
 

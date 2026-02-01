@@ -108,11 +108,11 @@
 
 ### Diligence Push（鞭策）
 
-- EN: A proactive continuation mechanism that nudges the agent when it's idle or blocked, using configurable prompts and budget limits. **Always use "Diligence Push"; never use "keep-going", "勤奋", "proactive-push", or "auto-continue".**
+- EN: A proactive continuation mechanism that Diligence Pushes the agent when it's idle or blocked, using configurable prompts and budget limits. **Always use "Diligence Push"; never use "keep-going", "勤奋", "proactive-push", or "auto-continue".**
 - ZH: 一种主动继续机制，在智能体空闲或阻塞时通过可配置的提示词和预算上限进行"鞭策"。**统一使用"鞭策"；禁止使用"保持运行"、"勤奋"、"自动继续"、"催促"等变体。**
 
-- EN: Related terms: "diligence prompt" (prompt file), "diligence-push-max" config, "diligence push injection" (prompt injection).
-- ZH: 相关术语："diligence prompt"（提示词文件）、"diligence-push-max"（配置项）、"diligence push 注入"（注入机制）。
+- EN: Related terms: "Diligence Push prompt" (prompt file), "Diligence Push-max" config, "Diligence Push injection" (prompt injection).
+- ZH: 相关术语："鞭策提示词"（提示词文件）、"鞭策上限"（配置项）、"鞭策注入"（注入机制）。
 
 ### Teammate / 队友
 

@@ -153,7 +153,7 @@ When `level === 'critical'`, the driver enters a **countdown remediation** (max 
 
 Rationale:
 
-- `caution` already nudges best-effort continuation package drafting in reminders.
+- `caution` already Diligence Pushes best-effort continuation package drafting in reminders.
 - In `critical`, we prefer to keep the dialog running long-term without human intervention.
 
 ## UI (Webapp) Expectations
