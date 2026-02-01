@@ -3604,105 +3604,95 @@ async function executeTellaskCall(
           callId,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
-
-        const existingSubdialog = rootDialog.lookupSubdialog(
-          parseResult.agentId,
-          parseResult.tellaskSession,
-        );
-
         const pendingOwner = callerDialog;
 
-        if (existingSubdialog) {
-          const resumePrompt: HumanPrompt = {
-            content: formatAssignmentFromSupdialog({
-              fromAgentId: dlg.agentId,
-              toAgentId: existingSubdialog.agentId,
-              headLine,
-              callBody: body,
-              language: getWorkLanguage(),
-              collectiveTargets: options?.collectiveTargets ?? [existingSubdialog.agentId],
-            }),
-            msgId: generateShortId(),
-            grammar: 'markdown',
-          };
-          try {
-            await updateSubdialogAssignment(existingSubdialog, assignment);
-          } catch (err) {
-            log.warn('Failed to update registered subdialog assignment', err);
+        const result = await withSuspensionStateLock(rootDialog.id, async () => {
+          const existing = rootDialog.lookupSubdialog(
+            parseResult.agentId,
+            parseResult.tellaskSession,
+          );
+          if (existing) {
+            try {
+              await updateSubdialogAssignment(existing, assignment);
+            } catch (err) {
+              log.warn('Failed to update registered subdialog assignment', err);
+            }
+            return { kind: 'existing' as const, subdialog: existing };
           }
 
-          const pendingRecord: PendingSubdialogRecordType = {
-            subdialogId: existingSubdialog.id.selfId,
-            createdAt: formatUnifiedTimestamp(new Date()),
-            headLine,
-            targetAgentId: parseResult.agentId,
-            callType: 'B',
-            tellaskSession: parseResult.tellaskSession,
-          };
-          await withSuspensionStateLock(pendingOwner.id, async () => {
-            const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
-            existingPending.push(pendingRecord);
-            await DialogPersistence.savePendingSubdialogs(pendingOwner.id, existingPending);
-          });
-
-          const task = (async () => {
-            try {
-              await driveDialogStream(existingSubdialog, resumePrompt, true);
-            } catch (err) {
-              log.warn('Type B registered subdialog resumption error:', err);
-            }
-          })();
-          void task;
-          subdialogsCreated.push(existingSubdialog.id);
-          suspend = true;
-        } else {
-          const sub = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
+          const created = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
             originMemberId,
             callerDialogId: callerDialog.id.selfId,
             callId,
             tellaskSession: parseResult.tellaskSession,
             collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
           });
-          rootDialog.registerSubdialog(sub);
+          rootDialog.registerSubdialog(created);
           await rootDialog.saveSubdialogRegistry();
+          return { kind: 'created' as const, subdialog: created };
+        });
 
-          const pendingRecord: PendingSubdialogRecordType = {
-            subdialogId: sub.id.selfId,
-            createdAt: formatUnifiedTimestamp(new Date()),
-            headLine,
-            targetAgentId: parseResult.agentId,
-            callType: 'B',
-            tellaskSession: parseResult.tellaskSession,
-          };
-          await withSuspensionStateLock(pendingOwner.id, async () => {
-            const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
-            existingPending.push(pendingRecord);
-            await DialogPersistence.savePendingSubdialogs(pendingOwner.id, existingPending);
-          });
+        const pendingRecord: PendingSubdialogRecordType = {
+          subdialogId: result.subdialog.id.selfId,
+          createdAt: formatUnifiedTimestamp(new Date()),
+          headLine,
+          targetAgentId: parseResult.agentId,
+          callType: 'B',
+          tellaskSession: parseResult.tellaskSession,
+        };
+        await withSuspensionStateLock(pendingOwner.id, async () => {
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
+          const withoutSameSubdialog = existingPending.filter(
+            (p) => p.subdialogId !== pendingRecord.subdialogId,
+          );
+          withoutSameSubdialog.push(pendingRecord);
+          await DialogPersistence.savePendingSubdialogs(pendingOwner.id, withoutSameSubdialog);
+        });
 
-          const task = (async () => {
-            try {
-              const initPrompt: HumanPrompt = {
+        const task = (async () => {
+          try {
+            if (result.kind === 'existing') {
+              const resumePrompt: HumanPrompt = {
                 content: formatAssignmentFromSupdialog({
-                  fromAgentId: rootDialog.agentId,
-                  toAgentId: sub.agentId,
+                  fromAgentId: dlg.agentId,
+                  toAgentId: result.subdialog.agentId,
                   headLine,
                   callBody: body,
                   language: getWorkLanguage(),
-                  collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
+                  collectiveTargets: options?.collectiveTargets ?? [result.subdialog.agentId],
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
               };
-              await driveDialogStream(sub, initPrompt, true);
-            } catch (err) {
-              log.warn('Type B subdialog processing error:', err);
+              await driveDialogStream(result.subdialog, resumePrompt, true);
+              return;
             }
-          })();
-          void task;
-          subdialogsCreated.push(sub.id);
-          suspend = true;
-        }
+
+            const initPrompt: HumanPrompt = {
+              content: formatAssignmentFromSupdialog({
+                fromAgentId: rootDialog.agentId,
+                toAgentId: result.subdialog.agentId,
+                headLine,
+                callBody: body,
+                language: getWorkLanguage(),
+                collectiveTargets: options?.collectiveTargets ?? [result.subdialog.agentId],
+              }),
+              msgId: generateShortId(),
+              grammar: 'markdown',
+            };
+            await driveDialogStream(result.subdialog, initPrompt, true);
+          } catch (err) {
+            log.warn(
+              result.kind === 'existing'
+                ? 'Type B registered subdialog resumption error:'
+                : 'Type B subdialog processing error:',
+              err,
+            );
+          }
+        })();
+        void task;
+        subdialogsCreated.push(result.subdialog.id);
+        suspend = true;
       }
     }
 
