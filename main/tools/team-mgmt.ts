@@ -2976,7 +2976,6 @@ function renderTeamManual(language: LanguageCode): string {
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
     '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. If any member has shell tools (e.g. toolset `os` / tools like `shell_exec`), they must be listed in shell_specialists; null/empty means “no shell specialists”.',
     'hidden: true marks a shadow member (not listed in system prompt)',
-    "toolsets supports '*' and '!<toolset>' exclusions (e.g. ['*','!team-mgmt'])",
   ];
   if (language === 'zh') {
     return (
@@ -3003,7 +3002,6 @@ function renderTeamManual(language: LanguageCode): string {
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
-        '`toolsets` 支持 `*` 与 `!<toolset>` 排除项（例如 `[* , !team-mgmt]`）。',
         '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
       ]) +
@@ -3032,7 +3030,10 @@ function renderTeamManual(language: LanguageCode): string {
       "    toolsets: ['team-mgmt']\n" +
       '  primary:\n' +
       '    hidden: true\n' +
-      "    toolsets: ['*', '!team-mgmt']\n" +
+      '    toolsets:\n' +
+      '      - ws_read\n' +
+      '      - ws_mod\n' +
+      '      - codex_style_tools\n' +
       "    no_read_dirs: ['.minds/**']\n" +
       "    no_write_dirs: ['.minds/**']\n" +
       '  qa_guard:\n' +
@@ -3088,7 +3089,10 @@ function renderTeamManual(language: LanguageCode): string {
     "    toolsets: ['team-mgmt']\n" +
     '  primary:\n' +
     '    hidden: true\n' +
-    "    toolsets: ['*', '!team-mgmt']\n" +
+    '    toolsets:\n' +
+    '      - ws_read\n' +
+    '      - ws_mod\n' +
+    '      - codex_style_tools\n' +
     "    no_read_dirs: ['.minds/**']\n" +
     "    no_write_dirs: ['.minds/**']\n" +
     '```\n'
@@ -3115,7 +3119,9 @@ function renderMcpManual(language: LanguageCode): string {
         '  sdk_stdio:',
         '    truely-stateless: false',
         '    transport: stdio',
-        '    command: ["node", "./path/to/mcp-server.js"]',
+        '    command:',
+        '      - node',
+        '      - ./path/to/mcp-server.js',
         '    cwd: "./"',
         '    env: {}',
         '    tools: { whitelist: [], blacklist: [] }',
@@ -3124,11 +3130,15 @@ function renderMcpManual(language: LanguageCode): string {
       fmtCodeBlock('yaml', [
         '# stdio 路径示例（最小）',
         '# 相对路径：cwd 变化会失败',
-        'command: ["node", "./mcp/server.js"]',
+        'command:',
+        '  - node',
+        '  - ./mcp/server.js',
         'cwd: "/absolute/path/to/project"',
         '',
         '# 绝对路径：不依赖 cwd',
-        'command: ["node", "/absolute/path/to/mcp/server.js"]',
+        'command:',
+        '  - node',
+        '  - /absolute/path/to/mcp/server.js',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小模板（HTTP）',
@@ -3162,7 +3172,9 @@ function renderMcpManual(language: LanguageCode): string {
       '  sdk_stdio:',
       '    truely-stateless: false',
       '    transport: stdio',
-      '    command: ["node", "./path/to/mcp-server.js"]',
+      '    command:',
+      '      - node',
+      '      - ./path/to/mcp-server.js',
       '    cwd: "./"',
       '    env: {}',
       '    tools: { whitelist: [], blacklist: [] }',
@@ -3171,11 +3183,15 @@ function renderMcpManual(language: LanguageCode): string {
     fmtCodeBlock('yaml', [
       '# stdio path example (minimal)',
       '# Relative path: depends on cwd',
-      'command: ["node", "./mcp/server.js"]',
+      'command:',
+      '  - node',
+      '  - ./mcp/server.js',
       'cwd: "/absolute/path/to/project"',
       '',
       '# Absolute path: independent of cwd',
-      'command: ["node", "/absolute/path/to/mcp/server.js"]',
+      'command:',
+      '  - node',
+      '  - /absolute/path/to/mcp/server.js',
     ]) +
     fmtCodeBlock('yaml', [
       '# Minimal template (HTTP)',
@@ -3385,19 +3401,23 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
 }
 
 async function renderToolsets(language: LanguageCode): Promise<string> {
-  const ids = Object.keys(listToolsets());
+  const ids = Object.keys(listToolsets()).filter((id) => id !== 'control');
   const header =
     language === 'zh' ? fmtHeader('已注册 toolsets') : fmtHeader('Registered toolsets');
 
   const intro =
     language === 'zh'
       ? fmtList([
+          '`control`：对话控制类工具属于“内建必备能力”，运行时会自动包含给所有成员；因此不需要（也不建议）在 `members.<id>.toolsets` 里显式列出，本页也默认不展示它。',
+          '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
           '按 provider 选择匹配的 toolsets：当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，优先给 `codex_style_tools`（`apply_patch`）；如果还需要“读工作区”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。其他 provider 或采用 Dominds 原生工具习惯时，优先给 `ws_read` / `ws_mod`（txt prepare→apply 工作流：prepare_* → apply_file_modification）。',
           '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”）。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
       : fmtList([
+          '`control`: dialog-control tools are intrinsic and automatically included for all members at runtime; you do not need (and should not) list it under `members.<id>.toolsets`. It is omitted from the list below.',
+          '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
           'Pick toolsets to match the provider: for `provider: codex` (Codex CLI-style prompts/tool names), prefer `codex_style_tools` (`apply_patch`); if you also need “read the workspace”, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators. For other providers or when using Dominds-native tool habits, prefer `ws_read` / `ws_mod` (txt prepare→apply workflow: prepare_* → apply_file_modification).',
           'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”). For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
@@ -3405,14 +3425,22 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
         ]);
 
   const patterns = fmtCodeBlock('yaml', [
-    '# 1) allow all',
-    'toolsets: ["*"]',
+    '# Recommended: explicit allow-list (most common)',
+    'toolsets:',
+    '  - ws_read',
+    '  - ws_mod',
+    '  - codex_style_tools',
     '',
-    '# 2) allow all except team-mgmt',
-    'toolsets: ["*", "!team-mgmt"]',
+    '# Team manager (explicit, minimal)',
+    'toolsets:',
+    '  - team-mgmt',
     '',
-    '# 3) allow a few',
-    'toolsets: ["shell", "git", "mcp"]',
+    '# Operator / DevOps (explicit; higher risk)',
+    'toolsets:',
+    '  - ws_read',
+    '  - ws_mod',
+    '  - os',
+    '  - mcp_admin',
   ]);
 
   const list = fmtList(ids.map((id) => `\`${id}\``));

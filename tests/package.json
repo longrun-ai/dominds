@@ -42,7 +42,8 @@
     "q4h-global-broadcast": "tsx diligence-push/q4h-global-broadcast.ts",
     "q4h-diligence-push-i18n": "tsx diligence-push/q4h-diligence-push-i18n.ts",
     "snippets-catalog-i18n": "tsx snippets/catalog-i18n.ts",
-    "access-control-dialogs-root-deny": "tsx access-control/dialogs-root-deny.ts"
+    "access-control-dialogs-root-deny": "tsx access-control/dialogs-root-deny.ts",
+    "team-mgmt-manual-no-toolsets-glob": "tsx team-mgmt-manual/no-toolsets-glob.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",
