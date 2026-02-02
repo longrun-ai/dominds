@@ -24,6 +24,11 @@ function buildDocTabs(): readonly DocTab[] {
       docName: 'dominds-terminology',
     },
     {
+      key: 'memory-system',
+      titleI18n: { zh: '记忆系统', en: 'Memory System' },
+      docName: 'memory-system',
+    },
+    {
       key: 'cli-usage',
       titleI18n: { zh: 'CLI 使用指南', en: 'CLI Usage Guide' },
       docName: 'cli-usage',
