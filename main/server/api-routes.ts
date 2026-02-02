@@ -43,6 +43,27 @@ import {
 
 const log = createLogger('api-routes');
 
+let cachedDomindsVersion: string | null | undefined;
+
+async function readDomindsPackageVersion(): Promise<string | null> {
+  if (cachedDomindsVersion !== undefined) return cachedDomindsVersion;
+  try {
+    const packagePath = path.join(__dirname, '..', '..', 'package.json');
+    const raw = await fsPromises.readFile(packagePath, 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) {
+      cachedDomindsVersion = null;
+      return null;
+    }
+    const version = parsed['version'];
+    cachedDomindsVersion = typeof version === 'string' ? version : null;
+    return cachedDomindsVersion;
+  } catch {
+    cachedDomindsVersion = null;
+    return null;
+  }
+}
+
 function getErrorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const maybe = (error as { code?: unknown }).code;
@@ -525,11 +546,12 @@ async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
  */
 async function handleHealthCheck(res: ServerResponse, context: ApiRouteContext): Promise<boolean> {
   try {
+    const version = (await readDomindsPackageVersion()) ?? 'unknown';
     const healthData = {
       ok: true,
       timestamp: formatUnifiedTimestamp(new Date()),
       server: 'dominds',
-      version: '1.0.0',
+      version,
       workspace: process.cwd(),
       mode: context.mode,
     };

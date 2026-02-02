@@ -111,6 +111,7 @@ export class DomindsApp extends HTMLElement {
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
   private currentTheme: 'light' | 'dark' = this.getCurrentTheme();
   private backendWorkspace: string = '';
+  private backendVersion: string = '';
   private toolbarCurrentCourse: number = 1;
   private toolbarTotalCourses: number = 1;
   private toolbarReminders: ReminderContent[] = [];
@@ -210,11 +211,30 @@ export class DomindsApp extends HTMLElement {
   }
 
   private disableDiligencePush: boolean = false;
-  private diligencePushMax: number | null = null;
-  private diligencePushLastShown: number | null = null;
+  private diligencePushConfiguredMax: number | null = null;
+  private diligencePushRemaining: number | null = null;
+  private diligencePushLastShown: string | null = null;
   private diligenceRtwsText: string = '';
   private diligenceRtwsDirty: boolean = false;
   private diligenceRtwsSource: 'builtin' | 'workspace' = 'builtin';
+
+  private getDiligenceBudgetBadgeText(): { text: string; hasRemaining: boolean } {
+    const configuredMax =
+      typeof this.diligencePushConfiguredMax === 'number' &&
+      Number.isFinite(this.diligencePushConfiguredMax)
+        ? Math.floor(this.diligencePushConfiguredMax)
+        : null;
+    const total = configuredMax !== null && configuredMax > 0 ? configuredMax : 0;
+
+    const remaining =
+      typeof this.diligencePushRemaining === 'number' &&
+      Number.isFinite(this.diligencePushRemaining)
+        ? Math.max(0, Math.floor(this.diligencePushRemaining))
+        : null;
+
+    if (remaining === null) return { text: `— / ${String(total)}`, hasRemaining: false };
+    return { text: `${String(remaining)} / ${String(total)}`, hasRemaining: remaining > 0 };
+  }
 
   private updateBottomPanelFooterUi(): void {
     const sr = this.shadowRoot;
@@ -244,21 +264,14 @@ export class DomindsApp extends HTMLElement {
     const badges = diligenceTab.querySelectorAll('.bp-badge');
     const badge = badges.length > 0 ? (badges[badges.length - 1] as HTMLElement) : null;
     if (badge) {
-      const max = this.diligencePushMax;
-      if (typeof max === 'number' && Number.isFinite(max)) {
-        const next = Math.min(99, Math.floor(max));
-        badge.textContent = String(next);
-        badge.setAttribute('data-has-remaining', next > 0 ? 'true' : 'false');
-        if (this.diligencePushLastShown !== next) {
-          this.diligencePushLastShown = next;
-          badge.classList.remove('pulse');
-          void badge.offsetWidth;
-          badge.classList.add('pulse');
-        }
-      } else {
-        badge.textContent = '—';
-        badge.setAttribute('data-has-remaining', 'false');
-        this.diligencePushLastShown = null;
+      const next = this.getDiligenceBudgetBadgeText();
+      badge.textContent = next.text;
+      badge.setAttribute('data-has-remaining', next.hasRemaining ? 'true' : 'false');
+      if (this.diligencePushLastShown !== next.text) {
+        this.diligencePushLastShown = next.text;
+        badge.classList.remove('pulse');
+        void badge.offsetWidth;
+        badge.classList.add('pulse');
       }
     }
 
@@ -910,6 +923,16 @@ export class DomindsApp extends HTMLElement {
     if (workspaceIndicator) {
       workspaceIndicator.textContent = `📁 ${this.backendWorkspace || 'Unknown workspace'}`;
     }
+
+    const versionIndicator = this.shadowRoot?.querySelector('#dominds-version');
+    if (versionIndicator) {
+      versionIndicator.textContent = this.backendVersion ? `v${this.backendVersion}` : '';
+      if (this.backendVersion) {
+        versionIndicator.classList.remove('hidden');
+      } else {
+        versionIndicator.classList.add('hidden');
+      }
+    }
   }
 
   /**
@@ -1139,16 +1162,42 @@ export class DomindsApp extends HTMLElement {
 
 	      .logo {
 	        display: flex;
-	        align-items: center;
+	        align-items: flex-end;
 	        gap: 12px;
 	        font-weight: 600;
 	        font-size: 18px;
+	        line-height: 1;
 	        color: var(--dominds-primary, #007acc);
 	        flex: none;
 	        min-width: auto;
 	        width: auto;
 	        margin-right: 0;
 	        text-decoration: none;
+	      }
+
+	      .logo img {
+	        align-self: flex-end;
+	        display: block;
+	      }
+
+	      .logo-text {
+	        display: flex;
+	        align-items: flex-end;
+	        gap: 6px;
+	        line-height: 1;
+	      }
+
+	      .logo-text > span {
+	        display: block;
+	        line-height: 1;
+	      }
+
+	      .dominds-version {
+	        font-size: 0.55em;
+	        font-weight: 550;
+	        color: var(--dominds-muted, #666666);
+	        opacity: 0.85;
+	        line-height: 1;
 	      }
 
 	      .workspace-indicator {
@@ -2207,9 +2256,8 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      button.bp-tab[data-bp-tab='diligence'] .bp-badge {
-	        width: 24px;
-	        min-width: 24px;
-	        padding: 2px 0;
+	        min-width: 56px;
+	        padding: 2px 8px;
 	        box-sizing: border-box;
 	      }
 
@@ -2908,7 +2956,12 @@ export class DomindsApp extends HTMLElement {
 	        <header class="header">
 	          <a class="logo" href="https://github.com/longrun-ai/dominds" target="_blank" rel="noopener noreferrer" title="${t.logoGitHubTitle}" aria-label="${t.logoGitHubTitle}">
 	            <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
-	            <span>Dominds</span>
+	            <span class="logo-text">
+	              <span>Dominds</span>
+	              <span id="dominds-version" class="dominds-version ${this.backendVersion ? '' : 'hidden'}">${escapeHtml(
+                  this.backendVersion ? `v${this.backendVersion}` : '',
+                )}</span>
+	            </span>
 	          </a>
 	          <div class="workspace-indicator" title="${t.backendWorkspaceTitle}">
 	            📁 ${this.backendWorkspace || t.backendWorkspaceLoading}
@@ -3121,7 +3174,7 @@ export class DomindsApp extends HTMLElement {
 	                    <span class="bp-badge" data-has-questions="${this.q4hQuestionCount > 0 ? 'true' : 'false'}">${String(this.q4hQuestionCount)}</span>
 	                    ${t.q4hPendingQuestions}
 	                  </button>
-	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
+			                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
 	                    <input
 	                      id="diligence-toggle"
 	                      class="bp-checkbox"
@@ -3130,19 +3183,8 @@ export class DomindsApp extends HTMLElement {
 	                      ${this.disableDiligencePush ? '' : 'checked'}
 	                    />
 	                    <span>${t.keepGoingTabTitle}</span>
-	                    <span class="bp-badge" data-has-remaining="${
-                        typeof this.diligencePushMax === 'number' &&
-                        Number.isFinite(this.diligencePushMax) &&
-                        Math.floor(this.diligencePushMax) > 0
-                          ? 'true'
-                          : 'false'
-                      }">${
-                        typeof this.diligencePushMax === 'number' &&
-                        Number.isFinite(this.diligencePushMax)
-                          ? String(Math.min(99, Math.floor(this.diligencePushMax)))
-                          : '—'
-                      }</span>
-	                  </button>
+		                    <span class="bp-badge" data-has-remaining="${this.getDiligenceBudgetBadgeText().hasRemaining ? 'true' : 'false'}">${this.getDiligenceBudgetBadgeText().text}</span>
+		                  </button>
 	                  <div class="bp-tabs-right">
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'snippets' ? 'active' : ''}" type="button" data-bp-tab="snippets">${t.promptTemplatesTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'team-manual' ? 'active' : ''}" type="button" data-bp-tab="team-manual">${t.teamMgmtManualTabTitle}</button>
@@ -3824,6 +3866,32 @@ export class DomindsApp extends HTMLElement {
       });
     }
 
+    const diligenceTab = this.shadowRoot.querySelector('button.bp-tab[data-bp-tab="diligence"]');
+    if (diligenceTab instanceof HTMLButtonElement) {
+      const badge = diligenceTab.querySelector('.bp-badge');
+      if (badge instanceof HTMLElement) {
+        badge.addEventListener('click', (e) => {
+          // Never toggle the Diligence tab when clicking the budget badge.
+          // This keeps double-click behavior (refill) from also expanding/collapsing the tab.
+          e.preventDefault();
+          e.stopPropagation();
+        });
+
+        badge.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!this.currentDialog) return;
+          this.wsManager.sendRaw({
+            type: 'refill_diligence_push_budget',
+            dialog: {
+              selfId: this.currentDialog.rootId,
+              rootId: this.currentDialog.rootId,
+            },
+          });
+        });
+      }
+    }
+
     const diligenceTextarea = this.shadowRoot.querySelector('#diligence-textarea');
     if (diligenceTextarea instanceof HTMLTextAreaElement) {
       diligenceTextarea.value = this.diligenceRtwsText;
@@ -3916,7 +3984,7 @@ export class DomindsApp extends HTMLElement {
     this.updateBottomPanelFooterUi();
     this.wsManager.sendRaw({
       type: 'set_diligence_push',
-      dialog: { selfId: this.currentDialog.selfId, rootId: this.currentDialog.rootId },
+      dialog: { selfId: this.currentDialog.rootId, rootId: this.currentDialog.rootId },
       disableDiligencePush: next,
     });
   }
@@ -4650,10 +4718,14 @@ export class DomindsApp extends HTMLElement {
       if (data && data.workspace) {
         this.backendWorkspace = data.workspace;
       }
+      if (data && typeof data.version === 'string') {
+        this.backendVersion = data.version;
+      }
       this.updateWorkspaceInfo();
     } catch (error) {
       console.error('Failed to load workspace info:', error);
       this.backendWorkspace = 'Unknown workspace';
+      this.backendVersion = '';
       this.updateWorkspaceInfo();
     }
   }
@@ -6068,11 +6140,20 @@ export class DomindsApp extends HTMLElement {
         };
 
         this.disableDiligencePush = readyMsg.disableDiligencePush ?? false;
-        this.diligencePushMax =
+        this.diligencePushConfiguredMax =
           typeof readyMsg.diligencePushMax === 'number' &&
           Number.isFinite(readyMsg.diligencePushMax)
             ? readyMsg.diligencePushMax
             : null;
+        if (
+          typeof this.diligencePushConfiguredMax === 'number' &&
+          Number.isFinite(this.diligencePushConfiguredMax) &&
+          Math.floor(this.diligencePushConfiguredMax) > 0
+        ) {
+          this.diligencePushRemaining = Math.floor(this.diligencePushConfiguredMax);
+        } else {
+          this.diligencePushRemaining = 0;
+        }
         this.diligenceRtwsDirty = false;
         this.updateBottomPanelFooterUi();
 
@@ -6115,24 +6196,24 @@ export class DomindsApp extends HTMLElement {
 
       case 'diligence_push_updated': {
         const evt = message as DiligencePushUpdatedMessage;
-        if (
-          this.currentDialog &&
-          evt.dialog.selfId === this.currentDialog.selfId &&
-          evt.dialog.rootId === this.currentDialog.rootId
-        ) {
+        if (this.currentDialog && evt.dialog.rootId === this.currentDialog.rootId) {
           this.disableDiligencePush = evt.disableDiligencePush;
           this.updateBottomPanelFooterUi();
         }
         return true;
       }
       case 'diligence_budget_evt': {
-        if (
-          this.currentDialog &&
-          message.dialog.selfId === this.currentDialog.selfId &&
-          message.dialog.rootId === this.currentDialog.rootId
-        ) {
+        if (this.currentDialog && message.dialog.rootId === this.currentDialog.rootId) {
+          if (
+            typeof message.maxInjectCount === 'number' &&
+            Number.isFinite(message.maxInjectCount) &&
+            Math.floor(message.maxInjectCount) > 0
+          ) {
+            this.diligencePushConfiguredMax = message.maxInjectCount;
+          }
+
           const remaining = message.remainingCount;
-          this.diligencePushMax =
+          this.diligencePushRemaining =
             typeof remaining === 'number' && Number.isFinite(remaining) ? remaining : null;
           this.disableDiligencePush = message.disableDiligencePush;
           this.updateBottomPanelFooterUi();

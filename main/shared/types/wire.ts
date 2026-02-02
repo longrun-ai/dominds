@@ -43,6 +43,7 @@ export type WebSocketMessage =
   | CreateDialogRequest
   | DisplayDialogRequest
   | SetDiligencePushRequest
+  | RefillDiligencePushBudgetRequest
   | DiligencePushUpdatedMessage
   | GetQ4HStateRequest
   | Q4HStateResponse
@@ -101,6 +102,11 @@ export interface SetDiligencePushRequest {
   type: 'set_diligence_push';
   dialog: DialogIdent;
   disableDiligencePush: boolean;
+}
+
+export interface RefillDiligencePushBudgetRequest {
+  type: 'refill_diligence_push_budget';
+  dialog: DialogIdent;
 }
 
 export interface DiligencePushUpdatedMessage {

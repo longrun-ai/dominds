@@ -71,6 +71,7 @@ export class DomindsSetup extends HTMLElement {
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
 
   private backendWorkspace: string = '';
+  private backendVersion: string = '';
 
   private selectedProviderKey: string | null = null;
   private selectedModelKey: string | null = null;
@@ -117,10 +118,13 @@ export class DomindsSetup extends HTMLElement {
 
       const data = resp.data;
       this.backendWorkspace = data && typeof data.workspace === 'string' ? data.workspace : '';
+
+      this.backendVersion = data && typeof data.version === 'string' ? data.version : '';
       this.render();
     } catch (error: unknown) {
       console.error('Failed to load workspace info:', error);
       this.backendWorkspace = '';
+      this.backendVersion = '';
       this.render();
     }
   }
@@ -386,7 +390,12 @@ export class DomindsSetup extends HTMLElement {
             t.logoGitHubTitle,
           )}" aria-label="${escapeHtmlAttr(t.logoGitHubTitle)}">
             <img src="${faviconUrl}" width="20" height="20" alt="Dominds Logo" />
-            <span>Dominds</span>
+            <span class="logo-text">
+              <span>Dominds</span>
+              <span class="dominds-version ${this.backendVersion ? '' : 'hidden'}">${escapeHtml(
+                this.backendVersion ? `v${this.backendVersion}` : '',
+              )}</span>
+            </span>
             </a>
           <span class="setup-badge">${escapeHtml(t.setupTitle)}</span>
           <div class="workspace-indicator" title="${escapeHtmlAttr(t.backendWorkspaceTitle)}">
@@ -1402,8 +1411,16 @@ export class DomindsSetup extends HTMLElement {
       .workspace-indicator::-webkit-scrollbar-thumb{background:var(--dominds-muted,#666666);border-radius:2px;}
       .workspace-indicator::-webkit-scrollbar-thumb:hover{background:var(--dominds-fg,#333333);}
 
-      .logo{display:flex;align-items:center;gap:12px;color:var(--dominds-primary,#007acc);text-decoration:none;font-weight:600;font-size:18px;}
-      .logo img{display:block;}
+      .hidden{display:none;}
+
+      .logo{display:flex;align-items:flex-end;gap:12px;color:var(--dominds-primary,#007acc);text-decoration:none;font-weight:600;font-size:18px;line-height:1;}
+      .logo img{display:block;align-self:flex-end;}
+
+      .logo-text{display:flex;align-items:flex-end;gap:6px;line-height:1;}
+
+      .logo-text > span{display:block;line-height:1;}
+
+      .dominds-version{font-size:0.55em;font-weight:550;color:var(--dominds-muted,#666666);opacity:0.85;line-height:1;}
 
       .setup-badge{
         font-size:12px;

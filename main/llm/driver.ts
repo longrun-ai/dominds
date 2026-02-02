@@ -173,40 +173,60 @@ async function resolveRtwsDiligenceConfig(
 async function maybePrepareDiligenceAutoContinuePrompt(options: {
   dlg: Dialog;
   isRootDialog: boolean;
-  alreadyInjectedCount: number;
+  remainingBudget: number;
   diligencePushMax: number;
 }): Promise<
-  | { kind: 'disabled'; nextInjectedCount: number }
-  | { kind: 'budget_exhausted'; maxInjectCount: number; nextInjectedCount: number }
-  | { kind: 'prompt'; prompt: HumanPrompt; maxInjectCount: number; nextInjectedCount: number }
+  | { kind: 'disabled'; nextRemainingBudget: number }
+  | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
+  | { kind: 'prompt'; prompt: HumanPrompt; maxInjectCount: number; nextRemainingBudget: number }
 > {
   if (!options.isRootDialog) {
-    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
+    return { kind: 'disabled', nextRemainingBudget: options.remainingBudget };
   }
 
   if (options.dlg.disableDiligencePush) {
-    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
-  }
-
-  if (options.diligencePushMax < 1) {
-    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
+    const normalizedRemaining =
+      typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
+        ? Math.max(0, Math.floor(options.remainingBudget))
+        : 0;
+    return { kind: 'disabled', nextRemainingBudget: normalizedRemaining };
   }
 
   const resolved = await resolveRtwsDiligenceConfig(getWorkLanguage());
   if (resolved.kind === 'disabled') {
-    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
+    return { kind: 'disabled', nextRemainingBudget: options.remainingBudget };
   }
 
-  const maxInjectCount = options.diligencePushMax;
+  const maxInjectCount =
+    typeof options.diligencePushMax === 'number' && Number.isFinite(options.diligencePushMax)
+      ? Math.floor(options.diligencePushMax)
+      : 0;
+  const normalizedRemaining =
+    typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
+      ? Math.max(0, Math.floor(options.remainingBudget))
+      : 0;
+
+  // When max <= 0, Diligence Push is disabled by config, but can be manually refilled via UI.
   if (maxInjectCount < 1) {
-    return { kind: 'disabled', nextInjectedCount: options.alreadyInjectedCount };
-  }
-  if (options.alreadyInjectedCount >= maxInjectCount) {
-    return {
-      kind: 'budget_exhausted',
-      maxInjectCount,
-      nextInjectedCount: options.alreadyInjectedCount,
+    if (normalizedRemaining < 1) {
+      return { kind: 'disabled', nextRemainingBudget: 0 };
+    }
+    const prompt: HumanPrompt = {
+      content: resolved.diligenceText,
+      msgId: generateShortId(),
+      grammar: 'markdown',
     };
+    return {
+      kind: 'prompt',
+      prompt,
+      maxInjectCount: 0,
+      nextRemainingBudget: normalizedRemaining - 1,
+    };
+  }
+
+  const currentRemaining = Math.min(normalizedRemaining, maxInjectCount);
+  if (currentRemaining < 1) {
+    return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
   }
 
   const prompt: HumanPrompt = {
@@ -218,7 +238,7 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
     kind: 'prompt',
     prompt,
     maxInjectCount,
-    nextInjectedCount: options.alreadyInjectedCount + 1,
+    nextRemainingBudget: currentRemaining - 1,
   };
 }
 
@@ -1838,7 +1858,17 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             try {
               // Q4H suspension resets Diligence Push budget so post-Q4H continuation gets a fresh counter.
               if (await dlg.hasPendingQ4H()) {
-                dlg.diligenceAutoContinueCount = 0;
+                const configuredMax = resolveMemberDiligencePushMax(team, dlg.agentId);
+                if (typeof configuredMax === 'number' && Number.isFinite(configuredMax)) {
+                  const next = Math.floor(configuredMax);
+                  dlg.diligencePushRemainingBudget =
+                    next > 0 ? next : Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
+                } else {
+                  dlg.diligencePushRemainingBudget = Math.max(
+                    0,
+                    Math.floor(dlg.diligencePushRemainingBudget),
+                  );
+                }
               }
             } catch (err) {
               log.warn('Failed to check Q4H state for Diligence Push reset', err, {
@@ -1860,7 +1890,17 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               const suspension = await dlg.getSuspensionStatus();
               if (!suspension.canDrive) {
                 if (suspension.q4h) {
-                  dlg.diligenceAutoContinueCount = 0;
+                  const configuredMax = resolveMemberDiligencePushMax(team, dlg.agentId);
+                  if (typeof configuredMax === 'number' && Number.isFinite(configuredMax)) {
+                    const next = Math.floor(configuredMax);
+                    dlg.diligencePushRemainingBudget =
+                      next > 0 ? next : Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
+                  } else {
+                    dlg.diligencePushRemainingBudget = Math.max(
+                      0,
+                      Math.floor(dlg.diligencePushRemainingBudget),
+                    );
+                  }
                 }
                 break;
               }
@@ -1868,16 +1908,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               const prepared = await maybePrepareDiligenceAutoContinuePrompt({
                 dlg,
                 isRootDialog: true,
-                alreadyInjectedCount: dlg.diligenceAutoContinueCount,
+                remainingBudget: dlg.diligencePushRemainingBudget,
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
-              dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
+              dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
               if (prepared.kind !== 'disabled') {
                 postDialogEvent(dlg, {
                   type: 'diligence_budget_evt',
                   maxInjectCount: prepared.maxInjectCount,
-                  injectedCount: prepared.nextInjectedCount,
-                  remainingCount: Math.max(0, prepared.maxInjectCount - prepared.nextInjectedCount),
+                  injectedCount: Math.max(
+                    0,
+                    prepared.maxInjectCount - prepared.nextRemainingBudget,
+                  ),
+                  remainingCount: Math.max(0, prepared.nextRemainingBudget),
                   disableDiligencePush: dlg.disableDiligencePush,
                 });
               }
@@ -1886,7 +1929,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   dlg,
                   maxInjectCount: prepared.maxInjectCount,
                 });
-                dlg.diligenceAutoContinueCount = 0;
+                dlg.diligencePushRemainingBudget = 0;
                 break;
               }
               if (prepared.kind === 'prompt') {
@@ -2275,7 +2318,17 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             try {
               // Q4H suspension resets Diligence Push budget so post-Q4H continuation gets a fresh counter.
               if (await dlg.hasPendingQ4H()) {
-                dlg.diligenceAutoContinueCount = 0;
+                const configuredMax = resolveMemberDiligencePushMax(team, dlg.agentId);
+                if (typeof configuredMax === 'number' && Number.isFinite(configuredMax)) {
+                  const next = Math.floor(configuredMax);
+                  dlg.diligencePushRemainingBudget =
+                    next > 0 ? next : Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
+                } else {
+                  dlg.diligencePushRemainingBudget = Math.max(
+                    0,
+                    Math.floor(dlg.diligencePushRemainingBudget),
+                  );
+                }
               }
             } catch (err) {
               log.warn('Failed to check Q4H state for Diligence Push reset', err, {
@@ -2293,7 +2346,17 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               const suspension = await dlg.getSuspensionStatus();
               if (!suspension.canDrive) {
                 if (suspension.q4h) {
-                  dlg.diligenceAutoContinueCount = 0;
+                  const configuredMax = resolveMemberDiligencePushMax(team, dlg.agentId);
+                  if (typeof configuredMax === 'number' && Number.isFinite(configuredMax)) {
+                    const next = Math.floor(configuredMax);
+                    dlg.diligencePushRemainingBudget =
+                      next > 0 ? next : Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
+                  } else {
+                    dlg.diligencePushRemainingBudget = Math.max(
+                      0,
+                      Math.floor(dlg.diligencePushRemainingBudget),
+                    );
+                  }
                 }
                 break;
               }
@@ -2301,16 +2364,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               const prepared = await maybePrepareDiligenceAutoContinuePrompt({
                 dlg,
                 isRootDialog: true,
-                alreadyInjectedCount: dlg.diligenceAutoContinueCount,
+                remainingBudget: dlg.diligencePushRemainingBudget,
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
-              dlg.diligenceAutoContinueCount = prepared.nextInjectedCount;
+              dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
               if (prepared.kind !== 'disabled') {
                 postDialogEvent(dlg, {
                   type: 'diligence_budget_evt',
                   maxInjectCount: prepared.maxInjectCount,
-                  injectedCount: prepared.nextInjectedCount,
-                  remainingCount: Math.max(0, prepared.maxInjectCount - prepared.nextInjectedCount),
+                  injectedCount: Math.max(
+                    0,
+                    prepared.maxInjectCount - prepared.nextRemainingBudget,
+                  ),
+                  remainingCount: Math.max(0, prepared.nextRemainingBudget),
                   disableDiligencePush: dlg.disableDiligencePush,
                 });
               }
@@ -2319,7 +2385,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                   dlg,
                   maxInjectCount: prepared.maxInjectCount,
                 });
-                dlg.diligenceAutoContinueCount = 0;
+                dlg.diligencePushRemainingBudget = 0;
                 break;
               }
               if (prepared.kind === 'prompt') {

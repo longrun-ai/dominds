@@ -202,7 +202,7 @@ export abstract class Dialog {
 
   // Diligence Push (diligence auto-continue) budget counter (runtime-only).
   // Intentionally not persisted: this is a per-process safety valve, not dialog state.
-  public diligenceAutoContinueCount: number = 0;
+  public diligencePushRemainingBudget: number = 0;
 
   // Diligence Push disable switch (persisted via latest.yaml; default = false).
   public disableDiligencePush: boolean = false;

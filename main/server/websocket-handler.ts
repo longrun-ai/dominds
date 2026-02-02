@@ -35,6 +35,7 @@ import type {
   GetQ4HStateRequest,
   InterruptDialogRequest,
   Q4HStateResponse,
+  RefillDiligencePushBudgetRequest,
   ResumeAllRequest,
   ResumeDialogRequest,
   SetDiligencePushRequest,
@@ -59,6 +60,11 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
     return member.diligence_push_max;
   }
   return DEFAULT_DILIGENCE_PUSH_MAX;
+}
+
+function normalizeDiligencePushMax(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.floor(value);
 }
 
 const log = createLogger('websocket-handler');
@@ -183,6 +189,10 @@ export async function handleWebSocketMessage(
         await handleSetDiligencePush(ws, packet);
         break;
 
+      case 'refill_diligence_push_budget':
+        await handleRefillDiligencePushBudget(ws, packet);
+        break;
+
       case 'get_q4h_state':
         await handleGetQ4HState(ws, packet);
         break;
@@ -269,7 +279,8 @@ async function handleSetDiligencePush(
       return;
     }
 
-    const dialogIdObj = new DialogID(selfId, rootId);
+    // Diligence Push is root-dialog state. Even if a subdialog is displayed, always mutate the root.
+    const dialogIdObj = new DialogID(rootId);
 
     // Locate dialog status (running/completed/archived) for persistence.
     const statuses: Array<'running' | 'completed' | 'archived'> = [
@@ -303,18 +314,12 @@ async function handleSetDiligencePush(
     // Update live in-memory instance if it's loaded.
     const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, foundStatus);
     if (rootDialog) {
-      const target =
-        dialogIdObj.selfId === dialogIdObj.rootId
-          ? rootDialog
-          : await ensureDialogLoaded(rootDialog, dialogIdObj, foundStatus);
-      if (target) {
-        target.disableDiligencePush = disableDiligencePush;
-      }
+      rootDialog.disableDiligencePush = disableDiligencePush;
     }
 
     const msg: DiligencePushUpdatedMessage = {
       type: 'diligence_push_updated',
-      dialog: { selfId, rootId },
+      dialog: { selfId: dialogIdObj.selfId, rootId: dialogIdObj.rootId },
       disableDiligencePush,
       timestamp: formatUnifiedTimestamp(new Date()),
     };
@@ -329,6 +334,85 @@ async function handleSetDiligencePush(
       }),
     );
   }
+}
+
+function clampNonNegativeFiniteInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.floor(value));
+}
+
+async function handleRefillDiligencePushBudget(
+  ws: WebSocket,
+  packet: RefillDiligencePushBudgetRequest,
+): Promise<void> {
+  const { dialog } = packet as unknown as { dialog?: unknown };
+  if (!isRecord(dialog)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'dialog is required' }));
+    return;
+  }
+
+  const rootId = typeof dialog.rootId === 'string' ? dialog.rootId : null;
+  if (!rootId) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message:
+          'Invalid dialog identifiers for refill_diligence_push_budget: rootId must be a string',
+      }),
+    );
+    return;
+  }
+
+  const rootDialogId = new DialogID(rootId);
+  const statuses: Array<'running' | 'completed' | 'archived'> = [
+    'running',
+    'completed',
+    'archived',
+  ];
+  let foundStatus: 'running' | 'completed' | 'archived' | null = null;
+  for (const status of statuses) {
+    const meta = await DialogPersistence.loadDialogMetadata(rootDialogId, status);
+    if (!meta) continue;
+    foundStatus = status;
+    break;
+  }
+  if (!foundStatus) {
+    ws.send(
+      JSON.stringify({ type: 'error', message: `Dialog ${rootDialogId.valueOf()} not found` }),
+    );
+    return;
+  }
+
+  const rootDialog = await getOrRestoreRootDialog(rootDialogId.rootId, foundStatus);
+  if (!rootDialog) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: `Root dialog ${rootDialogId.rootId} is not available for refill`,
+      }),
+    );
+    return;
+  }
+
+  const team = await Team.load();
+  const configuredMax = normalizeDiligencePushMax(
+    resolveMemberDiligencePushMax(team, rootDialog.agentId),
+  );
+
+  if (configuredMax > 0) {
+    rootDialog.diligencePushRemainingBudget = configuredMax;
+  } else {
+    rootDialog.diligencePushRemainingBudget =
+      clampNonNegativeFiniteInt(rootDialog.diligencePushRemainingBudget, 0) + 3;
+  }
+
+  postDialogEvent(rootDialog, {
+    type: 'diligence_budget_evt',
+    maxInjectCount: configuredMax > 0 ? configuredMax : 0,
+    injectedCount: 0,
+    remainingCount: rootDialog.diligencePushRemainingBudget,
+    disableDiligencePush: rootDialog.disableDiligencePush,
+  });
 }
 
 async function handleGetProblems(ws: WebSocket, packet: WebSocketMessage): Promise<void> {
@@ -421,6 +505,14 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
+    const team = await Team.load();
+    const diligencePushMax = normalizeDiligencePushMax(
+      resolveMemberDiligencePushMax(team, finalAgentId),
+    );
+    const defaultDisableDiligencePush = diligencePushMax <= 0;
+    dialog.disableDiligencePush = defaultDisableDiligencePush;
+    dialog.diligencePushRemainingBudget = diligencePushMax > 0 ? diligencePushMax : 0;
+
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(new DialogID(dialogId.selfId), () => ({
       kind: 'replace',
@@ -432,12 +524,11 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         functionCallCount: 0,
         subdialogCount: 0,
         runState: { kind: 'idle_waiting_user' },
-        disableDiligencePush: false,
+        disableDiligencePush: defaultDisableDiligencePush,
       },
     }));
 
     // Send dialog_ready with full info so frontend can track the active dialog
-    const team = await Team.load();
     const response: DialogReadyMessage = {
       type: 'dialog_ready',
       dialog: {
@@ -446,8 +537,8 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       },
       agentId: finalAgentId,
       taskDocPath: taskDocPath,
-      disableDiligencePush: false,
-      diligencePushMax: resolveMemberDiligencePushMax(team, finalAgentId),
+      disableDiligencePush: defaultDisableDiligencePush,
+      diligencePushMax,
     };
     ws.send(JSON.stringify(response));
 
@@ -595,7 +686,20 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
 
     // Send dialog_ready with full info so frontend knows the current dialog ID
     const team = await Team.load();
-    const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, foundStatus);
+    const diligencePushMax = normalizeDiligencePushMax(
+      resolveMemberDiligencePushMax(team, metadata.agentId),
+    );
+    const rootLatest = await DialogPersistence.loadDialogLatest(
+      new DialogID(dialogIdObj.rootId),
+      foundStatus,
+    );
+    const defaultDisableDiligencePush = diligencePushMax <= 0;
+    const persistedDisableDiligencePush =
+      rootLatest && typeof rootLatest.disableDiligencePush === 'boolean'
+        ? rootLatest.disableDiligencePush
+        : defaultDisableDiligencePush;
+    const effectiveDisableDiligencePush = persistedDisableDiligencePush;
+    rootDialog.disableDiligencePush = effectiveDisableDiligencePush;
     const dialogReadyResponse: DialogReadyMessage = {
       type: 'dialog_ready',
       dialog: {
@@ -607,8 +711,8 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       supdialogId: metadata.supdialogId,
       tellaskSession: metadata.tellaskSession,
       assignmentFromSup: metadata.assignmentFromSup,
-      disableDiligencePush: latest?.disableDiligencePush ?? false,
-      diligencePushMax: resolveMemberDiligencePushMax(team, metadata.agentId),
+      disableDiligencePush: effectiveDisableDiligencePush,
+      diligencePushMax,
     };
     ws.send(JSON.stringify(dialogReadyResponse));
 
