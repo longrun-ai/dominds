@@ -1468,19 +1468,40 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
+    // Idempotency: end_of_user_saying_evt can be replayed during course navigation.
+    if (body.querySelector('.user-response-divider')) {
+      bubble.setAttribute('data-user-msg-id', event.msgId);
+      bubble.setAttribute('data-raw-user-msg', event.content);
+      if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
+        bubble.setAttribute('data-user-language-code', event.userLanguageCode);
+      } else {
+        bubble.removeAttribute('data-user-language-code');
+      }
+      // If any tool-call responses were deferred due to missing bubble language, try attaching now.
+      this.flushPendingToolCallResponsesForBubble(bubble);
+      this.scrollToBottom();
+      return;
+    }
+
+    // Protocol note:
+    // - The backend should guarantee that `end_of_user_saying_evt` arrives before any assistant-only
+    //   stream sections (e.g. thinking / function-call) for the same genseq.
+    // - The UI must render sections in arrival order; do not reorder the DOM to "fix" ordering.
+    // So if assistant-only nodes already exist, report it loudly and still append the divider
+    // at the current position (arrival order), making the ordering issue visible.
+    const assistantOnlyAlreadyStarted = body.querySelector('.thinking-section, .func-call-section');
+    if (assistantOnlyAlreadyStarted) {
+      this.handleProtocolError(
+        `Protocol violation: end_of_user_saying_evt received after assistant output already started (genseq=${String(
+          event.genseq,
+        )})`,
+      );
+    }
+
     // Add divider to separate user content from AI response
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
-    // If assistant output already started streaming (thinking/markdown/func-call/etc), insert the
-    // divider before the first assistant section so the timeline order remains faithful.
-    const firstAssistantNode = body.querySelector(
-      '.thinking-section, .markdown-section, .func-call-section, .codeblock-section, .calling-section',
-    );
-    if (firstAssistantNode && firstAssistantNode.parentElement === body) {
-      body.insertBefore(divider, firstAssistantNode);
-    } else {
-      body.appendChild(divider);
-    }
+    body.appendChild(divider);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
     if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
