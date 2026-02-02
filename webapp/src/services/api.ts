@@ -492,8 +492,8 @@ export class ApiClient {
     return this.request('/api/snippets/workspace');
   }
 
-  async getSnippetCatalog(): Promise<ApiResponse<SnippetCatalogResponse>> {
-    return this.request('/api/snippets/catalog');
+  async getSnippetCatalog(uiLanguage: LanguageCode): Promise<ApiResponse<SnippetCatalogResponse>> {
+    return this.request(`/api/snippets/catalog?lang=${encodeURIComponent(uiLanguage)}`);
   }
 
   async createWorkspaceSnippetGroup(

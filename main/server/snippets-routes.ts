@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 import { createLogger } from '../log';
+import type { LanguageCode } from '../shared/types/language';
 
 type SnippetTemplateSource = 'builtin' | 'workspace';
 
@@ -143,7 +144,34 @@ function stripLangSuffixFromSnippetId(id: string): string {
   return id;
 }
 
-async function buildSnippetCatalog(): Promise<SnippetCatalogGroup[]> {
+function detectSnippetLanguageFromPath(filePath: string | undefined): LanguageCode | null {
+  if (typeof filePath !== 'string') return null;
+  const lowered = filePath.replace(/\\/g, '/').toLowerCase();
+  if (lowered.endsWith('.zh.md')) return 'zh';
+  if (lowered.endsWith('.en.md')) return 'en';
+  return null;
+}
+
+function pickBestSnippetVariant(
+  candidates: ReadonlyArray<SnippetTemplate>,
+  uiLanguage: LanguageCode | null,
+): SnippetTemplate | null {
+  const first = candidates[0] ?? null;
+  if (!first) return null;
+  if (!uiLanguage) return first;
+
+  for (const tpl of candidates) {
+    if (detectSnippetLanguageFromPath(tpl.path) === uiLanguage) return tpl;
+  }
+  for (const tpl of candidates) {
+    if (detectSnippetLanguageFromPath(tpl.path) === null) return tpl;
+  }
+  return first;
+}
+
+async function buildSnippetCatalog(
+  uiLanguage: LanguageCode | null,
+): Promise<SnippetCatalogGroup[]> {
   const builtin = await readBuiltinSnippets();
   const workspace = await readWorkspaceSnippets();
 
@@ -168,16 +196,21 @@ async function buildSnippetCatalog(): Promise<SnippetCatalogGroup[]> {
     ];
   }
 
-  const builtinByToken = new Map<string, SnippetTemplate>();
+  const builtinByToken = new Map<string, SnippetTemplate[]>();
   for (const tpl of builtin) {
     const p = typeof tpl.path === 'string' ? tpl.path : '';
     if (!p.startsWith('snippets/')) continue;
     const noExt = stripLangSuffixFromSnippetId(p);
     const token = noExt.replace(/^snippets\//, '');
-    if (!builtinByToken.has(token)) builtinByToken.set(token, tpl);
+    const prev = builtinByToken.get(token);
+    if (prev) {
+      prev.push(tpl);
+    } else {
+      builtinByToken.set(token, [tpl]);
+    }
   }
 
-  const workspaceByGroupAndToken = new Map<string, SnippetTemplate>();
+  const workspaceByGroupAndToken = new Map<string, SnippetTemplate[]>();
   for (const tpl of workspace) {
     const p = typeof tpl.path === 'string' ? tpl.path : '';
     if (!p.startsWith('.minds/snippets/')) continue;
@@ -188,7 +221,12 @@ async function buildSnippetCatalog(): Promise<SnippetCatalogGroup[]> {
     if (!groupKey || !rest) continue;
     const token = stripLangSuffixFromSnippetId(rest);
     const k = `${groupKey}/${token}`;
-    if (!workspaceByGroupAndToken.has(k)) workspaceByGroupAndToken.set(k, tpl);
+    const prev = workspaceByGroupAndToken.get(k);
+    if (prev) {
+      prev.push(tpl);
+    } else {
+      workspaceByGroupAndToken.set(k, [tpl]);
+    }
   }
 
   const keys: string[] = [];
@@ -219,7 +257,8 @@ async function buildSnippetCatalog(): Promise<SnippetCatalogGroup[]> {
         if (typeof raw !== 'string') continue;
         const token = raw.trim();
         if (!token) continue;
-        const tpl = builtinByToken.get(token);
+        const candidates = builtinByToken.get(token) ?? [];
+        const tpl = pickBestSnippetVariant(candidates, uiLanguage);
         if (tpl) templates.push(tpl);
       }
     }
@@ -228,7 +267,8 @@ async function buildSnippetCatalog(): Promise<SnippetCatalogGroup[]> {
         if (typeof raw !== 'string') continue;
         const token = raw.trim();
         if (!token) continue;
-        const tpl = workspaceByGroupAndToken.get(`${groupKey}/${token}`);
+        const candidates = workspaceByGroupAndToken.get(`${groupKey}/${token}`) ?? [];
+        const tpl = pickBestSnippetVariant(candidates, uiLanguage);
         if (tpl) templates.push(tpl);
       }
     }
@@ -544,9 +584,11 @@ export async function handleGetWorkspaceSnippets(): Promise<SnippetTemplatesResp
   }
 }
 
-export async function handleGetSnippetCatalog(): Promise<SnippetCatalogResponse> {
+export async function handleGetSnippetCatalog(
+  uiLanguage: LanguageCode | null = null,
+): Promise<SnippetCatalogResponse> {
   try {
-    const groups = await buildSnippetCatalog();
+    const groups = await buildSnippetCatalog(uiLanguage);
     return { success: true, groups };
   } catch (error: unknown) {
     log.error('Failed to build snippet catalog', error);

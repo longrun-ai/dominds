@@ -49,7 +49,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
     this.render();
     try {
       const api = getApiClient();
-      const catalogResp = await api.getSnippetCatalog();
+      const catalogResp = await api.getSnippetCatalog(this.uiLanguage);
 
       if (!catalogResp.success && catalogResp.status === 401) {
         this.dispatchEvent(

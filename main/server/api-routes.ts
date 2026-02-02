@@ -254,7 +254,10 @@ export async function handleApiRoute(
     }
 
     if (pathname === '/api/snippets/catalog' && req.method === 'GET') {
-      const payload = await handleGetSnippetCatalog();
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const lang = urlObj.searchParams.get('lang') ?? urlObj.searchParams.get('uiLanguage');
+      const parsedLang = typeof lang === 'string' ? normalizeLanguageCode(lang) : null;
+      const payload = await handleGetSnippetCatalog(parsedLang);
       respondJson(res, payload.success ? 200 : 500, payload);
       return true;
     }
