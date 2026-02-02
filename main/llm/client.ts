@@ -62,7 +62,7 @@ export type FuncResultMsg = {
 };
 
 export type TellaskCallResultMsg = {
-  type: 'call_result_msg';
+  type: 'tellask_result_msg';
   role: 'tool';
   responderId: string; // id of tool only
   headLine: string; // headline of original tellask tool call (body not included in the result)

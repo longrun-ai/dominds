@@ -3146,7 +3146,7 @@ async function emitMalformedTellaskResponses(
       content: msg,
     });
     toolOutputs.push({
-      type: 'call_result_msg',
+      type: 'tellask_result_msg',
       role: 'tool',
       responderId: 'dominds',
       headLine: call.headLine,
@@ -3216,7 +3216,7 @@ async function executeTellaskCall(
         const msg = formatDomindsNoteInvalidMultiTeammateTargets(getWorkLanguage(), { unknown });
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push({
-          type: 'call_result_msg',
+          type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
           headLine,
@@ -3234,7 +3234,7 @@ async function executeTellaskCall(
           const msg = formatDomindsNoteMultipleTellaskSessionDirectives(getWorkLanguage());
           toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
           toolOutputs.push({
-            type: 'call_result_msg',
+            type: 'tellask_result_msg',
             role: 'tool',
             responderId: 'dominds',
             headLine,
@@ -3249,7 +3249,7 @@ async function executeTellaskCall(
           const msg = formatDomindsNoteInvalidTellaskSessionDirective(getWorkLanguage());
           toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
           toolOutputs.push({
-            type: 'call_result_msg',
+            type: 'tellask_result_msg',
             role: 'tool',
             responderId: 'dominds',
             headLine,
@@ -3382,7 +3382,7 @@ async function executeTellaskCall(
         const msg = formatDomindsNoteMultipleTellaskSessionDirectives(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push({
-          type: 'call_result_msg',
+          type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
           headLine,
@@ -3397,7 +3397,7 @@ async function executeTellaskCall(
         const msg = formatDomindsNoteInvalidTellaskSessionDirective(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
         toolOutputs.push({
-          type: 'call_result_msg',
+          type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
           headLine,
@@ -3485,7 +3485,7 @@ async function executeTellaskCall(
           dlg.setSuspensionState('resumed');
 
           const resultMsg: TellaskCallResultMsg = {
-            type: 'call_result_msg',
+            type: 'tellask_result_msg',
             role: 'tool',
             responderId: parseResult.agentId,
             headLine,
@@ -3511,7 +3511,7 @@ async function executeTellaskCall(
           dlg.setSuspensionState('resumed');
           const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
           const resultMsg: TellaskCallResultMsg = {
-            type: 'call_result_msg',
+            type: 'tellask_result_msg',
             role: 'tool',
             responderId: parseResult.agentId,
             headLine,
@@ -3751,7 +3751,7 @@ async function executeTellaskCall(
     const msg = formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), { firstMention });
     toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
     toolOutputs.push({
-      type: 'call_result_msg',
+      type: 'tellask_result_msg',
       role: 'tool',
       responderId: 'dominds',
       headLine,

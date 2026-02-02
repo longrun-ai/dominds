@@ -3745,7 +3745,7 @@ export class DialogPersistence {
         case 'tool_call_result_record': {
           // Convert tool call result to ChatMessage
           messages.push({
-            type: 'call_result_msg',
+            type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
             headLine: event.headLine,
@@ -3766,7 +3766,7 @@ export class DialogPersistence {
             language: getWorkLanguage(),
           });
           messages.push({
-            type: 'call_result_msg',
+            type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
             headLine: event.headLine,

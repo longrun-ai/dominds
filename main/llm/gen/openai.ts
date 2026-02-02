@@ -87,7 +87,7 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
         role: 'assistant',
         content: msg.content,
       };
-    case 'call_result_msg':
+    case 'tellask_result_msg':
       return {
         type: 'message',
         role: 'user',

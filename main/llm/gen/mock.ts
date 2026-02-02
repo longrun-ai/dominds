@@ -276,7 +276,7 @@ responses:
             case 'saying_msg':
             case 'thinking_msg':
             case 'func_result_msg':
-            case 'call_result_msg':
+            case 'tellask_result_msg':
               return acc + msg.content.length;
             case 'func_call_msg':
               return acc + msg.name.length + msg.arguments.length;
@@ -380,7 +380,7 @@ responses:
               case 'saying_msg':
               case 'thinking_msg':
               case 'func_result_msg':
-              case 'call_result_msg':
+              case 'tellask_result_msg':
                 return acc + msg.content.length;
               case 'func_call_msg':
                 return acc + msg.name.length + msg.arguments.length;
