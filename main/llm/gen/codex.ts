@@ -336,6 +336,8 @@ export class CodexGen implements LlmGenerator {
     let sayingStarted = false;
     let thinkingStarted = false;
     let sawOutputText = false;
+    type ActiveStream = 'idle' | 'thinking' | 'saying';
+    let activeStream: ActiveStream = 'idle';
     let usage: LlmUsageStats = { kind: 'unavailable' };
     let returnedModel: string | undefined;
 
@@ -359,9 +361,21 @@ export class CodexGen implements LlmGenerator {
           case 'response.output_text.delta': {
             const delta = event.delta;
             if (delta.length > 0) {
+              if (activeStream === 'thinking') {
+                log.error(
+                  'CODEX stream overlap violation: received output_text while thinking stream still active',
+                  new Error('codex_stream_overlap_violation'),
+                );
+                if (thinkingStarted) {
+                  await receiver.thinkingFinish();
+                  thinkingStarted = false;
+                }
+                activeStream = 'idle';
+              }
               if (!sayingStarted) {
                 sayingStarted = true;
                 await receiver.sayingStart();
+                activeStream = 'saying';
               }
               await receiver.sayingChunk(delta);
               sawOutputText = true;
@@ -370,9 +384,21 @@ export class CodexGen implements LlmGenerator {
           }
           case 'response.output_text.done': {
             if (!sawOutputText && event.text.length > 0) {
+              if (activeStream === 'thinking') {
+                log.error(
+                  'CODEX stream overlap violation: received output_text while thinking stream still active',
+                  new Error('codex_stream_overlap_violation'),
+                );
+                if (thinkingStarted) {
+                  await receiver.thinkingFinish();
+                  thinkingStarted = false;
+                }
+                activeStream = 'idle';
+              }
               if (!sayingStarted) {
                 sayingStarted = true;
                 await receiver.sayingStart();
+                activeStream = 'saying';
               }
               await receiver.sayingChunk(event.text);
               sawOutputText = true;
@@ -380,6 +406,7 @@ export class CodexGen implements LlmGenerator {
             if (sayingStarted) {
               await receiver.sayingFinish();
               sayingStarted = false;
+              if (activeStream === 'saying') activeStream = 'idle';
             }
             return;
           }
@@ -390,18 +417,42 @@ export class CodexGen implements LlmGenerator {
           case 'response.reasoning_text.delta': {
             const delta = event.delta;
             if (delta.length > 0) {
+              if (activeStream === 'saying') {
+                log.error(
+                  'CODEX stream overlap violation: received reasoning while saying stream still active',
+                  new Error('codex_stream_overlap_violation'),
+                );
+                if (sayingStarted) {
+                  await receiver.sayingFinish();
+                  sayingStarted = false;
+                }
+                activeStream = 'idle';
+              }
               if (!thinkingStarted) {
                 thinkingStarted = true;
                 await receiver.thinkingStart();
+                activeStream = 'thinking';
               }
               await receiver.thinkingChunk(delta);
             }
             return;
           }
           case 'response.reasoning_summary_part.added': {
+            if (activeStream === 'saying') {
+              log.error(
+                'CODEX stream overlap violation: received reasoning while saying stream still active',
+                new Error('codex_stream_overlap_violation'),
+              );
+              if (sayingStarted) {
+                await receiver.sayingFinish();
+                sayingStarted = false;
+              }
+              activeStream = 'idle';
+            }
             if (!thinkingStarted) {
               thinkingStarted = true;
               await receiver.thinkingStart();
+              activeStream = 'thinking';
             }
             return;
           }
@@ -430,13 +481,26 @@ export class CodexGen implements LlmGenerator {
                     }
                   }
                   if (text.length > 0) {
+                    if (activeStream === 'thinking') {
+                      log.error(
+                        'CODEX stream overlap violation: received output_text while thinking stream still active',
+                        new Error('codex_stream_overlap_violation'),
+                      );
+                      if (thinkingStarted) {
+                        await receiver.thinkingFinish();
+                        thinkingStarted = false;
+                      }
+                      activeStream = 'idle';
+                    }
                     if (!sayingStarted) {
                       sayingStarted = true;
                       await receiver.sayingStart();
+                      activeStream = 'saying';
                     }
                     await receiver.sayingChunk(text);
                     await receiver.sayingFinish();
                     sayingStarted = false;
+                    if (activeStream === 'saying') activeStream = 'idle';
                     sawOutputText = true;
                   }
                 }
@@ -459,14 +523,15 @@ export class CodexGen implements LlmGenerator {
             }
           }
           case 'response.completed': {
-            if (sayingStarted) {
-              await receiver.sayingFinish();
-              sayingStarted = false;
-            }
             if (thinkingStarted) {
               await receiver.thinkingFinish();
               thinkingStarted = false;
             }
+            if (sayingStarted) {
+              await receiver.sayingFinish();
+              sayingStarted = false;
+            }
+            activeStream = 'idle';
             if (returnedModel === undefined) {
               returnedModel = tryExtractApiReturnedModel(event.response);
             }
@@ -502,11 +567,11 @@ export class CodexGen implements LlmGenerator {
       log.warn('CODEX streaming error', error);
       throw error;
     } finally {
-      if (sayingStarted) {
-        await receiver.sayingFinish();
-      }
       if (thinkingStarted) {
         await receiver.thinkingFinish();
+      }
+      if (sayingStarted) {
+        await receiver.sayingFinish();
       }
     }
 

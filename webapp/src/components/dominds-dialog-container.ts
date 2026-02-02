@@ -740,7 +740,13 @@ export class DomindsDialogContainer extends HTMLElement {
       console.warn('thinking_start_evt received without generation bubble, skipping');
       return;
     }
-    // Always create new thinking section - no existing check logic
+
+    if (this.thinkingSection) {
+      console.error(
+        'Protocol error: thinking_start_evt while a thinking section is already active',
+      );
+    }
+
     const thinkingSection = this.createThinkingSection();
     const body = bubble.querySelector('.bubble-body');
     (body || bubble).appendChild(thinkingSection);
@@ -787,6 +793,11 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!bubble) {
       console.warn('markdown_start_evt received without generation bubble, skipping');
       return;
+    }
+    if (this.markdownSection) {
+      console.error(
+        'Protocol error: markdown_start_evt while a markdown section is already active',
+      );
     }
     // Create and append markdown section directly
     const markdownSection = this.createMarkdownSection();
@@ -1460,7 +1471,16 @@ export class DomindsDialogContainer extends HTMLElement {
     // Add divider to separate user content from AI response
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
-    body.appendChild(divider);
+    // If assistant output already started streaming (thinking/markdown/func-call/etc), insert the
+    // divider before the first assistant section so the timeline order remains faithful.
+    const firstAssistantNode = body.querySelector(
+      '.thinking-section, .markdown-section, .func-call-section, .codeblock-section, .calling-section',
+    );
+    if (firstAssistantNode && firstAssistantNode.parentElement === body) {
+      body.insertBefore(divider, firstAssistantNode);
+    } else {
+      body.appendChild(divider);
+    }
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
     if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {

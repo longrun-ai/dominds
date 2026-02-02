@@ -423,6 +423,8 @@ export class OpenAiGen implements LlmGenerator {
     let sayingStarted = false;
     let thinkingStarted = false;
     let sawOutputText = false;
+    type ActiveStream = 'idle' | 'thinking' | 'saying';
+    let activeStream: ActiveStream = 'idle';
     let usage: LlmUsageStats = { kind: 'unavailable' };
     let returnedModel: string | undefined;
 
@@ -484,14 +486,15 @@ export class OpenAiGen implements LlmGenerator {
               returnedModel = tryExtractApiReturnedModel(event.response);
             }
             if (event.type === 'response.completed') {
-              if (sayingStarted) {
-                await receiver.sayingFinish();
-                sayingStarted = false;
-              }
               if (thinkingStarted) {
                 await receiver.thinkingFinish();
                 thinkingStarted = false;
               }
+              if (sayingStarted) {
+                await receiver.sayingFinish();
+                sayingStarted = false;
+              }
+              activeStream = 'idle';
               usage = parseOpenAiUsage(event.response.usage);
             }
             break;
@@ -501,14 +504,15 @@ export class OpenAiGen implements LlmGenerator {
             if (returnedModel === undefined) {
               returnedModel = tryExtractApiReturnedModel(event.response);
             }
-            if (sayingStarted) {
-              await receiver.sayingFinish();
-              sayingStarted = false;
-            }
             if (thinkingStarted) {
               await receiver.thinkingFinish();
               thinkingStarted = false;
             }
+            if (sayingStarted) {
+              await receiver.sayingFinish();
+              sayingStarted = false;
+            }
+            activeStream = 'idle';
             usage = parseOpenAiUsage(event.response.usage);
             break;
           }
@@ -530,9 +534,21 @@ export class OpenAiGen implements LlmGenerator {
           case 'response.output_text.delta': {
             const delta = event.delta;
             if (delta.length > 0) {
+              if (activeStream === 'thinking') {
+                log.error(
+                  'OPENAI stream overlap violation: received output_text while thinking stream still active',
+                  new Error('openai_stream_overlap_violation'),
+                );
+                if (thinkingStarted) {
+                  await receiver.thinkingFinish();
+                  thinkingStarted = false;
+                }
+                activeStream = 'idle';
+              }
               if (!sayingStarted) {
                 sayingStarted = true;
                 await receiver.sayingStart();
+                activeStream = 'saying';
               }
               await receiver.sayingChunk(delta);
               sawOutputText = true;
@@ -542,9 +558,21 @@ export class OpenAiGen implements LlmGenerator {
 
           case 'response.output_text.done': {
             if (!sawOutputText && event.text.length > 0) {
+              if (activeStream === 'thinking') {
+                log.error(
+                  'OPENAI stream overlap violation: received output_text while thinking stream still active',
+                  new Error('openai_stream_overlap_violation'),
+                );
+                if (thinkingStarted) {
+                  await receiver.thinkingFinish();
+                  thinkingStarted = false;
+                }
+                activeStream = 'idle';
+              }
               if (!sayingStarted) {
                 sayingStarted = true;
                 await receiver.sayingStart();
+                activeStream = 'saying';
               }
               await receiver.sayingChunk(event.text);
               sawOutputText = true;
@@ -552,6 +580,7 @@ export class OpenAiGen implements LlmGenerator {
             if (sayingStarted) {
               await receiver.sayingFinish();
               sayingStarted = false;
+              if (activeStream === 'saying') activeStream = 'idle';
             }
             break;
           }
@@ -560,9 +589,21 @@ export class OpenAiGen implements LlmGenerator {
           case 'response.reasoning_summary_text.delta': {
             const delta = event.delta;
             if (delta.length > 0) {
+              if (activeStream === 'saying') {
+                log.error(
+                  'OPENAI stream overlap violation: received reasoning while saying stream still active',
+                  new Error('openai_stream_overlap_violation'),
+                );
+                if (sayingStarted) {
+                  await receiver.sayingFinish();
+                  sayingStarted = false;
+                }
+                activeStream = 'idle';
+              }
               if (!thinkingStarted) {
                 thinkingStarted = true;
                 await receiver.thinkingStart();
+                activeStream = 'thinking';
               }
               await receiver.thinkingChunk(delta);
             }
@@ -570,9 +611,31 @@ export class OpenAiGen implements LlmGenerator {
           }
 
           case 'response.reasoning_summary_part.added': {
+            if (activeStream === 'saying') {
+              log.error(
+                'OPENAI stream overlap violation: received reasoning while saying stream still active',
+                new Error('openai_stream_overlap_violation'),
+              );
+              if (sayingStarted) {
+                await receiver.sayingFinish();
+                sayingStarted = false;
+              }
+              activeStream = 'idle';
+            }
             if (!thinkingStarted) {
               thinkingStarted = true;
               await receiver.thinkingStart();
+              activeStream = 'thinking';
+            }
+            break;
+          }
+          case 'response.reasoning_summary_text.done':
+          case 'response.reasoning_text.done':
+          case 'response.reasoning_summary_part.done': {
+            if (thinkingStarted) {
+              await receiver.thinkingFinish();
+              thinkingStarted = false;
+              if (activeStream === 'thinking') activeStream = 'idle';
             }
             break;
           }
@@ -614,13 +677,26 @@ export class OpenAiGen implements LlmGenerator {
             if (isRecord(item) && item.type === 'message' && !sawOutputText) {
               const text = extractOutputMessageText(item as unknown as ResponseOutputItem);
               if (text.length > 0) {
+                if (activeStream === 'thinking') {
+                  log.error(
+                    'OPENAI stream overlap violation: received output_text while thinking stream still active',
+                    new Error('openai_stream_overlap_violation'),
+                  );
+                  if (thinkingStarted) {
+                    await receiver.thinkingFinish();
+                    thinkingStarted = false;
+                  }
+                  activeStream = 'idle';
+                }
                 if (!sayingStarted) {
                   sayingStarted = true;
                   await receiver.sayingStart();
+                  activeStream = 'saying';
                 }
                 await receiver.sayingChunk(text);
                 await receiver.sayingFinish();
                 sayingStarted = false;
+                if (activeStream === 'saying') activeStream = 'idle';
                 sawOutputText = true;
               }
               break;
@@ -726,11 +802,11 @@ export class OpenAiGen implements LlmGenerator {
       log.warn('OPENAI streaming error', error);
       throw error;
     } finally {
-      if (sayingStarted) {
-        await receiver.sayingFinish();
-      }
       if (thinkingStarted) {
         await receiver.thinkingFinish();
+      }
+      if (sayingStarted) {
+        await receiver.sayingFinish();
       }
     }
 

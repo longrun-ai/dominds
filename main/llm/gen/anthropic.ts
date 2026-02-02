@@ -499,6 +499,17 @@ export async function consumeAnthropicStream(
         if (delta.type === 'text_delta') {
           const textDelta = delta.text ?? '';
           if (textDelta) {
+            // Enforce: thinking must be completed before any user-visible text output begins.
+            // If this fires, we still proceed by closing thinking early to keep UI ordering stable,
+            // but we want logs to surface the upstream ordering issue.
+            if (thinkingStarted) {
+              log.error(
+                'ANTH stream ordering violation: received text_delta while thinking stream still active',
+                new Error('anthropic_stream_order_violation'),
+              );
+              await receiver.thinkingFinish();
+              thinkingStarted = false;
+            }
             // Important: Anthropic may emit multiple `text` content blocks per message. If we finish
             // per-block, downstream persistence may trim each segment and wipe indentation at the
             // start of later blocks (e.g. function parameter lists). Treat all text blocks within
@@ -512,6 +523,14 @@ export async function consumeAnthropicStream(
         } else if (delta.type === 'thinking_delta') {
           const thinkingDelta = delta.thinking ?? '';
           if (thinkingDelta) {
+            if (sayingStarted) {
+              log.error(
+                'ANTH stream ordering violation: received thinking_delta while saying stream still active',
+                new Error('anthropic_stream_order_violation'),
+              );
+              await receiver.sayingFinish();
+              sayingStarted = false;
+            }
             // Same rationale as text blocks: close thinking only on `message_stop`.
             if (!thinkingStarted) {
               thinkingStarted = true;
@@ -544,6 +563,14 @@ export async function consumeAnthropicStream(
       case 'content_block_stop': {
         if (!currentContentBlock) {
           break;
+        }
+
+        // Close thinking as soon as the thinking block ends so downstream UI/persistence reflects
+        // strict generation order (thinking first, then saying). This also avoids emitting
+        // thinking_finish after the main message has already completed.
+        if (currentContentBlock.type === 'thinking' && thinkingStarted) {
+          await receiver.thinkingFinish();
+          thinkingStarted = false;
         }
 
         if (currentContentBlock.type === 'tool_use') {
@@ -633,13 +660,13 @@ export async function consumeAnthropicStream(
         currentContentBlock = null;
         currentToolUse = null;
 
-        if (sayingStarted) {
-          await receiver.sayingFinish();
-          sayingStarted = false;
-        }
         if (thinkingStarted) {
           await receiver.thinkingFinish();
           thinkingStarted = false;
+        }
+        if (sayingStarted) {
+          await receiver.sayingFinish();
+          sayingStarted = false;
         }
 
         break;

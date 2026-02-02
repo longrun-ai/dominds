@@ -1914,6 +1914,9 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           // Direct streaming parser that forwards events without state tracking
           const parser = new TellaskStreamParser(receiver);
 
+          type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
+          let streamActive: StreamActiveState = { kind: 'idle' };
+
           let streamResult: { usage: LlmUsageStats; llmGenModel?: string } | undefined;
           try {
             streamResult = await runLlmRequestWithRetry({
@@ -1933,6 +1936,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     thinkingStart: async () => {
                       throwIfAborted(abortSignal, dlg.id);
                       sawAnyStreamContent = true;
+                      if (streamActive.kind !== 'idle') {
+                        const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active (genseq=${String(
+                          dlg.activeGenSeq,
+                        )}, provider=${providerCfg.apiType})`;
+                        log.error(detail, new Error('stream_overlap_violation'));
+                        await dlg.streamError(detail);
+                        throw new Error(detail);
+                      }
+                      streamActive = { kind: 'thinking' };
                       currentThinkingContent = '';
                       currentThinkingSignature = '';
                       await dlg.thinkingStart();
@@ -1952,6 +1964,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     },
                     thinkingFinish: async () => {
                       throwIfAborted(abortSignal, dlg.id);
+                      if (streamActive.kind !== 'thinking') {
+                        const detail = `Protocol violation: thinkingFinish while ${streamActive.kind} is active (genseq=${String(
+                          dlg.activeGenSeq,
+                        )}, provider=${providerCfg.apiType})`;
+                        log.error(detail, new Error('stream_overlap_violation'));
+                        await dlg.streamError(detail);
+                        throw new Error(detail);
+                      }
+                      streamActive = { kind: 'idle' };
                       // Create thinking message with genseq and signature
                       const genseq = dlg.activeGenSeq;
                       if (genseq) {
@@ -1971,6 +1992,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     sayingStart: async () => {
                       throwIfAborted(abortSignal, dlg.id);
                       sawAnyStreamContent = true;
+                      if (streamActive.kind !== 'idle') {
+                        const detail = `Protocol violation: sayingStart while ${streamActive.kind} is active (genseq=${String(
+                          dlg.activeGenSeq,
+                        )}, provider=${providerCfg.apiType})`;
+                        log.error(detail, new Error('stream_overlap_violation'));
+                        await dlg.streamError(detail);
+                        throw new Error(detail);
+                      }
+                      streamActive = { kind: 'saying' };
                       currentSayingContent = '';
                       await dlg.sayingStart();
                     },
@@ -1984,6 +2014,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     },
                     sayingFinish: async () => {
                       throwIfAborted(abortSignal, dlg.id);
+                      if (streamActive.kind !== 'saying') {
+                        const detail = `Protocol violation: sayingFinish while ${streamActive.kind} is active (genseq=${String(
+                          dlg.activeGenSeq,
+                        )}, provider=${providerCfg.apiType})`;
+                        log.error(detail, new Error('stream_overlap_violation'));
+                        await dlg.streamError(detail);
+                        throw new Error(detail);
+                      }
+                      streamActive = { kind: 'idle' };
                       await parser.finalize();
 
                       const sayingMessage: SayingMsg = {
