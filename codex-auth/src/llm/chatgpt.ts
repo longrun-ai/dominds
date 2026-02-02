@@ -29,6 +29,65 @@ export interface ChatGptClientOptions {
   useEnvProxy?: boolean;
 }
 
+export type ProxyEnvVarName = 'HTTP_PROXY' | 'http_proxy' | 'HTTPS_PROXY' | 'https_proxy';
+
+export type ResolvedProxyConfig =
+  | { kind: 'disabled'; reason: 'useEnvProxy=false' }
+  | { kind: 'bypassed'; reason: 'no_proxy'; host: string; noProxy: string }
+  | { kind: 'unset'; reason: 'proxy_unset' }
+  | { kind: 'proxy'; source: 'options.proxyUrl' | ProxyEnvVarName; proxyUrl: string }
+  | { kind: 'invalid'; source: 'options.proxyUrl' | ProxyEnvVarName; proxyUrl: string; error: string };
+
+export function resolveProxyForBaseUrl(
+  baseUrl: string,
+  options: Pick<ChatGptClientOptions, 'proxyUrl' | 'useEnvProxy'> = {},
+): ResolvedProxyConfig {
+  if (options.useEnvProxy === false) {
+    return { kind: 'disabled', reason: 'useEnvProxy=false' };
+  }
+
+  if (typeof options.proxyUrl === 'string' && options.proxyUrl.length > 0) {
+    const parsed = tryParseUrl(options.proxyUrl);
+    if (parsed.kind === 'invalid') {
+      return {
+        kind: 'invalid',
+        source: 'options.proxyUrl',
+        proxyUrl: options.proxyUrl,
+        error: parsed.error,
+      };
+    }
+    return { kind: 'proxy', source: 'options.proxyUrl', proxyUrl: options.proxyUrl };
+  }
+
+  const url = new URL(baseUrl);
+  const host = url.hostname;
+  const noProxy = getEnvProxy('NO_PROXY', 'no_proxy');
+  if (typeof noProxy === 'string' && shouldBypassProxy(host, noProxy)) {
+    return { kind: 'bypassed', reason: 'no_proxy', host, noProxy };
+  }
+
+  const httpsProxy = getEnvProxyWithSource('HTTPS_PROXY', 'https_proxy');
+  const httpProxy = getEnvProxyWithSource('HTTP_PROXY', 'http_proxy');
+  const selected = url.protocol === 'https:' ? (httpsProxy ?? httpProxy) : (httpProxy ?? httpsProxy);
+
+  if (!selected) {
+    return { kind: 'unset', reason: 'proxy_unset' };
+  }
+
+  const parsed = tryParseUrl(selected.value);
+  if (parsed.kind === 'invalid') {
+    return { kind: 'invalid', source: selected.source, proxyUrl: selected.value, error: parsed.error };
+  }
+
+  return { kind: 'proxy', source: selected.source, proxyUrl: selected.value };
+}
+
+export function resolveChatGptResponsesUrl(baseUrl: string): string {
+  const normalized = normalizeChatgptBaseUrl(baseUrl);
+  const codexBaseUrl = ensureCodexBaseUrl(normalized);
+  return new URL('responses', codexBaseUrl).toString();
+}
+
 export interface ChatGptRequestInit extends RequestInit {
   json?: unknown;
 }
@@ -800,6 +859,38 @@ function getEnvProxy(upper: string, lower: string): string | undefined {
   return process.env[upper] ?? process.env[lower];
 }
 
+function getEnvProxyWithSource(
+  upper: ProxyEnvVarName,
+  lower: ProxyEnvVarName,
+): { value: string; source: ProxyEnvVarName } | undefined {
+  const upperValue = process.env[upper];
+  if (upperValue) {
+    return { value: upperValue, source: upper };
+  }
+  const lowerValue = process.env[lower];
+  if (lowerValue) {
+    return { value: lowerValue, source: lower };
+  }
+  return undefined;
+}
+
+type UrlParseResult = { kind: 'ok' } | { kind: 'invalid'; error: string };
+
+function tryParseUrl(value: string): UrlParseResult {
+  try {
+    // ProxyAgent relies on WHATWG URL parsing as well; validate early so callers
+    // can render a helpful diagnostic (e.g. doctor preflight output).
+    // Note: if username/password contain special characters, they must be percent-encoded.
+    // Example: `http://user:pa%40ss@127.0.0.1:8080`
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return { kind: 'ok' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { kind: 'invalid', error: message };
+  }
+}
+
 function shouldBypassProxy(host: string, noProxy: string | undefined): boolean {
   if (!noProxy) {
     return false;
@@ -823,29 +914,22 @@ function shouldBypassProxy(host: string, noProxy: string | undefined): boolean {
 }
 
 function resolveProxyAgent(baseUrl: string, options: ChatGptClientOptions): ProxyAgent | undefined {
-  if (options.useEnvProxy === false) {
-    return undefined;
+  const resolved = resolveProxyForBaseUrl(baseUrl, options);
+  switch (resolved.kind) {
+    case 'proxy':
+      return new ProxyAgent(resolved.proxyUrl);
+    case 'invalid':
+      throw new Error(
+        `Invalid proxy URL from ${resolved.source}: ${resolved.error}. ` +
+          `If your username/password contain special characters, percent-encode them.`,
+      );
+    case 'disabled':
+    case 'bypassed':
+    case 'unset':
+      return undefined;
+    default: {
+      const _exhaustive: never = resolved;
+      throw new Error(`Unhandled resolved proxy config: ${JSON.stringify(_exhaustive)}`);
+    }
   }
-
-  if (options.proxyUrl) {
-    return new ProxyAgent(options.proxyUrl);
-  }
-
-  const url = new URL(baseUrl);
-  const host = url.hostname;
-  const noProxy = getEnvProxy('NO_PROXY', 'no_proxy');
-  if (shouldBypassProxy(host, noProxy)) {
-    return undefined;
-  }
-
-  const httpsProxy = getEnvProxy('HTTPS_PROXY', 'https_proxy');
-  const httpProxy = getEnvProxy('HTTP_PROXY', 'http_proxy');
-  const proxyUrl =
-    url.protocol === 'https:' ? (httpsProxy ?? httpProxy) : (httpProxy ?? httpsProxy);
-
-  if (!proxyUrl) {
-    return undefined;
-  }
-
-  return new ProxyAgent(proxyUrl);
 }

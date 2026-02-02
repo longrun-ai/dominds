@@ -20,6 +20,9 @@ import {
   ChatGptEventReceiver,
   ChatGptTriggerError,
   createChatGptStartRequest,
+  type ResolvedProxyConfig,
+  resolveChatGptResponsesUrl,
+  resolveProxyForBaseUrl,
   type ChatGptResponsesRequest,
   type ChatGptResponsesStreamEvent,
 } from '../llm/chatgpt.js';
@@ -167,6 +170,7 @@ interface VerifyResult {
   error?: string;
   responseId?: string;
   models?: string[];
+  preflight?: FetchPreflight;
 }
 
 type EventCountByType = Partial<Record<ChatGptResponsesStreamEvent['type'], number>>;
@@ -185,6 +189,7 @@ interface StreamProbeResult {
   saw_reasoning_item?: boolean;
   saw_any_reasoning_event?: boolean;
   event_counts?: EventCountByType;
+  preflight?: FetchPreflight;
 }
 
 function buildReport(codexHome: string, auth: AuthDotJson | null) {
@@ -361,16 +366,137 @@ async function refreshTokensIfRequested(
   );
 }
 
-function proxyReport(): Record<string, string | undefined> {
+interface ProxyReport {
+  http_proxy?: string;
+  https_proxy?: string;
+  no_proxy?: string;
+  http_proxy_has_auth?: boolean;
+  https_proxy_has_auth?: boolean;
+}
+
+function proxyReport(): ProxyReport {
+  const unsafe = process.env.CODEX_AUTH_DOCTOR_UNSAFE_LOG_SECRETS === '1';
+  const httpProxy = getEnvProxy('HTTP_PROXY', 'http_proxy');
+  const httpsProxy = getEnvProxy('HTTPS_PROXY', 'https_proxy');
+  const noProxy = getEnvProxy('NO_PROXY', 'no_proxy');
+
   return {
-    http_proxy: getEnvProxy('HTTP_PROXY', 'http_proxy'),
-    https_proxy: getEnvProxy('HTTPS_PROXY', 'https_proxy'),
-    no_proxy: getEnvProxy('NO_PROXY', 'no_proxy'),
+    http_proxy: unsafe ? httpProxy : redactProxyUrl(httpProxy),
+    https_proxy: unsafe ? httpsProxy : redactProxyUrl(httpsProxy),
+    no_proxy: noProxy,
+    http_proxy_has_auth: hasProxyAuth(httpProxy),
+    https_proxy_has_auth: hasProxyAuth(httpsProxy),
   };
 }
 
 function getEnvProxy(upper: string, lower: string): string | undefined {
   return process.env[upper] ?? process.env[lower];
+}
+
+interface FetchPreflight {
+  name: 'chatgpt_verify' | 'chatgpt_reasoning_probe';
+  request: {
+    method: 'POST';
+    url: string;
+    headers: Record<string, string>;
+    json: Record<string, unknown>;
+  };
+  proxy: Record<string, unknown>;
+}
+
+function printPreflight(options: DoctorOptions, preflight: FetchPreflight): void {
+  if (options.json) {
+    return;
+  }
+  console.log('');
+  console.log(`[preflight] ${preflight.name}`);
+  console.log(`- method: ${preflight.request.method}`);
+  console.log(`- url: ${preflight.request.url}`);
+  console.log(`- proxy: ${JSON.stringify(preflight.proxy)}`);
+  console.log(`- headers: ${JSON.stringify(preflight.request.headers)}`);
+  console.log(`- json: ${JSON.stringify(preflight.request.json)}`);
+  console.log('');
+}
+
+function redactBearer(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.toLowerCase().startsWith('bearer ')) {
+    return '<redacted>';
+  }
+  return 'Bearer <redacted>';
+}
+
+function redactAccountId(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 6) {
+    return '<redacted>';
+  }
+  return `${trimmed.slice(0, 2)}…${trimmed.slice(-2)}`;
+}
+
+function summarizeText(value: string, maxChars: number): { length: number; preview: string } {
+  const normalized = value.replaceAll(/\s+/g, ' ').trim();
+  if (normalized.length <= maxChars) {
+    return { length: normalized.length, preview: normalized };
+  }
+  return { length: normalized.length, preview: `${normalized.slice(0, maxChars)}…` };
+}
+
+function hasProxyAuth(proxyUrl: string | undefined): boolean | undefined {
+  if (!proxyUrl) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(proxyUrl);
+    return parsed.username.length > 0 || parsed.password.length > 0;
+  } catch {
+    return undefined;
+  }
+}
+
+function redactProxyUrl(proxyUrl: string | undefined): string | undefined {
+  if (!proxyUrl) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(proxyUrl);
+    if (parsed.username.length > 0 || parsed.password.length > 0) {
+      parsed.username = parsed.username.length > 0 ? '***' : '';
+      parsed.password = parsed.password.length > 0 ? '***' : '';
+    }
+    return parsed.toString();
+  } catch {
+    return proxyUrl.replace(/\/\/[^@/]+@/g, '//***@');
+  }
+}
+
+function describeResolvedProxyForLogs(resolved: ResolvedProxyConfig): Record<string, unknown> {
+  switch (resolved.kind) {
+    case 'disabled':
+      return { kind: resolved.kind, reason: resolved.reason };
+    case 'bypassed':
+      return { kind: resolved.kind, reason: resolved.reason, host: resolved.host, no_proxy: resolved.noProxy };
+    case 'unset':
+      return { kind: resolved.kind, reason: resolved.reason };
+    case 'invalid':
+      return {
+        kind: resolved.kind,
+        source: resolved.source,
+        proxy_url: redactProxyUrl(resolved.proxyUrl),
+        error: resolved.error,
+      };
+    case 'proxy':
+      return {
+        kind: resolved.kind,
+        source: resolved.source,
+        proxy_url: redactProxyUrl(resolved.proxyUrl),
+        proxy_has_auth: hasProxyAuth(resolved.proxyUrl),
+      };
+    default: {
+      const _exhaustive: never = resolved;
+      throw new Error(`Unhandled resolved proxy config: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
 }
 
 function formatChatGptEventTag(event: ChatGptResponsesStreamEvent): string {
@@ -551,6 +677,31 @@ async function verifyChatGptConversation(
   const model = selection.model;
   const instructions = selection.instructions;
   const conversationId = randomUUID();
+
+  const preflight: FetchPreflight = {
+    name: 'chatgpt_verify',
+    request: {
+      method: 'POST',
+      url: resolveChatGptResponsesUrl(baseUrl),
+      headers: {
+        accept: 'text/event-stream',
+        conversation_id: conversationId,
+        session_id: conversationId,
+        authorization: redactBearer(`Bearer ${accessToken}`),
+        'chatgpt-account-id': redactAccountId(accountId),
+      },
+      json: {
+        model,
+        prompt_cache_key: conversationId,
+        instructions: summarizeText(instructions, 120),
+        userText: summarizeText('hello', 120),
+        stream: true,
+      },
+    },
+    proxy: describeResolvedProxyForLogs(resolveProxyForBaseUrl(baseUrl)),
+  };
+  printPreflight(options, preflight);
+
   const client = new ChatGptClient(
     { accessToken, accountId },
     {
@@ -574,13 +725,13 @@ async function verifyChatGptConversation(
         session_id: conversationId,
       },
     });
-    return { ok: true, status };
+    return { ok: true, status, preflight };
   } catch (error) {
     if (error instanceof ChatGptTriggerError) {
       const body = error.body || error.statusText;
-      return { ok: false, status: error.status, error: summarizeErrorBody(body) };
+      return { ok: false, status: error.status, error: summarizeErrorBody(body), preflight };
     }
-    return { ok: false, error: describeError(error) };
+    return { ok: false, error: describeError(error), preflight };
   }
 }
 
@@ -616,6 +767,36 @@ async function probeChatGptReasoningStream(
   const model = selection.model;
   const instructions = selection.instructions;
   const conversationId = randomUUID();
+
+  const preflight: FetchPreflight = {
+    name: 'chatgpt_reasoning_probe',
+    request: {
+      method: 'POST',
+      url: resolveChatGptResponsesUrl(baseUrl),
+      headers: {
+        accept: 'text/event-stream',
+        conversation_id: conversationId,
+        session_id: conversationId,
+        authorization: redactBearer(`Bearer ${accessToken}`),
+        'chatgpt-account-id': redactAccountId(accountId),
+      },
+      json: {
+        model,
+        prompt_cache_key: conversationId,
+        instructions: summarizeText(instructions, 120),
+        reasoning: { effort: 'high', summary: 'detailed' },
+        include: ['reasoning.encrypted_content'],
+        userText: summarizeText(
+          'Puzzle: I have a two-digit number. The sum of its digits is 9. Reversing the digits increases the number by 27. What is the number? Output only the number.',
+          120,
+        ),
+        stream: true,
+      },
+    },
+    proxy: describeResolvedProxyForLogs(resolveProxyForBaseUrl(baseUrl)),
+  };
+  printPreflight(options, preflight);
+
   const client = new ChatGptClient(
     { accessToken, accountId },
     {
@@ -706,6 +887,7 @@ async function probeChatGptReasoningStream(
         ok: false,
         status: response.status,
         error: summarizeErrorBody(body || response.statusText),
+        preflight,
       };
     }
 
@@ -730,9 +912,10 @@ async function probeChatGptReasoningStream(
       saw_reasoning_item: sawReasoningItem,
       saw_any_reasoning_event: sawAnyReasoningEvent,
       event_counts: eventCounts,
+      preflight,
     };
   } catch (error) {
-    return { ok: false, error: describeError(error) };
+    return { ok: false, error: describeError(error), preflight };
   }
 }
 
@@ -799,13 +982,15 @@ async function main(): Promise<void> {
   console.log(`- CODEX_HOME: ${report.codex_home}`);
   console.log(`- auth.json: ${report.auth_file}`);
   console.log(`- auth present: ${report.auth_present ? 'yes' : 'no'}`);
-  const proxy = report.proxy as Record<string, string | undefined> | undefined;
+  const proxy = report.proxy as ProxyReport | undefined;
   if (proxy) {
     const httpProxy = proxy.http_proxy ?? 'unset';
     const httpsProxy = proxy.https_proxy ?? 'unset';
     const noProxy = proxy.no_proxy ?? 'unset';
-    console.log(`- http_proxy: ${httpProxy}`);
-    console.log(`- https_proxy: ${httpsProxy}`);
+    const httpProxyHasAuth = proxy.http_proxy_has_auth;
+    const httpsProxyHasAuth = proxy.https_proxy_has_auth;
+    console.log(`- http_proxy: ${httpProxy}${httpProxyHasAuth ? ' (has auth)' : ''}`);
+    console.log(`- https_proxy: ${httpsProxy}${httpsProxyHasAuth ? ' (has auth)' : ''}`);
     console.log(`- no_proxy: ${noProxy}`);
   }
 
