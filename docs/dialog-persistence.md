@@ -390,6 +390,11 @@ taskdocChecksum: 'sha256:abc123...'
 - **Log-Only**: Error details appear in backend logs (`logs/backend-stdout.log`) for debugging but are excluded from persistent storage
 - **Transient UI State**: Error sections in generation bubbles are transient UI elements that disappear on dialog reload
 
+**Important note (ordering / protocol violations)**:
+
+- `stream_error_evt` (and the internal `dlg_stream_error`) is also used to report **streaming substream protocol violations**, such as overlapping thinking/saying segments (start/finish not paired, concurrent active segments).
+- Because these errors are not persisted, debugging typically requires capturing: backend logs + the realtime WebSocket event sequence (course, genseq, event types, timestamps) when the violation occurs.
+
 **Rationale**:
 
 - Prevents error state pollution in persistent dialog history

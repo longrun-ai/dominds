@@ -1000,6 +1000,16 @@ interface RegistryMethods {
 
 **Registry Storage**: The subdialog registry (`registry.yaml`) is stored in the root dialog directory and moves to `done/` on root completion.
 
+### Streaming Substream Ordering Contract (Thinking / Saying)
+
+Dominds splits LLM output into multiple “substreams” (thinking, saying, plus markdown / tool-call subsegments derived from saying) and delivers them to the UI via WebSocket events.
+To make the UI **faithfully reflect the original generation order**, and to ensure ordering bugs are observable and debuggable across the stack, the following contract MUST hold:
+
+- **Arbitrary alternation is allowed**: Within a single generation (`genseq`), thinking and saying may appear in any number of segments, each as `start → chunk* → finish`, alternating over time.
+- **No overlap**: At any moment, at most one active substream exists (thinking or saying). A new `start` MUST NOT occur before the prior segment has `finish`ed.
+- **UI renders by event arrival order**: The frontend should not reorder DOM nodes to “fix” ordering; it should append sections in event order to represent the true generation trace.
+- **Ordering violations must be loud**: On overlap/out-of-order detection (e.g., thinking and saying both active), the backend SHOULD emit `stream_error_evt` and abort the generation so provider / parsing-chain protocol issues surface quickly.
+
 ### CLI Integration
 
 **Dialog Creation**: New dialogs are created through CLI commands with appropriate context.

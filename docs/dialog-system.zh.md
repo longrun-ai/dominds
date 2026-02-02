@@ -991,6 +991,16 @@ interface RegistryMethods {
 **内存存储**：团队和代理内存存储在工作区内的专用文件中。
 **注册表存储**：子对话注册表（`registry.yaml`）存储在根对话目录中，并在根完成时移动到 `done/`。
 
+### 流式生成子流顺序契约（Thinking / Saying）
+
+Dominds 将 LLM 输出拆分为多个“子流”（thinking、saying，以及从 saying 进一步解析出的 markdown / tool-call 子段）并通过 WebSocket 事件推送给 UI。
+为了让 UI **忠实体现原始生成顺序**，以及让“乱序”成为可观测、可定位的全栈问题，必须遵守以下契约：
+
+- **允许任意多段交替**：在同一轮生成（同一 `genseq`）内，thinking 与 saying 可以出现任意多段，按 `start → chunk* → finish` 的片段形式交替出现。
+- **禁止重叠**：任意时刻最多只有一个活跃的子流（thinking 或 saying）。不允许 “前一个未 finish，后一个就 start” 的并发/重叠。
+- **UI 仅按事件顺序渲染**：前端不应通过重排 DOM 来“修复”乱序；应按事件抵达顺序追加 section，以体现真实的生成轨迹。
+- **乱序必须大声报错**：一旦检测到重叠/乱序（例如 thinking 与 saying 同时活跃），后端应发出 `stream_error_evt` 并中断该次生成，以便尽快暴露 provider/解析链路的协议问题并定位。
+
 ### CLI 集成
 
 **对话创建**：新对话通过带有适当上下文的 CLI 命令创建。

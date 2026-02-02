@@ -388,6 +388,11 @@ taskdocChecksum: 'sha256:abc123...'
 - **仅日志记录**：错误详情出现在后端日志（`logs/backend-stdout.log`）中用于调试，但排除在持久化存储之外
 - **临时 UI 状态**：生成气泡中的错误部分是临时 UI 元素，在对话重新加载时消失
 
+**重要补充（乱序/协议问题）**：
+
+- `stream_error_evt`（以及内部的 `dlg_stream_error`）也用于报告**流式子流协议违例**，例如 thinking / saying 段出现重叠（start/finish 不配对、并发活跃）。
+- 这些错误不落盘，因此排查此类问题需要同时抓取：后端日志 + 触发时的实时 WebSocket 事件序列（course、genseq、事件类型与时间戳）。
+
 **原理**：
 
 - 防止持久化对话历史中的错误状态污染
