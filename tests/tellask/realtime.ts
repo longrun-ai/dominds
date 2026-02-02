@@ -20,7 +20,7 @@ class OutputCollectingReceiver implements TellaskEventsReceiver {
   async callBodyStart(): Promise<void> {}
   async callBodyChunk(_chunk: string): Promise<void> {}
   async callBodyFinish(): Promise<void> {}
-  async callFinish(_callId: string): Promise<void> {}
+  async callFinish(_call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {}
 }
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {

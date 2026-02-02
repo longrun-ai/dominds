@@ -197,8 +197,8 @@ class DiagTellaskReceiver implements TellaskEventsReceiver {
   async callBodyFinish(): Promise<void> {
     this.events.push({ kind: 'callBodyFinish' });
   }
-  async callFinish(callId: string): Promise<void> {
-    this.events.push({ kind: 'callFinish', callId });
+  async callFinish(call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {
+    this.events.push({ kind: 'callFinish', callId: call.callId });
   }
 }
 

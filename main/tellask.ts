@@ -55,7 +55,9 @@ export interface TellaskEventsReceiver {
   callBodyFinish: () => Promise<void>;
 
   // Finish of tellask call block; callId computed via content-hash for replay correlation.
-  callFinish: (callId: string) => Promise<void>;
+  // upstreamEndOffset counts raw upstream characters consumed up to (but not including) the
+  // first separator character that terminates this call block.
+  callFinish: (call: CollectedTellaskCall, upstreamEndOffset: number) => Promise<void>;
 }
 
 type FirstLineMentionParse =
@@ -97,6 +99,9 @@ export class TellaskStreamParser {
   private pendingCallLineRole: boolean = false;
   private currentCallLineRole: CallLineRole | null = null;
 
+  // Total raw upstream characters consumed so far.
+  private upstreamPos: number = 0;
+
   constructor(downstream: TellaskEventsReceiver) {
     this.downstream = downstream;
   }
@@ -110,6 +115,7 @@ export class TellaskStreamParser {
         const consumed = await this.processLineStartProbe(char);
         if (consumed) {
           pos += 1;
+          this.upstreamPos += 1;
           continue;
         }
         // Not consumed means we decided the line kind and need to re-process this char
@@ -119,18 +125,21 @@ export class TellaskStreamParser {
       if (this.currentLineKind === 'markdown') {
         await this.processMarkdownChar(char);
         pos += 1;
+        this.upstreamPos += 1;
         continue;
       }
 
       if (this.currentLineKind === 'call') {
         await this.processCallChar(char);
         pos += 1;
+        this.upstreamPos += 1;
         continue;
       }
 
       // Fallback: should be unreachable, but keep safe to avoid infinite loops.
       await this.processMarkdownChar(char);
       pos += 1;
+      this.upstreamPos += 1;
     }
 
     await this.flushAtUpstreamChunkEnd();
@@ -413,6 +422,8 @@ export class TellaskStreamParser {
     const call = this.activeCall;
     if (!call) return;
 
+    const upstreamEndOffset = this.upstreamPos;
+
     // If the first line never encountered an invalid mention delimiter, ensure we still resolve.
     await this.resolvePendingFirstLineMentionAtEofIfNeeded();
 
@@ -428,13 +439,14 @@ export class TellaskStreamParser {
       `tellask\n${validation.kind === 'valid' ? validation.firstMention : ''}\n${call.headLine}\n${call.body}`,
       this.callCounter++,
     );
-    this.collectedCalls.push({
+    const collected: CollectedTellaskCall = {
       validation,
       headLine: call.headLine,
       body: call.body,
       callId,
-    });
-    await this.downstream.callFinish(callId);
+    };
+    this.collectedCalls.push(collected);
+    await this.downstream.callFinish(collected, upstreamEndOffset);
 
     this.activeCall = null;
     this.headlineBuffer = '';

@@ -1026,8 +1026,8 @@ export function createSayingEventsReceiver(dlg: Dialog): TellaskEventsReceiver {
     callBodyFinish: async () => {
       await dlg.callingBodyFinish();
     },
-    callFinish: async (callId: string) => {
-      await dlg.callingFinish(callId);
+    callFinish: async (call: CollectedTellaskCall, _upstreamEndOffset: number) => {
+      await dlg.callingFinish(call.callId);
     },
   };
 }
@@ -1199,8 +1199,6 @@ export async function runBackendDriver(): Promise<void> {
       for (const rootDialog of dialogsToDrive) {
         try {
           if (!(await rootDialog.canDrive())) {
-            globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
-            await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
             continue;
           }
 
@@ -1211,15 +1209,15 @@ export async function runBackendDriver(): Promise<void> {
             release();
           }
 
-          if (rootDialog.hasUpNext()) {
+          const status = await rootDialog.getSuspensionStatus();
+          const shouldStayQueued = rootDialog.hasUpNext() || !status.canDrive;
+          if (shouldStayQueued) {
             globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
             await DialogPersistence.setNeedsDrive(rootDialog.id, true, rootDialog.status);
           } else {
             globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
             await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
           }
-
-          const status = await rootDialog.getSuspensionStatus();
           if (status.subdialogs) {
             log.info(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`);
           }
@@ -3166,9 +3164,8 @@ export async function supplyResponseToSupdialog(
       );
       if (parentDialog instanceof RootDialog) {
         globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId);
-      } else {
-        void driveDialogStream(parentDialog, undefined, true);
       }
+      void driveDialogStream(parentDialog, undefined, true);
     }
   } catch (error) {
     log.error('Failed to supply subdialog response', {

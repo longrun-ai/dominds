@@ -259,7 +259,7 @@ export interface Questions4Human {
 
 // Remove old type definitions - now using shared/types/storage.ts
 
-import { TellaskEventsReceiver, TellaskStreamParser } from './tellask';
+import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from './tellask';
 import { generateDialogID } from './utils/id';
 
 /**
@@ -1317,12 +1317,12 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callFinish: async (_callId: string) => {
+              callFinish: async (call: CollectedTellaskCall) => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
                       type: 'tool_call_finish_evt',
-                      callId: _callId,
+                      callId: call.callId,
                       course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1658,12 +1658,12 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callFinish: async (callId: string) => {
+            callFinish: async (call: CollectedTellaskCall) => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
                     type: 'tool_call_finish_evt',
-                    callId,
+                    callId: call.callId,
                     course,
                     genseq: event.genseq,
                     dialog: {

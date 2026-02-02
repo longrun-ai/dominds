@@ -1,4 +1,8 @@
-import type { TellaskCallValidation, TellaskEventsReceiver } from 'dominds/tellask';
+import type {
+  CollectedTellaskCall,
+  TellaskCallValidation,
+  TellaskEventsReceiver,
+} from 'dominds/tellask';
 import { TellaskStreamParser } from 'dominds/tellask';
 
 type RecordedEvent =
@@ -50,8 +54,8 @@ class MockTellaskEventsReceiver implements TellaskEventsReceiver {
     this.events.push({ type: 'callBodyFinish' });
   }
 
-  async callFinish(callId: string): Promise<void> {
-    this.events.push({ type: 'callFinish', callId });
+  async callFinish(call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {
+    this.events.push({ type: 'callFinish', callId: call.callId });
   }
 }
 
