@@ -456,6 +456,16 @@ export class CodexGen implements LlmGenerator {
             }
             return;
           }
+          case 'response.reasoning_summary_text.done':
+          case 'response.reasoning_text.done':
+          case 'response.reasoning_summary_part.done': {
+            if (thinkingStarted) {
+              await receiver.thinkingFinish();
+              thinkingStarted = false;
+              if (activeStream === 'thinking') activeStream = 'idle';
+            }
+            return;
+          }
           case 'response.output_item.added':
             return;
           case 'response.output_item.done': {

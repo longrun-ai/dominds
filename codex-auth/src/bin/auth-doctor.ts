@@ -521,10 +521,16 @@ function formatChatGptEventTag(event: ChatGptResponsesStreamEvent): string {
       return `${event.type} item=${event.item_id} out=${event.output_index} idx=${event.content_index} part=${event.part.type}`.trim();
     case 'response.reasoning_summary_text.delta':
       return `response.reasoning_summary_text.delta idx=${event.summary_index} ${event.delta}`.trim();
+    case 'response.reasoning_summary_text.done':
+      return `response.reasoning_summary_text.done idx=${event.summary_index}`.trim();
     case 'response.reasoning_text.delta':
       return `response.reasoning_text.delta idx=${event.content_index} ${event.delta}`.trim();
+    case 'response.reasoning_text.done':
+      return `response.reasoning_text.done idx=${event.content_index}`.trim();
     case 'response.reasoning_summary_part.added':
       return `response.reasoning_summary_part.added idx=${event.summary_index}`.trim();
+    case 'response.reasoning_summary_part.done':
+      return `response.reasoning_summary_part.done idx=${event.summary_index}`.trim();
   }
 
   const _exhaustive: never = event;

@@ -503,6 +503,9 @@ export interface ChatGptResponseContentPartDoneEvent {
 export interface ChatGptResponseReasoningSummaryTextDeltaEvent {
   type: 'response.reasoning_summary_text.delta';
   delta: string;
+  item_id?: string;
+  output_index?: number;
+  sequence_number?: number;
   summary_index: number;
 }
 
@@ -510,11 +513,51 @@ export interface ChatGptResponseReasoningTextDeltaEvent {
   type: 'response.reasoning_text.delta';
   delta: string;
   content_index: number;
+  item_id?: string;
+  output_index?: number;
+  sequence_number?: number;
 }
 
 export interface ChatGptResponseReasoningSummaryPartAddedEvent {
   type: 'response.reasoning_summary_part.added';
+  item_id?: string;
+  output_index?: number;
+  part?: {
+    type: 'summary_text';
+    text: string;
+  };
+  sequence_number?: number;
   summary_index: number;
+}
+
+export interface ChatGptResponseReasoningSummaryPartDoneEvent {
+  type: 'response.reasoning_summary_part.done';
+  item_id?: string;
+  output_index?: number;
+  part?: {
+    type: 'summary_text';
+    text: string;
+  };
+  sequence_number?: number;
+  summary_index: number;
+}
+
+export interface ChatGptResponseReasoningSummaryTextDoneEvent {
+  type: 'response.reasoning_summary_text.done';
+  item_id?: string;
+  output_index?: number;
+  sequence_number?: number;
+  summary_index: number;
+  text?: string;
+}
+
+export interface ChatGptResponseReasoningTextDoneEvent {
+  type: 'response.reasoning_text.done';
+  content_index: number;
+  item_id?: string;
+  output_index?: number;
+  sequence_number?: number;
+  text?: string;
 }
 
 export type ChatGptResponsesStreamEvent =
@@ -529,8 +572,11 @@ export type ChatGptResponsesStreamEvent =
   | ChatGptResponseContentPartAddedEvent
   | ChatGptResponseContentPartDoneEvent
   | ChatGptResponseReasoningSummaryTextDeltaEvent
+  | ChatGptResponseReasoningSummaryTextDoneEvent
   | ChatGptResponseReasoningTextDeltaEvent
-  | ChatGptResponseReasoningSummaryPartAddedEvent;
+  | ChatGptResponseReasoningTextDoneEvent
+  | ChatGptResponseReasoningSummaryPartAddedEvent
+  | ChatGptResponseReasoningSummaryPartDoneEvent;
 
 export interface ChatGptEventReceiver {
   onEvent(event: ChatGptResponsesStreamEvent): void | Promise<void>;
