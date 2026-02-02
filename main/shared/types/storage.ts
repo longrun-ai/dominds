@@ -122,6 +122,16 @@ export interface DialogLatestFile {
    * Persisted to survive process restarts.
    */
   disableDiligencePush?: boolean;
+
+  /**
+   * Remaining Diligence Push budget for this root dialog.
+   * Persisted to survive process restarts and restore accurate UI state.
+   *
+   * Notes:
+   * - Root dialogs only; subdialogs should leave it undefined.
+   * - Always treat negative / non-finite values as 0.
+   */
+  diligencePushRemainingBudget?: number;
 }
 
 // === COURSE TRACKING ===

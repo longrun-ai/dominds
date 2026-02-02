@@ -1,8 +1,28 @@
 import { Dialog, DialogID, RootDialog, SubDialog } from './dialog';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { DialogPersistence, DiskFileDialogStore } from './persistence';
+import { DEFAULT_DILIGENCE_PUSH_MAX } from './shared/diligence';
+import { Team } from './team';
 
 export type DialogPersistenceStatus = 'running' | 'completed' | 'archived';
+
+function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
+  const member = team.getMember(agentId);
+  if (member && member.diligence_push_max !== undefined) {
+    return member.diligence_push_max;
+  }
+  return DEFAULT_DILIGENCE_PUSH_MAX;
+}
+
+function normalizeDiligencePushMax(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.floor(value);
+}
+
+function clampNonNegativeFiniteInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.floor(value));
+}
 
 export async function getOrRestoreRootDialog(
   rootId: string,
@@ -21,6 +41,16 @@ export async function getOrRestoreRootDialog(
   if (!rootState) return undefined;
 
   const latest = await DialogPersistence.loadDialogLatest(rootDialogId, status);
+  let diligencePushMax = DEFAULT_DILIGENCE_PUSH_MAX;
+  try {
+    const team = await Team.load();
+    diligencePushMax = normalizeDiligencePushMax(
+      resolveMemberDiligencePushMax(team, rootState.metadata.agentId),
+    );
+  } catch (_err: unknown) {
+    diligencePushMax = DEFAULT_DILIGENCE_PUSH_MAX;
+  }
+  const defaultDisableDiligencePush = diligencePushMax <= 0;
 
   const rootStore = new DiskFileDialogStore(rootDialogId);
   const rootDialog = new RootDialog(
@@ -35,7 +65,25 @@ export async function getOrRestoreRootDialog(
       contextHealth: rootState.contextHealth,
     },
   );
-  rootDialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
+  const persistedDisableDiligencePush =
+    latest && typeof latest.disableDiligencePush === 'boolean'
+      ? latest.disableDiligencePush
+      : defaultDisableDiligencePush;
+  rootDialog.disableDiligencePush = persistedDisableDiligencePush;
+
+  const persistedRemainingBudget =
+    latest && typeof latest.diligencePushRemainingBudget === 'number'
+      ? latest.diligencePushRemainingBudget
+      : undefined;
+  const normalizedRemainingBudget = clampNonNegativeFiniteInt(
+    persistedRemainingBudget,
+    diligencePushMax > 0 ? diligencePushMax : 0,
+  );
+  rootDialog.diligencePushRemainingBudget =
+    diligencePushMax > 0
+      ? Math.min(normalizedRemainingBudget, diligencePushMax)
+      : normalizedRemainingBudget;
+
   rootDialog.setPersistenceStatus(status);
   globalDialogRegistry.register(rootDialog);
 

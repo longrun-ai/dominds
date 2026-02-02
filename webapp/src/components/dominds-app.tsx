@@ -6145,7 +6145,22 @@ export class DomindsApp extends HTMLElement {
           Number.isFinite(readyMsg.diligencePushMax)
             ? readyMsg.diligencePushMax
             : null;
-        if (
+        const remainingFromReady = readyMsg.diligencePushRemainingBudget;
+        if (typeof remainingFromReady === 'number' && Number.isFinite(remainingFromReady)) {
+          const normalizedRemaining = Math.max(0, Math.floor(remainingFromReady));
+          if (
+            typeof this.diligencePushConfiguredMax === 'number' &&
+            Number.isFinite(this.diligencePushConfiguredMax) &&
+            Math.floor(this.diligencePushConfiguredMax) > 0
+          ) {
+            this.diligencePushRemaining = Math.min(
+              normalizedRemaining,
+              Math.floor(this.diligencePushConfiguredMax),
+            );
+          } else {
+            this.diligencePushRemaining = normalizedRemaining;
+          }
+        } else if (
           typeof this.diligencePushConfiguredMax === 'number' &&
           Number.isFinite(this.diligencePushConfiguredMax) &&
           Math.floor(this.diligencePushConfiguredMax) > 0

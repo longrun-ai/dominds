@@ -200,8 +200,8 @@ export abstract class Dialog {
   // Tracks whether this dialog is in normal state, suspended, or resuming from suspension
   protected _suspensionState: 'active' | 'suspended' | 'resumed' = 'active';
 
-  // Diligence Push (diligence auto-continue) budget counter (runtime-only).
-  // Intentionally not persisted: this is a per-process safety valve, not dialog state.
+  // Diligence Push (diligence auto-continue) budget counter (root-dialog state).
+  // Persisted via latest.yaml so restarts and UI navigation can restore correct remaining budget.
   public diligencePushRemainingBudget: number = 0;
 
   // Diligence Push disable switch (persisted via latest.yaml; default = false).

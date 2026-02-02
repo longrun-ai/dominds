@@ -405,6 +405,14 @@ async function handleRefillDiligencePushBudget(
     rootDialog.diligencePushRemainingBudget =
       clampNonNegativeFiniteInt(rootDialog.diligencePushRemainingBudget, 0) + 3;
   }
+  await DialogPersistence.mutateDialogLatest(
+    rootDialogId,
+    () => ({
+      kind: 'patch',
+      patch: { diligencePushRemainingBudget: rootDialog.diligencePushRemainingBudget },
+    }),
+    foundStatus,
+  );
 
   postDialogEvent(rootDialog, {
     type: 'diligence_budget_evt',
@@ -525,6 +533,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         subdialogCount: 0,
         runState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
+        diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
       },
     }));
 
@@ -539,6 +548,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       taskDocPath: taskDocPath,
       disableDiligencePush: defaultDisableDiligencePush,
       diligencePushMax,
+      diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
     };
     ws.send(JSON.stringify(response));
 
@@ -713,6 +723,10 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       assignmentFromSup: metadata.assignmentFromSup,
       disableDiligencePush: effectiveDisableDiligencePush,
       diligencePushMax,
+      diligencePushRemainingBudget: clampNonNegativeFiniteInt(
+        rootDialog.diligencePushRemainingBudget,
+        diligencePushMax > 0 ? diligencePushMax : 0,
+      ),
     };
     ws.send(JSON.stringify(dialogReadyResponse));
 

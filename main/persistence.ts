@@ -136,6 +136,11 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     return null;
   if (value.disableDiligencePush !== undefined && typeof value.disableDiligencePush !== 'boolean')
     return null;
+  if (
+    value.diligencePushRemainingBudget !== undefined &&
+    typeof value.diligencePushRemainingBudget !== 'number'
+  )
+    return null;
   if (value.messageCount !== undefined && typeof value.messageCount !== 'number') return null;
   if (value.functionCallCount !== undefined && typeof value.functionCallCount !== 'number')
     return null;
@@ -209,6 +214,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     needsDrive: value.needsDrive,
     runState,
     disableDiligencePush: value.disableDiligencePush,
+    diligencePushRemainingBudget: value.diligencePushRemainingBudget,
   };
 }
 

@@ -11,7 +11,7 @@ import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
-import { DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
+import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { ApiMoveDialogsRequest } from '../shared/types';
 import { normalizeLanguageCode } from '../shared/types/language';
@@ -44,6 +44,19 @@ import {
 const log = createLogger('api-routes');
 
 let cachedDomindsVersion: string | null | undefined;
+
+function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
+  const member = team.getMember(agentId);
+  if (member && member.diligence_push_max !== undefined) {
+    return member.diligence_push_max;
+  }
+  return DEFAULT_DILIGENCE_PUSH_MAX;
+}
+
+function normalizeDiligencePushMax(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.floor(value);
+}
 
 async function readDomindsPackageVersion(): Promise<string | null> {
   if (cachedDomindsVersion !== undefined) return cachedDomindsVersion;
@@ -909,6 +922,14 @@ async function handleCreateDialog(
     const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
     globalDialogRegistry.register(dialog);
 
+    const team = await Team.load();
+    const diligencePushMax = normalizeDiligencePushMax(
+      resolveMemberDiligencePushMax(team, agentId),
+    );
+    const defaultDisableDiligencePush = diligencePushMax <= 0;
+    dialog.disableDiligencePush = defaultDisableDiligencePush;
+    dialog.diligencePushRemainingBudget = diligencePushMax > 0 ? diligencePushMax : 0;
+
     // Persist dialog metadata and latest.yaml (write-once pattern)
     const metadata = {
       id: dialogId.selfId,
@@ -929,7 +950,8 @@ async function handleCreateDialog(
         functionCallCount: 0,
         subdialogCount: 0,
         runState: { kind: 'idle_waiting_user' },
-        disableDiligencePush: false,
+        disableDiligencePush: defaultDisableDiligencePush,
+        diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
       },
     }));
 

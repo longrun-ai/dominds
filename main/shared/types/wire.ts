@@ -232,4 +232,5 @@ export interface DialogReadyMessage {
   assignmentFromSup?: AssignmentFromSup;
   disableDiligencePush?: boolean;
   diligencePushMax?: number;
+  diligencePushRemainingBudget?: number;
 }

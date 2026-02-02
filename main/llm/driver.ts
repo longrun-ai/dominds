@@ -1869,6 +1869,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                     Math.floor(dlg.diligencePushRemainingBudget),
                   );
                 }
+                void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+                  kind: 'patch',
+                  patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+                }));
               }
             } catch (err) {
               log.warn('Failed to check Q4H state for Diligence Push reset', err, {
@@ -1901,6 +1905,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                       Math.floor(dlg.diligencePushRemainingBudget),
                     );
                   }
+                  void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+                    kind: 'patch',
+                    patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+                  }));
                 }
                 break;
               }
@@ -1912,6 +1920,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
               dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
+              void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+                kind: 'patch',
+                patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+              }));
               if (prepared.kind !== 'disabled') {
                 postDialogEvent(dlg, {
                   type: 'diligence_budget_evt',
@@ -2357,6 +2369,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                       Math.floor(dlg.diligencePushRemainingBudget),
                     );
                   }
+                  void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+                    kind: 'patch',
+                    patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+                  }));
                 }
                 break;
               }
@@ -2368,6 +2384,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
               });
               dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
+              void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+                kind: 'patch',
+                patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+              }));
               if (prepared.kind !== 'disabled') {
                 postDialogEvent(dlg, {
                   type: 'diligence_budget_evt',
