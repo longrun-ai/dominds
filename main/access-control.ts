@@ -22,6 +22,12 @@ function isMindsPath(targetPath: string): boolean {
   return normalized === '.minds' || normalized.startsWith('.minds/');
 }
 
+function isRootDialogsPath(targetPath: string): boolean {
+  // Only deny `.dialogs/**` at rtws root; allow nested `foo/.dialogs/**` for dev rtws layouts.
+  const normalized = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized === '.dialogs' || normalized.startsWith('.dialogs/');
+}
+
 /**
  * Directory-specific pattern matching for access control.
  * This function determines if a target path (file or directory) should be controlled
@@ -167,6 +173,12 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
     return false;
   }
 
+  // Root dialogs (`.dialogs/**`) are reserved runtime state.
+  // Hard-denied for all general file tools at rtws root (but allowed under nested workspaces).
+  if (isRootDialogsPath(relativePath)) {
+    return false;
+  }
+
   // Minds (`.minds/**`) is reserved workspace state.
   // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
   // may bypass this via an internal-only flag.
@@ -229,6 +241,12 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
 
   // Task Docs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
+    return false;
+  }
+
+  // Root dialogs (`.dialogs/**`) are reserved runtime state.
+  // Hard-denied for all general file tools at rtws root (but allowed under nested workspaces).
+  if (isRootDialogsPath(relativePath)) {
     return false;
   }
 
@@ -335,6 +353,25 @@ export function getAccessDeniedMessage(
       );
       lines.push(
         `- Hint: To modify \`.minds/**\`, use the \`team-mgmt\` toolset (or delegate to a team-manager member).`,
+      );
+    }
+  }
+
+  if (isRootDialogsPath(targetPath)) {
+    lines.push('');
+    if (language === 'zh') {
+      lines.push(
+        `- 说明：\`.dialogs/\` 是 rtws 根目录下的“对话/运行态持久化”目录，通用文件工具无法读写（硬编码无条件拒绝）。`,
+      );
+      lines.push(
+        `- 提示：如需排查 Dominds 本身的问题，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/\`），该目录不受此硬编码限制。`,
+      );
+    } else {
+      lines.push(
+        `- Note: \`.dialogs/\` at the rtws root stores dialog/runtime persistence and is hard-denied for general file tools.`,
+      );
+      lines.push(
+        `- Hint: For Dominds debugging, reproduce in a nested rtws (e.g. \`ux-rtws/.dialogs/\`), which is not covered by this hard deny.`,
       );
     }
   }

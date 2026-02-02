@@ -6,6 +6,7 @@
  */
 
 import { ChildProcess, spawn } from 'child_process';
+import path from 'path';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { getWorkLanguage } from '../shared/runtime-language';
@@ -858,6 +859,220 @@ function parseCdChain(command: string): Readonly<{ dir: string; rest: string }> 
   return { dir, rest };
 }
 
+type ShellToken = Readonly<{ text: string; quoted: boolean }>;
+
+function splitShellTokens(command: string): ShellToken[] {
+  const out: Array<{ text: string; quoted: boolean }> = [];
+  let buf = '';
+  let quote: "'" | '"' | null = null;
+  let tokenQuoted = false;
+
+  const push = (): void => {
+    if (buf === '') return;
+    out.push({ text: buf, quoted: tokenQuoted });
+    buf = '';
+    tokenQuoted = false;
+  };
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i] ?? '';
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      buf += ch;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      tokenQuoted = true;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      push();
+      continue;
+    }
+
+    buf += ch;
+  }
+
+  push();
+  return out;
+}
+
+function normalizeRelFromRtwsRoot(relPath: string): string {
+  return relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+type ForbiddenHiddenDir = '.minds' | '.dialogs';
+
+function detectForbiddenRtwsRootHiddenDir(relFromRoot: string): ForbiddenHiddenDir | null {
+  const normalized = normalizeRelFromRtwsRoot(relFromRoot);
+  if (normalized === '.minds' || normalized.startsWith('.minds/')) return '.minds';
+  if (normalized === '.dialogs' || normalized.startsWith('.dialogs/')) return '.dialogs';
+  return null;
+}
+
+function resolveRelFromRtwsRoot(
+  workspaceRootAbs: string,
+  baseDirRel: string,
+  token: string,
+): string {
+  const abs = path.resolve(workspaceRootAbs, baseDirRel, token);
+  return path.relative(workspaceRootAbs, abs);
+}
+
+function detectReadonlyShellForbiddenHiddenDirAccess(
+  workspaceRootAbs: string,
+  command: string,
+): ForbiddenHiddenDir | null {
+  // Deny access to rtws-root `.minds/**` and `.dialogs/**` only.
+  // Nested rtws (e.g. `ux-rtws/.minds/**`, `ux-rtws/.dialogs/**`) remains allowed.
+  let baseDirRel = '.';
+  let rest = command.trimStart();
+
+  // Evaluate chained `cd ... && ...` prefixes and track base dir.
+  while (rest.startsWith('cd ')) {
+    const parsed = parseCdChain(rest);
+    if (!parsed) break;
+    const dir = parsed.dir.replace(/^["']|["']$/g, '');
+    const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, dir);
+    const forbidden = detectForbiddenRtwsRootHiddenDir(relFromRoot);
+    if (forbidden) return forbidden;
+    baseDirRel = path.join(baseDirRel, dir);
+    rest = parsed.rest.trimStart();
+  }
+
+  const tokens = splitShellTokens(rest);
+  const cmd = tokens[0]?.text ?? '';
+  if (!cmd) return null;
+
+  const tokenText = (i: number): string | null => {
+    const v = tokens[i];
+    if (!v) return null;
+    return v.text;
+  };
+
+  // Handle the special allowed form: `git -C <dir> <subcommand> ...`
+  if (cmd === 'git' && tokenText(1) === '-C') {
+    const dirToken = tokenText(2);
+    if (dirToken) {
+      const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, dirToken);
+      const forbidden = detectForbiddenRtwsRootHiddenDir(relFromRoot);
+      if (forbidden) return forbidden;
+    }
+    return null;
+  }
+
+  const checkPathToken = (raw: string): ForbiddenHiddenDir | null => {
+    const trimmed = raw.trim();
+    if (trimmed === '' || trimmed === '-' || trimmed === '--') return null;
+    const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, trimmed);
+    return detectForbiddenRtwsRootHiddenDir(relFromRoot);
+  };
+
+  // Command-specific parsing to avoid false-positives where `.minds` is just a pattern/filter.
+  if (cmd === 'rg') {
+    // `rg [OPTIONS] PATTERN [PATH ...]`
+    let i = 1;
+    while (i < tokens.length) {
+      const t = tokenText(i);
+      if (!t) break;
+      if (t === '--') {
+        i += 1;
+        break;
+      }
+      if (t.startsWith('-')) {
+        i += 1;
+        continue;
+      }
+      // First non-flag token is PATTERN (do not treat as a path).
+      i += 1;
+      break;
+    }
+    for (; i < tokens.length; i++) {
+      const t = tokenText(i);
+      if (!t) continue;
+      const forbidden = checkPathToken(t);
+      if (forbidden) return forbidden;
+    }
+    return null;
+  }
+
+  if (cmd === 'jq') {
+    // `jq [OPTIONS] FILTER [FILE ...]`
+    let i = 1;
+    while (i < tokens.length) {
+      const t = tokenText(i);
+      if (!t) break;
+      if (t === '--') {
+        i += 1;
+        break;
+      }
+      if (t.startsWith('-')) {
+        i += 1;
+        continue;
+      }
+      // First non-flag token is FILTER (do not treat as a file path).
+      i += 1;
+      break;
+    }
+    for (; i < tokens.length; i++) {
+      const t = tokenText(i);
+      if (!t) continue;
+      const forbidden = checkPathToken(t);
+      if (forbidden) return forbidden;
+    }
+    return null;
+  }
+
+  if (cmd === 'find') {
+    // `find [path ...] [expression]` — only treat the initial paths as path roots.
+    for (let i = 1; i < tokens.length; i++) {
+      const t = tokenText(i);
+      if (!t) continue;
+      if (t.startsWith('-')) break;
+      if (t === '!' || t === '(' || t === ')') break;
+      const forbidden = checkPathToken(t);
+      if (forbidden) return forbidden;
+    }
+    return null;
+  }
+
+  // Default conservative: treat non-flag args as potential paths for common file-inspection commands.
+  // This intentionally does NOT block `echo/printf/awk/...` where args are data, not paths.
+  const pathLikeCommands = new Set([
+    'cat',
+    'ls',
+    'nl',
+    'wc',
+    'head',
+    'tail',
+    'stat',
+    'file',
+    'diff',
+    'realpath',
+    'readlink',
+    'tree',
+    'sed',
+  ]);
+
+  if (pathLikeCommands.has(cmd)) {
+    for (let i = 1; i < tokens.length; i++) {
+      const t = tokenText(i);
+      if (!t) continue;
+      if (t.startsWith('-')) continue;
+      const forbidden = checkPathToken(t);
+      if (forbidden) return forbidden;
+    }
+  }
+
+  return null;
+}
+
 export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
@@ -885,6 +1100,16 @@ export const readonlyShellTool: FuncTool = {
       return language === 'zh'
         ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n收到：${command}`
         : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nGot: ${command}`;
+    }
+
+    const forbiddenHiddenDir = detectReadonlyShellForbiddenHiddenDirAccess(
+      path.resolve(process.cwd()),
+      command,
+    );
+    if (forbiddenHiddenDir) {
+      return language === 'zh'
+        ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`${forbiddenHiddenDir}/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`${forbiddenHiddenDir}/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若需要访问 \`.minds/**\`，请使用 \`team_mgmt_*\` 工具。\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
+        : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`${forbiddenHiddenDir}/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`${forbiddenHiddenDir}/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- To access \`.minds/**\`, use \`team_mgmt_*\` tools.\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`;
     }
 
     const stdoutBuffer = new HeadTailByteBuffer(1024 * 1024);
