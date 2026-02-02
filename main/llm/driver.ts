@@ -1387,6 +1387,50 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         throw error;
       }
 
+      const modelsUnknown: unknown = (providerCfg as unknown as { models?: unknown }).models;
+      const models =
+        typeof modelsUnknown === 'object' && modelsUnknown !== null && !Array.isArray(modelsUnknown)
+          ? (modelsUnknown as Record<string, ModelInfo>)
+          : undefined;
+
+      const modelInfo = models ? models[model] : undefined;
+      if (!modelInfo) {
+        const uiLanguage = dlg.getUiLanguage();
+        const msg =
+          uiLanguage === 'zh'
+            ? [
+                '配置错误：当前成员的模型配置无效。',
+                '',
+                `- member: ${agent.name} (${dlg.agentId})`,
+                `- provider: ${provider}`,
+                `- model: ${model}（这是 model key；在该 provider 的 models 列表中不存在，或该 provider 缺少 models 配置）`,
+                '',
+                '请联系团队管理者修复：',
+                `- 在 .minds/team.yaml 中把该成员的 provider/model 改成有效 key；或`,
+                `- 在 .minds/llm.yaml 的 providers.${provider}.models 下补齐该 model key。`,
+                '',
+                '提示：你也可以打开 WebUI 的 `/setup` 查看当前工作区可用的 provider/model 列表。',
+                '',
+                '团队管理者修复后建议运行：`team_mgmt_validate_team_cfg({})`。',
+              ].join('\n')
+            : [
+                'Configuration error: invalid model selection for this member.',
+                '',
+                `- member: ${agent.name} (${dlg.agentId})`,
+                `- provider: ${provider}`,
+                `- model: ${model} (this is a model key; not found under this provider's models list, or the provider has no models configured)`,
+                '',
+                'Please contact your team manager to fix:',
+                `- Update the member's provider/model keys in .minds/team.yaml, or`,
+                `- Add the model key under .minds/llm.yaml providers.${provider}.models.`,
+                '',
+                'Tip: you can also open the WebUI `/setup` page to see available provider/model keys for this workspace.',
+                '',
+                'After the fix, the team manager should run: `team_mgmt_validate_team_cfg({})`.',
+              ].join('\n');
+        throw new Error(msg);
+      }
+
       const llmGen = getLlmGenerator(providerCfg.apiType);
       if (!llmGen) {
         const error = new Error(

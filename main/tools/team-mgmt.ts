@@ -3557,14 +3557,14 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
           ? fmtHeader('team.yaml 校验失败') +
             fmtList([
               `\`${TEAM_YAML_REL}\`：❌ 检测到 ${teamProblems.length} 个问题（详见 Problems 面板）`,
-              '说明：坏的成员配置会被运行时跳过（为了保持 Team 可用），但你仍应立即修复以免行为偏离预期。',
+              '说明：坏的成员配置可能会在运行时被跳过或在使用时失败（为了保持 Team 可用），但你仍应立即修复以免行为偏离预期。',
             ]) +
             '\n' +
             issueLines.join('\n')
           : fmtHeader('team.yaml Validation Failed') +
             fmtList([
               `\`${TEAM_YAML_REL}\`: ❌ ${teamProblems.length} issue(s) detected (see Problems panel)`,
-              'Note: invalid member configs are omitted at runtime (to keep the Team usable), but you should fix them immediately.',
+              'Note: invalid member configs may be omitted at runtime or fail when used (to keep the Team usable), but you should fix them immediately.',
             ]) +
             '\n' +
             issueLines.join('\n');

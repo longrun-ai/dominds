@@ -446,9 +446,9 @@ export namespace Team {
     });
     Object.setPrototypeOf(pangu, md);
 
-    const issuesById = new Map<string, { message: string; errorText: string }>();
-    const addIssue = (id: string, message: string, errorText: string): void => {
-      issuesById.set(id, { message, errorText });
+    const issuesById = new Map<string, { message: string; errorText: string; filePath?: string }>();
+    const addIssue = (id: string, message: string, errorText: string, filePath?: string): void => {
+      issuesById.set(id, { message, errorText, filePath });
     };
 
     const finalizeProblems = (): void => {
@@ -462,7 +462,7 @@ export namespace Team {
           severity: 'error',
           timestamp: now,
           message: issue.message,
-          detail: { filePath: TEAM_YAML_PATH, errorText: issue.errorText },
+          detail: { filePath: issue.filePath ?? TEAM_YAML_PATH, errorText: issue.errorText },
         });
       }
       reconcileProblemsByPrefix(TEAM_YAML_PROBLEM_PREFIX, desired);
@@ -539,6 +539,114 @@ export namespace Team {
           'Invalid .minds/team.yaml: non-shell-specialist member has shell tools.',
           `member '${member.id}' has shell tools (${shellTools.join(', ')}) but is not listed in shell_specialists.`,
         );
+      }
+    }
+
+    function previewKeys(obj: Record<string, unknown>, max: number): string {
+      const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
+      const head = keys.slice(0, Math.max(0, max));
+      const suffix = keys.length > head.length ? ` …(+${keys.length - head.length})` : '';
+      return head.join(', ') + suffix;
+    }
+
+    async function validateResolvedProviderModelBindings(
+      team: Team,
+      md: Team.Member,
+    ): Promise<void> {
+      let llmCfg: LlmConfig;
+      try {
+        llmCfg = await LlmConfig.load();
+      } catch (err: unknown) {
+        // Fail-open: team must remain usable, but surface this to Problems panel.
+        addIssue(
+          'llm/load',
+          'Failed to load LLM configuration for validating .minds/team.yaml provider/model bindings.',
+          asErrorText(err),
+          '.minds/llm.yaml',
+        );
+        return;
+      }
+
+      const validateAt = (args: {
+        idPrefix: string;
+        atPrefix: string;
+        provider: string | undefined;
+        model: string | undefined;
+      }): void => {
+        const providerKey = args.provider;
+        if (!providerKey) return;
+        const providerCfg = llmCfg.getProvider(providerKey);
+        if (!providerCfg) {
+          addIssue(
+            `${args.idPrefix}/provider/unknown`,
+            `Invalid .minds/team.yaml: ${args.atPrefix}.provider refers to an unknown provider key.`,
+            [
+              `Resolved ${args.atPrefix}.provider = '${providerKey}', but no such provider exists in the effective LLM config.`,
+              `Fix: update ${args.atPrefix}.provider to a valid provider key (see .minds/llm.yaml providers.<providerKey>), or add providers.${providerKey} in .minds/llm.yaml.`,
+              `Tip: run team_mgmt_list_providers({}) / team_mgmt_list_models({ source: "effective", provider_pattern: "*", model_pattern: "*" }) to confirm keys.`,
+            ].join('\n'),
+          );
+          return;
+        }
+
+        const modelsUnknown: unknown = (providerCfg as unknown as { models?: unknown }).models;
+        const models =
+          typeof modelsUnknown === 'object' &&
+          modelsUnknown !== null &&
+          !Array.isArray(modelsUnknown)
+            ? (modelsUnknown as Record<string, unknown>)
+            : undefined;
+
+        if (!models) {
+          addIssue(
+            `${args.idPrefix}/provider/models/invalid`,
+            `Invalid .minds/llm.yaml: providers.${providerKey}.models is missing or invalid (cannot validate team model bindings).`,
+            `Expected providers.${providerKey}.models to be an object mapping model keys to model info.`,
+            '.minds/llm.yaml',
+          );
+          return;
+        }
+
+        const modelKey = args.model;
+        if (!modelKey) return;
+        if (!Object.prototype.hasOwnProperty.call(models, modelKey)) {
+          addIssue(
+            `${args.idPrefix}/model/unknown`,
+            `Invalid .minds/team.yaml: ${args.atPrefix}.model is not present in provider '${providerKey}' models list.`,
+            [
+              `Resolved ${args.atPrefix}.provider = '${providerKey}'.`,
+              `Resolved ${args.atPrefix}.model = '${modelKey}', but it is not defined under providers.${providerKey}.models.`,
+              `Known model keys (preview): ${previewKeys(models, 12)}`,
+              `Fix: change ${args.atPrefix}.model to a valid key, or add providers.${providerKey}.models.${modelKey} in .minds/llm.yaml.`,
+              `After fixing, run team_mgmt_validate_team_cfg({}) to confirm there are no Problems panel errors.`,
+            ].join('\n'),
+          );
+        }
+      };
+
+      // Always validate member_defaults (they influence all members via prototype defaults).
+      validateAt({
+        idPrefix: 'member_defaults',
+        atPrefix: 'member_defaults',
+        provider: md.provider,
+        model: md.model,
+      });
+
+      for (const member of Object.values(team.members)) {
+        // Only validate members whose provider/model binding is explicitly overridden.
+        const hasProviderOverride = Object.prototype.hasOwnProperty.call(member, 'provider');
+        const hasModelOverride = Object.prototype.hasOwnProperty.call(member, 'model');
+        if (!hasProviderOverride && !hasModelOverride) continue;
+
+        const provider = member.provider ?? md.provider;
+        const model = member.model ?? md.model;
+        const idSeg = sanitizeProblemIdSegment(member.id);
+        validateAt({
+          idPrefix: `members/${idSeg}`,
+          atPrefix: `members.${member.id}`,
+          provider,
+          model,
+        });
       }
     }
     const buildBootstrapTeam = async (): Promise<Team> => {
@@ -644,6 +752,10 @@ export namespace Team {
         `default_responder '${configuredDefaultResponder}' does not exist in team members.`,
       );
     }
+
+    // Validate provider/model bindings (models must exist under the selected provider's models list).
+    // Fail-open: always keep Team usable; publish config errors to Problems panel.
+    await validateResolvedProviderModelBindings(team, md);
 
     finalizeProblems();
     return team;

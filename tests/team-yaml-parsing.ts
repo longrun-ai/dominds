@@ -211,6 +211,141 @@ async function main(): Promise<void> {
     }
 
     console.log('✅ team-yaml-parsing tests passed');
+
+    // Provider/model bindings:
+    // - member_defaults.model must exist under the selected provider's models list.
+    // - member overrides (provider/model) must remain consistent after prototype defaults.
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'llm.yaml'),
+      [
+        'providers:',
+        '  my_provider:',
+        '    name: My Provider',
+        '    apiType: openai',
+        '    baseUrl: https://example.invalid',
+        '    apiKeyEnvVar: MY_PROVIDER_API_KEY',
+        '    models:',
+        '      good_model: { name: "good-model" }',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: my_provider',
+        '  model: bad_model',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    toolsets: [ws_read]',
+        '',
+      ].join('\n'),
+    );
+
+    const team4 = await Team.load();
+    assert.ok(team4.getMember('alice'), 'alice should be loaded');
+
+    const snapshot4 = getProblemsSnapshot();
+    assert.ok(
+      snapshot4.problems.some((p) => p.id === 'team/team_yaml_error/member_defaults/model/unknown'),
+      'problem for member_defaults model binding should exist',
+    );
+    {
+      const p = snapshot4.problems.find(
+        (p2) => p2.id === 'team/team_yaml_error/member_defaults/model/unknown',
+      );
+      assert.ok(p && p.kind === 'team_workspace_config_error');
+      assert.equal(p.detail.filePath, '.minds/team.yaml');
+      assert.ok(p.detail.errorText.includes('providers.my_provider.models.bad_model'));
+    }
+
+    // Model binding issues should be detected for member overrides, too.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: my_provider',
+        '  model: good_model',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model: bad_model',
+        '    toolsets: [ws_read]',
+        '',
+      ].join('\n'),
+    );
+
+    const team5 = await Team.load();
+    assert.ok(team5.getMember('alice'), 'alice should be loaded');
+
+    const snapshot5 = getProblemsSnapshot();
+    assert.ok(
+      snapshot5.problems.some((p) => p.id === 'team/team_yaml_error/members/alice/model/unknown'),
+      'problem for members.alice model binding should exist',
+    );
+    {
+      const p = snapshot5.problems.find(
+        (p2) => p2.id === 'team/team_yaml_error/members/alice/model/unknown',
+      );
+      assert.ok(p && p.kind === 'team_workspace_config_error');
+      assert.equal(p.detail.filePath, '.minds/team.yaml');
+      assert.ok(p.detail.errorText.includes('providers.my_provider.models.bad_model'));
+    }
+
+    // Invalid providers.<k>.models shape should be reported against llm.yaml.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'llm.yaml'),
+      [
+        'providers:',
+        '  broken_provider:',
+        '    name: Broken Provider',
+        '    apiType: openai',
+        '    baseUrl: https://example.invalid',
+        '    apiKeyEnvVar: BROKEN_PROVIDER_API_KEY',
+        '    models: []',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: broken_provider',
+        '  model: any_model',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    toolsets: [ws_read]',
+        '',
+      ].join('\n'),
+    );
+
+    const team6 = await Team.load();
+    assert.ok(team6.getMember('alice'), 'alice should be loaded');
+
+    const snapshot6 = getProblemsSnapshot();
+    assert.ok(
+      snapshot6.problems.some(
+        (p) => p.id === 'team/team_yaml_error/member_defaults/provider/models/invalid',
+      ),
+      'problem for providers.<k>.models invalid shape should exist',
+    );
+    {
+      const p = snapshot6.problems.find(
+        (p2) => p2.id === 'team/team_yaml_error/member_defaults/provider/models/invalid',
+      );
+      assert.ok(p && p.kind === 'team_workspace_config_error');
+      assert.equal(p.detail.filePath, '.minds/llm.yaml');
+      assert.ok(p.detail.errorText.includes('providers.broken_provider.models'));
+    }
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });
