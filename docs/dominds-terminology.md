@@ -164,6 +164,20 @@
 - EN: `Taskdoc` | ZH: `差遣牒`
 - EN: `Taskdoc package (*.tsk/)` | ZH: `任务包`
 - EN: `!tellaskSession <slug>` | ZH: 会话 Slug（只写在 headline）
+- EN: `CLI (entrypoint UI)` | ZH: `CLI（入口界面）`
+- EN: `TUI (interactive UI)` | ZH: `TUI（交互前端）`
+- EN: `WebUI (interactive UI)` | ZH: `WebUI（交互前端）`
+
+### UI Surfaces（入口界面与交互前端）
+
+- EN: In Dominds terminology, the **CLI is only the initial entrypoint UI**: it starts/manages a run and hosts subcommands; it is **not called** the “end-user UI surface / interactive frontend”.
+- ZH: 在 Dominds 语境中，**CLI 只是初始入口界面**：用于启动/管理一次运行与承载子命令；它**不被称为**“最终用户界面/交互前端”。
+
+- EN: **TUI and WebUI are the interactive frontends** (end-user interaction surfaces), and both are launched via the CLI entrypoint.
+- ZH: **TUI / WebUI 才是交互前端**（面向最终交互的 UI surface），并且都经由 CLI 启动。
+
+- EN: At the moment, `dominds tui` / `dominds run` are “planned / reserved subcommand names” (no stable implementation yet) — but the term “TUI” still denotes the terminal interactive frontend category.
+- ZH: 现阶段 `dominds tui` / `dominds run` 属于“规划中/子命令名保留”（无稳定实现）——但术语口径仍使用 TUI 指代该类终端交互前端。
 
 ### Tellask（诉请）
 
