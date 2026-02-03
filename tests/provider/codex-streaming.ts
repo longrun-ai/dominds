@@ -72,6 +72,7 @@ async function main(): Promise<void> {
     },
     sayingFinish: async () => {},
     funcCall: async () => {},
+    streamError: async (_detail: string) => {},
   };
 
   await gen.genToReceiver(provider, agent, systemPrompt, funcTools, context, receiver, 1);

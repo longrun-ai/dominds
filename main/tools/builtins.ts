@@ -35,6 +35,7 @@ import {
   shellCmdTool,
   stopDaemonTool,
 } from './os';
+import { updatePlanTool } from './plan';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
 import {
   ripgrepCountTool,
@@ -87,6 +88,7 @@ registerTool(getDaemonOutputTool);
 
 // Codex-style compatibility tools
 registerTool(applyPatchTool);
+registerTool(updatePlanTool);
 
 // Env tools (local testing)
 registerTool(envGetTool);
@@ -216,16 +218,16 @@ setToolsetMeta('ws_mod', {
 });
 
 // Codex-focused toolsets (function tools only; suitable for Codex provider)
-registerToolset('codex_style_tools', [applyPatchTool, readonlyShellTool]);
+registerToolset('codex_style_tools', [applyPatchTool, readonlyShellTool, updatePlanTool]);
 setToolsetMeta('codex_style_tools', {
   source: 'dominds',
   descriptionI18n: {
-    en: 'Codex-style tools (apply_patch + readonly_shell)',
-    zh: 'Codex 风格工具（apply_patch + readonly_shell）',
+    en: 'Codex-style tools (apply_patch + readonly_shell + update_plan)',
+    zh: 'Codex 风格工具（apply_patch + readonly_shell + update_plan）',
   },
   promptI18n: {
-    en: 'Use `apply_patch` (Codex-style patch format) to modify files. Use `readonly_shell` for simple workspace inspection via a small allowlist (cat/rg/sed/ls/nl/wc/head/tail/stat/file/uname/whoami/id/echo/pwd/which/date/diff/realpath/readlink/printf/cut/sort/uniq/tr/awk/shasum/sha256sum/md5sum/uuid/git show/git status/git diff/git log/git blame/find/tree/jq; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the workspace. `apply_patch` enforces Dominds directory allow/deny lists.',
-    zh: '使用 `apply_patch`（Codex 风格 patch 格式）修改文件；使用 `readonly_shell` 做少量只读命令行检查（仅允许 cat/rg/sed/ls/nl/wc/head/tail/stat/file/uname/whoami/id/echo/pwd/which/date/diff/realpath/readlink/printf/cut/sort/uniq/tr/awk/shasum/sha256sum/md5sum/uuid/git show/git status/git diff/git log/git blame/find/tree/jq；另支持：git -C <相对路径> <show|status|diff|log|blame> ...；另支持：cd <相对路径> && <允许命令...>（或 ||））。你已被明确授权自行调用 `readonly_shell`，不要把它委派给 shell 专员。不建议多行脚本式命令，优先单行（允许 |、&&、||）。路径必须相对工作区根目录。`apply_patch` 会按成员的目录权限（allow/deny）做访问控制。',
+    en: 'Use `apply_patch` (Codex-style patch format) to modify files. Use `readonly_shell` for simple workspace inspection via a small allowlist (cat/rg/sed/ls/nl/wc/head/tail/stat/file/uname/whoami/id/echo/pwd/which/date/diff/realpath/readlink/printf/cut/sort/uniq/tr/awk/shasum/sha256sum/md5sum/uuid/git show/git status/git diff/git log/git blame/find/tree/jq; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Use `update_plan` to record/update the task plan (stored as a reminder). You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the workspace. `apply_patch` enforces Dominds directory allow/deny lists.',
+    zh: '使用 `apply_patch`（Codex 风格 patch 格式）修改文件；使用 `readonly_shell` 做少量只读命令行检查（仅允许 cat/rg/sed/ls/nl/wc/head/tail/stat/file/uname/whoami/id/echo/pwd/which/date/diff/realpath/readlink/printf/cut/sort/uniq/tr/awk/shasum/sha256sum/md5sum/uuid/git show/git status/git diff/git log/git blame/find/tree/jq；另支持：git -C <相对路径> <show|status|diff|log|blame> ...；另支持：cd <相对路径> && <允许命令...>（或 ||））。使用 `update_plan` 记录/更新任务计划（作为 reminder 存储）。你已被明确授权自行调用 `readonly_shell`，不要把它委派给 shell 专员。不建议多行脚本式命令，优先单行（允许 |、&&、||）。路径必须相对工作区根目录。`apply_patch` 会按成员的目录权限（allow/deny）做访问控制。',
   },
 });
 registerToolset('team-mgmt', [...teamMgmtTools]);

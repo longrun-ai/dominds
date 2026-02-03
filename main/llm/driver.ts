@@ -2023,19 +2023,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               maxRetries: 5,
               canRetry: () => !sawAnyStreamContent,
               doRequest: async () => {
-	                return await llmGen.genToReceiver(
-	                  providerCfg,
-	                  agent,
-	                  systemPrompt,
-	                  funcTools,
-	                  ctxMsgsForGen,
-	                  {
-	                    streamError: async (detail: string) => {
-	                      await dlg.streamError(detail);
-	                    },
-	                    thinkingStart: async () => {
-	                      throwIfAborted(abortSignal, dlg.id);
-	                      sawAnyStreamContent = true;
+                return await llmGen.genToReceiver(
+                  providerCfg,
+                  agent,
+                  systemPrompt,
+                  funcTools,
+                  ctxMsgsForGen,
+                  {
+                    streamError: async (detail: string) => {
+                      await dlg.streamError(detail);
+                    },
+                    thinkingStart: async () => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
                       if (streamActive.kind !== 'idle') {
                         const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active (genseq=${String(
                           dlg.activeGenSeq,

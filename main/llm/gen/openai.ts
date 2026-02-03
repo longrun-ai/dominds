@@ -535,10 +535,12 @@ export class OpenAiGen implements LlmGenerator {
             const delta = event.delta;
             if (delta.length > 0) {
               if (activeStream === 'thinking') {
-                log.error(
-                  'OPENAI stream overlap violation: received output_text while thinking stream still active',
-                  new Error('openai_stream_overlap_violation'),
-                );
+                const detail =
+                  'OPENAI stream overlap violation: received output_text while thinking stream still active';
+                log.error(detail, new Error('openai_stream_overlap_violation'));
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
                 if (thinkingStarted) {
                   await receiver.thinkingFinish();
                   thinkingStarted = false;
@@ -559,10 +561,12 @@ export class OpenAiGen implements LlmGenerator {
           case 'response.output_text.done': {
             if (!sawOutputText && event.text.length > 0) {
               if (activeStream === 'thinking') {
-                log.error(
-                  'OPENAI stream overlap violation: received output_text while thinking stream still active',
-                  new Error('openai_stream_overlap_violation'),
-                );
+                const detail =
+                  'OPENAI stream overlap violation: received output_text while thinking stream still active';
+                log.error(detail, new Error('openai_stream_overlap_violation'));
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
                 if (thinkingStarted) {
                   await receiver.thinkingFinish();
                   thinkingStarted = false;
@@ -590,10 +594,12 @@ export class OpenAiGen implements LlmGenerator {
             const delta = event.delta;
             if (delta.length > 0) {
               if (activeStream === 'saying') {
-                log.error(
-                  'OPENAI stream overlap violation: received reasoning while saying stream still active',
-                  new Error('openai_stream_overlap_violation'),
-                );
+                const detail =
+                  'OPENAI stream overlap violation: received reasoning while saying stream still active';
+                log.error(detail, new Error('openai_stream_overlap_violation'));
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
                 if (sayingStarted) {
                   await receiver.sayingFinish();
                   sayingStarted = false;
@@ -612,10 +618,12 @@ export class OpenAiGen implements LlmGenerator {
 
           case 'response.reasoning_summary_part.added': {
             if (activeStream === 'saying') {
-              log.error(
-                'OPENAI stream overlap violation: received reasoning while saying stream still active',
-                new Error('openai_stream_overlap_violation'),
-              );
+              const detail =
+                'OPENAI stream overlap violation: received reasoning while saying stream still active';
+              log.error(detail, new Error('openai_stream_overlap_violation'));
+              if (receiver.streamError) {
+                await receiver.streamError(detail);
+              }
               if (sayingStarted) {
                 await receiver.sayingFinish();
                 sayingStarted = false;
@@ -678,10 +686,12 @@ export class OpenAiGen implements LlmGenerator {
               const text = extractOutputMessageText(item as unknown as ResponseOutputItem);
               if (text.length > 0) {
                 if (activeStream === 'thinking') {
-                  log.error(
-                    'OPENAI stream overlap violation: received output_text while thinking stream still active',
-                    new Error('openai_stream_overlap_violation'),
-                  );
+                  const detail =
+                    'OPENAI stream overlap violation: received output_text while thinking stream still active';
+                  log.error(detail, new Error('openai_stream_overlap_violation'));
+                  if (receiver.streamError) {
+                    await receiver.streamError(detail);
+                  }
                   if (thinkingStarted) {
                     await receiver.thinkingFinish();
                     thinkingStarted = false;

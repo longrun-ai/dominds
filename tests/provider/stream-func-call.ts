@@ -275,6 +275,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
       funcCall: async (callId: string, name: string, args: string) => {
         functionCalls.push({ callId, name, argumentsJson: args });
       },
+      streamError: async (_detail: string) => {},
     };
 
     try {

@@ -72,14 +72,24 @@ runTest('Individual tool lookup', () => {
   const listDirTool = getTool('list_dir');
   const readFileTool = getTool('read_file');
   const addMemoryTool = getTool('add_memory');
+  const updatePlanTool = getTool('update_plan');
   const nonexistentTool = getTool('nonexistent');
 
   assertTrue(!!listDirTool, 'list_dir tool should exist');
   assertTrue(!!readFileTool, 'read_file tool should exist');
   assertTrue(!!addMemoryTool, 'add_memory tool should exist');
+  assertTrue(!!updatePlanTool, 'update_plan tool should exist');
   assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
 
   console.log('Tool lookup verification passed');
+});
+
+runTest('codex_style_tools includes update_plan', () => {
+  const codexTools = getToolset('codex_style_tools');
+  assertTrue(Array.isArray(codexTools), 'codex_style_tools should be an array');
+  if (!codexTools) throw new Error('unreachable');
+  const names = codexTools.map((t) => t.name);
+  assertTrue(names.includes('update_plan'), 'codex_style_tools should include update_plan');
 });
 
 // Test 4: Member with toolsets

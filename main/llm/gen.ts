@@ -22,6 +22,10 @@ export interface LlmStreamReceiver {
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;
   funcCall: (callId: string, name: string, args: string) => Promise<void>;
+
+  // Optional hook for generators to surface protocol/streaming anomalies (e.g. overlap) via the runtime.
+  // Used only for debugging; generators should still attempt best-effort recovery.
+  streamError?: (detail: string) => Promise<void>;
 }
 
 export interface LlmGenerator {

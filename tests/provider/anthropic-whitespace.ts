@@ -29,6 +29,7 @@ async function main() {
       sayingSegments.push(currentSaying);
     },
     funcCall: async () => {},
+    streamError: async (_detail: string) => {},
   };
 
   async function* events(): AsyncIterable<MessageStreamEvent> {
