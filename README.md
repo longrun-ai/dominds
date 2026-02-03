@@ -225,13 +225,13 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 ## Documentation
 
 - **[Terminology](docs/dominds-terminology.md)** — Canonical vocabulary across prompts and implementation docs (Taskdoc, Teammate Tellask, etc.)
+- **[Memory System](docs/memory-system.md)** — The hierarchical memory system
 - **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
 - **[MCP Support](docs/mcp-support.md)** — MCP tool integration
 - **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — `*.tsk/` Taskdoc packages and parsing
 - **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
 - **[Diligence Push](docs/diligence-push.md)** — Auto-continue (diligence) mechanism
 - **[Design](docs/design.md)** — Architecture and key abstractions
-- **[Mottos](docs/mottos.md)** — Short guiding statements
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
 
 - **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — Managing team members via tools
@@ -240,6 +240,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle
 - **[Interruption & Resumption](docs/interruption-resumption.md)** — Stop/resume semantics
 - **[Auth](docs/auth.md)** — Authentication and access model
+- **[Mottos](docs/mottos.md)** — Short guiding statements
 
 ### Getting Help
 

@@ -25,7 +25,7 @@ function buildDocTabs(): readonly DocTab[] {
     },
     {
       key: 'memory-system',
-      titleI18n: { zh: '记忆系统', en: 'Memory System' },
+      titleI18n: { zh: '分层记忆系统', en: 'Hierarchical Memory System' },
       docName: 'memory-system',
     },
     {
@@ -57,11 +57,6 @@ function buildDocTabs(): readonly DocTab[] {
       key: 'design',
       titleI18n: { zh: 'Dominds 设计', en: 'Dominds Design' },
       docName: 'design',
-    },
-    {
-      key: 'mottos',
-      titleI18n: { zh: '警世名言', en: 'Mottos' },
-      docName: 'mottos',
     },
     {
       key: 'oec-philosophy',

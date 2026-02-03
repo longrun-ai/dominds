@@ -136,21 +136,22 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 ## 相关文档
 
 - **[Terminology](docs/dominds-terminology.md)** — Dominds 专有术语
-- **[CLI Usage Guide](docs/cli-usage.md)** — 命令行工具及使用方法
-- **[MCP Support](docs/mcp-support.md)** — MCP 工具集成指南
-- **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — 差遣牒（Taskdoc）封装
-- **[Context Health](docs/context-health.md)** — 上下文健康维护
+- **[Memory System](docs/memory-system.zh.md)** — 分层记忆系统
+- **[CLI Usage Guide](docs/cli-usage.zh.md)** — 命令行工具及使用方法
+- **[MCP Support](docs/mcp-support.zh.md)** — MCP 工具集成指南
+- **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.zh.md)** — 差遣牒（Taskdoc）封装
+- **[Context Health](docs/context-health.zh.md)** — 上下文健康维护
 - **[鞭策](docs/diligence-push.zh.md)** — 鞭策机制
-- **[Design](docs/design.md)** — Dominds 架构设计与核心抽象
-- **[Mottos](docs/mottos.md)** — 警世名言
-- **[OEC Philosophy](docs/OEC-philosophy.md)** — 全方位优化管理法
+- **[Design](docs/design.zh.md)** — Dominds 架构设计与核心抽象
+- **[OEC Philosophy](docs/OEC-philosophy.zh.md)** — 全方位优化管理法
 
-- **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — 团队管理工具集
-- **[i18n](docs/i18n.md)** — 语言支持与本地化配置
-- **[Dialog System](docs/dialog-system.md)** — 对话系统与流式事件
-- **[Dialog Persistence](docs/dialog-persistence.md)** — 磁盘持久化存储结构
-- **[Interruption & Resumption](docs/interruption-resumption.md)** — 任务中断与恢复语义
-- **[Auth](docs/auth.md)** — 认证机制与访问模型（WebUI + API）
+- **[Team Mgmt Toolset](docs/team-mgmt-toolset.zh.md)** — 团队管理工具集
+- **[i18n](docs/i18n.zh.md)** — 语言支持与本地化配置
+- **[Dialog System](docs/dialog-system.zh.md)** — 对话系统与流式事件
+- **[Dialog Persistence](docs/dialog-persistence.zh.md)** — 磁盘持久化存储结构
+- **[Interruption & Resumption](docs/interruption-resumption.zh.md)** — 任务中断与恢复语义
+- **[Auth](docs/auth.zh.md)** — 认证机制与访问模型（WebUI + API）
+- **[Mottos](docs/mottos.zh.md)** — 警世名言
 
 ## 获取帮助
 
