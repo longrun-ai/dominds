@@ -99,6 +99,7 @@ export type UiStrings = {
   keepGoingResetFailedToast: string;
   keepGoingSaveToast: string;
   keepGoingSaveFailedToast: string;
+  keepGoingLanguageChangedDirtyToast: string;
 
   inputNotAvailableToast: string;
   noActiveDialogToast: string;
@@ -356,6 +357,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       keepGoingResetFailedToast: '重置鞭策语失败',
       keepGoingSaveToast: '已保存到工作区。',
       keepGoingSaveFailedToast: '保存鞭策语失败',
+      keepGoingLanguageChangedDirtyToast:
+        '界面语言已切换：当前鞭策内容有未保存修改，已跳过自动重载以免覆盖。请先保存或重置后再切换以刷新内容。',
 
       inputNotAvailableToast: '输入组件不可用。',
       noActiveDialogToast: '当前没有活跃对话。',
@@ -618,6 +621,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     keepGoingResetFailedToast: 'Failed to reset Diligence Push prompt',
     keepGoingSaveToast: 'Saved to workspace.',
     keepGoingSaveFailedToast: 'Failed to save Diligence Push prompt',
+    keepGoingLanguageChangedDirtyToast:
+      'UI language changed: the Diligence prompt has unsaved edits, so auto-reload was skipped to avoid overwriting. Save or reset, then switch again to refresh.',
 
     inputNotAvailableToast: 'Input is not available.',
     noActiveDialogToast: 'No active dialog.',

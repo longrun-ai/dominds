@@ -2,7 +2,7 @@ import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 
-import type { LanguageCode } from '../shared/types/language';
+import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
 
 type DocTab = {
   readonly key: string;
@@ -73,12 +73,34 @@ export class DomindsDocsPanel extends HTMLElement {
   private fetchState: FetchState = { kind: 'idle' };
   private inFlightKey: string | null = null;
 
+  static get observedAttributes(): string[] {
+    return ['ui-language'];
+  }
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
   }
 
+  attributeChangedCallback(name: string, _oldValue: string | null, newValue: string | null): void {
+    if (name !== 'ui-language') return;
+    const parsed = normalizeLanguageCode(newValue || '');
+    if (!parsed) return;
+    if (parsed === this.uiLanguage) return;
+
+    // If we're not connected yet, just stash the new language. `connectedCallback()`
+    // will render and load using the latest attribute value.
+    if (!this.isConnected) {
+      this.uiLanguage = parsed;
+      return;
+    }
+
+    this.setUiLanguage(parsed);
+  }
+
   connectedCallback(): void {
+    const parsed = normalizeLanguageCode(this.getAttribute('ui-language') || '');
+    if (parsed) this.uiLanguage = parsed;
     this.render();
     void this.ensureLoaded();
   }

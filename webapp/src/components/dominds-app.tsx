@@ -446,9 +446,58 @@ export class DomindsApp extends HTMLElement {
     if (this.q4hInput) this.q4hInput.setUiLanguage(this.uiLanguage);
 
     const docsPanel = this.shadowRoot.querySelector('#docs-panel');
-    if (docsPanel && 'setUiLanguage' in docsPanel) {
-      const maybe = docsPanel as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
-      if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
+    if (docsPanel instanceof HTMLElement) {
+      docsPanel.setAttribute('ui-language', this.uiLanguage);
+    }
+
+    // Bottom-panel tab labels
+    const q4hLabel = this.shadowRoot.querySelector(
+      'button.bp-tab[data-bp-tab="q4h"] .bp-label[data-bp-label="q4h"]',
+    );
+    if (q4hLabel instanceof HTMLElement) q4hLabel.textContent = t.q4hPendingQuestions;
+
+    const diligenceLabel = this.shadowRoot.querySelector(
+      'button.bp-tab[data-bp-tab="diligence"] .bp-label[data-bp-label="diligence"]',
+    );
+    if (diligenceLabel instanceof HTMLElement) diligenceLabel.textContent = t.keepGoingTabTitle;
+
+    const snippetsTab = this.shadowRoot.querySelector(
+      'button.bp-tab[data-bp-tab="snippets"]',
+    ) as HTMLElement | null;
+    if (snippetsTab) snippetsTab.textContent = t.promptTemplatesTabTitle;
+
+    const teamManualTab = this.shadowRoot.querySelector(
+      'button.bp-tab[data-bp-tab="team-manual"]',
+    ) as HTMLElement | null;
+    if (teamManualTab) teamManualTab.textContent = t.teamMgmtManualTabTitle;
+
+    const docsTab = this.shadowRoot.querySelector(
+      'button.bp-tab[data-bp-tab="docs"]',
+    ) as HTMLElement | null;
+    if (docsTab) docsTab.textContent = t.domindsDocsTabTitle;
+
+    // Bottom-panel content: refresh the active tab content on UI-language change.
+    // - docs: attribute-driven (handled above)
+    // - team-manual/snippets: panels implement setUiLanguage(lang) and reload content
+    // - diligence: reload unless there are unsaved edits
+    if (this.bottomPanelTab === 'team-manual') {
+      const panel = this.shadowRoot.querySelector('#team-manual-panel');
+      if (panel && 'setUiLanguage' in panel) {
+        const maybe = panel as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
+        if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
+      }
+    } else if (this.bottomPanelTab === 'snippets') {
+      const panel = this.shadowRoot.querySelector('#snippets-panel');
+      if (panel && 'setUiLanguage' in panel) {
+        const maybe = panel as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
+        if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
+      }
+    } else if (this.bottomPanelTab === 'diligence') {
+      if (this.diligenceRtwsDirty) {
+        this.showToast(t.keepGoingLanguageChangedDirtyToast, 'warning');
+      } else {
+        void this.loadRtwsDiligenceText(true);
+      }
     }
 
     // Any open overlays should re-render to refresh static text.
@@ -3197,7 +3246,7 @@ export class DomindsApp extends HTMLElement {
 	                    <textarea id="diligence-textarea" class="bp-textarea" spellcheck="false"></textarea>
 	                  </div>
 	                  <div class="bp-content bp-docs ${this.bottomPanelTab === 'docs' ? '' : 'hidden'}">
-	                    <dominds-docs-panel id="docs-panel"></dominds-docs-panel>
+	                    <dominds-docs-panel id="docs-panel" ui-language="${this.uiLanguage}"></dominds-docs-panel>
 	                  </div>
 	                  <div class="bp-content bp-team-manual ${this.bottomPanelTab === 'team-manual' ? '' : 'hidden'}">
 	                    <dominds-team-manual-panel id="team-manual-panel"></dominds-team-manual-panel>
@@ -3209,7 +3258,7 @@ export class DomindsApp extends HTMLElement {
 	                <div class="bottom-panel-footer" id="bottom-panel-footer">
 	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'q4h' ? 'active' : ''}" type="button" data-bp-tab="q4h">
 	                    <span class="bp-badge" data-has-questions="${this.q4hQuestionCount > 0 ? 'true' : 'false'}">${String(this.q4hQuestionCount)}</span>
-	                    ${t.q4hPendingQuestions}
+	                    <span class="bp-label" data-bp-label="q4h">${t.q4hPendingQuestions}</span>
 	                  </button>
 			                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
 	                    <input
@@ -3219,7 +3268,7 @@ export class DomindsApp extends HTMLElement {
 	                      aria-label="${t.keepGoingToggleAriaLabel}"
 	                      ${this.disableDiligencePush ? '' : 'checked'}
 	                    />
-	                    <span>${t.keepGoingTabTitle}</span>
+	                    <span class="bp-label" data-bp-label="diligence">${t.keepGoingTabTitle}</span>
 		                    <span class="bp-badge" data-has-remaining="${this.getDiligenceBudgetBadgeText().hasRemaining ? 'true' : 'false'}">${this.getDiligenceBudgetBadgeText().text}</span>
 		                  </button>
 	                  <div class="bp-tabs-right">
@@ -3984,9 +4033,8 @@ export class DomindsApp extends HTMLElement {
 
     if (this.bottomPanelTab === 'docs') {
       const docs = this.shadowRoot?.querySelector('#docs-panel');
-      if (docs && 'setUiLanguage' in docs) {
-        const maybe = docs as unknown as { setUiLanguage?: (lang: LanguageCode) => void };
-        if (typeof maybe.setUiLanguage === 'function') maybe.setUiLanguage(this.uiLanguage);
+      if (docs instanceof HTMLElement) {
+        docs.setAttribute('ui-language', this.uiLanguage);
       }
       return;
     }
@@ -6243,11 +6291,9 @@ export class DomindsApp extends HTMLElement {
         }
 
         // Update docs panel language
-        const docsPanel = this.shadowRoot?.querySelector('#docs-panel') as unknown as {
-          setUiLanguage?: (lang: LanguageCode) => void;
-        };
-        if (docsPanel && typeof docsPanel.setUiLanguage === 'function') {
-          docsPanel.setUiLanguage(this.uiLanguage);
+        const docsPanel = this.shadowRoot?.querySelector('#docs-panel');
+        if (docsPanel instanceof HTMLElement) {
+          docsPanel.setAttribute('ui-language', this.uiLanguage);
         }
 
         const teamManualPanel = this.shadowRoot?.querySelector('#team-manual-panel') as unknown as {
