@@ -40,6 +40,7 @@ export type BuildSystemPromptInput = {
   persona: string;
   knowledge: string;
   lessons: string;
+  envIntro: string;
   teamIntro: string;
   toolUsageText: string;
   intrinsicToolInstructions: string;
@@ -72,6 +73,9 @@ ${input.knowledge}
 
 ## 经验
 ${input.lessons}
+
+## 运行环境
+${input.envIntro}
 
 ## 团队目录
 你与以下队友协作。使用他们的呼号与其交流。
@@ -215,6 +219,9 @@ ${input.knowledge}
 
 ## Lessons
 ${input.lessons}
+
+## Runtime Environment
+${input.envIntro}
 
 ## Team Directory
 You collaborate with the following teammates. Use their call signs to address them.

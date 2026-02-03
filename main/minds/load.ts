@@ -46,6 +46,7 @@ import {
 import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
+type ReadMindsTextResult = { kind: 'found'; text: string } | { kind: 'missing' };
 
 const SHELL_TOOL_NAMES = ['shell_cmd', 'stop_daemon', 'get_daemon_output'] as const;
 type ShellToolName = (typeof SHELL_TOOL_NAMES)[number];
@@ -242,6 +243,52 @@ async function readAgentMindPreferred(options: {
   return options.noFileDefault;
 }
 
+async function readMindsTextResult(fn: string): Promise<ReadMindsTextResult> {
+  const mindFn = path.join('.minds', fn);
+  try {
+    const st = await stat(mindFn);
+    if (!st.isFile()) return { kind: 'missing' };
+  } catch (error: unknown) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return { kind: 'missing' };
+    }
+    log.warn(`Failed stating file '${mindFn}':`, error);
+    return { kind: 'missing' };
+  }
+
+  try {
+    const text = await readFile(mindFn, 'utf-8');
+    return { kind: 'found', text };
+  } catch (error: unknown) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'ENOENT'
+    ) {
+      return { kind: 'missing' };
+    }
+    log.warn(`Failed reading file '${mindFn}':`, error);
+    return { kind: 'missing' };
+  }
+}
+
+async function readMindsTextPreferred(options: {
+  preferredFilenames: readonly string[];
+  noFileDefault: string;
+}): Promise<string> {
+  for (const fn of options.preferredFilenames) {
+    const result = await readMindsTextResult(fn);
+    if (result.kind === 'found') return result.text;
+  }
+  return options.noFileDefault;
+}
+
 export async function loadAgentMinds(
   agentId?: string,
   dialog?: Dialog,
@@ -273,10 +320,15 @@ export async function loadAgentMinds(
     preferredFilenames: [`lessons.${workingLanguage}.md`, 'lessons.md'],
     noFileDefault: '',
   });
+  const envIntroRaw = await readMindsTextPreferred({
+    preferredFilenames: [`env.${workingLanguage}.md`, 'env.md'],
+    noFileDefault: '',
+  });
   const none = noneText(workingLanguage);
   const persona = personaRaw && personaRaw.trim() !== '' ? personaRaw : none;
   const knowledge = knowledgeRaw && knowledgeRaw.trim() !== '' ? knowledgeRaw : none;
   const lessons = lessonsRaw && lessonsRaw.trim() !== '' ? lessonsRaw : none;
+  const envIntro = envIntroRaw && envIntroRaw.trim() !== '' ? envIntroRaw : '';
 
   // Introduction of all team members (mark "(self)" for the current agent)
   const teamIntro = formatTeamIntro(team, agent.id, workingLanguage);
@@ -540,6 +592,7 @@ export async function loadAgentMinds(
     persona,
     knowledge,
     lessons,
+    envIntro,
     teamIntro,
     toolUsageText,
     intrinsicToolInstructions: '',
