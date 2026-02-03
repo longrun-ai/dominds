@@ -121,7 +121,7 @@ export interface FunctionResultEvent {
   genseq?: number;
 }
 
-// Tool call events (streaming mode - @tool_name mentions)
+// Tellask call block events (streaming mode - blocks starting with `!?@...`)
 // callId is determined at finish event via content-hash (see shared/utils/id.ts)
 export type ToolCallStartEvent = LlmGenDlgEvent & {
   type: 'tool_call_start_evt';
@@ -280,7 +280,7 @@ export type DialogEvent =
   // Function calls (LLM native)
   | FuncCallStartEvent
   | FunctionResultEvent
-  // Tool calls (@tool_name)
+  // Tellask call blocks (`!?@...`)
   | ToolCallStartEvent
   | ToolCallHeadlineChunkEvent
   | ToolCallHeadlineFinishEvent

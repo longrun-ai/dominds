@@ -557,8 +557,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  Before[清晰之前<br/>消息存在<br/>提醒存在<br/>Q4H 存在] --> Op[clear_mind]
-  Op --> After[清晰之后<br/>消息清除<br/>提醒保留<br/>Q4H 清除]
+  Before["清晰之前<br/>消息存在<br/>提醒存在<br/>Q4H 存在"] --> Op[clear_mind]
+  Op --> After["清晰之后<br/>消息清除<br/>提醒保留<br/>Q4H 清除"]
 ```
 
 ---
@@ -575,7 +575,7 @@ flowchart TD
 
   S1 --> N1[嵌套子对话 sub-001-001]
 
-  Root -.-> Reg[registry.yaml<br/>(根作用域，仅 TYPE B)]
+  Root -.-> Reg["registry.yaml<br/>(根作用域，仅 TYPE B)"]
   Root -.-> QRoot[q4h.yaml (根)]
   S1 -.-> QS1[q4h.yaml (sub-001)]
   N1 -.-> QN1[q4h.yaml (sub-001-001)]
@@ -587,7 +587,7 @@ flowchart TD
 - `.dialogs/run/<root-id>/latest.yaml`
 - `.dialogs/run/<root-id>/reminders.json`
 - `.dialogs/run/<root-id>/q4h.yaml`
-- `.dialogs/run/<root-id>/course-001.jsonl`（以及更多对话程）
+- `.dialogs/run/<root-id>/course-001.jsonl`（第 1 程对话，还可以有编号递增的后续多程）
 - `.dialogs/run/<root-id>/subdialogs/<sub-id>/dialog.yaml`
 - `.dialogs/run/<root-id>/subdialogs/<sub-id>/q4h.yaml`
 - `.dialogs/run/<root-id>/registry.yaml`（仅根；TYPE B 注册表）
@@ -646,13 +646,13 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ## 对话控制工具
 
-**实现**：`clear_mind` 委托给 `Dialog.startNewRound(newRoundPrompt)`，它：
+**实现**：`clear_mind` 委托给 `Dialog.startNewCourse(newCoursePrompt)`，它：
 
 1. 清除所有聊天消息
 2. 清除所有 Q4H 问题
-3. 增加对话程计数器
+3. 增加“多程对话”（course）计数器
 4. 更新对话的时间戳
-5. 将 `newRoundPrompt` 排队到 `dlg.upNext`，以便驱动程序可以启动新的协程并将其用作下一程的**第一个 `role=user` 消息**
+5. 将 `newCoursePrompt` 排队到 `dlg.upNext`，以便驱动程序可以启动新的协程并将其用作新一程的**第一个 `role=user` 消息**
 
 ### `clear_mind`
 
@@ -676,7 +676,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 - 保留子对话注册表（仅限根对话）
 - 对上位对话没有影响
 - 将注意力重定向到 Taskdoc
-- 系统生成的新一程对话开启提示已排队，作为下一程对话的首个 role=user 消息
+- 系统生成的“开启新一程对话”提示已排队，作为新一程的首个 role=user 消息
 - 开启新一程对话
 
 **实现说明**：
@@ -688,7 +688,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ### `change_mind`
 
-**目的**：更新对话树中所有对话引用的共享 Taskdoc 内容（无轮次重置）。
+**目的**：更新对话树中所有对话引用的共享 Taskdoc 内容（不开启新一程对话）。
 
 **函数工具参数**：
 
@@ -705,7 +705,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 - 更新工作区 Taskdoc 内容（`*.tsk/` Taskdoc 包中恰好一个章节文件）
 - **不更改 Taskdoc 路径。** `dlg.taskDocPath` 在对话的整个生命周期中是不可变的。-更新的文件立即对引用它的所有对话可用
-- **不开始新的对话轮次。** 如果需要轮次重置，请单独使用 `clear_mind`。
+- **不开启新一程对话。** 如需开启新一程对话，请单独使用 `clear_mind`。
 - 本身不清除消息、提醒、Q4H 或注册表
 - 影响引用相同 Taskdoc 的所有参与代理（主对话和子对话）
 
@@ -840,7 +840,7 @@ interface SubdialogRegistry {
 
 - **层级支持**：用于子对话管理的父子关系
 - **内存管理**：持久化提醒和临时聊天消息
-- **思维清晰操作**：`startNewRound(newRoundPrompt)` 方法（清除消息，清除 Q4H，增加轮次，为下一轮驱动排队新轮次提示）
+- **清理头脑操作**：`startNewRound(newRoundPrompt)` 方法（清除消息，清除 Q4H，开启新一程对话，为下一轮驱动排队开启提示）
 - **子对话管理**：专门子任务的创建和协调
 - **Q4H 管理**：用于问题跟踪的 `updateQuestions4Human()` 方法
 - **内存访问**：与 Taskdoc 和团队/代理内存的集成
@@ -984,11 +984,11 @@ interface RegistryMethods {
 **对话存储**：每个对话对应一个包含以下内容的目录结构：
 
 - `<dialog-root>/dialog.yaml` — 对话元数据和配置
-- `<dialog-root>/latest.yaml` — 当前轮次跟踪和状态
+- `<dialog-root>/latest.yaml` — 当前对话进程跟踪和状态
 - `<dialog-root>/reminders.json` — 持久化提醒存储
 - `<dialog-root>/q4h.yaml` — Q4H 索引（被清晰工具清除）
 - `<dialog-root>/registry.yaml` — 子对话注册表（仅限根对话）
-- `<dialog-root>/course-001.jsonl`（以及更多对话程）— 流式消息文件
+- `<dialog-root>/course-001.jsonl`（第 1 程对话，还可以有编号递增的后续多程）— 流式消息文件
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — 每个子对话的 Q4H 索引（被清晰清除）
 

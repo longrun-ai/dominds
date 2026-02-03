@@ -29,7 +29,7 @@ This is a design doc only (no implementation details).
 
 ## Terms
 
-- **dlg (dialog):** A single conversation/work thread.
+- **dlg (dialog):** A single dialog/work thread.
 - **Proceeding:** The backend is actively driving the dlg (generating output and/or performing steps) without waiting for user input.
 - **Idle:** The dlg is not proceeding; it is either waiting for user input or in a stable finished/paused state.
 - **Interrupted:** Proceeding stopped before reaching a stable “waiting for user” point.

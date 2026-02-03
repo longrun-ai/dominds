@@ -1,7 +1,7 @@
 # Context Health Monitor
 
 This document specifies a **context health monitor** feature for Dominds: a small, always-on signal
-that helps the agent (and user) avoid degraded performance when the conversation’s prompt/context is
+that helps the agent (and user) avoid degraded performance when the dialog’s prompt/context is
 getting too large relative to the model’s context window.
 
 ## Current Code Reality (as of 2026-01-28)
@@ -176,11 +176,6 @@ Note (zh UI copy):
 
 - `caution` → “吃紧”
 - `critical` → “告急”
-
-### Q4H(kind=context_health_critical) send gating
-
-This kind is retained as a reserved discriminator, but v3 no longer uses Q4H for critical context
-health remediation by default.
 
 ## Implementation Outline
 

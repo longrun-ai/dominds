@@ -214,8 +214,8 @@ dominds read
 每个对话目录通常包含：
 
 - `dialog.yaml` - 对话元数据
-- `latest.yaml` - 当前轮次 + lastModified 跟踪
-- `course-001.jsonl`（以及更多对话程）- 流式消息文件
+- `latest.yaml` - 当前进程编号 + lastModified 跟踪
+- `course-001.jsonl`（第 1 程对话，后续还可以有编号递增的多程）- 流式消息文件
 - `subdialogs/` - 嵌套子对话
 
 ## 错误处理

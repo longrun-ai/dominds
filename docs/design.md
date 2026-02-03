@@ -71,7 +71,7 @@ This fundamental problem manifests in several ways:
    - Redundant information and circular conversations
 
 2. **Context Pollution**
-   - Accumulated chat history that obscures current priorities
+   - Accumulated dialog history that obscures current priorities
    - Outdated information that conflicts with current state
    - Mixed signal-to-noise ratio in conversation threads
 
@@ -335,19 +335,19 @@ Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 Main Dialog (Root Dialog)
 ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Workspace Taskdoc package)
 ├── Reminders (Working Memory)
-├── Chat Messages (Ephemeral)
+├── Dialog Messages (Ephemeral)
 └── Subdialogs (Tree-Structured, Stored Flat Under Main Dialog)
 ├── Specialized Agent A
 │ ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
 │ ├── Parent Call Context
 │ ├── Local Reminders
-│ └── Local Chat Messages
+│ └── Local Dialog Messages
 │ └── Sub-Subdialogs (Further Nesting Possible)
 └── Specialized Agent B
 ├── Taskdoc Reference → tasks/feature-auth.tsk/ (Same Taskdoc package)
 ├── Parent Call Context
 ├── Local Reminders
-└── Local Chat Messages
+└── Local Dialog Messages
 
 ```
 
@@ -371,7 +371,7 @@ Main Dialog (Root Dialog)
    - Can link to other product documentation and evolve as project requirements change
 2. **Reminders**: Semi-persistent, dialog-scoped, survives conversation cleanup
 3. **Parent Call Context**: Inherited context for subdialogs
-4. **Chat Messages**: Ephemeral, subject to cleanup for mental clarity
+4. **Dialog Messages**: Ephemeral, subject to cleanup for mental clarity
 
 #### Workspace-Persistent Memory (DevOps Lifecycle)
 

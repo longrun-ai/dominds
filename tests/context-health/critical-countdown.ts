@@ -4,7 +4,7 @@
  * The actual countdown/auto-clear behavior is exercised in runtime. Here we ensure:
  * - guide text renders without throwing
  * - countdown number is reflected in output
- * - copy uses "提醒项" and "新一轮/新回合" (not "轮次") in zh
+ * - copy uses "提醒项" and "新一程对话" (not "轮次") in zh
  */
 
 import assert from 'node:assert/strict';
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   });
 
   assert.ok(zh.includes('提醒项'), 'zh guide should mention reminders as “提醒项”');
-  assert.ok(zh.includes('新一轮/新回合'), 'zh guide should use “新一轮/新回合” phrasing');
+  assert.ok(zh.includes('新一程对话'), 'zh guide should use “新一程对话” phrasing');
   assert.ok(
     zh.includes('最多再提醒你 4 次'),
     'zh guide should include reminder countdown number (4) in copy',

@@ -9,7 +9,7 @@
 ### 当前状态
 
 - **✅ 完全实现**：现代存储系统在 `main/shared/types/storage.ts` 中具有强 TypeScript 类型
-- **✅ latest.yaml 支持**：当前轮次和 lastModified 跟踪，用于准确的 UI 时间戳
+- **✅ latest.yaml 支持**：当前对话进程和 lastModified 跟踪，用于准确的 UI 时间戳
 - **✅ 仅追加事件**：基于 JSONL 的事件流，具有原子操作
 - **✅ 强类型安全**：可区分联合和类型守卫，用于编译时验证
 - **✅ 真实文件 I/O**：对话会话在 `.dialogs/run|done/archive` 下持久化，具有现代文件格式
@@ -17,7 +17,7 @@
 
 ### 关键特性
 
-- **latest.yaml**：跟踪当前轮次、lastModified 时间戳、消息计数和对话状态
+- **latest.yaml**：跟踪当前对话进程、lastModified 时间戳、消息计数和对话状态
 - **强类型**：具有可区分联合和类型守卫的现代 TypeScript 模式
 - **原子操作**：所有文件操作都是原子的，以防止损坏
 - **高效时间戳**：UI 显示来自持久化记录的准确 lastModified 时间
@@ -178,17 +178,17 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ```
 .dialogs/run/<rootDialogId>/
 ├── dialog.yaml               # 带强类型的对话元数据
-├── latest.yaml               # 当前轮次和 lastModified 跟踪
+├── latest.yaml               # 当前对话进程和 lastModified 跟踪
 ├── reminders.json            # 持久化提醒项
-├── <course>.jsonl            # 每个对话程的流式消息
-├── <course>.yaml             # 对话程元数据
+├── <course>.jsonl            # 每一程的流式事件
+├── <course>.yaml             # 每一程的元数据
 └── subdialogs/               # 扁平子对话存储
     ├── <subDialogId1>/       # 第一级子对话
     │   ├── dialog.yaml       # 子对话元数据
     │   ├── latest.yaml       # 子对话当前状态
     │   ├── reminders.json    # 子对话提醒项
-    │   ├── <course>.jsonl    # 子对话事件
-    │   └── <course>.yaml     # 子对话对话程元数据
+    │   ├── <course>.jsonl    # 子对话每一程的流式事件
+    │   └── <course>.yaml     # 子对话每一程的元数据
     └── <subDialogId2>/       # 另一个子对话
         ├── dialog.yaml
         ├── latest.yaml
@@ -199,7 +199,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 
 **关键特性**：
 
-- **latest.yaml**：带有当前轮次、lastModified 和状态的现代跟踪文件
+- **latest.yaml**：带有当前对话进程、lastModified 和状态的现代跟踪文件
 - **强类型**：所有文件使用来自 `main/shared/types/storage.ts` 的 TypeScript 接口
 - **原子 在所有对话修改更新**：latest.yaml时原子更新
 - **UI 集成**：latest.yaml 中的时间戳在对话列表中正确显示
@@ -247,10 +247,10 @@ assignmentFromSup: # 来自父级的任务上下文
 用于当前对话状态和 UI 时间戳的现代跟踪文件：
 
 ```yaml
-currentCourse: 3 # 当前对话程编号（基于 1）
+currentCourse: 3 # 当前对话进程编号（基于 1）
 lastModified: '2024-01-15T11:45:00Z' # 最后活动的 ISO 时间戳
-messageCount: 12 # 当前轮次中的总消息数
-functionCallCount: 3 # 当前轮次中的总函数调用数
+messageCount: 12 # 当前对话进程中的总消息数
+functionCallCount: 3 # 当前对话进程中的总函数调用数
 subdialogCount: 1 # 创建的子对话总数
 status: 'active' # 当前对话状态
 ```
@@ -258,16 +258,16 @@ status: 'active' # 当前对话状态
 **自动更新**：`latest.yaml` 在以下情况下自动更新：
 
 - 新消息事件
-- 轮次转换
+- 开启新一程对话
 - 函数调用结果
 - 子对话创建
 - 任何对话修改
 
 **UI 集成**：对话列表显示来自此文件的 `lastModified` 时间戳，用于准确排序和显示。
 
-### 对话程跟踪 (`course.curr`)
+### 对话进程跟踪 (`course.curr`)
 
-包含当前轮次编号的简单文本文件：
+包含当前对话进程编号的简单文本文件：
 
 ```
 3
@@ -349,7 +349,7 @@ status: 'active' # 当前对话状态
 # 注意：dlg_stream_error 事件被过滤，不会写入 JSONL 文件
 ```
 
-### 轮次元数据 (`.yaml`)
+### 对话进程元数据 (`.yaml`)
 
 ```yaml
 course: 3
@@ -425,9 +425,9 @@ taskdocChecksum: 'sha256:abc123...'
 
 ### 消息持久化
 
-1. 将消息追加到当前对话程的 `.jsonl` 文件
-2. 如果对话程完成则更新对话程元数据
-3. 对话程编号 +1
+1. 将消息追加到当前一程的 `.jsonl` 文件
+2. 根据事件类型更新 `latest.yaml`（例如 `lastModified`）
+3. 如果触发 `clear_mind` 开启新一程：更新 `latest.yaml.currentCourse` 并广播 course 更新事件
 4. 确保原子写入以防止损坏
 
 ### 子对话创建
@@ -445,7 +445,7 @@ taskdocChecksum: 'sha256:abc123...'
 ### 对话完成
 
 1. 将对话状态更新为"已完成"
-2. 完成所有轮次元数据
+2. 完成所有对话进程元数据
 3. 对于根对话：
    - 将对话目录从 `run/` 移动到 `done/`
    - 移动中包含所有子对话
@@ -549,7 +549,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 #### ✅ latest.yaml 支持
 
-- **实时跟踪**：当前轮次和 lastModified 时间戳
+- **实时跟踪**：当前对话进程和 lastModified 时间戳
 - **原子更新**：所有对话修改时自动更新
 - **UI 集成**：对话列表显示来自持久化记录的准确时间戳
 - **状态管理**：跟踪对话状态、消息计数和子对话计数

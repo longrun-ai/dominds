@@ -4,7 +4,7 @@ Dominds is designed around **intentional, layered memory**.
 
 The goal is simple:
 
-- Keep the **chat history** disposable.
+- Keep the **dialog history** disposable.
 - Keep a small set of **high-value, curated artifacts** that can survive `clear_mind` and drive reliable progress.
 
 This doc defines the _ideal_ usage contract for these layers, and the expected product behavior that supports it.
@@ -149,7 +149,7 @@ Tools:
 
 - `add_team_memory`, `replace_team_memory`, `drop_team_memory`, `clear_team_memory`.
 
-### 5) Tool-call history / chat messages — Disposable and unreliable
+### 5) Tool-call history / dialog messages — Disposable and unreliable
 
 **Purpose**: short-lived working buffer.
 
@@ -172,7 +172,7 @@ Never rely on “I read it earlier” as a durable assumption.
 2. Distill:
    - update Taskdoc `progress` with decisions and next steps;
    - update a small reminder worklog with any crucial details.
-3. `clear_mind` to drop noisy chat/tool history.
+3. `clear_mind` to drop noisy dialog/tool history.
 
 ### When context health turns yellow/red
 

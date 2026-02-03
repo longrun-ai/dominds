@@ -91,14 +91,19 @@ ${input.teamIntro}
 2) 一个诉请块会持续收集 \`!?...\` 行，直到遇到第一行“不以 \`!?\` 开头”的普通行才结束（推荐用空行分隔诉请块）。
 3) 一个诉请块的第一行必须是 \`!?@<name> ...\`（否则是 malformed）。
 4) 同一诉请块内：  
-   - 第一行是 headline；后续任何以 \`!?@\` 开头的行会继续追加到 headline（不会触发新工具）。  
+   - 第一行是 headline；后续任何以 \`!?@\` 开头的行会继续追加到 headline（不会触发新的诉请）。  
    - 以 \`!?\` 开头但不以 \`!?@\` 开头的行会进入 body。  
 5) **同一条消息里发起多个诉请：必须写多个诉请块，并用至少一行普通行分隔。**  
 6) **给队友发诉请（@tooling/@server/...）且需要跨轮协作：强烈建议带稳定的 \`!tellaskSession <tellaskSession>\`。**
 
+**补充规则：多人集体诉请（collective teammate tellask）**
+- 默认每条诉请块只指向一个目标（第一行的 \`@name\`）。但对**队友诉请**，headline（含多行 headline）中出现的多个队友呼号会被视为 collective targets：Dominds 会把同一份 headLine+callBody 扇出为多个队友诉请。
+- 若包含 \`!tellaskSession <tellaskSession>\`，它在 headline 中最多出现一次，并对所有目标队友生效。
+- 若你想发起多条彼此独立的诉请（例如给不同队友不同内容），仍必须写多个诉请块，并用普通行分隔。
+
 **\`!tellaskSession\`（跨轮协作的默认做法）**
 - 用途：让同一条工作流在多轮对话中可追踪，避免对方“每次像新工单”丢上下文。
-- 只写在 headline：\`!?@tooling !tellaskSession tooling-read-file-options ...\`（每个诉请块最多一次）。
+- 只写在 headline：\`!?@ux !tellaskSession ux-checklist ...\`（每个诉请块最多一次）。
 - 命名建议：\`<owner>-<area>-<short>\`，例如 \`tooling-read-file-options\`、\`server-ws-schema-v2\`。
 - 不要用于 \`!?@super\`（规则：\`@super\` 必须不带 \`!tellaskSession\`）。
 
@@ -110,26 +115,26 @@ ${input.teamIntro}
 
 反例（会被合并成一个诉请块 headline）：
 \`\`\`plain-text
-!?@tool_a arg1
-!?@tool_b arg2
+!?@cmdr run lint:types
+!?@cmdr then run build
 \`\`\`
 
 正例（两个诉请块，用空行分隔）：
 \`\`\`plain-text
-!?@tool_a arg1
+!?@cmdr run lint:types
 
-!?@tool_b arg2
+!?@cmdr run build
 \`\`\`
 
 **复制即用模板**
 - 队友诉请（带 topic）：
 \`\`\`plain-text
-!?@tooling !tellaskSession tooling-read-file-options
+!?@ux !tellaskSession ux-checklist
 !?请修复 read_file 的 parseReadFileOptions，并按验收用例回贴输出。
 \`\`\`
 - 队友诉请（带正文）：
 \`\`\`plain-text
-!?@pangu !tellaskSession ws-mod-guardrails
+!?@ux !tellaskSession ws-mod-guardrails
 !?请在工作区内定位所有仍在使用 tellask 工具语法（!?@tool）的地方，并迁移到函数工具调用；同时更新文档与测试故事。
 \`\`\`
 ### 函数工具
@@ -141,14 +146,13 @@ ${input.funcToolUsageText || '没有可用的函数工具。'}
 - 原生 function-calling 不能用于队友诉请：队友诉请必须使用 tellask。
 - tellask 文本不能用于函数工具调用：函数工具（包括对话控制/文件/文本编辑等）一律使用原生 function-calling。
 ### 语法小抄（反模式）
-- 不要在 \`!?\` 前加项目符号、引用、编号或缩进（例如 \`- !?@tool\`、\`> !?@tool\`、\`  !?@tool\`）。
-- 当你只是提到呼号/工具名而不是发起诉请：不要让该行以 \`!?\` 开头；必要时用反引号包裹（例如 \`\`!?@pangu\`\`）。
+- 不要在 \`!?\` 前加项目符号、引用、编号或缩进（例如 \`- !?@ux\`、\`> !?@ux\`、\`  !?@ux\`）。
+- 当你只是提到呼号/工具名而不是发起诉请：不要让该行以 \`!?\` 开头；必要时用反引号包裹（例如 \`\`!?@ux\`\`）。
 - mention ID 允许包含点号用于命名空间（例如 \`@team.lead\`）。末尾的点号视为标点并忽略（例如 \`@team.lead.\` 仍然指向 \`@team.lead\`）。
 
 ### 特殊队友别名
 - \`!?@self\`：扪心自问（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的 subdialog（默认；最常用）。
 - \`!?@self !tellaskSession <tellaskSession>\`：带 tellaskSession 的 FBR 自诉请（少用）。仅当你明确需要可恢复的长期 workspace 时使用。
-- \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!tellaskSession\`。
 - \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!tellaskSession\`。
   - \`!?@<supdialogAgentId>\`（不带 \`!tellaskSession\`）可作为语义容错，但优先使用 \`!?@super\`，尤其当 ID 可能相同（例如 FBR self-subdialogs）以避免歧义和意外自诉请混淆。
 
@@ -229,7 +233,7 @@ You collaborate with the following teammates. Use their call signs to address th
 ${input.teamIntro}
 
 ## Interaction Abilities
-You interact with teammates and "tellask" tools using a primitive line-prefix grammar designed to be robust under arbitrary streaming chunk boundaries.
+You interact with teammates via the tellask mechanism using a primitive line-prefix grammar designed to be robust under arbitrary streaming chunk boundaries.
 
 ### Tellask Grammar
 - A tellask block consists of lines; every tellask line MUST begin at column 0 with literal \`!?\`. The \`!?\` prefix is not part of the payload.
@@ -238,7 +242,7 @@ You interact with teammates and "tellask" tools using a primitive line-prefix gr
 - Within a tellask block:
   - Headline: starts from the first tellask line (after removing \`!?\`); subsequent lines starting with \`!?@\` extend the headline (multiline headline).
   - Body: all tellask lines that start with \`!?\` but NOT \`!?@\` compose the body in order.
-- By default, a tellask block targets exactly one destination (the \`@name\` in the first line). However, for *teammate tellasks*, multiple teammate call signs appearing inside the headline (including multiline headlines) are treated as collective targets: Dominds will fan this out into one tellask per teammate with the same headLine/callBody payload. If you include \`!tellaskSession <tellaskSession>\`, it must appear at most once in the headline and applies to all targets. For multiple tool calls, you must still write multiple tellask blocks separated by normal lines.
+- By default, a tellask block targets exactly one destination (the \`@name\` in the first line). However, for *teammate tellasks*, multiple teammate call signs appearing inside the headline (including multiline headlines) are treated as collective targets: Dominds will fan this out into one tellask per teammate with the same headLine/callBody payload. If you include \`!tellaskSession <tellaskSession>\`, it must appear at most once in the headline and applies to all targets. For multiple teammate tellasks, you must still write multiple tellask blocks separated by normal lines.
 
 ### Function Tools
 - You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments that strictly matches the tool schema (no extra fields, include all required fields).${input.funcToolRulesText}
@@ -250,15 +254,15 @@ ${input.funcToolUsageText || 'No function tools available.'}
 - Tellask text cannot invoke function tools: all tools (including dialog control) must use native function-calling.
 
 ### Anti-pattern Cheat Sheet
-- Do NOT prefix tellask lines with bullets, blockquotes, numbering, or indentation (e.g., \`- !?@tool\`, \`> !?@tool\`, \`  !?@tool\`).
-- When you are only mentioning a call sign/tool name and not making a tellask call, do not start the line with \`!?\`; wrap it in backticks if needed (e.g., \`\`!?@pangu\`\`).
+- Do NOT prefix tellask lines with bullets, blockquotes, numbering, or indentation (e.g., \`- !?@ux\`, \`> !?@ux\`, \`  !?@ux\`).
+- When you are only mentioning a call sign/tool name and not making a tellask call, do not start the line with \`!?\`; wrap it in backticks if needed (e.g., \`\`!?@ux\`\`).
 - Mention IDs may include dots for namespacing (e.g., \`@team.lead\`). A trailing dot is treated as punctuation and ignored (e.g., \`@team.lead.\` still targets \`@team.lead\`).
 
 ### Teammate Tellasks
 - Prefer multi-teammate tellasks for parallel expertise. Keep requests specific and role-aware.
 
 ### Special Teammate Aliases
-- \`!?@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog agentId and creates a NEW ephemeral subdialog (default; most common).
+- \`!?@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog responder (\`agentId\`) and creates a NEW ephemeral subdialog (default; most common).
 - \`!?@self !tellaskSession <tellaskSession>\`: FBR self-call with a registered tellask session (rare). Use only when you explicitly want a resumable long-lived fresh-boots workspace.
 - \`!?@super\`: Supdialog call (Type A) **primary syntax**. Only valid inside a subdialog; calls the direct parent dialog (supdialog), suspending this subdialog temporarily and then resuming with the parent's response. Must be used with NO \`!tellaskSession\`.
   - \`!?@<supdialogAgentId>\` (no \`!tellaskSession\`) is a tolerated semantic fallback, but prefer \`!?@super\` especially when IDs might be identical (e.g., FBR self-subdialogs), to avoid ambiguity and accidental self-call confusion.
@@ -273,12 +277,12 @@ ${input.toolUsageText}${
 ### Examples
 - Single tellask call (no body)
 \`\`\`plain-text
-!?@tool_a arg1
+!?@ux Please review the UX and report issues.
 \`\`\`
 
 - Tellask call with a body (a normal line ends the block automatically)
 \`\`\`plain-text
-!?@pangu !tellaskSession fix-ws-mod
+!?@cmdr !tellaskSession fix-ws-mod
 !?1) Run lint/types
 !?2) Report errors and proposed fixes
 OK — I will wait for your results and then proceed.
@@ -286,19 +290,19 @@ OK — I will wait for your results and then proceed.
 
 - Multiline headline + body
 \`\`\`plain-text
-!?@pangu Please do the following:
-!?@And keep the output concise
+!?@ux Please do the following:
+!?@ux And keep the output concise
 !?1) Check logs/error.log
 !?2) Propose a fix
 \`\`\`
 
 - Multi-call (separate blocks)
 \`\`\`plain-text
-!?@tooling !tellaskSession tooling-read-file-options
-!?Please check why read_file options parsing is failing and propose a fix.
+!?@ux !tellaskSession ux-checklist
+!?Please review the UX flow and report issues.
 
-!?@server !tellaskSession server-ws-func-tools
-!?Please review whether the WS handler needs updates for func-tool calls and report findings.
+!?@cmdr !tellaskSession lint-types
+!?Please run lint:types and report TypeScript errors.
 \`\`\`
 
 ### Concurrency & Orchestration

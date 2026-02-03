@@ -46,7 +46,7 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's conversation messages where the `!?@human` Tellask was recorded.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `!?@human` Tellask was recorded.
 
 ### Subdialog Index (subdlg.yaml)
 
@@ -345,13 +345,13 @@ flowchart TD
 
 ### Key Design Principles
 
-1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's conversation messages where the `!?@human` Tellask was recorded. They do not survive `clear_mind`.
+1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's messages where the `!?@human` Tellask was recorded. They do not survive `clear_mind`.
 
 2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
 
-3. **Subdialog Q4H Autonomy**: Subdialogs can ask Q4H questions directly, not as a proxy for parent. User navigates to subdialog's conversation to answer inline.
+3. **Subdialog Q4H Autonomy**: Subdialogs can ask Q4H questions directly, not as a proxy for parent. User navigates to the subdialog to answer inline.
 
-4. **UI Renders Q4H Like Teammate Tellasks**: The UI treats Q4H similarly to other teammate Tellasks - with navigation linking to the Tellask site in the dialog conversation. The user answers inline using the same input textarea used for regular messages.
+4. **UI Renders Q4H Like Teammate Tellasks**: The UI treats Q4H similarly to other teammate Tellasks - with navigation linking to the Tellask site in the dialog. The user answers inline using the same input textarea used for regular messages.
 
 5. **Subdialog Response Supply**: Subdialogs write their responses to the _current Tellasker’s_ context via persistence (not callbacks). For TYPE B, each Tellask updates the subdialog’s `assignmentFromSup` with the latest Tellasker + tellaskInfo, so the response is routed to the most recent Tellasker (root or subdialog). This enables detached operation, reuse, and crash recovery.
 
@@ -376,7 +376,7 @@ Q4H (Questions for Human) is the mechanism by which dialogs can suspend executio
 /**
  * HumanQuestion - index entry persisted in q4h.yaml per dialog
  * NOTE: This is an INDEX, not the source of truth. The actual question
- * content is in the dialog's conversation messages where the @human Tellask was recorded
+ * content is in the dialog's messages where the @human Tellask was recorded
  * (invoked via !?@human).
  */
 interface HumanQuestion {
@@ -389,7 +389,7 @@ interface HumanQuestion {
 
 **Storage Location**: `<dialog-path>/q4h.yaml` - serves as an index for quick lookup
 
-**Source of Truth**: The actual `!?@human` Tellask is stored in the dialog's conversation messages (course JSONL files), where the question was asked.
+**Source of Truth**: The actual `!?@human` Tellask is stored in the dialog's messages (course JSONL files), where the question was asked.
 
 ### Q4H Mechanism Flow
 
@@ -480,7 +480,7 @@ postDialogEvent(dialog, questionsCountUpdateEvt);
 1. Receives `questions_count_update` event
 2. Reads `q4h.yaml` to get question index entries
 3. Displays Q4H indicator/badge on dialog
-4. Questions link to their Tellask sites in the conversation
+4. Questions link to their Tellask sites in the dialog
 5. User clicks link to navigate to Tellask site, answers inline
 
 ### How User Answers Q4H (Agent-Pull Model)
@@ -534,7 +534,7 @@ interface DriveDialogByUserAnswerRequest {
 
 1. Q4H is indexed in the dialog that asked it, not passed upward to the supdialog
 2. Subdialogs ask Q4H on their own right (not as proxy for parent)
-3. User navigates to subdialog's conversation to answer inline
+3. User navigates to the subdialog to answer inline
 4. The `q4h.yaml` file is an index, not source of truth
 
 ```mermaid
@@ -564,8 +564,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  Before[Before clarity<br/>Messages present<br/>Reminders present<br/>Q4H present] --> Op[clear_mind]
-  Op --> After[After clarity<br/>Messages cleared<br/>Reminders preserved<br/>Q4H cleared]
+  Before["Before clarity<br/>Messages present<br/>Reminders present<br/>Q4H present"] --> Op[clear_mind]
+  Op --> After["After clarity<br/>Messages cleared<br/>Reminders preserved<br/>Q4H cleared"]
 ```
 
 ---
@@ -582,7 +582,7 @@ flowchart TD
 
   S1 --> N1[Nested subdialog sub-001-001]
 
-  Root -.-> Reg[registry.yaml<br/>(root-scoped, Type B only)]
+  Root -.-> Reg["registry.yaml<br/>(root-scoped, Type B only)"]
   Root -.-> QRoot[q4h.yaml (root)]
   S1 -.-> QS1[q4h.yaml (sub-001)]
   N1 -.-> QN1[q4h.yaml (sub-001-001)]
@@ -655,15 +655,15 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 **Implementation**: `clear_mind` delegates to `Dialog.startNewCourse(newCoursePrompt)`, which:
 
-1. Clears all chat messages
+1. Clears all dialog messages
 2. Clears all Q4H questions
 3. Increments the course counter
 4. Updates the dialog's timestamp
-5. Queues `newCoursePrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next course
+5. Queues `newCoursePrompt` in `dlg.upNext` so the driver can start a new coroutine and use it as the **first `role=user` message** in the next dialog course
 
 ### `clear_mind`
 
-**Purpose**: Achieve mental clarity by clearing conversational noise while preserving essential context.
+**Purpose**: Achieve mental clarity by clearing dialog noise while preserving essential context.
 
 **Function tool arguments**:
 
@@ -677,14 +677,20 @@ Invoke the function tool `clear_mind` with:
 
 **Behavior**:
 
-- Clears all chat messages in the current dialog
+- Clears all dialog messages in the current dialog
 - Preserves all reminders
 - **Clears all Q4H questions** (critical!)
 - Preserves subdialog registry (root dialog only)
 - Has no effect on supdialog
 - Redirects attention to Taskdoc
-- A system-generated new-course prompt is queued and used as the **first `role=user` message** in the new course
-- Starts a new conversation course
+- A system-generated new-course prompt is queued and used as the **first `role=user` message** in the new dialog course
+- Starts a new dialog course
+
+**Multi-course dialog note**:
+
+- The first course is created naturally when a main dialog or subdialog is created.
+- Later courses are started by the dialog responder via `clear_mind`.
+- Exception: the system may auto-start a new course as remediation (e.g., context health becomes critical).
 
 **Implementation Notes**:
 
@@ -695,7 +701,7 @@ Invoke the function tool `clear_mind` with:
 
 ### `change_mind`
 
-**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (no course reset).
+**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (without starting a new dialog course).
 
 **Function tool arguments**:
 
@@ -713,7 +719,7 @@ Invoke the function tool `change_mind` with:
 - Updates the workspace Taskdoc content (exactly one section file in a `*.tsk/` Taskdoc package)
 - **Does not change the Taskdoc path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
-- **Does not start a new dialog course.** If a course reset is desired, use `clear_mind` separately.
+- **Does not start a new dialog course.** If starting a new dialog course is desired, use `clear_mind` separately.
 - Does not clear messages, reminders, Q4H, or registry by itself
 - Affects all participant agents (main and subdialogs) referencing the same Taskdoc
 
@@ -728,7 +734,7 @@ Invoke the function tool `change_mind` with:
 
 **Tools**: `add_reminder`, `update_reminder`, `delete_reminder`
 
-**Purpose**: Manage dialog-scoped working memory that persists across conversation cleanup.
+**Purpose**: Manage dialog-scoped working memory that persists across dialog cleanup.
 
 **Behavior**:
 
@@ -847,7 +853,7 @@ The complete Dialog class implementation with all methods, properties, and detai
 **Key Components**:
 
 - **Hierarchy Support**: Parent-child relationships for subdialog management
-- **Memory Management**: Persistent reminders and ephemeral chat messages
+- **Memory Management**: Persistent reminders and ephemeral dialog messages
 - **Mental Clarity Operations**: `startNewCourse(newCoursePrompt)` method (clears messages, clears Q4H, increments course, queues new course prompt for the next drive)
 - **Subdialog Management**: Creation and coordination of specialized subtasks
 - **Q4H Management**: `updateQuestions4Human()` method for question tracking
@@ -957,7 +963,7 @@ interface RegistryMethods {
 
 ### Dialog-Scoped Memory
 
-**Chat Messages**: Ephemeral conversation content that can be cleared for mental clarity.
+**Dialog Messages**: Ephemeral dialog content that can be cleared for mental clarity.
 
 **Reminders**: Semi-persistent working memory that survives clarity operations.
 
@@ -1036,7 +1042,7 @@ To make the UI **faithfully reflect the original generation order**, and to ensu
 - TYPE B / `Tellask Session`: Tellask/resume registered subdialogs
 - TYPE C / `Fresh Tellask`: Spawn transient subdialogs
 
-**Tool Access**: All mental clarity tools, Q4H capability, and teammate Tellask tools are available to agents for autonomous cognitive management.
+**Tool Access**: All mental clarity tools, Q4H capability, and teammate Tellask capability are available to agents for autonomous cognitive management.
 
 ### Dialog State Machine
 

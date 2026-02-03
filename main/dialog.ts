@@ -295,8 +295,8 @@ export abstract class Dialog {
    * Get the current callId for tool-call correlation
    *
    * Call Types:
-   * - Tool Call (`!?@tool_name`): callId is set during tool_call_start_evt, used for inline result
-   * - Teammate Tellask (@agentName): Uses calleeDialogId, not callId
+   * - Tellask call block (`!?@...`): callId is set during tool_call_finish_evt, used for inline result correlation
+   * - Teammate tellask (@agentName): Uses calleeDialogId, not callId
    *
    * @returns The current callId for tool correlation, or null if no active tool call
    */

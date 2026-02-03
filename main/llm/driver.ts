@@ -920,8 +920,8 @@ async function applyContextHealthV3Remediation(args: {
       const language = getWorkLanguage();
       const newCoursePrompt =
         language === 'zh'
-          ? '系统因上下文已告急（critical）而自动开启新一轮/新回合对话，请继续推进任务。'
-          : 'System auto-started a new round because context health is critical. Please continue the task.';
+          ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+          : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
 
       await dlg.startNewCourse(newCoursePrompt);
 
@@ -2023,16 +2023,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               maxRetries: 5,
               canRetry: () => !sawAnyStreamContent,
               doRequest: async () => {
-                return await llmGen.genToReceiver(
-                  providerCfg,
-                  agent,
-                  systemPrompt,
-                  funcTools,
-                  ctxMsgsForGen,
-                  {
-                    thinkingStart: async () => {
-                      throwIfAborted(abortSignal, dlg.id);
-                      sawAnyStreamContent = true;
+	                return await llmGen.genToReceiver(
+	                  providerCfg,
+	                  agent,
+	                  systemPrompt,
+	                  funcTools,
+	                  ctxMsgsForGen,
+	                  {
+	                    streamError: async (detail: string) => {
+	                      await dlg.streamError(detail);
+	                    },
+	                    thinkingStart: async () => {
+	                      throwIfAborted(abortSignal, dlg.id);
+	                      sawAnyStreamContent = true;
                       if (streamActive.kind !== 'idle') {
                         const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active (genseq=${String(
                           dlg.activeGenSeq,

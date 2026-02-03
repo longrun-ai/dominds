@@ -527,7 +527,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleMarkdownFinish(event.genseq);
         break;
 
-      // === TOOL CALL EVENTS (streaming mode - @tool_name calls) ===
+      // === TELLASK CALL BLOCK EVENTS (streaming mode - `!?@...` blocks) ===
       // Renamed from call_* to tool_call_* for consistency
       // callId is now set at finish event (not start) - content-hash based
       case 'tool_call_start_evt':

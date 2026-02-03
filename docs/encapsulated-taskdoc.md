@@ -58,7 +58,7 @@ Current status, decisions made, and what remains.
 
 - SHOULD be safe to update frequently.
 - MAY include checklists, short logs, and decision notes.
-- SHOULD avoid duplicating full conversation history; keep it distilled and actionable.
+- SHOULD avoid duplicating full dialog history; keep it distilled and actionable.
 
 ### Optional injected directory: `bearinmind/` (design)
 

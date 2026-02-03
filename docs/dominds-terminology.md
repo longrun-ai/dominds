@@ -49,24 +49,53 @@
 - EN: "-or" denotes an active agent/actor; "-er" can imply a passive instrument.
 - ZH: "-or" 暗示主动的行为者；"-er" 更偏向被动工具。
 
-### Dialog Course（对话程）
+> Note / 备注
+>
+> - EN: Some established terms may be exceptions for clarity (e.g., **Dialog Responder**).
+> - ZH: 个别既有/更清晰的术语可能作为例外保留（例如：**Dialog Responder**）。
 
-- EN: **Dialog course** (ZH: **对话程**) is the Dominds-specific term for **one execution cycle of a dialog**. It replaces the generic "round" or "turn" to avoid confusion with LLM-generated "rounds" and business "iterations".
-- ZH: **对话程（dialog course）**是 Dominds 的专有术语，指**对话的一次执行周期**。用于替代泛化的"轮/轮次"，避免与 LLM 生成的"轮次"及业务"迭代轮次"混淆。
+### Dialog Responder（对话主理人）
+
+- EN: **Dialog Responder** (ZH: **对话主理人**) is the agent role responsible for **responding in and advancing a specific dialog**.
+- ZH: **对话主理人（Dialog Responder）**是一个智能体在某个**具体对话**中承担的角色：负责在该对话中**回应并推进**。
+
+- EN: Practical mapping:
+  - The dialog responder is identified by the dialog's `agentId` in `dialog.yaml` (implementation field name stays `agentId`).
+  - Do NOT call it “dialog agent” in docs/prompts; that phrase is ambiguous.
+- ZH: 落地映射：
+  - 对话主理人在实现上由 `dialog.yaml` 中的 `agentId` 指定（实现字段名仍为 `agentId`）。
+  - 在文档/提示词中不要使用 “对话智能体” / “dialog agent” 这类不正规表述，它会与“智能体（agent）作为参与者”的泛称混淆。
+
+### Multi-course Dialog（多程对话）
+
+- EN: **Multi-course dialog** (ZH: **多程对话**) means a dialog can progress through **multiple courses**, with each course being a fresh dialog workspace.
+- ZH: **多程对话（multi-course dialog）**指同一个对话可以拥有**多段进程**；每一程都像一次“重新开工”的对话工作区。
+
+- EN: Course creation (how a new course starts):
+  - The **first course** exists naturally when a main dialog or subdialog is created.
+  - After that, a **new course** is started when the dialog responder calls `clear_mind`.
+  - Exception: the system may auto-start a new course for remediation (e.g., context health becomes critical).
+- ZH: “一程”如何产生（新一程如何开始）：
+  - **第一程**：随着主对话/子对话的创建自然产生。
+  - **之后每一程**：通常由对话主理人调用 `clear_mind` 开启。
+  - 例外：系统可能出于恢复目的自动开启新一程（例如上下文健康度进入 critical 后触发自动清理）。
+
+### Dialog Course（某一程对话）
+
+- EN: **Dialog course** (ZH: **某一程对话**) is the Dominds-specific term for **one dialog-workspace segment** within a dialog.
+- ZH: **某一程对话（dialog course）**是 Dominds 的专有术语，指一次对话中的**一个“对话工作区段”**。
 
 - EN: Key properties:
-  - One dialog course = one complete drive cycle (trigger → planning → action → result).
-  - Distinct from "LLM round" (one model inference) and "business iteration" (one unit of work).
-  - Used for observability: "dialog has completed 42 courses".
-  - The term "course" implies a **dynamic process with direction**, not a static segment.
+  - A course is the unit of **mental clarity reset**: `clear_mind` clears dialog noise and starts a new dialog course.
+  - A course is **not** the same as one model inference (“LLM round”) nor a business iteration.
+  - A course is the unit for persistence streams: `.dialogs/**/course-###.jsonl` stores events for that course.
 - ZH: 关键特性：
-  - 一个对话程 = 一次完整的驱动周期（触发 → 规划 → 执行 → 结果）。
-  - 区别于"LLM 轮次"（一次模型推理）和"业务迭代"（一个工作单元）。
-  - 用于可观测性描述："对话已完成 42 程"。
-  - "程"字暗示**动态进程、有方向性**，而非静态片段。
+  - 一程是**清理头脑的边界**：`clear_mind` 会清空对话噪声并开启新一程。
+  - 一程**不等于**一次模型推理（LLM “轮次”）也不等于业务迭代。
+  - 一程对应持久化的事件流单位：`.dialogs/**/course-###.jsonl` 记录该程的事件。
 
-- EN: Do NOT use "round", "turn", or "轮次" when referring to dialog courses in Dominds context.
-- ZH: 在 Dominds 语境中指代对话程时，**不要使用** "round"、"turn"、"轮次" 等泛化词。
+- EN: Do NOT use “dialog agent” for the responder role; use “Dialog Responder”.
+- ZH: 在 Dominds 语境中指代“某一程对话”时，避免使用“轮次”等泛化词，也不要使用“对话程”这种语感奇怪的说法；指代角色时用“对话主理人”而不是“对话智能体”。
 
 ### Taskdoc（差遣牒）
 
@@ -89,8 +118,11 @@
 
 ### clear_mind（清理头脑）
 
-- EN: A function tool that clears the agent's short-term working memory (conversation history, tool outputs) while preserving Taskdoc, reminders, and memories. Used when context health degrades and a fresh start is needed.
-- ZH: 一个函数工具，用于清空智能体的短期工作记忆（对话历史、工具输出），同时保留差遣牒、提醒项与记忆层。用于上下文健康度下降、需要重新开始时。
+- EN: A function tool that clears the agent's short-term working memory (dialog history, tool outputs) while preserving Taskdoc, reminders, and memories.
+- ZH: 一个函数工具，用于清空智能体的短期工作记忆（对话历史、工具输出），同时保留差遣牒、提醒项与记忆层。
+
+- EN: `clear_mind` starts a **new dialog course** (in a multi-course dialog).
+- ZH: `clear_mind` 会在**多程对话**中开启对话的**新一程**。
 
 - EN: After `clear_mind`, the agent should have a "Continuation Package" prepared for quick resumption.
 - ZH: `clear_mind` 后，智能体应准备好"接续包"以便快速接续工作。

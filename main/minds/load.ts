@@ -448,7 +448,7 @@ export async function loadAgentMinds(
 
       return [
         '你的聊天记录与工具输出是临时信息：会快速累积、很快过时，并增加你的认知负担。在同一轮对话中，除了 `clear_mind` 以外你无法真正丢弃这些历史。',
-        '`clear_mind` 会开启新一轮/新回合（保留差遣牒、提醒项与记忆层），从而卸掉这部分认知负载并继续推进。因此你必须先把关键信息提炼到高价值载体：',
+        '`clear_mind` 会开启新一程对话（保留差遣牒、提醒项与记忆层），从而卸掉这部分认知负载并继续推进。因此你必须先把关键信息提炼到高价值载体：',
         '- 差遣牒（Taskdoc，`*.tsk/`）：全队共享的任务契约（goals/constraints/progress）；保持足够短，每轮都应可通读。',
         `- 更新差遣牒的任意分段时：每次调用会替换该分段全文；你必须先对照“上下文中注入的当前内容”做合并/压缩；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${agent.id}] ...\` 或用 \`### @${agent.id}\` 分块）。`,
         '- 其中 `progress` 是全队共享公告牌：用于“阶段性进度快照”（关键决策/当前状态/下一步），不是流水账。',
@@ -493,7 +493,7 @@ export async function loadAgentMinds(
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts) to reduce repeat file reads; do not store per-task state.';
 
     return [
-      'Chat history and tool outputs are temporary: they accumulate quickly, become stale, and increase cognitive load. Within a course, you cannot truly drop that history except via `clear_mind`.',
+      'Dialog history and tool outputs are temporary: they accumulate quickly, become stale, and increase cognitive load. Within a course, you cannot truly drop that history except via `clear_mind`.',
       '`clear_mind` starts a new course while preserving Taskdoc, reminders, and memory layers. Therefore, before clearing, distill key information into durable layers:',
       '- Taskdoc (`*.tsk/`): team-shared task contract (goals/constraints/progress). Keep it small enough to read every course.',
       `- When updating any Taskdoc section: each call replaces the entire section; always start from the current injected content and merge/compress; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${agent.id}] ...\` or a \`### @${agent.id}\` block).`,
