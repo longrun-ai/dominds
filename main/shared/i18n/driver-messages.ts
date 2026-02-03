@@ -76,14 +76,14 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
       `错误：诉请（tellask）仅用于队友诉请（\`!?@<teammate>\`）。\n` +
       `- 当前目标：\`@${firstMention}\` 不是已知队友呼号。\n` +
       `- 若你要调用工具：请使用原生 function-calling（函数工具），不要在文本中输出 \`!?@tool\`。\n` +
-      `- 若你要找队友：请确认呼号（如 \`!?@pangu\` / \`!?@super\` / \`!?@self\`）。`
+      `- 若你要找队友：请确认呼号（如 \`!?@pangu\` / \`!?@tellasker\` / \`!?@self\`）。`
     );
   }
   return (
     `Error: tellask is reserved for teammate tellasks (\`!?@<teammate>\`).\n` +
     `- Current target: \`@${firstMention}\` is not a known teammate call sign.\n` +
     `- If you intended to call a tool: use native function-calling; do not emit \`!?@tool\` in text.\n` +
-    `- If you intended to call a teammate: double-check the call sign (e.g. \`!?@pangu\` / \`!?@super\` / \`!?@self\`).`
+    `- If you intended to call a teammate: double-check the call sign (e.g. \`!?@pangu\` / \`!?@tellasker\` / \`!?@self\`).`
   );
 }
 
@@ -164,30 +164,30 @@ export function formatUserFacingContextHealthV3RemediationGuide(
   ].join('\n');
 }
 
-export function formatDomindsNoteSuperOnlyInSubdialog(language: LanguageCode): string {
+export function formatDomindsNoteTellaskerOnlyInSidelineDialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!?@super` 只在子对话中有效，用于向直接父对话（supdialog）发起诉请。\n' +
-      '你当前不在子对话中，因此没有父对话可诉请。\n' +
-      '（注：父对话不一定是根对话；差遣牒 `*.tsk/` 通常由根对话维护人统一更新。）'
+      'Dominds 提示：`!?@tellasker` 只在支线对话中有效，用于向“诉请者”（发起本次诉请的对话）回问澄清。\n' +
+      '你当前不在支线对话中，因此没有“诉请者”可回问。\n' +
+      '（注：诉请者不一定是主线对话；差遣牒 `*.tsk/` 通常由主线对话维护人统一更新。）'
     );
   }
   return (
-    'Dominds note: `!?@super` is only valid inside a subdialog and calls the direct parent (supdialog). ' +
-    'You are currently not in a subdialog, so there is no parent to call.'
+    'Dominds note: `!?@tellasker` is only valid inside a sideline dialog and tellasks back to the tellasker (the dialog that issued the current Tellask) for clarification. ' +
+    'You are currently not in a sideline dialog, so there is no tellasker to call.'
   );
 }
 
-export function formatDomindsNoteSuperNoTellaskSession(language: LanguageCode): string {
+export function formatDomindsNoteTellaskerNoTellaskSession(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!?@super` 是 Type A 的 supdialog 诉请，不接受 `!tellaskSession`。' +
-      '请使用不带 `!tellaskSession` 的 `!?@super`；或使用 `!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>` 来触发 Type B。'
+      'Dominds 提示：`!?@tellasker` 是回问诉请（TellaskBack），不接受 `!tellaskSession`。' +
+      '请使用不带 `!tellaskSession` 的 `!?@tellasker`；若你需要可恢复的多轮协作，请使用长线诉请：`!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>`。'
     );
   }
   return (
-    'Dominds note: `!?@super` is a Type A supdialog call and does not accept `!tellaskSession`. ' +
-    'Use `!?@super` with NO `!tellaskSession`, or use `!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>` for Type B.'
+    'Dominds note: `!?@tellasker` is a TellaskBack and does not accept `!tellaskSession`. ' +
+    'Use `!?@tellasker` with NO `!tellaskSession`, or use `!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>` for a resumable Tellask Session.'
   );
 }
 
@@ -202,7 +202,7 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   return (
     'Dominds note: This call targets the current agent (self-call). ' +
     'Fresh Boots Reasoning should usually use `!?@self` (no `!tellaskSession`) for an ephemeral fresh boots session; use ' +
-    '`!?@self !tellaskSession <tellaskSession>` only when you explicitly want a resumable long-lived subdialog. This call will proceed.'
+    '`!?@self !tellaskSession <tellaskSession>` only when you explicitly want a resumable long-lived sideline dialog. This call will proceed.'
   );
 }
 

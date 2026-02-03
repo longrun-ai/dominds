@@ -111,7 +111,7 @@ ${input.teamIntro}
 - 用途：让同一条工作流在多轮对话中可追踪，避免对方“每次像新工单”丢上下文。
 - 只写在诉请头：\`!?@ux !tellaskSession ux-checklist ...\`（每个诉请块最多一次）。
 - 命名建议：\`<owner>-<area>-<short>\`，例如 \`tooling-read-file-options\`、\`server-ws-schema-v2\`。
-- 不要用于 \`!?@super\`（规则：\`@super\` 必须不带 \`!tellaskSession\`）。
+- 不要用于 \`!?@tellasker\`（规则：\`@tellasker\` 必须不带 \`!tellaskSession\`）。
 
 **关键易错点：当你需要在队友诉请中携带正文（步骤/上下文/验收标准等）时，正文每行也必须以 \`!?\` 开头，否则会被当作普通 markdown 分隔符导致诉请正文为空。**
 
@@ -159,10 +159,9 @@ ${input.funcToolUsageText || '没有可用的函数工具。'}
 - mention ID 允许包含点号用于命名空间（例如 \`@team.lead\`）。末尾的点号视为标点并忽略（例如 \`@team.lead.\` 仍然指向 \`@team.lead\`）。
 
 ### 特殊队友别名
-- \`!?@self\`：扪心自问（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的 subdialog（默认；最常用）。
+- \`!?@self\`：扪心自问（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的支线对话（默认；最常用）。
 - \`!?@self !tellaskSession <tellaskSession>\`：带 tellaskSession 的 FBR 自诉请（少用）。仅当你明确需要可恢复的长期 workspace 时使用。
-- \`!?@super\`：Supdialog 诉请（Type A）**主语法**。只在 subdialog 内有效；诉请直接父对话（supdialog），暂时挂起该 subdialog，待父对话回复后再恢复。必须**不带** \`!tellaskSession\`。
-  - \`!?@<supdialogAgentId>\`（不带 \`!tellaskSession\`）可作为语义容错，但优先使用 \`!?@super\`，尤其当 ID 可能相同（例如 FBR self-subdialogs）以避免歧义和意外自诉请混淆。
+- \`!?@tellasker\`：回问诉请（TellaskBack）。只在**支线对话**内有效；用于向“诉请者”（发起本次诉请的对话）回问澄清，避免自行猜测。必须**不带** \`!tellaskSession\`。
 
 ### 工具集提示与队友诉请（tellask）
 
@@ -216,7 +215,7 @@ OK —— 我会等待你的结果，然后继续推进。
 - Full Name: ${input.agent.name}
 
 ## Language Mode
-- Your internal working language is English (system prompt, tool rules, teammate/subdialog narrative formatting).
+- Your internal working language is English (system prompt, tool rules, teammate/sideline-dialog narrative formatting).
 - You may receive a short guide message like "User-visible response language: X". When replying to the user, follow that guide; if absent, respond in the working language.
 
 ## Message Types
@@ -279,10 +278,9 @@ ${input.funcToolUsageText || 'No function tools available.'}
 - Prefer multi-teammate tellasks for parallel expertise. Keep requests specific and role-aware.
 
 ### Special Teammate Aliases
-- \`!?@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog responder (\`agentId\`) and creates a NEW ephemeral subdialog (default; most common).
+- \`!?@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog responder (\`agentId\`) and creates a NEW ephemeral sideline dialog (default; most common).
 - \`!?@self !tellaskSession <tellaskSession>\`: FBR self-call with a registered tellask session (rare). Use only when you explicitly want a resumable long-lived fresh-boots workspace.
-- \`!?@super\`: Supdialog call (Type A) **primary syntax**. Only valid inside a subdialog; calls the direct parent dialog (supdialog), suspending this subdialog temporarily and then resuming with the parent's response. Must be used with NO \`!tellaskSession\`.
-  - \`!?@<supdialogAgentId>\` (no \`!tellaskSession\`) is a tolerated semantic fallback, but prefer \`!?@super\` especially when IDs might be identical (e.g., FBR self-subdialogs), to avoid ambiguity and accidental self-call confusion.
+- \`!?@tellasker\`: TellaskBack (ask the tellasker dialog for clarification). Only valid inside a **sideline dialog**; tellasks back to the tellasker (the dialog that issued the current Tellask). Must be used with NO \`!tellaskSession\`.
 
 ### Toolset Prompts & Teammate Tellasks (Tellask)
 

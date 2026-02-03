@@ -25,20 +25,20 @@ This document provides detailed implementation specifications for the Dominds di
 ## Terminology
 
 This chapter defines the implementation-facing terms used throughout this document.
-For bilingual / user-facing naming conventions, see `dominds/docs/dominds-terminology.md`.
+For bilingual / user-facing naming conventions (mainline dialog / sideline dialog; tellasker / tellaskee), see `dominds/docs/dominds-terminology.md`.
 For Taskdoc package structure and encapsulation rules, see `dominds/docs/encapsulated-taskdoc.md`.
 
 ### Supdialog
 
 A **supdialog** (short for "super dialog") is the supdialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
 
-A supdialog may receive **supdialog Tellasks** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back to the supdialog (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
+A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `!?@tellasker` (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
 
 ### Subdialog
 
 A **subdialog** is a specialized dialog spawned by a supdialog to handle specific subtasks. Subdialogs operate with fresh context, focusing on targeted objectives while maintaining a communication link back to their supdialog.
 
-**Supdialog Tellasks**: A subdialog can Tellask its supdialog to request clarification during task execution. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
+**TellaskBack**: A subdialog can Tellask its supdialog (tellasker) to request clarification during task execution. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
 
 ### Main Dialog (Root Dialog)
 
@@ -138,7 +138,7 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 ```mermaid
 flowchart TD
   M[LLM emits !?@mention] --> Q{Is this a subdialog telling its direct supdialog?}
-  Q -- yes --> A[TYPE A: Supdialog Tellask<br/>(`TellaskBack` / 回问诉请)<br/>Primary: !?@super (NO !tellaskSession)<br/>Fallback: !?@&lt;supdialogAgentId&gt; (NO !tellaskSession)]
+  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: !?@tellasker (NO !tellaskSession)]
   Q -- no --> T{Is !tellaskSession present?}
   T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !tellaskSession tellaskSession]
   T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>!?@agentId]
@@ -146,7 +146,7 @@ flowchart TD
 
 ### TYPE A: Supdialog Tellask (Type A / `TellaskBack` / 回问诉请)
 
-**Primary syntax**: `!?@super` (NO `!tellaskSession`) — `!?@super !tellaskSession ...` is a **syntax error**
+**Primary syntax**: `!?@tellasker` (NO `!tellaskSession`) — `!?@tellasker !tellaskSession ...` is a **syntax error**
 
 **Tolerated fallback**: `!?@<supdialogAgentId>` (NO `!tellaskSession`)
 
@@ -162,7 +162,7 @@ flowchart TD
 - Uses `subdialog.supdialog` reference (no registry lookup)
 - No registration - supdialog relationship is inherent
 - Supdialog is always the direct parent in the hierarchy
-- `!?@super` is the **canonical** Type A syntax: it always resolves to the direct parent, even if the parent's `agentId`
+- `!?@tellasker` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask)
   is identical to the subdialog's `agentId` (common for Fresh Boots Reasoning self-subdialogs).
 - The explicit `!?@<supdialogAgentId>` form is accepted as a semantic fallback for backwards compatibility, but is more
   error-prone in FBR/self-subdialog cases.
@@ -212,7 +212,7 @@ headline text is ignored for tellaskSession parsing.
 
 **Current Caller Tracking (important for reuse):**
 
-When a registered subdialog is Tellasked again (same `agentId!tellaskSession`), the caller can be a **different dialog** (root or another subdialog). On every Type B Tellask, the subdialog’s metadata is updated with:
+When a registered subdialog is Tellasked again (same `agentId!tellaskSession`), the caller can be a **different dialog** (mainline or another sideline). On every Type B Tellask, the subdialog’s metadata is updated with:
 
 - The **current caller dialog ID** (so responses route back to the _latest_ caller)
 - The **Tellask info** (headline/body, origin role, origin member, callId)
@@ -725,7 +725,7 @@ Invoke the function tool `change_mind` with:
 
 **Implementation Notes**:
 
-- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the parent via a supdialog Tellask (`!?@super`) to update the shared Taskdoc.
+- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the tellasker via a TellaskBack (`!?@tellasker`) to update the shared Taskdoc.
 - For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See `dominds/docs/encapsulated-taskdoc.md`.
 
 ---
@@ -804,7 +804,7 @@ flowchart TD
   - Owns the TYPE B subdialog registry (`registry.yaml`)
   - Creates/registers/looks up registered subdialogs (`agentId!tellaskSession`)
 - `SubDialog`
-  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`!?@super`)
+  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`!?@tellasker`)
   - Cannot access or mutate the root registry (by design)
 
 **Mutex Semantics**:
@@ -1083,7 +1083,7 @@ flowchart TD
 These diagrams focus on **control flow** and avoid box-art alignment so they stay readable even when
 rendered in different markdown viewers.
 
-#### TYPE A: Supdialog Tellask (`TellaskBack`) (`!?@super`, no `!tellaskSession`)
+#### TYPE A: TellaskBack (`TellaskBack`) (`!?@tellasker`, no `!tellaskSession`)
 
 ```mermaid
 sequenceDiagram
@@ -1091,7 +1091,7 @@ sequenceDiagram
   participant Driver as Backend driver
   participant Sup as Supdialog (direct parent)
 
-  Sub->>Driver: emits `!?@super` + question
+  Sub->>Driver: emits `!?@tellasker` + question
   Driver->>Sup: drive supdialog to answer
   Sup-->>Driver: response text
   Driver-->>Sub: resume subdialog with response in context
@@ -1314,7 +1314,7 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 
 | Type (internal) | User-facing term  | Syntax                            | Registry                 | Use Case                   |
 | --------------- | ----------------- | --------------------------------- | ------------------------ | -------------------------- |
-| TYPE A          | `TellaskBack`     | `!?@super` / `!?@<supId>`         | no registry              | clarification (ask origin) |
+| TYPE A          | `TellaskBack`     | `!?@tellasker`                    | no registry              | clarification (ask origin) |
 | TYPE B          | `Tellask Session` | `!?@agentId !tellaskSession <id>` | `agentId!tellaskSession` | resumable multi-turn work  |
 | TYPE C          | `Fresh Tellask`   | `!?@agentId`                      | not registered           | one-shot / non-resumable   |
 

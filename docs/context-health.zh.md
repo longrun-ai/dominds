@@ -1,6 +1,6 @@
 # 上下文健康监控器
 
-本文档为 Dominds 指定了一个**上下文健康监控器**特性：一个常驻的小型信号，帮助代理（和用户）在对话的提示词/上下文相对于模型的上下文窗口变得过大时避免性能下降。
+本文档为 Dominds 指定了一个**上下文健康监控器**特性：一个常驻的小型信号，帮助智能体（和用户）在对话的提示词/上下文相对于模型的上下文窗口变得过大时避免性能下降。
 
 ## 当前代码现状（截至 2026-01-28）
 
@@ -17,7 +17,7 @@ Dominds 已具备以下功能：
 - 当对话上下文"过大"时，执行简短的、可执行的、可回归测试的 **v3 恢复**工作流：
   - 在 **caution（警告）** 级别，记录一条自动插入的 **role=user prompt** 作为正常的、持久化的用户消息（UI 可见并渲染为正常的用户指令）。
   - 在 **critical（严重）** 级别，通过**倒计时恢复**（最多 5 轮）强制执行稳定性：
-    - 每轮注入一条**记录的角色为 user 的 prompt**（UI 可见为用户 prompt），指示代理整理提醒项（`update_reminder`/`add_reminder`），然后执行 `clear_mind`。
+    - 每轮注入一条**记录的角色为 user 的 prompt**（UI 可见为用户 prompt），指示智能体整理提醒项（`update_reminder`/`add_reminder`），然后执行 `clear_mind`。
     - prompt 包含倒计时信号（在进行自动 `clear_mind` 之前还剩多少轮）。
     - 当倒计时归零时，Dominds **自动**执行 `clear_mind`（无需 Q4H；无需暂停）以保持长期运行的自主性。
 
@@ -113,7 +113,7 @@ Dominds 计算比率：
 
 - 进入 `caution` 时，Dominds 插入一次提示（入口注入）。
 - 保持在 `caution` 状态时，Dominds 按节奏重新插入（默认：每 **10** 次生成；可按模型配置）。
-- 每次插入的提示都要求代理**整理提醒项**（至少一次调用）：
+- 每次插入的提示都要求智能体**整理提醒项**（至少一次调用）：
   - `update_reminder`（首选）/ `add_reminder`
   - 在提醒项内维护接续包草稿
   - 当可扫描/可操作时执行 `clear_mind`
@@ -122,7 +122,7 @@ Dominds 计算比率：
 
 当 `level === 'critical'` 时，驱动程序进入**倒计时恢复**（最多 **5** 轮）：
 
-- 每轮，驱动程序记录一条 **role=user prompt**（持久化为用户消息），在 UI 中作为用户 prompt 可见。此提示告诉代理：
+- 每轮，驱动程序记录一条 **role=user prompt**（持久化为用户消息），在 UI 中作为用户 prompt 可见。此提示告诉智能体：
   - 通过 `update_reminder` / `add_reminder` 整理提醒项（尽力而为的接续包），然后调用 `clear_mind` 开始新一程。
 - 提示包含倒计时：经过 **N** 轮后系统将自动清空。
 - 当倒计时归零时，驱动程序**自动调用** `clear_mind`（带空参数；不要求 `reminder_content`），开始新一程且无需暂停。
@@ -168,6 +168,6 @@ Dominds 计算比率：
   - 未配置时 `optimal_max_tokens` 默认为 `100_000`。
   - 未配置时 `critical_max_tokens` 默认为 `floor(modelContextLimitTokens * 0.9)`。
 - v3 恢复：
-  - `caution`：驱动程序插入持久化的 role=user prompt（UI 可见的用户指令）。进入 `caution` 时插入一次；保持在 `caution` 状态时按节奏重新插入（默认：每 10 次生成；可按模型配置）。每次代理必须至少调用 `update_reminder` / `add_reminder` 之一并维护接续包草稿，然后在就绪时执行 `clear_mind`。
+  - `caution`：驱动程序插入持久化的 role=user prompt（UI 可见的用户指令）。进入 `caution` 时插入一次；保持在 `caution` 状态时按节奏重新插入（默认：每 10 次生成；可按模型配置）。每次智能体必须至少调用 `update_reminder` / `add_reminder` 之一并维护接续包草稿，然后在就绪时执行 `clear_mind`。
   - `critical`：驱动程序使用**记录的角色为 user 的 prompt** 运行倒计时恢复（最多 5 轮）。每次提示包含倒计时并指示提醒整理 + `clear_mind`。当倒计时归零时，驱动程序自动执行 `clear_mind` 并开始新一程（无 Q4H，无暂停）。
 - UI 显示上下文健康状态：绿色/黄色/红色（以及使用情况不可用时的"未知"处理）。

@@ -72,11 +72,11 @@
 - ZH: **多程对话（multi-course dialog）**指同一个对话可以拥有**多段进程**；每一程都像一次“重新开工”的对话工作区。
 
 - EN: Course creation (how a new course starts):
-  - The **first course** exists naturally when a main dialog or subdialog is created.
+  - The **first course** exists naturally when a mainline dialog or sideline dialog is created.
   - After that, a **new course** is started when the dialog responder calls `clear_mind`.
   - Exception: the system may auto-start a new course for remediation (e.g., context health becomes critical).
 - ZH: “一程”如何产生（新一程如何开始）：
-  - **第一程**：随着主对话/子对话的创建自然产生。
+  - **第一程**：随着主线对话/支线对话的创建自然产生。
   - **之后每一程**：通常由对话主理人调用 `clear_mind` 开启。
   - 例外：系统可能出于恢复目的自动开启新一程（例如上下文健康度进入 critical 后触发自动清理）。
 
@@ -190,15 +190,33 @@
 - EN: `Tellask` | ZH: `诉请`
 - EN: `Tellask headline` | ZH: `诉请头`
 - EN: `Tellask body` | ZH: `诉请内容`
+- EN: `tellasker` | ZH: `诉请者`
+- EN: `tellaskee` | ZH: `被诉请者`
 - EN: `TellaskBack` | ZH: `回问诉请`
 - EN: `Tellask Session` | ZH: `长线诉请`
 - EN: `Fresh Tellask` | ZH: `一次性诉请`
+- EN: `Mainline dialog` | ZH: `主线对话`
+- EN: `Sideline dialog` | ZH: `支线对话`
 - EN: `Taskdoc` | ZH: `差遣牒`
 - EN: `Taskdoc package (*.tsk/)` | ZH: `任务包`
 - EN: `!tellaskSession <slug>` | ZH: 会话 Slug（只写在 headline）
 - EN: `CLI (entrypoint UI)` | ZH: `CLI（入口界面）`
 - EN: `TUI (interactive UI)` | ZH: `TUI（交互前端）`
 - EN: `WebUI (interactive UI)` | ZH: `WebUI（交互前端）`
+
+### Dialog Terms（主线对话 / 支线对话）
+
+- EN: **Mainline dialog** is the dialog that carries the canonical shared Taskdoc and is responsible for overall progress.
+- ZH: **主线对话**是承载共享差遣牒（Taskdoc）并负责整体推进的那条对话。
+
+- EN: **Only the mainline dialog responder** can call `change_mind`.
+- ZH: **只有主线对话主理人**拥有 `change_mind` 权限；支线对话主理人没有。
+
+- EN: A **sideline dialog** is a temporary work dialog for a subtask. Between dialogs/agents, there is no hierarchy — only **tellasker/tellaskee** roles.
+- ZH: **支线对话**是为推进某个分项任务临时创建的工作对话。对话/智能体之间没有上下级关系，只有 **诉请者/被诉请者**。
+
+- EN (cross-reference): In implementation-facing docs/code you may see `root dialog` / `main dialog` for “mainline dialog”, and `subdialog` for “sideline dialog”.
+- ZH（交叉说明）: 在系统实现语境（文档/代码）中，你可能会看到 **根对话 / 主对话（root dialog / main dialog）** 来指代“主线对话”，以及 **subdialog（子对话）** 来指代“支线对话”。这些实现术语不应出现在使用者语境的提示词/示例中。
 
 ### UI Surfaces（入口界面与交互前端）
 
@@ -256,13 +274,13 @@
 - EN (what “Back” means): “Back” refers to routing back to the origin dialog; it does **not** imply hierarchy/seniority.
 - ZH（Back 的含义）: “Back” 指回到发起方对话，**不暗示上下级**。
 
-- EN (typical carrier): `!?@super ...` (available when you are inside a subdialog context)
-- ZH（典型载体）: `!?@super ...`（通常在你处于子对话语境时可用）
+- EN (typical carrier): `!?@tellasker ...` (only available inside a sideline dialog)
+- ZH（典型载体）: `!?@tellasker ...`（只在你处于支线对话语境时可用）
 
 Example / 示例（概念）:
 
-- EN: `!?@super I need you to confirm the file extensions: only .md, or also .txt/.rst?`
-- ZH: `!?@super 我需要你确认要扫描的文件扩展名：只包含 .md 还是也包含 .txt/.rst？`
+- EN: `!?@tellasker I need you to confirm the file extensions: only .md, or also .txt/.rst?`
+- ZH: `!?@tellasker 我需要你确认要扫描的文件扩展名：只包含 .md 还是也包含 .txt/.rst？`
 
 #### 2) Tellask Session（长线诉请）
 
@@ -373,8 +391,8 @@ Example / 示例（概念）:
 - EN: The implementation may still use the internal labels **Type A/B/C** to classify teammate-tellask patterns.
 - ZH: 实现层仍可能使用 **Type A/B/C** 作为队友诉请形态的内部分类。
 
-- EN: Type A: supdialog call (subdialog calling its direct supdialog); primary syntax `!?@super` (NO `!tellaskSession`).
-- ZH: Type A：supdialog call（子对话回问其直接 supdialog）；主语法 `!?@super`（不带 `!tellaskSession`）。
+- EN: Type A: ask-back call (a subdialog asking back to its initiating dialog); primary syntax `!?@tellasker` (NO `!tellaskSession`).
+- ZH: Type A：回问诉请（子对话回问其发起方对话）；主语法 `!?@tellasker`（不带 `!tellaskSession`）。
 
 - EN: Type B: registered subdialog call (resumable) keyed by `agentId!tellaskSession`.
 - ZH: Type B：registered subdialog call（可恢复），用 `agentId!tellaskSession` 作为 registry key。

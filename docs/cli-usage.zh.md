@@ -114,7 +114,7 @@ dominds webui -C ./my-workspace
 dominds read [options] [member-id]
 ```
 
-读取代理系统提示词与工作区配置，常用于排查团队设置问题与核对当前生效配置。
+读取智能体系统提示词与工作区配置，常用于排查团队设置问题与核对当前生效配置。
 
 **参数：**
 

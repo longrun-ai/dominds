@@ -62,7 +62,7 @@
 
 ### 队友 Tellask
 
-**队友 Tellask** 是 Dominds 特定的语法，触发与另一个作为子对话的代理的通信。队友 Tellask 有三种不同模式，具有不同语义（见第 3 节）。
+**队友 Tellask** 是 Dominds 特定的语法，触发与另一个作为子对话的智能体的通信。队友 Tellask 有三种不同模式，具有不同语义（见第 3 节）。
 
 **诉请块结构**（另见 `dominds/docs/dominds-terminology.md`）：
 
@@ -138,7 +138,7 @@
 ```mermaid
 flowchart TD
   M[LLM 发出 !?@mention] --> Q{这是子对话在告诉其直接上位对话吗？}
-  Q -- 是 --> A[TYPE A：上位 Tellask<br/>(`TellaskBack` / 回问诉请)<br/>主要：`!?@super`（无 !tellaskSession）<br/>回退：`!?@<supdialogAgentId>`（无 !tellaskSession）]
+  Q -- 是 --> A[TYPE A：回问诉请<br/>(`TellaskBack` / 回问诉请)<br/>主要：`!?@tellasker`（无 !tellaskSession）]
   Q -- 否 --> T{是否存在 !tellaskSession？}
   T -- 是 --> B[TYPE B：已注册子对话 Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !tellaskSession tellaskSession]
   T -- 否 --> C[TYPE C：瞬态子对话 Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>!?@agentId]
@@ -146,7 +146,7 @@ flowchart TD
 
 ### TYPE A：上位 Tellask（Type A / `TellaskBack` / 回问诉请）
 
-**主要语法**：`!?@super`（无 `!tellaskSession`）— `!?@super !tellaskSession ...` 是**语法错误**
+**主要语法**：`!?@tellasker`（无 `!tellaskSession`）— `!?@tellasker !tellaskSession ...` 是**语法错误**
 
 **可容忍的回退**：`!?@<supdialogAgentId>`（无 `!tellaskSession`）
 
@@ -162,8 +162,7 @@ flowchart TD
 - 使用 `subdialog.supdialog` 引用（无注册表查找）
 - 无需注册 — 上位对话关系是固有的
 - 上位对话始终是层级中的直接父级
-- `!?@super` 是**规范**的 TYPE A 语法：它始终解析为直接父级，即使父级的 `agentId` 与子对话的 `agentId` 相同（对于扪心自问 自子对话很常见）。
-- 显式的 `!?@<supdialogAgentId>` 形式作为向后兼容的语义回退被接受，但在 FBR/自子对话情况下更容易出错。
+- `!?@tellasker` 是**规范**的 TYPE A 语法：它始终路由到“诉请者”（发起本次诉请的对话），避免自行猜测。
 
 **示例**：
 
@@ -205,7 +204,7 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 
 **当前调用者跟踪（对复用很重要）：**
 
-当已注册的子对话被再次 Tellask（相同的 `agentId!tellaskSession`）时，调用者可能是**不同的对话**（根或其他子对话）。在每次 TYPE B Tellask 时，子对话的元数据都会更新为：
+当已注册的子对话被再次 Tellask（相同的 `agentId!tellaskSession`）时，调用者可能是**不同的对话**（主线对话或其他支线对话）。在每次 TYPE B Tellask 时，子对话的元数据都会更新为：
 
 - **当前调用者对话 ID**（这样响应就会路由回*最新*的调用者）
 - **Tellask 信息**（标题/正文、来源角色、来源成员、callId）
@@ -342,7 +341,7 @@ flowchart TD
 
 2. **层级 Q4H**：层级中的任何对话都可以自行提出 Q4H（根对话或子对话）。问题被索引在提出问题的对话中，而不是向上传递。
 
-3. **子对话 Q4H 自主性**：子对话可以直接提出 Q4H 问题，而不是作为父级的代理。用户导航到子对话的对话中以内联回答。
+3. **子对话 Q4H 自主性**：子对话可以直接提出 Q4H 问题，而不是作为父级的智能体。用户导航到子对话的对话中以内联回答。
 
 4. **UI 将 Q4H 呈现为队友 Tellask**：UI 类似于其他队友 Tellask 处理 Q4H — 具有导航链接到对话对话中的 Tellask 站点。用户使用与常规消息相同的输入文本区域内联回答。
 
@@ -476,11 +475,11 @@ postDialogEvent(dialog, questionsCountUpdateEvt);
 4. 问题链接到对话中它们的 Tellask 站点
 5. 用户点击链接导航到 Tellask 站点，内联回答
 
-### 用户如何回答 Q4H（代理拉取模型）
+### 用户如何回答 Q4H（智能体拉取模型）
 
 **线路协议**：`drive_dialog_by_user_answer`
 
-当对话因 Q4H 暂停时，代理正在等待人工输入。线路协议使用"代理拉取"样式的数据包来触发恢复：
+当对话因 Q4H 暂停时，智能体正在等待人工输入。线路协议使用"智能体拉取"样式的数据包来触发恢复：
 
 ```typescript
 // shared/types/wire.ts
@@ -494,7 +493,7 @@ interface DriveDialogByUserAnswerRequest {
 }
 ```
 
-**流程（代理拉取模型）**：
+**流程（智能体拉取模型）**：
 
 1. 用户在 UI 中看到 Q4H 指示器/徽章
 2. 用户点击面板/列表中的 Q4H，导航到 `@human` Tellask 站点
@@ -503,14 +502,14 @@ interface DriveDialogByUserAnswerRequest {
 5. 后端根据 q4h.yaml 验证 `questionId`
 6. 后端从 q4h.yaml 索引中清除已回答的 Q4H
 7. 后端使用人工响应作为提示调用 `driveDialogStream()`
-8. 代理在新上下文中恢复生成（代理拉取已满足）
+8. 智能体在新上下文中恢复生成（智能体拉取已满足）
 
 **关键设计点**：
 
 - 使用专用数据包类型回答 Q4H，与常规用户消息区分
 - `questionId` 确保正确的 Q4H 被清除和回答
 - 后端原子操作：清除 q4h.yaml → 恢复对话
-- 代理拉取：代理在继续之前等待此特定数据包
+- 智能体拉取：智能体在继续之前等待此特定数据包
 
 **与常规消息的比较**：
 
@@ -526,7 +525,7 @@ interface DriveDialogByUserAnswerRequest {
 **关键原则**：
 
 1. Q4H 被索引在提出问题的对话中，而不是向上传递给上位对话
-2. 子对话自行提出 Q4H（不是作为父级的代理）
+2. 子对话自行提出 Q4H（不是作为父级的智能体）
 3. 用户导航到子对话的对话中以内联回答
 4. `q4h.yaml` 文件是索引，不是真理之源
 
@@ -707,11 +706,11 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 - **不更改 Taskdoc 路径。** `dlg.taskDocPath` 在对话的整个生命周期中是不可变的。-更新的文件立即对引用它的所有对话可用
 - **不开启新一程对话。** 如需开启新一程对话，请单独使用 `clear_mind`。
 - 本身不清除消息、提醒、Q4H 或注册表
-- 影响引用相同 Taskdoc 的所有参与代理（主对话和子对话）
+- 影响引用相同 Taskdoc 的所有参与智能体（主对话和子对话）
 
 **实现说明**：
 
-- `change_mind` 仅在根对话中可用（不在子对话中）；子对话必须通过上位 Tellask（`!?@super`）询问父级以更新共享 Taskdoc。
+- `change_mind` 仅在根对话中可用（不在子对话中）；子对话必须通过回问诉请（`!?@tellasker`）询问诉请者以更新共享 Taskdoc。
 - 对于 `*.tsk/` Taskdoc 包，Taskdoc 是封装的：通用文件工具不得读取/写入/列出/删除 `*.tsk/` 下的任何内容。请参阅 `dominds/docs/encapsulated-taskdoc.md`。
 
 ---
@@ -790,7 +789,7 @@ flowchart TD
   - 拥有 TYPE B 子对话注册表（`registry.yaml`）
   - 创建/注册/查找已注册的子对话（`agentId!tellaskSession`）
 - `SubDialog`
-  - 有一个 `supdialog` 引用（直接父级）并将其用于 TYPE A（`!?@super`）
+  - 有一个 `supdialog` 引用（直接父级）并将其用于 TYPE A（`!?@tellasker`）
   - 无法访问或更改根注册表（按设计）
 
 **互斥锁语义**：
@@ -811,7 +810,7 @@ flowchart TD
 interface SubdialogRegistry {
   [key: string]: {
     subdialogId: string; // 子对话的 UUID
-    agentId: string; // 代理标识符
+    agentId: string; // 智能体标识符
     tellaskSession: string; // Tellask 会话键
     createdAt: string; // ISO 时间戳
     lastAccessed?: string; // ISO 时间戳（在每次 Tellask 时更新）
@@ -843,7 +842,7 @@ interface SubdialogRegistry {
 - **清理头脑操作**：`startNewRound(newRoundPrompt)` 方法（清除消息，清除 Q4H，开启新一程对话，为下一轮驱动排队开启提示）
 - **子对话管理**：专门子任务的创建和协调
 - **Q4H 管理**：用于问题跟踪的 `updateQuestions4Human()` 方法
-- **内存访问**：与 Taskdoc 和团队/代理内存的集成
+- **内存访问**：与 Taskdoc 和团队/智能体内存的集成
 - **注册表管理**（仅限 RootDialog）：子对话的注册和查找
 
 ### 主对话解析
@@ -897,14 +896,14 @@ interface RegistryMethods {
 
 ### 层级管理
 
-**创建**：当代理需要委派专门任务或复杂问题需要分解时，会创建子对话。
+**创建**：当智能体需要委派专门任务或复杂问题需要分解时，会创建子对话。
 
 **上下文继承**：新的子对话自动接收：
 
 - 对相同工作区 Taskdoc 的引用（推荐：`tasks/feature-auth.tsk/`）；`dlg.taskDocPath` 在对话创建时固定，永不重新分配
 - 上位 Tellask 上下文（headLine + callBody）解释其目的
 - 访问共享团队内存
-- 访问其代理的个人内存
+- 访问其智能体的个人内存
 
 **存储**：所有子对话都平铺存储在主对话（根对话）的 `subdialogs/` 目录下，无论嵌套深度如何。
 
@@ -914,12 +913,12 @@ interface RegistryMethods {
 
 ### 生命周期管理
 
-**活动状态**：代理正在工作时，对话保持活动状态。
+**活动状态**：智能体正在工作时，对话保持活动状态。
 
 **完成**：当以下情况时，对话转换为完成状态：
 
 - 任务成功完成
-- 代理明确标记它们完成
+- 智能体明确标记它们完成
 - 上位对话确定子任务不再需要
 - 所有待处理的子对话都完成且所有 Q4H 已回答
 
@@ -961,15 +960,15 @@ interface RegistryMethods {
 
 ### 工作区持久化内存
 
-**团队共享内存**：在整个项目生命周期中持久化，由所有代理共享。
+**团队共享内存**：在整个项目生命周期中持久化，由所有智能体共享。
 
-**代理个人内存**：每个代理的个人知识，在所有对话中持久化。
+**智能体个人内存**：每个智能体的个人知识，在所有对话中持久化。
 
 ### 内存同步
 
 **Taskdoc 传播**：对工作区 Taskdoc 文件的更改对引用它的所有对话立即可见。
 
-**内存更新**：团队和代理内存异步更新，最终在所有对话中保持一致。
+**内存更新**：团队和智能体内存异步更新，最终在所有对话中保持一致。
 
 **Q4H 持久化**：Q4H 问题在创建时持久化，在回答时或调用 clear_mind 时原子地清除。
 
@@ -994,7 +993,7 @@ interface RegistryMethods {
 
 **Taskdoc 存储**：Taskdoc 是对话通过路径引用的工作区产物。Taskdoc 必须是封装的 `*.tsk/` Taskdoc 包。
 
-**内存存储**：团队和代理内存存储在工作区内的专用文件中。
+**内存存储**：团队和智能体内存存储在工作区内的专用文件中。
 **注册表存储**：子对话注册表（`registry.yaml`）存储在根对话目录中，并在根完成时移动到 `done/`。
 
 ### 流式生成子流顺序契约（Thinking / Saying）
@@ -1011,23 +1010,23 @@ Dominds 将 LLM 输出拆分为多个“子流”（thinking、saying，以及�
 
 **对话创建**：新对话通过带有适当上下文的 CLI 命令创建。
 
-**工具调用**：思维清晰工具通过 CLI 命令或代理操作调用。
+**工具调用**：思维清晰工具通过 CLI 命令或智能体操作调用。
 
 **状态监控**：对话状态、待处理子对话、Q4H 计数和已注册的子对话可以通过 CLI 工具检查。
 
-### 代理集成
+### 智能体集成
 
-**自主操作**：代理可以独立创建子对话（TYPE B 和 C）、管理提醒、提出 Q4H 并触发清晰操作。
+**自主操作**：智能体可以独立创建子对话（TYPE B 和 C）、管理提醒、提出 Q4H 并触发清晰操作。
 
-**上下文感知**：代理可以完全访问其对话上下文、内存、层级位置、来自子对话的待处理 Q4H，以及（对于根对话）子对话注册表。
+**上下文感知**：智能体可以完全访问其对话上下文、内存、层级位置、来自子对话的待处理 Q4H，以及（对于根对话）子对话注册表。
 
-**队友 Tellask 能力**：代理可以调用所有三种类型的队友 Tellask：
+**队友 Tellask 能力**：智能体可以调用所有三种类型的队友 Tellask：
 
 - TYPE A / `TellaskBack`：向上位对话 Tellask 以请求澄清
 - TYPE B / `Tellask Session`：Tellask/恢复已注册的子对话
 - TYPE C / `Fresh Tellask`：生成瞬态子对话
 
-**工具访问**：所有思维清晰工具、Q4H 能力和队友 Tellask 工具都可用于代理进行自主认知管理。
+**工具访问**：所有思维清晰工具、Q4H 能力和队友 Tellask 工具都可用于智能体进行自主认知管理。
 
 ### 对话状态机
 
@@ -1067,7 +1066,7 @@ flowchart TD
 
 这些图表专注于**控制流**，避免框图对齐，以便在不同的markdown查看器中呈现时保持可读性。
 
-#### TYPE A：上位 Tellask（`TellaskBack`）（`!?@super`，无 `!tellaskSession`）
+#### TYPE A：回问诉请（`TellaskBack`）（`!?@tellasker`，无 `!tellaskSession`）
 
 ```mermaid
 sequenceDiagram
@@ -1075,7 +1074,7 @@ sequenceDiagram
   participant Driver as 后端驱动程序
   participant Sup as 上位对话（直接父级）
 
-  Sub->>Driver: 发出 `!?@super` + 问题
+  Sub->>Driver: 发出 `!?@tellasker` + 问题
   Driver->>Sup: 驱动上位对话以回答
   Sup-->>Driver: 响应文本
   Driver-->>Sub: 恢复子对话，响应在上下文中
@@ -1314,7 +1313,7 @@ Dominds 对话系统为层次化、人在回路的 AI 协作提供了一个强�
 
 | 类型（内部） | 用户可见术语      | 语法                              | 注册表                   | 用例             |
 | ------------ | ----------------- | --------------------------------- | ------------------------ | ---------------- |
-| TYPE A       | `TellaskBack`     | `!?@super` / `!?@<supId>`         | 无注册表                 | 澄清（询问来源） |
+| TYPE A       | `TellaskBack`     | `!?@tellasker`                    | 无注册表                 | 澄清（询问来源） |
 | TYPE B       | `Tellask Session` | `!?@agentId !tellaskSession <id>` | `agentId!tellaskSession` | 可恢复多轮工作   |
 | TYPE C       | `Fresh Tellask`   | `!?@agentId`                      | 未注册                   | 单次 / 不可恢复  |
 

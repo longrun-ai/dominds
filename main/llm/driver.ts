@@ -36,8 +36,8 @@ import {
   formatDomindsNoteInvalidTellaskSessionDirective,
   formatDomindsNoteMalformedTellaskCall,
   formatDomindsNoteMultipleTellaskSessionDirectives,
-  formatDomindsNoteSuperNoTellaskSession,
-  formatDomindsNoteSuperOnlyInSubdialog,
+  formatDomindsNoteTellaskerNoTellaskSession,
+  formatDomindsNoteTellaskerOnlyInSidelineDialog,
   formatDomindsNoteTellaskForTeammatesOnly,
   formatQ4HDiligencePushBudgetExhausted,
   formatReminderItemGuide,
@@ -3356,15 +3356,20 @@ async function executeTellaskCall(
 
   const team = await Team.load();
   const isSelfAlias = firstMention === 'self';
-  const isSuperAlias = firstMention === 'super';
-  const member = isSelfAlias ? team.getMember(dlg.agentId) : team.getMember(firstMention);
+  const isTellaskerAlias = firstMention === 'tellasker';
+  const member = isSelfAlias
+    ? team.getMember(dlg.agentId)
+    : isTellaskerAlias
+      ? null
+      : team.getMember(firstMention);
 
   // Multi-teammate fan-out (collective teammate tellask):
   // A single tellask block can target multiple teammates by including multiple teammate mentions
   // anywhere inside the (possibly multiline) headline. The full headline/body is passed verbatim
   // to each target so each subdialog can see this is a collective assignment.
+
   const allowMultiTeammateTargets = options?.allowMultiTeammateTargets ?? true;
-  if (allowMultiTeammateTargets && member && !isSelfAlias && !isSuperAlias) {
+  if (allowMultiTeammateTargets && member && !isSelfAlias && !isTellaskerAlias) {
     const mentioned = extractMentionIdsFromHeadline(headLine);
     const uniqueMentioned = Array.from(new Set(mentioned));
     const knownTargets = uniqueMentioned.filter((id) => team.getMember(id) !== null);
@@ -3377,7 +3382,7 @@ async function executeTellaskCall(
         (id) =>
           team.getMember(id) === null &&
           id !== 'self' &&
-          id !== 'super' &&
+          id !== 'tellasker' &&
           id !== 'human' &&
           id !== 'dominds',
       );
@@ -3506,10 +3511,10 @@ async function executeTellaskCall(
     }
   }
 
-  if (member || isSelfAlias || isSuperAlias) {
+  if (member || isSelfAlias || isTellaskerAlias) {
     // This is a teammate tellask - parse using Phase 5 taxonomy (Type A/B/C).
-    if (isSuperAlias && !(dlg instanceof SubDialog)) {
-      const response = formatDomindsNoteSuperOnlyInSubdialog(getWorkLanguage());
+    if (isTellaskerAlias && !(dlg instanceof SubDialog)) {
+      const response = formatDomindsNoteTellaskerOnlyInSidelineDialog(getWorkLanguage());
       try {
         await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
           response,
@@ -3518,7 +3523,7 @@ async function executeTellaskCall(
           originMemberId: dlg.agentId,
         });
       } catch (err) {
-        log.warn('Failed to emit @super misuse response', err, {
+        log.warn('Failed to emit @tellasker misuse response', err, {
           dialogId: dlg.id.selfId,
           agentId: dlg.agentId,
         });
@@ -3529,8 +3534,8 @@ async function executeTellaskCall(
     if (options?.skipTellaskSessionDirectiveValidation !== true) {
       const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(headLine);
 
-      if (isSuperAlias && tellaskSessionDirective.kind !== 'none') {
-        const response = formatDomindsNoteSuperNoTellaskSession(getWorkLanguage());
+      if (isTellaskerAlias && tellaskSessionDirective.kind !== 'none') {
+        const response = formatDomindsNoteTellaskerNoTellaskSession(getWorkLanguage());
         try {
           await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
             response,
@@ -3539,7 +3544,7 @@ async function executeTellaskCall(
             originMemberId: dlg.agentId,
           });
         } catch (err) {
-          log.warn('Failed to emit @super !tellaskSession syntax error response', err, {
+          log.warn('Failed to emit @tellasker !tellaskSession syntax error response', err, {
             dialogId: dlg.id.selfId,
             agentId: dlg.agentId,
           });
@@ -3579,14 +3584,16 @@ async function executeTellaskCall(
       }
     }
 
-    const parseResult: TeammateTellaskParseResult = isSuperAlias
+    const parseResult: TeammateTellaskParseResult = isTellaskerAlias
       ? { type: 'A', agentId: (dlg as SubDialog).supdialog.agentId }
       : parseTeammateTellask(firstMention, headLine, dlg);
 
     // If the agent calls itself via `@<agentId>` (instead of `@self`), allow it to proceed
     // (self-calls are useful for FBR), but emit a correction bubble so the user can distinguish
     // intentional self-FBR from accidental echo/quote triggers.
-    const isDirectSelfCall = !isSelfAlias && !isSuperAlias && parseResult.agentId === dlg.agentId;
+
+    const isDirectSelfCall =
+      !isSelfAlias && !isTellaskerAlias && parseResult.agentId === dlg.agentId;
     if (isDirectSelfCall) {
       const response = formatDomindsNoteDirectSelfCall(getWorkLanguage());
       try {
@@ -3606,6 +3613,7 @@ async function executeTellaskCall(
 
     // Phase 11: Type A handling - subdialog calling its direct parent (supdialog)
     // This suspends the subdialog, drives the supdialog for one course, then returns to subdialog
+
     if (parseResult.type === 'A') {
       // Type A is only valid from a subdialog (calling back to its supdialog).
       if (dlg instanceof SubDialog) {
@@ -3616,8 +3624,8 @@ async function executeTellaskCall(
 
         try {
           const headLineForSupdialog =
-            isSuperAlias && headLine.startsWith('@super')
-              ? `@${supdialog.agentId}${headLine.slice('@super'.length)}`
+            isTellaskerAlias && headLine.startsWith('@tellasker')
+              ? `@${supdialog.agentId}${headLine.slice('@tellasker'.length)}`
               : headLine;
           const assignment = dlg.assignmentFromSup;
           const supPrompt: HumanPrompt = {

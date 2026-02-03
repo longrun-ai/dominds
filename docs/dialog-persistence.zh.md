@@ -52,18 +52,18 @@
 
 ```
 workspace/
-├── .minds/                    # 代理配置和持久化记忆
+├── .minds/                    # 智能体配置和持久化记忆
 │   ├── llm.yaml              # LLM 提供商配置
 │   ├── team.yaml             # 团队名单和默认设置
-│   ├── team/                 # 代理特定配置
+│   ├── team/                 # 智能体特定配置
 │   │   └── <member>/
-│   │       ├── persona.md    # 代理个性和角色
-│   │       ├── knowledge.md  # 代理专业知识和技能
-│   │       └── lessons.md    # 代理学习和适应
+│   │       ├── persona.md    # 智能体个性和角色
+│   │       ├── knowledge.md  # 智能体专业知识和技能
+│   │       └── lessons.md    # 智能体学习和适应
 │   └── memory/               # 工作区持久化记忆
 │       ├── team_shared/      # 团队共享记忆（此目录下所有 `*.md` 都会被加载）
 │       │   └── *.md
-│       └── individual/       # 代理个体记忆（每个代理）
+│       └── individual/       # 智能体个体记忆（每个智能体）
 │           └── <member>/
 │               └── **/*.md
 └── .dialogs/                 # 对话运行时状态
@@ -78,7 +78,7 @@ workspace/
 
 这些约定指导工作区组织。对话目录在 `.dialogs/` 下动态创建。
 
-### 代理配置 (`.minds/`)
+### 智能体配置 (`.minds/`)
 
 **团队配置** (`team.yaml`)：
 
@@ -111,19 +111,19 @@ providers:
     temperature: 0.5
 ```
 
-**代理人格** (`team/<member>/persona.md`)：
+**智能体人格** (`team/<member>/persona.md`)：
 
-- 代理个性和沟通风格
+- 智能体个性和沟通风格
 - 角色特定职责和专业技能
 - 协作偏好和模式
 
-**代理知识** (`team/<member>/knowledge.md`)：
+**智能体知识** (`team/<member>/knowledge.md`)：
 
 - 技术专长和专业化
 - 领域特定知识和经验
 - 工具熟练度和偏好
 
-**代理经验** (`team/<member>/lessons.md`)：
+**智能体经验** (`team/<member>/lessons.md`)：
 
 - 从过去交互和错误中学习
 - 适应模式和改进
@@ -136,7 +136,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 - **团队共享记忆**：`.minds/memory/team_shared/**/*.md`
 - **个体记忆**：`.minds/memory/individual/<member>/**/*.md`
 
-这些路径由记忆工具强制执行（见 `main/tools/mem.ts`），并由 `main/minds/load.ts` 加载到代理上下文中。
+这些路径由记忆工具强制执行（见 `main/tools/mem.ts`），并由 `main/minds/load.ts` 加载到智能体上下文中。
 
 ---
 
@@ -220,7 +220,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 
 ```yaml
 id: 'aa/bb/cccccccc' # 唯一对话标识符（仅 selfDlgId）
-agentId: 'alice' # 负责此对话的代理
+agentId: 'alice' # 负责此对话的智能体
 taskDocPath: 'task.tsk' # 工作区任务文档包目录的路径
 createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
 # 根对话没有父字段
@@ -230,7 +230,7 @@ createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
 
 ```yaml
 id: 'dd/ee/ffffffff' # 唯一对话标识符（仅 selfDlgId）
-agentId: 'bob' # 负责此对话的代理
+agentId: 'bob' # 负责此对话的智能体
 taskDocPath: 'task.tsk' # 工作区任务文档包目录的路径（从父级继承）
 createdAt: '2024-01-15T10:35:00Z' # 创建时的 ISO 时间戳
 supdialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
@@ -304,7 +304,7 @@ status: 'active' # 当前对话状态
 
 **更新模式**：
 
-1. 代理检测到共享记忆更新的需要
+1. 智能体检测到共享记忆更新的需要
 2. 原子写入临时文件
 3. 原子重命名替换现有文件
 4. 广播通知其他活动对话
@@ -316,7 +316,7 @@ status: 'active' # 当前对话状态
 - 复杂冲突的人工干预
 - 用于审计追踪的版本跟踪
 
-### 代理个体记忆管理
+### 智能体个体记忆管理
 
 **持久化触发器**：
 
@@ -622,7 +622,7 @@ workspace/
 │   │   │   └── metadata.json       # 归档元数据
 │   │   └── index.json            # 归档查找索引
 │   └── templates/        # 对话模板和预设
-├── agents/              # 代理配置（不变）
+├── agents/              # 智能体配置（不变）
 └── knowledge/           # 知识库（不变）
 ```
 

@@ -268,8 +268,9 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
           ...(violationsBlock ? ['', violationsBlock] : []),
         ].join('\n');
       }
+
       const maintenanceLine = isSubdialog
-        ? `- Subdialogs cannot call \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
+        ? `- Sideline dialogs cannot call \`change_mind\`: ask the Taskdoc maintainer @${taskdocMaintainerId} to apply updates, and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
         : `- Maintenance: in this dialog, use the function tool \`change_mind\` to target one section (top-level selector: \`goals\` / \`constraints\` / \`progress\`, or category+selector for extra sections). Each call replaces the entire section, so always start from the current injected content and merge/compress. You may call \`change_mind\` multiple times in a single turn to update multiple sections (do not overwrite/delete other contributors).`;
       const bearEn =
         bearInMindStatus === 'absent'
@@ -328,8 +329,9 @@ ${statusBlock}
 ${howToUpdate}`,
         };
       }
+
       const howToUpdate = isSubdialog
-        ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSubdialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
+        ? `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nSideline dialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
         : `⚠️ **Note:** Taskdocs are encapsulated. Do not use file tools to read/write/list anything under \`*.tsk/\`.\nIn this dialog, use the function tool \`change_mind\` to update (each call replaces one section; you may call it multiple times in a single turn to batch updates; do not overwrite/delete other contributors).`;
       return {
         type: 'environment_msg',
@@ -368,8 +370,9 @@ ${footerLine}
 提示：以上“封装/禁用通用文件工具”的规则由系统强制执行，通常无需在差遣牒的 \`constraints\` 里重复书写（除非你要强调给人类读者）。`,
       };
     }
+
     const footerLine = isSubdialog
-      ? `*Subdialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).*`
+      ? `*Sideline dialogs cannot call \`change_mind\`; ask the Taskdoc maintainer @${taskdocMaintainerId} with a fully merged full-section replacement draft (do not overwrite/delete other contributors).*`
       : `*In this dialog, use the function tool \`change_mind\` to replace sections (each call replaces one entire section; you may call it multiple times in a single turn to batch replacements; do not overwrite other contributors).*`;
     return {
       type: 'environment_msg',
