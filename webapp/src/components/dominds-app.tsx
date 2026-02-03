@@ -1104,6 +1104,43 @@ export class DomindsApp extends HTMLElement {
     return selfId === rootId ? rootId : `${rootId}#${selfId}`;
   }
 
+  private mergeRootDialogsWithExistingSubdialogs(
+    roots: ApiRootDialogResponse[],
+  ): ApiRootDialogResponse[] {
+    const rootsById = new Map<string, ApiRootDialogResponse>();
+    for (const root of roots) {
+      if (!root.selfId) {
+        rootsById.set(root.rootId, root);
+      }
+    }
+
+    const seenKeys = new Set<string>();
+    for (const dialog of roots) {
+      const effectiveSelfId = dialog.selfId ? dialog.selfId : dialog.rootId;
+      seenKeys.add(this.dialogKey(dialog.rootId, effectiveSelfId));
+    }
+
+    const merged: ApiRootDialogResponse[] = [...roots];
+    for (const prior of this.dialogs) {
+      if (!prior.selfId) continue;
+      const root = rootsById.get(prior.rootId);
+      if (!root) continue;
+      if (typeof root.subdialogCount === 'number' && root.subdialogCount <= 0) continue;
+
+      const key = this.dialogKey(prior.rootId, prior.selfId);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+
+      merged.push({
+        ...prior,
+        status: root.status,
+        taskDocPath: root.taskDocPath,
+      });
+    }
+
+    return merged;
+  }
+
   private recomputeRunControlCounts(): void {
     let proceeding = 0;
     let resumable = 0;
@@ -4312,7 +4349,17 @@ export class DomindsApp extends HTMLElement {
       if (resp.success && Array.isArray(resp.data)) {
         // Store root dialogs with their subdialog counts
         // Subdialogs will be loaded lazily when user expands a root dialog
-        this.dialogs = resp.data;
+        const previousRunStates = new Map(this.dialogRunStatesByKey);
+        const merged = this.mergeRootDialogsWithExistingSubdialogs(resp.data);
+        this.dialogs = merged.map((d) => {
+          const effectiveSelfId = d.selfId ? d.selfId : d.rootId;
+          const key = this.dialogKey(d.rootId, effectiveSelfId);
+          const cached = previousRunStates.get(key);
+          if (!d.runState && cached) {
+            return { ...d, runState: cached };
+          }
+          return d;
+        });
         this.dialogRunStatesByKey.clear();
         for (const d of this.dialogs) {
           const selfId = d.selfId ? d.selfId : d.rootId;

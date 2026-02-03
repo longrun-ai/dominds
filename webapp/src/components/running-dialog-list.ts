@@ -188,6 +188,10 @@ export class RunningDialogList extends HTMLElement {
     const validated = this.validateDialogs(dialogs);
     const groups = this.buildGroups(validated);
     const rootIds = new Set<string>(validated.map((dialog) => dialog.rootId));
+    const loadedSubdialogRoots = new Set<string>();
+    for (const dialog of validated) {
+      if (dialog.selfId) loadedSubdialogRoots.add(dialog.rootId);
+    }
     for (const rootId of rootIds) {
       if (!this.knownRootIds.has(rootId)) {
         this.knownRootIds.add(rootId);
@@ -198,6 +202,13 @@ export class RunningDialogList extends HTMLElement {
       if (!rootIds.has(existing)) {
         this.knownRootIds.delete(existing);
         this.collapsedRoots.delete(existing);
+        this.requestedSubdialogRoots.delete(existing);
+      }
+    }
+    // Once a root's subdialogs are present, the request has been satisfied.
+    // Clearing this allows re-request if subdialogs later get pruned from props.
+    for (const existing of Array.from(this.requestedSubdialogRoots)) {
+      if (loadedSubdialogRoots.has(existing)) {
         this.requestedSubdialogRoots.delete(existing);
       }
     }
