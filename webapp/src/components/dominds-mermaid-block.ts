@@ -7,6 +7,23 @@ export class DomindsMermaidBlock extends HTMLElement {
   private _definition: string = '';
   private _id: string = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
 
+  private normalizeMermaidDefinition(definition: string): string {
+    // Mermaid flowchart node labels require quoting when they contain characters like `<` (e.g. `<br/>`).
+    // Humans/LLMs often write `A[foo<br/>bar]`, but Mermaid expects `A["foo<br/>bar"]`.
+    const normalizedNewlines = definition.replace(/\r\n/g, '\n');
+
+    return normalizedNewlines.replace(
+      /(\b[\w-]+)\[([^\]\n]*?<br\s*\/?>[^\]\n]*?)\]/gi,
+      (_full, rawId: string, rawLabel: string) => {
+        const id = String(rawId);
+        const label = String(rawLabel).trim();
+        if (label.startsWith('"') || label.startsWith("'")) return `${id}[${label}]`;
+        const escaped = label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        return `${id}["${escaped}"]`;
+      },
+    );
+  }
+
   constructor() {
     super();
     this.style.display = 'block';
@@ -33,8 +50,9 @@ export class DomindsMermaidBlock extends HTMLElement {
     if (!this._definition) return;
 
     try {
+      const definition = this.normalizeMermaidDefinition(this._definition);
       // Mermaid requires a unique ID for each diagram
-      const { svg } = await mermaid.render(this._id, this._definition);
+      const { svg } = await mermaid.render(this._id, definition);
       this.innerHTML = `
         <style>
           dominds-mermaid-block {
@@ -56,7 +74,30 @@ export class DomindsMermaidBlock extends HTMLElement {
       `;
     } catch (error) {
       console.error('Mermaid rendering error:', error);
-      this.innerHTML = `<pre class="mermaid-error">${this._definition}</pre>`;
+      this.innerHTML = `
+        <style>
+          dominds-mermaid-block {
+            display: block;
+            margin: 0.75em 0;
+            padding: 1em;
+            background: white;
+            border-radius: 6px;
+            overflow: auto;
+          }
+          .mermaid-error {
+            white-space: pre;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+              'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+          }
+        </style>
+        <pre class="mermaid-error"></pre>
+      `;
+      const pre = this.querySelector('.mermaid-error');
+      if (pre instanceof HTMLElement) {
+        pre.textContent = this._definition;
+      }
     }
   }
 }
