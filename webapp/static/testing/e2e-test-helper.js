@@ -89,12 +89,12 @@ let __consoleErrors__ = [];
 
 // Known non-critical protocol error patterns to ignore
 const IGNORED_ERROR_PATTERNS = [
-  // Tool call events (renamed from call_* to tool_call_*)
-  'tool_call_headline_chunk_evt',
-  'tool_call_body_start_evt',
-  'tool_call_finish_evt',
-  'tool_call_start_evt',
-  'tool_call_finish_evt',
+  // Teammate-call (tellask) events (renamed from call_* to teammate_call_*)
+  'teammate_call_headline_chunk_evt',
+  'teammate_call_body_start_evt',
+  'teammate_call_finish_evt',
+  'teammate_call_start_evt',
+  'teammate_call_finish_evt',
 ];
 
 // Console error interceptor
@@ -2740,7 +2740,7 @@ function isTeammateMention(firstMention) {
   return getTeamMemberIds().includes(normalized);
 }
 
-function getToolCallingSections() {
+	function getNonTeammateCallingSections() {
   const dialogContainer = getDialogContainer();
   const shadow = dialogContainer?.shadowRoot;
   if (!shadow) return [];
@@ -2753,20 +2753,20 @@ function getToolCallingSections() {
 }
 
 /**
- * Detects if the last calling section is a tellask tool call (e.g. @clear_mind, @change_mind).
- * This is NOT the same as a function call (.func-call-section).
+	 * Detects if the last calling section is a non-teammate tellask call (e.g. @clear_mind, @change_mind).
+	 * This is NOT the same as a function call (.func-call-section).
  *
  * @param {string} [toolName] - Optional tool name to check for (e.g., 'clear_mind')
- * @returns {Object} Result with hasToolCall (boolean) and call details (object)
- */
-function detectToolCall(toolName) {
-  const toolSections = getToolCallingSections();
-  if (toolSections.length === 0) {
-    return { hasToolCall: false, toolName: null, index: -1 };
-  }
+	 * @returns {Object} Result with hasCall (boolean) and call details (object)
+	 */
+	function detectNonTeammateCall(toolName) {
+	  const sections = getNonTeammateCallingSections();
+	  if (sections.length === 0) {
+	    return { hasCall: false, toolName: null, index: -1 };
+	  }
 
-  const lastIndex = toolSections.length - 1;
-  const lastSection = toolSections[lastIndex];
+	  const lastIndex = sections.length - 1;
+	  const lastSection = sections[lastIndex];
   const firstMention = lastSection.getAttribute('data-first-mention') || '';
   const headLineEl = lastSection.querySelector('.calling-headline');
   const headLineText = headLineEl ? (headLineEl.textContent || '').trim() : '';
@@ -2780,27 +2780,27 @@ function detectToolCall(toolName) {
     const expected = normalizeMention(toolName);
     const actual = normalizeMention(firstMention);
     const hasTool = expected !== '' && actual === expected;
-    return {
-      hasToolCall: hasTool,
-      toolName: hasTool ? actual : null,
-      index: hasTool ? lastIndex : -1,
-      firstMention: hasTool ? actual : null,
-      headLine: hasTool ? headLineText : null,
-      body: hasTool ? bodyText : null,
-      result: hasTool ? resultText : null,
-    };
-  }
+	    return {
+	      hasCall: hasTool,
+	      toolName: hasTool ? actual : null,
+	      index: hasTool ? lastIndex : -1,
+	      firstMention: hasTool ? actual : null,
+	      headLine: hasTool ? headLineText : null,
+	      body: hasTool ? bodyText : null,
+	      result: hasTool ? resultText : null,
+	    };
+	  }
 
-  return {
-    hasToolCall: true,
-    toolName: normalizeMention(firstMention) || null,
-    index: lastIndex,
-    firstMention,
-    headLine: headLineText,
-    body: bodyText,
-    result: resultText,
-  };
-}
+	  return {
+	    hasCall: true,
+	    toolName: normalizeMention(firstMention) || null,
+	    index: lastIndex,
+	    firstMention,
+	    headLine: headLineText,
+	    body: bodyText,
+	    result: resultText,
+	  };
+	}
 
 function extractCallSiteIdFromSection(el) {
   const callSiteId = parseCallSiteId(el.getAttribute('data-call-site-id'));
@@ -3038,9 +3038,9 @@ function setGlobal() {
     waitUntil,
     // Function call detection
     detectFuncCall,
-    // Tellask tool-call detection (e.g. @clear_mind)
-    getToolCallingSections,
-    detectToolCall,
+	    // Tellask call-block detection (non-teammate targets; e.g. @clear_mind)
+	    getNonTeammateCallingSections,
+	    detectNonTeammateCall,
     // Dialog creation
     createDialog,
     // Dialog selection

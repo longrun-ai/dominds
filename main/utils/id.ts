@@ -26,11 +26,11 @@ export function generateDialogID(): string {
 }
 
 /**
- * Generate deterministic hash ID for tool call content.
+ * Generate deterministic hash ID for call-block content.
  * Uses MD5 (faster, shorter output than SHA256) + local counter.
  *
  * @param content - The content to hash (e.g., "tool_name\nheadline\nbody")
- * @param localCounter - Incremented per tool call in current parsing session
+ * @param localCounter - Incremented per call block in current parsing session
  * @returns Short hash string (8 characters)
  */
 export function generateContentHash(content: string, localCounter: number): string {

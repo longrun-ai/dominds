@@ -17,7 +17,7 @@ export function formatUserFacingLanguageGuide(
   if (uiLanguage === workingLanguage) {
     return `User-visible response language: ${uiName}.`;
   }
-  return `User-visible response language: ${uiName}. Internal work language remains: ${workingName} (system prompt, teammate comms, tool calls).`;
+  return `User-visible response language: ${uiName}. Internal work language remains: ${workingName} (system prompt, teammate comms, function tools).`;
 }
 
 export function formatReminderItemGuide(
@@ -136,7 +136,7 @@ export function formatUserFacingContextHealthV3RemediationGuide(
     return [
       '[System notification] Context state: 🟡 caution',
       '',
-      'Impact: stale tool calls/results in dialog history are creating cognitive noise.',
+      'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
       'Action: prepare a continuation package (next step + key pointers) and maintain it in reminders.',
       '',

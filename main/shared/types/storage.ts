@@ -171,7 +171,7 @@ export type PersistedDialogRecord =
   | HumanTextRecord
   | FuncResultRecord
   | QuestForSupRecord
-  | ToolCallResultRecord
+  | TeammateCallResultRecord
   | TeammateResponseRecord
   | GenStartRecord
   | GenFinishRecord;
@@ -228,9 +228,9 @@ export interface QuestForSupRecord {
   subDialogId: string; // this is selfId, rootId always be the same as selfId of the supdialog
 }
 
-export interface ToolCallResultRecord {
+export interface TeammateCallResultRecord {
   ts: string;
-  type: 'tool_call_result_record';
+  type: 'teammate_call_result_record';
   calling_genseq?: number;
   responderId: string;
   headLine: string;

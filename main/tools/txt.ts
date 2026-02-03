@@ -15,7 +15,7 @@ import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import type { FuncTool, ToolArguments } from '../tool';
 
-type ToolCaller = Parameters<FuncTool['call']>[1];
+type FuncToolCallContext = Parameters<FuncTool['call']>[1];
 
 type TxtToolCallResult = {
   status: 'completed' | 'failed';
@@ -847,8 +847,8 @@ export const readFileTool = {
         emptyFileLabel: '<empty file>',
         failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
         invalidFormatMultiToolCalls: (toolName: string) =>
-          `INVALID_FORMAT: Detected what looks like tool-call text mixed into \`read_file\` input (e.g. \`${toolName}\`).\n\n` +
-          'Split different tools into separate calls (do not paste `@ripgrep_*` or other tool-call text into `path/range`).',
+          `INVALID_FORMAT: Detected what looks like function tool call text mixed into \`read_file\` input (e.g. \`${toolName}\`).\n\n` +
+          'Split different tools into separate calls (do not paste `@ripgrep_*` or other function tool call text into `path/range`).',
       };
     }
 
@@ -1591,7 +1591,7 @@ export const overwriteEntireFileTool: FuncTool = {
 };
 
 async function runPrepareFileRangeEdit(
-  caller: ToolCaller,
+  caller: FuncToolCallContext,
   filePath: string,
   rangeSpec: string,
   requestedId: string | undefined,
@@ -1857,7 +1857,7 @@ export const prepareFileRangeEditTool: FuncTool = {
 };
 
 async function runPrepareFileAppend(
-  caller: ToolCaller,
+  caller: FuncToolCallContext,
   filePath: string,
   inputBody: string,
   options: { create: boolean; requestedId: string | undefined },
@@ -2118,7 +2118,7 @@ async function runPrepareFileAppend(
 
 async function planInsertionCommon(
   position: 'before' | 'after',
-  caller: ToolCaller,
+  caller: FuncToolCallContext,
   options: {
     filePath: string;
     anchor: string;
@@ -2685,7 +2685,7 @@ export const prepareFileInsertBeforeTool: FuncTool = {
 };
 
 async function runApplyFileModification(
-  caller: ToolCaller,
+  caller: FuncToolCallContext,
   id: string,
 ): Promise<TxtToolCallResult> {
   const language = getWorkLanguage();
@@ -3750,7 +3750,7 @@ export const applyFileModificationTool: FuncTool = {
   },
 };
 async function runPrepareBlockReplace(
-  caller: ToolCaller,
+  caller: FuncToolCallContext,
   options: {
     filePath: string;
     startAnchor: string;

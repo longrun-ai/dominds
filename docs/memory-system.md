@@ -149,11 +149,11 @@ Tools:
 
 - `add_team_memory`, `replace_team_memory`, `drop_team_memory`, `clear_team_memory`.
 
-### 5) Tool-call history / dialog messages — Disposable and unreliable
+### 5) Function tool call history / dialog messages — Disposable and unreliable
 
 **Purpose**: short-lived working buffer.
 
-Tool-call results and long file reads can be huge. They are useful to decide the next move, but they are not a good long-term memory substrate.
+Function tool call results and long file reads can be huge. They are useful to decide the next move, but they are not a good long-term memory substrate.
 
 **Rule**: if you will need it later, **distill it** into:
 
@@ -168,7 +168,7 @@ Never rely on “I read it earlier” as a durable assumption.
 
 ### Default loop
 
-1. Do work using tool calls as needed.
+1. Do work using function tool calls as needed.
 2. Distill:
    - update Taskdoc `progress` with decisions and next steps;
    - update a small reminder worklog with any crucial details.

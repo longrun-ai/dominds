@@ -273,7 +273,7 @@ This is the design doc for `ws_mod` text editing as implemented.
 
 - Incremental edits are **prepare-first** (`prepare_*` returns YAML + unified diff + `hunk_id`) and **single-apply** (`apply_file_modification({hunk_id})` is the only apply entrypoint).
 - Legacy direct-write edit tools are removed (no compat): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
-- Tool calls in one message run in parallel → **prepare → apply must be two messages**.
+- Function tool calls in one message run in parallel → **prepare → apply must be two messages**.
 - Applies are serialized per file in-process (queue by `createdAtMs`, then `hunkId`).
 - `hunk_id` is TTL-limited and in-memory; apply checks ownership and access.
 - `create_new_file` creates a new file (empty content allowed) and refuses to overwrite existing files (YAML-only output).

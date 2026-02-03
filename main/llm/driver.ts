@@ -1135,7 +1135,7 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *   - If humanPrompt is provided, add it as a prompting_msg
  *   - Persist user message to storage
  *
- * Phase 3 - User Tool Calls Collection & Execution:
+ * Phase 3 - User Tellask Call Block Collection & Execution:
  *   - Parse user text for tellask blocks using TellaskStreamParser
  *   - Execute tellasks (teammate tellasks / Q4H / supdialog)
  *   - Handle subdialog creation for @teammate mentions
@@ -3323,7 +3323,7 @@ async function emitMalformedTellaskResponses(
       content: msg,
     });
 
-    await dlg.receiveToolResponse('dominds', call.headLine, msg, 'failed', call.callId);
+    await dlg.receiveTeammateCallResult('dominds', call.headLine, msg, 'failed', call.callId);
     dlg.clearCurrentCallId();
   }
   return toolOutputs;
@@ -3392,7 +3392,7 @@ async function executeTellaskCall(
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
@@ -3410,7 +3410,7 @@ async function executeTellaskCall(
             status: 'failed',
             content: msg,
           });
-          await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+          await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
           dlg.clearCurrentCallId();
           return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
@@ -3425,7 +3425,7 @@ async function executeTellaskCall(
             status: 'failed',
             content: msg,
           });
-          await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+          await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
           dlg.clearCurrentCallId();
           return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
@@ -3558,7 +3558,7 @@ async function executeTellaskCall(
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
@@ -3573,7 +3573,7 @@ async function executeTellaskCall(
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
@@ -3927,7 +3927,7 @@ async function executeTellaskCall(
       status: 'failed',
       content: msg,
     });
-    await dlg.receiveToolResponse('dominds', headLine, msg, 'failed', callId);
+    await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
     dlg.clearCurrentCallId();
   }
 

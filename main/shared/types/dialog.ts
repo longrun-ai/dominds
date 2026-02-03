@@ -121,42 +121,42 @@ export interface FunctionResultEvent {
   genseq?: number;
 }
 
-// Tellask call block events (streaming mode - blocks starting with `!?@...`)
+// Teammate-call (tellask) block events (streaming mode - blocks starting with `!?@...`)
 // callId is determined at finish event via content-hash (see shared/utils/id.ts)
-export type ToolCallStartEvent = LlmGenDlgEvent & {
-  type: 'tool_call_start_evt';
+export type TeammateCallStartEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_start_evt';
   validation: TellaskCallValidation;
 };
 
-export type ToolCallHeadlineChunkEvent = LlmGenDlgEvent & {
-  type: 'tool_call_headline_chunk_evt';
+export type TeammateCallHeadlineChunkEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_headline_chunk_evt';
   chunk: string;
 };
 
-export type ToolCallHeadlineFinishEvent = LlmGenDlgEvent & {
-  type: 'tool_call_headline_finish_evt';
+export type TeammateCallHeadlineFinishEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_headline_finish_evt';
 };
 
-export type ToolCallBodyStartEvent = LlmGenDlgEvent & {
-  type: 'tool_call_body_start_evt';
+export type TeammateCallBodyStartEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_body_start_evt';
 };
 
-export type ToolCallBodyChunkEvent = LlmGenDlgEvent & {
-  type: 'tool_call_body_chunk_evt';
+export type TeammateCallBodyChunkEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_body_chunk_evt';
   chunk: string;
 };
 
-export type ToolCallBodyFinishEvent = LlmGenDlgEvent & {
-  type: 'tool_call_body_finish_evt';
+export type TeammateCallBodyFinishEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_body_finish_evt';
 };
 
-export type ToolCallFinishEvent = LlmGenDlgEvent & {
-  type: 'tool_call_finish_evt';
+export type TeammateCallFinishEvent = LlmGenDlgEvent & {
+  type: 'teammate_call_finish_evt';
   callId: string; // Content-hash for replay correlation
 };
 
-export interface ToolCallResponseEvent {
-  type: 'tool_call_response_evt';
+export interface TeammateCallResponseEvent {
+  type: 'teammate_call_response_evt';
   course: number;
   calling_genseq?: number;
   responderId: string;
@@ -193,7 +193,7 @@ export interface TeammateResponseEvent {
   originMemberId: string;
 }
 
-// End of user saying event - emitted after user tool calls are parsed/executed
+// End of user saying event - emitted after user tellask call blocks are parsed/executed
 // Used by frontend to render <hr/> separator between user content and AI response
 export interface EndOfUserSayingEvent {
   type: 'end_of_user_saying_evt';
@@ -281,14 +281,14 @@ export type DialogEvent =
   | FuncCallStartEvent
   | FunctionResultEvent
   // Tellask call blocks (`!?@...`)
-  | ToolCallStartEvent
-  | ToolCallHeadlineChunkEvent
-  | ToolCallHeadlineFinishEvent
-  | ToolCallBodyStartEvent
-  | ToolCallBodyChunkEvent
-  | ToolCallBodyFinishEvent
-  | ToolCallFinishEvent
-  | ToolCallResponseEvent
+  | TeammateCallStartEvent
+  | TeammateCallHeadlineChunkEvent
+  | TeammateCallHeadlineFinishEvent
+  | TeammateCallBodyStartEvent
+  | TeammateCallBodyChunkEvent
+  | TeammateCallBodyFinishEvent
+  | TeammateCallFinishEvent
+  | TeammateCallResponseEvent
   | TeammateResponseEvent
   // Subdialog events
   | SubdialogEvent

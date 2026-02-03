@@ -59,7 +59,7 @@ implemented config surface.
 - The first time any MCP tool from that server’s toolset is used in a given dialog, Dominds creates
   a **dedicated MCP client instance** (and thus a dedicated MCP server process/connection for that
   dialog).
-- That client instance remains **leased to that dialog** for future tool calls from the same
+- That client instance remains **leased to that dialog** for future function tool calls from the same
   toolset.
 - If another dialog uses the same MCP toolset concurrently, Dominds creates **another** MCP client
   instance for that requesting dialog (no cross-dialog sharing).

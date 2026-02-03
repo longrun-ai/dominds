@@ -5,7 +5,7 @@ You have read/write access to `.minds/**`, but this toolset **only operates with
 ## Principles
 
 - Incremental edits (preferred): use `team_mgmt_prepare_*` to generate reviewable YAML + diff + `hunk_id`, then write via `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })`.
-- Parallelism constraint: multiple tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
+- Parallelism constraint: multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
 - Exception (create): `team_mgmt_create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
 - Exception (overwrite): `team_mgmt_overwrite_entire_file` writes immediately (no prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header.
 - Normalization: each line ends with `\\n` (including the last line); the tool may add a trailing newline and report it in `normalized.*`.

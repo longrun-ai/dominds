@@ -274,7 +274,7 @@ Result (second call):
 
 1. Current dialog **suspends**
 2. Create **NEW subdialog** with the specified agentId
-3. Drive the new subdialog (it is FULL-FLEDGED - can make supcalls, teammate Tellasks, tool calls)
+3. Drive the new subdialog (it is FULL-FLEDGED - can make supcalls, teammate Tellasks, function tool calls)
 4. Subdialog response flows back to parent
 5. Parent **resumes** with subdialog's response
 
@@ -282,7 +282,7 @@ Result (second call):
 
 - **No registry lookup** - always creates a new subdialog
 - **Not registered** - no persistence across Tellasks
-- The subdialog itself is fully capable (can make supcalls, teammate Tellasks, tool calls)
+- The subdialog itself is fully capable (can make supcalls, teammate Tellasks, function tool calls)
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -1014,7 +1014,7 @@ interface RegistryMethods {
 
 ### Streaming Substream Ordering Contract (Thinking / Saying)
 
-Dominds splits LLM output into multiple “substreams” (thinking, saying, plus markdown / tool-call subsegments derived from saying) and delivers them to the UI via WebSocket events.
+Dominds splits LLM output into multiple “substreams” (thinking, saying, plus markdown / function tool call subsegments derived from saying) and delivers them to the UI via WebSocket events.
 To make the UI **faithfully reflect the original generation order**, and to ensure ordering bugs are observable and debuggable across the stack, the following contract MUST hold:
 
 - **Arbitrary alternation is allowed**: Within a single generation (`genseq`), thinking and saying may appear in any number of segments, each as `start → chunk* → finish`, alternating over time.

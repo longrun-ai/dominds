@@ -703,7 +703,7 @@ export const teamMgmtCheckProviderTool: FuncTool = {
               out.trim().length > 0
                 ? out.trim().slice(0, 120)
                 : sawFuncCall
-                  ? 'tool call emitted'
+                  ? 'provider-native tool call emitted'
                   : undefined;
             results.push({ model: modelKey, status: 'pass', details });
           } catch (err: unknown) {

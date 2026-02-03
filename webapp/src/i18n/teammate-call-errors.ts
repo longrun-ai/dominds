@@ -1,12 +1,14 @@
 import type { LanguageCode } from '../shared/types/language';
 
-export type ToolCallErrorCode = 'ERR_UNKNOWN_CALL' | 'ERR_TOOL_EXECUTION';
+export type TeammateCallErrorCode = 'ERR_UNKNOWN_CALL' | 'ERR_TOOL_EXECUTION';
 
-type ParsedToolCallError =
+type ParsedTeammateCallError =
   | { code: 'ERR_UNKNOWN_CALL' }
   | { code: 'ERR_TOOL_EXECUTION'; detail?: string };
 
-export function parseToolCallError(result: string): ParsedToolCallError | null {
+export type LegacyTeammateCallErrorCode = TeammateCallErrorCode;
+
+export function parseTeammateCallError(result: string): ParsedTeammateCallError | null {
   const trimmed = result.trim();
   if (trimmed === '') return null;
 
@@ -22,11 +24,11 @@ export function parseToolCallError(result: string): ParsedToolCallError | null {
   return null;
 }
 
-export function formatToolCallErrorInline(options: {
+export function formatTeammateCallErrorInline(options: {
   language: LanguageCode;
   responderId: string;
   headLine: string;
-  parsed: ParsedToolCallError;
+  parsed: ParsedTeammateCallError;
 }): string {
   if (options.parsed.code === 'ERR_UNKNOWN_CALL') {
     if (options.language === 'zh') {

@@ -33,7 +33,7 @@ export interface FuncTool {
   readonly descriptionI18n?: I18nText;
   // JSON Schema for parameters of this tool
   readonly parameters: JsonSchema;
-  // How the driver validates tool-call arguments before invoking the tool.
+  // How the driver validates function-tool arguments before invoking the tool.
   // - 'dominds': validate using Dominds' built-in minimal validator (best-effort).
   // - 'passthrough': accept any JSON object (used by MCP tools).
   readonly argsValidation?: 'dominds' | 'passthrough';

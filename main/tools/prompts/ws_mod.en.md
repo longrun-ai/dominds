@@ -7,7 +7,7 @@ You have read/write access to the workspace, but **all incremental text edits mu
 - Incremental edits: use `prepare_*` to generate an applyable hunk, then write via `apply_file_modification`.
 - Legacy tools are removed (no compatibility layer): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Constraint: paths under `*.tsk/` are encapsulated Taskdocs; file tools cannot access them.
-- Parallelism constraint: multiple tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
+- Parallelism constraint: multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
 - Output is YAML + unified diff (scan-friendly) with `summary` + `evidence`/`apply_evidence`.
 - Normalization: all writes follow “each line ends with `\n` (including the last line)”; missing EOF newline will be added and shown in `normalized.*`.
 - Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). It also rejects diff/patch-like content by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; otherwise prefer prepare/apply.

@@ -3,7 +3,10 @@
  */
 
 import mannedToolIcon from '../assets/manned-tool.svg';
-import { formatToolCallErrorInline, parseToolCallError } from '../i18n/tool-call-errors';
+import {
+  formatTeammateCallErrorInline,
+  parseTeammateCallError,
+} from '../i18n/teammate-call-errors';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
@@ -12,9 +15,9 @@ import type {
   FullRemindersEvent,
   FuncCallStartEvent,
   SubdialogEvent,
+  TeammateCallFinishEvent,
+  TeammateCallResponseEvent,
   TeammateResponseEvent,
-  ToolCallFinishEvent,
-  ToolCallResponseEvent,
   TypedDialogEvent,
 } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
@@ -71,16 +74,17 @@ export class DomindsDialogContainer extends HTMLElement {
   private autoScrollResizeScrollRaf: number | null = null;
   private autoScrollResizeObservedEl: HTMLElement | null = null;
 
-  // Best-effort cache to recover tool-call streaming sections by genseq.
-  // Tool-call chunk events don't carry callId, so this is scoped to per-genseq recovery only.
-  private toolCallingSectionBySeq = new Map<number, HTMLElement>();
+  // Best-effort cache to recover teammate-call streaming sections by genseq.
+  // Chunk events don't carry callId, so this is scoped to per-genseq recovery only.
+  private teammateCallingSectionBySeq = new Map<number, HTMLElement>();
 
-  // Track calling sections by callId for direct lookup (tool calls only)
+  // Track calling sections by callId for direct lookup (teammate-call blocks only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
-  // Tool call responses can arrive before the corresponding calling section has finished streaming
-  // (and therefore before tool_call_finish_evt sets data-call-id + populates callingSectionByCallId).
+
+  // Teammate-call responses can arrive before the corresponding calling section has finished streaming
+  // (and therefore before teammate_call_finish_evt sets data-call-id + populates callingSectionByCallId).
   // Buffer by callId and attach when the calling section is finalized.
-  private pendingToolCallResponsesByCallId = new Map<string, ToolCallResponseEvent>();
+  private pendingTeammateCallResponsesByCallId = new Map<string, TeammateCallResponseEvent>();
 
   // Team configuration for dynamic agent labels and icons
   private teamConfiguration: {
@@ -304,7 +308,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentCourse = course;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
-    this.pendingToolCallResponsesByCallId.clear();
+    this.pendingTeammateCallResponsesByCallId.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -325,7 +329,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentCourse = undefined;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
-    this.pendingToolCallResponsesByCallId.clear();
+    this.pendingTeammateCallResponsesByCallId.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -528,27 +532,27 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
 
       // === TELLASK CALL BLOCK EVENTS (streaming mode - `!?@...` blocks) ===
-      // Renamed from call_* to tool_call_* for consistency
+      // Renamed from call_* to teammate_call_* for terminology clarity
       // callId is now set at finish event (not start) - content-hash based
-      case 'tool_call_start_evt':
+      case 'teammate_call_start_evt':
         this.handleToolCallStart(event);
         break;
-      case 'tool_call_headline_chunk_evt':
+      case 'teammate_call_headline_chunk_evt':
         this.handleToolCallHeadlineChunk(event.genseq, event.chunk);
         break;
-      case 'tool_call_headline_finish_evt':
+      case 'teammate_call_headline_finish_evt':
         this.handleToolCallHeadlineFinish(event.genseq);
         break;
-      case 'tool_call_body_start_evt':
+      case 'teammate_call_body_start_evt':
         this.handleToolCallBodyStart(event.genseq);
         break;
-      case 'tool_call_body_chunk_evt':
+      case 'teammate_call_body_chunk_evt':
         this.handleToolCallBodyChunk(event.genseq, event.chunk);
         break;
-      case 'tool_call_body_finish_evt':
+      case 'teammate_call_body_finish_evt':
         this.handleToolCallBodyFinish(event.genseq);
         break;
-      case 'tool_call_finish_evt':
+      case 'teammate_call_finish_evt':
         this.handleToolCallFinish(event);
         break;
 
@@ -573,8 +577,8 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleFuncResult(event);
         break;
 
-      // Tool call responses (attach inline)
-      case 'tool_call_response_evt':
+      // Teammate-call inline results (attach inline)
+      case 'teammate_call_response_evt':
         this.handleToolCallResponse(event);
         break;
 
@@ -885,7 +889,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.callingSection = recovered;
       return recovered;
     }
-    const cached = this.toolCallingSectionBySeq.get(genseq);
+    const cached = this.teammateCallingSectionBySeq.get(genseq);
     if (cached && cached.isConnected) {
       this.callingSection = cached;
       return cached;
@@ -894,7 +898,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private handleToolCallStart(
-    event: Extract<TypedDialogEvent, { type: 'tool_call_start_evt' }>,
+    event: Extract<TypedDialogEvent, { type: 'teammate_call_start_evt' }>,
   ): void {
     const firstMention =
       event.validation.kind === 'valid' ? event.validation.firstMention : 'malformed';
@@ -902,7 +906,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const bubble = this.ensureGenerationBubbleForSeq(genseq, event.timestamp);
     if (!bubble) {
-      console.warn('[ToolCallStart] No generation bubble, skipping');
+      console.warn('[TeammateCallStart] No generation bubble, skipping');
       return;
     }
     const body = bubble.querySelector('.bubble-body');
@@ -914,11 +918,11 @@ export class DomindsDialogContainer extends HTMLElement {
       callingSection.classList.add('malformed');
     }
     callingSection.setAttribute('data-genseq', String(genseq));
-    // NOTE: callId is NO LONGER set here - it's set at tool_call_finish_evt
+    // NOTE: callId is NO LONGER set here - it's set at teammate_call_finish_evt
     // This is because callId is now a content-hash computed from the complete call
     (body || bubble).appendChild(callingSection);
     this.callingSection = callingSection;
-    this.toolCallingSectionBySeq.set(genseq, callingSection);
+    this.teammateCallingSectionBySeq.set(genseq, callingSection);
 
     this.scrollToBottom();
   }
@@ -927,7 +931,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
       this.handleProtocolError(
-        `tool_call_headline_chunk_evt received without calling section ${JSON.stringify({
+        `teammate_call_headline_chunk_evt received without calling section ${JSON.stringify({
           genseq,
           course: this.currentCourse,
         })}`,
@@ -943,7 +947,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
       this.handleProtocolError(
-        `tool_call_headline_finish_evt received without calling section ${JSON.stringify({
+        `teammate_call_headline_finish_evt received without calling section ${JSON.stringify({
           genseq,
           course: this.currentCourse,
         })}`,
@@ -959,7 +963,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!callingSection) {
       // This can happen when the UI intentionally clears DOM during navigation/course transitions,
       // or when replay/streaming events arrive late. Treat as a tolerated orphan event.
-      console.warn('tool_call_body_start_evt received without calling section', {
+      console.warn('teammate_call_body_start_evt received without calling section', {
         genseq,
         course: this.currentCourse,
       });
@@ -972,7 +976,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleToolCallBodyChunk(genseq: number, chunk: string): void {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      console.warn('tool_call_body_chunk_evt received without calling section', {
+      console.warn('teammate_call_body_chunk_evt received without calling section', {
         genseq,
         course: this.currentCourse,
       });
@@ -986,7 +990,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private handleToolCallBodyFinish(genseq: number): void {
     const callingSection = this.getActiveToolCallingSection(genseq);
     if (!callingSection) {
-      console.warn('tool_call_body_finish_evt received without calling section', {
+      console.warn('teammate_call_body_finish_evt received without calling section', {
         genseq,
         course: this.currentCourse,
       });
@@ -996,11 +1000,11 @@ export class DomindsDialogContainer extends HTMLElement {
     if (bodyEl) bodyEl.classList.add('completed');
   }
 
-  private handleToolCallFinish(event: ToolCallFinishEvent): void {
+  private handleToolCallFinish(event: TeammateCallFinishEvent): void {
     const currentSection = this.getActiveToolCallingSection(event.genseq);
     if (!currentSection) {
       this.handleProtocolError(
-        `tool_call_finish_evt received without calling section ${JSON.stringify({
+        `teammate_call_finish_evt received without calling section ${JSON.stringify({
           genseq: event.genseq,
           course: this.currentCourse,
           callId: event.callId,
@@ -1011,7 +1015,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callId = String(event.callId || '').trim();
     if (!callId) {
       this.handleProtocolError(
-        `tool_call_finish_evt missing callId ${JSON.stringify({ genseq: event.genseq })}`,
+        `teammate_call_finish_evt missing callId ${JSON.stringify({ genseq: event.genseq })}`,
       );
       return;
     }
@@ -1019,13 +1023,13 @@ export class DomindsDialogContainer extends HTMLElement {
     this.callingSectionByCallId.set(callId, currentSection);
     currentSection.classList.add('completed');
     this.callingSection = undefined;
-    this.toolCallingSectionBySeq.set(event.genseq, currentSection);
+    this.teammateCallingSectionBySeq.set(event.genseq, currentSection);
 
-    const pending = this.pendingToolCallResponsesByCallId.get(callId);
+    const pending = this.pendingTeammateCallResponsesByCallId.get(callId);
     if (pending) {
-      const display = this.formatToolCallResultForSection(currentSection, pending);
+      const display = this.formatTeammateCallResultForSection(currentSection, pending);
       if (typeof display === 'string') {
-        this.pendingToolCallResponsesByCallId.delete(callId);
+        this.pendingTeammateCallResponsesByCallId.delete(callId);
         this.attachResultInline(currentSection, display, pending.status);
       }
     }
@@ -1085,7 +1089,7 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Result displays INLINE in parent's bubble
   //   - Uses callId for correlation
   //   - Uses this handler (handleToolCallResponse)
-  private handleToolCallResponse(event: ToolCallResponseEvent): void {
+  private handleToolCallResponse(event: TeammateCallResponseEvent): void {
     // Ignore late tool responses for a different course than the one currently displayed.
     // This can happen when a dialog-control tool (e.g., clear_mind) triggers a course transition
     // and the UI clears the previous course before the response event arrives.
@@ -1096,7 +1100,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const callId = String(event.callId || '').trim();
     if (!callId) {
       this.handleProtocolError(
-        `tool_call_response_evt missing callId ${JSON.stringify({
+        `teammate_call_response_evt missing callId ${JSON.stringify({
           responderId: event.responderId,
           headLine: event.headLine,
           calling_genseq: event.calling_genseq,
@@ -1107,26 +1111,26 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const callingSection = this.callingSectionByCallId.get(callId);
     if (!callingSection) {
-      // Normal race: tool result can arrive before tool_call_finish_evt registers the callId.
+      // Normal race: call result can arrive before teammate_call_finish_evt registers the callId.
       // Buffer and attach when the calling section is finalized.
-      this.pendingToolCallResponsesByCallId.set(callId, event);
+      this.pendingTeammateCallResponsesByCallId.set(callId, event);
       return;
     }
 
-    const display = this.formatToolCallResultForSection(callingSection, event);
+    const display = this.formatTeammateCallResultForSection(callingSection, event);
     if (typeof display !== 'string') {
       // Delay rendering until bubble language becomes known (end_of_user_saying_evt),
-      // otherwise we may incorrectly localize tool-call errors based on current UI language.
-      this.pendingToolCallResponsesByCallId.set(callId, event);
+      // otherwise we may incorrectly localize teammate-call errors based on current UI language.
+      this.pendingTeammateCallResponsesByCallId.set(callId, event);
       return;
     }
     this.attachResultInline(callingSection, display, event.status);
-    this.pendingToolCallResponsesByCallId.delete(callId);
+    this.pendingTeammateCallResponsesByCallId.delete(callId);
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       host?.dispatchEvent(
         new CustomEvent('ui-toast', {
-          detail: { message: String(display || 'Tool call failed'), kind: 'error' },
+          detail: { message: String(display || 'Teammate call failed'), kind: 'error' },
           bubbles: true,
           composed: true,
         }),
@@ -1147,24 +1151,24 @@ export class DomindsDialogContainer extends HTMLElement {
     return null;
   }
 
-  private formatToolCallResultForSection(
+  private formatTeammateCallResultForSection(
     section: HTMLElement,
-    event: ToolCallResponseEvent,
+    event: TeammateCallResponseEvent,
   ): string | undefined {
     const rawResult = String(event.result || '');
     if (event.status !== 'failed') return rawResult;
 
-    const parsed = parseToolCallError(rawResult);
+    const parsed = parseTeammateCallError(rawResult);
     if (!parsed) return rawResult;
 
     const bubbleLanguage = this.resolveBubbleLanguageForSection(section);
     if (!bubbleLanguage) {
-      // Don't guess based on current UI language: tool-call errors must match the language of
+      // Don't guess based on current UI language: teammate-call errors must match the language of
       // the originating user prompt (per-bubble data-user-language-code). Defer until known.
       return undefined;
     }
 
-    return formatToolCallErrorInline({
+    return formatTeammateCallErrorInline({
       language: bubbleLanguage,
       responderId: String(event.responderId || ''),
       headLine: String(event.headLine || ''),
@@ -1172,7 +1176,7 @@ export class DomindsDialogContainer extends HTMLElement {
     });
   }
 
-  // Attach result inline to calling section (TEXTER TOOL CALLS only)
+  // Attach result inline to calling section (TEXTER teammate-call blocks only)
   private attachResultInline(
     section: HTMLElement,
     result: string,
@@ -1481,8 +1485,8 @@ export class DomindsDialogContainer extends HTMLElement {
       } else {
         bubble.removeAttribute('data-user-language-code');
       }
-      // If any tool-call responses were deferred due to missing bubble language, try attaching now.
-      this.flushPendingToolCallResponsesForBubble(bubble);
+      // If any call responses were deferred due to missing bubble language, try attaching now.
+      this.flushPendingTeammateCallResponsesForBubble(bubble);
       this.scrollToBottom();
       return;
     }
@@ -1514,12 +1518,12 @@ export class DomindsDialogContainer extends HTMLElement {
       bubble.removeAttribute('data-user-language-code');
     }
 
-    // If any tool-call responses were deferred due to missing bubble language, try attaching now.
-    this.flushPendingToolCallResponsesForBubble(bubble);
+    // If any call responses were deferred due to missing bubble language, try attaching now.
+    this.flushPendingTeammateCallResponsesForBubble(bubble);
     this.scrollToBottom();
   }
 
-  private flushPendingToolCallResponsesForBubble(bubble: HTMLElement): void {
+  private flushPendingTeammateCallResponsesForBubble(bubble: HTMLElement): void {
     const sections = bubble.querySelectorAll('.calling-section[data-call-id]');
     if (sections.length < 1) return;
 
@@ -1528,13 +1532,13 @@ export class DomindsDialogContainer extends HTMLElement {
       const callId = String(section.getAttribute('data-call-id') || '').trim();
       if (!callId) continue;
 
-      const pending = this.pendingToolCallResponsesByCallId.get(callId);
+      const pending = this.pendingTeammateCallResponsesByCallId.get(callId);
       if (!pending) continue;
 
-      const display = this.formatToolCallResultForSection(section, pending);
+      const display = this.formatTeammateCallResultForSection(section, pending);
       if (typeof display !== 'string') continue;
 
-      this.pendingToolCallResponsesByCallId.delete(callId);
+      this.pendingTeammateCallResponsesByCallId.delete(callId);
       this.attachResultInline(section, display, pending.status);
     }
   }
@@ -1558,7 +1562,7 @@ export class DomindsDialogContainer extends HTMLElement {
     return new DomindsMarkdownSection();
   }
 
-  // Create calling section (inside markdown section) - streaming mode for tool calls
+  // Create calling section (inside markdown section) - streaming mode for tellask call blocks
   private createCallingSection(firstMention: string): HTMLElement {
     const el = document.createElement('div');
     el.className = 'calling-section';

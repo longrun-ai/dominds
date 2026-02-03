@@ -31,18 +31,18 @@ import type {
   Q4HAnsweredEvent,
   StreamErrorEvent,
   SubdialogEvent,
+  TeammateCallBodyChunkEvent,
+  TeammateCallBodyFinishEvent,
+  TeammateCallBodyStartEvent,
+  TeammateCallFinishEvent,
+  TeammateCallHeadlineChunkEvent,
+  TeammateCallHeadlineFinishEvent,
+  TeammateCallResponseEvent,
+  TeammateCallStartEvent,
   TeammateResponseEvent,
   ThinkingChunkEvent,
   ThinkingFinishEvent,
   ThinkingStartEvent,
-  ToolCallBodyChunkEvent,
-  ToolCallBodyFinishEvent,
-  ToolCallBodyStartEvent,
-  ToolCallFinishEvent,
-  ToolCallHeadlineChunkEvent,
-  ToolCallHeadlineFinishEvent,
-  ToolCallResponseEvent,
-  ToolCallStartEvent,
 } from './shared/types/dialog';
 import type { LanguageCode } from './shared/types/language';
 import type {
@@ -60,9 +60,9 @@ import type {
   ReminderStateFile,
   RootDialogMetadataFile,
   SubdialogMetadataFile,
+  TeammateCallResultRecord,
   TeammateResponseRecord,
   ToolArguments,
-  ToolCallResultRecord,
   UserTextGrammar,
 } from './shared/types/storage';
 import type { TellaskCallValidation } from './shared/types/tellask';
@@ -407,13 +407,13 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Receive and handle tellask tool responses with callId for inline result display
+   * Receive and handle tellask call results with callId for inline result display
    *
    * Call Types:
    * - Tellask Call (inline bubble): !?@<mention-id>
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation between call_start and response
-   *   - Uses receiveToolResponse() + callId parameter
+   *   - Uses receiveTeammateCallResult() + callId parameter
    *
    * - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
    *   - Result displays in SEPARATE bubble (subdialog response)
@@ -422,12 +422,12 @@ export class DiskFileDialogStore extends DialogStore {
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the tool/agent that responded (e.g., "add_reminder")
-   * @param headLine - Headline of the original tool call
+   * @param headLine - Headline of the original call
    * @param result - The result content to display
    * @param status - Response status ('completed' | 'failed')
    * @param callId - Correlation ID from call_start_evt (REQUIRED for inline display)
    */
-  public async receiveToolResponse(
+  public async receiveTeammateCallResult(
     dialog: Dialog,
     responderId: string,
     headLine: string,
@@ -438,9 +438,9 @@ export class DiskFileDialogStore extends DialogStore {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     // Persist record WITH callId for replay correlation
-    const ev: ToolCallResultRecord = {
+    const ev: TeammateCallResultRecord = {
       ts: formatUnifiedTimestamp(new Date()),
-      type: 'tool_call_result_record',
+      type: 'teammate_call_result_record',
       responderId,
       headLine,
       status,
@@ -450,9 +450,9 @@ export class DiskFileDialogStore extends DialogStore {
     };
     await this.appendEvent(course, ev);
 
-    // Emit ToolCallResponseEvent WITH callId for UI correlation
-    const toolResponseEvt: ToolCallResponseEvent = {
-      type: 'tool_call_response_evt',
+    // Emit TeammateCallResponseEvent WITH callId for UI correlation
+    const toolResponseEvt: TeammateCallResponseEvent = {
+      type: 'teammate_call_response_evt',
       responderId,
       headLine,
       status,
@@ -746,8 +746,8 @@ export class DiskFileDialogStore extends DialogStore {
   // Tellask call streaming methods
   public async callingStart(dialog: Dialog, validation: TellaskCallValidation): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallStartEvent = {
-      type: 'tool_call_start_evt',
+    const evt: TeammateCallStartEvent = {
+      type: 'teammate_call_start_evt',
       validation,
       course,
       genseq: dialog.activeGenSeq,
@@ -757,8 +757,8 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async callingHeadlineChunk(dialog: Dialog, chunk: string): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallHeadlineChunkEvent = {
-      type: 'tool_call_headline_chunk_evt',
+    const evt: TeammateCallHeadlineChunkEvent = {
+      type: 'teammate_call_headline_chunk_evt',
       chunk,
       course,
       genseq: dialog.activeGenSeq,
@@ -768,8 +768,8 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async callingHeadlineFinish(dialog: Dialog): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallHeadlineFinishEvent = {
-      type: 'tool_call_headline_finish_evt',
+    const evt: TeammateCallHeadlineFinishEvent = {
+      type: 'teammate_call_headline_finish_evt',
       course,
       genseq: dialog.activeGenSeq,
     };
@@ -778,8 +778,8 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async callingBodyStart(dialog: Dialog): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallBodyStartEvent = {
-      type: 'tool_call_body_start_evt',
+    const evt: TeammateCallBodyStartEvent = {
+      type: 'teammate_call_body_start_evt',
       course,
       genseq: dialog.activeGenSeq,
     };
@@ -788,8 +788,8 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async callingBodyChunk(dialog: Dialog, chunk: string): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallBodyChunkEvent = {
-      type: 'tool_call_body_chunk_evt',
+    const evt: TeammateCallBodyChunkEvent = {
+      type: 'teammate_call_body_chunk_evt',
       chunk,
       course,
       genseq: dialog.activeGenSeq,
@@ -799,8 +799,8 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async callingBodyFinish(dialog: Dialog): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallBodyFinishEvent = {
-      type: 'tool_call_body_finish_evt',
+    const evt: TeammateCallBodyFinishEvent = {
+      type: 'teammate_call_body_finish_evt',
       course,
       genseq: dialog.activeGenSeq,
     };
@@ -809,8 +809,8 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async callingFinish(dialog: Dialog, callId: string): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: ToolCallFinishEvent = {
-      type: 'tool_call_finish_evt',
+    const evt: TeammateCallFinishEvent = {
+      type: 'teammate_call_finish_evt',
       callId,
       course,
       genseq: dialog.activeGenSeq,
@@ -1240,7 +1240,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_start_evt',
+                      type: 'teammate_call_start_evt',
                       validation,
                       course,
                       genseq,
@@ -1254,7 +1254,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_headline_chunk_evt',
+                      type: 'teammate_call_headline_chunk_evt',
                       chunk,
                       course,
                       genseq,
@@ -1268,7 +1268,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_headline_finish_evt',
+                      type: 'teammate_call_headline_finish_evt',
                       course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1281,7 +1281,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_body_start_evt',
+                      type: 'teammate_call_body_start_evt',
                       course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1294,7 +1294,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_body_chunk_evt',
+                      type: 'teammate_call_body_chunk_evt',
                       chunk,
                       course,
                       genseq,
@@ -1308,7 +1308,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_body_finish_evt',
+                      type: 'teammate_call_body_finish_evt',
                       course,
                       genseq,
                       dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
@@ -1321,7 +1321,7 @@ export class DiskFileDialogStore extends DialogStore {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
-                      type: 'tool_call_finish_evt',
+                      type: 'teammate_call_finish_evt',
                       callId: call.callId,
                       course,
                       genseq,
@@ -1563,7 +1563,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_start_evt',
+                    type: 'teammate_call_start_evt',
                     validation,
                     course,
                     genseq: event.genseq,
@@ -1580,7 +1580,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_headline_chunk_evt',
+                    type: 'teammate_call_headline_chunk_evt',
                     chunk,
                     course,
                     genseq: event.genseq,
@@ -1597,7 +1597,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_headline_finish_evt',
+                    type: 'teammate_call_headline_finish_evt',
                     course,
                     genseq: event.genseq,
                     dialog: {
@@ -1613,7 +1613,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_body_start_evt',
+                    type: 'teammate_call_body_start_evt',
                     course,
                     genseq: event.genseq,
                     dialog: {
@@ -1629,7 +1629,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_body_chunk_evt',
+                    type: 'teammate_call_body_chunk_evt',
                     chunk,
                     course,
                     genseq: event.genseq,
@@ -1646,7 +1646,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_body_finish_evt',
+                    type: 'teammate_call_body_finish_evt',
                     course,
                     genseq: event.genseq,
                     dialog: {
@@ -1662,7 +1662,7 @@ export class DiskFileDialogStore extends DialogStore {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
-                    type: 'tool_call_finish_evt',
+                    type: 'teammate_call_finish_evt',
                     callId: call.callId,
                     course,
                     genseq: event.genseq,
@@ -1761,10 +1761,10 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
-      case 'tool_call_result_record': {
-        // Handle tool call results
+      case 'teammate_call_result_record': {
+        // Handle teammate-call inline results
         const responseEvent = {
-          type: 'tool_call_response_evt',
+          type: 'teammate_call_response_evt',
           responderId: event.responderId,
           headLine: event.headLine,
           status: event.status,
@@ -3748,8 +3748,8 @@ export class DialogPersistence {
           break;
         }
 
-        case 'tool_call_result_record': {
-          // Convert tool call result to ChatMessage
+        case 'teammate_call_result_record': {
+          // Convert teammate-call inline result to ChatMessage
           messages.push({
             type: 'tellask_result_msg',
             role: 'tool',

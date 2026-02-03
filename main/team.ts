@@ -76,7 +76,7 @@ export namespace Team {
     user?: string; // User identifier for abuse monitoring
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
-    parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (when supported).
+    parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
   };
 
   export interface ModelParams {

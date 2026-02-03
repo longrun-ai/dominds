@@ -304,7 +304,7 @@ If a workspace previously used single-file `.md` Taskdocs, they MUST be migrated
 ## Security & Integrity Notes
 
 - The `.tsk/` package is **high-integrity state**: it can materially change agent behavior and safety boundaries.
-- Encapsulation reduces the chance of stealth edits (e.g., by a tool call embedded in copied text).
+- Encapsulation reduces the chance of stealth edits (e.g., by a function tool call snippet embedded in copied text).
 - Audit metadata (who/when) is strongly recommended for incident analysis and user trust.
 
 ## Open Questions

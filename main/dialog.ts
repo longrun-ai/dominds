@@ -209,9 +209,9 @@ export abstract class Dialog {
 
   private readonly _mutex: AsyncFifoMutex;
 
-  // Current callId for tellask tool-call correlation
-  // - Set during tool_call_finish_evt (from TellaskStreamParser)
-  // - Retrieved during tool response (for receiveToolResponse callId parameter)
+  // Current callId for tellask call correlation
+  // - Set during teammate_call_finish_evt (from TellaskStreamParser)
+  // - Retrieved during inline call-result emission (for receiveTeammateCallResult callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
   // - NOT used for teammate tellasks (which use calleeDialogId instead)
   protected _currentCallId: string | null = null;
@@ -292,20 +292,20 @@ export abstract class Dialog {
   }
 
   /**
-   * Get the current callId for tool-call correlation
+   * Get the current callId for tellask call correlation
    *
    * Call Types:
-   * - Tellask call block (`!?@...`): callId is set during tool_call_finish_evt, used for inline result correlation
+   * - Tellask call block (`!?@...`): callId is set during teammate_call_finish_evt, used for inline result correlation
    * - Teammate tellask (@agentName): Uses calleeDialogId, not callId
    *
-   * @returns The current callId for tool correlation, or null if no active tool call
+   * @returns The current callId for call correlation, or null if no active call
    */
   public getCurrentCallId(): string | null {
     return this._currentCallId;
   }
 
   /**
-   * Set the current callId (called during tool_call_finish_evt for tool calls)
+   * Set the current callId (called during teammate_call_finish_evt for tellask call blocks)
    *
    * @param callId - The correlation ID from TellaskEventsReceiver.callFinish()
    */
@@ -876,22 +876,22 @@ export abstract class Dialog {
   }
 
   public async callingFinish(callId: string): Promise<void> {
-    // Store callId for tool call correlation
+    // Store callId for inline call-result correlation
     this.setCurrentCallId(callId);
     await this.dlgStore.callingFinish(this, callId);
   }
 
   /**
-   * Receive tool response with callId for inline correlation
+   * Receive call result with callId for inline correlation
    */
-  public async receiveToolResponse(
+  public async receiveTeammateCallResult(
     responderId: string,
     headLine: string,
     result: string,
     status: 'completed' | 'failed',
     callId: string,
   ): Promise<void> {
-    return await this.dlgStore.receiveToolResponse(
+    return await this.dlgStore.receiveTeammateCallResult(
       this,
       responderId,
       headLine,
@@ -1347,9 +1347,9 @@ export abstract class DialogStore {
   public async receiveFuncResult(_dialog: Dialog, _funcResult: FuncResultMsg): Promise<void> {}
 
   /**
-   * Receive tool response with callId for inline correlation
+   * Receive call result with callId for inline correlation
    */
-  public async receiveToolResponse(
+  public async receiveTeammateCallResult(
     _dialog: Dialog,
     _responderId: string,
     _headLine: string,

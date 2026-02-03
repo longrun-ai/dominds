@@ -999,7 +999,7 @@ interface RegistryMethods {
 
 ### 流式生成子流顺序契约（Thinking / Saying）
 
-Dominds 将 LLM 输出拆分为多个“子流”（thinking、saying，以及从 saying 进一步解析出的 markdown / tool-call 子段）并通过 WebSocket 事件推送给 UI。
+Dominds 将 LLM 输出拆分为多个“子流”（thinking、saying，以及从 saying 进一步解析出的 markdown / function tool call 子段）并通过 WebSocket 事件推送给 UI。
 为了让 UI **忠实体现原始生成顺序**，以及让“乱序”成为可观测、可定位的全栈问题，必须遵守以下契约：
 
 - **允许任意多段交替**：在同一轮生成（同一 `genseq`）内，thinking 与 saying 可以出现任意多段，按 `start → chunk* → finish` 的片段形式交替出现。
@@ -1176,7 +1176,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-  participant User as 用户/代理
+	  participant User as 用户/智能体
   participant Main as 主对话
   participant Store as 持久化（q4h.yaml）
   participant UI as 前端
