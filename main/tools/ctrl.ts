@@ -66,6 +66,10 @@ type CtrlMessages = Readonly<{
   clearedCoursePrompt: (nextCourse: number) => string;
 }>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
   if (language === 'zh') {
     return {
@@ -269,6 +273,29 @@ export const updateReminderTool: FuncTool = {
     const reminderNo = reminderNoValue - 1;
     if (reminderNo < 0 || reminderNo >= dlg.reminders.length) {
       return t.reminderDoesNotExist(String(reminderNoValue), dlg.reminders.length);
+    }
+
+    const reminder = dlg.reminders[reminderNo];
+    // `reminder.meta` is persisted JSON. Runtime shape checks are unavoidable here because tools
+    // may attach arbitrary metadata for reminder ownership/management.
+    const meta = reminder?.meta;
+    if (isRecord(meta)) {
+      const managedByToolValue = meta['managedByTool'];
+      const managedByTool =
+        typeof managedByToolValue === 'string' ? managedByToolValue.trim() : undefined;
+      const kind = meta['kind'];
+
+      if (managedByTool && managedByTool.length > 0) {
+        return language === 'zh'
+          ? `错误：该提醒项由工具 ${managedByTool} 管理，不能用 update_reminder 修改；请使用 ${managedByTool} 更新。`
+          : `Error: This reminder is managed by tool ${managedByTool}. Do not edit it via update_reminder; use ${managedByTool} instead.`;
+      }
+
+      if (kind === 'plan') {
+        return language === 'zh'
+          ? '错误：该提醒项是 Plan（update_plan）提醒项，请使用 update_plan 工具更新（不要用 update_reminder）。'
+          : 'Error: This is a Plan (update_plan) reminder. Please update it via update_plan (not update_reminder).';
+      }
     }
 
     const contentValue = args['content'];

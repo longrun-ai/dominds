@@ -152,7 +152,13 @@ export const updatePlanTool: FuncTool = {
 
     const reminderContent = renderPlanReminderContent(language, { explanation, plan });
     const now = formatUnifiedTimestamp(new Date());
-    const reminderMeta = { kind: 'plan', schemaVersion: 1, updatedAt: now, source: 'update_plan' };
+    const reminderMeta = {
+      kind: 'plan',
+      schemaVersion: 1,
+      updatedAt: now,
+      source: 'update_plan',
+      managedByTool: 'update_plan',
+    };
 
     let existingIndex: number | undefined;
     for (let i = 0; i < dlg.reminders.length; i += 1) {
@@ -165,6 +171,7 @@ export const updatePlanTool: FuncTool = {
     }
 
     if (existingIndex === undefined) {
+      // Insert at the top so Plan stays prominent in reminder list UI.
       dlg.addReminder(reminderContent, undefined, reminderMeta, 0);
     } else {
       dlg.updateReminder(existingIndex, reminderContent, reminderMeta);
