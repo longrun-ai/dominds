@@ -64,6 +64,12 @@ The **subdialog registry** is a root dialog-scoped Map that maintains persistent
 
 A **teammate Tellask** is a Dominds specific syntax that triggers communication with another agent as subdialog. Teammate Tellasks have three distinct patterns with different semantics (see Section 3).
 
+**Tellask block structure** (see also `dominds/docs/dominds-terminology.md`):
+
+- **Tellask headline**: the first line `!?@<name> ...` (additional `!?@...` lines in the same block are appended to the headline).
+- **Tellask body**: subsequent lines that start with `!?` but not `!?@`.
+- Structured directives like `!tellaskSession <slug>` MUST be in the headline.
+
 ---
 
 ## Backend-Driven Architecture

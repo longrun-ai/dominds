@@ -156,6 +156,8 @@
 ### 快速对照（Quick Glossary）
 
 - EN: `Tellask` | ZH: `诉请`
+- EN: `Tellask headline` | ZH: `诉请头`
+- EN: `Tellask body` | ZH: `诉请内容`
 - EN: `TellaskBack` | ZH: `回问诉请`
 - EN: `Tellask Session` | ZH: `长线诉请`
 - EN: `Fresh Tellask` | ZH: `一次性诉请`
@@ -170,6 +172,22 @@
 
 - EN: A Tellask is not casual chat; it is a collaboration action that Dominds can drive, route, and coordinate (including suspend/resume).
 - ZH: Tellask 不是随意聊天，而是一种可被 Dominds 驱动、路由、并由系统协调（包括挂起/恢复）的协作动作。
+
+#### Tellask headline（诉请头）
+
+- EN: The first line of a Tellask block, starting with `!?@<name> ...`.
+- ZH: 诉请块的第一行，以 `!?@<name> ...` 开头。
+
+- EN: Additional lines starting with `!?@...` in the same block are appended to the headline (they do not start a new Tellask).
+- ZH: 同一诉请块内，后续以 `!?@...` 开头的行会被并入诉请头（不会开启新的诉请）。
+
+- EN: Put structured directives such as `!tellaskSession <slug>` in the headline.
+- ZH: 结构化指令（例如 `!tellaskSession <slug>`）必须放在诉请头中。
+
+#### Tellask body（诉请内容）
+
+- EN: Lines in the Tellask block that start with `!?` but do not start with `!?@`. They carry the request context (steps, constraints, acceptance criteria, etc.).
+- ZH: 诉请块内以 `!?` 开头但不以 `!?@` 开头的行，用于承载诉请内容（步骤、上下文、约束、验收标准等）。
 
 ### 3 种诉请形态（Three Tellask Modes）
 

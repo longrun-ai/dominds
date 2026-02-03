@@ -64,6 +64,12 @@
 
 **队友 Tellask** 是 Dominds 特定的语法，触发与另一个作为子对话的代理的通信。队友 Tellask 有三种不同模式，具有不同语义（见第 3 节）。
 
+**诉请块结构**（另见 `dominds/docs/dominds-terminology.md`）：
+
+- **诉请头（Tellask headline）**：诉请块第一行 `!?@<name> ...`（同一诉请块内，后续以 `!?@...` 开头的行会并入诉请头）。
+- **诉请内容（Tellask body）**：后续以 `!?` 开头但不以 `!?@` 开头的行。
+- `!tellaskSession <slug>` 等结构化指令必须写在诉请头中。
+
 ---
 
 ## 后端驱动架构
