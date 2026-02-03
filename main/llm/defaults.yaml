@@ -212,8 +212,8 @@ providers:
         input_length: 128000
         output_length: 8192
         context_window: '128K'
-  ark-coding-plan:
-    name: Ark Coding Plan
+  volcano-engine-coding-plan:
+    name: Volcano Engine Coding Plan
     apiType: anthropic
     baseUrl: https://ark.cn-beijing.volces.com/api/coding
     apiKeyEnvVar: ARK_API_KEY
@@ -227,8 +227,8 @@ providers:
         output_length: 8192
         context_window: '256K'
         optimization: 专为Agentic Coding任务优化
-  ark:
-    name: Ark
+  volcano-engine:
+    name: Volcano Engine
     apiType: openai
     baseUrl: https://ark.cn-beijing.volces.com/api/v3
     apiKeyEnvVar: ARK_API_KEY
