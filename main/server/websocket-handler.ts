@@ -49,6 +49,7 @@ import {
 } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
+import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
 import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
 import type { AuthConfig } from './auth';
@@ -1298,6 +1299,17 @@ export function setupWebSocketServer(
       }
     }
   });
+
+  // Broadcast `.minds/team.yaml` updates so multi-tab clients can refresh cached team config.
+  setTeamConfigBroadcaster((msg: WebSocketMessage) => {
+    const data = JSON.stringify(msg);
+    for (const ws of clients) {
+      if (ws.readyState === 1) {
+        ws.send(data);
+      }
+    }
+  });
+  startTeamConfigWatcher();
 
   wss.on('connection', (ws: WebSocket, req) => {
     const authCheck = getWebSocketAuthCheck(req, auth);

@@ -4636,10 +4636,11 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private async loadTeamMembers(): Promise<void> {
+  private async loadTeamMembers(options?: { silent?: boolean }): Promise<void> {
+    const silent = options?.silent === true;
     const teamMembersEl = this.shadowRoot ? this.shadowRoot.querySelector('#team-members') : null;
     const teamMembersComponent = teamMembersEl instanceof DomindsTeamMembers ? teamMembersEl : null;
-    if (teamMembersComponent) teamMembersComponent.setLoading(true);
+    if (!silent && teamMembersComponent) teamMembersComponent.setLoading(true);
     try {
       const api = getApiClient();
       const resp = await api.getTeamConfig();
@@ -4668,14 +4669,16 @@ export class DomindsApp extends HTMLElement {
         teamMembersComponent.setDefaultResponder(this.defaultResponder);
       }
 
-      if (this.teamMembers.length === 0) {
+      if (!silent && this.teamMembers.length === 0) {
         this.showWarning('No team members configured');
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.showError(`Failed to load team members: ${message}`, 'warning');
+      if (!silent) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.showError(`Failed to load team members: ${message}`, 'warning');
+      }
     } finally {
-      if (teamMembersComponent) teamMembersComponent.setLoading(false);
+      if (!silent && teamMembersComponent) teamMembersComponent.setLoading(false);
     }
   }
 
@@ -6118,6 +6121,17 @@ export class DomindsApp extends HTMLElement {
         this.problemsVersion = snap.version;
         this.problems = snap.problems;
         this.updateProblemsUi();
+        return true;
+      }
+      case 'team_config_updated': {
+        void this.loadTeamMembers({ silent: true });
+        const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
+        if (
+          dialogContainer instanceof DomindsDialogContainer &&
+          typeof dialogContainer.refreshTeamConfiguration === 'function'
+        ) {
+          void dialogContainer.refreshTeamConfiguration();
+        }
         return true;
       }
       case 'error': {

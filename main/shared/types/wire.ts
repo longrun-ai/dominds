@@ -38,6 +38,7 @@ export type WebSocketMessage =
   | ErrorMessage
   | SetUiLanguageRequest
   | UiLanguageSetMessage
+  | TeamConfigUpdatedMessage
   | GetProblemsRequest
   | ProblemsSnapshotMessage
   | CreateDialogRequest
@@ -83,6 +84,14 @@ export interface SetUiLanguageRequest {
 export interface UiLanguageSetMessage {
   type: 'ui_language_set';
   uiLanguage: LanguageCode;
+}
+
+export interface TeamConfigUpdatedMessage {
+  type: 'team_config_updated';
+  path: string;
+  exists: boolean;
+  timestamp: string;
+  trigger?: string;
 }
 
 // Team and Dialog Management Messages

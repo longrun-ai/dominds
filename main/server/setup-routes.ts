@@ -19,6 +19,7 @@ import {
   type SetupWriteWorkspaceLlmYamlRequest,
   type SetupWriteWorkspaceLlmYamlResponse,
 } from '../shared/types/setup';
+import { notifyTeamConfigUpdated } from '../team-config-updates';
 
 const log = createLogger('setup-routes');
 
@@ -209,6 +210,8 @@ export async function handleWriteTeamYaml(
     await fsPromises.mkdir(path.dirname(outPath), { recursive: true });
     const content = buildMinimalTeamYaml(req);
     await fsPromises.writeFile(outPath, content, 'utf-8');
+
+    notifyTeamConfigUpdated(`setup.write_team_yaml/${exists ? 'overwritten' : 'created'}`);
     return {
       kind: 'ok',
       response: {

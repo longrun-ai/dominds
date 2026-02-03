@@ -214,6 +214,10 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
+  public async refreshTeamConfiguration(): Promise<void> {
+    await this.loadTeamConfiguration();
+  }
+
   public async setDialog(dialog: DialogContext): Promise<void> {
     this.suppressEvents = true;
     // Dialog navigation is a user-initiated context switch; reset auto-scroll so the freshly
