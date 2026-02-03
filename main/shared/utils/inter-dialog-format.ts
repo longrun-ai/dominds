@@ -9,7 +9,7 @@
  * UI display contract:
  * - Display the record data only (headline + body).
  * - Call display (request/assignment): render headline, then body (no quote/divider).
- * - Response display: render the original call headline as a blockquote,
+ * - Response display: render the original tellask headline as a blockquote,
  *   then a horizontal divider (`---`), then the response body.
  * - Participant identity (from/to/responder) should live in bubble chrome, not inside content.
  *
@@ -17,7 +17,7 @@
  * - Use the same markdown record layout as the UI for the record data.
  * - Prepend a short natural-language narrative line that states:
  *   who is in what role (requester/responder/assignee) and what action occurred.
- * - Include the original call headline in the narrative for clarity.
+ * - Include the original tellask headline in the narrative for clarity.
  */
 
 import type { LanguageCode } from '../types/language';
@@ -102,17 +102,16 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
   const language: LanguageCode = input.language ?? 'en';
   const hello =
     language === 'zh'
-      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理你最初诉请期间：`
-      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, during processing your original assignment:`;
+      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理以下任务期间（如下引文）：`
+      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, while working on the following original task:`;
   const asking =
     language === 'zh'
-      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 诉请你：`
-      : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` is asking you:`;
+      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 回问：`
+      : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` TellaskBack:`;
 
   return `${hello}
 
 ${markdownQuote(requireNonEmpty(input.supdialogAssignment.headLine, 'assignmentHeadLine'))}
-${markdownQuote(input.supdialogAssignment.callBody)}
 
 ${asking}
 
@@ -127,7 +126,7 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
     language === 'zh'
       ? `你好 @${requireNonEmpty(input.requesterId, 'toAgentId')}，@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
       : `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
-  const tail = language === 'zh' ? '针对你最初的诉请：' : 'to your original call:';
+  const tail = language === 'zh' ? '针对原始诉请：' : 'regarding the original tellask:';
 
   return `${hello}
 
