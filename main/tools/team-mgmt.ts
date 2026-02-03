@@ -3301,6 +3301,49 @@ function renderMindsManual(language: LanguageCode): string {
   );
 }
 
+function renderEnvManual(language: LanguageCode): string {
+  if (language === 'zh') {
+    return (
+      fmtHeader('.minds/env.*.md（运行环境提示）') +
+      fmtList([
+        '用途：为“当前 rtws 的运行环境”提供一段稳定的介绍文案。Dominds 会将其注入到 agent 的 system prompt 中，注入位置在“团队目录（Team Directory）”之前。',
+        '文件位置：写在当前 rtws 的 `.minds/` 下；切换 rtws（例如 `-C ux-rtws`）时，应在对应 rtws 的 `.minds/` 下分别维护。',
+        '推荐文件名：`env.zh.md`（中文语义基准）与 `env.en.md`（英文对齐）。',
+        '回退规则：优先按工作语言读取 `env.<lang>.md`；如不存在，可回退到 `env.md`（以当前实现为准）。空文件/仅空白会被当作“无提示”。',
+        'i18n 约定：`zh` 为语义基准。不要把 `zh` 通过翻译 `en` 来更新；应让 `en` 追随 `zh` 的语义。',
+        '管理者提醒：若发现缺失/质量不佳/与实际环境不符，应与人类用户讨论并确认措辞，然后再写入/更新对应的 `env.*.md`（避免“凭空编造”的环境描述）。',
+      ]) +
+      fmtCodeBlock('text', [
+        '# 示例（片段；请按你的工作区真实环境改写）',
+        '## 本工作区的 Dominds 运行环境说明',
+        '',
+        '- 本 rtws 用于 Dominds 自我开发与联调。',
+        '- Dominds 程序来源：本机全局 link 的 `dominds`，由 `./dominds/` 构建产物提供。',
+        '- WebUI dev/UX：`./dev-server.sh` 使用 `ux-rtws/` 作为 rtws（避免污染根工作区）。',
+      ])
+    );
+  }
+  return (
+    fmtHeader('.minds/env.*.md (runtime environment intro)') +
+    fmtList([
+      'Purpose: provide a stable intro note describing the “current rtws runtime environment”. Dominds injects it into the agent system prompt, positioned before “Team Directory”.',
+      'Location: place it under the current rtws `.minds/`. If you switch rtws (e.g. `-C ux-rtws`), maintain a separate `env.*.md` under that rtws’s `.minds/`.',
+      'Recommended filenames: `env.zh.md` (canonical semantics) and `env.en.md` (English aligned to zh).',
+      'Fallback behavior: prefer `env.<lang>.md` by working language; if missing, it may fall back to `env.md` (per current implementation). Empty/whitespace-only content is treated as “no intro”.',
+      'i18n rule: `zh` is canonical. Do not update `zh` by translating from `en`; update `en` to match `zh` semantics.',
+      'Manager reminder: if the file is missing / inaccurate / low quality, discuss wording with the human user and then write/update `env.*.md` (avoid fabricating environment details).',
+    ]) +
+    fmtCodeBlock('text', [
+      '# Example (snippet; tailor to your real workspace)',
+      '## Dominds runtime environment notes',
+      '',
+      '- This rtws is used for Dominds self-development and integration.',
+      '- Program source: a globally linked `dominds` built from `./dominds/`.',
+      '- WebUI dev/UX: `./dev-server.sh` uses `ux-rtws/` as rtws (keeps root workspace clean).',
+    ])
+  );
+}
+
 function renderTroubleshooting(language: LanguageCode): string {
   if (language === 'zh') {
     return (
@@ -3641,6 +3684,7 @@ export const teamMgmtManualTool: FuncTool = {
             '',
             `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
             `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
+            `\`team_mgmt_manual({ topics: ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
             `\`team_mgmt_manual({ topics: ["permissions"] })\`：${topicTitle('permissions')} — 目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）`,
             `\`team_mgmt_manual({ topics: ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
             `\`team_mgmt_manual({ topics: ["llm"] })\`：${topicTitle('llm')} — .minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）`,
@@ -3662,6 +3706,7 @@ export const teamMgmtManualTool: FuncTool = {
           '',
           `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
           `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
+          `\`team_mgmt_manual({ topics: ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
           `\`team_mgmt_manual({ topics: ["permissions"] })\`: ${topicTitle('permissions')} — directory permissions (semantics + conflict rules)`,
           `\`team_mgmt_manual({ topics: ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
           `\`team_mgmt_manual({ topics: ["llm"] })\`: ${topicTitle('llm')} — .minds/llm.yaml (provider keys, env var boundaries)`,
@@ -3737,6 +3782,10 @@ export const teamMgmtManualTool: FuncTool = {
       }
       if (want('minds')) {
         const content = renderMindsManual(language);
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
+      if (want('env')) {
+        const content = renderEnvManual(language);
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (want('permissions')) {

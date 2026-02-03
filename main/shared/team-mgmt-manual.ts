@@ -19,6 +19,7 @@ export const TEAM_MGMT_MANUAL_TOPIC_KEYS = [
   'team',
   'member-properties',
   'minds',
+  'env',
   'permissions',
   'toolsets',
   'troubleshooting',
@@ -51,6 +52,7 @@ export const TEAM_MGMT_MANUAL_TOPIC_META: Readonly<
   minds: {
     titleI18n: { zh: '角色资产（.minds/team/<id>/*）', en: 'Minds Assets (.minds/team/<id>/*)' },
   },
+  env: { titleI18n: { zh: '环境提示（env.*.md）', en: 'Environment Intro (env.*.md)' } },
   troubleshooting: { titleI18n: { zh: '排障（troubleshooting）', en: 'Troubleshooting' } },
 };
 
@@ -83,6 +85,7 @@ export const TEAM_MGMT_MANUAL_UI_TOPIC_ORDER: readonly TeamMgmtManualTopicKey[] 
   'builtin-defaults',
   'mcp',
   'minds',
+  'env',
   'troubleshooting',
 ];
 
@@ -104,6 +107,7 @@ export const TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY: Readonly<
   // Other
   mcp: ['mcp'],
   minds: ['minds'],
+  env: ['env'],
   troubleshooting: ['troubleshooting'],
 };
 
