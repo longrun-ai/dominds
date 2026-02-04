@@ -194,6 +194,7 @@ export interface Q4HStateResponse {
     tellaskHead: string;
     bodyContent: string;
     askedAt: string;
+    callId?: string;
     callSiteRef: {
       course: number;
       messageIndex: number;

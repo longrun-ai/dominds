@@ -89,6 +89,9 @@ export type UiStrings = {
   q4hInputPlaceholder: string;
   q4hEnterToSendTitle: string;
   q4hCtrlEnterToSendTitle: string;
+  q4hGoToCallSiteTitle: string;
+  q4hOpenInNewTabTitle: string;
+  q4hCopyLinkTitle: string;
 
   keepGoingTabTitle: string;
   keepGoingWorkspaceNote: string;
@@ -108,6 +111,12 @@ export type UiStrings = {
   inputNotAvailableToast: string;
   noActiveDialogToast: string;
   invalidMessageFormatToast: string;
+  linkCopiedToast: string;
+  linkCopyFailedToast: string;
+  toastHistoryButtonTitle: string;
+  toastHistoryTitle: string;
+  toastHistoryClearTitle: string;
+  toastHistoryEmpty: string;
   teamMgmtManualTabTitle: string;
   promptTemplatesTabTitle: string;
   domindsDocsTabTitle: string;
@@ -351,6 +360,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hInputPlaceholder: '输入你的回答…',
       q4hEnterToSendTitle: '按 Enter 发送（Cmd/Ctrl+Enter 换行）',
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
+      q4hGoToCallSiteTitle: '定位到提问点',
+      q4hOpenInNewTabTitle: '新标签打开',
+      q4hCopyLinkTitle: '复制链接',
 
       keepGoingTabTitle: '鞭策',
       keepGoingWorkspaceNote: '注意：修改鞭策语会影响整个 rtws（运行时工作区）！',
@@ -372,6 +384,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       inputNotAvailableToast: '输入组件不可用。',
       noActiveDialogToast: '当前没有活跃对话。',
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
+      linkCopiedToast: '链接已复制。',
+      linkCopyFailedToast: '复制链接失败。',
+      toastHistoryButtonTitle: '通知历史',
+      toastHistoryTitle: '通知历史',
+      toastHistoryClearTitle: '清空通知历史',
+      toastHistoryEmpty: '暂无通知。',
       teamMgmtManualTabTitle: '团队管理手册',
       promptTemplatesTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
@@ -618,6 +636,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hInputPlaceholder: 'Type your answer...',
     q4hEnterToSendTitle: 'Enter to send (Cmd/Ctrl+Enter for newline)',
     q4hCtrlEnterToSendTitle: 'Cmd/Ctrl+Enter to send (Enter for newline)',
+    q4hGoToCallSiteTitle: 'Go to call site',
+    q4hOpenInNewTabTitle: 'Open in new tab',
+    q4hCopyLinkTitle: 'Copy link',
 
     keepGoingTabTitle: 'Diligence Push',
     keepGoingWorkspaceNote:
@@ -626,8 +647,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     keepGoingReloadTitle: 'Load latest Diligence Push prompt',
     keepGoingSaveTitle: 'Save to rtws',
     keepGoingResetTitle: 'Reset to built-in Diligence Push prompt (delete rtws file)',
-    keepGoingOverwriteConfirm:
-      'This will overwrite the rtws Diligence Push prompt. Save anyway?',
+    keepGoingOverwriteConfirm: 'This will overwrite the rtws Diligence Push prompt. Save anyway?',
     keepGoingResetConfirm:
       'This will delete the rtws Diligence Push prompt file and restore the built-in Diligence Push prompt. Reset anyway?',
     keepGoingResetConfirmDirty:
@@ -642,6 +662,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     inputNotAvailableToast: 'Input is not available.',
     noActiveDialogToast: 'No active dialog.',
     invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
+    linkCopiedToast: 'Link copied.',
+    linkCopyFailedToast: 'Failed to copy link.',
+    toastHistoryButtonTitle: 'Notification history',
+    toastHistoryTitle: 'Notification history',
+    toastHistoryClearTitle: 'Clear notification history',
+    toastHistoryEmpty: 'No notifications yet.',
     teamMgmtManualTabTitle: 'Team Manual',
     promptTemplatesTabTitle: 'Prompt Templates',
     domindsDocsTabTitle: 'Dominds Docs',

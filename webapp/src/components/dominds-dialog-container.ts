@@ -35,6 +35,11 @@ type DialogContext = DialogIdent & {
   assignmentFromSup?: AssignmentFromSup;
 };
 
+type PendingScrollRequest =
+  | { kind: 'by_call_id'; course: number; callId: string }
+  | { kind: 'by_message_index'; course: number; messageIndex: number }
+  | { kind: 'by_genseq'; course: number; genseq: number };
+
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
@@ -86,6 +91,115 @@ export class DomindsDialogContainer extends HTMLElement {
   // Buffer by callId and attach when the calling section is finalized.
   private pendingTeammateCallResponsesByCallId = new Map<string, TeammateCallResponseEvent>();
 
+  // Call-site navigation can be requested before course replay content is rendered.
+  // Store the intent and apply when the DOM is ready.
+  private pendingScrollRequest: PendingScrollRequest | null = null;
+
+  private highlightSeq: number = 0;
+  private pendingHighlight: { selector: string; token: string; expiresAtMs: number } | null = null;
+
+  private applyHighlight(target: HTMLElement): void {
+    // Restart animation even if the element was highlighted recently.
+    target.classList.remove('highlighted');
+    void target.offsetWidth;
+    target.classList.add('highlighted');
+
+    const token = String((this.highlightSeq += 1));
+    target.setAttribute('data-highlight-token', token);
+    setTimeout(() => {
+      if (target.getAttribute('data-highlight-token') !== token) return;
+      target.classList.remove('highlighted');
+    }, 5200);
+  }
+
+  private applyHighlightWithToken(target: HTMLElement, token: string, expiresAtMs: number): void {
+    // Only apply if this node isn't already tagged with our token.
+    if (target.getAttribute('data-highlight-token') === token) return;
+    target.classList.remove('highlighted');
+    void target.offsetWidth;
+    target.setAttribute('data-highlight-token', token);
+    target.classList.add('highlighted');
+
+    const remaining = Math.max(0, expiresAtMs - Date.now());
+    setTimeout(() => {
+      if (target.getAttribute('data-highlight-token') !== token) return;
+      target.classList.remove('highlighted');
+    }, remaining);
+  }
+
+  private maybeReapplyPendingHighlight(): void {
+    const pending = this.pendingHighlight;
+    if (!pending) return;
+    if (Date.now() >= pending.expiresAtMs) {
+      this.pendingHighlight = null;
+      return;
+    }
+    const root = this.shadowRoot;
+    if (!root) return;
+    const messages = root.querySelector('.messages');
+    if (!(messages instanceof HTMLElement)) return;
+    const target = messages.querySelector(pending.selector);
+    if (!(target instanceof HTMLElement)) return;
+    this.applyHighlightWithToken(target, pending.token, pending.expiresAtMs);
+  }
+
+  private applyHighlightWhenVisible(target: HTMLElement): void {
+    if (document.visibilityState !== 'visible') {
+      const onVisible = () => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', onVisible);
+        // Give the browser a beat to paint after tab activation.
+        setTimeout(() => {
+          if (!target.isConnected) return;
+          this.applyHighlightWhenVisible(target);
+        }, 120);
+      };
+      document.addEventListener('visibilitychange', onVisible);
+      return;
+    }
+
+    // On fresh page loads (external deeplinks), we often scroll to a far-away element.
+    // If we start the animation immediately, it may finish before the element is in view.
+    // Use IntersectionObserver (rooted at the scroll container) to trigger the highlight
+    // once the target becomes visible.
+    const root = this.scrollContainer;
+    if (!root) {
+      requestAnimationFrame(() => this.applyHighlight(target));
+      return;
+    }
+
+    let didApply = false;
+    const applyOnce = () => {
+      if (didApply) return;
+      didApply = true;
+      this.applyHighlight(target);
+    };
+
+    // Fallback: even if the observer doesn't fire (rare), still highlight shortly after.
+    setTimeout(() => applyOnce(), 900);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.target !== target) continue;
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
+            observer.disconnect();
+            applyOnce();
+            return;
+          }
+        }
+      },
+      { root, threshold: [0, 0.3, 0.6, 1] },
+    );
+
+    try {
+      observer.observe(target);
+    } catch {
+      // If observing fails (e.g. target is not in the document yet), fall back.
+      applyOnce();
+    }
+  }
+
   // Team configuration for dynamic agent labels and icons
   private teamConfiguration: {
     memberDefaults: { icon?: string; name?: string };
@@ -114,12 +228,24 @@ export class DomindsDialogContainer extends HTMLElement {
     this.uiLanguage = parsed ?? 'en';
     this.render();
     this.ensureScrollContainerListener();
+    this.installCallSiteScrollListeners();
     await this.loadTeamConfiguration();
     const sr = this.shadowRoot;
     if (sr) {
       sr.addEventListener('click', async (e: Event) => {
         const target = e.target as HTMLElement | null;
         if (!target) return;
+        const shareBtn = target.closest('.bubble-share-link-btn') as HTMLButtonElement | null;
+        if (shareBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const bubble = shareBtn.closest('.generation-bubble') as HTMLElement | null;
+          const raw = bubble ? bubble.getAttribute('data-seq') : null;
+          const seq = raw ? Number.parseInt(raw, 10) : Number.NaN;
+          if (!Number.isFinite(seq)) return;
+          await this.copyGenerationBubbleDeepLinkToClipboard(seq);
+          return;
+        }
         const btn = target.closest('.codeblock-action') as HTMLButtonElement | null;
         if (btn) {
           const section = btn.closest('.codeblock-section') as HTMLElement | null;
@@ -156,6 +282,188 @@ export class DomindsDialogContainer extends HTMLElement {
   disconnectedCallback(): void {
     this.detachScrollContainerListener();
     this.cleanup();
+  }
+
+  private installCallSiteScrollListeners(): void {
+    this.removeEventListener('scroll-to-call-site', this.onScrollToCallSite as EventListener);
+    this.removeEventListener('scroll-to-call-id', this.onScrollToCallId as EventListener);
+    this.removeEventListener('scroll-to-genseq', this.onScrollToGenSeq as EventListener);
+    this.addEventListener('scroll-to-call-site', this.onScrollToCallSite as EventListener);
+    this.addEventListener('scroll-to-call-id', this.onScrollToCallId as EventListener);
+    this.addEventListener('scroll-to-genseq', this.onScrollToGenSeq as EventListener);
+  }
+
+  private onScrollToCallSite = (event: Event): void => {
+    const ce = event as CustomEvent<unknown>;
+    const detail = ce.detail;
+    if (!detail || typeof detail !== 'object') return;
+    const d = detail as Record<string, unknown>;
+
+    const courseRaw = d['course'];
+    const course =
+      typeof courseRaw === 'number'
+        ? courseRaw
+        : typeof courseRaw === 'string'
+          ? Number.parseInt(courseRaw, 10)
+          : Number.NaN;
+    if (!Number.isFinite(course)) return;
+
+    const callIdRaw = d['callId'];
+    const callId = typeof callIdRaw === 'string' ? callIdRaw.trim() : '';
+    if (callId !== '') {
+      this.pendingScrollRequest = { kind: 'by_call_id', course: Math.floor(course), callId };
+      this.maybeApplyPendingScrollRequest();
+      return;
+    }
+
+    const messageIndexRaw = d['messageIndex'];
+    const messageIndex =
+      typeof messageIndexRaw === 'number'
+        ? messageIndexRaw
+        : typeof messageIndexRaw === 'string'
+          ? Number.parseInt(messageIndexRaw, 10)
+          : Number.NaN;
+    if (!Number.isFinite(messageIndex)) return;
+
+    this.pendingScrollRequest = {
+      kind: 'by_message_index',
+      course: Math.floor(course),
+      messageIndex: Math.floor(messageIndex),
+    };
+    this.maybeApplyPendingScrollRequest();
+  };
+
+  private onScrollToCallId = (event: Event): void => {
+    const ce = event as CustomEvent<unknown>;
+    const detail = ce.detail;
+    if (!detail || typeof detail !== 'object') return;
+    const d = detail as Record<string, unknown>;
+
+    const courseRaw = d['course'];
+    const course =
+      typeof courseRaw === 'number'
+        ? courseRaw
+        : typeof courseRaw === 'string'
+          ? Number.parseInt(courseRaw, 10)
+          : Number.NaN;
+    if (!Number.isFinite(course)) return;
+
+    const callIdRaw = d['callId'];
+    const callId = typeof callIdRaw === 'string' ? callIdRaw.trim() : '';
+    if (callId === '') return;
+
+    this.pendingScrollRequest = { kind: 'by_call_id', course: Math.floor(course), callId };
+    this.maybeApplyPendingScrollRequest();
+  };
+
+  private onScrollToGenSeq = (event: Event): void => {
+    const ce = event as CustomEvent<unknown>;
+    const detail = ce.detail;
+    if (!detail || typeof detail !== 'object') return;
+    const d = detail as Record<string, unknown>;
+
+    const courseRaw = d['course'];
+    const course =
+      typeof courseRaw === 'number'
+        ? courseRaw
+        : typeof courseRaw === 'string'
+          ? Number.parseInt(courseRaw, 10)
+          : Number.NaN;
+    if (!Number.isFinite(course)) return;
+
+    const genseqRaw = d['genseq'];
+    const genseq =
+      typeof genseqRaw === 'number'
+        ? genseqRaw
+        : typeof genseqRaw === 'string'
+          ? Number.parseInt(genseqRaw, 10)
+          : Number.NaN;
+    if (!Number.isFinite(genseq)) return;
+
+    this.pendingScrollRequest = { kind: 'by_genseq', course: Math.floor(course), genseq };
+    this.maybeApplyPendingScrollRequest();
+  };
+
+  private maybeApplyPendingScrollRequest(): void {
+    const req = this.pendingScrollRequest;
+    if (!req) return;
+    const currentCourse = this.currentCourse;
+    if (typeof currentCourse === 'number' && req.course !== currentCourse) {
+      return;
+    }
+
+    const root = this.shadowRoot;
+    if (!root) {
+      return;
+    }
+    const messages = root.querySelector('.messages');
+    if (!(messages instanceof HTMLElement)) {
+      return;
+    }
+
+    let target: HTMLElement | null = null;
+
+    if (req.kind === 'by_call_id') {
+      const selector = `.calling-section[data-call-id="${CSS.escape(req.callId)}"]`;
+      const found = messages.querySelector(selector);
+      target = found instanceof HTMLElement ? found : null;
+    } else if (req.kind === 'by_genseq') {
+      const found = messages.querySelector(`.generation-bubble[data-seq="${String(req.genseq)}"]`);
+      target = found instanceof HTMLElement ? found : null;
+    } else {
+      const bySeq = messages.querySelector(
+        `.generation-bubble[data-seq="${String(req.messageIndex)}"]`,
+      );
+      if (bySeq instanceof HTMLElement) {
+        const call = bySeq.querySelector('.calling-section');
+        target = call instanceof HTMLElement ? call : bySeq;
+      } else {
+        const bubbles = Array.from(messages.querySelectorAll<HTMLElement>('.generation-bubble'));
+        const idx = req.messageIndex;
+        const direct = idx >= 0 && idx < bubbles.length ? bubbles[idx] : null;
+        const oneBased = idx > 0 && idx - 1 < bubbles.length ? bubbles[idx - 1] : null;
+        const bubble = direct ?? oneBased;
+        if (bubble) {
+          const call = bubble.querySelector('.calling-section');
+          target = call instanceof HTMLElement ? call : bubble;
+        }
+      }
+    }
+
+    if (!target) return;
+
+    this.pendingScrollRequest = null;
+    // This navigation is explicit (deeplink / internal jump). Disable auto-scroll so we don't
+    // immediately snap back to the bottom while the dialog continues streaming/replaying.
+    this.autoScrollEnabled = false;
+    this.updateScrollToBottomButton();
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Persist highlight intent for a short period. External deeplinks can trigger DOM replacement
+    // after we've already applied the highlight, making it appear as "no flash". Reapply on the
+    // first matching node we see until expiry.
+    let selector: string | null = null;
+    if (req.kind === 'by_call_id') {
+      selector = `.calling-section[data-call-id="${CSS.escape(req.callId)}"]`;
+    } else if (req.kind === 'by_genseq') {
+      selector = `.generation-bubble[data-seq="${String(req.genseq)}"]`;
+    } else {
+      // by_message_index: best effort: treat messageIndex as bubble seq (current convention).
+      selector = `.generation-bubble[data-seq="${String(req.messageIndex)}"] .calling-section, .generation-bubble[data-seq="${String(
+        req.messageIndex,
+      )}"]`;
+    }
+    if (selector) {
+      const expiresAtMs = Date.now() + 5200;
+      const token = `hl-${String(Date.now())}-${String((this.highlightSeq += 1))}`;
+      this.pendingHighlight = { selector, token, expiresAtMs };
+      // Apply immediately to the current node too.
+      this.applyHighlightWithToken(target, token, expiresAtMs);
+    } else {
+      this.applyHighlightWhenVisible(target);
+    }
+    // Ensure we also reapply after the next few DOM mutations.
+    this.maybeReapplyPendingHighlight();
   }
 
   private detachScrollContainerListener(): void {
@@ -630,6 +938,10 @@ export class DomindsDialogContainer extends HTMLElement {
       default:
         this.handleProtocolError(`Unhandled dialog event: ${String(event.type)}`);
     }
+
+    // Best-effort: apply pending call-site scroll requests after any DOM mutation.
+    this.maybeApplyPendingScrollRequest();
+    this.maybeReapplyPendingHighlight();
   }
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
@@ -1393,6 +1705,7 @@ export class DomindsDialogContainer extends HTMLElement {
     callId?: string,
     originMemberId?: string,
   ): HTMLElement {
+    const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
     el.className = 'message teammate';
     el.setAttribute('data-callee-dialog-id', calleeDialogId);
@@ -1409,14 +1722,39 @@ export class DomindsDialogContainer extends HTMLElement {
         <div class="bubble-header">
           <div class="bubble-title">
             <div class="title-row">
-              <span class="author-name">${callsign}</span><span class="response-indicator">${responseIndicator}</span>
+              <div class="title-left">
+                <span class="author-name">${callsign}</span><span class="response-indicator">${responseIndicator}</span>
+              </div>
+              ${
+                callId
+                  ? `<div class="bubble-title-actions" data-call-id="${callId}">
+                      <button type="button" class="callsite-icon-btn internal" aria-label="${this.escapeHtml(t.q4hGoToCallSiteTitle)}" title="${this.escapeHtml(t.q4hGoToCallSiteTitle)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M12 2v3"></path>
+                          <path d="M12 19v3"></path>
+                          <path d="M2 12h3"></path>
+                          <path d="M19 12h3"></path>
+                        </svg>
+                      </button>
+                      <button type="button" class="callsite-icon-btn external" aria-label="${this.escapeHtml(t.q4hOpenInNewTabTitle)}" title="${this.escapeHtml(t.q4hOpenInNewTabTitle)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M14 3h7v7"></path>
+                          <path d="M10 14L21 3"></path>
+                          <path d="M21 14v7H3V3h7"></path>
+                        </svg>
+                      </button>
+                      <button type="button" class="callsite-icon-btn share" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
+                          <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1"></path>
+                        </svg>
+                      </button>
+                    </div>`
+                  : ''
+              }
             </div>
           </div>
-          ${
-            callId
-              ? `<a href="#" class="response-call-site-link" data-call-id="${callId}">Call site ↗</a>`
-              : ''
-          }
         </div>
         <div class="bubble-body">
           <div class="teammate-content"></div>
@@ -1429,24 +1767,164 @@ export class DomindsDialogContainer extends HTMLElement {
       md.setRawMarkdown(responseNarr);
       contentEl.appendChild(md);
     }
-    // Add click handler for call site link
-    const responseCallSiteLink = el.querySelector(
-      '.response-call-site-link',
-    ) as HTMLAnchorElement | null;
-    if (responseCallSiteLink && callId) {
-      responseCallSiteLink.addEventListener('click', (e) => {
+    const internalBtn = el.querySelector(
+      'button.callsite-icon-btn.internal',
+    ) as HTMLButtonElement | null;
+    if (internalBtn && callId) {
+      internalBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const callingSection = this.shadowRoot?.querySelector(
-          `.calling-section[data-call-id="${callId}"]`,
-        ) as HTMLElement | null;
-        if (callingSection) {
-          callingSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          callingSection.classList.add('highlighted');
-          setTimeout(() => callingSection.classList.remove('highlighted'), 2000);
-        }
+        e.stopPropagation();
+        this.navigateToCallSiteInApp(callId);
+      });
+    }
+
+    const externalBtn = el.querySelector(
+      'button.callsite-icon-btn.external',
+    ) as HTMLButtonElement | null;
+    if (externalBtn && callId) {
+      externalBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openCallSiteDeepLinkInNewTab(callId);
+      });
+    }
+
+    const shareBtn = el.querySelector('button.callsite-icon-btn.share') as HTMLButtonElement | null;
+    if (shareBtn && callId) {
+      shareBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.copyCallSiteDeepLinkToClipboard(callId);
       });
     }
     return el;
+  }
+
+  private navigateToCallSiteInApp(callId: string): void {
+    const dialog = this.currentDialog;
+    const course = this.currentCourse;
+    if (!dialog || typeof course !== 'number') {
+      // Best-effort fallback: try local scroll if we have a course number.
+      if (typeof course === 'number') {
+        this.pendingScrollRequest = { kind: 'by_call_id', course, callId };
+        this.maybeApplyPendingScrollRequest();
+      }
+      return;
+    }
+
+    // Dispatch from this element so it reliably reaches the app's shadow-root listeners.
+    this.dispatchEvent(
+      new CustomEvent('navigate-callsite', {
+        detail: { rootId: dialog.rootId, selfId: dialog.selfId, course, callId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private openCallSiteDeepLinkInNewTab(callId: string): void {
+    const dialog = this.currentDialog;
+    const course = this.currentCourse;
+    if (!dialog || typeof course !== 'number') return;
+
+    const url = new URL(window.location.href);
+    // Preserve auth and other non-deeplink params; override only deeplink keys.
+    url.searchParams.delete('rootId');
+    url.searchParams.delete('selfId');
+    url.searchParams.delete('course');
+    url.searchParams.delete('msg');
+    url.searchParams.delete('callId');
+    url.searchParams.delete('genseq');
+    url.hash = '';
+    url.pathname = `/dl/callsite`;
+    url.searchParams.set('rootId', dialog.rootId);
+    url.searchParams.set('selfId', dialog.selfId);
+    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('callId', callId);
+    const urlStr = url.toString();
+    const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+    if (w) w.opener = null;
+  }
+
+  private async copyCallSiteDeepLinkToClipboard(callId: string): Promise<void> {
+    const dialog = this.currentDialog;
+    const course = this.currentCourse;
+    if (!dialog || typeof course !== 'number') return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rootId');
+    url.searchParams.delete('selfId');
+    url.searchParams.delete('course');
+    url.searchParams.delete('msg');
+    url.searchParams.delete('callId');
+    url.searchParams.delete('genseq');
+    url.hash = '';
+    url.pathname = `/dl/callsite`;
+    url.searchParams.set('rootId', dialog.rootId);
+    url.searchParams.set('selfId', dialog.selfId);
+    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('callId', callId);
+    await this.copyLinkToClipboardWithToast(url.toString());
+  }
+
+  private async copyGenerationBubbleDeepLinkToClipboard(genseq: number): Promise<void> {
+    const dialog = this.currentDialog;
+    const course = this.currentCourse;
+    if (!dialog || typeof course !== 'number') return;
+    if (!Number.isFinite(genseq) || genseq <= 0) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rootId');
+    url.searchParams.delete('selfId');
+    url.searchParams.delete('course');
+    url.searchParams.delete('msg');
+    url.searchParams.delete('callId');
+    url.searchParams.delete('genseq');
+    url.hash = '';
+    url.pathname = `/dl/genseq`;
+    url.searchParams.set('rootId', dialog.rootId);
+    url.searchParams.set('selfId', dialog.selfId);
+    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('genseq', String(Math.floor(genseq)));
+    await this.copyLinkToClipboardWithToast(url.toString());
+  }
+
+  private emitToast(message: string, kind: 'error' | 'warning' | 'info' = 'info'): void {
+    this.dispatchEvent(
+      new CustomEvent('ui-toast', { detail: { message, kind }, bubbles: true, composed: true }),
+    );
+  }
+
+  private async copyTextToClipboard(text: string): Promise<boolean> {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', 'true');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok === true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async copyLinkToClipboardWithToast(urlStr: string): Promise<void> {
+    const ok = await this.copyTextToClipboard(urlStr);
+    const t = getUiStrings(this.uiLanguage);
+    if (ok) {
+      this.emitToast(t.linkCopiedToast, 'info');
+      return;
+    }
+    this.emitToast(t.linkCopyFailedToast, 'warning');
   }
 
   // === REMINDER EVENTS ===
@@ -1495,6 +1973,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private buildGenerationBubbleHeaderHtml(timestamp: string): string {
+    const t = getUiStrings(this.uiLanguage);
     const authorLabel = this.getAuthorLabel('assistant');
     const safeAuthorLabel = this.escapeHtml(authorLabel);
     const safeTimestamp = this.escapeHtml(timestamp);
@@ -1506,7 +1985,15 @@ export class DomindsDialogContainer extends HTMLElement {
             <span class="bubble-author-model"></span>
           </div>
         </div>
-        <div class="timestamp">${safeTimestamp}</div>
+        <div class="bubble-header-right">
+          <button type="button" class="bubble-share-link-btn" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
+              <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1"></path>
+            </svg>
+          </button>
+          <div class="timestamp">${safeTimestamp}</div>
+        </div>
       </div>
     `;
   }
@@ -2142,6 +2629,39 @@ export class DomindsDialogContainer extends HTMLElement {
         justify-content: space-between; 
         margin-bottom: 12px; 
       }
+
+      .bubble-header-right {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .bubble-share-link-btn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .bubble-share-link-btn:hover {
+        background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
+        border-color: var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+      }
+
+      .bubble-share-link-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        outline-offset: 2px;
+      }
       
       .bubble-author { 
         font-weight: 600; 
@@ -2169,8 +2689,50 @@ export class DomindsDialogContainer extends HTMLElement {
       .title-row {
         display: flex;
         align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .title-left {
+        display: flex;
+        align-items: baseline;
         gap: 6px;
         flex-wrap: wrap;
+        min-width: 0;
+      }
+
+      .bubble-title-actions {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      .callsite-icon-btn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .callsite-icon-btn:hover {
+        background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
+        border-color: var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+      }
+
+      .callsite-icon-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        outline-offset: 2px;
       }
 
       .call-context {
@@ -2194,6 +2756,10 @@ export class DomindsDialogContainer extends HTMLElement {
         animation: breath-glow 3s ease-in-out infinite;
         border: 2px solid transparent;
       }
+
+	      .generation-bubble.highlighted {
+	        animation: highlight-pulse 1s ease-in-out 0s 5;
+	      }
 
       @keyframes breath-glow {
         0%, 100% {
@@ -2370,13 +2936,15 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       
       /* Calling section styles (nested inside markdown) */
-      .calling-section { 
-        margin: 6px 0; 
-        padding: 8px; 
-        border-radius: 6px; 
-        background: var(--color-bg-tertiary, #f1f5f9); 
-        border-left: 3px solid var(--color-info, #06b6d4);
-      }
+	      .calling-section { 
+	        margin: 6px 0; 
+	        padding: 8px; 
+	        border-radius: 6px; 
+	        background: var(--color-bg-tertiary, #f1f5f9); 
+	        border-left: 3px solid var(--color-info, #06b6d4);
+	        box-sizing: border-box;
+	        max-width: 100%;
+	      }
       
       .calling-header {
         display: flex;
@@ -2658,18 +3226,6 @@ export class DomindsDialogContainer extends HTMLElement {
         margin-left: 0.5em;
       }
 
-      .response-call-site-link {
-        color: var(--dominds-primary, #007acc);
-        text-decoration: none;
-        font-size: 12px;
-        margin-left: 8px;
-        cursor: pointer;
-      }
-
-      .response-call-site-link:hover {
-        text-decoration: underline;
-      }
-
       .teammate-content {
         margin-top: 12px;
         color: var(--dominds-fg, var(--color-fg-primary, #333));
@@ -2690,23 +3246,46 @@ export class DomindsDialogContainer extends HTMLElement {
         margin: 8px 0 10px 0;
       }
 
-      /* Highlight animation for call site navigation */
-      .calling-section.highlighted {
-        animation: highlight-pulse 1s ease-in-out;
-      }
+	      /* Highlight animation for call site navigation */
+	      .generation-bubble.highlighted,
+	      .message.teammate.highlighted {
+	        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+	        outline-offset: 2px;
+	      }
 
-      .message.teammate.highlighted {
-        animation: highlight-pulse 1s ease-in-out;
-      }
+	      /* Call-site highlight should not be clipped by parent overflow; keep it inside the element. */
+	      .calling-section.highlighted {
+	        outline: none;
+	        animation: highlight-inset-pulse 1s ease-in-out 0s 5;
+	      }
 
-      @keyframes highlight-pulse {
-        0%, 100% {
-          box-shadow: 0 0 0 0 color-mix(in srgb, var(--dominds-primary, #007acc) 40%, transparent);
-        }
-        50% {
-          box-shadow: 0 0 0 8px transparent;
-        }
-      }
+	      .calling-section.highlighted {
+	        /* defined above */
+	      }
+
+	      .message.teammate.highlighted {
+	        animation: highlight-pulse 1s ease-in-out 0s 5;
+	      }
+
+	      @keyframes highlight-inset-pulse {
+	        0%,
+	        100% {
+	          box-shadow: inset 0 0 0 2px
+	            color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+	        }
+	        50% {
+	          box-shadow: inset 0 0 0 5px transparent;
+	        }
+	      }
+
+	      @keyframes highlight-pulse {
+	        0%, 100% {
+	          box-shadow: 0 0 0 3px color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+	        }
+	        50% {
+	          box-shadow: 0 0 0 14px transparent;
+	        }
+	      }
 
     `;
   }

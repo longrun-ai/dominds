@@ -4,7 +4,10 @@
  * Used inline between conversation and input area
  */
 
+import { getUiStrings } from '../i18n/ui';
+import type { LanguageCode } from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
+import { renderDomindsMarkdown } from './dominds-markdown-render';
 
 interface Q4HPanelProps {
   /** Total question count */
@@ -14,6 +17,7 @@ interface Q4HPanelProps {
 }
 
 export class DomindsQ4HPanel extends HTMLElement {
+  private uiLanguage: LanguageCode = 'en';
   private props: Q4HPanelProps = {
     count: 0,
     dialogContexts: [],
@@ -26,7 +30,21 @@ export class DomindsQ4HPanel extends HTMLElement {
     this.attachShadow({ mode: 'open' });
   }
 
+  static get observedAttributes(): string[] {
+    return ['ui-language'];
+  }
+
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+    if (oldValue === newValue) return;
+    if (name !== 'ui-language') return;
+    const next = (newValue ?? '').trim();
+    this.uiLanguage = next === 'zh' ? 'zh' : 'en';
+    this.render();
+  }
+
   connectedCallback(): void {
+    const langAttr = (this.getAttribute('ui-language') ?? '').trim();
+    this.uiLanguage = langAttr === 'zh' ? 'zh' : 'en';
     this.render();
   }
 
@@ -65,6 +83,7 @@ export class DomindsQ4HPanel extends HTMLElement {
           rootId: dialogContext.rootId,
           course: question.callSiteRef.course,
           messageIndex: question.callSiteRef.messageIndex,
+          callId: question.callId,
         },
         bubbles: true,
         composed: true,
@@ -76,12 +95,12 @@ export class DomindsQ4HPanel extends HTMLElement {
     const wasExpanded = this.expandedQuestions.has(questionId);
     if (wasExpanded) {
       this.expandedQuestions.delete(questionId);
-      this.render();
+      this.applyExpandedUi(questionId);
       return;
     }
 
     this.expandedQuestions.add(questionId);
-    this.render();
+    this.applyExpandedUi(questionId);
     this.dispatchEvent(
       new CustomEvent('q4h-question-expanded', {
         detail: { questionId },
@@ -89,6 +108,26 @@ export class DomindsQ4HPanel extends HTMLElement {
         composed: true,
       }),
     );
+  }
+
+  public setSelectedQuestionIdFromApp(questionId: string | null): void {
+    if (questionId === this.selectedQuestionId) return;
+    this.selectedQuestionId = questionId;
+    if (typeof questionId === 'string' && questionId.trim() !== '') {
+      this.expandedQuestions.add(questionId);
+      this.applyExpandedUi(questionId);
+    }
+    this.applySelectionUi();
+  }
+
+  private applyExpandedUi(questionId: string): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const card = root.querySelector(
+      `.q4h-question-card[data-question-id="${CSS.escape(questionId)}"]`,
+    );
+    if (!(card instanceof HTMLElement)) return;
+    card.classList.toggle('expanded', this.expandedQuestions.has(questionId));
   }
 
   private applySelectionUi(): void {
@@ -118,7 +157,7 @@ export class DomindsQ4HPanel extends HTMLElement {
    * Dispatches event for parent component to handle the selection
    */
   private selectQuestion(question: HumanQuestion, dialogContext: Q4HDialogContext): void {
-    const wasSelected = this.selectedQuestionId !== null;
+    const prevSelectedId = this.selectedQuestionId;
     // Toggle selection: if already selected, deselect it
     if (this.selectedQuestionId === question.id) {
       this.selectedQuestionId = null;
@@ -126,15 +165,18 @@ export class DomindsQ4HPanel extends HTMLElement {
       this.selectedQuestionId = question.id;
     }
 
-    if (!wasSelected && this.selectedQuestionId === question.id) {
+    if (this.selectedQuestionId === question.id) {
+      const wasExpanded = this.expandedQuestions.has(question.id);
       this.expandedQuestions.add(question.id);
-      this.dispatchEvent(
-        new CustomEvent('q4h-question-expanded', {
-          detail: { questionId: question.id },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      if (!wasExpanded || prevSelectedId !== question.id) {
+        this.dispatchEvent(
+          new CustomEvent('q4h-question-expanded', {
+            detail: { questionId: question.id },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
     }
     this.applySelectionUi();
 
@@ -229,12 +271,15 @@ export class DomindsQ4HPanel extends HTMLElement {
     // Go to call site button handlers
     this.shadowRoot.querySelectorAll('.q4h-goto-site-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const target = e.currentTarget as HTMLElement;
         const questionId = target.getAttribute('data-question-id');
         const dialogId = target.getAttribute('data-dialog-id');
         const rootId = target.getAttribute('data-root-id');
         const course = target.getAttribute('data-course');
         const messageIndex = target.getAttribute('data-message-index');
+        const callId = target.getAttribute('data-call-id');
 
         if (questionId && dialogId && rootId && course && messageIndex) {
           this.dispatchEvent(
@@ -245,12 +290,83 @@ export class DomindsQ4HPanel extends HTMLElement {
                 rootId,
                 course: parseInt(course, 10),
                 messageIndex: parseInt(messageIndex, 10),
+                callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
               },
               bubbles: true,
               composed: true,
             }),
           );
         }
+      });
+    });
+
+    // Open external deep link to call site (new tab/window)
+    this.shadowRoot.querySelectorAll('.q4h-open-external-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = e.currentTarget as HTMLElement;
+        const questionId = target.getAttribute('data-question-id');
+        const dialogId = target.getAttribute('data-dialog-id');
+        const rootId = target.getAttribute('data-root-id');
+        const course = target.getAttribute('data-course');
+        const messageIndex = target.getAttribute('data-message-index');
+        const callId = target.getAttribute('data-call-id');
+
+        if (!questionId || !dialogId || !rootId || !course || !messageIndex) return;
+        const parsedCourse = Number.parseInt(course, 10);
+        const parsedMsg = Number.parseInt(messageIndex, 10);
+        if (!Number.isFinite(parsedCourse) || !Number.isFinite(parsedMsg)) return;
+
+        this.dispatchEvent(
+          new CustomEvent('q4h-open-external', {
+            detail: {
+              questionId,
+              dialogId,
+              rootId,
+              course: parsedCourse,
+              messageIndex: parsedMsg,
+              callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
+            },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      });
+    });
+
+    // Share/copy deep link (do NOT open a new tab/window)
+    this.shadowRoot.querySelectorAll('.q4h-share-link-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = e.currentTarget as HTMLElement;
+        const questionId = target.getAttribute('data-question-id');
+        const dialogId = target.getAttribute('data-dialog-id');
+        const rootId = target.getAttribute('data-root-id');
+        const course = target.getAttribute('data-course');
+        const messageIndex = target.getAttribute('data-message-index');
+        const callId = target.getAttribute('data-call-id');
+
+        if (!questionId || !dialogId || !rootId || !course || !messageIndex) return;
+        const parsedCourse = Number.parseInt(course, 10);
+        const parsedMsg = Number.parseInt(messageIndex, 10);
+        if (!Number.isFinite(parsedCourse) || !Number.isFinite(parsedMsg)) return;
+
+        this.dispatchEvent(
+          new CustomEvent('q4h-share-link', {
+            detail: {
+              questionId,
+              dialogId,
+              rootId,
+              course: parsedCourse,
+              messageIndex: parsedMsg,
+              callId: callId && callId.trim() !== '' ? callId.trim() : undefined,
+            },
+            bubbles: true,
+            composed: true,
+          }),
+        );
       });
     });
   }
@@ -368,10 +484,15 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-expand-icon {
-        font-size: 10px;
         color: var(--color-fg-tertiary, #64748b);
         transition: transform 0.2s ease;
         width: 16px;
+        height: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        transform-origin: 50% 50%;
         flex-shrink: 0;
       }
 
@@ -420,6 +541,14 @@ export class DomindsQ4HPanel extends HTMLElement {
         min-width: 0;
       }
 
+      .q4h-question-actions-top {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: auto;
+        flex-shrink: 0;
+      }
+
       .q4h-question-origin {
         white-space: nowrap;
       }
@@ -462,53 +591,96 @@ export class DomindsQ4HPanel extends HTMLElement {
         }
       }
 
-      .q4h-question-call {
+      .q4h-tellask {
         margin-top: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .q4h-question-call-headline {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
         font-size: 12px;
-        color: var(--color-fg-primary, #0f172a);
+        color: var(--color-fg-secondary, #334155);
         background: var(--color-bg-tertiary, #f8fafc);
         border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 6px;
-        padding: 6px 8px;
-        white-space: pre-wrap;
+        border-radius: 8px;
+        padding: 10px 10px;
       }
 
-      .q4h-question-call-body {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-        font-size: 12px;
-        color: var(--color-fg-secondary, #475569);
-        background: var(--color-bg-tertiary, #f8fafc);
-        border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 6px;
-        padding: 8px;
+      .q4h-tellask-headline,
+      .q4h-tellask-body {
+        white-space: normal;
+        word-break: break-word;
+      }
+
+      .q4h-tellask-headline p,
+      .q4h-tellask-body p {
         margin: 0;
-        white-space: pre-wrap;
+      }
+
+      .q4h-tellask-headline pre,
+      .q4h-tellask-body pre {
+        margin: 8px 0 0 0;
+      }
+
+      .q4h-tellask-sep {
+        border: none;
+        border-top: 1px solid var(--color-border-primary, #e2e8f0);
+        margin: 8px 0;
       }
 
       .q4h-goto-site-btn {
-        margin-top: 12px;
-        padding: 8px 14px;
-        background: var(--color-accent-primary, #007acc);
-        color: white;
-        border: none;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--color-fg-tertiary, #64748b);
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all 0.15s ease;
       }
 
-      .q4h-goto-site-btn:hover {
-        background: color-mix(in srgb, var(--color-accent-primary, #007acc) 85%, black);
+      .q4h-open-external-btn {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--color-fg-tertiary, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .q4h-share-link-btn {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--color-fg-tertiary, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .q4h-goto-site-btn:hover,
+      .q4h-open-external-btn:hover,
+      .q4h-share-link-btn:hover {
+        border-color: var(--color-border-primary, #e2e8f0);
+        background: var(--color-bg-tertiary, #f8fafc);
+        color: var(--color-fg-secondary, #475569);
+      }
+
+      .q4h-goto-site-btn:focus-visible,
+      .q4h-open-external-btn:focus-visible,
+      .q4h-share-link-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--color-fg-tertiary, #64748b) 70%, transparent);
+        outline-offset: 2px;
       }
 
     `;
@@ -555,6 +727,7 @@ export class DomindsQ4HPanel extends HTMLElement {
     const isSelected = this.selectedQuestionId === question.id;
     const expandedClass = isExpanded ? 'expanded' : '';
     const selectedClass = isSelected ? 'selected' : '';
+    const t = getUiStrings(this.uiLanguage);
 
     return `
       <div class="q4h-question-card ${expandedClass} ${selectedClass}" data-question-id="${question.id}" data-dialog-id="${dialogContext.selfId}" data-root-id="${dialogContext.rootId}" data-agent-id="${dialogContext.agentId}" data-asked-at="${question.askedAt}">
@@ -562,7 +735,11 @@ export class DomindsQ4HPanel extends HTMLElement {
           <span class="q4h-checkbox">
             <span class="q4h-checkbox-check">✓</span>
           </span>
-          <span class="q4h-expand-icon">▶</span>
+          <span class="q4h-expand-icon" aria-hidden="true">
+            <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" focusable="false">
+              <polygon points="3,2 3,10 10,6"></polygon>
+            </svg>
+          </span>
           <span class="q4h-question-title">
             <span class="q4h-question-origin">@${this.escapeHtml(dialogContext.agentId)}</span>
             <span class="q4h-question-origin-sep">•</span>
@@ -570,22 +747,67 @@ export class DomindsQ4HPanel extends HTMLElement {
             <span class="q4h-question-origin-sep">•</span>
             <span class="q4h-question-origin-asked-at">${this.escapeHtml(question.askedAt)}</span>
           </span>
+          <span class="q4h-question-actions-top">
+            <button
+              class="q4h-goto-site-btn"
+              type="button"
+              title="${this.escapeHtml(t.q4hGoToCallSiteTitle)}"
+              aria-label="${this.escapeHtml(t.q4hGoToCallSiteTitle)}"
+              data-question-id="${question.id}"
+              data-dialog-id="${dialogContext.selfId}"
+              data-root-id="${dialogContext.rootId}"
+              data-course="${question.callSiteRef.course}"
+              data-message-index="${question.callSiteRef.messageIndex}"
+              data-call-id="${this.escapeHtml(question.callId ?? '')}"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 19V5"></path>
+                <path d="m5 12 7-7 7 7"></path>
+              </svg>
+            </button>
+            <button
+              class="q4h-open-external-btn"
+              type="button"
+              title="${this.escapeHtml(t.q4hOpenInNewTabTitle)}"
+              aria-label="${this.escapeHtml(t.q4hOpenInNewTabTitle)}"
+              data-question-id="${question.id}"
+              data-dialog-id="${dialogContext.selfId}"
+              data-root-id="${dialogContext.rootId}"
+              data-course="${question.callSiteRef.course}"
+              data-message-index="${question.callSiteRef.messageIndex}"
+              data-call-id="${this.escapeHtml(question.callId ?? '')}"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 3h7v7"></path>
+                <path d="M10 14L21 3"></path>
+                <path d="M21 14v7H3V3h7"></path>
+              </svg>
+            </button>
+            <button
+              class="q4h-share-link-btn"
+              type="button"
+              title="${this.escapeHtml(t.q4hCopyLinkTitle)}"
+              aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}"
+              data-question-id="${question.id}"
+              data-dialog-id="${dialogContext.selfId}"
+              data-root-id="${dialogContext.rootId}"
+              data-course="${question.callSiteRef.course}"
+              data-message-index="${question.callSiteRef.messageIndex}"
+              data-call-id="${this.escapeHtml(question.callId ?? '')}"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
+                <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1"></path>
+              </svg>
+            </button>
+          </span>
         </div>
         <div class="q4h-question-body">
-          <div class="q4h-question-call">
-            <code class="q4h-question-call-headline">${this.escapeHtml(question.tellaskHead)}</code>
-            <pre class="q4h-question-call-body">${this.escapeHtml(question.bodyContent)}</pre>
+          <div class="q4h-tellask">
+            <div class="q4h-tellask-headline">${renderDomindsMarkdown(question.tellaskHead, { kind: 'chat' })}</div>
+            <hr class="q4h-tellask-sep" />
+            <div class="q4h-tellask-body">${renderDomindsMarkdown(question.bodyContent, { kind: 'chat' })}</div>
           </div>
-          <button
-            class="q4h-goto-site-btn"
-            data-question-id="${question.id}"
-            data-dialog-id="${dialogContext.selfId}"
-            data-root-id="${dialogContext.rootId}"
-            data-course="${question.callSiteRef.course}"
-            data-message-index="${question.callSiteRef.messageIndex}"
-          >
-            Go to call site →
-          </button>
         </div>
       </div>
     `;

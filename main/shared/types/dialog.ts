@@ -220,6 +220,7 @@ export interface NewQ4HAskedEvent {
     tellaskHead: string;
     bodyContent: string;
     askedAt: string;
+    callId?: string;
     callSiteRef: {
       course: number;
       messageIndex: number;

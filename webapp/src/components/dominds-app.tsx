@@ -93,7 +93,32 @@ type AuthState =
   | { kind: 'active'; source: 'url' | 'localStorage' | 'manual'; key: string }
   | { kind: 'prompt'; reason: 'missing' | 'rejected' | 'ws_rejected'; hadUrlAuth: boolean };
 
+type DeepLinkIntent =
+  | {
+      kind: 'q4h';
+      questionId: string;
+      rootId?: string;
+      selfId?: string;
+      course?: number;
+      messageIndex?: number;
+      callId?: string;
+    }
+  | { kind: 'callsite'; rootId: string; selfId: string; course: number; callId: string }
+  | { kind: 'genseq'; rootId: string; selfId: string; course: number; genseq: number };
+
+type ToastKind = 'error' | 'warning' | 'info';
+
+type ToastHistoryEntry = {
+  id: string;
+  timestamp: string;
+  kind: ToastKind;
+  message: string;
+};
+
 export class DomindsApp extends HTMLElement {
+  private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
+  private static readonly TOAST_HISTORY_MAX = 200;
+
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
   private connectionState: ConnectionState = this.wsManager.getConnectionState();
@@ -132,11 +157,19 @@ export class DomindsApp extends HTMLElement {
   private uiLanguageMenuOpen: boolean = false;
   private _uiLanguageMenuGlobalCancel?: () => void;
   private bootInFlight: boolean = false;
+  private deepLinkInFlight: boolean = false;
+  private pendingDeepLink: DeepLinkIntent | null = null;
+  private pendingDeepLinkQ4HSelectionQuestionId: string | null = null;
 
   // rtws Problems
   private problemsVersion: number = 0;
   private problems: WorkspaceProblem[] = [];
   private problemsPanelOpen: boolean = false;
+
+  // Toast history (persisted in localStorage)
+  private toastHistory: ToastHistoryEntry[] = [];
+  private toastHistoryOpen: boolean = false;
+  private toastHistorySeq: number = 0;
 
   // Tools Registry (snapshot)
   private toolsRegistryTimestamp: string = '';
@@ -291,6 +324,21 @@ export class DomindsApp extends HTMLElement {
     );
   }
 
+  private get q4hPanel(): DomindsQ4HPanel | null {
+    return (
+      (this.shadowRoot?.querySelector('#q4h-panel') as DomindsQ4HPanel | null | undefined) ?? null
+    );
+  }
+
+  private ensureBottomPanelQ4HOpen(): void {
+    if (this.bottomPanelExpanded && this.bottomPanelTab === 'q4h') return;
+    const btn = this.shadowRoot?.querySelector(
+      'button.bp-tab[data-bp-tab="q4h"]',
+    ) as HTMLButtonElement | null;
+    if (!btn) return;
+    btn.click();
+  }
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -323,6 +371,32 @@ export class DomindsApp extends HTMLElement {
 
     const themeBtn = this.shadowRoot.querySelector('#theme-toggle-btn') as HTMLButtonElement | null;
     if (themeBtn) themeBtn.title = t.themeToggleTitle;
+
+    const toastHistoryBtn = this.shadowRoot.querySelector(
+      '#toast-history-btn',
+    ) as HTMLButtonElement | null;
+    if (toastHistoryBtn) {
+      toastHistoryBtn.title = t.toastHistoryButtonTitle;
+      toastHistoryBtn.setAttribute('aria-label', t.toastHistoryButtonTitle);
+    }
+
+    const toastHistoryTitle = this.shadowRoot.querySelector(
+      '#toast-history-title',
+    ) as HTMLElement | null;
+    if (toastHistoryTitle) toastHistoryTitle.textContent = t.toastHistoryTitle;
+
+    const toastHistoryModal = this.shadowRoot.querySelector(
+      '#toast-history-modal',
+    ) as HTMLElement | null;
+    if (toastHistoryModal) toastHistoryModal.setAttribute('aria-label', t.toastHistoryTitle);
+
+    const toastHistoryClear = this.shadowRoot.querySelector(
+      '#toast-history-clear',
+    ) as HTMLButtonElement | null;
+    if (toastHistoryClear) {
+      toastHistoryClear.title = t.toastHistoryClearTitle;
+      toastHistoryClear.setAttribute('aria-label', t.toastHistoryClearTitle);
+    }
 
     const activityBar = this.shadowRoot.querySelector('.activity-bar') as HTMLElement | null;
     if (activityBar) activityBar.setAttribute('aria-label', t.activityBarAriaLabel);
@@ -423,6 +497,9 @@ export class DomindsApp extends HTMLElement {
     ) as HTMLElement | null;
     if (dialogContainer) dialogContainer.setAttribute('ui-language', this.uiLanguage);
 
+    const q4hPanel = this.shadowRoot.querySelector('#q4h-panel') as HTMLElement | null;
+    if (q4hPanel) q4hPanel.setAttribute('ui-language', this.uiLanguage);
+
     const runningList = this.shadowRoot.querySelector('#running-dialog-list');
     if (runningList instanceof RunningDialogList) {
       runningList.setProps({ uiLanguage: this.uiLanguage });
@@ -509,6 +586,7 @@ export class DomindsApp extends HTMLElement {
     this.updateAuthModalText();
     this.updateToolsRegistryUi();
     this.updateContextHealthUi();
+    this.updateToastHistoryUi();
   }
 
   private applyUiLanguageSelectDecorations(t: ReturnType<typeof getUiStrings>): void {
@@ -838,6 +916,8 @@ export class DomindsApp extends HTMLElement {
   connectedCallback(): void {
     this.initializeTheme();
     this.initializeAuth();
+    this.loadToastHistoryFromStorage();
+    this.pendingDeepLink = this.parseDeepLinkFromUrl();
     this.initialRender();
     this.setupEventListeners();
     void this.bootstrap();
@@ -1811,13 +1891,122 @@ export class DomindsApp extends HTMLElement {
         transform: scale(1.05);
       }
 
-      .theme-toggle:active {
-        transform: scale(0.95);
-      }
+	      .theme-toggle:active {
+	        transform: scale(0.95);
+	      }
+	
+	      .toast-history-modal {
+	        position: fixed;
+	        inset: 0;
+	        z-index: 4100;
+	        display: flex;
+	        align-items: flex-start;
+	        justify-content: center;
+	        padding: 64px 16px 16px;
+	        background: rgba(0, 0, 0, 0.35);
+	      }
+	
+	      .toast-history-modal.hidden {
+	        display: none;
+	      }
+	
+	      .toast-history-panel {
+	        width: min(860px, calc(100vw - 32px));
+	        max-height: calc(100vh - 96px);
+	        background: var(--dominds-bg, #ffffff);
+	        border: 1px solid var(--dominds-border, #e0e0e0);
+	        border-radius: 12px;
+	        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+	        overflow: hidden;
+	        display: flex;
+	        flex-direction: column;
+	      }
+	
+	      .toast-history-header {
+	        display: flex;
+	        align-items: center;
+	        justify-content: space-between;
+	        gap: 12px;
+	        padding: 10px 12px;
+	        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
+	      }
+	
+	      .toast-history-title {
+	        font-size: 13px;
+	        font-weight: 600;
+	        color: var(--dominds-fg, #333333);
+	      }
+	
+	      .toast-history-actions {
+	        display: inline-flex;
+	        gap: 8px;
+	        align-items: center;
+	      }
+	
+	      .toast-history-actions button {
+	        width: 32px;
+	        height: 32px;
+	        border: 1px solid var(--dominds-border, #e0e0e0);
+	        border-radius: 8px;
+	        background: var(--dominds-bg, #ffffff);
+	        color: var(--dominds-fg, #333333);
+	        cursor: pointer;
+	      }
+	
+	      .toast-history-actions button:hover {
+	        background: var(--dominds-hover, #f0f0f0);
+	      }
+	
+	      .toast-history-list {
+	        padding: 10px 12px;
+	        overflow: auto;
+	        font-size: 12px;
+	        color: var(--dominds-fg, #333333);
+	      }
+	
+	      .toast-history-empty {
+	        color: var(--dominds-muted, #666666);
+	        font-size: 12px;
+	        padding: 12px 2px;
+	      }
+	
+	      .toast-history-item {
+	        display: flex;
+	        gap: 10px;
+	        padding: 8px 0;
+	        border-bottom: 1px dashed color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
+	      }
+	
+	      .toast-history-item:last-child {
+	        border-bottom: none;
+	      }
+	
+	      .toast-history-icon {
+	        width: 18px;
+	        flex-shrink: 0;
+	        text-align: center;
+	        margin-top: 2px;
+	      }
+	
+	      .toast-history-body {
+	        min-width: 0;
+	        flex: 1;
+	      }
+	
+	      .toast-history-message {
+	        white-space: pre-wrap;
+	        word-break: break-word;
+	      }
+	
+	      .toast-history-meta {
+	        margin-top: 2px;
+	        color: var(--dominds-muted, #666666);
+	        font-size: 11px;
+	      }
 
-      .main-content {
-        display: flex;
-        flex: 1;
+	      .main-content {
+	        display: flex;
+	        flex: 1;
         overflow: hidden;
       }
 
@@ -3067,42 +3256,62 @@ export class DomindsApp extends HTMLElement {
                 <span>${String(this.resumableDialogsCount)}</span>
               </button>
             </div>
-	            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
-	              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
-	              <span>${String(this.problems.length)}</span>
+		            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
+		              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
+		              <span>${String(this.problems.length)}</span>
+		            </button>
+		            <button class="header-pill-button" id="toast-history-btn" title="${t.toastHistoryButtonTitle}" aria-label="${t.toastHistoryButtonTitle}">
+		              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+		                <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2 5h6v2H9V8zm0 4h6v2H9v-2zm0 4h6v2H9v-2z"></path>
+		              </svg>
+		            </button>
+		            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
+	            <div class="ui-language-menu">
+	              <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
+	                <span id="ui-language-menu-button-label">${uiLanguageButtonLabel}</span>
+	                <span class="ui-language-menu-button-caret">▾</span>
+	              </button>
+	              <div id="ui-language-menu" class="ui-language-menu-popover" role="menu" hidden>
+	                ${uiLanguageMenuItems}
+	              </div>
+	            </div>
+	            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}">
+	              ${this.currentTheme === 'light' ? '🌙' : '☀️'}
 	            </button>
-	            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
-            <div class="ui-language-menu">
-              <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
-                <span id="ui-language-menu-button-label">${uiLanguageButtonLabel}</span>
-                <span class="ui-language-menu-button-caret">▾</span>
-              </button>
-              <div id="ui-language-menu" class="ui-language-menu-popover" role="menu" hidden>
-                ${uiLanguageMenuItems}
-              </div>
-            </div>
-            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}">
-              ${this.currentTheme === 'light' ? '🌙' : '☀️'}
-            </button>
-          </div>
-        </header>
+	          </div>
+	        </header>
 
-        <div id="problems-panel" class="problems-panel ${this.problemsPanelOpen ? '' : 'hidden'}" role="dialog" aria-label="${t.problemsTitle}">
-          <div class="problems-panel-header">
-            <div class="problems-panel-title">${t.problemsTitle}</div>
-            <div class="problems-panel-actions">
-              <button type="button" id="problems-refresh" title="Refresh">↻</button>
-              <button type="button" id="problems-close" title="${t.close}">✕</button>
-            </div>
-          </div>
-          <div id="problems-list" class="problems-list">
-            ${this.renderProblemsListHtml()}
-          </div>
-        </div>
+	        <div id="problems-panel" class="problems-panel ${this.problemsPanelOpen ? '' : 'hidden'}" role="dialog" aria-label="${t.problemsTitle}">
+	          <div class="problems-panel-header">
+	            <div class="problems-panel-title">${t.problemsTitle}</div>
+	            <div class="problems-panel-actions">
+	              <button type="button" id="problems-refresh" title="Refresh">↻</button>
+	              <button type="button" id="problems-close" title="${t.close}">✕</button>
+	            </div>
+	          </div>
+	          <div id="problems-list" class="problems-list">
+	            ${this.renderProblemsListHtml()}
+	          </div>
+	        </div>
 
-        <div class="main-content">
-          <aside class="sidebar">
-            <div class="activity-bar" role="toolbar" aria-label="${t.activityBarAriaLabel}">
+	        <div id="toast-history-modal" class="toast-history-modal ${this.toastHistoryOpen ? '' : 'hidden'}" role="dialog" aria-label="${t.toastHistoryTitle}">
+	          <div class="toast-history-panel">
+	            <div class="toast-history-header">
+	              <div id="toast-history-title" class="toast-history-title">${t.toastHistoryTitle}</div>
+	              <div class="toast-history-actions">
+	                <button type="button" id="toast-history-clear" title="${t.toastHistoryClearTitle}" aria-label="${t.toastHistoryClearTitle}">🗑️</button>
+	                <button type="button" id="toast-history-close" title="${t.close}" aria-label="${t.close}">✕</button>
+	              </div>
+	            </div>
+	            <div id="toast-history-list" class="toast-history-list">
+	              ${this.renderToastHistoryListHtml()}
+	            </div>
+	          </div>
+	        </div>
+
+	        <div class="main-content">
+	          <aside class="sidebar">
+	            <div class="activity-bar" role="toolbar" aria-label="${t.activityBarAriaLabel}">
               <button class="activity-button icon-button" data-activity="running" aria-label="${t.activityRunning}" aria-pressed="true" title="${t.activityRunning}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
               </button>
@@ -3232,7 +3441,7 @@ export class DomindsApp extends HTMLElement {
 	                <div class="bottom-panel-content" id="bottom-panel-content">
 	                  <div class="bp-content bp-q4h ${this.bottomPanelTab === 'q4h' ? '' : 'hidden'}">
 	                    <div class="bp-q4h-empty ${this.q4hQuestionCount === 0 ? '' : 'hidden'}">${t.q4hNoPending}</div>
-	                    <dominds-q4h-panel id="q4h-panel" class="${this.q4hQuestionCount === 0 ? 'hidden' : ''}"></dominds-q4h-panel>
+	                    <dominds-q4h-panel id="q4h-panel" ui-language="${this.uiLanguage}" class="${this.q4hQuestionCount === 0 ? 'hidden' : ''}"></dominds-q4h-panel>
 	                  </div>
 	                  <div class="bp-content bp-diligence ${this.bottomPanelTab === 'diligence' ? '' : 'hidden'}">
 	                    <div class="bp-diligence-row">
@@ -3442,11 +3651,91 @@ export class DomindsApp extends HTMLElement {
         rootId: string;
         course: number;
         messageIndex: number;
+        callId?: string;
       }>;
-      const { questionId, dialogId, rootId, course, messageIndex } = ce.detail || {};
+      const { questionId, dialogId, rootId, course, messageIndex, callId } = ce.detail || {};
       if (questionId && dialogId && rootId) {
-        this.navigateToQ4HCallSite(questionId, dialogId, rootId, course, messageIndex);
+        this.navigateToQ4HCallSite(questionId, dialogId, rootId, course, messageIndex, callId);
       }
+    });
+
+    // Q4H external deep link (open in new tab/window + copy URL)
+    this.shadowRoot.addEventListener('q4h-open-external', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+
+      const questionId = typeof detail['questionId'] === 'string' ? detail['questionId'] : '';
+      const dialogId = typeof detail['dialogId'] === 'string' ? detail['dialogId'] : '';
+      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
+      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
+      const messageIndex =
+        typeof detail['messageIndex'] === 'number' ? detail['messageIndex'] : Number.NaN;
+      const callId = typeof detail['callId'] === 'string' ? detail['callId'] : '';
+
+      if (!questionId || !dialogId || !rootId) return;
+      if (!Number.isFinite(course) || !Number.isFinite(messageIndex)) return;
+
+      const url = new URL(window.location.href);
+      // Preserve auth and other non-deeplink params; override only deeplink keys.
+      url.searchParams.delete('rootId');
+      url.searchParams.delete('selfId');
+      url.searchParams.delete('course');
+      url.searchParams.delete('msg');
+      url.searchParams.delete('callId');
+      url.searchParams.delete('genseq');
+      url.searchParams.delete('qid');
+      url.hash = '';
+      url.pathname = `/dl/q4h`;
+      url.searchParams.set('qid', questionId);
+      url.searchParams.set('rootId', rootId);
+      url.searchParams.set('selfId', dialogId);
+      url.searchParams.set('course', String(Math.floor(course)));
+      url.searchParams.set('msg', String(Math.floor(messageIndex)));
+      if (callId.trim() !== '') url.searchParams.set('callId', callId.trim());
+
+      const urlStr = url.toString();
+      const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+      if (w) w.opener = null;
+    });
+
+    // Q4H share link (copy URL only)
+    this.shadowRoot.addEventListener('q4h-share-link', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+
+      const questionId = typeof detail['questionId'] === 'string' ? detail['questionId'] : '';
+      const dialogId = typeof detail['dialogId'] === 'string' ? detail['dialogId'] : '';
+      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
+      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
+      const messageIndex =
+        typeof detail['messageIndex'] === 'number' ? detail['messageIndex'] : Number.NaN;
+      const callId = typeof detail['callId'] === 'string' ? detail['callId'] : '';
+
+      if (!questionId || !dialogId || !rootId) return;
+      if (!Number.isFinite(course) || !Number.isFinite(messageIndex)) return;
+
+      const url = new URL(window.location.href);
+      url.searchParams.delete('rootId');
+      url.searchParams.delete('selfId');
+      url.searchParams.delete('course');
+      url.searchParams.delete('msg');
+      url.searchParams.delete('callId');
+      url.searchParams.delete('genseq');
+      url.searchParams.delete('qid');
+      url.hash = '';
+      url.pathname = `/dl/q4h`;
+      url.searchParams.set('qid', questionId);
+      url.searchParams.set('rootId', rootId);
+      url.searchParams.set('selfId', dialogId);
+      url.searchParams.set('course', String(Math.floor(course)));
+      url.searchParams.set('msg', String(Math.floor(messageIndex)));
+      if (callId.trim() !== '') url.searchParams.set('callId', callId.trim());
+
+      void this.copyLinkToClipboardWithToast(url.toString());
     });
 
     // Q4H selection event from the inline panel - keeps q4h-input selection in sync so answers
@@ -3486,6 +3775,29 @@ export class DomindsApp extends HTMLElement {
           if (current && current === input) current.focusInput();
         }, 100);
       }
+    });
+
+    // Call-site navigation requests from dialog bubbles (internal link icon).
+    this.shadowRoot.addEventListener('navigate-callsite', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
+      const selfId = typeof detail['selfId'] === 'string' ? detail['selfId'] : '';
+      const callId = typeof detail['callId'] === 'string' ? detail['callId'] : '';
+      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
+      if (!rootId || !selfId || !callId) return;
+      if (!Number.isFinite(course)) return;
+
+      this.pendingDeepLink = {
+        kind: 'callsite',
+        rootId: rootId.trim(),
+        selfId: selfId.trim(),
+        course: Math.floor(course),
+        callId: callId.trim(),
+      };
+      void this.applyPendingDeepLink();
     });
 
     // ========== Delegated Click Handlers ==========
@@ -3781,6 +4093,38 @@ export class DomindsApp extends HTMLElement {
       themeToggleBtn.addEventListener('click', (e) => {
         e.preventDefault();
         this.toggleTheme();
+      });
+    }
+
+    // Toast history modal
+    const toastHistoryBtn = this.shadowRoot.querySelector('#toast-history-btn');
+    if (toastHistoryBtn) {
+      toastHistoryBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.setToastHistoryOpen(!this.toastHistoryOpen);
+      });
+    }
+
+    const toastHistoryClose = this.shadowRoot.querySelector('#toast-history-close');
+    if (toastHistoryClose) {
+      toastHistoryClose.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.setToastHistoryOpen(false);
+      });
+    }
+
+    const toastHistoryClear = this.shadowRoot.querySelector('#toast-history-clear');
+    if (toastHistoryClear) {
+      toastHistoryClear.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.clearToastHistory();
+      });
+    }
+
+    const toastHistoryModal = this.shadowRoot.querySelector('#toast-history-modal');
+    if (toastHistoryModal) {
+      toastHistoryModal.addEventListener('click', (e) => {
+        if (e.target === toastHistoryModal) this.setToastHistoryOpen(false);
       });
     }
 
@@ -4201,6 +4545,311 @@ export class DomindsApp extends HTMLElement {
       this.loadTeamMembers(),
       this.loadTaskDocuments(),
     ]);
+
+    // If a deep link was provided, attempt to apply it once the essential lists are loaded.
+    void this.applyPendingDeepLink();
+  }
+
+  private parseDeepLinkFromUrl(): DeepLinkIntent | null {
+    const parseOptionalInt = DomindsApp.parseOptionalInt;
+
+    const segs = window.location.pathname
+      .split('/')
+      .map((s) => s.trim())
+      .filter((s) => s !== '');
+    const dlIndex = segs.indexOf('dl');
+    if (dlIndex < 0) return null;
+
+    const kind = segs[dlIndex + 1];
+    if (!kind) return null;
+
+    if (kind === 'callsite') {
+      // /dl/callsite?rootId=...&selfId=...&course=...&callId=...
+      const params = new URLSearchParams(window.location.search);
+      const rootId = (params.get('rootId') ?? '').trim();
+      const selfId = (params.get('selfId') ?? '').trim();
+      const course = parseOptionalInt(params.get('course'));
+      const callId = (params.get('callId') ?? '').trim();
+      if (rootId === '' || selfId === '' || callId === '') return null;
+      if (typeof course !== 'number') return null;
+      return { kind: 'callsite', rootId, selfId, course, callId };
+    }
+
+    if (kind === 'genseq') {
+      // /dl/genseq?rootId=...&selfId=...&course=...&genseq=...
+      const params = new URLSearchParams(window.location.search);
+      const rootId = (params.get('rootId') ?? '').trim();
+      const selfId = (params.get('selfId') ?? '').trim();
+      const course = parseOptionalInt(params.get('course'));
+      const genseq = parseOptionalInt(params.get('genseq'));
+      if (rootId === '' || selfId === '') return null;
+      if (typeof course !== 'number' || typeof genseq !== 'number') return null;
+      return { kind: 'genseq', rootId, selfId, course, genseq };
+    }
+
+    if (kind === 'q4h') {
+      // /dl/q4h?qid=...&rootId=...&selfId=...&course=...&msg=...&callId=...
+      const params = new URLSearchParams(window.location.search);
+      const questionId = (params.get('qid') ?? '').trim();
+      if (questionId === '') return null;
+
+      const rootIdRaw = params.get('rootId');
+      const selfIdRaw = params.get('selfId');
+      const rootId = rootIdRaw && rootIdRaw.trim() !== '' ? rootIdRaw.trim() : undefined;
+      const selfId = selfIdRaw && selfIdRaw.trim() !== '' ? selfIdRaw.trim() : undefined;
+
+      const course = parseOptionalInt(params.get('course'));
+      const messageIndex = parseOptionalInt(params.get('msg'));
+      const callIdRaw = params.get('callId');
+      const callId = callIdRaw && callIdRaw.trim() !== '' ? callIdRaw.trim() : undefined;
+
+      return { kind: 'q4h', questionId, rootId, selfId, course, messageIndex, callId };
+    }
+
+    return null;
+  }
+
+  private static parseOptionalInt(raw: string | null): number | undefined {
+    if (raw === null) return undefined;
+    const trimmed = raw.trim();
+    if (trimmed === '') return undefined;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed)) return undefined;
+    return parsed;
+  }
+
+  private resolvePendingQ4HContext(questionId: string): {
+    rootId: string;
+    selfId: string;
+    course: number;
+    messageIndex: number;
+    callId?: string;
+  } | null {
+    for (const ctx of this.q4hDialogContexts) {
+      for (const q of ctx.questions) {
+        if (q.id !== questionId) continue;
+        return {
+          rootId: ctx.rootId,
+          selfId: ctx.selfId,
+          course: q.callSiteRef.course,
+          messageIndex: q.callSiteRef.messageIndex,
+          callId: q.callId,
+        };
+      }
+    }
+    return null;
+  }
+
+  private buildDialogInfoForIds(rootId: string, selfId: string): DialogInfo | null {
+    const match = this.dialogs.find((d) => {
+      const dSelf = d.selfId ? d.selfId : d.rootId;
+      return d.rootId === rootId && dSelf === selfId;
+    });
+    if (!match) return null;
+    return {
+      selfId,
+      rootId,
+      agentId: match.agentId,
+      agentName: match.agentId,
+      taskDocPath: match.taskDocPath,
+    };
+  }
+
+  private async copyTextToClipboard(text: string): Promise<boolean> {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', 'true');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok === true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async copyLinkToClipboardWithToast(urlStr: string): Promise<void> {
+    const ok = await this.copyTextToClipboard(urlStr);
+    const t = getUiStrings(this.uiLanguage);
+    if (ok) {
+      this.showToast(t.linkCopiedToast, 'info');
+      return;
+    }
+    this.showToast(t.linkCopyFailedToast, 'warning');
+  }
+
+  private applyPendingQ4HSelectionFromDeepLink(): void {
+    const questionId = this.pendingDeepLinkQ4HSelectionQuestionId;
+    if (!questionId) return;
+    const ctx = this.resolvePendingQ4HContext(questionId);
+    if (!ctx) return;
+
+    const input = this.q4hInput;
+    if (!input) return;
+
+    this.ensureBottomPanelQ4HOpen();
+    this.q4hPanel?.setSelectedQuestionIdFromApp(questionId);
+
+    input.setDialog({ selfId: ctx.selfId, rootId: ctx.rootId });
+    input.selectQuestion(questionId);
+    setTimeout(() => input.focusInput(), 100);
+    this.pendingDeepLinkQ4HSelectionQuestionId = null;
+  }
+
+  private async applyPendingDeepLink(): Promise<void> {
+    if (this.deepLinkInFlight) return;
+    const intent = this.pendingDeepLink;
+    if (!intent) return;
+
+    this.deepLinkInFlight = true;
+    try {
+      if (intent.kind === 'callsite') {
+        let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+        if (!dialogInfo) {
+          await this.loadSubdialogsForRoot(intent.rootId);
+          dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+        }
+        if (!dialogInfo) {
+          this.showToast(`Deep link dialog not found: ${intent.selfId}`, 'warning');
+          this.pendingDeepLink = null;
+          return;
+        }
+
+        await this.selectDialog(dialogInfo);
+        const dialogContainer = this.shadowRoot?.querySelector(
+          '#dialog-container',
+        ) as DomindsDialogContainer | null;
+        if (dialogContainer) {
+          await dialogContainer.setCurrentCourse(intent.course);
+          dialogContainer.dispatchEvent(
+            new CustomEvent('scroll-to-call-id', {
+              detail: { course: intent.course, callId: intent.callId },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        }
+
+        this.q4hInput?.focusInput();
+        this.pendingDeepLink = null;
+        return;
+      }
+
+      if (intent.kind === 'genseq') {
+        let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+        if (!dialogInfo) {
+          await this.loadSubdialogsForRoot(intent.rootId);
+          dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+        }
+        if (!dialogInfo) {
+          this.showToast(`Deep link dialog not found: ${intent.selfId}`, 'warning');
+          this.pendingDeepLink = null;
+          return;
+        }
+
+        await this.selectDialog(dialogInfo);
+        const dialogContainer = this.shadowRoot?.querySelector(
+          '#dialog-container',
+        ) as DomindsDialogContainer | null;
+        if (dialogContainer) {
+          await dialogContainer.setCurrentCourse(intent.course);
+          dialogContainer.dispatchEvent(
+            new CustomEvent('scroll-to-genseq', {
+              detail: { course: intent.course, genseq: intent.genseq },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        }
+
+        this.q4hInput?.focusInput();
+        this.pendingDeepLink = null;
+        return;
+      }
+
+      // intent.kind === 'q4h'
+      const resolvedFromState = this.resolvePendingQ4HContext(intent.questionId);
+      const rootId = intent.rootId ?? resolvedFromState?.rootId;
+      const selfId = intent.selfId ?? resolvedFromState?.selfId;
+      const course = intent.course ?? resolvedFromState?.course;
+      const messageIndex = intent.messageIndex ?? resolvedFromState?.messageIndex;
+      const callId = intent.callId ?? resolvedFromState?.callId;
+
+      if (!rootId || !selfId || typeof course !== 'number') {
+        // Not enough information yet. Wait for dialogs/Q4H state to populate.
+        return;
+      }
+
+      let dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
+      if (!dialogInfo) {
+        await this.loadSubdialogsForRoot(rootId);
+        dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
+      }
+      if (!dialogInfo) {
+        this.showToast(`Deep link dialog not found: ${selfId}`, 'warning');
+        this.pendingDeepLink = null;
+        return;
+      }
+
+      await this.selectDialog(dialogInfo);
+      const dialogContainer = this.shadowRoot?.querySelector(
+        '#dialog-container',
+      ) as DomindsDialogContainer | null;
+      if (dialogContainer) {
+        await dialogContainer.setCurrentCourse(course);
+        if (typeof callId === 'string' && callId.trim() !== '') {
+          dialogContainer.dispatchEvent(
+            new CustomEvent('scroll-to-call-id', {
+              detail: { course, callId },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        } else if (typeof messageIndex === 'number') {
+          dialogContainer.dispatchEvent(
+            new CustomEvent('scroll-to-call-site', {
+              detail: { course, messageIndex },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        }
+      }
+
+      const pending = this.resolvePendingQ4HContext(intent.questionId);
+      if (pending) {
+        this.ensureBottomPanelQ4HOpen();
+        this.q4hPanel?.setSelectedQuestionIdFromApp(intent.questionId);
+        const input = this.q4hInput;
+        if (input) {
+          input.setDialog({ selfId: pending.selfId, rootId: pending.rootId });
+          input.selectQuestion(intent.questionId);
+          setTimeout(() => input.focusInput(), 100);
+        }
+      } else if (this.q4hDialogContexts.length === 0) {
+        // If Q4H state isn't loaded yet, try selecting once it arrives.
+        this.ensureBottomPanelQ4HOpen();
+        this.pendingDeepLinkQ4HSelectionQuestionId = intent.questionId;
+        this.wsManager.sendRaw({ type: 'get_q4h_state' });
+        this.q4hInput?.focusInput();
+      } else {
+        // Question is not pending; navigate to call site but keep input in normal mode.
+        this.q4hInput?.focusInput();
+      }
+
+      this.pendingDeepLink = null;
+    } finally {
+      this.deepLinkInFlight = false;
+    }
   }
 
   private async bootstrap(): Promise<void> {
@@ -5901,7 +6550,8 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private showToast(message: string, kind: 'error' | 'warning' | 'info' = 'error'): void {
+  private showToast(message: string, kind: ToastKind = 'error'): void {
+    this.pushToastHistoryEntry({ message, kind });
     if (!this.shadowRoot) return;
     const toast = document.createElement('div');
     const bg =
@@ -5930,7 +6580,110 @@ export class DomindsApp extends HTMLElement {
       <style>@keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }</style>
     `;
     this.shadowRoot.appendChild(toast);
+    toast.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.setToastHistoryOpen(true);
+    });
     setTimeout(() => toast.remove(), 2500);
+  }
+
+  private loadToastHistoryFromStorage(): void {
+    try {
+      const raw = localStorage.getItem(DomindsApp.TOAST_HISTORY_STORAGE_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      const next: ToastHistoryEntry[] = [];
+      for (const item of parsed) {
+        if (typeof item !== 'object' || item === null) continue;
+        const rec = item as Record<string, unknown>;
+        const id = typeof rec['id'] === 'string' ? rec['id'] : '';
+        const timestamp = typeof rec['timestamp'] === 'string' ? rec['timestamp'] : '';
+        const kind = rec['kind'];
+        const message = typeof rec['message'] === 'string' ? rec['message'] : '';
+        if (!id || !timestamp || !message) continue;
+        if (kind !== 'error' && kind !== 'warning' && kind !== 'info') continue;
+        next.push({ id, timestamp, kind, message });
+      }
+
+      this.toastHistory = next.slice(-DomindsApp.TOAST_HISTORY_MAX);
+    } catch (error: unknown) {
+      console.warn('Failed to load toast history from localStorage', error);
+    }
+  }
+
+  private persistToastHistoryToStorage(): void {
+    try {
+      localStorage.setItem(
+        DomindsApp.TOAST_HISTORY_STORAGE_KEY,
+        JSON.stringify(this.toastHistory.slice(-DomindsApp.TOAST_HISTORY_MAX)),
+      );
+    } catch (error: unknown) {
+      console.warn('Failed to persist toast history to localStorage', error);
+    }
+  }
+
+  private pushToastHistoryEntry(entry: { message: string; kind: ToastKind }): void {
+    const now = new Date();
+    const id = `${String(now.getTime())}-${String((this.toastHistorySeq += 1))}`;
+    const trimmed = entry.message.trim();
+    if (trimmed === '') return;
+
+    const next: ToastHistoryEntry = {
+      id,
+      timestamp: now.toISOString(),
+      kind: entry.kind,
+      message: trimmed,
+    };
+    this.toastHistory = [...this.toastHistory.slice(-DomindsApp.TOAST_HISTORY_MAX + 1), next];
+    this.persistToastHistoryToStorage();
+    this.updateToastHistoryUi();
+  }
+
+  private clearToastHistory(): void {
+    this.toastHistory = [];
+    this.persistToastHistoryToStorage();
+    this.updateToastHistoryUi();
+  }
+
+  private setToastHistoryOpen(open: boolean): void {
+    if (this.toastHistoryOpen === open) return;
+    this.toastHistoryOpen = open;
+    this.updateToastHistoryUi();
+  }
+
+  private updateToastHistoryUi(): void {
+    const sr = this.shadowRoot;
+    if (!sr) return;
+    const modal = sr.querySelector('#toast-history-modal') as HTMLElement | null;
+    if (modal) modal.classList.toggle('hidden', !this.toastHistoryOpen);
+    const list = sr.querySelector('#toast-history-list') as HTMLElement | null;
+    if (list) list.innerHTML = this.renderToastHistoryListHtml();
+  }
+
+  private renderToastHistoryListHtml(): string {
+    const t = getUiStrings(this.uiLanguage);
+    if (this.toastHistory.length === 0) {
+      return `<div class="toast-history-empty">${this.escapeHtml(t.toastHistoryEmpty)}</div>`;
+    }
+    const items = this.toastHistory
+      .slice()
+      .reverse()
+      .map((entry) => {
+        const icon = entry.kind === 'error' ? '❌' : entry.kind === 'warning' ? '⚠️' : 'ℹ️';
+        return `
+          <div class="toast-history-item" data-kind="${entry.kind}">
+            <div class="toast-history-icon">${icon}</div>
+            <div class="toast-history-body">
+              <div class="toast-history-message">${this.escapeHtml(entry.message)}</div>
+              <div class="toast-history-meta">${this.escapeHtml(entry.timestamp)}</div>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+    return items;
   }
 
   private showWarning(message: string): void {
@@ -7007,6 +7760,8 @@ export class DomindsApp extends HTMLElement {
 
     // Build dialog contexts and update component
     this.updateQ4HComponent();
+    this.applyPendingQ4HSelectionFromDeepLink();
+    void this.applyPendingDeepLink();
   }
 
   /**
@@ -7083,6 +7838,8 @@ export class DomindsApp extends HTMLElement {
 
     this.q4hQuestions = next;
     this.updateQ4HComponent();
+    this.applyPendingQ4HSelectionFromDeepLink();
+    void this.applyPendingDeepLink();
   }
 
   /**
@@ -7244,6 +8001,7 @@ export class DomindsApp extends HTMLElement {
     rootId: string,
     course: number,
     messageIndex: number,
+    callId?: string,
   ): void {
     // Navigate to the dialog if needed
     if (this.currentDialog?.selfId !== dialogId) {
@@ -7270,7 +8028,11 @@ export class DomindsApp extends HTMLElement {
       // Scroll to call site - dispatch event for dialog container to handle
       dialogContainer.dispatchEvent(
         new CustomEvent('scroll-to-call-site', {
-          detail: { course, messageIndex },
+          detail: {
+            course,
+            messageIndex,
+            callId: typeof callId === 'string' && callId.trim() !== '' ? callId.trim() : undefined,
+          },
           bubbles: true,
           composed: true,
         }),

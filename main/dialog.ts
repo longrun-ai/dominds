@@ -574,7 +574,7 @@ export abstract class Dialog {
     }
 
     // Centralized persistence - called when emitting event.
-    // Must be awaited to avoid overlapping writes (reminders.json.tmp rename races).
+    // Must be awaited to preserve ordering (avoid out-of-date writes winning).
     try {
       await this.dlgStore.persistReminders(this, this.reminders);
     } catch (err) {

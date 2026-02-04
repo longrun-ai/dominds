@@ -315,6 +315,11 @@ export interface HumanQuestion {
   tellaskHead: string;
   bodyContent: string;
   askedAt: string;
+  /**
+   * Optional tellask callId (content hash) when this Q4H originates from an `!?@human` tellask block.
+   * Some system-generated Q4H questions may not have a callId.
+   */
+  callId?: string;
   callSiteRef: {
     course: number;
     messageIndex: number;

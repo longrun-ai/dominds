@@ -38,6 +38,7 @@ import {
   formatDomindsNoteInvalidTellaskSessionDirective,
   formatDomindsNoteMalformedTellaskCall,
   formatDomindsNoteMultipleTellaskSessionDirectives,
+  formatDomindsNoteQ4HRegisterFailed,
   formatDomindsNoteTellaskerNoTellaskSession,
   formatDomindsNoteTellaskerOnlyInSidelineDialog,
   formatDomindsNoteTellaskForTeammatesOnly,
@@ -262,9 +263,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
     },
   };
 
-  const existingQuestions = await DialogPersistence.loadQuestions4HumanState(dlg.id);
-  existingQuestions.push(question);
-  await DialogPersistence._saveQuestions4HumanState(dlg.id, existingQuestions);
+  await DialogPersistence.appendQuestion4HumanState(dlg.id, question);
 
   const newQuestionEvent: NewQ4HAskedEvent = {
     type: 'new_q4h_asked',
@@ -274,6 +273,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
       tellaskHead: question.tellaskHead,
       bodyContent: question.bodyContent,
       askedAt: question.askedAt,
+      callId: question.callId,
       callSiteRef: question.callSiteRef,
       rootId: dlg.id.rootId,
       agentId: dlg.agentId,
@@ -1289,7 +1289,7 @@ export async function checkAndReviveSuspendedDialogs(): Promise<void> {
 
       if (allSatisfied) {
         await withSuspensionStateLock(rootDialog.id, async () => {
-          await DialogPersistence.savePendingSubdialogs(rootDialog.id, []);
+          await DialogPersistence.clearPendingSubdialogs(rootDialog.id);
           await DialogPersistence.setNeedsDrive(rootDialog.id, true, rootDialog.status);
         });
         globalDialogRegistry.markNeedsDrive(rootDialog.id.rootId);
@@ -3195,9 +3195,7 @@ export async function createSubdialogForSupdialog(
 
     // Load existing pending subdialogs and add new one
     await withSuspensionStateLock(supdialog.id, async () => {
-      const existingPending = await DialogPersistence.loadPendingSubdialogs(supdialog.id);
-      existingPending.push(pendingRecord);
-      await DialogPersistence.savePendingSubdialogs(supdialog.id, existingPending);
+      await DialogPersistence.appendPendingSubdialog(supdialog.id, pendingRecord);
     });
 
     // Drive the subdialog asynchronously
@@ -3684,19 +3682,14 @@ async function executeTellaskCall(
         tellaskHead: tellaskHead.trim(),
         bodyContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
+        callId: callId.trim() === '' ? undefined : callId,
         callSiteRef: {
           course: dlg.currentCourse,
           messageIndex: dlg.msgs.length,
         },
       };
 
-      // Load existing questions and add new one
-      const existingQuestions = await DialogPersistence.loadQuestions4HumanState(dlg.id);
-      const previousCount = existingQuestions.length;
-      existingQuestions.push(question);
-
-      // Save to q4h.yaml
-      await DialogPersistence._saveQuestions4HumanState(dlg.id, existingQuestions);
+      await DialogPersistence.appendQuestion4HumanState(dlg.id, question);
 
       // Emit new_q4h_asked event
       const newQuestionEvent: NewQ4HAskedEvent = {
@@ -3707,6 +3700,7 @@ async function executeTellaskCall(
           tellaskHead: question.tellaskHead,
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,
+          callId: question.callId,
           callSiteRef: question.callSiteRef,
           rootId: dlg.id.rootId,
           agentId: dlg.agentId,
@@ -3720,12 +3714,24 @@ async function executeTellaskCall(
       return { toolOutputs, suspend: true, subdialogsCreated: [] };
     } catch (q4hErr: unknown) {
       const errMsg = q4hErr instanceof Error ? q4hErr.message : String(q4hErr);
-      const errStack = q4hErr instanceof Error ? q4hErr.stack : '';
       log.error('Q4H: Failed to register question', q4hErr, {
         dialogId: dlg.id.selfId,
         tellaskHead: tellaskHead.substring(0, 100),
       });
-      // Don't throw - allow fallback to "Unknown call" handler
+
+      const msg = formatDomindsNoteQ4HRegisterFailed(getWorkLanguage(), { error: errMsg });
+      toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+      toolOutputs.push({
+        type: 'tellask_result_msg',
+        role: 'tool',
+        responderId: 'dominds',
+        tellaskHead,
+        status: 'failed',
+        content: msg,
+      });
+      await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
+      dlg.clearCurrentCallId();
+      return { toolOutputs, suspend: false, subdialogsCreated: [] };
     }
   }
 
@@ -3851,9 +3857,10 @@ async function executeTellaskCall(
         }
 
         await withSuspensionStateLock(dlg.id, async () => {
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
-          existingPending.push(...pendingRecords);
-          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
+          await DialogPersistence.mutatePendingSubdialogs(dlg.id, (previous) => ({
+            kind: 'replace',
+            records: [...previous, ...pendingRecords],
+          }));
         });
 
         for (const sub of createdSubs) {
@@ -3987,11 +3994,12 @@ async function executeTellaskCall(
           tellaskSession: r.tellaskSession,
         }));
         await withSuspensionStateLock(pendingOwner.id, async () => {
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
           const toRemove = new Set(pendingRecords.map((p) => p.subdialogId));
-          const next = existingPending.filter((p) => !toRemove.has(p.subdialogId));
-          next.push(...pendingRecords);
-          await DialogPersistence.savePendingSubdialogs(pendingOwner.id, next);
+          await DialogPersistence.mutatePendingSubdialogs(pendingOwner.id, (previous) => {
+            const next = previous.filter((p) => !toRemove.has(p.subdialogId));
+            next.push(...pendingRecords);
+            return { kind: 'replace', records: next };
+          });
         });
 
         for (const r of createdOrExisting) {
@@ -4185,9 +4193,7 @@ async function executeTellaskCall(
             tellaskSession: parseResult.tellaskSession,
           };
           await withSuspensionStateLock(dlg.id, async () => {
-            const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
-            existingPending.push(pendingRecord);
-            await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
+            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
           });
 
           const task = (async () => {
@@ -4262,12 +4268,11 @@ async function executeTellaskCall(
           tellaskSession: parseResult.tellaskSession,
         };
         await withSuspensionStateLock(pendingOwner.id, async () => {
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
-          const withoutSameSubdialog = existingPending.filter(
-            (p) => p.subdialogId !== pendingRecord.subdialogId,
-          );
-          withoutSameSubdialog.push(pendingRecord);
-          await DialogPersistence.savePendingSubdialogs(pendingOwner.id, withoutSameSubdialog);
+          await DialogPersistence.mutatePendingSubdialogs(pendingOwner.id, (previous) => {
+            const next = previous.filter((p) => p.subdialogId !== pendingRecord.subdialogId);
+            next.push(pendingRecord);
+            return { kind: 'replace', records: next };
+          });
         });
 
         const task = (async () => {
@@ -4334,9 +4339,7 @@ async function executeTellaskCall(
           callType: 'C',
         };
         await withSuspensionStateLock(dlg.id, async () => {
-          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
-          existingPending.push(pendingRecord);
-          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
+          await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
         });
 
         const task = (async () => {

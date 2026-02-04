@@ -160,6 +160,26 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
   );
 }
 
+export function formatDomindsNoteQ4HRegisterFailed(
+  language: LanguageCode,
+  args: { error: string },
+): string {
+  const error = args.error;
+  if (language === 'zh') {
+    return (
+      `错误：Q4H（\`@human\`）登记失败。\n` +
+      `- 原因：${error}\n` +
+      `- 建议：请重试；若持续失败，可删除该对话的 \`q4h.yaml\`（会丢失该对话的待答问题），或查看服务端日志。`
+    );
+  }
+
+  return (
+    `Error: failed to register Q4H (\`@human\`).\n` +
+    `- Reason: ${error}\n` +
+    `- Next: retry; if this keeps failing, delete the dialog's \`q4h.yaml\` (will drop pending questions) or check server logs.`
+  );
+}
+
 export type ContextHealthV3RemediationGuideArgs =
   | { kind: 'caution'; mode: 'soft' }
   | {

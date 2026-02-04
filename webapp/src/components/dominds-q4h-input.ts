@@ -38,6 +38,8 @@ export class DomindsQ4HInput extends HTMLElement {
   private uiLanguage: LanguageCode = 'en';
 
   private static readonly SEND_ON_ENTER_STORAGE_KEY = 'dominds-send-on-enter';
+  private static readonly INPUT_HISTORY_STORAGE_KEY = 'dominds-user-input-history-v1';
+  private static readonly INPUT_HISTORY_MAX = 100;
 
   private questions: Q4HQuestion[] = [];
   private selectedQuestionId: string | null = null;
@@ -53,6 +55,10 @@ export class DomindsQ4HInput extends HTMLElement {
   private currentDialog: DialogIdent | null = null;
   private runState: DialogRunState | null = null;
   private primaryActionMode: 'send' | 'stop' | 'stopping' = 'send';
+
+  private inputHistory: string[] = [];
+  private inputHistoryCursor: number | null = null; // 0..len, where len means draft/current
+  private inputHistoryDraft: string | null = null;
 
   private textInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
@@ -77,6 +83,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
   connectedCallback(): void {
     this.restoreSendOnEnterPreference();
+    this.restoreInputHistory();
     this.render();
     this.setupEventListeners();
     this.updateUI();
@@ -289,6 +296,92 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
+  private restoreInputHistory(): void {
+    try {
+      const raw = localStorage.getItem(DomindsQ4HInput.INPUT_HISTORY_STORAGE_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const items: string[] = [];
+      for (const item of parsed) {
+        if (typeof item !== 'string') continue;
+        const trimmed = item.trim();
+        if (trimmed === '') continue;
+        items.push(trimmed);
+      }
+      this.inputHistory = items.slice(-DomindsQ4HInput.INPUT_HISTORY_MAX);
+    } catch {
+      // ignore
+    }
+  }
+
+  private persistInputHistory(): void {
+    try {
+      localStorage.setItem(
+        DomindsQ4HInput.INPUT_HISTORY_STORAGE_KEY,
+        JSON.stringify(this.inputHistory.slice(-DomindsQ4HInput.INPUT_HISTORY_MAX)),
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  private recordInputHistoryEntry(text: string): void {
+    const trimmed = text.trim();
+    if (trimmed === '') return;
+    const last =
+      this.inputHistory.length > 0 ? this.inputHistory[this.inputHistory.length - 1] : null;
+    if (last === trimmed) return;
+    this.inputHistory.push(trimmed);
+    if (this.inputHistory.length > DomindsQ4HInput.INPUT_HISTORY_MAX) {
+      this.inputHistory = this.inputHistory.slice(-DomindsQ4HInput.INPUT_HISTORY_MAX);
+    }
+    this.persistInputHistory();
+  }
+
+  private resetInputHistoryNavigation(): void {
+    this.inputHistoryCursor = null;
+    this.inputHistoryDraft = null;
+  }
+
+  private applyInputHistoryCursorValue(): void {
+    if (!this.textInput) return;
+    if (this.inputHistoryCursor === null) return;
+    const len = this.inputHistory.length;
+    const nextValue =
+      this.inputHistoryCursor >= len
+        ? (this.inputHistoryDraft ?? '')
+        : (this.inputHistory[this.inputHistoryCursor] ?? '');
+    this.textInput.value = nextValue;
+    this.updateSendButton();
+    this.scheduleInputUiUpdate();
+    const nextPos = this.textInput.value.length;
+    this.textInput.setSelectionRange(nextPos, nextPos);
+  }
+
+  private recallPreviousInputHistory(): void {
+    if (!this.textInput) return;
+    if (this.inputHistory.length === 0) return;
+
+    if (this.inputHistoryCursor === null) {
+      this.inputHistoryDraft = this.textInput.value;
+      this.inputHistoryCursor = this.inputHistory.length;
+    }
+
+    if (this.inputHistoryCursor <= 0) return;
+    this.inputHistoryCursor -= 1;
+    this.applyInputHistoryCursorValue();
+  }
+
+  private recallNextInputHistory(): void {
+    if (!this.textInput) return;
+    if (this.inputHistoryCursor === null) return;
+    const len = this.inputHistory.length;
+    if (this.inputHistoryCursor >= len) return;
+    this.inputHistoryCursor += 1;
+    this.applyInputHistoryCursorValue();
+  }
+
   public setDisabled(disabled: boolean): void {
     this.props.disabled = disabled;
     this.updateUI();
@@ -305,6 +398,7 @@ export class DomindsQ4HInput extends HTMLElement {
   public clear(): void {
     if (this.textInput) {
       this.textInput.value = '';
+      this.resetInputHistoryNavigation();
       this.updateSendButton();
       this.scheduleInputUiUpdate();
     }
@@ -453,11 +547,41 @@ export class DomindsQ4HInput extends HTMLElement {
         this.scheduleInputUiUpdate();
       });
       this.textInput.addEventListener('input', () => {
+        if (
+          this.inputHistoryCursor !== null &&
+          this.inputHistoryCursor !== this.inputHistory.length
+        ) {
+          // User started editing a recalled history item; exit history navigation mode.
+          this.resetInputHistoryNavigation();
+        }
         this.scheduleInputUiUpdate();
       });
 
       this.textInput.addEventListener('keydown', (e) => {
         const isIme = this.isComposing || e.isComposing || e.keyCode === 229;
+
+        if (!isIme && e.key === 'ArrowUp') {
+          const start = this.textInput.selectionStart;
+          const end = this.textInput.selectionEnd;
+          if (start === 0 && end === 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.recallPreviousInputHistory();
+            return;
+          }
+        }
+
+        if (!isIme && e.key === 'ArrowDown') {
+          const start = this.textInput.selectionStart;
+          const end = this.textInput.selectionEnd;
+          const len = this.textInput.value.length;
+          if (start === len && end === len) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.recallNextInputHistory();
+            return;
+          }
+        }
 
         if (e.key === 'Escape') {
           if (isIme) return;
@@ -685,6 +809,7 @@ export class DomindsQ4HInput extends HTMLElement {
         });
       }
 
+      this.recordInputHistoryEntry(content);
       this.clear();
       this.dispatchEvent(
         new CustomEvent('usersend', {

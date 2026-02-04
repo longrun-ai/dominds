@@ -1883,6 +1883,82 @@ type LatestWriteBackEntry =
       inFlight: Promise<void>;
     };
 
+type Q4HWriteBackState = { kind: 'file'; file: Questions4HumanFile } | { kind: 'deleted' };
+
+type Q4HWriteBackEntry =
+  | {
+      kind: 'scheduled';
+      dialogId: DialogID;
+      status: 'running' | 'completed' | 'archived';
+      state: Q4HWriteBackState;
+      timer: NodeJS.Timeout;
+    }
+  | {
+      kind: 'flushing';
+      dialogId: DialogID;
+      status: 'running' | 'completed' | 'archived';
+      state: Q4HWriteBackState;
+      dirty: boolean;
+      inFlight: Promise<void>;
+    };
+
+type PendingSubdialogsWriteBackState =
+  | { kind: 'file'; records: PendingSubdialogRecord[] }
+  | { kind: 'deleted' };
+
+type PendingSubdialogsWriteBackEntry =
+  | {
+      kind: 'scheduled';
+      dialogId: DialogID;
+      status: 'running' | 'completed' | 'archived';
+      state: PendingSubdialogsWriteBackState;
+      timer: NodeJS.Timeout;
+    }
+  | {
+      kind: 'flushing';
+      dialogId: DialogID;
+      status: 'running' | 'completed' | 'archived';
+      state: PendingSubdialogsWriteBackState;
+      dirty: boolean;
+      inFlight: Promise<void>;
+    };
+
+type Q4HMutation =
+  | { kind: 'noop' }
+  | { kind: 'append'; question: HumanQuestion }
+  | { kind: 'remove'; questionId: string }
+  | { kind: 'replace'; questions: HumanQuestion[] }
+  | { kind: 'clear' };
+
+type Q4HMutateOutcome = {
+  previousQuestions: HumanQuestion[];
+  questions: HumanQuestion[];
+  removedQuestion?: HumanQuestion;
+};
+
+type PendingSubdialogRecord = {
+  subdialogId: string;
+  createdAt: string;
+  tellaskHead: string;
+  targetAgentId: string;
+  callType: 'A' | 'B' | 'C';
+  tellaskSession?: string;
+};
+
+type PendingSubdialogsMutation =
+  | { kind: 'noop' }
+  | { kind: 'append'; record: PendingSubdialogRecord }
+  | { kind: 'removeBySubdialogId'; subdialogId: string }
+  | { kind: 'removeBySubdialogIds'; subdialogIds: string[] }
+  | { kind: 'replace'; records: PendingSubdialogRecord[] }
+  | { kind: 'clear' };
+
+type PendingSubdialogsMutateOutcome = {
+  previousRecords: PendingSubdialogRecord[];
+  records: PendingSubdialogRecord[];
+  removedRecords: PendingSubdialogRecord[];
+};
+
 type DialogLatestPatch = Partial<Omit<DialogLatestFile, 'currentCourse' | 'lastModified'>> & {
   currentCourse?: number;
   lastModified?: string;
@@ -1904,9 +1980,19 @@ export class DialogPersistence {
   private static readonly SUBDIALOGS_DIR = 'subdialogs';
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
+  private static readonly Q4H_WRITEBACK_WINDOW_MS = 300;
+  private static readonly PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS = 300;
 
   private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
+
+  private static readonly q4hWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
+
+  private static readonly pendingSubdialogsWriteBackMutexes: Map<string, AsyncFifoMutex> =
+    new Map();
+  private static readonly pendingSubdialogsWriteBack: Map<string, PendingSubdialogsWriteBackEntry> =
+    new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
 
@@ -1918,11 +2004,27 @@ export class DialogPersistence {
     return created;
   }
 
+  private static getQ4HWriteBackMutex(key: string): AsyncFifoMutex {
+    const existing = this.q4hWriteBackMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.q4hWriteBackMutexes.set(key, created);
+    return created;
+  }
+
   private static getCourseAppendMutex(key: string): AsyncFifoMutex {
     const existing = this.courseAppendMutexes.get(key);
     if (existing) return existing;
     const created = new AsyncFifoMutex();
     this.courseAppendMutexes.set(key, created);
+    return created;
+  }
+
+  private static getPendingSubdialogsWriteBackMutex(key: string): AsyncFifoMutex {
+    const existing = this.pendingSubdialogsWriteBackMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.pendingSubdialogsWriteBackMutexes.set(key, created);
     return created;
   }
 
@@ -1932,6 +2034,21 @@ export class DialogPersistence {
   ): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
+  }
+
+  private static getQ4HWriteBackKey(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): string {
+    // Include dialogs root dir to avoid cross-test/process.cwd collisions.
+    return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|q4h`;
+  }
+
+  private static getPendingSubdialogsWriteBackKey(
+    rootDialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): string {
+    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.valueOf()}|pending-subdialogs`;
   }
 
   /**
@@ -2469,9 +2586,13 @@ export class DialogPersistence {
       };
 
       // Atomic write operation
-      const tempFile = `${remindersFilePath}.${process.pid}.${Date.now()}.tmp`;
-      await fs.promises.writeFile(tempFile, JSON.stringify(reminderState, null, 2), 'utf-8');
-      await fs.promises.rename(tempFile, remindersFilePath);
+      const jsonContent = JSON.stringify(reminderState, null, 2);
+      const tempFile = path.join(
+        dialogPath,
+        `.${path.basename(remindersFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
+      await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+      await this.renameWithRetry(tempFile, remindersFilePath, jsonContent);
     } catch (error) {
       log.error(`Failed to save reminder state for dialog ${dialogId}:`, error);
       throw error;
@@ -2526,24 +2647,12 @@ export class DialogPersistence {
     questions: HumanQuestion[],
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    try {
-      const dialogPath = this.getDialogEventsPath(dialogId, status);
-      const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
-
-      const questionsState: Questions4HumanFile = {
-        questions,
-        updatedAt: formatUnifiedTimestamp(new Date()),
-      };
-
-      // Atomic write operation
-      const tempFile = questionsFilePath + '.tmp';
-      const yamlContent = yaml.stringify(questionsState);
-      await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await fs.promises.rename(tempFile, questionsFilePath);
-    } catch (error) {
-      log.error(`Failed to save q4h.yaml for dialog ${dialogId}:`, error);
-      throw error;
-    }
+    const nextQuestions = [...questions];
+    await this.mutateQuestions4HumanState(
+      dialogId,
+      () => ({ kind: 'replace', questions: nextQuestions }),
+      status,
+    );
   }
 
   /**
@@ -2553,25 +2662,331 @@ export class DialogPersistence {
     dialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<HumanQuestion[]> {
-    try {
-      const dialogPath = this.getDialogEventsPath(dialogId, status);
-      const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
+    const key = this.getQ4HWriteBackKey(dialogId, status);
+    const staged = this.q4hWriteBack.get(key);
+    if (staged) {
+      if (staged.state.kind === 'deleted') return [];
+      return staged.state.file.questions;
+    }
 
-      try {
-        const content = await fs.promises.readFile(questionsFilePath, 'utf-8');
-        const questionsState: Questions4HumanFile = yaml.parse(content);
-        return questionsState.questions;
-      } catch (error) {
-        if (getErrorCode(error) === 'ENOENT') {
-          // q4h.yaml doesn't exist - return empty array
-          return [];
-        }
-        throw error;
-      }
+    try {
+      return await this.loadQuestions4HumanStateFromDisk(dialogId, status);
     } catch (error) {
       log.error(`Failed to load q4h.yaml for dialog ${dialogId}:`, error);
       return [];
     }
+  }
+
+  private static async loadQuestions4HumanStateFromDisk(
+    dialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<HumanQuestion[]> {
+    const dialogPath = this.getDialogEventsPath(dialogId, status);
+    const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
+
+    try {
+      const content = await fs.promises.readFile(questionsFilePath, 'utf-8');
+      try {
+        const parsed = yaml.parse(content) as unknown;
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'questions' in parsed &&
+          Array.isArray((parsed as { questions?: unknown }).questions)
+        ) {
+          return (parsed as Questions4HumanFile).questions;
+        }
+        log.warn(`q4h.yaml has unexpected shape for dialog ${dialogId}`, {
+          filePath: questionsFilePath,
+        });
+        return [];
+      } catch (parseError: unknown) {
+        // Attempt to auto-repair the common corruption pattern where extra trailing lines are appended
+        // due to concurrent writers clobbering a shared temp file.
+        const lines = content.split(/\r?\n/);
+        let repairedQuestions: HumanQuestion[] | null = null;
+
+        for (let cut = lines.length - 1; cut > 0 && lines.length - cut <= 12; cut--) {
+          const candidate = lines.slice(0, cut).join('\n');
+          if (candidate.trim() === '') continue;
+          try {
+            const candidateState = yaml.parse(candidate) as unknown;
+            if (
+              typeof candidateState === 'object' &&
+              candidateState !== null &&
+              'questions' in candidateState &&
+              Array.isArray((candidateState as { questions?: unknown }).questions)
+            ) {
+              repairedQuestions = (candidateState as Questions4HumanFile).questions;
+              break;
+            }
+          } catch {
+            // keep trimming
+          }
+        }
+
+        if (repairedQuestions) {
+          log.warn(`Repaired corrupted q4h.yaml for dialog ${dialogId}`, {
+            filePath: questionsFilePath,
+          });
+          const repairedFile: Questions4HumanFile = {
+            questions: repairedQuestions,
+            updatedAt: formatUnifiedTimestamp(new Date()),
+          };
+          try {
+            await this.writeQ4HStateToDisk(dialogId, { kind: 'file', file: repairedFile }, status);
+          } catch (repairSaveError: unknown) {
+            log.warn(`Failed to persist repaired q4h.yaml for dialog ${dialogId}`, repairSaveError);
+          }
+          return repairedQuestions;
+        }
+
+        // Quarantine the bad file to avoid repeated parse errors, then treat as "no questions".
+        try {
+          const quarantinePath = `${questionsFilePath}.corrupt-${randomUUID()}`;
+          await fs.promises.rename(questionsFilePath, quarantinePath);
+          log.warn(`Quarantined corrupted q4h.yaml for dialog ${dialogId}`, {
+            filePath: questionsFilePath,
+            quarantinePath,
+          });
+        } catch (quarantineError: unknown) {
+          log.warn(
+            `Failed to quarantine corrupted q4h.yaml for dialog ${dialogId}`,
+            quarantineError,
+          );
+        }
+        log.warn(`Failed to parse q4h.yaml for dialog ${dialogId}`, parseError);
+        return [];
+      }
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  static async mutateQuestions4HumanState(
+    dialogId: DialogID,
+    mutator: (previous: HumanQuestion[]) => Q4HMutation,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<Q4HMutateOutcome> {
+    const key = this.getQ4HWriteBackKey(dialogId, status);
+    const mutex = this.getQ4HWriteBackMutex(key);
+
+    const release = await mutex.acquire();
+    try {
+      const staged = this.q4hWriteBack.get(key);
+      const previousQuestions =
+        staged && staged.state.kind === 'file'
+          ? staged.state.file.questions
+          : staged && staged.state.kind === 'deleted'
+            ? []
+            : await this.loadQuestions4HumanStateFromDisk(dialogId, status);
+
+      const mutation = mutator(previousQuestions);
+
+      let removedQuestion: HumanQuestion | undefined;
+      let nextState: Q4HWriteBackState | undefined;
+      let nextQuestions: HumanQuestion[] = previousQuestions;
+
+      if (mutation.kind === 'noop') {
+        return { previousQuestions, questions: previousQuestions };
+      } else if (mutation.kind === 'append') {
+        nextQuestions = [...previousQuestions, mutation.question];
+      } else if (mutation.kind === 'remove') {
+        const idx = previousQuestions.findIndex((q) => q.id === mutation.questionId);
+        if (idx === -1) {
+          return { previousQuestions, questions: previousQuestions };
+        }
+        removedQuestion = previousQuestions[idx];
+        nextQuestions = previousQuestions.filter((q) => q.id !== mutation.questionId);
+      } else if (mutation.kind === 'replace') {
+        nextQuestions = [...mutation.questions];
+      } else if (mutation.kind === 'clear') {
+        nextQuestions = [];
+      } else {
+        const _exhaustive: never = mutation;
+        throw new Error(`Unhandled q4h mutation: ${String(_exhaustive)}`);
+      }
+
+      if (nextQuestions.length === 0) {
+        nextState = { kind: 'deleted' };
+      } else {
+        nextState = {
+          kind: 'file',
+          file: { questions: nextQuestions, updatedAt: formatUnifiedTimestamp(new Date()) },
+        };
+      }
+
+      const pending = this.q4hWriteBack.get(key);
+      if (!pending) {
+        const timer = setTimeout(() => {
+          void this.flushQ4HWriteBack(key);
+        }, this.Q4H_WRITEBACK_WINDOW_MS);
+
+        this.q4hWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId,
+          status,
+          state: nextState,
+          timer,
+        });
+        return { previousQuestions, questions: nextQuestions, removedQuestion };
+      }
+
+      pending.state = nextState;
+      if (pending.kind === 'flushing') {
+        pending.dirty = true;
+      }
+
+      return { previousQuestions, questions: nextQuestions, removedQuestion };
+    } finally {
+      release();
+    }
+  }
+
+  static async appendQuestion4HumanState(
+    dialogId: DialogID,
+    question: HumanQuestion,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.mutateQuestions4HumanState(dialogId, () => ({ kind: 'append', question }), status);
+  }
+
+  static async removeQuestion4HumanState(
+    dialogId: DialogID,
+    questionId: string,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<{ found: boolean; remainingQuestions: HumanQuestion[] }> {
+    const out = await this.mutateQuestions4HumanState(
+      dialogId,
+      () => ({ kind: 'remove', questionId }),
+      status,
+    );
+    return { found: typeof out.removedQuestion !== 'undefined', remainingQuestions: out.questions };
+  }
+
+  private static async flushQ4HWriteBack(key: string): Promise<void> {
+    const mutex = this.getQ4HWriteBackMutex(key);
+
+    let captured:
+      | {
+          dialogId: DialogID;
+          status: 'running' | 'completed' | 'archived';
+          stateToWrite: Q4HWriteBackState;
+          inFlight: Promise<void>;
+        }
+      | undefined;
+
+    {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.q4hWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind === 'flushing') return;
+        if (entry.kind !== 'scheduled') return;
+
+        clearTimeout(entry.timer);
+
+        const inFlight = this.writeQ4HStateToDisk(entry.dialogId, entry.state, entry.status);
+        captured = {
+          dialogId: entry.dialogId,
+          status: entry.status,
+          stateToWrite: entry.state,
+          inFlight,
+        };
+
+        this.q4hWriteBack.set(key, {
+          kind: 'flushing',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          state: entry.state,
+          dirty: false,
+          inFlight,
+        });
+      } finally {
+        release();
+      }
+    }
+
+    if (!captured) return;
+
+    try {
+      await captured.inFlight;
+    } catch (error) {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.q4hWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind !== 'flushing') return;
+        if (entry.inFlight !== captured.inFlight) return;
+
+        const timer = setTimeout(() => {
+          void this.flushQ4HWriteBack(key);
+        }, this.Q4H_WRITEBACK_WINDOW_MS);
+
+        this.q4hWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          state: entry.state,
+          timer,
+        });
+      } finally {
+        release();
+      }
+      return;
+    }
+
+    const release = await mutex.acquire();
+    try {
+      const entry = this.q4hWriteBack.get(key);
+      if (!entry) return;
+      if (entry.kind !== 'flushing') return;
+      if (entry.inFlight !== captured.inFlight) return;
+
+      if (!entry.dirty) {
+        this.q4hWriteBack.delete(key);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        void this.flushQ4HWriteBack(key);
+      }, this.Q4H_WRITEBACK_WINDOW_MS);
+
+      this.q4hWriteBack.set(key, {
+        kind: 'scheduled',
+        dialogId: entry.dialogId,
+        status: entry.status,
+        state: entry.state,
+        timer,
+      });
+    } finally {
+      release();
+    }
+  }
+
+  private static async writeQ4HStateToDisk(
+    dialogId: DialogID,
+    state: Q4HWriteBackState,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const dialogPath = this.getDialogEventsPath(dialogId, status);
+    const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
+
+    await fs.promises.mkdir(dialogPath, { recursive: true });
+
+    if (state.kind === 'deleted') {
+      await fs.promises.rm(questionsFilePath, { force: true });
+      return;
+    }
+
+    const yamlContent = yaml.stringify(state.file);
+    const tempFile = path.join(
+      dialogPath,
+      `.${path.basename(questionsFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
+    await this.renameWithRetry(tempFile, questionsFilePath, yamlContent);
   }
 
   /**
@@ -2588,6 +3003,7 @@ export class DialogPersistence {
       tellaskHead: string;
       bodyContent: string;
       askedAt: string;
+      callId?: string;
       callSiteRef: { course: number; messageIndex: number };
     }>
   > {
@@ -2639,17 +3055,12 @@ export class DialogPersistence {
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
     try {
-      const dialogPath = this.getDialogEventsPath(dialogId, status);
-      const questionsFilePath = path.join(dialogPath, 'q4h.yaml');
-      let previousCount = 0;
-      let existingQuestions: HumanQuestion[] = [];
-      try {
-        existingQuestions = await this.loadQuestions4HumanState(dialogId, status);
-        previousCount = existingQuestions.length;
-      } catch (err) {
-        log.debug('No existing questions state found, using default count', err);
-      }
-      await fs.promises.rm(questionsFilePath, { force: true });
+      const { previousQuestions } = await this.mutateQuestions4HumanState(
+        dialogId,
+        () => ({ kind: 'clear' }),
+        status,
+      );
+      const existingQuestions = previousQuestions;
 
       // Emit q4h_answered events for each removed question
       for (const q of existingQuestions) {
@@ -2673,29 +3084,15 @@ export class DialogPersistence {
    */
   static async savePendingSubdialogs(
     rootDialogId: DialogID,
-    pendingSubdialogs: Array<{
-      subdialogId: string;
-      createdAt: string;
-      tellaskHead: string;
-      targetAgentId: string;
-      callType: 'A' | 'B' | 'C';
-      tellaskSession?: string;
-    }>,
+    pendingSubdialogs: PendingSubdialogRecord[],
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    try {
-      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-      await fs.promises.mkdir(dialogPath, { recursive: true });
-      const filePath = path.join(dialogPath, 'pending-subdialogs.json');
-
-      // Atomic write operation
-      const tempFile = filePath + '.tmp';
-      await fs.promises.writeFile(tempFile, JSON.stringify(pendingSubdialogs, null, 2), 'utf-8');
-      await fs.promises.rename(tempFile, filePath);
-    } catch (error) {
-      log.error(`Failed to save pending subdialogs for dialog ${rootDialogId}:`, error);
-      throw error;
-    }
+    const next = pendingSubdialogs.map((r) => ({ ...r }));
+    await this.mutatePendingSubdialogs(
+      rootDialogId,
+      () => ({ kind: 'replace', records: next }),
+      status,
+    );
   }
 
   /**
@@ -2704,33 +3101,275 @@ export class DialogPersistence {
   static async loadPendingSubdialogs(
     rootDialogId: DialogID,
     status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<
-    Array<{
-      subdialogId: string;
-      createdAt: string;
-      tellaskHead: string;
-      targetAgentId: string;
-      callType: 'A' | 'B' | 'C';
-      tellaskSession?: string;
-    }>
-  > {
-    try {
-      const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
-      const filePath = path.join(dialogPath, 'pending-subdialogs.json');
+  ): Promise<PendingSubdialogRecord[]> {
+    const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
+    const staged = this.pendingSubdialogsWriteBack.get(key);
+    if (staged) {
+      return staged.state.kind === 'deleted' ? [] : staged.state.records;
+    }
 
-      try {
-        const content = await fs.promises.readFile(filePath, 'utf-8');
-        return JSON.parse(content);
-      } catch (error) {
-        if (getErrorCode(error) === 'ENOENT') {
-          return [];
-        }
-        throw error;
-      }
+    try {
+      return await this.loadPendingSubdialogsFromDisk(rootDialogId, status);
     } catch (error) {
       log.error(`Failed to load pending subdialogs for dialog ${rootDialogId}:`, error);
       return [];
     }
+  }
+
+  private static isPendingSubdialogRecord(value: unknown): value is PendingSubdialogRecord {
+    if (!isRecord(value)) return false;
+    if (typeof value.subdialogId !== 'string') return false;
+    if (typeof value.createdAt !== 'string') return false;
+    if (typeof value.tellaskHead !== 'string') return false;
+    if (typeof value.targetAgentId !== 'string') return false;
+    if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
+    if ('tellaskSession' in value) {
+      const tellaskSession = value.tellaskSession;
+      if (tellaskSession !== undefined && typeof tellaskSession !== 'string') return false;
+    }
+    return true;
+  }
+
+  private static async loadPendingSubdialogsFromDisk(
+    rootDialogId: DialogID,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<PendingSubdialogRecord[]> {
+    const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
+    const filePath = path.join(dialogPath, 'pending-subdialogs.json');
+    try {
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      const parsed: unknown = JSON.parse(content);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(this.isPendingSubdialogRecord);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  static async mutatePendingSubdialogs(
+    rootDialogId: DialogID,
+    mutator: (previous: PendingSubdialogRecord[]) => PendingSubdialogsMutation,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<PendingSubdialogsMutateOutcome> {
+    const key = this.getPendingSubdialogsWriteBackKey(rootDialogId, status);
+    const mutex = this.getPendingSubdialogsWriteBackMutex(key);
+
+    const release = await mutex.acquire();
+    try {
+      const staged = this.pendingSubdialogsWriteBack.get(key);
+      const previousRecords =
+        staged && staged.state.kind === 'file'
+          ? staged.state.records
+          : staged && staged.state.kind === 'deleted'
+            ? []
+            : await this.loadPendingSubdialogsFromDisk(rootDialogId, status);
+
+      const mutation = mutator(previousRecords);
+      let nextRecords: PendingSubdialogRecord[] = previousRecords;
+      const removedRecords: PendingSubdialogRecord[] = [];
+
+      if (mutation.kind === 'noop') {
+        return { previousRecords, records: previousRecords, removedRecords: [] };
+      } else if (mutation.kind === 'append') {
+        nextRecords = [...previousRecords, mutation.record];
+      } else if (mutation.kind === 'removeBySubdialogId') {
+        for (const r of previousRecords) {
+          if (r.subdialogId === mutation.subdialogId) removedRecords.push(r);
+        }
+        nextRecords = previousRecords.filter((r) => r.subdialogId !== mutation.subdialogId);
+      } else if (mutation.kind === 'removeBySubdialogIds') {
+        const remove = new Set(mutation.subdialogIds);
+        for (const r of previousRecords) {
+          if (remove.has(r.subdialogId)) removedRecords.push(r);
+        }
+        nextRecords = previousRecords.filter((r) => !remove.has(r.subdialogId));
+      } else if (mutation.kind === 'replace') {
+        nextRecords = [...mutation.records];
+      } else if (mutation.kind === 'clear') {
+        nextRecords = [];
+        removedRecords.push(...previousRecords);
+      } else {
+        const _exhaustive: never = mutation;
+        throw new Error(`Unhandled pending-subdialogs mutation: ${String(_exhaustive)}`);
+      }
+
+      const nextState: PendingSubdialogsWriteBackState =
+        nextRecords.length === 0 ? { kind: 'deleted' } : { kind: 'file', records: nextRecords };
+
+      const pending = this.pendingSubdialogsWriteBack.get(key);
+      if (!pending) {
+        const timer = setTimeout(() => {
+          void this.flushPendingSubdialogsWriteBack(key);
+        }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
+
+        this.pendingSubdialogsWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId: rootDialogId,
+          status,
+          state: nextState,
+          timer,
+        });
+      } else {
+        pending.state = nextState;
+        if (pending.kind === 'flushing') pending.dirty = true;
+      }
+
+      return { previousRecords, records: nextRecords, removedRecords };
+    } finally {
+      release();
+    }
+  }
+
+  static async appendPendingSubdialog(
+    rootDialogId: DialogID,
+    record: PendingSubdialogRecord,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'append', record }), status);
+  }
+
+  static async removePendingSubdialog(
+    rootDialogId: DialogID,
+    subdialogId: string,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.mutatePendingSubdialogs(
+      rootDialogId,
+      () => ({ kind: 'removeBySubdialogId', subdialogId }),
+      status,
+    );
+  }
+
+  static async clearPendingSubdialogs(
+    rootDialogId: DialogID,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    await this.mutatePendingSubdialogs(rootDialogId, () => ({ kind: 'clear' }), status);
+  }
+
+  private static async flushPendingSubdialogsWriteBack(key: string): Promise<void> {
+    const mutex = this.getPendingSubdialogsWriteBackMutex(key);
+
+    let captured:
+      | {
+          dialogId: DialogID;
+          status: 'running' | 'completed' | 'archived';
+          stateToWrite: PendingSubdialogsWriteBackState;
+          inFlight: Promise<void>;
+        }
+      | undefined;
+
+    {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.pendingSubdialogsWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind === 'flushing') return;
+        if (entry.kind !== 'scheduled') return;
+        clearTimeout(entry.timer);
+
+        const inFlight = this.writePendingSubdialogsToDisk(
+          entry.dialogId,
+          entry.state,
+          entry.status,
+        );
+        captured = {
+          dialogId: entry.dialogId,
+          status: entry.status,
+          stateToWrite: entry.state,
+          inFlight,
+        };
+        this.pendingSubdialogsWriteBack.set(key, {
+          kind: 'flushing',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          state: entry.state,
+          dirty: false,
+          inFlight,
+        });
+      } finally {
+        release();
+      }
+    }
+
+    if (!captured) return;
+
+    try {
+      await captured.inFlight;
+    } catch {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.pendingSubdialogsWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind !== 'flushing') return;
+        if (entry.inFlight !== captured.inFlight) return;
+
+        const timer = setTimeout(() => {
+          void this.flushPendingSubdialogsWriteBack(key);
+        }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
+
+        this.pendingSubdialogsWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          state: entry.state,
+          timer,
+        });
+      } finally {
+        release();
+      }
+      return;
+    }
+
+    const release = await mutex.acquire();
+    try {
+      const entry = this.pendingSubdialogsWriteBack.get(key);
+      if (!entry) return;
+      if (entry.kind !== 'flushing') return;
+      if (entry.inFlight !== captured.inFlight) return;
+
+      if (!entry.dirty) {
+        this.pendingSubdialogsWriteBack.delete(key);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        void this.flushPendingSubdialogsWriteBack(key);
+      }, this.PENDING_SUBDIALOGS_WRITEBACK_WINDOW_MS);
+      this.pendingSubdialogsWriteBack.set(key, {
+        kind: 'scheduled',
+        dialogId: entry.dialogId,
+        status: entry.status,
+        state: entry.state,
+        timer,
+      });
+    } finally {
+      release();
+    }
+  }
+
+  private static async writePendingSubdialogsToDisk(
+    rootDialogId: DialogID,
+    state: PendingSubdialogsWriteBackState,
+    status: 'running' | 'completed' | 'archived',
+  ): Promise<void> {
+    const dialogPath = this.getDialogResponsesPath(rootDialogId, status);
+    await fs.promises.mkdir(dialogPath, { recursive: true });
+    const filePath = path.join(dialogPath, 'pending-subdialogs.json');
+
+    if (state.kind === 'deleted') {
+      await fs.promises.rm(filePath, { force: true });
+      return;
+    }
+
+    const jsonContent = JSON.stringify(state.records, null, 2);
+    const tempFile = path.join(
+      dialogPath,
+      `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+    await this.renameWithRetry(tempFile, filePath, jsonContent);
   }
 
   /**
@@ -2779,9 +3418,13 @@ export class DialogPersistence {
       const filePath = path.join(dialogPath, 'subdialog-responses.json');
 
       // Atomic write operation
-      const tempFile = filePath + '.tmp';
-      await fs.promises.writeFile(tempFile, JSON.stringify(responses, null, 2), 'utf-8');
-      await fs.promises.rename(tempFile, filePath);
+      const jsonContent = JSON.stringify(responses, null, 2);
+      const tempFile = path.join(
+        dialogPath,
+        `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
+      await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+      await this.renameWithRetry(tempFile, filePath, jsonContent);
     } catch (error) {
       log.error(`Failed to save subdialog responses for dialog ${rootDialogId}:`, error);
       throw error;
@@ -3020,9 +3663,13 @@ export class DialogPersistence {
     }
     const result = Array.from(byId.values());
 
-    const tempFile = filePath + '.tmp';
-    await fs.promises.writeFile(tempFile, JSON.stringify(result, null, 2), 'utf-8');
-    await fs.promises.rename(tempFile, filePath);
+    const jsonContent = JSON.stringify(result, null, 2);
+    const tempFile = path.join(
+      dialogPath,
+      `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+    await this.renameWithRetry(tempFile, filePath, jsonContent);
     await fs.promises.rm(inflightPath, { force: true });
   }
 
@@ -3042,10 +3689,13 @@ export class DialogPersistence {
 
       // Atomic write operation
       const metadataFilePath = path.join(dialogPath, 'dialog.yaml');
-      const tempFile = metadataFilePath + '.tmp';
       const yamlContent = yaml.stringify(metadata);
+      const tempFile = path.join(
+        dialogPath,
+        `.${path.basename(metadataFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await fs.promises.rename(tempFile, metadataFilePath);
+      await this.renameWithRetry(tempFile, metadataFilePath, yamlContent);
     } catch (error) {
       log.error(`Failed to save dialog YAML for dialog ${dialogId}:`, error);
       throw error;
@@ -3100,10 +3750,13 @@ export class DialogPersistence {
 
       await fs.promises.mkdir(subPath, { recursive: true });
 
-      const tempFile = metadataFilePath + '.tmp';
       const yamlContent = yaml.stringify(metadata);
+      const tempFile = path.join(
+        subPath,
+        `.${path.basename(metadataFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await fs.promises.rename(tempFile, metadataFilePath);
+      await this.renameWithRetry(tempFile, metadataFilePath, yamlContent);
     } catch (error) {
       log.error(
         `Failed to save subdialog YAML for ${dialogId.selfId} under root dialog ${dialogId.rootId}:`,
@@ -3971,10 +4624,13 @@ export class DialogPersistence {
         tellaskSession: entry.tellaskSession,
       }));
 
-      const tempFile = registryFilePath + '.tmp';
       const yamlContent = yaml.stringify({ entries: serializableEntries });
+      const tempFile = path.join(
+        dialogPath,
+        `.${path.basename(registryFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+      );
       await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
-      await fs.promises.rename(tempFile, registryFilePath);
+      await this.renameWithRetry(tempFile, registryFilePath, yamlContent);
     } catch (error) {
       log.error(`Failed to save subdialog registry for dialog ${rootDialogId}:`, error);
       throw error;

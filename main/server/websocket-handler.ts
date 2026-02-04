@@ -869,6 +869,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
             tellaskHead: q.tellaskHead,
             bodyContent: q.bodyContent,
             askedAt: q.askedAt,
+            callId: q.callId,
             callSiteRef: q.callSiteRef,
           },
         };
@@ -910,6 +911,7 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       tellaskHead: q.tellaskHead,
       bodyContent: q.bodyContent,
       askedAt: q.askedAt,
+      callId: q.callId,
       callSiteRef: q.callSiteRef,
     }));
 
@@ -1300,12 +1302,8 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       return;
     }
 
-    // Load current questions from q4h.yaml
-    const questions = await DialogPersistence.loadQuestions4HumanState(dialogIdObj);
-
-    // Validate questionId exists
-    const questionIndex = questions.findIndex((q) => q.id === questionId);
-    if (questionIndex === -1) {
+    const removed = await DialogPersistence.removeQuestion4HumanState(dialogIdObj, questionId);
+    if (!removed.found) {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1313,17 +1311,6 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         }),
       );
       return;
-    }
-
-    // Remove answered question from the list
-    questions.splice(questionIndex, 1);
-
-    // Save updated questions to q4h.yaml
-    if (questions.length > 0) {
-      await DialogPersistence._saveQuestions4HumanState(dialogIdObj, questions);
-    } else {
-      // No more questions - remove the q4h.yaml file
-      await DialogPersistence.clearQuestions4HumanState(dialogIdObj);
     }
 
     // Restore the canonical dialog instances (root + subdialogs) to avoid duplicates.
