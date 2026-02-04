@@ -37,6 +37,28 @@ system:
 - Function tool calls can be executed concurrently (the driver `Promise.all()`s them), so any MCP
   client wrapper must safely handle parallel in-flight requests.
 
+## MCP Tool Outputs (Text + Images) and Artifacts
+
+Some MCP tools return structured `content[]` (not just a string). Common shapes (illustrative):
+
+- `type: "text"` with `text: string`
+- `type: "image"` with `mimeType: string` and `data: string` (typically base64; may include a
+  `data:<mime>;base64,` prefix)
+
+Dominds behavior:
+
+- **Persist**: writes image bytes under the dialog directory `artifacts/`, e.g.:
+  - `artifacts/mcp/<serverId>/<toolName>/<timestamp>-<uuid>.<ext>`
+- **Structured tool output**: `FuncTool.call()` returns a `ToolCallOutput` object with `contentItems`:
+  - `{ type: "input_text", text }`
+  - `{ type: "input_image", mimeType, byteLength, artifact: { rootId, selfId, relPath } }`
+- **WebUI rendering**: the UI can fetch and render artifact binaries via:
+  - `GET /api/dialogs/:root/:self/artifact?path=artifacts/...`
+- **Feeding vision models**: when a generator sees `func_result_msg.contentItems[].type=input_image`,
+  it reads the artifact and (provider permitting) feeds it to the model. Allowed mime types are:
+  - `image/jpeg | image/png | image/gif | image/webp`
+  - unsupported mime types are downgraded to text to avoid provider request rejection
+
 Many real-world MCP servers are **not safe to share concurrently** across multiple dialogs/agents.
 Examples include servers that keep mutable session state, maintain implicit “current page” handles,
 or have global process-scoped caches.

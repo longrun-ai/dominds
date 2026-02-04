@@ -1,11 +1,14 @@
 import * as fs from 'fs';
+import { randomUUID } from 'node:crypto';
 import * as path from 'path';
-import type { Dialog } from '../dialog';
+import { DialogID, type Dialog } from '../dialog';
 import { createLogger } from '../log';
+import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
 import type { WorkspaceProblem } from '../shared/types/problems';
+import type { FuncResultContentItem } from '../shared/types/storage';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
-import type { Tool, ToolArguments } from '../tool';
+import type { Tool, ToolArguments, ToolCallOutput } from '../tool';
 import {
   getReminderOwner,
   registerTool,
@@ -151,24 +154,47 @@ class McpServerDispatch {
     dlg: Dialog,
     mcpToolName: string,
     args: ToolArguments,
-  ): Promise<string> {
+  ): Promise<ToolCallOutput> {
     if (this.cfg.truelyStateless) {
       if (!this.sharedRuntime) {
         throw new Error(`MCP server '${this.serverId}' missing shared runtime`);
       }
-      return await this.sharedRuntime.callTool(mcpToolName, args);
+      const raw = await this.sharedRuntime.callToolRaw(mcpToolName, args);
+      return await materializeMcpToolCallOutput({
+        dlg,
+        serverId: this.serverId,
+        toolName: mcpToolName,
+        raw,
+      });
     }
 
     const dialogKey = dlg.id.key();
     const existing = this.leasesByDialogKey.get(dialogKey);
     if (existing) {
-      return await existing.callTool(mcpToolName, args);
+      this.attachLeaseReminder(dlg);
+      const raw = await existing.callToolRaw(mcpToolName, args);
+      return await materializeMcpToolCallOutput({
+        dlg,
+        serverId: this.serverId,
+        toolName: mcpToolName,
+        raw,
+      });
     }
 
     if (this.stopRequested) {
       const oneShot = await this.connectNewLeaseRuntime();
-      oneShot.requestStop({ forceKillAfterMs: 3_000 });
-      return await oneShot.callTool(mcpToolName, args);
+      this.attachLeaseReminder(dlg);
+      try {
+        const raw = await oneShot.callToolRaw(mcpToolName, args);
+        return await materializeMcpToolCallOutput({
+          dlg,
+          serverId: this.serverId,
+          toolName: mcpToolName,
+          raw,
+        });
+      } finally {
+        oneShot.requestStop({ forceKillAfterMs: 3_000 });
+      }
     }
 
     let init = this.leaseInitByDialogKey.get(dialogKey);
@@ -190,7 +216,13 @@ class McpServerDispatch {
 
     const runtime = await init;
     this.attachLeaseReminder(dlg);
-    return await runtime.callTool(mcpToolName, args);
+    const raw = await runtime.callToolRaw(mcpToolName, args);
+    return await materializeMcpToolCallOutput({
+      dlg,
+      serverId: this.serverId,
+      toolName: mcpToolName,
+      raw,
+    });
   }
 
   private async connectNewLeaseRuntime(): Promise<McpServerRuntime> {
@@ -1065,6 +1097,174 @@ function problemPrefixForServer(serverId: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function sanitizePathSegment(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '') return 'unnamed';
+  return trimmed.replace(/[^0-9A-Za-z._-]/g, '_');
+}
+
+function stripDataUrlPrefix(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('data:')) return trimmed;
+  const idx = trimmed.indexOf('base64,');
+  if (idx < 0) return trimmed;
+  return trimmed.slice(idx + 'base64,'.length);
+}
+
+function mimeTypeToExt(mimeType: string): string {
+  switch (mimeType) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/jpg':
+      return 'jpg';
+    case 'image/gif':
+      return 'gif';
+    case 'image/webp':
+      return 'webp';
+    case 'image/svg+xml':
+      return 'svg';
+    default:
+      return 'bin';
+  }
+}
+
+function stringifyMcpToolCallResultSafe(value: unknown): string {
+  if (!isRecord(value) || Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+
+  if ('content' in value) {
+    const content = value.content;
+    if (!Array.isArray(content)) {
+      return JSON.stringify(value);
+    }
+    const parts: string[] = [];
+    for (const item of content) {
+      if (isRecord(item) && !Array.isArray(item)) {
+        const t = item.type;
+        if (t === 'text' && typeof item.text === 'string') {
+          parts.push(item.text);
+          continue;
+        }
+        if (t === 'image') {
+          const mimeType = typeof item.mimeType === 'string' ? item.mimeType : 'unknown';
+          const data = item.data;
+          const dataSize = typeof data === 'string' ? data.length : 0;
+          parts.push(
+            JSON.stringify({
+              type: 'image',
+              mimeType,
+              data: `[omitted base64; length=${dataSize}]`,
+            }),
+          );
+          continue;
+        }
+      }
+      parts.push(JSON.stringify(item));
+    }
+    const joined = parts.join('\n').trim();
+    if (joined) return joined;
+    return JSON.stringify(value);
+  }
+
+  if ('toolResult' in value) {
+    return JSON.stringify(value.toolResult);
+  }
+
+  return JSON.stringify(value);
+}
+
+async function materializeMcpToolCallOutput(params: {
+  dlg: Dialog;
+  serverId: string;
+  toolName: string;
+  raw: unknown;
+}): Promise<ToolCallOutput> {
+  const rawValue = params.raw;
+  if (!isRecord(rawValue) || Array.isArray(rawValue)) {
+    return String(rawValue);
+  }
+
+  const maybeContent = rawValue.content;
+  if (!Array.isArray(maybeContent)) {
+    return stringifyMcpToolCallResultSafe(rawValue);
+  }
+
+  const rootStatus = await DialogPersistence.findRootDialogStatus(
+    new DialogID(params.dlg.id.rootId),
+  );
+  const status: 'running' | 'completed' | 'archived' = rootStatus ?? 'running';
+  const eventsBase = DialogPersistence.getDialogEventsPath(params.dlg.id, status);
+
+  const contentItems: FuncResultContentItem[] = [];
+  const displayLines: string[] = [];
+
+  for (const item of maybeContent) {
+    if (!isRecord(item) || Array.isArray(item)) {
+      displayLines.push(JSON.stringify(item));
+      continue;
+    }
+
+    const t = item.type;
+    if (t === 'text' && typeof item.text === 'string') {
+      const text = item.text;
+      contentItems.push({ type: 'input_text', text });
+      if (text.trim() !== '') {
+        displayLines.push(text);
+      }
+      continue;
+    }
+
+    if (t === 'image') {
+      const mimeType =
+        typeof item.mimeType === 'string' ? item.mimeType : 'application/octet-stream';
+      const rawData = typeof item.data === 'string' ? item.data : '';
+      const base64 = stripDataUrlPrefix(rawData);
+      const bytes = Buffer.from(base64, 'base64');
+      if (base64.trim() !== '' && bytes.length === 0) {
+        displayLines.push(`[image decode failed: ${mimeType}]`);
+        continue;
+      }
+
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const ext = mimeTypeToExt(mimeType);
+      const relPath = path.posix.join(
+        'artifacts',
+        'mcp',
+        sanitizePathSegment(params.serverId),
+        sanitizePathSegment(params.toolName),
+        `${ts}-${randomUUID()}.${ext}`,
+      );
+      const absPath = path.join(eventsBase, ...relPath.split('/'));
+      await fs.promises.mkdir(path.dirname(absPath), { recursive: true });
+      await fs.promises.writeFile(absPath, bytes);
+
+      contentItems.push({
+        type: 'input_image',
+        mimeType,
+        byteLength: bytes.length,
+        artifact: {
+          rootId: params.dlg.id.rootId,
+          selfId: params.dlg.id.selfId,
+          relPath,
+        },
+      });
+      displayLines.push(`[image saved: ${mimeType}, ${bytes.length} bytes]`);
+      continue;
+    }
+
+    displayLines.push(JSON.stringify(item));
+  }
+
+  const content = displayLines.join('\n').trim();
+  return {
+    content: content !== '' ? content : stringifyMcpToolCallResultSafe(rawValue),
+    contentItems: contentItems.length > 0 ? contentItems : undefined,
+  };
 }
 
 function buildHttpHeaders(

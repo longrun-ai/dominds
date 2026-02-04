@@ -191,6 +191,66 @@ export class ApiClient {
     }
   }
 
+  async fetchBlob(
+    endpoint: string,
+    options: { headers?: Record<string, string>; timeout?: number } = {},
+  ): Promise<ApiResponse<Blob>> {
+    const url = `${this.baseURL}${endpoint}`;
+    const timeout = typeof options.timeout === 'number' ? options.timeout : this.timeout;
+    const extraHeaders = options.headers ? options.headers : {};
+
+    const mergedHeaders: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...extraHeaders,
+      Accept: '*/*',
+    };
+    delete mergedHeaders['Content-Type'];
+
+    const config: RequestInit = {
+      method: 'GET',
+      headers: mergedHeaders,
+      signal: AbortSignal.timeout(timeout),
+    };
+
+    try {
+      const response = await fetch(url, config);
+      if (!response.ok) {
+        const text = await response.text();
+        const suffix = text.trim().length > 0 ? `: ${text.trim()}` : '';
+        return {
+          success: false,
+          status: response.status,
+          error: `HTTP ${response.status}: ${response.statusText}${suffix}`,
+          timestamp: formatUnifiedTimestamp(new Date()),
+        };
+      }
+      const blob = await response.blob();
+      return {
+        success: true,
+        status: response.status,
+        data: blob,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        return {
+          success: false,
+          error: 'Request timeout',
+          timestamp: formatUnifiedTimestamp(new Date()),
+        };
+      }
+      const apiError: ApiError =
+        error instanceof Error ? (error as ApiError) : (new Error('Unknown error') as ApiError);
+      console.error(`API request failed: GET ${url}`, apiError);
+      return {
+        success: false,
+        status: apiError.status,
+        error: apiError.message,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      };
+    }
+  }
+
   /**
    * Health check endpoint
    */

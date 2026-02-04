@@ -3,7 +3,7 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { log } from '../log';
-import type { ProviderData, UserTextGrammar } from '../shared/types/storage';
+import type { FuncResultContentItem, ProviderData, UserTextGrammar } from '../shared/types/storage';
 
 export type EnvironmentMsg = {
   type: 'environment_msg';
@@ -59,6 +59,7 @@ export type FuncResultMsg = {
   id: string;
   name: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
 };
 
 export type TellaskCallResultMsg = {
@@ -142,9 +143,11 @@ export type ProviderModelParamOptions = {
   anthropic?: Record<string, ModelParamOption>;
 };
 
+export type ProviderApiType = 'codex' | 'anthropic' | 'mock' | 'openai' | 'openai-compatible';
+
 export type ProviderConfig = {
   name: string;
-  apiType: 'codex' | 'anthropic' | 'mock' | 'openai';
+  apiType: ProviderApiType;
   baseUrl: string;
   apiKeyEnvVar: string;
   tech_spec_url?: string;

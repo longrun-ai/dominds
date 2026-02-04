@@ -5,10 +5,12 @@
  */
 import { Anthropic } from '@anthropic-ai/sdk';
 import type {
+  ImageBlockParam,
   MessageCreateParamsNonStreaming,
   MessageCreateParamsStreaming,
   MessageParam,
   MessageStreamEvent,
+  TextBlockParam,
   Tool,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages';
@@ -21,6 +23,7 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/anthropic');
 
@@ -150,14 +153,106 @@ function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
   return out;
 }
 
-function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
+async function funcResultToAnthropicToolResultBlock(
+  chatMsg: FuncResultMsg,
+): Promise<Extract<AnthropicContentBlock, { type: 'tool_result' }>> {
+  const items = chatMsg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      type: 'tool_result',
+      tool_use_id: chatMsg.id,
+      content: chatMsg.content,
+    };
+  }
+
+  const content: Array<TextBlockParam | ImageBlockParam> = [];
+  for (const item of items) {
+    if (item.type === 'input_text') {
+      content.push({ type: 'text', text: item.text });
+      continue;
+    }
+
+    if (item.type === 'input_image') {
+      if (!isVisionImageMimeType(item.mimeType)) {
+        content.push({
+          type: 'text',
+          text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+      const bytes = await readDialogArtifactBytes({
+        rootId: item.artifact.rootId,
+        selfId: item.artifact.selfId,
+        relPath: item.artifact.relPath,
+      });
+      if (!bytes) {
+        content.push({ type: 'text', text: `[image missing: ${item.artifact.relPath}]` });
+        continue;
+      }
+      const base64 = bytes.toString('base64');
+      content.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: item.mimeType,
+          data: base64,
+        },
+      });
+      continue;
+    }
+
+    const _exhaustive: never = item;
+    content.push({ type: 'text', text: `[unknown content item: ${String(_exhaustive)}]` });
+  }
+
+  if (content.length === 0) {
+    return {
+      type: 'tool_result',
+      tool_use_id: chatMsg.id,
+      content: chatMsg.content,
+    };
+  }
+
+  return {
+    type: 'tool_result',
+    tool_use_id: chatMsg.id,
+    content,
+  };
+}
+
+async function chatMessageToContentBlocksAsync(
+  chatMsg: ChatMessage,
+): Promise<AnthropicContentBlock[]> {
+  if (chatMsg.type !== 'func_result_msg') {
+    return chatMessageToContentBlocks(chatMsg);
+  }
+  return [await funcResultToAnthropicToolResultBlock(chatMsg)];
+}
+
+async function chatMessageToAnthropicAsync(chatMsg: ChatMessage): Promise<MessageParam> {
+  const contentBlocks = await chatMessageToContentBlocksAsync(chatMsg);
+  if (contentBlocks.length === 0) {
+    throw new Error(`No content blocks generated for message: ${JSON.stringify(chatMsg)}`);
+  }
+
+  let role: 'user' | 'assistant' = 'assistant';
+  if ('role' in chatMsg) {
+    role = chatMsg.role === 'tool' ? 'user' : chatMsg.role;
+  }
+  return {
+    role,
+    content: contentBlocks.length === 1 ? contentBlocks : contentBlocks,
+  };
+}
+
+async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<MessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
   const messages: MessageParam[] = [];
 
   let lastToolUseId: string | null = null;
   for (const msg of normalized) {
     if (msg.type === 'func_call_msg') {
-      messages.push(chatMessageToAnthropic(msg));
+      messages.push(await chatMessageToAnthropicAsync(msg));
       lastToolUseId = msg.id;
       continue;
     }
@@ -167,7 +262,7 @@ function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
       // matching tool_use. If it doesn't, downgrade to a plain text message so the request
       // remains valid (and still conveys the tool output to the model).
       if (lastToolUseId === msg.id) {
-        messages.push(chatMessageToAnthropic(msg));
+        messages.push(await chatMessageToAnthropicAsync(msg));
       } else {
         messages.push({
           role: 'user',
@@ -180,7 +275,7 @@ function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
       continue;
     }
 
-    messages.push(chatMessageToAnthropic(msg));
+    messages.push(await chatMessageToAnthropicAsync(msg));
     lastToolUseId = null;
   }
 
@@ -192,7 +287,11 @@ function buildAnthropicRequestMessages(context: ChatMessage[]): MessageParam[] {
  * Relies on natural storage order - func_result always follows func_call.
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
-  return buildAnthropicRequestMessages(persistedMessages);
+  const messages: MessageParam[] = [];
+  for (const msg of normalizeToolCallPairs(persistedMessages)) {
+    messages.push(chatMessageToAnthropic(msg));
+  }
+  return mergeAdjacentMessagesByRole(messages);
 }
 
 function contentToBlocks(content: MessageParam['content']): AnthropicContentBlock[] {
@@ -714,6 +813,22 @@ export function reconstructAnthropicContextWrapper(
   return reconstructed;
 }
 
+export async function reconstructAnthropicContextWrapperAsync(
+  persistedMessages: ChatMessage[],
+): Promise<MessageParam[]> {
+  const reconstructed = await buildAnthropicRequestMessages(persistedMessages);
+
+  // Validate the reconstructed context
+  try {
+    validateReconstructedContext(reconstructed);
+  } catch (error) {
+    log.error('Context reconstruction validation failed:', error);
+    throw new Error(`Invalid reconstructed context: ${error}`);
+  }
+
+  return reconstructed;
+}
+
 /**
  * AnthropicGen
  *
@@ -740,7 +855,7 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestMessages: MessageParam[] = buildAnthropicRequestMessages(context);
+    const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(context);
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -801,7 +916,7 @@ export class AnthropicGen implements LlmGenerator {
 
     const client = new Anthropic({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestMessages: MessageParam[] = buildAnthropicRequestMessages(context);
+    const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(context);
 
     const anthropicParams = agent.model_params?.anthropic || {};
     const maxTokens = agent.model_params?.max_tokens;

@@ -8,6 +8,7 @@ import { AnthropicGen } from './anthropic';
 import { CodexGen } from './codex';
 import { MockGen } from './mock';
 import { OpenAiGen } from './openai';
+import { OpenAiCompatibleGen } from './openai-compatible';
 
 export const generatorsRegistry: Map<string, LlmGenerator> = new Map<string, LlmGenerator>();
 
@@ -28,4 +29,5 @@ export function getLlmGenerator(apiType: string): LlmGenerator | undefined {
   registerLlmGenerator(new CodexGen());
   registerLlmGenerator(new MockGen());
   registerLlmGenerator(new OpenAiGen());
+  registerLlmGenerator(new OpenAiCompatibleGen());
 })();

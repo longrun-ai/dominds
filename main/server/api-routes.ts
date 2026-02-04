@@ -236,6 +236,33 @@ export async function handleApiRoute(
       return await handleGetDialogHierarchy(res, rootId);
     }
 
+    // Serve persisted dialog artifacts (binary)
+    if (
+      pathname.startsWith('/api/dialogs/') &&
+      pathname.endsWith('/artifact') &&
+      req.method === 'GET'
+    ) {
+      const parts = pathname.split('/');
+      const rawRoot = parts[3];
+      const rawMaybeSelf = parts[4];
+      const rawTail = parts[5];
+      if (!rawRoot) {
+        respondJson(res, 400, { error: 'Missing root dialog id' });
+        return true;
+      }
+      const rootId = rawRoot.replace(/%2F/g, '/');
+      const selfId = (rawMaybeSelf && rawMaybeSelf !== 'artifact' ? rawMaybeSelf : rawRoot).replace(
+        /%2F/g,
+        '/',
+      );
+      const tail = (rawTail ?? rawMaybeSelf) || '';
+      if (tail !== 'artifact') {
+        respondJson(res, 404, { error: 'Not Found' });
+        return true;
+      }
+      return await handleGetDialogArtifact(req, res, { rootId, selfId });
+    }
+
     // Get specific dialog
     if (pathname.startsWith('/api/dialogs/') && req.method === 'GET') {
       const parts = pathname.split('/');
@@ -1239,6 +1266,112 @@ async function handleGetDialog(res: ServerResponse, dialog: DialogIdent): Promis
   } catch (error) {
     log.error('Error getting dialog:', error);
     respondJson(res, 500, { success: false, error: 'Failed to get dialog' });
+    return true;
+  }
+}
+
+function normalizeDialogArtifactRelPath(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  if (trimmed.includes('\u0000')) return null;
+  if (trimmed.includes('\\')) return null;
+  if (trimmed.startsWith('/')) return null;
+  if (trimmed.includes(':')) return null;
+
+  const normalized = path.posix.normalize(trimmed);
+  if (!normalized.startsWith('artifacts/')) return null;
+  if (normalized.endsWith('/')) return null;
+  const parts = normalized.split('/');
+  if (parts.some((p) => p === '' || p === '.' || p === '..')) return null;
+  return normalized;
+}
+
+function ensureTrailingSep(p: string): string {
+  return p.endsWith(path.sep) ? p : p + path.sep;
+}
+
+function guessContentTypeFromPath(relPath: string): string {
+  const ext = path.extname(relPath).toLowerCase();
+  switch (ext) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
+    case '.svg':
+      return 'image/svg+xml';
+    case '.txt':
+    case '.md':
+      return 'text/plain; charset=utf-8';
+    case '.json':
+      return 'application/json; charset=utf-8';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+async function handleGetDialogArtifact(
+  req: IncomingMessage,
+  res: ServerResponse,
+  dialog: DialogIdent,
+): Promise<boolean> {
+  try {
+    const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+    const raw = urlObj.searchParams.get('path');
+    if (!raw) {
+      respondJson(res, 400, { success: false, error: 'Missing path query parameter' });
+      return true;
+    }
+    const relPath = normalizeDialogArtifactRelPath(raw);
+    if (!relPath) {
+      respondJson(res, 400, { success: false, error: 'Invalid artifact path' });
+      return true;
+    }
+
+    const statusCandidates: Array<'running' | 'completed' | 'archived'> = [
+      'running',
+      'completed',
+      'archived',
+    ];
+    for (const status of statusCandidates) {
+      const baseDir = DialogPersistence.getDialogEventsPath(
+        new DialogID(dialog.selfId, dialog.rootId),
+        status,
+      );
+      const candidatePath = path.join(baseDir, ...relPath.split('/'));
+      const baseAbs = ensureTrailingSep(path.resolve(baseDir));
+      const candAbs = path.resolve(candidatePath);
+      if (!candAbs.startsWith(baseAbs)) {
+        respondJson(res, 400, { success: false, error: 'Invalid artifact path' });
+        return true;
+      }
+
+      try {
+        const st = await fsPromises.stat(candAbs);
+        if (!st.isFile()) continue;
+      } catch (error) {
+        if (getErrorCode(error) === 'ENOENT') continue;
+        throw error;
+      }
+
+      const data = await fsPromises.readFile(candAbs);
+      res.writeHead(200, {
+        'Content-Type': guessContentTypeFromPath(relPath),
+        'Cache-Control': 'no-store',
+      });
+      res.end(data);
+      return true;
+    }
+
+    respondJson(res, 404, { success: false, error: 'Artifact not found' });
+    return true;
+  } catch (error) {
+    log.error('Error serving dialog artifact', error);
+    respondJson(res, 500, { success: false, error: 'Failed to read artifact' });
     return true;
   }
 }

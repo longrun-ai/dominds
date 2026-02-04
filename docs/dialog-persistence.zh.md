@@ -182,6 +182,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ├── reminders.json            # 持久化提醒项
 ├── <course>.jsonl            # 每一程的流式事件
 ├── <course>.yaml             # 每一程的元数据
+├── artifacts/                # 二进制工件（例如 MCP 工具输出图片；由 func_result_msg.contentItems 引用）
 └── subdialogs/               # 扁平子对话存储
     ├── <subDialogId1>/       # 第一级子对话
     │   ├── dialog.yaml       # 子对话元数据

@@ -391,6 +391,7 @@ export class DiskFileDialogStore extends DialogStore {
       id: funcResult.id,
       name: funcResult.name,
       content: funcResult.content,
+      contentItems: funcResult.contentItems,
       genseq: dialog.activeGenSeq,
     };
     await this.appendEvent(course, funcResultRecord);
@@ -401,6 +402,7 @@ export class DiskFileDialogStore extends DialogStore {
       id: funcResult.id,
       name: funcResult.name,
       content: funcResult.content,
+      contentItems: funcResult.contentItems,
       course,
     };
     postDialogEvent(dialog, funcResultEvt);
@@ -1717,6 +1719,7 @@ export class DiskFileDialogStore extends DialogStore {
           id: event.id,
           name: event.name,
           content: event.content,
+          contentItems: event.contentItems,
           course,
           dialog: {
             selfId: dialog.id.selfId,
@@ -3744,6 +3747,7 @@ export class DialogPersistence {
             id: event.id,
             name: event.name,
             content: event.content,
+            contentItems: event.contentItems,
           });
           break;
         }

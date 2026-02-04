@@ -23,6 +23,23 @@ export type ProviderData = JsonObject;
 
 export type ToolArguments = JsonObject;
 
+// === TOOL RESULT CONTENT ITEMS (MULTIMODAL) ===
+
+export type FuncResultContentItem =
+  | { type: 'input_text'; text: string }
+  | {
+      type: 'input_image';
+      mimeType: string;
+      byteLength: number;
+      artifact: {
+        rootId: string;
+        selfId: string;
+        // Relative to the dialog events directory (DialogPersistence.getDialogEventsPath).
+        // Must start with "artifacts/".
+        relPath: string;
+      };
+    };
+
 export type UserTextGrammar = 'tellask' | 'markdown';
 
 export interface RootDialogMetadataFile {
@@ -217,6 +234,7 @@ export interface FuncResultRecord {
   id: string;
   name: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
 }
 
 export interface QuestForSupRecord {

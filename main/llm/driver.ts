@@ -63,7 +63,7 @@ import {
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
-import { FuncTool, Tool, validateArgs, type ToolArguments } from '../tool';
+import { FuncTool, Tool, validateArgs, type ToolArguments, type ToolCallOutput } from '../tool';
 import { generateDialogID } from '../utils/id';
 import { formatTaskDocContent } from '../utils/taskdoc';
 import {
@@ -1842,12 +1842,23 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
               try {
                 throwIfAborted(abortSignal, dlg.id);
-                const content = await tool.call(dlg, agent, argsObj);
+                const output: ToolCallOutput = await tool.call(dlg, agent, argsObj);
+                const normalized =
+                  typeof output === 'string'
+                    ? { content: output, contentItems: undefined }
+                    : {
+                        content:
+                          typeof output.content === 'string' ? output.content : String(output),
+                        contentItems: Array.isArray(output.contentItems)
+                          ? output.contentItems
+                          : undefined,
+                      };
                 result = {
                   type: 'func_result_msg',
                   id: func.id,
                   name: func.name,
-                  content: String(content),
+                  content: String(normalized.content),
+                  contentItems: normalized.contentItems,
                   role: 'tool',
                   genseq: callGenseq,
                 };
@@ -2305,12 +2316,23 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
                 try {
                   throwIfAborted(abortSignal, dlg.id);
-                  const content = await tool.call(dlg, agent, argsObj);
+                  const output: ToolCallOutput = await tool.call(dlg, agent, argsObj);
+                  const normalized =
+                    typeof output === 'string'
+                      ? { content: output, contentItems: undefined }
+                      : {
+                          content:
+                            typeof output.content === 'string' ? output.content : String(output),
+                          contentItems: Array.isArray(output.contentItems)
+                            ? output.contentItems
+                            : undefined,
+                        };
                   result = {
                     type: 'func_result_msg',
                     id: func.id,
                     name: func.name,
-                    content: String(content),
+                    content: String(normalized.content),
+                    contentItems: normalized.contentItems,
                     role: 'tool',
                     genseq: callGenseq,
                   };

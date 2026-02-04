@@ -24,7 +24,7 @@ import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import type { FuncTool, ToolArguments } from '../tool';
+import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { listToolsets } from './registry';
 import {
@@ -58,6 +58,10 @@ function ok(result: string, messages?: ChatMessage[]): string {
 function fail(result: string, messages?: ChatMessage[]): string {
   void messages;
   return result;
+}
+
+function toolCallOutputToString(output: ToolCallOutput): string {
+  return typeof output === 'string' ? output : output.content;
 }
 
 function yamlQuote(value: string): string {
@@ -1129,7 +1133,11 @@ export const teamMgmtListModelsTool: FuncTool = {
           let specific: Record<string, ModelParamOption> | undefined;
           if (mpo) {
             if (providerCfg.apiType === 'codex') specific = mpo.codex;
-            else if (providerCfg.apiType === 'openai') specific = mpo.openai;
+            else if (
+              providerCfg.apiType === 'openai' ||
+              providerCfg.apiType === 'openai-compatible'
+            )
+              specific = mpo.openai;
             else if (providerCfg.apiType === 'anthropic') specific = mpo.anthropic;
             else specific = undefined;
           }
@@ -1236,7 +1244,8 @@ export const teamMgmtListDirTool: FuncTool = {
       ensureMindsScopedPath(rel);
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await listDirTool.call(dlg, proxyCaller, { path: rel });
+      const output = await listDirTool.call(dlg, proxyCaller, { path: rel });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -1321,12 +1330,13 @@ export const teamMgmtReadFileTool: FuncTool = {
       }
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await readFileTool.call(dlg, proxyCaller, {
+      const output = await readFileTool.call(dlg, proxyCaller, {
         path: rel,
         ...(range ? { range } : {}),
         ...(maxLines !== undefined ? { max_lines: maxLines } : {}),
         ...(showLinenos !== undefined ? { show_linenos: showLinenos } : {}),
       });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -1561,13 +1571,14 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const result = await overwriteEntireFileTool.call(dlg, proxyCaller, {
+      const output = await overwriteEntireFileTool.call(dlg, proxyCaller, {
         path: rel,
         known_old_total_lines: knownLinesValue,
         known_old_total_bytes: knownBytesValue,
         content: contentValue,
         ...(contentFormat ? { content_format: contentFormat } : {}),
       });
+      const result = toolCallOutputToString(output);
       return ok(result, [{ type: 'environment_msg', role: 'user', content: result }]);
     } catch (err: unknown) {
       const msg =
@@ -1634,12 +1645,13 @@ export const teamMgmtPrepareFileAppendTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await prepareFileAppendTool.call(dlg, proxyCaller, {
+      const output = await prepareFileAppendTool.call(dlg, proxyCaller, {
         path: rel,
         ...(create !== undefined ? { create } : {}),
         ...(existingHunkId ? { existing_hunk_id: existingHunkId } : {}),
         content: contentValue,
       });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -1718,7 +1730,7 @@ export const teamMgmtPrepareInsertAfterTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await prepareFileInsertAfterTool.call(dlg, proxyCaller, {
+      const output = await prepareFileInsertAfterTool.call(dlg, proxyCaller, {
         path: rel,
         anchor,
         ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
@@ -1726,6 +1738,7 @@ export const teamMgmtPrepareInsertAfterTool: FuncTool = {
         ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
         content: contentValue,
       });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -1804,7 +1817,7 @@ export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await prepareFileInsertBeforeTool.call(dlg, proxyCaller, {
+      const output = await prepareFileInsertBeforeTool.call(dlg, proxyCaller, {
         path: rel,
         anchor,
         ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
@@ -1812,6 +1825,7 @@ export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
         ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
         content: contentValue,
       });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -1905,7 +1919,7 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
       const contentValue = args['content'];
       if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
 
-      const content = await prepareFileBlockReplaceTool.call(dlg, proxyCaller, {
+      const output = await prepareFileBlockReplaceTool.call(dlg, proxyCaller, {
         path: rel,
         start_anchor: startAnchor,
         end_anchor: endAnchor,
@@ -1917,6 +1931,7 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
         ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
         content: contentValue,
       });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -1977,12 +1992,13 @@ export const teamMgmtPrepareFileRangeEditTool: FuncTool = {
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await prepareFileRangeEditTool.call(dlg, proxyCaller, {
+      const output = await prepareFileRangeEditTool.call(dlg, proxyCaller, {
         path: rel,
         range: rangeSpec,
         ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
         ...(typeof contentValue === 'string' ? { content: contentValue } : {}),
       });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2022,7 +2038,8 @@ export const teamMgmtApplyFileModificationTool: FuncTool = {
       const id = typeof hunkIdValue === 'string' ? hunkIdValue.trim() : '';
       if (!id) throw new Error('Hunk id required (e.g. a1b2c3d4)');
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await applyFileModificationTool.call(dlg, proxyCaller, { hunk_id: id });
+      const output = await applyFileModificationTool.call(dlg, proxyCaller, { hunk_id: id });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2071,7 +2088,8 @@ export const teamMgmtMkDirTool: FuncTool = {
       }
       const toolArgs: ToolArguments =
         parents === undefined ? { path: rel } : { path: rel, parents };
-      const content = await mkDirTool.call(dlg, proxyCaller, toolArgs);
+      const output = await mkDirTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2120,7 +2138,8 @@ export const teamMgmtMoveFileTool: FuncTool = {
       ensureMindsScopedPath(fromRel);
       ensureMindsScopedPath(toRel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await moveFileTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
+      const output = await moveFileTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2169,7 +2188,8 @@ export const teamMgmtMoveDirTool: FuncTool = {
       ensureMindsScopedPath(fromRel);
       ensureMindsScopedPath(toRel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await moveDirTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
+      const output = await moveDirTool.call(dlg, proxyCaller, { from: fromRel, to: toRel });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2266,7 +2286,8 @@ export const teamMgmtRipgrepFilesTool: FuncTool = {
       }
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await ripgrepFilesTool.call(dlg, proxyCaller, toolArgs);
+      const output = await ripgrepFilesTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2380,7 +2401,8 @@ export const teamMgmtRipgrepSnippetsTool: FuncTool = {
       }
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await ripgrepSnippetsTool.call(dlg, proxyCaller, toolArgs);
+      const output = await ripgrepSnippetsTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2477,7 +2499,8 @@ export const teamMgmtRipgrepCountTool: FuncTool = {
       }
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await ripgrepCountTool.call(dlg, proxyCaller, toolArgs);
+      const output = await ripgrepCountTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2594,7 +2617,8 @@ export const teamMgmtRipgrepFixedTool: FuncTool = {
       }
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await ripgrepFixedTool.call(dlg, proxyCaller, toolArgs);
+      const output = await ripgrepFixedTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2660,7 +2684,8 @@ export const teamMgmtRipgrepSearchTool: FuncTool = {
         ...(rgArgsValue !== undefined ? { rg_args: rgArgsValue } : {}),
       };
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await ripgrepSearchTool.call(dlg, proxyCaller, toolArgs);
+      const output = await ripgrepSearchTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2705,7 +2730,8 @@ export const teamMgmtRmFileTool: FuncTool = {
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const content = await rmFileTool.call(dlg, proxyCaller, { path: rel });
+      const output = await rmFileTool.call(dlg, proxyCaller, { path: rel });
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =
@@ -2758,7 +2784,8 @@ export const teamMgmtRmDirTool: FuncTool = {
       }
       const toolArgs: ToolArguments =
         recursive === undefined ? { path: rel } : { path: rel, recursive };
-      const content = await rmDirTool.call(dlg, proxyCaller, toolArgs);
+      const output = await rmDirTool.call(dlg, proxyCaller, toolArgs);
+      const content = toolCallOutputToString(output);
       return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
     } catch (err: unknown) {
       const msg =

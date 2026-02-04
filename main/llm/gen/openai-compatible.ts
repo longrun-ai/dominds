@@ -13,6 +13,7 @@ import OpenAI from 'openai';
 import type {
   ChatCompletion,
   ChatCompletionChunk,
+  ChatCompletionContentPart,
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
@@ -28,6 +29,7 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/openai-compatible');
 
@@ -98,6 +100,160 @@ function chatMessageToChatCompletionMessage(msg: ChatMessage): ChatCompletionMes
       return _exhaustive;
     }
   }
+}
+
+async function funcResultToChatCompletionMessages(
+  msg: FuncResultMsg,
+): Promise<ChatCompletionMessageParam[]> {
+  const items = msg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return [{ role: 'tool', tool_call_id: msg.id, content: msg.content }];
+  }
+
+  const out: ChatCompletionMessageParam[] = [];
+  out.push({ role: 'tool', tool_call_id: msg.id, content: msg.content });
+
+  const parts: ChatCompletionContentPart[] = [];
+  let sawImageUrl = false;
+  let sawAnyImage = false;
+
+  parts.push({
+    type: 'text',
+    text: `Tool output images (${msg.name}, call_id=${msg.id}):`,
+  });
+
+  for (const item of items) {
+    if (item.type === 'input_text') continue;
+
+    if (item.type === 'input_image') {
+      sawAnyImage = true;
+      if (!isVisionImageMimeType(item.mimeType)) {
+        parts.push({
+          type: 'text',
+          text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+
+      const bytes = await readDialogArtifactBytes({
+        rootId: item.artifact.rootId,
+        selfId: item.artifact.selfId,
+        relPath: item.artifact.relPath,
+      });
+      if (!bytes) {
+        parts.push({
+          type: 'text',
+          text: `[image missing: ${item.artifact.relPath}]`,
+        });
+        continue;
+      }
+
+      parts.push({
+        type: 'image_url',
+        image_url: {
+          url: bytesToDataUrl({ mimeType: item.mimeType, bytes }),
+          detail: 'auto',
+        },
+      });
+      sawImageUrl = true;
+      continue;
+    }
+
+    const _exhaustive: never = item;
+    parts.push({ type: 'text', text: `[unknown content item: ${String(_exhaustive)}]` });
+  }
+
+  if (sawAnyImage) {
+    if (sawImageUrl) {
+      out.push({ role: 'user', content: parts });
+    } else {
+      const text = parts
+        .filter((p): p is Extract<ChatCompletionContentPart, { type: 'text' }> => p.type === 'text')
+        .map((p) => p.text)
+        .join('\n')
+        .trim();
+      if (text.length > 0) {
+        out.push({ role: 'user', content: text });
+      }
+    }
+  }
+
+  return out;
+}
+
+async function orphanedFuncResultToChatCompletionMessages(
+  msg: FuncResultMsg,
+): Promise<ChatCompletionMessageParam[]> {
+  const items = msg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return [
+      {
+        role: 'user',
+        content: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+      },
+    ];
+  }
+
+  const parts: ChatCompletionContentPart[] = [
+    {
+      type: 'text',
+      text: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
+    },
+  ];
+  let sawImageUrl = false;
+  let sawAnyImage = false;
+
+  for (const item of items) {
+    if (item.type === 'input_text') continue;
+
+    if (item.type === 'input_image') {
+      sawAnyImage = true;
+      if (!isVisionImageMimeType(item.mimeType)) {
+        parts.push({
+          type: 'text',
+          text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+
+      const bytes = await readDialogArtifactBytes({
+        rootId: item.artifact.rootId,
+        selfId: item.artifact.selfId,
+        relPath: item.artifact.relPath,
+      });
+      if (!bytes) {
+        parts.push({
+          type: 'text',
+          text: `[image missing: ${item.artifact.relPath}]`,
+        });
+        continue;
+      }
+
+      parts.push({
+        type: 'image_url',
+        image_url: { url: bytesToDataUrl({ mimeType: item.mimeType, bytes }), detail: 'auto' },
+      });
+      sawImageUrl = true;
+      continue;
+    }
+
+    const _exhaustive: never = item;
+    parts.push({ type: 'text', text: `[unknown content item: ${String(_exhaustive)}]` });
+  }
+
+  if (sawImageUrl) {
+    return [{ role: 'user', content: parts }];
+  }
+  if (sawAnyImage) {
+    const text = parts
+      .filter((p): p is Extract<ChatCompletionContentPart, { type: 'text' }> => p.type === 'text')
+      .map((p) => p.text)
+      .join('\n')
+      .trim();
+    return [{ role: 'user', content: text }];
+  }
+
+  return [{ role: 'user', content: msg.content }];
 }
 
 function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
@@ -204,10 +360,10 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
   return merged;
 }
 
-function buildChatCompletionMessages(
+async function buildChatCompletionMessages(
   systemPrompt: string,
   context: ChatMessage[],
-): ChatCompletionMessageParam[] {
+): Promise<ChatCompletionMessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ChatCompletionMessageParam[] = [];
 
@@ -227,12 +383,9 @@ function buildChatCompletionMessages(
       // Many OpenAI-compatible providers require the tool result to directly follow the matching
       // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
       if (lastFuncCallId === msg.id) {
-        input.push(chatMessageToChatCompletionMessage(msg));
+        input.push(...(await funcResultToChatCompletionMessages(msg)));
       } else {
-        input.push({
-          role: 'user',
-          content: `[orphaned_tool_output:${msg.name}:${msg.id}] ${msg.content}`,
-        });
+        input.push(...(await orphanedFuncResultToChatCompletionMessages(msg)));
       }
       lastFuncCallId = null;
       continue;
@@ -245,11 +398,11 @@ function buildChatCompletionMessages(
   return mergeAdjacentMessages(input);
 }
 
-export function buildOpenAiCompatibleRequestMessagesWrapper(
+export async function buildOpenAiCompatibleRequestMessagesWrapper(
   systemPrompt: string,
   context: ChatMessage[],
-): ChatCompletionMessageParam[] {
-  return buildChatCompletionMessages(systemPrompt, context);
+): Promise<ChatCompletionMessageParam[]> {
+  return await buildChatCompletionMessages(systemPrompt, context);
 }
 
 function applyArgsDelta(state: { argsJson: string }, chunk: string): void {
@@ -356,7 +509,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const messages = buildChatCompletionMessages(systemPrompt, context);
+    const messages = await buildChatCompletionMessages(systemPrompt, context);
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -504,7 +657,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     }
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
-    const messages = buildChatCompletionMessages(systemPrompt, context);
+    const messages = await buildChatCompletionMessages(systemPrompt, context);
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;

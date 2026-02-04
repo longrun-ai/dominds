@@ -5,6 +5,7 @@
  */
 import type {
   ChatGptEventReceiver,
+  ChatGptFunctionCallOutputContentItem,
   ChatGptFunctionTool,
   ChatGptMessageItem,
   ChatGptMessageRole,
@@ -22,6 +23,7 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
@@ -194,7 +196,51 @@ function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
   return out;
 }
 
-function buildCodexInput(context: ChatMessage[]): ChatGptResponseItem[] {
+async function buildCodexFunctionCallOutput(
+  msg: FuncResultMsg,
+): Promise<string | ChatGptFunctionCallOutputContentItem[]> {
+  const items = msg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) return msg.content;
+
+  const out: ChatGptFunctionCallOutputContentItem[] = [];
+  for (const item of items) {
+    if (item.type === 'input_text') {
+      out.push({ type: 'input_text', text: item.text });
+      continue;
+    }
+
+    if (item.type === 'input_image') {
+      if (!isVisionImageMimeType(item.mimeType)) {
+        out.push({
+          type: 'input_text',
+          text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+      const bytes = await readDialogArtifactBytes({
+        rootId: item.artifact.rootId,
+        selfId: item.artifact.selfId,
+        relPath: item.artifact.relPath,
+      });
+      if (!bytes) {
+        out.push({ type: 'input_text', text: `[image missing: ${item.artifact.relPath}]` });
+        continue;
+      }
+      out.push({
+        type: 'input_image',
+        image_url: bytesToDataUrl({ mimeType: item.mimeType, bytes }),
+      });
+      continue;
+    }
+
+    const _exhaustive: never = item;
+    out.push({ type: 'input_text', text: `[unknown content item: ${String(_exhaustive)}]` });
+  }
+
+  return out.length > 0 ? out : msg.content;
+}
+
+async function buildCodexInput(context: ChatMessage[]): Promise<ChatGptResponseItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ChatGptResponseItem[] = [];
 
@@ -216,7 +262,7 @@ function buildCodexInput(context: ChatMessage[]): ChatGptResponseItem[] {
         input.push({
           type: 'function_call_output',
           call_id: msg.id,
-          output: msg.content,
+          output: await buildCodexFunctionCallOutput(msg),
         });
       } else {
         input.push(
@@ -237,13 +283,13 @@ function buildCodexInput(context: ChatMessage[]): ChatGptResponseItem[] {
   return input;
 }
 
-function buildCodexRequest(
+async function buildCodexRequest(
   agent: Team.Member,
   instructions: string,
   assistantPrelude: string | null,
   funcTools: FuncTool[],
   context: ChatMessage[],
-): ChatGptResponsesRequest {
+): Promise<ChatGptResponsesRequest> {
   if (!agent.model) {
     throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
   }
@@ -253,7 +299,7 @@ function buildCodexRequest(
     // Codex backend rejects system messages; pass extra instructions as prior assistant context.
     input.push(messageItem('assistant', assistantPrelude));
   }
-  input.push(...buildCodexInput(context));
+  input.push(...(await buildCodexInput(context)));
 
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   let reasoning: ChatGptReasoning | null = null;
@@ -325,7 +371,7 @@ export class CodexGen implements LlmGenerator {
       systemPrompt,
       codexAuth.loadCodexPrompt,
     );
-    const payload = buildCodexRequest(
+    const payload = await buildCodexRequest(
       agent,
       resolvedInstructions.instructions,
       resolvedInstructions.assistantPrelude,

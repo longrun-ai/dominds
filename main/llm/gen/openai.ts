@@ -10,6 +10,7 @@ import type {
   Response,
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
+  ResponseFunctionCallOutputItemList,
   ResponseInputItem,
   ResponseOutputItem,
   ResponseStreamEvent,
@@ -24,6 +25,7 @@ import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/openai');
 
@@ -111,6 +113,72 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
       return _exhaustive;
     }
   }
+}
+
+async function funcResultToOpenAiInputItem(msg: FuncResultMsg): Promise<ResponseInputItem> {
+  const items = msg.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      type: 'function_call_output',
+      call_id: msg.id,
+      output: msg.content,
+    };
+  }
+
+  const output: ResponseFunctionCallOutputItemList = [];
+  for (const item of items) {
+    if (item.type === 'input_text') {
+      output.push({ type: 'input_text', text: item.text });
+      continue;
+    }
+
+    if (item.type === 'input_image') {
+      if (!isVisionImageMimeType(item.mimeType)) {
+        output.push({
+          type: 'input_text',
+          text: `[image omitted: unsupported mimeType=${item.mimeType}]`,
+        });
+        continue;
+      }
+
+      const bytes = await readDialogArtifactBytes({
+        rootId: item.artifact.rootId,
+        selfId: item.artifact.selfId,
+        relPath: item.artifact.relPath,
+      });
+      if (!bytes) {
+        output.push({
+          type: 'input_text',
+          text: `[image missing: ${item.artifact.relPath}]`,
+        });
+        continue;
+      }
+
+      output.push({
+        type: 'input_image',
+        detail: 'auto',
+        image_url: bytesToDataUrl({ mimeType: item.mimeType, bytes }),
+      });
+      continue;
+    }
+
+    const _exhaustive: never = item;
+    output.push({ type: 'input_text', text: `[unknown content item: ${String(_exhaustive)}]` });
+  }
+
+  if (output.length === 0) {
+    return {
+      type: 'function_call_output',
+      call_id: msg.id,
+      output: msg.content,
+    };
+  }
+
+  return {
+    type: 'function_call_output',
+    call_id: msg.id,
+    output,
+  };
 }
 
 function normalizeToolCallPairs(context: ChatMessage[]): ChatMessage[] {
@@ -216,7 +284,7 @@ function mergeAdjacentOpenAiMessages(input: ResponseInputItem[]): ResponseInputI
   return merged;
 }
 
-function buildOpenAiRequestInput(context: ChatMessage[]): ResponseInputItem[] {
+async function buildOpenAiRequestInput(context: ChatMessage[]): Promise<ResponseInputItem[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ResponseInputItem[] = [];
 
@@ -232,7 +300,7 @@ function buildOpenAiRequestInput(context: ChatMessage[]): ResponseInputItem[] {
       // Many OpenAI-compatible providers require the tool result to directly follow the matching
       // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
       if (lastFuncCallId === msg.id) {
-        input.push(chatMessageToOpenAiInputItem(msg));
+        input.push(await funcResultToOpenAiInputItem(msg));
       } else {
         input.push({
           type: 'message',
@@ -268,8 +336,10 @@ function parseOpenAiUsage(usage: unknown): LlmUsageStats {
   };
 }
 
-export function buildOpenAiRequestInputWrapper(context: ChatMessage[]): ResponseInputItem[] {
-  return buildOpenAiRequestInput(context);
+export async function buildOpenAiRequestInputWrapper(
+  context: ChatMessage[],
+): Promise<ResponseInputItem[]> {
+  return await buildOpenAiRequestInput(context);
 }
 
 function extractOutputMessageText(item: ResponseOutputItem): string {
@@ -392,7 +462,7 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestInput: ResponseInputItem[] = buildOpenAiRequestInput(context);
+    const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(context);
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -841,7 +911,7 @@ export class OpenAiGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const requestInput: ResponseInputItem[] = buildOpenAiRequestInput(context);
+    const requestInput: ResponseInputItem[] = await buildOpenAiRequestInput(context);
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
 

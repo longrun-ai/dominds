@@ -9,7 +9,7 @@
 import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogInterruptionReason, DialogRunState } from './run-state';
-import type { UserTextGrammar } from './storage';
+import type { FuncResultContentItem, UserTextGrammar } from './storage';
 import type { TellaskCallValidation } from './tellask';
 
 export interface DialogRunStateEvent {
@@ -117,6 +117,7 @@ export interface FunctionResultEvent {
   id: string;
   name: string;
   content: string;
+  contentItems?: FuncResultContentItem[];
   course: number;
   genseq?: number;
 }

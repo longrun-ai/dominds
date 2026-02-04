@@ -26,6 +26,26 @@ MCP 支持应该通过组合现有原语来实现，而不是发明一个并行�
 - LLM 层只能通过生成器（例如 `dominds/main/llm/gen/codex.ts）"看到"函数工具（`FuncTool`），工具执行通过驱动（`dominds/main/llm/driver.ts`）中的 `FuncTool.call()` 发生。
 - 函数工具调用可以并发执行（驱动使用 `Promise.all()`），因此任何 MCP 客户端包装器必须安全地处理并行的飞行中请求。
 
+## MCP 工具输出（文本 + 图片）与 artifact
+
+部分 MCP 工具会返回结构化 `content[]`（而不仅仅是字符串）。常见形态（示意）：
+
+- `type: "text"`：包含 `text: string`
+- `type: "image"`：包含 `mimeType: string` 与 `data: string`（通常为 base64，可能带 `data:<mime>;base64,` 前缀）
+
+Dominds 的行为：
+
+- **落盘**：将 `image` 的 bytes 写入对话目录下的 `artifacts/`，路径形如：
+  - `artifacts/mcp/<serverId>/<toolName>/<timestamp>-<uuid>.<ext>`
+- **结构化回传**：`FuncTool.call()` 返回 `ToolCallOutput` 对象，并在 `contentItems` 中携带：
+  - `{ type: "input_text", text }`
+  - `{ type: "input_image", mimeType, byteLength, artifact: { rootId, selfId, relPath } }`
+- **WebUI 渲染**：WebUI 可通过二进制接口拉取 artifact 并渲染图片：
+  - `GET /api/dialogs/:root/:self/artifact?path=artifacts/...`
+- **回喂给模型（识图）**：当生成器遇到 `func_result_msg.contentItems[].type=input_image` 时，会读取 artifact 并按提供者能力喂给模型；仅允许：
+  - `image/jpeg | image/png | image/gif | image/webp`
+  - 不支持的 mimeType 会降级成文本提示（避免请求被提供者拒绝）
+
 许多真实的 MCP 服务器**并不安全，无法在多个对话/智能体之间共享**。示例包括保持可变会话状态的服务器、维护隐式"当前页面"句柄的服务器，或具有全局进程范围缓存的服务器。
 
 因此，Dominds 默认将 MCP 客户端连接/进程视为**租赁资源**。

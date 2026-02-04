@@ -115,6 +115,17 @@ export class McpSdkClient {
     return stringifyToolCallResult(res);
   }
 
+  async callToolRaw(
+    mcpToolName: string,
+    args: ToolArguments,
+    timeoutMs: number = 60_000,
+  ): Promise<unknown> {
+    this.ensureOpen();
+    return await this.client.callTool({ name: mcpToolName, arguments: args }, undefined, {
+      timeout: timeoutMs,
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -148,6 +159,20 @@ function stringifyToolCallResult(value: unknown): string {
         const t = item.type;
         if (t === 'text' && typeof item.text === 'string') {
           parts.push(item.text);
+          continue;
+        }
+
+        if (t === 'image') {
+          const mimeType = typeof item.mimeType === 'string' ? item.mimeType : 'unknown';
+          const data = item.data;
+          const dataSize = typeof data === 'string' ? data.length : 0;
+          parts.push(
+            JSON.stringify({
+              type: 'image',
+              mimeType,
+              data: `[omitted base64; length=${dataSize}]`,
+            }),
+          );
           continue;
         }
       }

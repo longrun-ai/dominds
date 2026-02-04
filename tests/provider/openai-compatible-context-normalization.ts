@@ -55,7 +55,7 @@ async function main() {
     },
   ];
 
-  const messages = buildOpenAiCompatibleRequestMessagesWrapper('', context);
+  const messages = await buildOpenAiCompatibleRequestMessagesWrapper('', context);
   const roles = messages.map(getRole);
 
   assert(

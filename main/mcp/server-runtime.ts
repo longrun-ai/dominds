@@ -41,6 +41,21 @@ export class McpServerRuntime {
     }
   }
 
+  public async callToolRaw(mcpToolName: string, args: ToolArguments): Promise<unknown> {
+    if (this.closed) {
+      throw new Error(`MCP server ${this.serverId} is closed`);
+    }
+    this.inFlightCount++;
+    try {
+      return await this.client.callToolRaw(mcpToolName, args);
+    } finally {
+      this.inFlightCount--;
+      if (this.stopRequested && this.inFlightCount <= 0) {
+        await this.closeNow();
+      }
+    }
+  }
+
   public requestStop(params?: { forceKillAfterMs?: number }): void {
     if (this.stopRequested) return;
     this.stopRequested = true;

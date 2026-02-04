@@ -1047,12 +1047,87 @@ export class DomindsDialogContainer extends HTMLElement {
         // Found the func-call section - show result inside it
         const resultEl = funcCallSection.querySelector('.func-call-result') as HTMLElement | null;
         if (resultEl) {
-          const raw = String(event.content || '');
-          resultEl.innerHTML = renderDomindsMarkdown(raw);
-          resultEl.setAttribute('data-raw-md', raw);
-          resultEl.classList.add('markdown-content');
-          resultEl.classList.add('completed');
-          resultEl.style.display = 'block';
+          const items = event.contentItems;
+          if (Array.isArray(items) && items.length > 0) {
+            resultEl.innerHTML = '';
+            for (const item of items) {
+              if (item.type === 'input_text') {
+                const raw = String(item.text || '');
+                const block = document.createElement('div');
+                block.innerHTML = renderDomindsMarkdown(raw);
+                block.classList.add('markdown-content');
+                block.setAttribute('data-raw-md', raw);
+                resultEl.appendChild(block);
+                continue;
+              }
+
+              if (item.type === 'input_image') {
+                const img = document.createElement('img');
+                img.alt = 'tool image';
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.display = 'block';
+
+                const placeholder = document.createElement('div');
+                placeholder.textContent = `Loading image (${item.mimeType}, ${item.byteLength} bytes)…`;
+                placeholder.style.opacity = '0.8';
+                placeholder.style.fontSize = '12px';
+                placeholder.style.margin = '6px 0';
+                resultEl.appendChild(placeholder);
+                resultEl.appendChild(img);
+
+                const api = getApiClient();
+                const params = new URLSearchParams();
+                params.set('path', item.artifact.relPath);
+                const endpoint = `/api/dialogs/${encodeURIComponent(item.artifact.rootId)}/${encodeURIComponent(
+                  item.artifact.selfId,
+                )}/artifact?${params.toString()}`;
+
+                void (async () => {
+                  try {
+                    const response = await api.fetchBlob(endpoint);
+                    if (!response.success || !response.data) {
+                      placeholder.textContent = response.error
+                        ? `Failed to load image: ${response.error}`
+                        : 'Failed to load image';
+                      return;
+                    }
+                    const objectUrl = URL.createObjectURL(response.data);
+                    img.src = objectUrl;
+                    placeholder.remove();
+                    img.addEventListener(
+                      'load',
+                      () => {
+                        URL.revokeObjectURL(objectUrl);
+                      },
+                      { once: true },
+                    );
+                    img.addEventListener(
+                      'error',
+                      () => {
+                        URL.revokeObjectURL(objectUrl);
+                      },
+                      { once: true },
+                    );
+                  } catch (err) {
+                    placeholder.textContent = `Failed to load image: ${
+                      err instanceof Error ? err.message : String(err)
+                    }`;
+                  }
+                })();
+                continue;
+              }
+            }
+            resultEl.classList.add('completed');
+            resultEl.style.display = 'block';
+          } else {
+            const raw = String(event.content || '');
+            resultEl.innerHTML = renderDomindsMarkdown(raw);
+            resultEl.setAttribute('data-raw-md', raw);
+            resultEl.classList.add('markdown-content');
+            resultEl.classList.add('completed');
+            resultEl.style.display = 'block';
+          }
         }
         this.scrollToBottom();
         return;

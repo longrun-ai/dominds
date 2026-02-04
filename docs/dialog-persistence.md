@@ -183,6 +183,7 @@ This design balances the need for clear hierarchical relationships with efficien
 ├── reminders.json            # Persistent reminders
 ├── <course>.jsonl            # Streamed messages for each course
 ├── <course>.yaml             # Course metadata
+├── artifacts/                # Binary artifacts (e.g. MCP tool output images; referenced by func_result_msg.contentItems)
 └── subdialogs/               # Flat subdialog storage
     ├── <subDialogId1>/       # First-level subdialog
     │   ├── dialog.yaml       # Subdialog metadata

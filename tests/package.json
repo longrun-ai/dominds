@@ -32,6 +32,7 @@
     "openai-whitespace": "tsx provider/openai-whitespace.ts",
     "openai-context-normalization": "tsx provider/openai-context-normalization.ts",
     "openai-compatible-context-normalization": "tsx provider/openai-compatible-context-normalization.ts",
+    "openai-compatible-image-fallback": "tsx provider/openai-compatible-image-fallback.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
     "diag-tool": "tsx toolsets/diag.ts",
     "readonly-shell": "tsx toolsets/readonly-shell.ts",

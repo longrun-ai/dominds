@@ -10,6 +10,7 @@
 import type { Dialog } from './dialog';
 import type { ChatMessage } from './llm/client';
 import type { I18nText } from './shared/types/i18n';
+import type { FuncResultContentItem } from './shared/types/storage';
 import { Team } from './team';
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -38,10 +39,17 @@ export interface FuncTool {
   // - 'passthrough': accept any JSON object (used by MCP tools).
   readonly argsValidation?: 'dominds' | 'passthrough';
   // args is a structured object adhering to parameters schema
-  call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string>;
+  call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput>;
 }
 
 export type Tool = FuncTool;
+
+export type ToolCallOutput =
+  | string
+  | {
+      content: string;
+      contentItems?: FuncResultContentItem[];
+    };
 
 // Reminder-related interfaces
 export interface Reminder {

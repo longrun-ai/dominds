@@ -61,7 +61,7 @@ export type SetupProminentEnumModelParam = {
 export type SetupProviderSummary = {
   providerKey: string;
   name: string;
-  apiType: 'codex' | 'anthropic' | 'mock' | 'openai';
+  apiType: 'codex' | 'anthropic' | 'mock' | 'openai' | 'openai-compatible';
   baseUrl: string;
   apiKeyEnvVar: string;
   techSpecUrl?: string;
