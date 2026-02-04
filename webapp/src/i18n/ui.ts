@@ -35,6 +35,7 @@ export type UiStrings = {
 
   previousCourse: string;
   nextCourse: string;
+  scrollToBottom: string;
 
   reminders: string;
   refreshReminders: string;
@@ -294,6 +295,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
       previousCourse: '上一程',
       nextCourse: '下一程',
+      scrollToBottom: '回到最新（恢复自动跟随）',
 
       reminders: '提醒',
       refreshReminders: '刷新提醒',
@@ -559,6 +561,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
     previousCourse: 'Previous Course',
     nextCourse: 'Next Course',
+    scrollToBottom: 'Jump to latest (resume follow)',
 
     reminders: 'Reminders',
     refreshReminders: 'Refresh Reminders',

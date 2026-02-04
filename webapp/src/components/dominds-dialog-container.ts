@@ -179,11 +179,13 @@ export class DomindsDialogContainer extends HTMLElement {
       const current = this.scrollContainer;
       if (!current) return;
       this.autoScrollEnabled = this.isScrollContainerAtBottom(current);
+      this.updateScrollToBottomButton();
     };
     container.addEventListener('scroll', this.boundOnScrollContainerScroll, { passive: true });
 
     // Initialize based on current scroll position.
     this.autoScrollEnabled = this.isScrollContainerAtBottom(container);
+    this.updateScrollToBottomButton();
   }
 
   private isScrollContainerAtBottom(container: HTMLElement): boolean {
@@ -227,6 +229,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // Dialog navigation is a user-initiated context switch; reset auto-scroll so the freshly
     // loaded dialog can follow streaming output until the user scrolls up.
     this.autoScrollEnabled = true;
+    this.updateScrollToBottomButton();
     // Save current dialog as previous before cleanup
     // This allows events for the "old" dialog to be processed during navigation race conditions
     if (this.currentDialog) {
@@ -248,6 +251,7 @@ export class DomindsDialogContainer extends HTMLElement {
   public clearDialog(): void {
     this.suppressEvents = true;
     this.autoScrollEnabled = true;
+    this.updateScrollToBottomButton();
     this.cleanup();
     this.currentDialog = undefined;
     this.render();
@@ -279,6 +283,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.suppressEvents = true;
     // Course navigation replays content; default to following the newest output unless user scrolls up.
     this.autoScrollEnabled = true;
+    this.updateScrollToBottomButton();
     this.cleanup();
     this.currentCourse = course;
     this.wsManager.sendRaw({
@@ -1861,6 +1866,20 @@ export class DomindsDialogContainer extends HTMLElement {
             <button id="resume-btn" class="resume-btn" type="button">${t.continueLabel}</button>
           </div>
         </div>
+        <div id="scroll-to-bottom-wrap" class="scroll-to-bottom-wrap hidden">
+          <button
+            id="scroll-to-bottom-btn"
+            class="scroll-to-bottom-btn"
+            type="button"
+            title="${t.scrollToBottom}"
+            aria-label="${t.scrollToBottom}"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14"></path>
+              <path d="m19 12-7 7-7-7"></path>
+            </svg>
+          </button>
+        </div>
       </div>
     `;
 
@@ -1872,7 +1891,27 @@ export class DomindsDialogContainer extends HTMLElement {
         this.wsManager.sendRaw({ type: 'resume_dialog', dialog });
       };
     }
+    const scrollBtn = this.shadowRoot.querySelector(
+      '#scroll-to-bottom-btn',
+    ) as HTMLButtonElement | null;
+    if (scrollBtn) {
+      scrollBtn.onclick = () => {
+        this.autoScrollEnabled = true;
+        this.updateScrollToBottomButton();
+        this.scrollToBottom({ force: true });
+      };
+    }
     this.updateResumePanel();
+    this.updateScrollToBottomButton();
+  }
+
+  private updateScrollToBottomButton(): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const wrap = root.querySelector('#scroll-to-bottom-wrap') as HTMLElement | null;
+    if (!wrap) return;
+    const shouldShow = this.scrollContainer !== null && !this.autoScrollEnabled;
+    wrap.classList.toggle('hidden', !shouldShow);
   }
 
   private updateResumePanel(): void {
@@ -1957,6 +1996,53 @@ export class DomindsDialogContainer extends HTMLElement {
       :host { display: block; height: 100%; }
       .container { height: 100%; background: var(--dominds-bg, var(--color-bg-primary, #ffffff)); }
       .messages { box-sizing: border-box; padding: 16px; }
+
+      .scroll-to-bottom-wrap {
+        position: sticky;
+        bottom: 14px;
+        display: flex;
+        justify-content: flex-end;
+        padding: 0 16px 14px 16px;
+        pointer-events: none;
+        z-index: 50;
+      }
+
+      .scroll-to-bottom-wrap.hidden {
+        display: none;
+      }
+
+      .scroll-to-bottom-btn {
+        pointer-events: auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
+        background: var(--dominds-primary, var(--color-accent-primary, #007acc));
+        color: white;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+        opacity: 0.72;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.15s ease, transform 0.08s ease, background 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      .scroll-to-bottom-btn:hover {
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, black);
+        opacity: 0.92;
+      }
+
+      .scroll-to-bottom-btn:active {
+        transform: translateY(1px);
+      }
+
+      .scroll-to-bottom-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 65%, transparent);
+        outline-offset: 2px;
+      }
 
       .resume-panel {
         margin: 0 16px 16px 16px;
@@ -2618,12 +2704,15 @@ export class DomindsDialogContainer extends HTMLElement {
     `;
   }
 
-  private scrollToBottom(): void {
+  private scrollToBottom(options?: { force?: boolean }): void {
     // Scroll the parent element (.conversation-scroll-area) which has overflow-y: auto
     this.ensureScrollContainerListener();
     const scrollContainer = this.scrollContainer;
     if (!scrollContainer) return;
-    if (!this.autoScrollEnabled) return;
+    // Default behavior: do not "steal" scroll unless the user is already at the bottom.
+    // When the user explicitly clicks the jump button, we force the scroll.
+    const forceScroll = options !== undefined && options.force === true;
+    if (!forceScroll && !this.autoScrollEnabled) return;
 
     const doScroll = () => {
       const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
