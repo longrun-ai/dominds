@@ -96,6 +96,14 @@ export class DoneDialogList extends HTMLElement {
     this.applySelection(match);
   }
 
+  private getDialogDisplayCallsign(dialog: ApiRootDialogResponse): string {
+    const assignment = dialog.assignmentFromSup;
+    if (assignment && typeof assignment.tellaskHead === 'string') {
+      if (/^\s*@self\b/.test(assignment.tellaskHead)) return '@self';
+    }
+    return `@${dialog.agentId}`;
+  }
+
   private updateListState(dialogs: ApiRootDialogResponse[]): void {
     const validated = this.validateDialogs(dialogs);
     const groups = this.buildGroups(validated);
@@ -475,6 +483,7 @@ export class DoneDialogList extends HTMLElement {
     const dialogId = dialog.selfId ?? dialog.rootId;
     const updatedAt = dialog.lastModified || '';
     const tellaskSessionMark = dialog.tellaskSession ?? '';
+    const callsign = this.getDialogDisplayCallsign(dialog);
 
     return `
       <div
@@ -483,7 +492,7 @@ export class DoneDialogList extends HTMLElement {
         data-self-id="${dialog.selfId ?? ''}"
       >
         <div class="dialog-row dialog-subrow">
-          <span class="dialog-title">@${dialog.agentId}</span>
+          <span class="dialog-title">${callsign}</span>
           <span class="dialog-meta-right">
             <span class="dialog-topic">${tellaskSessionMark}</span>
           </span>
@@ -737,6 +746,7 @@ export class DoneDialogList extends HTMLElement {
       taskDocPath: dialog.taskDocPath,
       supdialogId: dialog.supdialogId,
       tellaskSession: dialog.tellaskSession,
+      assignmentFromSup: dialog.assignmentFromSup,
     };
 
     this.props.onSelect(dialogInfo);

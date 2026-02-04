@@ -242,12 +242,12 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
                 .join(', ')}`
             : '';
         const maintenanceLine = isSubdialog
-          ? `- 子对话中不允许 \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供你已合并好的“分段全文替换稿”（用于替换对应分段全文；禁止覆盖/抹掉他人条目）。`
+          ? `- 支线对话中不允许 \`change_mind\`：需要更新时请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供你已合并好的“分段全文替换稿”（用于替换对应分段全文；禁止覆盖/抹掉他人条目）。`
           : `- 维护方式：用函数工具 \`change_mind\` 指定分段（顶层 selector: \`goals\` / \`constraints\` / \`progress\`；或 category+selector 指定额外章节）。每次调用会替换该章节全文：必须先对照上下文中注入的当前内容并做合并/压缩；可在同一程中多次调用来一次更新多个章节（禁止覆盖/抹掉他人条目）。`;
         return [
           `**差遣牒结构（封装差遣牒 \`*.tsk/\`）：**`,
           `- 我们的差遣牒是一个 \`*.tsk/\` 目录：顶层 3 个分段（\`goals\` / \`constraints\` / \`progress\`）一定会自动注入；\`bearinmind/\`（固定白名单）可选自动注入；其他章节不会自动注入，仅以“目录索引”形式提示并需用 \`recall_taskdoc\` 显式读取。`,
-          `- 全队共享：三个分段对所有队友与子对话可见。更新时禁止覆盖/抹掉他人条目；建议为自己维护的条目标注责任人（如 \`- [owner:@<id>] ...\`）。`,
+          `- 全队共享：三个分段对所有队友与支线对话可见。更新时禁止覆盖/抹掉他人条目；建议为自己维护的条目标注责任人（如 \`- [owner:@<id>] ...\`）。`,
           `- 差遣牒维护人（负责执行 \`change_mind\`）：@${taskdocMaintainerId}`,
           `- 重要：差遣牒内容已被系统以内联形式注入到上下文中（本程生成视角下即为最新）。请直接基于上下文里的差遣牒回顾与决策，不要试图用通用文件工具读取 \`*.tsk/\` 下的文件（会被拒绝）。`,
           maintenanceLine,
@@ -315,7 +315,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
     if (bytes > maxSize) {
       if (language === 'zh') {
         const howToUpdate = isSubdialog
-          ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n子对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
+          ? `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n支线对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
           : `⚠️ **注意：** 差遣牒是封装的。不要用文件工具去读/写/列目录 \`*.tsk/\` 下的任何路径。\n请在当前对话中用函数工具 \`change_mind\` 来更新（每次调用会替换一个分段全文；你可以在同一程中多次调用来批量更新；禁止覆盖/抹掉他人条目）。`;
         return {
           type: 'environment_msg',
@@ -348,7 +348,7 @@ ${howToUpdate}`,
 
     if (language === 'zh') {
       const footerLine = isSubdialog
-        ? `*子对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。*`
+        ? `*支线对话中不允许 \`change_mind\`：请诉请差遣牒维护人 @${taskdocMaintainerId} 执行更新，并提供合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。*`
         : `*在当前对话中用函数工具 \`change_mind\` 来替换分段（每次调用会替换一个分段全文；你可以在同一程中多次调用来批量替换；更新时禁止覆盖他人条目）。*`;
       return {
         type: 'environment_msg',

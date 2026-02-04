@@ -341,10 +341,10 @@ export const changeMindTool: FuncTool = {
   type: 'func',
   name: 'change_mind',
   description:
-    'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without starting a new dialog course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors.',
+    'Update a shared Taskdoc section (`*.tsk/`) in the mainline dialog without starting a new dialog course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors.',
   descriptionI18n: {
-    en: 'Update a shared Taskdoc section (`*.tsk/`) in the main dialog without starting a new dialog course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors. Note: Taskdoc is injected into context; do not try to read `*.tsk/` via general file tools.',
-    zh: '在主对话中更新全队共享差遣牒（`*.tsk/`）的指定章节（不开启新一程对话）。每次调用会替换该章节全文；更新前必须基于现有内容做合并/压缩，避免覆盖他人条目；建议为自己维护的条目标注责任人（如 `[owner:@<id>]`）。注意：差遣牒内容已被注入到上下文中；不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
+    en: 'Update a shared Taskdoc section (`*.tsk/`) in the mainline dialog without starting a new dialog course. Each call replaces the entire section; merge carefully and avoid overwriting other contributors. Note: Taskdoc is injected into context; do not try to read `*.tsk/` via general file tools.',
+    zh: '在主线对话中更新全队共享差遣牒（`*.tsk/`）的指定章节（不开启新一程对话）。每次调用会替换该章节全文；更新前必须基于现有内容做合并/压缩，避免覆盖他人条目；建议为自己维护的条目标注责任人（如 `[owner:@<id>]`）。注意：差遣牒内容已被注入到上下文中；不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
   },
   parameters: {
     type: 'object',
@@ -373,12 +373,12 @@ export const changeMindTool: FuncTool = {
       const maintainerId = dlg instanceof SubDialog ? dlg.rootDialog.agentId : dlg.agentId;
       if (language === 'zh') {
         return (
-          `错误：\`change_mind\` 仅允许在主对话中使用（子对话中不可用）。\n` +
+          `错误：\`change_mind\` 仅允许在主线对话中使用（支线对话中不可用）。\n` +
           `请诉请差遣牒维护人 @${maintainerId} 在其对话中执行 \`change_mind\`，并提供你已合并好的“分段全文替换稿”（禁止覆盖/抹掉他人条目）。`
         );
       }
       return (
-        `Error: \`change_mind\` is only available in the main dialog (not in subdialogs).\n` +
+        `Error: \`change_mind\` is only available in the mainline dialog (not in sideline dialogs).\n` +
         `Ask the Taskdoc maintainer @${maintainerId} to run \`change_mind\` and provide a fully merged full-section replacement draft (do not overwrite/delete other contributors).`
       );
     }

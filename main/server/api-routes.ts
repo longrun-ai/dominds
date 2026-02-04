@@ -814,6 +814,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       lastModified: string;
       runState?: DialogLatestFile['runState'];
       tellaskSession?: string;
+      assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
     }> = [];
 
     // Recursively find all subdialog directories (handles nested paths like c1/78/4c3d759a)
@@ -878,6 +879,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
             lastModified: subLatest?.lastModified || meta.createdAt,
             runState: subLatest?.runState,
             tellaskSession: meta.tellaskSession,
+            assignmentFromSup: meta.assignmentFromSup,
           });
         }
       }

@@ -63,6 +63,37 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   const language: LanguageCode = input.language ?? 'en';
   const to = requireNonEmpty(input.toAgentId, 'toAgentId');
   const from = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  const tellaskHead = requireNonEmpty(input.tellaskHead, 'tellaskHead');
+
+  const isFbrSelfTellask = /^\s*@self\b/.test(tellaskHead);
+  if (isFbrSelfTellask) {
+    const intro =
+      language === 'zh'
+        ? [
+            '# 扪心自问（FBR）自诉请',
+            '',
+            `- 诉请：\`${tellaskHead}\``,
+            '- 约束：这是一个 FBR 支线对话；请以“新靴视角”独立推理与总结。',
+            '- 工具：本对话按规范应为“无工具”模式；不要尝试调用任何工具或发起新的队友诉请。',
+            '- 重要：不要依赖诉请者线程的对话历史；仅基于诉请正文（以及本支线对话自身的会话历史，如有）。',
+            '',
+            '---',
+          ].join('\n')
+        : [
+            '# @self Fresh Boots Reasoning (FBR) request',
+            '',
+            `- Tellask: \`${tellaskHead}\``,
+            '- Constraint: this is an FBR sideline dialog; reason independently from a “fresh boots” perspective.',
+            '- Tools: this dialog is expected to be tool-less; do not attempt any tool calls or new tellasks.',
+            '- Important: do not rely on the caller-thread dialog history; use only the tellask body (and this sideline dialog’s own history, if any).',
+            '',
+            '---',
+          ].join('\n');
+
+    const body = input.tellaskBody ?? '';
+    return `${intro}\n\n${body}\n`;
+  }
+
   const rawTargets =
     input.collectiveTargets && input.collectiveTargets.length > 0 ? input.collectiveTargets : [to];
   const cleanedTargets = rawTargets.map(trimTrailingDots).filter((t) => t.trim() !== '');
@@ -87,7 +118,7 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
 
   return `${greeting}
 
-${markdownQuote(requireNonEmpty(input.tellaskHead, 'tellaskHead'))}
+${markdownQuote(tellaskHead)}
 ${markdownQuote(input.tellaskBody)}
 `;
 }
@@ -122,6 +153,16 @@ ${markdownQuote(input.subdialogRequest.tellaskBody)}
 
 export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
+  const originalCallHeadLine = requireNonEmpty(input.originalCallHeadLine, 'originalCallHeadLine');
+  const isFbrSelfTellask = /^\s*@self\b/.test(originalCallHeadLine);
+
+  if (isFbrSelfTellask) {
+    const title =
+      language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR @self sideline response]';
+    // Keep response body as plain markdown (no quote) to make it easy to read and integrate.
+    return `${title}\n\n${input.responseBody}\n`;
+  }
+
   const hello =
     language === 'zh'
       ? `你好 @${requireNonEmpty(input.requesterId, 'toAgentId')}，@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
@@ -134,6 +175,6 @@ ${markdownQuote(input.responseBody)}
 
 ${tail}
 
-${markdownQuote(requireNonEmpty(input.originalCallHeadLine, 'originalCallHeadLine'))}
+${markdownQuote(originalCallHeadLine)}
 `;
 }

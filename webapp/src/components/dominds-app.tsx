@@ -5344,6 +5344,7 @@ export class DomindsApp extends HTMLElement {
                 runState: effectiveRunState,
                 supdialogId: rootId, // Link to parent
                 tellaskSession: subdialog.tellaskSession,
+                assignmentFromSup: subdialog.assignmentFromSup,
               });
             }
           }
@@ -5615,7 +5616,11 @@ export class DomindsApp extends HTMLElement {
         let titleText = '';
 
         // Build display title - all fields are guaranteed to be present
-        titleText = `@${normalizedDialog.agentId} (${normalizedDialog.selfId})`;
+        const isFbrSelfTellask =
+          normalizedDialog.assignmentFromSup !== undefined &&
+          /^\s*@self\b/.test(normalizedDialog.assignmentFromSup.tellaskHead);
+        const callsign = isFbrSelfTellask ? '@self' : `@${normalizedDialog.agentId}`;
+        titleText = `${callsign} (${normalizedDialog.selfId})`;
 
         // Add Taskdoc info
         titleText += ` • ${normalizedDialog.taskDocPath}`;

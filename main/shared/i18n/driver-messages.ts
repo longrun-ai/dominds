@@ -289,7 +289,7 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
     return (
       'Dominds 提示：该诉请目标是当前 agent（自诉请/self-tellask）。' +
       '扪心自问 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的初心会话；' +
-      '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
+      '仅在你明确需要可恢复的长期支线对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
     );
   }
   return (

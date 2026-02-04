@@ -118,6 +118,14 @@ export class RunningDialogList extends HTMLElement {
     return true;
   }
 
+  private getDialogDisplayCallsign(dialog: ApiRootDialogResponse): string {
+    const assignment = dialog.assignmentFromSup;
+    if (assignment && typeof assignment.tellaskHead === 'string') {
+      if (/^\s*@self\b/.test(assignment.tellaskHead)) return '@self';
+    }
+    return `@${dialog.agentId}`;
+  }
+
   private dialogKey(rootId: string, selfId: string): string {
     return selfId === rootId ? rootId : `${rootId}#${selfId}`;
   }
@@ -557,6 +565,7 @@ export class RunningDialogList extends HTMLElement {
     const tellaskSessionMark = dialog.tellaskSession ?? '';
 
     if (kind === 'sub') {
+      const callsign = this.getDialogDisplayCallsign(dialog);
       return `
         <div
           class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${isGenerating ? ' gen-active' : ''}${runStateClass}"
@@ -564,7 +573,7 @@ export class RunningDialogList extends HTMLElement {
           data-self-id="${dialog.selfId ?? ''}"
         >
           <div class="dialog-row dialog-subrow">
-              <span class="dialog-title">@${dialog.agentId}</span>
+              <span class="dialog-title">${callsign}</span>
               <span class="dialog-meta-right">
                 ${badges}
                 <span class="dialog-topic">${tellaskSessionMark}</span>
@@ -839,6 +848,7 @@ export class RunningDialogList extends HTMLElement {
       taskDocPath: dialog.taskDocPath,
       supdialogId: dialog.supdialogId,
       tellaskSession: dialog.tellaskSession,
+      assignmentFromSup: dialog.assignmentFromSup,
     };
 
     this.props.onSelect(dialogInfo);

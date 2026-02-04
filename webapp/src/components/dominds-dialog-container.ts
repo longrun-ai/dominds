@@ -1653,6 +1653,7 @@ export class DomindsDialogContainer extends HTMLElement {
       event.calling_genseq,
       event.callId,
       event.originMemberId,
+      event.tellaskHead,
     );
 
     const container = this.shadowRoot?.querySelector('.messages');
@@ -1704,6 +1705,7 @@ export class DomindsDialogContainer extends HTMLElement {
     callSiteId?: number,
     callId?: string,
     originMemberId?: string,
+    tellaskHead?: string,
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
@@ -1715,8 +1717,11 @@ export class DomindsDialogContainer extends HTMLElement {
     if (callId) {
       el.setAttribute('data-call-id', callId);
     }
-    const callsign = agentId ? `@${agentId}` : 'Teammate';
-    const responseIndicator = this.getTeammateResponseIndicator(agentId, originMemberId);
+    const isFbrSelfTellask = typeof tellaskHead === 'string' && /^\s*@self\b/.test(tellaskHead);
+    const callsign = isFbrSelfTellask ? '@self' : agentId ? `@${agentId}` : 'Teammate';
+    const responseIndicator = isFbrSelfTellask
+      ? ' · FBR'
+      : this.getTeammateResponseIndicator(agentId, originMemberId);
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
@@ -1801,25 +1806,20 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private navigateToCallSiteInApp(callId: string): void {
-    const dialog = this.currentDialog;
+    const rawCallId = callId.trim();
+    if (!rawCallId) return;
+
     const course = this.currentCourse;
-    if (!dialog || typeof course !== 'number') {
-      // Best-effort fallback: try local scroll if we have a course number.
-      if (typeof course === 'number') {
-        this.pendingScrollRequest = { kind: 'by_call_id', course, callId };
-        this.maybeApplyPendingScrollRequest();
-      }
+    if (typeof course === 'number') {
+      // Prefer local navigation: avoid re-selecting dialogs/courses in the parent app, which can
+      // trigger a re-render/replay and create duplicate feedback bubbles.
+      this.pendingScrollRequest = { kind: 'by_call_id', course, callId: rawCallId };
+      this.maybeApplyPendingScrollRequest();
       return;
     }
 
-    // Dispatch from this element so it reliably reaches the app's shadow-root listeners.
-    this.dispatchEvent(
-      new CustomEvent('navigate-callsite', {
-        detail: { rootId: dialog.rootId, selfId: dialog.selfId, course, callId },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    // No course context: do nothing (best-effort only). External deeplink button exists for
+    // navigation that requires dialog/course resolution.
   }
 
   private openCallSiteDeepLinkInNewTab(callId: string): void {
@@ -2131,14 +2131,19 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Create calling section (inside markdown section) - streaming mode for tellask call blocks
   private createCallingSection(firstMention: string): HTMLElement {
+    const isFbrSelf = firstMention.trim() === 'self';
     const el = document.createElement('div');
-    el.className = 'calling-section';
+    el.className = isFbrSelf ? 'calling-section fbr' : 'calling-section';
     el.setAttribute('data-first-mention', firstMention);
     el.innerHTML = `
       <div class="calling-header">
-        <span class="calling-icon tool-icon">
-          <img src="${mannedToolIcon}" class="calling-img" alt="calling">
-        </span>
+        ${
+          isFbrSelf
+            ? `<span class="calling-icon fbr-icon" aria-hidden="true">✨</span>`
+            : `<span class="calling-icon tool-icon">
+                 <img src="${mannedToolIcon}" class="calling-img" alt="calling">
+               </span>`
+        }
         <span class="calling-headline"></span>
       </div>
       <div class="calling-content">
@@ -2684,6 +2689,7 @@ export class DomindsDialogContainer extends HTMLElement {
         flex-direction: column;
         gap: 2px;
         min-width: 0;
+        flex: 1 1 auto;
       }
 
       .title-row {
@@ -2691,6 +2697,7 @@ export class DomindsDialogContainer extends HTMLElement {
         align-items: baseline;
         gap: 8px;
         min-width: 0;
+        width: 100%;
       }
 
       .title-left {
@@ -2945,6 +2952,11 @@ export class DomindsDialogContainer extends HTMLElement {
 	        box-sizing: border-box;
 	        max-width: 100%;
 	      }
+
+        .calling-section.fbr {
+          border-left-color: var(--dominds-primary, var(--color-accent-primary, #007acc));
+          background: color-mix(in srgb, var(--dominds-primary, #007acc) 8%, var(--color-bg-tertiary, #f1f5f9));
+        }
       
       .calling-header {
         display: flex;
@@ -2956,6 +2968,15 @@ export class DomindsDialogContainer extends HTMLElement {
       .calling-icon {
         display: flex;
         align-items: center;
+      }
+
+      .calling-icon.fbr-icon {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
       }
 
       .calling-img {
@@ -2980,6 +3001,10 @@ export class DomindsDialogContainer extends HTMLElement {
         font-weight: 600;
         color: var(--color-info, #06b6d4);
         font-size: 12px;
+      }
+
+      .calling-section.fbr .calling-headline {
+        color: var(--dominds-primary, var(--color-accent-primary, #007acc));
       }
 
       .subdialog-arrow {
