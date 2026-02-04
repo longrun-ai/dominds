@@ -2001,7 +2001,9 @@ export class DomindsDialogContainer extends HTMLElement {
         position: sticky;
         bottom: 14px;
         display: flex;
-        justify-content: flex-end;
+        justify-content: center;
+        width: 100%;
+        box-sizing: border-box;
         padding: 0 16px 14px 16px;
         pointer-events: none;
         z-index: 50;
@@ -2016,9 +2018,9 @@ export class DomindsDialogContainer extends HTMLElement {
         width: 40px;
         height: 40px;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--dominds-primary, #007acc) 35%, transparent);
-        background: var(--dominds-primary, var(--color-accent-primary, #007acc));
-        color: white;
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        background: var(--dominds-bg, var(--color-bg-secondary, #ffffff));
+        color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
         box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
         opacity: 0.72;
         cursor: pointer;
@@ -2030,8 +2032,12 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .scroll-to-bottom-btn:hover {
-        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
-        background: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, black);
+        border-color: color-mix(
+          in srgb,
+          var(--dominds-border, var(--color-border-primary, #e2e8f0)) 75%,
+          black
+        );
+        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 92%, black);
         opacity: 0.92;
       }
 
@@ -2040,7 +2046,8 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .scroll-to-bottom-btn:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 65%, transparent);
+        outline: 2px solid
+          color-mix(in srgb, var(--dominds-border, var(--color-border-primary, #e2e8f0)) 65%, black);
         outline-offset: 2px;
       }
 
