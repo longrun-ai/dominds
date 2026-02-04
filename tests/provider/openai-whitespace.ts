@@ -51,7 +51,7 @@ async function main() {
     },
   ];
 
-  const input = buildOpenAiRequestInputWrapper(context);
+  const input = await buildOpenAiRequestInputWrapper(context);
   const assistantContent = findFirstAssistantMessageContent(input);
   assert(assistantContent !== null, 'Expected an assistant message item');
   assert(

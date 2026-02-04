@@ -229,7 +229,7 @@ providers:
         optimization: 专为Agentic Coding任务优化
   volcano-engine:
     name: Volcano Engine
-    apiType: openai
+    apiType: openai-compatible
     baseUrl: https://ark.cn-beijing.volces.com/api/v3
     apiKeyEnvVar: ARK_API_KEY
     tech_spec_url: https://api.volcengine.com/api-docs/view?serviceCode=ark&version=2024-01-01

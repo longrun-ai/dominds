@@ -1,5 +1,5 @@
 import type { ChatMessage } from 'dominds/llm/client';
-import { buildOpenAiRequestInputWrapper } from 'dominds/llm/gen/openai';
+import { buildOpenAiCompatibleRequestMessagesWrapper } from 'dominds/llm/gen/openai-compatible';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -9,10 +9,10 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-function getItemType(value: unknown): string {
+function getRole(value: unknown): string {
   if (!isRecord(value)) return 'unknown';
-  const t = value.type;
-  return typeof t === 'string' ? t : 'unknown';
+  const role = value.role;
+  return typeof role === 'string' ? role : 'unknown';
 }
 
 async function main() {
@@ -55,17 +55,16 @@ async function main() {
     },
   ];
 
-  const input = await buildOpenAiRequestInputWrapper(context);
-  const types = input.map(getItemType);
+  const messages = buildOpenAiCompatibleRequestMessagesWrapper('', context);
+  const roles = messages.map(getRole);
 
   assert(
-    types.join(',') === 'message,message,function_call,function_call_output',
-    `Unexpected input item types: ${types.join(',')}`,
+    roles.join(',') === 'user,assistant,assistant,tool',
+    `Unexpected roles: ${roles.join(',')}`,
   );
 
-  const assistantMsg = input[1];
+  const assistantMsg = messages[1];
   assert(isRecord(assistantMsg), 'Expected assistant message to be an object');
-  assert(assistantMsg.type === 'message', 'Expected assistant item to be message');
   assert(assistantMsg.role === 'assistant', 'Expected assistant message role to be assistant');
   assert(typeof assistantMsg.content === 'string', 'Expected assistant content to be string');
   assert(
@@ -74,7 +73,25 @@ async function main() {
     'Expected adjacent assistant messages to be merged',
   );
 
-  console.log('✓ OpenAI context normalization test passed');
+  const toolCallMsg = messages[2];
+  assert(isRecord(toolCallMsg), 'Expected tool call message to be an object');
+  assert(toolCallMsg.role === 'assistant', 'Expected tool call message role to be assistant');
+  assert(Array.isArray(toolCallMsg.tool_calls), 'Expected tool_calls to be an array');
+  assert(toolCallMsg.tool_calls.length === 1, 'Expected exactly one tool call');
+  const call = toolCallMsg.tool_calls[0];
+  assert(isRecord(call), 'Expected tool call to be an object');
+  assert(call.id === 'call-1', 'Expected tool call id to match');
+  assert(call.type === 'function', 'Expected tool call type to be function');
+  assert(isRecord(call.function), 'Expected tool call function to be an object');
+  assert(call.function.name === 'shell_cmd', 'Expected function name to match');
+  assert(typeof call.function.arguments === 'string', 'Expected function arguments to be string');
+
+  const toolMsg = messages[3];
+  assert(isRecord(toolMsg), 'Expected tool message to be an object');
+  assert(toolMsg.role === 'tool', 'Expected tool message role to be tool');
+  assert(toolMsg.tool_call_id === 'call-1', 'Expected tool_call_id to match call id');
+
+  console.log('✓ OpenAI-compatible context normalization test passed');
 }
 
 main().catch((err) => {
