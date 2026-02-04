@@ -1,5 +1,7 @@
 # Fresh Boots Reasoning (FBR) — Design Doc (Enhanced `@self`)
 
+Chinese version: [中文版](./fbr.zh.md)
+
 ## Summary
 
 Fresh Boots Reasoning (FBR) is a common Dominds pattern: the agent tellasks itself (`!?@self`) to create a short-lived
@@ -10,7 +12,7 @@ This document specifies **enhancements** to the `@self`-initiated FBR flow:
 
 1. **Tool-less FBR sideline dialogs**: FBR sideline dialogs created by `!?@self` MUST NOT have any tools/toolsets.
    Prompts MUST explicitly state that the tellaskee has **no tools** and can only reason from the tellask body.
-2. **Configurable FBR concurrency** via `.minds/team.yaml` `fbr-effort` (default `1`):
+2. **Configurable FBR concurrency** via `.minds/team.yaml` `fbr-effort` (default `3`):
    - `0` disables `!?@self` FBR for that teammate
    - `1..100` spawns that many FBR sideline dialogs per `!?@self`
    - `> 100` is a validation error
@@ -31,7 +33,7 @@ This document specifies **enhancements** to the `@self`-initiated FBR flow:
 
 ## Definitions
 
-- **FBR**: Fresh Boots Reasoning (扪心自问) — reasoning from first principles without relying on existing dialog history.
+- **FBR**: Fresh Boots Reasoning — reasoning from first principles without relying on existing dialog history.
 - **Tellask**: a structured request (`!?@...`) issued by a dialog to another dialog/teammate (including `@self`).
 - **tellasker / tellaskee**: requester / responder roles for a Tellask.
 - **Mainline dialog / sideline dialog**: user-facing terms for the primary thread and its temporary work threads.
@@ -122,14 +124,14 @@ Recommended structure (not rigidly required):
 
 Both additions are **per-teammate** and MAY also be placed under `member_defaults` to set rtws-wide defaults.
 
-### `fbr-effort` (default: `1`)
+### `fbr-effort` (default: `3`)
 
 `fbr-effort` controls how many tool-less FBR sideline dialogs the runtime spawns for each `!?@self` Tellask.
 
 Rules:
 
 - Type: integer
-- Default: `1`
+- Default: `3` (the Chinese saying: “三个臭皮匠，顶个诸葛亮”)
 - `0`: disable `!?@self` FBR for that teammate
 - `1..100`: spawn that many FBR sideline dialogs concurrently per `!?@self`
 - `> 100`: validation error (reject team config; do not clamp)
@@ -200,8 +202,9 @@ Relevant snippet:
 
 ```yaml
 member_defaults:
-  # Spawn exactly one tool-less FBR sideline dialog per `!?@self` by default.
-  fbr-effort: 1
+  # Spawn 3 tool-less FBR sideline dialogs per `!?@self` by default
+  # (the Chinese saying: “三个臭皮匠，顶个诸葛亮”).
+  fbr-effort: 3
 
 members:
   ux:
@@ -228,6 +231,6 @@ members:
 ## Acceptance criteria (implementation checklist)
 
 - `!?@self` creates tool-less sideline dialog(s) with explicit prompt text stating “no tools; body-only context”.
-- `fbr-effort` defaults to `1`, accepts `0..100`, rejects `>100` and non-integers.
+- `fbr-effort` defaults to `3`, accepts `0..100`, rejects `>100` and non-integers.
 - `fbr-effort: 0` causes `!?@self` to fail loudly with a clear error.
 - `fbr_model_params` is applied only to `@self` FBR sideline dialogs and follows the same schema as `model_params`.

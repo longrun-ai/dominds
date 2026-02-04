@@ -447,7 +447,7 @@ export namespace Team {
     const md = new Team.Member({
       id: 'defaulter',
       name: 'Defaulter',
-      fbr_effort: 1,
+      fbr_effort: 3,
     });
 
     const fuxi = new Team.Member({
