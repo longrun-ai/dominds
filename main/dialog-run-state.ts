@@ -67,6 +67,39 @@ export async function setDialogRunState(
   dialogId: DialogID,
   runState: DialogRunState,
 ): Promise<void> {
+  if (runState.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
+    log.warn('Rejecting dead runState for root dialog (root dialogs must not be dead)', undefined, {
+      dialogId: dialogId.valueOf(),
+    });
+    return;
+  }
+
+  // "dead" is irreversible. Once a dialog is marked dead, do not allow overwriting it with
+  // another state (best-effort; races may still exist across concurrent writers).
+  try {
+    const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    if (
+      dialogId.selfId !== dialogId.rootId &&
+      latest &&
+      latest.runState &&
+      latest.runState.kind === 'dead' &&
+      runState.kind !== 'dead'
+    ) {
+      const typed = dialogEventRegistry.createTypedEvent(dialogId, {
+        type: 'dlg_run_state_evt',
+        runState: latest.runState,
+      });
+      if (broadcastToClients) {
+        broadcastToClients(typed);
+      }
+      return;
+    }
+  } catch (err) {
+    log.warn('Failed to check existing runState before setDialogRunState', err, {
+      dialogId: dialogId.valueOf(),
+    });
+  }
+
   try {
     await DialogPersistence.mutateDialogLatest(dialogId, () => ({
       kind: 'patch',
@@ -126,6 +159,14 @@ async function computeIdleRunStateFromPersistence(dialogId: DialogID): Promise<D
   if (status === 'completed' || status === 'archived') {
     return { kind: 'terminal', status };
   }
+  if (
+    dialogId.selfId !== dialogId.rootId &&
+    latest &&
+    latest.runState &&
+    latest.runState.kind === 'dead'
+  ) {
+    return latest.runState;
+  }
 
   const q4h = await DialogPersistence.loadQuestions4HumanState(dialogId, 'running');
   const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(dialogId, 'running');
@@ -149,6 +190,22 @@ export async function reconcileRunStatesAfterRestart(): Promise<void> {
   for (const dialogId of dialogIds) {
     const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
     const existing = latest?.runState;
+
+    if (existing && existing.kind === 'dead' && dialogId.selfId !== dialogId.rootId) {
+      if (latest?.generating === true) {
+        try {
+          await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+            kind: 'patch',
+            patch: { generating: false, runState: existing },
+          }));
+        } catch (err) {
+          log.warn('Failed to clear generating flag for dead dialog after restart', err, {
+            dialogId: dialogId.valueOf(),
+          });
+        }
+      }
+      continue;
+    }
 
     const wasProceeding =
       latest?.generating === true ||

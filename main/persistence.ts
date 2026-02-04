@@ -194,6 +194,21 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
           return null;
       }
     }
+    if (kind === 'dead') {
+      const reason = runStateRaw.reason;
+      if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
+      switch (reason.kind) {
+        case 'declared_by_user':
+          return { kind: 'dead', reason: { kind: 'declared_by_user' } } as const;
+        case 'system': {
+          const detail = (reason as Record<string, unknown>).detail;
+          if (typeof detail !== 'string') return null;
+          return { kind: 'dead', reason: { kind: 'system', detail } } as const;
+        }
+        default:
+          return null;
+      }
+    }
     if (kind === 'terminal') {
       const status = runStateRaw.status;
       if (status !== 'completed' && status !== 'archived') return null;

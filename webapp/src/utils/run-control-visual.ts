@@ -40,6 +40,7 @@ export function runControlVisualStateFromRunState(
   switch (runState.kind) {
     case 'idle_waiting_user':
     case 'terminal':
+    case 'dead':
       return { kind: 'none' };
     case 'proceeding':
       return { kind: 'proceeding' };

@@ -11,10 +11,11 @@ import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-r
 import {
   requestEmergencyStopAll,
   requestInterruptDialog,
+  setDialogRunState,
   setRunStateBroadcaster,
 } from '../dialog-run-state';
 import { dialogEventRegistry, postDialogEvent, setQ4HBroadcaster } from '../evt-registry';
-import { driveDialogStream } from '../llm/driver';
+import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
@@ -23,6 +24,7 @@ import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
   CreateDialogRequest,
+  DeclareSubdialogDeadRequest,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
   DisplayCourseRequest,
@@ -230,6 +232,10 @@ export async function handleWebSocketMessage(
         await handleResumeAll(ws, packet);
         break;
 
+      case 'declare_subdialog_dead':
+        await handleDeclareSubdialogDead(ws, packet);
+        break;
+
       default:
         log.warn('Unknown WebSocket packet type:', undefined, packet.type);
         ws.send(
@@ -248,6 +254,91 @@ export async function handleWebSocketMessage(
       }),
     );
   }
+}
+
+async function handleDeclareSubdialogDead(
+  ws: WebSocket,
+  packet: DeclareSubdialogDeadRequest,
+): Promise<void> {
+  const dialog = packet.dialog;
+  if (!dialog || typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: 'declare_subdialog_dead requires dialog.selfId/rootId',
+      }),
+    );
+    return;
+  }
+
+  if (dialog.selfId === dialog.rootId) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: 'declare_subdialog_dead is allowed only for subdialogs (selfId must differ)',
+      }),
+    );
+    return;
+  }
+
+  const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
+  const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
+  if (!latest) {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: `Dialog not found: ${dialogIdObj.valueOf()}`,
+      }),
+    );
+    return;
+  }
+
+  if (latest.runState && latest.runState.kind === 'dead') {
+    // Idempotent
+    return;
+  }
+
+  // Best-effort abort if the dialog is currently proceeding.
+  await requestInterruptDialog(dialogIdObj, 'emergency_stop');
+
+  await setDialogRunState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
+
+  // If a supdialog is waiting on this subdialog (pending-subdialogs.json), supply a system-style
+  // response so the supdialog can unblock and the model sees the failure reason.
+  let metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, 'running');
+  if (!metadata) {
+    metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, 'completed');
+  }
+  if (!metadata) return;
+  if (!('assignmentFromSup' in metadata)) return;
+  if (!metadata.assignmentFromSup) return;
+
+  const callerDialogId = metadata.assignmentFromSup.callerDialogId;
+  if (typeof callerDialogId !== 'string' || callerDialogId.trim() === '') return;
+
+  const callerDialogIdObj = new DialogID(callerDialogId, dialogIdObj.rootId);
+  const pending = await DialogPersistence.loadPendingSubdialogs(callerDialogIdObj, 'running');
+  const pendingRecord = pending.find((p) => p.subdialogId === dialogIdObj.selfId);
+  if (!pendingRecord) {
+    // Caller is not waiting on this subdialog anymore; do not auto-revive.
+    return;
+  }
+
+  const parentDialog = await restoreDialogForDrive(callerDialogIdObj, 'running');
+
+  const responseText =
+    getWorkLanguage() === 'zh'
+      ? `系统反馈：支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。该支线对话不会再回复。`
+      : `System notice: sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). This sideline dialog will not reply further.`;
+
+  await supplyResponseToSupdialog(
+    parentDialog,
+    dialogIdObj,
+    responseText,
+    pendingRecord.callType,
+    metadata.assignmentFromSup.callId,
+    'failed',
+  );
 }
 
 async function handleSetDiligencePush(
@@ -967,6 +1058,18 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
+    const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
+    if (latest && latest.runState && latest.runState.kind === 'dead') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'Dialog is dead and cannot be driven.',
+        }),
+      );
+      return;
+    }
+
     // If the dialog is already active for this WebSocket, runnable (status === 'running'),
     // and has an event forwarder (subChan),
     // drive it directly to preserve in-memory state (pending subdialogs, teammate tellask tracking, etc).
@@ -997,7 +1100,6 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     // Dialog not found in wsLiveDlg - drive using the canonical root/subdialog instances.
     // This supports driving subdialogs and cross-client revival without creating duplicate dialog objects.
     try {
-      const dialogIdObj = new DialogID(dialogId, rootDialogId);
       const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, 'running');
       if (!rootDialog) {
         ws.send(JSON.stringify({ type: 'error', message: `Dialog ${dialogId} not found` }));
@@ -1179,6 +1281,16 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     }
 
     const dialogIdObj = new DialogID(dialogId, rootDialogId);
+    const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
+    if (latest && latest.runState && latest.runState.kind === 'dead') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'Dialog is dead and cannot be driven.',
+        }),
+      );
+      return;
+    }
 
     // Load current questions from q4h.yaml
     const questions = await DialogPersistence.loadQuestions4HumanState(dialogIdObj);

@@ -55,6 +55,7 @@ export type WebSocketMessage =
   | EmergencyStopRequest
   | ResumeDialogRequest
   | ResumeAllRequest
+  | DeclareSubdialogDeadRequest
   | DisplayRemindersRequest
   | DisplayCourseRequest
   | DriveDialogRequest
@@ -159,6 +160,11 @@ export interface ResumeDialogRequest {
 
 export interface ResumeAllRequest {
   type: 'resume_all';
+}
+
+export interface DeclareSubdialogDeadRequest {
+  type: 'declare_subdialog_dead';
+  dialog: DialogIdent;
 }
 
 export interface DisplayRemindersRequest {

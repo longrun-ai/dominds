@@ -4893,24 +4893,34 @@ export class DomindsApp extends HTMLElement {
   }
 
   private updateInputPanelVisibility(): void {
+    const t = getUiStrings(this.uiLanguage);
     const readOnly =
       this.currentDialogStatus === 'completed' || this.currentDialogStatus === 'archived';
+    let isDead = false;
+    const current = this.currentDialog;
+    if (current) {
+      const key = this.dialogKey(current.rootId, current.selfId);
+      const runState = this.dialogRunStatesByKey.get(key) ?? null;
+      isDead = runState !== null && runState.kind === 'dead';
+    }
+    const disabled = readOnly || isDead;
 
     const root = this.shadowRoot;
     if (!root) return;
 
     const banner = root.querySelector('#q4h-readonly-banner');
     if (banner instanceof HTMLElement) {
-      banner.classList.toggle('hidden', !readOnly);
+      banner.classList.toggle('hidden', !disabled);
+      banner.textContent = isDead ? t.deadDialogInputDisabled : t.readOnlyDialogInputDisabled;
     }
 
     const inputEl = root.querySelector('#q4h-input');
     if (inputEl instanceof HTMLElement) {
-      inputEl.classList.toggle('hidden', readOnly);
+      inputEl.classList.toggle('hidden', disabled);
     }
 
     if (this.q4hInput) {
-      this.q4hInput.setDisabled(readOnly);
+      this.q4hInput.setDisabled(disabled);
     }
   }
 
@@ -4977,6 +4987,7 @@ export class DomindsApp extends HTMLElement {
         this.q4hInput.setDialog(normalizedDialog);
         const key = this.dialogKey(normalizedDialog.rootId, normalizedDialog.selfId);
         const runState = this.dialogRunStatesByKey.get(key) ?? null;
+        const isDead = runState !== null && runState.kind === 'dead';
         const input = this.q4hInput as HTMLElement & {
           setRunState?: (state: DialogRunState | null) => void;
         };
@@ -4987,12 +4998,22 @@ export class DomindsApp extends HTMLElement {
         const status = this.currentDialogStatus;
         const isReadOnly = status === 'completed' || status === 'archived';
 
-        if (!isReadOnly) {
+        if (!isReadOnly && !isDead) {
           // Enable input immediately after successful dialog selection
           // (dialog_ready event will handle re-enabling if needed)
           setTimeout(() => {
             const input = this.q4hInput;
-            if (input) input.setDisabled(false);
+            const current = this.currentDialog;
+            const status = this.currentDialogStatus;
+            const readOnly = status === 'completed' || status === 'archived';
+            if (!input) return;
+            if (!current) return;
+            if (readOnly) return;
+            const key = this.dialogKey(current.rootId, current.selfId);
+            const runState = this.dialogRunStatesByKey.get(key) ?? null;
+            const isDead = runState !== null && runState.kind === 'dead';
+            if (isDead) return;
+            input.setDisabled(false);
           }, 500); // Small delay to ensure setDialog completes
 
           // Auto-focus the input after dialog selection
@@ -6648,6 +6669,7 @@ export class DomindsApp extends HTMLElement {
             if (input && typeof input.setRunState === 'function') {
               input.setRunState(typedRunState);
             }
+            this.updateInputPanelVisibility();
           }
 
           // Q4H is global, but new_q4h_asked is delivered only via the currently subscribed dialog stream.
@@ -6684,12 +6706,21 @@ export class DomindsApp extends HTMLElement {
         }
 
         case 'dialog_ready': {
-          // Enable q4h-input for this dialog
+          // Enable/disable q4h-input for the active dialog (respect read-only + dead)
           const inputArea = this.q4hInput as HTMLElement & {
             setDisabled?: (disabled: boolean) => void;
           };
           if (inputArea && typeof inputArea.setDisabled === 'function') {
-            inputArea.setDisabled(false);
+            const status = this.currentDialogStatus;
+            const readOnly = status === 'completed' || status === 'archived';
+            const current = this.currentDialog;
+            let isDead = false;
+            if (current) {
+              const key = this.dialogKey(current.rootId, current.selfId);
+              const runState = this.dialogRunStatesByKey.get(key) ?? null;
+              isDead = runState !== null && runState.kind === 'dead';
+            }
+            inputArea.setDisabled(readOnly || isDead);
           }
           break;
         }

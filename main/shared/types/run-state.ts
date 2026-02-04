@@ -16,10 +16,13 @@ export type DialogBlockedReason =
   | { kind: 'waiting_for_subdialogs' }
   | { kind: 'needs_human_input_and_subdialogs' };
 
+export type DialogDeadReason = { kind: 'declared_by_user' } | { kind: 'system'; detail: string };
+
 export type DialogRunState =
   | { kind: 'idle_waiting_user' }
   | { kind: 'proceeding' }
   | { kind: 'proceeding_stop_requested'; reason: 'user_stop' | 'emergency_stop' }
   | { kind: 'interrupted'; reason: DialogInterruptionReason }
   | { kind: 'blocked'; reason: DialogBlockedReason }
+  | { kind: 'dead'; reason: DialogDeadReason }
   | { kind: 'terminal'; status: 'completed' | 'archived' };

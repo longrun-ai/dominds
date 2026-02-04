@@ -1171,6 +1171,24 @@ export async function driveDialogStream(
   let followUp: UpNextPrompt | undefined;
   let generatedAssistantResponse: string | null = null;
   try {
+    // "dead" is an irreversible UI state (primarily for subdialogs). If a dialog is marked dead
+    // in latest.yaml, do not proceed with driving. This guards against races/cross-client drive.
+    try {
+      const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
+      if (
+        dlg.id.selfId !== dlg.id.rootId &&
+        latest &&
+        latest.runState &&
+        latest.runState.kind === 'dead'
+      ) {
+        return;
+      }
+    } catch (err) {
+      log.warn('Failed to check runState before drive; proceeding best-effort', err, {
+        dialogId: dlg.id.valueOf(),
+      });
+    }
+
     const effectivePrompt = resolveUpNextPrompt(dlg, humanPrompt);
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dlg.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
@@ -1279,6 +1297,17 @@ export async function checkAndReviveSuspendedDialogs(): Promise<void> {
 
     const subdialogs = rootDialog.getAllDialogs().filter((d) => d !== rootDialog);
     for (const subdialog of subdialogs) {
+      try {
+        const latest = await DialogPersistence.loadDialogLatest(subdialog.id, 'running');
+        if (latest && latest.runState && latest.runState.kind === 'dead') {
+          continue;
+        }
+      } catch (err) {
+        log.warn('Failed to check runState for subdialog revival; proceeding best-effort', err, {
+          dialogId: subdialog.id.valueOf(),
+        });
+      }
+
       const hasAnswer = await checkQ4HAnswered(subdialog.id);
       if (hasAnswer && !(await subdialog.hasPendingQ4H())) {
         void driveDialogStream(subdialog, undefined, true);
@@ -1306,7 +1335,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
     try {
       const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
       shouldEmitResumedMarker =
-        latest?.runState !== undefined && latest.runState.kind === 'interrupted';
+        latest !== null &&
+        latest !== undefined &&
+        latest.runState !== undefined &&
+        latest.runState.kind === 'interrupted';
     } catch (err) {
       log.warn('Failed to load latest.yaml for resumption marker', err, {
         dialogId: dlg.id.valueOf(),
@@ -2536,6 +2568,24 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       }
     }
 
+    // "dead" is irreversible. If another actor declared this dialog dead during an in-flight
+    // generation, do not overwrite it with a computed idle/interrupted state.
+    try {
+      const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
+      if (
+        dlg.id.selfId !== dlg.id.rootId &&
+        latest &&
+        latest.runState &&
+        latest.runState.kind === 'dead'
+      ) {
+        finalRunState = latest.runState;
+      }
+    } catch (err) {
+      log.warn('Failed to re-check runState before finalizing; proceeding best-effort', err, {
+        dialogId: dlg.id.valueOf(),
+      });
+    }
+
     await setDialogRunState(dlg.id, finalRunState);
 
     if (tookSubdialogResponses) {
@@ -2956,6 +3006,7 @@ async function supplySubdialogResponseToCallerIfPending(
     responseText,
     pendingRecord.callType,
     assignment.callId,
+    'completed',
   );
 }
 
@@ -3064,6 +3115,7 @@ export async function supplyResponseToSupdialog(
   responseText: string,
   callType: 'A' | 'B' | 'C',
   callId?: string,
+  status: 'completed' | 'failed' = 'completed',
 ): Promise<void> {
   try {
     const result = await withSuspensionStateLock(parentDialog.id, async () => {
@@ -3173,7 +3225,7 @@ export async function supplyResponseToSupdialog(
     await parentDialog.receiveTeammateResponse(
       result.responderId,
       result.headLine,
-      'completed',
+      status,
       subdialogId,
       {
         response: responseText,

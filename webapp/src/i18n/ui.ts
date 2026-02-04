@@ -79,6 +79,9 @@ export type UiStrings = {
   dialogDeletedToast: string;
 
   readOnlyDialogInputDisabled: string;
+  deadDialogInputDisabled: string;
+  declareDead: string;
+  declareDeadConfirm: string;
 
   q4hNoPending: string;
   q4hPendingQuestions: string;
@@ -336,6 +339,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       dialogDeletedToast: '已删除对话。',
 
       readOnlyDialogInputDisabled: '此对话已完成或已归档，输入已禁用。',
+      deadDialogInputDisabled: '此支线对话已宣布卡死（不可逆），输入已禁用。',
+      declareDead: '宣布卡死',
+      declareDeadConfirm:
+        '宣布此支线对话“卡死”？此操作不可逆转；诉请方对话将收到系统反馈并不再等待该支线对话。',
 
       q4hNoPending: '暂无待处理问题',
       q4hPendingQuestions: '待处理问题',
@@ -398,8 +405,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       runMarkerInterrupted: '已中断',
       runBadgeInterruptedTitle: '对话已中断（可继续）',
       runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
-      runBadgeWaitingSubdialogsTitle: '等待子对话完成',
-      runBadgeWaitingBothTitle: '等待你的输入和子对话',
+      runBadgeWaitingSubdialogsTitle: '等待支线对话完成',
+      runBadgeWaitingBothTitle: '等待你的输入和支线对话',
       runBadgeGeneratingTitle: '生成中…',
 
       connectionConnected: '已连接',
@@ -597,6 +604,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     dialogDeletedToast: 'Dialog deleted.',
 
     readOnlyDialogInputDisabled: 'This dialog is done or archived; input is disabled.',
+    deadDialogInputDisabled:
+      'This sideline dialog has been declared dead (irreversible); input is disabled.',
+    declareDead: 'Declare Death',
+    declareDeadConfirm:
+      'Declare this sideline dialog as “dead”? This is irreversible; the upstream/requesting dialog will receive a system notice and stop waiting for it.',
 
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',
@@ -662,8 +674,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     runMarkerInterrupted: 'Interrupted',
     runBadgeInterruptedTitle: 'Interrupted (resumable)',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
-    runBadgeWaitingSubdialogsTitle: 'Waiting for subdialogs',
-    runBadgeWaitingBothTitle: 'Waiting for human + subdialogs',
+    runBadgeWaitingSubdialogsTitle: 'Waiting for sideline dialogs',
+    runBadgeWaitingBothTitle: 'Waiting for human + sideline dialogs',
     runBadgeGeneratingTitle: 'Generating…',
 
     connectionConnected: 'Connected',
@@ -966,7 +978,7 @@ export function formatUiLanguageTooltip(args: {
           return (
             `界面语言：${uiName}。\n` +
             `- 影响：WebUI 界面文案 + 本客户端希望 agent 用该语言回复。\n` +
-            `- 不影响：agent 的内部工作语言 / 系统提示 / 队友（子对话）叙事格式。\n` +
+            `- 不影响：agent 的内部工作语言 / 系统提示 / 队友（支线对话）叙事格式。\n` +
             `工作语言尚未知（需先连接）。`
           );
         }
@@ -983,7 +995,7 @@ export function formatUiLanguageTooltip(args: {
           return (
             `界面语言：${uiName}（非工作语言）\n` +
             `- 影响：WebUI 界面文案 + 本客户端希望 agent 用 ${uiName} 回复。\n` +
-            `- 不影响：内部工作语言仍为 ${serverName}（系统提示、队友/子对话叙事格式、内部引导信息）。`
+            `- 不影响：内部工作语言仍为 ${serverName}（系统提示、队友/支线对话叙事格式、内部引导信息）。`
           );
         }
         default: {
@@ -998,7 +1010,7 @@ export function formatUiLanguageTooltip(args: {
           return (
             `UI language: ${uiName}\n` +
             `- Affects: WebUI copy + this client’s preferred language for agent replies.\n` +
-            `- Does NOT affect: the agent’s internal work language, system prompts, or teammate/subdialog narrative formatting.\n` +
+            `- Does NOT affect: the agent’s internal work language, system prompts, or teammate/sideline-dialog narrative formatting.\n` +
             `Work language is not known yet (connect first).`
           );
         }
@@ -1015,7 +1027,7 @@ export function formatUiLanguageTooltip(args: {
           return (
             `UI language: ${uiName} (not work language)\n` +
             `- Affects: WebUI copy + this client’s preferred language for agent replies (${uiName}).\n` +
-            `- Does NOT affect: internal work language remains ${serverName} (system prompts, teammate/subdialog narrative formatting, internal guide messages).`
+            `- Does NOT affect: internal work language remains ${serverName} (system prompts, teammate/sideline-dialog narrative formatting, internal guide messages).`
           );
         }
         default: {

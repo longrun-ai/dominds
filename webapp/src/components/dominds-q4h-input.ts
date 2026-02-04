@@ -56,6 +56,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private textInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
+  private declareDeadButton!: HTMLButtonElement;
   private inputWrapper!: HTMLElement;
 
   private resizeHandle!: HTMLDivElement;
@@ -237,7 +238,7 @@ export class DomindsQ4HInput extends HTMLElement {
   public setRunState(runState: DialogRunState | null): void {
     this.runState = runState;
     this.applyPrimaryActionMode();
-    this.updateSendButton();
+    this.updateUI();
   }
 
   private applyPrimaryActionMode(): void {
@@ -517,6 +518,12 @@ export class DomindsQ4HInput extends HTMLElement {
       });
     }
 
+    if (this.declareDeadButton) {
+      this.declareDeadButton.addEventListener('click', () => {
+        void this.handleDeclareDead();
+      });
+    }
+
     if (this.resizeHandle) {
       this.resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
         e.preventDefault();
@@ -580,6 +587,27 @@ export class DomindsQ4HInput extends HTMLElement {
     this.wsManager.sendRaw({ type: 'interrupt_dialog', dialog: this.currentDialog });
   }
 
+  private async requestDeclareDead(): Promise<void> {
+    const dialog = this.currentDialog;
+    if (!dialog) {
+      throw new Error('No active dialog');
+    }
+    if (dialog.selfId === dialog.rootId) {
+      throw new Error('Declare dead is available only for sideline dialogs');
+    }
+    const state = this.runState;
+    if (state === null || state.kind !== 'interrupted') {
+      throw new Error('Declare dead is available only when the dialog is interrupted');
+    }
+    if (this.props.disabled) {
+      throw new Error('Input is disabled');
+    }
+    const t = getUiStrings(this.uiLanguage);
+    const ok = window.confirm(t.declareDeadConfirm);
+    if (!ok) return;
+    this.wsManager.sendRaw({ type: 'declare_subdialog_dead', dialog });
+  }
+
   private async handlePrimaryAction(): Promise<void> {
     try {
       const state = this.runState;
@@ -593,6 +621,16 @@ export class DomindsQ4HInput extends HTMLElement {
       await this.sendMessage();
     } catch (error: unknown) {
       console.error('Primary action failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Action failed';
+      this.showError(errorMessage);
+    }
+  }
+
+  private async handleDeclareDead(): Promise<void> {
+    try {
+      await this.requestDeclareDead();
+    } catch (error: unknown) {
+      console.error('Declare dead failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Action failed';
       this.showError(errorMessage);
     }
@@ -670,9 +708,10 @@ export class DomindsQ4HInput extends HTMLElement {
     if (!this.sendButton || !this.textInput) return;
 
     const state = this.runState;
+    const isDead = state !== null && state.kind === 'dead';
     if (state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')) {
       this.applyPrimaryActionMode();
-      const canStop = !this.props.disabled && !!this.currentDialog;
+      const canStop = !this.props.disabled && !isDead && !!this.currentDialog;
       this.sendButton.disabled = state.kind === 'proceeding_stop_requested' || !canStop;
       return;
     }
@@ -680,18 +719,29 @@ export class DomindsQ4HInput extends HTMLElement {
     this.applyPrimaryActionMode();
 
     const hasContent = this.textInput.value.trim().length > 0;
-    const canSend = hasContent && !this.props.disabled && !!this.currentDialog;
+    const canSend = hasContent && !this.props.disabled && !isDead && !!this.currentDialog;
     this.sendButton.disabled = !canSend;
   }
 
   private updateUI(): void {
     if (!this.inputWrapper || !this.textInput) return;
 
-    const shouldDisable = this.props.disabled || !this.currentDialog;
+    const state = this.runState;
+    const isDead = state !== null && state.kind === 'dead';
+    const shouldDisable = this.props.disabled || !this.currentDialog || isDead;
     this.inputWrapper.classList.toggle('disabled', shouldDisable);
     this.inputWrapper.classList.toggle('q4h-active', this.selectedQuestionId !== null);
     this.textInput.disabled = shouldDisable;
     this.updateSendButton();
+
+    if (this.declareDeadButton) {
+      const dialog = this.currentDialog;
+      const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
+      const state = this.runState;
+      const shouldShow = isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
+      this.declareDeadButton.hidden = !shouldShow;
+      this.declareDeadButton.disabled = this.props.disabled || dialog === null;
+    }
   }
 
   private render(): void {
@@ -707,6 +757,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
     this.textInput = this.shadowRoot.querySelector('.message-input')!;
     this.sendButton = this.shadowRoot.querySelector('.send-button')!;
+    this.declareDeadButton = this.shadowRoot.querySelector('.declare-dead-button')!;
     this.inputWrapper = this.shadowRoot.querySelector('.input-wrapper')!;
     this.resizeHandle = this.shadowRoot.querySelector('.input-resize-handle')!;
   }
@@ -719,6 +770,11 @@ export class DomindsQ4HInput extends HTMLElement {
     const isStopping = state !== null && state.kind === 'proceeding_stop_requested';
     const primaryTitle = isProceeding ? (isStopping ? t.stopping : t.stop) : t.send;
     const primaryClass = isProceeding ? 'send-button stop' : 'send-button';
+    const dialog = this.currentDialog;
+    const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
+    const isDead = state !== null && state.kind === 'dead';
+    const showDeclareDead =
+      isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
 
     return `
       <div class="q4h-input-container">
@@ -753,6 +809,13 @@ export class DomindsQ4HInput extends HTMLElement {
                       </svg>`
                 }
               </button>
+              <button
+                class="declare-dead-button"
+                type="button"
+                title="${t.declareDead}"
+                aria-label="${t.declareDead}"
+                ${showDeclareDead ? '' : 'hidden'}
+              >${t.declareDead}</button>
             </div>
           </div>
         </div>
@@ -849,6 +912,30 @@ export class DomindsQ4HInput extends HTMLElement {
         gap: 8px;
         align-self: flex-end;
         padding-bottom: 8px;
+      }
+
+      .declare-dead-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--dominds-danger, #dc3545);
+        background: transparent;
+        color: var(--dominds-danger, #dc3545);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .declare-dead-button:hover:not(:disabled) {
+        background: rgba(220, 53, 69, 0.08);
+      }
+
+      .declare-dead-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
 
       .send-on-enter-toggle {
