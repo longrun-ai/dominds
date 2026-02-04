@@ -38,7 +38,7 @@ function renderPlanReminderContent(
   },
 ): string {
   const lines: string[] = [];
-  lines.push(language === 'zh' ? 'Plan（update_plan）' : 'Plan (update_plan)');
+  lines.push(language === 'zh' ? '计划（update_plan）' : 'Plan (update_plan)');
 
   if (args.explanation && args.explanation.trim().length > 0) {
     lines.push('');
@@ -158,6 +158,9 @@ export const updatePlanTool: FuncTool = {
       updatedAt: now,
       source: 'update_plan',
       managedByTool: 'update_plan',
+      edit: {
+        updateExample: 'update_plan({ "plan": [ { "step": "...", "status": "in_progress" } ] })',
+      },
     };
 
     let existingIndex: number | undefined;

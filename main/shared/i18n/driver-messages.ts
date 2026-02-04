@@ -24,8 +24,66 @@ export function formatReminderItemGuide(
   language: LanguageCode,
   index: number,
   content: string,
+  options?: { meta?: unknown },
 ): string {
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  // `options.meta` is persisted JSON coming from tools. Runtime shape checks are unavoidable here
+  // to keep reminder ownership/management loosely coupled and extensible.
+  const metaValue = options && 'meta' in options ? options.meta : undefined;
+  const managedByToolRaw =
+    isRecord(metaValue) && typeof metaValue['managedByTool'] === 'string'
+      ? metaValue['managedByTool'].trim()
+      : undefined;
+  const sourceRaw =
+    isRecord(metaValue) && typeof metaValue['source'] === 'string'
+      ? metaValue['source'].trim()
+      : undefined;
+  const managementTool =
+    managedByToolRaw && managedByToolRaw.length > 0
+      ? managedByToolRaw
+      : sourceRaw && sourceRaw.length > 0
+        ? sourceRaw
+        : undefined;
+
+  const updateExampleRaw =
+    isRecord(metaValue) && typeof metaValue['updateExample'] === 'string'
+      ? metaValue['updateExample'].trim()
+      : undefined;
+  const editValue = isRecord(metaValue) ? metaValue['edit'] : undefined;
+  const updateExampleFromEdit =
+    isRecord(editValue) && typeof editValue['updateExample'] === 'string'
+      ? editValue['updateExample'].trim()
+      : undefined;
+  const updateExample =
+    updateExampleRaw && updateExampleRaw.length > 0
+      ? updateExampleRaw
+      : updateExampleFromEdit && updateExampleFromEdit.length > 0
+        ? updateExampleFromEdit
+        : managementTool
+          ? `${managementTool}({ ... })`
+          : undefined;
+
   if (language === 'zh') {
+    if (managementTool) {
+      const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
+      return [
+        `提醒项 #${index}（高优先级工作集）`,
+        '',
+        '原则：提醒项要短、要新、要能直接指导下一步行动。及时维护；不需要就删。',
+        '',
+        `提示：该提醒项由工具 ${managementTool} 管理；请使用 ${managementTool} 更新（不要用 update_reminder）。`,
+        '',
+        '快捷操作：',
+        `- 更新：${updateExampleSafe}`,
+        `- 删除：delete_reminder({ "reminder_no": ${index} })`,
+        '',
+        '---',
+        content,
+      ].join('\n');
+    }
     return [
       `提醒项 #${index}（高优先级工作集）`,
       '',
@@ -38,6 +96,21 @@ export function formatReminderItemGuide(
       '---',
       content,
     ].join('\n');
+  }
+
+  if (managementTool) {
+    const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
+    return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
+
+Principle: reminders should be high-value and not stale; keep them updated and delete when not needed.
+
+Note: this reminder is managed by tool ${managementTool}; update it via ${managementTool} (not update_reminder).
+
+Quick actions:
+- Update: ${updateExampleSafe}
+- Delete: delete_reminder({ "reminder_no": ${index} })
+---
+${content}`;
   }
   return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
 
