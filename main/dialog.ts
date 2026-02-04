@@ -185,6 +185,10 @@ export abstract class Dialog {
   protected _lastContextHealthGenseq?: number;
   // Prompt queued for the next course drive (set by startNewCourse).
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
+  // Course prefix messages injected into LLM context on every course (except course #1 by default).
+  // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
+  // like Showing-by-Doing transcripts.
+  protected _coursePrefixMsgs: ChatMessage[] = [];
   // Track whether the current course's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_response_evt arrives
   // only after parent events are emitted.
@@ -594,6 +598,14 @@ export abstract class Dialog {
     postDialogEvent(this, fullRemindersEvt);
 
     return reminders;
+  }
+
+  public setCoursePrefixMsgs(msgs: ReadonlyArray<ChatMessage>): void {
+    this._coursePrefixMsgs = [...msgs];
+  }
+
+  public getCoursePrefixMsgs(): ReadonlyArray<ChatMessage> {
+    return this._coursePrefixMsgs;
   }
 
   // only to be used by the driver

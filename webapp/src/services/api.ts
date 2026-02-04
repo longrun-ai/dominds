@@ -351,6 +351,7 @@ export class ApiClient {
   async createDialog(
     agentId: string,
     taskDocPath?: string,
+    options?: { skipShowingByDoing?: boolean },
   ): Promise<
     ApiResponse<{ selfId: string; rootId: string; agentId: string; taskDocPath?: string }>
   > {
@@ -359,6 +360,7 @@ export class ApiClient {
       body: {
         agentId,
         taskDocPath,
+        skipShowingByDoing: options && options.skipShowingByDoing === true,
       },
     });
   }

@@ -18,6 +18,7 @@ import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { scheduleShowingByDoingForNewDialog } from '../showing-by-doing';
 import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
@@ -921,9 +922,16 @@ async function handleCreateDialog(
 ): Promise<boolean> {
   try {
     const body = await readRequestBody(req);
-    const { agentId, taskDocPath } = JSON.parse(body);
+    const parsed: unknown = JSON.parse(body);
+    if (!isRecord(parsed)) {
+      respondJson(res, 400, { success: false, error: 'Invalid JSON body' });
+      return true;
+    }
+    const agentId = parsed['agentId'];
+    const taskDocPath = parsed['taskDocPath'];
+    const skipShowingByDoing = parsed['skipShowingByDoing'] === true;
 
-    if (!agentId) {
+    if (typeof agentId !== 'string' || agentId.trim() === '') {
       respondJson(res, 400, { success: false, error: 'agentId is required' });
       return true;
     }
@@ -995,6 +1003,8 @@ async function handleCreateDialog(
       createdRootIds: [dialogId.selfId],
       timestamp: formatUnifiedTimestamp(new Date()),
     });
+
+    scheduleShowingByDoingForNewDialog(dialog, { skipShowingByDoing });
     return true;
   } catch (error) {
     log.error('Error creating dialog:', error);

@@ -1602,9 +1602,13 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           ? await formatTaskDocContent(dlg)
           : undefined;
 
+        const coursePrefixMsgs: ChatMessage[] =
+          dlg.currentCourse > 1 ? [...dlg.getCoursePrefixMsgs()] : [];
+
         const ctxMsgs: ChatMessage[] = [
           ...memories,
           ...(taskDocMsg ? [taskDocMsg] : []),
+          ...coursePrefixMsgs,
           ...dlg.msgs,
         ];
 

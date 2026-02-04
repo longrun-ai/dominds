@@ -6024,9 +6024,17 @@ export class DomindsApp extends HTMLElement {
 	            </select>
 	          </div>
 	
-	          <div class="teammate-info" id="teammate-info">
-	            <!-- Agent details will be shown here when selection changes -->
-	          </div>
+          <div class="teammate-info" id="teammate-info">
+            <!-- Agent details will be shown here when selection changes -->
+          </div>
+
+          <div class="form-group">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="skip-showing-by-doing">
+              <span>${t.skipShowingByDoingLabel}</span>
+            </label>
+            <small class="form-help">${t.skipShowingByDoingHelp}</small>
+          </div>
 	        </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="modal-cancel-btn">
@@ -6065,6 +6073,7 @@ export class DomindsApp extends HTMLElement {
     const suggestions = modal.querySelector('#task-doc-suggestions') as HTMLElement;
     const createBtn = modal.querySelector('#create-dialog-btn') as HTMLButtonElement;
     const teammateInfo = modal.querySelector('#teammate-info') as HTMLElement;
+    const skipPrelude = modal.querySelector('#skip-showing-by-doing') as HTMLInputElement | null;
 
     // Modal close event listeners
     const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement;
@@ -6366,7 +6375,8 @@ export class DomindsApp extends HTMLElement {
         selectedAgentId = select.value;
       }
 
-      await this.createDialog(selectedAgentId, taskDocPath);
+      const skipShowingByDoing = skipPrelude ? skipPrelude.checked : false;
+      await this.createDialog(selectedAgentId, taskDocPath, { skipShowingByDoing });
       modal.remove();
     });
 
@@ -6382,6 +6392,7 @@ export class DomindsApp extends HTMLElement {
   public async createDialog(
     agentId: string | undefined,
     taskDocPath: string,
+    options?: { skipShowingByDoing?: boolean },
   ): Promise<{ selfId: string; rootId: string; agentId: string; taskDocPath: string }> {
     try {
       const fallbackAgent = agentId || this.defaultResponder || '';
@@ -6389,7 +6400,7 @@ export class DomindsApp extends HTMLElement {
         throw new Error('No agent specified and no default responder configured');
       }
       const api = getApiClient();
-      const resp = await api.createDialog(fallbackAgent, taskDocPath);
+      const resp = await api.createDialog(fallbackAgent, taskDocPath, options);
       if (!resp.success || !resp.data) {
         if (resp.status === 401) {
           this.onAuthRejected('api');

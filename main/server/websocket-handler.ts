@@ -50,6 +50,7 @@ import {
   type LanguageCode,
 } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
+import { scheduleShowingByDoingForNewDialog } from '../showing-by-doing';
 import { Team } from '../team';
 import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
 import { generateDialogID } from '../utils/id';
@@ -563,6 +564,7 @@ async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Pro
 async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): Promise<void> {
   try {
     const { agentId, taskDocPath } = packet;
+    const skipShowingByDoing = packet.skipShowingByDoing === true;
 
     // Validate that taskDocPath is provided (it's now mandatory)
     if (!taskDocPath || taskDocPath.trim() === '') {
@@ -659,6 +661,8 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       createdRootIds: [dialogId.selfId],
       timestamp: formatUnifiedTimestamp(new Date()),
     });
+
+    scheduleShowingByDoingForNewDialog(dialog, { skipShowingByDoing });
   } catch (error) {
     log.warn('Failed to create dialog', undefined, error);
     ws.send(
