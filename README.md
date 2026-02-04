@@ -16,7 +16,7 @@
   - The intended safety model is _hard guardrails via workflow/policy_ (planned), not human-in-the-loop popups.
   - Put high-risk tools behind principled agents so their judgment enforces policies and mitigates risk.
   - Use least-privilege credentials and avoid production secrets in `.env` when experimenting.
-  - Treat your workspace as sensitive: dialogs, logs, and memory may persist locally on disk.
+  - Treat your rtws (runtime workspace) as sensitive: dialogs, logs, and memory may persist locally on disk.
 
 - **Authorize Your Agents (or don’t use Dominds)**: Dominds is not pair‑programming. Once authorized, agents will act — assume mistakes and review outcomes from a distance.
   - If you prefer to work closely with your agents, use a more traditional copilot‑style tool.
@@ -37,7 +37,7 @@
   - [Installation](#installation)
     - [Prerequisites](#prerequisites)
     - [Install Dominds](#install-dominds)
-    - [Workspace Setup](#workspace-setup)
+    - [rtws Setup](#rtws-setup)
   - [Quick Start](#quick-start)
   - [Start from scratch](#start-from-scratch)
   - [Core Philosophy](#core-philosophy)
@@ -53,17 +53,17 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 
 **Key Features:**
 
-- **Local-first Runtime**: The orchestration layer runs on your machine and persists team state locally in your workspace. LLM calls still go to your configured provider (so apply normal cost/privacy discipline).
+- **Local-first Runtime**: The orchestration layer runs on your machine and persists team state locally in your rtws (runtime workspace). LLM calls still go to your configured provider (so apply normal cost/privacy discipline).
 
-- **Transparent Workspace Integration**: Agent knowledge, personas, lessons learned, and mindset artifacts are stored locally as part of your workspace. This maximizes transparency to humans and enables version control alongside your product code, creating a complete historical record of both human and AI contributions to your project.
+- **Transparent rtws Integration**: Agent knowledge, personas, lessons learned, and mindset artifacts are stored locally as part of your rtws. This maximizes transparency to humans and enables version control alongside your product code, creating a complete historical record of both human and AI contributions to your project.
 
-- **Persistent Team Memory**: Agents maintain context across conversations, remember past decisions, and build upon learned patterns. Teams evolve their practices and knowledge over time, with all insights preserved in your workspace.
+- **Persistent Team Memory**: Agents maintain context across conversations, remember past decisions, and build upon learned patterns. Teams evolve their practices and knowledge over time, with all insights preserved in your rtws.
 
-- **Collaborative Intelligence**: Multiple specialized agents work together on shared tasks, combining their unique capabilities while maintaining clear communication channels and shared understanding through workspace-stored context.
+- **Collaborative Intelligence**: Multiple specialized agents work together on shared tasks, combining their unique capabilities while maintaining clear communication channels and shared understanding through rtws-stored context.
 
-- **Safe Tool Access**: AI-driven guardrails provide secure access to powerful development tools, with all safety policies and access patterns transparently stored and version-controlled within your workspace.
+- **Safe Tool Access**: AI-driven guardrails provide secure access to powerful development tools, with all safety policies and access patterns transparently stored and version-controlled within your rtws.
 
-- **Task-Focused Architecture**: Clear, bounded contexts prevent cognitive overload while maintaining rich inter-agent communication and knowledge sharing through the local workspace knowledge base.
+- **Task-Focused Architecture**: Clear, bounded contexts prevent cognitive overload while maintaining rich inter-agent communication and knowledge sharing through the local rtws knowledge base.
 
 ## Installation
 
@@ -100,7 +100,7 @@ Notes:
 - `npx dominds` does **not** necessarily mean “always latest”: if your project already has `dominds` installed, or your npm cache already contains an older version, `npx` may reuse that.
 - If you want “resolve whatever `latest` points to”, use `dominds@latest` explicitly. It may still reuse the cached copy of that same version (expected).
 
-For development and any sort of open source contribution, use the in-tree dev wrapper workspace:
+For development and any sort of open source contribution, use the in-tree dev wrapper rtws:
 
 https://github.com/longrun-ai/dominds-feat-dev
 
@@ -108,14 +108,14 @@ https://github.com/longrun-ai/dominds-feat-dev
 2. Clone your dominds fork into dominds-feat-dev/dominds/
 3. Open PRs against [longrun-ai/dominds](https://github.com/longrun-ai/dominds) from that inner repo
 
-### Workspace Setup
+### rtws Setup
 
-There are two common ways to create a workspace:
+There are two common ways to create an rtws:
 
 - **Recommended**: start from a scaffold/template (see [Quick Start](#quick-start)).
 - **Minimal**: start from an empty folder (see [Start from scratch](#start-from-scratch)).
 
-Dominds uses your current working directory as the runtime workspace (rtws). When you start `dominds`, the WebUI will automatically redirect you to `http://localhost:5666/setup` if the workspace is missing required configuration (for example `.minds/team.yaml` or provider env vars).
+Dominds uses your current working directory as the runtime workspace (rtws). When you start `dominds`, the WebUI will automatically redirect you to `http://localhost:5666/setup` if the rtws is missing required configuration (for example `.minds/team.yaml` or provider env vars).
 
 Note: In production mode, Dominds enables a local shared-secret auth key by default, so the browser may open with a URL containing `?auth=...`. Treat that token as sensitive.
 
@@ -139,12 +139,12 @@ dominds create https://github.com/myorg/custom-template.git my-project
 - Default `DOMINDS_TEMPLATE_BASE` is `https://github.com/longrun-ai`
 - Set your own `DOMINDS_TEMPLATE_BASE` for organization-specific templates
 
-For more template options, see the [CLI Usage Guide](docs/cli-usage.md#workspace-creation).
+For more template options, see the [CLI Usage Guide](docs/cli-usage.md#rtws-creation).
 
 ## Quick Start
 
 ```bash
-# 1) Create a workspace from a scaffold template
+# 1) Create an rtws from a scaffold template
 dominds create web-scaffold my-project
 cd my-project
 
@@ -165,14 +165,14 @@ Then:
 Starting from scratch means: create an empty folder, run `dominds`, let Setup generate the minimal `.minds/team.yaml`, then use the shadow team manager (`@fuxi`) to design a real team for your product.
 
 ```bash
-mkdir my-workspace
-cd my-workspace
+mkdir my-rtws
+cd my-rtws
 
 # Starts the WebUI server and opens a browser (default port: 5666)
 dominds
 ```
 
-1. The WebUI should redirect you to `http://localhost:5666/setup` because the workspace has no `.minds/team.yaml` yet.
+1. The WebUI should redirect you to `http://localhost:5666/setup` because the rtws has no `.minds/team.yaml` yet.
 2. In **Setup**:
    - Select a provider + model and click **Create `.minds/team.yaml`**.
    - Provide the required provider env var and write it to your shell rc (or set it manually). Setup applies it immediately to the running server.
@@ -186,7 +186,7 @@ Dominds is designed for long-running product development and operations, with a 
 
 - Reduce **agent mental overhead** by dividing and distributing work across a team of specialized agents, and by using more effective **dialog course control** (instead of brittle context condensation) to shed conversational/tool-output noise when a dialog becomes cluttered.
 - Prevent **tool misuse** by putting side-effectful tools only in the hands of well-prompted specialist agents, via least-privilege toolsets/policies.
-- Prevent **staleness** (agents acting on outdated assumptions) by encoding decisions, conventions, configuration, and key repo facts into version-tracked workspace artifacts intended to be loaded into agent context (team-shared and agent-individual memory, task docs, and dialog-local reminders), rather than leaving them as “undiscovered” knowledge scattered across the repo.
+- Prevent **staleness** (agents acting on outdated assumptions) by encoding decisions, conventions, configuration, and key repo facts into version-tracked rtws artifacts intended to be loaded into agent context (team-shared and agent-individual memory, Taskdocs, and dialog-local reminders), rather than leaving them as “undiscovered” knowledge scattered across the repo.
 
 ### 1) Clear minds, focused tasks
 
@@ -209,7 +209,7 @@ Principles
   - Does it create an “evil leverage” path?
   - Is there a safer/minimal alternative?
   - Pattern-based command matching is not enough; safety comes from disciplined specialist agents enforcing policy with judgment.
-- Keep tool grants explicit and reviewable (toolsets, per-agent tool lists, and workspace access scopes).
+- Keep tool grants explicit and reviewable (toolsets, per-agent tool lists, and rtws access scopes).
 
 Result: fewer bad side effects, higher plan fidelity, and more first‑try successes.
 

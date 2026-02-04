@@ -24,8 +24,8 @@ import type { LanguageCode } from '../types/language';
 import { markdownQuote } from './fmt';
 
 export type InterDialogCallContent = {
-  headLine: string;
-  callBody: string;
+  tellaskHead: string;
+  tellaskBody: string;
 };
 
 export type InterDialogParticipants = {
@@ -87,8 +87,8 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
 
   return `${greeting}
 
-${markdownQuote(requireNonEmpty(input.headLine, 'headLine'))}
-${markdownQuote(input.callBody)}
+${markdownQuote(requireNonEmpty(input.tellaskHead, 'tellaskHead'))}
+${markdownQuote(input.tellaskBody)}
 `;
 }
 
@@ -111,12 +111,12 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
 
   return `${hello}
 
-${markdownQuote(requireNonEmpty(input.supdialogAssignment.headLine, 'assignmentHeadLine'))}
+${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskHead, 'assignmentHeadLine'))}
 
 ${asking}
 
-${markdownQuote(requireNonEmpty(input.subdialogRequest.headLine, 'requestHeadLine'))}
-${markdownQuote(input.subdialogRequest.callBody)}
+${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskHead, 'requestHeadLine'))}
+${markdownQuote(input.subdialogRequest.tellaskBody)}
 `;
 }
 

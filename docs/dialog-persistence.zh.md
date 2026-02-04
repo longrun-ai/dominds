@@ -9,7 +9,7 @@
 ### 当前状态
 
 - **✅ 完全实现**：现代存储系统在 `main/shared/types/storage.ts` 中具有强 TypeScript 类型
-- **✅ latest.yaml 支持**：当前对话进程和 lastModified 跟踪，用于准确的 UI 时间戳
+- **✅ latest.yaml 支持**：当前对话过程和 lastModified 跟踪，用于准确的 UI 时间戳
 - **✅ 仅追加事件**：基于 JSONL 的事件流，具有原子操作
 - **✅ 强类型安全**：可区分联合和类型守卫，用于编译时验证
 - **✅ 真实文件 I/O**：对话会话在 `.dialogs/run|done/archive` 下持久化，具有现代文件格式
@@ -17,7 +17,7 @@
 
 ### 关键特性
 
-- **latest.yaml**：跟踪当前对话进程、lastModified 时间戳、消息计数和对话状态
+- **latest.yaml**：跟踪当前对话过程、lastModified 时间戳、消息计数和对话状态
 - **强类型**：具有可区分联合和类型守卫的现代 TypeScript 模式
 - **原子操作**：所有文件操作都是原子的，以防止损坏
 - **高效时间戳**：UI 显示来自持久化记录的准确 lastModified 时间
@@ -27,7 +27,7 @@
 ## 目录
 
 1. [存储架构](#存储架构) _(仅设计参考)_
-2. [工作区约定](#工作区约定) _(仅设计参考)_
+2. [rtws 约定](#rtws-约定) _(仅设计参考)_
 3. [对话存储结构](#对话存储结构) _(仅设计参考)_
 4. [记忆持久化](#记忆持久化) _(仅设计参考)_
 5. [数据格式](#数据格式) _(仅设计参考)_
@@ -51,7 +51,7 @@
 ### 目录布局
 
 ```
-workspace/
+rtws/
 ├── .minds/                    # 智能体配置和持久化记忆
 │   ├── llm.yaml              # LLM 提供商配置
 │   ├── team.yaml             # 团队名单和默认设置
@@ -60,7 +60,7 @@ workspace/
 │   │       ├── persona.md    # 智能体个性和角色
 │   │       ├── knowledge.md  # 智能体专业知识和技能
 │   │       └── lessons.md    # 智能体学习和适应
-│   └── memory/               # 工作区持久化记忆
+│   └── memory/               # rtws 持久化记忆
 │       ├── team_shared/      # 团队共享记忆（此目录下所有 `*.md` 都会被加载）
 │       │   └── *.md
 │       └── individual/       # 智能体个体记忆（每个智能体）
@@ -74,9 +74,9 @@ workspace/
 
 ---
 
-## 工作区约定
+## rtws 约定
 
-这些约定指导工作区组织。对话目录在 `.dialogs/` 下动态创建。
+这些约定指导 rtws（运行时工作区）组织。对话目录在 `.dialogs/` 下动态创建。
 
 ### 智能体配置 (`.minds/`)
 
@@ -178,7 +178,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ```
 .dialogs/run/<rootDialogId>/
 ├── dialog.yaml               # 带强类型的对话元数据
-├── latest.yaml               # 当前对话进程和 lastModified 跟踪
+├── latest.yaml               # 当前对话过程和 lastModified 跟踪
 ├── reminders.json            # 持久化提醒项
 ├── <course>.jsonl            # 每一程的流式事件
 ├── <course>.yaml             # 每一程的元数据
@@ -200,7 +200,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 
 **关键特性**：
 
-- **latest.yaml**：带有当前对话进程、lastModified 和状态的现代跟踪文件
+- **latest.yaml**：带有当前对话过程、lastModified 和状态的现代跟踪文件
 - **强类型**：所有文件使用来自 `main/shared/types/storage.ts` 的 TypeScript 接口
 - **原子 在所有对话修改更新**：latest.yaml时原子更新
 - **UI 集成**：latest.yaml 中的时间戳在对话列表中正确显示
@@ -222,7 +222,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ```yaml
 id: 'aa/bb/cccccccc' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'alice' # 负责此对话的智能体
-taskDocPath: 'task.tsk' # 工作区任务文档包目录的路径
+taskDocPath: 'task.tsk' # rtws 任务文档包目录的路径
 createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
 # 根对话没有父字段
 ```
@@ -232,12 +232,12 @@ createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
 ```yaml
 id: 'dd/ee/ffffffff' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'bob' # 负责此对话的智能体
-taskDocPath: 'task.tsk' # 工作区任务文档包目录的路径（从父级继承）
+taskDocPath: 'task.tsk' # rtws 任务文档包目录的路径（从父级继承）
 createdAt: '2024-01-15T10:35:00Z' # 创建时的 ISO 时间戳
 supdialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
 assignmentFromSup: # 来自父级的任务上下文
-  headLine: 'Implement user authentication'
-  callBody: 'Create secure login system with JWT tokens'
+  tellaskHead: 'Implement user authentication'
+  tellaskBody: 'Create secure login system with JWT tokens'
   originMemberId: 'alice'
 ```
 
@@ -248,10 +248,10 @@ assignmentFromSup: # 来自父级的任务上下文
 用于当前对话状态和 UI 时间戳的现代跟踪文件：
 
 ```yaml
-currentCourse: 3 # 当前对话进程编号（基于 1）
+currentCourse: 3 # 当前对话过程编号（基于 1）
 lastModified: '2024-01-15T11:45:00Z' # 最后活动的 ISO 时间戳
-messageCount: 12 # 当前对话进程中的总消息数
-functionCallCount: 3 # 当前对话进程中的总函数调用数
+messageCount: 12 # 当前对话过程中的总消息数
+functionCallCount: 3 # 当前对话过程中的总函数调用数
 subdialogCount: 1 # 创建的子对话总数
 status: 'active' # 当前对话状态
 ```
@@ -266,9 +266,9 @@ status: 'active' # 当前对话状态
 
 **UI 集成**：对话列表显示来自此文件的 `lastModified` 时间戳，用于准确排序和显示。
 
-### 对话进程跟踪 (`course.curr`)
+### 对话过程跟踪 (`course.curr`)
 
-包含当前对话进程编号的简单文本文件：
+包含当前对话过程编号的简单文本文件：
 
 ```
 3
@@ -350,7 +350,7 @@ status: 'active' # 当前对话状态
 # 注意：dlg_stream_error 事件被过滤，不会写入 JSONL 文件
 ```
 
-### 对话进程元数据 (`.yaml`)
+### 对话过程元数据 (`.yaml`)
 
 ```yaml
 course: 3
@@ -364,18 +364,18 @@ status: 'completed'
 
 ### 任务文档存储
 
-任务文档是独立存在的工作区工件，对话通过路径引用它们。任务文档必须是封装的任务文档包 (`*.tsk/`)。
+任务文档是独立存在的 rtws 工件，对话通过路径引用它们。任务文档必须是封装的任务文档包 (`*.tsk/`)。
 
 ```yaml
 # 在 dialog.yaml 中
-taskdoc: 'tasks/user-auth.tsk' # 工作区任务文档包目录的路径
+taskdoc: 'tasks/user-auth.tsk' # rtws 任务文档包目录的路径
 taskdocVersion: 5
 taskdocChecksum: 'sha256:abc123...'
 ```
 
 **关键属性**：
 
-- 任务文档是标准工作区工件，不是对话特定存储
+- 任务文档是标准 rtws 工件，不是对话特定存储
 - 多个对话可以引用相同的任务文档进行协作工作
 - 任务文档在整个 DevOps 生命周期中持续存在，超出单个对话
 - 任务文档文件的更改对所有引用它的对话立即可见
@@ -446,7 +446,7 @@ taskdocChecksum: 'sha256:abc123...'
 ### 对话完成
 
 1. 将对话状态更新为"已完成"
-2. 完成所有对话进程元数据
+2. 完成所有对话过程元数据
 3. 对于根对话：
    - 将对话目录从 `run/` 移动到 `done/`
    - 移动中包含所有子对话
@@ -495,7 +495,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 ### 可扩展性
 
-**分片**：大型工作区可以跨多个目录分片对话。
+**分片**：大型 rtws 可以跨多个目录分片对话。
 
 **清理策略**：基于年龄和大小自动清理旧的已完成对话。
 
@@ -527,7 +527,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 ### 数据迁移
 
-**导出/导入**：用于在工作区之间移动对话的工具。
+**导出/导入**：用于在不同 rtws 之间移动对话的工具。
 
 **格式转换**：根据需要在不同存储格式之间转换。
 
@@ -550,7 +550,7 @@ taskdocChecksum: 'sha256:abc123...'
 
 #### ✅ latest.yaml 支持
 
-- **实时跟踪**：当前对话进程和 lastModified 时间戳
+- **实时跟踪**：当前对话过程和 lastModified 时间戳
 - **原子更新**：所有对话修改时自动更新
 - **UI 集成**：对话列表显示来自持久化记录的准确时间戳
 - **状态管理**：跟踪对话状态、消息计数和子对话计数
@@ -603,7 +603,7 @@ taskdocChecksum: 'sha256:abc123...'
 #### 建议的目录结构
 
 ```
-workspace/
+rtws/
 ├── dialogs/
 │   ├── active/           # 当前流式对话
 │   │   ├── {root-dialog-id}/    # 根对话目录 (selfDlgId = rootDlgId)

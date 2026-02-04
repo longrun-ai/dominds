@@ -1,6 +1,6 @@
 # team-mgmt：管理 `.minds/`（prepare-first + single apply）
 
-你拥有对 `.minds/**` 的读写能力，但该 toolset **只允许操作 `.minds/` 子树**（不会也不应触碰工作区其他文件）。
+你拥有对 `.minds/**` 的读写能力，但该 toolset **只允许操作 `.minds/` 子树**（不会也不应触碰 rtws（运行时工作区）其他文件）。
 
 ## 总原则
 

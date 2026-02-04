@@ -2,6 +2,8 @@
 
 This document describes the persistence layer and storage mechanisms for the Dominds dialog system, including file system conventions, data structures, and storage patterns.
 
+> Note: In this document, **rtws (runtime workspace)** refers to Dominds' runtime root directory (by default `process.cwd()`, switchable via `-C <dir>`).
+
 ## Current Implementation Status
 
 The persistence layer is fully implemented and active with modern TypeScript typing and `latest.yaml` support. `main/persistence.ts` provides file-backed storage with strong type safety and real-time timestamp tracking.
@@ -27,7 +29,7 @@ The persistence layer is fully implemented and active with modern TypeScript typ
 ## Table of Contents
 
 1. [Storage Architecture](#storage-architecture) _(Design Reference Only)_
-2. [Workspace Conventions](#workspace-conventions) _(Design Reference Only)_
+2. [rtws Conventions](#rtws-conventions) _(Design Reference Only)_
 3. [Dialog Storage Structure](#dialog-storage-structure) _(Design Reference Only)_
 4. [Memory Persistence](#memory-persistence) _(Design Reference Only)_
 5. [Data Formats](#data-formats) _(Design Reference Only)_
@@ -51,7 +53,7 @@ The implementation follows this architecture.
 ### Directory Layout
 
 ```
-workspace/
+rtws/
 ├── .minds/                    # Agent configuration and persistent memories
 │   ├── llm.yaml              # LLM provider configuration
 │   ├── team.yaml             # Team roster and default settings
@@ -60,7 +62,7 @@ workspace/
 │   │       ├── persona.md    # Agent personality and role
 │   │       ├── knowledge.md  # Agent expertise and skills
 │   │       └── lessons.md    # Agent learning and adaptations
-│   └── memory/               # Workspace-persistent memories
+│   └── memory/               # rtws-persistent memories
 │       ├── team_shared/      # Team-shared memories (all `*.md` under this dir are loaded)
 │       │   └── *.md
 │       └── individual/       # Agent-individual memories (per agent)
@@ -74,9 +76,9 @@ workspace/
 
 ---
 
-## Workspace Conventions
+## rtws Conventions
 
-These conventions guide workspace organization. Dialog directories are created dynamically under `.dialogs/`.
+These conventions guide rtws organization. Dialog directories are created dynamically under `.dialogs/`.
 
 ### Agent Configuration (`.minds/`)
 
@@ -223,7 +225,7 @@ Modern strongly-typed dialog metadata using TypeScript interfaces:
 ```yaml
 id: 'aa/bb/cccccccc' # Unique dialog identifier (selfDlgId only)
 agentId: 'alice' # Agent responsible for this dialog
-taskDocPath: 'task.tsk' # Path to the workspace Taskdoc package directory
+taskDocPath: 'task.tsk' # Path to the rtws Taskdoc package directory
 createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 # No parent fields for root dialogs
 ```
@@ -233,12 +235,12 @@ createdAt: '2024-01-15T10:30:00Z' # ISO timestamp when created
 ```yaml
 id: 'dd/ee/ffffffff' # Unique dialog identifier (selfDlgId only)
 agentId: 'bob' # Agent responsible for this dialog
-taskDocPath: 'task.tsk' # Path to workspace Taskdoc package directory (inherited from parent)
+taskDocPath: 'task.tsk' # Path to rtws Taskdoc package directory (inherited from parent)
 createdAt: '2024-01-15T10:35:00Z' # ISO timestamp when created
 supdialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
 assignmentFromSup: # Assignment context from parent
-  headLine: 'Implement user authentication'
-  callBody: 'Create secure login system with JWT tokens'
+  tellaskHead: 'Implement user authentication'
+  tellaskBody: 'Create secure login system with JWT tokens'
   originMemberId: 'alice'
 ```
 
@@ -365,19 +367,19 @@ status: 'completed'
 
 ### Taskdoc Storage
 
-Taskdocs are workspace artifacts that exist independently and are referenced by dialogs through paths.
+Taskdocs are rtws artifacts that exist independently and are referenced by dialogs through paths.
 Taskdocs MUST be encapsulated Taskdoc packages (`*.tsk/`).
 
 ```yaml
 # In dialog.yaml
-taskdoc: 'tasks/user-auth.tsk' # Path to workspace Taskdoc package directory
+taskdoc: 'tasks/user-auth.tsk' # Path to rtws Taskdoc package directory
 taskdocVersion: 5
 taskdocChecksum: 'sha256:abc123...'
 ```
 
 **Key Properties**:
 
-- Taskdocs are standard workspace artifacts, not dialog-specific storage
+- Taskdocs are standard rtws artifacts, not dialog-specific storage
 - Multiple dialogs can reference the same Taskdoc for collaborative work
 - Taskdocs persist throughout the DevOps lifecycle, beyond individual conversations
 - Changes to Taskdoc files are immediately visible to all referencing dialogs
@@ -605,7 +607,7 @@ The redesigned file organization should support both streaming and restoration m
 #### Proposed Directory Structure
 
 ```
-workspace/
+rtws/
 ├── dialogs/
 │   ├── active/           # Currently streaming dialogs
 │   │   ├── {root-dialog-id}/    # Root dialog directory (selfDlgId = rootDlgId)

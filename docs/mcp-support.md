@@ -8,14 +8,14 @@ rtws root.
 
 ## Status (Current Code)
 
-As of the current Dominds implementation in this workspace, MCP is implemented (using the official
+As of the current Dominds implementation in this rtws, MCP is implemented (using the official
 MCP TypeScript SDK):
 
 - `.minds/mcp.yaml` loader with mandatory hot-reload.
 - MCP-derived tools/toolsets registered into the existing global tool(set) registry.
 - Supported transports: `stdio` and `streamable_http` (SSE transport is not supported as a separate
   config option).
-- Workspace Problems surfaced to the WebUI (Problems pill + panel) for MCP and LLM provider
+- rtws Problems surfaced to the WebUI (Problems pill + panel) for MCP and LLM provider
   rejections.
 
 This doc remains the canonical design/spec for the behavior and semantics.
@@ -580,7 +580,7 @@ reported via Problems + logs, and MCP should degrade gracefully per-server.
 
 Dominds should fail early (with actionable messages) at two scopes:
 
-**Workspace-level (reject this reload attempt; keep last-known-good set as-is):**
+**rtws-level (reject this reload attempt; keep last-known-good set as-is):**
 
 - Invalid YAML, missing `version`, or unsupported `version`.
 - Duplicate server IDs.

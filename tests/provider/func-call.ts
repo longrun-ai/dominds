@@ -163,7 +163,7 @@ When given instructions:
 3. Provide clear, informative responses
 4. Handle errors gracefully
 
-Remember: You are operating in workspace ${process.cwd()}`;
+Remember: You are operating in rtws (runtime workspace) ${process.cwd()}`;
   }
 
   private getFunctionTools(): FuncTool[] {
@@ -406,7 +406,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
 
   async runAllTests(): Promise<void> {
     console.log(`🚀 Starting function call tests for ${this.provider}:${this.model}`);
-    console.log(`📁 Workspace: ${process.cwd()}`);
+    console.log(`📁 rtws: ${process.cwd()}`);
 
     const scenarios: TestScenario[] = [
       {
@@ -670,7 +670,7 @@ async function main() {
 
     console.log(`🧪 Function Call Test for ${provider}:${model}`);
     console.log(`⏰ Started at: ${new Date().toISOString()}`);
-    console.log(`📁 Workspace: ${process.cwd()}`);
+    console.log(`📁 rtws: ${process.cwd()}`);
 
     const tester = new FunctionCallTester(provider, model);
     await tester.initialize();

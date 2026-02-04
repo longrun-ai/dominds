@@ -1,8 +1,8 @@
 # Team Management Toolset (`team-mgmt`)
 
 This document specifies a dedicated **team management toolset** whose only job is managing the
-workspace’s “mindset” configuration files under `.minds/` (team roster, LLM providers, and agent
-minds files), without granting broad runtime-workspace access.
+rtws’s “mindset” configuration files under `.minds/` (team roster, LLM providers, and agent
+minds files), without granting broad rtws access.
 
 The outer repository root is the **rtws** (runtime workspace). All paths below are relative to the
 rtws root.
@@ -16,7 +16,7 @@ We want a safe way for a “team manager” agent (typically the shadow teammate
 - Create/update `.minds/mcp.yaml` (MCP server definitions that register dynamic toolsets).
 - Create/update `.minds/team/<member>/{persona,knowledge,lessons}.md` (agent minds).
 
-At the same time, we do **not** want to hand that agent full workspace read/write (e.g. the
+At the same time, we do **not** want to hand that agent full rtws read/write (e.g. the
 equivalent of the `ws_mod` toolset + unrestricted `read_dirs`/`write_dirs`), because:
 
 - Editing `.minds/team.yaml` is inherently a **privilege escalation surface** (it controls tool
@@ -52,7 +52,7 @@ Rationale:
 
 ## Current Problem Statement
 
-In typical deployments we deny direct `.minds/` access via the general-purpose workspace tools:
+In typical deployments we deny direct `.minds/` access via the general-purpose rtws tools:
 
 - `fs` / `txt` (`list_dir`, `read_file`, `overwrite_entire_file`, …)
 
@@ -195,7 +195,7 @@ Where appropriate, the manual should **dynamically load** its “reference” co
 `dominds` installation (i.e. the files and registries shipped with the installed backend), rather
 than duplicating that content in:
 
-- `.minds/*` (workspace state), or
+- `.minds/*` (rtws state), or
 - docs, or
 - hardcoded strings inside tool implementations.
 
@@ -223,7 +223,7 @@ Keep these as **static/manual text** (not dynamically loaded):
 ### What it does
 
 `dominds` loads built-in provider definitions from `dominds/main/llm/defaults.yaml` and then merges
-in workspace overrides from `.minds/llm.yaml` (workspace keys override defaults). See:
+in rtws overrides from `.minds/llm.yaml` (rtws keys override defaults). See:
 
 - `dominds/main/llm/client.ts` (`LlmConfig.load()`)
 - `dominds/main/llm/defaults.yaml` (builtin provider catalog)
@@ -370,7 +370,7 @@ For `streamable_http`, `headers` supports the same literal-or-env mapping.
 - The team roster (`members`).
 - Defaults applied to all members (`member_defaults`).
 - Tool availability (`toolsets` / `tools`).
-- Directory access control for workspace file tools (`read_dirs`, `write_dirs`, `no_*`).
+- Directory access control for rtws file tools (`read_dirs`, `write_dirs`, `no_*`).
 
 The file is loaded by `Team.load()` in `dominds/main/team.ts`. If the file is absent, the runtime
 bootstraps a default team (today it creates shadow members `fuxi` + `pangu`).
@@ -459,7 +459,7 @@ Suggested structure:
 Preferred behavior for initial bootstrap:
 
 - The shadow `fuxi` instance should get `team-mgmt` (and the manual tool), not broad `ws_mod`.
-- The shadow `pangu` instance should get broad workspace toolsets (e.g. `ws_read`, `ws_mod`, `os`), but not `team-mgmt`.
+- The shadow `pangu` instance should get broad rtws toolsets (e.g. `ws_read`, `ws_mod`, `os`), but not `team-mgmt`.
 - After `.minds/team.yaml` is created, the team definition becomes the source of truth.
 
 This avoids needing to grant full rtws access to configure the team.

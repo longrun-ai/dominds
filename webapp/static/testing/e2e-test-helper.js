@@ -796,7 +796,7 @@ function captureHeaderState(shadow) {
 
   return {
     exists: !!header,
-    workspace: header?.querySelector('.workspace-indicator')?.textContent?.trim() || null,
+    rtws: header?.querySelector('.rtws-indicator')?.textContent?.trim() || null,
     uiLanguage: app?.uiLanguage || null,
     serverWorkLanguage: app?.serverWorkLanguage || null,
     themeToggle: header?.querySelector('#theme-toggle-btn')?.textContent?.trim() || null,
@@ -1141,14 +1141,14 @@ function captureQ4HState(shadow, app) {
   const questions = Array.from(questionCards).map((card) => {
     const title = card.querySelector('.q4h-question-title')?.textContent?.trim() || '';
     const callHeadline = card.querySelector('.q4h-question-call-headline')?.textContent?.trim() || '';
-    const callBody = card.querySelector('.q4h-question-call-body')?.textContent?.trim() || '';
+    const tellaskBody = card.querySelector('.q4h-question-call-body')?.textContent?.trim() || '';
     const askedAt = card.getAttribute('data-asked-at') || '';
     const isChecked = card.querySelector('.q4h-checkbox-check');
 
     return {
       title: title.slice(0, 140) + (title.length > 140 ? '...' : ''),
       callHeadline: callHeadline.slice(0, 120) + (callHeadline.length > 120 ? '...' : ''),
-      callBodyPreview: callBody.slice(0, 150) + (callBody.length > 150 ? '...' : ''),
+      tellaskBodyPreview: tellaskBody.slice(0, 150) + (tellaskBody.length > 150 ? '...' : ''),
       askedAt,
       checked: !!isChecked,
     };
@@ -1516,11 +1516,11 @@ function formatFullState(state) {
  * Creates a new dialog using the UI modal flow.
  * This simulates the full user interaction:
  * 1. Click "New Dialog" button to open modal
- * 2. Fill task document path in modal input
+ * 2. Fill Taskdoc path in modal input
  * 3. Select teammate from dropdown (optional - uses default if omitted)
  * 4. Click "Create Dialog" button
  *
- * @param {string} taskDocPath - Path to the task document (e.g., 'cmds-test.md')
+ * @param {string} taskDocPath - Path to the Taskdoc (e.g., 'cmds-test.md')
  * @param {string} [callsign] - Optional teammate callsign (e.g., '@pangu', '@fuxi').
  *                             If omitted, uses the rt team's default responder.
  * @returns {Promise<{callsign: string, taskDocPath: string, dialogId: string, rootId: string, created: boolean}>}
@@ -1570,10 +1570,10 @@ async function createDialog(taskDocPath, callsign) {
     throw new Error('Create Dialog modal (.create-dialog-modal) did not appear');
   }
 
-  // Step 3: Fill the task document path
+  // Step 3: Fill the Taskdoc path
   const taskInput = shadow.querySelector(sel.taskDocInput);
   if (!taskInput) {
-    throw new Error('Task doc input (#task-doc-input) not found');
+    throw new Error('Taskdoc input (#task-doc-input) not found');
   }
   taskInput.value = taskDocPath;
   // Trigger input event for autocomplete to work properly
@@ -2548,7 +2548,7 @@ function getQ4HCountFromInput() {
 /**
  * Gets all Q4H questions from the input area component
  * Source: dominds-q4h-input.ts - getQuestions() method
- * @returns {Array<{id: string, headLine: string, bodyContent: string, askedAt: string}>} Array of Q4H questions
+ * @returns {Array<{id: string, tellaskHead: string, bodyContent: string, askedAt: string}>} Array of Q4H questions
  */
 function getQ4HListFromInput() {
   const inputArea = getInputArea();
@@ -2768,8 +2768,8 @@ function isTeammateMention(firstMention) {
 	  const lastIndex = sections.length - 1;
 	  const lastSection = sections[lastIndex];
   const firstMention = lastSection.getAttribute('data-first-mention') || '';
-  const headLineEl = lastSection.querySelector('.calling-headline');
-  const headLineText = headLineEl ? (headLineEl.textContent || '').trim() : '';
+  const tellaskHeadEl = lastSection.querySelector('.calling-headline');
+  const tellaskHeadText = tellaskHeadEl ? (tellaskHeadEl.textContent || '').trim() : '';
   const bodyEl = lastSection.querySelector('.calling-body');
   const bodyText = bodyEl ? (bodyEl.textContent || '').trim() : '';
   const resultEl = lastSection.querySelector('.calling-result');
@@ -2785,7 +2785,7 @@ function isTeammateMention(firstMention) {
 	      toolName: hasTool ? actual : null,
 	      index: hasTool ? lastIndex : -1,
 	      firstMention: hasTool ? actual : null,
-	      headLine: hasTool ? headLineText : null,
+	      tellaskHead: hasTool ? tellaskHeadText : null,
 	      body: hasTool ? bodyText : null,
 	      result: hasTool ? resultText : null,
 	    };
@@ -2796,7 +2796,7 @@ function isTeammateMention(firstMention) {
 	    toolName: normalizeMention(firstMention) || null,
 	    index: lastIndex,
 	    firstMention,
-	    headLine: headLineText,
+	    tellaskHead: tellaskHeadText,
 	    body: bodyText,
 	    result: resultText,
 	  };

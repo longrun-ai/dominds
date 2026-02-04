@@ -12,19 +12,19 @@ import {
   type SetupProminentEnumModelParam,
   type SetupProminentModelParamNamespace,
   type SetupStatusResponse,
+  type SetupWriteRtwsLlmYamlRequest,
+  type SetupWriteRtwsLlmYamlResponse,
   type SetupWriteShellEnvRequest,
   type SetupWriteShellEnvResponse,
   type SetupWriteTeamYamlRequest,
   type SetupWriteTeamYamlResponse,
-  type SetupWriteWorkspaceLlmYamlRequest,
-  type SetupWriteWorkspaceLlmYamlResponse,
 } from '../shared/types/setup';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 
 const log = createLogger('setup-routes');
 
 const TEAM_YAML_PATH = path.join('.minds', 'team.yaml');
-const WORKSPACE_LLM_YAML_PATH = path.join('.minds', 'llm.yaml');
+const RTWS_LLM_YAML_PATH = path.join('.minds', 'llm.yaml');
 const BUILTIN_DEFAULTS_YAML_PATH = path.join(__dirname, '..', 'llm', 'defaults.yaml');
 
 const DOMINDS_ENV_BLOCK_START = '# >>> dominds env >>>';
@@ -56,7 +56,7 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
     llmProviders: merged.providers,
   });
 
-  const workspaceLlmYaml = await readWorkspaceLlmYamlProviderKeys();
+  const rtwsLlmYaml = await readRtwsLlmYamlProviderKeys();
 
   if (builtin.kind === 'error') {
     return {
@@ -65,7 +65,7 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
       shell: { env: shellEnv, kind: shellKind, defaultRc: shellKindToDefaultRc(shellKind) },
       rc,
       teamYaml,
-      workspaceLlmYaml,
+      rtwsLlmYaml,
       providers: [],
       error: builtin.errorText,
     };
@@ -82,7 +82,7 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
     shell: { env: shellEnv, kind: shellKind, defaultRc: shellKindToDefaultRc(shellKind) },
     rc,
     teamYaml,
-    workspaceLlmYaml,
+    rtwsLlmYaml,
     providers,
   };
 }
@@ -102,8 +102,8 @@ export async function buildSetupFileResponse(kind: SetupFileKind): Promise<Setup
     }
   }
 
-  if (kind === 'workspace_llm_yaml') {
-    const p = WORKSPACE_LLM_YAML_PATH;
+  if (kind === 'rtws_llm_yaml') {
+    const p = RTWS_LLM_YAML_PATH;
     const exists = await fileExists(p);
     if (!exists) {
       return { success: false, kind, path: p, error: 'Missing .minds/llm.yaml' };
@@ -226,15 +226,15 @@ export async function handleWriteTeamYaml(
   }
 }
 
-export async function handleWriteWorkspaceLlmYaml(
+export async function handleWriteRtwsLlmYaml(
   rawBody: string,
 ): Promise<
-  | { kind: 'ok'; response: SetupWriteWorkspaceLlmYamlResponse }
+  | { kind: 'ok'; response: SetupWriteRtwsLlmYamlResponse }
   | { kind: 'conflict'; errorText: string; path: string }
   | { kind: 'bad_request'; errorText: string; path: string }
   | { kind: 'error'; errorText: string; path: string }
 > {
-  const outPath = WORKSPACE_LLM_YAML_PATH;
+  const outPath = RTWS_LLM_YAML_PATH;
 
   let parsed: unknown;
   try {
@@ -243,7 +243,7 @@ export async function handleWriteWorkspaceLlmYaml(
     return { kind: 'bad_request', errorText: 'Invalid JSON body', path: outPath };
   }
 
-  const req = parseWriteWorkspaceLlmYamlRequest(parsed);
+  const req = parseWriteRtwsLlmYamlRequest(parsed);
   if (!req) {
     return { kind: 'bad_request', errorText: 'Invalid request body', path: outPath };
   }
@@ -526,17 +526,15 @@ async function readTeamYamlMemberDefaults(): Promise<SetupStatusResponse['teamYa
   }
 }
 
-async function readWorkspaceLlmYamlProviderKeys(): Promise<
-  SetupStatusResponse['workspaceLlmYaml']
-> {
-  const exists = await fileExists(WORKSPACE_LLM_YAML_PATH);
-  if (!exists) return { path: WORKSPACE_LLM_YAML_PATH, exists: false };
+async function readRtwsLlmYamlProviderKeys(): Promise<SetupStatusResponse['rtwsLlmYaml']> {
+  const exists = await fileExists(RTWS_LLM_YAML_PATH);
+  if (!exists) return { path: RTWS_LLM_YAML_PATH, exists: false };
   try {
-    const raw = await fsPromises.readFile(WORKSPACE_LLM_YAML_PATH, 'utf-8');
+    const raw = await fsPromises.readFile(RTWS_LLM_YAML_PATH, 'utf-8');
     const parsed: unknown = YAML.parse(raw);
     if (!isRecord(parsed)) {
       return {
-        path: WORKSPACE_LLM_YAML_PATH,
+        path: RTWS_LLM_YAML_PATH,
         exists: true,
         parseError: 'Invalid llm.yaml (not an object)',
       };
@@ -544,18 +542,18 @@ async function readWorkspaceLlmYamlProviderKeys(): Promise<
     const providersUnknown = parsed['providers'];
     if (!isRecord(providersUnknown)) {
       return {
-        path: WORKSPACE_LLM_YAML_PATH,
+        path: RTWS_LLM_YAML_PATH,
         exists: true,
         parseError: 'Invalid llm.yaml (missing providers object)',
       };
     }
     return {
-      path: WORKSPACE_LLM_YAML_PATH,
+      path: RTWS_LLM_YAML_PATH,
       exists: true,
       providerKeys: Object.keys(providersUnknown).sort(),
     };
   } catch (error) {
-    return { path: WORKSPACE_LLM_YAML_PATH, exists: true, parseError: 'Failed to parse llm.yaml' };
+    return { path: RTWS_LLM_YAML_PATH, exists: true, parseError: 'Failed to parse llm.yaml' };
   }
 }
 
@@ -656,9 +654,7 @@ function parseWriteTeamYamlRequest(value: unknown): SetupWriteTeamYamlRequest | 
   return modelParams ? { provider, model, overwrite, modelParams } : { provider, model, overwrite };
 }
 
-function parseWriteWorkspaceLlmYamlRequest(
-  value: unknown,
-): SetupWriteWorkspaceLlmYamlRequest | null {
+function parseWriteRtwsLlmYamlRequest(value: unknown): SetupWriteRtwsLlmYamlRequest | null {
   if (!isRecord(value)) return null;
   const raw = value['raw'];
   const overwrite = value['overwrite'];

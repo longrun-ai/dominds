@@ -3,7 +3,7 @@
  *
  * Codex-style `apply_patch` function tool.
  * - Accepts the Codex CLI patch format (`*** Begin Patch` ... `*** End Patch`)
- * - Applies edits to the current workspace (rtws)
+ * - Applies edits to the current rtws (runtime workspace)
  * - Enforces Dominds directory access control (`read_dirs`/`write_dirs` + deny lists)
  */
 import { promises as fs } from 'node:fs';
@@ -65,7 +65,7 @@ function resolveInWorkspace(workspaceRoot: string, relPath: string, label: strin
   if (resolved === root) return resolved;
   const prefix = root.endsWith(path.sep) ? root : root + path.sep;
   if (!resolved.startsWith(prefix)) {
-    throw new Error(`${label} escapes workspace root: ${relPath}`);
+    throw new Error(`${label} escapes rtws (runtime workspace) root: ${relPath}`);
   }
   return resolved;
 }
@@ -643,7 +643,7 @@ export const applyPatchTool: FuncTool = {
   type: 'func',
   name: 'apply_patch',
   description:
-    'Apply a Codex-style apply_patch formatted patch to the workspace. Enforces Dominds directory allow/deny lists.',
+    'Apply a Codex-style apply_patch formatted patch to the rtws (runtime workspace). Enforces Dominds directory allow/deny lists.',
   parameters: {
     type: 'object',
     additionalProperties: false,

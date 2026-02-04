@@ -31,7 +31,7 @@ export type { TellaskCallValidation, TellaskMalformedReason };
 
 export interface CollectedTellaskCall {
   validation: TellaskCallValidation;
-  headLine: string;
+  tellaskHead: string;
   body: string;
   callId: string;
 }
@@ -50,9 +50,9 @@ export interface TellaskEventsReceiver {
   callHeadLineFinish: () => Promise<void>;
 
   // Body (prefix `!?` removed). Includes all whitespace from upstream.
-  callBodyStart: () => Promise<void>;
-  callBodyChunk: (chunk: string) => Promise<void>;
-  callBodyFinish: () => Promise<void>;
+  tellaskBodyStart: () => Promise<void>;
+  tellaskBodyChunk: (chunk: string) => Promise<void>;
+  tellaskBodyFinish: () => Promise<void>;
 
   // Finish of tellask call block; callId computed via content-hash for replay correlation.
   // upstreamEndOffset counts raw upstream characters consumed up to (but not including) the
@@ -69,11 +69,11 @@ interface ActiveCall {
   kind: 'active';
   validation: TellaskCallValidation | null;
   firstLineMentionParse: FirstLineMentionParse;
-  headLine: string;
+  tellaskHead: string;
   body: string;
   callLineIndex: number;
   phase: 'headline' | 'body';
-  headLineFinished: boolean;
+  tellaskHeadFinished: boolean;
   bodyStarted: boolean;
   callStartEmitted: boolean;
 }
@@ -254,11 +254,11 @@ export class TellaskStreamParser {
         kind: 'active',
         validation: null,
         firstLineMentionParse: { kind: 'pending_first_char' },
-        headLine: '',
+        tellaskHead: '',
         body: '',
         callLineIndex: 0,
         phase: 'headline',
-        headLineFinished: false,
+        tellaskHeadFinished: false,
         bodyStarted: false,
         callStartEmitted: false,
       };
@@ -398,7 +398,7 @@ export class TellaskStreamParser {
   private async finishHeadlineIfNeeded(): Promise<void> {
     const call = this.activeCall;
     if (!call) return;
-    if (call.headLineFinished) return;
+    if (call.tellaskHeadFinished) return;
 
     if (!call.callStartEmitted) {
       // If the first line did not contain a mention terminator, we resolve at boundary.
@@ -407,14 +407,14 @@ export class TellaskStreamParser {
 
     await this.flushHeadlineBuffer();
     await this.downstream.callHeadLineFinish();
-    call.headLineFinished = true;
+    call.tellaskHeadFinished = true;
   }
 
   private async startBodyIfNeeded(): Promise<void> {
     const call = this.activeCall;
     if (!call) return;
     if (call.bodyStarted) return;
-    await this.downstream.callBodyStart();
+    await this.downstream.tellaskBodyStart();
     call.bodyStarted = true;
   }
 
@@ -431,17 +431,17 @@ export class TellaskStreamParser {
 
     if (call.bodyStarted) {
       await this.flushBodyBuffer();
-      await this.downstream.callBodyFinish();
+      await this.downstream.tellaskBodyFinish();
     }
 
     const validation = call.validation ?? { kind: 'malformed', reason: 'missing_mention_prefix' };
     const callId = generateContentHash(
-      `tellask\n${validation.kind === 'valid' ? validation.firstMention : ''}\n${call.headLine}\n${call.body}`,
+      `tellask\n${validation.kind === 'valid' ? validation.firstMention : ''}\n${call.tellaskHead}\n${call.body}`,
       this.callCounter++,
     );
     const collected: CollectedTellaskCall = {
       validation,
-      headLine: call.headLine,
+      tellaskHead: call.tellaskHead,
       body: call.body,
       callId,
     };
@@ -469,7 +469,7 @@ export class TellaskStreamParser {
     if (!call.callStartEmitted) return;
     if (this.headlineBuffer.length === 0) return;
 
-    call.headLine += this.headlineBuffer;
+    call.tellaskHead += this.headlineBuffer;
     await this.downstream.callHeadLineChunk(this.headlineBuffer);
     this.headlineBuffer = '';
   }
@@ -480,7 +480,7 @@ export class TellaskStreamParser {
     if (this.bodyBuffer.length === 0) return;
 
     call.body += this.bodyBuffer;
-    await this.downstream.callBodyChunk(this.bodyBuffer);
+    await this.downstream.tellaskBodyChunk(this.bodyBuffer);
     this.bodyBuffer = '';
   }
 

@@ -1182,7 +1182,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.handleProtocolError(
         `teammate_call_response_evt missing callId ${JSON.stringify({
           responderId: event.responderId,
-          headLine: event.headLine,
+          tellaskHead: event.tellaskHead,
           calling_genseq: event.calling_genseq,
         })}`,
       );
@@ -1251,7 +1251,7 @@ export class DomindsDialogContainer extends HTMLElement {
     return formatTeammateCallErrorInline({
       language: bubbleLanguage,
       responderId: String(event.responderId || ''),
-      headLine: String(event.headLine || ''),
+      tellaskHead: String(event.tellaskHead || ''),
       parsed,
     });
   }
@@ -1319,7 +1319,7 @@ export class DomindsDialogContainer extends HTMLElement {
       const expectedResult = formatTeammateResponseContent({
         responderId: event.responderId,
         requesterId,
-        originalCallHeadLine: event.headLine,
+        originalCallHeadLine: event.tellaskHead,
         responseBody: event.response,
         language: this.serverWorkLanguage,
       });

@@ -1,6 +1,6 @@
 # ws_mod: unified text-editing workflow (prepare-first + single apply)
 
-You have read/write access to the workspace, but **all incremental text edits must be prepared first, then applied**: generate reviewable diff/evidence + `hunk_id`, then confirm the write.
+You have read/write access to the rtws (runtime workspace), but **all incremental text edits must be prepared first, then applied**: generate reviewable diff/evidence + `hunk_id`, then confirm the write.
 
 ## Principles
 

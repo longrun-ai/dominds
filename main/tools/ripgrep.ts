@@ -1,7 +1,7 @@
 /**
  * Module: tools/ripgrep
  *
- * Workspace search tools backed by `rg` (ripgrep), with low-noise YAML output.
+ * rtws (runtime workspace) search tools backed by `rg` (ripgrep), with low-noise YAML output.
  */
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
@@ -101,11 +101,11 @@ function buildAccessControlGlobs(member: Team.Member): { include: string[]; excl
     if (glob) exclude.push(glob);
   }
 
-  // Task Docs are encapsulated and forbidden to all general file tools.
+  // Taskdocs are encapsulated and forbidden to all general file tools.
   exclude.push('**/*.tsk');
   exclude.push('**/*.tsk/**');
 
-  // `.minds/**` is reserved workspace state and is hard-denied for general file tools.
+  // `.minds/**` is reserved rtws state and is hard-denied for general file tools.
   // Dedicated `.minds/`-scoped tools (team-mgmt) should be used for managing it.
   exclude.push('.minds');
   exclude.push('.minds/**');

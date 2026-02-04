@@ -566,10 +566,10 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
 
     // Validate that taskDocPath is provided (it's now mandatory)
     if (!taskDocPath || taskDocPath.trim() === '') {
-      throw new Error('Task Doc path is required for creating a dialog');
+      throw new Error('Taskdoc path is required for creating a dialog');
     }
     if (!isTaskPackagePath(taskDocPath)) {
-      throw new Error(`Task Doc must be a directory ending in '.tsk' (got: '${taskDocPath}')`);
+      throw new Error(`Taskdoc must be a directory ending in '.tsk' (got: '${taskDocPath}')`);
     }
 
     // Auto-fill default_responder if no agentId provided
@@ -866,7 +866,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
             rootId: q.rootId,
             agentId: q.agentId,
             taskDocPath: q.taskDocPath,
-            headLine: q.headLine,
+            tellaskHead: q.tellaskHead,
             bodyContent: q.bodyContent,
             askedAt: q.askedAt,
             callSiteRef: q.callSiteRef,
@@ -907,7 +907,7 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       rootId: q.rootId,
       agentId: q.agentId,
       taskDocPath: q.taskDocPath,
-      headLine: q.headLine,
+      tellaskHead: q.tellaskHead,
       bodyContent: q.bodyContent,
       askedAt: q.askedAt,
       callSiteRef: q.callSiteRef,
@@ -1388,7 +1388,7 @@ export function setupWebSocketServer(
     }
   });
 
-  // Broadcast Q4H events globally: Q4H is workspace-global state in the WebUI.
+  // Broadcast Q4H events globally: Q4H is rtws-global state in the WebUI.
   // Without this, a client can miss Q4H updates when it's not subscribed to the originating dialog stream.
   setQ4HBroadcaster((evt) => {
     const data = JSON.stringify(evt);
@@ -1410,7 +1410,7 @@ export function setupWebSocketServer(
     }
   };
 
-  // Broadcast workspace Problems snapshots to all connected clients.
+  // Broadcast rtws Problems snapshots to all connected clients.
   setProblemsBroadcaster((msg: WebSocketMessage) => {
     const data = JSON.stringify(msg);
     for (const ws of clients) {

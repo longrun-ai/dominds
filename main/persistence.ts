@@ -83,8 +83,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['assignmentFromSup'] {
   if (!isRecord(value)) return false;
-  if (typeof value.headLine !== 'string') return false;
-  if (typeof value.callBody !== 'string') return false;
+  if (typeof value.tellaskHead !== 'string') return false;
+  if (typeof value.tellaskBody !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callerDialogId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
@@ -239,7 +239,7 @@ function isSubdialogResponseRecord(value: unknown): value is {
   response: string;
   completedAt: string;
   callType: 'A' | 'B' | 'C';
-  headLine: string;
+  tellaskHead: string;
   responderId: string;
   originMemberId: string;
   callId: string;
@@ -250,7 +250,7 @@ function isSubdialogResponseRecord(value: unknown): value is {
   if (typeof value.response !== 'string') return false;
   if (typeof value.completedAt !== 'string') return false;
   if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
-  if (typeof value.headLine !== 'string') return false;
+  if (typeof value.tellaskHead !== 'string') return false;
   if (typeof value.responderId !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
@@ -296,8 +296,8 @@ export class DiskFileDialogStore extends DialogStore {
   public async createSubDialog(
     supdialog: RootDialog,
     targetAgentId: string,
-    headLine: string,
-    callBody: string,
+    tellaskHead: string,
+    tellaskBody: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
@@ -318,8 +318,8 @@ export class DiskFileDialogStore extends DialogStore {
       subdialogId,
       targetAgentId,
       {
-        headLine,
-        callBody,
+        tellaskHead,
+        tellaskBody,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -339,8 +339,8 @@ export class DiskFileDialogStore extends DialogStore {
       supdialogId: supdialog.id.selfId,
       tellaskSession: options.tellaskSession,
       assignmentFromSup: {
-        headLine,
-        callBody,
+        tellaskHead,
+        tellaskBody,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -384,8 +384,8 @@ export class DiskFileDialogStore extends DialogStore {
         rootId: subdialogId.rootId,
       },
       targetAgentId,
-      headLine,
-      callBody,
+      tellaskHead,
+      tellaskBody,
     };
     // Post subdialog_created_evt to PARENT's PubChan so frontend can receive it
     // The frontend subscribes to the parent's events, not the subdialog's
@@ -439,7 +439,7 @@ export class DiskFileDialogStore extends DialogStore {
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the tool/agent that responded (e.g., "add_reminder")
-   * @param headLine - Headline of the original call
+   * @param tellaskHead - Headline of the original call
    * @param result - The result content to display
    * @param status - Response status ('completed' | 'failed')
    * @param callId - Correlation ID from call_start_evt (REQUIRED for inline display)
@@ -447,7 +447,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async receiveTeammateCallResult(
     dialog: Dialog,
     responderId: string,
-    headLine: string,
+    tellaskHead: string,
     result: string,
     status: 'completed' | 'failed',
     callId: string,
@@ -459,7 +459,7 @@ export class DiskFileDialogStore extends DialogStore {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'teammate_call_result_record',
       responderId,
-      headLine,
+      tellaskHead,
       status,
       result,
       calling_genseq,
@@ -471,7 +471,7 @@ export class DiskFileDialogStore extends DialogStore {
     const toolResponseEvt: TeammateCallResponseEvent = {
       type: 'teammate_call_response_evt',
       responderId,
-      headLine,
+      tellaskHead,
       status,
       result,
       course,
@@ -492,14 +492,14 @@ export class DiskFileDialogStore extends DialogStore {
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the teammate agent (e.g., "coder")
-   * @param headLine - Headline of the original teammate tellask
+   * @param tellaskHead - Headline of the original teammate tellask
    * @param status - Response status ('completed' | 'failed')
    * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
    */
   public async receiveTeammateResponse(
     dialog: Dialog,
     responderId: string,
-    headLine: string,
+    tellaskHead: string,
     status: 'completed' | 'failed',
     calleeDialogId: DialogID | undefined,
     options: {
@@ -519,7 +519,7 @@ export class DiskFileDialogStore extends DialogStore {
     const result = formatTeammateResponseContent({
       responderId,
       requesterId: originMemberId,
-      originalCallHeadLine: headLine,
+      originalCallHeadLine: tellaskHead,
       responseBody: response,
       language: getWorkLanguage(),
     });
@@ -528,7 +528,7 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'teammate_response_record',
       responderId,
       calleeDialogId: calleeDialogSelfId,
-      headLine,
+      tellaskHead,
       status,
       result,
       calling_genseq,
@@ -543,7 +543,7 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'teammate_response_evt',
       responderId,
       calleeDialogId: calleeDialogSelfId,
-      headLine,
+      tellaskHead,
       status,
       result,
       course,
@@ -1028,7 +1028,7 @@ export class DiskFileDialogStore extends DialogStore {
     return records.map((record) => ({
       subdialogId: new DialogID(record.subdialogId, rootDialogId.rootId),
       createdAt: record.createdAt,
-      headLine: record.headLine,
+      tellaskHead: record.tellaskHead,
       targetAgentId: record.targetAgentId,
       callType: record.callType,
       tellaskSession: record.tellaskSession,
@@ -1294,7 +1294,7 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callBodyStart: async () => {
+              tellaskBodyStart: async () => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
@@ -1307,7 +1307,7 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callBodyChunk: async (chunk: string) => {
+              tellaskBodyChunk: async (chunk: string) => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
@@ -1321,7 +1321,7 @@ export class DiskFileDialogStore extends DialogStore {
                   );
                 }
               },
-              callBodyFinish: async () => {
+              tellaskBodyFinish: async () => {
                 if (ws.readyState === 1) {
                   ws.send(
                     JSON.stringify({
@@ -1626,7 +1626,7 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callBodyStart: async () => {
+            tellaskBodyStart: async () => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
@@ -1642,7 +1642,7 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callBodyChunk: async (chunk: string) => {
+            tellaskBodyChunk: async (chunk: string) => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
@@ -1659,7 +1659,7 @@ export class DiskFileDialogStore extends DialogStore {
                 );
               }
             },
-            callBodyFinish: async () => {
+            tellaskBodyFinish: async () => {
               if (ws.readyState === 1) {
                 ws.send(
                   JSON.stringify({
@@ -1768,8 +1768,8 @@ export class DiskFileDialogStore extends DialogStore {
             rootId: dialog.id.rootId, // Use parent's rootId for subdialog's rootId
           },
           targetAgentId: 'unknown', // Will be resolved during actual subdialog creation
-          headLine: event.headLine,
-          callBody: event.callBody,
+          tellaskHead: event.tellaskHead,
+          tellaskBody: event.tellaskBody,
           timestamp: event.ts,
         };
 
@@ -1784,7 +1784,7 @@ export class DiskFileDialogStore extends DialogStore {
         const responseEvent = {
           type: 'teammate_call_response_evt',
           responderId: event.responderId,
-          headLine: event.headLine,
+          tellaskHead: event.tellaskHead,
           status: event.status,
           result: event.result,
           callId: event.callId || '',
@@ -1808,7 +1808,7 @@ export class DiskFileDialogStore extends DialogStore {
         const formattedResult = formatTeammateResponseContent({
           responderId: event.responderId,
           requesterId: event.originMemberId,
-          originalCallHeadLine: event.headLine,
+          originalCallHeadLine: event.tellaskHead,
           responseBody: event.response,
           language: getWorkLanguage(),
         });
@@ -1816,7 +1816,7 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'teammate_response_evt',
           responderId: event.responderId,
           calleeDialogId: event.calleeDialogId,
-          headLine: event.headLine,
+          tellaskHead: event.tellaskHead,
           status: event.status,
           result: formattedResult,
           response: event.response,
@@ -2585,7 +2585,7 @@ export class DialogPersistence {
       rootId: string;
       agentId: string;
       taskDocPath: string;
-      headLine: string;
+      tellaskHead: string;
       bodyContent: string;
       askedAt: string;
       callSiteRef: { course: number; messageIndex: number };
@@ -2600,7 +2600,7 @@ export class DialogPersistence {
         rootId: string;
         agentId: string;
         taskDocPath: string;
-        headLine: string;
+        tellaskHead: string;
         bodyContent: string;
         askedAt: string;
         callSiteRef: { course: number; messageIndex: number };
@@ -2676,7 +2676,7 @@ export class DialogPersistence {
     pendingSubdialogs: Array<{
       subdialogId: string;
       createdAt: string;
-      headLine: string;
+      tellaskHead: string;
       targetAgentId: string;
       callType: 'A' | 'B' | 'C';
       tellaskSession?: string;
@@ -2708,7 +2708,7 @@ export class DialogPersistence {
     Array<{
       subdialogId: string;
       createdAt: string;
-      headLine: string;
+      tellaskHead: string;
       targetAgentId: string;
       callType: 'A' | 'B' | 'C';
       tellaskSession?: string;
@@ -2766,7 +2766,7 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      headLine: string;
+      tellaskHead: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -2801,7 +2801,7 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      headLine: string;
+      tellaskHead: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -2819,7 +2819,7 @@ export class DialogPersistence {
           response: string;
           completedAt: string;
           callType: 'A' | 'B' | 'C';
-          headLine: string;
+          tellaskHead: string;
           responderId: string;
           originMemberId: string;
           callId: string;
@@ -2874,7 +2874,7 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      headLine: string;
+      tellaskHead: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -2905,7 +2905,7 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      headLine: string;
+      tellaskHead: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -2927,7 +2927,7 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      headLine: string;
+      tellaskHead: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -3773,7 +3773,7 @@ export class DialogPersistence {
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
-            headLine: event.headLine,
+            tellaskHead: event.tellaskHead,
             status: event.status,
             content: event.result,
           });
@@ -3786,7 +3786,7 @@ export class DialogPersistence {
           const formattedResult = formatTeammateResponseContent({
             responderId: event.responderId,
             requesterId: event.originMemberId,
-            originalCallHeadLine: event.headLine,
+            originalCallHeadLine: event.tellaskHead,
             responseBody: event.response,
             language: getWorkLanguage(),
           });
@@ -3794,7 +3794,7 @@ export class DialogPersistence {
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
-            headLine: event.headLine,
+            tellaskHead: event.tellaskHead,
             status: event.status,
             content: formattedResult,
           });

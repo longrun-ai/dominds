@@ -86,10 +86,10 @@ export const listDirTool: FuncTool = {
   type: 'func',
   name: 'list_dir',
   description:
-    'List directory contents relative to workspace with detailed information (sizes, line counts for text files, symlink targets).',
+    'List directory contents relative to rtws (runtime workspace) with detailed information (sizes, line counts for text files, symlink targets).',
   descriptionI18n: {
-    en: 'List directory contents relative to workspace with detailed information (sizes, line counts for text files, symlink targets).',
-    zh: '列出工作区内目录内容（包含大小、文本文件行数、符号链接目标等信息）。',
+    en: 'List directory contents relative to rtws (runtime workspace) with detailed information (sizes, line counts for text files, symlink targets).',
+    zh: '列出 rtws（运行时工作区）内目录内容（包含大小、文本文件行数、符号链接目标等信息）。',
   },
   parameters: {
     type: 'object',
@@ -97,7 +97,7 @@ export const listDirTool: FuncTool = {
     properties: {
       path: {
         type: 'string',
-        description: "Workspace-relative directory path. Defaults to '.'.",
+        description: "rtws-relative directory path. Defaults to '.'.",
       },
     },
   },
@@ -107,7 +107,7 @@ export const listDirTool: FuncTool = {
     const labels =
       workLanguage === 'zh'
         ? {
-            accessDenied: '❌ **访问被拒绝**\n\n路径必须位于工作区内',
+            accessDenied: '❌ **访问被拒绝**\n\n路径必须位于 rtws（运行时工作区）内',
             notFound: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
             notDir: (p: string) => `❌ **错误**\n\n路径 \`${p}\` 不是目录。`,
             readDirFailed: (msg: string) => `❌ **错误**\n\n读取目录失败：${msg}`,
@@ -122,7 +122,7 @@ export const listDirTool: FuncTool = {
             },
           }
         : {
-            accessDenied: '❌ **Access Denied**\n\nPath must be within workspace',
+            accessDenied: '❌ **Access Denied**\n\nPath must be within rtws (runtime workspace)',
             notFound: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
             notDir: (p: string) => `❌ **Error**\n\nPath \`${p}\` is not a directory.`,
             readDirFailed: (msg: string) => `❌ **Error**\n\nFailed to read directory: ${msg}`,
@@ -141,10 +141,10 @@ export const listDirTool: FuncTool = {
     const pathValue = args['path'];
     if (typeof pathValue === 'string' && pathValue.trim() !== '') rel = pathValue.trim();
 
-    // Resolve path relative to current working directory (workspace)
+    // Resolve path relative to current working directory (rtws)
     const dir = path.resolve(process.cwd(), rel);
 
-    // Basic security check - ensure path is within workspace
+    // Basic security check - ensure path is within rtws
     const cwd = path.resolve(process.cwd());
     if (!dir.startsWith(cwd)) {
       const content = labels.accessDenied;
@@ -306,17 +306,17 @@ export const listDirTool: FuncTool = {
 export const rmDirTool: FuncTool = {
   type: 'func',
   name: 'rm_dir',
-  description: 'Remove a directory relative to workspace.',
+  description: 'Remove a directory relative to rtws (runtime workspace).',
   descriptionI18n: {
-    en: 'Remove a directory relative to workspace.',
-    zh: '删除工作区内目录。',
+    en: 'Remove a directory relative to rtws (runtime workspace).',
+    zh: '删除 rtws（运行时工作区）内目录。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
     required: ['path'],
     properties: {
-      path: { type: 'string', description: 'Workspace-relative directory path.' },
+      path: { type: 'string', description: 'rtws-relative directory path.' },
       recursive: {
         type: 'boolean',
         description: 'When true, remove directory and all contents.',
@@ -332,7 +332,7 @@ export const rmDirTool: FuncTool = {
             formatError:
               '请使用正确的目录删除参数。\n\n**期望参数：** `{ "path": "<path>", "recursive": true|false }`\n\n**示例：**\n```json\n{ \"path\": \"temp\", \"recursive\": true }\n```',
             dirPathRequired: '❌ **错误**\n\n需要提供目录路径。',
-            pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
+            pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于 rtws（运行时工作区）内。',
             notDir: (p: string) => `❌ **错误**\n\n\`${p}\` 不是目录。`,
             notEmpty: (p: string) =>
               `❌ **错误**\n\n目录 \`${p}\` 非空。请设置 \`recursive: true\` 删除非空目录。`,
@@ -344,7 +344,8 @@ export const rmDirTool: FuncTool = {
             formatError:
               'Please use the correct arguments for removing directories.\n\n**Expected args:** `{ "path": "<path>", "recursive": true|false }`\n\n**Example:**\n```json\n{ \"path\": \"temp\", \"recursive\": true }\n```',
             dirPathRequired: '❌ **Error**\n\nDirectory path is required.',
-            pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
+            pathMustBeWithinWorkspace:
+              '❌ **Error**\n\nPath must be within rtws (runtime workspace).',
             notDir: (p: string) => `❌ **Error**\n\n\`${p}\` is not a directory.`,
             notEmpty: (p: string) =>
               `❌ **Error**\n\nDirectory \`${p}\` is not empty. Set \`recursive: true\` to remove non-empty directories.`,
@@ -362,10 +363,10 @@ export const rmDirTool: FuncTool = {
     if (recursiveValue !== undefined && typeof recursiveValue !== 'boolean')
       return labels.formatError;
 
-    // Resolve path relative to current working directory (workspace)
+    // Resolve path relative to current working directory (rtws)
     const targetPath = path.resolve(process.cwd(), rel);
 
-    // Basic security check - ensure path is within workspace
+    // Basic security check - ensure path is within rtws
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
       return labels.pathMustBeWithinWorkspace;
@@ -413,17 +414,17 @@ export const rmDirTool: FuncTool = {
 export const rmFileTool: FuncTool = {
   type: 'func',
   name: 'rm_file',
-  description: 'Remove a file relative to workspace.',
+  description: 'Remove a file relative to rtws (runtime workspace).',
   descriptionI18n: {
-    en: 'Remove a file relative to workspace.',
-    zh: '删除工作区内文件。',
+    en: 'Remove a file relative to rtws (runtime workspace).',
+    zh: '删除 rtws（运行时工作区）内文件。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
     required: ['path'],
     properties: {
-      path: { type: 'string', description: 'Workspace-relative file path.' },
+      path: { type: 'string', description: 'rtws-relative file path.' },
     },
   },
   argsValidation: 'dominds',
@@ -435,7 +436,7 @@ export const rmFileTool: FuncTool = {
             formatError:
               '请使用正确的文件删除参数。\n\n**期望参数：** `{ \"path\": \"<path>\" }`\n\n**示例：**\n```json\n{ \"path\": \"temp/old-file.txt\" }\n```',
             filePathRequired: '❌ **错误**\n\n需要提供文件路径。',
-            pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于工作区内。',
+            pathMustBeWithinWorkspace: '❌ **错误**\n\n路径必须位于 rtws（运行时工作区）内。',
             notFile: (p: string) => `❌ **错误**\n\n\`${p}\` 不是文件。`,
             removed: (p: string) => `✅ 已删除文件：\`${p}\`。`,
             doesNotExist: (p: string) => `❌ **未找到**\n\n文件 \`${p}\` 不存在。`,
@@ -445,7 +446,8 @@ export const rmFileTool: FuncTool = {
             formatError:
               'Please use the correct arguments for removing files.\n\n**Expected args:** `{ \"path\": \"<path>\" }`\n\n**Example:**\n```json\n{ \"path\": \"temp/old-file.txt\" }\n```',
             filePathRequired: '❌ **Error**\n\nFile path is required.',
-            pathMustBeWithinWorkspace: '❌ **Error**\n\nPath must be within workspace.',
+            pathMustBeWithinWorkspace:
+              '❌ **Error**\n\nPath must be within rtws (runtime workspace).',
             notFile: (p: string) => `❌ **Error**\n\n\`${p}\` is not a file.`,
             removed: (p: string) => `✅ Removed file: \`${p}\`.`,
             doesNotExist: (p: string) => `❌ **Not Found**\n\nFile \`${p}\` does not exist.`,
@@ -456,10 +458,10 @@ export const rmFileTool: FuncTool = {
     const rel = typeof pathValue === 'string' ? pathValue.trim() : '';
     if (!rel) return labels.filePathRequired;
 
-    // Resolve path relative to current working directory (workspace)
+    // Resolve path relative to current working directory (rtws)
     const targetPath = path.resolve(process.cwd(), rel);
 
-    // Basic security check - ensure path is within workspace
+    // Basic security check - ensure path is within rtws
     const cwd = path.resolve(process.cwd());
     if (!targetPath.startsWith(cwd)) {
       return labels.pathMustBeWithinWorkspace;
@@ -519,14 +521,17 @@ async function countDirEntries(absPath: string): Promise<number> {
 export const mkDirTool: FuncTool = {
   type: 'func',
   name: 'mk_dir',
-  description: 'Create a directory relative to workspace.',
-  descriptionI18n: { en: 'Create a directory relative to workspace.', zh: '创建工作区内目录。' },
+  description: 'Create a directory relative to rtws (runtime workspace).',
+  descriptionI18n: {
+    en: 'Create a directory relative to rtws (runtime workspace).',
+    zh: '创建 rtws（运行时工作区）内目录。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,
     required: ['path'],
     properties: {
-      path: { type: 'string', description: 'Workspace-relative directory path.' },
+      path: { type: 'string', description: 'rtws-relative directory path.' },
       parents: { type: 'boolean', description: 'Create parent directories as needed.' },
     },
   },
@@ -575,8 +580,8 @@ export const mkDirTool: FuncTool = {
         `error: PATH_OUTSIDE_WORKSPACE`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
-            ? 'Mk-dir failed: path must be within workspace.'
-            : 'Mk-dir failed: path must be within workspace.',
+            ? 'Mk-dir failed: path must be within rtws (runtime workspace).'
+            : 'Mk-dir failed: path must be within rtws (runtime workspace).',
         )}`,
       ].join('\n');
       return formatYamlCodeBlock(yaml);
@@ -644,18 +649,18 @@ export const mkDirTool: FuncTool = {
 export const moveFileTool: FuncTool = {
   type: 'func',
   name: 'move_file',
-  description: 'Move/rename a file relative to workspace.',
+  description: 'Move/rename a file relative to rtws (runtime workspace).',
   descriptionI18n: {
-    en: 'Move/rename a file relative to workspace.',
-    zh: '移动/重命名工作区内文件。',
+    en: 'Move/rename a file relative to rtws (runtime workspace).',
+    zh: '移动/重命名 rtws（运行时工作区）内文件。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
     required: ['from', 'to'],
     properties: {
-      from: { type: 'string', description: 'Workspace-relative source file path.' },
-      to: { type: 'string', description: 'Workspace-relative destination file path.' },
+      from: { type: 'string', description: 'rtws-relative source file path.' },
+      to: { type: 'string', description: 'rtws-relative destination file path.' },
     },
   },
   argsValidation: 'dominds',
@@ -689,8 +694,8 @@ export const moveFileTool: FuncTool = {
         `error: PATH_OUTSIDE_WORKSPACE`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
-            ? 'Move-file failed: paths must be within workspace.'
-            : 'Move-file failed: paths must be within workspace.',
+            ? 'Move-file failed: paths must be within rtws (runtime workspace).'
+            : 'Move-file failed: paths must be within rtws (runtime workspace).',
         )}`,
       ].join('\n');
       return formatYamlCodeBlock(yaml);
@@ -787,18 +792,18 @@ export const moveFileTool: FuncTool = {
 export const moveDirTool: FuncTool = {
   type: 'func',
   name: 'move_dir',
-  description: 'Move/rename a directory relative to workspace.',
+  description: 'Move/rename a directory relative to rtws (runtime workspace).',
   descriptionI18n: {
-    en: 'Move/rename a directory relative to workspace.',
-    zh: '移动/重命名工作区内目录。',
+    en: 'Move/rename a directory relative to rtws (runtime workspace).',
+    zh: '移动/重命名 rtws（运行时工作区）内目录。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
     required: ['from', 'to'],
     properties: {
-      from: { type: 'string', description: 'Workspace-relative source directory path.' },
-      to: { type: 'string', description: 'Workspace-relative destination directory path.' },
+      from: { type: 'string', description: 'rtws-relative source directory path.' },
+      to: { type: 'string', description: 'rtws-relative destination directory path.' },
     },
   },
   argsValidation: 'dominds',
@@ -832,8 +837,8 @@ export const moveDirTool: FuncTool = {
         `error: PATH_OUTSIDE_WORKSPACE`,
         `summary: ${yamlQuote(
           workLanguage === 'zh'
-            ? 'Move-dir failed: paths must be within workspace.'
-            : 'Move-dir failed: paths must be within workspace.',
+            ? 'Move-dir failed: paths must be within rtws (runtime workspace).'
+            : 'Move-dir failed: paths must be within rtws (runtime workspace).',
         )}`,
       ].join('\n');
       return formatYamlCodeBlock(yaml);

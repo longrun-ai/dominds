@@ -145,7 +145,7 @@ export class DomindsQ4HPanel extends HTMLElement {
           questionId: this.selectedQuestionId,
           dialogId: dialogContext.selfId,
           rootId: dialogContext.rootId,
-          headLine: question.headLine,
+          tellaskHead: question.tellaskHead,
           bodyContent: question.bodyContent,
         },
         bubbles: true,
@@ -573,7 +573,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         </div>
         <div class="q4h-question-body">
           <div class="q4h-question-call">
-            <code class="q4h-question-call-headline">${this.escapeHtml(question.headLine)}</code>
+            <code class="q4h-question-call-headline">${this.escapeHtml(question.tellaskHead)}</code>
             <pre class="q4h-question-call-body">${this.escapeHtml(question.bodyContent)}</pre>
           </div>
           <button

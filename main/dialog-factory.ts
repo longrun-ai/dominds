@@ -35,8 +35,8 @@ export class DialogFactory {
     supdialog: RootDialog,
     taskDocPath: string,
     targetAgentId: string,
-    headLine: string,
-    callBody: string,
+    tellaskHead: string,
+    tellaskBody: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
@@ -55,8 +55,8 @@ export class DialogFactory {
       subdialogId,
       targetAgentId,
       {
-        headLine,
-        callBody,
+        tellaskHead,
+        tellaskBody,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,

@@ -156,19 +156,19 @@ export function matchesPattern(targetPath: string, dirPattern: string): boolean 
  * 4. If whitelist patterns exist but none match, deny access
  */
 export function hasReadAccess(member: Team.Member, targetPath: string): boolean {
-  // Get resolved relative path from workspace root
+  // Get resolved relative path from rtws root
   const cwd = path.resolve(process.cwd());
   const resolvedPath = path.resolve(cwd, targetPath);
 
-  // Ensure path is within workspace
+  // Ensure path is within rtws
   if (!resolvedPath.startsWith(cwd)) {
     return false;
   }
 
-  // Get relative path from workspace root
+  // Get relative path from rtws root
   const relativePath = path.relative(cwd, resolvedPath);
 
-  // Task Docs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
+  // Taskdocs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
     return false;
   }
@@ -179,7 +179,7 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
     return false;
   }
 
-  // Minds (`.minds/**`) is reserved workspace state.
+  // Minds (`.minds/**`) is reserved rtws state.
   // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
   // may bypass this via an internal-only flag.
   const isMinds = isMindsPath(relativePath);
@@ -227,19 +227,19 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
  * 4. If whitelist patterns exist but none match, deny access
  */
 export function hasWriteAccess(member: Team.Member, targetPath: string): boolean {
-  // Get resolved relative path from workspace root
+  // Get resolved relative path from rtws root
   const cwd = path.resolve(process.cwd());
   const resolvedPath = path.resolve(cwd, targetPath);
 
-  // Ensure path is within workspace
+  // Ensure path is within rtws
   if (!resolvedPath.startsWith(cwd)) {
     return false;
   }
 
-  // Get relative path from workspace root
+  // Get relative path from rtws root
   const relativePath = path.relative(cwd, resolvedPath);
 
-  // Task Docs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
+  // Taskdocs (`*.tsk/`) are encapsulated and hard-denied for all general file tools.
   if (isEncapsulatedTaskPath(relativePath)) {
     return false;
   }
@@ -250,7 +250,7 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
     return false;
   }
 
-  // Minds (`.minds/**`) is reserved workspace state.
+  // Minds (`.minds/**`) is reserved rtws state.
   // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
   // may bypass this via an internal-only flag.
   const isMinds = isMindsPath(relativePath);
@@ -342,14 +342,14 @@ export function getAccessDeniedMessage(
     lines.push('');
     if (language === 'zh') {
       lines.push(
-        `- 说明：\`.minds/\` 是工作区的“团队配置/记忆/资产”目录，通用文件工具无法读写（硬编码无条件拒绝）。`,
+        `- 说明：\`.minds/\` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录，通用文件工具无法读写（硬编码无条件拒绝）。`,
       );
       lines.push(
         `- 提示：如需修改 \`.minds/**\`，建议使用 \`team-mgmt\` 工具集（或由团队管理员成员代管）。`,
       );
     } else {
       lines.push(
-        `- Note: \`.minds/\` stores workspace team config/memory/assets and is hard-denied for general file tools.`,
+        `- Note: \`.minds/\` stores rtws (runtime workspace) team config/memory/assets and is hard-denied for general file tools.`,
       );
       lines.push(
         `- Hint: To modify \`.minds/**\`, use the \`team-mgmt\` toolset (or delegate to a team-manager member).`,

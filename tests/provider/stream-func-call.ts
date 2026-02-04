@@ -495,7 +495,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
     }
 
     console.log(`Running streaming function call tests for ${this.provider}:${this.model}`);
-    console.log(`Workspace: ${process.cwd()}`);
+    console.log(`rtws: ${process.cwd()}`);
 
     let passedTests = 0;
     const totalTests = scenarios.length;

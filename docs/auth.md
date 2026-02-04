@@ -50,7 +50,7 @@ Notes:
   - `Authorization: Bearer <auth-key>`
 
 - “API request” includes:
-  - HTTP endpoints that mutate or reveal workspace/dialog state
+  - HTTP endpoints that mutate or reveal rtws (runtime workspace)/dialog state
   - WebSocket connections used by the WebUI for real-time updates
 
 Implementation note (WebUI): browsers cannot attach custom `Authorization` headers during the WebSocket handshake.

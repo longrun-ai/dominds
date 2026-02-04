@@ -29,7 +29,7 @@ Usage:
   dominds webui [options]
 
 Note:
-  Workspace directory is \`process.cwd()\`. Use 'dominds -C <dir> webui' to run in another workspace.
+  rtws (runtime workspace) directory is \`process.cwd()\`. Use 'dominds -C <dir> webui' to run in another rtws.
 
 Options:
   -p, --port <port>    Port to listen on (default: 5666)

@@ -16,8 +16,8 @@ export interface DialogIdent {
 }
 
 export interface AssignmentFromSup {
-  headLine: string;
-  callBody: string;
+  tellaskHead: string;
+  tellaskBody: string;
   originMemberId: string;
   callerDialogId: string;
   callId: string;
@@ -100,7 +100,7 @@ export interface TeamConfigUpdatedMessage {
 export interface CreateDialogRequest {
   type: 'create_dialog';
   agentId?: string; // Optional - will auto-fill from default_responder if not provided
-  taskDocPath: string; // Mandatory - every dialog must have a task document
+  taskDocPath: string; // Mandatory - every dialog must have a Taskdoc
 }
 
 export interface DisplayDialogRequest {
@@ -191,7 +191,7 @@ export interface Q4HStateResponse {
     rootId: string;
     agentId: string;
     taskDocPath: string;
-    headLine: string;
+    tellaskHead: string;
     bodyContent: string;
     askedAt: string;
     callSiteRef: {

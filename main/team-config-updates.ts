@@ -145,13 +145,13 @@ export function startTeamConfigWatcher(): void {
   // Best-effort fast watcher.
   void ensureMindsDirWatcher('startup');
 
-  // Watch workspace root for `.minds/` create/delete.
+  // Watch rtws root for `.minds/` create/delete.
   try {
     workspaceWatcher = fs.watch('.', { persistent: false }, (_event, filename) => {
       const name = filename ? filename.toString() : '';
       if (name !== '' && name !== MINDS_DIR) return;
-      void ensureMindsDirWatcher('workspace.watch');
-      scheduleCheck('workspace.watch');
+      void ensureMindsDirWatcher('rtws.watch');
+      scheduleCheck('rtws.watch');
     });
     workspaceWatcher.on('error', () => {
       if (workspaceWatcher) {

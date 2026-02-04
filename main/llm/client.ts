@@ -66,7 +66,7 @@ export type TellaskCallResultMsg = {
   type: 'tellask_result_msg';
   role: 'tool';
   responderId: string; // id of tool only
-  headLine: string; // headline of original tellask call (body not included in the result)
+  tellaskHead: string; // headline of original tellask call (body not included in the result)
   status: 'completed' | 'failed';
   content: string;
   // callId REMOVED - UI correlation is handled via ResponseEvent
@@ -190,7 +190,7 @@ export namespace LlmConfig {
       ProviderConfig
     >;
 
-    // Load workspace configuration
+    // Load rtws configuration
     const cfgPath = '.minds/llm.yaml';
     let workspaceProviders: Record<string, ProviderConfig> = {};
 
@@ -206,13 +206,13 @@ export namespace LlmConfig {
           throw new Error('Invalid llm.yaml: missing providers object');
         }
       } catch (error) {
-        log.warn('Could not load workspace llm.yaml:', error);
+        log.warn('Could not load rtws llm.yaml:', error);
       }
     } catch (err) {
-      log.debug('No workspace llm.yaml found, using defaults');
+      log.debug('No rtws llm.yaml found, using defaults');
     }
 
-    // Merge defaults with workspace config (workspace overrides defaults)
+    // Merge defaults with rtws config (rtws overrides defaults)
     const mergedProviders = { ...defaultProviders, ...workspaceProviders };
 
     return new LlmConfig(mergedProviders);

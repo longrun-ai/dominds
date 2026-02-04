@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     const taskDir = path.resolve(tmpRoot, taskDocPath);
     const store = {} as unknown as DialogStore;
 
-    // 0) Legacy single-file task docs are rejected.
+    // 0) Legacy single-file Taskdocs are rejected.
     const legacyDlg = new RootDialog(store, 'legacy.md', undefined, 'tester');
     const legacy = await formatTaskDocContent(legacyDlg);
     assert.ok(

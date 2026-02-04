@@ -49,7 +49,7 @@ export interface RootDialogMetadataFile {
   /** Agent responsible for this dialog */
   agentId: string;
 
-  /** Path to the task document associated with this dialog */
+  /** Path to the Taskdoc associated with this dialog */
   taskDocPath: string;
 
   /** ISO timestamp when dialog was created */
@@ -72,7 +72,7 @@ export interface SubdialogMetadataFile {
   /** Agent responsible for this dialog */
   agentId: string;
 
-  /** Path to the task document associated with this dialog */
+  /** Path to the Taskdoc associated with this dialog */
   taskDocPath: string;
 
   /** ISO timestamp when dialog was created */
@@ -86,8 +86,8 @@ export interface SubdialogMetadataFile {
 
   /** Assignment context from supdialog for subdialogs */
   assignmentFromSup: {
-    headLine: string;
-    callBody: string;
+    tellaskHead: string;
+    tellaskBody: string;
     originMemberId: string;
     callerDialogId: string;
     callId: string;
@@ -175,7 +175,7 @@ export interface CourseMetadataFile {
   /** Course status */
   status: 'active' | 'completed';
 
-  /** Optional task document for this course */
+  /** Optional Taskdoc for this course */
   taskDoc?: string;
 }
 
@@ -241,8 +241,8 @@ export interface QuestForSupRecord {
   ts: string;
   type: 'quest_for_sup_record';
   genseq: number;
-  headLine: string;
-  callBody: string;
+  tellaskHead: string;
+  tellaskBody: string;
   subDialogId: string; // this is selfId, rootId always be the same as selfId of the supdialog
 }
 
@@ -251,7 +251,7 @@ export interface TeammateCallResultRecord {
   type: 'teammate_call_result_record';
   calling_genseq?: number;
   responderId: string;
-  headLine: string;
+  tellaskHead: string;
   status: 'completed' | 'failed';
   result: string;
   callId: string; // Content-hash for replay correlation
@@ -265,7 +265,7 @@ export interface TeammateResponseRecord {
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-  headLine: string;
+  tellaskHead: string;
   status: 'completed' | 'failed';
   result: string;
   response: string; // full subdialog response text (no truncation)
@@ -312,7 +312,7 @@ export interface ReminderStateFile {
 
 export interface HumanQuestion {
   id: string;
-  headLine: string;
+  tellaskHead: string;
   bodyContent: string;
   askedAt: string;
   callSiteRef: {
@@ -399,8 +399,8 @@ export interface DialogListItem {
   /** Tellask session key for registered subdialogs (Type B) */
   tellaskSession?: string;
   assignmentFromSup?: {
-    headLine: string;
-    callBody: string;
+    tellaskHead: string;
+    tellaskBody: string;
     originMemberId: string;
     callerDialogId: string;
     callId: string;

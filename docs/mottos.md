@@ -102,14 +102,14 @@ This fundamental problem manifests in several ways:
 
 **2. Task-Centered Focus Architecture**
 
-- **Central Task Document**: Single source of truth for goals, constraints, and progress
+- **Central Taskdoc**: Single source of truth for goals, constraints, and progress
 - **Dynamic Context Windows**: Time-limited context retention
 - **Priority-Based Information Filtering**: Automatic ranking of context relevance
 
-**Implementation Strategy: The Task Doc**
+**Implementation Strategy: The Taskdoc**
 
 ```
-TASK_DOC Structure:
+Taskdoc Structure:
 ├── Primary Objective
 │   ├── Clear goal statement
 │   ├── Success criteria
@@ -160,7 +160,7 @@ TASK_DOC Structure:
 
 - Fresh Boots Reasoning (FBR) is **common**, and should usually be done via **transient self-subdialogs**.
 - Use `@self` (no `!tellaskSession`) for the default “fresh boots” session: isolate one sub-problem, answer, and return.
-- Use `@self !tellaskSession <tellaskSession>` **rarely**, only when you explicitly want a **resumable** long-lived fresh-boots workspace
+- Use `@self !tellaskSession <tellaskSession>` **rarely**, only when you explicitly want a **resumable** long-lived fresh-boots session
   for a multi-step sub-problem.
 
 **Traditional vs. Fresh Boots Approach**
@@ -168,7 +168,7 @@ TASK_DOC Structure:
 **Traditional Problem-Solving:**
 
 ```
-Agent: [Existing conversation history, current state, task doc] + Problem
+Agent: [Existing conversation history, current state, Taskdoc] + Problem
 → Attempts to solve all aspects simultaneously
 → Suffers from cognitive overload
 → Produces suboptimal results
@@ -177,7 +177,7 @@ Agent: [Existing conversation history, current state, task doc] + Problem
 **Fresh Boots Reasoning:**
 
 ```
-Agent: [Clean mental state + Task doc only] + Specific sub-problem
+Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 → Focuses on single aspect
 → Applies fresh reasoning without baggage
 → Produces clear, targeted solution
@@ -195,7 +195,7 @@ Agent: [Clean mental state + Task doc only] + Specific sub-problem
 **2. Fresh Context Creation**
 
 - Reset agent's "mental state" to initial task understanding
-- Load only the essential task document and sub-problem
+- Load only the essential Taskdoc and sub-problem
 - Clear away all accumulated conversation context
 
 **3. Focused Reasoning Session**
@@ -217,7 +217,7 @@ Agent: [Clean mental state + Task doc only] + Specific sub-problem
 ```
 Trigger: Complex technical decision needed
 Fresh Session:
-- Load task_doc + technical requirements
+- Load Taskdoc + technical requirements
 - Focus: "Analyze feasibility and recommend approach"
 - Output: Clear technical recommendation with reasoning
 ```
@@ -227,7 +227,7 @@ Fresh Session:
 ```
 Trigger: Need for new ideas or solutions
 Fresh Session:
-- Load task_doc + problem statement only
+- Load Taskdoc + problem statement only
 - Focus: "Generate innovative approaches without constraint bias"
 - Output: List of creative solutions with rationale
 ```
@@ -237,7 +237,7 @@ Fresh Session:
 ```
 Trigger: Need to validate current approach
 Fresh Session:
-- Load task_doc + current solution attempt
+- Load Taskdoc + current solution attempt
 - Focus: "Identify weaknesses and improvement opportunities"
 - Output: Critical analysis and recommendations
 ```
@@ -279,7 +279,7 @@ Fresh Session:
 **Levels of Freshness:**
 
 1. **Level 0**: Current agent state
-2. **Level 1**: Clean agent + task_doc (standard fresh boots)
+2. **Level 1**: Clean agent + Taskdoc (standard fresh boots)
 3. **Level 2**: Completely reset agent with only problem statement
 4. **Level 3**: New agent instance with different training focus
 
@@ -340,9 +340,9 @@ Fresh Session:
 
 ## Implementation Roadmap
 
-### Phase 1: Task Document Foundation
+### Phase 1: Taskdoc Foundation
 
-1. Design task document template
+1. Design Taskdoc template
 2. Implement context management system
 3. Create tools for context clearing and resetting
 
@@ -370,4 +370,4 @@ The future of AI agent effectiveness lies not in larger context windows, but in 
 
 The key insight is that AI agents, like humans, benefit greatly from mental hygiene practices. Regular cognitive cleanup and focused problem-solving sessions can dramatically improve both the quality and efficiency of agent reasoning.
 
-This approach transforms the challenge of managing extensive conversational context into an advantage, allowing agents to bring fresh, focused attention to each aspect of complex problems while maintaining overall project continuity through the central task document.
+This approach transforms the challenge of managing extensive conversational context into an advantage, allowing agents to bring fresh, focused attention to each aspect of complex problems while maintaining overall project continuity through the central Taskdoc.

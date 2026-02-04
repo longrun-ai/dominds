@@ -79,7 +79,7 @@ async function main(): Promise<void> {
 
     await writeFileEnsuringDir(
       path.join(tmpBase, 'task.md'),
-      ['# Test Task', '', 'This is a test task doc.', ''].join('\n'),
+      ['# Test Task', '', 'This is a test Taskdoc.', ''].join('\n'),
     );
 
     const dlgId = new DialogID('dlg-keep-going-test');

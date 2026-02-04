@@ -21,7 +21,7 @@ function printUsage(): void {
   console.log('Print agent system prompt and memories with filtering flags.');
   console.log('');
   console.log(
-    "Note: Workspace directory is `process.cwd()`. Use 'dominds -C <dir> read' to run in another workspace.",
+    "Note: rtws (runtime workspace) directory is `process.cwd()`. Use 'dominds -C <dir> read' to run in another rtws.",
   );
   console.log('');
   console.log('Examples:');

@@ -11,20 +11,20 @@ import {
   ApiSubdialogResponse,
   SetupFileResponse,
   SetupStatusResponse,
+  SetupWriteRtwsLlmYamlRequest,
+  SetupWriteRtwsLlmYamlResponse,
   SetupWriteShellEnvRequest,
   SetupWriteShellEnvResponse,
   SetupWriteTeamYamlRequest,
   SetupWriteTeamYamlResponse,
-  SetupWriteWorkspaceLlmYamlRequest,
-  SetupWriteWorkspaceLlmYamlResponse,
   ToolsetInfo,
 } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 import type {
-  CreateWorkspaceSnippetGroupRequest,
-  CreateWorkspaceSnippetGroupResponse,
-  SaveWorkspaceSnippetTemplateRequest,
-  SaveWorkspaceSnippetTemplateResponse,
+  CreateRtwsSnippetGroupRequest,
+  CreateRtwsSnippetGroupResponse,
+  SaveRtwsSnippetTemplateRequest,
+  SaveRtwsSnippetTemplateResponse,
   SnippetCatalogResponse,
   SnippetTemplatesResponse,
   TeamMgmtManualRequest,
@@ -64,7 +64,7 @@ export type DiligenceFileResponse = {
   success: boolean;
   path: string;
   raw: string;
-  source?: 'builtin' | 'workspace';
+  source?: 'builtin' | 'rtws';
   error?: string;
 };
 
@@ -264,7 +264,7 @@ export class ApiClient {
       timestamp: string;
       server: string;
       version: string;
-      workspace: string;
+      rtws: string;
       mode: string;
     }>
   > {
@@ -469,8 +469,8 @@ export class ApiClient {
     return this.request('/api/setup/defaults-yaml');
   }
 
-  async getSetupWorkspaceLlmYaml(): Promise<ApiResponse<SetupFileResponse>> {
-    return this.request('/api/setup/workspace-llm-yaml');
+  async getSetupRtwsLlmYaml(): Promise<ApiResponse<SetupFileResponse>> {
+    return this.request('/api/setup/rtws-llm-yaml');
   }
 
   async writeTeamYaml(
@@ -479,10 +479,10 @@ export class ApiClient {
     return this.request('/api/setup/write-team-yaml', { method: 'POST', body: req });
   }
 
-  async writeWorkspaceLlmYaml(
-    req: SetupWriteWorkspaceLlmYamlRequest,
-  ): Promise<ApiResponse<SetupWriteWorkspaceLlmYamlResponse>> {
-    return this.request('/api/setup/write-workspace-llm-yaml', { method: 'POST', body: req });
+  async writeRtwsLlmYaml(
+    req: SetupWriteRtwsLlmYamlRequest,
+  ): Promise<ApiResponse<SetupWriteRtwsLlmYamlResponse>> {
+    return this.request('/api/setup/write-rtws-llm-yaml', { method: 'POST', body: req });
   }
 
   /**
@@ -548,24 +548,24 @@ export class ApiClient {
     return this.request('/api/snippets/builtin');
   }
 
-  async getWorkspaceSnippets(): Promise<ApiResponse<SnippetTemplatesResponse>> {
-    return this.request('/api/snippets/workspace');
+  async getRtwsSnippets(): Promise<ApiResponse<SnippetTemplatesResponse>> {
+    return this.request('/api/snippets/rtws');
   }
 
   async getSnippetCatalog(uiLanguage: LanguageCode): Promise<ApiResponse<SnippetCatalogResponse>> {
     return this.request(`/api/snippets/catalog?lang=${encodeURIComponent(uiLanguage)}`);
   }
 
-  async createWorkspaceSnippetGroup(
-    req: CreateWorkspaceSnippetGroupRequest,
-  ): Promise<ApiResponse<CreateWorkspaceSnippetGroupResponse>> {
+  async createRtwsSnippetGroup(
+    req: CreateRtwsSnippetGroupRequest,
+  ): Promise<ApiResponse<CreateRtwsSnippetGroupResponse>> {
     return this.request('/api/snippets/groups', { method: 'POST', body: req });
   }
 
-  async saveWorkspaceSnippet(
-    req: SaveWorkspaceSnippetTemplateRequest,
-  ): Promise<ApiResponse<SaveWorkspaceSnippetTemplateResponse>> {
-    return this.request('/api/snippets/workspace', { method: 'POST', body: req });
+  async saveRtwsSnippet(
+    req: SaveRtwsSnippetTemplateRequest,
+  ): Promise<ApiResponse<SaveRtwsSnippetTemplateResponse>> {
+    return this.request('/api/snippets/rtws', { method: 'POST', body: req });
   }
 
   async teamMgmtManual(req: TeamMgmtManualRequest): Promise<ApiResponse<TeamMgmtManualResponse>> {

@@ -11,7 +11,7 @@
  *   tui      - Start Text User Interface
  *   run      - Run task dialog (alias for tui)
  *   read     - Read team configuration
- *   create   - Create a new workspace from a template
+ *   create   - Create a new runtime workspace (rtws) from a template
  *   new      - Alias for create
  *   help     - Show help
  *
@@ -39,25 +39,25 @@ Usage:
   dominds [-C <dir>] [subcommand] [options]
 
 Global Options:
-  -C <dir>            Change to workspace directory (rtws) before running
+  -C <dir>            Change to runtime workspace directory (rtws) before running
 
 Subcommands:
   webui [options]    Start WebUI server (default)
   tui [options]      Start Text User Interface
   run [options]      Run task dialog (alias for tui)
   read [options]     Read team configuration
-  create [options]   Create a new workspace from a template
+  create [options]   Create a new runtime workspace (rtws) from a template
   new [options]      Alias for create
   help               Show this help message
 
 Examples:
   dominds                    # Start WebUI server (default)
   dominds webui              # Start WebUI server
-  dominds -C ./my-ws webui   # Start in specific workspace
+  dominds -C ./my-ws webui   # Start in specific rtws
   dominds tui --help         # Show TUI help
   dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
-  dominds create web-scaffold my-project   # Create workspace from a template
+  dominds create web-scaffold my-project   # Create rtws from a template
 
 Installation:
   pnpm add -g dominds

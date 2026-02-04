@@ -110,7 +110,7 @@ export class DomindsApp extends HTMLElement {
   private defaultResponder: string | null = null;
   private taskDocuments: Array<{ path: string; relativePath: string; name: string }> = [];
   private currentTheme: 'light' | 'dark' = this.getCurrentTheme();
-  private backendWorkspace: string = '';
+  private backendRtws: string = '';
   private backendVersion: string = '';
   private toolbarCurrentCourse: number = 1;
   private toolbarTotalCourses: number = 1;
@@ -133,7 +133,7 @@ export class DomindsApp extends HTMLElement {
   private _uiLanguageMenuGlobalCancel?: () => void;
   private bootInFlight: boolean = false;
 
-  // Workspace Problems
+  // rtws Problems
   private problemsVersion: number = 0;
   private problems: WorkspaceProblem[] = [];
   private problemsPanelOpen: boolean = false;
@@ -216,7 +216,7 @@ export class DomindsApp extends HTMLElement {
   private diligencePushLastShown: string | null = null;
   private diligenceRtwsText: string = '';
   private diligenceRtwsDirty: boolean = false;
-  private diligenceRtwsSource: 'builtin' | 'workspace' = 'builtin';
+  private diligenceRtwsSource: 'builtin' | 'rtws' = 'builtin';
 
   private getDiligenceBudgetBadgeText(): { text: string; hasRemaining: boolean } {
     const configuredMax =
@@ -316,8 +316,8 @@ export class DomindsApp extends HTMLElement {
       logo.setAttribute('aria-label', t.logoGitHubTitle);
     }
 
-    const workspace = this.shadowRoot.querySelector('.workspace-indicator') as HTMLElement | null;
-    if (workspace) workspace.title = t.backendWorkspaceTitle;
+    const rtwsIndicator = this.shadowRoot.querySelector('.rtws-indicator') as HTMLElement | null;
+    if (rtwsIndicator) rtwsIndicator.title = t.backendWorkspaceTitle;
 
     this.applyUiLanguageSelectDecorations(t);
 
@@ -964,13 +964,13 @@ export class DomindsApp extends HTMLElement {
   }
 
   /**
-   * Surgical update: Update only the workspace indicator text.
-   * Use this when workspace info is loaded or changes.
+   * Surgical update: Update only the rtws indicator text.
+   * Use this when rtws info is loaded or changes.
    */
-  private updateWorkspaceInfo(): void {
-    const workspaceIndicator = this.shadowRoot?.querySelector('.workspace-indicator');
-    if (workspaceIndicator) {
-      workspaceIndicator.textContent = `📁 ${this.backendWorkspace || 'Unknown workspace'}`;
+  private updateRtwsInfo(): void {
+    const rtwsIndicator = this.shadowRoot?.querySelector('.rtws-indicator');
+    if (rtwsIndicator) {
+      rtwsIndicator.textContent = `📁 ${this.backendRtws || 'Unknown rtws'}`;
     }
 
     const versionIndicator = this.shadowRoot?.querySelector('#dominds-version');
@@ -1286,7 +1286,7 @@ export class DomindsApp extends HTMLElement {
 	        line-height: 1;
 	      }
 
-	      .workspace-indicator {
+	      .rtws-indicator {
 	        font-size: 11px;
 	        color: var(--dominds-muted, #666666);
 	        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
@@ -1312,20 +1312,20 @@ export class DomindsApp extends HTMLElement {
 
       
 
-      .workspace-indicator::-webkit-scrollbar {
+      .rtws-indicator::-webkit-scrollbar {
         height: 4px;
       }
 
-      .workspace-indicator::-webkit-scrollbar-track {
+      .rtws-indicator::-webkit-scrollbar-track {
         background: var(--dominds-hover, #f8f9fa);
       }
 
-      .workspace-indicator::-webkit-scrollbar-thumb {
+      .rtws-indicator::-webkit-scrollbar-thumb {
         background: var(--dominds-muted, #666666);
         border-radius: 2px;
       }
 
-      .workspace-indicator::-webkit-scrollbar-thumb:hover {
+      .rtws-indicator::-webkit-scrollbar-thumb:hover {
         background: var(--dominds-fg, #333333);
       }
 
@@ -2602,7 +2602,7 @@ export class DomindsApp extends HTMLElement {
           left: 0;
         }
 
-        .workspace-indicator {
+        .rtws-indicator {
           font-size: 10px;
         }
       }
@@ -3053,8 +3053,8 @@ export class DomindsApp extends HTMLElement {
                 )}</span>
 	            </span>
 	          </a>
-	          <div class="workspace-indicator" title="${t.backendWorkspaceTitle}">
-	            📁 ${this.backendWorkspace || t.backendWorkspaceLoading}
+	          <div class="rtws-indicator" title="${t.backendWorkspaceTitle}">
+	            📁 ${this.backendRtws || t.backendWorkspaceLoading}
 	          </div>
 	          <div class="header-actions">
             <div class="header-run-controls">
@@ -3456,7 +3456,7 @@ export class DomindsApp extends HTMLElement {
         questionId: string | null;
         dialogId: string;
         rootId: string;
-        headLine: string;
+        tellaskHead: string;
         bodyContent: string;
       }>;
       const questionId = ce.detail?.questionId ?? null;
@@ -4095,7 +4095,7 @@ export class DomindsApp extends HTMLElement {
     if (!payload || !payload.success) return;
     const raw = typeof payload.raw === 'string' ? payload.raw : '';
     const fallback = DILIGENCE_FALLBACK_TEXT[this.uiLanguage];
-    this.diligenceRtwsSource = payload.source === 'workspace' ? 'workspace' : 'builtin';
+    this.diligenceRtwsSource = payload.source === 'rtws' ? 'rtws' : 'builtin';
     this.diligenceRtwsText = raw.trim() === '' ? fallback : raw;
     this.diligenceRtwsDirty = false;
     const textarea = this.shadowRoot?.querySelector('#diligence-textarea');
@@ -4127,7 +4127,7 @@ export class DomindsApp extends HTMLElement {
       return;
     }
 
-    // After deleting workspace overrides, reload to display builtin fallback.
+    // After deleting rtws overrides, reload to display builtin fallback.
     this.diligenceRtwsDirty = false;
     await this.loadRtwsDiligenceText(true);
     this.showToast(t.keepGoingResetToast, 'info');
@@ -4194,9 +4194,9 @@ export class DomindsApp extends HTMLElement {
     // Q4H state will be loaded when WebSocket connection is established
     // See handleConnectionStateChange() for Q4H request on connect
 
-    // Load workspace info, dialogs, team members, and task documents
+    // Load rtws info, dialogs, team members, and Taskdocs
     await Promise.all([
-      this.loadWorkspaceInfo(),
+      this.loadRtwsInfo(),
       this.loadDialogs(),
       this.loadTeamMembers(),
       this.loadTaskDocuments(),
@@ -4801,11 +4801,11 @@ export class DomindsApp extends HTMLElement {
         }));
       }
     } catch (error) {
-      console.error('Failed to load task documents:', error);
+      console.error('Failed to load Taskdocs:', error);
     }
   }
 
-  private async loadWorkspaceInfo(): Promise<void> {
+  private async loadRtwsInfo(): Promise<void> {
     try {
       const api = getApiClient();
       const resp = await api.getHealth();
@@ -4814,21 +4814,21 @@ export class DomindsApp extends HTMLElement {
           this.onAuthRejected('api');
           return;
         }
-        throw new Error(resp.error || 'Failed to load workspace info');
+        throw new Error(resp.error || 'Failed to load rtws info');
       }
       const data = resp.data;
-      if (data && data.workspace) {
-        this.backendWorkspace = data.workspace;
+      if (data && typeof data.rtws === 'string' && data.rtws !== '') {
+        this.backendRtws = data.rtws;
       }
       if (data && typeof data.version === 'string') {
         this.backendVersion = data.version;
       }
-      this.updateWorkspaceInfo();
+      this.updateRtwsInfo();
     } catch (error) {
-      console.error('Failed to load workspace info:', error);
-      this.backendWorkspace = 'Unknown workspace';
+      console.error('Failed to load rtws info:', error);
+      this.backendRtws = 'Unknown rtws';
       this.backendVersion = '';
-      this.updateWorkspaceInfo();
+      this.updateRtwsInfo();
     }
   }
 
@@ -4839,7 +4839,7 @@ export class DomindsApp extends HTMLElement {
     this.dialogs.forEach((dialog, index) => {
       if (!dialog.taskDocPath || dialog.taskDocPath.trim() === '') {
         throw new Error(
-          `❌ CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid Task Doc path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Task Doc is mandatory for all dialogs.`,
+          `❌ CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid Taskdoc path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Taskdoc is mandatory for all dialogs.`,
         );
       }
     });
@@ -4968,7 +4968,7 @@ export class DomindsApp extends HTMLElement {
         // Build display title - all fields are guaranteed to be present
         titleText = `@${normalizedDialog.agentId} (${normalizedDialog.selfId})`;
 
-        // Add task document info
+        // Add Taskdoc info
         titleText += ` • ${normalizedDialog.taskDocPath}`;
 
         dialogTitle.textContent = titleText;
@@ -5495,7 +5495,7 @@ export class DomindsApp extends HTMLElement {
     // Show teammate info for initially selected agent
     showTeammateInfo(select.value);
 
-    // Task document autocomplete functionality
+    // Taskdoc autocomplete functionality
     let selectedSuggestionIndex = -1;
     let currentSuggestions: Array<{ path: string; relativePath: string; name: string }> = [];
 
@@ -5688,7 +5688,7 @@ export class DomindsApp extends HTMLElement {
     createBtn.addEventListener('click', async () => {
       let taskDocPath = taskInput.value.trim();
 
-      // Validate that task document is provided
+      // Validate that Taskdoc is provided
       taskDocPath = taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '');
       if (!taskDocPath) {
         taskDocPath = 'socializing.tsk';
@@ -7110,7 +7110,7 @@ export class DomindsApp extends HTMLElement {
       for (const question of context.questions) {
         q4hQuestions.push({
           id: question.id,
-          headLine: question.headLine,
+          tellaskHead: question.tellaskHead,
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,
           dialogContext: context,

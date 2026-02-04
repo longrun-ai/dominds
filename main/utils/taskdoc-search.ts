@@ -1,9 +1,9 @@
 /**
  * Module: utils/taskdoc-search
  *
- * Workspace search utilities for Task Docs (`*.tsk/`).
+ * rtws (runtime workspace) search utilities for Taskdocs (`*.tsk/`).
  *
- * Task Docs are encapsulated directories ending in `.tsk`. For search, we treat each `*.tsk/`
+ * Taskdocs are encapsulated directories ending in `.tsk`. For search, we treat each `*.tsk/`
  * directory as a single unit and do not recurse into it.
  *
  * Ignore rules:
@@ -11,7 +11,7 @@
  * - A `.taskdoc-ignore` file may exist in any directory. Its patterns apply to that directory's
  *   subtree only (like a simplified `.gitignore`).
  * - Patterns are interpreted as paths relative to the `.taskdoc-ignore` directory (unless they
- *   start with `/`, in which case they are workspace-root-relative).
+ *   start with `/`, in which case they are rtws-root-relative).
  */
 import fs from 'fs';
 import fsPromises from 'fs/promises';
@@ -137,7 +137,7 @@ function normalizeIgnoreFileLineToRootPattern(line: string, dirRel: string): str
   const normalized = path.posix.normalize(normalizePosixPath(joined)).replace(/\/$/, '');
   if (!normalized || normalized === '.') return null;
 
-  // Reject patterns that escape the workspace root.
+  // Reject patterns that escape the rtws root.
   if (normalized === '..' || normalized.startsWith('../')) return null;
 
   return normalized;
@@ -210,7 +210,7 @@ async function scanDirForTaskDocs(params: {
 
     const entryAbs = path.join(params.dirAbs, entry.name);
 
-    // Treat `*.tsk/` as a single encapsulated Task Doc (do NOT recurse into it).
+    // Treat `*.tsk/` as a single encapsulated Taskdoc (do NOT recurse into it).
     if (entry.name.toLowerCase().endsWith('.tsk')) {
       try {
         const dirStats = await fsPromises.stat(entryAbs);
@@ -270,7 +270,7 @@ async function scanDirForTaskDocs(params: {
   }
 }
 
-export async function listTaskDocumentsInWorkspace(
+export async function listTaskDocumentsInRtws(
   params: ListTaskDocumentsParams = {},
 ): Promise<ListTaskDocumentsResult> {
   const rootDir = params.rootDir ?? '.';
@@ -293,6 +293,6 @@ export async function listTaskDocumentsInWorkspace(
     taskDocuments.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
     return { kind: 'ok', taskDocuments };
   } catch {
-    return { kind: 'error', errorText: 'Failed to list task documents' };
+    return { kind: 'error', errorText: 'Failed to list Taskdocs' };
   }
 }

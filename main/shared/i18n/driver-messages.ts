@@ -268,7 +268,7 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   if (language === 'zh') {
     return (
       'Dominds 提示：该诉请目标是当前 agent（自诉请/self-tellask）。' +
-      '扪心自问 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的 fresh boots 会话；' +
+      '扪心自问 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的初心会话；' +
       '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
     );
   }
@@ -407,14 +407,14 @@ export function formatDomindsNoteInvalidMultiTeammateTargets(
     return (
       'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
       `Dominds 提示：这条队友诉请包含未知队友呼号：${unknown}\n\n` +
-      '在队友诉请中，headline 里出现的队友呼号会被视为 collective targets 并被分发（所有目标共享同一 headLine+callBody）。\n' +
+      '在队友诉请中，headline 里出现的队友呼号会被视为 collective targets 并被分发（所有目标共享同一 tellaskHead+tellaskBody）。\n' +
       '请确认这些呼号是否存在于团队目录中；若你只是想写字面上的 @something，请用反引号包裹（例如 `@something`）。'
     );
   }
   return (
     'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
     `Dominds note: This teammate tellask includes unknown teammate id(s): ${unknown}\n\n` +
-    'In teammate tellasks, teammate mentions inside the headline are treated as collective targets and fanned out (shared headLine+callBody).\n' +
+    'In teammate tellasks, teammate mentions inside the headline are treated as collective targets and fanned out (shared tellaskHead+tellaskBody).\n' +
     'Confirm those ids exist in the team roster; if you meant a literal `@something`, wrap it in backticks (e.g., `@something`).'
   );
 }

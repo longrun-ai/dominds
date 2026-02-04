@@ -160,7 +160,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
 
     try {
       const api = getApiClient();
-      const resp = await api.saveWorkspaceSnippet({
+      const resp = await api.saveRtwsSnippet({
         groupKey,
         fileName: fileName === '' ? undefined : fileName,
         uiLanguage: this.uiLanguage,
@@ -228,7 +228,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     try {
       const api = getApiClient();
-      const resp = await api.createWorkspaceSnippetGroup({ title, uiLanguage: this.uiLanguage });
+      const resp = await api.createRtwsSnippetGroup({ title, uiLanguage: this.uiLanguage });
       if (!resp.success || !resp.data) {
         throw new Error(resp.error ?? t.promptTemplatesLoadFailed);
       }

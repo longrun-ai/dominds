@@ -444,7 +444,7 @@ export async function loadAgentMinds(
       const teamMemoryLine = '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。';
 
       const personalMemoryLine =
-        '- 个人记忆：稳定的个人习惯/偏好与职责域知识；可维护你职责范围内的“工作区索引”（关键文档/代码的准确路径 + 必要要点），以减少重复读文件；不要记录具体任务状态。';
+        '- 个人记忆：稳定的个人习惯/偏好与职责域知识；可维护你职责范围内的“rtws 索引”（关键文档/代码的准确路径 + 必要要点），以减少重复读文件；不要记录具体任务状态。';
 
       return [
         '你的聊天记录与工具输出是临时信息：会快速累积、很快过时，并增加你的认知负担。在同一轮对话中，除了 `clear_mind` 以外你无法真正丢弃这些历史。',
@@ -472,7 +472,7 @@ export async function loadAgentMinds(
           : []),
         ...(agentHasPersonalMemoryTools
           ? [
-              '提示：你具备个人记忆工具（`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`）。目标：维护你职责域的“工作区索引”（关键文档/代码的准确路径 + 最小必要要点，如入口文件/关键符号/约定），让你在职责范围内尽量做到“0 次 ripgrep 就能开始干活”；一旦你修改了相关文件或发现记忆有过期/冲突，必须立刻用 `replace_memory` 把对应条目更新为最新事实。',
+              '提示：你具备个人记忆工具（`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`）。目标：维护你职责域的“rtws 索引”（关键文档/代码的准确路径 + 最小必要要点，如入口文件/关键符号/约定），让你在职责范围内尽量做到“0 次 ripgrep 就能开始干活”；一旦你修改了相关文件或发现记忆有过期/冲突，必须立刻用 `replace_memory` 把对应条目更新为最新事实。',
             ]
           : []),
         ...(isSubdialog
@@ -490,7 +490,7 @@ export async function loadAgentMinds(
     const teamMemoryLine = '- Team memory: stable shared conventions (cross-task).';
 
     const personalMemoryLine =
-      '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts) to reduce repeat file reads; do not store per-task state.';
+      '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Maintain a compact responsibility-area rtws index (exact key doc/code paths + minimal key facts) to reduce repeat file reads; do not store per-task state.';
 
     return [
       'Dialog history and tool outputs are temporary: they accumulate quickly, become stale, and increase cognitive load. Within a course, you cannot truly drop that history except via `clear_mind`.',
@@ -518,7 +518,7 @@ export async function loadAgentMinds(
         : []),
       ...(agentHasPersonalMemoryTools
         ? [
-            'Hint: you have personal-memory tools (`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`). Goal: maintain a compact responsibility-area workspace index (exact key doc/code paths + minimal key facts like entrypoints/key symbols/contracts) so you can start work with 0 ripgrep within your scope. If you changed those files or detect staleness/conflicts, immediately `replace_memory` to keep it accurate.',
+            'Hint: you have personal-memory tools (`add_memory` / `replace_memory` / `drop_memory` / `clear_memory`). Goal: maintain a compact responsibility-area rtws index (exact key doc/code paths + minimal key facts like entrypoints/key symbols/contracts) so you can start work with 0 ripgrep within your scope. If you changed those files or detect staleness/conflicts, immediately `replace_memory` to keep it accurate.',
           ]
         : []),
       ...(isSubdialog

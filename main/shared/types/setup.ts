@@ -30,7 +30,7 @@ export type SetupTeamYamlInfo = {
   memberDefaults?: { provider?: string; model?: string };
 };
 
-export type SetupWorkspaceLlmYamlInfo = {
+export type SetupRtwsLlmYamlInfo = {
   path: string;
   exists: boolean;
   parseError?: string;
@@ -78,7 +78,7 @@ export type SetupStatusResponse =
       shell: SetupShellInfo;
       rc: { bashrc: SetupRcFileInfo; zshrc: SetupRcFileInfo };
       teamYaml: SetupTeamYamlInfo;
-      workspaceLlmYaml: SetupWorkspaceLlmYamlInfo;
+      rtwsLlmYaml: SetupRtwsLlmYamlInfo;
       providers: SetupProviderSummary[];
     }
   | {
@@ -87,7 +87,7 @@ export type SetupStatusResponse =
       shell: SetupShellInfo;
       rc: { bashrc: SetupRcFileInfo; zshrc: SetupRcFileInfo };
       teamYaml: SetupTeamYamlInfo;
-      workspaceLlmYaml: SetupWorkspaceLlmYamlInfo;
+      rtwsLlmYaml: SetupRtwsLlmYamlInfo;
       providers: SetupProviderSummary[];
       error: string;
     };
@@ -108,7 +108,7 @@ export type SetupWriteShellEnvResponse =
   | { success: true; outcomes: SetupWriteShellEnvOutcome[] }
   | { success: false; error: string };
 
-export type SetupFileKind = 'defaults_yaml' | 'workspace_llm_yaml';
+export type SetupFileKind = 'defaults_yaml' | 'rtws_llm_yaml';
 
 export type SetupFileResponse =
   | { success: true; kind: SetupFileKind; path: string; raw: string }
@@ -127,11 +127,11 @@ export type SetupWriteTeamYamlResponse =
   | { success: true; path: string; action: 'created' | 'overwritten' }
   | { success: false; path: string; error: string };
 
-export type SetupWriteWorkspaceLlmYamlRequest = {
+export type SetupWriteRtwsLlmYamlRequest = {
   raw: string;
   overwrite: boolean;
 };
 
-export type SetupWriteWorkspaceLlmYamlResponse =
+export type SetupWriteRtwsLlmYamlResponse =
   | { success: true; path: string; action: 'created' | 'overwritten' }
   | { success: false; path: string; error: string };

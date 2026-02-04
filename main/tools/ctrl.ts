@@ -13,7 +13,7 @@
  * - delete_reminder: Delete a reminder by number
  * - update_reminder: Update reminder content
  * - clear_mind: Start a new course, optionally add a reminder
- * - change_mind: Update a `.tsk/` task doc section without starting a new course
+ * - change_mind: Update a `.tsk/` Taskdoc section without starting a new course
  * - recall_taskdoc: Read a Taskdoc section from `*.tsk/` by (category, selector)
  *
  * USAGE CONTEXT:
@@ -99,7 +99,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         '}\n' +
         '```',
       noTaskDocPathConfigured: '此对话未配置差遣牒路径',
-      pathMustBeWithinWorkspace: '路径必须在工作区内',
+      pathMustBeWithinWorkspace: '路径必须位于 rtws（运行时工作区）内',
       invalidTaskDocPath: (taskDocPath) => `差遣牒路径 '${taskDocPath}' 无效。应为 *.tsk/ 目录。`,
       selectorRequired: '需要提供选择器（selector）。',
       categoryRequired: '需要提供章节目录（category）。',
@@ -146,8 +146,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       '  "content": "- Key decisions: ...\\n- Next steps: ..."\n' +
       '}\n' +
       '```',
-    noTaskDocPathConfigured: 'Error: No task doc path configured for this dialog',
-    pathMustBeWithinWorkspace: 'Error: Path must be within workspace',
+    noTaskDocPathConfigured: 'Error: No Taskdoc path configured for this dialog',
+    pathMustBeWithinWorkspace: 'Error: Path must be within rtws (runtime workspace)',
     invalidTaskDocPath: (taskDocPath) =>
       `Error: Invalid Taskdoc path '${taskDocPath}'. Expected a \`*.tsk/\` directory.`,
     selectorRequired: 'Error: selector is required.',
@@ -394,7 +394,7 @@ export const changeMindTool: FuncTool = {
     const newTaskDocContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!newTaskDocContent) return t.taskDocContentRequired;
 
-    // Task doc path is immutable for the dialog lifecycle.
+    // Taskdoc path is immutable for the dialog lifecycle.
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return t.noTaskDocPathConfigured;
 
@@ -470,7 +470,7 @@ export const recallTaskdocTool: FuncTool = {
     const selector = typeof selectorValue === 'string' ? selectorValue.trim() : '';
     if (selector === '') return t.selectorRequired;
 
-    // Task doc path is immutable for the dialog lifecycle.
+    // Taskdoc path is immutable for the dialog lifecycle.
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return t.noTaskDocPathConfigured;
 

@@ -67,7 +67,7 @@
 **诉请块结构**（另见 `dominds/docs/dominds-terminology.md`）：
 
 - **诉请头（Tellask headline）**：诉请块第一行 `!?@<name> ...`（同一诉请块内，后续以 `!?@...` 开头的行会并入诉请头）。
-- **诉请内容（Tellask body）**：后续以 `!?` 开头但不以 `!?@` 开头的行。
+- **诉请正文（Tellask body）**：后续以 `!?` 开头但不以 `!?@` 开头的行。
 - `!tellaskSession <slug>` 等结构化指令必须写在诉请头中。
 
 ---
@@ -187,7 +187,7 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 
 - `!?@self` 是一个显式的"相同角色"调用，指向**当前对话的 agentId**（不是单独队友）。
 - 这是自调用的**明确**语法，有助于避免因回声/引用先前调用标题而导致的意外 `@teammate`→`@teammate` 自调用。
-- **FBR 本身应该很常见**，但使用 `!tellaskSession` 寻址的变体应该很罕见。对于大多数 FBR 使用，首选 `!?@self`（TYPE C，瞬态）。仅当你明确想要一个可恢复的、长期存在的"fresh boots 工作区"用于多步骤子问题时，才使用 `!?@self !tellaskSession ...`。
+- **FBR 本身应该很常见**，但使用 `!tellaskSession` 寻址的变体应该很罕见。对于大多数 FBR 使用，首选 `!?@self`（TYPE C，瞬态）。仅当你明确想要一个可恢复的、长期存在的"初心会话"用于多步骤子问题时，才使用 `!?@self !tellaskSession ...`。
 
 **Tellask 会话键模式**：`<tellaskSession>` 使用与 `<mention-id>` 相同的标识符模式：`[a-zA-Z][a-zA-Z0-9_-]*`。解析在空白或标点处停止；任何尾随的标题文本在 tellaskSession 解析时被忽略。
 
@@ -213,7 +213,7 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 
 **恢复时的 Tellask 上下文**：
 
-- 在每次 TYPE B Tellask（新的或恢复的）时，父级提供的 `headLine`/`callBody`
+- 在每次 TYPE B Tellask（新的或恢复的）时，父级提供的 `tellaskHead`/`tellaskBody`
   在驱动子对话之前作为新用户消息追加到子对话中。
   这确保子对话在每次 Tellask 时都能收到最新的请求上下文。
 - 系统注入的恢复提示仅用于上下文，**不会被解析**为队友/工具 Tellask。
@@ -373,7 +373,7 @@ Q4H（向人类提问）是对话可以暂停执行并请求人工输入的机�
  */
 interface HumanQuestion {
   readonly id: string; // 唯一标识符（UUID）- 匹配消息 ID
-  readonly headLine: string; // 问题标题
+  readonly tellaskHead: string; // 问题标题
   readonly bodyContent: string; // 详细问题上下文
   readonly askedAt: string; // ISO 时间戳
 }
@@ -425,12 +425,12 @@ const isQ4H = firstMention === 'human';
 // 当检测到 !?@human 作为队友 Tellask 时
 async function recordQuestionForHuman(
   dlg: Dialog,
-  headLine: string,
+  tellaskHead: string,
   bodyContent: string,
 ): Promise<void> {
   const question: HumanQuestion = {
     id: generateDialogID(),
-    headLine,
+    tellaskHead,
     bodyContent,
     askedAt: formatUnifiedTimestamp(new Date()),
   };
@@ -580,7 +580,7 @@ flowchart TD
   N1 -.-> QN1[q4h.yaml (sub-001-001)]
 ```
 
-**典型存储（路径是相对于运行时工作区的工作区相对路径）**：
+**典型存储（路径是相对于 rtws（运行时工作区）的相对路径）**：
 
 - `.dialogs/run/<root-id>/dialog.yaml`
 - `.dialogs/run/<root-id>/latest.yaml`
@@ -702,8 +702,9 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 **行为**：
 
-- 更新工作区 Taskdoc 内容（`*.tsk/` Taskdoc 包中恰好一个章节文件）
-- **不更改 Taskdoc 路径。** `dlg.taskDocPath` 在对话的整个生命周期中是不可变的。-更新的文件立即对引用它的所有对话可用
+- 更新 rtws（运行时工作区）Taskdoc 内容（`*.tsk/` Taskdoc 包中恰好一个章节文件）
+- **不更改 Taskdoc 路径。** `dlg.taskDocPath` 在对话的整个生命周期中是不可变的。
+- 更新的文件立即对引用它的所有对话可用
 - **不开启新一程对话。** 如需开启新一程对话，请单独使用 `clear_mind`。
 - 本身不清除消息、提醒、Q4H 或注册表
 - 影响引用相同 Taskdoc 的所有参与智能体（主对话和子对话）
@@ -900,8 +901,8 @@ interface RegistryMethods {
 
 **上下文继承**：新的子对话自动接收：
 
-- 对相同工作区 Taskdoc 的引用（推荐：`tasks/feature-auth.tsk/`）；`dlg.taskDocPath` 在对话创建时固定，永不重新分配
-- 上位 Tellask 上下文（headLine + callBody）解释其目的
+- 对相同 rtws（运行时工作区）Taskdoc 的引用（推荐：`tasks/feature-auth.tsk/`）；`dlg.taskDocPath` 在对话创建时固定，永不重新分配
+- 上位 Tellask 上下文（tellaskHead + tellaskBody）解释其目的
 - 访问共享团队内存
 - 访问其智能体的个人内存
 
@@ -940,7 +941,7 @@ interface RegistryMethods {
 
 **横向通信**：兄弟子对话通过共享上位对话进行协调。
 
-**广播通信**：主对话（根对话）可以通过 Taskdoc 引用将更改（如工作区 Taskdoc 文件更新）传达给所有对话。
+**广播通信**：主对话（根对话）可以通过 Taskdoc 引用将更改（如 rtws Taskdoc 文件更新）传达给所有对话。
 
 ---
 
@@ -958,7 +959,7 @@ interface RegistryMethods {
 
 **子对话注册表**：根对话作用域的已注册子对话持久映射（在清晰操作中存活）。
 
-### 工作区持久化内存
+### rtws 持久化内存
 
 **团队共享内存**：在整个项目生命周期中持久化，由所有智能体共享。
 
@@ -966,7 +967,7 @@ interface RegistryMethods {
 
 ### 内存同步
 
-**Taskdoc 传播**：对工作区 Taskdoc 文件的更改对引用它的所有对话立即可见。
+**Taskdoc 传播**：对 rtws Taskdoc 文件的更改对引用它的所有对话立即可见。
 
 **内存更新**：团队和智能体内存异步更新，最终在所有对话中保持一致。
 
@@ -983,7 +984,7 @@ interface RegistryMethods {
 **对话存储**：每个对话对应一个包含以下内容的目录结构：
 
 - `<dialog-root>/dialog.yaml` — 对话元数据和配置
-- `<dialog-root>/latest.yaml` — 当前对话进程跟踪和状态
+- `<dialog-root>/latest.yaml` — 当前对话过程跟踪和状态
 - `<dialog-root>/reminders.json` — 持久化提醒存储
 - `<dialog-root>/q4h.yaml` — Q4H 索引（被清晰工具清除）
 - `<dialog-root>/registry.yaml` — 子对话注册表（仅限根对话）
@@ -991,9 +992,9 @@ interface RegistryMethods {
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — 每个子对话的 Q4H 索引（被清晰清除）
 
-**Taskdoc 存储**：Taskdoc 是对话通过路径引用的工作区产物。Taskdoc 必须是封装的 `*.tsk/` Taskdoc 包。
+**Taskdoc 存储**：Taskdoc 是对话通过路径引用的 rtws 产物。Taskdoc 必须是封装的 `*.tsk/` Taskdoc 包。
 
-**内存存储**：团队和智能体内存存储在工作区内的专用文件中。
+**内存存储**：团队和智能体内存存储在 rtws 内的专用文件中。
 **注册表存储**：子对话注册表（`registry.yaml`）存储在根对话目录中，并在根完成时移动到 `done/`。
 
 ### 流式生成子流顺序契约（Thinking / Saying）

@@ -22,20 +22,20 @@ import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
 import { isTaskPackagePath } from '../utils/task-package';
-import { listTaskDocumentsInWorkspace } from '../utils/taskdoc-search';
+import { listTaskDocumentsInRtws } from '../utils/taskdoc-search';
 import {
   buildSetupFileResponse,
   buildSetupStatusResponse,
+  handleWriteRtwsLlmYaml,
   handleWriteShellEnv,
   handleWriteTeamYaml,
-  handleWriteWorkspaceLlmYaml,
 } from './setup-routes';
 import {
-  handleCreateWorkspaceSnippetGroup,
+  handleCreateRtwsSnippetGroup,
   handleGetBuiltinSnippets,
+  handleGetRtwsSnippets,
   handleGetSnippetCatalog,
-  handleGetWorkspaceSnippets,
-  handleSaveWorkspaceSnippet,
+  handleSaveRtwsSnippet,
   handleTeamMgmtManual,
 } from './snippets-routes';
 
@@ -130,16 +130,16 @@ export async function handleApiRoute(
       return true;
     }
 
-    if (pathname === '/api/setup/workspace-llm-yaml' && req.method === 'GET') {
-      const payload = await buildSetupFileResponse('workspace_llm_yaml');
+    if (pathname === '/api/setup/rtws-llm-yaml' && req.method === 'GET') {
+      const payload = await buildSetupFileResponse('rtws_llm_yaml');
       respondJson(res, payload.success ? 200 : 404, payload);
       return true;
     }
 
     // Setup: create/overwrite .minds/llm.yaml with raw YAML
-    if (pathname === '/api/setup/write-workspace-llm-yaml' && req.method === 'POST') {
+    if (pathname === '/api/setup/write-rtws-llm-yaml' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
-      const result = await handleWriteWorkspaceLlmYaml(rawBody);
+      const result = await handleWriteRtwsLlmYaml(rawBody);
       if (result.kind === 'ok') {
         respondJson(res, 200, result.response);
         return true;
@@ -272,7 +272,7 @@ export async function handleApiRoute(
       return await handleGetDialog(res, dialog);
     }
 
-    // Task documents endpoint
+    // Taskdocs endpoint
     if (pathname === '/api/task-documents' && req.method === 'GET') {
       return await handleGetTaskDocuments(res);
     }
@@ -282,17 +282,17 @@ export async function handleApiRoute(
       return await handleGetToolsRegistry(res);
     }
 
-    // Read rtws diligence prompt (workspace file).
+    // Read rtws diligence prompt (rtws file).
     if (pathname === '/api/rtws/diligence' && req.method === 'GET') {
       return await handleGetRtwsDiligence(req, res);
     }
 
-    // Write rtws diligence prompt (workspace file).
+    // Write rtws diligence prompt (rtws file).
     if (pathname === '/api/rtws/diligence' && req.method === 'POST') {
       return await handleWriteRtwsDiligence(req, res);
     }
 
-    // Delete rtws diligence prompt (workspace file).
+    // Delete rtws diligence prompt (rtws file).
     if (pathname === '/api/rtws/diligence' && req.method === 'DELETE') {
       return await handleDeleteRtwsDiligence(req, res);
     }
@@ -308,8 +308,8 @@ export async function handleApiRoute(
       return true;
     }
 
-    if (pathname === '/api/snippets/workspace' && req.method === 'GET') {
-      const payload = await handleGetWorkspaceSnippets();
+    if (pathname === '/api/snippets/rtws' && req.method === 'GET') {
+      const payload = await handleGetRtwsSnippets();
       respondJson(res, payload.success ? 200 : 500, payload);
       return true;
     }
@@ -323,16 +323,16 @@ export async function handleApiRoute(
       return true;
     }
 
-    if (pathname === '/api/snippets/workspace' && req.method === 'POST') {
+    if (pathname === '/api/snippets/rtws' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
-      const payload = await handleSaveWorkspaceSnippet(rawBody);
+      const payload = await handleSaveRtwsSnippet(rawBody);
       respondJson(res, payload.success ? 200 : 400, payload);
       return true;
     }
 
     if (pathname === '/api/snippets/groups' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
-      const payload = await handleCreateWorkspaceSnippetGroup(rawBody);
+      const payload = await handleCreateRtwsSnippetGroup(rawBody);
       respondJson(res, payload.success ? 200 : 400, payload);
       return true;
     }
@@ -369,7 +369,7 @@ async function handleGetRtwsDiligence(req: IncomingMessage, res: ServerResponse)
   for (const filePath of candidates) {
     try {
       const raw = await fsPromises.readFile(filePath, 'utf-8');
-      respondJson(res, 200, { success: true, path: filePath, raw, source: 'workspace' });
+      respondJson(res, 200, { success: true, path: filePath, raw, source: 'rtws' });
       return true;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
@@ -592,7 +592,7 @@ async function handleHealthCheck(res: ServerResponse, context: ApiRouteContext):
       timestamp: formatUnifiedTimestamp(new Date()),
       server: 'dominds',
       version,
-      workspace: process.cwd(),
+      rtws: process.cwd(),
       mode: context.mode,
     };
 
@@ -932,7 +932,7 @@ async function handleCreateDialog(
     if (!isTaskPackagePath(taskDocPath)) {
       respondJson(res, 400, {
         success: false,
-        error: `taskDocPath must be a Task Doc directory ending in '.tsk' (got: '${taskDocPath}')`,
+        error: `taskDocPath must be a Taskdoc directory ending in '.tsk' (got: '${taskDocPath}')`,
       });
       return true;
     }
@@ -1377,7 +1377,7 @@ async function handleGetDialogArtifact(
 }
 
 /**
- * Get task documents
+ * Get Taskdocs
  */
 async function handleGetTaskDocuments(res: ServerResponse): Promise<boolean> {
   try {
@@ -1385,8 +1385,8 @@ async function handleGetTaskDocuments(res: ServerResponse): Promise<boolean> {
     respondJson(res, 200, taskDocuments);
     return true;
   } catch (error) {
-    log.error('Error getting task documents:', error);
-    respondJson(res, 500, { success: false, error: 'Failed to get task documents' });
+    log.error('Error getting Taskdocs:', error);
+    respondJson(res, 500, { success: false, error: 'Failed to get Taskdocs' });
     return true;
   }
 }
@@ -1416,7 +1416,7 @@ function respondJson(res: ServerResponse, statusCode: number, data: unknown): vo
 }
 
 /**
- * List task documents (recursive search; Task Docs are encapsulated `*.tsk/` directories)
+ * List Taskdocs (recursive search; Taskdocs are encapsulated `*.tsk/` directories)
  */
 async function listTaskDocuments(): Promise<{
   success: boolean;
@@ -1429,7 +1429,7 @@ async function listTaskDocuments(): Promise<{
   }>;
   error?: string;
 }> {
-  const result = await listTaskDocumentsInWorkspace({ rootDir: '.' });
+  const result = await listTaskDocumentsInRtws({ rootDir: '.' });
   if (result.kind === 'ok') return { success: true, taskDocuments: result.taskDocuments };
   return { success: false, error: result.errorText };
 }

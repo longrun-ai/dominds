@@ -4,7 +4,7 @@ import YAML from 'yaml';
 import { createLogger } from '../log';
 import type { LanguageCode } from '../shared/types/language';
 
-type SnippetTemplateSource = 'builtin' | 'workspace';
+type SnippetTemplateSource = 'builtin' | 'rtws';
 
 type SnippetTemplate = {
   id: string;
@@ -29,7 +29,7 @@ type SnippetTemplatesResponse =
   | { success: true; templates: SnippetTemplate[] }
   | { success: false; error: string };
 
-type SaveWorkspaceSnippetTemplateRequest = {
+type SaveRtwsSnippetTemplateRequest = {
   groupKey: string;
   fileName?: string;
   uiLanguage: 'en' | 'zh';
@@ -38,16 +38,16 @@ type SaveWorkspaceSnippetTemplateRequest = {
   content: string;
 };
 
-type SaveWorkspaceSnippetTemplateResponse =
+type SaveRtwsSnippetTemplateResponse =
   | { success: true; template: SnippetTemplate }
   | { success: false; error: string };
 
-type CreateWorkspaceSnippetGroupRequest = {
+type CreateRtwsSnippetGroupRequest = {
   title: string;
   uiLanguage: 'en' | 'zh';
 };
 
-type CreateWorkspaceSnippetGroupResponse =
+type CreateRtwsSnippetGroupResponse =
   | { success: true; groupKey: string }
   | { success: false; error: string };
 
@@ -67,9 +67,7 @@ function requireNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
-function parseSaveWorkspacePromptTemplateRequest(
-  raw: unknown,
-): SaveWorkspaceSnippetTemplateRequest | null {
+function parseSaveRtwsPromptTemplateRequest(raw: unknown): SaveRtwsSnippetTemplateRequest | null {
   if (!isRecord(raw)) return null;
   const groupKey = requireNonEmptyString(raw['groupKey']);
   const uiLanguageRaw = raw['uiLanguage'];
@@ -88,9 +86,7 @@ function parseSaveWorkspacePromptTemplateRequest(
   return { name, uiLanguage, fileName, description, content, groupKey };
 }
 
-function parseCreateWorkspaceSnippetGroupRequest(
-  raw: unknown,
-): CreateWorkspaceSnippetGroupRequest | null {
+function parseCreateRtwsSnippetGroupRequest(raw: unknown): CreateRtwsSnippetGroupRequest | null {
   if (!isRecord(raw)) return null;
   const title = requireNonEmptyString(raw['title']);
   const uiLanguageRaw = raw['uiLanguage'];
@@ -99,12 +95,12 @@ function parseCreateWorkspaceSnippetGroupRequest(
   return { title: title.trim(), uiLanguage };
 }
 
-function buildWorkspaceTemplateTokenFromName(name: string): string {
-  return sanitizeWorkspaceTemplateFileName(name);
+function buildRtwsTemplateTokenFromName(name: string): string {
+  return sanitizeRtwsTemplateFileName(name);
 }
 
-function buildWorkspaceTemplateTokenFromFileName(fileName: string): string {
-  return sanitizeWorkspaceTemplateFileName(fileName);
+function buildRtwsTemplateTokenFromFileName(fileName: string): string {
+  return sanitizeRtwsTemplateFileName(fileName);
 }
 
 type ParsedCatalog = Record<string, { name?: string; 'name-zh'?: string; snippets?: unknown }>;
@@ -173,25 +169,25 @@ async function buildSnippetCatalog(
   uiLanguage: LanguageCode | null,
 ): Promise<SnippetCatalogGroup[]> {
   const builtin = await readBuiltinSnippets();
-  const workspace = await readWorkspaceSnippets();
+  const rtws = await readRtwsSnippets();
 
   const serverRoot = path.resolve(__dirname, '..', '..');
   const builtinCatalogAbs = path.resolve(serverRoot, 'dist', 'snippets', 'catalog.yaml');
   const builtinCatalogFallbackAbs = path.resolve(serverRoot, 'snippets', 'catalog.yaml');
   const rtwsRoot = path.resolve(process.cwd());
-  const workspaceCatalogAbs = path.resolve(rtwsRoot, '.minds', 'snippets', 'catalog.yaml');
+  const rtwsCatalogAbs = path.resolve(rtwsRoot, '.minds', 'snippets', 'catalog.yaml');
 
   const builtinCatalog =
     (await loadCatalogFromPath(builtinCatalogAbs)) ??
     (await loadCatalogFromPath(builtinCatalogFallbackAbs));
-  const workspaceCatalog = await loadCatalogFromPath(workspaceCatalogAbs);
+  const rtwsCatalog = await loadCatalogFromPath(rtwsCatalogAbs);
 
-  if (!builtinCatalog && !workspaceCatalog) {
+  if (!builtinCatalog && !rtwsCatalog) {
     return [
       {
         key: 'all',
         titleI18n: { en: 'All', zh: '全部' },
-        templates: [...builtin, ...workspace],
+        templates: [...builtin, ...rtws],
       },
     ];
   }
@@ -210,8 +206,8 @@ async function buildSnippetCatalog(
     }
   }
 
-  const workspaceByGroupAndToken = new Map<string, SnippetTemplate[]>();
-  for (const tpl of workspace) {
+  const rtwsByGroupAndToken = new Map<string, SnippetTemplate[]>();
+  for (const tpl of rtws) {
     const p = typeof tpl.path === 'string' ? tpl.path : '';
     if (!p.startsWith('.minds/snippets/')) continue;
     const rel = p.slice('.minds/snippets/'.length);
@@ -221,11 +217,11 @@ async function buildSnippetCatalog(
     if (!groupKey || !rest) continue;
     const token = stripLangSuffixFromSnippetId(rest);
     const k = `${groupKey}/${token}`;
-    const prev = workspaceByGroupAndToken.get(k);
+    const prev = rtwsByGroupAndToken.get(k);
     if (prev) {
       prev.push(tpl);
     } else {
-      workspaceByGroupAndToken.set(k, [tpl]);
+      rtwsByGroupAndToken.set(k, [tpl]);
     }
   }
 
@@ -233,8 +229,8 @@ async function buildSnippetCatalog(
   if (builtinCatalog) {
     keys.push(...Object.keys(builtinCatalog));
   }
-  if (workspaceCatalog) {
-    for (const k of Object.keys(workspaceCatalog)) {
+  if (rtwsCatalog) {
+    for (const k of Object.keys(rtwsCatalog)) {
       if (!keys.includes(k)) keys.push(k);
     }
   }
@@ -242,12 +238,12 @@ async function buildSnippetCatalog(
   const groups: SnippetCatalogGroup[] = [];
   for (const groupKey of keys) {
     const metaBuiltin = builtinCatalog ? builtinCatalog[groupKey] : undefined;
-    const metaWorkspace = workspaceCatalog ? workspaceCatalog[groupKey] : undefined;
-    const titleEn = metaWorkspace?.name ?? metaBuiltin?.name ?? groupKey;
+    const metaRtws = rtwsCatalog ? rtwsCatalog[groupKey] : undefined;
+    const titleEn = metaRtws?.name ?? metaBuiltin?.name ?? groupKey;
     const titleZh =
-      metaWorkspace?.['name-zh'] ??
+      metaRtws?.['name-zh'] ??
       metaBuiltin?.['name-zh'] ??
-      metaWorkspace?.name ??
+      metaRtws?.name ??
       metaBuiltin?.name ??
       groupKey;
 
@@ -262,29 +258,29 @@ async function buildSnippetCatalog(
         if (tpl) templates.push(tpl);
       }
     }
-    if (metaWorkspace && Array.isArray(metaWorkspace.snippets)) {
-      for (const raw of metaWorkspace.snippets) {
+    if (metaRtws && Array.isArray(metaRtws.snippets)) {
+      for (const raw of metaRtws.snippets) {
         if (typeof raw !== 'string') continue;
         const token = raw.trim();
         if (!token) continue;
-        const candidates = workspaceByGroupAndToken.get(`${groupKey}/${token}`) ?? [];
+        const candidates = rtwsByGroupAndToken.get(`${groupKey}/${token}`) ?? [];
         const tpl = pickBestSnippetVariant(candidates, uiLanguage);
         if (tpl) templates.push(tpl);
       }
     }
 
-    // Keep empty groups so the UI can show newly-created workspace groups before adding snippets.
+    // Keep empty groups so the UI can show newly-created rtws groups before adding snippets.
 
-    // If a workspace template uses the same display name as a builtin template,
-    // prefer the workspace version to support "override" via same-name saves.
-    const workspaceNames = new Set<string>();
+    // If an rtws template uses the same display name as a builtin template,
+    // prefer the rtws version to support "override" via same-name saves.
+    const rtwsNames = new Set<string>();
     for (const tpl of templates) {
-      if (tpl.source === 'workspace') workspaceNames.add(tpl.name);
+      if (tpl.source === 'rtws') rtwsNames.add(tpl.name);
     }
     const filtered: SnippetTemplate[] = [];
     const seenNames = new Set<string>();
     for (const tpl of templates) {
-      if (tpl.source === 'builtin' && workspaceNames.has(tpl.name)) {
+      if (tpl.source === 'builtin' && rtwsNames.has(tpl.name)) {
         continue;
       }
       if (seenNames.has(tpl.name)) {
@@ -302,7 +298,7 @@ async function buildSnippetCatalog(
       {
         key: 'all',
         titleI18n: { en: 'All', zh: '全部' },
-        templates: [...builtin, ...workspace],
+        templates: [...builtin, ...rtws],
       },
     ];
   }
@@ -310,14 +306,14 @@ async function buildSnippetCatalog(
   return groups;
 }
 
-async function ensureWorkspaceCatalogGroup(
+async function ensureRtwsCatalogGroup(
   snippetsDirAbs: string,
-  request: CreateWorkspaceSnippetGroupRequest,
-): Promise<CreateWorkspaceSnippetGroupResponse> {
+  request: CreateRtwsSnippetGroupRequest,
+): Promise<CreateRtwsSnippetGroupResponse> {
   const title = request.title.trim();
   if (title === '') return { success: false, error: 'Missing title' };
 
-  const base = sanitizeWorkspaceTemplateFileName(title);
+  const base = sanitizeRtwsTemplateFileName(title);
   if (base === 'all') {
     return { success: false, error: "Group key 'all' is reserved" };
   }
@@ -495,7 +491,7 @@ async function readBuiltinSnippets(): Promise<SnippetTemplate[]> {
   return templates;
 }
 
-async function readWorkspaceSnippets(): Promise<SnippetTemplate[]> {
+async function readRtwsSnippets(): Promise<SnippetTemplate[]> {
   const rtwsRoot = path.resolve(process.cwd());
   const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   const files = await listMarkdownFilesRecursively(snippetsDir);
@@ -507,14 +503,14 @@ async function readWorkspaceSnippets(): Promise<SnippetTemplate[]> {
       const parsed = parseFrontmatter(raw);
       const rel = path.relative(snippetsDir, abs).replace(/\\/g, '/');
       templates.push({
-        id: `workspace:${safeTemplateIdFromPath(rel)}`,
+        id: `rtws:${safeTemplateIdFromPath(rel)}`,
         name:
           parsed.kind === 'parsed' && parsed.name
             ? parsed.name
             : safeBasenameToName(path.basename(abs)),
         description: parsed.kind === 'parsed' ? parsed.description : undefined,
         content: parsed.kind === 'parsed' ? parsed.body : raw,
-        source: 'workspace',
+        source: 'rtws',
         path: `.minds/snippets/${rel}`,
       });
     } catch {
@@ -524,14 +520,14 @@ async function readWorkspaceSnippets(): Promise<SnippetTemplate[]> {
   return templates;
 }
 
-function sanitizeWorkspaceTemplateFileName(name: string): string {
+function sanitizeRtwsTemplateFileName(name: string): string {
   const trimmed = name.trim();
   const base = trimmed.replace(/[^a-zA-Z0-9\-_\u4e00-\u9fff]+/g, '-').replace(/-+/g, '-');
   const safe = base.replace(/^[-_]+/, '').replace(/[-_]+$/, '');
   return safe === '' ? 'prompt' : safe;
 }
 
-async function upsertWorkspaceCatalogEntry(
+async function upsertRtwsCatalogEntry(
   snippetsDirAbs: string,
   groupKey: string,
   token: string,
@@ -574,13 +570,13 @@ export async function handleGetBuiltinSnippets(): Promise<SnippetTemplatesRespon
   }
 }
 
-export async function handleGetWorkspaceSnippets(): Promise<SnippetTemplatesResponse> {
+export async function handleGetRtwsSnippets(): Promise<SnippetTemplatesResponse> {
   try {
-    const templates = await readWorkspaceSnippets();
+    const templates = await readRtwsSnippets();
     return { success: true, templates };
   } catch (error: unknown) {
-    log.error('Failed to read workspace snippets', error);
-    return { success: false, error: 'Failed to load workspace snippets' };
+    log.error('Failed to read rtws snippets', error);
+    return { success: false, error: 'Failed to load rtws snippets' };
   }
 }
 
@@ -596,27 +592,27 @@ export async function handleGetSnippetCatalog(
   }
 }
 
-export async function handleSaveWorkspaceSnippet(
+export async function handleSaveRtwsSnippet(
   rawBody: string,
-): Promise<SaveWorkspaceSnippetTemplateResponse> {
+): Promise<SaveRtwsSnippetTemplateResponse> {
   let parsed: unknown;
   try {
     parsed = rawBody ? JSON.parse(rawBody) : {};
   } catch {
     return { success: false, error: 'Invalid JSON body' };
   }
-  const req = parseSaveWorkspacePromptTemplateRequest(parsed);
+  const req = parseSaveRtwsPromptTemplateRequest(parsed);
   if (!req) return { success: false, error: 'Invalid request body' };
 
   const rtwsRoot = path.resolve(process.cwd());
   const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   const safeName =
     typeof req.fileName === 'string' && req.fileName.trim() !== ''
-      ? sanitizeWorkspaceTemplateFileName(req.fileName)
-      : sanitizeWorkspaceTemplateFileName(req.name);
+      ? sanitizeRtwsTemplateFileName(req.fileName)
+      : sanitizeRtwsTemplateFileName(req.name);
   const langSuffix = req.uiLanguage;
   const fileBasename = safeName.endsWith(`.${langSuffix}`) ? safeName : `${safeName}.${langSuffix}`;
-  const groupKey = sanitizeWorkspaceTemplateFileName(req.groupKey);
+  const groupKey = sanitizeRtwsTemplateFileName(req.groupKey);
   const fileAbs = path.resolve(snippetsDir, groupKey, `${fileBasename}.md`);
   if (!ensureInsideDir(snippetsDir, fileAbs)) {
     return { success: false, error: 'Invalid template name' };
@@ -631,49 +627,49 @@ export async function handleSaveWorkspaceSnippet(
     const header = YAML.stringify(headerData).trimEnd();
     const serialized = `---\n${header}\n---\n\n${req.content.trimEnd()}\n`;
     await fs.writeFile(fileAbs, serialized, 'utf-8');
-    await upsertWorkspaceCatalogEntry(
+    await upsertRtwsCatalogEntry(
       snippetsDir,
       groupKey,
       typeof req.fileName === 'string' && req.fileName.trim() !== ''
-        ? buildWorkspaceTemplateTokenFromFileName(req.fileName)
-        : buildWorkspaceTemplateTokenFromName(req.name),
+        ? buildRtwsTemplateTokenFromFileName(req.fileName)
+        : buildRtwsTemplateTokenFromName(req.name),
     );
     const rel = path.relative(snippetsDir, fileAbs).replace(/\\/g, '/');
     return {
       success: true,
       template: {
-        id: `workspace:${safeTemplateIdFromPath(rel)}`,
+        id: `rtws:${safeTemplateIdFromPath(rel)}`,
         name: req.name.trim(),
         description: typeof req.description === 'string' ? req.description : undefined,
         content: req.content,
-        source: 'workspace',
+        source: 'rtws',
         path: `.minds/snippets/${rel}`,
       },
     };
   } catch (error: unknown) {
-    log.error('Failed to save workspace snippet', error);
+    log.error('Failed to save rtws snippet', error);
     return { success: false, error: 'Failed to save snippet template' };
   }
 }
 
-export async function handleCreateWorkspaceSnippetGroup(
+export async function handleCreateRtwsSnippetGroup(
   rawBody: string,
-): Promise<CreateWorkspaceSnippetGroupResponse> {
+): Promise<CreateRtwsSnippetGroupResponse> {
   let parsed: unknown;
   try {
     parsed = rawBody ? JSON.parse(rawBody) : {};
   } catch {
     return { success: false, error: 'Invalid JSON body' };
   }
-  const req = parseCreateWorkspaceSnippetGroupRequest(parsed);
+  const req = parseCreateRtwsSnippetGroupRequest(parsed);
   if (!req) return { success: false, error: 'Invalid request body' };
 
   const rtwsRoot = path.resolve(process.cwd());
   const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   try {
-    return await ensureWorkspaceCatalogGroup(snippetsDir, req);
+    return await ensureRtwsCatalogGroup(snippetsDir, req);
   } catch (error: unknown) {
-    log.error('Failed to create workspace snippet group', error);
+    log.error('Failed to create rtws snippet group', error);
     return { success: false, error: 'Failed to create snippet group' };
   }
 }

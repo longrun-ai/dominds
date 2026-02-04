@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { listTaskDocumentsInWorkspace } from '../main/utils/taskdoc-search';
+import { listTaskDocumentsInRtws } from '../main/utils/taskdoc-search';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
       ['ignored-root/', '# comment', ''].join('\n'),
     );
 
-    // Create some Task Docs.
+    // Create some Taskdocs.
     await mkdirp(path.join(tmpRoot, 'included-root.tsk'));
     await writeText(path.join(tmpRoot, 'included-root.tsk', 'goals.md'), '- ok\n');
 
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     );
     await mkdirp(path.join(tmpRoot, 'projects', 'proj1', 'public-ignored.tsk'));
 
-    const result = await listTaskDocumentsInWorkspace({ rootDir: '.' });
+    const result = await listTaskDocumentsInRtws({ rootDir: '.' });
     assert.equal(result.kind, 'ok');
     if (result.kind !== 'ok') throw new Error('unreachable');
 

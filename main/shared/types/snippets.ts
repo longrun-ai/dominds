@@ -1,4 +1,4 @@
-export type SnippetTemplateSource = 'builtin' | 'workspace';
+export type SnippetTemplateSource = 'builtin' | 'rtws';
 
 export type SnippetTemplate = {
   id: string;
@@ -23,7 +23,7 @@ export type SnippetTemplatesResponse =
   | { success: true; templates: SnippetTemplate[] }
   | { success: false; error: string };
 
-export type SaveWorkspaceSnippetTemplateRequest = {
+export type SaveRtwsSnippetTemplateRequest = {
   groupKey: string;
   fileName?: string;
   uiLanguage: 'en' | 'zh';
@@ -32,16 +32,16 @@ export type SaveWorkspaceSnippetTemplateRequest = {
   content: string;
 };
 
-export type SaveWorkspaceSnippetTemplateResponse =
+export type SaveRtwsSnippetTemplateResponse =
   | { success: true; template: SnippetTemplate }
   | { success: false; error: string };
 
-export type CreateWorkspaceSnippetGroupRequest = {
+export type CreateRtwsSnippetGroupRequest = {
   title: string;
   uiLanguage: 'en' | 'zh';
 };
 
-export type CreateWorkspaceSnippetGroupResponse =
+export type CreateRtwsSnippetGroupResponse =
   | { success: true; groupKey: string }
   | { success: false; error: string };
 

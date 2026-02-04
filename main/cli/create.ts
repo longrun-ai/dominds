@@ -9,7 +9,7 @@
  *
  * Notes:
  * - Template can be a short name (resolved via DOMINDS_TEMPLATE_BASE) or a git URL.
- * - Workspace directory is `process.cwd()`. Use 'dominds -C <dir> create ...' to create under another base dir.
+ * - rtws directory is `process.cwd()`. Use 'dominds -C <dir> create ...' to create under another base dir.
  */
 
 import { spawn } from 'child_process';
@@ -83,7 +83,7 @@ function resolveTemplateRepoUrl(spec: TemplateSpec, env: NodeJS.ProcessEnv): str
 
 function deriveTargetDirName(template: string): string {
   const trimmed = template.trim().replace(/\/+$/g, '');
-  if (!trimmed) return 'dominds-workspace';
+  if (!trimmed) return 'dominds-rtws';
 
   // URL-like cases
   const lastSlash = trimmed.lastIndexOf('/');
@@ -91,7 +91,7 @@ function deriveTargetDirName(template: string): string {
   const lastSep = Math.max(lastSlash, lastColon);
   const tail = lastSep >= 0 ? trimmed.slice(lastSep + 1) : trimmed;
   const withoutGit = tail.endsWith('.git') ? tail.slice(0, -'.git'.length) : tail;
-  return withoutGit || 'dominds-workspace';
+  return withoutGit || 'dominds-rtws';
 }
 
 type ParsedArgs =
@@ -150,7 +150,9 @@ function printHelp(): void {
   console.log('  dominds create <template> [directory] [--repo-url <url>]');
   console.log('  dominds new <template> [directory]    [--repo-url <url>]   # alias for create');
   console.log('');
-  console.log('Create a new dominds-powered workspace by cloning a template repository.');
+  console.log(
+    'Create a new dominds-powered rtws (runtime workspace) by cloning a template repository.',
+  );
   console.log('');
   console.log('Template resolution:');
   console.log('  - If <template> looks like a git URL, it is used as-is.');
@@ -225,7 +227,7 @@ async function main(): Promise<void> {
         }
         fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
 
-        console.log(`Creating workspace: ${targetAbs}`);
+        console.log(`Creating rtws: ${targetAbs}`);
         console.log(`Template: ${templateRepoUrl}`);
 
         await runGit(['clone', '--depth', '1', templateRepoUrl, targetAbs], cwd);

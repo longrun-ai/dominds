@@ -100,7 +100,7 @@ export class DialogID {
 export interface PendingSubdialog {
   subdialogId: DialogID;
   createdAt: string;
-  headLine: string;
+  tellaskHead: string;
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
   tellaskSession?: string;
@@ -148,8 +148,8 @@ export interface DialogInitParams {
  * Assignment from supdialog for subdialogs
  */
 export interface AssignmentFromSup {
-  headLine: string;
-  callBody: string;
+  tellaskHead: string;
+  tellaskBody: string;
   originMemberId: string;
   callerDialogId: string;
   callId: string;
@@ -163,9 +163,9 @@ export interface AssignmentFromSup {
 export abstract class Dialog {
   public readonly dlgStore: DialogStore;
 
-  // relative path to a specific workspace (usually .md) file,
+  // relative path to a specific rtws (runtime workspace) file,
   // used as mission/plan/progress doc of a course of a dialog
-  public readonly taskDocPath: string; // Task Doc path is immutable for the dialog lifecycle
+  public readonly taskDocPath: string; // Taskdoc path is immutable for the dialog lifecycle
 
   readonly id: DialogID;
   readonly agentId: string; // team member id
@@ -435,8 +435,8 @@ export abstract class Dialog {
    */
   abstract createSubDialog(
     targetAgentId: string,
-    headLine: string,
-    callBody: string,
+    tellaskHead: string,
+    tellaskBody: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
@@ -742,8 +742,8 @@ export abstract class Dialog {
         ? `${formatAssignmentFromSupdialog({
             fromAgentId: this.assignmentFromSup.originMemberId,
             toAgentId: this.agentId,
-            headLine: this.assignmentFromSup.headLine,
-            callBody: this.assignmentFromSup.callBody,
+            tellaskHead: this.assignmentFromSup.tellaskHead,
+            tellaskBody: this.assignmentFromSup.tellaskBody,
             language: getWorkLanguage(),
             collectiveTargets: this.assignmentFromSup.collectiveTargets ?? [this.agentId],
           })}\n---\n${trimmedPrompt}`
@@ -886,7 +886,7 @@ export abstract class Dialog {
    */
   public async receiveTeammateCallResult(
     responderId: string,
-    headLine: string,
+    tellaskHead: string,
     result: string,
     status: 'completed' | 'failed',
     callId: string,
@@ -894,7 +894,7 @@ export abstract class Dialog {
     return await this.dlgStore.receiveTeammateCallResult(
       this,
       responderId,
-      headLine,
+      tellaskHead,
       result,
       status,
       callId,
@@ -906,7 +906,7 @@ export abstract class Dialog {
    */
   public async receiveTeammateResponse(
     responderId: string,
-    headLine: string,
+    tellaskHead: string,
     status: 'completed' | 'failed',
     subdialogId: DialogID | undefined,
     options: {
@@ -919,7 +919,7 @@ export abstract class Dialog {
     return await this.dlgStore.receiveTeammateResponse(
       this,
       responderId,
-      headLine,
+      tellaskHead,
       status,
       subdialogId,
       options,
@@ -965,7 +965,7 @@ export abstract class Dialog {
     try {
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
-      let headLine = response;
+      let tellaskHead = response;
       let originMemberId = responderId;
       let callId = '';
       try {
@@ -977,7 +977,7 @@ export abstract class Dialog {
             originMemberId = metadata.agentId;
           }
           if (metadata.assignmentFromSup) {
-            headLine = metadata.assignmentFromSup.headLine;
+            tellaskHead = metadata.assignmentFromSup.tellaskHead;
             originMemberId = metadata.assignmentFromSup.originMemberId;
             callId = metadata.assignmentFromSup.callId;
           }
@@ -995,8 +995,8 @@ export abstract class Dialog {
           subdialogId: subdialogId.selfId,
         });
       }
-      if (headLine.trim() === '') {
-        headLine = response;
+      if (tellaskHead.trim() === '') {
+        tellaskHead = response;
       }
 
       // NO WAIT - emit immediately with virtual gen markers
@@ -1007,7 +1007,7 @@ export abstract class Dialog {
       const formattedResult = formatTeammateResponseContent({
         responderId,
         requesterId: originMemberId,
-        originalCallHeadLine: headLine,
+        originalCallHeadLine: tellaskHead,
         responseBody: response,
         language: getWorkLanguage(),
       });
@@ -1017,7 +1017,7 @@ export abstract class Dialog {
         type: 'teammate_response_evt',
         responderId,
         calleeDialogId: subdialogId.selfId,
-        headLine,
+        tellaskHead,
         status: 'completed',
         result: formattedResult,
         course: this.currentCourse,
@@ -1105,8 +1105,8 @@ export class SubDialog extends Dialog {
    */
   async createSubDialog(
     targetAgentId: string,
-    headLine: string,
-    callBody: string,
+    tellaskHead: string,
+    tellaskBody: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
@@ -1115,7 +1115,7 @@ export class SubDialog extends Dialog {
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
-    return await this.rootDialog.createSubDialog(targetAgentId, headLine, callBody, options);
+    return await this.rootDialog.createSubDialog(targetAgentId, tellaskHead, tellaskBody, options);
   }
 }
 
@@ -1230,8 +1230,8 @@ export class RootDialog extends Dialog {
    */
   async createSubDialog(
     targetAgentId: string,
-    headLine: string,
-    callBody: string,
+    tellaskHead: string,
+    tellaskBody: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
@@ -1240,7 +1240,13 @@ export class RootDialog extends Dialog {
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
-    return await this.dlgStore.createSubDialog(this, targetAgentId, headLine, callBody, options);
+    return await this.dlgStore.createSubDialog(
+      this,
+      targetAgentId,
+      tellaskHead,
+      tellaskBody,
+      options,
+    );
   }
 
   /**
@@ -1275,15 +1281,15 @@ export abstract class DialogStore {
    *
    * @param supdialog
    * @param targetAgentId
-   * @param headLine
-   * @param callBody
+   * @param tellaskHead
+   * @param tellaskBody
    * @returns
    */
   public async createSubDialog(
     supdialog: RootDialog,
     targetAgentId: string,
-    headLine: string,
-    callBody: string,
+    tellaskHead: string,
+    tellaskBody: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
@@ -1302,8 +1308,8 @@ export abstract class DialogStore {
       subdialogId,
       targetAgentId,
       {
-        headLine,
-        callBody,
+        tellaskHead,
+        tellaskBody,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
@@ -1352,7 +1358,7 @@ export abstract class DialogStore {
   public async receiveTeammateCallResult(
     _dialog: Dialog,
     _responderId: string,
-    _headLine: string,
+    _tellaskHead: string,
     _result: string,
     _status: 'completed' | 'failed',
     _callId: string,
@@ -1364,7 +1370,7 @@ export abstract class DialogStore {
   public async receiveTeammateResponse(
     _dialog: Dialog,
     _responderId: string,
-    _headLine: string,
+    _tellaskHead: string,
     _status: 'completed' | 'failed',
     _subdialogId: DialogID | undefined,
     _options: {

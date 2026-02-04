@@ -1,6 +1,6 @@
 # 团队管理工具集（`team-mgmt`）
 
-本文档指定了一个专用的**团队管理工具集**，其唯一职责是管理工作区 `.minds/` 下的"心智"配置文件（团队名单、LLM 提供商和智能体心智文件），而不授予广泛的运行时工作区访问权限。
+本文档指定了一个专用的**团队管理工具集**，其唯一职责是管理 rtws（运行时工作区）`.minds/` 下的"心智"配置文件（团队名单、LLM 提供商和智能体心智文件），而不授予广泛的运行时工作区访问权限。
 
 外部仓库根目录是 **rtws**（运行时工作区）。以下所有路径均相对于 rtws 根目录。
 
@@ -13,7 +13,7 @@
 - 创建/更新 `.minds/mcp.yaml`（注册动态工具集的 MCP 服务器定义）
 - 创建/更新 `.minds/team/<member>/{persona,knowledge,lessons}.md`（智能体心智）
 
-同时，我们**不希望**赋予该智能体完整的工作区读写权限（例如 `ws_mod` 工具集 + 无限制的 `read_dirs`/`write_dirs`），因为：
+同时，我们**不希望**赋予该智能体完整的 rtws 读写权限（例如 `ws_mod` 工具集 + 无限制的 `read_dirs`/`write_dirs`），因为：
 
 - 编辑 `.minds/team.yaml` 本质上是一个**权限提升面**（它控制工具可用性和目录权限）
 - 编辑 `.minds/llm.yaml` 可以更改网络目标和模型/提供商行为
@@ -39,7 +39,7 @@
 
 ## 当前问题陈述
 
-在典型部署中，我们通过通用工作区工具拒绝直接的 `.minds/` 访问：
+在典型部署中，我们通过通用 rtws 文件工具拒绝直接的 `.minds/` 访问：
 
 - `fs` / `txt`（`list_dir`、`read_file`、`overwrite_entire_file`，……）
 
@@ -159,7 +159,7 @@
 
 在适当的情况下，手册应**动态加载**其"参考"内容自运行的 `dominds` 安装（即随附的后端交付的文件和注册表），而不是在以下位置复制该内容：
 
-- `.minds/*`（工作区状态），或
+- `.minds/*`（rtws 保留状态），或
 - 文档，或
 - 工具实现中的硬编码字符串
 
@@ -182,7 +182,7 @@
 
 ### 它做什么
 
-`dominds` 从 `dominds/main/llm/defaults.yaml` 加载内置提供商定义，然后合并来自 `.minds/llm.yaml` 的工作区覆盖（工作区键覆盖默认值）。见：
+`dominds` 从 `dominds/main/llm/defaults.yaml` 加载内置提供商定义，然后合并来自 `.minds/llm.yaml` 的 rtws 覆盖（rtws 键覆盖默认值）。见：
 
 - `dominds/main/llm/client.ts`（`LlmConfig.load()`）
 - `dominds/main/llm/defaults.yaml`（内置提供商目录）
@@ -319,7 +319,7 @@ env:
 - 团队名单（`members`）
 - 应用于所有成员的默认值（`member_defaults`）
 - 工具可用性（`toolsets` / `tools`）
-- 工作区文件工具的目录访问控制（`read_dirs`、`write_dirs`、`no_*`）
+- rtws 文件工具的目录访问控制（`read_dirs`、`write_dirs`、`no_*`）
 
 该文件由 `dominds/main/team.ts` 中的 `Team.load()` 加载。如果文件不存在，运行时引导默认团队（今天它创建影子成员 `fuxi` + `pangu`）。
 
@@ -405,7 +405,7 @@ members:
 初始引导的首选行为：
 
 - 影子成员 `fuxi` 实例应该获得 `team-mgmt`（和手册工具），而不是广泛的 `ws_mod`
-- 影子成员 `pangu` 实例应该获得广泛的工作区工具集（例如 `ws_read`、`ws_mod`、`os`），但不获得 `team-mgmt`
+- 影子成员 `pangu` 实例应该获得广泛的 rtws 工具集（例如 `ws_read`、`ws_mod`、`os`），但不获得 `team-mgmt`
 - 在创建 `.minds/team.yaml` 后，团队定义成为事实来源
 
 这避免了需要授予完整的 rtws 访问权限来配置团队。

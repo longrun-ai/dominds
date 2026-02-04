@@ -5,7 +5,7 @@
  *
  * Goals:
  * - Allow a dedicated team manager (e.g. a shadow/hidden member) to manage `.minds/` without granting
- *   broad workspace permissions (e.g. `ws_mod`).
+ *   broad rtws (runtime workspace) permissions (e.g. `ws_mod`).
  * - Enforce static scoping to `.minds/**` and reject anything outside that subtree.
  */
 
@@ -295,14 +295,14 @@ async function getMindsDirState(): Promise<MindsDirState> {
 function formatMindsMissingNotice(language: LanguageCode): string {
   if (language === 'zh') {
     return [
-      `注意：当前工作区未初始化 \`${MINDS_DIR}/\`（这是正常情况）。`,
+      `注意：当前 rtws（运行时工作区）未初始化 \`${MINDS_DIR}/\`（这是正常情况）。`,
       `因此当前在 \`${MINDS_DIR}/\` 下没有可读取/可列出的团队配置。`,
       ``,
       `如果要初始化团队配置，请先创建目录：\`team_mgmt_mk_dir({ \"path\": \"${MINDS_DIR}\", \"parents\": true })\`。`,
     ].join('\n');
   }
   return [
-    `Note: \`${MINDS_DIR}/\` is not present in this workspace (this is normal).`,
+    `Note: \`${MINDS_DIR}/\` is not present in this rtws (runtime workspace) (this is normal).`,
     `So there is currently no team configuration to read/list under \`${MINDS_DIR}/\`.`,
     ``,
     `If you want to initialize team configuration, create the directory first: \`team_mgmt_mk_dir({ \"path\": \"${MINDS_DIR}\", \"parents\": true })\`.`,
@@ -336,7 +336,7 @@ function formatModelCheckResult(r: ModelCheckResult): string {
   return `- ${r.model}: ❌ ${r.details ?? 'failed'}`;
 }
 
-type WorkspaceLlmProvidersLoadResult =
+type RtwsLlmProvidersLoadResult =
   | { kind: 'missing' }
   | { kind: 'invalid'; error: string }
   | { kind: 'present'; providers: Record<string, ProviderConfig> };
@@ -412,7 +412,7 @@ async function loadBuiltinLlmProviders(): Promise<Record<string, ProviderConfig>
   return providersUnknown as Record<string, ProviderConfig>;
 }
 
-async function loadWorkspaceLlmProviders(): Promise<WorkspaceLlmProvidersLoadResult> {
+async function loadRtwsLlmProviders(): Promise<RtwsLlmProvidersLoadResult> {
   const cfgPath = `${MINDS_DIR}/llm.yaml`;
   try {
     await fs.access(cfgPath);
@@ -775,10 +775,10 @@ export const teamMgmtListProvidersTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_list_providers',
   description:
-    'List built-in and workspace LLM providers, their env-var readiness, and configured models.',
+    'List built-in and rtws LLM providers, their env-var readiness, and configured models.',
   descriptionI18n: {
-    en: 'List built-in and workspace LLM providers, their env-var readiness, and configured models.',
-    zh: '列出内置与工作区 LLM providers，并显示 env var 是否已配置、以及该 provider 下有哪些模型。',
+    en: 'List built-in and rtws LLM providers, their env-var readiness, and configured models.',
+    zh: '列出内置与 rtws（运行时工作区）LLM providers，并显示 env var 是否已配置、以及该 provider 下有哪些模型。',
   },
   parameters: {
     type: 'object',
@@ -786,7 +786,7 @@ export const teamMgmtListProvidersTool: FuncTool = {
     properties: {
       provider_pattern: { type: 'string' },
       include_builtin: { type: 'boolean' },
-      include_workspace: { type: 'boolean' },
+      include_rtws: { type: 'boolean' },
       show_models: { type: 'boolean' },
       max_models: { type: 'integer' },
     },
@@ -808,11 +808,10 @@ export const teamMgmtListProvidersTool: FuncTool = {
         throw new Error('Invalid include_builtin (expected boolean)');
       }
 
-      const includeWorkspaceValue = args['include_workspace'];
-      const includeWorkspace =
-        includeWorkspaceValue === undefined ? true : includeWorkspaceValue === true;
-      if (includeWorkspaceValue !== undefined && typeof includeWorkspaceValue !== 'boolean') {
-        throw new Error('Invalid include_workspace (expected boolean)');
+      const includeRtwsValue = args['include_rtws'];
+      const includeRtws = includeRtwsValue === undefined ? true : includeRtwsValue === true;
+      if (includeRtwsValue !== undefined && typeof includeRtwsValue !== 'boolean') {
+        throw new Error('Invalid include_rtws (expected boolean)');
       }
 
       const showModelsValue = args['show_models'];
@@ -828,48 +827,46 @@ export const teamMgmtListProvidersTool: FuncTool = {
       }
 
       const builtinProviders = includeBuiltin ? await loadBuiltinLlmProviders() : {};
-      const workspaceProvidersResult = includeWorkspace
-        ? await loadWorkspaceLlmProviders()
+      const rtwsProvidersResult = includeRtws
+        ? await loadRtwsLlmProviders()
         : { kind: 'missing' as const };
-      const workspaceProviders =
-        workspaceProvidersResult.kind === 'present' ? workspaceProvidersResult.providers : {};
+      const rtwsProviders =
+        rtwsProvidersResult.kind === 'present' ? rtwsProvidersResult.providers : {};
 
       const contentLines: string[] = [];
       const title = language === 'zh' ? 'LLM Provider 列表' : 'LLM Providers';
       contentLines.push(fmtHeader(title));
       contentLines.push(
         language === 'zh'
-          ? '说明：工作区 `.minds/llm.yaml` 的同名 provider key 会覆盖内置 defaults。\n'
-          : 'Note: workspace `.minds/llm.yaml` overrides built-in defaults when provider keys match.\n',
+          ? '说明：rtws（运行时工作区）`.minds/llm.yaml` 的同名 provider key 会覆盖内置 defaults。\n'
+          : 'Note: rtws (runtime workspace) `.minds/llm.yaml` overrides built-in defaults when provider keys match.\n',
       );
 
-      if (includeWorkspace) {
+      if (includeRtws) {
         contentLines.push(
-          fmtSubHeader(
-            language === 'zh' ? '工作区（.minds/llm.yaml）' : 'Workspace (.minds/llm.yaml)',
-          ),
+          fmtSubHeader(language === 'zh' ? 'rtws（.minds/llm.yaml）' : 'rtws (.minds/llm.yaml)'),
         );
-        if (workspaceProvidersResult.kind === 'missing') {
+        if (rtwsProvidersResult.kind === 'missing') {
           contentLines.push(
             language === 'zh'
               ? `（未发现 \`${MINDS_DIR}/llm.yaml\`；仅列出内置 defaults）\n`
               : `(\`${MINDS_DIR}/llm.yaml\` not found; showing built-in defaults only)\n`,
           );
-        } else if (workspaceProvidersResult.kind === 'invalid') {
+        } else if (rtwsProvidersResult.kind === 'invalid') {
           contentLines.push(
             language === 'zh'
-              ? `（解析失败：${workspaceProvidersResult.error}）\n`
-              : `(Parse failed: ${workspaceProvidersResult.error})\n`,
+              ? `（解析失败：${rtwsProvidersResult.error}）\n`
+              : `(Parse failed: ${rtwsProvidersResult.error})\n`,
           );
         } else {
-          const keys = Object.keys(workspaceProviders).sort((a, b) => a.localeCompare(b));
+          const keys = Object.keys(rtwsProviders).sort((a, b) => a.localeCompare(b));
           if (keys.length === 0) {
             contentLines.push(language === 'zh' ? '(空)\n' : '(empty)\n');
           } else {
             const items: string[] = [];
             for (const providerKey of keys) {
               if (!wildcardMatch(providerKey, providerPattern)) continue;
-              const providerCfg = workspaceProviders[providerKey];
+              const providerCfg = rtwsProviders[providerKey];
               const envLine = formatProviderEnvStatusLine(providerCfg);
               const overridesBuiltin = Object.prototype.hasOwnProperty.call(
                 builtinProviders,
@@ -913,9 +910,9 @@ export const teamMgmtListProvidersTool: FuncTool = {
             if (!wildcardMatch(providerKey, providerPattern)) continue;
             const providerCfg = builtinProviders[providerKey];
             const envLine = formatProviderEnvStatusLine(providerCfg);
-            const overriddenByWorkspace =
-              workspaceProvidersResult.kind === 'present' &&
-              Object.prototype.hasOwnProperty.call(workspaceProviders, providerKey);
+            const overriddenByRtws =
+              rtwsProvidersResult.kind === 'present' &&
+              Object.prototype.hasOwnProperty.call(rtwsProviders, providerKey);
             const models = getProviderModelsForListing(providerCfg);
             const modelCount = Object.keys(models).length;
             const modelsText = showModels ? listModelIds(models, maxModels) : '';
@@ -924,10 +921,10 @@ export const teamMgmtListProvidersTool: FuncTool = {
               : `models(${modelCount})`;
             items.push(
               `\`${providerKey}\` (apiType: \`${providerCfg.apiType}\`) — ${envLine} — ${modelsSuffix}${
-                overriddenByWorkspace
+                overriddenByRtws
                   ? language === 'zh'
-                    ? ' — 被工作区覆盖'
-                    : ' — overridden by workspace'
+                    ? ' — 被 rtws 覆盖'
+                    : ' — overridden by rtws'
                   : ''
               }`,
             );
@@ -948,7 +945,7 @@ export const teamMgmtListProvidersTool: FuncTool = {
   },
 };
 
-type ListModelsSource = 'effective' | 'builtin' | 'workspace';
+type ListModelsSource = 'effective' | 'builtin' | 'rtws';
 
 export const teamMgmtListModelsTool: FuncTool = {
   type: 'func',
@@ -963,7 +960,7 @@ export const teamMgmtListModelsTool: FuncTool = {
     type: 'object',
     additionalProperties: false,
     properties: {
-      source: { type: 'string', enum: ['effective', 'builtin', 'workspace'] },
+      source: { type: 'string', enum: ['effective', 'builtin', 'rtws'] },
       provider_pattern: { type: 'string' },
       model_pattern: { type: 'string' },
       include_param_options: { type: 'boolean' },
@@ -978,7 +975,7 @@ export const teamMgmtListModelsTool: FuncTool = {
     try {
       const sourceValue = args['source'];
       const source: ListModelsSource =
-        sourceValue === 'builtin' || sourceValue === 'workspace' || sourceValue === 'effective'
+        sourceValue === 'builtin' || sourceValue === 'rtws' || sourceValue === 'effective'
           ? sourceValue
           : 'effective';
       if (sourceValue !== undefined && typeof sourceValue !== 'string') {
@@ -1036,23 +1033,23 @@ export const teamMgmtListModelsTool: FuncTool = {
       } else if (source === 'builtin') {
         providers = await loadBuiltinLlmProviders();
       } else {
-        const workspace = await loadWorkspaceLlmProviders();
-        if (workspace.kind === 'missing') {
+        const rtws = await loadRtwsLlmProviders();
+        if (rtws.kind === 'missing') {
           const msg =
             language === 'zh'
-              ? `未发现 \`${MINDS_DIR}/llm.yaml\`，无法列出 workspace source 的 models。`
-              : `\`${MINDS_DIR}/llm.yaml\` not found; cannot list models for workspace source.`;
+              ? `未发现 \`${MINDS_DIR}/llm.yaml\`，无法列出 source=rtws 的 models。`
+              : `\`${MINDS_DIR}/llm.yaml\` not found; cannot list models for source=rtws.`;
           return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
         }
-        if (workspace.kind === 'invalid') {
+        if (rtws.kind === 'invalid') {
           const msg =
             language === 'zh'
-              ? `解析 \`${MINDS_DIR}/llm.yaml\` 失败：${workspace.error}`
-              : `Failed to parse \`${MINDS_DIR}/llm.yaml\`: ${workspace.error}`;
+              ? `解析 \`${MINDS_DIR}/llm.yaml\` 失败：${rtws.error}`
+              : `Failed to parse \`${MINDS_DIR}/llm.yaml\`: ${rtws.error}`;
           return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
         }
-        providers = workspace.providers;
-        sourceLabel = 'workspace';
+        providers = rtws.providers;
+        sourceLabel = 'rtws';
       }
 
       const providerKeys = Object.keys(providers).sort((a, b) => a.localeCompare(b));
@@ -3000,7 +2997,7 @@ function renderTeamManual(language: LanguageCode): string {
     'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
     'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
     'to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })`',
-    'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only workspace members)',
+    'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only rtws members)',
     '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. If any member has shell tools (e.g. toolset `os` / tools like `shell_exec`), they must be listed in shell_specialists; null/empty means “no shell specialists”.',
     'hidden: true marks a shadow member (not listed in system prompt)',
   ];
@@ -3027,7 +3024,7 @@ function renderTeamManual(language: LanguageCode): string {
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
-        '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义工作区自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
+        '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以 `!?@<id>` 诉请。',
         '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
@@ -3044,7 +3041,7 @@ function renderTeamManual(language: LanguageCode): string {
       '\n' +
       '最小模板：\n' +
       '```yaml\n' +
-      '# 这里只放工作区自己的成员；不要把内置成员（例如 fuxi/pangu）写进来。\n' +
+      '# 这里只放 rtws（运行时工作区）自己的成员；不要把内置成员（例如 fuxi/pangu）写进来。\n' +
       'member_defaults:\n' +
       '  provider: codex\n' +
       '  model: gpt-5.2\n' +
@@ -3103,7 +3100,7 @@ function renderTeamManual(language: LanguageCode): string {
     '\n' +
     'Minimal template:\n' +
     '```yaml\n' +
-    '# Define only workspace members here (do not copy built-in members like fuxi/pangu).\n' +
+    '# Define only rtws members here (do not copy built-in members like fuxi/pangu).\n' +
     'member_defaults:\n' +
     '  provider: codex\n' +
     '  model: gpt-5.2\n' +
@@ -3247,7 +3244,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
         '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。任何通用文件工具都无法访问该目录树（硬编码无条件拒绝）。',
-        '`.minds/**` 是工作区的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team-mgmt`）可访问它。',
+        '`.minds/**` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team-mgmt`）可访问它。',
         '说明：如果你在 `team.yaml` 的 allow-list（`read_dirs`/`write_dirs`）里写了 `.minds/**` 或 `*.tsk/**` 试图绕过限制，运行时会忽略并上报 err 级别问题。',
       ]) +
       fmtCodeBlock('yaml', [
@@ -3271,8 +3268,8 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
-      '`*.tsk/` is an encapsulated Task Doc: it must be maintained via the function tool `change_mind` only. It is hard-denied for all general file tools.',
-      '`.minds/**` stores workspace team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team-mgmt`) may access it.',
+      '`*.tsk/` is an encapsulated Taskdoc: it must be maintained via the function tool `change_mind` only. It is hard-denied for all general file tools.',
+      '`.minds/**` stores rtws (runtime workspace) team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team-mgmt`) may access it.',
       'Note: If you try to whitelist `.minds/**` or `*.tsk/**` via `read_dirs`/`write_dirs`, the runtime ignores it and reports an error-level Problem.',
     ]) +
     fmtCodeBlock('yaml', [
@@ -3341,12 +3338,12 @@ function renderEnvManual(language: LanguageCode): string {
         '管理者提醒：若发现缺失/质量不佳/与实际环境不符，应与人类用户讨论并确认措辞，然后再写入/更新对应的 `env.*.md`（避免“凭空编造”的环境描述）。',
       ]) +
       fmtCodeBlock('text', [
-        '# 示例（片段；请按你的工作区真实环境改写）',
-        '## 本工作区的 Dominds 运行环境说明',
+        '# 示例（片段；请按你的 rtws 真实环境改写）',
+        '## 本 rtws 的 Dominds 运行环境说明',
         '',
         '- 本 rtws 用于 Dominds 自我开发与联调。',
         '- Dominds 程序来源：本机全局 link 的 `dominds`，由 `./dominds/` 构建产物提供。',
-        '- WebUI dev/UX：`./dev-server.sh` 使用 `ux-rtws/` 作为 rtws（避免污染根工作区）。',
+        '- WebUI dev/UX：`./dev-server.sh` 使用 `ux-rtws/` 作为 rtws（避免污染根 rtws）。',
       ])
     );
   }
@@ -3361,12 +3358,12 @@ function renderEnvManual(language: LanguageCode): string {
       'Manager reminder: if the file is missing / inaccurate / low quality, discuss wording with the human user and then write/update `env.*.md` (avoid fabricating environment details).',
     ]) +
     fmtCodeBlock('text', [
-      '# Example (snippet; tailor to your real workspace)',
+      '# Example (snippet; tailor to your real rtws)',
       '## Dominds runtime environment notes',
       '',
       '- This rtws is used for Dominds self-development and integration.',
       '- Program source: a globally linked `dominds` built from `./dominds/`.',
-      '- WebUI dev/UX: `./dev-server.sh` uses `ux-rtws/` as rtws (keeps root workspace clean).',
+      '- WebUI dev/UX: `./dev-server.sh` uses `ux-rtws/` as rtws (keeps root rtws clean).',
     ])
   );
 }
@@ -3481,7 +3478,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`control`：对话控制类工具属于“内建必备能力”，运行时会自动包含给所有成员；因此不需要（也不建议）在 `members.<id>.toolsets` 里显式列出，本页也默认不展示它。',
           '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
-          '按 provider 选择匹配的 toolsets：当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，优先给 `codex_style_tools`（`apply_patch`）；如果还需要“读工作区”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。其他 provider 或采用 Dominds 原生工具习惯时，优先给 `ws_read` / `ws_mod`（txt prepare→apply 工作流：prepare_* → apply_file_modification）。',
+          '按 provider 选择匹配的 toolsets：当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，优先给 `codex_style_tools`（`apply_patch`）；如果还需要“读 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。其他 provider 或采用 Dominds 原生工具习惯时，优先给 `ws_read` / `ws_mod`（txt prepare→apply 工作流：prepare_* → apply_file_modification）。',
           '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”）。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
@@ -3489,7 +3486,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`control`: dialog-control tools are intrinsic and automatically included for all members at runtime; you do not need (and should not) list it under `members.<id>.toolsets`. It is omitted from the list below.',
           '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
-          'Pick toolsets to match the provider: for `provider: codex` (Codex CLI-style prompts/tool names), prefer `codex_style_tools` (`apply_patch`); if you also need “read the workspace”, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators. For other providers or when using Dominds-native tool habits, prefer `ws_read` / `ws_mod` (txt prepare→apply workflow: prepare_* → apply_file_modification).',
+          'Pick toolsets to match the provider: for `provider: codex` (Codex CLI-style prompts/tool names), prefer `codex_style_tools` (`apply_patch`); if you also need “read the rtws”, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators. For other providers or when using Dominds-native tool habits, prefer `ws_read` / `ws_mod` (txt prepare→apply workflow: prepare_* → apply_file_modification).',
           'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”). For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
           'Three common patterns (in `.minds/team.yaml` under `members.<id>.toolsets`):',
         ]);
@@ -3780,7 +3777,7 @@ export const teamMgmtManualTool: FuncTool = {
             ? fmtHeader('.minds/llm.yaml') +
               fmtList([
                 '定义 provider key → model 映射（用于 `.minds/team.yaml` 的 `member_defaults.provider` / `members.<id>.provider` 引用）。',
-                '快速自检：用 `team_mgmt_list_providers({})` 列出内置/工作区 provider keys、env var 是否配置；用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` 列出“合并后”的模型与 `model_param_options`。',
+                '快速自检：用 `team_mgmt_list_providers({})` 列出内置/rtws provider keys、env var 是否配置；用 `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` 列出“合并后”的模型与 `model_param_options`。',
                 '最小示例：\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\n然后在 `.minds/team.yaml` 里引用 `provider: my_provider` / `model: my_model`。',
 
                 '覆盖/合并语义：`.minds/llm.yaml` 会在内置 defaults 之上做覆盖（以当前实现为准）；定义一个 provider key 并不意味着“禁用其他内置 provider”。',
@@ -3792,7 +3789,7 @@ export const teamMgmtManualTool: FuncTool = {
             : fmtHeader('.minds/llm.yaml') +
               fmtList([
                 'Defines provider keys → model keys (referenced by `.minds/team.yaml` via `member_defaults.provider` / `members.<id>.provider`).',
-                'Quick checks: use `team_mgmt_list_providers({})` to list built-in/workspace providers + env-var readiness; use `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` to list merged models and `model_param_options`.',
+                'Quick checks: use `team_mgmt_list_providers({})` to list built-in/rtws providers + env-var readiness; use `team_mgmt_list_models({ source: \"effective\", provider_pattern: \"*\", model_pattern: \"*\" })` to list merged models and `model_param_options`.',
                 'Minimal example:\n```yaml\nproviders:\n  my_provider:\n    apiKeyEnvVar: MY_PROVIDER_API_KEY\n    models:\n      my_model: { name: "my-model-id" }\n```\nThen reference `provider: my_provider` and `model: my_model` in `.minds/team.yaml`.',
 
                 'Merge/override: `.minds/llm.yaml` overrides built-in defaults (per current implementation); defining one provider does not imply disabling other built-in providers.',

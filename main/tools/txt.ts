@@ -1,7 +1,7 @@
 /**
  * Module: tools/txt
  *
- * Text file tooling for reading and modifying workspace files.
+ * Text file tooling for reading and modifying rtws (runtime workspace) files.
  * Provides `read_file`, `overwrite_entire_file`, `prepare_*`, and `apply_file_modification`.
  */
 import crypto from 'crypto';
@@ -35,8 +35,9 @@ function wrapTxtToolResult(language: LanguageCode, messages: ChatMessage[]): Txt
     text.includes('格式不正确') ||
     text.includes('Path required') ||
     text.includes('需要提供路径') ||
-    text.includes('Path must be within workspace') ||
-    text.includes('路径必须位于工作区内');
+    text.includes('Path must be within rtws (runtime workspace)') ||
+    text.includes('路径必须位于 rtws（运行时工作区）内') ||
+    text.includes('路径必须在 rtws（运行时工作区）内');
   return {
     status: failed ? 'failed' : 'completed',
     result: text || (failed ? formatToolError(language) : formatToolOk(language)),
@@ -56,7 +57,7 @@ function ensureInsideWorkspace(rel: string): string {
   const file = path.resolve(process.cwd(), rel);
   const cwd = path.resolve(process.cwd());
   if (!file.startsWith(cwd)) {
-    throw new Error('Path must be within workspace');
+    throw new Error('Path must be within rtws (runtime workspace)');
   }
   return file;
 }
@@ -730,16 +731,16 @@ async function readFileContentBounded(
 export const readFileTool = {
   type: 'func',
   name: 'read_file',
-  description: 'Read a text file (bounded) relative to workspace.',
+  description: 'Read a text file (bounded) relative to rtws (runtime workspace).',
   descriptionI18n: {
-    en: 'Read a text file (bounded) relative to workspace.',
-    zh: '读取工作区内的文本文件（有上限/可截断）。',
+    en: 'Read a text file (bounded) relative to rtws (runtime workspace).',
+    zh: '读取 rtws（运行时工作区）内的文本文件（有上限/可截断）。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
     properties: {
-      path: { type: 'string', description: 'Workspace-relative path.' },
+      path: { type: 'string', description: 'rtws-relative path.' },
       range: {
         type: 'string',
         description:
@@ -1092,7 +1093,7 @@ const overwriteEntireFileSchema = {
   properties: {
     path: {
       type: 'string',
-      description: 'Workspace-relative path to an existing file to overwrite.',
+      description: 'rtws-relative path to an existing file to overwrite.',
     },
     known_old_total_lines: {
       type: 'integer',
@@ -1226,7 +1227,7 @@ export const createNewFileTool: FuncTool = {
     type: 'object',
     additionalProperties: false,
     properties: {
-      path: { type: 'string', description: 'Workspace-relative path to create.' },
+      path: { type: 'string', description: 'rtws-relative path to create.' },
       content: {
         type: 'string',
         description:

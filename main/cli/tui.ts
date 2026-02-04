@@ -44,7 +44,7 @@ function showHelp() {
   console.log('Start or continue a dialog with an AI team member using a Taskdoc.');
   console.log('');
   console.log(
-    "Note: Workspace directory is `process.cwd()`. Use 'dominds -C <dir> tui ...' to run in another workspace.",
+    "Note: rtws (runtime workspace) directory is `process.cwd()`. Use 'dominds -C <dir> tui ...' to run in another rtws.",
   );
   console.log('');
   console.log('Arguments:');

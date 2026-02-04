@@ -47,7 +47,7 @@ Available API endpoints:
 • POST /api/dialogs - Create new dialog
 • GET /api/dialogs/:id - Get specific dialog
 • GET /api/dialogs/:root/:self/hierarchy - Get dialog hierarchy
-• GET /api/task-documents - Task document listing
+• GET /api/task-documents - Taskdoc listing
 
 WebSocket: ws://localhost:5556/ws
 

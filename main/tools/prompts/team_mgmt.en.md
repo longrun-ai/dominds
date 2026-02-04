@@ -1,6 +1,6 @@
 # team-mgmt: manage `.minds/` (prepare-first + single apply)
 
-You have read/write access to `.minds/**`, but this toolset **only operates within the `.minds/` subtree** (it should not touch other workspace files).
+You have read/write access to `.minds/**`, but this toolset **only operates within the `.minds/` subtree** (it should not touch other rtws (runtime workspace) files).
 
 ## Principles
 

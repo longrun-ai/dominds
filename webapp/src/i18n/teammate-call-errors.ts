@@ -27,20 +27,20 @@ export function parseTeammateCallError(result: string): ParsedTeammateCallError 
 export function formatTeammateCallErrorInline(options: {
   language: LanguageCode;
   responderId: string;
-  headLine: string;
+  tellaskHead: string;
   parsed: ParsedTeammateCallError;
 }): string {
   if (options.parsed.code === 'ERR_UNKNOWN_CALL') {
     if (options.language === 'zh') {
-      return `未知诉请：@${options.responderId}\n标题：${options.headLine}`;
+      return `未知诉请：@${options.responderId}\n标题：${options.tellaskHead}`;
     }
-    return `Unknown call: @${options.responderId}\nHead: ${options.headLine}`;
+    return `Unknown call: @${options.responderId}\nHead: ${options.tellaskHead}`;
   }
 
   if (options.language === 'zh') {
     const detail = options.parsed.detail ? `\n详情：\n${options.parsed.detail}` : '';
-    return `执行 @${options.responderId} 出错\n标题：${options.headLine}${detail}`;
+    return `执行 @${options.responderId} 出错\n标题：${options.tellaskHead}${detail}`;
   }
   const detail = options.parsed.detail ? `\nDetail:\n${options.parsed.detail}` : '';
-  return `Error executing @${options.responderId}\nHead: ${options.headLine}${detail}`;
+  return `Error executing @${options.responderId}\nHead: ${options.tellaskHead}${detail}`;
 }

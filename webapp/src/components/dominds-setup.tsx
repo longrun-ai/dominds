@@ -36,7 +36,7 @@ type SetupState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; status: SetupStatusResponse };
 
-type WorkspaceLlmDraft = {
+type RtwsLlmDraft = {
   raw: string;
 };
 
@@ -59,7 +59,7 @@ type ConfirmModalState =
       message: string;
       confirmLabel: string;
       cancelLabel: string;
-      onConfirm: { kind: 'write_team_yaml' } | { kind: 'write_workspace_llm_yaml' };
+      onConfirm: { kind: 'write_team_yaml' } | { kind: 'write_rtws_llm_yaml' };
     };
 
 export class DomindsSetup extends HTMLElement {
@@ -70,15 +70,15 @@ export class DomindsSetup extends HTMLElement {
   private confirmModal: ConfirmModalState = { kind: 'closed' };
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
 
-  private backendWorkspace: string = '';
+  private backendRtws: string = '';
   private backendVersion: string = '';
 
   private selectedProviderKey: string | null = null;
   private selectedModelKey: string | null = null;
   private envInputs: Record<string, string> = {};
 
-  private workspaceLlmDraft: WorkspaceLlmDraft = { raw: '' };
-  private workspaceLlmDraftTouched: boolean = false;
+  private rtwsLlmDraft: RtwsLlmDraft = { raw: '' };
+  private rtwsLlmDraftTouched: boolean = false;
   private prominentParamSelections: Record<string, string> = {};
   private prominentParamTouched: Record<string, true> = {};
 
@@ -90,15 +90,15 @@ export class DomindsSetup extends HTMLElement {
   connectedCallback(): void {
     this.initializeAuth();
     this.render();
-    void this.loadWorkspaceInfo();
+    void this.loadRtwsInfo();
     void this.loadStatus();
   }
 
-  private getDefaultWorkspaceLlmYamlDraft(t: UiStrings): string {
+  private getDefaultRtwsLlmYamlDraft(t: UiStrings): string {
     return t.setupWorkspaceLlmTextareaPlaceholder;
   }
 
-  private async loadWorkspaceInfo(): Promise<void> {
+  private async loadRtwsInfo(): Promise<void> {
     try {
       const resp = await this.apiClient.getHealth();
       if (!resp.success) {
@@ -109,21 +109,21 @@ export class DomindsSetup extends HTMLElement {
               : { kind: 'prompt', reason: 'missing' };
           this.setAuthNone();
           this.state = { kind: 'auth_required' };
-          this.backendWorkspace = '';
+          this.backendRtws = '';
           this.render();
           return;
         }
-        throw new Error(resp.error || 'Failed to load workspace info');
+        throw new Error(resp.error || 'Failed to load rtws info');
       }
 
       const data = resp.data;
-      this.backendWorkspace = data && typeof data.workspace === 'string' ? data.workspace : '';
+      this.backendRtws = data && typeof data.rtws === 'string' ? data.rtws : '';
 
       this.backendVersion = data && typeof data.version === 'string' ? data.version : '';
       this.render();
     } catch (error: unknown) {
-      console.error('Failed to load workspace info:', error);
-      this.backendWorkspace = '';
+      console.error('Failed to load rtws info:', error);
+      this.backendRtws = '';
       this.backendVersion = '';
       this.render();
     }
@@ -218,32 +218,32 @@ export class DomindsSetup extends HTMLElement {
     this.initializeSelections(status);
 
     const t = getUiStrings(this.uiLanguage);
-    if (!this.workspaceLlmDraftTouched) {
-      if (status.workspaceLlmYaml.exists) {
-        const llm = await this.apiClient.getSetupWorkspaceLlmYaml();
+    if (!this.rtwsLlmDraftTouched) {
+      if (status.rtwsLlmYaml.exists) {
+        const llm = await this.apiClient.getSetupRtwsLlmYaml();
         if (llm.success && llm.data && llm.data.success) {
-          this.workspaceLlmDraft = { raw: llm.data.raw };
+          this.rtwsLlmDraft = { raw: llm.data.raw };
         }
-      } else if (!this.workspaceLlmDraft.raw) {
-        this.workspaceLlmDraft = { raw: this.getDefaultWorkspaceLlmYamlDraft(t) };
+      } else if (!this.rtwsLlmDraft.raw) {
+        this.rtwsLlmDraft = { raw: this.getDefaultRtwsLlmYamlDraft(t) };
       }
     }
     this.render();
   }
 
-  private async writeWorkspaceLlmYamlFromUi(): Promise<void> {
+  private async writeRtwsLlmYamlFromUi(): Promise<void> {
     if (this.state.kind !== 'ready') return;
     const status = this.state.status;
-    const raw = this.workspaceLlmDraft.raw;
+    const raw = this.rtwsLlmDraft.raw;
     const t = getUiStrings(this.uiLanguage);
     if (!raw.trim()) {
       alert(t.setupWorkspaceLlmContentRequired);
       return;
     }
 
-    const overwrite = status.workspaceLlmYaml.exists;
+    const overwrite = status.rtwsLlmYaml.exists;
     if (overwrite) {
-      const path = status.workspaceLlmYaml.path;
+      const path = status.rtwsLlmYaml.path;
       this.confirmModal = {
         kind: 'confirm_overwrite',
         path,
@@ -251,13 +251,13 @@ export class DomindsSetup extends HTMLElement {
         message: t.setupOverwriteConfirmBody.replace('{path}', path),
         confirmLabel: t.setupOverwriteConfirmConfirm,
         cancelLabel: t.setupOverwriteConfirmCancel,
-        onConfirm: { kind: 'write_workspace_llm_yaml' },
+        onConfirm: { kind: 'write_rtws_llm_yaml' },
       };
       this.render();
       return;
     }
 
-    const resp = await this.apiClient.writeWorkspaceLlmYaml({ raw, overwrite });
+    const resp = await this.apiClient.writeRtwsLlmYaml({ raw, overwrite });
     if (!resp.success) {
       if (resp.status === 409) {
         alert(resp.error || '.minds/llm.yaml already exists');
@@ -274,13 +274,13 @@ export class DomindsSetup extends HTMLElement {
     await this.loadStatus();
   }
 
-  private async writeWorkspaceLlmYamlFromUiConfirmed(): Promise<void> {
+  private async writeRtwsLlmYamlFromUiConfirmed(): Promise<void> {
     if (this.state.kind !== 'ready') return;
     const status = this.state.status;
-    const raw = this.workspaceLlmDraft.raw;
+    const raw = this.rtwsLlmDraft.raw;
     const t = getUiStrings(this.uiLanguage);
-    const overwrite = status.workspaceLlmYaml.exists;
-    const resp = await this.apiClient.writeWorkspaceLlmYaml({ raw, overwrite });
+    const overwrite = status.rtwsLlmYaml.exists;
+    const resp = await this.apiClient.writeRtwsLlmYaml({ raw, overwrite });
     if (!resp.success) {
       if (resp.status === 409) {
         alert(resp.error || '.minds/llm.yaml already exists');
@@ -398,8 +398,8 @@ export class DomindsSetup extends HTMLElement {
             </span>
             </a>
           <span class="setup-badge">${escapeHtml(t.setupTitle)}</span>
-          <div class="workspace-indicator" title="${escapeHtmlAttr(t.backendWorkspaceTitle)}">
-            📁 ${escapeHtml(this.backendWorkspace || t.backendWorkspaceLoading)}
+          <div class="rtws-indicator" title="${escapeHtmlAttr(t.backendWorkspaceTitle)}">
+            📁 ${escapeHtml(this.backendRtws || t.backendWorkspaceLoading)}
           </div>
           <div class="spacer"></div>
           <select id="setup-lang-select" class="select select-compact" title="${escapeHtmlAttr(
@@ -426,7 +426,7 @@ export class DomindsSetup extends HTMLElement {
 
     const refresh = this.shadowRoot.querySelector('#refresh-btn');
     if (refresh instanceof HTMLButtonElement) {
-      refresh.onclick = () => void Promise.all([this.loadStatus(), this.loadWorkspaceInfo()]);
+      refresh.onclick = () => void Promise.all([this.loadStatus(), this.loadRtwsInfo()]);
     }
 
     const goBtn = this.shadowRoot.querySelector('#go-btn');
@@ -535,14 +535,14 @@ export class DomindsSetup extends HTMLElement {
       viewBuiltinBtn.onclick = () => void this.openFileModal('defaults_yaml');
     }
 
-    const viewWorkspaceBtn = this.shadowRoot.querySelector('#view-workspace-llm-yaml');
-    if (viewWorkspaceBtn instanceof HTMLButtonElement) {
-      viewWorkspaceBtn.onclick = () => void this.openFileModal('workspace_llm_yaml');
+    const viewRtwsBtn = this.shadowRoot.querySelector('#view-rtws-llm-yaml');
+    if (viewRtwsBtn instanceof HTMLButtonElement) {
+      viewRtwsBtn.onclick = () => void this.openFileModal('rtws_llm_yaml');
     }
 
-    const writeWorkspaceBtn = this.shadowRoot.querySelector('#write-workspace-llm-yaml');
-    if (writeWorkspaceBtn instanceof HTMLButtonElement) {
-      writeWorkspaceBtn.onclick = () => void this.writeWorkspaceLlmYamlFromUi();
+    const writeRtwsBtn = this.shadowRoot.querySelector('#write-rtws-llm-yaml');
+    if (writeRtwsBtn instanceof HTMLButtonElement) {
+      writeRtwsBtn.onclick = () => void this.writeRtwsLlmYamlFromUi();
     }
 
     const confirmCancel = this.shadowRoot.querySelector('#confirm-modal-cancel');
@@ -570,8 +570,8 @@ export class DomindsSetup extends HTMLElement {
         if (modal.kind !== 'confirm_overwrite') return;
         if (modal.onConfirm.kind === 'write_team_yaml') {
           void this.writeTeamYamlFromUiConfirmed();
-        } else if (modal.onConfirm.kind === 'write_workspace_llm_yaml') {
-          void this.writeWorkspaceLlmYamlFromUiConfirmed();
+        } else if (modal.onConfirm.kind === 'write_rtws_llm_yaml') {
+          void this.writeRtwsLlmYamlFromUiConfirmed();
         } else {
           const _exhaustive: never = modal.onConfirm;
           console.warn('Unhandled confirm action', _exhaustive);
@@ -588,11 +588,11 @@ export class DomindsSetup extends HTMLElement {
       };
     });
 
-    const workspaceTextarea = this.shadowRoot.querySelector('#workspace-llm-textarea');
-    if (workspaceTextarea instanceof HTMLTextAreaElement) {
-      workspaceTextarea.oninput = () => {
-        this.workspaceLlmDraftTouched = true;
-        this.workspaceLlmDraft = { raw: workspaceTextarea.value };
+    const rtwsTextarea = this.shadowRoot.querySelector('#rtws-llm-textarea');
+    if (rtwsTextarea instanceof HTMLTextAreaElement) {
+      rtwsTextarea.oninput = () => {
+        this.rtwsLlmDraftTouched = true;
+        this.rtwsLlmDraft = { raw: rtwsTextarea.value };
       };
     }
 
@@ -673,7 +673,7 @@ export class DomindsSetup extends HTMLElement {
     const resp =
       kind === 'defaults_yaml'
         ? await this.apiClient.getSetupDefaultsYaml()
-        : await this.apiClient.getSetupWorkspaceLlmYaml();
+        : await this.apiClient.getSetupRtwsLlmYaml();
 
     if (!resp.success) {
       if (resp.status === 401) {
@@ -1177,7 +1177,7 @@ export class DomindsSetup extends HTMLElement {
         <div class="providers">${configuredHtml}</div>
       </div>
 
-      ${this.renderWorkspaceLlmYamlSection(status)}
+      ${this.renderRtwsLlmYamlSection(status)}
 
       <div class="card">
         <div class="row">
@@ -1277,9 +1277,9 @@ export class DomindsSetup extends HTMLElement {
     `;
   }
 
-  private renderWorkspaceLlmYamlSection(status: SetupStatusResponse): string {
+  private renderRtwsLlmYamlSection(status: SetupStatusResponse): string {
     const t = getUiStrings(this.uiLanguage);
-    const info = status.workspaceLlmYaml;
+    const info = status.rtwsLlmYaml;
     const exists = info.exists;
     const parseError = info.parseError;
     const writeLabel = exists ? t.setupOverwriteWorkspaceLlmYaml : t.setupWriteWorkspaceLlmYaml;
@@ -1288,8 +1288,8 @@ export class DomindsSetup extends HTMLElement {
         <div class="row">
           <div class="section-title">${escapeHtml(t.setupWorkspaceLlmTitle)}</div>
           <div class="spacer"></div>
-          <button class="btn" id="write-workspace-llm-yaml">${escapeHtml(writeLabel)}</button>
-          <button class="btn" id="view-workspace-llm-yaml" ${exists ? '' : 'disabled'}>${escapeHtml(
+          <button class="btn" id="write-rtws-llm-yaml">${escapeHtml(writeLabel)}</button>
+          <button class="btn" id="view-rtws-llm-yaml" ${exists ? '' : 'disabled'}>${escapeHtml(
             t.setupViewWorkspaceLlmYaml,
           )}</button>
           <button class="btn" id="view-builtin-example">${escapeHtml(
@@ -1297,8 +1297,8 @@ export class DomindsSetup extends HTMLElement {
           )}</button>
         </div>
         <div class="muted">${escapeHtml(t.setupWorkspaceLlmHelp)}</div>
-        <textarea id="workspace-llm-textarea" class="file-textarea" spellcheck="false">${escapeHtml(
-          this.workspaceLlmDraft.raw,
+        <textarea id="rtws-llm-textarea" class="file-textarea" spellcheck="false">${escapeHtml(
+          this.rtwsLlmDraft.raw,
         )}</textarea>
         ${parseError ? `<div class="error">${escapeHtml(parseError)}</div>` : ''}
       </div>
@@ -1312,7 +1312,7 @@ export class DomindsSetup extends HTMLElement {
     const title =
       this.fileModal.fileKind === 'defaults_yaml'
         ? 'defaults.yaml'
-        : this.fileModal.fileKind === 'workspace_llm_yaml'
+        : this.fileModal.fileKind === 'rtws_llm_yaml'
           ? '.minds/llm.yaml'
           : 'file';
 
@@ -1384,7 +1384,7 @@ export class DomindsSetup extends HTMLElement {
 
       .body{padding:18px;}
 
-      .workspace-indicator{
+      .rtws-indicator{
         font-size:11px;
         color:var(--dominds-muted,#666666);
         font-family:'SF Mono',Monaco,'Cascadia Code','Roboto Mono',Consolas,'Courier New',monospace;
@@ -1406,10 +1406,10 @@ export class DomindsSetup extends HTMLElement {
         scrollbar-color:var(--dominds-muted,#666666) var(--dominds-hover,#f8f9fa);
       }
 
-      .workspace-indicator::-webkit-scrollbar{height:4px;}
-      .workspace-indicator::-webkit-scrollbar-track{background:var(--dominds-hover,#f8f9fa);}
-      .workspace-indicator::-webkit-scrollbar-thumb{background:var(--dominds-muted,#666666);border-radius:2px;}
-      .workspace-indicator::-webkit-scrollbar-thumb:hover{background:var(--dominds-fg,#333333);}
+      .rtws-indicator::-webkit-scrollbar{height:4px;}
+      .rtws-indicator::-webkit-scrollbar-track{background:var(--dominds-hover,#f8f9fa);}
+      .rtws-indicator::-webkit-scrollbar-thumb{background:var(--dominds-muted,#666666);border-radius:2px;}
+      .rtws-indicator::-webkit-scrollbar-thumb:hover{background:var(--dominds-fg,#333333);}
 
       .hidden{display:none;}
 

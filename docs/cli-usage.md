@@ -2,6 +2,8 @@
 
 The `dominds` CLI provides a unified entry point, but the **primary interaction experience is the Web UI** (the default `dominds` command). This guide focuses on the Web UI workflow.
 
+> Note: In this document, **rtws (runtime workspace)** refers to the runtime root directory Dominds uses (by default `process.cwd()`, switchable via `-C <dir>`).
+
 > Note: `dominds tui` / `dominds run` are currently reserved subcommand names and do not have a stable implementation yet. As a result, this guide does not document TUI options or detailed usage.
 
 ## Table of Contents
@@ -14,7 +16,7 @@ The `dominds` CLI provides a unified entry point, but the **primary interaction 
     - [Web UI Interface](#web-ui-interface)
     - [Text User Interface (TUI) (Not Implemented Yet)](#text-user-interface-tui-not-implemented-yet)
     - [Minds Reader](#minds-reader)
-    - [Workspace Creation](#workspace-creation)
+    - [rtws Creation](#rtws-creation)
   - [Usage Examples](#usage-examples)
   - [Dialog Storage](#dialog-storage)
   - [Error Handling](#error-handling)
@@ -27,8 +29,8 @@ The `dominds` package provides a unified CLI with subcommands:
 | --------------------------------- | ------------------------------------------------------------- | -------------- |
 | `dominds` or `dominds webui`      | Start Web UI (default, recommended)                           | Web UI         |
 | `dominds tui` or `dominds run`    | Terminal UI (planned; no stable implementation at the moment) | N/A            |
-| `dominds read`                    | Read and inspect workspace/team minds configuration           | CLI            |
-| `dominds create` or `dominds new` | Create a new workspace from a template                        | CLI            |
+| `dominds read`                    | Read and inspect rtws/team minds configuration                | CLI            |
+| `dominds create` or `dominds new` | Create a new rtws (runtime workspace) from a template         | CLI            |
 | `dominds help`                    | Show help message                                             | CLI            |
 | `dominds --version`               | Show version information                                      | CLI            |
 
@@ -43,14 +45,14 @@ npm install -g dominds
 dominds
 dominds webui [options]
 
-# Common: choose port / workspace
+# Common: choose port / rtws
 dominds webui -p 8080
-dominds webui -C ./my-workspace
+dominds webui -C ./my-rtws
 
 # Minds reader: inspect team configuration
 dominds read [options] [member-id]
 
-# Workspace creation: scaffold a new workspace
+# rtws creation: scaffold a new runtime workspace
 dominds create <template> [directory]
 dominds new <template> [directory]  # alias for create
 
@@ -73,13 +75,13 @@ dominds
 dominds webui [options]
 ```
 
-Start the web-based user interface for the current workspace. This provides a graphical interface in your browser for managing dialogs, viewing streaming output, and interacting with your AI team.
+Start the web-based user interface for the current rtws. This provides a graphical interface in your browser for managing dialogs, viewing streaming output, and interacting with your AI team.
 
 **Options:**
 
 - `-p, --port <port>` - Port to listen on (default: 5555)
 - `-h, --host <host>` - Host to bind to (default: localhost)
-- `-C, --cwd <dir>` - Change to workspace directory before starting
+- `-C, --cwd <dir>` - Change to rtws directory before starting
 - `--help` - Show help message
 
 **Examples:**
@@ -87,7 +89,7 @@ Start the web-based user interface for the current workspace. This provides a gr
 ```bash
 dominds
 dominds webui -p 8080
-dominds webui -C ./my-workspace
+dominds webui -C ./my-rtws
 ```
 
 **Common use cases:**
@@ -95,13 +97,13 @@ dominds webui -C ./my-workspace
 - Visual dialog management and playback
 - Real-time streaming display (thinking / saying segments)
 - Team member selection and switching
-- Configuration/assets management (workspace `.minds/`)
+- Configuration/assets management (rtws `.minds/`)
 
 ### Text User Interface (TUI) (Not Implemented Yet)
 
 `dominds tui` / `dominds run` are currently reserved subcommand names and do not have a stable interactive terminal experience yet.
 
-Use the Web UI as the primary interface. For inspecting workspace/team configuration, use `dominds read`.
+Use the Web UI as the primary interface. For inspecting rtws/team configuration, use `dominds read`.
 
 ### Minds Reader
 
@@ -109,7 +111,7 @@ Use the Web UI as the primary interface. For inspecting workspace/team configura
 dominds read [options] [member-id]
 ```
 
-Read and inspect agent prompts/configuration for the workspace. This is commonly used to debug team setup and confirm what is currently effective.
+Read and inspect agent prompts/configuration for the rtws. This is commonly used to debug team setup and confirm what is currently effective.
 
 **Arguments:**
 
@@ -117,7 +119,7 @@ Read and inspect agent prompts/configuration for the workspace. This is commonly
 
 **Options:**
 
-- `-C, --cwd <dir>` - Change to workspace directory before reading
+- `-C, --cwd <dir>` - Change to rtws directory before reading
 - `--only-prompt` - Show only system prompts
 - `--only-mem` - Show only memory
 - `--help` - Show help message
@@ -127,19 +129,19 @@ Read and inspect agent prompts/configuration for the workspace. This is commonly
 ```bash
 dominds read
 dominds read developer
-dominds read -C ./my-workspace
+dominds read -C ./my-rtws
 dominds read --only-prompt
 dominds read --only-mem
 ```
 
-### Workspace Creation
+### rtws Creation
 
 ```bash
 dominds create <template> [directory]
 dominds new <template> [directory]  # alias for create
 ```
 
-Create a new dominds-powered workspace by cloning/scaffolding from a template repository with preconfigured `.minds/`.
+Create a new dominds-powered rtws (runtime workspace) by cloning/scaffolding from a template repository with preconfigured `.minds/`.
 
 **Arguments:**
 
@@ -162,7 +164,7 @@ dominds create web-scaffold \
                  my-project
 ```
 
-When `--repo-url` is provided, `dominds create` clones the template, sets the cloned workspace’s `origin` remote to the given URL, and keeps the original template URL as a separate `template` remote for reference.
+When `--repo-url` is provided, `dominds create` clones the template, sets the cloned rtws directory’s `origin` remote to the given URL, and keeps the original template URL as a separate `template` remote for reference.
 
 **Template resolution:**
 
@@ -184,16 +186,16 @@ dominds
 # 2) Use a different port (avoid conflicts)
 dominds webui -p 8080
 
-# 3) Start in a specific workspace
-dominds webui -C ./my-workspace
+# 3) Start in a specific rtws
+dominds webui -C ./my-rtws
 
-# 4) Inspect current team/workspace configuration
+# 4) Inspect current team/rtws configuration
 dominds read
 ```
 
 ## Dialog Storage
 
-Runtime dialog data is stored under the workspace `.dialogs/` directory (managed by Dominds). A typical layout:
+Runtime dialog data is stored under the rtws `.dialogs/` directory (managed by Dominds). A typical layout:
 
 - `.dialogs/run/` - Active dialogs
 - `.dialogs/done/` - Completed dialogs
@@ -211,14 +213,14 @@ Each dialog directory typically contains:
 **Web UI (`dominds` / `dominds webui`) common issues:**
 
 - Port conflicts: choose a different port (e.g. `dominds webui -p 8080`)
-- Missing `.minds/` in the workspace: initialize or create via templates (or ensure `-C` points to the right directory)
+- Missing `.minds/` in the rtws: initialize or create via templates (or ensure `-C` points to the right directory)
 
 **Minds reader (`dominds read`) common issues:**
 
 - Invalid YAML: fix configuration under `.minds/` and retry
 - Missing required team members/assets: review `team.yaml` and related files
 
-**Workspace creation (`dominds create` / `dominds new`) common issues:**
+**rtws creation (`dominds create` / `dominds new`) common issues:**
 
 - Network/permissions: verify Git access and filesystem permissions
 - Template resolution: verify `DOMINDS_TEMPLATE_BASE` or the template URL

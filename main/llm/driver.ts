@@ -253,7 +253,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
   const language = dlg.getLastUserLanguageCode();
   const question: HumanQuestion = {
     id: questionId,
-    headLine: '@human',
+    tellaskHead: '@human',
     bodyContent: formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount }),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
@@ -271,7 +271,7 @@ async function suspendForKeepGoingBudgetExhausted(options: {
     question: {
       id: question.id,
       selfId: dlg.id.selfId,
-      headLine: question.headLine,
+      tellaskHead: question.tellaskHead,
       bodyContent: question.bodyContent,
       askedAt: question.askedAt,
       callSiteRef: question.callSiteRef,
@@ -308,7 +308,7 @@ export interface PendingQuestion {
 type PendingSubdialogRecordType = {
   subdialogId: string;
   createdAt: string;
-  headLine: string;
+  tellaskHead: string;
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
   tellaskSession?: string;
@@ -343,7 +343,7 @@ export interface SubdialogInfo {
   id: string;
   parentDialogId: string;
   agentId: string;
-  headLine: string;
+  tellaskHead: string;
   status: 'active' | 'suspended' | 'completed' | 'failed';
   course: number;
   createdAt: string;
@@ -1019,13 +1019,13 @@ export function createSayingEventsReceiver(dlg: Dialog): TellaskEventsReceiver {
     callHeadLineFinish: async () => {
       await dlg.callingHeadlineFinish();
     },
-    callBodyStart: async () => {
+    tellaskBodyStart: async () => {
       await dlg.callingBodyStart();
     },
-    callBodyChunk: async (chunk: string) => {
+    tellaskBodyChunk: async (chunk: string) => {
       await dlg.callingBodyChunk(chunk);
     },
-    callBodyFinish: async () => {
+    tellaskBodyFinish: async () => {
       await dlg.callingBodyFinish();
     },
     callFinish: async (call: CollectedTellaskCall, _upstreamEndOffset: number) => {
@@ -1144,7 +1144,7 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
  *
  * Phase 4 - Context Building:
  *   - Load agent minds (team, agent, system prompt, memories, tools)
- *   - Build context messages: memories, task doc, assignment from supdialog, dialog msgs
+ *   - Build context messages: memories, Taskdoc, assignment from supdialog, dialog msgs
  *   - Process and render reminders
  *
  * Phase 5 - LLM Generation:
@@ -1457,7 +1457,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 `- 在 .minds/team.yaml 中把该成员的 provider/model 改成有效 key；或`,
                 `- 在 .minds/llm.yaml 的 providers.${provider}.models 下补齐该 model key。`,
                 '',
-                '提示：你也可以打开 WebUI 的 `/setup` 查看当前工作区可用的 provider/model 列表。',
+                '提示：你也可以打开 WebUI 的 `/setup` 查看当前 rtws（运行时工作区）可用的 provider/model 列表。',
                 '',
                 '团队管理者修复后建议运行：`team_mgmt_validate_team_cfg({})`。',
               ].join('\n')
@@ -1472,7 +1472,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 `- Update the member's provider/model keys in .minds/team.yaml, or`,
                 `- Add the model key under .minds/llm.yaml providers.${provider}.models.`,
                 '',
-                'Tip: you can also open the WebUI `/setup` page to see available provider/model keys for this workspace.',
+                'Tip: you can also open the WebUI `/setup` page to see available provider/model keys for this rtws (runtime workspace).',
                 '',
                 'After the fix, the team manager should run: `team_mgmt_validate_team_cfg({})`.',
               ].join('\n');
@@ -1594,7 +1594,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         // use fresh memory + updated msgs from dialog object
         // Build ctxMsgs messages in logical order, then inject reminders as late as possible:
         // 1) memories
-        // 2) task doc (user)
+        // 2) Taskdoc (user)
         // 3) historical dialog msgs
         // Finally, render reminders and place them immediately before the last 'user' message
         // so they are salient for the next response without polluting earlier context.
@@ -1616,7 +1616,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               content: formatTeammateResponseContent({
                 responderId: response.responderId,
                 requesterId: response.originMemberId,
-                originalCallHeadLine: response.headLine,
+                originalCallHeadLine: response.tellaskHead,
                 responseBody: response.response,
                 language: getWorkLanguage(),
               }),
@@ -2326,7 +2326,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 dlg,
                 agent,
                 call.validation.firstMention,
-                call.headLine,
+                call.tellaskHead,
                 call.body,
                 call.callId,
               ),
@@ -2835,10 +2835,12 @@ type TellaskSessionDirectiveParse =
   | { kind: 'invalid' }
   | { kind: 'multiple' };
 
-function parseTellaskSessionDirectiveFromHeadline(headLine: string): TellaskSessionDirectiveParse {
+function parseTellaskSessionDirectiveFromHeadline(
+  tellaskHead: string,
+): TellaskSessionDirectiveParse {
   const re = /(^|\s)!tellaskSession\s+([^\s]+)/g;
   const ids: string[] = [];
-  for (const match of headLine.matchAll(re)) {
+  for (const match of tellaskHead.matchAll(re)) {
     const raw = match[2] ?? '';
     const candidate = raw.trim();
     const m = candidate.match(/^([a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)*)/);
@@ -2855,23 +2857,23 @@ function parseTellaskSessionDirectiveFromHeadline(headLine: string): TellaskSess
   return { kind: 'multiple' };
 }
 
-function extractSingleTellaskSessionFromHeadline(headLine: string): string | null {
-  const parsed = parseTellaskSessionDirectiveFromHeadline(headLine);
+function extractSingleTellaskSessionFromHeadline(tellaskHead: string): string | null {
+  const parsed = parseTellaskSessionDirectiveFromHeadline(tellaskHead);
   if (parsed.kind === 'one') return parsed.tellaskSession;
   return null;
 }
 
-function isFbrSelfTellaskHeadLine(headLine: string): boolean {
-  return /^\s*@self\b/.test(headLine);
+function isFbrSelfTellaskHeadLine(tellaskHead: string): boolean {
+  return /^\s*@self\b/.test(tellaskHead);
 }
 
-function replaceTellaskSessionDirective(headLine: string, tellaskSession: string): string {
+function replaceTellaskSessionDirective(tellaskHead: string, tellaskSession: string): string {
   // Replace the first occurrence only. If missing, append it as a best-effort.
   const re = /(^|\s)!tellaskSession\s+([^\s]+)/;
-  if (re.test(headLine)) {
-    return headLine.replace(re, (m, p1) => `${String(p1)}!tellaskSession ${tellaskSession}`);
+  if (re.test(tellaskHead)) {
+    return tellaskHead.replace(re, (m, p1) => `${String(p1)}!tellaskSession ${tellaskSession}`);
   }
-  return `${headLine} !tellaskSession ${tellaskSession}`;
+  return `${tellaskHead} !tellaskSession ${tellaskSession}`;
 }
 
 function resolveFbrEffort(member: Team.Member | null | undefined): number {
@@ -2928,7 +2930,7 @@ function withFbrToollessSystemPrompt(systemPrompt: string, language: LanguageCod
 }
 
 function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
-  return dlg instanceof SubDialog && isFbrSelfTellaskHeadLine(dlg.assignmentFromSup.headLine);
+  return dlg instanceof SubDialog && isFbrSelfTellaskHeadLine(dlg.assignmentFromSup.tellaskHead);
 }
 
 /**
@@ -2940,13 +2942,13 @@ function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
  * - @<agentId> → Type C (transient subdialog)
  *
  * @param firstMention The first teammate mention extracted by the streaming parser (e.g., "teammate")
- * @param headLine The full headline text from the streaming parser
+ * @param tellaskHead The full headline text from the streaming parser
  * @param currentDialog Optional current dialog context to detect Type A (subdialog calling parent)
  * @returns The parsed TeammateTellaskParseResult
  */
 export function parseTeammateTellask(
   firstMention: string,
-  headLine: string,
+  tellaskHead: string,
   currentDialog?: Dialog,
 ): TeammateTellaskParseResult {
   // Fresh Boots Reasoning (FBR) syntax sugar:
@@ -2957,7 +2959,7 @@ export function parseTeammateTellask(
   // mentions.
   if (firstMention === 'self') {
     const agentId = currentDialog?.agentId ?? 'self';
-    const tellaskSession = extractSingleTellaskSessionFromHeadline(headLine);
+    const tellaskSession = extractSingleTellaskSessionFromHeadline(tellaskHead);
     if (tellaskSession) {
       return {
         type: 'B',
@@ -2971,7 +2973,7 @@ export function parseTeammateTellask(
     };
   }
 
-  const tellaskSession = extractSingleTellaskSessionFromHeadline(headLine);
+  const tellaskSession = extractSingleTellaskSessionFromHeadline(tellaskHead);
   if (tellaskSession) {
     return {
       type: 'B',
@@ -3162,20 +3164,20 @@ async function supplySubdialogResponseToCallerIfPending(
  *
  * @param supdialog The supdialog making the call
  * @param targetAgentId The agent to handle the subdialog
- * @param headLine The headline for the subdialog
- * @param callBody The body content for the subdialog
+ * @param tellaskHead The headline for the subdialog
+ * @param tellaskBody The body content for the subdialog
  * @returns Promise resolving when subdialog is created and pending record saved
  */
 export async function createSubdialogForSupdialog(
   supdialog: RootDialog,
   targetAgentId: string,
-  headLine: string,
-  callBody: string,
+  tellaskHead: string,
+  tellaskBody: string,
   callId: string,
 ): Promise<void> {
   try {
     // Create the subdialog
-    const subdialog = await supdialog.createSubDialog(targetAgentId, headLine, callBody, {
+    const subdialog = await supdialog.createSubDialog(targetAgentId, tellaskHead, tellaskBody, {
       originMemberId: supdialog.agentId,
       callerDialogId: supdialog.id.selfId,
       callId,
@@ -3186,7 +3188,7 @@ export async function createSubdialogForSupdialog(
     const pendingRecord: PendingSubdialogRecordType = {
       subdialogId: subdialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
-      headLine,
+      tellaskHead,
       targetAgentId,
       callType: 'A',
     };
@@ -3205,8 +3207,8 @@ export async function createSubdialogForSupdialog(
           content: formatAssignmentFromSupdialog({
             fromAgentId: supdialog.agentId,
             toAgentId: subdialog.agentId,
-            headLine,
-            callBody: callBody,
+            tellaskHead,
+            tellaskBody: tellaskBody,
             language: getWorkLanguage(),
             collectiveTargets: [targetAgentId],
           }),
@@ -3237,8 +3239,8 @@ export async function createSubdialogForSupdialog(
  * @param rootDialog The root dialog making the call
  * @param agentId The agent to handle the subdialog
  * @param tellaskSession The tellask session key for registry lookup
- * @param headLine The headline for the subdialog
- * @param callBody The body content for the subdialog
+ * @param tellaskHead The headline for the subdialog
+ * @param tellaskBody The body content for the subdialog
  * @returns Promise resolving when subdialog is created/registered
  */
 /**
@@ -3274,7 +3276,7 @@ export async function supplyResponseToSupdialog(
 
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
-      let headLine = responseText;
+      let tellaskHead = responseText;
       let originMemberId: string | undefined;
 
       try {
@@ -3285,9 +3287,9 @@ export async function supplyResponseToSupdialog(
         if (metadata && metadata.assignmentFromSup) {
           originMemberId = metadata.assignmentFromSup.originMemberId;
           if (!pendingRecord) {
-            const assignmentHead = metadata.assignmentFromSup.headLine;
+            const assignmentHead = metadata.assignmentFromSup.tellaskHead;
             if (typeof assignmentHead === 'string' && assignmentHead.trim() !== '') {
-              headLine = assignmentHead;
+              tellaskHead = assignmentHead;
             }
           }
         }
@@ -3312,17 +3314,17 @@ export async function supplyResponseToSupdialog(
       if (pendingRecord) {
         responderId = pendingRecord.targetAgentId;
         responderAgentId = pendingRecord.targetAgentId;
-        headLine = pendingRecord.headLine;
+        tellaskHead = pendingRecord.tellaskHead;
       }
 
-      if (headLine.trim() === '') {
-        headLine = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
+      if (tellaskHead.trim() === '') {
+        tellaskHead = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
       }
 
       const responseContent = formatTeammateResponseContent({
         responderId,
         requesterId: originMemberId,
-        originalCallHeadLine: headLine,
+        originalCallHeadLine: tellaskHead,
         responseBody: responseText,
         language: getWorkLanguage(),
       });
@@ -3335,7 +3337,7 @@ export async function supplyResponseToSupdialog(
         response: responseText,
         completedAt,
         callType,
-        headLine,
+        tellaskHead,
         responderId,
         originMemberId,
         callId: callId ?? '',
@@ -3352,7 +3354,7 @@ export async function supplyResponseToSupdialog(
       return {
         responderId,
         responderAgentId,
-        headLine,
+        tellaskHead,
         originMemberId,
         responseContent,
         filteredPendingCount: filteredPending.length,
@@ -3366,7 +3368,7 @@ export async function supplyResponseToSupdialog(
 
     await parentDialog.receiveTeammateResponse(
       result.responderId,
-      result.headLine,
+      result.tellaskHead,
       status,
       subdialogId,
       {
@@ -3497,7 +3499,7 @@ async function executeTellaskCalls(
         dlg,
         agent,
         call.validation.firstMention,
-        call.headLine,
+        call.tellaskHead,
         call.body,
         call.callId,
       ),
@@ -3520,7 +3522,7 @@ async function emitMalformedTellaskResponses(
   const language = getWorkLanguage();
   for (const call of collectedCalls) {
     if (call.validation.kind !== 'malformed') continue;
-    const firstLineAfterPrefix = (call.headLine.split('\n')[0] ?? '').trim();
+    const firstLineAfterPrefix = (call.tellaskHead.split('\n')[0] ?? '').trim();
     const msg = formatDomindsNoteMalformedTellaskCall(language, call.validation.reason, {
       firstLineAfterPrefix,
     });
@@ -3534,12 +3536,12 @@ async function emitMalformedTellaskResponses(
       type: 'tellask_result_msg',
       role: 'tool',
       responderId: 'dominds',
-      headLine: call.headLine,
+      tellaskHead: call.tellaskHead,
       status: 'failed',
       content: msg,
     });
 
-    await dlg.receiveTeammateCallResult('dominds', call.headLine, msg, 'failed', call.callId);
+    await dlg.receiveTeammateCallResult('dominds', call.tellaskHead, msg, 'failed', call.callId);
     dlg.clearCurrentCallId();
   }
   return toolOutputs;
@@ -3553,7 +3555,7 @@ async function executeTellaskCall(
   dlg: Dialog,
   agent: Team.Member,
   firstMention: string,
-  headLine: string,
+  tellaskHead: string,
   body: string,
   callId: string,
   options?: {
@@ -3586,7 +3588,7 @@ async function executeTellaskCall(
 
   const allowMultiTeammateTargets = options?.allowMultiTeammateTargets ?? true;
   if (allowMultiTeammateTargets && member && !isSelfAlias && !isTellaskerAlias) {
-    const mentioned = extractMentionIdsFromHeadline(headLine);
+    const mentioned = extractMentionIdsFromHeadline(tellaskHead);
     const uniqueMentioned = Array.from(new Set(mentioned));
     const knownTargets = uniqueMentioned.filter((id) => team.getMember(id) !== null);
     if (!knownTargets.includes(firstMention)) {
@@ -3609,17 +3611,17 @@ async function executeTellaskCall(
           type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
-          headLine,
+          tellaskHead,
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
 
       if (options?.skipTellaskSessionDirectiveValidation !== true) {
-        const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(headLine);
+        const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(tellaskHead);
         if (tellaskSessionDirective.kind === 'multiple') {
           const msg = formatDomindsNoteMultipleTellaskSessionDirectives(getWorkLanguage());
           toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
@@ -3627,11 +3629,11 @@ async function executeTellaskCall(
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: 'dominds',
-            headLine,
+            tellaskHead,
             status: 'failed',
             content: msg,
           });
-          await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+          await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
           dlg.clearCurrentCallId();
           return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
@@ -3642,11 +3644,11 @@ async function executeTellaskCall(
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: 'dominds',
-            headLine,
+            tellaskHead,
             status: 'failed',
             content: msg,
           });
-          await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+          await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
           dlg.clearCurrentCallId();
           return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
@@ -3654,7 +3656,7 @@ async function executeTellaskCall(
 
       const perTargetResults = await Promise.all(
         knownTargets.map(async (targetId) => {
-          return await executeTellaskCall(dlg, agent, targetId, headLine, body, callId, {
+          return await executeTellaskCall(dlg, agent, targetId, tellaskHead, body, callId, {
             allowMultiTeammateTargets: false,
             collectiveTargets: knownTargets,
             skipTellaskSessionDirectiveValidation: true,
@@ -3679,7 +3681,7 @@ async function executeTellaskCall(
       const questionId = `q4h-${generateDialogID()}`;
       const question: HumanQuestion = {
         id: questionId,
-        headLine: headLine.trim(),
+        tellaskHead: tellaskHead.trim(),
         bodyContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
         callSiteRef: {
@@ -3702,7 +3704,7 @@ async function executeTellaskCall(
         question: {
           id: question.id,
           selfId: dlg.id.selfId,
-          headLine: question.headLine,
+          tellaskHead: question.tellaskHead,
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,
           callSiteRef: question.callSiteRef,
@@ -3721,7 +3723,7 @@ async function executeTellaskCall(
       const errStack = q4hErr instanceof Error ? q4hErr.stack : '';
       log.error('Q4H: Failed to register question', q4hErr, {
         dialogId: dlg.id.selfId,
-        headLine: headLine.substring(0, 100),
+        tellaskHead: tellaskHead.substring(0, 100),
       });
       // Don't throw - allow fallback to "Unknown call" handler
     }
@@ -3732,7 +3734,7 @@ async function executeTellaskCall(
     if (isTellaskerAlias && !(dlg instanceof SubDialog)) {
       const response = formatDomindsNoteTellaskerOnlyInSidelineDialog(getWorkLanguage());
       try {
-        await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
+        await dlg.receiveTeammateResponse('dominds', tellaskHead, 'failed', dlg.id, {
           response,
           agentId: 'dominds',
           callId,
@@ -3748,12 +3750,12 @@ async function executeTellaskCall(
     }
 
     if (options?.skipTellaskSessionDirectiveValidation !== true) {
-      const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(headLine);
+      const tellaskSessionDirective = parseTellaskSessionDirectiveFromHeadline(tellaskHead);
 
       if (isTellaskerAlias && tellaskSessionDirective.kind !== 'none') {
         const response = formatDomindsNoteTellaskerNoTellaskSession(getWorkLanguage());
         try {
-          await dlg.receiveTeammateResponse('dominds', headLine, 'failed', dlg.id, {
+          await dlg.receiveTeammateResponse('dominds', tellaskHead, 'failed', dlg.id, {
             response,
             agentId: 'dominds',
             callId,
@@ -3775,11 +3777,11 @@ async function executeTellaskCall(
           type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
-          headLine,
+          tellaskHead,
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
@@ -3790,11 +3792,11 @@ async function executeTellaskCall(
           type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
-          headLine,
+          tellaskHead,
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
@@ -3802,7 +3804,7 @@ async function executeTellaskCall(
 
     const parseResult: TeammateTellaskParseResult = isTellaskerAlias
       ? { type: 'A', agentId: (dlg as SubDialog).supdialog.agentId }
-      : parseTeammateTellask(firstMention, headLine, dlg);
+      : parseTeammateTellask(firstMention, tellaskHead, dlg);
 
     // `@self` FBR enhancements:
     // - Respect per-member fbr_effort (0 disables; 1..100 fan-out)
@@ -3816,11 +3818,11 @@ async function executeTellaskCall(
           type: 'tellask_result_msg',
           role: 'tool',
           responderId: 'dominds',
-          headLine,
+          tellaskHead,
           status: 'failed',
           content: msg,
         });
-        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+        await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
         dlg.clearCurrentCallId();
         return { toolOutputs, suspend: false, subdialogsCreated: [] };
       }
@@ -3832,7 +3834,7 @@ async function executeTellaskCall(
         const createdSubs: SubDialog[] = [];
         const pendingRecords: PendingSubdialogRecordType[] = [];
         for (let i = 1; i <= fbrEffort; i++) {
-          const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+          const sub = await dlg.createSubDialog(parseResult.agentId, tellaskHead, body, {
             originMemberId,
             callerDialogId: callerDialog.id.selfId,
             callId,
@@ -3842,7 +3844,7 @@ async function executeTellaskCall(
           pendingRecords.push({
             subdialogId: sub.id.selfId,
             createdAt: formatUnifiedTimestamp(new Date()),
-            headLine,
+            tellaskHead,
             targetAgentId: parseResult.agentId,
             callType: 'C',
           });
@@ -3861,8 +3863,8 @@ async function executeTellaskCall(
                 content: formatAssignmentFromSupdialog({
                   fromAgentId: dlg.agentId,
                   toAgentId: sub.agentId,
-                  headLine,
-                  callBody: body,
+                  tellaskHead,
+                  tellaskBody: body,
                   language: getWorkLanguage(),
                   collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
                 }),
@@ -3897,11 +3899,11 @@ async function executeTellaskCall(
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: 'dominds',
-            headLine,
+            tellaskHead,
             status: 'failed',
             content: msg,
           });
-          await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+          await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
           dlg.clearCurrentCallId();
           return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
@@ -3921,12 +3923,14 @@ async function executeTellaskCall(
           for (const i of perInstance) {
             const derivedSession = fbrEffort === 1 ? baseSession : `${baseSession}.fbr${i}`;
             const rawHeadLine =
-              fbrEffort === 1 ? headLine : replaceTellaskSessionDirective(headLine, derivedSession);
+              fbrEffort === 1
+                ? tellaskHead
+                : replaceTellaskSessionDirective(tellaskHead, derivedSession);
             const indexedHeadLine = rawHeadLine;
 
             const assignment: AssignmentFromSup = {
-              headLine: indexedHeadLine,
-              callBody: body,
+              tellaskHead: indexedHeadLine,
+              tellaskBody: body,
               originMemberId,
               callerDialogId: callerDialog.id.selfId,
               callId,
@@ -3977,7 +3981,7 @@ async function executeTellaskCall(
         const pendingRecords: PendingSubdialogRecordType[] = createdOrExisting.map((r) => ({
           subdialogId: r.subdialog.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
-          headLine: r.indexedHeadLine,
+          tellaskHead: r.indexedHeadLine,
           targetAgentId: parseResult.agentId,
           callType: 'B',
           tellaskSession: r.tellaskSession,
@@ -3997,8 +4001,8 @@ async function executeTellaskCall(
                 content: formatAssignmentFromSupdialog({
                   fromAgentId: dlg.agentId,
                   toAgentId: r.subdialog.agentId,
-                  headLine: r.indexedHeadLine,
-                  callBody: body,
+                  tellaskHead: r.indexedHeadLine,
+                  tellaskBody: body,
                   language: getWorkLanguage(),
                   collectiveTargets: options?.collectiveTargets ?? [r.subdialog.agentId],
                 }),
@@ -4031,7 +4035,7 @@ async function executeTellaskCall(
     if (isDirectSelfCall) {
       const response = formatDomindsNoteDirectSelfCall(getWorkLanguage());
       try {
-        await dlg.receiveTeammateResponse('dominds', headLine, 'completed', dlg.id, {
+        await dlg.receiveTeammateResponse('dominds', tellaskHead, 'completed', dlg.id, {
           response,
           agentId: 'dominds',
           callId,
@@ -4057,22 +4061,22 @@ async function executeTellaskCall(
         dlg.setSuspensionState('suspended');
 
         try {
-          const headLineForSupdialog =
-            isTellaskerAlias && headLine.startsWith('@tellasker')
-              ? `@${supdialog.agentId}${headLine.slice('@tellasker'.length)}`
-              : headLine;
+          const tellaskHeadForSupdialog =
+            isTellaskerAlias && tellaskHead.startsWith('@tellasker')
+              ? `@${supdialog.agentId}${tellaskHead.slice('@tellasker'.length)}`
+              : tellaskHead;
           const assignment = dlg.assignmentFromSup;
           const supPrompt: HumanPrompt = {
             content: formatSupdialogCallPrompt({
               fromAgentId: dlg.agentId,
               toAgentId: supdialog.agentId,
               subdialogRequest: {
-                headLine: headLineForSupdialog,
-                callBody: body,
+                tellaskHead: tellaskHeadForSupdialog,
+                tellaskBody: body,
               },
               supdialogAssignment: {
-                headLine: assignment.headLine,
-                callBody: assignment.callBody,
+                tellaskHead: assignment.tellaskHead,
+                tellaskBody: assignment.tellaskBody,
               },
               language: getWorkLanguage(),
             }),
@@ -4087,7 +4091,7 @@ async function executeTellaskCall(
           const responseContent = formatTeammateResponseContent({
             responderId: parseResult.agentId,
             requesterId: dlg.agentId,
-            originalCallHeadLine: headLine,
+            originalCallHeadLine: tellaskHead,
             responseBody: responseText,
             language: getWorkLanguage(),
           });
@@ -4099,14 +4103,14 @@ async function executeTellaskCall(
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: parseResult.agentId,
-            headLine,
+            tellaskHead,
             status: 'completed',
             content: responseContent,
           };
           toolOutputs.push(resultMsg);
           await dlg.receiveTeammateResponse(
             parseResult.agentId,
-            headLine,
+            tellaskHead,
             'completed',
             supdialog.id,
             {
@@ -4125,17 +4129,23 @@ async function executeTellaskCall(
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: parseResult.agentId,
-            headLine,
+            tellaskHead,
             status: 'failed',
             content: errorText,
           };
           toolOutputs.push(resultMsg);
-          await dlg.receiveTeammateResponse(parseResult.agentId, headLine, 'failed', supdialog.id, {
-            response: errorText,
-            agentId: parseResult.agentId,
-            callId,
-            originMemberId: dlg.agentId,
-          });
+          await dlg.receiveTeammateResponse(
+            parseResult.agentId,
+            tellaskHead,
+            'failed',
+            supdialog.id,
+            {
+              response: errorText,
+              agentId: parseResult.agentId,
+              callId,
+              originMemberId: dlg.agentId,
+            },
+          );
         }
       } else {
         log.warn('Type A call on dialog without supdialog, falling back to Type C', {
@@ -4158,7 +4168,7 @@ async function executeTellaskCall(
           dialogId: dlg.id.selfId,
         });
         try {
-          const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+          const sub = await dlg.createSubDialog(parseResult.agentId, tellaskHead, body, {
             originMemberId: dlg.agentId,
             callerDialogId: callerDialog.id.selfId,
             callId,
@@ -4169,7 +4179,7 @@ async function executeTellaskCall(
           const pendingRecord: PendingSubdialogRecordType = {
             subdialogId: sub.id.selfId,
             createdAt: formatUnifiedTimestamp(new Date()),
-            headLine,
+            tellaskHead,
             targetAgentId: parseResult.agentId,
             callType: 'C',
             tellaskSession: parseResult.tellaskSession,
@@ -4186,8 +4196,8 @@ async function executeTellaskCall(
                 content: formatAssignmentFromSupdialog({
                   fromAgentId: dlg.agentId,
                   toAgentId: sub.agentId,
-                  headLine,
-                  callBody: body,
+                  tellaskHead,
+                  tellaskBody: body,
                   language: getWorkLanguage(),
                   collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
                 }),
@@ -4208,8 +4218,8 @@ async function executeTellaskCall(
       } else {
         const originMemberId = dlg.agentId;
         const assignment: AssignmentFromSup = {
-          headLine,
-          callBody: body,
+          tellaskHead,
+          tellaskBody: body,
           originMemberId,
           callerDialogId: callerDialog.id.selfId,
           callId,
@@ -4231,7 +4241,7 @@ async function executeTellaskCall(
             return { kind: 'existing' as const, subdialog: existing };
           }
 
-          const created = await rootDialog.createSubDialog(parseResult.agentId, headLine, body, {
+          const created = await rootDialog.createSubDialog(parseResult.agentId, tellaskHead, body, {
             originMemberId,
             callerDialogId: callerDialog.id.selfId,
             callId,
@@ -4246,7 +4256,7 @@ async function executeTellaskCall(
         const pendingRecord: PendingSubdialogRecordType = {
           subdialogId: result.subdialog.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
-          headLine,
+          tellaskHead,
           targetAgentId: parseResult.agentId,
           callType: 'B',
           tellaskSession: parseResult.tellaskSession,
@@ -4267,8 +4277,8 @@ async function executeTellaskCall(
                 content: formatAssignmentFromSupdialog({
                   fromAgentId: dlg.agentId,
                   toAgentId: result.subdialog.agentId,
-                  headLine,
-                  callBody: body,
+                  tellaskHead,
+                  tellaskBody: body,
                   language: getWorkLanguage(),
                   collectiveTargets: options?.collectiveTargets ?? [result.subdialog.agentId],
                 }),
@@ -4283,8 +4293,8 @@ async function executeTellaskCall(
               content: formatAssignmentFromSupdialog({
                 fromAgentId: rootDialog.agentId,
                 toAgentId: result.subdialog.agentId,
-                headLine,
-                callBody: body,
+                tellaskHead,
+                tellaskBody: body,
                 language: getWorkLanguage(),
                 collectiveTargets: options?.collectiveTargets ?? [result.subdialog.agentId],
               }),
@@ -4310,7 +4320,7 @@ async function executeTellaskCall(
     // Type C: Transient subdialog (unregistered)
     if (parseResult.type === 'C') {
       try {
-        const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+        const sub = await dlg.createSubDialog(parseResult.agentId, tellaskHead, body, {
           originMemberId: dlg.agentId,
           callerDialogId: dlg.id.selfId,
           callId,
@@ -4319,7 +4329,7 @@ async function executeTellaskCall(
         const pendingRecord: PendingSubdialogRecordType = {
           subdialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
-          headLine,
+          tellaskHead,
           targetAgentId: parseResult.agentId,
           callType: 'C',
         };
@@ -4335,8 +4345,8 @@ async function executeTellaskCall(
               content: formatAssignmentFromSupdialog({
                 fromAgentId: dlg.agentId,
                 toAgentId: sub.agentId,
-                headLine,
-                callBody: body,
+                tellaskHead,
+                tellaskBody: body,
                 language: getWorkLanguage(),
                 collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
               }),
@@ -4365,11 +4375,11 @@ async function executeTellaskCall(
       type: 'tellask_result_msg',
       role: 'tool',
       responderId: 'dominds',
-      headLine,
+      tellaskHead,
       status: 'failed',
       content: msg,
     });
-    await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+    await dlg.receiveTeammateCallResult('dominds', tellaskHead, msg, 'failed', callId);
     dlg.clearCurrentCallId();
   }
 
@@ -4401,19 +4411,19 @@ function isMentionBoundaryChar(char: string): boolean {
   return !isValidMentionChar(char);
 }
 
-function extractMentionIdsFromHeadline(headLine: string): string[] {
+function extractMentionIdsFromHeadline(tellaskHead: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (let i = 0; i < headLine.length; i++) {
-    const ch = headLine[i] ?? '';
+  for (let i = 0; i < tellaskHead.length; i++) {
+    const ch = tellaskHead[i] ?? '';
     if (ch !== '@') continue;
-    const prev = i === 0 ? '' : (headLine[i - 1] ?? '');
+    const prev = i === 0 ? '' : (tellaskHead[i - 1] ?? '');
     if (!isMentionBoundaryChar(prev)) continue;
 
     let j = i + 1;
     let raw = '';
-    while (j < headLine.length) {
-      const c = headLine[j] ?? '';
+    while (j < tellaskHead.length) {
+      const c = tellaskHead[j] ?? '';
       if (c !== '' && isValidMentionChar(c)) {
         raw += c;
         j += 1;

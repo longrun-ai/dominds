@@ -19,8 +19,8 @@ import {
 } from './task-package';
 
 /**
- * Format task document content for display in the LLM context.
- * Task Docs are encapsulated `*.tsk/` directories.
+ * Format Taskdoc content for display in the LLM context.
+ * Taskdocs are encapsulated `*.tsk/` directories.
  */
 export async function formatTaskDocContent(dlg: Dialog): Promise<ChatMessage> {
   const language = getWorkLanguage();
@@ -43,14 +43,14 @@ export async function formatTaskDocContent(dlg: Dialog): Promise<ChatMessage> {
   const workspaceRoot = path.resolve(process.cwd());
   const fullPath = path.resolve(workspaceRoot, taskDocPath);
 
-  // Security check - ensure path is within workspace
+  // Security check - ensure path is within rtws (runtime workspace)
   if (!fullPath.startsWith(workspaceRoot)) {
     const head =
       language === 'zh' ? `**差遣牒：** \`${taskDocPath}\`` : `**Taskdoc:** \`${taskDocPath}\``;
     const err =
       language === 'zh'
-        ? '❌ **错误：** 路径必须在 workspace 内'
-        : '❌ **Error:** Path must be within workspace';
+        ? '❌ **错误：** 路径必须位于 rtws（运行时工作区）内'
+        : '❌ **Error:** Path must be within rtws (runtime workspace)';
     return {
       type: 'environment_msg',
       role: 'user',
@@ -81,7 +81,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
       };
     }
 
-    // Task Docs (`*.tsk/`) are directory-based, but the content is still injected deterministically.
+    // Taskdocs (`*.tsk/`) are directory-based, but the content is still injected deterministically.
     // General file tools must NOT be used to access anything under `*.tsk/`.
 
     const pkg = await (async (): Promise<{
@@ -93,7 +93,7 @@ If you provided a regular file path (e.g. a \`.md\`), that is unexpected. Please
       try {
         const st = await fs.promises.stat(fullPath);
         if (!st.isDirectory()) {
-          throw new Error(`Task Doc path exists but is not a directory: '${taskDocPath}'`);
+          throw new Error(`Taskdoc path exists but is not a directory: '${taskDocPath}'`);
         }
         return await readTaskPackageForInjection(fullPath);
       } catch (err: unknown) {
@@ -389,7 +389,7 @@ ${effectiveDoc}
 
 ${footerLine}
 
-	Directive: Do not invoke any general file tools (\`read_file\`, \`overwrite_entire_file\`, \`prepare_file_range_edit\`, \`apply_file_modification\`, \`list_dir\`, \`rm_file\`, \`rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit task-doc actions.
+	Directive: Do not invoke any general file tools (\`read_file\`, \`overwrite_entire_file\`, \`prepare_file_range_edit\`, \`apply_file_modification\`, \`list_dir\`, \`rm_file\`, \`rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit Taskdoc actions.
 
 Note: This encapsulation rule is system-enforced and usually does not need to be duplicated in Taskdoc \`constraints\` (unless you want to emphasize it for human readers).`,
     };

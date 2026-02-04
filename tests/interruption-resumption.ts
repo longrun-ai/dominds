@@ -45,7 +45,7 @@ async function main(): Promise<void> {
       questions: [
         {
           id: 'q1',
-          headLine: 'Need input',
+          tellaskHead: 'Need input',
           bodyContent: 'Answer me',
           askedAt: new Date().toISOString(),
           callSiteRef: { course: 1, messageIndex: 0 },

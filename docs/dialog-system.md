@@ -192,7 +192,7 @@ Result:
 - This is an **unambiguous** syntax for self-tellasks and helps avoid accidental `@teammate`→`@teammate` self-tellasks caused by
   echoing/quoting prior call headlines.
 - **FBR itself should be common**, but the `!tellaskSession`-addressed variant should be rare. Prefer `!?@self` (TYPE C, transient)
-  for most FBR usage. Use `!?@self !tellaskSession ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
+  for most FBR usage. Use `!?@self !tellaskSession ...` only when you explicitly want a resumable, long-lived “fresh boots session”
   for a multi-step sub-problem.
 
 **Tellask Session Key Schema**: `<tellaskSession>` uses the same identifier schema as `<mention-id>`:
@@ -221,7 +221,7 @@ This makes Type B subdialogs reusable across multiple Tellask sites without losi
 
 **Tellask Context on Resume**:
 
-- On every TYPE B Tellask (new or resumed), the parent-provided `headLine`/`callBody`
+- On every TYPE B Tellask (new or resumed), the parent-provided `tellaskHead`/`tellaskBody`
   is appended to the subdialog as a new user message before the subdialog is driven.
   This ensures the subdialog receives the latest request context for each Tellask.
 - System-injected resume prompts are context only and are **not parsed** for teammate/tool Tellasks.
@@ -381,7 +381,7 @@ Q4H (Questions for Human) is the mechanism by which dialogs can suspend executio
  */
 interface HumanQuestion {
   readonly id: string; // Unique identifier (UUID) - matches message ID
-  readonly headLine: string; // Question headline/title
+  readonly tellaskHead: string; // Question headline/title
   readonly bodyContent: string; // Detailed question context
   readonly askedAt: string; // ISO timestamp
 }
@@ -433,12 +433,12 @@ const isQ4H = firstMention === 'human';
 // When !?@human is detected as a teammate Tellask
 async function recordQuestionForHuman(
   dlg: Dialog,
-  headLine: string,
+  tellaskHead: string,
   bodyContent: string,
 ): Promise<void> {
   const question: HumanQuestion = {
     id: generateDialogID(),
-    headLine,
+    tellaskHead,
     bodyContent,
     askedAt: formatUnifiedTimestamp(new Date()),
   };
@@ -588,7 +588,7 @@ flowchart TD
   N1 -.-> QN1[q4h.yaml (sub-001-001)]
 ```
 
-**Typical storage (paths are workspace-relative to the runtime workspace):**
+**Typical storage (paths are relative to rtws (runtime workspace)):**
 
 - `.dialogs/run/<root-id>/dialog.yaml`
 - `.dialogs/run/<root-id>/latest.yaml`
@@ -716,7 +716,7 @@ Invoke the function tool `change_mind` with:
 
 **Behavior**:
 
-- Updates the workspace Taskdoc content (exactly one section file in a `*.tsk/` Taskdoc package)
+- Updates the rtws (runtime workspace) Taskdoc content (exactly one section file in a `*.tsk/` Taskdoc package)
 - **Does not change the Taskdoc path.** `dlg.taskDocPath` is immutable for the dialog's entire lifecycle.
 - The updated file immediately becomes available to all dialogs referencing it
 - **Does not start a new dialog course.** If starting a new dialog course is desired, use `clear_mind` separately.
@@ -915,8 +915,8 @@ interface RegistryMethods {
 
 **Context Inheritance**: New subdialogs automatically receive:
 
-- Reference to the same workspace Taskdoc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
-- Supdialog Tellask context (headLine + callBody) explaining their purpose
+- Reference to the same rtws (runtime workspace) Taskdoc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
+- Supdialog Tellask context (tellaskHead + tellaskBody) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories
 
@@ -955,7 +955,7 @@ interface RegistryMethods {
 
 **Lateral Communication**: Sibling subdialogs coordinate through their shared supdialog.
 
-**Broadcast Communication**: Main dialog (root dialog) can communicate changes (like workspace Taskdoc file updates) to all dialogs through the Taskdoc reference.
+**Broadcast Communication**: Main dialog (root dialog) can communicate changes (like rtws Taskdoc file updates) to all dialogs through the Taskdoc reference.
 
 ---
 
@@ -973,7 +973,7 @@ interface RegistryMethods {
 
 **Subdialog Registry**: Root-dialog-scoped persistent mapping of registered subdialogs (survives clarity operations).
 
-### Workspace-Persistent Memory
+### rtws-Persistent Memory
 
 **Team-Shared Memories**: Persistent across the entire project lifecycle, shared by all agents.
 
@@ -981,7 +981,7 @@ interface RegistryMethods {
 
 ### Memory Synchronization
 
-**Taskdoc Propagation**: Changes to the workspace Taskdoc file are immediately visible to all dialogs that reference it.
+**Taskdoc Propagation**: Changes to the rtws Taskdoc file are immediately visible to all dialogs that reference it.
 
 **Memory Updates**: Team and agent memories are updated asynchronously and eventually consistent across all dialogs.
 
@@ -1006,9 +1006,9 @@ interface RegistryMethods {
 - `<dialog-root>/subdialogs/<subdialog-id>/dialog.yaml`
 - `<dialog-root>/subdialogs/<subdialog-id>/q4h.yaml` — per-subdialog Q4H index (cleared by clarity)
 
-**Taskdoc Storage**: Taskdocs are workspace artifacts referenced by dialogs through paths. Taskdocs MUST be encapsulated `*.tsk/` Taskdoc packages.
+**Taskdoc Storage**: Taskdocs are rtws artifacts referenced by dialogs through paths. Taskdocs MUST be encapsulated `*.tsk/` Taskdoc packages.
 
-**Memory Storage**: Team and agent memories are stored in dedicated files within the workspace.
+**Memory Storage**: Team and agent memories are stored in dedicated files within the rtws.
 
 **Registry Storage**: The subdialog registry (`registry.yaml`) is stored in the root dialog directory and moves to `done/` on root completion.
 

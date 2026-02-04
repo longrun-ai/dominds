@@ -16,7 +16,7 @@ import { generateShortId } from '../shared/utils/id.js';
 
 export interface Q4HQuestion {
   id: string;
-  headLine: string;
+  tellaskHead: string;
   bodyContent: string;
   askedAt: string;
   dialogContext: Q4HDialogContext;
@@ -212,7 +212,7 @@ export class DomindsQ4HInput extends HTMLElement {
             questionId,
             dialogId: question.dialogContext.selfId,
             rootId: question.dialogContext.rootId,
-            headLine: question.headLine,
+            tellaskHead: question.tellaskHead,
             bodyContent: question.bodyContent,
           },
           bubbles: true,

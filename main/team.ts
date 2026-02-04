@@ -1096,7 +1096,7 @@ export namespace Team {
 
   function isForbiddenBuiltinAllowListPattern(raw: string): boolean {
     const token = normalizePatternToken(raw);
-    // `.minds/**` is reserved workspace state: general file tools must not access it.
+    // `.minds/**` is reserved rtws state: general file tools must not access it.
     if (/(^|\/)\.minds(\/|$)/.test(token)) return true;
     // `*.tsk/**` is encapsulated Taskdoc state: general file tools must not access it.
     if (/\.tsk(\/|$)/.test(token)) return true;

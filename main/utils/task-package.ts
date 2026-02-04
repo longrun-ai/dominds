@@ -1,9 +1,9 @@
 /**
  * Module: utils/task-package
  *
- * Encapsulated Task Docs (`*.tsk/`).
+ * Encapsulated Taskdocs (`*.tsk/`).
  *
- * A Task Doc is a directory ending in `.tsk`. It *may* contain:
+ * A Taskdoc is a directory ending in `.tsk`. It *may* contain:
  * - goals.md
  * - constraints.md
  * - progress.md

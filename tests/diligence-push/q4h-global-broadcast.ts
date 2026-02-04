@@ -36,7 +36,7 @@ async function main(): Promise<void> {
       question: {
         id: 'q1',
         selfId: dlgId.selfId,
-        headLine: '@human',
+        tellaskHead: '@human',
         bodyContent: 'Please confirm.',
         askedAt: '2026-01-29 00:00:00',
         callSiteRef: { course: 1, messageIndex: 1 },

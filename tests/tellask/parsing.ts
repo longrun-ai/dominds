@@ -12,9 +12,9 @@ type RecordedEvent =
   | { type: 'callStart'; validation: TellaskCallValidation }
   | { type: 'callHeadLineChunk'; chunk: string }
   | { type: 'callHeadLineFinish' }
-  | { type: 'callBodyStart' }
-  | { type: 'callBodyChunk'; chunk: string }
-  | { type: 'callBodyFinish' }
+  | { type: 'tellaskBodyStart' }
+  | { type: 'tellaskBodyChunk'; chunk: string }
+  | { type: 'tellaskBodyFinish' }
   | { type: 'callFinish'; callId: string };
 
 type ExpectedEvent =
@@ -44,14 +44,14 @@ class MockTellaskEventsReceiver implements TellaskEventsReceiver {
     this.events.push({ type: 'callHeadLineFinish' });
   }
 
-  async callBodyStart(): Promise<void> {
-    this.events.push({ type: 'callBodyStart' });
+  async tellaskBodyStart(): Promise<void> {
+    this.events.push({ type: 'tellaskBodyStart' });
   }
-  async callBodyChunk(chunk: string): Promise<void> {
-    this.events.push({ type: 'callBodyChunk', chunk });
+  async tellaskBodyChunk(chunk: string): Promise<void> {
+    this.events.push({ type: 'tellaskBodyChunk', chunk });
   }
-  async callBodyFinish(): Promise<void> {
-    this.events.push({ type: 'callBodyFinish' });
+  async tellaskBodyFinish(): Promise<void> {
+    this.events.push({ type: 'tellaskBodyFinish' });
   }
 
   async callFinish(call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {
@@ -91,9 +91,9 @@ function canonicalizeEvents(events: RecordedEvent[]): RecordedEvent[] {
 
   const flushBody = (): void => {
     if (body === null) return;
-    out.push({ type: 'callBodyStart' });
-    if (body.length > 0) out.push({ type: 'callBodyChunk', chunk: body });
-    out.push({ type: 'callBodyFinish' });
+    out.push({ type: 'tellaskBodyStart' });
+    if (body.length > 0) out.push({ type: 'tellaskBodyChunk', chunk: body });
+    out.push({ type: 'tellaskBodyFinish' });
     body = null;
   };
 
@@ -123,14 +123,14 @@ function canonicalizeEvents(events: RecordedEvent[]): RecordedEvent[] {
         flushHeadline();
         break;
 
-      case 'callBodyStart':
+      case 'tellaskBodyStart':
         if (body === null) body = '';
         break;
-      case 'callBodyChunk':
+      case 'tellaskBodyChunk':
         if (body === null) body = '';
         body += ev.chunk;
         break;
-      case 'callBodyFinish':
+      case 'tellaskBodyFinish':
         flushBody();
         break;
 
@@ -209,9 +209,9 @@ async function main(): Promise<void> {
       { type: 'callStart', validation: { kind: 'valid', firstMention: 'pangu' } },
       { type: 'callHeadLineChunk', chunk: '@pangu do\n' },
       { type: 'callHeadLineFinish' },
-      { type: 'callBodyStart' },
-      { type: 'callBodyChunk', chunk: 'body 1\nbody 2\n' },
-      { type: 'callBodyFinish' },
+      { type: 'tellaskBodyStart' },
+      { type: 'tellaskBodyChunk', chunk: 'body 1\nbody 2\n' },
+      { type: 'tellaskBodyFinish' },
       { type: 'callFinish' },
       { type: 'markdownStart' },
       { type: 'markdownChunk', chunk: 'after\n' },
@@ -223,9 +223,9 @@ async function main(): Promise<void> {
     { type: 'callStart', validation: { kind: 'valid', firstMention: 'pangu' } },
     { type: 'callHeadLineChunk', chunk: '@pangu first\n@ more\n' },
     { type: 'callHeadLineFinish' },
-    { type: 'callBodyStart' },
-    { type: 'callBodyChunk', chunk: 'body\n' },
-    { type: 'callBodyFinish' },
+    { type: 'tellaskBodyStart' },
+    { type: 'tellaskBodyChunk', chunk: 'body\n' },
+    { type: 'tellaskBodyFinish' },
     { type: 'callFinish' },
   ]);
 
@@ -233,9 +233,9 @@ async function main(): Promise<void> {
     { type: 'callStart', validation: { kind: 'valid', firstMention: 'pangu' } },
     { type: 'callHeadLineChunk', chunk: '@pangu h\n' },
     { type: 'callHeadLineFinish' },
-    { type: 'callBodyStart' },
-    { type: 'callBodyChunk', chunk: 'b\n@still body\n' },
-    { type: 'callBodyFinish' },
+    { type: 'tellaskBodyStart' },
+    { type: 'tellaskBodyChunk', chunk: 'b\n@still body\n' },
+    { type: 'tellaskBodyFinish' },
     { type: 'callFinish' },
   ]);
 
@@ -243,9 +243,9 @@ async function main(): Promise<void> {
     { type: 'callStart', validation: { kind: 'malformed', reason: 'missing_mention_prefix' } },
     { type: 'callHeadLineChunk', chunk: 'hello\n' },
     { type: 'callHeadLineFinish' },
-    { type: 'callBodyStart' },
-    { type: 'callBodyChunk', chunk: 'body\n' },
-    { type: 'callBodyFinish' },
+    { type: 'tellaskBodyStart' },
+    { type: 'tellaskBodyChunk', chunk: 'body\n' },
+    { type: 'tellaskBodyFinish' },
     { type: 'callFinish' },
   ]);
 
@@ -253,9 +253,9 @@ async function main(): Promise<void> {
     { type: 'callStart', validation: { kind: 'malformed', reason: 'invalid_mention_id' } },
     { type: 'callHeadLineChunk', chunk: '@.\n' },
     { type: 'callHeadLineFinish' },
-    { type: 'callBodyStart' },
-    { type: 'callBodyChunk', chunk: 'body\n' },
-    { type: 'callBodyFinish' },
+    { type: 'tellaskBodyStart' },
+    { type: 'tellaskBodyChunk', chunk: 'body\n' },
+    { type: 'tellaskBodyFinish' },
     { type: 'callFinish' },
   ]);
 

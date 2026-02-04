@@ -183,7 +183,7 @@ Taskdoc Structure:
 ```
 Trigger: Complex technical decision needed
 Fresh Session:
-- Load task_doc + technical requirements
+- Load Taskdoc + technical requirements
 - Focus: "Analyze feasibility and recommend approach"
 - Output: Clear technical recommendation with reasoning
 ```
@@ -193,7 +193,7 @@ Fresh Session:
 ```
 Trigger: Need for new ideas or solutions
 Fresh Session:
-- Load task_doc + problem statement only
+- Load Taskdoc + problem statement only
 - Focus: "Generate innovative approaches without constraint bias"
 - Output: List of creative solutions with rationale
 ```
@@ -203,7 +203,7 @@ Fresh Session:
 ```
 Trigger: Need to validate current approach
 Fresh Session:
-- Load task_doc + current solution attempt
+- Load Taskdoc + current solution attempt
 - Focus: "Identify weaknesses and improvement opportunities"
 - Output: Critical analysis and recommendations
 ```
@@ -300,7 +300,7 @@ Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 **Levels of Freshness:**
 
 1. **Level 0**: Current agent state
-2. **Level 1**: Clean agent + task_doc (standard fresh boots)
+2. **Level 1**: Clean agent + Taskdoc (standard fresh boots)
 3. **Level 2**: Completely reset agent with only problem statement
 4. **Level 3**: New agent instance with different training focus
 
@@ -333,7 +333,7 @@ Agent: [Clean mental state + Taskdoc only] + Specific sub-problem
 ```
 
 Main Dialog (Root Dialog)
-├── Taskdoc Reference → tasks/feature-auth.tsk/ (Workspace Taskdoc package)
+├── Taskdoc Reference → tasks/feature-auth.tsk/ (rtws Taskdoc package)
 ├── Reminders (Working Memory)
 ├── Dialog Messages (Ephemeral)
 └── Subdialogs (Tree-Structured, Stored Flat Under Main Dialog)
@@ -353,7 +353,7 @@ Main Dialog (Root Dialog)
 
 **Key Properties**:
 
-- All dialogs reference the same workspace Taskdoc (a `*.tsk/` Taskdoc package, e.g. `tasks/feature-auth.tsk/`)
+- All dialogs reference the same rtws Taskdoc (a `*.tsk/` Taskdoc package, e.g. `tasks/feature-auth.tsk/`)
 - Multiple dialog trees can reference the same Taskdoc for collaborative work
 - Taskdocs persist beyond individual conversations and survive team changes
 - Subdialogs can be tree-structured with unlimited nesting depth
@@ -364,7 +364,7 @@ Main Dialog (Root Dialog)
 
 #### Dialog-Scoped Memory (Per Conversation)
 
-1. **Taskdoc Reference**: Points to a workspace Taskdoc tracking a specific DevOps assignment
+1. **Taskdoc Reference**: Points to an rtws Taskdoc tracking a specific DevOps assignment
    - `*.tsk/` Taskdoc packages (`goals.md`, `constraints.md`, `progress.md`)
    - Multiple dialogs can reference the same Taskdoc for collaborative work
    - Taskdocs persist throughout the entire product lifecycle, spanning multiple conversations and team changes
@@ -373,7 +373,7 @@ Main Dialog (Root Dialog)
 3. **Parent Call Context**: Inherited context for subdialogs
 4. **Dialog Messages**: Ephemeral, subject to cleanup for mental clarity
 
-#### Workspace-Persistent Memory (DevOps Lifecycle)
+#### rtws-Persistent Memory (DevOps Lifecycle)
 
 5. **Team-Shared Memories**: Persistent across the entire project lifecycle
    - **Mission Context**: Shared understanding of project goals and constraints
@@ -413,7 +413,7 @@ For detailed implementation specifications, including core tools, technical arch
 - **`change_mind`**: Function tool for updating authoritative Taskdocs across dialog hierarchies (no course reset)
 - **Reminder Management**: Dialog-scoped working memory that persists across clarity operations
 - **Hierarchical Dialog Architecture**: Tree-structured dialogs with flat storage and autonomous management
-- **Memory Layers**: Dialog-scoped and workspace-persistent memory with autonomous evolution
+- **Memory Layers**: Dialog-scoped and rtws-persistent memory with autonomous evolution
 
 The implementation emphasizes autonomous agent operation, enabling agents to independently manage their cognitive state, create and manage subdialogs, and coordinate with minimal human oversight.
 
@@ -550,38 +550,38 @@ dominds dialog start --taskdoc-path tasks/auth-system.tsk
 - Team members collaborate by updating the same Taskdoc (via `change_mind` operations)
 - Progress tracking persists across conversations
 - Requirements evolve through `change_mind` operations
-- Workspace hard rules:
+- rtws hard rules:
   - `*.tsk/**` is encapsulated Taskdoc state and is hard-denied for all general file tools.
-  - `.minds/**` is reserved workspace state (team config/memory/assets) and is hard-denied for all general file tools; manage it via dedicated tools like `team-mgmt`.
+  - `.minds/**` is reserved rtws state (team config/memory/assets) and is hard-denied for all general file tools; manage it via dedicated tools like `team-mgmt`.
 
 **Collaboration Example**:
 
 ```yaml
 # Dialog A (Backend specialist)
-task_document: "tasks/auth-system.tsk"
+taskdoc: "tasks/auth-system.tsk"
 focus: "JWT token service implementation"
 
 # Dialog B (Frontend specialist)
-task_document: "tasks/auth-system.tsk"
+taskdoc: "tasks/auth-system.tsk"
 focus: "Login UI integration"
 
 # Dialog C (DevOps specialist)
-task_document: "tasks/auth-system.tsk"
+taskdoc: "tasks/auth-system.tsk"
 focus: "Deployment and monitoring setup"
 ```
 
 **Long-term Evolution**:
 
 - Taskdocs survive team changes
-- Persist through workspace reorganizations
+- Persist through rtws reorganizations
 - Maintain history of requirements evolution
 - Support multiple parallel development efforts
 - Reference other evolving product documentation
 
-### Multi-Task Workspace Example
+### Multi-Task rtws Example
 
 ```
-workspace/
+rtws/
 ├── tasks/
 │   ├── auth-system.tsk/          # Authentication feature
 │   ├── payment-integration.tsk/  # Payment processing

@@ -41,9 +41,14 @@ type DiagEvent =
       upstreamChunkSize: number;
     }
   | { kind: 'callHeadLineFinish' }
-  | { kind: 'callBodyStart' }
-  | { kind: 'callBodyChunk'; chunk: string; upstreamChunkIndex: number; upstreamChunkSize: number }
-  | { kind: 'callBodyFinish' }
+  | { kind: 'tellaskBodyStart' }
+  | {
+      kind: 'tellaskBodyChunk';
+      chunk: string;
+      upstreamChunkIndex: number;
+      upstreamChunkSize: number;
+    }
+  | { kind: 'tellaskBodyFinish' }
   | { kind: 'callFinish'; callId: string };
 
 type TellaskSegment =
@@ -51,7 +56,7 @@ type TellaskSegment =
   | {
       kind: 'call';
       validation: TellaskCallValidation;
-      headLine: string;
+      tellaskHead: string;
       body: string;
       callId: string;
     };
@@ -188,14 +193,14 @@ class DiagTellaskReceiver implements TellaskEventsReceiver {
   async callHeadLineFinish(): Promise<void> {
     this.events.push({ kind: 'callHeadLineFinish' });
   }
-  async callBodyStart(): Promise<void> {
-    this.events.push({ kind: 'callBodyStart' });
+  async tellaskBodyStart(): Promise<void> {
+    this.events.push({ kind: 'tellaskBodyStart' });
   }
-  async callBodyChunk(chunk: string): Promise<void> {
-    this.events.push({ kind: 'callBodyChunk', chunk, ...this.upstreamCtx() });
+  async tellaskBodyChunk(chunk: string): Promise<void> {
+    this.events.push({ kind: 'tellaskBodyChunk', chunk, ...this.upstreamCtx() });
   }
-  async callBodyFinish(): Promise<void> {
-    this.events.push({ kind: 'callBodyFinish' });
+  async tellaskBodyFinish(): Promise<void> {
+    this.events.push({ kind: 'tellaskBodyFinish' });
   }
   async callFinish(call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {
     this.events.push({ kind: 'callFinish', callId: call.callId });
@@ -229,13 +234,13 @@ function segmentEqual(a: TellaskSegment, b: TellaskSegment): boolean {
       const bb = b as {
         kind: 'call';
         validation: TellaskCallValidation;
-        headLine: string;
+        tellaskHead: string;
         body: string;
         callId: string;
       };
       return (
         JSON.stringify(a.validation) === JSON.stringify(bb.validation) &&
-        a.headLine === bb.headLine &&
+        a.tellaskHead === bb.tellaskHead &&
         a.body === bb.body &&
         a.callId === bb.callId
       );
@@ -254,7 +259,7 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TellaskSegment[] {
   let currentCall: {
     kind: 'call';
     validation: TellaskCallValidation;
-    headLine: string;
+    tellaskHead: string;
     body: string;
     callId: string;
   } | null = null;
@@ -279,7 +284,7 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TellaskSegment[] {
         currentCall = {
           kind: 'call',
           validation: ev.validation,
-          headLine: '',
+          tellaskHead: '',
           body: '',
           callId: '',
         };
@@ -289,19 +294,19 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TellaskSegment[] {
           currentCall = {
             kind: 'call',
             validation: { kind: 'malformed', reason: 'missing_mention_prefix' },
-            headLine: '',
+            tellaskHead: '',
             body: '',
             callId: '',
           };
-        currentCall.headLine += ev.chunk;
+        currentCall.tellaskHead += ev.chunk;
         break;
       }
-      case 'callBodyChunk': {
+      case 'tellaskBodyChunk': {
         if (!currentCall)
           currentCall = {
             kind: 'call',
             validation: { kind: 'malformed', reason: 'missing_mention_prefix' },
-            headLine: '',
+            tellaskHead: '',
             body: '',
             callId: '',
           };
@@ -317,8 +322,8 @@ function eventsToSegments(events: ReadonlyArray<DiagEvent>): TellaskSegment[] {
         break;
 
       case 'callHeadLineFinish':
-      case 'callBodyStart':
-      case 'callBodyFinish':
+      case 'tellaskBodyStart':
+      case 'tellaskBodyFinish':
         break;
 
       default: {
@@ -340,7 +345,7 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
   let markdownActive = false;
   let callActive = false;
   let callHeadlineFinished = false;
-  let callBodyActive = false;
+  let tellaskBodyActive = false;
 
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
@@ -361,7 +366,7 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
         if (callActive) issues.push(`event[${i}]: callStart while callActive`);
         callActive = true;
         callHeadlineFinished = false;
-        callBodyActive = false;
+        tellaskBodyActive = false;
         break;
       case 'callHeadLineChunk':
         if (!callActive) issues.push(`event[${i}]: callHeadLineChunk without callStart`);
@@ -372,26 +377,28 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
         if (!callActive) issues.push(`event[${i}]: callHeadLineFinish without callStart`);
         callHeadlineFinished = true;
         break;
-      case 'callBodyStart':
-        if (!callActive) issues.push(`event[${i}]: callBodyStart without callStart`);
+      case 'tellaskBodyStart':
+        if (!callActive) issues.push(`event[${i}]: tellaskBodyStart without callStart`);
         if (!callHeadlineFinished)
-          issues.push(`event[${i}]: callBodyStart before callHeadLineFinish`);
-        if (callBodyActive) issues.push(`event[${i}]: callBodyStart while callBodyActive`);
-        callBodyActive = true;
+          issues.push(`event[${i}]: tellaskBodyStart before callHeadLineFinish`);
+        if (tellaskBodyActive) issues.push(`event[${i}]: tellaskBodyStart while tellaskBodyActive`);
+        tellaskBodyActive = true;
         break;
-      case 'callBodyChunk':
-        if (!callBodyActive) issues.push(`event[${i}]: callBodyChunk without callBodyStart`);
+      case 'tellaskBodyChunk':
+        if (!tellaskBodyActive)
+          issues.push(`event[${i}]: tellaskBodyChunk without tellaskBodyStart`);
         break;
-      case 'callBodyFinish':
-        if (!callBodyActive) issues.push(`event[${i}]: callBodyFinish without callBodyStart`);
-        callBodyActive = false;
+      case 'tellaskBodyFinish':
+        if (!tellaskBodyActive)
+          issues.push(`event[${i}]: tellaskBodyFinish without tellaskBodyStart`);
+        tellaskBodyActive = false;
         break;
       case 'callFinish':
         if (!callActive) issues.push(`event[${i}]: callFinish without callStart`);
-        if (callBodyActive) issues.push(`event[${i}]: callFinish while callBodyActive`);
+        if (tellaskBodyActive) issues.push(`event[${i}]: callFinish while tellaskBodyActive`);
         callActive = false;
         callHeadlineFinished = false;
-        callBodyActive = false;
+        tellaskBodyActive = false;
         break;
 
       default: {
@@ -405,7 +412,7 @@ function verifyEventSequence(events: ReadonlyArray<DiagEvent>): { ok: boolean; i
 
   if (markdownActive) issues.push(`end: markdownActive not finished`);
   if (callActive) issues.push(`end: callActive not finished`);
-  if (callBodyActive) issues.push(`end: callBodyActive not finished`);
+  if (tellaskBodyActive) issues.push(`end: tellaskBodyActive not finished`);
 
   return { ok: issues.length === 0, issues };
 }
@@ -557,7 +564,7 @@ function computeChunkingMetrics(
     if (
       ev.kind !== 'markdownChunk' &&
       ev.kind !== 'callHeadLineChunk' &&
-      ev.kind !== 'callBodyChunk'
+      ev.kind !== 'tellaskBodyChunk'
     ) {
       continue;
     }

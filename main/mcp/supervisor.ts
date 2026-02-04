@@ -323,13 +323,13 @@ export function startMcpSupervisor(): void {
   // so watcher setup must be resilient and re-attempted at runtime.
   void ensureMindsDirWatcher('startup');
 
-  // Watch workspace root for `.minds/` create/delete. This improves responsiveness when `.minds/`
+  // Watch rtws root for `.minds/` create/delete. This improves responsiveness when `.minds/`
   // appears/disappears without requiring a full polling interval.
   try {
     workspaceWatcher = fs.watch('.', { persistent: false }, (_event, filename) => {
       const name = filename ? filename.toString() : '';
       if (name !== '' && name !== path.dirname(MCP_YAML_PATH)) return;
-      void ensureMindsDirWatcher('workspace.watch');
+      void ensureMindsDirWatcher('rtws.watch');
     });
     workspaceWatcher.on('error', () => {
       if (workspaceWatcher) {
@@ -598,7 +598,7 @@ function upsertWorkspaceConfigProblem(errorText: string): void {
     id: 'mcp/workspace_config_error',
     severity: 'error',
     timestamp: formatUnifiedTimestamp(new Date()),
-    message: 'MCP workspace config error',
+    message: 'MCP rtws config error',
     detail: { filePath: MCP_YAML_PATH, errorText },
   });
 }
@@ -614,7 +614,7 @@ async function applyWorkspaceConfig(
   validServerIdsInYamlOrder: ReadonlyArray<string>,
   reason: string,
 ): Promise<void> {
-  log.info(`Applying MCP workspace config (${reason})`);
+  log.info(`Applying MCP rtws config (${reason})`);
 
   const invalidIds = new Set(invalidServers.map((s) => s.serverId));
   const desiredIds = new Set([...Object.keys(config.servers), ...invalidIds]);

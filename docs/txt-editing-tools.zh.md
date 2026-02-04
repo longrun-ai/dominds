@@ -262,5 +262,5 @@ Call the function tool `apply_file_modification` with:
 
 ## 11. 与 `.minds/` 的关系（team-mgmt 版本）
 
-`.minds/` 属于团队配置与工作区记忆的核心，通常应通过 `team-mgmt` toolset 的镜像工具操作（例如 `team_mgmt_prepare_file_insert_after` 等）。  
+`.minds/` 属于团队配置与 rtws（运行时工作区）记忆的核心，通常应通过 `team-mgmt` toolset 的镜像工具操作（例如 `team_mgmt_prepare_file_insert_after` 等）。  
 本设计文档的"prepare-first + 单 apply"心智模型保持一致，但路径与权限语义由 team-mgmt 工具包装层决定（详见 team-mgmt 文档/工具说明）。

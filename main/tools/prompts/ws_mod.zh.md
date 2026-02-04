@@ -1,6 +1,6 @@
 # ws_mod：文本编辑统一工作流（prepare-first + single apply）
 
-你拥有工作区读写能力，但**所有增量文本编辑必须先 prepare，再 apply**：先生成可复核的 diff/evidence + `hunk_id`，再显式确认写入。
+你拥有 rtws（运行时工作区）读写能力，但**所有增量文本编辑必须先 prepare，再 apply**：先生成可复核的 diff/evidence + `hunk_id`，再显式确认写入。
 
 ## 总原则
 

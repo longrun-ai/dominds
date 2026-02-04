@@ -17,9 +17,9 @@ class OutputCollectingReceiver implements TellaskEventsReceiver {
   async callStart(_validation: TellaskCallValidation): Promise<void> {}
   async callHeadLineChunk(_chunk: string): Promise<void> {}
   async callHeadLineFinish(): Promise<void> {}
-  async callBodyStart(): Promise<void> {}
-  async callBodyChunk(_chunk: string): Promise<void> {}
-  async callBodyFinish(): Promise<void> {}
+  async tellaskBodyStart(): Promise<void> {}
+  async tellaskBodyChunk(_chunk: string): Promise<void> {}
+  async tellaskBodyFinish(): Promise<void> {}
   async callFinish(_call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {}
 }
 

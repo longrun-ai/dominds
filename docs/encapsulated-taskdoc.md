@@ -24,7 +24,7 @@ with a stable schema and a strict access policy.
 - **Dialog tree**: a root dialog plus any subdialogs/teammates spawned under it.
 - **Taskdoc package**: a directory ending in `.tsk/` that stores the Taskdoc as multiple files.
 - **Taskdoc (effective)**: the logical Taskdoc content presented to the agent, derived from the Taskdoc package.
-- **Encapsulation**: treating `.tsk/` as protected internal state, not general workspace files.
+- **Encapsulation**: treating `.tsk/` as protected internal state, not general rtws (runtime workspace) files.
 
 ## Taskdoc Package Structure
 
@@ -95,7 +95,7 @@ The runtime MAY store additional files inside the Taskdoc package for internal n
 
 Design constraints:
 
-- These files MUST NOT be treated as normal workspace files.
+- These files MUST NOT be treated as normal rtws files.
 - They MUST NOT be editable via normal file tools.
 - If any are user-visible, they MUST be surfaced via explicit UI affordances rather than raw file reads.
 
@@ -299,7 +299,7 @@ The system prompt (and any tool documentation shown to agents) MUST explicitly s
 
 Dominds SHOULD standardize on `*.tsk/` Taskdoc packages as the **only** supported Taskdoc storage format.
 
-If a workspace previously used single-file `.md` Taskdocs, they MUST be migrated to `*.tsk/` packages before running new dialogs.
+If an rtws previously used single-file `.md` Taskdocs, they MUST be migrated to `*.tsk/` packages before running new dialogs.
 
 ## Security & Integrity Notes
 
@@ -309,5 +309,5 @@ If a workspace previously used single-file `.md` Taskdocs, they MUST be migrated
 
 ## Open Questions
 
-- Where should the Taskdoc package live by default (under dialog persistence, next to the initiating entrypoint, or a dedicated workspace dir)?
+- Where should the Taskdoc package live by default (under dialog persistence, next to the initiating entrypoint, or a dedicated rtws dir)?
 - Should `change_mind` allow explicitly setting an empty section body (for intentional clearing)?

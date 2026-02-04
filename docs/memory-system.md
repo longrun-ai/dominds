@@ -43,7 +43,7 @@ Related vocabulary guide: `dominds/docs/dominds-terminology.md`.
 - Always meant to be small enough to read every turn.
 - Edited only via `change_mind({ selector, category?, content })` (only available in the main dialog; subdialogs must ask the Taskdoc maintainer agent to update — the maintainer @id is printed in the injected Taskdoc status block).
 - Extra Taskdoc sections (non-auto-injected) can be read via `recall_taskdoc({ category, selector })`.
-- **Shared across teammates** (within the same workspace/taskdoc): every teammate/subdialog sees the same Taskdoc (`goals` / `constraints` / `progress`).
+- **Shared across teammates** (within the same rtws/taskdoc): every teammate/subdialog sees the same Taskdoc (`goals` / `constraints` / `progress`).
 
 **Shared editing rules (important)**:
 
@@ -110,25 +110,25 @@ Reminders are the best place for **details that are worth paying prompt tokens f
 
 ### 3) Personal memory — Stable personal habits + responsibility index
 
-**Purpose**: durable “how I work” knowledge for a specific agent persona, plus a compact responsibility-area “workspace index” so you can act without re-reading files.
+**Purpose**: durable “how I work” knowledge for a specific agent persona, plus a compact responsibility-area **rtws index** so you can act without re-reading files.
 
 Use it for:
 
 - personal conventions,
 - heuristics,
 - stable preferences.
-- a **responsibility-area workspace index**: exact file paths (docs and/or code) you own, plus minimal key facts (entrypoints, key symbols, local contracts) that let you directly propose and apply edits without re-reading the workspace.
+- a **responsibility-area rtws index**: exact file paths (docs and/or code) you own, plus minimal key facts (entrypoints, key symbols, local contracts) that let you directly propose and apply edits without re-reading the rtws.
 
 Do **not** use it for:
 
 - per-task state,
-- per-workspace facts that should be shared,
+- per-rtws facts that should be shared,
 - transient tool outputs.
 
 **Accuracy contract (important)**:
 
-- Treat your responsibility-area workspace index as a curated “single source of truth” for your scope.
-- Whenever you change relevant files or detect staleness/conflicts, immediately update personal memory (`replace_memory`) so it tracks the latest workspace facts.
+- Treat your responsibility-area rtws index as a curated “single source of truth” for your scope.
+- Whenever you change relevant files or detect staleness/conflicts, immediately update personal memory (`replace_memory`) so it tracks the latest rtws facts.
 
 Tools:
 
@@ -160,7 +160,7 @@ Function tool call results and long file reads can be huge. They are useful to d
 - Taskdoc `progress` (decision + next steps), and/or
 - a reminder item (detailed but curated), and/or
 - team memory (only if it’s truly stable), and/or
-- personal memory (habits/preferences, plus your responsibility-area workspace index that you keep accurate).
+- personal memory (habits/preferences, plus your responsibility-area rtws index that you keep accurate).
 
 Never rely on “I read it earlier” as a durable assumption.
 

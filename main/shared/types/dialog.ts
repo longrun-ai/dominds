@@ -43,8 +43,8 @@ export interface SubdialogEvent extends DialogEventBase {
     rootId: string;
   };
   targetAgentId: string;
-  headLine: string;
-  callBody: string;
+  tellaskHead: string;
+  tellaskBody: string;
   genseq?: number;
 }
 
@@ -161,7 +161,7 @@ export interface TeammateCallResponseEvent {
   course: number;
   calling_genseq?: number;
   responderId: string;
-  headLine: string;
+  tellaskHead: string;
   status: 'completed' | 'failed';
   result: string;
   callId: string; // Content-hash for replay correlation
@@ -185,7 +185,7 @@ export interface TeammateResponseEvent {
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-  headLine: string;
+  tellaskHead: string;
   status: 'completed' | 'failed';
   result: string;
   response: string; // full subdialog response text (no truncation)
@@ -217,7 +217,7 @@ export interface NewQ4HAskedEvent {
   question: {
     id: string;
     selfId: string;
-    headLine: string;
+    tellaskHead: string;
     bodyContent: string;
     askedAt: string;
     callSiteRef: {

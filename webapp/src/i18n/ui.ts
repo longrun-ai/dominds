@@ -353,18 +353,18 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
 
       keepGoingTabTitle: '鞭策',
-      keepGoingWorkspaceNote: '注意：修改鞭策语是全工作区（rtws）生效！',
+      keepGoingWorkspaceNote: '注意：修改鞭策语会影响整个 rtws（运行时工作区）！',
       keepGoingToggleAriaLabel: '启用鞭策（取消勾选=禁用）',
       keepGoingReloadTitle: '加载最新鞭策语',
-      keepGoingSaveTitle: '保存到工作区',
-      keepGoingResetTitle: '重置为内置鞭策语（删除工作区鞭策语文件）',
-      keepGoingOverwriteConfirm: '将覆盖工作区鞭策语，确认保存？',
-      keepGoingResetConfirm: '将删除工作区鞭策语文件，并恢复为系统内置鞭策语。确认重置？',
+      keepGoingSaveTitle: '保存到运行时工作区',
+      keepGoingResetTitle: '重置为内置鞭策语（删除运行时工作区鞭策语文件）',
+      keepGoingOverwriteConfirm: '将覆盖运行时工作区鞭策语，确认保存？',
+      keepGoingResetConfirm: '将删除运行时工作区鞭策语文件，并恢复为系统内置鞭策语。确认重置？',
       keepGoingResetConfirmDirty:
-        '你有未保存的修改。将删除工作区鞭策语文件并丢弃未保存的修改。确认重置？',
+        '你有未保存的修改。将删除运行时工作区鞭策语文件并丢弃未保存的修改。确认重置？',
       keepGoingResetToast: '已重置为内置鞭策语。',
       keepGoingResetFailedToast: '重置鞭策语失败',
-      keepGoingSaveToast: '已保存到工作区。',
+      keepGoingSaveToast: '已保存到运行时工作区。',
       keepGoingSaveFailedToast: '保存鞭策语失败',
       keepGoingLanguageChangedDirtyToast:
         '界面语言已切换：当前鞭策内容有未保存修改，已跳过自动重载以免覆盖。请先保存或重置后再切换以刷新内容。',
@@ -380,7 +380,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       teamMgmtLoadFailed: '加载团队管理手册失败',
 
       promptTemplatesBuiltinTitle: '内置模板',
-      promptTemplatesWorkspaceTitle: '工作区模板（.minds/snippets/）',
+      promptTemplatesWorkspaceTitle: '运行时工作区模板（.minds/snippets/）',
       promptTemplatesInsert: '插入',
       promptTemplatesNewTitle: '新增模板',
       promptTemplatesEditorTitle: '预览/编辑',
@@ -507,9 +507,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupReqMissingProviderEnv: '缺少环境变量：',
       setupReqOk: '提供商/模型与环境变量已就绪。',
 
-      setupWorkspaceLlmTitle: '工作区自定义 LLM 提供商',
+      setupWorkspaceLlmTitle: '运行时工作区自定义 LLM 提供商',
       setupWorkspaceLlmHelp:
-        '用于为当前工作区新增/覆盖 providers（例如接入小米大模型平台）。写入后点刷新以重新计算 Providers 列表。',
+        '用于为当前运行时工作区新增/覆盖 providers（例如接入小米大模型平台）。写入后点刷新以重新计算 Providers 列表。',
       setupWriteWorkspaceLlmYaml: '写入 llm.yaml',
       setupOverwriteWorkspaceLlmYaml: '覆盖 llm.yaml',
       setupWorkspaceLlmTextareaPlaceholder:
@@ -571,10 +571,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     createNewDialogTitle: 'Create New Dialog',
     cancel: 'Cancel',
     createDialog: 'Create Dialog',
-    taskDocumentLabel: 'Task Doc:',
-    taskDocumentPlaceholder: 'Type to search Task Docs (*.tsk required)...',
+    taskDocumentLabel: 'Taskdoc:',
+    taskDocumentPlaceholder: 'Type to search Taskdocs (*.tsk required)...',
     taskDocumentHelp:
-      'Select from existing Task Docs or enter a custom path. Required format: `*.tsk/` (encapsulated Task Docs). Tab completes common prefix; Enter selects highlighted item.',
+      'Select from existing Taskdocs or enter a custom path. Required format: `*.tsk/` (encapsulated Taskdocs). Tab completes common prefix; Enter selects highlighted item.',
     teammateLabel: 'Teammate:',
     shadowMembersOption: 'Shadow Members…',
     shadowMembersLabel: 'Shadow Members:',
@@ -621,20 +621,20 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
     keepGoingTabTitle: 'Diligence Push',
     keepGoingWorkspaceNote:
-      'Note: editing the Diligence Push prompt affects the entire workspace (rtws)!',
+      'Note: editing the Diligence Push prompt affects the entire rtws (runtime workspace)!',
     keepGoingToggleAriaLabel: 'Enable Diligence Push (uncheck to disable)',
     keepGoingReloadTitle: 'Load latest Diligence Push prompt',
-    keepGoingSaveTitle: 'Save to workspace',
-    keepGoingResetTitle: 'Reset to built-in Diligence Push prompt (delete workspace file)',
+    keepGoingSaveTitle: 'Save to rtws',
+    keepGoingResetTitle: 'Reset to built-in Diligence Push prompt (delete rtws file)',
     keepGoingOverwriteConfirm:
-      'This will overwrite the workspace Diligence Push prompt. Save anyway?',
+      'This will overwrite the rtws Diligence Push prompt. Save anyway?',
     keepGoingResetConfirm:
-      'This will delete the workspace Diligence Push prompt file and restore the built-in Diligence Push prompt. Reset anyway?',
+      'This will delete the rtws Diligence Push prompt file and restore the built-in Diligence Push prompt. Reset anyway?',
     keepGoingResetConfirmDirty:
-      'You have unsaved changes. This will delete the workspace Diligence Push prompt file and discard your edits. Reset anyway?',
+      'You have unsaved changes. This will delete the rtws Diligence Push prompt file and discard your edits. Reset anyway?',
     keepGoingResetToast: 'Reset to the built-in Diligence Push prompt.',
     keepGoingResetFailedToast: 'Failed to reset Diligence Push prompt',
-    keepGoingSaveToast: 'Saved to workspace.',
+    keepGoingSaveToast: 'Saved to rtws.',
     keepGoingSaveFailedToast: 'Failed to save Diligence Push prompt',
     keepGoingLanguageChangedDirtyToast:
       'UI language changed: the Diligence prompt has unsaved edits, so auto-reload was skipped to avoid overwriting. Save or reset, then switch again to refresh.',
@@ -650,7 +650,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     teamMgmtLoadFailed: 'Failed to load team manual',
 
     promptTemplatesBuiltinTitle: 'Built-in Templates',
-    promptTemplatesWorkspaceTitle: 'Workspace Templates (.minds/snippets/)',
+    promptTemplatesWorkspaceTitle: 'rtws Templates (.minds/snippets/)',
     promptTemplatesInsert: 'Insert',
     promptTemplatesNewTitle: 'New Template',
     promptTemplatesEditorTitle: 'Preview/Edit',
@@ -780,9 +780,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupReqMissingProviderEnv: 'Missing env var: ',
     setupReqOk: 'Team provider/model and provider env var look configured.',
 
-    setupWorkspaceLlmTitle: 'Workspace custom LLM providers',
+    setupWorkspaceLlmTitle: 'rtws custom LLM providers',
     setupWorkspaceLlmHelp:
-      'Add/override providers for this workspace (e.g. Xiaomi MiMo). After writing, click Refresh to recompute the Providers list.',
+      'Add/override providers for this rtws (runtime workspace) (e.g. Xiaomi MiMo). After writing, click Refresh to recompute the Providers list.',
     setupWriteWorkspaceLlmYaml: 'Write llm.yaml',
     setupOverwriteWorkspaceLlmYaml: 'Overwrite llm.yaml',
     setupWorkspaceLlmTextareaPlaceholder:

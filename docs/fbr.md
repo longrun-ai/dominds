@@ -3,7 +3,8 @@
 ## Summary
 
 Fresh Boots Reasoning (FBR) is a common Dominds pattern: the agent tellasks itself (`!?@self`) to create a short-lived
-sideline dialog that thinks “from scratch” on a bounded sub-problem, then reports back to the caller.
+sideline dialog that reasons from first principles on a bounded sub-problem **without relying on existing dialog
+history**, then reports back to the caller.
 
 This document specifies **enhancements** to the `@self`-initiated FBR flow:
 
@@ -30,7 +31,7 @@ This document specifies **enhancements** to the `@self`-initiated FBR flow:
 
 ## Definitions
 
-- **FBR**: Fresh Boots Reasoning (扪心自问) — reasoning from first principles without relying on prior context.
+- **FBR**: Fresh Boots Reasoning (扪心自问) — reasoning from first principles without relying on existing dialog history.
 - **Tellask**: a structured request (`!?@...`) issued by a dialog to another dialog/teammate (including `@self`).
 - **tellasker / tellaskee**: requester / responder roles for a Tellask.
 - **Mainline dialog / sideline dialog**: user-facing terms for the primary thread and its temporary work threads.
@@ -60,7 +61,7 @@ When the runtime drives an FBR sideline dialog created by `!?@self`, it MUST enf
   - the tellaskee MUST NOT assume access to the tellasker’s mainline/sideline dialog history
   - the tellaskee MUST treat the tellask body as the primary, authoritative task context
   - if using the resumable `!tellaskSession` form, the tellaskee MAY use its own prior `tellaskSession` history as explicit context
-  - the tellaskee MUST NOT use tools to read files, browse, run shell commands, or fetch Memory/workspace state
+  - the tellaskee MUST NOT use tools to read files, browse, run shell commands, or fetch Memory/rtws (runtime workspace) state
 
 In practice, treat the tellaskee as “fresh relative to the caller thread”: it does not get the tellasker’s accumulated
 dialog history. It may still receive baseline, unconditionally injected context (persona/system policy, safety rules,
@@ -86,7 +87,7 @@ The tool-less requirement is not just “prompt text”. The runtime MUST enforc
 The FBR sideline dialog’s system prompt MUST clearly state:
 
 - You have **no tools** and cannot call tools.
-- You have **no direct workspace / files / browser / shell** access (tool calling is disabled).
+- You have **no direct rtws (runtime workspace) / files / browser / shell** access (tool calling is disabled).
 - The tellask body is the **primary task context**; do not assume any caller-thread history is available.
 - If this is a resumable `!tellaskSession` FBR, you may use your own prior `tellaskSession` history as explicit context.
 - If the tellask body is missing critical context, respond by listing what is missing and why it blocks reasoning.
@@ -119,7 +120,7 @@ Recommended structure (not rigidly required):
 
 ## Configuration: `.minds/team.yaml` additions
 
-Both additions are **per-teammate** and MAY also be placed under `member_defaults` to set workspace-wide defaults.
+Both additions are **per-teammate** and MAY also be placed under `member_defaults` to set rtws-wide defaults.
 
 ### `fbr-effort` (default: `1`)
 

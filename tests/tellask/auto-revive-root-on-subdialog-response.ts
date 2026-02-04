@@ -57,9 +57,9 @@ class NoopTellaskReceiver implements TellaskEventsReceiver {
   async callStart(_validation: TellaskCallValidation): Promise<void> {}
   async callHeadLineChunk(_chunk: string): Promise<void> {}
   async callHeadLineFinish(): Promise<void> {}
-  async callBodyStart(): Promise<void> {}
-  async callBodyChunk(_chunk: string): Promise<void> {}
-  async callBodyFinish(): Promise<void> {}
+  async tellaskBodyStart(): Promise<void> {}
+  async tellaskBodyChunk(_chunk: string): Promise<void> {}
+  async tellaskBodyFinish(): Promise<void> {}
   async callFinish(_call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {}
 }
 
@@ -131,14 +131,14 @@ async function main(): Promise<void> {
     ].join('\n');
 
     const parsed = await parseSingleTellaskCall(rootFirstResponse);
-    const headLine = parsed.headLine;
-    const callBody = parsed.body;
+    const tellaskHead = parsed.tellaskHead;
+    const tellaskBody = parsed.body;
 
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'tester',
       toAgentId: 'pangu',
-      headLine,
-      callBody,
+      tellaskHead,
+      tellaskBody,
       language,
       collectiveTargets: ['pangu'],
     });
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
     const expectedInjected = formatTeammateResponseContent({
       responderId: 'pangu',
       requesterId: 'tester',
-      originalCallHeadLine: headLine,
+      originalCallHeadLine: tellaskHead,
       responseBody: subdialogResponseText,
       language,
     });

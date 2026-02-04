@@ -50,7 +50,7 @@
   - `Authorization: Bearer <auth-key>`
 
 - "API 请求"包括：
-  - 改变或显示工作区/对话状态的 HTTP 端点
+  - 改变或显示 rtws（运行时工作区）/对话状态的 HTTP 端点
   - WebUI 用于实时更新的 WebSocket 连接
 
 实现说明（WebUI）：浏览器在 WebSocket 握手期间无法附加自定义 `Authorization` 头。因此，Dominds WebUI 通过 `Sec-WebSocket-Protocol` 传输认证密钥，作为形式为 `dominds-auth.<auth-key>`（纯文本）的子协议，服务器接受任一机制。
