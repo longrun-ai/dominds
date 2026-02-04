@@ -5,6 +5,7 @@ import { DialogID, type Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
+import { getWorkLanguage } from '../shared/runtime-language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import type { FuncResultContentItem } from '../shared/types/storage';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -76,10 +77,21 @@ function ensureLeaseReminder(dlg: Dialog, serverId: string): void {
   }
 
   const owner = getReminderOwner('mcpLease');
+  const workLanguage = getWorkLanguage();
   const content =
-    `MCP toolset leased: ${serverId}\n\n` +
-    `This MCP server is treated as non-stateless. When you are confident you won't need it again soon, release it:\n` +
-    `mcp_release({"serverId":"${serverId}"})`;
+    workLanguage === 'zh'
+      ? [
+          `已租用 MCP 工具集：${serverId}`,
+          '',
+          '该 MCP server 被视为非“真正无状态”。当你确认短期内不再需要它时，请释放以回收底层进程/连接：',
+          `mcp_release({"serverId":"${serverId}"})`,
+        ].join('\n')
+      : [
+          `MCP toolset leased: ${serverId}`,
+          '',
+          `This MCP server is treated as non-stateless. When you are confident you won't need it again soon, release it:`,
+          `mcp_release({"serverId":"${serverId}"})`,
+        ].join('\n');
   dlg.addReminder(content, owner, makeLeaseReminderMeta(serverId));
 }
 
