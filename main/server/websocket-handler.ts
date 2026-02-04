@@ -261,6 +261,8 @@ async function handleDeclareSubdialogDead(
   packet: DeclareSubdialogDeadRequest,
 ): Promise<void> {
   const dialog = packet.dialog;
+  const noteRaw = typeof packet.note === 'string' ? packet.note : '';
+  const note = noteRaw.trim();
   if (!dialog || typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
     ws.send(
       JSON.stringify({
@@ -330,11 +332,17 @@ async function handleDeclareSubdialogDead(
     getWorkLanguage() === 'zh'
       ? `系统反馈：支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。该支线对话不会再回复。`
       : `System notice: sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). This sideline dialog will not reply further.`;
+  const responseTextWithNote =
+    note === ''
+      ? responseText
+      : getWorkLanguage() === 'zh'
+        ? `${responseText}\n\n使用者补充（来自输入框）：\n${note}`
+        : `${responseText}\n\nUser note (from the input box):\n${note}`;
 
   await supplyResponseToSupdialog(
     parentDialog,
     dialogIdObj,
-    responseText,
+    responseTextWithNote,
     pendingRecord.callType,
     metadata.assignmentFromSup.callId,
     'failed',

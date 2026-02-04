@@ -56,7 +56,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private textInput!: HTMLTextAreaElement;
   private sendButton!: HTMLButtonElement;
-  private declareDeadButton!: HTMLButtonElement;
+  private declareDeathButton!: HTMLButtonElement;
   private inputWrapper!: HTMLElement;
 
   private resizeHandle!: HTMLDivElement;
@@ -170,6 +170,12 @@ export class DomindsQ4HInput extends HTMLElement {
     }
 
     this.applyPrimaryActionMode();
+
+    if (this.declareDeathButton) {
+      this.declareDeathButton.textContent = t.declareDeath;
+      this.declareDeathButton.title = t.declareDeath;
+      this.declareDeathButton.setAttribute('aria-label', t.declareDeath);
+    }
   }
 
   public setQuestions(questions: Q4HQuestion[]): void {
@@ -518,9 +524,9 @@ export class DomindsQ4HInput extends HTMLElement {
       });
     }
 
-    if (this.declareDeadButton) {
-      this.declareDeadButton.addEventListener('click', () => {
-        void this.handleDeclareDead();
+    if (this.declareDeathButton) {
+      this.declareDeathButton.addEventListener('click', () => {
+        void this.handleDeclareDeath();
       });
     }
 
@@ -587,7 +593,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.wsManager.sendRaw({ type: 'interrupt_dialog', dialog: this.currentDialog });
   }
 
-  private async requestDeclareDead(): Promise<void> {
+  private async requestDeclareDeath(): Promise<void> {
     const dialog = this.currentDialog;
     if (!dialog) {
       throw new Error('No active dialog');
@@ -603,9 +609,10 @@ export class DomindsQ4HInput extends HTMLElement {
       throw new Error('Input is disabled');
     }
     const t = getUiStrings(this.uiLanguage);
-    const ok = window.confirm(t.declareDeadConfirm);
+    const ok = window.confirm(t.declareDeathConfirm);
     if (!ok) return;
-    this.wsManager.sendRaw({ type: 'declare_subdialog_dead', dialog });
+    const note = this.textInput ? this.textInput.value : '';
+    this.wsManager.sendRaw({ type: 'declare_subdialog_dead', dialog, note });
   }
 
   private async handlePrimaryAction(): Promise<void> {
@@ -626,9 +633,9 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  private async handleDeclareDead(): Promise<void> {
+  private async handleDeclareDeath(): Promise<void> {
     try {
-      await this.requestDeclareDead();
+      await this.requestDeclareDeath();
     } catch (error: unknown) {
       console.error('Declare dead failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Action failed';
@@ -734,13 +741,18 @@ export class DomindsQ4HInput extends HTMLElement {
     this.textInput.disabled = shouldDisable;
     this.updateSendButton();
 
-    if (this.declareDeadButton) {
+    if (this.declareDeathButton) {
       const dialog = this.currentDialog;
       const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
       const state = this.runState;
       const shouldShow = isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
-      this.declareDeadButton.hidden = !shouldShow;
-      this.declareDeadButton.disabled = this.props.disabled || dialog === null;
+      this.declareDeathButton.hidden = !shouldShow;
+      this.declareDeathButton.disabled = this.props.disabled || dialog === null;
+
+      const t = getUiStrings(this.uiLanguage);
+      this.declareDeathButton.textContent = t.declareDeath;
+      this.declareDeathButton.title = t.declareDeath;
+      this.declareDeathButton.setAttribute('aria-label', t.declareDeath);
     }
   }
 
@@ -757,7 +769,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
     this.textInput = this.shadowRoot.querySelector('.message-input')!;
     this.sendButton = this.shadowRoot.querySelector('.send-button')!;
-    this.declareDeadButton = this.shadowRoot.querySelector('.declare-dead-button')!;
+    this.declareDeathButton = this.shadowRoot.querySelector('.declare-death-button')!;
     this.inputWrapper = this.shadowRoot.querySelector('.input-wrapper')!;
     this.resizeHandle = this.shadowRoot.querySelector('.input-resize-handle')!;
   }
@@ -773,7 +785,7 @@ export class DomindsQ4HInput extends HTMLElement {
     const dialog = this.currentDialog;
     const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
     const isDead = state !== null && state.kind === 'dead';
-    const showDeclareDead =
+    const showDeclareDeath =
       isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
 
     return `
@@ -810,12 +822,12 @@ export class DomindsQ4HInput extends HTMLElement {
                 }
               </button>
               <button
-                class="declare-dead-button"
+                class="declare-death-button"
                 type="button"
-                title="${t.declareDead}"
-                aria-label="${t.declareDead}"
-                ${showDeclareDead ? '' : 'hidden'}
-              >${t.declareDead}</button>
+                title="${t.declareDeath}"
+                aria-label="${t.declareDeath}"
+                ${showDeclareDeath ? '' : 'hidden'}
+              >${t.declareDeath}</button>
             </div>
           </div>
         </div>
@@ -833,6 +845,10 @@ export class DomindsQ4HInput extends HTMLElement {
         max-height: 50vh;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         color-scheme: inherit;
+      }
+
+      [hidden] {
+        display: none !important;
       }
 
       .q4h-input-container {
@@ -914,7 +930,7 @@ export class DomindsQ4HInput extends HTMLElement {
         padding-bottom: 8px;
       }
 
-      .declare-dead-button {
+      .declare-death-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -929,11 +945,11 @@ export class DomindsQ4HInput extends HTMLElement {
         user-select: none;
       }
 
-      .declare-dead-button:hover:not(:disabled) {
+      .declare-death-button:hover:not(:disabled) {
         background: rgba(220, 53, 69, 0.08);
       }
 
-      .declare-dead-button:disabled {
+      .declare-death-button:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }

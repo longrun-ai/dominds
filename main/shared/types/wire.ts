@@ -165,6 +165,7 @@ export interface ResumeAllRequest {
 export interface DeclareSubdialogDeadRequest {
   type: 'declare_subdialog_dead';
   dialog: DialogIdent;
+  note?: string;
 }
 
 export interface DisplayRemindersRequest {

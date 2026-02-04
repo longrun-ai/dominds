@@ -80,8 +80,8 @@ export type UiStrings = {
 
   readOnlyDialogInputDisabled: string;
   deadDialogInputDisabled: string;
-  declareDead: string;
-  declareDeadConfirm: string;
+  declareDeath: string;
+  declareDeathConfirm: string;
 
   q4hNoPending: string;
   q4hPendingQuestions: string;
@@ -340,8 +340,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
       readOnlyDialogInputDisabled: '此对话已完成或已归档，输入已禁用。',
       deadDialogInputDisabled: '此支线对话已宣布卡死（不可逆），输入已禁用。',
-      declareDead: '宣布卡死',
-      declareDeadConfirm:
+      declareDeath: '宣布卡死',
+      declareDeathConfirm:
         '宣布此支线对话“卡死”？此操作不可逆转；诉请方对话将收到系统反馈并不再等待该支线对话。',
 
       q4hNoPending: '暂无待处理问题',
@@ -606,8 +606,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     readOnlyDialogInputDisabled: 'This dialog is done or archived; input is disabled.',
     deadDialogInputDisabled:
       'This sideline dialog has been declared dead (irreversible); input is disabled.',
-    declareDead: 'Declare Death',
-    declareDeadConfirm:
+    declareDeath: 'Declare Death',
+    declareDeathConfirm:
       'Declare this sideline dialog as “dead”? This is irreversible; the upstream/requesting dialog will receive a system notice and stop waiting for it.',
 
     q4hNoPending: 'No pending questions',
