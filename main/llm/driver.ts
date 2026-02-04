@@ -2810,7 +2810,7 @@ export function parseTeammateTellask(
   // Fresh Boots Reasoning (FBR) syntax sugar:
   // `@self` always targets the current dialog's agentId (same persona/config).
   //
-  // This avoids ambiguous `@teammate`-to-`@teammate` self-calls which can also be produced accidentally
+  // This avoids ambiguous `@teammate`-to-`@teammate` self-tellasks which can also be produced accidentally
   // by echoing/quoting an assignment headline. We keep parsing behavior the same for all other
   // mentions.
   if (firstMention === 'self') {
@@ -3663,7 +3663,7 @@ async function executeTellaskCall(
       : parseTeammateTellask(firstMention, headLine, dlg);
 
     // If the agent calls itself via `@<agentId>` (instead of `@self`), allow it to proceed
-    // (self-calls are useful for FBR), but emit a correction bubble so the user can distinguish
+    // (self-tellasks are useful for FBR), but emit a correction bubble so the user can distinguish
     // intentional self-FBR from accidental echo/quote triggers.
 
     const isDirectSelfCall =
@@ -3678,7 +3678,7 @@ async function executeTellaskCall(
           originMemberId: dlg.agentId,
         });
       } catch (err) {
-        log.warn('Failed to emit self-call correction response', err, {
+        log.warn('Failed to emit self-tellask correction response', err, {
           dialogId: dlg.id.selfId,
           agentId: dlg.agentId,
         });

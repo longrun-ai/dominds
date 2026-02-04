@@ -194,13 +194,13 @@ export function formatDomindsNoteTellaskerNoTellaskSession(language: LanguageCod
 export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：该诉请目标是当前 agent（自诉请/self-call）。' +
+      'Dominds 提示：该诉请目标是当前 agent（自诉请/self-tellask）。' +
       '扪心自问 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的 fresh boots 会话；' +
       '仅在你明确需要可恢复的长期子对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
     );
   }
   return (
-    'Dominds note: This call targets the current agent (self-call). ' +
+    'Dominds note: This call targets the current agent (self-tellask). ' +
     'Fresh Boots Reasoning should usually use `!?@self` (no `!tellaskSession`) for an ephemeral fresh boots session; use ' +
     '`!?@self !tellaskSession <tellaskSession>` only when you explicitly want a resumable long-lived sideline dialog. This call will proceed.'
   );

@@ -186,10 +186,10 @@ Result:
 
 **Syntax**: `!?@<anyAgentId> !tellaskSession <tellaskSession>` (note the space before `!tellaskSession`)
 
-**Fresh Boots Reasoning (FBR) self-call syntax (rare; resumable)**: `!?@self !tellaskSession <tellaskSession>`
+**Fresh Boots Reasoning (FBR) self-tellask syntax (rare; resumable)**: `!?@self !tellaskSession <tellaskSession>`
 
 - `!?@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
-- This is an **unambiguous** syntax for self-calls and helps avoid accidental `@teammate`→`@teammate` self-calls caused by
+- This is an **unambiguous** syntax for self-tellasks and helps avoid accidental `@teammate`→`@teammate` self-tellasks caused by
   echoing/quoting prior call headlines.
 - **FBR itself should be common**, but the `!tellaskSession`-addressed variant should be rare. Prefer `!?@self` (TYPE C, transient)
   for most FBR usage. Use `!?@self !tellaskSession ...` only when you explicitly want a resumable, long-lived “fresh boots workspace”
@@ -265,7 +265,7 @@ Result (second call):
 
 **Syntax**: `!?@<nonSupdialogAgentId>` (NO `!tellaskSession`)
 
-**Fresh Boots Reasoning (FBR) self-call syntax (default; most common)**: `!?@self`
+**Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `!?@self`
 
 - `!?@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** with the same persona/config.
 - Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
