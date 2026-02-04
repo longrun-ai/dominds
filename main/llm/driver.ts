@@ -32,6 +32,8 @@ import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import {
   formatDomindsNoteDirectSelfCall,
+  formatDomindsNoteFbrDisabled,
+  formatDomindsNoteFbrToollessViolation,
   formatDomindsNoteInvalidMultiTeammateTargets,
   formatDomindsNoteInvalidTellaskSessionDirective,
   formatDomindsNoteMalformedTellaskCall,
@@ -1370,10 +1372,26 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       throwIfAborted(abortSignal, dlg.id);
 
       // reload the agent's minds from disk every course, in case the disk files changed by human or ai meanwhile
-      const { team, agent, systemPrompt, memories, agentTools } = await loadAgentMinds(
-        dlg.agentId,
-        dlg,
-      );
+      const minds = await loadAgentMinds(dlg.agentId, dlg);
+      const team = minds.team;
+      let agent = minds.agent;
+      let systemPrompt = minds.systemPrompt;
+      const memories = minds.memories;
+      let agentTools = minds.agentTools;
+
+      const isToollessFbr = isToollessFbrSelfSubdialog(dlg);
+      if (isToollessFbr) {
+        // Tool-less FBR: technically supply zero tools to the LLM.
+        agentTools = [];
+        systemPrompt = withFbrToollessSystemPrompt(systemPrompt, getWorkLanguage());
+
+        // FBR-only model params override (deep merge onto effective member model_params).
+        if (agent.fbr_model_params) {
+          const fbrAgent = Object.create(agent) as Team.Member;
+          fbrAgent.model_params = mergeModelParams(agent.model_params, agent.fbr_model_params);
+          agent = fbrAgent;
+        }
+      }
 
       // reload cfgs every course, in case it's been updated by human or ai meanwhile
 
@@ -1621,6 +1639,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                       getWorkLanguage(),
                       index + 1,
                       reminder.content,
+                      { meta: reminder.meta },
                     ),
                   };
                 }),
@@ -1790,6 +1809,22 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             }
           }
 
+          if (isToollessFbr && collectedAssistantCalls.length > 0) {
+            const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+              kind: 'tellask',
+            });
+            const genseq = dlg.activeGenSeq ?? 0;
+            await dlg.addChatMessages({
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: violationText,
+            });
+            lastAssistantSayingContent = violationText;
+            await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
+            return lastAssistantSayingContent;
+          }
+
           let assistantToolOutputsCount = 0;
           if (collectedAssistantCalls.length > 0) {
             throwIfAborted(abortSignal, dlg.id);
@@ -1809,6 +1844,21 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           const funcCalls = nonStreamMsgs.filter(
             (m): m is FuncCallMsg => m.type === 'func_call_msg',
           );
+          if (isToollessFbr && funcCalls.length > 0) {
+            const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+              kind: 'tool',
+            });
+            const genseq = dlg.activeGenSeq ?? 0;
+            await dlg.addChatMessages({
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: violationText,
+            });
+            lastAssistantSayingContent = violationText;
+            await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
+            return lastAssistantSayingContent;
+          }
           const functionPromises = funcCalls.map(async (func): Promise<FuncResultMsg> => {
             throwIfAborted(abortSignal, dlg.id);
             // Use the genseq from the func_call_msg to ensure tool results share the same generation sequence
@@ -2246,6 +2296,28 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               validation: { kind: 'valid'; firstMention: string };
             } => call.validation.kind === 'valid',
           );
+
+          if (isToollessFbr && (validCalls.length > 0 || streamedFuncCalls.length > 0)) {
+            const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+              kind:
+                validCalls.length > 0 && streamedFuncCalls.length > 0
+                  ? 'tellask_and_tool'
+                  : validCalls.length > 0
+                    ? 'tellask'
+                    : 'tool',
+            });
+            const genseq = dlg.activeGenSeq ?? 0;
+            newMsgs.push({
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: violationText,
+            });
+            lastAssistantSayingContent = violationText;
+            await dlg.addChatMessages(...newMsgs);
+            await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
+            return lastAssistantSayingContent;
+          }
 
           throwIfAborted(abortSignal, dlg.id);
           const results = await Promise.all(
@@ -2787,6 +2859,76 @@ function extractSingleTellaskSessionFromHeadline(headLine: string): string | nul
   const parsed = parseTellaskSessionDirectiveFromHeadline(headLine);
   if (parsed.kind === 'one') return parsed.tellaskSession;
   return null;
+}
+
+function isFbrSelfTellaskHeadLine(headLine: string): boolean {
+  return /^\s*@self\b/.test(headLine);
+}
+
+function replaceTellaskSessionDirective(headLine: string, tellaskSession: string): string {
+  // Replace the first occurrence only. If missing, append it as a best-effort.
+  const re = /(^|\s)!tellaskSession\s+([^\s]+)/;
+  if (re.test(headLine)) {
+    return headLine.replace(re, (m, p1) => `${String(p1)}!tellaskSession ${tellaskSession}`);
+  }
+  return `${headLine} !tellaskSession ${tellaskSession}`;
+}
+
+function resolveFbrEffort(member: Team.Member | null | undefined): number {
+  const raw = member?.fbr_effort;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+  if (!Number.isInteger(raw)) return 0;
+  if (raw < 0) return 0;
+  if (raw > 100) return 0;
+  return raw;
+}
+
+function mergeModelParams(
+  base: Team.ModelParams | undefined,
+  overlay: Team.ModelParams | undefined,
+): Team.ModelParams | undefined {
+  if (!base && !overlay) return undefined;
+  if (!base) return overlay;
+  if (!overlay) return base;
+  return {
+    max_tokens: overlay.max_tokens ?? base.max_tokens,
+    codex: { ...(base.codex ?? {}), ...(overlay.codex ?? {}) },
+    openai: { ...(base.openai ?? {}), ...(overlay.openai ?? {}) },
+    anthropic: { ...(base.anthropic ?? {}), ...(overlay.anthropic ?? {}) },
+  };
+}
+
+function withFbrToollessSystemPrompt(systemPrompt: string, language: LanguageCode): string {
+  const prefix =
+    language === 'zh'
+      ? [
+          '# 扪心自问（FBR）支线对话：无工具模式',
+          '',
+          '- 你正在处理一次 `!?@self` 扪心自问（FBR）诉请。',
+          '- **本对话无任何工具**：禁止函数工具调用、禁止队友诉请（包括 `!?@human` / `!?@tellasker`）、禁止向上游对话回问。',
+          '- 你只能基于诉请正文（以及本支线对话自身的会话历史，如有）进行推理与总结；不要假设你能访问诉请者线程的对话历史。',
+          '- 若上下文不足，请在输出中列出缺失信息与原因；不要发起任何诉请/工具调用。',
+          '',
+          '---',
+          '',
+        ].join('\n')
+      : [
+          '# Tool-less @self FBR sideline dialog',
+          '',
+          '- This is a Fresh Boots Reasoning session created by `!?@self`.',
+          '- **No tools are available**: do not emit function tool calls; do not emit any tellasks (including `!?@human` / `!?@tellasker`); do not supcall.',
+          '- Use only the tellask body (and this sideline dialog’s own tellaskSession history, if any) as context. Do not assume access to the caller-thread dialog history.',
+          '- If the tellask body is missing critical context, list the missing info and why it blocks reasoning; do not try to fetch it via tools/tellasks.',
+          '',
+          '---',
+          '',
+        ].join('\n');
+
+  return `${prefix}${systemPrompt}`.trim();
+}
+
+function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
+  return dlg instanceof SubDialog && isFbrSelfTellaskHeadLine(dlg.assignmentFromSup.headLine);
 }
 
 /**
@@ -3661,6 +3803,224 @@ async function executeTellaskCall(
     const parseResult: TeammateTellaskParseResult = isTellaskerAlias
       ? { type: 'A', agentId: (dlg as SubDialog).supdialog.agentId }
       : parseTeammateTellask(firstMention, headLine, dlg);
+
+    // `@self` FBR enhancements:
+    // - Respect per-member fbr_effort (0 disables; 1..100 fan-out)
+    // - Fan-out creates multiple sideline dialogs concurrently for a single `@self` tellask
+    if (isSelfAlias) {
+      const fbrEffort = resolveFbrEffort(member);
+      if (fbrEffort < 1) {
+        const msg = formatDomindsNoteFbrDisabled(getWorkLanguage());
+        toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+        toolOutputs.push({
+          type: 'tellask_result_msg',
+          role: 'tool',
+          responderId: 'dominds',
+          headLine,
+          status: 'failed',
+          content: msg,
+        });
+        await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+        dlg.clearCurrentCallId();
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
+
+      const callerDialog = dlg;
+      const originMemberId = dlg.agentId;
+
+      if (parseResult.type === 'C') {
+        const createdSubs: SubDialog[] = [];
+        const pendingRecords: PendingSubdialogRecordType[] = [];
+        for (let i = 1; i <= fbrEffort; i++) {
+          const sub = await dlg.createSubDialog(parseResult.agentId, headLine, body, {
+            originMemberId,
+            callerDialogId: callerDialog.id.selfId,
+            callId,
+            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+          });
+          createdSubs.push(sub);
+          pendingRecords.push({
+            subdialogId: sub.id.selfId,
+            createdAt: formatUnifiedTimestamp(new Date()),
+            headLine,
+            targetAgentId: parseResult.agentId,
+            callType: 'C',
+          });
+        }
+
+        await withSuspensionStateLock(dlg.id, async () => {
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(dlg.id);
+          existingPending.push(...pendingRecords);
+          await DialogPersistence.savePendingSubdialogs(dlg.id, existingPending);
+        });
+
+        for (const sub of createdSubs) {
+          void (async () => {
+            try {
+              const initPrompt: HumanPrompt = {
+                content: formatAssignmentFromSupdialog({
+                  fromAgentId: dlg.agentId,
+                  toAgentId: sub.agentId,
+                  headLine,
+                  callBody: body,
+                  language: getWorkLanguage(),
+                  collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
+                }),
+                msgId: generateShortId(),
+                grammar: 'markdown',
+              };
+              await driveDialogStream(sub, initPrompt, true);
+            } catch (err) {
+              log.warn('FBR Type C subdialog processing error:', err);
+            }
+          })();
+          subdialogsCreated.push(sub.id);
+        }
+
+        return { toolOutputs, suspend: true, subdialogsCreated };
+      }
+
+      if (parseResult.type === 'B') {
+        let rootDialog: RootDialog | undefined;
+        if (dlg instanceof RootDialog) {
+          rootDialog = dlg;
+        } else if (dlg instanceof SubDialog) {
+          rootDialog = dlg.rootDialog;
+        }
+
+        if (!rootDialog) {
+          const msg = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+            kind: 'internal_error',
+          });
+          toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+          toolOutputs.push({
+            type: 'tellask_result_msg',
+            role: 'tool',
+            responderId: 'dominds',
+            headLine,
+            status: 'failed',
+            content: msg,
+          });
+          await dlg.receiveTeammateCallResult('dominds', headLine, msg, 'failed', callId);
+          dlg.clearCurrentCallId();
+          return { toolOutputs, suspend: false, subdialogsCreated: [] };
+        }
+
+        const pendingOwner = callerDialog;
+        const baseSession = parseResult.tellaskSession;
+        const perInstance = Array.from({ length: fbrEffort }, (_, idx) => idx + 1);
+
+        const createdOrExisting = await withSuspensionStateLock(rootDialog.id, async () => {
+          const results: Array<{
+            kind: 'existing' | 'created';
+            subdialog: SubDialog;
+            tellaskSession: string;
+            indexedHeadLine: string;
+          }> = [];
+
+          for (const i of perInstance) {
+            const derivedSession = fbrEffort === 1 ? baseSession : `${baseSession}.fbr${i}`;
+            const rawHeadLine =
+              fbrEffort === 1 ? headLine : replaceTellaskSessionDirective(headLine, derivedSession);
+            const indexedHeadLine = rawHeadLine;
+
+            const assignment: AssignmentFromSup = {
+              headLine: indexedHeadLine,
+              callBody: body,
+              originMemberId,
+              callerDialogId: callerDialog.id.selfId,
+              callId,
+              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+            };
+
+            const existing = rootDialog.lookupSubdialog(parseResult.agentId, derivedSession);
+            if (existing) {
+              try {
+                await updateSubdialogAssignment(existing, assignment);
+              } catch (err) {
+                log.warn('Failed to update registered FBR subdialog assignment', err);
+              }
+              results.push({
+                kind: 'existing',
+                subdialog: existing,
+                tellaskSession: derivedSession,
+                indexedHeadLine,
+              });
+              continue;
+            }
+
+            const created = await rootDialog.createSubDialog(
+              parseResult.agentId,
+              indexedHeadLine,
+              body,
+              {
+                originMemberId,
+                callerDialogId: callerDialog.id.selfId,
+                callId,
+                tellaskSession: derivedSession,
+                collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+              },
+            );
+            rootDialog.registerSubdialog(created);
+            results.push({
+              kind: 'created',
+              subdialog: created,
+              tellaskSession: derivedSession,
+              indexedHeadLine,
+            });
+          }
+
+          await rootDialog.saveSubdialogRegistry();
+          return results;
+        });
+
+        const pendingRecords: PendingSubdialogRecordType[] = createdOrExisting.map((r) => ({
+          subdialogId: r.subdialog.id.selfId,
+          createdAt: formatUnifiedTimestamp(new Date()),
+          headLine: r.indexedHeadLine,
+          targetAgentId: parseResult.agentId,
+          callType: 'B',
+          tellaskSession: r.tellaskSession,
+        }));
+        await withSuspensionStateLock(pendingOwner.id, async () => {
+          const existingPending = await DialogPersistence.loadPendingSubdialogs(pendingOwner.id);
+          const toRemove = new Set(pendingRecords.map((p) => p.subdialogId));
+          const next = existingPending.filter((p) => !toRemove.has(p.subdialogId));
+          next.push(...pendingRecords);
+          await DialogPersistence.savePendingSubdialogs(pendingOwner.id, next);
+        });
+
+        for (const r of createdOrExisting) {
+          void (async () => {
+            try {
+              const prompt: HumanPrompt = {
+                content: formatAssignmentFromSupdialog({
+                  fromAgentId: dlg.agentId,
+                  toAgentId: r.subdialog.agentId,
+                  headLine: r.indexedHeadLine,
+                  callBody: body,
+                  language: getWorkLanguage(),
+                  collectiveTargets: options?.collectiveTargets ?? [r.subdialog.agentId],
+                }),
+                msgId: generateShortId(),
+                grammar: 'markdown',
+              };
+              await driveDialogStream(r.subdialog, prompt, true);
+            } catch (err) {
+              log.warn(
+                r.kind === 'existing'
+                  ? 'FBR Type B registered subdialog resumption error:'
+                  : 'FBR Type B subdialog processing error:',
+                err,
+              );
+            }
+          })();
+          subdialogsCreated.push(r.subdialog.id);
+        }
+
+        return { toolOutputs, suspend: true, subdialogsCreated };
+      }
+    }
 
     // If the agent calls itself via `@<agentId>` (instead of `@self`), allow it to proceed
     // (self-tellasks are useful for FBR), but emit a correction bubble so the user can distinguish

@@ -206,6 +206,66 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   );
 }
 
+export function formatDomindsNoteFbrDisabled(language: LanguageCode): string {
+  if (language === 'zh') {
+    return (
+      '错误：当前团队配置不允许你使用 `!?@self` 扪心自问（FBR）自诉请。\n' +
+      '- 请联系团队管理者调整配置后再试。\n' +
+      '- 你仍可使用其它队友诉请（`!?@<teammate>`）或在当前对话中直接分析并给出结论。'
+    );
+  }
+  return (
+    'Error: `!?@self` Fresh Boots Reasoning (FBR) is disabled by your team configuration.\n' +
+    '- Ask your team manager to adjust the team config, then retry `!?@self`.\n' +
+    '- You can still tellask other teammates (`!?@<teammate>`) or provide analysis directly in the current dialog.'
+  );
+}
+
+export type FbrToollessViolationKind = 'tellask' | 'tool' | 'tellask_and_tool' | 'internal_error';
+
+export function formatDomindsNoteFbrToollessViolation(
+  language: LanguageCode,
+  args: { kind: FbrToollessViolationKind },
+): string {
+  const kind = args.kind;
+  if (language === 'zh') {
+    const detail =
+      kind === 'tellask'
+        ? '检测到你在 FBR 支线对话里发起了队友诉请（`!?@...`）。'
+        : kind === 'tool'
+          ? '检测到你在 FBR 支线对话里尝试调用函数工具。'
+          : kind === 'tellask_and_tool'
+            ? '检测到你在 FBR 支线对话里同时尝试发起队友诉请与函数工具调用。'
+            : '内部错误：无法安全驱动 FBR 支线对话。';
+    return [
+      'ERR_FBR_TOOLLESS_VIOLATION',
+      `Dominds 提示：当前是扪心自问（FBR）支线对话（无工具模式）。${detail}`,
+      '',
+      '- 本对话无任何工具：禁止函数工具调用。',
+      '- 本对话禁止任何队友诉请（包括 `!?@human` / `!?@tellasker` / `!?@self`）。',
+      '- 请只基于诉请正文（以及本支线对话自身的会话历史，如有）进行推理与总结。',
+    ].join('\n');
+  }
+
+  const detail =
+    kind === 'tellask'
+      ? 'Detected a teammate tellask (`!?@...`) emitted inside an FBR sideline dialog.'
+      : kind === 'tool'
+        ? 'Detected a function tool call attempt inside an FBR sideline dialog.'
+        : kind === 'tellask_and_tool'
+          ? 'Detected both tellask and tool-call attempts inside an FBR sideline dialog.'
+          : 'Internal error: cannot safely drive the FBR sideline dialog.';
+
+  return [
+    'ERR_FBR_TOOLLESS_VIOLATION',
+    `Dominds note: this is a tool-less @self FBR sideline dialog. ${detail}`,
+    '',
+    '- No tools are available: do not emit function tool calls.',
+    '- No tellasks are allowed (including `!?@human` / `!?@tellasker` / `!?@self`).',
+    '- Provide pure reasoning and a summary grounded in the tellask body (and this sideline dialog’s own tellaskSession history, if any).',
+  ].join('\n');
+}
+
 export function formatDomindsNoteMalformedTellaskCall(
   language: LanguageCode,
   reason: TellaskMalformedReason,

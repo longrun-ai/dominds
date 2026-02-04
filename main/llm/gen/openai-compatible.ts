@@ -538,8 +538,9 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_logprobs !== undefined && { top_logprobs: openAiParams.top_logprobs }),
       ...(openAiParams.logit_bias !== undefined && { logit_bias: openAiParams.logit_bias }),
       ...(openAiParams.user !== undefined && { user: openAiParams.user }),
-      ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToChatCompletionTool) }),
-      tool_choice: 'auto',
+      ...(funcTools.length > 0
+        ? { tools: funcTools.map(funcToolToChatCompletionTool), tool_choice: 'auto' as const }
+        : { tool_choice: 'none' as const }),
       parallel_tool_calls: parallelToolCalls,
       max_tokens: maxOutputTokens,
     };

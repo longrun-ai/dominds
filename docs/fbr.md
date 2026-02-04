@@ -144,7 +144,10 @@ When `fbr-effort` is `N`:
 
 - The runtime expands a single `!?@self` Tellask into **N parallel tool-less FBR sideline dialogs**.
 - Each sideline dialog receives the same tellask body (and the same tool-less system/tool prompts).
-- The runtime collects all N responses and returns them to the tellasker in a stable order (e.g. by `index: 1..N`).
+- The runtime returns all N responses to the tellasker. **Do not rely on any particular ordering**:
+  - Responses may be injected/arrive in completion order (which is often effectively “mixed”).
+- For the resumable `!?@self !tellaskSession <tellaskSession>` form with `N > 1`, the runtime MUST derive **distinct**
+  session keys so each parallel sideline dialog has independent history (recommended scheme: `<tellaskSession>.fbr<i>`).
 
 The intent is to allow the tellasker (mainline) to synthesize multiple independent reasoning traces into a better decision.
 
@@ -160,6 +163,8 @@ The intent is to allow the tellasker (mainline) to synthesize multiple independe
 
 - Compute the teammate’s effective `model_params` as usual (defaults + teammate overrides).
 - For `@self` FBR only, deep-merge `fbr_model_params` on top (so it can override just a few fields like `temperature`).
+- Provider-agnostic `max_tokens` may be configured either as `max_tokens` (top-level) or `general.max_tokens` (mirrors
+  `model_param_options` grouping). Do not set both.
 
 ## Examples
 

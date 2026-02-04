@@ -49,6 +49,7 @@ export type BuildSystemPromptInput = {
 };
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
+  const fbrEnabled = (input.agent.fbr_effort ?? 0) >= 1;
   if (input.language === 'zh') {
     return `
 # Agent 系统提示
@@ -159,9 +160,22 @@ ${input.funcToolUsageText || '没有可用的函数工具。'}
 - mention ID 允许包含点号用于命名空间（例如 \`@team.lead\`）。末尾的点号视为标点并忽略（例如 \`@team.lead.\` 仍然指向 \`@team.lead\`）。
 
 ### 特殊队友别名
-- \`!?@self\`：扪心自问（FBR）自诉请。目标是当前 dialog 的 agentId，并创建一个新的、短暂的支线对话（默认；最常用）。
-- \`!?@self !tellaskSession <tellaskSession>\`：带 tellaskSession 的 FBR 自诉请（少用）。仅当你明确需要可恢复的长期 workspace 时使用。
+${
+  fbrEnabled
+    ? `- \`!?@self\`：扪心自问（FBR）自诉请。目标是当前对话的应答者标识，并创建一个新的、短暂的支线对话（默认；最常用）。
+- \`!?@self !tellaskSession <tellaskSession>\`：带 tellaskSession 的 FBR 自诉请（少用）。仅当你明确需要可恢复的长期工作区时使用。`
+    : ''
+}
 - \`!?@tellasker\`：回问诉请（TellaskBack）。只在**支线对话**内有效；用于向“诉请者”（发起本次诉请的对话）回问澄清，避免自行猜测。必须**不带** \`!tellaskSession\`。
+
+${
+  fbrEnabled
+    ? `### 扪心自问（FBR）建议
+- 当你遇到“难题/硬决策/强不确定性/多约束”时，优先考虑发起 !?@self 扪心自问：这些情形值得投入更多推理精力。把问题拆成一个清晰的子问题，让“新靴版本的你”给出分析与结论，再把结果整合回当前对话继续推进。
+- 重要：FBR 支线对话是**无工具**的；不要假设它能读文件/查网页/跑命令。诉请正文里必须给足上下文（必要日志/片段/约束/目标/验收口径）。
+- 当运行时并发创建多条 FBR 支线对话时，你需要综合它们的输出（对比分歧、提炼共识、做出决策）。`
+    : ''
+}
 
 ### 工具集提示与队友诉请（tellask）
 
@@ -278,9 +292,22 @@ ${input.funcToolUsageText || 'No function tools available.'}
 - Prefer multi-teammate tellasks for parallel expertise. Keep requests specific and role-aware.
 
 ### Special Teammate Aliases
-- \`!?@self\`: Fresh Boots Reasoning (FBR) self-call. Targets your current dialog responder (\`agentId\`) and creates a NEW ephemeral sideline dialog (default; most common).
-- \`!?@self !tellaskSession <tellaskSession>\`: FBR self-call with a registered tellask session (rare). Use only when you explicitly want a resumable long-lived fresh-boots workspace.
+${
+  fbrEnabled
+    ? `- \`!?@self\`: Fresh Boots Reasoning (FBR) self-tellask. Targets your current dialog responder (\`agentId\`) and creates a NEW ephemeral sideline dialog (default; most common).
+- \`!?@self !tellaskSession <tellaskSession>\`: FBR self-tellask with a registered tellask session (rare). Use only when you explicitly want a resumable long-lived fresh-boots workspace.`
+    : ''
+}
 - \`!?@tellasker\`: TellaskBack (ask the tellasker dialog for clarification). Only valid inside a **sideline dialog**; tellasks back to the tellasker (the dialog that issued the current Tellask). Must be used with NO \`!tellaskSession\`.
+
+${
+  fbrEnabled
+    ? `### Fresh Boots Reasoning (FBR) Guidance
+- In hard situations (high uncertainty, complex trade-offs, many constraints, or when facing tough decisions), proactively do a tool-less !?@self FBR — those deserve extra efforts to reason about: isolate a single sub-question, request a clean analysis/conclusion, then integrate it back and keep driving the main work.
+- Important: the FBR sideline dialog is **tool-less**. Do not assume it can read files, browse, run shell, or fetch workspace state. Put all required context into the tellask body (relevant snippets/logs/constraints/acceptance criteria).
+- When the runtime creates multiple parallel FBR sideline dialogs, synthesize their outputs (compare disagreements, extract consensus, and make a decision).`
+    : ''
+}
 
 ### Toolset Prompts & Teammate Tellasks (Tellask)
 

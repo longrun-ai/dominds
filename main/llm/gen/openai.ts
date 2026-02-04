@@ -486,8 +486,9 @@ export class OpenAiGen implements LlmGenerator {
         reasoning: { effort: openAiParams.reasoning_effort },
       }),
       ...(openAiParams.verbosity !== undefined && { text: { verbosity: openAiParams.verbosity } }),
-      ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToOpenAiTool) }),
-      tool_choice: 'auto',
+      ...(funcTools.length > 0
+        ? { tools: funcTools.map(funcToolToOpenAiTool), tool_choice: 'auto' as const }
+        : { tool_choice: 'none' as const }),
     };
 
     let sayingStarted = false;
@@ -934,8 +935,9 @@ export class OpenAiGen implements LlmGenerator {
         reasoning: { effort: openAiParams.reasoning_effort },
       }),
       ...(openAiParams.verbosity !== undefined && { text: { verbosity: openAiParams.verbosity } }),
-      ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToOpenAiTool) }),
-      tool_choice: 'auto',
+      ...(funcTools.length > 0
+        ? { tools: funcTools.map(funcToolToOpenAiTool), tool_choice: 'auto' as const }
+        : { tool_choice: 'none' as const }),
     };
 
     const response = await client.responses.create(payload, {

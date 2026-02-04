@@ -117,6 +117,11 @@ export namespace Team {
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
+    // Fresh Boots Reasoning (FBR): per-member concurrency cap for `!?@self` sideline dialogs.
+    // See docs: dominds/docs/fbr.md
+    fbr_effort?: number;
+    // FBR-only model params overrides (same schema as model_params).
+    fbr_model_params?: ModelParams;
     // Diligence Push: per-member cap on how many diligence prompts can be auto-sent before forcing Q4H.
     diligence_push_max?: number;
     read_dirs?: string[];
@@ -141,6 +146,8 @@ export namespace Team {
       toolsets?: string[];
       tools?: string[];
       model_params?: ModelParams;
+      fbr_effort?: number;
+      fbr_model_params?: ModelParams;
       diligence_push_max?: number;
       read_dirs?: string[];
       write_dirs?: string[];
@@ -161,6 +168,8 @@ export namespace Team {
       if (params.toolsets !== undefined) this.toolsets = params.toolsets;
       if (params.tools !== undefined) this.tools = params.tools;
       if (params.model_params !== undefined) this.model_params = params.model_params;
+      if (params.fbr_effort !== undefined) this.fbr_effort = params.fbr_effort;
+      if (params.fbr_model_params !== undefined) this.fbr_model_params = params.fbr_model_params;
       if (params.diligence_push_max !== undefined)
         this.diligence_push_max = params.diligence_push_max;
       if (params.read_dirs !== undefined) this.read_dirs = params.read_dirs;
@@ -183,6 +192,8 @@ export namespace Team {
         'toolsets',
         'tools',
         'model_params',
+        'fbr_effort',
+        'fbr_model_params',
         'diligence_push_max',
         'read_dirs',
         'write_dirs',
@@ -250,6 +261,22 @@ export namespace Team {
         return;
       }
       this.model_params = modelParams;
+    }
+
+    setFbrEffort(effort: number | undefined): void {
+      if (effort === undefined) {
+        delete this.fbr_effort;
+        return;
+      }
+      this.fbr_effort = effort;
+    }
+
+    setFbrModelParams(modelParams: ModelParams | undefined): void {
+      if (modelParams === undefined) {
+        delete this.fbr_model_params;
+        return;
+      }
+      this.fbr_model_params = modelParams;
     }
 
     setDiligencePushMax(max: number | undefined): void {
@@ -420,6 +447,7 @@ export namespace Team {
     const md = new Team.Member({
       id: 'defaulter',
       name: 'Defaulter',
+      fbr_effort: 1,
     });
 
     const fuxi = new Team.Member({
@@ -852,6 +880,9 @@ export namespace Team {
     'toolsets',
     'tools',
     'model_params',
+    'fbr-effort',
+    'fbr_effort',
+    'fbr_model_params',
     'diligence-push-max',
     'diligence_push_max',
     'read_dirs',
@@ -865,10 +896,12 @@ export namespace Team {
 
   export const TEAM_YAML_MODEL_PARAMS_ROOT_KEYS = [
     'max_tokens',
+    'general',
     'codex',
     'openai',
     'anthropic',
   ] as const;
+  export const TEAM_YAML_MODEL_PARAMS_GENERAL_KEYS = ['max_tokens'] as const;
   export const TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS = [
     'temperature',
     'max_tokens',
@@ -939,71 +972,94 @@ export namespace Team {
       );
     }
 
-    if (!Object.prototype.hasOwnProperty.call(memberObj, 'model_params')) return;
-    const rawModelParams = memberObj.model_params;
-    if (rawModelParams === undefined) return;
-    if (!isRecordValue(rawModelParams)) {
-      // Type errors are handled by parseMemberOverrides; keep this check focused on schema/placement.
-      return;
-    }
+    const validateOptionalModelParamsField = (
+      field: 'model_params' | 'fbr_model_params',
+      issuePrefix: string,
+    ): void => {
+      if (!Object.prototype.hasOwnProperty.call(memberObj, field)) return;
+      const rawModelParams = memberObj[field];
+      if (rawModelParams === undefined) return;
+      if (!isRecordValue(rawModelParams)) {
+        // Type errors are handled by parseMemberOverrides; keep this check focused on schema/placement.
+        return;
+      }
 
-    const modelParamsAt = `${atPrefix}.model_params`;
-    const hintsAtModelParams: Record<string, string> = {
-      reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
-      verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
-      parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
-      temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
-      top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
-      max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` (top-level), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
+      const modelParamsAt = `${atPrefix}.${field}`;
+      const hintsAtModelParams: Record<string, string> = {
+        reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
+        verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
+        parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
+        temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
+        top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
+        max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` / \`${modelParamsAt}.general.max_tokens\` (provider-agnostic), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
+      };
+
+      const unknownAtModelParams = listUnknownKeys(
+        rawModelParams,
+        TEAM_YAML_MODEL_PARAMS_ROOT_KEYS,
+      );
+      if (unknownAtModelParams.length > 0) {
+        pushIssue(
+          `${idPrefix}/${issuePrefix}/unknown_fields`,
+          `Invalid .minds/team.yaml: ${modelParamsAt} contains unknown fields.`,
+          buildUnknownFieldErrorText(modelParamsAt, unknownAtModelParams, hintsAtModelParams),
+        );
+      }
+
+      const rawCodex = rawModelParams.codex;
+      if (rawCodex !== undefined && isRecordValue(rawCodex)) {
+        const unknownAtCodex = listUnknownKeys(rawCodex, TEAM_YAML_MODEL_PARAMS_CODEX_KEYS);
+        if (unknownAtCodex.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/codex/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.codex contains unknown fields.`,
+            buildUnknownFieldErrorText(`${modelParamsAt}.codex`, unknownAtCodex, {}),
+          );
+        }
+      }
+
+      const rawGeneral = rawModelParams.general;
+      if (rawGeneral !== undefined && isRecordValue(rawGeneral)) {
+        const unknownAtGeneral = listUnknownKeys(rawGeneral, TEAM_YAML_MODEL_PARAMS_GENERAL_KEYS);
+        if (unknownAtGeneral.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/general/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.general contains unknown fields.`,
+            buildUnknownFieldErrorText(`${modelParamsAt}.general`, unknownAtGeneral, {}),
+          );
+        }
+      }
+
+      const rawOpenai = rawModelParams.openai;
+      if (rawOpenai !== undefined && isRecordValue(rawOpenai)) {
+        const unknownAtOpenai = listUnknownKeys(rawOpenai, TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS);
+        if (unknownAtOpenai.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/openai/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.openai contains unknown fields.`,
+            buildUnknownFieldErrorText(`${modelParamsAt}.openai`, unknownAtOpenai, {}),
+          );
+        }
+      }
+
+      const rawAnthropic = rawModelParams.anthropic;
+      if (rawAnthropic !== undefined && isRecordValue(rawAnthropic)) {
+        const unknownAtAnthropic = listUnknownKeys(
+          rawAnthropic,
+          TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS,
+        );
+        if (unknownAtAnthropic.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/anthropic/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.anthropic contains unknown fields.`,
+            buildUnknownFieldErrorText(`${modelParamsAt}.anthropic`, unknownAtAnthropic, {}),
+          );
+        }
+      }
     };
 
-    const unknownAtModelParams = listUnknownKeys(rawModelParams, TEAM_YAML_MODEL_PARAMS_ROOT_KEYS);
-    if (unknownAtModelParams.length > 0) {
-      pushIssue(
-        `${idPrefix}/model_params/unknown_fields`,
-        `Invalid .minds/team.yaml: ${modelParamsAt} contains unknown fields.`,
-        buildUnknownFieldErrorText(modelParamsAt, unknownAtModelParams, hintsAtModelParams),
-      );
-    }
-
-    const rawCodex = rawModelParams.codex;
-    if (rawCodex !== undefined && isRecordValue(rawCodex)) {
-      const unknownAtCodex = listUnknownKeys(rawCodex, TEAM_YAML_MODEL_PARAMS_CODEX_KEYS);
-      if (unknownAtCodex.length > 0) {
-        pushIssue(
-          `${idPrefix}/model_params/codex/unknown_fields`,
-          `Invalid .minds/team.yaml: ${modelParamsAt}.codex contains unknown fields.`,
-          buildUnknownFieldErrorText(`${modelParamsAt}.codex`, unknownAtCodex, {}),
-        );
-      }
-    }
-
-    const rawOpenai = rawModelParams.openai;
-    if (rawOpenai !== undefined && isRecordValue(rawOpenai)) {
-      const unknownAtOpenai = listUnknownKeys(rawOpenai, TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS);
-      if (unknownAtOpenai.length > 0) {
-        pushIssue(
-          `${idPrefix}/model_params/openai/unknown_fields`,
-          `Invalid .minds/team.yaml: ${modelParamsAt}.openai contains unknown fields.`,
-          buildUnknownFieldErrorText(`${modelParamsAt}.openai`, unknownAtOpenai, {}),
-        );
-      }
-    }
-
-    const rawAnthropic = rawModelParams.anthropic;
-    if (rawAnthropic !== undefined && isRecordValue(rawAnthropic)) {
-      const unknownAtAnthropic = listUnknownKeys(
-        rawAnthropic,
-        TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS,
-      );
-      if (unknownAtAnthropic.length > 0) {
-        pushIssue(
-          `${idPrefix}/model_params/anthropic/unknown_fields`,
-          `Invalid .minds/team.yaml: ${modelParamsAt}.anthropic contains unknown fields.`,
-          buildUnknownFieldErrorText(`${modelParamsAt}.anthropic`, unknownAtAnthropic, {}),
-        );
-      }
-    }
+    validateOptionalModelParamsField('model_params', 'model_params');
+    validateOptionalModelParamsField('fbr_model_params', 'fbr_model_params');
   }
 
   function sanitizeProblemIdSegment(segment: string): string {
@@ -1022,6 +1078,8 @@ export namespace Team {
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
+    fbr_effort?: number;
+    fbr_model_params?: ModelParams;
     diligence_push_max?: number;
     read_dirs?: string[];
     write_dirs?: string[];
@@ -1148,6 +1206,61 @@ export namespace Team {
         errors.push(asErrorText(err));
       }
     }
+    const hasFbrEffortDash = hasOwnKey(rv, 'fbr-effort');
+    const hasFbrEffortUnderscore = hasOwnKey(rv, 'fbr_effort');
+    if (hasFbrEffortDash && hasFbrEffortUnderscore) {
+      errors.push(
+        `Invalid ${at}: both fbr-effort and fbr_effort are set; please use only fbr-effort.`,
+      );
+    } else if (hasFbrEffortDash) {
+      try {
+        const effort = requireDefined(
+          asOptionalNumber(rv['fbr-effort'], `${at}.fbr-effort`),
+          `${at}.fbr-effort`,
+        );
+        if (!Number.isInteger(effort)) {
+          throw new Error(`Invalid ${at}.fbr-effort: expected an integer (got ${effort}).`);
+        }
+        if (effort < 0) {
+          throw new Error(`Invalid ${at}.fbr-effort: expected >= 0 (got ${effort}).`);
+        }
+        if (effort > 100) {
+          throw new Error(`Invalid ${at}.fbr-effort: expected <= 100 (got ${effort}).`);
+        }
+        overrides.fbr_effort = effort;
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    } else if (hasFbrEffortUnderscore) {
+      try {
+        const effort = requireDefined(
+          asOptionalNumber(rv['fbr_effort'], `${at}.fbr_effort`),
+          `${at}.fbr_effort`,
+        );
+        if (!Number.isInteger(effort)) {
+          throw new Error(`Invalid ${at}.fbr_effort: expected an integer (got ${effort}).`);
+        }
+        if (effort < 0) {
+          throw new Error(`Invalid ${at}.fbr_effort: expected >= 0 (got ${effort}).`);
+        }
+        if (effort > 100) {
+          throw new Error(`Invalid ${at}.fbr_effort: expected <= 100 (got ${effort}).`);
+        }
+        overrides.fbr_effort = effort;
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'fbr_model_params')) {
+      try {
+        overrides.fbr_model_params = requireDefined(
+          asOptionalModelParams(rv['fbr_model_params'], `${at}.fbr_model_params`),
+          `${at}.fbr_model_params`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
     const hasDiligencePushMaxDash = hasOwnKey(rv, 'diligence-push-max');
     const hasDiligencePushMaxUnderscore = hasOwnKey(rv, 'diligence_push_max');
     if (hasDiligencePushMaxDash && hasDiligencePushMaxUnderscore) {
@@ -1253,6 +1366,9 @@ export namespace Team {
     if (overrides.toolsets !== undefined) member.setToolsets(overrides.toolsets);
     if (overrides.tools !== undefined) member.setTools(overrides.tools);
     if (overrides.model_params !== undefined) member.setModelParams(overrides.model_params);
+    if (overrides.fbr_effort !== undefined) member.setFbrEffort(overrides.fbr_effort);
+    if (overrides.fbr_model_params !== undefined)
+      member.setFbrModelParams(overrides.fbr_model_params);
     if (overrides.diligence_push_max !== undefined)
       member.setDiligencePushMax(overrides.diligence_push_max);
     if (overrides.read_dirs !== undefined) member.setReadDirs(overrides.read_dirs);
@@ -1622,6 +1738,7 @@ export namespace Team {
     const openai = obj.openai === undefined ? undefined : asRecord(obj.openai, `${at}.openai`);
     const anthropic =
       obj.anthropic === undefined ? undefined : asRecord(obj.anthropic, `${at}.anthropic`);
+    const general = obj.general === undefined ? undefined : asRecord(obj.general, `${at}.general`);
 
     if (codex) {
       validateOpenAiStyleParams(codex, `${at}.codex`);
@@ -1641,7 +1758,24 @@ export namespace Team {
     }
 
     asOptionalNumber(obj.max_tokens, `${at}.max_tokens`);
+    if (general) {
+      asOptionalNumber(general.max_tokens, `${at}.general.max_tokens`);
+    }
 
-    return obj as ModelParams;
+    const topLevelMaxTokens = obj.max_tokens;
+    const generalMaxTokens = general ? general.max_tokens : undefined;
+    if (topLevelMaxTokens !== undefined && generalMaxTokens !== undefined) {
+      throw new Error(
+        `Invalid ${at}: do not set both ${at}.max_tokens and ${at}.general.max_tokens.`,
+      );
+    }
+
+    const out: ModelParams = {};
+    const effectiveMaxTokens = (topLevelMaxTokens ?? generalMaxTokens) as number | undefined;
+    if (effectiveMaxTokens !== undefined) out.max_tokens = effectiveMaxTokens;
+    if (codex) out.codex = codex as OpenAiStyleModelParams;
+    if (openai) out.openai = openai as OpenAiStyleModelParams;
+    if (anthropic) out.anthropic = anthropic as ModelParams['anthropic'];
+    return out;
   }
 }
