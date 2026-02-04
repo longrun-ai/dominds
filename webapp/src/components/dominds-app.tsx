@@ -2938,6 +2938,10 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg);
       }
 
+      #reminders-widget {
+        opacity: 0.92;
+      }
+
       /* Reminder widget items */
       .rem-item {
         display: flex;
