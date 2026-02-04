@@ -1,5 +1,7 @@
 # MCP 支持（`.minds/mcp.yaml`）
 
+英文版：[English](./mcp-support.md)
+
 本文档规范了 Dominds 如何将 MCP（Model Context Protocol）服务器作为一级工具来源进行支持，**除了**任何现有的/遗留的基于 JSON 的 MCP 配置格式之外。
 
 仓库根目录是 **rtws**（运行时工作区）。以下所有路径均相对于 rtws 根目录。

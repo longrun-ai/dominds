@@ -1,5 +1,7 @@
 # Context Health Monitor
 
+Chinese version: [中文版](./context-health.zh.md)
+
 This document specifies a **context health monitor** feature for Dominds: a small, always-on signal
 that helps the agent (and user) avoid degraded performance when the dialog’s prompt/context is
 getting too large relative to the model’s context window.

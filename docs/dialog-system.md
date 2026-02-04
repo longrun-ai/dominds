@@ -1,5 +1,7 @@
 # Dominds Dialog System Implementation
 
+Chinese version: [中文版](./dialog-system.zh.md)
+
 This document provides detailed implementation specifications for the Dominds dialog system, including core tools, technical architecture, dialog management, memory management, system integration, and the Questions for Human (Q4H) mechanism.
 
 ## Table of Contents

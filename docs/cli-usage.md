@@ -1,5 +1,7 @@
 # CLI Usage Guide
 
+Chinese version: [中文版](./cli-usage.zh.md)
+
 The `dominds` CLI provides a unified entry point, but the **primary interaction experience is the Web UI** (the default `dominds` command). This guide focuses on the Web UI workflow.
 
 > Note: In this document, **rtws (runtime workspace)** refers to the runtime root directory Dominds uses (by default `process.cwd()`, switchable via `-C <dir>`).

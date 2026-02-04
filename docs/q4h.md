@@ -1,5 +1,7 @@
 # Q4H (Questions for Human) — Design Doc
 
+Chinese version: [中文版](./q4h.zh.md)
+
 ## Summary
 
 Q4H is Dominds’s mechanism for raising a human decision/clarification request from any dialog by issuing a Tellask to

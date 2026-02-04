@@ -1,5 +1,7 @@
 # Mottos wrt Agentic Context Management
 
+Chinese version: [中文版](./mottos.zh.md)
+
 **TL;DR** Need to implement Social Division of Labor, wrt AI Agents
 
 ## The Problem

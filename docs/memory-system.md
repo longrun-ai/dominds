@@ -1,5 +1,7 @@
 # Memory System / 记忆系统（Agent User View）
 
+Chinese version: [中文版](./memory-system.zh.md)
+
 Dominds is designed around **intentional, layered memory**.
 
 The goal is simple:

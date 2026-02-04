@@ -1,5 +1,7 @@
 # Encapsulated Taskdocs (`*.tsk/`) (Design)
 
+Chinese version: [中文版](./encapsulated-taskdoc.zh.md)
+
 This document specifies a **structured, encapsulated Taskdoc format** for Dominds dialogs.
 
 Instead of a single mutable “Taskdoc” markdown file, each dialog tree’s Taskdoc becomes a **Taskdoc package directory**

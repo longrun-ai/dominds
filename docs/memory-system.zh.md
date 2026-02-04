@@ -1,5 +1,7 @@
 # Memory System / 记忆系统（Agent User View / 智能体用户视角）
 
+英文版：[English](./memory-system.md)
+
 Dominds 围绕**有意的、分层的记忆**设计。
 
 目标很简单：

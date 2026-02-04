@@ -1,5 +1,7 @@
 # CLI 使用指南
 
+英文版：[English](./cli-usage.md)
+
 `dominds` 提供统一的命令行入口，但**主要交互界面是 Web UI**（默认命令 `dominds`）。本文档以 Web UI 工作流为主。
 
 > 注：本文统一使用 **rtws（运行时工作区）** 表示 Dominds 运行时使用的根目录（默认等于 `process.cwd()`，可通过 `-C <dir>` 切换）。

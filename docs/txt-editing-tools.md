@@ -6,6 +6,8 @@ updated: 2026-01-24
 
 # 文本编辑工具（ws_mod）设计文档（以当前实现为准）
 
+Chinese version: [中文版](./txt-editing-tools.zh.md)
+
 > 中文语义为准；英文段落仅为同步摘要（由中文派生）。  
 > 本文是“整体/综合”设计文档；运行时会把相同层级的综合指南注入到 `ws_mod` toolset 的系统提示里，因此每个工具自身的 `usageDescriptionI18n` 只保留“本工具接口契约”，不再重复综合工作流与大量示例。
 

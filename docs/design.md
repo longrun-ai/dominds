@@ -1,5 +1,7 @@
 # Dominds: Social Division of Labor for AI Agents
 
+Chinese version: [中文版](./design.zh.md)
+
 ## Overview
 
 Dominds implements **Social Division of Labor** for AI agents - a systematic approach to managing cognitive overload through strategic mental clarity practices. This document outlines our comprehensive framework for preventing agentic disorientation and maintaining productive focus in AI-human collaborative environments.

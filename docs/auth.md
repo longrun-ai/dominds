@@ -1,5 +1,7 @@
 # Dominds Auth (Design)
 
+Chinese version: [中文版](./auth.zh.md)
+
 This document specifies the **authentication behavior** for Dominds WebUI + API access.
 
 ## Goals

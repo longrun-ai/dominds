@@ -1,5 +1,7 @@
 # MCP Support (`.minds/mcp.yaml`)
 
+Chinese version: [中文版](./mcp-support.zh.md)
+
 This document specifies how Dominds should support MCP (Model Context Protocol) servers as a
 first-class tool source, **in addition to** any existing/legacy JSON-based MCP config formats.
 

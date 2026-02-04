@@ -1,5 +1,7 @@
 # Overall Every Control and Clear (OEC)
 
+Chinese version: [中文版](./OEC-philosophy.zh.md)
+
 > Haier: Overall Every(thing/one/day) Control/Clear
 
 The OEC Management Method is a comprehensive enterprise management framework created by Haier Group in 1989, also known as "全方位优化管理法" (Comprehensive Optimization Management Method). This philosophy has generated tremendous economic and social benefits for Haier, earning them the National Enterprise Management Innovation "Golden Horse Award" and the Enterprise Reform "Sail Cup", with Premier Zhu Rongji批示 recommending nationwide promotion of this management experience.

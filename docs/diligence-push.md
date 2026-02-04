@@ -1,5 +1,7 @@
 # Diligence Push — Design Doc
 
+Chinese version: [中文版](./diligence-push.zh.md)
+
 ## Summary
 
 Dominds root dialogs are intended for long-run operation. A root dialog "stopping" (becoming idle)

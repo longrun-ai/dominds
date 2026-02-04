@@ -1,5 +1,7 @@
 # Team Management Toolset (`team-mgmt`)
 
+Chinese version: [中文版](./team-mgmt-toolset.zh.md)
+
 This document specifies a dedicated **team management toolset** whose only job is managing the
 rtws’s “mindset” configuration files under `.minds/` (team roster, LLM providers, and agent
 minds files), without granting broad rtws access.

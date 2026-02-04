@@ -1,5 +1,7 @@
 # Dominds 认证（设计）
 
+英文版：[English](./auth.md)
+
 本文档指定了 Dominds WebUI + API 访问的**认证行为**。
 
 ## 目标

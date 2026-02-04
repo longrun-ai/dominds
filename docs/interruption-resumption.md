@@ -1,5 +1,7 @@
 # Interruption & Resumption (Dialog Proceeding Control)
 
+Chinese version: [中文版](./interruption-resumption.zh.md)
+
 Dominds dialogs (“dlgs”) can run for a long time (streaming generation, multi-step work, tool usage). Users also
 frequently observe the same dlg from multiple browser tabs. This document defines the **interaction design** for:
 
