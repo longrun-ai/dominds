@@ -68,6 +68,20 @@ providers:
         input_length: 272000
         output_length: 32768
         context_window: '272K'
+      gpt-5.1-codex-mini:
+        name: GPT-5.1 Codex Mini
+        optimal_max_tokens: 200000
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
+      gpt-5.1-codex-max:
+        name: GPT-5.1 Codex Max
+        optimal_max_tokens: 200000
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
   minimaxi.com-coding-plan:
     name: MiniMax CN Coding Plan
     apiType: anthropic
