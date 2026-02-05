@@ -18,7 +18,10 @@ import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
-import { scheduleShowingByDoingForNewDialog } from '../showing-by-doing';
+import {
+  getShowingByDoingCacheStatus,
+  scheduleShowingByDoingForNewDialog,
+} from '../showing-by-doing';
 import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
@@ -301,6 +304,18 @@ export async function handleApiRoute(
     // Read Dominds docs markdown (from dominds install root, NOT rtws).
     if (pathname === '/api/docs/read' && req.method === 'GET') {
       return await handleReadDocsMarkdown(req, res);
+    }
+
+    if (pathname === '/api/showing-by-doing' && req.method === 'GET') {
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const agentId = urlObj.searchParams.get('agentId') ?? '';
+      if (typeof agentId !== 'string' || agentId.trim() === '') {
+        respondJson(res, 400, { error: 'agentId is required' });
+        return true;
+      }
+      const status = getShowingByDoingCacheStatus(agentId.trim());
+      respondJson(res, 200, status);
+      return true;
     }
 
     if (pathname === '/api/snippets/builtin' && req.method === 'GET') {
@@ -930,6 +945,7 @@ async function handleCreateDialog(
     const agentId = parsed['agentId'];
     const taskDocPath = parsed['taskDocPath'];
     const skipShowingByDoing = parsed['skipShowingByDoing'] === true;
+    const showingByDoingModeRaw = parsed['showingByDoingMode'];
 
     if (typeof agentId !== 'string' || agentId.trim() === '') {
       respondJson(res, 400, { success: false, error: 'agentId is required' });
@@ -1004,7 +1020,21 @@ async function handleCreateDialog(
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    scheduleShowingByDoingForNewDialog(dialog, { skipShowingByDoing });
+    const cacheStatus = getShowingByDoingCacheStatus(agentId.trim());
+    const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
+
+    const showingByDoingMode =
+      skipShowingByDoing === true
+        ? ('skip' as const)
+        : showingByDoingModeRaw === 'reuse'
+          ? ('reuse' as const)
+          : showingByDoingModeRaw === 'skip'
+            ? ('skip' as const)
+            : showingByDoingModeRaw === 'do'
+              ? ('do' as const)
+              : defaultMode;
+
+    scheduleShowingByDoingForNewDialog(dialog, { mode: showingByDoingMode });
     return true;
   } catch (error) {
     log.error('Error creating dialog:', error);

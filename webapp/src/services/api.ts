@@ -351,18 +351,29 @@ export class ApiClient {
   async createDialog(
     agentId: string,
     taskDocPath?: string,
-    options?: { skipShowingByDoing?: boolean },
+    options?: { showingByDoingMode?: 'do' | 'reuse' | 'skip' },
   ): Promise<
     ApiResponse<{ selfId: string; rootId: string; agentId: string; taskDocPath?: string }>
   > {
+    const showingByDoingMode = options?.showingByDoingMode;
     return this.request('/api/dialogs', {
       method: 'POST',
       body: {
         agentId,
         taskDocPath,
-        skipShowingByDoing: options && options.skipShowingByDoing === true,
+        // Back-compat: keep boolean, but prefer mode.
+        skipShowingByDoing: showingByDoingMode === 'skip',
+        showingByDoingMode,
       },
     });
+  }
+
+  async getShowingByDoingStatus(
+    agentId: string,
+  ): Promise<ApiResponse<{ hasCache: boolean; createdAt?: string; ageSeconds?: number }>> {
+    const params = new URLSearchParams();
+    params.set('agentId', agentId);
+    return this.request(`/api/showing-by-doing?${params.toString()}`);
   }
 
   /**

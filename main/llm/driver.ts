@@ -1605,11 +1605,27 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         const coursePrefixMsgs: ChatMessage[] =
           dlg.currentCourse > 1 ? [...dlg.getCoursePrefixMsgs()] : [];
 
+        const dialogMsgsForContext: ChatMessage[] = dlg.msgs.filter((m) => {
+          if (!m) return false;
+          if (m.type !== 'saying_msg' || m.role !== 'assistant') return true;
+          const trimmed = typeof m.content === 'string' ? m.content.trimStart() : '';
+          // UI-friendly but LLM-noisy banner: keep it visible in the timeline, but exclude from ctx.
+          // The "real" prelude signal is the concrete shell snapshot + FBR transcript below.
+          if (
+            trimmed.startsWith('## Prelude:') ||
+            trimmed.startsWith('## Prelude：') ||
+            trimmed.startsWith('## Prelude')
+          ) {
+            return false;
+          }
+          return true;
+        });
+
         const ctxMsgs: ChatMessage[] = [
           ...memories,
           ...(taskDocMsg ? [taskDocMsg] : []),
           ...coursePrefixMsgs,
-          ...dlg.msgs,
+          ...dialogMsgsForContext,
         ];
 
         if (genIterNo === 1 && takenSubdialogResponses.length > 0) {

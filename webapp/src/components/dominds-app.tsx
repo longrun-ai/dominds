@@ -118,6 +118,7 @@ type ToastHistoryEntry = {
 export class DomindsApp extends HTMLElement {
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
+  private static readonly DOMINDS_FEEL_STORAGE_KEY = 'dominds-feel-v1';
 
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
@@ -3007,6 +3008,40 @@ export class DomindsApp extends HTMLElement {
         margin-top: 4px;
         font-size: 12px;
         color: var(--dominds-muted, #666666);
+      }
+
+      .dominds-feel-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+      }
+
+      .dominds-feel-label {
+        font-weight: 500;
+        color: var(--dominds-fg, #333333);
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .dominds-feel-loading {
+        font-size: 12px;
+        color: var(--dominds-muted, #666666);
+      }
+
+      .dominds-feel-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        align-items: center;
+      }
+
+      .dominds-feel-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
       }
 
       .teammate-details h4 {
@@ -6029,11 +6064,12 @@ export class DomindsApp extends HTMLElement {
           </div>
 
           <div class="form-group">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-              <input type="checkbox" id="skip-showing-by-doing">
-              <span>${t.skipShowingByDoingLabel}</span>
-            </label>
-            <small class="form-help">${t.skipShowingByDoingHelp}</small>
+            <div class="dominds-feel-row">
+              <span class="dominds-feel-label">${t.domindsFeelLabel}</span>
+              <div class="dominds-feel-options" id="dominds-feel-options">
+                <span class="dominds-feel-loading">${t.loading}</span>
+              </div>
+            </div>
           </div>
 	        </div>
         <div class="modal-footer">
@@ -6066,6 +6102,8 @@ export class DomindsApp extends HTMLElement {
   }
 
   private setupDialogModalEvents(modal: HTMLElement): void {
+    type ShowingByDoingMode = 'do' | 'reuse' | 'skip';
+
     const select = modal.querySelector('#teammate-select') as HTMLSelectElement;
     const shadowGroup = modal.querySelector('#shadow-members-group') as HTMLElement | null;
     const shadowSelect = modal.querySelector('#shadow-teammate-select') as HTMLSelectElement | null;
@@ -6073,7 +6111,7 @@ export class DomindsApp extends HTMLElement {
     const suggestions = modal.querySelector('#task-doc-suggestions') as HTMLElement;
     const createBtn = modal.querySelector('#create-dialog-btn') as HTMLButtonElement;
     const teammateInfo = modal.querySelector('#teammate-info') as HTMLElement;
-    const skipPrelude = modal.querySelector('#skip-showing-by-doing') as HTMLInputElement | null;
+    const feelOptions = modal.querySelector('#dominds-feel-options') as HTMLElement | null;
 
     // Modal close event listeners
     const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement;
@@ -6105,6 +6143,142 @@ export class DomindsApp extends HTMLElement {
 
     closeBtn?.addEventListener('click', closeModal);
     cancelBtn?.addEventListener('click', closeModal);
+
+    const formatCompactAge = (ageSeconds: number): string => {
+      const totalSeconds = Number.isFinite(ageSeconds) ? Math.max(0, Math.floor(ageSeconds)) : 0;
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+      let s = '';
+      if (days > 0) s += `${days}d`;
+      if (hours > 0 || days > 0) s += `${hours}h`;
+      s += `${minutes}m`;
+      return s;
+    };
+
+    const readStoredDomindsFeelMode = (): ShowingByDoingMode | null => {
+      try {
+        const raw = localStorage.getItem(DomindsApp.DOMINDS_FEEL_STORAGE_KEY);
+        if (raw === 'do' || raw === 'reuse' || raw === 'skip') return raw;
+        return null;
+      } catch (error: unknown) {
+        console.warn('Failed to read Dominds feel selection from localStorage', error);
+        return null;
+      }
+    };
+
+    const persistDomindsFeelMode = (mode: ShowingByDoingMode): void => {
+      try {
+        localStorage.setItem(DomindsApp.DOMINDS_FEEL_STORAGE_KEY, mode);
+      } catch (error: unknown) {
+        console.warn('Failed to persist Dominds feel selection to localStorage', error);
+      }
+    };
+
+    let currentDomindsFeelMode: ShowingByDoingMode = 'do';
+    let domindsFeelRenderSeq = 0;
+
+    const resolveModalSelectedAgentId = (): string => {
+      if (select.value === '__shadow__') {
+        const shadowId = shadowSelect ? shadowSelect.value : '';
+        return shadowId || this.defaultResponder || '';
+      }
+      return select.value || this.defaultResponder || '';
+    };
+
+    const renderFeltSenseChoices = (args: { hasCache: boolean; ageSeconds: number }): void => {
+      const t = getUiStrings(this.uiLanguage);
+      if (!feelOptions) return;
+
+      const stored = readStoredDomindsFeelMode();
+      const allowed: ShowingByDoingMode[] = args.hasCache
+        ? ['reuse', 'do', 'skip']
+        : ['do', 'skip'];
+      const selected: ShowingByDoingMode =
+        stored && allowed.includes(stored) ? stored : args.hasCache ? 'reuse' : 'do';
+
+      currentDomindsFeelMode = selected;
+
+      const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.domindsFeelReuseAgeSuffix}`;
+      const optionRows: Array<{ mode: ShowingByDoingMode; label: string }> = args.hasCache
+        ? [
+            { mode: 'reuse', label: reuseLabel },
+            { mode: 'do', label: t.domindsFeelRerun },
+            { mode: 'skip', label: t.domindsFeelSkip },
+          ]
+        : [
+            { mode: 'do', label: t.domindsFeelDo },
+            { mode: 'skip', label: t.domindsFeelSkip },
+          ];
+
+      feelOptions.innerHTML = optionRows
+        .map((row) => {
+          const checked = row.mode === selected ? 'checked' : '';
+          return `
+            <label class="dominds-feel-option">
+              <input type="radio" name="dominds-feel" value="${row.mode}" ${checked}>
+              <span>${escapeHtml(row.label)}</span>
+            </label>
+          `;
+        })
+        .join('');
+    };
+
+    const refreshFeltSenseChoices = async (): Promise<void> => {
+      if (!feelOptions) return;
+      const t = getUiStrings(this.uiLanguage);
+      const agentId = resolveModalSelectedAgentId();
+      if (!agentId) {
+        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0 });
+        return;
+      }
+
+      const seq = (domindsFeelRenderSeq += 1);
+      feelOptions.innerHTML = `<span class="dominds-feel-loading">${t.loading}</span>`;
+
+      try {
+        const api = getApiClient();
+        const resp = await api.getShowingByDoingStatus(agentId);
+        if (seq !== domindsFeelRenderSeq) return;
+
+        const data = resp.success ? resp.data : undefined;
+        const hasCache = !!(data && data.hasCache === true);
+
+        let ageSeconds = 0;
+        if (data) {
+          const ageSecondsRaw = (data as { ageSeconds?: unknown }).ageSeconds;
+          const createdAtRaw = (data as { createdAt?: unknown }).createdAt;
+          if (typeof ageSecondsRaw === 'number' && Number.isFinite(ageSecondsRaw)) {
+            ageSeconds = ageSecondsRaw;
+          } else if (typeof createdAtRaw === 'string') {
+            const createdAtMs = Date.parse(createdAtRaw);
+            if (Number.isFinite(createdAtMs)) {
+              ageSeconds = Math.max(0, Math.floor((Date.now() - createdAtMs) / 1000));
+            }
+          }
+        }
+
+        renderFeltSenseChoices({ hasCache, ageSeconds });
+      } catch (error: unknown) {
+        if (seq !== domindsFeelRenderSeq) return;
+        console.warn('Failed to fetch showing-by-doing cache status', error);
+        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0 });
+      }
+    };
+
+    if (feelOptions) {
+      feelOptions.addEventListener('change', (e) => {
+        const target = e.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (target.type !== 'radio') return;
+        const v = target.value;
+        if (v === 'do' || v === 'reuse' || v === 'skip') {
+          currentDomindsFeelMode = v;
+          persistDomindsFeelMode(v);
+        }
+      });
+    }
 
     // Function to show teammate info
     const showTeammateInfo = (agentId: string) => {
@@ -6147,16 +6321,19 @@ export class DomindsApp extends HTMLElement {
         shadowGroup.style.display = isShadow ? 'block' : 'none';
       }
       showTeammateInfo(select.value);
+      void refreshFeltSenseChoices();
     });
 
     if (shadowSelect) {
       shadowSelect.addEventListener('change', () => {
         showTeammateInfo('__shadow__');
+        void refreshFeltSenseChoices();
       });
     }
 
     // Show teammate info for initially selected agent
     showTeammateInfo(select.value);
+    void refreshFeltSenseChoices();
 
     // Taskdoc autocomplete functionality
     let selectedSuggestionIndex = -1;
@@ -6375,8 +6552,9 @@ export class DomindsApp extends HTMLElement {
         selectedAgentId = select.value;
       }
 
-      const skipShowingByDoing = skipPrelude ? skipPrelude.checked : false;
-      await this.createDialog(selectedAgentId, taskDocPath, { skipShowingByDoing });
+      await this.createDialog(selectedAgentId, taskDocPath, {
+        showingByDoingMode: currentDomindsFeelMode,
+      });
       modal.remove();
     });
 
@@ -6392,7 +6570,7 @@ export class DomindsApp extends HTMLElement {
   public async createDialog(
     agentId: string | undefined,
     taskDocPath: string,
-    options?: { skipShowingByDoing?: boolean },
+    options?: { showingByDoingMode?: 'do' | 'reuse' | 'skip' },
   ): Promise<{ selfId: string; rootId: string; agentId: string; taskDocPath: string }> {
     try {
       const fallbackAgent = agentId || this.defaultResponder || '';

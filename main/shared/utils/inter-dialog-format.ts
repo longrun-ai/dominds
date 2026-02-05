@@ -73,7 +73,7 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
             '# 扪心自问（FBR）自诉请',
             '',
             `- 诉请：\`${tellaskHead}\``,
-            '- 约束：这是一个 FBR 支线对话；请以“新靴视角”独立推理与总结。',
+            '- 约束：这是一个 FBR 支线对话；请以“初心视角”独立推理与总结。',
             '- 工具：本对话按规范应为“无工具”模式；不要尝试调用任何工具或发起新的队友诉请。',
             '- 重要：不要依赖诉请者线程的对话历史；仅基于诉请正文（以及本支线对话自身的会话历史，如有）。',
             '',

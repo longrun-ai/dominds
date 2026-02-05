@@ -102,6 +102,7 @@ export interface CreateDialogRequest {
   agentId?: string; // Optional - will auto-fill from default_responder if not provided
   taskDocPath: string; // Mandatory - every dialog must have a Taskdoc
   skipShowingByDoing?: boolean;
+  showingByDoingMode?: 'do' | 'reuse' | 'skip';
 }
 
 export interface DisplayDialogRequest {

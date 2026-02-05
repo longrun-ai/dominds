@@ -53,8 +53,11 @@ export type UiStrings = {
   shadowMembersLabel: string;
   shadowMembersSelectRequired: string;
   defaultMarker: string;
-  skipShowingByDoingLabel: string;
-  skipShowingByDoingHelp: string;
+  domindsFeelLabel: string;
+  domindsFeelDo: string;
+  domindsFeelReuseAgeSuffix: string;
+  domindsFeelRerun: string;
+  domindsFeelSkip: string;
 
   authRequiredTitle: string;
   authDescription: string;
@@ -325,9 +328,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       shadowMembersLabel: '影子成员：',
       shadowMembersSelectRequired: '请选择影子成员。',
       defaultMarker: ' • 默认',
-      skipShowingByDoingLabel: '跳过做给祂看（不执行环境序幕）',
-      skipShowingByDoingHelp:
-        '默认会诉请 shell 专家执行 `uname -a` 并触发一次 `!?@self` FBR；勾选后跳过。',
+      domindsFeelLabel: '智能体 Dominds 体感：',
+      domindsFeelDo: '做给祂看',
+      domindsFeelReuseAgeSuffix: ' 前',
+      domindsFeelRerun: '再做一遍',
+      domindsFeelSkip: '无感',
 
       authRequiredTitle: '需要认证',
       authDescription: '请输入 Dominds 认证密钥以连接。',
@@ -603,9 +608,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     shadowMembersLabel: 'Shadow Members:',
     shadowMembersSelectRequired: 'Please select a shadow member.',
     defaultMarker: ' • Default',
-    skipShowingByDoingLabel: 'Skip Showing-by-Doing prelude',
-    skipShowingByDoingHelp:
-      'By default, the dialog runs `uname -a` (via a shell specialist when available) and triggers one `!?@self` FBR. Check to skip.',
+    domindsFeelLabel: 'Agent feels for Dominds:',
+    domindsFeelDo: 'Do it now',
+    domindsFeelReuseAgeSuffix: ' ago',
+    domindsFeelRerun: 'Do it again',
+    domindsFeelSkip: 'Feelingless',
 
     authRequiredTitle: 'Authentication Required',
     authDescription: 'Enter the Dominds auth key to connect.',

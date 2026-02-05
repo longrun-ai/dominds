@@ -50,7 +50,10 @@ import {
   type LanguageCode,
 } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
-import { scheduleShowingByDoingForNewDialog } from '../showing-by-doing';
+import {
+  getShowingByDoingCacheStatus,
+  scheduleShowingByDoingForNewDialog,
+} from '../showing-by-doing';
 import { Team } from '../team';
 import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
 import { generateDialogID } from '../utils/id';
@@ -565,6 +568,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
   try {
     const { agentId, taskDocPath } = packet;
     const skipShowingByDoing = packet.skipShowingByDoing === true;
+    const showingByDoingMode = packet.showingByDoingMode;
 
     // Validate that taskDocPath is provided (it's now mandatory)
     if (!taskDocPath || taskDocPath.trim() === '') {
@@ -662,7 +666,17 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    scheduleShowingByDoingForNewDialog(dialog, { skipShowingByDoing });
+    const cacheStatus = getShowingByDoingCacheStatus(finalAgentId);
+    const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
+    const mode =
+      skipShowingByDoing === true || showingByDoingMode === 'skip'
+        ? ('skip' as const)
+        : showingByDoingMode === 'reuse'
+          ? ('reuse' as const)
+          : showingByDoingMode === 'do'
+            ? ('do' as const)
+            : defaultMode;
+    scheduleShowingByDoingForNewDialog(dialog, { mode });
   } catch (error) {
     log.warn('Failed to create dialog', undefined, error);
     ws.send(
