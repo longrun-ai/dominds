@@ -224,7 +224,7 @@ Dominds 从两个范围加载记忆文件为纯 markdown (`*.md`)：
 ```yaml
 id: 'aa/bb/cccccccc' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'alice' # 负责此对话的智能体
-taskDocPath: 'task.tsk' # rtws 任务文档包目录的路径
+taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径
 createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
 # 根对话没有父字段
 ```
@@ -234,7 +234,7 @@ createdAt: '2024-01-15T10:30:00Z' # 创建时的 ISO 时间戳
 ```yaml
 id: 'dd/ee/ffffffff' # 唯一对话标识符（仅 selfDlgId）
 agentId: 'bob' # 负责此对话的智能体
-taskDocPath: 'task.tsk' # rtws 任务文档包目录的路径（从父级继承）
+taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径（从父级继承）
 createdAt: '2024-01-15T10:35:00Z' # 创建时的 ISO 时间戳
 supdialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
 assignmentFromSup: # 来自父级的任务上下文
@@ -370,7 +370,7 @@ status: 'completed'
 
 ```yaml
 # 在 dialog.yaml 中
-taskdoc: 'tasks/user-auth.tsk' # rtws 任务文档包目录的路径
+taskdoc: 'tasks/user-auth.tsk' # rtws 任务包目录的路径（差遣牒）
 taskdocVersion: 5
 taskdocChecksum: 'sha256:abc123...'
 ```
@@ -425,7 +425,7 @@ taskdocChecksum: 'sha256:abc123...'
 4. 使用序列化的 DialogID 写入初始 `dialog.yaml` 元数据
 5. 将 `latest.yaml` 初始化为 `currentCourse: 1`
 6. 创建空的 `reminders.json`
-7. 设置任务文档路径引用
+7. 设置差遣牒（Taskdoc）路径引用
 
 ### 消息持久化
 
@@ -441,7 +441,7 @@ taskdocChecksum: 'sha256:abc123...'
    - `selfDlgId`：新生成的子对话 ID
    - `rootDlgId`：从 supdialog 的 `rootDlgId` 继承
 3. 在父级的 `subdialogs/` 下创建子对话目录（仅使用 `selfDlgId` 作为目录名）
-4. 从父级设置任务文档路径引用
+4. 从父级设置差遣牒（Taskdoc）路径引用
 5. 在元数据中设置父调用上下文
 6. 初始化子对话状态，元数据中仅存储 `selfDlgId`
 7. 加载时基于目录结构重建完整的 `DialogID` 和 `rootDlgId`
