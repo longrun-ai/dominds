@@ -138,14 +138,19 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - **[Terminology](docs/dominds-terminology.md)** — Dominds 专有术语
 - **[Memory System](docs/memory-system.zh.md)** — 分层记忆系统
 - **[CLI Usage Guide](docs/cli-usage.zh.md)** — 命令行工具及使用方法
+- **[Q4H](docs/q4h.zh.md)** — 向人类提问（`!?@human`）机制与 WebUI 支持
 - **[MCP Support](docs/mcp-support.zh.md)** — MCP 工具集成指南
 - **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.zh.md)** — 差遣牒（Taskdoc）封装
+- **[FBR](docs/fbr.zh.md)** — 扪心自问（`!?@self`）机制设计与增强
 - **[Context Health](docs/context-health.zh.md)** — 上下文健康维护
-- **[鞭策](docs/diligence-push.zh.md)** — 鞭策机制
+- **[Diligence Push](docs/diligence-push.zh.md)** — 鞭策机制
+- **[Showing-by-Doing](docs/showing-by-doing.zh.md)** — “做给祂看”：对话创建时建立诉请机制体感
 - **[Design](docs/design.zh.md)** — Dominds 架构设计与核心抽象
+- **[Roadmap](docs/roadmap.zh.md)** — 发展规划与版本演进方向
 - **[OEC Philosophy](docs/OEC-philosophy.zh.md)** — 全方位优化管理法
 
 - **[Team Mgmt Toolset](docs/team-mgmt-toolset.zh.md)** — 团队管理工具集
+- **[Text Editing Tools (ws_mod)](docs/txt-editing-tools.zh.md)** — 文本编辑工具集设计文档（以当前实现为准）
 - **[i18n](docs/i18n.zh.md)** — 语言支持与本地化配置
 - **[Dialog System](docs/dialog-system.zh.md)** — 对话系统与流式事件
 - **[Dialog Persistence](docs/dialog-persistence.zh.md)** — 磁盘持久化存储结构

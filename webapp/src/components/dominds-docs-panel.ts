@@ -16,6 +16,12 @@ type FetchState =
   | { kind: 'ready'; raw: string }
   | { kind: 'error'; message: string };
 
+type DocsLinkTarget = {
+  readonly docName: string;
+  readonly language: LanguageCode;
+  readonly anchorId: string | null;
+};
+
 function buildDocTabs(): readonly DocTab[] {
   return [
     {
@@ -34,6 +40,11 @@ function buildDocTabs(): readonly DocTab[] {
       docName: 'cli-usage',
     },
     {
+      key: 'q4h',
+      titleI18n: { zh: 'Q4H', en: 'Q4H' },
+      docName: 'q4h',
+    },
+    {
       key: 'mcp-support',
       titleI18n: { zh: 'MCP 支持', en: 'MCP Support' },
       docName: 'mcp-support',
@@ -42,6 +53,11 @@ function buildDocTabs(): readonly DocTab[] {
       key: 'encapsulated-taskdocs',
       titleI18n: { zh: '差遣牒（Taskdoc）封装', en: 'Encapsulated Taskdocs' },
       docName: 'encapsulated-taskdoc',
+    },
+    {
+      key: 'fbr',
+      titleI18n: { zh: 'FBR（扪心自问）', en: 'FBR (Fresh Boots Reasoning)' },
+      docName: 'fbr',
     },
     {
       key: 'context-health',
@@ -54,9 +70,19 @@ function buildDocTabs(): readonly DocTab[] {
       docName: 'diligence-push',
     },
     {
+      key: 'showing-by-doing',
+      titleI18n: { zh: '做给祂看', en: 'Showing-by-Doing' },
+      docName: 'showing-by-doing',
+    },
+    {
       key: 'design',
       titleI18n: { zh: 'Dominds 设计', en: 'Dominds Design' },
       docName: 'design',
+    },
+    {
+      key: 'roadmap',
+      titleI18n: { zh: '发展规划', en: 'Roadmap' },
+      docName: 'roadmap',
     },
     {
       key: 'oec-philosophy',
@@ -72,6 +98,8 @@ export class DomindsDocsPanel extends HTMLElement {
   private selectedTabKey: string = this.docsTabs[0]?.key ?? 'design';
   private fetchState: FetchState = { kind: 'idle' };
   private inFlightKey: string | null = null;
+  private docLanguageOverride: LanguageCode | null = null;
+  private pendingScrollAnchorId: string | null = null;
 
   static get observedAttributes(): string[] {
     return ['ui-language'];
@@ -114,7 +142,8 @@ export class DomindsDocsPanel extends HTMLElement {
   private async ensureLoaded(): Promise<void> {
     const active = this.docsTabs.find((t) => t.key === this.selectedTabKey) ?? this.docsTabs[0];
     if (!active) return;
-    const key = `${active.key}:${this.uiLanguage}:${active.docName}`;
+    const language = this.docLanguageOverride ?? this.uiLanguage;
+    const key = `${active.key}:${language}:${active.docName}`;
     if (this.inFlightKey === key) return;
     this.inFlightKey = key;
     this.fetchState = { kind: 'loading' };
@@ -122,7 +151,7 @@ export class DomindsDocsPanel extends HTMLElement {
 
     try {
       const api = getApiClient();
-      const resp = await api.readDocsMarkdown(active.docName, this.uiLanguage);
+      const resp = await api.readDocsMarkdown(active.docName, language);
       if (!resp.success) {
         const t = getUiStrings(this.uiLanguage);
         if (resp.status === 401) {
@@ -142,6 +171,7 @@ export class DomindsDocsPanel extends HTMLElement {
       }
       this.fetchState = { kind: 'ready', raw: payload.raw };
       this.render();
+      this.scrollToPendingAnchorIfAny();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       this.fetchState = { kind: 'error', message: msg };
@@ -154,9 +184,110 @@ export class DomindsDocsPanel extends HTMLElement {
   private onSelectTab(key: string): void {
     if (key === this.selectedTabKey) return;
     this.selectedTabKey = key;
+    this.docLanguageOverride = null;
+    this.pendingScrollAnchorId = null;
     this.fetchState = { kind: 'idle' };
     this.render();
     void this.ensureLoaded();
+  }
+
+  private ensureTabForDocName(docName: string): string {
+    const existing = this.docsTabs.find((t) => t.docName === docName);
+    if (existing) return existing.key;
+
+    const isSafeDocName = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(docName);
+    if (!isSafeDocName) {
+      return this.docsTabs[0]?.key ?? this.selectedTabKey;
+    }
+
+    const baseKey = `doc:${docName}`;
+    let key = baseKey;
+    let i = 2;
+    while (this.docsTabs.some((t) => t.key === key)) {
+      key = `${baseKey}:${i}`;
+      i += 1;
+    }
+
+    const newTab: DocTab = {
+      key,
+      titleI18n: { zh: docName, en: docName },
+      docName,
+    };
+    this.docsTabs = [...this.docsTabs, newTab];
+    return key;
+  }
+
+  private parseDocsLinkTarget(href: string): DocsLinkTarget | null {
+    if (href.startsWith('#')) return null;
+
+    const [rawPathPart, rawHashPart] = href.split('#', 2);
+    const pathPart = rawPathPart ?? '';
+    if (!pathPart) return null;
+
+    const fileName = pathPart.split('/').filter(Boolean).pop();
+    if (!fileName) return null;
+
+    const mdExt = '.md';
+    const zhSuffix = '.zh.md';
+
+    let docName: string | null = null;
+    let language: LanguageCode | null = null;
+    if (fileName.endsWith(zhSuffix)) {
+      docName = fileName.slice(0, -zhSuffix.length);
+      language = 'zh';
+    } else if (fileName.endsWith(mdExt)) {
+      docName = fileName.slice(0, -mdExt.length);
+      language = 'en';
+    } else {
+      return null;
+    }
+
+    const isSafeDocName = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(docName);
+    if (!isSafeDocName) return null;
+
+    let anchorId: string | null = null;
+    if (typeof rawHashPart === 'string' && rawHashPart) {
+      try {
+        anchorId = decodeURIComponent(rawHashPart);
+      } catch {
+        anchorId = rawHashPart;
+      }
+      if (anchorId === '') anchorId = null;
+    }
+
+    return { docName, language, anchorId };
+  }
+
+  private isExternalLink(href: string): boolean {
+    // Allowlist: links with these schemes are treated as "external".
+    return (
+      href.startsWith('http://') ||
+      href.startsWith('https://') ||
+      href.startsWith('mailto:') ||
+      href.startsWith('tel:')
+    );
+  }
+
+  private openExternalLink(href: string): void {
+    // Keep the current SPA URL stable: open external links in a new tab/window.
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+
+  private scrollToPendingAnchorIfAny(): void {
+    if (!this.pendingScrollAnchorId) return;
+    const id = this.pendingScrollAnchorId;
+    this.pendingScrollAnchorId = null;
+    this.scrollToAnchorId(id);
+  }
+
+  private scrollToAnchorId(id: string): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const body = root.querySelector('.docs-body');
+    if (!(body instanceof HTMLElement)) return;
+    const anchor = body.querySelector(`#${CSS.escape(id)}`);
+    if (!(anchor instanceof HTMLElement)) return;
+    anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   private render(): void {
@@ -207,23 +338,40 @@ export class DomindsDocsPanel extends HTMLElement {
         if (!(link instanceof HTMLAnchorElement)) return;
         const href = link.getAttribute('href');
         if (typeof href !== 'string') return;
-        // Prevent internal ToC links (e.g. #中文标题) from being treated as normal navigation.
-        // Even if we can't locate the target heading, keep the browser on the same page.
-        if (!href.startsWith('#')) return;
-        let id = href.slice(1);
-        try {
-          id = decodeURIComponent(id);
-        } catch {
-          // keep raw
-        }
-        if (!id) {
-          e.preventDefault();
+
+        // Never allow markdown links inside the docs panel to navigate the whole SPA.
+        // Best-effort: interpret doc links and open them in-panel; otherwise keep URL unchanged.
+        e.preventDefault();
+
+        if (href.startsWith('#')) {
+          const idRaw = href.slice(1);
+          if (!idRaw) return;
+          let id = idRaw;
+          try {
+            id = decodeURIComponent(idRaw);
+          } catch {
+            // keep raw
+          }
+          if (!id) return;
+          this.scrollToAnchorId(id);
           return;
         }
-        const anchor = body.querySelector(`#${CSS.escape(id)}`);
-        e.preventDefault();
-        if (!(anchor instanceof HTMLElement)) return;
-        anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        if (this.isExternalLink(href)) {
+          this.openExternalLink(href);
+          return;
+        }
+
+        const docsTarget = this.parseDocsLinkTarget(href);
+        if (!docsTarget) return;
+
+        const tabKey = this.ensureTabForDocName(docsTarget.docName);
+        this.selectedTabKey = tabKey;
+        this.docLanguageOverride = docsTarget.language;
+        this.pendingScrollAnchorId = docsTarget.anchorId;
+        this.fetchState = { kind: 'idle' };
+        this.render();
+        void this.ensureLoaded();
       });
     }
   }

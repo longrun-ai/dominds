@@ -227,14 +227,19 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Terminology](docs/dominds-terminology.md)** — Canonical vocabulary across prompts and implementation docs (Taskdoc, Teammate Tellask, etc.)
 - **[Memory System](docs/memory-system.md)** — The hierarchical memory system
 - **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
+- **[Q4H](docs/q4h.md)** — Questions for Human (`!?@human`) mechanism and WebUI support
 - **[MCP Support](docs/mcp-support.md)** — MCP tool integration
 - **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — `*.tsk/` Taskdoc packages and parsing
+- **[FBR](docs/fbr.md)** — Fresh Boots Reasoning (`!?@self`) design and enhancements
 - **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
 - **[Diligence Push](docs/diligence-push.md)** — Auto-continue (diligence) mechanism
+- **[Showing-by-Doing](docs/showing-by-doing.md)** — A dialog-creation prelude that makes Tellask feel real
 - **[Design](docs/design.md)** — Architecture and key abstractions
+- **[Roadmap](docs/roadmap.md)** — Major-version plan and evolution
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
 
 - **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — Managing team members via tools
+- **[Text Editing Tools (ws_mod)](docs/txt-editing-tools.md)** — `ws_mod` toolset design doc (as implemented)
 - **[i18n](docs/i18n.md)** — Language and localization rules
 - **[Dialog System](docs/dialog-system.md)** — Dialog runtime model and streaming
 - **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle
