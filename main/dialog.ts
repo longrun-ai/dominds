@@ -185,7 +185,7 @@ export abstract class Dialog {
   protected _lastContextHealthGenseq?: number;
   // Prompt queued for the next course drive (set by startNewCourse).
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
-  // Course prefix messages injected into LLM context on every course (except course #1 by default).
+  // Course prefix messages injected into LLM context on every course.
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
   // like Showing-by-Doing transcripts.
   protected _coursePrefixMsgs: ChatMessage[] = [];
@@ -960,6 +960,10 @@ export abstract class Dialog {
     return await this.dlgStore.persistAgentMessage(this, content, genseq, type, provider_data);
   }
 
+  public async persistUiOnlyMarkdown(content: string, genseq: number): Promise<void> {
+    return await this.dlgStore.persistUiOnlyMarkdown(this, content, genseq);
+  }
+
   public async persistFunctionCall(
     id: string,
     name: string,
@@ -1500,6 +1504,16 @@ export abstract class DialogStore {
     _genseq: number,
     _type: 'thinking_msg' | 'saying_msg',
     _provider_data?: ProviderData,
+  ): Promise<void> {}
+
+  /**
+   * Persist an assistant markdown message that must be visible in UI + persistence,
+   * but must never be injected into LLM context.
+   */
+  public async persistUiOnlyMarkdown(
+    _dialog: Dialog,
+    _content: string,
+    _genseq: number,
   ): Promise<void> {}
 
   /**

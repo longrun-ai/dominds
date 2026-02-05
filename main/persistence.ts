@@ -63,6 +63,7 @@ import type {
   TeammateCallResultRecord,
   TeammateResponseRecord,
   ToolArguments,
+  UiOnlyMarkdownRecord,
   UserTextGrammar,
 } from './shared/types/storage';
 import type { TellaskCallValidation } from './shared/types/tellask';
@@ -969,6 +970,21 @@ export class DiskFileDialogStore extends DialogStore {
     await this.appendEvent(course, event);
   }
 
+  public async persistUiOnlyMarkdown(
+    dialog: Dialog,
+    content: string,
+    genseq: number,
+  ): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const ev: UiOnlyMarkdownRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'ui_only_markdown_record',
+      genseq,
+      content: content || '',
+    };
+    await this.appendEvent(course, ev);
+  }
+
   /**
    * Persist a function call to storage
    */
@@ -1700,6 +1716,44 @@ export class DiskFileDialogStore extends DialogStore {
           // Stream the content through the parser to ensure consistent event emission
           await streamingParser.takeUpstreamChunk(content);
           await streamingParser.finalize();
+        }
+        break;
+      }
+
+      case 'ui_only_markdown_record': {
+        const content = event.content || '';
+        if (!content.trim()) break;
+
+        const dialogIdent = { selfId: dialog.id.selfId, rootId: dialog.id.rootId };
+        if (ws.readyState === 1) {
+          ws.send(
+            JSON.stringify({
+              type: 'markdown_start_evt',
+              course,
+              genseq: event.genseq,
+              dialog: dialogIdent,
+              timestamp: event.ts,
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'markdown_chunk_evt',
+              chunk: content,
+              course,
+              genseq: event.genseq,
+              dialog: dialogIdent,
+              timestamp: event.ts,
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'markdown_finish_evt',
+              course,
+              genseq: event.genseq,
+              dialog: dialogIdent,
+              timestamp: event.ts,
+            }),
+          );
         }
         break;
       }
@@ -4373,6 +4427,16 @@ export class DialogPersistence {
           // Convert agent words to ChatMessage
           messages.push({
             type: 'saying_msg',
+            role: 'assistant',
+            genseq: event.genseq,
+            content: event.content,
+          });
+          break;
+        }
+
+        case 'ui_only_markdown_record': {
+          messages.push({
+            type: 'ui_only_markdown_msg',
             role: 'assistant',
             genseq: event.genseq,
             content: event.content,

@@ -171,9 +171,11 @@ ${
 ${
   fbrEnabled
     ? `### 扪心自问（FBR）建议
-- 当你遇到“难题/硬决策/强不确定性/多约束”时，优先考虑发起 !?@self 扪心自问：这些情形值得投入更多推理精力。把问题拆成一个清晰的子问题，让“初心版本的你”给出分析与结论，再把结果整合回当前对话继续推进。
+- 当你遇到“难题/硬决策/强不确定性/多约束”，**或你发现自己“越想越自洽，但缺少外部验证”**时，优先考虑发起 !?@self 扪心自问：这些情形值得投入更多推理精力。把问题拆成一个清晰的子问题，让“初心版本的你”指出哪些只是自洽推演、哪些需要证据/实验/日志验证，并给出可执行的验证计划；再把结论整合回当前对话继续推进。
 - 重要：FBR 支线对话是**无工具**的；不要假设它能读文件/查网页/跑命令。诉请正文里必须给足上下文（必要日志/片段/约束/目标/验收口径）。
-- 当运行时并发创建多条 FBR 支线对话时，你需要综合它们的输出（对比分歧、提炼共识、做出决策）。`
+- 当运行时因 \`fbr-effort\` 生成多份 FBR 草稿时，把它理解为“付出努力的倍数”，而不是“某个固定自我在说话”。这些输出**没有稳定映射关系**，不要用序号称呼/追问某一份草稿。
+- 你必须做“综合整理”而不是“逐条复述”：去重、对比分歧、提炼共识，取各自精华去各自糟粕，并给出一个统一的可执行结论与验证计划。
+- 若诉请正文包含 \`uname -a\` 等环境快照，请将其理解为**当前 Dominds 运行时的真实环境信息**（不是“某台机器的猜测”），并据此做出环境相关判断与建议。`
     : ''
 }
 
@@ -303,9 +305,11 @@ ${
 ${
   fbrEnabled
     ? `### Fresh Boots Reasoning (FBR) Guidance
-- In hard situations (high uncertainty, complex trade-offs, many constraints, or when facing tough decisions), proactively do a tool-less !?@self FBR — those deserve extra efforts to reason about: isolate a single sub-question, request a clean analysis/conclusion, then integrate it back and keep driving the main work.
+- In hard situations (high uncertainty, complex trade-offs, many constraints, or when facing tough decisions) — **or when your reasoning feels increasingly self-consistent but lacks external verification** — proactively do a tool-less !?@self FBR. Isolate a single sub-question; ask your “fresh boots” self to separate coherent speculation from evidence-backed claims, propose concrete verification steps (tests/logs/experiments to run later), then integrate the conclusion back and keep driving the main work.
 - Important: the FBR sideline dialog is **tool-less**. Do not assume it can read files, browse, run shell, or fetch rtws (runtime workspace) state. Put all required context into the tellask body (relevant snippets/logs/constraints/acceptance criteria).
-- When the runtime creates multiple parallel FBR sideline dialogs, synthesize their outputs (compare disagreements, extract consensus, and make a decision).`
+- When the runtime produces multiple FBR drafts due to \`fbr-effort\`, treat it as an “effort multiplier”, not as stable personas. There is **no stable mapping** between drafts; do not number them or continue a thread with a specific draft.
+- You must *synthesize*, not *repeat*: dedupe, reconcile disagreements, extract the best parts, then deliver one coherent decision and an actionable verification plan.
+- If the tellask body contains an environment snapshot (e.g. \`uname -a\`), treat it as **real environment info for the current Dominds runtime**, not “some machine”. Ground your advice in it.`
     : ''
 }
 

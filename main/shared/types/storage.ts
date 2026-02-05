@@ -184,6 +184,7 @@ export interface CourseMetadataFile {
 export type PersistedDialogRecord =
   | AgentThoughtRecord
   | AgentWordsRecord
+  | UiOnlyMarkdownRecord
   | FuncCallRecord
   | HumanTextRecord
   | FuncResultRecord
@@ -204,6 +205,20 @@ export interface AgentThoughtRecord {
 export interface AgentWordsRecord {
   ts: string;
   type: 'agent_words_record';
+  genseq: number;
+  content: string;
+}
+
+/**
+ * UI-only assistant markdown.
+ *
+ * - Persisted for timeline fidelity and course replay.
+ * - Must NOT be injected into LLM context.
+ * - Replayed as markdown-only (no tellask parsing).
+ */
+export interface UiOnlyMarkdownRecord {
+  ts: string;
+  type: 'ui_only_markdown_record';
   genseq: number;
   content: string;
 }

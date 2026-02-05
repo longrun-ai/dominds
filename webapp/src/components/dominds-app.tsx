@@ -6239,7 +6239,7 @@ export class DomindsApp extends HTMLElement {
 
       try {
         const api = getApiClient();
-        const resp = await api.getShowingByDoingStatus(agentId);
+        const resp = await api.getAgentPrimingStatus(agentId);
         if (seq !== domindsFeelRenderSeq) return;
 
         const data = resp.success ? resp.data : undefined;
@@ -6262,7 +6262,7 @@ export class DomindsApp extends HTMLElement {
         renderFeltSenseChoices({ hasCache, ageSeconds });
       } catch (error: unknown) {
         if (seq !== domindsFeelRenderSeq) return;
-        console.warn('Failed to fetch showing-by-doing cache status', error);
+        console.warn('Failed to fetch agent-priming cache status', error);
         renderFeltSenseChoices({ hasCache: false, ageSeconds: 0 });
       }
     };

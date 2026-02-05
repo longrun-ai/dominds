@@ -274,6 +274,7 @@ responses:
             case 'transient_guide_msg':
             case 'prompting_msg':
             case 'saying_msg':
+            case 'ui_only_markdown_msg':
             case 'thinking_msg':
             case 'func_result_msg':
             case 'tellask_result_msg':
@@ -378,6 +379,7 @@ responses:
               case 'transient_guide_msg':
               case 'prompting_msg':
               case 'saying_msg':
+              case 'ui_only_markdown_msg':
               case 'thinking_msg':
               case 'func_result_msg':
               case 'tellask_result_msg':

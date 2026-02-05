@@ -34,6 +34,13 @@ export type SayingMsg = {
   provider_data?: ProviderData;
 };
 
+export type UiOnlyMarkdownMsg = {
+  type: 'ui_only_markdown_msg';
+  role: 'assistant';
+  genseq: number;
+  content: string;
+};
+
 export type ThinkingMsg = {
   type: 'thinking_msg';
   role: 'assistant';
@@ -77,6 +84,7 @@ export type ChatMessage =
   | TransientGuideMsg
   | PromptingMsg
   | SayingMsg
+  | UiOnlyMarkdownMsg
   | ThinkingMsg
   | FuncCallMsg
   | FuncResultMsg

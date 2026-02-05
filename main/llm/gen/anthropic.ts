@@ -364,7 +364,11 @@ function chatMessageToContentBlocks(chatMsg: ChatMessage): AnthropicContentBlock
   }
 
   // Handle saying and thinking messages from assistant
-  if (chatMsg.type === 'saying_msg' || chatMsg.type === 'thinking_msg') {
+  if (
+    chatMsg.type === 'saying_msg' ||
+    chatMsg.type === 'ui_only_markdown_msg' ||
+    chatMsg.type === 'thinking_msg'
+  ) {
     const block: AnthropicContentBlock = { type: 'text', text: chatMsg.content };
     return [block];
   }

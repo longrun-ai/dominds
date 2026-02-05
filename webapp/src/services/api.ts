@@ -368,12 +368,12 @@ export class ApiClient {
     });
   }
 
-  async getShowingByDoingStatus(
+  async getAgentPrimingStatus(
     agentId: string,
   ): Promise<ApiResponse<{ hasCache: boolean; createdAt?: string; ageSeconds?: number }>> {
     const params = new URLSearchParams();
     params.set('agentId', agentId);
-    return this.request(`/api/showing-by-doing?${params.toString()}`);
+    return this.request(`/api/agent-priming?${params.toString()}`);
   }
 
   /**

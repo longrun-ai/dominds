@@ -306,7 +306,7 @@ export async function handleApiRoute(
       return await handleReadDocsMarkdown(req, res);
     }
 
-    if (pathname === '/api/showing-by-doing' && req.method === 'GET') {
+    if (pathname === '/api/agent-priming' && req.method === 'GET') {
       const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
       const agentId = urlObj.searchParams.get('agentId') ?? '';
       if (typeof agentId !== 'string' || agentId.trim() === '') {
@@ -497,6 +497,7 @@ const DOCS_WHITELIST = new Set<string>([
   'diligence-push',
   'auth',
   'dominds-terminology',
+  'dominds-agent-priming',
   'cli-usage',
   'mottos',
   'encapsulated-taskdoc',
@@ -506,7 +507,6 @@ const DOCS_WHITELIST = new Set<string>([
   'team-mgmt-toolset',
   'i18n',
   'txt-editing-tools',
-  'showing-by-doing',
   'fbr',
   'q4h',
   'roadmap',
@@ -518,6 +518,7 @@ const DOCS_WHITELIST = new Set<string>([
   'diligence-push.md',
   'auth.md',
   'dominds-terminology.md',
+  'dominds-agent-priming.md',
   'cli-usage.md',
   'mottos.md',
   'encapsulated-taskdoc.md',
@@ -527,7 +528,6 @@ const DOCS_WHITELIST = new Set<string>([
   'team-mgmt-toolset.md',
   'i18n.md',
   'txt-editing-tools.md',
-  'showing-by-doing.md',
   'fbr.md',
   'q4h.md',
   'roadmap.md',

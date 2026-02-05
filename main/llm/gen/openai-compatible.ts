@@ -79,6 +79,7 @@ function chatMessageToChatCompletionMessage(msg: ChatMessage): ChatCompletionMes
       return { role: 'user', content: msg.content };
     case 'transient_guide_msg':
     case 'saying_msg':
+    case 'ui_only_markdown_msg':
     case 'thinking_msg':
       return { role: 'assistant', content: msg.content };
     case 'func_call_msg':

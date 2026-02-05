@@ -57,8 +57,7 @@ When the runtime drives an FBR sideline dialog created by `!?@self`, it MUST enf
 - **No tools**:
   - no function tools
   - no MCP tools
-  - no teammate Tellasks (including `!?@human`)
-  - no supcalls
+  - no teammate Tellasks (including `!?@human`); the only exception is `!?@tellasker` (a sideline-only ask-back to the upstream tellasker dialog), and only when you must clarify critical missing context
 - **No caller-thread context dependency**:
   - the tellaskee MUST NOT assume access to the tellasker’s mainline/sideline dialog history
   - the tellaskee MUST treat the tellask body as the primary, authoritative task context
@@ -93,6 +92,7 @@ The FBR sideline dialog’s system prompt MUST clearly state:
 - The tellask body is the **primary task context**; do not assume any caller-thread history is available.
 - If this is a resumable `!tellaskSession` FBR, you may use your own prior `tellaskSession` history as explicit context.
 - If the tellask body is missing critical context, respond by listing what is missing and why it blocks reasoning.
+- `!?@tellasker` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks.
 
 #### Tool prompt requirements (when applicable)
 

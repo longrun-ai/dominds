@@ -70,9 +70,9 @@ function buildDocTabs(): readonly DocTab[] {
       docName: 'diligence-push',
     },
     {
-      key: 'showing-by-doing',
-      titleI18n: { zh: '做给祂看', en: 'Showing-by-Doing' },
-      docName: 'showing-by-doing',
+      key: 'dominds-agent-priming',
+      titleI18n: { zh: '智能体启动', en: 'Agent Priming' },
+      docName: 'dominds-agent-priming',
     },
     {
       key: 'design',
