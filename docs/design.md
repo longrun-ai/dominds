@@ -136,7 +136,7 @@ This fundamental problem manifests in several ways:
 
 **2. Task-Centered Focus Architecture**
 
-- **Central Taskdoc**: Single source of truth for goals, constraints, and progress
+- **Central Taskdoc**: The task’s live coordination bulletin board for goals/constraints/progress (keep it updated; don’t bury decisions in chat)
 - **Dynamic Context Windows**: Time-limited context retention
 - **Priority-Based Information Filtering**: Automatic ranking of context relevance
 

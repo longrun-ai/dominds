@@ -10,6 +10,7 @@ with a stable schema and a strict access policy.
 ## Goals
 
 - **Clarity**: separate “what we want” (goals) from “what we must obey” (constraints) and “where we are” (progress).
+- **Coordination**: make the Taskdoc the task’s **live coordination bulletin board** across mainlines/agents (keep `progress.md`/`constraints.md` current; don’t bury key decisions in chat).
 - **Durability**: make task state persist across long-running work and across dialog course resets.
 - **Auditability**: make task changes explicit and attributable to a single, intentional action.
 - **Safety**: prevent accidental or tool-driven reads/writes that bypass intended UX and control points.

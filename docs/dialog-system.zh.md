@@ -689,7 +689,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 ### `change_mind`
 
-**目的**：更新对话树中所有对话引用的共享 Taskdoc 内容（不开启新一程对话）。
+**目的**：更新对话树中所有对话引用的共享 Taskdoc 内容（不开启新一程对话）。把 Taskdoc 当作任务的**实时协调公告板**。
 
 **函数工具参数**：
 
@@ -710,6 +710,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 - **不开启新一程对话。** 如需开启新一程对话，请单独使用 `clear_mind`。
 - 本身不清除消息、提醒、Q4H 或注册表
 - 影响引用相同 Taskdoc 的所有参与智能体（主对话和子对话）
+- 关键决策/当前状态/下一步写回 `progress`；硬约束写回 `constraints`（不要只留在对话/提醒项里）。
 
 **实现说明**：
 

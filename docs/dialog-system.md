@@ -703,7 +703,7 @@ Invoke the function tool `clear_mind` with:
 
 ### `change_mind`
 
-**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (without starting a new dialog course).
+**Purpose**: Update the shared Taskdoc content that all dialogs in the dialog tree reference (without starting a new dialog course). Treat the Taskdoc as the task’s **live coordination bulletin board**.
 
 **Function tool arguments**:
 
@@ -724,6 +724,7 @@ Invoke the function tool `change_mind` with:
 - **Does not start a new dialog course.** If starting a new dialog course is desired, use `clear_mind` separately.
 - Does not clear messages, reminders, Q4H, or registry by itself
 - Affects all participant agents (main and subdialogs) referencing the same Taskdoc
+- Use `progress` for key decisions/status/next steps; use `constraints` for hard rules (don’t leave them only in chat/reminders).
 
 **Implementation Notes**:
 

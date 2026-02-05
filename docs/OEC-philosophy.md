@@ -169,7 +169,7 @@ Fast-paced clearance is crucial in agentic DevOps working. OEC principles transl
 
 ### **Dialog Course Management**
 
-- **Daily Reset**: Start new dialog rounds with an updated Taskdoc and fresh chat logs
+- **Daily Reset**: Start new dialog rounds with a Taskdoc that’s been brought up to date (it’s the live coordination bulletin board) and fresh chat logs
 - **Clear Context**: Ensure all agents work with optimal clarity and updated information
 - **Immediate Resolution**: Address issues and anomalies within the same operational cycle
 

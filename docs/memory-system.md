@@ -10,6 +10,8 @@ TL;DR:
 - Make key artifacts survivable (you can `clear_mind` and still keep moving).
 - Publicly declare and openly discuss progress in real time (and keep it auditable) to enforce timely coordination: that’s where the real leverage comes from when multiple agents and multiple mainline dialogs work in parallel (Taskdoc / team memory / env notes).
 
+Key rule: **the Taskdoc is the task’s live coordination bulletin board**. Put key decisions/status/next steps in `progress`, hard rules in `constraints`, and don’t leave them only in chat or reminders.
+
 Related terminology: [dominds-terminology.md](./dominds-terminology.md)
 
 ## Table of Contents

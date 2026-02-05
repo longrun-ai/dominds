@@ -217,6 +217,9 @@ Example / 示例（概念）:
 - EN: Taskdocs are the "single source of truth" for team-shared task contracts. They MUST be edited via the explicit control tool `change_mind`; generic file tools are **banned** from reading/writing anything under `**/*.tsk/`.
 - ZH: 差遣牒是全队共享任务契约的"单一事实来源"。必须通过显式控制工具 `change_mind` 进行修改；通用文件工具**禁止**读/写 `**/*.tsk/` 下的任何内容。
 
+- EN: Practically: treat the Taskdoc as the task’s **live coordination bulletin board**. If a decision/status/next-step affects others, write it back to `progress` (or `constraints`) — don’t leave it only in chat or reminders.
+- ZH: 实践上：把差遣牒当作任务的**实时协调公告板**。任何会影响他人的关键决策/当前状态/下一步，都要写回 `progress`（或 `constraints`），不要只留在对话或提醒项里。
+
 #### Section selector / 分段选择器
 
 - EN: The selector passed to `change_mind`: `goals` / `constraints` / `progress`.

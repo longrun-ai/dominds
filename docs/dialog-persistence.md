@@ -370,6 +370,7 @@ status: 'completed'
 ### Taskdoc Storage
 
 Taskdocs are rtws artifacts that exist independently and are referenced by dialogs through paths.
+In practice, the Taskdoc is also the task’s **live coordination bulletin board** across mainlines/agents.
 Taskdocs MUST be encapsulated Taskdoc packages (`*.tsk/`).
 
 ```yaml
@@ -385,6 +386,7 @@ taskdocChecksum: 'sha256:abc123...'
 - Multiple dialogs can reference the same Taskdoc for collaborative work
 - Taskdocs persist throughout the DevOps lifecycle, beyond individual conversations
 - Changes to Taskdoc files are immediately visible to all referencing dialogs
+- Treat the Taskdoc as the shared bulletin board: write back key decisions/status/next steps (don’t leave them only in chat/reminders).
 
 ### Error Persistence Policy
 
