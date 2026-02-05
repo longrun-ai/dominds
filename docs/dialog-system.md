@@ -27,8 +27,8 @@ This document provides detailed implementation specifications for the Dominds di
 ## Terminology
 
 This chapter defines the implementation-facing terms used throughout this document.
-For bilingual / user-facing naming conventions (mainline dialog / sideline dialog; tellasker / tellaskee), see `dominds/docs/dominds-terminology.md`.
-For Taskdoc package structure and encapsulation rules, see `dominds/docs/encapsulated-taskdoc.md`.
+For bilingual / user-facing naming conventions (mainline dialog / sideline dialog; tellasker / tellaskee), see [`dominds-terminology.md`](./dominds-terminology.md).
+For Taskdoc package structure and encapsulation rules, see [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ### Supdialog
 
@@ -66,7 +66,7 @@ The **subdialog registry** is a root dialog-scoped Map that maintains persistent
 
 A **teammate Tellask** is a Dominds specific syntax that triggers communication with another agent as subdialog. Teammate Tellasks have three distinct patterns with different semantics (see Section 3).
 
-**Tellask block structure** (see also `dominds/docs/dominds-terminology.md`):
+**Tellask block structure** (see also [`dominds-terminology.md`](./dominds-terminology.md)):
 
 - **Tellask headline**: the first line `!?@<name> ...` (additional `!?@...` lines in the same block are appended to the headline).
 - **Tellask body**: subsequent lines that start with `!?` but not `!?@`.
@@ -728,7 +728,7 @@ Invoke the function tool `change_mind` with:
 **Implementation Notes**:
 
 - `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the tellasker via a TellaskBack (`!?@tellasker`) to update the shared Taskdoc.
-- For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See `dominds/docs/encapsulated-taskdoc.md`.
+- For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ---
 

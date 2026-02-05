@@ -119,6 +119,7 @@ export class DomindsApp extends HTMLElement {
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
   private static readonly DOMINDS_FEEL_STORAGE_KEY = 'dominds-feel-v1';
+  private static readonly DOMINDS_SHADOW_FEEL_STORAGE_KEY = 'dominds-feel-shadow-v1';
 
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
@@ -6065,7 +6066,7 @@ export class DomindsApp extends HTMLElement {
 
           <div class="form-group">
             <div class="dominds-feel-row">
-              <span class="dominds-feel-label">${t.domindsFeelLabel}</span>
+              <span class="dominds-feel-label">${t.agentPrimingLabel}</span>
               <div class="dominds-feel-options" id="dominds-feel-options">
                 <span class="dominds-feel-loading">${t.loading}</span>
               </div>
@@ -6103,6 +6104,7 @@ export class DomindsApp extends HTMLElement {
 
   private setupDialogModalEvents(modal: HTMLElement): void {
     type ShowingByDoingMode = 'do' | 'reuse' | 'skip';
+    type DomindsFeelScope = 'visible' | 'shadow';
 
     const select = modal.querySelector('#teammate-select') as HTMLSelectElement;
     const shadowGroup = modal.querySelector('#shadow-members-group') as HTMLElement | null;
@@ -6157,9 +6159,13 @@ export class DomindsApp extends HTMLElement {
       return s;
     };
 
-    const readStoredDomindsFeelMode = (): ShowingByDoingMode | null => {
+    const readStoredDomindsFeelMode = (scope: DomindsFeelScope): ShowingByDoingMode | null => {
       try {
-        const raw = localStorage.getItem(DomindsApp.DOMINDS_FEEL_STORAGE_KEY);
+        const key =
+          scope === 'shadow'
+            ? DomindsApp.DOMINDS_SHADOW_FEEL_STORAGE_KEY
+            : DomindsApp.DOMINDS_FEEL_STORAGE_KEY;
+        const raw = localStorage.getItem(key);
         if (raw === 'do' || raw === 'reuse' || raw === 'skip') return raw;
         return null;
       } catch (error: unknown) {
@@ -6168,16 +6174,20 @@ export class DomindsApp extends HTMLElement {
       }
     };
 
-    const persistDomindsFeelMode = (mode: ShowingByDoingMode): void => {
+    const persistDomindsFeelMode = (mode: ShowingByDoingMode, scope: DomindsFeelScope): void => {
       try {
-        localStorage.setItem(DomindsApp.DOMINDS_FEEL_STORAGE_KEY, mode);
+        const key =
+          scope === 'shadow'
+            ? DomindsApp.DOMINDS_SHADOW_FEEL_STORAGE_KEY
+            : DomindsApp.DOMINDS_FEEL_STORAGE_KEY;
+        localStorage.setItem(key, mode);
       } catch (error: unknown) {
         console.warn('Failed to persist Dominds feel selection to localStorage', error);
       }
     };
 
     let currentDomindsFeelMode: ShowingByDoingMode = 'do';
-    let domindsFeelRenderSeq = 0;
+    let agentPrimingRenderSeq = 0;
 
     const resolveModalSelectedAgentId = (): string => {
       if (select.value === '__shadow__') {
@@ -6187,29 +6197,36 @@ export class DomindsApp extends HTMLElement {
       return select.value || this.defaultResponder || '';
     };
 
-    const renderFeltSenseChoices = (args: { hasCache: boolean; ageSeconds: number }): void => {
+    const renderFeltSenseChoices = (args: {
+      hasCache: boolean;
+      ageSeconds: number;
+      scope: DomindsFeelScope;
+    }): void => {
       const t = getUiStrings(this.uiLanguage);
       if (!feelOptions) return;
 
-      const stored = readStoredDomindsFeelMode();
+      const stored = readStoredDomindsFeelMode(args.scope);
       const allowed: ShowingByDoingMode[] = args.hasCache
         ? ['reuse', 'do', 'skip']
         : ['do', 'skip'];
-      const selected: ShowingByDoingMode =
-        stored && allowed.includes(stored) ? stored : args.hasCache ? 'reuse' : 'do';
+      const selected: ShowingByDoingMode = (() => {
+        if (stored && allowed.includes(stored)) return stored;
+        if (args.scope === 'shadow') return 'skip';
+        return args.hasCache ? 'reuse' : 'do';
+      })();
 
       currentDomindsFeelMode = selected;
 
-      const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.domindsFeelReuseAgeSuffix}`;
+      const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.agentPrimingReuseAgeSuffix}`;
       const optionRows: Array<{ mode: ShowingByDoingMode; label: string }> = args.hasCache
         ? [
             { mode: 'reuse', label: reuseLabel },
-            { mode: 'do', label: t.domindsFeelRerun },
-            { mode: 'skip', label: t.domindsFeelSkip },
+            { mode: 'do', label: t.agentPrimingRerun },
+            { mode: 'skip', label: t.agentPrimingSkip },
           ]
         : [
-            { mode: 'do', label: t.domindsFeelDo },
-            { mode: 'skip', label: t.domindsFeelSkip },
+            { mode: 'do', label: t.agentPrimingDo },
+            { mode: 'skip', label: t.agentPrimingSkip },
           ];
 
       feelOptions.innerHTML = optionRows
@@ -6229,18 +6246,19 @@ export class DomindsApp extends HTMLElement {
       if (!feelOptions) return;
       const t = getUiStrings(this.uiLanguage);
       const agentId = resolveModalSelectedAgentId();
+      const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
       if (!agentId) {
-        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0 });
+        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0, scope });
         return;
       }
 
-      const seq = (domindsFeelRenderSeq += 1);
+      const seq = (agentPrimingRenderSeq += 1);
       feelOptions.innerHTML = `<span class="dominds-feel-loading">${t.loading}</span>`;
 
       try {
         const api = getApiClient();
         const resp = await api.getAgentPrimingStatus(agentId);
-        if (seq !== domindsFeelRenderSeq) return;
+        if (seq !== agentPrimingRenderSeq) return;
 
         const data = resp.success ? resp.data : undefined;
         const hasCache = !!(data && data.hasCache === true);
@@ -6259,11 +6277,11 @@ export class DomindsApp extends HTMLElement {
           }
         }
 
-        renderFeltSenseChoices({ hasCache, ageSeconds });
+        renderFeltSenseChoices({ hasCache, ageSeconds, scope });
       } catch (error: unknown) {
-        if (seq !== domindsFeelRenderSeq) return;
+        if (seq !== agentPrimingRenderSeq) return;
         console.warn('Failed to fetch agent-priming cache status', error);
-        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0 });
+        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0, scope });
       }
     };
 
@@ -6275,7 +6293,8 @@ export class DomindsApp extends HTMLElement {
         const v = target.value;
         if (v === 'do' || v === 'reuse' || v === 'skip') {
           currentDomindsFeelMode = v;
-          persistDomindsFeelMode(v);
+          const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
+          persistDomindsFeelMode(v, scope);
         }
       });
     }

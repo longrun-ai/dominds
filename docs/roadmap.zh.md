@@ -8,7 +8,7 @@
 
 Dominds 的长期方向是把“智能体分工协作”沉淀为一个可复用、可扩展、可安装/卸载的运行时体系：**微内核 + Apps**。
 
-相关命名口径（主线/支线等）：`dominds/docs/dominds-terminology.md`
+相关命名口径（主线/支线等）：[`dominds-terminology.md`](./dominds-terminology.md)
 
 ---
 

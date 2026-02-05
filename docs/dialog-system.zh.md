@@ -27,8 +27,8 @@
 ## 术语
 
 本章定义本文档中使用的面向实现的术语。
-关于双语/面向用户的命名约定，请参阅 `dominds/docs/dominds-terminology.md`。
-关于 Taskdoc 包结构和封装规则，请参阅 `dominds/docs/encapsulated-taskdoc.md`。
+关于双语/面向用户的命名约定，请参阅 [`dominds-terminology.md`](./dominds-terminology.md)。
+关于 Taskdoc 包结构和封装规则，请参阅 [`encapsulated-taskdoc.zh.md`](./encapsulated-taskdoc.zh.md)。
 
 ### 上位对话 (Supdialog)
 
@@ -66,7 +66,7 @@
 
 **队友 Tellask** 是 Dominds 特定的语法，触发与另一个作为子对话的智能体的通信。队友 Tellask 有三种不同模式，具有不同语义（见第 3 节）。
 
-**诉请块结构**（另见 `dominds/docs/dominds-terminology.md`）：
+**诉请块结构**（另见 [`dominds-terminology.md`](./dominds-terminology.md)）：
 
 - **诉请头（Tellask headline）**：诉请块第一行 `!?@<name> ...`（同一诉请块内，后续以 `!?@...` 开头的行会并入诉请头）。
 - **诉请正文（Tellask body）**：后续以 `!?` 开头但不以 `!?@` 开头的行。
@@ -714,7 +714,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 **实现说明**：
 
 - `change_mind` 仅在根对话中可用（不在子对话中）；子对话必须通过回问诉请（`!?@tellasker`）询问诉请者以更新共享 Taskdoc。
-- 对于 `*.tsk/` Taskdoc 包，Taskdoc 是封装的：通用文件工具不得读取/写入/列出/删除 `*.tsk/` 下的任何内容。请参阅 `dominds/docs/encapsulated-taskdoc.md`。
+- 对于 `*.tsk/` Taskdoc 包，Taskdoc 是封装的：通用文件工具不得读取/写入/列出/删除 `*.tsk/` 下的任何内容。请参阅 [`encapsulated-taskdoc.zh.md`](./encapsulated-taskdoc.zh.md)。
 
 ---
 

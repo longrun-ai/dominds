@@ -8,7 +8,7 @@ This document outlines Dominds’ stage goals and major-version evolution to ali
 
 Dominds’ long-term direction is to solidify “agent social division of labor” into a reusable, extensible, installable/uninstallable runtime system: **microkernel + Apps**.
 
-Terminology (Mainline/Sideline, etc.): `dominds/docs/dominds-terminology.md`
+Terminology (Mainline/Sideline, etc.): [`dominds-terminology.md`](./dominds-terminology.md)
 
 ---
 

@@ -29,7 +29,7 @@ This document specifies **enhancements** to the `@self`-initiated FBR flow:
 
 - Defining a brand-new user-facing syntax beyond existing `!?@self` / `!?@self !tellaskSession ...`.
 - Adding tools to FBR sideline dialogs (the entire point is that they are tool-less).
-- Changing teammate Tellask taxonomy in general (see `dominds/docs/dialog-system.md`); this doc scopes to `@self` only.
+- Changing teammate Tellask taxonomy in general (see [`dialog-system.md`](./dialog-system.md)); this doc scopes to `@self` only.
 
 ## Definitions
 
@@ -224,7 +224,7 @@ members:
 
 - This spec intentionally makes `!?@self` behave differently from general transient sideline dialogs:
   normal `!?@<teammate>` sideline dialogs remain fully capable (they can have tools/toolsets) as specified in
-  `dominds/docs/dialog-system.md`.
+  [`dialog-system.md`](./dialog-system.md).
 - If you need a tool-capable “fresh subdialog” for the same persona, use an explicit teammate identity that is granted
   the needed toolsets, rather than `@self`.
 

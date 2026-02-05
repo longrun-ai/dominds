@@ -233,7 +233,7 @@ providers:
 
 参考规范：
 
-- MCP 行为和语义：`dominds/docs/mcp-support.md`
+- MCP 行为和语义：[`mcp-support.zh.md`](./mcp-support.zh.md)
 
 ### 映射：服务器 → 工具集（以及如何授予）
 

@@ -18,10 +18,10 @@ Dominds 的诉请（Tellask，`!?@...`）与扪心自问（FBR，`!?@self`）并
 
 相关文档：
 
-- 诉请机制与对话系统：`dominds/docs/dialog-system.md`
-- 术语约定（主线/支线；诉请方/应答方）：`dominds/docs/dominds-terminology.md`
-- FBR（`!?@self`）：`dominds/docs/fbr.md`
-- 工作语言 vs UI 语言：`dominds/docs/i18n.md`
+- 诉请机制与对话系统：[`dialog-system.zh.md`](./dialog-system.zh.md)
+- 术语约定（主线/支线；诉请方/应答方）：[`dominds-terminology.md`](./dominds-terminology.md)
+- FBR（`!?@self`）：[`fbr.zh.md`](./fbr.zh.md)
+- 工作语言 vs UI 语言：[`i18n.zh.md`](./i18n.zh.md)
 
 ---
 
@@ -133,6 +133,11 @@ Dominds 的诉请（Tellask，`!?@...`）与扪心自问（FBR，`!?@self`）并
 ### 创建对话时可选择跳过（opt-out）
 
 创建对话框上提供明确开关，跳过这一安排（不执行启动流程，也不生成启动转录）。
+
+补充约定：
+
+- 当对话主理人选择为（隐藏的）影子智能体时，“智能体启动（Priming）”选项默认应为“无感”。
+- 影子智能体的“启动”选项应与显在智能体的“启动”选项分开记忆（互不影响）。
 
 ---
 

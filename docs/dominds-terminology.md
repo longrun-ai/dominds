@@ -368,8 +368,8 @@ Example / 示例（概念）:
 
 ## 系统实现语境（Implementation-Facing Vocabulary）
 
-- EN: This chapter defines implementation-facing terms used in `dominds/docs/dialog-system.md` and in the runtime/server code.
-- ZH: 本章定义系统实现语境下的术语，供 `dominds/docs/dialog-system.md` 及 runtime/server 代码对齐使用。
+- EN: This chapter defines implementation-facing terms used in [`dialog-system.md`](./dialog-system.md) and in the runtime/server code.
+- ZH: 本章定义系统实现语境下的术语，供 [`dialog-system.md`](./dialog-system.md) 及 runtime/server 代码对齐使用。
 
 ### Dialog / 对话
 

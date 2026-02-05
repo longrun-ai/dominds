@@ -53,11 +53,11 @@ export type UiStrings = {
   shadowMembersLabel: string;
   shadowMembersSelectRequired: string;
   defaultMarker: string;
-  domindsFeelLabel: string;
-  domindsFeelDo: string;
-  domindsFeelReuseAgeSuffix: string;
-  domindsFeelRerun: string;
-  domindsFeelSkip: string;
+  agentPrimingLabel: string;
+  agentPrimingDo: string;
+  agentPrimingReuseAgeSuffix: string;
+  agentPrimingRerun: string;
+  agentPrimingSkip: string;
 
   authRequiredTitle: string;
   authDescription: string;
@@ -328,11 +328,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       shadowMembersLabel: '影子成员：',
       shadowMembersSelectRequired: '请选择影子成员。',
       defaultMarker: ' • 默认',
-      domindsFeelLabel: '智能体 Dominds 体感：',
-      domindsFeelDo: '做给祂看',
-      domindsFeelReuseAgeSuffix: ' 前',
-      domindsFeelRerun: '再做一遍',
-      domindsFeelSkip: '无感',
+      agentPrimingLabel: '智能体启动（Priming）：',
+      agentPrimingDo: '做给祂看',
+      agentPrimingReuseAgeSuffix: ' 前',
+      agentPrimingRerun: '再做一遍',
+      agentPrimingSkip: '无感',
 
       authRequiredTitle: '需要认证',
       authDescription: '请输入 Dominds 认证密钥以连接。',
@@ -608,11 +608,11 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     shadowMembersLabel: 'Shadow Members:',
     shadowMembersSelectRequired: 'Please select a shadow member.',
     defaultMarker: ' • Default',
-    domindsFeelLabel: 'Agent feels for Dominds:',
-    domindsFeelDo: 'Do it now',
-    domindsFeelReuseAgeSuffix: ' ago',
-    domindsFeelRerun: 'Do it again',
-    domindsFeelSkip: 'Feelingless',
+    agentPrimingLabel: 'Agent Priming:',
+    agentPrimingDo: 'Do it now',
+    agentPrimingReuseAgeSuffix: ' ago',
+    agentPrimingRerun: 'Do it again',
+    agentPrimingSkip: 'Feelingless',
 
     authRequiredTitle: 'Authentication Required',
     authDescription: 'Enter the Dominds auth key to connect.',

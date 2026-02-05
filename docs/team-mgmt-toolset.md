@@ -278,7 +278,7 @@ support is disabled (no dynamic MCP toolsets are registered).
 
 Reference specs:
 
-- MCP behavior and semantics: `dominds/docs/mcp-support.md`
+- MCP behavior and semantics: [`mcp-support.md`](./mcp-support.md)
 
 ### Mapping: server → toolset (and granting it)
 

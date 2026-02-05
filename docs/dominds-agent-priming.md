@@ -29,10 +29,10 @@ Tellask/FBR contracts, and rely on a real priming run to establish “this works
 
 Related docs:
 
-- Tellask runtime: `dominds/docs/dialog-system.md`
-- Terminology (Mainline/Sideline): `dominds/docs/dominds-terminology.md`
-- FBR (`!?@self`): `dominds/docs/fbr.md`
-- Work language vs UI language: `dominds/docs/i18n.md`
+- Tellask runtime: [`dialog-system.md`](./dialog-system.md)
+- Terminology (Mainline/Sideline): [`dominds-terminology.md`](./dominds-terminology.md)
+- FBR (`!?@self`): [`fbr.md`](./fbr.md)
+- Work language vs UI language: [`i18n.md`](./i18n.md)
 
 ---
 
@@ -58,7 +58,7 @@ Related docs:
 - **Sideline dialog**: a temporary work thread created by Tellask / FBR, reporting results back to the mainline.
 - **Tellask**: a structured request (`!?@<memberId> ...`) from a tellasker to a tellaskee.
 - **Shell staff**: a teammate designated to run shell commands safely (configured via `shell_specialists`).
-- **FBR**: Fresh Boots Reasoning, implemented as `!?@self` (a tool-less sideline dialog). See `dominds/docs/fbr.md`.
+- **FBR**: Fresh Boots Reasoning, implemented as `!?@self` (a tool-less sideline dialog). See [`fbr.md`](./fbr.md).
 
 ---
 
@@ -144,6 +144,11 @@ Instead, inject a small, stable **course prefix** into model context at the star
 ### Opt-out
 
 Dialog creation should provide an explicit opt-out to skip priming.
+
+Additional UX constraints:
+
+- If the dialog owner is a hidden shadow member, the default priming preference should be **Skip**.
+- Shadow-member priming preferences should be stored separately from visible-member preferences (they should not affect each other).
 
 ---
 
