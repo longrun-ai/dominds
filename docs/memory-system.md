@@ -1,214 +1,212 @@
-# Memory System / 记忆系统（Agent User View）
+# Memory System (Agent User View)
 
 Chinese version: [中文版](./memory-system.zh.md)
 
-Dominds is designed around **intentional, layered memory**.
+Dominds’ “memory system” is really **context engineering**: put information into the right container based on stability and sharing scope, so long‑running work stays fast, correct, and transparent to humans.
 
-The goal is simple:
+TL;DR:
 
-- Keep the **dialog history** disposable.
-- Keep a small set of **high-value, curated artifacts** that can survive `clear_mind` and drive reliable progress.
+- Make dialog history disposable (noise is cheap to drop).
+- Make key artifacts survivable (you can `clear_mind` and still keep moving).
+- Publicly declare and openly discuss progress in real time (and keep it auditable) to enforce timely coordination: that’s where the real leverage comes from when multiple agents and multiple mainline dialogs work in parallel (Taskdoc / team memory / env notes).
 
-This doc defines the _ideal_ usage contract for these layers, and the expected product behavior that supports it.
-
-## Audience / 读者
-
-This document is written for **agent users (智能体使用者)**.
-
-It intentionally:
-
-- avoids internal storage paths and other implementation details;
-- focuses on **the tools you can actually use** and the behavioral contract implied by those tools.
-
-Related vocabulary guide: `dominds/docs/dominds-terminology.md`.
+Related terminology: [dominds-terminology.md](./dominds-terminology.md)
 
 ## Table of Contents
 
-- The Layers (what exists, what it’s for)
-- The Hygiene Loop (how to work day-to-day)
-- Expected Runtime Behavior (what you can rely on)
-- Practical examples
+- [Layering model (space dimension)](#layering-model-space-dimension)
+  - [Permissions and division of labor](#permissions-and-division-of-labor)
+- [Layering model (time dimension)](#layering-model-time-dimension)
+  - [A) Long-term memory: lock in division of labor and governance](#a-long-term-memory-lock-in-division-of-labor-and-governance)
+  - [B) Task-term memory: Taskdoc is the single source of truth](#b-task-term-memory-taskdoc-is-the-single-source-of-truth)
+  - [C) Short-term memory: dialog history is a buffer, reminders are a working set](#c-short-term-memory-dialog-history-is-a-buffer-reminders-are-a-working-set)
+- [Day-to-day workflow (operational health)](#day-to-day-workflow-operational-health)
 
-## The Layers (what exists, what it’s for)
+---
 
-### 1) Taskdoc (`*.tsk/`) — Canonical task contract
+## Layering model (space dimension)
 
-**Purpose**: the single source of truth for the task.
+The same information can be categorized by “who needs to see it / who maintains it”. This axis is orthogonal to long‑term vs short‑term, and helps avoid treating team agreements as personal worklogs (or vice versa).
 
-- `goals`: what must be true when done.
-- `constraints`: hard rules, safety constraints, style constraints.
-- `progress`: distilled state: what changed, key decisions, next steps.
+- **Individual-scope (per-agent / per-dialog)**:
+  - `persona` / `knowledge` / `lessons` (role definitions assigned per member)
+  - individual memory (`memory`)
+  - dialog history (including tool calls and outputs)
+  - reminders (working set / worklog)
+- **Collective-scope (shared by team/task)**:
+  - rtws-level “env notes” (`.minds/env*.md`): the workspace’s baseline facts, runtime constraints, and gotchas
+  - team memory (`team_memory`)
+  - Taskdoc: in a healthy workflow, the same Taskdoc is expected to be progressed by multiple mainline dialogs (different responders), so treat it as the collective single source of truth
 
-**Properties**:
+### Permissions and division of labor
 
-- Persists across rounds.
-- Always meant to be small enough to read every turn.
-- Edited only via `change_mind({ selector, category?, content })` (only available in the main dialog; subdialogs must ask the Taskdoc maintainer agent to update — the maintainer @id is printed in the injected Taskdoc status block).
-- Extra Taskdoc sections (non-auto-injected) can be read via `recall_taskdoc({ category, selector })`.
-- **Shared across teammates** (within the same rtws/taskdoc): every teammate/subdialog sees the same Taskdoc (`goals` / `constraints` / `progress`).
+“Collective memory” does not mean “everyone can edit everything”. A core Dominds principle is social division of labor:
+team governance and team management are functions too.
 
-**Shared editing rules (important)**:
+- Team-memory tools (`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`) are typically granted only to a small subset of agents (governance roles).
+- Content under `rtws/.minds/` (including env notes) is typically editable only by agents with the **team-mgmt toolset**.
+- If you don’t have the permission, the right move is: draft a patch-level proposal (content + rationale + impact) and tellask the responsible role agent to apply it, instead of leaving key agreements in chat or private reminders.
 
-- Treat `goals` / `constraints` / `progress` as **team-shared sections** (not personal scratchpads).
-- `change_mind` replaces the **entire target section**. Therefore:
-  - always start from the current section content;
-  - merge/append or compress carefully while preserving meaning;
-  - do **not** overwrite or delete other contributors’ entries.
-- The Taskdoc is injected inline into the agent context each generation. When you need to review it, rely on the injected Taskdoc content (latest as of this generation) instead of trying to read files under `*.tsk/` via general file tools (they are forbidden and will be rejected).
-- When you add/maintain entries, include a clear owner marker, e.g.:
-  - `- [owner:@ux] …` or `- [owner:@fullstack] …`
-  - or a small owner block like `### @ux` with bullets underneath.
+---
 
-**How to use `progress` (important)**:
+## Layering model (time dimension)
 
-- Treat `progress` as a **shared bulletin board**: distilled milestone snapshots only (key decisions / current status / next steps).
-- Do **not** use `progress` as a raw worklog. High-frequency details belong in reminders (working set).
+This doc uses three time horizons: long-term / task-term / short-term (dialog). This axis is orthogonal to sharing scope (individual vs collective): the same fact has both a time horizon and a scope.
 
-**Anti-patterns**:
+- **A) Long-term memory (stable, cross-dialog)**
+  - **Org structure (static definitions)**: `persona` / `knowledge` / `lessons`
+  - **Team governance (shared)**: team memory
+  - **Agent-owned**: individual memory
+- **B) Task-term memory (survives dialog courses)**
+  - **Auto-injected Taskdoc core**: `goals` / `constraints` / `progress`
+  - **Extra Taskdoc sections (on-demand recall)**: the fixed `bearinmind/` set (`contracts` / `acceptance` / `grants` / `runbook` / `decisions` / `risks`), plus any task-specific sections (see [encapsulated-taskdoc.md](./encapsulated-taskdoc.md))
+- **C) Short-term memory (high-noise, disposable)**
+  - **Pulled by the agent**: dialog history, tool calls and outputs
+  - **Pushed by the environment**: reminders such as background process status, MCP rentals, etc.
+  - **Curated by the agent**: part of the reminders set (working set / worklog)
+  - **Mental hygiene**: `clear_mind`
 
-- Turning `progress` into a scratchpad or raw logs.
-- Storing long tool outputs in the Taskdoc.
-- Overwriting any Taskdoc section and deleting other contributors’ entries.
+### A) Long-term memory: lock in division of labor and governance
 
-### 2) Reminders (提醒项) — Curated working set (worklog)
+Long-term memory is for things that should remain true across dialogs: who you are, what you own, and how the team operates.
 
-**Purpose**: a small number of “treasure” context items that the agent actively maintains.
+#### 1) `persona` / `knowledge` / `lessons`: static role allocation
 
-Reminders are the best place for **details that are worth paying prompt tokens for**, because:
+These docs “pin” an agent into a durable role in the team:
 
-- They persist across `clear_mind`.
-- They are intentionally _curated_ by the agent via `update_reminder` / `delete_reminder`.
-- They are always injected into the next generation, so they actually influence behavior.
+- `persona`: identity + style (voice, working habits, scope boundaries, preference constraints)
+- `knowledge`: stable expertise and capability boundaries (what you’re good at; your tool/safety stance)
+- `lessons`: accumulated learnings (which paths are safer; which traps to avoid)
 
-**Two types**:
+They are not for task progress. Their job is to keep the division of labor stable, so the team doesn’t reinvent roles every time.
 
-- **Non-owned reminders (agent-managed)**: your primary worklog / working set.
-- **Owned reminders (system-managed)**: lifecycle owned by `ReminderOwner` (auto-update/auto-drop). Treat as signals; do not manually delete.
+#### 2) Team memory: shared governance
 
-**Ideal usage rules**:
+Team memory should contain only **truly stable, worth-sharing** knowledge, such as:
 
-- Keep the reminder set **small** (often 1–3 items total).
-- Prefer **update-in-place** (`update_reminder`) over creating many separate reminders.
-- Every reminder must justify its token cost: if it no longer changes decisions, **delete it**.
-
-**Scope note**:
-
-- Reminders are **dialog-local** (your working set for this dialog/agent). They are not a team-wide bulletin board.
-
-**Injection semantics (important)**:
-
-- Reminders are **injected into the LLM context every generation**.
-- In current code, reminders are rendered primarily as **`role=user` environment guidance** near the last user message.
-  This is intentional for salience: reminders should be hard to ignore.
-- Reminder injection is **not persisted** into dialog history/events (it is context-only).
-
-**Recommended structure for a single “worklog reminder item”**:
-
-- Last updated: timestamp (human-readable)
-- What we are doing now: 1–3 bullets
-- Key decisions frozen: 1–5 bullets
-- Next steps: 3–8 actionable bullets
-- “Do not forget”: 1–3 high-risk notes
-
-### 3) Personal memory — Stable personal habits + responsibility index
-
-**Purpose**: durable “how I work” knowledge for a specific agent persona, plus a compact responsibility-area **rtws index** so you can act without re-reading files.
-
-Use it for:
-
-- personal conventions,
-- heuristics,
-- stable preferences.
-- a **responsibility-area rtws index**: exact file paths (docs and/or code) you own, plus minimal key facts (entrypoints, key symbols, local contracts) that let you directly propose and apply edits without re-reading the rtws.
-
-Do **not** use it for:
-
-- per-task state,
-- per-rtws facts that should be shared,
-- transient tool outputs.
-
-**Accuracy contract (important)**:
-
-- Treat your responsibility-area rtws index as a curated “single source of truth” for your scope.
-- Whenever you change relevant files or detect staleness/conflicts, immediately update personal memory (`replace_memory`) so it tracks the latest rtws facts.
+- repo conventions (naming, directory contracts)
+- architecture decisions and invariants
+- reusable “how we run tests/deploy here” procedures
+- cross-agent collaboration contracts
 
 Tools:
 
-- `add_memory`, `replace_memory`, `drop_memory`, `clear_memory`.
+- `add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`
 
-### 4) Team memory — Stable shared conventions
+#### 3) Individual memory: agent-owned, kept accurate
 
-**Purpose**: durable knowledge that should be shared across the whole team and all dialogs.
+Individual memory is your long-lived “how I work” asset, especially a compact **responsibility-area rtws index**:
 
-Use it for:
+- exact paths of key docs/code you own
+- minimal key facts (entrypoints, key symbols, local contracts)
 
-- repo conventions,
-- architecture decisions,
-- “how we run tests here”,
-- cross-agent contracts.
+This lets you start work within your scope with “0 ripgrep”. The hard constraint is accuracy: if you change related files or detect staleness/conflicts, immediately `replace_memory` to keep it true.
 
 Tools:
 
-- `add_team_memory`, `replace_team_memory`, `drop_team_memory`, `clear_team_memory`.
+- `add_memory` / `replace_memory` / `drop_memory` / `clear_memory`
 
-### 5) Function tool call history / dialog messages — Disposable and unreliable
+### B) Task-term memory: Taskdoc is the single source of truth
 
-**Purpose**: short-lived working buffer.
+Taskdocs are the canonical task contract shared by the team. They answer: what we want, what we must not violate, and where we are.
 
-Function tool call results and long file reads can be huge. They are useful to decide the next move, but they are not a good long-term memory substrate.
+#### The fixed core (auto-injected)
 
-**Rule**: if you will need it later, **distill it** into:
+- `goals`: what must be true when done
+- `constraints`: hard rules (safety/style/process/compliance)
+- `progress`: distilled progress (key decisions, current status, next steps)
 
-- Taskdoc `progress` (decision + next steps), and/or
-- a reminder item (detailed but curated), and/or
-- team memory (only if it’s truly stable), and/or
-- personal memory (habits/preferences, plus your responsibility-area rtws index that you keep accurate).
+#### Practical rules (keep only the essentials)
 
-Never rely on “I read it earlier” as a durable assumption.
+- Treat `goals / constraints / progress` as a **shared bulletin board**, not a personal scratchpad.
+- `progress` is a distilled snapshot; high-frequency details belong in reminders (working set).
+- Don’t paste huge tool outputs into Taskdocs. Distill conclusions/evidence, or keep a curated excerpt in reminders.
 
-## The Hygiene Loop (how to work day-to-day)
+For extra sections and `*.tsk/` packaging semantics, see: [encapsulated-taskdoc.md](./encapsulated-taskdoc.md).
 
-### Default loop
+### C) Short-term memory: dialog history is a buffer, reminders are a working set
 
-1. Do work using function tool calls as needed.
-2. Distill:
-   - update Taskdoc `progress` with decisions and next steps;
-   - update a small reminder worklog with any crucial details.
-3. `clear_mind` to drop noisy dialog/tool history.
+Short-term memory is noisy and fast-changing. Use it to move the next step, then distill what matters.
 
-### When context health turns yellow/red
+#### 1) Pulled by the agent: dialog history, tool calls, tool outputs
 
-- Yellow (警告): stop adding new large inputs; start distilling now.
-- Red (危险): treat as a hard stop: distill immediately; do not continue implementation first.
+These are useful for immediate decisions, but they grow quickly and go stale. The right pattern is:
 
-At yellow/red, the correct behavior is not “keep going until it breaks”. The correct behavior is:
+- distill “decision + next steps” into Taskdoc `progress`
+- keep only token-worthy details in a small reminders set
 
-- compress what you need into Taskdoc + reminders,
-- then clear.
+Never treat “I saw it earlier” as a durable assumption.
 
-## Expected Runtime Behavior (what you can rely on)
+#### 2) Pushed by the environment: system reminders
 
-To make the above reliable, Dominds is expected to:
+Some reminders are generated by the runtime (e.g. background process status, MCP rentals/expiration). Treat them as signals:
 
-- Treat reminders as a **first-class working set**, not as an annoyance.
-- Encourage **update-in-place** reminder maintenance, and discourage reminder spam.
-- Make owned reminders clearly “system-managed” without suggesting manual deletion.
-- Make `clear_mind` psychologically cheap:
-  - explicitly state that Taskdoc and reminders are preserved,
-  - explicitly instruct the distill → clear sequence.
+- read and adjust behavior
+- but don’t treat them as your personal worklog (their lifecycle is typically system-managed)
 
-## Practical examples
+#### 3) Curated by the agent: work reminders (working set / worklog)
 
-### Example: huge tool output
+Reminders are your tiny working set: injected every turn, and preserved across `clear_mind`.
 
-- Put only the decision + next step in Taskdoc `progress`.
-- Put the essential excerpt (not the whole dump) in a reminder worklog.
-- Then `clear_mind`.
+Guidelines:
 
-### Example: stable repo convention
+- keep it to 1–3 items; update-in-place whenever possible
+- every item must justify its token cost; delete it when it stops affecting decisions
 
-- Put it in team memory, not in reminders.
+Tools:
 
-### Example: my personal workflow preference
+- `add_reminder` / `update_reminder` / `delete_reminder` (some system reminders are managed by a specific tool; update them via that tool)
 
-- Put it in personal memory.
+Recommended structure (one reminder item):
+
+- last updated: timestamp
+- what we’re doing now: 1–3 bullets
+- frozen key decisions: 1–5 bullets
+- next steps: 3–8 actionable bullets
+- do not forget: 1–3 high-risk notes
+
+#### 4) `clear_mind`: mental hygiene (start a new course)
+
+When dialog/tool-output noise starts **degrading attention and judgment** (leading to misreads or low-quality decisions), don’t “power through”. Do this instead:
+
+1. distill (Taskdoc + reminders)
+2. `clear_mind`
+
+`clear_mind` is designed to make cleanup cheap: dialog history can be dropped, while key artifacts (Taskdocs, memories, reminders) survive so the next course can keep running.
+
+---
+
+## Day-to-day workflow (operational health)
+
+The goal for agents’ day-to-day work is not “write more docs”. It’s a low-cost, reusable cadence: **move one small step → publicly declare progress → drop noise → repeat**.
+
+### Default cadence (close the loop per step)
+
+1. **Move one small step**: make a minimal, verifiable increment (pull history/run commands/read files only when needed).
+2. **Publicly declare progress (collective memory)**:
+   - put key decisions, current status, and next steps into Taskdoc `progress`
+   - put new hard constraints into `constraints` (don’t leave them only in chat/reminders)
+   - distill stable conventions into team memory; write rtws baseline facts/constraints into `.minds/env*.md`
+3. **Maintain your working set (individual memory)**: compress token-worthy details into a tiny reminders set (1–3 items, prefer update-in-place).
+4. **Drop noise (when needed)**: when noise starts degrading attention and judgment, distill first, then `clear_mind` to start a new course.
+
+> Permission note: if you don’t have team-memory tools or the team-mgmt toolset, don’t skip “public declaration”. Draft a merge-ready update and ask the governance/team-mgmt role agent to apply it to `team_memory` or `.minds/**`.
+
+### Where to write what (quick rules)
+
+- **Taskdoc `progress`**: key decisions, current status, next steps (the shared bulletin board)
+- **Taskdoc `constraints`**: hard rules/safety/compliance/style (must be visible to all mainlines)
+- **Team memory `team_memory`**: stable team conventions and invariants (worth reusing)
+- **Env notes `.minds/env*.md`**: rtws baseline facts, runtime constraints, gotchas (align humans + all agents to the same environment)
+- **Individual memory `memory`**: personal preferences + responsibility-area rtws index (keep accurate)
+- **Reminders**: short-term, high-frequency details (working set / worklog; delete freely)
+- **Dialog history / tool output**: disposable by default; only keep distilled excerpts, not raw dumps
+
+### Caution/critical: stop the bleeding first
+
+When context health enters **caution/critical** (see [context-health.md](./context-health.md)), don’t keep piling on new inputs:
+
+1. stop expanding new branches and new large inputs
+2. write back what must be shared (Taskdoc / team memory / env notes)
+3. compress what you personally still need into reminders
+4. `clear_mind` to start a new course
