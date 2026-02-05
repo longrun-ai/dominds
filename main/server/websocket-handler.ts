@@ -564,8 +564,8 @@ async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Pro
 async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): Promise<void> {
   try {
     const { agentId, taskDocPath } = packet;
-    const skipAgentPriming = packet.skipShowingByDoing === true;
-    const showingByDoingMode = packet.showingByDoingMode;
+    const skipAgentPriming = packet.skipAgentPriming === true;
+    const agentPrimingMode = packet.agentPrimingMode;
 
     // Validate that taskDocPath is provided (it's now mandatory)
     if (!taskDocPath || taskDocPath.trim() === '') {
@@ -666,11 +666,11 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     const cacheStatus = getAgentPrimingCacheStatus(finalAgentId);
     const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
     const mode =
-      skipAgentPriming === true || showingByDoingMode === 'skip'
+      skipAgentPriming === true || agentPrimingMode === 'skip'
         ? ('skip' as const)
-        : showingByDoingMode === 'reuse'
+        : agentPrimingMode === 'reuse'
           ? ('reuse' as const)
-          : showingByDoingMode === 'do'
+          : agentPrimingMode === 'do'
             ? ('do' as const)
             : defaultMode;
     scheduleAgentPrimingForNewDialog(dialog, { mode });

@@ -351,19 +351,18 @@ export class ApiClient {
   async createDialog(
     agentId: string,
     taskDocPath?: string,
-    options?: { showingByDoingMode?: 'do' | 'reuse' | 'skip' },
+    options?: { agentPrimingMode?: 'do' | 'reuse' | 'skip' },
   ): Promise<
     ApiResponse<{ selfId: string; rootId: string; agentId: string; taskDocPath?: string }>
   > {
-    const showingByDoingMode = options?.showingByDoingMode;
+    const agentPrimingMode = options?.agentPrimingMode;
     return this.request('/api/dialogs', {
       method: 'POST',
       body: {
         agentId,
         taskDocPath,
-        // Back-compat: keep boolean, but prefer mode.
-        skipShowingByDoing: showingByDoingMode === 'skip',
-        showingByDoingMode,
+        skipAgentPriming: agentPrimingMode === 'skip',
+        agentPrimingMode,
       },
     });
   }

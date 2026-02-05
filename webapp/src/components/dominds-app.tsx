@@ -118,8 +118,8 @@ type ToastHistoryEntry = {
 export class DomindsApp extends HTMLElement {
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
-  private static readonly DOMINDS_FEEL_STORAGE_KEY = 'dominds-feel-v1';
-  private static readonly DOMINDS_SHADOW_FEEL_STORAGE_KEY = 'dominds-feel-shadow-v1';
+  private static readonly AGENT_PRIMING_MODE_STORAGE_KEY = 'agent-priming-mode-v1';
+  private static readonly AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY = 'agent-priming-mode-shadow-v1';
 
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
@@ -6103,7 +6103,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private setupDialogModalEvents(modal: HTMLElement): void {
-    type ShowingByDoingMode = 'do' | 'reuse' | 'skip';
+    type AgentPrimingMode = 'do' | 'reuse' | 'skip';
     type DomindsFeelScope = 'visible' | 'shadow';
 
     const select = modal.querySelector('#teammate-select') as HTMLSelectElement;
@@ -6159,34 +6159,34 @@ export class DomindsApp extends HTMLElement {
       return s;
     };
 
-    const readStoredDomindsFeelMode = (scope: DomindsFeelScope): ShowingByDoingMode | null => {
+    const readStoredAgentPrimingMode = (scope: DomindsFeelScope): AgentPrimingMode | null => {
       try {
         const key =
           scope === 'shadow'
-            ? DomindsApp.DOMINDS_SHADOW_FEEL_STORAGE_KEY
-            : DomindsApp.DOMINDS_FEEL_STORAGE_KEY;
+            ? DomindsApp.AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY
+            : DomindsApp.AGENT_PRIMING_MODE_STORAGE_KEY;
         const raw = localStorage.getItem(key);
         if (raw === 'do' || raw === 'reuse' || raw === 'skip') return raw;
         return null;
       } catch (error: unknown) {
-        console.warn('Failed to read Dominds feel selection from localStorage', error);
+        console.warn('Failed to read agent-priming selection from localStorage', error);
         return null;
       }
     };
 
-    const persistDomindsFeelMode = (mode: ShowingByDoingMode, scope: DomindsFeelScope): void => {
+    const persistAgentPrimingMode = (mode: AgentPrimingMode, scope: DomindsFeelScope): void => {
       try {
         const key =
           scope === 'shadow'
-            ? DomindsApp.DOMINDS_SHADOW_FEEL_STORAGE_KEY
-            : DomindsApp.DOMINDS_FEEL_STORAGE_KEY;
+            ? DomindsApp.AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY
+            : DomindsApp.AGENT_PRIMING_MODE_STORAGE_KEY;
         localStorage.setItem(key, mode);
       } catch (error: unknown) {
-        console.warn('Failed to persist Dominds feel selection to localStorage', error);
+        console.warn('Failed to persist agent-priming selection to localStorage', error);
       }
     };
 
-    let currentDomindsFeelMode: ShowingByDoingMode = 'do';
+    let currentAgentPrimingMode: AgentPrimingMode = 'do';
     let agentPrimingRenderSeq = 0;
 
     const resolveModalSelectedAgentId = (): string => {
@@ -6205,20 +6205,18 @@ export class DomindsApp extends HTMLElement {
       const t = getUiStrings(this.uiLanguage);
       if (!feelOptions) return;
 
-      const stored = readStoredDomindsFeelMode(args.scope);
-      const allowed: ShowingByDoingMode[] = args.hasCache
-        ? ['reuse', 'do', 'skip']
-        : ['do', 'skip'];
-      const selected: ShowingByDoingMode = (() => {
+      const stored = readStoredAgentPrimingMode(args.scope);
+      const allowed: AgentPrimingMode[] = args.hasCache ? ['reuse', 'do', 'skip'] : ['do', 'skip'];
+      const selected: AgentPrimingMode = (() => {
         if (stored && allowed.includes(stored)) return stored;
         if (args.scope === 'shadow') return 'skip';
         return args.hasCache ? 'reuse' : 'do';
       })();
 
-      currentDomindsFeelMode = selected;
+      currentAgentPrimingMode = selected;
 
       const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.agentPrimingReuseAgeSuffix}`;
-      const optionRows: Array<{ mode: ShowingByDoingMode; label: string }> = args.hasCache
+      const optionRows: Array<{ mode: AgentPrimingMode; label: string }> = args.hasCache
         ? [
             { mode: 'reuse', label: reuseLabel },
             { mode: 'do', label: t.agentPrimingRerun },
@@ -6292,9 +6290,9 @@ export class DomindsApp extends HTMLElement {
         if (target.type !== 'radio') return;
         const v = target.value;
         if (v === 'do' || v === 'reuse' || v === 'skip') {
-          currentDomindsFeelMode = v;
+          currentAgentPrimingMode = v;
           const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
-          persistDomindsFeelMode(v, scope);
+          persistAgentPrimingMode(v, scope);
         }
       });
     }
@@ -6572,7 +6570,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       await this.createDialog(selectedAgentId, taskDocPath, {
-        showingByDoingMode: currentDomindsFeelMode,
+        agentPrimingMode: currentAgentPrimingMode,
       });
       modal.remove();
     });
@@ -6589,7 +6587,7 @@ export class DomindsApp extends HTMLElement {
   public async createDialog(
     agentId: string | undefined,
     taskDocPath: string,
-    options?: { showingByDoingMode?: 'do' | 'reuse' | 'skip' },
+    options?: { agentPrimingMode?: 'do' | 'reuse' | 'skip' },
   ): Promise<{ selfId: string; rootId: string; agentId: string; taskDocPath: string }> {
     try {
       const fallbackAgent = agentId || this.defaultResponder || '';

@@ -959,8 +959,8 @@ async function handleCreateDialog(
     }
     const agentId = parsed['agentId'];
     const taskDocPath = parsed['taskDocPath'];
-    const skipAgentPriming = parsed['skipShowingByDoing'] === true;
-    const showingByDoingModeRaw = parsed['showingByDoingMode'];
+    const skipAgentPriming = parsed['skipAgentPriming'] === true;
+    const agentPrimingModeRaw = parsed['agentPrimingMode'];
 
     if (typeof agentId !== 'string' || agentId.trim() === '') {
       respondJson(res, 400, { success: false, error: 'agentId is required' });
@@ -1041,11 +1041,11 @@ async function handleCreateDialog(
     const agentPrimingMode =
       skipAgentPriming === true
         ? ('skip' as const)
-        : showingByDoingModeRaw === 'reuse'
+        : agentPrimingModeRaw === 'reuse'
           ? ('reuse' as const)
-          : showingByDoingModeRaw === 'skip'
+          : agentPrimingModeRaw === 'skip'
             ? ('skip' as const)
-            : showingByDoingModeRaw === 'do'
+            : agentPrimingModeRaw === 'do'
               ? ('do' as const)
               : defaultMode;
 
