@@ -1736,6 +1736,14 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         const ctxMsgsForGen = remediation.ctxMsgs;
 
         if (agent.streaming === false) {
+          if (llmGen.apiType === 'codex') {
+            const detail = `Team config error: member '${agent.id}' has streaming=false but provider apiType=codex requires streaming=true (provider='${providerCfg.name}', genseq=${String(
+              dlg.activeGenSeq,
+            )}).`;
+            log.error(detail, new Error('team_config_invalid_streaming'));
+            await dlg.streamError(detail);
+            throw new Error(detail);
+          }
           let nonStreamResult: {
             messages: ChatMessage[];
             usage: LlmUsageStats;

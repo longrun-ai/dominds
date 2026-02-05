@@ -2968,7 +2968,7 @@ function renderMemberProperties(language: LanguageCode): string {
         '`provider` / `model` / `model_params`',
         '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
         '`diligence-push-max`：鞭策 上限（number）。也接受兼容别名 `diligence_push_max`，但请优先用 `diligence-push-max`。',
-        '`streaming`',
+        '`streaming`：是否启用流式输出。注意：若该成员解析后的 provider 的 `apiType` 是 `codex`，则 `streaming: false` 属于配置错误（Codex 仅支持流式）；会在 team 校验与运行期被视为严重问题并中止请求。',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
         '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
       ])
@@ -2983,7 +2983,7 @@ function renderMemberProperties(language: LanguageCode): string {
       '`provider` / `model` / `model_params`',
       '`toolsets` / `tools`（两者可同时配置；多数情况下推荐用 toolsets 做粗粒度授权，用 tools 做少量补充/收敛。具体冲突/合并规则以当前实现为准）',
       '`diligence-push-max`: Diligence Push cap (number). Compatibility alias `diligence_push_max` is accepted, but prefer `diligence-push-max`.',
-      '`streaming`',
+      '`streaming`: whether to enable streaming output. Note: if the member resolves to a provider whose `apiType` is `codex`, then `streaming: false` is a configuration error (Codex is streaming-only); it is treated as a severe issue during validation/runtime and the request will be aborted.',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
       '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
     ])
@@ -2997,6 +2997,7 @@ function renderTeamManual(language: LanguageCode): string {
     'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
     'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
     'to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })`',
+    'streaming: Codex providers (apiType=codex) are streaming-only. Setting members.<id>.streaming=false with a Codex provider is a config error and will abort requests.',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only rtws members)',
     '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. If any member has shell tools (e.g. toolset `os` / tools like `shell_exec`), they must be listed in shell_specialists; null/empty means “no shell specialists”.',
     'hidden: true marks a shadow member (not listed in system prompt)',
@@ -3013,6 +3014,7 @@ function renderTeamManual(language: LanguageCode): string {
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
+        '重要：Codex provider（`apiType=codex`）仅支持流式输出。若成员解析后的 provider 是 Codex，则 `members.<id>.streaming: false` 属于配置错误，会在校验/运行时作为严重问题上报并中止请求。',
         '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。如某成员获得了 shell 工具（例如 toolset `os` 或 tools 里的 `shell_exec` 等），则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示（运行期 fail-open，但你仍应修复）。',
 
         '风格提醒：保持 `team.yaml` 的可读性。推荐用空行分隔段落/成员块，避免连续多行空行；每次修改后运行 `team_mgmt_validate_team_cfg({})` 以便在 Problems 面板看到错误与风格提醒。',

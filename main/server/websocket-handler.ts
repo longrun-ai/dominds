@@ -5,6 +5,7 @@
  */
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
+import { getAgentPrimingCacheStatus, scheduleAgentPrimingForNewDialog } from '../agent-priming';
 import { Dialog, DialogID, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
@@ -50,10 +51,6 @@ import {
   type LanguageCode,
 } from '../shared/types/language';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
-import {
-  getShowingByDoingCacheStatus,
-  scheduleShowingByDoingForNewDialog,
-} from '../showing-by-doing';
 import { Team } from '../team';
 import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
 import { generateDialogID } from '../utils/id';
@@ -567,7 +564,7 @@ async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Pro
 async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): Promise<void> {
   try {
     const { agentId, taskDocPath } = packet;
-    const skipShowingByDoing = packet.skipShowingByDoing === true;
+    const skipAgentPriming = packet.skipShowingByDoing === true;
     const showingByDoingMode = packet.showingByDoingMode;
 
     // Validate that taskDocPath is provided (it's now mandatory)
@@ -666,17 +663,17 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    const cacheStatus = getShowingByDoingCacheStatus(finalAgentId);
+    const cacheStatus = getAgentPrimingCacheStatus(finalAgentId);
     const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
     const mode =
-      skipShowingByDoing === true || showingByDoingMode === 'skip'
+      skipAgentPriming === true || showingByDoingMode === 'skip'
         ? ('skip' as const)
         : showingByDoingMode === 'reuse'
           ? ('reuse' as const)
           : showingByDoingMode === 'do'
             ? ('do' as const)
             : defaultMode;
-    scheduleShowingByDoingForNewDialog(dialog, { mode });
+    scheduleAgentPrimingForNewDialog(dialog, { mode });
   } catch (error) {
     log.warn('Failed to create dialog', undefined, error);
     ws.send(

@@ -600,6 +600,7 @@ export namespace Team {
         atPrefix: string;
         provider: string | undefined;
         model: string | undefined;
+        streaming: boolean | undefined;
       }): void => {
         const providerKey = args.provider;
         if (!providerKey) return;
@@ -615,6 +616,19 @@ export namespace Team {
             ].join('\n'),
           );
           return;
+        }
+
+        if (providerCfg.apiType === 'codex' && args.streaming === false) {
+          addIssue(
+            `${args.idPrefix}/streaming/codex_requires_streaming`,
+            `Invalid .minds/team.yaml: ${args.atPrefix}.streaming=false is not allowed for Codex providers.`,
+            [
+              `Resolved ${args.atPrefix}.provider = '${providerKey}' (apiType=codex).`,
+              `Resolved ${args.atPrefix}.streaming = false.`,
+              `Codex providers are streaming-only; set ${args.atPrefix}.streaming to true or remove it.`,
+              `Tip: run team_mgmt_validate_team_cfg({}) after fixing.`,
+            ].join('\n'),
+          );
         }
 
         const modelsUnknown: unknown = (providerCfg as unknown as { models?: unknown }).models;
@@ -658,22 +672,26 @@ export namespace Team {
         atPrefix: 'member_defaults',
         provider: md.provider,
         model: md.model,
+        streaming: md.streaming,
       });
 
       for (const member of Object.values(team.members)) {
-        // Only validate members whose provider/model binding is explicitly overridden.
+        // Validate members whose provider/model/streaming binding is explicitly overridden.
         const hasProviderOverride = Object.prototype.hasOwnProperty.call(member, 'provider');
         const hasModelOverride = Object.prototype.hasOwnProperty.call(member, 'model');
-        if (!hasProviderOverride && !hasModelOverride) continue;
+        const hasStreamingOverride = Object.prototype.hasOwnProperty.call(member, 'streaming');
+        if (!hasProviderOverride && !hasModelOverride && !hasStreamingOverride) continue;
 
         const provider = member.provider ?? md.provider;
         const model = member.model ?? md.model;
+        const streaming = member.streaming ?? md.streaming;
         const idSeg = sanitizeProblemIdSegment(member.id);
         validateAt({
           idPrefix: `members/${idSeg}`,
           atPrefix: `members.${member.id}`,
           provider,
           model,
+          streaming,
         });
       }
     }

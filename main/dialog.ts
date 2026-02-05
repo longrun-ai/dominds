@@ -187,7 +187,7 @@ export abstract class Dialog {
   protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
   // Course prefix messages injected into LLM context on every course.
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
-  // like Showing-by-Doing transcripts.
+  // like Agent Priming transcripts.
   protected _coursePrefixMsgs: ChatMessage[] = [];
   // Track whether the current course's initial events (user_text, generating_start)
   // have been fully processed. Used to ensure subdialog_final_response_evt arrives

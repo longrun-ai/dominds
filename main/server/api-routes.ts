@@ -7,6 +7,7 @@ import fsPromises from 'fs/promises';
 import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { WebSocket } from 'ws';
+import { getAgentPrimingCacheStatus, scheduleAgentPrimingForNewDialog } from '../agent-priming';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
@@ -18,10 +19,6 @@ import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
-import {
-  getShowingByDoingCacheStatus,
-  scheduleShowingByDoingForNewDialog,
-} from '../showing-by-doing';
 import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
@@ -313,7 +310,7 @@ export async function handleApiRoute(
         respondJson(res, 400, { error: 'agentId is required' });
         return true;
       }
-      const status = getShowingByDoingCacheStatus(agentId.trim());
+      const status = getAgentPrimingCacheStatus(agentId.trim());
       respondJson(res, 200, status);
       return true;
     }
@@ -962,7 +959,7 @@ async function handleCreateDialog(
     }
     const agentId = parsed['agentId'];
     const taskDocPath = parsed['taskDocPath'];
-    const skipShowingByDoing = parsed['skipShowingByDoing'] === true;
+    const skipAgentPriming = parsed['skipShowingByDoing'] === true;
     const showingByDoingModeRaw = parsed['showingByDoingMode'];
 
     if (typeof agentId !== 'string' || agentId.trim() === '') {
@@ -1038,11 +1035,11 @@ async function handleCreateDialog(
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    const cacheStatus = getShowingByDoingCacheStatus(agentId.trim());
+    const cacheStatus = getAgentPrimingCacheStatus(agentId.trim());
     const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
 
-    const showingByDoingMode =
-      skipShowingByDoing === true
+    const agentPrimingMode =
+      skipAgentPriming === true
         ? ('skip' as const)
         : showingByDoingModeRaw === 'reuse'
           ? ('reuse' as const)
@@ -1052,7 +1049,7 @@ async function handleCreateDialog(
               ? ('do' as const)
               : defaultMode;
 
-    scheduleShowingByDoingForNewDialog(dialog, { mode: showingByDoingMode });
+    scheduleAgentPrimingForNewDialog(dialog, { mode: agentPrimingMode });
     return true;
   } catch (error) {
     log.error('Error creating dialog:', error);

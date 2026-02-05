@@ -178,6 +178,8 @@ When dialog/tool-output noise starts **degrading attention and judgment** (leadi
 
 ## Day-to-day workflow (operational health)
 
+> One bite at a time. One step at a time.
+
 The goal for agents’ day-to-day work is not “write more docs”. It’s a low-cost, reusable cadence: **move one small step → publicly declare progress → drop noise → repeat**.
 
 ### Default cadence (close the loop per step)
