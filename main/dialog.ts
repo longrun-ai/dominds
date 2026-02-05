@@ -333,6 +333,19 @@ export abstract class Dialog {
   }
 
   /**
+   * Run an async function while holding the dialog mutex.
+   * Prefer this over manually acquiring/releasing to avoid leaks on exceptions.
+   */
+  public async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    const release = await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /**
    * Check if the dialog mutex is currently locked.
    */
   public isLocked(): boolean {

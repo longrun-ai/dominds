@@ -7499,6 +7499,7 @@ export class DomindsApp extends HTMLElement {
                   runState: sdEffectiveRunState,
                   supdialogId: root.id,
                   tellaskSession: sd.tellaskSession,
+                  assignmentFromSup: sd.assignmentFromSup,
                 });
                 if (sdEffectiveRunState) {
                   this.dialogRunStatesByKey.set(

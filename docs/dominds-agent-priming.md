@@ -10,15 +10,15 @@ trained in a world where “asking a teammate to run a shell command” is actua
 as aspirational or hypothetical.
 
 **Agent Priming** is a tiny, highly realistic “first impression” procedure executed at dialog creation time. It runs a
-short, real Tellask + real return + real FBR + real synthesis so the model gains _felt-sense_ that:
+short, real Tellask + real return + real FBR + real distillation so the model gains _felt-sense_ that:
 
 - teammate Tellasks are real and will be executed
 - tool outputs are real and will be returned and persisted
 - `!?@self` FBR is real and will report back
-- synthesis is expected (extract the best, dedupe, reconcile), not “repeat each draft”
+- distillation is expected (extract the best, dedupe, reconcile), not “repeat each draft”
 
 More precisely: it **guides the agent to show it to itself** — letting it personally walk through
-(Tellask → return → FBR → synthesis), moving from “I’ve heard this exists” to “I just used it”.
+(Tellask → return → FBR → distillation), moving from “I’ve heard this exists” to “I just used it”.
 
 This is structurally related to the psychology notion of a **priming effect**: an early, concrete stimulus can
 significantly shape subsequent expectations and behaviors. In Dominds we anchor this “priming” in **verifiable runtime
@@ -40,7 +40,7 @@ Related docs:
 
 - Establish immediate trust that Tellask/return/persistence are real.
 - Run a real `!?@self` FBR loop at dialog creation.
-- Make synthesis itself part of the “felt” experience (dedupe/reconcile/extract-the-best).
+- Make distillation itself part of the “felt” experience (dedupe/reconcile/extract-the-best).
 - Keep the procedure safe, small, and deterministic (default command: `uname -a`).
 - Persist and display the interaction so it is credible from multiple angles (backend record + frontend transcript).
 
@@ -57,7 +57,7 @@ Related docs:
 - **Mainline dialog**: the primary thread where the user and the main agent interact.
 - **Sideline dialog**: a temporary work thread created by Tellask / FBR, reporting results back to the mainline.
 - **Tellask**: a structured request (`!?@<memberId> ...`) from a tellasker to a tellaskee.
-- **Shell staff**: a teammate designated to run shell commands safely (configured via `shell_specialists`).
+- **Shell specialist**: a teammate designated to run shell commands safely (configured via `shell_specialists`).
 - **FBR**: Fresh Boots Reasoning, implemented as `!?@self` (a tool-less sideline dialog). See [`fbr.md`](./fbr.md).
 
 ---
@@ -80,7 +80,7 @@ default “muscle memory” path is intentionally `uname -a` because it is commo
 
 ### 2) Real teammate Tellask: ask for `uname -a`
 
-If a shell staff member exists, the main agent (tellasker) issues **a real Tellask** to the shell staff member
+If a shell specialist member exists, the main agent (tellasker) issues **a real Tellask** to the shell specialist member
 (tellaskee), in the server-wide work language.
 
 The Tellask body should be short and operational:
@@ -99,10 +99,27 @@ The FBR body should include:
 - the tool constraint (FBR has no tools; mainline tool availability is separate)
 - the question: “What should I be careful about in this environment? Which CLI tools should I prioritize, and why?”
 
-### 4) Synthesize into an “Agent Priming” note
+Optional parallel drafts:
+
+- If the team member config enables `fbr_effort` (default `3`), the runtime creates multiple `!?@self` FBR sideline
+  dialogs concurrently so the agent produces multiple independent “fresh boots” drafts for the mainline dialog to
+  distill.
+- These drafts have **no stable identity mapping**, and there is no meaningful ordering requirement; the mainline dialog
+  should treat them as anonymous drafts rather than fixed personas.
+- If `fbr_effort` is `0`, skip FBR.
+- If `fbr_effort` is greater than `100`, the runtime errors out and stops priming (invalid config).
+
+### 4) Distill into an “Agent Priming” note
 
 The main agent then writes a short, user-visible **Agent Priming** note via a **normal generation** in the mainline
-dialog. It should be explicitly synthesized (dedupe/reconcile/extract-the-best) rather than repeating each draft.
+dialog. It should be explicitly distilled (dedupe/reconcile/extract-the-best) rather than repeating each draft.
+
+Implementation constraint (matches runtime behavior):
+
+- Do not build a bespoke “distillation meta prompt” by concatenating drafts into a special template.
+- Instead, keep the exact same behavior as normal runtime: FBR sideline replies are returned to the mainline, then the
+  standard driver “sideline-response injection” mechanism injects those replies as fresh user context for the next
+  mainline generation.
 
 ---
 
@@ -114,7 +131,7 @@ All priming steps must be persisted as standard dialog artifacts (messages + eve
 
 ### 2) Process-wide cache (per agent)
 
-To avoid repeating `uname -a` + FBR + synthesis on every new dialog, the backend process may maintain an in-process cache
+To avoid repeating `uname -a` + FBR + distillation on every new dialog, the backend process may maintain an in-process cache
 (lost on restart) keyed by the mainline agent id.
 
 Reuse policy:
