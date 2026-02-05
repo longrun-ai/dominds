@@ -785,9 +785,15 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       dialog = loaded;
     }
 
-    // CRITICAL FIX: Send dialog events directly to requesting WebSocket only
-    // This bypasses PubChan to ensure only the requesting session receives restoration events
-    // Pass decidedCourse explicitly since dialog.currentCourse defaults to 1 for new Dialog objects
+    // Subscribe BEFORE sending restoration events.
+    // This avoids a race where new persisted events (e.g., Agent Priming replay) are emitted
+    // between the restoration snapshot read and the subscription setup.
+    // Live generation is still gated by dialog.status ('running') in drive handlers.
+    await setupWebSocketSubscription(ws, dialog);
+
+    // Send dialog events directly to requesting WebSocket only.
+    // This bypasses PubChan to ensure only the requesting session receives restoration events.
+    // Pass decidedCourse explicitly since dialog.currentCourse defaults to 1 for new Dialog objects.
     try {
       const dialogStore = dialog.dlgStore;
       if (dialogStore instanceof DiskFileDialogStore) {
@@ -804,10 +810,6 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     } catch (err) {
       log.warn(`Failed to send dialog events directly for ${dialogId}:`, err);
     }
-
-    // Always subscribe for future realtime events (including cross-client revival + continued drive).
-    // Live generation is still gated by dialog.status ('running') in drive handlers.
-    await setupWebSocketSubscription(ws, dialog);
 
     // Send dialog_ready with full info so frontend knows the current dialog ID
     const team = await Team.load();

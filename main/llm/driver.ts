@@ -90,6 +90,20 @@ export interface HumanPrompt {
   msgId: string; // Message ID for tracking and error recovery (required for all human text)
   grammar: UserTextGrammar;
   userLanguageCode?: LanguageCode;
+  /**
+   * Skip injecting the dialog Taskdoc into the LLM context for this drive.
+   *
+   * Default behavior is to include Taskdoc (when dlg.taskDocPath is present).
+   * This flag exists for special one-shot generations (e.g. Agent Priming distillation)
+   * where Taskdoc contents must not bias the output.
+   */
+  skipTaskdoc?: boolean;
+  /**
+   * Prompt persistence mode.
+   * - 'persist' (default): normal human prompt; saved to dialog history and rendered in UI.
+   * - 'internal': injected into the LLM context for this drive only; not persisted nor rendered.
+   */
+  persistMode?: 'persist' | 'internal';
 }
 
 type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
@@ -1366,6 +1380,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
 
   let genIterNo = 0;
   let pendingPrompt: HumanPrompt | undefined = humanPrompt;
+  let internalPromptForThisDrive: HumanPrompt | undefined;
+  let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   try {
     while (true) {
       genIterNo++;
@@ -1506,29 +1522,37 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         const currentPrompt = pendingPrompt;
         pendingPrompt = undefined;
         if (currentPrompt) {
+          if (currentPrompt.skipTaskdoc === true) {
+            skipTaskdocForThisDrive = true;
+          }
           promptContent = currentPrompt.content;
           const msgId = currentPrompt.msgId;
           const promptGrammar = currentPrompt.grammar;
           const persistedUserLanguageCode =
             currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
 
-          await dlg.addChatMessages({
-            type: 'prompting_msg',
-            role: 'user',
-            genseq: dlg.activeGenSeq,
-            content: promptContent,
-            msgId: msgId,
-            grammar: promptGrammar,
-          });
-          // Persist user message to storage FIRST
-          await dlg.persistUserMessage(
-            promptContent,
-            msgId,
-            promptGrammar,
-            persistedUserLanguageCode,
-          );
+          const persistMode = currentPrompt.persistMode ?? 'persist';
+          if (persistMode === 'internal') {
+            internalPromptForThisDrive = currentPrompt;
+          } else {
+            await dlg.addChatMessages({
+              type: 'prompting_msg',
+              role: 'user',
+              genseq: dlg.activeGenSeq,
+              content: promptContent,
+              msgId: msgId,
+              grammar: promptGrammar,
+            });
+            // Persist user message to storage FIRST
+            await dlg.persistUserMessage(
+              promptContent,
+              msgId,
+              promptGrammar,
+              persistedUserLanguageCode,
+            );
+          }
 
-          if (promptGrammar === 'tellask') {
+          if (persistMode !== 'internal' && promptGrammar === 'tellask') {
             // Collect and execute tellask calls from user text using streaming parser
             throwIfAborted(abortSignal, dlg.id);
             const collectedUserCalls = await emitSayingEvents(dlg, promptContent);
@@ -1549,22 +1573,24 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             // No teammate-call fallback here: rely exclusively on TellaskStreamParser.
 
             // Pending subdialogs are tracked in persistence (pending-subdialogs.json) as the source of truth.
-          } else {
+          } else if (persistMode !== 'internal') {
             await emitUserMarkdown(dlg, promptContent);
           }
 
-          try {
-            postDialogEvent(dlg, {
-              type: 'end_of_user_saying_evt',
-              course: dlg.currentCourse,
-              genseq: dlg.activeGenSeq,
-              msgId,
-              content: promptContent,
-              grammar: promptGrammar,
-              userLanguageCode: persistedUserLanguageCode,
-            });
-          } catch (err) {
-            log.warn('Failed to emit end_of_user_saying_evt', err);
+          if (persistMode !== 'internal') {
+            try {
+              postDialogEvent(dlg, {
+                type: 'end_of_user_saying_evt',
+                course: dlg.currentCourse,
+                genseq: dlg.activeGenSeq,
+                msgId,
+                content: promptContent,
+                grammar: promptGrammar,
+                userLanguageCode: persistedUserLanguageCode,
+              });
+            } catch (err) {
+              log.warn('Failed to emit end_of_user_saying_evt', err);
+            }
           }
         }
 
@@ -1598,9 +1624,8 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
         // 3) historical dialog msgs
         // Finally, render reminders and place them immediately before the last 'user' message
         // so they are salient for the next response without polluting earlier context.
-        const taskDocMsg: ChatMessage | undefined = dlg.taskDocPath
-          ? await formatTaskDocContent(dlg)
-          : undefined;
+        const taskDocMsg: ChatMessage | undefined =
+          dlg.taskDocPath && !skipTaskdocForThisDrive ? await formatTaskDocContent(dlg) : undefined;
 
         const coursePrefixMsgs: ChatMessage[] = (() => {
           const msgs = dlg.getCoursePrefixMsgs();
@@ -1632,6 +1657,19 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
                 responseBody: response.response,
                 language: getWorkLanguage(),
               }),
+            });
+          }
+        }
+
+        // Inject the internal (non-persisted) prompt at the end of the fresh user context
+        // so it can steer the next response without polluting dialog history.
+        if (genIterNo === 1 && internalPromptForThisDrive) {
+          const injected = internalPromptForThisDrive.content.trim();
+          if (injected) {
+            ctxMsgs.push({
+              type: 'environment_msg',
+              role: 'user',
+              content: injected,
             });
           }
         }

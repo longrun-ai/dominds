@@ -101,8 +101,20 @@ Dominds 的诉请（Tellask，`!?@...`）与扪心自问（FBR，`!?@self`）并
 
 实现约束（与运行时一致）：
 
-- “综合提炼”阶段**不应**通过拼装/拼接一段“专用综合提示词”去喂给模型。
-- 运行时应当保持与正常对话完全一致：FBR 支线对话把回复回传给主线后，由标准 driver 的“支线回复注入”机制把这些回复作为新的用户上下文注入主线，再触发一次正常生成完成综合提炼。
+- “综合提炼”阶段**不应**通过拼装/拼接一段新的 system prompt 或引入一条独立的 system-prompt 组装路径。
+- 运行时可以使用一条**internal prompt** 来锚定“本次生成就是综合提炼”。internal prompt 必须不落盘、不展示。
+- FBR 草稿与 shell 回传等“证据材料”可以通过 internal prompt 一并提供给模型（仅用于本次 drive 的上下文，不写入对话历史），从而避免依赖“支线回复注入队列”的时序与并发细节。
+
+实现补充（internal prompt）：
+
+- 运行时可以向 driver 提供一个**不落盘/不展示**的 internal prompt（仅用于本次 drive 的 LLM 上下文），用于把本次生成明确锚定为“综合提炼”。
+- internal prompt 不得写入对话历史与持久化存储（避免污染转录与后续 course）。
+- internal prompt 的语义等价于“本次生成要做的任务指令”，而不是替代系统提示或拼装新的 system prompt。
+
+实现补充（避免 Taskdoc 浸染）：
+
+- “综合提炼”应当与具体差遣牒内容解耦：同一个智能体的 Agent Priming 前缀会被用于不同差遣牒的对话。
+- 因此运行时在触发 distillation 的那一次 drive 中可以选择**不注入 Taskdoc**，避免 Taskdoc 的进度/实现细节影响“环境结论”的提炼。
 
 ---
 

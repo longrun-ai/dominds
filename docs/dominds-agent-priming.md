@@ -116,10 +116,26 @@ dialog. It should be explicitly distilled (dedupe/reconcile/extract-the-best) ra
 
 Implementation constraint (matches runtime behavior):
 
-- Do not build a bespoke “distillation meta prompt” by concatenating drafts into a special template.
-- Instead, keep the exact same behavior as normal runtime: FBR sideline replies are returned to the mainline, then the
-  standard driver “sideline-response injection” mechanism injects those replies as fresh user context for the next
-  mainline generation.
+- Do not introduce a separate system-prompt assembly path for distillation.
+- The runtime may use a non-persisted **internal prompt** to anchor “this generation is distillation”.
+- The runtime may also include the shell snapshot and FBR drafts as “evidence” inside that internal prompt (for this
+  drive only, not persisted), so distillation does not depend on any queue timing/concurrency details.
+
+Implementation note (internal prompt):
+
+- The runtime may provide the driver with a non-persisted, non-rendered **internal prompt** (used only in the LLM
+  context for this drive) to explicitly anchor the generation as “distillation”.
+- The internal prompt must not be written into dialog history or persisted storage (to avoid transcript pollution
+  across courses).
+- The internal prompt is a per-drive task directive; it must not replace the system prompt or introduce a separate
+  system-prompt assembly path.
+
+Implementation note (avoid Taskdoc bias):
+
+- Distillation must be Taskdoc-agnostic: the same Agent Priming prefix can be reused across dialogs with different
+  Taskdocs.
+- Therefore, the runtime may choose to **skip injecting Taskdoc** for the one distillation drive, so Taskdoc progress
+  or implementation details do not bias environment conclusions.
 
 ---
 

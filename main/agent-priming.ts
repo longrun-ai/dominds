@@ -47,7 +47,7 @@ type AgentPrimingCacheEntry = Readonly<{
 const BASELINE_ENV_SNAPSHOT_CMD = 'uname -a';
 
 const cacheByAgentId: Map<string, AgentPrimingCacheEntry> = new Map();
-const inflightByAgentId: Map<string, Promise<AgentPrimingCacheEntry>> = new Map();
+const inflightByAgentId: Map<string, Promise<AgentPrimingCacheEntry | null>> = new Map();
 
 export type AgentPrimingCacheStatus = Readonly<
   { hasCache: false } | { hasCache: true; createdAt: string; ageSeconds: number }
@@ -153,14 +153,17 @@ export function scheduleAgentPrimingForNewDialog(
   const inflight = inflightByAgentId.get(agentId);
   if (inflight) {
     void inflight.then((entry) => {
-      if (options.mode === 'reuse') {
+      if (options.mode === 'reuse' && entry) {
         dlg.setCoursePrefixMsgs(buildCoursePrefixMsgs(entry));
         return replayAgentPriming(dlg, entry);
       }
       // mode === 'do': wait for in-flight then run again for this dialog.
-      return runAgentPrimingLive(dlg).then((next) => {
-        cacheByAgentId.set(agentId, next);
-      });
+      if (options.mode === 'do') {
+        return runAgentPrimingLive(dlg).then((next) => {
+          cacheByAgentId.set(agentId, next);
+        });
+      }
+      return;
     });
     return;
   }
@@ -171,10 +174,9 @@ export function scheduleAgentPrimingForNewDialog(
       return entry;
     })
     .catch((err: unknown) => {
-      log.warn('Agent Priming live run failed; will retry on next dialog', err, {
-        agentId,
-      });
-      throw err;
+      // Best-effort: avoid unhandled rejections; the dialog itself is already marked interrupted.
+      log.warn('Agent Priming live run failed; will retry on next dialog', err, { agentId });
+      return null;
     })
     .finally(() => {
       inflightByAgentId.delete(agentId);
@@ -228,17 +230,6 @@ function extractLastShellCmdResultText(messages: unknown[]): string | null {
     return content;
   }
   return null;
-}
-
-function shuffleCopy<T>(items: ReadonlyArray<T>): T[] {
-  const out = items.slice();
-  for (let i = out.length - 1; i >= 1; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = out[i];
-    out[i] = out[j];
-    out[j] = tmp;
-  }
-  return out;
 }
 
 async function runUnameA(): Promise<string> {
@@ -392,7 +383,7 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
 
 function formatFbrSelfTeaser(language: LanguageCode): string {
   if (language === 'zh') {
-    return '（我会在收到全部 FBR 支线反馈后进行综合提炼，生成一条可复用的“智能体启动（Agent Priming）”笔记。）';
+    return '（我会在收到全部 FBR 支线反馈后进行综合提炼，并在主线对话中输出一条可复用的“智能体启动（Agent Priming）”笔记。）';
   }
   return '(After I receive all FBR sideline feedback, I will distill it into a reusable “Agent Priming” note.)';
 }
@@ -520,34 +511,135 @@ function formatFbrTellaskBody(
 
 async function generatePrimingNoteViaMainlineAgent(options: {
   dlg: RootDialog;
-  fbrResponses: ReadonlyArray<string>;
+  shellSnapshotText: string;
+  shellResponseText?: string;
+  fbrResponses: ReadonlyArray<{ subdialogId: string; response: string }>;
+  fbrTellaskHead: string;
+  fbrCallId: string;
 }): Promise<string> {
-  const { dlg, fbrResponses } = options;
+  const { dlg, shellSnapshotText, shellResponseText, fbrResponses, fbrTellaskHead, fbrCallId } =
+    options;
 
-  const hasAnyFbr = fbrResponses.some((r) => r.trim() !== '');
-  if (!hasAnyFbr) {
-    throw new Error('Missing FBR responses for Agent Priming distillation.');
-  }
-
-  // Do NOT special-handle FBR replies here.
-  // We trigger a normal drive, and rely on driver.ts to:
-  // - take queued subdialog responses via DialogPersistence.takeSubdialogResponses()
-  // - inject them as user context via formatTeammateResponseContent()
-  // so the model sees the FBR feedback exactly as it would in normal runtime.
-  const prompt = '';
-
-  // Distillation should rely on the agent's normal Dominds dialog environment,
-  // without alternate system prompts or bypassing driver.ts context assembly.
-  //
-  // Important: Agent Priming must not trigger Diligence Push (“鞭策”); it should be best-effort
+  // Trigger a normal drive and rely on driver.ts context assembly.
+  // Agent Priming must not trigger Diligence Push (“鞭策”); it should be best-effort
   // one-shot distillation with no keep-going injection.
   const prevDisableDiligencePush = dlg.disableDiligencePush;
   try {
     dlg.disableDiligencePush = true;
     const beforeMsgs = dlg.msgs.length;
+    const language = getWorkLanguage();
+
+    // IMPORTANT: include shell snapshot + FBR drafts in the internal prompt itself.
+    // - Must be non-persisted (persistMode: 'internal')
+    // - Must be robust even if the driver loop iterates (context health remediation)
+    // - Must avoid relying on the subdialog-response queue
+    const evidenceParts: string[] = [];
+    const snapshotTrimmed = shellSnapshotText.trim();
+    if (snapshotTrimmed) {
+      evidenceParts.push(
+        language === 'zh'
+          ? ['环境快照（来自 `uname -a`）：', snapshotTrimmed].join('\n')
+          : ['Environment snapshot (from `uname -a`):', snapshotTrimmed].join('\n'),
+      );
+    }
+    const shellReturnTrimmed =
+      typeof shellResponseText === 'string' ? shellResponseText.trim() : '';
+    if (shellReturnTrimmed && shellReturnTrimmed !== snapshotTrimmed) {
+      evidenceParts.push(
+        language === 'zh'
+          ? ['Shell 反馈（完整回传）：', shellReturnTrimmed].join('\n')
+          : ['Shell feedback (full return):', shellReturnTrimmed].join('\n'),
+      );
+    }
+
+    const maxDrafts = Math.min(6, fbrResponses.length);
+    for (let i = 0; i < maxDrafts; i++) {
+      const r = fbrResponses[i];
+      const trimmed = r.response.trim();
+      if (!trimmed) continue;
+      const cap = 4000;
+      const capped =
+        trimmed.length <= cap
+          ? trimmed
+          : language === 'zh'
+            ? `${trimmed.slice(0, cap).trimEnd()}\n\n（已截断：仅显示前 ${cap} 字符）`
+            : `${trimmed.slice(0, cap).trimEnd()}\n\n(truncated: first ${cap} chars only)`;
+
+      const fbrLabel = (() => {
+        const head = fbrTellaskHead.trim();
+        const callId = fbrCallId.trim();
+        if (head && callId) {
+          return language === 'zh'
+            ? `FBR 草稿 #${i + 1}（tellaskHead: ${head}；callId: ${callId}）`
+            : `FBR draft #${i + 1} (tellaskHead: ${head}; callId: ${callId})`;
+        }
+        if (head) {
+          return language === 'zh'
+            ? `FBR 草稿 #${i + 1}（tellaskHead: ${head}）`
+            : `FBR draft #${i + 1} (tellaskHead: ${head})`;
+        }
+        if (callId) {
+          return language === 'zh'
+            ? `FBR 草稿 #${i + 1}（callId: ${callId}）`
+            : `FBR draft #${i + 1} (callId: ${callId})`;
+        }
+        return language === 'zh' ? `FBR 草稿 #${i + 1}` : `FBR draft #${i + 1}`;
+      })();
+      evidenceParts.push([fbrLabel, capped].join('\n'));
+    }
+    const evidenceBlock = evidenceParts.length > 0 ? evidenceParts.join('\n\n---\n\n') : '';
+    if (!evidenceBlock.trim()) {
+      throw new Error(
+        'Missing evidence for Agent Priming distillation (snapshot + FBR drafts are empty).',
+      );
+    }
+
+    const internalPrompt =
+      language === 'zh'
+        ? [
+            '你正在进行智能体启动（Agent Priming）的“综合提炼”步骤。',
+            '请基于下方提供的环境快照（以及可选的 `!?@self` FBR 草稿），综合提炼出一条可复用的“智能体启动（Agent Priming）笔记”。',
+            '',
+            '证据材料（仅供综合提炼；不要逐条复述）：',
+            evidenceBlock ? evidenceBlock : '（无）',
+            '',
+            '重要：只提炼“本次运行环境相关”的结论（例如：OS/架构、shell userland 差异、文件系统、端口/防火墙、全局链接/工具链等）。',
+            '禁止：输出元话语、推理过程，或复述实现细节（例如 driver/缓存/持久化等）。',
+            '若某条结论无法从环境快照或 FBR 草稿中直接支撑，请省略。',
+            '',
+            '要求：',
+            '- 去重并消解冲突，只保留最关键的结论',
+            '- 用 6~12 条 bullet points 输出（每条尽量短）',
+            '- 只写结论要点；不要输出推理过程，也不要出现“我在考虑/我将要/让我们检查”等元话语',
+          ].join('\n')
+        : [
+            'You are in the Agent Priming distillation step.',
+            'Based on the environment snapshot (and optional `!?@self` FBR drafts) below, distill a reusable “Agent Priming note”.',
+            '',
+            'Evidence (for distillation only; do not repeat draft-by-draft):',
+            evidenceBlock ? evidenceBlock : '(empty)',
+            '',
+            'Important: output only conclusions about this runtime environment (e.g., OS/arch, shell userland differences, filesystem behavior, ports/firewall, global links/toolchain).',
+            'Do NOT include meta talk, reasoning narration, or implementation details (e.g. driver/caching/persistence).',
+            'If a point is not directly supported by the environment snapshot or the FBR drafts, omit it.',
+            '',
+            'Requirements:',
+            '- Dedupe and reconcile conflicts; keep only the key conclusions',
+            '- Output 6–12 concise bullet points',
+            '- Conclusion bullets only; no reasoning narration or meta talk (e.g. “I think / I will / let’s inspect”)',
+          ].join('\n');
+
+    // IMPORTANT: this is an internal (non-persisted) prompt. driver.ts will inject it into
+    // the LLM context for this drive only, without polluting dialog history.
     await driveDialogStream(
       dlg,
-      { content: prompt, msgId: generateShortId(), grammar: 'markdown' },
+      {
+        content: internalPrompt,
+        msgId: generateShortId(),
+        grammar: 'markdown',
+        persistMode: 'internal',
+        skipTaskdoc: true,
+      },
       true,
     );
     const afterMsgs = dlg.msgs.length;
@@ -598,22 +690,35 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
 
   const effort = Math.max(0, Math.floor(entry.fbr.effort));
   const fbrLabel = language === 'zh' ? 'FBR 输出（摘要）' : 'FBR outputs (summary)';
-  const previewCap = Math.min(3, Math.max(1, effort));
-  const shuffledResponses = shuffleCopy(entry.fbr.responses);
-  const previewResponses = shuffledResponses.slice(0, previewCap);
+  const previewCap = Math.min(entry.fbr.responses.length, Math.max(0, Math.min(6, effort)));
+  const previewResponses = previewCap > 0 ? entry.fbr.responses.slice(0, previewCap) : [];
   const blocks: string[] = [];
   for (let i = 0; i < previewResponses.length; i++) {
     const raw = previewResponses[i] ?? '';
-    const lines = raw.replace(/\r\n/g, '\n').split('\n');
-    const preview = lines.slice(0, 12).join('\n').trim();
-    blocks.push(preview ? preview : language === 'zh' ? '（无）' : '(empty)');
+    const trimmed = raw.trim();
+    const cap = 4000;
+    const capped =
+      trimmed.length <= cap
+        ? trimmed
+        : language === 'zh'
+          ? `${trimmed.slice(0, cap).trimEnd()}\n\n（已截断：仅显示前 ${cap} 字符）`
+          : `${trimmed.slice(0, cap).trimEnd()}\n\n(truncated: first ${cap} chars only)`;
+    blocks.push(
+      language === 'zh'
+        ? [`### FBR 草稿 #${i + 1}`, '', capped || '（无）'].join('\n')
+        : [`### FBR draft #${i + 1}`, '', capped || '(empty)'].join('\n'),
+    );
   }
   const fbrPreview =
-    previewResponses.length < 1
+    effort < 1
       ? language === 'zh'
         ? '（已跳过：已禁用）'
         : '(skipped: disabled)'
-      : blocks.join('\n\n---\n\n');
+      : blocks.length < 1
+        ? language === 'zh'
+          ? '（无）'
+          : '(empty)'
+        : blocks.join('\n\n---\n\n');
 
   const priming = entry.primingNote.trim();
 
@@ -625,17 +730,37 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
       content: `${shellSnapshotLabel}:\n\n${shellSnapshot}`,
     },
     {
-      type: 'transient_guide_msg',
-      role: 'assistant',
+      type: 'environment_msg',
+      role: 'user',
       content:
-        language === 'zh'
-          ? `${fbrLabel}:\n\n说明：以下为多份独立初心推理草稿。可能重复/冲突；主线对话应综合提炼，取各自精华、去各自糟粕，避免逐条复述。\n\n${fbrPreview}`
-          : `${fbrLabel}:\n\nNote: below are multiple independent FBR drafts. They may overlap or conflict; the mainline dialog should distill (dedupe, reconcile, and extract the best), rather than repeating each draft.\n\n${fbrPreview}`,
+        language === 'zh' ? `${fbrLabel}:\n\n${fbrPreview}` : `${fbrLabel}:\n\n${fbrPreview}`,
     },
   ];
 
+  if (entry.shell.kind === 'specialist_tellask') {
+    const fullReturn = entry.shell.responseText.trim();
+    const snapshot = entry.shell.snapshotText.trim();
+    if (fullReturn && fullReturn !== snapshot) {
+      out.push({
+        type: 'environment_msg',
+        role: 'user',
+        content:
+          language === 'zh'
+            ? `Shell 反馈（完整回传）：\n\n${fullReturn}`
+            : `Shell feedback (full return):\n\n${fullReturn}`,
+      });
+    }
+  }
+
   if (priming) {
-    out.push({ type: 'environment_msg', role: 'user', content: priming });
+    out.push({
+      type: 'environment_msg',
+      role: 'user',
+      content:
+        language === 'zh'
+          ? `智能体启动（Agent Priming）笔记（综合提炼）：\n\n${priming}`
+          : `Agent Priming note (distilled):\n\n${priming}`,
+    });
   }
 
   return out;
@@ -692,7 +817,7 @@ async function replayAgentPriming(dlg: RootDialog, entry: AgentPrimingCacheEntry
         entry.shell.specialistId,
         shellTellaskHead,
         'completed',
-        undefined,
+        dlg.id,
         {
           response: entry.shell.responseText,
           agentId: entry.shell.specialistId,
@@ -732,14 +857,14 @@ async function replayAgentPriming(dlg: RootDialog, entry: AgentPrimingCacheEntry
       // Phase 4: FBR responses (separate bubbles, in stable index order)
       if (fbrCallId && fbrTellaskHead) {
         const normalized = Math.max(1, effort);
-        const responses = shuffleCopy(entry.fbr.responses).slice(0, normalized);
+        const responses = entry.fbr.responses.slice(0, normalized);
         for (let i = 0; i < responses.length; i++) {
           const raw = responses[i] ?? '';
           await dlg.receiveTeammateResponse(
             entry.fbr.responderAgentId,
             fbrTellaskHead,
             'completed',
-            undefined,
+            dlg.id,
             {
               response: raw,
               agentId: entry.fbr.responderAgentId,
@@ -782,6 +907,17 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
   const createdAt = formatUnifiedTimestamp(new Date());
   const language = getWorkLanguage();
   let fatalRunState: DialogRunState | null = null;
+  let shellPolicy: AgentPrimingCacheEntry['shellPolicy'] = 'no_specialist';
+  let specialistId: string | null = null;
+  let shellTellaskBody = '';
+  let shellResponseText = '';
+  let snapshotText = '';
+  let directNoteMarkdown = '';
+  let fbrCallBody = '';
+  let selfTeaser = '';
+  let fbrEffort = 0;
+  const fbrResponsesForCache: string[] = [];
+  const fbrResponsesForInjection: Array<{ subdialogId: string; response: string }> = [];
   try {
     await setDialogRunState(dlg.id, { kind: 'proceeding' });
 
@@ -792,19 +928,15 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
       .map((s) => s.trim())
       .filter((s) => s !== '');
     const selfIsShellSpecialist = specialists.includes(dlg.agentId);
-    const specialistId = specialists.find((s) => s !== dlg.agentId) ?? null;
-    const shellPolicy: AgentPrimingCacheEntry['shellPolicy'] =
+    specialistId = specialists.find((s) => s !== dlg.agentId) ?? null;
+    shellPolicy =
       specialists.length < 1
         ? 'no_specialist'
         : selfIsShellSpecialist
           ? 'self_is_specialist'
           : 'specialist_only';
 
-    const shellTellaskBody = formatShellTellaskBody(language, specialistId);
-
-    let shellResponseText = '';
-    let snapshotText = '';
-    let directNoteMarkdown = '';
+    shellTellaskBody = formatShellTellaskBody(language, specialistId);
     let shellCallId: string | null = null;
     let shellTellaskHead: string | null = null;
     let shellTellaskBodyForSubdialog: string | null = null;
@@ -972,7 +1104,7 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
     }
 
     const rawFbrEffort = member ? member.fbr_effort : undefined;
-    const fbrEffort = (() => {
+    fbrEffort = (() => {
       if (typeof rawFbrEffort !== 'number' || !Number.isFinite(rawFbrEffort)) return 3;
       const n = Math.floor(rawFbrEffort);
       if (n < 0) return 0;
@@ -982,7 +1114,7 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
       return n;
     })();
 
-    const fbrCallBody = formatFbrTellaskBody(
+    fbrCallBody = formatFbrTellaskBody(
       language,
       BASELINE_ENV_SNAPSHOT_CMD,
       snapshotText,
@@ -990,10 +1122,9 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
       specialistId,
       { fbrEffort },
     );
-    const selfTeaser = formatFbrSelfTeaser(language);
+    selfTeaser = formatFbrSelfTeaser(language);
     let fbrCallId: string | null = null;
     let fbrTellaskHead: string | null = null;
-    const fbrResponses: string[] = [];
 
     // Phase 3: FBR ask (call bubble)
     if (fbrEffort >= 1) {
@@ -1073,10 +1204,10 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
         }),
       );
 
-      const shuffled = shuffleCopy(created);
-      for (const r of shuffled) {
+      for (const r of created) {
         const responseText = r.responseText;
-        fbrResponses.push(responseText);
+        fbrResponsesForCache.push(responseText);
+        fbrResponsesForInjection.push({ subdialogId: r.sub.id.selfId, response: responseText });
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             dlg.agentId,
@@ -1094,7 +1225,22 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
       }
     }
 
-    const primingNote = await generatePrimingNoteViaMainlineAgent({ dlg, fbrResponses });
+    if (!fbrCallId || !fbrTellaskHead) {
+      if (fbrEffort >= 1) {
+        throw new Error('Missing FBR callId/tellaskHead for Agent Priming distillation.');
+      }
+      // FBR disabled (fbr_effort == 0): distill from shell snapshot only.
+      fbrCallId = '';
+      fbrTellaskHead = '@self';
+    }
+    const primingNote = await generatePrimingNoteViaMainlineAgent({
+      dlg,
+      shellSnapshotText: snapshotText,
+      shellResponseText: shellResponseText,
+      fbrResponses: fbrResponsesForInjection,
+      fbrTellaskHead: fbrTellaskHead,
+      fbrCallId: fbrCallId,
+    });
 
     const entry: AgentPrimingCacheEntry = {
       createdAt,
@@ -1120,7 +1266,7 @@ async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEn
         selfTeaser,
         responderAgentId: dlg.agentId,
         effort: fbrEffort,
-        responses: fbrResponses,
+        responses: fbrResponsesForCache,
       },
       primingNote,
     };

@@ -5637,6 +5637,18 @@ export class DomindsApp extends HTMLElement {
     this.updateInputPanelVisibility();
 
     try {
+      // IMPORTANT: set the dialog container context BEFORE requesting the backend to stream
+      // restoration events. Otherwise, early events can be dropped by the container's dialog
+      // filtering (currentDialog is not set yet).
+      const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
+      if (dialogContainer instanceof DomindsDialogContainer) {
+        const entry = Array.isArray(this.dialogs)
+          ? this.dialogs.find((d: ApiRootDialogResponse) => d.rootId === normalizedDialog.selfId)
+          : undefined;
+        const agentId = normalizedDialog.agentId || entry?.agentId;
+        await dialogContainer.setDialog({ ...normalizedDialog, agentId });
+      }
+
       // Send the display_dialog message with error handling
       this.wsManager.sendRaw({
         type: 'display_dialog',
@@ -5665,16 +5677,6 @@ export class DomindsApp extends HTMLElement {
       }
 
       // Dialog events are forwarded by backend after display_dialog; global handler will process
-
-      // Setup the dialog container for streaming
-      const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
-      if (dialogContainer instanceof DomindsDialogContainer) {
-        const entry = Array.isArray(this.dialogs)
-          ? this.dialogs.find((d: ApiRootDialogResponse) => d.rootId === normalizedDialog.selfId)
-          : undefined;
-        const agentId = normalizedDialog.agentId || entry?.agentId;
-        await dialogContainer.setDialog({ ...normalizedDialog, agentId });
-      }
 
       // Set the dialog ID for the q4h-input and focus it
       if (this.q4hInput) {
