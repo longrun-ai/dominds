@@ -125,6 +125,12 @@ type ToastHistoryEntry = {
   message: string;
 };
 
+type DiligenceStateSnapshot = {
+  disableDiligencePush: boolean;
+  configuredMax: number | null;
+  remaining: number | null;
+};
+
 export class DomindsApp extends HTMLElement {
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
@@ -436,6 +442,40 @@ export class DomindsApp extends HTMLElement {
   private diligenceRtwsText: string = '';
   private diligenceRtwsDirty: boolean = false;
   private diligenceRtwsSource: 'builtin' | 'rtws' = 'builtin';
+
+  private applyDiligenceState(state: DiligenceStateSnapshot): void {
+    this.disableDiligencePush = state.disableDiligencePush;
+    this.diligencePushConfiguredMax = state.configuredMax;
+    this.diligencePushRemaining = state.remaining;
+  }
+
+  private normalizeDiligenceMax(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    return Math.max(0, Math.floor(value));
+  }
+
+  private normalizeDiligenceRemaining(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    return Math.max(0, Math.floor(value));
+  }
+
+  private resolveDiligenceStateFromReady(readyMsg: DialogReadyMessage): DiligenceStateSnapshot {
+    const configuredMax = this.normalizeDiligenceMax(readyMsg.diligencePushMax);
+    const normalizedRemaining = this.normalizeDiligenceRemaining(
+      readyMsg.diligencePushRemainingBudget,
+    );
+    let remaining: number | null = normalizedRemaining;
+    if (remaining === null) {
+      remaining = configuredMax !== null && configuredMax > 0 ? configuredMax : 0;
+    } else if (configuredMax !== null && configuredMax > 0) {
+      remaining = Math.min(remaining, configuredMax);
+    }
+    return {
+      disableDiligencePush: readyMsg.disableDiligencePush ?? false,
+      configuredMax,
+      remaining,
+    };
+  }
 
   private getDiligenceBudgetBadgeText(): { text: string; hasRemaining: boolean } {
     const configuredMax =
@@ -5975,6 +6015,13 @@ export class DomindsApp extends HTMLElement {
     this.currentDialog = normalizedDialog;
     this.currentDialogStatus = this.resolveDialogStatus(normalizedDialog);
     this.updateInputPanelVisibility();
+    // Clear stale badge from previous dialog until dialog_ready arrives.
+    this.applyDiligenceState({
+      disableDiligencePush: false,
+      configuredMax: null,
+      remaining: null,
+    });
+    this.updateBottomPanelFooterUi();
 
     try {
       // IMPORTANT: set the dialog container context BEFORE requesting the backend to stream
@@ -6848,8 +6895,19 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'dialog_ready': {
-        // Update currentDialog with the ready dialog's ID (from both create and display)
         const readyMsg: DialogReadyMessage = message;
+        const nextDiligenceState = this.resolveDiligenceStateFromReady(readyMsg);
+        const current = this.currentDialog;
+        const isForCurrentDialog =
+          current !== null &&
+          current.selfId === readyMsg.dialog.selfId &&
+          current.rootId === readyMsg.dialog.rootId;
+        if (!isForCurrentDialog) {
+          // Ignore stale/out-of-band ready events from older display requests.
+          return true;
+        }
+
+        // Update currentDialog with the ready dialog's ID (from both create and display)
         this.currentDialog = {
           selfId: readyMsg.dialog.selfId,
           rootId: readyMsg.dialog.rootId,
@@ -6861,36 +6919,7 @@ export class DomindsApp extends HTMLElement {
           assignmentFromSup: readyMsg.assignmentFromSup,
         };
 
-        this.disableDiligencePush = readyMsg.disableDiligencePush ?? false;
-        this.diligencePushConfiguredMax =
-          typeof readyMsg.diligencePushMax === 'number' &&
-          Number.isFinite(readyMsg.diligencePushMax)
-            ? readyMsg.diligencePushMax
-            : null;
-        const remainingFromReady = readyMsg.diligencePushRemainingBudget;
-        if (typeof remainingFromReady === 'number' && Number.isFinite(remainingFromReady)) {
-          const normalizedRemaining = Math.max(0, Math.floor(remainingFromReady));
-          if (
-            typeof this.diligencePushConfiguredMax === 'number' &&
-            Number.isFinite(this.diligencePushConfiguredMax) &&
-            Math.floor(this.diligencePushConfiguredMax) > 0
-          ) {
-            this.diligencePushRemaining = Math.min(
-              normalizedRemaining,
-              Math.floor(this.diligencePushConfiguredMax),
-            );
-          } else {
-            this.diligencePushRemaining = normalizedRemaining;
-          }
-        } else if (
-          typeof this.diligencePushConfiguredMax === 'number' &&
-          Number.isFinite(this.diligencePushConfiguredMax) &&
-          Math.floor(this.diligencePushConfiguredMax) > 0
-        ) {
-          this.diligencePushRemaining = Math.floor(this.diligencePushConfiguredMax);
-        } else {
-          this.diligencePushRemaining = 0;
-        }
+        this.applyDiligenceState(nextDiligenceState);
         this.diligenceRtwsDirty = false;
         this.updateBottomPanelFooterUi();
 
@@ -6939,17 +6968,8 @@ export class DomindsApp extends HTMLElement {
       }
       case 'diligence_budget_evt': {
         if (this.currentDialog && message.dialog.rootId === this.currentDialog.rootId) {
-          if (
-            typeof message.maxInjectCount === 'number' &&
-            Number.isFinite(message.maxInjectCount) &&
-            Math.floor(message.maxInjectCount) > 0
-          ) {
-            this.diligencePushConfiguredMax = message.maxInjectCount;
-          }
-
-          const remaining = message.remainingCount;
-          this.diligencePushRemaining =
-            typeof remaining === 'number' && Number.isFinite(remaining) ? remaining : null;
+          this.diligencePushConfiguredMax = this.normalizeDiligenceMax(message.maxInjectCount);
+          this.diligencePushRemaining = this.normalizeDiligenceRemaining(message.remainingCount);
           this.disableDiligencePush = message.disableDiligencePush;
           this.updateBottomPanelFooterUi();
         }
