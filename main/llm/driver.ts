@@ -1185,7 +1185,7 @@ export async function driveDialogStream(
   }
   const release = await dlg.acquire();
   let followUp: UpNextPrompt | undefined;
-  let generatedAssistantResponse: string | null = null;
+  let driveResult: { lastAssistantSayingContent: string | null; interrupted: boolean } | undefined;
   try {
     // "dead" is an irreversible UI state (primarily for subdialogs). If a dialog is marked dead
     // in latest.yaml, do not proceed with driving. This guards against races/cross-client drive.
@@ -1209,15 +1209,24 @@ export async function driveDialogStream(
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dlg.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
-    generatedAssistantResponse = await _driveDialogStream(dlg, effectivePrompt);
-    followUp = dlg.takeUpNext();
+    driveResult = await _driveDialogStream(dlg, effectivePrompt);
+    // Do not auto-chain upNext when this drive ended in interrupted state
+    // (user/emergency/system stop). upNext remains queued for explicit manual resume.
+    if (!driveResult.interrupted) {
+      followUp = dlg.takeUpNext();
+    }
   } finally {
     release();
   }
   if (followUp) {
     scheduleUpNextDrive(dlg, followUp);
-  } else if (dlg instanceof SubDialog && generatedAssistantResponse !== null) {
-    await supplySubdialogResponseToCallerIfPending(dlg, generatedAssistantResponse);
+  } else if (
+    dlg instanceof SubDialog &&
+    driveResult &&
+    !driveResult.interrupted &&
+    driveResult.lastAssistantSayingContent !== null
+  ) {
+    await supplySubdialogResponseToCallerIfPending(dlg, driveResult.lastAssistantSayingContent);
   }
 }
 
@@ -1343,7 +1352,10 @@ async function checkQ4HAnswered(dialogId: DialogID): Promise<boolean> {
   }
 }
 
-async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promise<string | null> {
+async function _driveDialogStream(
+  dlg: Dialog,
+  humanPrompt?: HumanPrompt,
+): Promise<{ lastAssistantSayingContent: string | null; interrupted: boolean }> {
   const abortSignal = createActiveRun(dlg.id);
   let finalRunState: DialogRunState | undefined;
   let shouldEmitResumedMarker = false;
@@ -1560,7 +1572,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             const userResult = await executeTellaskCalls(dlg, agent, collectedUserCalls);
 
             if (dlg.hasUpNext()) {
-              return lastAssistantSayingContent;
+              return { lastAssistantSayingContent, interrupted: false };
             }
 
             if (userResult.toolOutputs.length > 0) {
@@ -1887,18 +1899,24 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               });
               lastAssistantSayingContent = violationText;
               await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-              return lastAssistantSayingContent;
+              return { lastAssistantSayingContent, interrupted: false };
             }
           }
 
-          let assistantToolOutputsCount = 0;
+          let assistantValidCallCount = 0;
           if (collectedAssistantCalls.length > 0) {
+            assistantValidCallCount = collectedAssistantCalls.filter(
+              (
+                call,
+              ): call is CollectedTellaskCall & {
+                validation: { kind: 'valid'; firstMention: string };
+              } => call.validation.kind === 'valid',
+            ).length;
             throwIfAborted(abortSignal, dlg.id);
             const assistantResult = await executeTellaskCalls(dlg, agent, collectedAssistantCalls);
             if (dlg.hasUpNext()) {
-              return lastAssistantSayingContent;
+              return { lastAssistantSayingContent, interrupted: false };
             }
-            assistantToolOutputsCount = assistantResult.toolOutputs.length;
             if (assistantResult.toolOutputs.length > 0) {
               await dlg.addChatMessages(...assistantResult.toolOutputs);
             }
@@ -1923,7 +1941,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             });
             lastAssistantSayingContent = violationText;
             await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-            return lastAssistantSayingContent;
+            return { lastAssistantSayingContent, interrupted: false };
           }
           const functionPromises = funcCalls.map(async (func): Promise<FuncResultMsg> => {
             throwIfAborted(abortSignal, dlg.id);
@@ -2083,10 +2101,11 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             break;
           }
 
-          // Continue when there is any tool output / function output that requires another iteration.
+          // Continue only when the assistant actually emitted executable calls this round.
+          // Do not auto-continue on malformed tellask diagnostics alone.
           const shouldContinue =
             funcCalls.length > 0 ||
-            assistantToolOutputsCount > 0 ||
+            assistantValidCallCount > 0 ||
             (funcResults.length > 0 && funcCalls.length === 0);
           if (!shouldContinue) {
             // Diligence Push (root dialog only): prevent ALL stopping except legitimate suspension.
@@ -2388,7 +2407,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
               lastAssistantSayingContent = violationText;
               await dlg.addChatMessages(...newMsgs);
               await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-              return lastAssistantSayingContent;
+              return { lastAssistantSayingContent, interrupted: false };
             }
           }
 
@@ -2407,18 +2426,15 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
           );
 
           if (dlg.hasUpNext()) {
-            return lastAssistantSayingContent;
+            return { lastAssistantSayingContent, interrupted: false };
           }
 
-          // Combine results from all concurrent calls and track tool outputs for termination logic
-          let toolOutputsCount = 0;
+          // Combine results from all concurrent calls.
           if (malformedToolOutputs.length > 0) {
-            toolOutputsCount += malformedToolOutputs.length;
             newMsgs.push(...malformedToolOutputs);
           }
           for (const result of results) {
             if (result.toolOutputs.length > 0) {
-              toolOutputsCount += result.toolOutputs.length;
               newMsgs.push(...result.toolOutputs);
             }
             if (result.suspend) {
@@ -2594,8 +2610,10 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
             break;
           }
 
+          // Continue only when this round had executable calls.
+          // Invalid/malformed tellask diagnostics should not trigger implicit extra generations.
           const shouldContinue =
-            toolOutputsCount > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
+            validCalls.length > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
           if (!shouldContinue) {
             // Diligence Push (root dialog only): prevent ALL stopping except legitimate suspension.
             if (dlg instanceof RootDialog) {
@@ -2666,7 +2684,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
     }
 
     finalRunState = await computeIdleRunState(dlg);
-    return lastAssistantSayingContent;
+    return { lastAssistantSayingContent, interrupted: false };
   } catch (err) {
     const stopRequested = getStopRequestedReason(dlg.id);
     const interruptedReason: DialogInterruptionReason | undefined =
@@ -2683,7 +2701,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
     if (interruptedReason) {
       finalRunState = { kind: 'interrupted', reason: interruptedReason };
       broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
-      return null;
+      return { lastAssistantSayingContent, interrupted: true };
     }
 
     generationHadError = true;
@@ -2698,7 +2716,7 @@ async function _driveDialogStream(dlg: Dialog, humanPrompt?: HumanPrompt): Promi
       kind: 'interrupted',
       reason: { kind: 'system_stop', detail: errText },
     });
-    return null;
+    return { lastAssistantSayingContent, interrupted: true };
   } finally {
     clearActiveRun(dlg.id);
 
