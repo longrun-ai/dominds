@@ -5,7 +5,7 @@
  */
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { getAgentPrimingCacheStatus, scheduleAgentPrimingForNewDialog } from '../agent-priming';
+import { scheduleAgentPrimingForNewDialog } from '../agent-priming';
 import { Dialog, DialogID, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
@@ -24,7 +24,9 @@ import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
+  CreateDialogErrorCode,
   CreateDialogRequest,
+  CreateDialogResult,
   DeclareSubdialogDeadRequest,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
@@ -54,9 +56,13 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
 import { generateDialogID } from '../utils/id';
-import { isTaskPackagePath } from '../utils/task-package';
 import type { AuthConfig } from './auth';
 import { getWebSocketAuthCheck } from './auth';
+import {
+  makeCreateDialogFailure,
+  normalizeCreateDialogErrorCode,
+  parseCreateDialogInput,
+} from './create-dialog-contract';
 
 function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   const member = team.getMember(agentId);
@@ -103,6 +109,16 @@ function getErrorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const maybeCode = (error as { code?: unknown }).code;
   return typeof maybeCode === 'string' ? maybeCode : undefined;
+}
+
+function sendCreateDialogFailure(
+  ws: WebSocket,
+  requestId: string,
+  errorCode: CreateDialogErrorCode,
+  error: string,
+): void {
+  const payload: CreateDialogResult = makeCreateDialogFailure(requestId, errorCode, error);
+  ws.send(JSON.stringify(payload));
 }
 
 /**
@@ -562,35 +578,14 @@ async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Pro
  * Handle dialog creation via WebSocket
  */
 async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): Promise<void> {
+  const parsed = parseCreateDialogInput(packet as unknown as Record<string, unknown>);
+  if ('status' in parsed) {
+    sendCreateDialogFailure(ws, parsed.requestId, parsed.errorCode, parsed.error);
+    return;
+  }
+
   try {
-    const { agentId, taskDocPath } = packet;
-    const skipAgentPriming = packet.skipAgentPriming === true;
-    const agentPrimingMode = packet.agentPrimingMode;
-
-    // Validate that taskDocPath is provided (it's now mandatory)
-    if (!taskDocPath || taskDocPath.trim() === '') {
-      throw new Error('Taskdoc path is required for creating a dialog');
-    }
-    if (!isTaskPackagePath(taskDocPath)) {
-      throw new Error(`Taskdoc must be a directory ending in '.tsk' (got: '${taskDocPath}')`);
-    }
-
-    // Auto-fill default_responder if no agentId provided
-    let finalAgentId = agentId;
-    if (!finalAgentId) {
-      try {
-        const teamConfig = await Team.load();
-        const def = teamConfig.getDefaultResponder();
-        finalAgentId = def ? def.id : undefined;
-      } catch (error) {
-        throw new Error(
-          `Failed to load team configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-    }
-    if (!finalAgentId) {
-      throw new Error('No team members available to create a dialog');
-    }
+    const { requestId, agentId, taskDocPath, agentPrimingMode } = parsed;
 
     const generatedId = generateDialogID();
     // For root dialogs, self and root are the same
@@ -602,7 +597,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     const dialogUI = new DiskFileDialogStore(dialogId);
 
     // Create RootDialog instance with the new store
-    const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, finalAgentId);
+    const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
     globalDialogRegistry.register(dialog);
     // Setup WebSocket subscription for real-time events
     await setupWebSocketSubscription(ws, dialog);
@@ -610,7 +605,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
     // Persist dialog metadata and latest.yaml (write-once pattern)
     const metadata = {
       id: dialogId.selfId,
-      agentId: finalAgentId,
+      agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
     };
@@ -618,7 +613,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
 
     const team = await Team.load();
     const diligencePushMax = normalizeDiligencePushMax(
-      resolveMemberDiligencePushMax(team, finalAgentId),
+      resolveMemberDiligencePushMax(team, agentId),
     );
     const defaultDisableDiligencePush = diligencePushMax <= 0;
     dialog.disableDiligencePush = defaultDisableDiligencePush;
@@ -647,12 +642,21 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         selfId: dialogId.selfId,
         rootId: dialogId.rootId,
       },
-      agentId: finalAgentId,
+      agentId,
       taskDocPath: taskDocPath,
       disableDiligencePush: defaultDisableDiligencePush,
       diligencePushMax,
       diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
     };
+    const createResult: CreateDialogResult = {
+      kind: 'success',
+      requestId,
+      selfId: dialogId.selfId,
+      rootId: dialogId.rootId,
+      agentId,
+      taskDocPath,
+    };
+    ws.send(JSON.stringify(createResult));
     ws.send(JSON.stringify(response));
 
     broadcastDialogsIndexMessage?.({
@@ -663,24 +667,15 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    const cacheStatus = getAgentPrimingCacheStatus(finalAgentId);
-    const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
-    const mode =
-      skipAgentPriming === true || agentPrimingMode === 'skip'
-        ? ('skip' as const)
-        : agentPrimingMode === 'reuse'
-          ? ('reuse' as const)
-          : agentPrimingMode === 'do'
-            ? ('do' as const)
-            : defaultMode;
-    scheduleAgentPrimingForNewDialog(dialog, { mode });
+    scheduleAgentPrimingForNewDialog(dialog, { mode: agentPrimingMode });
   } catch (error) {
     log.warn('Failed to create dialog', undefined, error);
-    ws.send(
-      JSON.stringify({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Unknown error creating dialog',
-      }),
+    const message = error instanceof Error ? error.message : 'Unknown error creating dialog';
+    sendCreateDialogFailure(
+      ws,
+      parsed.requestId,
+      normalizeCreateDialogErrorCode(getErrorCode(error)),
+      message,
     );
   }
 }

@@ -97,13 +97,43 @@ export interface TeamConfigUpdatedMessage {
 
 // Team and Dialog Management Messages
 
-export interface CreateDialogRequest {
-  type: 'create_dialog';
-  agentId?: string; // Optional - will auto-fill from default_responder if not provided
-  taskDocPath: string; // Mandatory - every dialog must have a Taskdoc
-  skipAgentPriming?: boolean;
-  agentPrimingMode?: 'do' | 'reuse' | 'skip';
+export type AgentPrimingMode = 'do' | 'reuse' | 'skip';
+
+export type CreateDialogErrorCode =
+  | 'TEAM_NOT_READY'
+  | 'TEAM_MEMBER_INVALID'
+  | 'TASKDOC_INVALID'
+  | 'AUTH_REQUIRED'
+  | 'CREATE_FAILED';
+
+export interface CreateDialogInput {
+  requestId: string;
+  agentId: string;
+  taskDocPath: string;
+  agentPrimingMode: AgentPrimingMode;
 }
+
+export interface CreateDialogRequest extends CreateDialogInput {
+  type: 'create_dialog';
+}
+
+export interface CreateDialogSuccess {
+  kind: 'success';
+  requestId: string;
+  selfId: string;
+  rootId: string;
+  agentId: string;
+  taskDocPath: string;
+}
+
+export interface CreateDialogFailure {
+  kind: 'failure';
+  requestId: string;
+  errorCode: CreateDialogErrorCode;
+  error: string;
+}
+
+export type CreateDialogResult = CreateDialogSuccess | CreateDialogFailure;
 
 export interface DisplayDialogRequest {
   type: 'display_dialog';

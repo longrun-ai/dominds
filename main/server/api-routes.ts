@@ -22,8 +22,8 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
 import { generateDialogID } from '../utils/id';
-import { isTaskPackagePath } from '../utils/task-package';
 import { listTaskDocumentsInRtws } from '../utils/taskdoc-search';
+import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
 import {
   buildSetupFileResponse,
   buildSetupStatusResponse,
@@ -954,29 +954,22 @@ async function handleCreateDialog(
     const body = await readRequestBody(req);
     const parsed: unknown = JSON.parse(body);
     if (!isRecord(parsed)) {
-      respondJson(res, 400, { success: false, error: 'Invalid JSON body' });
+      const payload = makeCreateDialogFailure('unknown', 'CREATE_FAILED', 'Invalid JSON body');
+      respondJson(res, 400, payload);
       return true;
     }
-    const agentId = parsed['agentId'];
-    const taskDocPath = parsed['taskDocPath'];
-    const skipAgentPriming = parsed['skipAgentPriming'] === true;
-    const agentPrimingModeRaw = parsed['agentPrimingMode'];
-
-    if (typeof agentId !== 'string' || agentId.trim() === '') {
-      respondJson(res, 400, { success: false, error: 'agentId is required' });
-      return true;
-    }
-    if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') {
-      respondJson(res, 400, { success: false, error: 'taskDocPath is required' });
-      return true;
-    }
-    if (!isTaskPackagePath(taskDocPath)) {
-      respondJson(res, 400, {
-        success: false,
-        error: `taskDocPath must be a Taskdoc directory ending in '.tsk' (got: '${taskDocPath}')`,
+    const request = parseCreateDialogInput(parsed);
+    if ('status' in request) {
+      respondJson(res, request.status, {
+        kind: 'failure',
+        requestId: request.requestId,
+        errorCode: request.errorCode,
+        error: request.error,
       });
       return true;
     }
+
+    const { requestId, agentId, taskDocPath, agentPrimingMode } = request;
 
     // Generate dialog ID
     const generatedId = generateDialogID();
@@ -1026,7 +1019,14 @@ async function handleCreateDialog(
     // Dialog is registered with the global registry on creation
     // No need to call registerDialog
 
-    respondJson(res, 201, { success: true, selfId: dialogId.selfId, rootId: dialogId.rootId });
+    respondJson(res, 201, {
+      kind: 'success',
+      requestId,
+      selfId: dialogId.selfId,
+      rootId: dialogId.rootId,
+      agentId,
+      taskDocPath,
+    });
     broadcastDialogCreates(context.clients, {
       type: 'dialogs_created',
       scope: { kind: 'root', rootId: dialogId.selfId },
@@ -1035,25 +1035,13 @@ async function handleCreateDialog(
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    const cacheStatus = getAgentPrimingCacheStatus(agentId.trim());
-    const defaultMode = cacheStatus.hasCache ? ('reuse' as const) : ('do' as const);
-
-    const agentPrimingMode =
-      skipAgentPriming === true
-        ? ('skip' as const)
-        : agentPrimingModeRaw === 'reuse'
-          ? ('reuse' as const)
-          : agentPrimingModeRaw === 'skip'
-            ? ('skip' as const)
-            : agentPrimingModeRaw === 'do'
-              ? ('do' as const)
-              : defaultMode;
-
     scheduleAgentPrimingForNewDialog(dialog, { mode: agentPrimingMode });
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     log.error('Error creating dialog:', error);
-    respondJson(res, 500, { success: false, error: 'Failed to create dialog' });
+    const message = error instanceof Error ? error.message : 'Failed to create dialog';
+    const payload = makeCreateDialogFailure('unknown', 'CREATE_FAILED', message);
+    respondJson(res, 500, payload);
     return true;
   }
 }

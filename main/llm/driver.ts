@@ -91,6 +91,10 @@ export interface HumanPrompt {
   grammar: UserTextGrammar;
   userLanguageCode?: LanguageCode;
   /**
+   * Prompt origin marker for enforcing source-specific invariants.
+   */
+  origin?: 'user' | 'diligence_push';
+  /**
    * Skip injecting the dialog Taskdoc into the LLM context for this drive.
    *
    * Default behavior is to include Taskdoc (when dlg.taskDocPath is present).
@@ -232,6 +236,8 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
       content: resolved.diligenceText,
       msgId: generateShortId(),
       grammar: 'markdown',
+      origin: 'diligence_push',
+      persistMode: 'persist',
     };
     return {
       kind: 'prompt',
@@ -250,6 +256,8 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
     content: resolved.diligenceText,
     msgId: generateShortId(),
     grammar: 'markdown',
+    origin: 'diligence_push',
+    persistMode: 'persist',
   };
   return {
     kind: 'prompt',
@@ -1534,6 +1542,16 @@ async function _driveDialogStream(
         const currentPrompt = pendingPrompt;
         pendingPrompt = undefined;
         if (currentPrompt) {
+          const promptOrigin = currentPrompt.origin ?? 'user';
+          const isDiligencePrompt = promptOrigin === 'diligence_push';
+          if (isDiligencePrompt && dlg.disableDiligencePush) {
+            log.info('Skip diligence prompt after disable toggle', {
+              dialogId: dlg.id.valueOf(),
+              msgId: currentPrompt.msgId,
+            });
+            break;
+          }
+
           if (currentPrompt.skipTaskdoc === true) {
             skipTaskdocForThisDrive = true;
           }
@@ -1543,7 +1561,15 @@ async function _driveDialogStream(
           const persistedUserLanguageCode =
             currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
 
-          const persistMode = currentPrompt.persistMode ?? 'persist';
+          const requestedPersistMode = currentPrompt.persistMode ?? 'persist';
+          const persistMode = isDiligencePrompt ? 'persist' : requestedPersistMode;
+          if (isDiligencePrompt && requestedPersistMode !== 'persist') {
+            log.warn('Diligence prompt must be persisted; forcing persist mode', {
+              dialogId: dlg.id.valueOf(),
+              msgId,
+              requestedPersistMode,
+            });
+          }
           if (persistMode === 'internal') {
             internalPromptForThisDrive = currentPrompt;
           } else {

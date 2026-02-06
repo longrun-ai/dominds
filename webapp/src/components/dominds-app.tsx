@@ -62,6 +62,15 @@ import { escapeHtml } from '../shared/utils/html.js';
 import { bumpDialogsLastModified } from '../utils/dialog-last-modified';
 import './archived-dialog-list.js';
 import { ArchivedDialogList } from './archived-dialog-list.js';
+import {
+  CreateDialogFlowController,
+  type CreateDialogError,
+  type CreateDialogIntent,
+  type CreateDialogRequest,
+  type CreateDialogResult,
+  type CreateDialogSuccess,
+  type DialogCreateAction,
+} from './create-dialog-flow';
 import './dominds-dialog-container.js';
 import { DomindsDialogContainer } from './dominds-dialog-container.js';
 import './dominds-docs-panel';
@@ -77,7 +86,7 @@ import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './domind
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
 import './running-dialog-list.js';
-import { RunningDialogList, type DialogCreateAction } from './running-dialog-list.js';
+import { RunningDialogList } from './running-dialog-list.js';
 
 type ActivityView =
   | { kind: 'running' }
@@ -103,6 +112,7 @@ type DeepLinkIntent =
       messageIndex?: number;
       callId?: string;
     }
+  | { kind: 'dialog'; rootId: string; selfId: string }
   | { kind: 'callsite'; rootId: string; selfId: string; course: number; callId: string }
   | { kind: 'genseq'; rootId: string; selfId: string; course: number; genseq: number };
 
@@ -118,8 +128,6 @@ type ToastHistoryEntry = {
 export class DomindsApp extends HTMLElement {
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
-  private static readonly AGENT_PRIMING_MODE_STORAGE_KEY = 'agent-priming-mode-v1';
-  private static readonly AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY = 'agent-priming-mode-shadow-v1';
 
   private wsManager = getWebSocketManager();
   private apiClient = getApiClient();
@@ -154,7 +162,176 @@ export class DomindsApp extends HTMLElement {
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private subdialogHierarchyRefreshTokens = new Map<string, number>();
   private authModal: HTMLElement | null = null;
-  private createDialogModal: HTMLElement | null = null;
+  private createDialogFlow = new CreateDialogFlowController({
+    getLanguage: () => this.uiLanguage,
+    getTeamMembers: () => this.teamMembers,
+    getDefaultResponder: () => this.defaultResponder,
+    getTaskDocuments: () => this.taskDocuments,
+    ensureTeamMembersReady: () => this.ensureCreateDialogPrerequisites(),
+    getAgentPrimingStatus: async (agentId: string) => {
+      const api = getApiClient();
+      const resp = await api.getAgentPrimingStatus(agentId);
+      if (!resp.success || !resp.data) {
+        return { hasCache: false };
+      }
+      const data = resp.data;
+      return {
+        hasCache: data.hasCache === true,
+        createdAt: typeof data.createdAt === 'string' ? data.createdAt : undefined,
+        ageSeconds: typeof data.ageSeconds === 'number' ? data.ageSeconds : undefined,
+      };
+    },
+    submitCreateDialog: async (request: CreateDialogRequest): Promise<CreateDialogResult> => {
+      const api = getApiClient();
+      const resp = await api.createDialog(request);
+      if (!resp.success || !resp.data) {
+        if (resp.status === 401) {
+          return {
+            kind: 'failure',
+            requestId: request.requestId,
+            error: { code: 'AUTH_REQUIRED', message: 'Authentication required' },
+          };
+        }
+        const fallback: CreateDialogError = {
+          code: 'CREATE_FAILED',
+          message: resp.error || 'Dialog creation failed',
+        };
+        return { kind: 'failure', requestId: request.requestId, error: fallback };
+      }
+
+      const data = resp.data as unknown;
+      if (typeof data !== 'object' || data === null) {
+        return {
+          kind: 'failure',
+          requestId: request.requestId,
+          error: { code: 'CREATE_FAILED', message: 'Dialog creation failed: invalid payload' },
+        };
+      }
+      const rec = data as Record<string, unknown>;
+
+      const normalizeFailureCode = (raw: unknown): CreateDialogError['code'] => {
+        switch (raw) {
+          case 'TEAM_NOT_READY':
+          case 'TEAM_MEMBER_INVALID':
+          case 'TASKDOC_INVALID':
+          case 'AUTH_REQUIRED':
+          case 'CREATE_FAILED':
+            return raw;
+          default:
+            return 'CREATE_FAILED';
+        }
+      };
+
+      if (rec.kind === 'failure') {
+        const message =
+          typeof rec.error === 'string' && rec.error.trim() !== ''
+            ? rec.error
+            : 'Dialog creation failed';
+        return {
+          kind: 'failure',
+          requestId:
+            typeof rec.requestId === 'string' && rec.requestId.trim() !== ''
+              ? rec.requestId
+              : request.requestId,
+          error: {
+            code: normalizeFailureCode(rec.errorCode),
+            message,
+          },
+        };
+      }
+
+      if (typeof rec.selfId === 'string' && typeof rec.rootId === 'string') {
+        const resolvedTaskDocPath =
+          typeof rec.taskDocPath === 'string' && rec.taskDocPath.trim() !== ''
+            ? rec.taskDocPath
+            : request.taskDocPath;
+        const resolvedAgentId =
+          typeof rec.agentId === 'string' && rec.agentId.trim() !== ''
+            ? rec.agentId
+            : request.agentId;
+        return {
+          kind: 'success',
+          requestId:
+            typeof rec.requestId === 'string' && rec.requestId.trim() !== ''
+              ? rec.requestId
+              : request.requestId,
+          selfId: rec.selfId,
+          rootId: rec.rootId,
+          agentId: resolvedAgentId,
+          taskDocPath: resolvedTaskDocPath,
+        };
+      }
+
+      return {
+        kind: 'failure',
+        requestId: request.requestId,
+        error: { code: 'CREATE_FAILED', message: 'Dialog creation failed: invalid payload' },
+      };
+    },
+    onCreated: async (result: CreateDialogSuccess): Promise<void> => {
+      await this.handleCreateDialogSuccess(result);
+    },
+    onAuthRequired: () => {
+      this.onAuthRejected('api');
+    },
+    onToast: (message, kind) => {
+      this.showToast(message, kind);
+    },
+  });
+
+  private async ensureCreateDialogPrerequisites(): Promise<
+    { ok: true } | { ok: false; error: CreateDialogError }
+  > {
+    const t = getUiStrings(this.uiLanguage);
+    if (this.teamMembersLoadState.kind === 'loading') {
+      return {
+        ok: false,
+        error: { code: 'TEAM_NOT_READY', message: t.newDialogLoadingTeam },
+      };
+    }
+
+    if (this.teamMembers.length === 0) {
+      await this.loadTeamMembers({ silent: false });
+    }
+
+    if (this.teamMembers.length === 0) {
+      const message =
+        this.teamMembersLoadState.kind === 'failed'
+          ? this.teamMembersLoadState.message || t.newDialogTeamLoadFailed
+          : t.newDialogNoTeamMembers;
+      return {
+        ok: false,
+        error: { code: 'TEAM_NOT_READY', message },
+      };
+    }
+
+    return { ok: true };
+  }
+
+  private async handleCreateDialogSuccess(result: CreateDialogSuccess): Promise<void> {
+    this.showSuccess(`Dialog created @${result.agentId} with task: ${result.taskDocPath}`);
+    await this.loadDialogs();
+    await this.selectDialog({
+      selfId: result.selfId,
+      rootId: result.rootId,
+      agentId: result.agentId,
+      agentName: this.getAgentDisplayName(result.agentId),
+      taskDocPath: result.taskDocPath,
+    });
+  }
+
+  private async openCreateDialogFlow(intent: CreateDialogIntent): Promise<void> {
+    if (!this.shadowRoot) return;
+    const opened = await this.createDialogFlow.open(this.shadowRoot, intent);
+    if (opened.ok) return;
+
+    const kind = opened.error.code === 'TEAM_NOT_READY' ? 'warning' : 'error';
+    if (opened.error.code === 'TEAM_NOT_READY') {
+      this.activityView = { kind: 'team-members' };
+      this.updateActivityView();
+    }
+    this.showToast(opened.error.message, kind);
+  }
 
   private teamMembersLoadState:
     | { kind: 'idle' }
@@ -716,43 +893,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private updateCreateDialogModalText(): void {
-    if (!this.shadowRoot) return;
-    const modal = this.shadowRoot.querySelector(
-      '.create-dialog-modal[data-modal-kind="create-dialog"]',
-    ) as HTMLElement | null;
-    if (!modal) return;
-    const t = getUiStrings(this.uiLanguage);
-
-    const title = modal.querySelector('#modal-title') as HTMLElement | null;
-    if (title) title.textContent = t.createNewDialogTitle;
-
-    const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement | null;
-    if (closeBtn) closeBtn.setAttribute('aria-label', t.close);
-
-    const taskLabel = modal.querySelector('label[for="task-doc-input"]') as HTMLElement | null;
-    if (taskLabel) taskLabel.textContent = t.taskDocumentLabel;
-
-    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement | null;
-    if (taskInput) taskInput.placeholder = t.taskDocumentPlaceholder;
-
-    const help = modal.querySelector('.form-help') as HTMLElement | null;
-    if (help) help.textContent = t.taskDocumentHelp;
-
-    const teammateLabel = modal.querySelector('label[for="teammate-select"]') as HTMLElement | null;
-    if (teammateLabel) teammateLabel.textContent = t.teammateLabel;
-
-    const shadowLabel = modal.querySelector(
-      'label[for="shadow-teammate-select"]',
-    ) as HTMLElement | null;
-    if (shadowLabel) shadowLabel.textContent = t.shadowMembersLabel;
-
-    const cancel = modal.querySelector('#modal-cancel-btn') as HTMLButtonElement | null;
-    if (cancel) cancel.textContent = t.cancel;
-    const create = modal.querySelector('#create-dialog-btn') as HTMLButtonElement | null;
-    if (create) {
-      const state = create.dataset.createState;
-      create.textContent = state === 'creating' ? t.createDialogCreating : t.createDialog;
-    }
+    this.createDialogFlow.updateLanguage();
   }
 
   private updateNewDialogButtonState(): void {
@@ -771,18 +912,18 @@ export class DomindsApp extends HTMLElement {
     }
 
     if (kind === 'loading') {
-      // Keep enabled so click can explain the loading state.
-      btn.disabled = false;
+      btn.disabled = true;
       btn.title = t.newDialogLoadingTeam;
       return;
     }
 
-    // No members: keep enabled so user can be guided to a remedy.
-    btn.disabled = false;
     if (kind === 'failed') {
+      btn.disabled = false;
       btn.title = t.newDialogTeamLoadFailed;
       return;
     }
+
+    btn.disabled = false;
     btn.title = t.newDialogNoTeamMembers;
   }
 
@@ -1354,6 +1495,13 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
         overflow: hidden;
         color-scheme: inherit;
+        --dominds-z-sidebar-mobile: 10;
+        --dominds-z-overlay-modal: 1000;
+        --dominds-z-overlay-popover: 1002;
+        --dominds-z-overlay-reminders: 2000;
+        --dominds-z-overlay-toast: 3000;
+        --dominds-z-overlay-toast-history: 4100;
+        --dominds-z-overlay-problems: 4200;
       }
 
       .app-container {
@@ -1672,7 +1820,7 @@ export class DomindsApp extends HTMLElement {
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.15s ease;
-        z-index: 1000;
+        z-index: var(--dominds-z-overlay-popover);
         box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
       }
 
@@ -1702,7 +1850,7 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-bg, #ffffff);
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
         overflow: hidden;
-        z-index: 9999;
+        z-index: var(--dominds-z-overlay-problems);
         display: flex;
         flex-direction: column;
       }
@@ -1848,7 +1996,7 @@ export class DomindsApp extends HTMLElement {
         border-radius: 10px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
         padding: 6px;
-        z-index: 1000;
+        z-index: var(--dominds-z-overlay-popover);
       }
 
       .ui-language-menu-item {
@@ -1945,13 +2093,13 @@ export class DomindsApp extends HTMLElement {
 	        transform: scale(0.95);
 	      }
 	
-	      .toast-history-modal {
-	        position: fixed;
-	        inset: 0;
-	        z-index: 4100;
-	        display: flex;
-	        align-items: flex-start;
-	        justify-content: center;
+		      .toast-history-modal {
+		        position: fixed;
+		        inset: 0;
+		        z-index: var(--dominds-z-overlay-toast-history);
+		        display: flex;
+		        align-items: flex-start;
+		        justify-content: center;
 	        padding: 64px 16px 16px;
 	        background: rgba(0, 0, 0, 0.35);
 	      }
@@ -2061,7 +2209,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .sidebar {
-        width: 300px;
+        width: 360px;
         min-width: 200px;
         max-width: 600px;
         background: var(--dominds-sidebar-bg);
@@ -2833,7 +2981,7 @@ export class DomindsApp extends HTMLElement {
           position: absolute;
           left: -280px;
           transition: left 0.3s ease;
-          z-index: 10;
+          z-index: var(--dominds-z-sidebar-mobile);
           resize: none;
         }
 
@@ -2854,7 +3002,7 @@ export class DomindsApp extends HTMLElement {
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: 1000;
+        z-index: var(--dominds-z-overlay-modal);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2954,12 +3102,25 @@ export class DomindsApp extends HTMLElement {
         margin-bottom: 16px;
       }
 
-      .form-group label {
+      .form-group-vertical > label {
         display: block;
         margin-bottom: 6px;
         font-weight: 500;
         color: var(--dominds-fg, #333333);
         font-size: 14px;
+      }
+
+      .form-group-horizontal > label {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 0;
+        font-weight: 500;
+        color: var(--dominds-fg, #333333);
+        font-size: 14px;
+      }
+
+      .form-group-horizontal {
+        margin: 16px;
       }
 
       .teammate-dropdown {
@@ -3025,7 +3186,7 @@ export class DomindsApp extends HTMLElement {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         max-height: 400px;
         overflow-y: auto;
-        z-index: 1002;
+        z-index: var(--dominds-z-overlay-popover);
         display: none;
       }
 
@@ -3077,12 +3238,17 @@ export class DomindsApp extends HTMLElement {
         align-items: center;
         flex-wrap: wrap;
         gap: 10px 14px;
+        margin: 0;
       }
 
       .dominds-feel-label {
+        display: inline-flex;
+        align-items: center;
+        align-self: center;
         font-weight: 500;
         color: var(--dominds-fg, #333333);
         font-size: 14px;
+        line-height: 1.2;
         white-space: nowrap;
       }
 
@@ -3104,6 +3270,22 @@ export class DomindsApp extends HTMLElement {
         gap: 8px;
         cursor: pointer;
         user-select: none;
+      }
+
+      .form-group-horizontal .dominds-feel-option {
+        display: inline-flex;
+        margin-bottom: 0;
+      }
+
+      .dominds-feel-option > input {
+        margin: 0;
+        align-self: center;
+      }
+
+      .dominds-feel-option > span {
+        display: inline-flex;
+        align-items: center;
+        line-height: 1.2;
       }
 
       .teammate-details h4 {
@@ -3507,7 +3689,7 @@ export class DomindsApp extends HTMLElement {
             ${
               this.remindersWidgetVisible
                 ? `
-            <div id="reminders-widget" style="position: fixed; left: ${this.remindersWidgetX}px; top: ${this.remindersWidgetY}px; width: 320px; max-height: 50vh; overflow: auto; border: 1px solid var(--dominds-border); background: var(--dominds-bg); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: 2000;">
+            <div id="reminders-widget" style="position: fixed; left: ${this.remindersWidgetX}px; top: ${this.remindersWidgetY}px; width: 320px; max-height: 50vh; overflow: auto; border: 1px solid var(--dominds-border); background: var(--dominds-bg); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: var(--dominds-z-overlay-reminders);">
               <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
                 <div style="display:flex; align-items:center; gap:8px;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
@@ -3739,6 +3921,36 @@ export class DomindsApp extends HTMLElement {
       void this.handleDialogDeleteAction(ce.detail);
     }) as EventListener);
 
+    this.shadowRoot.addEventListener('dialog-open-external', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'].trim() : '';
+      const selfRaw = typeof detail['selfId'] === 'string' ? detail['selfId'].trim() : '';
+      if (!rootId) return;
+      const selfId = selfRaw === '' ? rootId : selfRaw;
+
+      const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+      const urlStr = url.toString();
+      const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
+      if (w) w.opener = null;
+    });
+
+    this.shadowRoot.addEventListener('dialog-share-link', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'].trim() : '';
+      const selfRaw = typeof detail['selfId'] === 'string' ? detail['selfId'].trim() : '';
+      if (!rootId) return;
+      const selfId = selfRaw === '' ? rootId : selfRaw;
+
+      const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+      void this.copyLinkToClipboardWithToast(url.toString());
+    });
+
     // ========== Q4H Event Handlers ==========
     // Q4H navigate to call site event - delegated to q4h-input component
     this.shadowRoot.addEventListener('q4h-navigate-call-site', (event: Event) => {
@@ -3904,7 +4116,7 @@ export class DomindsApp extends HTMLElement {
 
       // New dialog button
       if (target.id === 'new-dialog-btn' || target.closest('#new-dialog-btn')) {
-        this.handleNewDialog();
+        void this.openCreateDialogFlow({ source: 'toolbar' });
         return;
       }
 
@@ -4032,6 +4244,9 @@ export class DomindsApp extends HTMLElement {
       // Global run controls
       const emergencyStop = target.closest('#toolbar-emergency-stop') as HTMLButtonElement | null;
       if (emergencyStop) {
+        // Intentional UX: the emergency-stop pill also represents the count of proceeding dialogs.
+        // Only clicks on the icon are treated as an emergency-stop action to avoid accidental stops
+        // when users click the count area.
         const emergencyStopIcon = target.closest('#toolbar-emergency-stop svg');
         if (!emergencyStopIcon) return;
 
@@ -4666,6 +4881,16 @@ export class DomindsApp extends HTMLElement {
     const kind = segs[dlIndex + 1];
     if (!kind) return null;
 
+    if (kind === 'dialog') {
+      // /dl/dialog?rootId=...&selfId=...
+      const params = new URLSearchParams(window.location.search);
+      const rootId = (params.get('rootId') ?? '').trim();
+      const selfRaw = (params.get('selfId') ?? '').trim();
+      if (rootId === '') return null;
+      const selfId = selfRaw === '' ? rootId : selfRaw;
+      return { kind: 'dialog', rootId, selfId };
+    }
+
     if (kind === 'callsite') {
       // /dl/callsite?rootId=...&selfId=...&course=...&callId=...
       const params = new URLSearchParams(window.location.search);
@@ -4758,6 +4983,22 @@ export class DomindsApp extends HTMLElement {
     };
   }
 
+  private buildDialogDeepLinkUrl(rootId: string, selfId: string): URL {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('rootId');
+    url.searchParams.delete('selfId');
+    url.searchParams.delete('course');
+    url.searchParams.delete('msg');
+    url.searchParams.delete('callId');
+    url.searchParams.delete('genseq');
+    url.searchParams.delete('qid');
+    url.hash = '';
+    url.pathname = '/dl/dialog';
+    url.searchParams.set('rootId', rootId);
+    url.searchParams.set('selfId', selfId);
+    return url;
+  }
+
   private async copyTextToClipboard(text: string): Promise<boolean> {
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -4815,6 +5056,24 @@ export class DomindsApp extends HTMLElement {
 
     this.deepLinkInFlight = true;
     try {
+      if (intent.kind === 'dialog') {
+        let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+        if (!dialogInfo) {
+          await this.loadSubdialogsForRoot(intent.rootId);
+          dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+        }
+        if (!dialogInfo) {
+          this.showToast(`Deep link dialog not found: ${intent.selfId}`, 'warning');
+          this.pendingDeepLink = null;
+          return;
+        }
+
+        await this.selectDialog(dialogInfo);
+        this.q4hInput?.focusInput();
+        this.pendingDeepLink = null;
+        return;
+      }
+
       if (intent.kind === 'callsite') {
         let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
         if (!dialogInfo) {
@@ -5072,7 +5331,7 @@ export class DomindsApp extends HTMLElement {
           <p class="modal-description">
             ${t.authDescription}
           </p>
-          <div class="form-group">
+          <div class="form-group form-group-vertical">
             <label for="auth-key-input">${t.authKeyLabel}</label>
             <input type="password" id="auth-key-input" class="task-doc-input" placeholder="${t.authKeyPlaceholder}" autocomplete="off">
           </div>
@@ -5362,12 +5621,10 @@ export class DomindsApp extends HTMLElement {
       const taskDocPath = (detail as { taskDocPath?: unknown }).taskDocPath;
       if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') return;
 
-      if (this.teamMembers.length === 0) {
-        await this.handleNewDialog();
-        return;
-      }
-
-      this.showCreateDialogModal({ taskDocPath });
+      await this.openCreateDialogFlow({
+        source: 'task_action',
+        presetTaskDocPath: taskDocPath,
+      });
       return;
     }
 
@@ -5375,7 +5632,11 @@ export class DomindsApp extends HTMLElement {
     const taskDocPath = (detail as { taskDocPath?: unknown }).taskDocPath;
     if (typeof agentId !== 'string' || agentId.trim() === '') return;
     if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') return;
-    await this.createDialog(agentId, taskDocPath);
+    await this.openCreateDialogFlow({
+      source: 'root_action',
+      presetAgentId: agentId,
+      presetTaskDocPath: taskDocPath,
+    });
   }
 
   /**
@@ -5999,872 +6260,6 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private async handleNewDialog(): Promise<void> {
-    const t = getUiStrings(this.uiLanguage);
-
-    if (this.teamMembersLoadState.kind === 'loading') {
-      this.showToast(t.newDialogLoadingTeam, 'info');
-      return;
-    }
-
-    if (this.teamMembers.length === 0) {
-      if (this.teamMembersLoadState.kind === 'failed') {
-        void this.loadTeamMembers({ silent: false });
-        this.showToast(t.newDialogTeamLoadFailed, 'warning');
-      } else {
-        this.showToast(t.newDialogNoTeamMembers, 'warning');
-      }
-      this.activityView = { kind: 'team-members' };
-      this.updateActivityView();
-      return;
-    }
-
-    this.showCreateDialogModal();
-  }
-
-  private getAgentEmoji(agentId: string, icon?: string): string {
-    // Use the icon from the backend if available
-    if (icon) {
-      return icon;
-    }
-
-    // Fallback to a generic agent icon if no backend icon is provided
-    return '🛠';
-  }
-
-  private calculateSortScore(
-    nameMatch: boolean,
-    pathMatch: boolean,
-    nameStartsWith: boolean,
-    pathStartsWith: boolean,
-    nameExactMatch: boolean,
-  ): number {
-    // Scoring system: higher scores appear first
-    // Exact filename match: 100
-    // Filename starts with query: 90
-    // Path starts with query: 80
-    // Filename contains query: 70
-    // Path contains query: 60
-
-    if (nameExactMatch) return 100;
-    if (nameStartsWith) return 90;
-    if (pathStartsWith) return 80;
-    if (nameMatch) return 70;
-    if (pathMatch) return 60;
-
-    return 0;
-  }
-
-  private calculateCommonPrefix(strings: string[]): string {
-    if (strings.length === 0) return '';
-    if (strings.length === 1) return strings[0];
-
-    // Find the shortest string to avoid index out of bounds
-    const shortest = strings.reduce(
-      (min, str) => (str.length < min.length ? str : min),
-      strings[0],
-    );
-
-    let commonPrefix = '';
-
-    for (let i = 0; i < shortest.length; i++) {
-      const char = shortest[i];
-      const allHaveChar = strings.every((str) => str[i] === char);
-
-      if (allHaveChar) {
-        commonPrefix += char;
-      } else {
-        break;
-      }
-    }
-
-    return commonPrefix;
-  }
-
-  private showCreateDialogModal(preset?: { taskDocPath?: string }): void {
-    const t = getUiStrings(this.uiLanguage);
-
-    if (this.teamMembers.length === 0) {
-      this.showToast(t.newDialogNoTeamMembers, 'warning');
-      this.activityView = { kind: 'team-members' };
-      this.updateActivityView();
-      return;
-    }
-
-    const existing = (this.shadowRoot?.querySelector(
-      '.create-dialog-modal[data-modal-kind="create-dialog"]',
-    ) ?? null) as HTMLElement | null;
-    if (existing) {
-      const taskInput = existing.querySelector('#task-doc-input') as HTMLInputElement | null;
-      if (
-        taskInput &&
-        preset &&
-        typeof preset.taskDocPath === 'string' &&
-        preset.taskDocPath.trim() !== ''
-      ) {
-        taskInput.value = preset.taskDocPath;
-      }
-      setTimeout(() => taskInput?.focus(), 0);
-      return;
-    }
-
-    const visibleMembers = this.teamMembers.filter((m) => m.hidden !== true);
-    const shadowMembers = this.teamMembers.filter((m) => m.hidden === true);
-
-    const defaultIsVisible =
-      typeof this.defaultResponder === 'string' &&
-      visibleMembers.some((m) => m.id === this.defaultResponder);
-    const defaultIsShadow =
-      typeof this.defaultResponder === 'string' &&
-      shadowMembers.some((m) => m.id === this.defaultResponder);
-    const initialPickShadow =
-      shadowMembers.length > 0 &&
-      (defaultIsShadow || (!defaultIsVisible && visibleMembers.length === 0));
-    const firstShadowId = shadowMembers.length > 0 ? shadowMembers[0].id : '';
-
-    const modal = document.createElement('div');
-    modal.className = 'dominds-modal create-dialog-modal';
-    modal.dataset.modalKind = 'create-dialog';
-    modal.innerHTML = `
-	      <div class="modal-backdrop"></div>
-	      <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
-        <div class="modal-header">
-          <h3 id="modal-title">${t.createNewDialogTitle}</h3>
-          <button class="modal-close" aria-label="${t.close}">
-            ✕
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="task-doc-input">${t.taskDocumentLabel}</label>
-            <div class="task-doc-container">
-              <input type="text" id="task-doc-input" class="task-doc-input" placeholder="${t.taskDocumentPlaceholder}" autocomplete="off">
-              <div id="task-doc-suggestions" class="task-doc-suggestions"></div>
-            </div>
-            <small class="form-help">${t.taskDocumentHelp}</small>
-          </div>
-	
-	          <div class="form-group">
-	            <label for="teammate-select">${t.teammateLabel}</label>
-	            <select id="teammate-select" class="teammate-dropdown">
-	              ${visibleMembers
-                  .map((member) => {
-                    const isDefault = member.id === this.defaultResponder;
-                    const emoji = this.getAgentEmoji(member.id, member.icon);
-                    return `<option value="${member.id}" ${isDefault ? 'selected' : ''}>
-	                  ${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}
-	                </option>`;
-                  })
-                  .join('')}
-	              ${
-                  shadowMembers.length > 0
-                    ? `<option value="__shadow__" ${initialPickShadow ? 'selected' : ''}>${t.shadowMembersOption}</option>`
-                    : ''
-                }
-	            </select>
-	          </div>
-	
-	          <div class="form-group shadow-members-group" id="shadow-members-group" style="${initialPickShadow ? '' : 'display:none;'}">
-	            <label for="shadow-teammate-select">${t.shadowMembersLabel}</label>
-	            <select id="shadow-teammate-select" class="teammate-dropdown">
-	              ${shadowMembers
-                  .map((member) => {
-                    const isDefault = member.id === this.defaultResponder;
-                    const emoji = this.getAgentEmoji(member.id, member.icon);
-                    const selected = isDefault || (!defaultIsShadow && firstShadowId === member.id);
-                    return `<option value="${member.id}" ${selected ? 'selected' : ''}>
-	                  ${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}
-	                </option>`;
-                  })
-                  .join('')}
-	            </select>
-	          </div>
-	
-          <div class="teammate-info" id="teammate-info">
-            <!-- Agent details will be shown here when selection changes -->
-          </div>
-
-          <div class="form-group">
-            <div class="dominds-feel-row">
-              <span class="dominds-feel-label">${t.agentPrimingLabel}</span>
-              <div class="dominds-feel-options" id="dominds-feel-options">
-                <span class="dominds-feel-loading">${t.loading}</span>
-              </div>
-            </div>
-          </div>
-
-	          <div class="modal-error" id="create-dialog-error" aria-live="polite"></div>
-	        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="modal-cancel-btn">
-            ${t.cancel}
-          </button>
-          <button class="btn btn-primary" id="create-dialog-btn">
-            ${t.createDialog}
-          </button>
-        </div>
-      </div>
-    `;
-
-    if (preset && typeof preset.taskDocPath === 'string' && preset.taskDocPath.trim() !== '') {
-      const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement | null;
-      if (taskInput) {
-        taskInput.value = preset.taskDocPath;
-      }
-    }
-
-    // Add event listeners and functionality
-    this.setupDialogModalEvents(modal);
-
-    this.createDialogModal = modal;
-
-    // Append to shadow root for proper positioning within the component
-    if (this.shadowRoot) {
-      this.shadowRoot.appendChild(modal);
-    } else {
-      document.body.appendChild(modal);
-    }
-
-    // Focus input after append.
-    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement | null;
-    setTimeout(() => taskInput?.focus(), 0);
-  }
-
-  private setupDialogModalEvents(modal: HTMLElement): void {
-    type AgentPrimingMode = 'do' | 'reuse' | 'skip';
-    type DomindsFeelScope = 'visible' | 'shadow';
-
-    const select = modal.querySelector('#teammate-select') as HTMLSelectElement;
-    const shadowGroup = modal.querySelector('#shadow-members-group') as HTMLElement | null;
-    const shadowSelect = modal.querySelector('#shadow-teammate-select') as HTMLSelectElement | null;
-    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement;
-    const suggestions = modal.querySelector('#task-doc-suggestions') as HTMLElement;
-    const createBtn = modal.querySelector('#create-dialog-btn') as HTMLButtonElement;
-    const teammateInfo = modal.querySelector('#teammate-info') as HTMLElement;
-    const feelOptions = modal.querySelector('#dominds-feel-options') as HTMLElement | null;
-    const errorEl = modal.querySelector('#create-dialog-error') as HTMLElement | null;
-
-    // Ensure our JS-visible display state starts in sync with CSS.
-    suggestions.style.display = 'none';
-
-    // Modal close event listeners
-    const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement;
-    const cancelBtn = modal.querySelector('#modal-cancel-btn') as HTMLButtonElement;
-
-    let createInFlight = false;
-
-    const clearInlineError = (): void => {
-      if (!errorEl) return;
-      errorEl.textContent = '';
-      errorEl.style.display = 'none';
-    };
-
-    const setInlineError = (msg: string): void => {
-      if (!errorEl) return;
-      errorEl.textContent = msg;
-      errorEl.style.display = 'block';
-    };
-
-    const setCreateInFlight = (inFlight: boolean): void => {
-      createInFlight = inFlight;
-      const t = getUiStrings(this.uiLanguage);
-
-      createBtn.disabled = inFlight;
-      createBtn.dataset.createState = inFlight ? 'creating' : 'idle';
-      createBtn.textContent = inFlight ? t.createDialogCreating : t.createDialog;
-
-      closeBtn.disabled = inFlight;
-      cancelBtn.disabled = inFlight;
-      select.disabled = inFlight;
-      if (shadowSelect) shadowSelect.disabled = inFlight;
-      taskInput.disabled = inFlight;
-    };
-
-    const hideSuggestions = (): void => {
-      suggestions.innerHTML = '';
-      suggestions.style.display = 'none';
-      selectedSuggestionIndex = -1;
-    };
-
-    const hasVisibleSuggestions = (): boolean => {
-      return suggestions.style.display !== 'none' && suggestions.innerHTML.trim() !== '';
-    };
-
-    const closeModal = () => {
-      if (createInFlight) return;
-      modal.remove();
-      if (this.createDialogModal === modal) this.createDialogModal = null;
-
-      // Enhanced auto-focus implementation with retry logic
-      const attemptFocus = (attempt = 1) => {
-        if (this.q4hInput) {
-          this.q4hInput.focusInput();
-        } else {
-          console.warn('❌ Auto-focus: q4h-input component not found');
-        }
-
-        // Retry with longer delay if first attempt failed
-        if (attempt === 1) {
-          setTimeout(() => attemptFocus(2), 100);
-        }
-      };
-
-      // First attempt after modal removal
-      setTimeout(() => attemptFocus(), 150);
-
-      // Secondary attempt with longer delay for stubborn cases
-      setTimeout(() => attemptFocus(3), 400);
-    };
-
-    closeBtn?.addEventListener('click', closeModal);
-    cancelBtn?.addEventListener('click', closeModal);
-
-    const backdrop = modal.querySelector('.modal-backdrop') as HTMLElement | null;
-    backdrop?.addEventListener('click', closeModal);
-
-    modal.addEventListener(
-      'keydown',
-      (e) => {
-        if (e.key !== 'Escape') return;
-        if (createInFlight) {
-          e.preventDefault();
-          return;
-        }
-        if (hasVisibleSuggestions()) {
-          e.preventDefault();
-          hideSuggestions();
-          return;
-        }
-        e.preventDefault();
-        closeModal();
-      },
-      true,
-    );
-
-    const formatCompactAge = (ageSeconds: number): string => {
-      const totalSeconds = Number.isFinite(ageSeconds) ? Math.max(0, Math.floor(ageSeconds)) : 0;
-      const days = Math.floor(totalSeconds / 86400);
-      const hours = Math.floor((totalSeconds % 86400) / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-      let s = '';
-      if (days > 0) s += `${days}d`;
-      if (hours > 0 || days > 0) s += `${hours}h`;
-      s += `${minutes}m`;
-      return s;
-    };
-
-    const readStoredAgentPrimingMode = (scope: DomindsFeelScope): AgentPrimingMode | null => {
-      try {
-        const key =
-          scope === 'shadow'
-            ? DomindsApp.AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY
-            : DomindsApp.AGENT_PRIMING_MODE_STORAGE_KEY;
-        const raw = localStorage.getItem(key);
-        if (raw === 'do' || raw === 'reuse' || raw === 'skip') return raw;
-        return null;
-      } catch (error: unknown) {
-        console.warn('Failed to read agent-priming selection from localStorage', error);
-        return null;
-      }
-    };
-
-    const persistAgentPrimingMode = (mode: AgentPrimingMode, scope: DomindsFeelScope): void => {
-      try {
-        const key =
-          scope === 'shadow'
-            ? DomindsApp.AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY
-            : DomindsApp.AGENT_PRIMING_MODE_STORAGE_KEY;
-        localStorage.setItem(key, mode);
-      } catch (error: unknown) {
-        console.warn('Failed to persist agent-priming selection to localStorage', error);
-      }
-    };
-
-    let currentAgentPrimingMode: AgentPrimingMode = 'do';
-    let agentPrimingRenderSeq = 0;
-
-    const resolveModalSelectedAgentId = (): string => {
-      if (select.value === '__shadow__') {
-        const shadowId = shadowSelect ? shadowSelect.value : '';
-        return shadowId || this.defaultResponder || '';
-      }
-      return select.value || this.defaultResponder || '';
-    };
-
-    const renderFeltSenseChoices = (args: {
-      hasCache: boolean;
-      ageSeconds: number;
-      scope: DomindsFeelScope;
-    }): void => {
-      const t = getUiStrings(this.uiLanguage);
-      if (!feelOptions) return;
-
-      const stored = readStoredAgentPrimingMode(args.scope);
-      const allowed: AgentPrimingMode[] = args.hasCache ? ['reuse', 'do', 'skip'] : ['do', 'skip'];
-      const selected: AgentPrimingMode = (() => {
-        if (stored && allowed.includes(stored)) return stored;
-        if (args.scope === 'shadow') return 'skip';
-        return args.hasCache ? 'reuse' : 'do';
-      })();
-
-      currentAgentPrimingMode = selected;
-
-      const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.agentPrimingReuseAgeSuffix}`;
-      const optionRows: Array<{ mode: AgentPrimingMode; label: string }> = args.hasCache
-        ? [
-            { mode: 'reuse', label: reuseLabel },
-            { mode: 'do', label: t.agentPrimingRerun },
-            { mode: 'skip', label: t.agentPrimingSkip },
-          ]
-        : [
-            { mode: 'do', label: t.agentPrimingDo },
-            { mode: 'skip', label: t.agentPrimingSkip },
-          ];
-
-      feelOptions.innerHTML = optionRows
-        .map((row) => {
-          const checked = row.mode === selected ? 'checked' : '';
-          return `
-            <label class="dominds-feel-option">
-              <input type="radio" name="dominds-feel" value="${row.mode}" ${checked}>
-              <span>${escapeHtml(row.label)}</span>
-            </label>
-          `;
-        })
-        .join('');
-    };
-
-    const refreshFeltSenseChoices = async (): Promise<void> => {
-      if (!feelOptions) return;
-      const t = getUiStrings(this.uiLanguage);
-      const agentId = resolveModalSelectedAgentId();
-      const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
-      if (!agentId) {
-        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0, scope });
-        return;
-      }
-
-      const seq = (agentPrimingRenderSeq += 1);
-      feelOptions.innerHTML = `<span class="dominds-feel-loading">${t.loading}</span>`;
-
-      try {
-        const api = getApiClient();
-        const resp = await api.getAgentPrimingStatus(agentId);
-        if (seq !== agentPrimingRenderSeq) return;
-
-        const data = resp.success ? resp.data : undefined;
-        const hasCache = !!(data && data.hasCache === true);
-
-        let ageSeconds = 0;
-        if (data) {
-          const ageSecondsRaw = (data as { ageSeconds?: unknown }).ageSeconds;
-          const createdAtRaw = (data as { createdAt?: unknown }).createdAt;
-          if (typeof ageSecondsRaw === 'number' && Number.isFinite(ageSecondsRaw)) {
-            ageSeconds = ageSecondsRaw;
-          } else if (typeof createdAtRaw === 'string') {
-            const createdAtMs = Date.parse(createdAtRaw);
-            if (Number.isFinite(createdAtMs)) {
-              ageSeconds = Math.max(0, Math.floor((Date.now() - createdAtMs) / 1000));
-            }
-          }
-        }
-
-        renderFeltSenseChoices({ hasCache, ageSeconds, scope });
-      } catch (error: unknown) {
-        if (seq !== agentPrimingRenderSeq) return;
-        console.warn('Failed to fetch agent-priming cache status', error);
-        renderFeltSenseChoices({ hasCache: false, ageSeconds: 0, scope });
-      }
-    };
-
-    if (feelOptions) {
-      feelOptions.addEventListener('change', (e) => {
-        const target = e.target;
-        if (!(target instanceof HTMLInputElement)) return;
-        if (target.type !== 'radio') return;
-        const v = target.value;
-        if (v === 'do' || v === 'reuse' || v === 'skip') {
-          currentAgentPrimingMode = v;
-          const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
-          persistAgentPrimingMode(v, scope);
-        }
-      });
-    }
-
-    // Function to show teammate info
-    const showTeammateInfo = (agentId: string) => {
-      let resolvedAgentId = agentId;
-      if (agentId === '__shadow__') {
-        resolvedAgentId = shadowSelect ? shadowSelect.value : '';
-      }
-
-      if (resolvedAgentId) {
-        const member = this.teamMembers.find((m) => m.id === resolvedAgentId);
-        if (member) {
-          const emoji = this.getAgentEmoji(member.id, member.icon);
-          const isDefault = member.id === this.defaultResponder;
-          teammateInfo.innerHTML = `
-	            <div class="teammate-details">
-	              <h4>${emoji} ${member.name}${isDefault ? ' • Default' : ''}</h4>
-	              <p><strong>Call Sign:</strong> @${member.id}</p>
-	              <p><strong>Provider:</strong> ${member.provider || 'Not specified'}</p>
-	              <p><strong>Model:</strong> ${member.model || 'Not specified'}</p>
-	              ${
-                  member.gofor && member.gofor.length > 0
-                    ? `<p><strong>Specializes in:</strong> ${member.gofor.join(', ')}</p>`
-                    : ''
-                }
-	            </div>
-	          `;
-          teammateInfo.style.display = 'block';
-        } else {
-          teammateInfo.style.display = 'none';
-        }
-      } else {
-        teammateInfo.style.display = 'none';
-      }
-    };
-
-    // Show teammate info when selection changes
-    select.addEventListener('change', () => {
-      const isShadow = select.value === '__shadow__';
-      if (shadowGroup) {
-        shadowGroup.style.display = isShadow ? 'block' : 'none';
-      }
-      showTeammateInfo(select.value);
-      void refreshFeltSenseChoices();
-    });
-
-    if (shadowSelect) {
-      shadowSelect.addEventListener('change', () => {
-        showTeammateInfo('__shadow__');
-        void refreshFeltSenseChoices();
-      });
-    }
-
-    // Show teammate info for initially selected agent
-    showTeammateInfo(select.value);
-    void refreshFeltSenseChoices();
-
-    // Taskdoc autocomplete functionality
-    let selectedSuggestionIndex = -1;
-    let currentSuggestions: Array<{ path: string; relativePath: string; name: string }> = [];
-
-    const updateSuggestions = (query: string): void => {
-      const t = getUiStrings(this.uiLanguage);
-      if (!query.trim()) {
-        hideSuggestions();
-        return;
-      }
-
-      const queryLower = query.toLowerCase();
-
-      currentSuggestions = this.taskDocuments
-        .filter(
-          (doc) =>
-            doc.relativePath.toLowerCase().includes(queryLower) ||
-            doc.name.toLowerCase().includes(queryLower),
-        )
-        .map((doc) => {
-          const nameMatch = doc.name.toLowerCase().includes(queryLower);
-          const pathMatch = doc.relativePath.toLowerCase().includes(queryLower);
-          const nameStartsWith = doc.name.toLowerCase().startsWith(queryLower);
-          const pathStartsWith = doc.relativePath.toLowerCase().startsWith(queryLower);
-          const nameExactMatch = doc.name.toLowerCase() === queryLower;
-
-          return {
-            ...doc,
-            _sortScore: this.calculateSortScore(
-              nameMatch,
-              pathMatch,
-              nameStartsWith,
-              pathStartsWith,
-              nameExactMatch,
-            ),
-            _nameMatch: nameMatch,
-            _pathMatch: pathMatch,
-            _nameStartsWith: nameStartsWith,
-            _pathStartsWith: pathStartsWith,
-            _nameExactMatch: nameExactMatch,
-          };
-        })
-        .sort((a, b) => {
-          // Primary sort by score (higher is better)
-          if (a._sortScore !== b._sortScore) {
-            return b._sortScore - a._sortScore;
-          }
-
-          // Secondary sort: shorter names first
-          if (a.name.length !== b.name.length) {
-            return a.name.length - b.name.length;
-          }
-
-          // Tertiary sort: alphabetical
-          return a.name.localeCompare(b.name);
-        })
-        .slice(0, 50) // Limit to 50 suggestions
-        .map(
-          ({
-            _sortScore,
-            _nameMatch,
-            _pathMatch,
-            _nameStartsWith,
-            _pathStartsWith,
-            _nameExactMatch,
-            ...doc
-          }) => doc,
-        );
-
-      if (currentSuggestions.length === 0) {
-        suggestions.innerHTML = `<div class="no-suggestions">${escapeHtml(t.taskDocumentNoMatches)}</div>`;
-        suggestions.style.display = 'block';
-        return;
-      }
-
-      suggestions.innerHTML = currentSuggestions
-        .map(
-          (doc, index) => `
-        <div class="suggestion ${index === selectedSuggestionIndex ? 'selected' : ''}" 
-             data-index="${index}" data-path="${doc.relativePath}">
-          <div class="suggestion-path">${doc.relativePath}</div>
-          <div class="suggestion-name">${doc.name}</div>
-        </div>
-      `,
-        )
-        .join('');
-
-      suggestions.style.display = 'block';
-      selectedSuggestionIndex = -1;
-    };
-
-    const selectSuggestion = (index: number): void => {
-      if (index >= 0 && index < currentSuggestions.length) {
-        taskInput.value = currentSuggestions[index].relativePath;
-        // Clear suggestions and selection, then return focus to input
-        hideSuggestions();
-        // Return focus to the input field
-        taskInput.focus();
-      }
-    };
-
-    // Input event for autocomplete
-    taskInput.addEventListener('input', (e) => {
-      const value = (e.target as HTMLInputElement).value;
-      updateSuggestions(value);
-    });
-
-    // Keyboard navigation for suggestions
-    taskInput.addEventListener('keydown', (e) => {
-      if (suggestions.style.display === 'none') {
-        if (e.key === 'Enter') {
-          createBtn.click();
-        }
-        return;
-      }
-
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          selectedSuggestionIndex = Math.min(
-            selectedSuggestionIndex + 1,
-            currentSuggestions.length - 1,
-          );
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          selectedSuggestionIndex = Math.max(selectedSuggestionIndex - 1, -1);
-          break;
-        case 'Tab':
-          e.preventDefault();
-          // Smart Tab completion: complete to common prefix
-          if (currentSuggestions.length > 0) {
-            const currentValue = taskInput.value;
-            const allPaths = currentSuggestions.map((doc) => doc.relativePath);
-            const commonPrefix = this.calculateCommonPrefix(allPaths);
-
-            // Only complete if there's a common prefix that's longer than current input
-            if (commonPrefix.length > currentValue.length) {
-              taskInput.value = commonPrefix;
-              // Trigger input event to update suggestions for the completed text
-              const inputEvent = new Event('input', { bubbles: true });
-              taskInput.dispatchEvent(inputEvent);
-              return;
-            }
-          }
-
-          // Fallback: select first suggestion if no common prefix
-          if (currentSuggestions.length > 0 && selectedSuggestionIndex < 0) {
-            selectedSuggestionIndex = 0;
-            selectSuggestion(selectedSuggestionIndex);
-          }
-          break;
-        case 'Enter':
-          e.preventDefault();
-          // If a suggestion is selected, confirm it
-          if (selectedSuggestionIndex >= 0) {
-            selectSuggestion(selectedSuggestionIndex);
-          } else if (currentSuggestions.length === 0) {
-            // If no suggestions are shown (either because user has selected one or there are no matches), trigger dialog creation
-            createBtn.click();
-          }
-          break;
-        case 'Escape':
-          e.preventDefault();
-          hideSuggestions();
-          break;
-      }
-
-      // Update suggestion highlighting
-      const suggestionElements = suggestions.querySelectorAll('.suggestion');
-      suggestionElements.forEach((el, index) => {
-        el.classList.toggle('selected', index === selectedSuggestionIndex);
-      });
-    });
-
-    // Click on suggestions
-    suggestions.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      const suggestionEl = target.closest('.suggestion');
-      if (suggestionEl) {
-        const index = parseInt(suggestionEl.getAttribute('data-index') || '0');
-        selectSuggestion(index);
-      }
-    });
-
-    // Handle dialog creation
-    createBtn.addEventListener('click', async () => {
-      if (createInFlight) return;
-      clearInlineError();
-
-      // Hide suggestions so the user sees the resulting state immediately.
-      if (hasVisibleSuggestions()) hideSuggestions();
-
-      let taskDocPath = taskInput.value.trim();
-
-      // Validate that Taskdoc is provided
-      taskDocPath = taskDocPath.replace(/\\/g, '/').replace(/\/+$/g, '');
-      if (!taskDocPath) {
-        taskDocPath = 'socializing.tsk';
-      } else if (!taskDocPath.endsWith('.tsk')) {
-        taskDocPath = `${taskDocPath}.tsk`;
-      }
-      taskInput.value = taskDocPath;
-
-      let selectedAgentId: string | undefined;
-      if (!select.value) {
-        selectedAgentId = undefined; // undefined means use default
-      } else if (select.value === '__shadow__') {
-        const shadowId = shadowSelect ? shadowSelect.value : '';
-        if (!shadowId) {
-          const t = getUiStrings(this.uiLanguage);
-          setInlineError(t.shadowMembersSelectRequired);
-          return;
-        }
-        selectedAgentId = shadowId;
-      } else {
-        selectedAgentId = select.value;
-      }
-
-      setCreateInFlight(true);
-      try {
-        await this.createDialog(selectedAgentId, taskDocPath, {
-          agentPrimingMode: currentAgentPrimingMode,
-          ui: { suppressError: true },
-        });
-        setCreateInFlight(false);
-        closeModal();
-      } catch (error: unknown) {
-        // If auth modal is displayed, that is the next required interaction.
-        if (this.authModal) return;
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        setInlineError(message);
-      } finally {
-        if (modal.isConnected) setCreateInFlight(false);
-      }
-    });
-
-    // Handle Enter key in modal
-    modal.addEventListener('keydown', (e) => {
-      const target = e.target;
-      const tag = target instanceof HTMLElement ? target.tagName : '';
-      if (
-        e.key === 'Enter' &&
-        tag !== 'INPUT' &&
-        tag !== 'SELECT' &&
-        tag !== 'TEXTAREA' &&
-        tag !== 'BUTTON'
-      ) {
-        e.preventDefault();
-        createBtn.click();
-      }
-    });
-  }
-
-  public async createDialog(
-    agentId: string | undefined,
-    taskDocPath: string,
-    options?: {
-      agentPrimingMode?: 'do' | 'reuse' | 'skip';
-      ui?: { suppressError?: boolean; suppressSuccess?: boolean };
-    },
-  ): Promise<{ selfId: string; rootId: string; agentId: string; taskDocPath: string }> {
-    try {
-      const fallbackAgent = agentId || this.defaultResponder || '';
-      if (!fallbackAgent) {
-        throw new Error('No agent specified and no default responder configured');
-      }
-      const api = getApiClient();
-      const apiOptions = options?.agentPrimingMode
-        ? { agentPrimingMode: options.agentPrimingMode }
-        : undefined;
-      const resp = await api.createDialog(fallbackAgent, taskDocPath, apiOptions);
-      if (!resp.success || !resp.data) {
-        if (resp.status === 401) {
-          this.onAuthRejected('api');
-        }
-        throw new Error(resp.error || 'Dialog creation failed');
-      }
-      const payload = resp.data as unknown;
-      if (typeof payload !== 'object' || payload === null) {
-        throw new Error('Dialog creation failed: invalid response payload');
-      }
-      const rec = payload as Record<string, unknown>;
-      const selfIdRaw = rec.selfId;
-      const rootIdRaw = rec.rootId;
-      if (typeof selfIdRaw !== 'string' || typeof rootIdRaw !== 'string') {
-        if (options?.ui?.suppressError !== true) {
-          this.showError('Invalid dialog identifiers in createDialog response', 'error');
-        }
-        throw new Error('Invalid dialog identifiers');
-      }
-      const selfId = selfIdRaw;
-      const rootId = rootIdRaw;
-      if (!selfId || !rootId) {
-        throw new Error('Dialog creation failed: invalid identifiers in response');
-      }
-      if (options?.ui?.suppressSuccess !== true) {
-        this.showSuccess(`Dialog created @${fallbackAgent} with task: ${taskDocPath}`);
-      }
-      await this.loadDialogs();
-      // Use complete DialogInfo with all required fields
-      await this.selectDialog({
-        selfId,
-        rootId,
-        agentId: fallbackAgent,
-        agentName: this.getAgentDisplayName(fallbackAgent),
-        taskDocPath,
-      });
-      return { selfId, rootId, agentId: fallbackAgent, taskDocPath };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      if (options?.ui?.suppressError !== true) {
-        this.showError(`Failed to create dialog: ${message}`, 'error');
-      }
-      throw error;
-    }
-  }
-
   private handleTeamMembers(): void {
     const teamMembersComponent = this.shadowRoot?.querySelector('#team-members') as HTMLElement & {
       show?: () => void;
@@ -6962,7 +6357,7 @@ export class DomindsApp extends HTMLElement {
             color: var(--dominds-success, #155724);
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            z-index: 1000;
+            z-index: var(--dominds-z-overlay-modal);
             animation: slideIn 0.3s ease-out;
           ">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -7013,7 +6408,7 @@ export class DomindsApp extends HTMLElement {
           ? 'var(--dominds-warning-border, #ffeaa7)'
           : 'var(--dominds-border, #e0e0e0)';
     toast.innerHTML = `
-      <div style="position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: 3000; font-size: 12px; display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;">
+      <div style="position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: var(--dominds-z-overlay-toast); font-size: 12px; display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;">
         <span>${kind === 'error' ? '❌' : kind === 'warning' ? '⚠️' : 'ℹ️'}</span>
         <span>${message}</span>
       </div>

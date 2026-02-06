@@ -28,6 +28,11 @@ type DialogDeleteAction = {
   fromStatus: DialogStatusKind;
 };
 
+type DialogLinkAction = {
+  rootId: string;
+  selfId: string;
+};
+
 type RootGroup = {
   rootId: string;
   sortKey: number;
@@ -431,6 +436,25 @@ export class DoneDialogList extends HTMLElement {
     `;
   }
 
+  private renderOpenExternalIcon(): string {
+    return `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <line x1="10" y1="14" x2="21" y2="3"></line>
+      </svg>
+    `;
+  }
+
+  private renderCopyLinkIcon(): string {
+    return `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+    `;
+  }
+
   private renderRootRow(
     dialog: ApiRootDialogResponse,
     toggleIcon: string,
@@ -464,6 +488,12 @@ export class DoneDialogList extends HTMLElement {
             <button class="action icon-button" data-action="root-delete" data-root-id="${dialog.rootId}" type="button" title="${t.dialogActionDelete}" aria-label="${t.dialogActionDelete}">
               ${this.renderDeleteIcon()}
             </button>
+            <button class="action icon-button" data-action="dialog-share-link" data-root-id="${dialog.rootId}" data-self-id="${dialog.rootId}" type="button" title="${t.q4hCopyLinkTitle}" aria-label="${t.q4hCopyLinkTitle}">
+              ${this.renderCopyLinkIcon()}
+            </button>
+            <button class="action icon-button" data-action="dialog-open-external" data-root-id="${dialog.rootId}" data-self-id="${dialog.rootId}" type="button" title="${t.q4hOpenInNewTabTitle}" aria-label="${t.q4hOpenInNewTabTitle}">
+              ${this.renderOpenExternalIcon()}
+            </button>
             <span class="dialog-count">${subdialogCount}</span>
           </span>
         </div>
@@ -479,8 +509,8 @@ export class DoneDialogList extends HTMLElement {
 
   private renderDialogRow(dialog: ApiRootDialogResponse): string {
     this.indexDialog(dialog);
+    const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const dialogId = dialog.selfId ?? dialog.rootId;
     const updatedAt = dialog.lastModified || '';
     const tellaskSessionMark = dialog.tellaskSession ?? '';
     const callsign = this.getDialogDisplayCallsign(dialog);
@@ -494,13 +524,18 @@ export class DoneDialogList extends HTMLElement {
         <div class="dialog-row dialog-subrow">
           <span class="dialog-title">${callsign}</span>
           <span class="dialog-meta-right">
-            <span class="dialog-topic">${tellaskSessionMark}</span>
+            <span class="dialog-time">${updatedAt}</span>
+            <button class="action icon-button" data-action="dialog-share-link" data-root-id="${dialog.rootId}" data-self-id="${dialog.selfId ?? ''}" type="button" title="${t.q4hCopyLinkTitle}" aria-label="${t.q4hCopyLinkTitle}">
+              ${this.renderCopyLinkIcon()}
+            </button>
+            <button class="action icon-button" data-action="dialog-open-external" data-root-id="${dialog.rootId}" data-self-id="${dialog.selfId ?? ''}" type="button" title="${t.q4hOpenInNewTabTitle}" aria-label="${t.q4hOpenInNewTabTitle}">
+              ${this.renderOpenExternalIcon()}
+            </button>
           </span>
         </div>
         <div class="dialog-row dialog-submeta">
           <span class="dialog-meta-right">
-            <span class="dialog-status">${dialogId}</span>
-            <span class="dialog-time">${updatedAt}</span>
+            <span class="dialog-topic">${tellaskSessionMark}</span>
           </span>
         </div>
       </div>
@@ -601,6 +636,20 @@ export class DoneDialogList extends HTMLElement {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
           this.emitDeleteAction({ kind: 'root', rootId, fromStatus: 'completed' });
+        }
+        return;
+      }
+      if (action === 'dialog-open-external') {
+        const dialogIds = this.resolveDialogLinkAction(actionEl);
+        if (dialogIds) {
+          this.emitDialogOpenExternal(dialogIds);
+        }
+        return;
+      }
+      if (action === 'dialog-share-link') {
+        const dialogIds = this.resolveDialogLinkAction(actionEl);
+        if (dialogIds) {
+          this.emitDialogShareLink(dialogIds);
         }
         return;
       }
@@ -729,6 +778,34 @@ export class DoneDialogList extends HTMLElement {
         composed: true,
       }),
     );
+  }
+
+  private emitDialogOpenExternal(detail: DialogLinkAction): void {
+    this.dispatchEvent(
+      new CustomEvent('dialog-open-external', {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private emitDialogShareLink(detail: DialogLinkAction): void {
+    this.dispatchEvent(
+      new CustomEvent('dialog-share-link', {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private resolveDialogLinkAction(actionEl: HTMLElement): DialogLinkAction | null {
+    const rootId = (actionEl.getAttribute('data-root-id') ?? '').trim();
+    if (rootId === '') return null;
+    const selfRaw = (actionEl.getAttribute('data-self-id') ?? '').trim();
+    const selfId = selfRaw === '' ? rootId : selfRaw;
+    return { rootId, selfId };
   }
 
   private hasSubdialogsLoaded(rootId: string): boolean {
@@ -935,6 +1012,7 @@ export class DoneDialogList extends HTMLElement {
         align-items: center;
         gap: 8px;
         flex: none;
+        white-space: nowrap;
       }
 
       .dialog-count {

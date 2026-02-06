@@ -9,6 +9,8 @@ import {
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
   ApiSubdialogResponse,
+  type CreateDialogInput,
+  type CreateDialogResult,
   SetupFileResponse,
   SetupStatusResponse,
   SetupWriteRtwsLlmYamlRequest,
@@ -348,22 +350,10 @@ export class ApiClient {
   /**
    * Create a new dialog
    */
-  async createDialog(
-    agentId: string,
-    taskDocPath?: string,
-    options?: { agentPrimingMode?: 'do' | 'reuse' | 'skip' },
-  ): Promise<
-    ApiResponse<{ selfId: string; rootId: string; agentId: string; taskDocPath?: string }>
-  > {
-    const agentPrimingMode = options?.agentPrimingMode;
+  async createDialog(request: CreateDialogInput): Promise<ApiResponse<CreateDialogResult>> {
     return this.request('/api/dialogs', {
       method: 'POST',
-      body: {
-        agentId,
-        taskDocPath,
-        skipAgentPriming: agentPrimingMode === 'skip',
-        agentPrimingMode,
-      },
+      body: request,
     });
   }
 
