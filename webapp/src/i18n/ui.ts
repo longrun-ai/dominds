@@ -45,9 +45,11 @@ export type UiStrings = {
   createNewDialogTitle: string;
   cancel: string;
   createDialog: string;
+  createDialogCreating: string;
   taskDocumentLabel: string;
   taskDocumentPlaceholder: string;
   taskDocumentHelp: string;
+  taskDocumentNoMatches: string;
   teammateLabel: string;
   shadowMembersOption: string;
   shadowMembersLabel: string;
@@ -58,6 +60,10 @@ export type UiStrings = {
   agentPrimingReuseAgeSuffix: string;
   agentPrimingRerun: string;
   agentPrimingSkip: string;
+
+  newDialogLoadingTeam: string;
+  newDialogNoTeamMembers: string;
+  newDialogTeamLoadFailed: string;
 
   authRequiredTitle: string;
   authDescription: string;
@@ -319,10 +325,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       createNewDialogTitle: '创建新对话',
       cancel: '取消',
       createDialog: '创建对话',
+      createDialogCreating: '创建中…',
       taskDocumentLabel: '差遣牒：',
-      taskDocumentPlaceholder: '输入以搜索差遣牒…',
+      taskDocumentPlaceholder: '输入以搜索差遣牒（留空则默认 socializing.tsk）…',
       taskDocumentHelp:
-        '从已有文档中选择，或输入自定义路径。必填项。Tab 补全公共前缀；Enter 选择高亮项。',
+        '从已有文档中选择，或输入自定义路径。留空则默认 socializing.tsk。Tab 补全公共前缀；Enter 选择高亮项。',
+      taskDocumentNoMatches: '没有匹配的差遣牒',
       teammateLabel: '队友：',
       shadowMembersOption: '影子成员…',
       shadowMembersLabel: '影子成员：',
@@ -333,6 +341,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       agentPrimingReuseAgeSuffix: ' 前',
       agentPrimingRerun: '再做一遍',
       agentPrimingSkip: '无感',
+
+      newDialogLoadingTeam: '加载团队成员中…',
+      newDialogNoTeamMembers: '没有可用的团队成员（请检查 team.yaml）',
+      newDialogTeamLoadFailed: '加载团队成员失败',
 
       authRequiredTitle: '需要认证',
       authDescription: '请输入 Dominds 认证密钥以连接。',
@@ -599,10 +611,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     createNewDialogTitle: 'Create New Dialog',
     cancel: 'Cancel',
     createDialog: 'Create Dialog',
+    createDialogCreating: 'Creating…',
     taskDocumentLabel: 'Taskdoc:',
-    taskDocumentPlaceholder: 'Type to search Taskdocs (*.tsk required)...',
+    taskDocumentPlaceholder: 'Type to search Taskdocs (leave blank for socializing.tsk)…',
     taskDocumentHelp:
-      'Select from existing Taskdocs or enter a custom path. Required format: `*.tsk/` (encapsulated Taskdocs). Tab completes common prefix; Enter selects highlighted item.',
+      'Select from existing Taskdocs or enter a custom path. Leave blank to use socializing.tsk. Tab completes common prefix; Enter selects highlighted item.',
+    taskDocumentNoMatches: 'No matching Taskdocs found',
     teammateLabel: 'Teammate:',
     shadowMembersOption: 'Shadow Members…',
     shadowMembersLabel: 'Shadow Members:',
@@ -613,6 +627,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     agentPrimingReuseAgeSuffix: ' ago',
     agentPrimingRerun: 'Do it again',
     agentPrimingSkip: 'Feelingless',
+
+    newDialogLoadingTeam: 'Loading team members…',
+    newDialogNoTeamMembers: 'No team members available (check team.yaml)',
+    newDialogTeamLoadFailed: 'Failed to load team members',
 
     authRequiredTitle: 'Authentication Required',
     authDescription: 'Enter the Dominds auth key to connect.',

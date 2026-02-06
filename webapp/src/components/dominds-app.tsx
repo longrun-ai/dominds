@@ -154,6 +154,13 @@ export class DomindsApp extends HTMLElement {
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private subdialogHierarchyRefreshTokens = new Map<string, number>();
   private authModal: HTMLElement | null = null;
+  private createDialogModal: HTMLElement | null = null;
+
+  private teamMembersLoadState:
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'ready' }
+    | { kind: 'failed'; message: string } = { kind: 'idle' };
   private uiLanguage: LanguageCode = this.getInitialUiLanguage();
   private serverWorkLanguage: LanguageCode | null = null;
   private uiLanguageMenuOpen: boolean = false;
@@ -455,8 +462,7 @@ export class DomindsApp extends HTMLElement {
     ) as HTMLElement | null;
     if (searchText) searchText.textContent = t.placeholderSearchText;
 
-    const newDialogBtn = this.shadowRoot.querySelector('#new-dialog-btn') as HTMLButtonElement;
-    if (newDialogBtn) newDialogBtn.title = t.newDialogTitle;
+    this.updateNewDialogButtonState();
 
     const dialogTitle = this.shadowRoot.querySelector(
       '#current-dialog-title',
@@ -711,7 +717,9 @@ export class DomindsApp extends HTMLElement {
 
   private updateCreateDialogModalText(): void {
     if (!this.shadowRoot) return;
-    const modal = this.shadowRoot.querySelector('.create-dialog-modal') as HTMLElement | null;
+    const modal = this.shadowRoot.querySelector(
+      '.create-dialog-modal[data-modal-kind="create-dialog"]',
+    ) as HTMLElement | null;
     if (!modal) return;
     const t = getUiStrings(this.uiLanguage);
 
@@ -741,7 +749,41 @@ export class DomindsApp extends HTMLElement {
     const cancel = modal.querySelector('#modal-cancel-btn') as HTMLButtonElement | null;
     if (cancel) cancel.textContent = t.cancel;
     const create = modal.querySelector('#create-dialog-btn') as HTMLButtonElement | null;
-    if (create) create.textContent = t.createDialog;
+    if (create) {
+      const state = create.dataset.createState;
+      create.textContent = state === 'creating' ? t.createDialogCreating : t.createDialog;
+    }
+  }
+
+  private updateNewDialogButtonState(): void {
+    if (!this.shadowRoot) return;
+    const t = getUiStrings(this.uiLanguage);
+    const btn = this.shadowRoot.querySelector('#new-dialog-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+
+    const hasMembers = this.teamMembers.length > 0;
+    const kind = this.teamMembersLoadState.kind;
+
+    if (hasMembers) {
+      btn.disabled = false;
+      btn.title = t.newDialogTitle;
+      return;
+    }
+
+    if (kind === 'loading') {
+      // Keep enabled so click can explain the loading state.
+      btn.disabled = false;
+      btn.title = t.newDialogLoadingTeam;
+      return;
+    }
+
+    // No members: keep enabled so user can be guided to a remedy.
+    btn.disabled = false;
+    if (kind === 'failed') {
+      btn.title = t.newDialogTeamLoadFailed;
+      return;
+    }
+    btn.title = t.newDialogNoTeamMembers;
   }
 
   private updateAuthModalText(): void {
@@ -920,6 +962,12 @@ export class DomindsApp extends HTMLElement {
     this.initializeAuth();
     this.loadToastHistoryFromStorage();
     this.pendingDeepLink = this.parseDeepLinkFromUrl();
+
+    // Keep "New Dialog" in a loading state until we have loaded the team config at least once.
+    if (this.teamMembersLoadState.kind === 'idle') {
+      this.teamMembersLoadState = { kind: 'loading' };
+    }
+
     this.initialRender();
     this.setupEventListeners();
     void this.bootstrap();
@@ -2799,6 +2847,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       /* Create Dialog Modal */
+      .dominds-modal,
       .create-dialog-modal {
         position: fixed;
         top: 0;
@@ -2810,6 +2859,18 @@ export class DomindsApp extends HTMLElement {
         align-items: center;
         justify-content: center;
         font-family: inherit;
+      }
+
+      .modal-error {
+        display: none;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--dominds-danger-border, #f5c6cb);
+        background: var(--dominds-danger-bg, #f8d7da);
+        color: var(--dominds-danger, #721c24);
+        font-size: 13px;
+        line-height: 1.4;
       }
 
       .modal-backdrop {
@@ -4571,6 +4632,12 @@ export class DomindsApp extends HTMLElement {
       // Don't fail the entire initialization, try to reconnect in background
     }
 
+    // Keep "New Dialog" in a loading state while team config is still loading.
+    if (this.teamMembersLoadState.kind === 'idle') {
+      this.teamMembersLoadState = { kind: 'loading' };
+      this.updateNewDialogButtonState();
+    }
+
     // Q4H state will be loaded when WebSocket connection is established
     // See handleConnectionStateChange() for Q4H request on connect
 
@@ -4993,7 +5060,8 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
 
     const modal = document.createElement('div');
-    modal.className = 'create-dialog-modal';
+    modal.className = 'dominds-modal dominds-auth-modal';
+    modal.dataset.modalKind = 'auth';
     modal.innerHTML = `
       <div class="modal-backdrop"></div>
       <div class="modal-content" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
@@ -5295,8 +5363,7 @@ export class DomindsApp extends HTMLElement {
       if (typeof taskDocPath !== 'string' || taskDocPath.trim() === '') return;
 
       if (this.teamMembers.length === 0) {
-        console.error('❌ No team members available');
-        this.showError('No team members available. Please check your team configuration.');
+        await this.handleNewDialog();
         return;
       }
 
@@ -5425,6 +5492,10 @@ export class DomindsApp extends HTMLElement {
     const silent = options?.silent === true;
     const teamMembersEl = this.shadowRoot ? this.shadowRoot.querySelector('#team-members') : null;
     const teamMembersComponent = teamMembersEl instanceof DomindsTeamMembers ? teamMembersEl : null;
+    if (!silent) {
+      this.teamMembersLoadState = { kind: 'loading' };
+      this.updateNewDialogButtonState();
+    }
     if (!silent && teamMembersComponent) teamMembersComponent.setLoading(true);
     try {
       const api = getApiClient();
@@ -5435,10 +5506,14 @@ export class DomindsApp extends HTMLElement {
           return;
         }
         console.warn('Failed to load team config via API', resp.error);
+        this.teamMembersLoadState = { kind: 'failed', message: resp.error || 'Unknown error' };
         return;
       }
       const cfg = resp.data?.configuration;
-      if (!cfg) return;
+      if (!cfg) {
+        this.teamMembersLoadState = { kind: 'failed', message: 'Missing team config payload' };
+        return;
+      }
 
       const md = cfg.memberDefaults;
       const membersRec = cfg.members || {};
@@ -5454,16 +5529,20 @@ export class DomindsApp extends HTMLElement {
         teamMembersComponent.setDefaultResponder(this.defaultResponder);
       }
 
+      this.teamMembersLoadState = { kind: 'ready' };
+
       if (!silent && this.teamMembers.length === 0) {
         this.showWarning('No team members configured');
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.teamMembersLoadState = { kind: 'failed', message };
       if (!silent) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
         this.showError(`Failed to load team members: ${message}`, 'warning');
       }
     } finally {
       if (!silent && teamMembersComponent) teamMembersComponent.setLoading(false);
+      this.updateNewDialogButtonState();
     }
   }
 
@@ -5921,9 +6000,22 @@ export class DomindsApp extends HTMLElement {
   }
 
   private async handleNewDialog(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
+
+    if (this.teamMembersLoadState.kind === 'loading') {
+      this.showToast(t.newDialogLoadingTeam, 'info');
+      return;
+    }
+
     if (this.teamMembers.length === 0) {
-      console.error('❌ No team members available');
-      this.showError('No team members available. Please check your team configuration.');
+      if (this.teamMembersLoadState.kind === 'failed') {
+        void this.loadTeamMembers({ silent: false });
+        this.showToast(t.newDialogTeamLoadFailed, 'warning');
+      } else {
+        this.showToast(t.newDialogNoTeamMembers, 'warning');
+      }
+      this.activityView = { kind: 'team-members' };
+      this.updateActivityView();
       return;
     }
 
@@ -5991,6 +6083,31 @@ export class DomindsApp extends HTMLElement {
 
   private showCreateDialogModal(preset?: { taskDocPath?: string }): void {
     const t = getUiStrings(this.uiLanguage);
+
+    if (this.teamMembers.length === 0) {
+      this.showToast(t.newDialogNoTeamMembers, 'warning');
+      this.activityView = { kind: 'team-members' };
+      this.updateActivityView();
+      return;
+    }
+
+    const existing = (this.shadowRoot?.querySelector(
+      '.create-dialog-modal[data-modal-kind="create-dialog"]',
+    ) ?? null) as HTMLElement | null;
+    if (existing) {
+      const taskInput = existing.querySelector('#task-doc-input') as HTMLInputElement | null;
+      if (
+        taskInput &&
+        preset &&
+        typeof preset.taskDocPath === 'string' &&
+        preset.taskDocPath.trim() !== ''
+      ) {
+        taskInput.value = preset.taskDocPath;
+      }
+      setTimeout(() => taskInput?.focus(), 0);
+      return;
+    }
+
     const visibleMembers = this.teamMembers.filter((m) => m.hidden !== true);
     const shadowMembers = this.teamMembers.filter((m) => m.hidden === true);
 
@@ -6006,7 +6123,8 @@ export class DomindsApp extends HTMLElement {
     const firstShadowId = shadowMembers.length > 0 ? shadowMembers[0].id : '';
 
     const modal = document.createElement('div');
-    modal.className = 'create-dialog-modal';
+    modal.className = 'dominds-modal create-dialog-modal';
+    modal.dataset.modalKind = 'create-dialog';
     modal.innerHTML = `
 	      <div class="modal-backdrop"></div>
 	      <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
@@ -6074,6 +6192,8 @@ export class DomindsApp extends HTMLElement {
               </div>
             </div>
           </div>
+
+	          <div class="modal-error" id="create-dialog-error" aria-live="polite"></div>
 	        </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="modal-cancel-btn">
@@ -6096,12 +6216,18 @@ export class DomindsApp extends HTMLElement {
     // Add event listeners and functionality
     this.setupDialogModalEvents(modal);
 
+    this.createDialogModal = modal;
+
     // Append to shadow root for proper positioning within the component
     if (this.shadowRoot) {
       this.shadowRoot.appendChild(modal);
     } else {
       document.body.appendChild(modal);
     }
+
+    // Focus input after append.
+    const taskInput = modal.querySelector('#task-doc-input') as HTMLInputElement | null;
+    setTimeout(() => taskInput?.focus(), 0);
   }
 
   private setupDialogModalEvents(modal: HTMLElement): void {
@@ -6116,13 +6242,58 @@ export class DomindsApp extends HTMLElement {
     const createBtn = modal.querySelector('#create-dialog-btn') as HTMLButtonElement;
     const teammateInfo = modal.querySelector('#teammate-info') as HTMLElement;
     const feelOptions = modal.querySelector('#dominds-feel-options') as HTMLElement | null;
+    const errorEl = modal.querySelector('#create-dialog-error') as HTMLElement | null;
+
+    // Ensure our JS-visible display state starts in sync with CSS.
+    suggestions.style.display = 'none';
 
     // Modal close event listeners
     const closeBtn = modal.querySelector('.modal-close') as HTMLButtonElement;
     const cancelBtn = modal.querySelector('#modal-cancel-btn') as HTMLButtonElement;
 
+    let createInFlight = false;
+
+    const clearInlineError = (): void => {
+      if (!errorEl) return;
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+    };
+
+    const setInlineError = (msg: string): void => {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    };
+
+    const setCreateInFlight = (inFlight: boolean): void => {
+      createInFlight = inFlight;
+      const t = getUiStrings(this.uiLanguage);
+
+      createBtn.disabled = inFlight;
+      createBtn.dataset.createState = inFlight ? 'creating' : 'idle';
+      createBtn.textContent = inFlight ? t.createDialogCreating : t.createDialog;
+
+      closeBtn.disabled = inFlight;
+      cancelBtn.disabled = inFlight;
+      select.disabled = inFlight;
+      if (shadowSelect) shadowSelect.disabled = inFlight;
+      taskInput.disabled = inFlight;
+    };
+
+    const hideSuggestions = (): void => {
+      suggestions.innerHTML = '';
+      suggestions.style.display = 'none';
+      selectedSuggestionIndex = -1;
+    };
+
+    const hasVisibleSuggestions = (): boolean => {
+      return suggestions.style.display !== 'none' && suggestions.innerHTML.trim() !== '';
+    };
+
     const closeModal = () => {
+      if (createInFlight) return;
       modal.remove();
+      if (this.createDialogModal === modal) this.createDialogModal = null;
 
       // Enhanced auto-focus implementation with retry logic
       const attemptFocus = (attempt = 1) => {
@@ -6147,6 +6318,28 @@ export class DomindsApp extends HTMLElement {
 
     closeBtn?.addEventListener('click', closeModal);
     cancelBtn?.addEventListener('click', closeModal);
+
+    const backdrop = modal.querySelector('.modal-backdrop') as HTMLElement | null;
+    backdrop?.addEventListener('click', closeModal);
+
+    modal.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Escape') return;
+        if (createInFlight) {
+          e.preventDefault();
+          return;
+        }
+        if (hasVisibleSuggestions()) {
+          e.preventDefault();
+          hideSuggestions();
+          return;
+        }
+        e.preventDefault();
+        closeModal();
+      },
+      true,
+    );
 
     const formatCompactAge = (ageSeconds: number): string => {
       const totalSeconds = Number.isFinite(ageSeconds) ? Math.max(0, Math.floor(ageSeconds)) : 0;
@@ -6359,10 +6552,9 @@ export class DomindsApp extends HTMLElement {
     let currentSuggestions: Array<{ path: string; relativePath: string; name: string }> = [];
 
     const updateSuggestions = (query: string): void => {
+      const t = getUiStrings(this.uiLanguage);
       if (!query.trim()) {
-        suggestions.innerHTML = '';
-        suggestions.style.display = 'none';
-        selectedSuggestionIndex = -1;
+        hideSuggestions();
         return;
       }
 
@@ -6425,7 +6617,7 @@ export class DomindsApp extends HTMLElement {
         );
 
       if (currentSuggestions.length === 0) {
-        suggestions.innerHTML = '<div class="no-suggestions">No matching documents found</div>';
+        suggestions.innerHTML = `<div class="no-suggestions">${escapeHtml(t.taskDocumentNoMatches)}</div>`;
         suggestions.style.display = 'block';
         return;
       }
@@ -6450,9 +6642,7 @@ export class DomindsApp extends HTMLElement {
       if (index >= 0 && index < currentSuggestions.length) {
         taskInput.value = currentSuggestions[index].relativePath;
         // Clear suggestions and selection, then return focus to input
-        suggestions.innerHTML = '';
-        suggestions.style.display = 'none';
-        selectedSuggestionIndex = -1;
+        hideSuggestions();
         // Return focus to the input field
         taskInput.focus();
       }
@@ -6520,9 +6710,8 @@ export class DomindsApp extends HTMLElement {
           }
           break;
         case 'Escape':
-          suggestions.innerHTML = '';
-          suggestions.style.display = 'none';
-          selectedSuggestionIndex = -1;
+          e.preventDefault();
+          hideSuggestions();
           break;
       }
 
@@ -6545,6 +6734,12 @@ export class DomindsApp extends HTMLElement {
 
     // Handle dialog creation
     createBtn.addEventListener('click', async () => {
+      if (createInFlight) return;
+      clearInlineError();
+
+      // Hide suggestions so the user sees the resulting state immediately.
+      if (hasVisibleSuggestions()) hideSuggestions();
+
       let taskDocPath = taskInput.value.trim();
 
       // Validate that Taskdoc is provided
@@ -6563,7 +6758,7 @@ export class DomindsApp extends HTMLElement {
         const shadowId = shadowSelect ? shadowSelect.value : '';
         if (!shadowId) {
           const t = getUiStrings(this.uiLanguage);
-          this.showError(t.shadowMembersSelectRequired, 'error');
+          setInlineError(t.shadowMembersSelectRequired);
           return;
         }
         selectedAgentId = shadowId;
@@ -6571,15 +6766,35 @@ export class DomindsApp extends HTMLElement {
         selectedAgentId = select.value;
       }
 
-      await this.createDialog(selectedAgentId, taskDocPath, {
-        agentPrimingMode: currentAgentPrimingMode,
-      });
-      modal.remove();
+      setCreateInFlight(true);
+      try {
+        await this.createDialog(selectedAgentId, taskDocPath, {
+          agentPrimingMode: currentAgentPrimingMode,
+          ui: { suppressError: true },
+        });
+        setCreateInFlight(false);
+        closeModal();
+      } catch (error: unknown) {
+        // If auth modal is displayed, that is the next required interaction.
+        if (this.authModal) return;
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        setInlineError(message);
+      } finally {
+        if (modal.isConnected) setCreateInFlight(false);
+      }
     });
 
     // Handle Enter key in modal
     modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'INPUT') {
+      const target = e.target;
+      const tag = target instanceof HTMLElement ? target.tagName : '';
+      if (
+        e.key === 'Enter' &&
+        tag !== 'INPUT' &&
+        tag !== 'SELECT' &&
+        tag !== 'TEXTAREA' &&
+        tag !== 'BUTTON'
+      ) {
         e.preventDefault();
         createBtn.click();
       }
@@ -6589,7 +6804,10 @@ export class DomindsApp extends HTMLElement {
   public async createDialog(
     agentId: string | undefined,
     taskDocPath: string,
-    options?: { agentPrimingMode?: 'do' | 'reuse' | 'skip' },
+    options?: {
+      agentPrimingMode?: 'do' | 'reuse' | 'skip';
+      ui?: { suppressError?: boolean; suppressSuccess?: boolean };
+    },
   ): Promise<{ selfId: string; rootId: string; agentId: string; taskDocPath: string }> {
     try {
       const fallbackAgent = agentId || this.defaultResponder || '';
@@ -6597,7 +6815,10 @@ export class DomindsApp extends HTMLElement {
         throw new Error('No agent specified and no default responder configured');
       }
       const api = getApiClient();
-      const resp = await api.createDialog(fallbackAgent, taskDocPath, options);
+      const apiOptions = options?.agentPrimingMode
+        ? { agentPrimingMode: options.agentPrimingMode }
+        : undefined;
+      const resp = await api.createDialog(fallbackAgent, taskDocPath, apiOptions);
       if (!resp.success || !resp.data) {
         if (resp.status === 401) {
           this.onAuthRejected('api');
@@ -6612,7 +6833,9 @@ export class DomindsApp extends HTMLElement {
       const selfIdRaw = rec.selfId;
       const rootIdRaw = rec.rootId;
       if (typeof selfIdRaw !== 'string' || typeof rootIdRaw !== 'string') {
-        this.showError('Invalid dialog identifiers in createDialog response', 'error');
+        if (options?.ui?.suppressError !== true) {
+          this.showError('Invalid dialog identifiers in createDialog response', 'error');
+        }
         throw new Error('Invalid dialog identifiers');
       }
       const selfId = selfIdRaw;
@@ -6620,7 +6843,9 @@ export class DomindsApp extends HTMLElement {
       if (!selfId || !rootId) {
         throw new Error('Dialog creation failed: invalid identifiers in response');
       }
-      this.showSuccess(`Dialog created @${fallbackAgent} with task: ${taskDocPath}`);
+      if (options?.ui?.suppressSuccess !== true) {
+        this.showSuccess(`Dialog created @${fallbackAgent} with task: ${taskDocPath}`);
+      }
       await this.loadDialogs();
       // Use complete DialogInfo with all required fields
       await this.selectDialog({
@@ -6633,7 +6858,9 @@ export class DomindsApp extends HTMLElement {
       return { selfId, rootId, agentId: fallbackAgent, taskDocPath };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.showError(`Failed to create dialog: ${message}`, 'error');
+      if (options?.ui?.suppressError !== true) {
+        this.showError(`Failed to create dialog: ${message}`, 'error');
+      }
       throw error;
     }
   }
