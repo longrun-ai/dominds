@@ -108,6 +108,11 @@ export interface HumanPrompt {
    * - 'internal': injected into the LLM context for this drive only; not persisted nor rendered.
    */
   persistMode?: 'persist' | 'internal';
+  /**
+   * For subdialog drives spawned by tellask handling, binds this drive's completion
+   * to exactly one caller dialog + call identity.
+   */
+  subdialogReplyTarget?: SubdialogReplyTarget;
 }
 
 type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
@@ -334,6 +339,12 @@ type PendingSubdialogRecordType = {
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
   tellaskSession?: string;
+};
+
+type SubdialogReplyTarget = {
+  ownerDialogId: string;
+  callType: 'A' | 'B' | 'C';
+  callId: string;
 };
 
 export interface ResumptionContext {
@@ -1194,6 +1205,7 @@ export async function driveDialogStream(
   const release = await dlg.acquire();
   let followUp: UpNextPrompt | undefined;
   let driveResult: { lastAssistantSayingContent: string | null; interrupted: boolean } | undefined;
+  let subdialogReplyTarget: SubdialogReplyTarget | undefined;
   try {
     // "dead" is an irreversible UI state (primarily for subdialogs). If a dialog is marked dead
     // in latest.yaml, do not proceed with driving. This guards against races/cross-client drive.
@@ -1214,6 +1226,7 @@ export async function driveDialogStream(
     }
 
     const effectivePrompt = resolveUpNextPrompt(dlg, humanPrompt);
+    subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dlg.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
@@ -1234,7 +1247,18 @@ export async function driveDialogStream(
     !driveResult.interrupted &&
     driveResult.lastAssistantSayingContent !== null
   ) {
-    await supplySubdialogResponseToCallerIfPending(dlg, driveResult.lastAssistantSayingContent);
+    if (subdialogReplyTarget) {
+      await supplySubdialogResponseToSpecificCallerIfPending(
+        dlg,
+        driveResult.lastAssistantSayingContent,
+        subdialogReplyTarget,
+      );
+    } else {
+      await supplySubdialogResponseToAssignedCallerIfPending(
+        dlg,
+        driveResult.lastAssistantSayingContent,
+      );
+    }
   }
 }
 
@@ -3283,31 +3307,88 @@ async function createSubDialogWithInheritedPriming(
   return subdialog;
 }
 
-async function supplySubdialogResponseToCallerIfPending(
+async function resolveOwnerDialogBySelfId(
+  subdialog: SubDialog,
+  ownerDialogId: string,
+): Promise<Dialog | undefined> {
+  const rootDialog = subdialog.rootDialog;
+  if (ownerDialogId === rootDialog.id.selfId) {
+    return rootDialog;
+  }
+  const existing = rootDialog.lookupDialog(ownerDialogId);
+  if (existing) return existing;
+  return await ensureDialogLoaded(
+    rootDialog,
+    new DialogID(ownerDialogId, rootDialog.id.rootId),
+    'running',
+  );
+}
+
+async function supplySubdialogResponseToSpecificCallerIfPending(
   subdialog: SubDialog,
   responseText: string,
-): Promise<void> {
+  target: SubdialogReplyTarget,
+): Promise<boolean> {
   const assignment = subdialog.assignmentFromSup;
   if (!assignment) {
-    return;
+    return false;
   }
 
-  const rootDialog = subdialog.rootDialog;
-  const callerDialog = rootDialog.lookupDialog(assignment.callerDialogId);
+  const ownerDialog = await resolveOwnerDialogBySelfId(subdialog, target.ownerDialogId);
+  if (!ownerDialog) {
+    return false;
+  }
+
+  const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialog.id);
+  const pendingRecord = pending.find((p) => p.subdialogId === subdialog.id.selfId);
+  if (!pendingRecord) {
+    return false;
+  }
+  if (pendingRecord.callType !== target.callType) {
+    log.warn('Reply target callType does not match pending callType; skipping stale reply target', {
+      rootId: subdialog.rootDialog.id.rootId,
+      subdialogId: subdialog.id.selfId,
+      ownerDialogId: ownerDialog.id.selfId,
+      targetCallType: target.callType,
+      pendingCallType: pendingRecord.callType,
+    });
+    return false;
+  }
+
+  await supplyResponseToSupdialog(
+    ownerDialog,
+    subdialog.id,
+    responseText,
+    pendingRecord.callType,
+    target.callId,
+    'completed',
+  );
+  return true;
+}
+
+async function supplySubdialogResponseToAssignedCallerIfPending(
+  subdialog: SubDialog,
+  responseText: string,
+): Promise<boolean> {
+  const assignment = subdialog.assignmentFromSup;
+  if (!assignment) {
+    return false;
+  }
+
+  const callerDialog = await resolveOwnerDialogBySelfId(subdialog, assignment.callerDialogId);
   if (!callerDialog) {
     log.warn('Missing caller dialog for subdialog response supply', {
-      rootId: rootDialog.id.rootId,
+      rootId: subdialog.rootDialog.id.rootId,
       subdialogId: subdialog.id.selfId,
       callerDialogId: assignment.callerDialogId,
     });
-    return;
+    return false;
   }
 
   const pending = await DialogPersistence.loadPendingSubdialogs(callerDialog.id);
   const pendingRecord = pending.find((p) => p.subdialogId === subdialog.id.selfId);
   if (!pendingRecord) {
-    // Caller is not waiting on this subdialog anymore; do not auto-revive.
-    return;
+    return false;
   }
 
   await supplyResponseToSupdialog(
@@ -3318,6 +3399,7 @@ async function supplySubdialogResponseToCallerIfPending(
     assignment.callId,
     'completed',
   );
+  return true;
 }
 
 // === PHASE 6: SUBDIALOG SUPPLY MECHANISM ===
@@ -3384,6 +3466,11 @@ export async function createSubdialogForSupdialog(
           }),
           msgId: generateShortId(),
           grammar: 'markdown',
+          subdialogReplyTarget: {
+            ownerDialogId: supdialog.id.selfId,
+            callType: 'A',
+            callId,
+          },
         };
         await driveDialogStream(subdialog, initPrompt, true);
       } catch (err) {
@@ -4055,6 +4142,11 @@ async function executeTellaskCall(
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
+                subdialogReplyTarget: {
+                  ownerDialogId: callerDialog.id.selfId,
+                  callType: 'C',
+                  callId,
+                },
               };
               await driveDialogStream(sub, initPrompt, true);
             } catch (err) {
@@ -4217,6 +4309,11 @@ async function executeTellaskCall(
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
+                subdialogReplyTarget: {
+                  ownerDialogId: pendingOwner.id.selfId,
+                  callType: 'B',
+                  callId,
+                },
               };
               await driveDialogStream(r.subdialog, prompt, true);
             } catch (err) {
@@ -4416,6 +4513,11 @@ async function executeTellaskCall(
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
+                subdialogReplyTarget: {
+                  ownerDialogId: callerDialog.id.selfId,
+                  callType: 'C',
+                  callId,
+                },
               };
               await driveDialogStream(sub, initPrompt, true);
             } catch (err) {
@@ -4502,6 +4604,11 @@ async function executeTellaskCall(
                 }),
                 msgId: generateShortId(),
                 grammar: 'markdown',
+                subdialogReplyTarget: {
+                  ownerDialogId: pendingOwner.id.selfId,
+                  callType: 'B',
+                  callId,
+                },
               };
               await driveDialogStream(result.subdialog, resumePrompt, true);
               return;
@@ -4518,6 +4625,11 @@ async function executeTellaskCall(
               }),
               msgId: generateShortId(),
               grammar: 'markdown',
+              subdialogReplyTarget: {
+                ownerDialogId: pendingOwner.id.selfId,
+                callType: 'B',
+                callId,
+              },
             };
             await driveDialogStream(result.subdialog, initPrompt, true);
           } catch (err) {
@@ -4574,6 +4686,11 @@ async function executeTellaskCall(
               }),
               msgId: generateShortId(),
               grammar: 'markdown',
+              subdialogReplyTarget: {
+                ownerDialogId: dlg.id.selfId,
+                callType: 'C',
+                callId,
+              },
             };
             // Type C: Move to done/ on completion (handled by subdialog completion)
             await driveDialogStream(sub, initPrompt, true);
