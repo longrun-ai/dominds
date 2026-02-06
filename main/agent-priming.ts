@@ -3,7 +3,7 @@
  *
  * Best-effort Agent Priming prelude generation for new dialogs.
  */
-import { RootDialog } from './dialog';
+import type { Dialog } from './dialog';
 import { computeIdleRunState, setDialogRunState } from './dialog-run-state';
 import type { ChatMessage } from './llm/client';
 import { driveDialogStream, emitSayingEvents } from './llm/driver';
@@ -53,8 +53,10 @@ export type AgentPrimingCacheStatus = Readonly<
   { hasCache: false } | { hasCache: true; createdAt: string; ageSeconds: number }
 >;
 
+export type AgentPrimingMode = 'do' | 'reuse' | 'skip';
+
 async function emitSayingEventsAndPersist(
-  dlg: RootDialog,
+  dlg: Dialog,
   content: string,
 ): Promise<Awaited<ReturnType<typeof emitSayingEvents>>> {
   const calls = await emitSayingEvents(dlg, content);
@@ -78,7 +80,7 @@ async function emitSayingEventsAndPersist(
   return calls;
 }
 
-async function emitUiOnlyMarkdownEventsAndPersist(dlg: RootDialog, content: string): Promise<void> {
+async function emitUiOnlyMarkdownEventsAndPersist(dlg: Dialog, content: string): Promise<void> {
   const trimmed = content.trim();
   if (!trimmed) return;
 
@@ -136,23 +138,33 @@ export function getAgentPrimingCacheStatus(agentId: string): AgentPrimingCacheSt
   return { hasCache: true, createdAt, ageSeconds };
 }
 
+export function resolveInheritedSubdialogAgentPrimingMode(
+  requestedMode: AgentPrimingMode,
+  agentId: string,
+): AgentPrimingMode {
+  if (requestedMode === 'skip') return 'skip';
+  if (requestedMode === 'reuse') return 'reuse';
+  const hasCache = cacheByAgentId.has(agentId);
+  // "do" without cache means "show it once now"; subdialogs may still reuse once cache appears.
+  return hasCache ? 'do' : 'reuse';
+}
+
 export function scheduleAgentPrimingForNewDialog(
-  dlg: RootDialog,
-  options: { mode: 'do' | 'reuse' | 'skip' },
-): void {
-  if (options.mode === 'skip') return;
+  dlg: Dialog,
+  options: { mode: AgentPrimingMode },
+): Promise<void> {
+  if (options.mode === 'skip') return Promise.resolve();
 
   const agentId = dlg.agentId;
   const existing = cacheByAgentId.get(agentId);
   if (options.mode === 'reuse' && existing) {
     dlg.setCoursePrefixMsgs(buildCoursePrefixMsgs(existing));
-    void replayAgentPriming(dlg, existing);
-    return;
+    return replayAgentPriming(dlg, existing);
   }
 
   const inflight = inflightByAgentId.get(agentId);
   if (inflight) {
-    void inflight.then((entry) => {
+    return inflight.then((entry) => {
       if (options.mode === 'reuse' && entry) {
         dlg.setCoursePrefixMsgs(buildCoursePrefixMsgs(entry));
         return replayAgentPriming(dlg, entry);
@@ -163,9 +175,8 @@ export function scheduleAgentPrimingForNewDialog(
           cacheByAgentId.set(agentId, next);
         });
       }
-      return;
+      return Promise.resolve();
     });
-    return;
   }
 
   const task = runAgentPrimingLive(dlg)
@@ -182,7 +193,7 @@ export function scheduleAgentPrimingForNewDialog(
       inflightByAgentId.delete(agentId);
     });
   inflightByAgentId.set(agentId, task);
-  void task;
+  return task.then(() => undefined);
 }
 
 function prefixTellaskBodyLines(text: string): string {
@@ -510,7 +521,7 @@ function formatFbrTellaskBody(
 }
 
 async function generatePrimingNoteViaMainlineAgent(options: {
-  dlg: RootDialog;
+  dlg: Dialog;
   shellSnapshotText: string;
   shellResponseText?: string;
   fbrResponses: ReadonlyArray<{ subdialogId: string; response: string }>;
@@ -766,7 +777,7 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
   return out;
 }
 
-async function replayAgentPriming(dlg: RootDialog, entry: AgentPrimingCacheEntry): Promise<void> {
+async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): Promise<void> {
   const release = await dlg.acquire();
   try {
     const language = getWorkLanguage();
@@ -903,7 +914,7 @@ async function replayAgentPriming(dlg: RootDialog, entry: AgentPrimingCacheEntry
   }
 }
 
-async function runAgentPrimingLive(dlg: RootDialog): Promise<AgentPrimingCacheEntry> {
+async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry> {
   const createdAt = formatUnifiedTimestamp(new Date());
   const language = getWorkLanguage();
   let fatalRunState: DialogRunState | null = null;

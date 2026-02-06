@@ -155,6 +155,23 @@ Reuse policy:
 - If a valid cache entry exists, a new dialog may reuse the cached transcript and Agent Priming note.
 - Reused entries should still be visible in the new dialog transcript, labeled as “reused from cache”.
 
+### 2.5) Mainline choice must propagate to sideline dialogs
+
+The priming choice selected at mainline dialog creation must propagate to all sideline dialogs under that root dialog.
+
+Propagation semantics:
+
+- Mainline chooses **Skip** (`skip`): all sideline dialogs must also **Skip** (`skip`).
+- Mainline chooses **Do Again** (`do`) while cache exists: all sideline dialogs must also run fresh (`do`).
+- Mainline chooses **Show it now** (`do`) when cache does not exist, or chooses **Reuse** (`reuse`):
+  sideline dialogs use **reuse-or-do** (`reuse`): reuse cache when available for that sideline agent;
+  otherwise run a fresh priming.
+
+Notes:
+
+- Different sideline agents may have different cache states; `reuse` is evaluated per sideline agent.
+- Priming must not run invisibly in the background; it must be persisted and user-visible as standard dialog artifacts.
+
 ### 3) Carry across `clear_mind`
 
 After each `clear_mind` (entering the next course), do not rely on reminders.

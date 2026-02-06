@@ -7,7 +7,11 @@ import fsPromises from 'fs/promises';
 import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { WebSocket } from 'ws';
-import { getAgentPrimingCacheStatus, scheduleAgentPrimingForNewDialog } from '../agent-priming';
+import {
+  getAgentPrimingCacheStatus,
+  resolveInheritedSubdialogAgentPrimingMode,
+  scheduleAgentPrimingForNewDialog,
+} from '../agent-priming';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
@@ -981,6 +985,11 @@ async function handleCreateDialog(
 
     // Create RootDialog
     const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
+    const subdialogAgentPrimingMode = resolveInheritedSubdialogAgentPrimingMode(
+      agentPrimingMode,
+      agentId,
+    );
+    dialog.setSubdialogAgentPrimingMode(subdialogAgentPrimingMode);
     globalDialogRegistry.register(dialog);
 
     const team = await Team.load();
@@ -997,6 +1006,7 @@ async function handleCreateDialog(
       agentId: agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
+      subdialogAgentPrimingMode,
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
@@ -1035,7 +1045,7 @@ async function handleCreateDialog(
       timestamp: formatUnifiedTimestamp(new Date()),
     });
 
-    scheduleAgentPrimingForNewDialog(dialog, { mode: agentPrimingMode });
+    void scheduleAgentPrimingForNewDialog(dialog, { mode: agentPrimingMode });
     return true;
   } catch (error: unknown) {
     log.error('Error creating dialog:', error);

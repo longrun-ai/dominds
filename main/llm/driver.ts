@@ -3236,6 +3236,53 @@ async function updateSubdialogAssignment(
   await DialogPersistence.updateSubdialogAssignment(subdialog.id, assignment);
 }
 
+type SubdialogCreateOptions = {
+  originMemberId: string;
+  callerDialogId: string;
+  callId: string;
+  tellaskSession?: string;
+  collectiveTargets?: string[];
+};
+
+let agentPrimingModulePromise: Promise<typeof import('../agent-priming')> | null = null;
+
+async function scheduleInheritedAgentPrimingForSubdialog(
+  callerDialog: Dialog,
+  subdialog: SubDialog,
+): Promise<void> {
+  const rootDialog =
+    callerDialog instanceof RootDialog
+      ? callerDialog
+      : callerDialog instanceof SubDialog
+        ? callerDialog.rootDialog
+        : undefined;
+  if (!rootDialog) return;
+  const inheritedMode = rootDialog.subdialogAgentPrimingMode;
+  if (inheritedMode === 'skip') return;
+  if (!agentPrimingModulePromise) {
+    agentPrimingModulePromise = import('../agent-priming');
+  }
+  const agentPrimingModule = await agentPrimingModulePromise;
+  await agentPrimingModule.scheduleAgentPrimingForNewDialog(subdialog, { mode: inheritedMode });
+}
+
+async function createSubDialogWithInheritedPriming(
+  callerDialog: Dialog,
+  targetAgentId: string,
+  tellaskHead: string,
+  tellaskBody: string,
+  options: SubdialogCreateOptions,
+): Promise<SubDialog> {
+  const subdialog = await callerDialog.createSubDialog(
+    targetAgentId,
+    tellaskHead,
+    tellaskBody,
+    options,
+  );
+  await scheduleInheritedAgentPrimingForSubdialog(callerDialog, subdialog);
+  return subdialog;
+}
+
 async function supplySubdialogResponseToCallerIfPending(
   subdialog: SubDialog,
   responseText: string,
@@ -3296,12 +3343,18 @@ export async function createSubdialogForSupdialog(
 ): Promise<void> {
   try {
     // Create the subdialog
-    const subdialog = await supdialog.createSubDialog(targetAgentId, tellaskHead, tellaskBody, {
-      originMemberId: supdialog.agentId,
-      callerDialogId: supdialog.id.selfId,
-      callId,
-      collectiveTargets: [targetAgentId],
-    });
+    const subdialog = await createSubDialogWithInheritedPriming(
+      supdialog,
+      targetAgentId,
+      tellaskHead,
+      tellaskBody,
+      {
+        originMemberId: supdialog.agentId,
+        callerDialogId: supdialog.id.selfId,
+        callId,
+        collectiveTargets: [targetAgentId],
+      },
+    );
 
     // Persist pending subdialog record
     const pendingRecord: PendingSubdialogRecordType = {
@@ -3959,12 +4012,18 @@ async function executeTellaskCall(
         const createdSubs: SubDialog[] = [];
         const pendingRecords: PendingSubdialogRecordType[] = [];
         for (let i = 1; i <= fbrEffort; i++) {
-          const sub = await dlg.createSubDialog(parseResult.agentId, tellaskHead, body, {
-            originMemberId,
-            callerDialogId: callerDialog.id.selfId,
-            callId,
-            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-          });
+          const sub = await createSubDialogWithInheritedPriming(
+            dlg,
+            parseResult.agentId,
+            tellaskHead,
+            body,
+            {
+              originMemberId,
+              callerDialogId: callerDialog.id.selfId,
+              callId,
+              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+            },
+          );
           createdSubs.push(sub);
           pendingRecords.push({
             subdialogId: sub.id.selfId,
@@ -4101,7 +4160,8 @@ async function executeTellaskCall(
               continue;
             }
 
-            const created = await rootDialog.createSubDialog(
+            const created = await createSubDialogWithInheritedPriming(
+              rootDialog,
               parseResult.agentId,
               indexedHeadLine,
               body,
@@ -4317,13 +4377,19 @@ async function executeTellaskCall(
           dialogId: dlg.id.selfId,
         });
         try {
-          const sub = await dlg.createSubDialog(parseResult.agentId, tellaskHead, body, {
-            originMemberId: dlg.agentId,
-            callerDialogId: callerDialog.id.selfId,
-            callId,
-            tellaskSession: parseResult.tellaskSession,
-            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-          });
+          const sub = await createSubDialogWithInheritedPriming(
+            dlg,
+            parseResult.agentId,
+            tellaskHead,
+            body,
+            {
+              originMemberId: dlg.agentId,
+              callerDialogId: callerDialog.id.selfId,
+              callId,
+              tellaskSession: parseResult.tellaskSession,
+              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+            },
+          );
 
           const pendingRecord: PendingSubdialogRecordType = {
             subdialogId: sub.id.selfId,
@@ -4388,13 +4454,19 @@ async function executeTellaskCall(
             return { kind: 'existing' as const, subdialog: existing };
           }
 
-          const created = await rootDialog.createSubDialog(parseResult.agentId, tellaskHead, body, {
-            originMemberId,
-            callerDialogId: callerDialog.id.selfId,
-            callId,
-            tellaskSession: parseResult.tellaskSession,
-            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-          });
+          const created = await createSubDialogWithInheritedPriming(
+            rootDialog,
+            parseResult.agentId,
+            tellaskHead,
+            body,
+            {
+              originMemberId,
+              callerDialogId: callerDialog.id.selfId,
+              callId,
+              tellaskSession: parseResult.tellaskSession,
+              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+            },
+          );
           rootDialog.registerSubdialog(created);
           await rootDialog.saveSubdialogRegistry();
           return { kind: 'created' as const, subdialog: created };
@@ -4466,12 +4538,18 @@ async function executeTellaskCall(
     // Type C: Transient subdialog (unregistered)
     if (parseResult.type === 'C') {
       try {
-        const sub = await dlg.createSubDialog(parseResult.agentId, tellaskHead, body, {
-          originMemberId: dlg.agentId,
-          callerDialogId: dlg.id.selfId,
-          callId,
-          collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-        });
+        const sub = await createSubDialogWithInheritedPriming(
+          dlg,
+          parseResult.agentId,
+          tellaskHead,
+          body,
+          {
+            originMemberId: dlg.agentId,
+            callerDialogId: dlg.id.selfId,
+            callId,
+            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+          },
+        );
         const pendingRecord: PendingSubdialogRecordType = {
           subdialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),

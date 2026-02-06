@@ -39,13 +39,17 @@ export async function getOrRestoreRootDialog(
   const rootDialogId = new DialogID(rootId);
   const rootState = await DialogPersistence.restoreDialog(rootDialogId, status);
   if (!rootState) return undefined;
+  const rootMetadata = rootState.metadata;
+  if (rootMetadata.supdialogId !== undefined) {
+    return undefined;
+  }
 
   const latest = await DialogPersistence.loadDialogLatest(rootDialogId, status);
   let diligencePushMax = DEFAULT_DILIGENCE_PUSH_MAX;
   try {
     const team = await Team.load();
     diligencePushMax = normalizeDiligencePushMax(
-      resolveMemberDiligencePushMax(team, rootState.metadata.agentId),
+      resolveMemberDiligencePushMax(team, rootMetadata.agentId),
     );
   } catch (_err: unknown) {
     diligencePushMax = DEFAULT_DILIGENCE_PUSH_MAX;
@@ -55,9 +59,9 @@ export async function getOrRestoreRootDialog(
   const rootStore = new DiskFileDialogStore(rootDialogId);
   const rootDialog = new RootDialog(
     rootStore,
-    rootState.metadata.taskDocPath,
+    rootMetadata.taskDocPath,
     rootDialogId,
-    rootState.metadata.agentId,
+    rootMetadata.agentId,
     {
       messages: rootState.messages,
       reminders: rootState.reminders,
@@ -65,6 +69,13 @@ export async function getOrRestoreRootDialog(
       contextHealth: rootState.contextHealth,
     },
   );
+  const persistedSubdialogAgentPrimingMode =
+    rootMetadata.subdialogAgentPrimingMode === 'do' ||
+    rootMetadata.subdialogAgentPrimingMode === 'reuse' ||
+    rootMetadata.subdialogAgentPrimingMode === 'skip'
+      ? rootMetadata.subdialogAgentPrimingMode
+      : 'reuse';
+  rootDialog.setSubdialogAgentPrimingMode(persistedSubdialogAgentPrimingMode);
   const persistedDisableDiligencePush =
     latest && typeof latest.disableDiligencePush === 'boolean'
       ? latest.disableDiligencePush
