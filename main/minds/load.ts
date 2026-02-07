@@ -40,12 +40,12 @@ import {
   sharedScopeLabel,
   taskdocCanonicalCopy,
 } from './minds-i18n';
+import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
 import {
   buildIntrinsicToolUsageText,
   buildMemorySystemPrompt,
   buildShellPolicyPrompt,
-} from './promptdocs';
-import { buildSystemPrompt, formatTeamIntro } from './system-prompt';
+} from './system-prompt-parts';
 
 type ReadAgentMindResult = { kind: 'found'; text: string } | { kind: 'missing' };
 type ReadMindsTextResult = { kind: 'found'; text: string } | { kind: 'missing' };

@@ -69,6 +69,22 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 优先级：系统 > 差遣牒 > 用户 > 工具回执。
 - 发生冲突时：说明冲突并优先执行高优先级；若需要决策/授权/缺失输入，发起 Q4H。
 
+## 术语表
+
+- 诉请（Tellask）：对智能体的结构化请求。
+- 诉请头（Tellask headline）：诉请块第一行，形如 \`!?@<name> ...\`，结构化指令（如 \`!tellaskSession <slug>\`）写在这里。
+- 诉请正文（Tellask body）：诉请块内以 \`!?\` 开头但不以 \`!?@\` 开头的行，用于承载上下文/约束/验收。
+- 对话主理人（Dialog Responder）：负责当前对话推进与输出的智能体。
+- 诉请者（tellasker）：发出诉请的对话主理人。
+- 被诉请者（tellaskee）：接收诉请的对话主理人/队友。
+- 回问诉请（TellaskBack）：支线对话用 \`!?@tellasker\` 回问诉请者以澄清。
+- 扪心自问（FBR）：仅由 \`!?@self\` 触发的“无工具”支线推理机制。
+- 长线诉请（Tellask Session）：使用 \`!tellaskSession <slug>\` 的可恢复多轮协作。
+- 一次性诉请（Fresh Tellask）：一次性、不可恢复的诉请。
+- 主线对话（Mainline dialog）：承载共享差遣牒并负责整体推进的对话。
+- 支线对话（Sideline dialog）：为分项任务临时创建的工作对话。
+- 差遣牒（Taskdoc）：共享任务契约，包含必要的 goals/constraints/progress 章节以及可选更多的额外章节。
+
 ## 角色设定
 
 ${input.persona}
@@ -99,6 +115,12 @@ ${input.teamIntro}
 ## 全局策略
 
 ${input.policyText}
+
+## FBR 使用准则
+
+- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须用 \`!?@self\` 发起。
+- 即使用户未明确要求，在诉诸 @human（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况，作为 FBR 正文，寻求初心判断，找出短期最优自主行动决策。
+- 鼓励 FBR 自我建议立即获取哪些未明事实，得到建议利用当前对话工具获取，再补足上下文迭代 FBR 直到获得清晰的下一步行动思路。
 
 ## 内置工具
 
@@ -139,6 +161,22 @@ System notifications convey important state changes (e.g., context caution/criti
 - Priority order: system > taskdoc > user > tool outputs.
 - On conflict: state the conflict and follow the higher-priority instruction; if a decision/authorization/input is needed, ask Q4H.
 
+## Glossary
+
+- Tellask: a structured request addressed to an agent.
+- Tellask headline: the first line of a Tellask block, e.g. \`!?@<name> ...\`; directives like \`!tellaskSession <slug>\` go here.
+- Tellask body: lines starting with \`!?\` but not \`!?@\`, carrying context/constraints/acceptance.
+- Dialog Responder: the role responsible for driving a dialog and producing responses.
+- tellasker: the Dialog Responder that issued the Tellask.
+- tellaskee: the Dialog Responder/agent that receives the Tellask.
+- TellaskBack: a sideline uses \`!?@tellasker\` to ask the tellasker for clarification.
+- Fresh Boots Reasoning (FBR): a tool-less sideline reasoning mechanism triggered only by \`!?@self\`.
+- Tellask Session: resumable multi-turn work using \`!tellaskSession <slug>\`.
+- Fresh Tellask: a one-shot, non-resumable Tellask.
+- Mainline dialog: the dialog that owns the shared Taskdoc and overall progress.
+- Sideline dialog: a temporary dialog for a subtask.
+- Taskdoc: the shared task contract with required goals/constraints/progress sections plus optional extra sections.
+
 ## Persona
 
 ${input.persona}
@@ -169,6 +207,12 @@ ${input.teamIntro}
 ## Global Policies
 
 ${input.policyText}
+
+## FBR Usage Guidelines
+
+- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must initiate \`!?@self\`.
+- Even without an explicit request, before resorting to @human (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR: summarize the current dialog’s facts as the FBR body, seek a fresh-boots judgment, and derive the short-term best autonomous next action.
+- Encourage FBR to recommend which missing facts to obtain immediately; then use the current dialog’s tools to fetch them, update context, and iterate FBR until a clear next action emerges.
 
 ## Intrinsic Tools
 

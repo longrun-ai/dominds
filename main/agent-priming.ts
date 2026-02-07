@@ -401,42 +401,9 @@ function formatFbrSelfTeaser(language: LanguageCode): string {
 
 function formatFbrTellaskBody(
   language: LanguageCode,
-  snapshotCmd: string,
   snapshotText: string,
-  shellPolicy: AgentPrimingCacheEntry['shellPolicy'],
-  shellSpecialistId: string | null,
   options: { fbrEffort: number },
 ): string {
-  const shellSpecialistMention =
-    shellSpecialistId && shellSpecialistId.trim()
-      ? `@${shellSpecialistId.trim()}`
-      : '@<shell specialist>';
-  const shellPolicyTailZh =
-    shellPolicy === 'specialist_only'
-      ? [
-          '',
-          `约束提醒：后续如需任何 shell 命令，必须诉请 shell 专员（${shellSpecialistMention}）执行并回传；此智能体不应自行执行。`,
-        ].join('\n')
-      : shellPolicy === 'no_specialist'
-        ? [
-            '',
-            '约束提醒：本团队无 shell 专员，因此后续**不能执行任意 shell 命令**；只能通过文件读写等非 shell 工具推进。',
-          ].join('\n')
-        : '';
-
-  const shellPolicyTailEn =
-    shellPolicy === 'specialist_only'
-      ? [
-          '',
-          `Constraint: if we need any shell command later, we must Tellask the shell specialist (${shellSpecialistMention}) to run it and return; this agent must not run it directly.`,
-        ].join('\n')
-      : shellPolicy === 'no_specialist'
-        ? [
-            '',
-            'Constraint: this team has no shell specialist, so we must **not run arbitrary shell commands**; proceed only with non-shell tools like file read/write.',
-          ].join('\n')
-        : '';
-
   const effortLineZh =
     options.fbrEffort >= 1
       ? '运行时提示：运行时会生成多份“初心自我”独立推理草稿，供上游对话综合提炼（这些草稿之间没有稳定映射关系，不要把它们当作固定身份）。请给出你这一份独立分析。'
@@ -447,76 +414,44 @@ function formatFbrTellaskBody(
       : 'Runtime note: FBR is disabled for this member.';
 
   const tellaskBackHintZh = (() => {
-    if (shellPolicy === 'specialist_only') {
-      return [
-        '提示：如果你还想知道更多系统细节（`uname -a` 之外），可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（上游对话）——例如“请补充哪些日志/配置/报错、以及你希望我重点评估哪些风险”。',
-        `诉请者可据此选择不违反安全协议的命令，并交由 shell 专员（${shellSpecialistMention}）执行回传。`,
-        '（当前这次 FBR 请不要真的发起任何诉请；只需说明你会回问什么。）',
-      ].join('\n');
-    }
-    if (shellPolicy === 'no_specialist') {
-      return [
-        '提示：如果你还想知道更多系统细节（`uname -a` 之外），可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（上游对话）补充信息。',
-        '注意：本团队无 shell 专员，因此仍然**不得执行任意 shell 命令**；只能请求补充文本材料（文件片段/日志/配置/运行报错等）。',
-        '（当前这次 FBR 请不要真的发起任何诉请；只需说明你会回问什么。）',
-      ].join('\n');
-    }
     return [
-      '提示：如果你还想知道更多系统细节（`uname -a` 之外），可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（上游对话）。',
+      '提示：如果你还想知道更多系统细节，可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（上游对话）。',
       '（当前这次 FBR 请不要真的发起任何诉请；只需说明你会回问什么。）',
     ].join('\n');
   })();
 
   const tellaskBackHintEn = (() => {
-    if (shellPolicy === 'specialist_only') {
-      return [
-        'Hint: if you want more system details beyond `uname -a`, ask back in this FBR sideline dialog via `!?@tellasker` (to the upstream tellasker dialog).',
-        `Then the tellasker can choose safety-compliant follow-up commands and have the shell specialist (${shellSpecialistMention}) run and return them.`,
-        '(In this FBR run, do not actually emit any tellasks; just state what you would ask back.)',
-      ].join('\n');
-    }
-    if (shellPolicy === 'no_specialist') {
-      return [
-        'Hint: if you want more system details beyond `uname -a`, ask back in this FBR sideline dialog via `!?@tellasker` (to the upstream tellasker dialog).',
-        'Note: there is no shell specialist in this team, so do **not** run arbitrary shell commands; request additional text materials only (file snippets/logs/configs/errors).',
-        '(In this FBR run, do not actually emit any tellasks; just state what you would ask back.)',
-      ].join('\n');
-    }
     return [
-      'Hint: if you want more system details beyond `uname -a`, ask back in this FBR sideline dialog via `!?@tellasker` (to the upstream tellasker dialog).',
+      'Hint: if you want more system details, ask back in this FBR sideline dialog via `!?@tellasker` (to the upstream tellasker dialog).',
       '(In this FBR run, do not actually emit any tellasks; just state what you would ask back.)',
     ].join('\n');
   })();
 
   if (language === 'zh') {
     return [
-      '你正在进行一次“扪心自问”（FBR）。你**没有任何工具**：不能调用工具，只能使用本文本推理。',
       effortLineZh,
       '',
       tellaskBackHintZh,
       '',
       '请基于下面环境信息回答：',
       '- 在这个环境里要注意些什么？',
-      '- 优先利用哪些命令行工具，为什么？',
+      '- 哪些关键上下文仍然缺失？',
       '',
-      `环境信息（当前 Dominds 运行时真实环境快照；来自命令：\`${snapshotCmd}\`）：`,
+      '环境信息（当前 Dominds 运行时环境快照）：',
       snapshotText,
-      shellPolicyTailZh,
     ].join('\n');
   }
   return [
-    'You are doing Fresh Boots Reasoning (FBR). You have **no tools**: do not call tools; reason with text only.',
     effortLineEn,
     '',
     tellaskBackHintEn,
     '',
     'Based on the environment info below, answer:',
     '- What should we watch out for in this environment?',
-    '- Which CLI tools should we prioritize, and why?',
+    '- What critical context is still missing?',
     '',
-    `Environment info (a real snapshot of the current Dominds runtime; from \`${snapshotCmd}\`):`,
+    'Environment info (a snapshot of the current Dominds runtime):',
     snapshotText,
-    shellPolicyTailEn,
   ].join('\n');
 }
 
@@ -1125,14 +1060,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       return n;
     })();
 
-    fbrCallBody = formatFbrTellaskBody(
-      language,
-      BASELINE_ENV_SNAPSHOT_CMD,
-      snapshotText,
-      shellPolicy,
-      specialistId,
-      { fbrEffort },
-    );
+    fbrCallBody = formatFbrTellaskBody(language, snapshotText, { fbrEffort });
     selfTeaser = formatFbrSelfTeaser(language);
     let fbrCallId: string | null = null;
     let fbrTellaskHead: string | null = null;
@@ -1181,8 +1109,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
                   fbrCallBody,
                   '',
                   language === 'zh'
-                    ? '提示：请尽量提供与其它 FBR 草稿不同的视角（例如安全/限制/可验证性/工具优先级/风险点）。'
-                    : 'Hint: try to provide a distinct angle vs other FBR drafts (e.g. security/constraints/verifiability/tool priority/risk).',
+                    ? '提示：请尽量提供与其它 FBR 草稿不同的视角（例如安全/限制/可验证性/风险点）。'
+                    : 'Hint: try to provide a distinct angle vs other FBR drafts (e.g. security/constraints/verifiability/risk).',
                 ].join('\n')
               : fbrCallBody;
 

@@ -111,11 +111,11 @@
 - EN (term): `TellaskBack`
 - ZH（术语）: `回问诉请`
 
-- EN (meaning): Ask the **origin dialog** (the dialog that issued the current Tellask) for clarification instead of guessing.
-- ZH（含义）: 当被诉请方需要补充信息时，应**回问发起本次诉请的对话**澄清，而不是自行猜测。
+- EN (meaning): Ask the **tellasker dialog** (the dialog that issued the current Tellask) for clarification instead of guessing.
+- ZH（含义）: 当被诉请方需要补充信息时，应**回问诉请者对话**澄清，而不是自行猜测。
 
-- EN (what “Back” means): “Back” refers to routing back to the origin dialog; it does **not** imply hierarchy/seniority.
-- ZH（Back 的含义）: “Back” 指回到发起方对话，**不暗示上下级**。
+- EN (what “Back” means): “Back” refers to routing back to the tellasker dialog; it does **not** imply hierarchy/seniority.
+- ZH（Back 的含义）: “Back” 指回到诉请者对话，**不暗示上下级**。
 
 - EN (typical carrier): `!?@tellasker ...` (only available inside a sideline dialog)
 - ZH（典型载体）: `!?@tellasker ...`（只在你处于支线对话语境时可用）
@@ -191,8 +191,8 @@ Example / 示例（概念）:
 
 ### 系统提示可复用的一句话（One-Sentence Summary for System Prompts）
 
-- EN: `TellaskBack` asks the origin dialog for clarification; `Tellask Session` uses `!tellaskSession <slug>` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
-- ZH: `TellaskBack` 回问发起方澄清；`Tellask Session` 用 `!tellaskSession <slug>` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
+- EN: `TellaskBack` asks the tellasker dialog for clarification; `Tellask Session` uses `!tellaskSession <slug>` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
+- ZH: `TellaskBack` 回问诉请者澄清；`Tellask Session` 用 `!tellaskSession <slug>` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
 
 ### 为何保留 `!` 前缀？（Why keep the `!` prefix?）
 
@@ -402,8 +402,8 @@ Example / 示例（概念）:
 - EN: The implementation may still use the internal labels **Type A/B/C** to classify teammate-tellask patterns.
 - ZH: 实现层仍可能使用 **Type A/B/C** 作为队友诉请形态的内部分类。
 
-- EN: Type A: ask-back call (a subdialog asking back to its initiating dialog); primary syntax `!?@tellasker` (NO `!tellaskSession`).
-- ZH: Type A：回问诉请（子对话回问其发起方对话）；主语法 `!?@tellasker`（不带 `!tellaskSession`）。
+- EN: Type A: TellaskBack call (a subdialog asking back to its tellasker dialog); primary syntax `!?@tellasker` (NO `!tellaskSession`).
+- ZH: Type A：回问诉请（子对话回问其诉请者对话）；主语法 `!?@tellasker`（不带 `!tellaskSession`）。
 
 - EN: Type B: registered subdialog call (resumable) keyed by `agentId!tellaskSession`.
 - ZH: Type B：registered subdialog call（可恢复），用 `agentId!tellaskSession` 作为 registry key。

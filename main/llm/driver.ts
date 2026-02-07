@@ -26,6 +26,7 @@ import {
 import { postDialogEvent } from '../evt-registry';
 import { extractErrorDetails, log } from '../log';
 import { loadAgentMinds } from '../minds/load';
+import { buildNoToolsNotice } from '../minds/system-prompt-parts';
 import { DialogPersistence } from '../persistence';
 import { removeProblem, upsertProblem } from '../problems';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
@@ -1438,20 +1439,20 @@ async function _driveDialogStream(
       let systemPrompt = minds.systemPrompt;
       const memories = minds.memories;
       let agentTools = minds.agentTools;
-
-      const isToollessFbr = isToollessFbrSelfSubdialog(dlg);
-      if (isToollessFbr) {
-        // Tool-less FBR: technically supply zero tools to the LLM.
-        agentTools = [];
-        systemPrompt = withFbrToollessSystemPrompt(systemPrompt, getWorkLanguage());
-
-        // FBR-only model params override (deep merge onto effective member model_params).
-        if (agent.fbr_model_params) {
-          const fbrAgent = Object.create(agent) as Team.Member;
-          fbrAgent.model_params = mergeModelParams(agent.model_params, agent.fbr_model_params);
-          agent = fbrAgent;
-        }
+      const drivePolicy = buildDrivePolicy({
+        dlg,
+        agent,
+        systemPrompt,
+        agentTools,
+        language: getWorkLanguage(),
+      });
+      const drivePolicyValidation = validateDrivePolicyInvariants(drivePolicy, getWorkLanguage());
+      if (!drivePolicyValidation.ok) {
+        throw new Error(`FBR policy isolation violation: ${drivePolicyValidation.detail}`);
       }
+      agent = drivePolicy.effectiveAgent;
+      systemPrompt = drivePolicy.effectiveSystemPrompt;
+      agentTools = drivePolicy.effectiveAgentTools;
 
       // reload cfgs every course, in case it's been updated by human or ai meanwhile
 
@@ -1700,12 +1701,13 @@ async function _driveDialogStream(
           return true;
         });
 
-        const ctxMsgs: ChatMessage[] = [
-          ...memories,
-          ...(taskDocMsg ? [taskDocMsg] : []),
-          ...coursePrefixMsgs,
-          ...dialogMsgsForContext,
-        ];
+        const ctxMsgs: ChatMessage[] = buildDriveContextMessages({
+          prependedContextMessages: drivePolicy.prependedContextMessages,
+          memories,
+          taskDocMsg,
+          coursePrefixMsgs,
+          dialogMsgsForContext,
+        });
 
         if (genIterNo === 1 && takenSubdialogResponses.length > 0) {
           for (const response of takenSubdialogResponses) {
@@ -1929,28 +1931,25 @@ async function _driveDialogStream(
             }
           }
 
-          if (isToollessFbr && collectedAssistantCalls.length > 0) {
-            const hasDisallowedTellask = collectedAssistantCalls.some((call) => {
-              if (call.validation.kind !== 'valid') return true;
-              return call.validation.firstMention !== 'tellasker';
+          const nonStreamingTellaskViolation = resolveDrivePolicyViolationKind({
+            policy: drivePolicy,
+            tellaskCalls: collectedAssistantCalls,
+            functionCallCount: 0,
+          });
+          if (nonStreamingTellaskViolation === 'tellask') {
+            const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+              kind: 'tellask',
             });
-            if (!hasDisallowedTellask) {
-              // Tool-less FBR: allow TellaskBack only (`!?@tellasker`) for critical clarification.
-            } else {
-              const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
-                kind: 'tellask',
-              });
-              const genseq = dlg.activeGenSeq ?? 0;
-              await dlg.addChatMessages({
-                type: 'saying_msg',
-                role: 'assistant',
-                genseq,
-                content: violationText,
-              });
-              lastAssistantSayingContent = violationText;
-              await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-              return { lastAssistantSayingContent, interrupted: false };
-            }
+            const genseq = dlg.activeGenSeq ?? 0;
+            await dlg.addChatMessages({
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: violationText,
+            });
+            lastAssistantSayingContent = violationText;
+            await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
+            return { lastAssistantSayingContent, interrupted: false };
           }
 
           let assistantValidCallCount = 0;
@@ -1978,7 +1977,12 @@ async function _driveDialogStream(
           const funcCalls = nonStreamMsgs.filter(
             (m): m is FuncCallMsg => m.type === 'func_call_msg',
           );
-          if (isToollessFbr && funcCalls.length > 0) {
+          const nonStreamingToolViolation = resolveDrivePolicyViolationKind({
+            policy: drivePolicy,
+            tellaskCalls: [],
+            functionCallCount: funcCalls.length,
+          });
+          if (nonStreamingToolViolation === 'tool') {
             const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
               kind: 'tool',
             });
@@ -2432,33 +2436,26 @@ async function _driveDialogStream(
             } => call.validation.kind === 'valid',
           );
 
-          if (isToollessFbr && (collectedCalls.length > 0 || streamedFuncCalls.length > 0)) {
-            const hasDisallowedTellask = collectedCalls.some((call) => {
-              if (call.validation.kind !== 'valid') return true;
-              return call.validation.firstMention !== 'tellasker';
+          const streamingPolicyViolation = resolveDrivePolicyViolationKind({
+            policy: drivePolicy,
+            tellaskCalls: collectedCalls,
+            functionCallCount: streamedFuncCalls.length,
+          });
+          if (streamingPolicyViolation) {
+            const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+              kind: streamingPolicyViolation,
             });
-            const shouldBlock = streamedFuncCalls.length > 0 || hasDisallowedTellask;
-            if (shouldBlock) {
-              const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
-                kind:
-                  collectedCalls.length > 0 && streamedFuncCalls.length > 0
-                    ? 'tellask_and_tool'
-                    : collectedCalls.length > 0
-                      ? 'tellask'
-                      : 'tool',
-              });
-              const genseq = dlg.activeGenSeq ?? 0;
-              newMsgs.push({
-                type: 'saying_msg',
-                role: 'assistant',
-                genseq,
-                content: violationText,
-              });
-              lastAssistantSayingContent = violationText;
-              await dlg.addChatMessages(...newMsgs);
-              await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-              return { lastAssistantSayingContent, interrupted: false };
-            }
+            const genseq = dlg.activeGenSeq ?? 0;
+            newMsgs.push({
+              type: 'saying_msg',
+              role: 'assistant',
+              genseq,
+              content: violationText,
+            });
+            lastAssistantSayingContent = violationText;
+            await dlg.addChatMessages(...newMsgs);
+            await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
+            return { lastAssistantSayingContent, interrupted: false };
           }
 
           throwIfAborted(abortSignal, dlg.id);
@@ -3041,35 +3038,195 @@ function mergeModelParams(
   };
 }
 
-function withFbrToollessSystemPrompt(systemPrompt: string, language: LanguageCode): string {
+type DriveTellaskPolicy = 'allow_any' | 'tellasker_only';
+
+type DrivePolicy = {
+  mode: 'default' | 'fbr_toolless';
+  effectiveAgent: Team.Member;
+  effectiveSystemPrompt: string;
+  effectiveAgentTools: Tool[];
+  prependedContextMessages: ChatMessage[];
+  tellaskPolicy: DriveTellaskPolicy;
+  allowFunctionCalls: boolean;
+};
+
+function buildDrivePolicy(args: {
+  dlg: Dialog;
+  agent: Team.Member;
+  systemPrompt: string;
+  agentTools: Tool[];
+  language: LanguageCode;
+}): DrivePolicy {
+  const { dlg, agent, systemPrompt, agentTools, language } = args;
+  if (!isToollessFbrSelfSubdialog(dlg)) {
+    return {
+      mode: 'default',
+      effectiveAgent: agent,
+      effectiveSystemPrompt: systemPrompt,
+      effectiveAgentTools: agentTools,
+      prependedContextMessages: [],
+      tellaskPolicy: 'allow_any',
+      allowFunctionCalls: true,
+    };
+  }
+
+  const effectiveAgent = agent.fbr_model_params
+    ? (Object.assign(Object.create(agent), {
+        model_params: mergeModelParams(agent.model_params, agent.fbr_model_params),
+      }) as Team.Member)
+    : agent;
+
+  return {
+    mode: 'fbr_toolless',
+    effectiveAgent,
+    effectiveSystemPrompt: buildFbrSystemPrompt(language),
+    effectiveAgentTools: [],
+    prependedContextMessages: [
+      {
+        type: 'environment_msg',
+        role: 'user',
+        content: buildNoToolsNotice(language),
+      },
+    ],
+    tellaskPolicy: 'tellasker_only',
+    allowFunctionCalls: false,
+  };
+}
+
+function buildDriveContextMessages(args: {
+  prependedContextMessages: ChatMessage[];
+  memories: ChatMessage[];
+  taskDocMsg: ChatMessage | undefined;
+  coursePrefixMsgs: ChatMessage[];
+  dialogMsgsForContext: ChatMessage[];
+}): ChatMessage[] {
+  return [
+    ...args.prependedContextMessages,
+    ...args.memories,
+    ...(args.taskDocMsg ? [args.taskDocMsg] : []),
+    ...args.coursePrefixMsgs,
+    ...args.dialogMsgsForContext,
+  ];
+}
+
+function hasTellaskPolicyViolation(
+  policy: DrivePolicy,
+  calls: ReadonlyArray<CollectedTellaskCall>,
+): boolean {
+  if (policy.tellaskPolicy === 'allow_any') {
+    return false;
+  }
+  return calls.some((call) => {
+    if (call.validation.kind !== 'valid') {
+      return true;
+    }
+    return call.validation.firstMention !== 'tellasker';
+  });
+}
+
+type DrivePolicyViolationKind = 'tellask' | 'tool' | 'tellask_and_tool';
+
+function resolveDrivePolicyViolationKind(args: {
+  policy: DrivePolicy;
+  tellaskCalls: ReadonlyArray<CollectedTellaskCall>;
+  functionCallCount: number;
+}): DrivePolicyViolationKind | null {
+  const tellaskViolation = hasTellaskPolicyViolation(args.policy, args.tellaskCalls);
+  const toolViolation = !args.policy.allowFunctionCalls && args.functionCallCount > 0;
+  if (tellaskViolation && toolViolation) {
+    return 'tellask_and_tool';
+  }
+  if (tellaskViolation) {
+    return 'tellask';
+  }
+  if (toolViolation) {
+    return 'tool';
+  }
+  return null;
+}
+
+function validateDrivePolicyInvariants(
+  policy: DrivePolicy,
+  language: LanguageCode,
+): { ok: true } | { ok: false; detail: string } {
+  if (policy.mode !== 'fbr_toolless') {
+    return { ok: true };
+  }
+
+  const expectedSystemPrompt = buildFbrSystemPrompt(language);
+  if (policy.effectiveSystemPrompt !== expectedSystemPrompt) {
+    return {
+      ok: false,
+      detail: 'FBR must use buildFbrSystemPrompt(language) exactly.',
+    };
+  }
+
+  if (policy.effectiveAgentTools.length > 0) {
+    return {
+      ok: false,
+      detail: 'FBR effectiveAgentTools must be empty.',
+    };
+  }
+
+  if (policy.allowFunctionCalls) {
+    return {
+      ok: false,
+      detail: 'FBR allowFunctionCalls must be false.',
+    };
+  }
+
+  if (policy.tellaskPolicy !== 'tellasker_only') {
+    return {
+      ok: false,
+      detail: 'FBR tellaskPolicy must be tellasker_only.',
+    };
+  }
+
+  const expectedNoToolsNotice = buildNoToolsNotice(language);
+  if (policy.prependedContextMessages.length !== 1) {
+    return {
+      ok: false,
+      detail: 'FBR must prepend exactly one no-tools notice message.',
+    };
+  }
+  const [notice] = policy.prependedContextMessages;
+  if (
+    !notice ||
+    notice.type !== 'environment_msg' ||
+    notice.role !== 'user' ||
+    notice.content !== expectedNoToolsNotice
+  ) {
+    return {
+      ok: false,
+      detail: 'FBR prepended notice must exactly match buildNoToolsNotice(language).',
+    };
+  }
+
+  return { ok: true };
+}
+
+function buildFbrSystemPrompt(language: LanguageCode): string {
   const prefix =
     language === 'zh'
       ? [
-          '# 扪心自问（FBR）支线对话：无工具模式',
+          '# 扪心自问（FBR）支线对话',
           '',
-          '- 你正在处理一次 `!?@self` 扪心自问（FBR）诉请。',
-          '- **本对话无任何工具**：禁止函数工具调用；禁止除 `!?@tellasker` 外的一切队友诉请。',
-          '- 仅当你需要澄清关键上下文时，允许使用 `!?@tellasker` 向诉请者回问；除此之外不要发起任何诉请。',
-          '- 你只能基于诉请正文（以及本支线对话自身的会话历史，如有）进行推理与总结；不要假设你能访问诉请者线程的对话历史。',
-          '- 若上下文不足，请在输出中列出缺失信息与原因；必要时可用 `!?@tellasker` 回问澄清。除 `!?@tellasker` 外不要发起任何诉请/工具调用。',
-          '',
-          '---',
-          '',
+          '- 你正在处理一次由 `!?@self` 发起的 FBR 支线对话。',
+          '- 诉请正文是主要任务上下文；不要假设能访问诉请者对话历史。',
+          '- 若使用可恢复的 `!tellaskSession` 形式，你可以使用本支线对话自身的 `tellaskSession` 历史作为显式上下文。',
+          '- 若诉请正文缺少关键上下文，请在输出中列出缺失信息与阻塞原因。',
+          '- 仅当必须澄清关键缺失上下文时，允许用 `!?@tellasker` 回问诉请者；除此之外不要发起任何诉请。',
         ].join('\n')
       : [
-          '# Tool-less @self FBR sideline dialog',
+          '# Fresh Boots Reasoning (FBR) sideline dialog',
           '',
-          '- This is a Fresh Boots Reasoning session created by `!?@self`.',
-          '- **No tools are available**: do not emit function tool calls; do not emit any tellasks except `!?@tellasker`.',
+          '- This is an FBR sideline dialog created by `!?@self`.',
+          '- The tellask body is the primary task context; do not assume access to tellasker dialog history.',
+          '- If this is the resumable `!tellaskSession` form, you may use this sideline dialog’s own tellaskSession history as explicit context.',
+          '- If the tellask body is missing critical context, list what is missing and why it blocks reasoning.',
           '- `!?@tellasker` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks.',
-          '- Use only the tellask body (and this sideline dialog’s own tellaskSession history, if any) as context. Do not assume access to the caller-thread dialog history.',
-          '- If the tellask body is missing critical context, list the missing info and why it blocks reasoning; if truly necessary you may ask back via `!?@tellasker` (and only that). Do not fetch via tools/other tellasks.',
-          '',
-          '---',
-          '',
         ].join('\n');
-
-  return `${prefix}${systemPrompt}`.trim();
+  return prefix.trim();
 }
 
 function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {

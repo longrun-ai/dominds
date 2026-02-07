@@ -321,11 +321,13 @@ async function buildCodexRequest(
     };
   }
 
+  const tools = funcTools.map(funcToolToCodex);
+
   return {
     model: agent.model,
     instructions,
     input,
-    tools: funcTools.map(funcToolToCodex),
+    tools,
     tool_choice: 'auto',
     parallel_tool_calls: parallelToolCalls,
     reasoning,

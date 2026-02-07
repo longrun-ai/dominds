@@ -164,8 +164,9 @@ flowchart TD
 - Uses `subdialog.supdialog` reference (no registry lookup)
 - No registration - supdialog relationship is inherent
 - Supdialog is always the direct parent in the hierarchy
-- `!?@tellasker` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask)
-  is identical to the subdialog's `agentId` (common for Fresh Boots Reasoning self-subdialogs).
+- `!?@tellasker` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask).
+- This matters especially when the supdialog’s `agentId` is identical to the subdialog’s `agentId` (common when a sideline
+  is created via `!?@self`), where an explicit `!?@<supdialogAgentId>` is easier to get wrong by accident.
 - The explicit `!?@<supdialogAgentId>` form is accepted as a semantic fallback for backwards compatibility, but is more
   error-prone in FBR/self-subdialog cases.
 
@@ -193,6 +194,7 @@ Result:
 - `!?@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
 - This is an **unambiguous** syntax for self-tellasks and helps avoid accidental `@teammate`→`@teammate` self-tellasks caused by
   echoing/quoting prior call headlines.
+- In Dominds, `!?@self` Tellasks are treated as FBR and are driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
 - **FBR itself should be common**, but the `!tellaskSession`-addressed variant should be rare. Prefer `!?@self` (TYPE C, transient)
   for most FBR usage. Use `!?@self !tellaskSession ...` only when you explicitly want a resumable, long-lived “fresh boots session”
   for a multi-step sub-problem.
@@ -269,14 +271,17 @@ Result (second call):
 
 **Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `!?@self`
 
-- `!?@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** with the same persona/config.
+- `!?@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** routed to the same agentId.
+- The sideline dialog created by `!?@self` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
 - Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
 
 **Behavior**:
 
 1. Current dialog **suspends**
 2. Create **NEW subdialog** with the specified agentId
-3. Drive the new subdialog (it is FULL-FLEDGED - can make supcalls, teammate Tellasks, function tool calls)
+3. Drive the new subdialog:
+   - For general Type C, the subdialog is full-fledged (supcalls, teammate Tellasks, tools per config).
+   - For `!?@self`, runtime applies the FBR tool-less policy (no tools; restricted Tellasks).
 4. Subdialog response flows back to parent
 5. Parent **resumes** with subdialog's response
 
@@ -284,7 +289,7 @@ Result (second call):
 
 - **No registry lookup** - always creates a new subdialog
 - **Not registered** - no persistence across Tellasks
-- The subdialog itself is fully capable (can make supcalls, teammate Tellasks, function tool calls)
+- The subdialog itself is fully capable **except** for `!?@self` FBR, which is tool-less and Tellask-restricted (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -1100,7 +1105,7 @@ sequenceDiagram
   Driver-->>Sub: resume subdialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`!?@agentId !tellaskSession tellaskSession`, or `!?@self !tellaskSession tellaskSession`)
+#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`!?@agentId !tellaskSession tellaskSession`; `!?@self !tellaskSession ...` is FBR tool-less)
 
 ```mermaid
 sequenceDiagram
@@ -1125,7 +1130,7 @@ sequenceDiagram
   end
 ```
 
-#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`!?@agentId`, or `!?@self`)
+#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`!?@agentId`; `!?@self` is FBR tool-less)
 
 ```mermaid
 sequenceDiagram

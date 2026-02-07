@@ -15,6 +15,12 @@ export type PromptdocContext = {
   shellSpecialistMemberIds: string[];
 };
 
+export function buildNoToolsNotice(language: LanguageCode): string {
+  return language === 'zh'
+    ? '无工具：不能调用任何工具，也不能访问 rtws / 文件 / 浏览器 / shell。'
+    : 'No tools: do not call any tools, and do not access the rtws, files, browser, or shell.';
+}
+
 export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
   const {
     language,
@@ -25,6 +31,10 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
   } = ctx;
   const title =
     language === 'zh' ? '### Shell 执行策略（重要）' : '### Shell Execution Policy (Important)';
+  const devopsScriptPolicy =
+    language === 'zh'
+      ? 'DevOps 场景：忌讳临时脚本。不要用临时脚本完成工作；如需工具脚本，请与队友和人类讨论并在 rtws 中正式设计/命名/规范化后使用。'
+      : 'DevOps context: ad-hoc temp scripts are a taboo. Do not rely on temp scripts; if a tool script is needed, align with teammates and the human and formalize it in the rtws before use.';
 
   const shellSpecialists =
     shellSpecialistMemberIds.length > 0
@@ -55,6 +65,8 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
             'When teammates ask you to run commands: restate the exact command and guardrails, then execute, and report back with a structured receipt: command/exit_code/stdout/stderr.',
             '',
             `Shell specialists in this team: ${shellSpecialists}`,
+            '',
+            devopsScriptPolicy,
           ].join('\n');
     return `${title}\n\n${body}`.trim();
   }
@@ -73,6 +85,8 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
             'Until it is fixed: do not claim you ran any command; ask a human to fix team.yaml or grant shell tools to the correct specialist member.',
             '',
             `Shell specialists in this team: ${shellSpecialists}`,
+            '',
+            devopsScriptPolicy,
           ].join('\n');
     return `${title}\n\n${body}`.trim();
   }
@@ -90,6 +104,8 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
             '- 风险评估与安全边界（risk & guardrails）',
             `可转交的 shell 专员队友：${shellSpecialists}`,
             '',
+            devopsScriptPolicy,
+            '',
             '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
             '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
           ].join('\n')
@@ -100,6 +116,8 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
             '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
             '- 风险评估与安全边界（risk & guardrails）',
             `可转交的 shell 专员队友：${shellSpecialists}`,
+            '',
+            devopsScriptPolicy,
             '',
             '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
             '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
@@ -116,6 +134,8 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
             '',
             `Shell specialist teammates: ${shellSpecialists}`,
             '',
+            devopsScriptPolicy,
+            '',
             'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
             'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
           ].join('\n')
@@ -127,6 +147,8 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
             '- Risk assessment and guardrails (risk & guardrails)',
             '',
             `Shell specialist teammates: ${shellSpecialists}`,
+            '',
+            devopsScriptPolicy,
             '',
             'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
             'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',

@@ -1112,13 +1112,13 @@ function getReadonlyShellSuggestionEn(failure: ReadonlyShellValidationFailure): 
     failure.reason === 'CHAIN_PARSE_UNSUPPORTED_OPERATOR' ||
     failure.reason === 'CHAIN_PARSE_EMPTY_SEGMENT'
   ) {
-    return 'Use only `|`, `&&`, `||` for chaining. Equivalent example: `node --version || true`.';
+    return 'Use only `|`, `&&`, `||` for chaining. Example: `ls || true`.';
   }
   if (
     failure.reason === 'CHAIN_PARSE_UNTERMINATED_QUOTE' ||
     failure.reason === 'CHAIN_PARSE_TRAILING_ESCAPE'
   ) {
-    return 'Fix shell quoting first, then run an allowlisted segment (for example: `node --version || true`).';
+    return 'Fix shell quoting first, then run an allowlisted segment (for example: `ls` or `rg <pattern>`).';
   }
   if (failure.reason === 'INVALID_CD_SYNTAX' || failure.reason === 'UNSAFE_RELATIVE_PATH') {
     return 'Use `cd <relative-path> && <allowed command...>`.';
@@ -1134,15 +1134,17 @@ function getReadonlyShellSuggestionEn(failure: ReadonlyShellValidationFailure): 
     return 'Reduce nested chaining depth (for example split into smaller `readonly_shell` calls).';
   }
 
-  if (token === 'node') return 'Use `node --version || true`.';
-  if (token === 'python3' || token === 'python') return 'Use `python3 --version || true`.';
-  if (token === 'false') return 'Use `true` as fallback (for example: `node --version || true`).';
+  if (token === 'node') return 'Only version probes are allowed: `node --version || true`.';
+  if (token === 'python3' || token === 'python') {
+    return 'Only version probes are allowed: `python3 --version || true`.';
+  }
+  if (token === 'false') return 'Use `true` as fallback (for example: `ls || true`).';
   if (token === 'git') {
     return 'Use `git <show|status|diff|log|blame> ...` or `git -C <relative-path> <show|status|diff|log|blame> ...`.';
   }
   if (token === 'cd') return 'Use `cd <relative-path> && <allowed command...>`.';
 
-  return 'Use an allowlisted read-only segment (for example: `ls`, `rg <pattern>`, or `node --version || true`).';
+  return 'Use an allowlisted read-only segment (for example: `ls`, `rg <pattern>`, or `git status`).';
 }
 
 function getReadonlyShellSuggestionZh(failure: ReadonlyShellValidationFailure): string {
@@ -1152,13 +1154,13 @@ function getReadonlyShellSuggestionZh(failure: ReadonlyShellValidationFailure): 
     failure.reason === 'CHAIN_PARSE_UNSUPPORTED_OPERATOR' ||
     failure.reason === 'CHAIN_PARSE_EMPTY_SEGMENT'
   ) {
-    return '仅使用 `|`、`&&`、`||` 串联；等价写法示例：`node --version || true`。';
+    return '仅使用 `|`、`&&`、`||` 串联；示例：`ls || true`。';
   }
   if (
     failure.reason === 'CHAIN_PARSE_UNTERMINATED_QUOTE' ||
     failure.reason === 'CHAIN_PARSE_TRAILING_ESCAPE'
   ) {
-    return '先修正引号/转义，再执行白名单子命令（例如：`node --version || true`）。';
+    return '先修正引号/转义，再执行白名单子命令（例如：`ls` 或 `rg <pattern>`）。';
   }
   if (failure.reason === 'INVALID_CD_SYNTAX' || failure.reason === 'UNSAFE_RELATIVE_PATH') {
     return '请使用 `cd <相对路径> && <允许命令...>`。';
@@ -1174,15 +1176,17 @@ function getReadonlyShellSuggestionZh(failure: ReadonlyShellValidationFailure): 
     return '请降低链式嵌套深度（可拆成多次 `readonly_shell` 调用）。';
   }
 
-  if (token === 'node') return '可改为 `node --version || true`。';
-  if (token === 'python3' || token === 'python') return '可改为 `python3 --version || true`。';
-  if (token === 'false') return '兜底请用 `true`（例如：`node --version || true`）。';
+  if (token === 'node') return '仅允许版本探针：`node --version || true`。';
+  if (token === 'python3' || token === 'python') {
+    return '仅允许版本探针：`python3 --version || true`。';
+  }
+  if (token === 'false') return '兜底请用 `true`（例如：`ls || true`）。';
   if (token === 'git') {
     return '可改为 `git <show|status|diff|log|blame> ...`，或 `git -C <相对路径> <show|status|diff|log|blame> ...`。';
   }
   if (token === 'cd') return '可改为 `cd <相对路径> && <允许命令...>`。';
 
-  return '请改用白名单只读子命令（例如：`ls`、`rg <pattern>`、`node --version || true`）。';
+  return '请改用白名单只读子命令（例如：`ls`、`rg <pattern>`、`git status`）。';
 }
 
 function normalizeRelFromRtwsRoot(relPath: string): string {
@@ -1359,10 +1363,10 @@ export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
   description:
-    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; exact version probes: node --version|-v, python3 --version|-V; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Command chains via |/&&/|| are validated segment-by-segment. Commands outside the allowlist are rejected.',
+    'Execute a read-only shell command from a small allowlist. Only exact version probes are allowed for node/python (no scripts such as `node -e` or `python3 -c`). Command chains via |/&&/|| are validated segment-by-segment. Commands outside the allowlist are rejected.',
   descriptionI18n: {
-    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; exact version probes: node --version|-v, python3 --version|-V; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Command chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
-    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、head、tail、stat、file、uname、whoami、id、echo、pwd、which、date、diff、realpath、readlink、printf、cut、sort、uniq、tr、awk、shasum、sha256sum、md5sum、uuid、git show、git status、git diff、git log、git blame、find、tree、jq、true；额外仅允许版本探针：node --version|-v、python3 --version|-V；另支持：git -C <相对路径> <show|status|diff|log|blame> ...；另支持：cd <相对路径> && <允许命令...>（或 ||））。通过 |/&&/|| 串联命令时会按子命令逐段校验。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
+    en: 'Execute a read-only shell command from a small allowlist. Only exact version probes are allowed for node/python (no scripts such as `node -e` or `python3 -c`). Command chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
+    zh: '执行只读 shell 命令，仅允许少量白名单命令前缀。对 node/python 仅允许版本探针（不允许 `node -e` / `python3 -c` 这类脚本）。通过 |/&&/|| 串联时会按子命令逐段校验。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
@@ -1387,8 +1391,8 @@ export const readonlyShellTool: FuncTool = {
           ? getReadonlyShellSuggestionZh(validation.failure)
           : getReadonlyShellSuggestionEn(validation.failure);
       return language === 'zh'
-        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
-        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`;
+        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
+        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`;
     }
 
     const forbiddenHiddenDir = detectReadonlyShellForbiddenHiddenDirAccess(

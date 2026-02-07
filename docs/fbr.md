@@ -1,217 +1,219 @@
-# Fresh Boots Reasoning (FBR) — Design Doc (Enhanced `@self`)
+# Fresh Boots Reasoning (FBR) — Mechanism Spec
 
 Chinese version: [中文版](./fbr.zh.md)
 
-## Summary
+> This is the **normative FBR spec**. For implementation notes, see: [`fbr-implementation.md`](./fbr-implementation.md).
 
-Fresh Boots Reasoning (FBR) is a common Dominds pattern: the agent tellasks itself (`!?@self`) to create a short-lived
-sideline dialog that reasons from first principles on a bounded sub-problem **without relying on existing dialog
-history**, then reports back to the caller.
+## 1. What it is
 
-This document specifies **enhancements** to the `@self`-initiated FBR flow:
+**Fresh Boots Reasoning (FBR)** is a Dominds mechanism for “reasoning again from a clean slate” on a bounded sub-problem,
+then reporting back to the mainline dialog.
 
-1. **Tool-less FBR sideline dialogs**: FBR sideline dialogs created by `!?@self` MUST NOT have any tools/toolsets.
-   Prompts MUST explicitly state that the tellaskee has **no tools** and can only reason from the tellask body.
-2. **Configurable FBR concurrency** via `.minds/team.yaml` `fbr-effort` (default `3`):
-   - `0` disables `!?@self` FBR for that teammate
-   - `1..100` spawns that many FBR sideline dialogs per `!?@self`
-   - `> 100` is a validation error
-3. **FBR-only model parameter overrides** via `.minds/team.yaml` `fbr_model_params`, with the same schema as
-   `model_params` / `model_param_options` (see `dominds/main/llm/defaults.yaml`).
+In Dominds, FBR is triggered via Tellask syntax. `@self` is only the entry-point syntax (“tellask the current dialog
+itself”); the mechanism is the runtime-enforced contract applied to the spawned sideline dialog(s).
 
-## Goals
+## 2. Design principles and tradeoffs
 
-- Make `!?@self` FBR safer and more predictable by removing tool access and requiring explicit context.
-- Enable “many-shot” reasoning by spawning multiple FBR sideline dialogs concurrently (`fbr-effort`).
-- Allow tuning model parameters specifically for FBR (e.g. higher `temperature`) without affecting the mainline dialog.
+### 2.1 Predictability first: FBR is tool-less
 
-## Non-goals
+FBR is meant to be “reasoning over text”, not “an agent run that explores the environment”. To keep it safe and
+predictable, FBR sideline dialogs must be:
 
-- Defining a brand-new user-facing syntax beyond existing `!?@self` / `!?@self !tellaskSession ...`.
-- Adding tools to FBR sideline dialogs (the entire point is that they are tool-less).
-- Changing teammate Tellask taxonomy in general (see [`dialog-system.md`](./dialog-system.md)); this doc scopes to `@self` only.
+- **tool-less by construction** (technically enforced; not “please don’t use tools”), and
+- **body-first** (the tellask body is the authoritative task context).
 
-## Definitions
+### 2.2 No silent failure
 
-- **FBR**: Fresh Boots Reasoning — reasoning from first principles without relying on existing dialog history.
-- **Tellask**: a structured request (`!?@...`) issued by a dialog to another dialog/teammate (including `@self`).
-- **tellasker / tellaskee**: requester / responder roles for a Tellask.
-- **Mainline dialog / sideline dialog**: user-facing terms for the primary thread and its temporary work threads.
-  (Implementation terms like `root/main/subdialog` may appear in code; avoid surfacing them in prompts/examples.)
+If FBR is disabled by configuration (e.g. `fbr-effort: 0`), the runtime MUST reject `!?@self` loudly and clearly. A
+silent ignore is worse than an error.
 
-## Runtime behavior: Tool-less `!?@self` FBR
+### 2.3 Many-shot reasoning, not “multi-agent collaboration”
 
-### Trigger: which Tellasks are “FBR”
+`fbr-effort` is for producing multiple _independent_ reasoning samples in parallel. The mainline dialog is responsible
+for synthesis; FBR sidelines do not coordinate with each other.
 
-The following Tellasks are considered `@self` FBR:
+## 3. User syntax (`@self` is just the entry point)
 
-- Default (transient): `!?@self`
-- Rare (resumable): `!?@self !tellaskSession <tellaskSession>` (the sideline dialog carries its prior `tellaskSession` history)
+### 3.1 Trigger forms
 
-This spec applies to both forms: **any `@self` FBR sideline dialog is tool-less**.
+Both forms below trigger FBR:
 
-### Isolation contract
+- **Default (transient)**: `!?@self`
+- **Rare (resumable)**: `!?@self !tellaskSession <tellaskSession>`
 
-When the runtime drives an FBR sideline dialog created by `!?@self`, it MUST enforce:
+Notes:
 
-- **No tools**:
-  - no function tools
-  - no MCP tools
-  - no teammate Tellasks (including `!?@human`); the only exception is `!?@tellasker` (a sideline-only ask-back to the upstream tellasker dialog), and only when you must clarify critical missing context
-- **No caller-thread context dependency**:
-  - the tellaskee MUST NOT assume access to the tellasker’s mainline/sideline dialog history
+- `@self` means “tellask the current dialog itself (same agentId)”. It is an explicit self-tellask marker to avoid
+  accidental self-calls caused by echoing/quoting `@teammate` headlines.
+- Resumability comes from `!tellaskSession`, not from `@self`.
+
+### 3.2 Scope
+
+This document specifies the FBR mechanism and its `!?@self` contract. General teammate Tellasks (`!?@<teammate>`) follow
+the taxonomy and capability model in [`dialog-system.md`](./dialog-system.md).
+
+If you want a “fresh” sideline dialog that still has tools, do not use `@self`. Use an explicit teammate identity that
+is granted the needed toolsets (or use the general `!?@<agentId>` mechanism intentionally).
+
+## 4. Runtime contract (normative)
+
+This section uses MUST / MUST NOT / SHOULD / MAY for requirements.
+
+### 4.1 Isolation and context
+
+When driving an FBR sideline dialog created by `!?@self`, runtime MUST enforce:
+
+- **No dependency on tellasker dialog history**
+  - the tellaskee MUST NOT assume access to the tellasker’s mainline/sideline history
   - the tellaskee MUST treat the tellask body as the primary, authoritative task context
-  - if using the resumable `!tellaskSession` form, the tellaskee MAY use its own prior `tellaskSession` history as explicit context
-  - the tellaskee MUST NOT use tools to read files, browse, run shell commands, or fetch Memory/rtws (runtime workspace) state
+  - for the resumable `!tellaskSession` form, the tellaskee MAY use the sideline’s _own_ `tellaskSession` history as
+    explicit context
+- **No tool-based context fetch**
+  - no reading files / running commands / browsing
+  - no accessing Memory or rtws (runtime workspace) state
 
-In practice, treat the tellaskee as “fresh relative to the caller thread”: it does not get the tellasker’s accumulated
-dialog history. It may still receive baseline, unconditionally injected context (persona/system policy, safety rules,
-formatting norms, read-only Memory excerpts, etc.), and the resumable `!tellaskSession` form includes its own prior
-session history.
+Intuition: “fresh boots” means “fresh relative to the caller thread”, not “ignores baseline system rules”. Runtime may
+still inject baseline policy/safety/formatting context, but the tellask body remains the authority (except when using
+the sideline’s own resumable history).
 
-### Prompting contract (system + tool prompts)
+### 4.2 Tool-less (prompt + technical enforcement)
 
-The runtime MUST make the tool-less constraint unambiguous in prompts.
+Tool-less FBR has two layers, both required:
 
-### API / transport contract (tool disablement)
+1. **Prompt contract**: the runtime must communicate the tool-less constraint unambiguously.
+2. **API/transport contract**: the runtime must make the request technically tool-less.
 
-The tool-less requirement is not just “prompt text”. The runtime MUST enforce it technically:
+#### 4.2.1 System prompt requirements (no tool instructions)
 
-- The LLM request for an `@self` FBR sideline dialog MUST be issued with **zero tools available**:
-  - do not include any tool/function definitions in the request payload (the effective tool list MUST be empty)
-  - do not enable any “tool calling” mode / tool choice / function calling feature supported by the provider
-- The runtime MUST reject any attempt by the model to emit a tool call in FBR, even if the provider SDK would otherwise
-  accept it.
+The FBR system prompt MUST communicate (wording may vary, meaning must hold):
 
-#### System prompt requirements (minimum)
+- this is an FBR sideline dialog; the tellask body is the primary context
+- do not assume access to tellasker dialog history
+- if critical context is missing, list what is missing and why it blocks reasoning
+- `!?@tellasker` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks
 
-The FBR sideline dialog’s system prompt MUST clearly state:
+And: the **system prompt body MUST NOT include tool instructions** (no tool lists, allowlists, example commands, “how to
+use tools”, etc.).
 
-- You have **no tools** and cannot call tools.
-- You have **no direct rtws (runtime workspace) / files / browser / shell** access (tool calling is disabled).
-- The tellask body is the **primary task context**; do not assume any caller-thread history is available.
-- If this is a resumable `!tellaskSession` FBR, you may use your own prior `tellaskSession` history as explicit context.
-- If the tellask body is missing critical context, respond by listing what is missing and why it blocks reasoning.
-- `!?@tellasker` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks.
+#### 4.2.2 Appended “no tools” notice (the only allowed tool-related text)
 
-#### Tool prompt requirements (when applicable)
+All tool-availability wording MUST be confined to a separately injected “no tools” notice, and that notice MUST be:
 
-If the provider integration normally injects a tool prompt (or tool schema), then for `@self` FBR it MUST either:
+- short, fixed, and non-extensible
+- explicit: no tools available; do not call tools
+- explicit: no access to rtws / files / browser / shell
+- free of any tool lists, allowlists, example commands, or execution guidance
 
-- omit the tool prompt entirely, OR
-- inject a tool prompt that explicitly states “no tools are available; tool calling is disabled”
+If a provider integration normally injects a tool prompt or schema, then for FBR it MUST either:
 
-There MUST NOT be any tool definitions visible to the FBR sideline dialog.
+- omit it entirely, OR
+- inject text that is identical to the appended “no tools” notice
 
-### Output contract
+Under no circumstances should the FBR sideline dialog see any tool definitions.
 
-The FBR sideline dialog should produce a compact reasoning artifact that is easy for the tellasker to integrate.
-Recommended structure (not rigidly required):
+#### 4.2.3 The LLM request MUST be “zero tools”
 
-1. **Answer / conclusion**
-2. **Reasoning** (grounded in the tellask body; plus `tellaskSession` history if using the resumable form)
-3. **Assumptions** (explicitly derived from the tellask body, unless clearly sourced from `tellaskSession` history)
-4. **Unknowns / missing context** (if any)
-5. **Next steps** (for the tellasker to take in the mainline dialog, where tools may exist)
+The LLM request for an `@self` FBR sideline dialog MUST have **zero tools available**:
 
-### Enforcement & error handling
+- the request payload must not include tool/function definitions (effective tool list must be empty)
+- provider tool-calling / function-calling modes must not be enabled
 
-- If the FBR sideline dialog attempts to emit a tool call, the runtime MUST treat it as a hard error for that sideline
-  run and return a clear error back to the tellasker (do not silently ignore).
-- The error should be loud and debuggable (e.g., an explicit “tool_call_not_allowed_in_fbr” reason string in logs/events).
+If the model attempts a tool/function call anyway, runtime MUST hard-reject it (see 4.5).
 
-## Configuration: `.minds/team.yaml` additions
+### 4.3 Tellask restriction: only `!?@tellasker`
 
-Both additions are **per-teammate** and MAY also be placed under `member_defaults` to set rtws-wide defaults.
+FBR sideline dialogs MUST NOT issue teammate Tellasks (including `!?@human`). The only exception is `!?@tellasker`:
 
-### `fbr-effort` (default: `3`)
+- sideline-only TellaskBack to the upstream tellasker dialog
+- allowed only when critical context must be clarified
+- intended for clarification, not delegation
 
-`fbr-effort` controls how many tool-less FBR sideline dialogs the runtime spawns for each `!?@self` Tellask.
+### 4.4 Output contract (easy to synthesize)
 
-Rules:
+An FBR sideline dialog should produce a compact artifact that is easy for the tellasker to integrate. Suggested shape:
+
+1. **Conclusion**
+2. **Reasoning** (grounded in the tellask body; plus resumable history when applicable)
+3. **Assumptions** (explicitly sourced: body vs session history)
+4. **Unknowns / missing context**
+5. **Next steps for mainline** (where tools/teammates may exist)
+
+### 4.5 Violations and errors (loud + debuggable)
+
+- Any disallowed tellask (non-`@tellasker`) or any tool/function call attempt inside FBR MUST be treated as a hard
+  violation.
+- The runtime MUST return a clear, user-visible error, and MUST log/emit a debuggable reason string (no silent swallow).
+
+## 5. Concurrency: `fbr-effort`
+
+`fbr-effort` is a per-member integer config (also allowed under `member_defaults` as rtws defaults):
 
 - Type: integer
-- Default: `3` (the Chinese saying: “三个臭皮匠，顶个诸葛亮”)
-- `0`: disable `!?@self` FBR for that teammate
-- `1..100`: spawn that many FBR sideline dialogs concurrently per `!?@self`
-- `> 100`: validation error (reject team config; do not clamp)
-- `< 0` or non-integer: validation error
+- Default: `3`
+- `0`: disable `!?@self` FBR for that member (runtime MUST reject `!?@self` clearly)
+- `1..100`: spawn N FBR sideline dialogs per `!?@self`
+- `> 100` / non-integer / negative: validation error (reject; no clamping)
 
-**Behavior when disabled (`fbr-effort: 0`)**:
+When `fbr-effort = N`:
 
-- The runtime MUST reject `!?@self` Tellasks for that teammate with a clear, user-visible error (so failures are not silent).
+- runtime expands a single `!?@self` into **N parallel tool-less FBR sideline dialogs**
+- each sideline receives the same tellask body and the same tool-less constraints
+- mainline receives all N responses; **ordering must not be relied on** (completion order is fine)
 
-### Concurrency semantics (`fbr-effort > 1`)
+For resumable `!?@self !tellaskSession <tellaskSession>` with `N > 1`, runtime MUST derive **distinct** session keys so
+parallel sidelines do not share history (recommended: `<tellaskSession>.fbr-<i>`).
 
-When `fbr-effort` is `N`:
+## 6. FBR-only model overrides: `fbr_model_params`
 
-- The runtime expands a single `!?@self` Tellask into **N parallel tool-less FBR sideline dialogs**.
-- Each sideline dialog receives the same tellask body (and the same tool-less system/tool prompts).
-- The runtime returns all N responses to the tellasker. **Do not rely on any particular ordering**:
-  - Responses may be injected/arrive in completion order (which is often effectively “mixed”).
-- For the resumable `!?@self !tellaskSession <tellaskSession>` form with `N > 1`, the runtime MUST derive **distinct**
-  session keys so each parallel sideline dialog has independent history (recommended scheme: `<tellaskSession>.fbr<i>`).
+`fbr_model_params` overrides model params **only when driving FBR sideline dialogs**:
 
-The intent is to allow the tellasker (mainline) to synthesize multiple independent reasoning traces into a better decision.
+- Schema: identical to `model_params` (documented by `model_param_options` in `dominds/main/llm/defaults.yaml`)
+- Scope: `!?@self` only
+- Merge: recommended deep-merge on top of the member’s effective `model_params`
+- `max_tokens` may be configured as top-level `max_tokens` or `general.max_tokens` (pick one; do not set both)
 
-### `fbr_model_params` (optional)
+## 7. Examples
 
-`fbr_model_params` provides model parameter overrides used **only when driving `@self` FBR sideline dialogs**.
+### 7.1 Tellask body should be self-contained
 
-- Schema: identical to `model_params` (and documented via `model_param_options` in `dominds/main/llm/defaults.yaml`)
-- Scope: applies only to `!?@self` FBR sideline dialogs
-- The teammate’s normal `model_params` continue to apply to non-FBR runs
-
-**Merge rule (recommended)**:
-
-- Compute the teammate’s effective `model_params` as usual (defaults + teammate overrides).
-- For `@self` FBR only, deep-merge `fbr_model_params` on top (so it can override just a few fields like `temperature`).
-- Provider-agnostic `max_tokens` may be configured either as `max_tokens` (top-level) or `general.max_tokens` (mirrors
-  `model_param_options` grouping). Do not set both.
-
-## Examples
-
-### Tool-less FBR: tellask body must include full context
-
-Bad (relies on external context and tools):
+Bad (depends on external context/tools):
 
 ```text
 !?@self
-Figure out what the bug is and fix it.
+Find the bug and fix it.
 ```
 
-Good (self-contained context):
+Good (puts the actual context into the body):
 
 ```text
 !?@self
-You are doing FBR with no tools. Use ONLY the text below.
+You are doing tool-less FBR. Use ONLY the text below.
 
-Goal: explain the likely root cause and propose 2–3 fixes.
+Goal: identify the most likely root cause and propose 2–3 viable fixes.
 
-Observed behavior:
+Observed:
 - Clicking “Run” sometimes freezes the UI for ~10s.
 
-Constraints:
+Constraint:
 - We cannot change the backend protocol.
 
-Relevant snippet:
-<paste the relevant log lines / code / stack trace here>
+Evidence:
+<paste relevant logs / code / stack trace here>
 ```
 
-### `.minds/team.yaml` configuration
+### 7.2 `.minds/team.yaml`
 
 ```yaml
 member_defaults:
-  # Spawn 3 tool-less FBR sideline dialogs per `!?@self` by default
-  # (the Chinese saying: “三个臭皮匠，顶个诸葛亮”).
+  # Spawn 3 tool-less FBR sideline dialogs per `!?@self` by default.
   fbr-effort: 3
 
 members:
   ux:
-    # Spawn 5 independent FBR sideline dialogs per `!?@self`.
+    # Spawn 5 independent reasoning samples per `!?@self`.
     fbr-effort: 5
 
-    # Make FBR “more exploratory” without affecting mainline behavior.
+    # Make FBR more exploratory without changing mainline behavior.
     fbr_model_params:
       codex:
         temperature: 0.9
@@ -220,17 +222,16 @@ members:
         max_tokens: 1200
 ```
 
-## Compatibility notes
+## 8. Relationship to general sideline dialogs
 
-- This spec intentionally makes `!?@self` behave differently from general transient sideline dialogs:
-  normal `!?@<teammate>` sideline dialogs remain fully capable (they can have tools/toolsets) as specified in
-  [`dialog-system.md`](./dialog-system.md).
-- If you need a tool-capable “fresh subdialog” for the same persona, use an explicit teammate identity that is granted
-  the needed toolsets, rather than `@self`.
+- `!?@self` is a special case: tool-less, body-first, tellask-restricted, optionally fanned out via `fbr-effort`.
+- General `!?@<teammate>` sidelines remain fully capable (tools/toolsets as configured).
+- If you need “same persona + tools” in a sideline, do not use `@self`; use an explicit teammate identity.
 
-## Acceptance criteria (implementation checklist)
+## 9. Acceptance checklist
 
-- `!?@self` creates tool-less sideline dialog(s) with explicit prompt text stating “no tools; body-only context”.
-- `fbr-effort` defaults to `3`, accepts `0..100`, rejects `>100` and non-integers.
-- `fbr-effort: 0` causes `!?@self` to fail loudly with a clear error.
-- `fbr_model_params` is applied only to `@self` FBR sideline dialogs and follows the same schema as `model_params`.
+- `!?@self` triggers tool-less FBR; the LLM request is technically “zero tools”.
+- The system prompt body contains no tool instructions; tool-related wording comes only from the separate fixed notice.
+- FBR sidelines cannot issue teammate Tellasks; only `!?@tellasker` is allowed when necessary.
+- `fbr-effort` defaults to `3`, accepts `0..100`, rejects invalid values, and fails loudly when disabled.
+- `fbr_model_params` applies only to FBR and follows the same schema/merge intent as `model_params`.

@@ -45,12 +45,13 @@ export function buildToolsetManualTools(options: {
 
 export function formatToolsetManualIntro(language: LanguageCode, toolNames: string[]): string {
   const names = toolNames.map((name) => `\`${name}\``).join(', ');
+  const calls = toolNames.map((name) => `\`${name}({})\``).join(', ');
   if (toolNames.length === 0) {
     return language === 'zh' ? '（无可用 toolset 手册）' : '(no toolset manuals available)';
   }
   return language === 'zh'
-    ? `可用手册工具：${names}\n调用方式：\`man_<toolset_id>({})\``
-    : `Available manuals: ${names}\nUsage: \`man_<toolset_id>({})\``;
+    ? `手册：${names}（调用：${calls}）`
+    : `Manuals: ${names} (call: ${calls})`;
 }
 
 function buildToolsetManualTool(toolsetName: string, toolName: string): FuncTool {

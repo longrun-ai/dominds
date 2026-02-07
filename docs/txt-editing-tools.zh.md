@@ -57,8 +57,8 @@ updated: 2026-01-24
 
 ### 3.2 机制（当前实现）
 
-- `ToolsetMeta` 支持 toolset 级 prompt（`I18nText`，目前 `en|zh`），在 system prompt 构建时注入到 tool 列表之前（按成员实际启用的 toolsets）。
-- 当前实现使用 `promptFilesI18n`：把综合指南放到 markdown 文件中，并在构建 system prompt 时**按需读取**（no cache）。
+- `ToolsetMeta` 支持 toolset 级 prompt（`I18nText`，目前 `en|zh`），用于 **man\_<toolset> 手册** 的按需读取（不自动注入 system prompt）。
+- 当前实现使用 `promptFilesI18n`：把综合指南放到 markdown 文件中，**仅在调用 man\_<toolset> 时读取**（no cache）。
   - `ws_mod`：
     - `dominds/main/tools/prompts/ws_mod.zh.md`
     - `dominds/main/tools/prompts/ws_mod.en.md`
