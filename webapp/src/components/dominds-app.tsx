@@ -449,6 +449,12 @@ export class DomindsApp extends HTMLElement {
     this.diligencePushRemaining = state.remaining;
   }
 
+  private isDiligenceApplicableToCurrentDialog(): boolean {
+    const current = this.currentDialog;
+    if (!current) return true;
+    return current.selfId === current.rootId;
+  }
+
   private normalizeDiligenceMax(value: unknown): number | null {
     if (typeof value !== 'number' || !Number.isFinite(value)) return null;
     return Math.max(0, Math.floor(value));
@@ -478,6 +484,10 @@ export class DomindsApp extends HTMLElement {
   }
 
   private getDiligenceBudgetBadgeText(): { text: string; hasRemaining: boolean } {
+    if (!this.isDiligenceApplicableToCurrentDialog()) {
+      return { text: '—', hasRemaining: false };
+    }
+
     const configuredMax =
       typeof this.diligencePushConfiguredMax === 'number' &&
       Number.isFinite(this.diligencePushConfiguredMax)
@@ -493,6 +503,24 @@ export class DomindsApp extends HTMLElement {
 
     if (remaining === null) return { text: `— / ${String(total)}`, hasRemaining: false };
     return { text: `${String(remaining)} / ${String(total)}`, hasRemaining: remaining > 0 };
+  }
+
+  private playDiligenceNotApplicableShake(): void {
+    const sr = this.shadowRoot;
+    if (!sr) return;
+    const badge = sr.querySelector(
+      'button.bp-tab[data-bp-tab="diligence"] .bp-badge',
+    ) as HTMLElement | null;
+    if (!badge) return;
+    const hadPulse = badge.classList.contains('pulse');
+    if (hadPulse) badge.classList.remove('pulse');
+    badge.classList.remove('shake');
+    void badge.offsetWidth;
+    badge.classList.add('shake');
+    window.setTimeout(() => {
+      badge.classList.remove('shake');
+      if (hadPulse) badge.classList.add('pulse');
+    }, 380);
   }
 
   private updateBottomPanelFooterUi(): void {
@@ -518,7 +546,11 @@ export class DomindsApp extends HTMLElement {
     if (!diligenceTab) return;
 
     const checkbox = diligenceTab.querySelector('#diligence-toggle') as HTMLInputElement | null;
-    if (checkbox) checkbox.checked = !this.disableDiligencePush;
+    if (checkbox) {
+      const applicable = this.isDiligenceApplicableToCurrentDialog();
+      checkbox.checked = applicable ? !this.disableDiligencePush : false;
+      checkbox.disabled = !applicable;
+    }
 
     const badges = diligenceTab.querySelectorAll('.bp-badge');
     const badge = badges.length > 0 ? (badges[badges.length - 1] as HTMLElement) : null;
@@ -2762,6 +2794,10 @@ export class DomindsApp extends HTMLElement {
 	        animation: bpBadgePulse 220ms ease-out;
 	      }
 
+	      .bp-badge.shake {
+	        animation: bpBadgeShake 340ms ease-in-out;
+	      }
+
 	      @keyframes bpBadgePulse {
 	        0% { transform: scale(1); }
 	        40% { transform: scale(1.12); }
@@ -2784,6 +2820,11 @@ export class DomindsApp extends HTMLElement {
 	        animation: bpBadgePulseStrong 420ms ease-out;
 	      }
 
+	      button.bp-tab[data-bp-tab='diligence'] .bp-badge.shake,
+	      button.bp-tab[data-bp-tab='diligence'] .bp-badge.pulse.shake {
+	        animation: bpBadgeShake 340ms ease-in-out;
+	      }
+
 	      @keyframes bpBadgePulseStrong {
 	        0% {
 	          transform: scale(1);
@@ -2800,6 +2841,16 @@ export class DomindsApp extends HTMLElement {
 	          box-shadow: 0 0 0 0 rgba(0, 122, 204, 0);
 	          filter: none;
 	        }
+	      }
+
+	      @keyframes bpBadgeShake {
+	        0% { transform: translateX(0); }
+	        15% { transform: translateX(-3px) rotate(-1deg); }
+	        30% { transform: translateX(3px) rotate(1deg); }
+	        45% { transform: translateX(-2px) rotate(-0.8deg); }
+	        60% { transform: translateX(2px) rotate(0.8deg); }
+	        75% { transform: translateX(-1px) rotate(-0.5deg); }
+	        100% { transform: translateX(0) rotate(0); }
 	      }
 
 	      button.bp-tab[data-bp-tab='q4h'] .bp-badge[data-has-questions='true'] {
@@ -3792,13 +3843,14 @@ export class DomindsApp extends HTMLElement {
 	                    <span class="bp-badge" data-has-questions="${this.q4hQuestionCount > 0 ? 'true' : 'false'}">${String(this.q4hQuestionCount)}</span>
 	                    <span class="bp-label" data-bp-label="q4h">${t.q4hPendingQuestions}</span>
 	                  </button>
-			                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
+	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
 	                    <input
 	                      id="diligence-toggle"
 	                      class="bp-checkbox"
 	                      type="checkbox"
 	                      aria-label="${t.keepGoingToggleAriaLabel}"
-	                      ${this.disableDiligencePush ? '' : 'checked'}
+	                      ${this.isDiligenceApplicableToCurrentDialog() ? (this.disableDiligencePush ? '' : 'checked') : ''}
+	                      ${this.isDiligenceApplicableToCurrentDialog() ? '' : 'disabled'}
 	                    />
 	                    <span class="bp-label" data-bp-label="diligence">${t.keepGoingTabTitle}</span>
 		                    <span class="bp-badge" data-has-remaining="${this.getDiligenceBudgetBadgeText().hasRemaining ? 'true' : 'false'}">${this.getDiligenceBudgetBadgeText().text}</span>
@@ -4667,6 +4719,10 @@ export class DomindsApp extends HTMLElement {
           e.preventDefault();
           e.stopPropagation();
           if (!this.currentDialog) return;
+          if (!this.isDiligenceApplicableToCurrentDialog()) {
+            this.playDiligenceNotApplicableShake();
+            return;
+          }
           this.wsManager.sendRaw({
             type: 'refill_diligence_push_budget',
             dialog: {
@@ -4762,6 +4818,9 @@ export class DomindsApp extends HTMLElement {
     if (!this.currentDialog) {
       const t = getUiStrings(this.uiLanguage);
       this.showToast(t.noActiveDialogToast, 'warning');
+      return;
+    }
+    if (!this.isDiligenceApplicableToCurrentDialog()) {
       return;
     }
     const next = !this.disableDiligencePush;
