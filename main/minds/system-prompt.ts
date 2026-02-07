@@ -36,6 +36,7 @@ export function formatTeamIntro(team: Team, selfAgentId: string, language: Langu
 
 export type BuildSystemPromptInput = {
   language: LanguageCode;
+  dialogScope: 'mainline' | 'sideline';
   agent: Team.Member;
   persona: string;
   knowledge: string;
@@ -49,6 +50,15 @@ export type BuildSystemPromptInput = {
 };
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
+  const fbrScopeRuleZh =
+    input.dialogScope === 'mainline'
+      ? '- 每次扪心自问（FBR）之前，务必先基于当前可观测事实调用 \\`change_mind\\` 更新差遣牒，体现任务最新进展情况。\\`!?@self\\` 自诉请正文不要冗余包含差遣牒已有信息。'
+      : '- 每次扪心自问（FBR）之前，务必先基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 \\`!?@self\\` 自诉请正文中。';
+  const fbrScopeRuleEn =
+    input.dialogScope === 'mainline'
+      ? '- Before every FBR, first call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest task progress, do not redundantly include information already present in the Taskdoc in the \\`!?@self\\` tellask body.'
+      : '- Before every FBR, first analyze whether currently observable facts differ from the Taskdoc, and include the findings in the \\`!?@self\\` tellask body.';
+
   if (input.language === 'zh') {
     return `
 # Agent 系统提示
@@ -119,6 +129,7 @@ ${input.policyText}
 
 ## FBR 使用准则
 
+${fbrScopeRuleZh}
 - 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须用 \`!?@self\` 发起。
 - 即使用户未明确要求，在诉诸 @human（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况，作为 FBR 正文，寻求初心判断，找出短期最优自主行动决策。
 - 鼓励 FBR 自我建议立即获取哪些未明事实，得到建议利用当前对话工具获取，再补足上下文迭代 FBR 直到获得清晰的下一步行动思路。
@@ -212,6 +223,7 @@ ${input.policyText}
 
 ## FBR Usage Guidelines
 
+${fbrScopeRuleEn}
 - When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must initiate \`!?@self\`.
 - Even without an explicit request, before resorting to @human (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR: summarize the current dialog’s facts as the FBR body, seek a fresh-boots judgment, and derive the short-term best autonomous next action.
 - Encourage FBR to recommend which missing facts to obtain immediately; then use the current dialog’s tools to fetch them, update context, and iterate FBR until a clear next action emerges.

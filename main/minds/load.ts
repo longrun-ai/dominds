@@ -304,6 +304,7 @@ export async function loadAgentMinds(
 
   const systemPrompt = buildSystemPrompt({
     language: workingLanguage,
+    dialogScope: isSubdialog ? 'sideline' : 'mainline',
     agent,
     persona,
     knowledge,
