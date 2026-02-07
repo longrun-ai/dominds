@@ -79,6 +79,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 被诉请者（tellaskee）：接收诉请的对话主理人/队友。
 - 回问诉请（TellaskBack）：支线对话用 \`!?@tellasker\` 回问诉请者以澄清。
 - 扪心自问（FBR）：仅由 \`!?@self\` 触发的“无工具”支线推理机制。
+- Q4H（Question for Human）：通过 \`!?@human\` 向人类请求必要的澄清/决策/授权/缺失输入。
 - 长线诉请（Tellask Session）：使用 \`!tellaskSession <slug>\` 的可恢复多轮协作。
 - 一次性诉请（Fresh Tellask）：一次性、不可恢复的诉请。
 - 主线对话（Mainline dialog）：承载共享差遣牒并负责整体推进的对话。
@@ -171,6 +172,7 @@ System notifications convey important state changes (e.g., context caution/criti
 - tellaskee: the Dialog Responder/agent that receives the Tellask.
 - TellaskBack: a sideline uses \`!?@tellasker\` to ask the tellasker for clarification.
 - Fresh Boots Reasoning (FBR): a tool-less sideline reasoning mechanism triggered only by \`!?@self\`.
+- Q4H (Question for Human): use \`!?@human\` to request necessary clarification/decision/authorization/missing input from a human.
 - Tellask Session: resumable multi-turn work using \`!tellaskSession <slug>\`.
 - Fresh Tellask: a one-shot, non-resumable Tellask.
 - Mainline dialog: the dialog that owns the shared Taskdoc and overall progress.
