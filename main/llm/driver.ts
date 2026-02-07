@@ -1968,15 +1968,7 @@ async function _driveDialogStream(
             return { lastAssistantSayingContent, interrupted: false };
           }
 
-          let assistantValidCallCount = 0;
           if (collectedAssistantCalls.length > 0) {
-            assistantValidCallCount = collectedAssistantCalls.filter(
-              (
-                call,
-              ): call is CollectedTellaskCall & {
-                validation: { kind: 'valid'; firstMention: string };
-              } => call.validation.kind === 'valid',
-            ).length;
             throwIfAborted(abortSignal, dlg.id);
             const assistantResult = await executeTellaskCalls(dlg, agent, collectedAssistantCalls);
             if (dlg.hasUpNext()) {
@@ -2171,12 +2163,10 @@ async function _driveDialogStream(
             break;
           }
 
-          // Continue only when the assistant actually emitted executable calls this round.
-          // Do not auto-continue on malformed tellask diagnostics alone.
+          // Continue only when this round executed function tools.
+          // Tellask-only rounds must stop and wait for sideline/backfill feedback.
           const shouldContinue =
-            funcCalls.length > 0 ||
-            assistantValidCallCount > 0 ||
-            (funcResults.length > 0 && funcCalls.length === 0);
+            funcCalls.length > 0 || (funcResults.length > 0 && funcCalls.length === 0);
           if (!shouldContinue) {
             // Diligence Push (root dialog only): prevent ALL stopping except legitimate suspension.
             // If disabled (empty diligence file) or budget exhausted, we suspend via Q4H.
@@ -2680,10 +2670,9 @@ async function _driveDialogStream(
             break;
           }
 
-          // Continue only when this round had executable calls.
-          // Invalid/malformed tellask diagnostics should not trigger implicit extra generations.
-          const shouldContinue =
-            validCalls.length > 0 || streamedFuncCalls.length > 0 || funcResults.length > 0;
+          // Continue only when this round executed function tools.
+          // Tellask-only rounds must stop and wait for sideline/backfill feedback.
+          const shouldContinue = streamedFuncCalls.length > 0 || funcResults.length > 0;
           if (!shouldContinue) {
             // Diligence Push (root dialog only): prevent ALL stopping except legitimate suspension.
             if (dlg instanceof RootDialog) {
