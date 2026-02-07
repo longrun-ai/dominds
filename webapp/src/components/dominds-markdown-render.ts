@@ -109,7 +109,7 @@ const domPurifyConfig: DomPurifyConfig = {
     allowCustomizedBuiltInElements: false,
   },
   ADD_TAGS: [...allowedCustomElements],
-  ADD_ATTR: [...allowedCustomElementAttrs, 'id'],
+  ADD_ATTR: [...allowedCustomElementAttrs, 'id', 'target', 'rel'],
 };
 
 const md = new MarkdownIt({
@@ -142,6 +142,27 @@ md.core.ruler.push('dominds_heading_ids', (state) => {
 });
 
 installDomindsMathBlockRule(md);
+
+md.renderer.rules.link_open = (tokens, idx, options, _env, self): string => {
+  const token = tokens[idx];
+  const href = token.attrGet('href');
+  if (typeof href === 'string' && /^https?:\/\//i.test(href.trim())) {
+    token.attrSet('target', '_blank');
+    const relValue = token.attrGet('rel');
+    const relTokens = new Set(
+      typeof relValue === 'string'
+        ? relValue
+            .split(/\s+/)
+            .map((part) => part.trim())
+            .filter((part) => part.length > 0)
+        : [],
+    );
+    relTokens.add('noopener');
+    relTokens.add('noreferrer');
+    token.attrSet('rel', Array.from(relTokens).join(' '));
+  }
+  return self.renderToken(tokens, idx, options);
+};
 
 md.renderer.rules.fence = (tokens, idx): string => {
   const token = tokens[idx];
