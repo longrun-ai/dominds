@@ -4130,6 +4130,14 @@ async function executeTellaskCall(
       return { toolOutputs, suspend: true, subdialogsCreated: [] };
     } catch (q4hErr: unknown) {
       const errMsg = q4hErr instanceof Error ? q4hErr.message : String(q4hErr);
+      const streamErr = `Q4H register invariant violation: dialog=${dlg.id.selfId} callId=${callId.trim()} reason=${errMsg}`;
+      try {
+        await dlg.streamError(streamErr);
+      } catch (streamErrPost) {
+        log.warn('Q4H: failed to emit stream_error_evt', streamErrPost, {
+          dialogId: dlg.id.selfId,
+        });
+      }
       log.error('Q4H: Failed to register question', q4hErr, {
         dialogId: dlg.id.selfId,
         tellaskHead: tellaskHead.substring(0, 100),

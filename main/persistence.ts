@@ -2911,7 +2911,37 @@ export class DialogPersistence {
     question: HumanQuestion,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    await this.mutateQuestions4HumanState(dialogId, () => ({ kind: 'append', question }), status);
+    const questionId = question.id;
+    const normalizedCallId =
+      typeof question.callId === 'string' && question.callId.trim() !== ''
+        ? question.callId.trim()
+        : null;
+
+    await this.mutateQuestions4HumanState(
+      dialogId,
+      (previousQuestions) => {
+        const byId = previousQuestions.find((q) => q.id === questionId);
+        if (byId) {
+          throw new Error(
+            `Q4H duplicate question id violation: dialog=${dialogId.valueOf()} status=${status} questionId=${questionId} existingAskedAt=${byId.askedAt} incomingAskedAt=${question.askedAt}`,
+          );
+        }
+
+        if (normalizedCallId) {
+          const byCallId = previousQuestions.find((q) => {
+            return typeof q.callId === 'string' && q.callId.trim() === normalizedCallId;
+          });
+          if (byCallId) {
+            throw new Error(
+              `Q4H duplicate call id violation: dialog=${dialogId.valueOf()} status=${status} callId=${normalizedCallId} existingQuestionId=${byCallId.id} incomingQuestionId=${questionId} existingAskedAt=${byCallId.askedAt} incomingAskedAt=${question.askedAt}`,
+            );
+          }
+        }
+
+        return { kind: 'append', question };
+      },
+      status,
+    );
   }
 
   static async removeQuestion4HumanState(
@@ -3081,6 +3111,7 @@ export class DialogPersistence {
         tellaskHead: string;
         bodyContent: string;
         askedAt: string;
+        callId?: string;
         callSiteRef: { course: number; messageIndex: number };
       }> = [];
 
