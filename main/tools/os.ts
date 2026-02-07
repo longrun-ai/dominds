@@ -418,7 +418,7 @@ const readonlyShellSchema: JsonSchema = {
     command: {
       type: 'string',
       description:
-        'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq; also allows: git -C <relative-path> <show|status|diff|log|blame> ...; also allows: cd <relative-path> && <allowed command...> (or ||))',
+        'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; exact version probes: node --version|-v, python3 --version|-V; also allows: git -C <relative-path> <show|status|diff|log|blame> ...; also allows: cd <relative-path> && <allowed command...> (or ||); command chains via |/&&/|| are validated segment-by-segment)',
     },
     timeout_ms: {
       type: 'number',
@@ -761,25 +761,104 @@ const readonlyShellAllowedPrefixes = [
   'find',
   'tree',
   'jq',
+  'true',
 ] as const;
 
-function isAllowedReadonlyShellCommand(command: string): boolean {
-  const trimmed = command.trimStart();
-  return isAllowedReadonlyShellCommandInternal(trimmed, 0);
+function isAllowedReadonlyShellVersionProbe(command: string): boolean {
+  const tokens = splitShellTokens(command);
+  if (tokens.length !== 2) return false;
+
+  const cmd = tokens[0]?.text ?? '';
+  const flag = tokens[1]?.text ?? '';
+
+  if (cmd === 'node') return flag === '--version' || flag === '-v';
+  if (cmd === 'python3') return flag === '--version' || flag === '-V';
+  return false;
 }
 
-function isAllowedReadonlyShellCommandInternal(command: string, depth: number): boolean {
-  if (depth > 8) return false;
+type ReadonlyShellValidationFailureReason =
+  | 'MAX_DEPTH'
+  | 'INVALID_CD_SYNTAX'
+  | 'UNSAFE_RELATIVE_PATH'
+  | 'CHAIN_PARSE_EMPTY_SEGMENT'
+  | 'CHAIN_PARSE_UNSUPPORTED_OPERATOR'
+  | 'CHAIN_PARSE_UNTERMINATED_QUOTE'
+  | 'CHAIN_PARSE_TRAILING_ESCAPE'
+  | 'GIT_C_INVALID'
+  | 'GIT_C_UNSAFE_PATH'
+  | 'GIT_C_UNSUPPORTED_SUBCOMMAND'
+  | 'COMMAND_NOT_ALLOWLISTED';
+
+type ReadonlyShellValidationFailure = Readonly<{
+  reason: ReadonlyShellValidationFailureReason;
+  rejectedSegment: string;
+}>;
+
+type ReadonlyShellValidationResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{ ok: false; failure: ReadonlyShellValidationFailure }>;
+
+type ReadonlyShellChainParseResult =
+  | Readonly<{ ok: true; segments: string[] }>
+  | Readonly<{ ok: false; reason: ReadonlyShellValidationFailureReason; rejectedSegment: string }>;
+
+function validateReadonlyShellCommand(command: string): ReadonlyShellValidationResult {
+  return validateReadonlyShellCommandInternal(command.trimStart(), 0);
+}
+
+function validateReadonlyShellCommandInternal(
+  command: string,
+  depth: number,
+): ReadonlyShellValidationResult {
+  if (depth > 8) {
+    return {
+      ok: false,
+      failure: {
+        reason: 'MAX_DEPTH',
+        rejectedSegment: command.trim() === '' ? command : command.trim(),
+      },
+    };
+  }
   const trimmed = command.trimStart();
 
   if (trimmed.startsWith('cd ')) {
     const parsed = parseCdChain(trimmed);
-    if (!parsed) return false;
+    if (!parsed) {
+      return { ok: false, failure: { reason: 'INVALID_CD_SYNTAX', rejectedSegment: trimmed } };
+    }
 
     const dir = parsed.dir.replace(/^["']|["']$/g, '');
-    if (!isSafeRelativePath(dir)) return false;
+    if (!isSafeRelativePath(dir)) {
+      return {
+        ok: false,
+        failure: {
+          reason: 'UNSAFE_RELATIVE_PATH',
+          rejectedSegment: `cd ${parsed.dir}`,
+        },
+      };
+    }
 
-    return isAllowedReadonlyShellCommandInternal(parsed.rest, depth + 1);
+    return validateReadonlyShellCommandInternal(parsed.rest, depth + 1);
+  }
+
+  const chainParsed = splitTopLevelReadonlyShellChain(trimmed);
+  if (!chainParsed.ok) {
+    return {
+      ok: false,
+      failure: {
+        reason: chainParsed.reason,
+        rejectedSegment: chainParsed.rejectedSegment,
+      },
+    };
+  }
+  if (chainParsed.segments.length > 1) {
+    for (const segment of chainParsed.segments) {
+      const segmentValidation = validateReadonlyShellCommandInternal(segment, depth + 1);
+      if (!segmentValidation.ok) {
+        return segmentValidation;
+      }
+    }
+    return { ok: true };
   }
 
   if (trimmed.startsWith('git -C ')) {
@@ -793,26 +872,144 @@ function isAllowedReadonlyShellCommandInternal(command: string, depth: number): 
       const dir = dirRaw.replace(/^["']|["']$/g, '');
       const subcommand = tokens[3] ?? '';
 
-      if (isSafeRelativePath(dir)) {
-        if (
-          subcommand === 'show' ||
-          subcommand === 'status' ||
-          subcommand === 'diff' ||
-          subcommand === 'log' ||
-          subcommand === 'blame'
-        ) {
-          return true;
-        }
+      if (!isSafeRelativePath(dir)) {
+        return { ok: false, failure: { reason: 'GIT_C_UNSAFE_PATH', rejectedSegment: trimmed } };
       }
+
+      if (
+        subcommand === 'show' ||
+        subcommand === 'status' ||
+        subcommand === 'diff' ||
+        subcommand === 'log' ||
+        subcommand === 'blame'
+      ) {
+        return { ok: true };
+      }
+
+      return {
+        ok: false,
+        failure: { reason: 'GIT_C_UNSUPPORTED_SUBCOMMAND', rejectedSegment: trimmed },
+      };
     }
+
+    return { ok: false, failure: { reason: 'GIT_C_INVALID', rejectedSegment: trimmed } };
+  }
+
+  if (isAllowedReadonlyShellVersionProbe(trimmed)) {
+    return { ok: true };
   }
 
   for (const prefix of readonlyShellAllowedPrefixes) {
     if (trimmed === prefix || trimmed.startsWith(`${prefix} `)) {
-      return true;
+      return { ok: true };
     }
   }
-  return false;
+
+  return { ok: false, failure: { reason: 'COMMAND_NOT_ALLOWLISTED', rejectedSegment: trimmed } };
+}
+
+function splitTopLevelReadonlyShellChain(command: string): ReadonlyShellChainParseResult {
+  const segments: string[] = [];
+  let quote: "'" | '"' | null = null;
+  let escape = false;
+  let segmentStart = 0;
+
+  const pushSegment = (endExclusive: number): boolean => {
+    const segment = command.slice(segmentStart, endExclusive).trim();
+    if (segment === '') return false;
+    segments.push(segment);
+    return true;
+  };
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i] ?? '';
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else if (ch === '\\' && quote === '"') {
+        escape = true;
+      }
+      continue;
+    }
+
+    if (ch === '\\') {
+      escape = true;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+
+    const next = command[i + 1] ?? '';
+    if ((ch === '&' && next === '&') || (ch === '|' && next === '|')) {
+      if (!pushSegment(i)) {
+        return {
+          ok: false,
+          reason: 'CHAIN_PARSE_EMPTY_SEGMENT',
+          rejectedSegment: command.trim(),
+        };
+      }
+      i += 1;
+      segmentStart = i + 1;
+      continue;
+    }
+    if (ch === '|') {
+      if (!pushSegment(i)) {
+        return {
+          ok: false,
+          reason: 'CHAIN_PARSE_EMPTY_SEGMENT',
+          rejectedSegment: command.trim(),
+        };
+      }
+      segmentStart = i + 1;
+      continue;
+    }
+    if (ch === ';') {
+      return {
+        ok: false,
+        reason: 'CHAIN_PARSE_UNSUPPORTED_OPERATOR',
+        rejectedSegment: command.slice(segmentStart).trim() || command.trim(),
+      };
+    }
+    if (ch === '&') {
+      return {
+        ok: false,
+        reason: 'CHAIN_PARSE_UNSUPPORTED_OPERATOR',
+        rejectedSegment: command.slice(segmentStart).trim() || command.trim(),
+      };
+    }
+  }
+
+  if (quote) {
+    return {
+      ok: false,
+      reason: 'CHAIN_PARSE_UNTERMINATED_QUOTE',
+      rejectedSegment: command.trim(),
+    };
+  }
+  if (escape) {
+    return {
+      ok: false,
+      reason: 'CHAIN_PARSE_TRAILING_ESCAPE',
+      rejectedSegment: command.trim(),
+    };
+  }
+  if (!pushSegment(command.length)) {
+    return {
+      ok: false,
+      reason: 'CHAIN_PARSE_EMPTY_SEGMENT',
+      rejectedSegment: command.trim(),
+    };
+  }
+  return { ok: true, segments };
 }
 
 function isSafeRelativePath(dir: string): boolean {
@@ -901,6 +1098,91 @@ function splitShellTokens(command: string): ShellToken[] {
 
   push();
   return out;
+}
+
+function firstReadonlyShellToken(segment: string): string {
+  const tokens = splitShellTokens(segment.trim());
+  return tokens[0]?.text ?? '';
+}
+
+function getReadonlyShellSuggestionEn(failure: ReadonlyShellValidationFailure): string {
+  const token = firstReadonlyShellToken(failure.rejectedSegment);
+
+  if (
+    failure.reason === 'CHAIN_PARSE_UNSUPPORTED_OPERATOR' ||
+    failure.reason === 'CHAIN_PARSE_EMPTY_SEGMENT'
+  ) {
+    return 'Use only `|`, `&&`, `||` for chaining. Equivalent example: `node --version || true`.';
+  }
+  if (
+    failure.reason === 'CHAIN_PARSE_UNTERMINATED_QUOTE' ||
+    failure.reason === 'CHAIN_PARSE_TRAILING_ESCAPE'
+  ) {
+    return 'Fix shell quoting first, then run an allowlisted segment (for example: `node --version || true`).';
+  }
+  if (failure.reason === 'INVALID_CD_SYNTAX' || failure.reason === 'UNSAFE_RELATIVE_PATH') {
+    return 'Use `cd <relative-path> && <allowed command...>`.';
+  }
+  if (
+    failure.reason === 'GIT_C_INVALID' ||
+    failure.reason === 'GIT_C_UNSAFE_PATH' ||
+    failure.reason === 'GIT_C_UNSUPPORTED_SUBCOMMAND'
+  ) {
+    return 'Use `git -C <relative-path> <show|status|diff|log|blame> ...`.';
+  }
+  if (failure.reason === 'MAX_DEPTH') {
+    return 'Reduce nested chaining depth (for example split into smaller `readonly_shell` calls).';
+  }
+
+  if (token === 'node') return 'Use `node --version || true`.';
+  if (token === 'python3' || token === 'python') return 'Use `python3 --version || true`.';
+  if (token === 'false') return 'Use `true` as fallback (for example: `node --version || true`).';
+  if (token === 'git') {
+    return 'Use `git <show|status|diff|log|blame> ...` or `git -C <relative-path> <show|status|diff|log|blame> ...`.';
+  }
+  if (token === 'cd') return 'Use `cd <relative-path> && <allowed command...>`.';
+
+  return 'Use an allowlisted read-only segment (for example: `ls`, `rg <pattern>`, or `node --version || true`).';
+}
+
+function getReadonlyShellSuggestionZh(failure: ReadonlyShellValidationFailure): string {
+  const token = firstReadonlyShellToken(failure.rejectedSegment);
+
+  if (
+    failure.reason === 'CHAIN_PARSE_UNSUPPORTED_OPERATOR' ||
+    failure.reason === 'CHAIN_PARSE_EMPTY_SEGMENT'
+  ) {
+    return '仅使用 `|`、`&&`、`||` 串联；等价写法示例：`node --version || true`。';
+  }
+  if (
+    failure.reason === 'CHAIN_PARSE_UNTERMINATED_QUOTE' ||
+    failure.reason === 'CHAIN_PARSE_TRAILING_ESCAPE'
+  ) {
+    return '先修正引号/转义，再执行白名单子命令（例如：`node --version || true`）。';
+  }
+  if (failure.reason === 'INVALID_CD_SYNTAX' || failure.reason === 'UNSAFE_RELATIVE_PATH') {
+    return '请使用 `cd <相对路径> && <允许命令...>`。';
+  }
+  if (
+    failure.reason === 'GIT_C_INVALID' ||
+    failure.reason === 'GIT_C_UNSAFE_PATH' ||
+    failure.reason === 'GIT_C_UNSUPPORTED_SUBCOMMAND'
+  ) {
+    return '请使用 `git -C <相对路径> <show|status|diff|log|blame> ...`。';
+  }
+  if (failure.reason === 'MAX_DEPTH') {
+    return '请降低链式嵌套深度（可拆成多次 `readonly_shell` 调用）。';
+  }
+
+  if (token === 'node') return '可改为 `node --version || true`。';
+  if (token === 'python3' || token === 'python') return '可改为 `python3 --version || true`。';
+  if (token === 'false') return '兜底请用 `true`（例如：`node --version || true`）。';
+  if (token === 'git') {
+    return '可改为 `git <show|status|diff|log|blame> ...`，或 `git -C <相对路径> <show|status|diff|log|blame> ...`。';
+  }
+  if (token === 'cd') return '可改为 `cd <相对路径> && <允许命令...>`。';
+
+  return '请改用白名单只读子命令（例如：`ls`、`rg <pattern>`、`node --version || true`）。';
 }
 
 function normalizeRelFromRtwsRoot(relPath: string): string {
@@ -1077,10 +1359,10 @@ export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
   description:
-    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Commands outside the allowlist are rejected.',
+    'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; exact version probes: node --version|-v, python3 --version|-V; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Command chains via |/&&/|| are validated segment-by-segment. Commands outside the allowlist are rejected.',
   descriptionI18n: {
-    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
-    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、head、tail、stat、file、uname、whoami、id、echo、pwd、which、date、diff、realpath、readlink、printf、cut、sort、uniq、tr、awk、shasum、sha256sum、md5sum、uuid、git show、git status、git diff、git log、git blame、find、tree、jq；另支持：git -C <相对路径> <show|status|diff|log|blame> ...；另支持：cd <相对路径> && <允许命令...>（或 ||））。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
+    en: 'Execute a read-only shell command from a small allowlist (cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; exact version probes: node --version|-v, python3 --version|-V; also supports: git -C <relative-path> <show|status|diff|log|blame> ...; also supports: cd <relative-path> && <allowed command...> (or ||)). Command chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
+    zh: '执行只读 shell 命令（仅允许：cat、rg、sed、ls、nl、wc、head、tail、stat、file、uname、whoami、id、echo、pwd、which、date、diff、realpath、readlink、printf、cut、sort、uniq、tr、awk、shasum、sha256sum、md5sum、uuid、git show、git status、git diff、git log、git blame、find、tree、jq、true；额外仅允许版本探针：node --version|-v、python3 --version|-V；另支持：git -C <相对路径> <show|status|diff|log|blame> ...；另支持：cd <相对路径> && <允许命令...>（或 ||））。通过 |/&&/|| 串联命令时会按子命令逐段校验。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<string> {
@@ -1095,11 +1377,18 @@ export const readonlyShellTool: FuncTool = {
         : `❌ readonly_shell does not allow multi-line script-style commands (newline detected). Use a single-line command (|, &&, || are allowed).\nGot: ${command}`;
     }
 
-    if (!isAllowedReadonlyShellCommand(command)) {
+    const validation = validateReadonlyShellCommand(command);
+    if (!validation.ok) {
       const allowedList = readonlyShellAllowedPrefixes.join(', ');
+      const rejectedSegment = validation.failure.rejectedSegment.trim();
+      const rejectedSegmentOrCommand = rejectedSegment === '' ? command : rejectedSegment;
+      const suggestion =
+        language === 'zh'
+          ? getReadonlyShellSuggestionZh(validation.failure)
+          : getReadonlyShellSuggestionEn(validation.failure);
       return language === 'zh'
-        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n收到：${command}`
-        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nGot: ${command}`;
+        ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
+        : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`;
     }
 
     const forbiddenHiddenDir = detectReadonlyShellForbiddenHiddenDirAccess(

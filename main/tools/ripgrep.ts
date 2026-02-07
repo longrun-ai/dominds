@@ -103,14 +103,147 @@ function buildAccessControlGlobs(member: Team.Member): { include: string[]; excl
 
   // Taskdocs are encapsulated and forbidden to all general file tools.
   exclude.push('**/*.tsk');
+  exclude.push('**/*.tsk/*');
   exclude.push('**/*.tsk/**');
 
-  // `.minds/**` is reserved rtws state and is hard-denied for general file tools.
-  // Dedicated `.minds/`-scoped tools (team-mgmt) should be used for managing it.
-  exclude.push('.minds');
-  exclude.push('.minds/**');
+  // `.dialogs/**` at rtws root is reserved runtime persistence state and hard-denied.
+  exclude.push('.dialogs');
+  exclude.push('.dialogs/**');
+
+  // `.minds/**` is reserved rtws state and hard-denied for general file tools.
+  // Dedicated `.minds/`-scoped tools (team-mgmt) may bypass this with internal_allow_minds=true.
+  if (member.internal_allow_minds !== true) {
+    exclude.push('.minds');
+    exclude.push('.minds/**');
+  }
 
   return { include, exclude };
+}
+
+type ForbiddenSearchPath = '.minds' | '.dialogs' | '*.tsk/';
+
+function normalizeRelFromRtwsRoot(relPath: string): string {
+  return relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function isEncapsulatedTaskPath(relFromRoot: string): boolean {
+  const normalized = normalizeRelFromRtwsRoot(relFromRoot);
+  return /(^|\/)[^/]+\.tsk(\/|$)/.test(normalized);
+}
+
+function detectRootReservedPath(
+  relFromRoot: string,
+): Exclude<ForbiddenSearchPath, '*.tsk/'> | null {
+  const normalized = normalizeRelFromRtwsRoot(relFromRoot);
+  if (normalized === '.minds' || normalized.startsWith('.minds/')) return '.minds';
+  if (normalized === '.dialogs' || normalized.startsWith('.dialogs/')) return '.dialogs';
+  return null;
+}
+
+function detectForbiddenRipgrepSearchPath(
+  member: Team.Member,
+  searchPath: string,
+): ForbiddenSearchPath | null {
+  const cwd = path.resolve(process.cwd());
+  const abs = path.resolve(cwd, searchPath);
+  const relFromRoot = path.relative(cwd, abs);
+  if (isEncapsulatedTaskPath(relFromRoot)) return '*.tsk/';
+  const reserved = detectRootReservedPath(relFromRoot);
+  if (!reserved) return null;
+  if (reserved === '.minds' && member.internal_allow_minds === true) return null;
+  return reserved;
+}
+
+function normalizeGlobToken(glob: string): string {
+  return glob
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^!+/, '')
+    .replace(/^\.\/+/, '')
+    .replace(/^\/+/, '');
+}
+
+function detectForbiddenPathFromGlob(
+  member: Team.Member,
+  glob: string,
+): ForbiddenSearchPath | null {
+  const normalized = normalizeGlobToken(glob);
+  if (normalized === '') return null;
+
+  if (/(^|\/)[^/]*\.tsk(\/|$)/.test(normalized)) return '*.tsk/';
+  if (normalized === '.dialogs' || normalized.startsWith('.dialogs/')) return '.dialogs';
+  if (
+    (normalized === '.minds' || normalized.startsWith('.minds/')) &&
+    member.internal_allow_minds !== true
+  ) {
+    return '.minds';
+  }
+
+  return null;
+}
+
+function detectForbiddenRipgrepGlobs(
+  member: Team.Member,
+  globs: ReadonlyArray<string>,
+): ForbiddenSearchPath | null {
+  for (const glob of globs) {
+    const forbidden = detectForbiddenPathFromGlob(member, glob);
+    if (forbidden) return forbidden;
+  }
+  return null;
+}
+
+function detectForbiddenRipgrepRawArgs(
+  member: Team.Member,
+  rawRgArgs: ReadonlyArray<string>,
+): ForbiddenSearchPath | null {
+  for (let i = 0; i < rawRgArgs.length; i++) {
+    const tok = rawRgArgs[i] ?? '';
+    let globPattern: string | null = null;
+
+    if (tok === '--glob' || tok === '--iglob' || tok === '-g') {
+      const next = rawRgArgs[i + 1];
+      if (typeof next === 'string') {
+        globPattern = next;
+        i += 1;
+      }
+    } else if (tok.startsWith('--glob=')) {
+      globPattern = tok.slice('--glob='.length);
+    } else if (tok.startsWith('--iglob=')) {
+      globPattern = tok.slice('--iglob='.length);
+    } else if (tok.startsWith('-g') && tok.length > 2) {
+      globPattern = tok.slice(2);
+    }
+
+    if (!globPattern) continue;
+    const forbidden = detectForbiddenPathFromGlob(member, globPattern);
+    if (forbidden) return forbidden;
+  }
+  return null;
+}
+
+function formatForbiddenSearchPathAccessDeniedYaml(
+  mode: 'files' | 'count' | 'snippets',
+  pattern: string,
+  searchPath: string,
+  forbiddenPath: ForbiddenSearchPath,
+): string {
+  const summary =
+    forbiddenPath === '.minds'
+      ? 'ACCESS_DENIED: `.minds/**` is reserved rtws state for team config/memory/assets. Use `team_mgmt_ripgrep_*` (or other `team_mgmt_*`) for `.minds/**`.'
+      : forbiddenPath === '.dialogs'
+        ? 'ACCESS_DENIED: `.dialogs/**` at rtws root is reserved dialog/runtime persistence and is not searchable by general `ripgrep_*` tools. For Dominds debugging, reproduce under a nested rtws (e.g. `ux-rtws/.dialogs/**`).'
+        : 'ACCESS_DENIED: `*.tsk/` is an encapsulated Taskdoc path and is hard-denied for general `ripgrep_*` tools.';
+  const yaml = [
+    `status: error`,
+    `pattern: ${yamlQuote(pattern)}`,
+    `mode: ${mode}`,
+    `path: ${yamlQuote(searchPath)}`,
+    `error: ACCESS_DENIED`,
+    `reserved_path: ${yamlQuote(forbiddenPath)}`,
+    `summary: ${yamlQuote(summary)}`,
+  ].join('\n');
+  return formatYamlCodeBlock(yaml);
 }
 
 type RipgrepCase = 'smart' | 'sensitive' | 'insensitive';
@@ -202,6 +335,15 @@ async function runRipgrepFiles(
   searchPath: string,
   options: RipgrepFilesOptions,
 ): Promise<string> {
+  const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
+  if (forbiddenPath) {
+    return formatForbiddenSearchPathAccessDeniedYaml('files', pattern, searchPath, forbiddenPath);
+  }
+  const forbiddenGlob = detectForbiddenRipgrepGlobs(caller, options.globs);
+  if (forbiddenGlob) {
+    return formatForbiddenSearchPathAccessDeniedYaml('files', pattern, searchPath, forbiddenGlob);
+  }
+
   const args = [...baseRgArgs(options, caller), '--files-with-matches', '--', pattern, searchPath];
 
   try {
@@ -302,6 +444,15 @@ async function runRipgrepCount(
   searchPath: string,
   options: RipgrepCountOptions,
 ): Promise<string> {
+  const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
+  if (forbiddenPath) {
+    return formatForbiddenSearchPathAccessDeniedYaml('count', pattern, searchPath, forbiddenPath);
+  }
+  const forbiddenGlob = detectForbiddenRipgrepGlobs(caller, options.globs);
+  if (forbiddenGlob) {
+    return formatForbiddenSearchPathAccessDeniedYaml('count', pattern, searchPath, forbiddenGlob);
+  }
+
   const args = [...baseRgArgs(options, caller), '--count-matches', '--', pattern, searchPath];
 
   try {
@@ -411,6 +562,25 @@ async function runRipgrepSnippets(
   searchPath: string,
   options: RipgrepSnippetsOptions,
 ): Promise<string> {
+  const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
+  if (forbiddenPath) {
+    return formatForbiddenSearchPathAccessDeniedYaml(
+      'snippets',
+      pattern,
+      searchPath,
+      forbiddenPath,
+    );
+  }
+  const forbiddenGlob = detectForbiddenRipgrepGlobs(caller, options.globs);
+  if (forbiddenGlob) {
+    return formatForbiddenSearchPathAccessDeniedYaml(
+      'snippets',
+      pattern,
+      searchPath,
+      forbiddenGlob,
+    );
+  }
+
   const args = [...baseRgArgs(options, caller), '--vimgrep', '--', pattern, searchPath];
 
   try {
@@ -629,6 +799,25 @@ async function runRipgrepSearch(
   searchPath: string,
   rawRgArgs: ReadonlyArray<string>,
 ): Promise<string> {
+  const forbiddenPath = detectForbiddenRipgrepSearchPath(caller, searchPath);
+  if (forbiddenPath) {
+    return formatForbiddenSearchPathAccessDeniedYaml(
+      'snippets',
+      pattern,
+      searchPath,
+      forbiddenPath,
+    );
+  }
+  const forbiddenInArgs = detectForbiddenRipgrepRawArgs(caller, rawRgArgs);
+  if (forbiddenInArgs) {
+    return formatForbiddenSearchPathAccessDeniedYaml(
+      'snippets',
+      pattern,
+      searchPath,
+      forbiddenInArgs,
+    );
+  }
+
   for (const tok of rawRgArgs) {
     if (DISALLOWED_RG_ARGS.has(tok)) {
       return formatYamlCodeBlock(
