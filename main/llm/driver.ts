@@ -117,6 +117,7 @@ export interface HumanPrompt {
 }
 
 type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
+type DriveRunOptions = { suppressDiligencePush?: boolean };
 
 const DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS = DEFAULT_DILIGENCE_PUSH_MAX;
 
@@ -202,6 +203,7 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
   isRootDialog: boolean;
   remainingBudget: number;
   diligencePushMax: number;
+  suppressDiligencePush?: boolean;
 }): Promise<
   | { kind: 'disabled'; nextRemainingBudget: number }
   | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
@@ -211,7 +213,7 @@ async function maybePrepareDiligenceAutoContinuePrompt(options: {
     return { kind: 'disabled', nextRemainingBudget: options.remainingBudget };
   }
 
-  if (options.dlg.disableDiligencePush) {
+  if (options.dlg.disableDiligencePush || options.suppressDiligencePush === true) {
     const normalizedRemaining =
       typeof options.remainingBudget === 'number' && Number.isFinite(options.remainingBudget)
         ? Math.max(0, Math.floor(options.remainingBudget))
@@ -1215,6 +1217,7 @@ export async function driveDialogStream(
   dlg: Dialog,
   humanPrompt?: HumanPrompt,
   waitInQue: boolean = false,
+  driveOptions?: DriveRunOptions,
 ): Promise<void> {
   if (!waitInQue && dlg.isLocked()) {
     throw new Error(`Dialog busy driven, see how it proceeded and try again.`);
@@ -1247,7 +1250,7 @@ export async function driveDialogStream(
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dlg.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
-    driveResult = await _driveDialogStream(dlg, effectivePrompt);
+    driveResult = await _driveDialogStream(dlg, effectivePrompt, driveOptions);
     // Do not auto-chain upNext when this drive ended in interrupted state
     // (user/emergency/system stop). upNext remains queued for explicit manual resume.
     if (!driveResult.interrupted) {
@@ -1404,7 +1407,9 @@ async function checkQ4HAnswered(dialogId: DialogID): Promise<boolean> {
 async function _driveDialogStream(
   dlg: Dialog,
   humanPrompt?: HumanPrompt,
+  driveOptions?: DriveRunOptions,
 ): Promise<{ lastAssistantSayingContent: string | null; interrupted: boolean }> {
+  const suppressDiligencePushForDrive = driveOptions?.suppressDiligencePush === true;
   const abortSignal = createActiveRun(dlg.id);
   let finalRunState: DialogRunState | undefined;
   let shouldEmitResumedMarker = false;
@@ -1585,7 +1590,7 @@ async function _driveDialogStream(
         if (currentPrompt) {
           const promptOrigin = currentPrompt.origin ?? 'user';
           const isDiligencePrompt = promptOrigin === 'diligence_push';
-          if (isDiligencePrompt && dlg.disableDiligencePush) {
+          if (isDiligencePrompt && (dlg.disableDiligencePush || suppressDiligencePushForDrive)) {
             log.info('Skip diligence prompt after disable toggle', {
               dialogId: dlg.id.valueOf(),
               msgId: currentPrompt.msgId,
@@ -2205,6 +2210,7 @@ async function _driveDialogStream(
                 isRootDialog: true,
                 remainingBudget: dlg.diligencePushRemainingBudget,
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
+                suppressDiligencePush: suppressDiligencePushForDrive,
               });
               dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
               void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
@@ -2220,7 +2226,7 @@ async function _driveDialogStream(
                     prepared.maxInjectCount - prepared.nextRemainingBudget,
                   ),
                   remainingCount: Math.max(0, prepared.nextRemainingBudget),
-                  disableDiligencePush: dlg.disableDiligencePush,
+                  disableDiligencePush: dlg.disableDiligencePush || suppressDiligencePushForDrive,
                 });
               }
               if (prepared.kind === 'budget_exhausted') {
@@ -2710,6 +2716,7 @@ async function _driveDialogStream(
                 isRootDialog: true,
                 remainingBudget: dlg.diligencePushRemainingBudget,
                 diligencePushMax: resolveMemberDiligencePushMax(team, dlg.agentId),
+                suppressDiligencePush: suppressDiligencePushForDrive,
               });
               dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
               void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
@@ -2725,7 +2732,7 @@ async function _driveDialogStream(
                     prepared.maxInjectCount - prepared.nextRemainingBudget,
                   ),
                   remainingCount: Math.max(0, prepared.nextRemainingBudget),
-                  disableDiligencePush: dlg.disableDiligencePush,
+                  disableDiligencePush: dlg.disableDiligencePush || suppressDiligencePushForDrive,
                 });
               }
               if (prepared.kind === 'budget_exhausted') {
@@ -3819,7 +3826,10 @@ export async function supplyResponseToSupdialog(
       if (parentDialog instanceof RootDialog) {
         globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId);
       }
-      void driveDialogStream(parentDialog, undefined, true);
+      const suppressDiligencePushForReviveDrive = parentDialog.disableDiligencePush;
+      void driveDialogStream(parentDialog, undefined, true, {
+        suppressDiligencePush: suppressDiligencePushForReviveDrive,
+      });
     }
   } catch (error) {
     log.error('Failed to supply subdialog response', {
