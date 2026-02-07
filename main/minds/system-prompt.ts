@@ -58,6 +58,18 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     input.dialogScope === 'mainline'
       ? '- Before every FBR, first call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest task progress, do not redundantly include information already present in the Taskdoc in the \\`!?@self\\` tellask body.'
       : '- Before every FBR, first analyze whether currently observable facts differ from the Taskdoc, and include the findings in the \\`!?@self\\` tellask body.';
+  const fbrPhaseContractZh = [
+    '- FBR 必须按“发起 → 等待回贴 → 综合决策”三段执行：\\`!?@self\\` 只代表发起，不代表你已完成这轮推理。',
+    '- 发出 \\`!?@self\\` 后必须进入等待态：在该次 FBR 支线回贴返回前，不得给出“最终下一步行动决策”。',
+    '- 若 \\`fbr-effort = N\\`，必须等待全部 N 条回贴后再综合；不得基于部分回贴提前定稿。',
+    '- 综合阶段必须显式区分“证据（FBR 回贴事实）”与“决策（下一步行动）”；若关键事实仍缺失，先补事实再迭代 FBR。',
+  ].join('\n');
+  const fbrPhaseContractEn = [
+    '- FBR MUST follow three phases: “initiate -> wait for feedback -> synthesize and decide”. \\`!?@self\\` means initiation only, not completed reasoning.',
+    '- After emitting \\`!?@self\\`, enter wait state: do not output a final next-action decision before feedback from that FBR sideline returns.',
+    '- If \\`fbr-effort = N\\`, wait for all N feedback drafts before synthesis; do not finalize based on partial drafts.',
+    '- During synthesis, explicitly separate “evidence (FBR feedback facts)” from “decision (next action)”; if key facts are still missing, collect facts first and iterate FBR.',
+  ].join('\n');
 
   if (input.language === 'zh') {
     return `
@@ -117,7 +129,7 @@ ${input.envIntro}
 **特殊成员**：人类（@human）是特殊团队成员。你可以使用 \`!?@human ...\` 发起 Q4H（Question for Human），用于请求必要的澄清/决策/授权/提供缺失输入，或汇报当前环境中无法由智能体自主完成的阻塞事项。
 **注意**：不要把可由智能体完成的执行性工作外包给 @human。向 @human 的请求应尽量最小化、可验证（给出需要的具体信息、预期格式/选项），并在得到答复后继续由智能体自主完成后续工作。
 **补充**：像“发起队友诉请/推进迭代/收集回贴”这类常规协作动作属于智能体的自主工作流，不要向 @human 询问“是否要执行”；直接执行并在必要时汇报进度即可。
-**常见坑（协作推进）**：团队协作通常需要多轮往复与共识收敛；默认每次队友诉请都必须带 \`!tellaskSession <slug>\` 并在同一会话内持续推进。只有在有强烈理由确认“一次性诉请足够且无需回合”时，才可省略 \`!tellaskSession\`，且必须说明理由。发起诉请时明确验收口径；当你说“等待回贴/等待结果”时，必须说明你已发出的诉请（含 \`!tellaskSession\` slug）与等待的验收证据。
+**常见坑（协作推进）**：团队协作通常需要多轮往复与共识收敛。对**队友诉请**（非 \`!?@self\`）而言，默认必须带 \`!tellaskSession <slug>\` 并在同一会话内持续推进；只有在有强烈理由确认“一次性诉请足够且无需回合”时，才可省略，且必须说明理由。发起诉请时明确验收口径；当你说“等待回贴/等待结果”时，必须说明你已发出的诉请与等待的验收证据。
 
 你与以下智能体队友协作。使用他们的呼号与其交流、安排分项工作。
 
@@ -129,9 +141,13 @@ ${input.policyText}
 
 ## FBR 使用准则
 
-${fbrScopeRuleZh}
+- \`!?@self\` 是 FBR 特有机制，不属于“队友诉请”分类；请按本节规则执行，不要套用“队友诉请默认带 \`!tellaskSession\`”的规则。
 - 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须用 \`!?@self\` 发起。
-- 即使用户未明确要求，在诉诸 @human（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况，作为 FBR 正文，寻求初心判断，找出短期最优自主行动决策。
+${fbrScopeRuleZh}
+- FBR 的默认入口是瞬态 \`!?@self\`（不带 \`!tellaskSession\`）；仅当明确需要可恢复的长期 FBR 会话时，才使用 \`!?@self !tellaskSession <slug>\`，并说明理由。
+- 即使用户未明确要求，在诉诸 @human（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况作为 FBR 正文；在收到该次 FBR 回贴前，不要提前下最终行动决策。
+- FBR 阶段协议（强制）：
+${fbrPhaseContractZh}
 - 鼓励 FBR 自我建议立即获取哪些未明事实，得到建议利用当前对话工具获取，再补足上下文迭代 FBR 直到获得清晰的下一步行动思路。
 
 ## 内置工具
@@ -211,7 +227,7 @@ ${input.envIntro}
 **Special member**: Human (@human) is a special team member. You may use \`!?@human ...\` to ask a Q4H (Question for Human) when you need necessary clarification/decision/authorization/missing inputs, or to report blockers that cannot be completed autonomously in the current environment.
 **Note**: Do not outsource executable work to @human. Keep Q4H requests minimal and verifiable (ask for specific info, expected format/options), then continue the remaining work autonomously after receiving the answer.
 **Addendum**: Routine coordination actions (e.g., tellasking teammates, driving iterations, collecting replies) are part of the agent’s autonomous workflow; do not ask @human for permission to do them. Execute and report progress when needed.
-**Common pitfall (coordination)**: Collaboration usually requires multiple rounds and convergence. By default, every teammate tellask MUST include \`!tellaskSession <slug>\` and all follow-ups should stay within that session. Only omit \`!tellaskSession\` when you have a strong reason to believe a one-shot ask is sufficient, and state that reason. When you send a tellask, specify acceptance criteria; when you say you are “waiting for a reply/result”, also state which tellask (including the \`!tellaskSession\` slug) you sent and what acceptance evidence you are waiting for.
+**Common pitfall (coordination)**: Collaboration usually requires multiple rounds and convergence. For **teammate tellasks** (non-\`!?@self\`), the default is to include \`!tellaskSession <slug>\` and keep follow-ups in that session; omit it only with a strong one-shot reason, and state that reason. When you send a tellask, specify acceptance criteria; when you say you are “waiting for a reply/result”, also state which tellask you sent and what acceptance evidence you are waiting for.
 
 You collaborate with the following teammates. Use their call signs to address them.
 
@@ -223,9 +239,13 @@ ${input.policyText}
 
 ## FBR Usage Guidelines
 
-${fbrScopeRuleEn}
+- \`!?@self\` is an FBR-specific mechanism, not part of the teammate-tellask category; follow this section’s rules instead of teammate-tellask defaults.
 - When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must initiate \`!?@self\`.
-- Even without an explicit request, before resorting to @human (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR: summarize the current dialog’s facts as the FBR body, seek a fresh-boots judgment, and derive the short-term best autonomous next action.
+${fbrScopeRuleEn}
+- The default FBR entry is transient \`!?@self\` (without \`!tellaskSession\`); use \`!?@self !tellaskSession <slug>\` only when you explicitly need a resumable long-lived FBR thread, and explain why.
+- Even without an explicit request, before resorting to @human (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR and summarize current dialog facts as the FBR body; do not finalize the next action before that FBR feedback returns.
+- FBR phase contract (mandatory):
+${fbrPhaseContractEn}
 - Encourage FBR to recommend which missing facts to obtain immediately; then use the current dialog’s tools to fetch them, update context, and iterate FBR until a clear next action emerges.
 
 ## Intrinsic Tools

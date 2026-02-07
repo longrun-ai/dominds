@@ -323,6 +323,7 @@ function formatPreludeIntro(
           '## Prelude：智能体启动（复用缓存）',
           '',
           '这段序幕用于把“诉请 + 回传 + FBR + 综合提炼”变成体感（引导祂做给自己看）。',
+          '关键时序：`!?@self` 只表示发起；必须等待 FBR 支线回贴返回后，才在主线做综合决策。',
           '本次对话复用了本进程内缓存：未重复执行命令。',
           '',
           ...shellPolicyLinesZh,
@@ -332,6 +333,7 @@ function formatPreludeIntro(
           '## Prelude：智能体启动',
           '',
           '这段序幕用于把“诉请 + 回传 + FBR + 综合提炼”变成体感（引导祂做给自己看）。',
+          '关键时序：`!?@self` 只表示发起；必须等待 FBR 支线回贴返回后，才在主线做综合决策。',
           '',
           ...shellPolicyLinesZh,
           '',
@@ -342,6 +344,7 @@ function formatPreludeIntro(
         '## Prelude: Agent Priming (Reused)',
         '',
         'This prelude makes Tellask + return + FBR + distillation feel real (guiding the agent to show it to itself).',
+        'Critical timing: `!?@self` is initiation only; mainline synthesis/decision happens only after FBR sideline feedback returns.',
         'This dialog reused the in-process cache (no commands were re-run).',
         '',
         ...shellPolicyLinesEn,
@@ -351,6 +354,7 @@ function formatPreludeIntro(
         '## Prelude: Agent Priming',
         '',
         'This prelude makes Tellask + return + FBR + distillation feel real (guiding the agent to show it to itself).',
+        'Critical timing: `!?@self` is initiation only; mainline synthesis/decision happens only after FBR sideline feedback returns.',
         '',
         ...shellPolicyLinesEn,
         '',
@@ -366,7 +370,7 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
       '',
       '背景规则：对话主理人不得执行任何 shell 命令；所有 shell 命令必须通过你执行并回传。',
       '请不要建议我“自己在本地跑一下”。',
-      '收到回传后，我将基于该环境信息做一次 `!?@self` 扪心自问（FBR），并最终形成一条可复用的“智能体启动（Agent Priming）”笔记。',
+      '收到回传后，我会基于该环境信息发起一次 `!?@self` 扪心自问（FBR），先等待该次 FBR 的全部支线回贴，再在主线做综合提炼并形成一条可复用的“智能体启动（Agent Priming）”笔记。',
       '',
       '要求：',
       '- 通过 shell 工具执行：uname -a（只执行这一条）',
@@ -381,7 +385,7 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
     '',
     'Rule: the dialog owner must not run any shell commands; all shell commands must be executed by you and returned.',
     'Do not suggest that I “just run it locally”.',
-    'After I receive your output, I will run `!?@self` Fresh Boots Reasoning (FBR) on this environment, then produce a reusable “Agent Priming” note.',
+    'After I receive your output, I will initiate `!?@self` Fresh Boots Reasoning (FBR) on this environment, wait for all feedback from that FBR run, then distill a reusable “Agent Priming” note in mainline.',
     '',
     'Requirements:',
     '- Use shell tools to run exactly: uname -a (and only this command)',
@@ -394,9 +398,9 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
 
 function formatFbrSelfTeaser(language: LanguageCode): string {
   if (language === 'zh') {
-    return '（我会在收到全部 FBR 支线反馈后进行综合提炼，并在主线对话中输出一条可复用的“智能体启动（Agent Priming）”笔记。）';
+    return '（我会先等待该次 FBR 的全部支线反馈返回；在收齐前不做最终行动决策。收齐后再综合提炼，并在主线对话中输出一条可复用的“智能体启动（Agent Priming）”笔记。）';
   }
-  return '(After I receive all FBR sideline feedback, I will distill it into a reusable “Agent Priming” note.)';
+  return '(I will first wait for all feedback from this FBR run and will not finalize next-action decisions before that. After all feedback returns, I will distill it into a reusable “Agent Priming” note in mainline.)';
 }
 
 function formatFbrTellaskBody(
@@ -406,11 +410,11 @@ function formatFbrTellaskBody(
 ): string {
   const effortLineZh =
     options.fbrEffort >= 1
-      ? '运行时提示：运行时会生成多份“初心自我”独立推理草稿，供上游对话综合提炼（这些草稿之间没有稳定映射关系，不要把它们当作固定身份）。请给出你这一份独立分析。'
+      ? '运行时提示：运行时会生成多份“初心自我”独立推理草稿，供上游对话综合提炼（这些草稿之间没有稳定映射关系，不要把它们当作固定身份）。上游对话会在收齐全部回贴后才综合决策；请只给出你这一份独立分析，不要替上游下最终行动决策。'
       : '运行时提示：本成员已禁用 FBR。';
   const effortLineEn =
     options.fbrEffort >= 1
-      ? 'Runtime note: the runtime will generate multiple independent “fresh boots” drafts for the upstream dialog to distill (no stable mapping—do not treat them as fixed identities). Please produce your own independent analysis.'
+      ? 'Runtime note: the runtime will generate multiple independent “fresh boots” drafts for the upstream dialog to distill (no stable mapping—do not treat them as fixed identities). The upstream dialog will decide only after all feedback returns; provide your own draft only and do not finalize upstream next-action decisions.'
       : 'Runtime note: FBR is disabled for this member.';
 
   const tellaskBackHintZh = (() => {
@@ -436,6 +440,7 @@ function formatFbrTellaskBody(
       '请基于下面环境信息回答：',
       '- 在这个环境里要注意些什么？',
       '- 哪些关键上下文仍然缺失？',
+      '- 请明确区分：事实依据 / 不确定项 / 建议下一步（供上游收齐草稿后综合）。',
       '',
       '环境信息（当前 Dominds 运行时环境快照）：',
       snapshotText,
@@ -449,6 +454,7 @@ function formatFbrTellaskBody(
     'Based on the environment info below, answer:',
     '- What should we watch out for in this environment?',
     '- What critical context is still missing?',
+    '- Clearly separate: factual evidence / uncertainties / suggested next step (for upstream synthesis after all drafts return).',
     '',
     'Environment info (a snapshot of the current Dominds runtime):',
     snapshotText,
@@ -544,6 +550,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
       language === 'zh'
         ? [
             '你正在进行智能体启动（Agent Priming）的“综合提炼”步骤。',
+            '你收到本提示时，意味着该次 `!?@self` FBR 的并发回贴已经收齐；本步骤只做综合提炼，不重新发起 FBR。',
             '请基于下方提供的环境快照（以及可选的 `!?@self` FBR 草稿），综合提炼出一条可复用的“智能体启动（Agent Priming）笔记”。',
             '',
             '证据材料（仅供综合提炼；不要逐条复述）：',
@@ -560,6 +567,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
           ].join('\n')
         : [
             'You are in the Agent Priming distillation step.',
+            'Receiving this prompt means feedback from this `!?@self` FBR run has already been collected; this step is synthesis/distillation only, not another FBR initiation.',
             'Based on the environment snapshot (and optional `!?@self` FBR drafts) below, distill a reusable “Agent Priming note”.',
             '',
             'Evidence (for distillation only; do not repeat draft-by-draft):',
@@ -607,21 +615,21 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
   const header = (() => {
     if (language === 'zh') {
       if (entry.shellPolicy === 'specialist_only') {
-        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已真实跑通一次“诉请（shell 专员）+ 回传 + `!?@self` FBR + 综合提炼”。以下为压缩转录，作为每一程对话的开头上下文注入。';
+        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已真实跑通一次“诉请（shell 专员）+ 回传 + `!?@self` FBR + 综合提炼”，并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
       }
       if (entry.shellPolicy === 'no_specialist') {
-        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `!?@self` FBR + 综合提炼（无 shell 专员；不得执行任意 shell 命令）。以下为压缩转录，作为每一程对话的开头上下文注入。';
+        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `!?@self` FBR + 综合提炼（无 shell 专员；不得执行任意 shell 命令），并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
       }
-      return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `!?@self` FBR + 综合提炼。以下为压缩转录，作为每一程对话的开头上下文注入。';
+      return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `!?@self` FBR + 综合提炼，并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
     }
 
     if (entry.shellPolicy === 'specialist_only') {
-      return 'Agent Priming context: this process already ran a real Tellask (shell specialist) + return + `!?@self` FBR + distillation at dialog creation. The condensed transcript below is injected at the start of each course.';
+      return 'Agent Priming context: this process already ran a real Tellask (shell specialist) + return + `!?@self` FBR + distillation at dialog creation, following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
     }
     if (entry.shellPolicy === 'no_specialist') {
-      return 'Agent Priming context: this process captured an environment snapshot and ran `!?@self` FBR + distillation at dialog creation (no shell specialist; do not run arbitrary shell commands). The condensed transcript below is injected at the start of each course.';
+      return 'Agent Priming context: this process captured an environment snapshot and ran `!?@self` FBR + distillation at dialog creation (no shell specialist; do not run arbitrary shell commands), following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
     }
-    return 'Agent Priming context: this process captured an environment snapshot and ran `!?@self` FBR + distillation at dialog creation. The condensed transcript below is injected at the start of each course.';
+    return 'Agent Priming context: this process captured an environment snapshot and ran `!?@self` FBR + distillation at dialog creation, following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
   })();
 
   const shellSnapshotLabel =
@@ -635,7 +643,10 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
       : '(empty)';
 
   const effort = Math.max(0, Math.floor(entry.fbr.effort));
-  const fbrLabel = language === 'zh' ? 'FBR 输出（摘要）' : 'FBR outputs (summary)';
+  const fbrLabel =
+    language === 'zh'
+      ? 'FBR 输出（摘要；主线在收齐回贴后综合）'
+      : 'FBR outputs (summary; synthesized after all feedback is collected)';
   const previewCap = Math.min(entry.fbr.responses.length, Math.max(0, Math.min(6, effort)));
   const previewResponses = previewCap > 0 ? entry.fbr.responses.slice(0, previewCap) : [];
   const blocks: string[] = [];
@@ -852,6 +863,10 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
 async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry> {
   const createdAt = formatUnifiedTimestamp(new Date());
   const language = getWorkLanguage();
+  const prevDisableDiligencePush = dlg.disableDiligencePush;
+  // Agent Priming is a bounded bootstrap routine; no keep-going injection should appear
+  // during the priming lifecycle (including any auto-revive drives triggered by subdialog replies).
+  dlg.disableDiligencePush = true;
   let fatalRunState: DialogRunState | null = null;
   let shellPolicy: AgentPrimingCacheEntry['shellPolicy'] = 'no_specialist';
   let specialistId: string | null = null;
@@ -1251,6 +1266,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
     }
     throw err;
   } finally {
+    dlg.disableDiligencePush = prevDisableDiligencePush;
     if (fatalRunState) {
       await setDialogRunState(dlg.id, fatalRunState);
     } else {

@@ -40,6 +40,7 @@ Related docs:
 
 - Establish immediate trust that Tellask/return/persistence are real.
 - Run a real `!?@self` FBR loop at dialog creation.
+- Build muscle memory for the timing contract: initiate FBR, wait for feedback, then synthesize/decide.
 - Make distillation itself part of the “felt” experience (dedupe/reconcile/extract-the-best).
 - Keep the procedure safe, small, and deterministic (default command: `uname -a`).
 - Persist and display the interaction so it is credible from multiple angles (backend record + frontend transcript).
@@ -109,9 +110,15 @@ Optional parallel drafts:
 - If `fbr_effort` is `0`, skip FBR.
 - If `fbr_effort` is greater than `100`, the runtime errors out and stops priming (invalid config).
 
+Phase boundary (critical):
+
+- `!?@self` is the **initiation action**, not completed decision-making.
+- Mainline must enter a wait phase until feedback from that FBR run returns.
+- If `fbr_effort = N`, mainline must wait for all N drafts before distillation; do not finalize from partial drafts.
+
 ### 4) Distill into an “Agent Priming” note
 
-The main agent then writes a short, user-visible **Agent Priming** note via a **normal generation** in the mainline
+After confirming feedback from that FBR run has been collected, the main agent writes a short, user-visible **Agent Priming** note via a **normal generation** in the mainline
 dialog. It should be explicitly distilled (dedupe/reconcile/extract-the-best) rather than repeating each draft.
 
 Implementation constraint (matches runtime behavior):
@@ -120,6 +127,8 @@ Implementation constraint (matches runtime behavior):
 - The runtime may use a non-persisted **internal prompt** to anchor “this generation is distillation”.
 - The runtime may also include the shell snapshot and FBR drafts as “evidence” inside that internal prompt (for this
   drive only, not persisted), so distillation does not depend on any queue timing/concurrency details.
+- During the Agent Priming lifecycle (from prelude start until the priming note is produced), runtime must suppress
+  diligence-push injections; restore normal diligence behavior only after priming completes.
 
 Implementation note (internal prompt):
 

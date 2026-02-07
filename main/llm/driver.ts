@@ -1158,6 +1158,22 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
   }
 }
 
+async function hasQueuedSubdialogResponses(dialogId: DialogID): Promise<boolean> {
+  try {
+    const queued = await withSuspensionStateLock(dialogId, async () => {
+      return await DialogPersistence.loadSubdialogResponsesQueue(dialogId);
+    });
+    return queued.length > 0;
+  } catch (err) {
+    log.warn('Failed to check queued subdialog responses; suppressing diligence as safe default', {
+      dialogId: dialogId.valueOf(),
+      error: err,
+    });
+    // Fail safe: if we cannot verify queue emptiness, do not inject diligence prompts.
+    return true;
+  }
+}
+
 // TODO: certain scenarios should pass `waitInQue=true`:
 //        - supdialog call for clarification
 /**
@@ -2186,6 +2202,13 @@ async function _driveDialogStream(
                 }
                 break;
               }
+              const hasQueuedResponses = await hasQueuedSubdialogResponses(dlg.id);
+              if (hasQueuedResponses) {
+                log.info('Skip diligence prompt while subdialog responses are still queued', {
+                  dialogId: dlg.id.valueOf(),
+                });
+                break;
+              }
 
               const prepared = await maybePrepareDiligenceAutoContinuePrompt({
                 dlg,
@@ -2683,6 +2706,13 @@ async function _driveDialogStream(
                     patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
                   }));
                 }
+                break;
+              }
+              const hasQueuedResponses = await hasQueuedSubdialogResponses(dlg.id);
+              if (hasQueuedResponses) {
+                log.info('Skip diligence prompt while subdialog responses are still queued', {
+                  dialogId: dlg.id.valueOf(),
+                });
                 break;
               }
 
