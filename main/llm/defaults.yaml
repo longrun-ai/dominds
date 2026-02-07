@@ -94,8 +94,26 @@ providers:
     apiType: anthropic
     baseUrl: https://api.minimaxi.com/anthropic
     apiKeyEnvVar: MINIMAX_CN_CP_API_KEY
-    tech_spec_url: https://platform.minimaxi.com/document/guides
+    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Fully supported. Maximum number of tokens to generate.
+      anthropic:
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          default: 1
+          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Fully supported. Nucleus sampling parameter.
     models:
       MiniMax-M2.1:
         name: MiniMax M2.1
@@ -114,8 +132,26 @@ providers:
     apiType: anthropic
     baseUrl: https://api.minimaxi.com/anthropic
     apiKeyEnvVar: MINIMAX_CN_API_KEY
-    tech_spec_url: https://platform.minimaxi.com/document/guides
+    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Fully supported. Maximum number of tokens to generate.
+      anthropic:
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          default: 1
+          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Fully supported. Nucleus sampling parameter.
     models:
       MiniMax-M2.1:
         name: MiniMax M2.1
@@ -134,8 +170,26 @@ providers:
     apiType: anthropic
     baseUrl: https://api.minimax.io/anthropic
     apiKeyEnvVar: MINIMAX_CP_API_KEY
-    tech_spec_url: https://platform.minimax.io/docs/api-reference
+    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Fully supported. Maximum number of tokens to generate.
+      anthropic:
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          default: 1
+          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Fully supported. Nucleus sampling parameter.
     models:
       MiniMax-M2.1:
         name: MiniMax M2.1
@@ -154,8 +208,26 @@ providers:
     apiType: anthropic
     baseUrl: https://api.minimax.io/anthropic
     apiKeyEnvVar: MINIMAX_API_KEY
-    tech_spec_url: https://platform.minimax.io/docs/api-reference
+    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Fully supported. Maximum number of tokens to generate.
+      anthropic:
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          default: 1
+          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Fully supported. Nucleus sampling parameter.
     models:
       MiniMax-M2.1:
         name: MiniMax M2.1
