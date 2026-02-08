@@ -348,6 +348,34 @@ async function isGitRepo(dir: string): Promise<boolean> {
   return res.ok && res.stdout === 'true';
 }
 
+type RtwsRootGitPosition = Readonly<
+  | { kind: 'not_git' }
+  | { kind: 'repo_root'; topLevelAbsPath: string }
+  | { kind: 'repo_subdir'; topLevelAbsPath: string; relFromTopLevel: string }
+>;
+
+async function inspectRtwsRootGitPosition(rtws: string): Promise<RtwsRootGitPosition> {
+  // Equivalent to comparing:
+  // - `git rev-parse --show-toplevel`
+  // - `pwd`
+  // to determine whether rtws itself is repo root vs a subdirectory of a repo.
+  const showTopRes = await runGit(['rev-parse', '--show-toplevel'], rtws);
+  if (!showTopRes.ok || !showTopRes.stdout) {
+    return { kind: 'not_git' };
+  }
+  const rtwsAbs = path.resolve(rtws);
+  const topLevelAbsPath = path.resolve(showTopRes.stdout);
+  if (topLevelAbsPath === rtwsAbs) {
+    return { kind: 'repo_root', topLevelAbsPath };
+  }
+  const relFromTopLevel = path.relative(topLevelAbsPath, rtwsAbs).replace(/\\/g, '/');
+  return {
+    kind: 'repo_subdir',
+    topLevelAbsPath,
+    relFromTopLevel: relFromTopLevel || '.',
+  };
+}
+
 async function listSubmoduleRelPaths(rootDir: string): Promise<Set<string>> {
   const out = new Set<string>();
   const res = await runGit(['submodule', 'status', '--recursive'], rootDir);
@@ -428,7 +456,7 @@ type RepoStatusSummary = Readonly<{
 
 type RtwsGitInventory = Readonly<{
   rootIsRepo: boolean;
-  rootRelPath: string;
+  rootGitPosition: RtwsRootGitPosition;
   submoduleRelPaths: string[];
   nestedRepoRelPaths: string[];
   repoStatuses: RepoStatusSummary[];
@@ -436,12 +464,15 @@ type RtwsGitInventory = Readonly<{
 
 async function collectRtwsGitInventory(): Promise<RtwsGitInventory> {
   const rtws = process.cwd();
-  const rootIsRepo = await isGitRepo(rtws);
+  const rootGitPosition = await inspectRtwsRootGitPosition(rtws);
+  const rootIsRepo = rootGitPosition.kind === 'repo_root';
   const markerDirs = await findGitMarkerDirs(rtws);
   const submoduleSet = rootIsRepo ? await listSubmoduleRelPaths(rtws) : new Set<string>();
 
   const repoAbsSet = new Set<string>();
-  if (rootIsRepo) repoAbsSet.add(rtws);
+  if (rootGitPosition.kind === 'repo_root' || rootGitPosition.kind === 'repo_subdir') {
+    repoAbsSet.add(rtws);
+  }
   for (const candidate of markerDirs) {
     if (candidate === rtws) continue;
     if (await isGitRepo(candidate)) {
@@ -517,7 +548,7 @@ async function collectRtwsGitInventory(): Promise<RtwsGitInventory> {
 
   return {
     rootIsRepo,
-    rootRelPath: '.',
+    rootGitPosition,
     submoduleRelPaths,
     nestedRepoRelPaths,
     repoStatuses,
@@ -525,6 +556,33 @@ async function collectRtwsGitInventory(): Promise<RtwsGitInventory> {
 }
 
 function formatRtwsGitInventoryRound1(language: LanguageCode, inventory: RtwsGitInventory): string {
+  const relationLineZh = (() => {
+    if (inventory.rootGitPosition.kind === 'repo_root') {
+      return '- rtws 与 git 关系：rtws 本身就是 repo 根路径';
+    }
+    if (inventory.rootGitPosition.kind === 'repo_subdir') {
+      return [
+        '- rtws 与 git 关系：rtws 是某个 repo 的子目录（rtws 本身不是 repo 根）',
+        `- 上级 repo 顶层：${inventory.rootGitPosition.topLevelAbsPath}`,
+        `- rtws 相对上级 repo 路径：${inventory.rootGitPosition.relFromTopLevel}`,
+      ].join('\n');
+    }
+    return '- rtws 与 git 关系：不在任何 git worktree 内';
+  })();
+  const relationLineEn = (() => {
+    if (inventory.rootGitPosition.kind === 'repo_root') {
+      return '- rtws vs git: rtws itself is the repo root';
+    }
+    if (inventory.rootGitPosition.kind === 'repo_subdir') {
+      return [
+        '- rtws vs git: rtws is a subdirectory inside a repo (rtws itself is not the repo root)',
+        `- enclosing repo top-level: ${inventory.rootGitPosition.topLevelAbsPath}`,
+        `- rtws path relative to repo root: ${inventory.rootGitPosition.relFromTopLevel}`,
+      ].join('\n');
+    }
+    return '- rtws vs git: not inside any git worktree';
+  })();
+
   if (language === 'zh') {
     const submoduleText =
       inventory.submoduleRelPaths.length < 1
@@ -538,6 +596,7 @@ function formatRtwsGitInventoryRound1(language: LanguageCode, inventory: RtwsGit
       'VCS 长线诉请 Round-1（rtws 仓库拓扑）',
       '',
       `- 根路径是否 git repo：${inventory.rootIsRepo ? '是' : '否'}`,
+      relationLineZh,
       `- submodule 数量：${inventory.submoduleRelPaths.length}`,
       `- 子目录独立 repo 数量：${inventory.nestedRepoRelPaths.length}`,
       '',
@@ -561,6 +620,7 @@ function formatRtwsGitInventoryRound1(language: LanguageCode, inventory: RtwsGit
     'VCS Tellask Session Round-1 (rtws repo topology)',
     '',
     `- Root path is git repo: ${inventory.rootIsRepo ? 'yes' : 'no'}`,
+    relationLineEn,
     `- Submodule count: ${inventory.submoduleRelPaths.length}`,
     `- Nested independent repo count: ${inventory.nestedRepoRelPaths.length}`,
     '',
@@ -749,6 +809,8 @@ function formatVcsSessionRound1TellaskBody(language: LanguageCode): string {
       '- 是否存在子目录独立 repo（给出路径列表）',
       '',
       '要求：',
+      '- 只使用 git / find 命令采集事实；不要用 python/node/perl 等脚本探测',
+      '- 建议命令：`git rev-parse --is-inside-work-tree`、`git submodule status --recursive`、`find . -name .git`',
       '- 仅做事实盘点，不做下一步建议',
       '- 输出必须短且结构化，便于我在 Round-2 继续诉请',
     ].join('\n');
@@ -762,6 +824,8 @@ function formatVcsSessionRound1TellaskBody(language: LanguageCode): string {
     '- whether nested independent repos exist (with path list)',
     '',
     'Requirements:',
+    '- use git/find commands only; do not use python/node/perl scripts for discovery',
+    '- suggested commands: `git rev-parse --is-inside-work-tree`, `git submodule status --recursive`, `find . -name .git`',
     '- facts only, no next-step suggestions',
     '- keep output short and structured so I can continue in Round-2',
   ].join('\n');
@@ -780,6 +844,8 @@ function formatVcsSessionRound2TellaskBody(language: LanguageCode, round1Respons
       '- 工作区是否脏（可给简要计数）',
       '',
       '要求：',
+      '- 只使用 git 命令逐 repo 采集，不要用 python/node/perl',
+      '- 建议命令：`git -C <repo> remote -v`、`git -C <repo> branch --show-current`、`git -C <repo> rev-parse --abbrev-ref --symbolic-full-name @{upstream}`、`git -C <repo> status --porcelain`',
       '- 覆盖全部 repo；缺失时明确写 unavailable',
       '- 输出保持结构化与简短，不扩展到修复建议',
     ].join('\n');
@@ -794,6 +860,8 @@ function formatVcsSessionRound2TellaskBody(language: LanguageCode, round1Respons
     '- whether working tree is dirty (brief count is enough)',
     '',
     'Requirements:',
+    '- use git commands repo-by-repo; do not use python/node/perl scripts',
+    '- suggested commands: `git -C <repo> remote -v`, `git -C <repo> branch --show-current`, `git -C <repo> rev-parse --abbrev-ref --symbolic-full-name @{upstream}`, `git -C <repo> status --porcelain`',
     '- cover all repos; mark unavailable when missing',
     '- keep output structured and short; do not expand into fix proposals',
   ].join('\n');
@@ -1438,6 +1506,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
   let vcsRound2Body = '';
   let vcsRound1ResponseText = '';
   let vcsRound2ResponseText = '';
+  let vcsEvidenceRound1Text = '';
+  let vcsEvidenceRound2Text = '';
   let vcsRound1NoteMarkdown = '';
   let vcsRound2NoteMarkdown = '';
   let vcsInventoryText = '';
@@ -1602,7 +1672,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
       await driveDialogStream(
         sub,
-        { content: initPrompt, msgId: generateShortId(), grammar: 'markdown' },
+        { content: initPrompt, msgId: generateShortId(), grammar: 'markdown', skipTaskdoc: true },
         true,
       );
 
@@ -1697,7 +1767,12 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         });
         await driveDialogStream(
           round1Sub,
-          { content: round1Prompt, msgId: generateShortId(), grammar: 'markdown' },
+          {
+            content: round1Prompt,
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            skipTaskdoc: true,
+          },
           true,
         );
         vcsRound1ResponseText = extractLastAssistantSaying(round1Sub.msgs).trim();
@@ -1759,7 +1834,12 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         });
         await driveDialogStream(
           round1Sub,
-          { content: round2Prompt, msgId: generateShortId(), grammar: 'markdown' },
+          {
+            content: round2Prompt,
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            skipTaskdoc: true,
+          },
           true,
         );
         vcsRound2ResponseText = extractLastAssistantSaying(round1Sub.msgs).trim();
@@ -1795,13 +1875,30 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       }
     }
 
-    if (!vcsInventoryText.trim()) {
-      const inventory = await collectRtwsGitInventory();
-      vcsRound1ResponseText = formatRtwsGitInventoryRound1(language, inventory);
-      vcsRound2ResponseText = formatRtwsGitInventoryRound2(language, inventory);
+    const runtimeInventory = await collectRtwsGitInventory();
+    const runtimeRound1Text = formatRtwsGitInventoryRound1(language, runtimeInventory);
+    const runtimeRound2Text = formatRtwsGitInventoryRound2(language, runtimeInventory);
+    const runtimeInventoryText = [runtimeRound1Text, '', runtimeRound2Text].join('\n');
+
+    if (
+      shellPolicy === 'specialist_only' &&
+      specialistId !== null &&
+      vcsRound1ResponseText.trim() &&
+      vcsRound2ResponseText.trim()
+    ) {
+      // Keep teammate replies as collaboration transcript, but use runtime-verified
+      // inventory as canonical facts for downstream FBR/distillation evidence.
+      vcsEvidenceRound1Text = runtimeRound1Text;
+      vcsEvidenceRound2Text = runtimeRound2Text;
+      vcsInventoryText = runtimeInventoryText;
+    } else {
+      vcsRound1ResponseText = runtimeRound1Text;
+      vcsRound2ResponseText = runtimeRound2Text;
+      vcsEvidenceRound1Text = runtimeRound1Text;
+      vcsEvidenceRound2Text = runtimeRound2Text;
       vcsRound1NoteMarkdown = formatRuntimeVcsRoundNote(language, 1, vcsRound1ResponseText);
       vcsRound2NoteMarkdown = formatRuntimeVcsRoundNote(language, 2, vcsRound2ResponseText);
-      vcsInventoryText = [vcsRound1ResponseText, '', vcsRound2ResponseText].join('\n');
+      vcsInventoryText = runtimeInventoryText;
 
       await dlg.withLock(async () => {
         try {
@@ -1926,7 +2023,12 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
           await driveDialogStream(
             sub,
-            { content: initPrompt, msgId: generateShortId(), grammar: 'markdown' },
+            {
+              content: initPrompt,
+              msgId: generateShortId(),
+              grammar: 'markdown',
+              skipTaskdoc: true,
+            },
             true,
           );
 
@@ -1968,8 +2070,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       dlg,
       shellSnapshotText: snapshotText,
       shellResponseText: shellResponseText,
-      vcsRound1Text: vcsRound1ResponseText,
-      vcsRound2Text: vcsRound2ResponseText,
+      vcsRound1Text: vcsEvidenceRound1Text,
+      vcsRound2Text: vcsEvidenceRound2Text,
       fbrResponses: fbrResponsesForInjection,
       fbrTellaskHead: fbrTellaskHead,
       fbrCallId: fbrCallId,
