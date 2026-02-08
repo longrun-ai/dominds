@@ -344,7 +344,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.inputHistoryDraft = null;
   }
 
-  private applyInputHistoryCursorValue(): void {
+  private applyInputHistoryCursorValue(cursorAt: 'start' | 'end' = 'end'): void {
     if (!this.textInput) return;
     if (this.inputHistoryCursor === null) return;
     const len = this.inputHistory.length;
@@ -355,7 +355,7 @@ export class DomindsQ4HInput extends HTMLElement {
     this.textInput.value = nextValue;
     this.updateSendButton();
     this.scheduleInputUiUpdate();
-    const nextPos = this.textInput.value.length;
+    const nextPos = cursorAt === 'start' ? 0 : this.textInput.value.length;
     this.textInput.setSelectionRange(nextPos, nextPos);
   }
 
@@ -370,7 +370,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
     if (this.inputHistoryCursor <= 0) return;
     this.inputHistoryCursor -= 1;
-    this.applyInputHistoryCursorValue();
+    this.applyInputHistoryCursorValue('start');
   }
 
   private recallNextInputHistory(): void {
