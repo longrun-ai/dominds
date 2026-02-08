@@ -24,6 +24,7 @@ import type {
   FullRemindersEvent,
   ReminderContent,
   TeammateResponseEvent,
+  WebSearchCallAction,
 } from './shared/types/dialog';
 import type { LanguageCode } from './shared/types/language';
 import type {
@@ -877,6 +878,15 @@ export abstract class Dialog {
     await this.dlgStore.funcCallRequested(this, funcId, funcName, argumentsStr);
   }
 
+  public async webSearchCall(payload: {
+    phase: 'added' | 'done';
+    itemId?: string;
+    status?: string;
+    action?: WebSearchCallAction;
+  }): Promise<void> {
+    await this.dlgStore.webSearchCall(this, payload);
+  }
+
   // Tellask call events (streaming mode - `!?@...` blocks)
   public async callingStart(validation: TellaskCallValidation): Promise<void> {
     await this.dlgStore.callingStart(this, validation);
@@ -1484,6 +1494,16 @@ export abstract class DialogStore {
     _funcId: string,
     _funcName: string,
     _argumentsStr: string,
+  ): Promise<void> {}
+
+  public async webSearchCall(
+    _dialog: Dialog,
+    _payload: {
+      phase: 'added' | 'done';
+      itemId?: string;
+      status?: string;
+      action?: WebSearchCallAction;
+    },
   ): Promise<void> {}
 
   /**

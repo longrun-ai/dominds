@@ -276,6 +276,12 @@ export type UiStrings = {
   setupReqUnknownModel: string;
   setupReqMissingProviderEnv: string;
   setupReqOk: string;
+
+  webSearchTitle: string;
+  webSearchProgressPrefix: string;
+  webSearchStatusPrefix: string;
+  webSearchPhaseStarted: string;
+  webSearchPhaseDone: string;
 };
 
 export function getUiStrings(language: LanguageCode): UiStrings {
@@ -546,6 +552,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupReqUnknownModel: '未知 model：',
       setupReqMissingProviderEnv: '缺少环境变量：',
       setupReqOk: '提供商/模型与环境变量已就绪。',
+
+      webSearchTitle: '联网搜索',
+      webSearchProgressPrefix: '进展：',
+      webSearchStatusPrefix: '状态：',
+      webSearchPhaseStarted: '开始',
+      webSearchPhaseDone: '完成',
 
       setupWorkspaceLlmTitle: '运行时工作区自定义 LLM 提供商',
       setupWorkspaceLlmHelp:
@@ -838,6 +850,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupReqUnknownModel: 'Unknown model: ',
     setupReqMissingProviderEnv: 'Missing env var: ',
     setupReqOk: 'Team provider/model and provider env var look configured.',
+
+    webSearchTitle: 'Web Search',
+    webSearchProgressPrefix: 'Progress: ',
+    webSearchStatusPrefix: 'Status: ',
+    webSearchPhaseStarted: 'started',
+    webSearchPhaseDone: 'done',
 
     setupWorkspaceLlmTitle: 'rtws custom LLM providers',
     setupWorkspaceLlmHelp:

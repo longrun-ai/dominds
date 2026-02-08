@@ -14,6 +14,9 @@ import type {
   ChatGptResponsesRequest,
   ChatGptResponsesStreamEvent,
   ChatGptTextControls,
+  ChatGptTool,
+  ChatGptWebSearchCallItem,
+  ChatGptWebSearchTool,
 } from '@longrun-ai/codex-auth';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
@@ -22,7 +25,13 @@ import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
-import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
+import type {
+  LlmBatchResult,
+  LlmGenerator,
+  LlmStreamReceiver,
+  LlmStreamResult,
+  LlmWebSearchCall,
+} from '../gen';
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/codex');
@@ -79,6 +88,58 @@ function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
     description,
     strict: false,
     parameters,
+  };
+}
+
+type CodexWebSearchMode = 'disabled' | 'cached' | 'live';
+
+function resolveCodexWebSearchMode(agent: Team.Member): CodexWebSearchMode {
+  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
+  return codexParams?.web_search ?? 'live';
+}
+
+function buildCodexNativeTools(agent: Team.Member): ChatGptTool[] {
+  const webSearchMode = resolveCodexWebSearchMode(agent);
+  if (webSearchMode === 'disabled') return [];
+
+  const webSearchTool: ChatGptWebSearchTool = {
+    type: 'web_search',
+    external_web_access: webSearchMode === 'live',
+  };
+  return [webSearchTool];
+}
+
+function assertNoCodexNativeToolCollisions(
+  funcTools: FuncTool[],
+  nativeTools: ChatGptTool[],
+): void {
+  const names = new Set<string>();
+  for (const t of funcTools) {
+    names.add(t.name);
+  }
+
+  for (const nativeTool of nativeTools) {
+    if (nativeTool.type !== 'web_search' && nativeTool.type !== 'local_shell') {
+      continue;
+    }
+    const nativeName = nativeTool.type;
+    if (names.has(nativeName)) {
+      throw new Error(
+        `Codex native tool name collision: function tool '${nativeName}' conflicts with native '${nativeName}' tool.`,
+      );
+    }
+  }
+}
+
+function toLlmWebSearchCall(
+  item: ChatGptWebSearchCallItem,
+  phase: 'added' | 'done',
+): LlmWebSearchCall {
+  return {
+    phase,
+    itemId: item.id,
+    status: item.status,
+    action: item.action,
   };
 }
 
@@ -321,7 +382,9 @@ async function buildCodexRequest(
     };
   }
 
-  const tools = funcTools.map(funcToolToCodex);
+  const nativeTools = buildCodexNativeTools(agent);
+  assertNoCodexNativeToolCollisions(funcTools, nativeTools);
+  const tools: ChatGptTool[] = [...funcTools.map(funcToolToCodex), ...nativeTools];
 
   return {
     model: agent.model,
@@ -520,6 +583,9 @@ export class CodexGen implements LlmGenerator {
             return;
           }
           case 'response.output_item.added':
+            if (event.item.type === 'web_search_call' && receiver.webSearchCall) {
+              await receiver.webSearchCall(toLlmWebSearchCall(event.item, 'added'));
+            }
             return;
           case 'response.output_item.done': {
             switch (event.item.type) {
@@ -576,10 +642,14 @@ export class CodexGen implements LlmGenerator {
               case 'function_call_output':
               case 'custom_tool_call':
               case 'custom_tool_call_output':
-              case 'web_search_call':
               case 'ghost_snapshot':
               case 'compaction':
               case 'compaction_summary':
+                return;
+              case 'web_search_call':
+                if (receiver.webSearchCall) {
+                  await receiver.webSearchCall(toLlmWebSearchCall(event.item, 'done'));
+                }
                 return;
               default: {
                 const _exhaustive: never = event.item;

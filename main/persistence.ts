@@ -43,6 +43,8 @@ import type {
   ThinkingChunkEvent,
   ThinkingFinishEvent,
   ThinkingStartEvent,
+  WebSearchCallAction,
+  WebSearchCallEvent,
 } from './shared/types/dialog';
 import type { LanguageCode } from './shared/types/language';
 import type {
@@ -65,6 +67,7 @@ import type {
   ToolArguments,
   UiOnlyMarkdownRecord,
   UserTextGrammar,
+  WebSearchCallRecord,
 } from './shared/types/storage';
 import type { TellaskCallValidation } from './shared/types/tellask';
 import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
@@ -861,6 +864,40 @@ export class DiskFileDialogStore extends DialogStore {
       genseq: dialog.activeGenSeq,
     };
     postDialogEvent(dialog, funcCallEvt);
+  }
+
+  public async webSearchCall(
+    dialog: Dialog,
+    payload: {
+      phase: 'added' | 'done';
+      itemId?: string;
+      status?: string;
+      action?: WebSearchCallAction;
+    },
+  ): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+
+    const record: WebSearchCallRecord = {
+      ts: formatUnifiedTimestamp(new Date()),
+      type: 'web_search_call_record',
+      genseq: dialog.activeGenSeq,
+      phase: payload.phase,
+      itemId: payload.itemId,
+      status: payload.status,
+      action: payload.action,
+    };
+    await this.appendEvent(course, record);
+
+    const evt: WebSearchCallEvent = {
+      type: 'web_search_call_evt',
+      course,
+      genseq: dialog.activeGenSeq,
+      phase: payload.phase,
+      itemId: payload.itemId,
+      status: payload.status,
+      action: payload.action,
+    };
+    postDialogEvent(dialog, evt);
   }
 
   /**
@@ -1785,6 +1822,28 @@ export class DiskFileDialogStore extends DialogStore {
 
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(funcCall));
+        }
+        break;
+      }
+
+      case 'web_search_call_record': {
+        const webSearchCall = {
+          type: 'web_search_call_evt',
+          phase: event.phase,
+          itemId: event.itemId,
+          status: event.status,
+          action: event.action,
+          course,
+          genseq: event.genseq,
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(webSearchCall));
         }
         break;
       }
@@ -4508,6 +4567,10 @@ export class DialogPersistence {
           });
           break;
         }
+        case 'web_search_call_record':
+          // UI-only timeline event for native web_search tool call visualization.
+          // Must not be injected into LLM context reconstruction.
+          break;
 
         case 'func_result_record': {
           // Convert function result to ChatMessage

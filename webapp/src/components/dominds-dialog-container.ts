@@ -19,6 +19,7 @@ import type {
   TeammateCallResponseEvent,
   TeammateResponseEvent,
   TypedDialogEvent,
+  WebSearchCallEvent,
 } from '../shared/types/dialog';
 import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
@@ -85,6 +86,8 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Track calling sections by callId for direct lookup (teammate-call blocks only)
   private callingSectionByCallId = new Map<string, HTMLElement>();
+  private webSearchSectionByItemId = new Map<string, HTMLElement>();
+  private webSearchSectionBySeq = new Map<number, HTMLElement>();
 
   // Teammate-call responses can arrive before the corresponding calling section has finished streaming
   // (and therefore before teammate_call_finish_evt sets data-call-id + populates callingSectionByCallId).
@@ -621,6 +624,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentCourse = course;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
+    this.webSearchSectionByItemId.clear();
+    this.webSearchSectionBySeq.clear();
     this.pendingTeammateCallResponsesByCallId.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -642,6 +647,8 @@ export class DomindsDialogContainer extends HTMLElement {
     this.currentCourse = undefined;
     this.activeGenSeq = undefined;
     this.callingSectionByCallId.clear();
+    this.webSearchSectionByItemId.clear();
+    this.webSearchSectionBySeq.clear();
     this.pendingTeammateCallResponsesByCallId.clear();
 
     // Clear all DOM messages when switching dialogs
@@ -875,6 +882,9 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleFuncCallRequested(ev.funcId, ev.funcName, ev.arguments);
         break;
       }
+      case 'web_search_call_evt':
+        this.handleWebSearchCall(event);
+        break;
 
       // Function results
       case 'func_result_evt':
@@ -1171,6 +1181,118 @@ export class DomindsDialogContainer extends HTMLElement {
     const body = this.generationBubble.querySelector('.bubble-body');
     (body || this.generationBubble).appendChild(funcCallSection);
     this.scrollToBottom();
+  }
+
+  private handleWebSearchCall(
+    event: Extract<TypedDialogEvent, { type: 'web_search_call_evt' }>,
+  ): void {
+    const bubble = this.ensureGenerationBubbleForSeq(event.genseq, event.timestamp);
+    if (!bubble) {
+      console.warn('web_search_call_evt received without generation bubble, skipping');
+      return;
+    }
+
+    const itemId = typeof event.itemId === 'string' ? event.itemId.trim() : '';
+    let section: HTMLElement | undefined;
+
+    if (itemId !== '') {
+      const fromItemId = this.webSearchSectionByItemId.get(itemId);
+      if (fromItemId && fromItemId.isConnected) {
+        section = fromItemId;
+      }
+    }
+
+    if (!section) {
+      const fromSeq = this.webSearchSectionBySeq.get(event.genseq);
+      if (fromSeq && fromSeq.isConnected && !fromSeq.classList.contains('completed')) {
+        section = fromSeq;
+      }
+    }
+
+    if (!section) {
+      section = this.createWebSearchSection();
+      section.setAttribute('data-genseq', String(event.genseq));
+      const body = bubble.querySelector('.bubble-body');
+      (body || bubble).appendChild(section);
+    }
+
+    if (itemId !== '') {
+      section.setAttribute('data-web-search-item-id', itemId);
+      this.webSearchSectionByItemId.set(itemId, section);
+    }
+    this.webSearchSectionBySeq.set(event.genseq, section);
+
+    this.renderWebSearchSection(section, event);
+    this.scrollToBottom();
+  }
+
+  private renderWebSearchSection(section: HTMLElement, event: WebSearchCallEvent): void {
+    const t = getUiStrings(this.uiLanguage);
+    const stateEl = section.querySelector('.web-search-state') as HTMLElement | null;
+    const summaryEl = section.querySelector('.web-search-summary') as HTMLElement | null;
+    const detailsEl = section.querySelector('.web-search-details') as HTMLElement | null;
+    if (!stateEl || !summaryEl || !detailsEl) return;
+
+    const phase = event.phase;
+    const status = typeof event.status === 'string' ? event.status.trim() : '';
+    const itemId = typeof event.itemId === 'string' ? event.itemId.trim() : '';
+
+    const phaseLabel = phase === 'added' ? t.webSearchPhaseStarted : t.webSearchPhaseDone;
+    const stateLabel =
+      status === ''
+        ? `${t.webSearchProgressPrefix}${phaseLabel}`
+        : `${t.webSearchStatusPrefix}${status}`;
+    stateEl.textContent = stateLabel;
+    stateEl.classList.toggle('is-completed', status === 'completed');
+    stateEl.classList.toggle('is-failed', status === 'failed');
+    section.classList.toggle('completed', phase === 'done');
+
+    const summaryParts: string[] = [];
+    if (event.action) {
+      summaryParts.push(`action=${event.action.type}`);
+    }
+    if (itemId !== '') {
+      summaryParts.push(`item=${itemId}`);
+    }
+    summaryParts.push(`genseq=${String(event.genseq)}`);
+    summaryEl.textContent = summaryParts.join(' · ');
+
+    const lines: string[] = [];
+    if (event.action) {
+      lines.push(`type: ${event.action.type}`);
+      switch (event.action.type) {
+        case 'search':
+          if (typeof event.action.query === 'string' && event.action.query.trim() !== '') {
+            lines.push(`query: ${event.action.query}`);
+          }
+          break;
+        case 'open_page':
+          if (typeof event.action.url === 'string' && event.action.url.trim() !== '') {
+            lines.push(`url: ${event.action.url}`);
+          }
+          break;
+        case 'find_in_page':
+          if (typeof event.action.url === 'string' && event.action.url.trim() !== '') {
+            lines.push(`url: ${event.action.url}`);
+          }
+          if (typeof event.action.pattern === 'string' && event.action.pattern.trim() !== '') {
+            lines.push(`pattern: ${event.action.pattern}`);
+          }
+          break;
+        default: {
+          const _exhaustive: never = event.action;
+          throw new Error(`Unhandled web search action: ${String(_exhaustive)}`);
+        }
+      }
+    }
+    lines.push(`${t.webSearchProgressPrefix}${phaseLabel}`);
+    if (status !== '') {
+      lines.push(`${t.webSearchStatusPrefix}${status}`);
+    }
+    if (itemId !== '') {
+      lines.push(`itemId: ${itemId}`);
+    }
+    detailsEl.textContent = lines.join('\n');
   }
 
   // === TELLASK CALL EVENTS (Streaming mode - `!?@...` blocks) ===
@@ -2064,7 +2186,9 @@ export class DomindsDialogContainer extends HTMLElement {
     // - The UI must render sections in arrival order; do not reorder the DOM to "fix" ordering.
     // So if assistant-only nodes already exist, report it loudly and still append the divider
     // at the current position (arrival order), making the ordering issue visible.
-    const assistantOnlyAlreadyStarted = body.querySelector('.thinking-section, .func-call-section');
+    const assistantOnlyAlreadyStarted = body.querySelector(
+      '.thinking-section, .func-call-section, .web-search-section',
+    );
     if (assistantOnlyAlreadyStarted) {
       this.handleProtocolError(
         `Protocol violation: end_of_user_saying_evt received after assistant output already started (genseq=${String(
@@ -2201,6 +2325,24 @@ export class DomindsDialogContainer extends HTMLElement {
 
     contentEl.append(argsEl, resultEl);
     el.append(headerEl, contentEl);
+    return el;
+  }
+
+  private createWebSearchSection(): HTMLElement {
+    const t = getUiStrings(this.uiLanguage);
+    const el = document.createElement('div');
+    el.className = 'web-search-section';
+    el.innerHTML = `
+      <div class="web-search-header">
+        <span class="web-search-icon">🌐</span>
+        <span class="web-search-title">${this.escapeHtml(t.webSearchTitle)}</span>
+        <span class="web-search-state">${this.escapeHtml(
+          `${t.webSearchProgressPrefix}${t.webSearchPhaseStarted}`,
+        )}</span>
+      </div>
+      <div class="web-search-summary"></div>
+      <pre class="web-search-details"></pre>
+    `;
     return el;
   }
 
@@ -3126,6 +3268,77 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .func-call-section.completed {
+        opacity: 0.9;
+      }
+
+      .web-search-section {
+        margin: 6px 0;
+        padding: 8px;
+        border-radius: 6px;
+        background: var(--color-bg-tertiary, #f1f5f9);
+        border-left: 3px solid var(--color-info, #06b6d4);
+      }
+
+      .web-search-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .web-search-icon {
+        font-size: 14px;
+      }
+
+      .web-search-title {
+        font-weight: 600;
+        color: var(--color-info, #06b6d4);
+        font-size: 12px;
+      }
+
+      .web-search-state {
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 11px;
+        line-height: 1.4;
+        margin-left: auto;
+        background: color-mix(in srgb, var(--color-info, #06b6d4) 14%, transparent);
+        color: var(--color-info, #06b6d4);
+      }
+
+      .web-search-state.is-completed {
+        background: color-mix(in srgb, var(--color-success, #10b981) 14%, transparent);
+        color: var(--color-success, #10b981);
+      }
+
+      .web-search-state.is-failed {
+        background: color-mix(in srgb, var(--color-danger, #ef4444) 14%, transparent);
+        color: var(--color-danger, #ef4444);
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+      }
+
+      .web-search-summary {
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-size: 12px;
+        margin-bottom: 6px;
+        white-space: normal;
+        word-break: break-word;
+      }
+
+      .web-search-details {
+        margin: 0;
+        padding: 8px;
+        border-radius: 6px;
+        background: var(--color-bg-secondary, #ffffff);
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .web-search-section.completed {
         opacity: 0.9;
       }
 

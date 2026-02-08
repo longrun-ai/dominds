@@ -49,6 +49,12 @@ providers:
         parallel_tool_calls:
           type: boolean
           description: Allow the model to emit parallel tool calls (enable by default in Dominds).
+        web_search:
+          prominent: true
+          default: live
+          type: enum
+          values: [disabled, cached, live]
+          description: Enable native web search tool mode (disabled/cached/live).
         max_tokens:
           type: integer
           min: 1

@@ -122,6 +122,21 @@ export interface FunctionResultEvent {
   genseq?: number;
 }
 
+export type WebSearchActionType = 'search' | 'open_page' | 'find_in_page';
+
+export type WebSearchCallAction =
+  | { type: 'search'; query?: string }
+  | { type: 'open_page'; url?: string }
+  | { type: 'find_in_page'; url?: string; pattern?: string };
+
+export type WebSearchCallEvent = LlmGenDlgEvent & {
+  type: 'web_search_call_evt';
+  phase: 'added' | 'done';
+  itemId?: string;
+  status?: string;
+  action?: WebSearchCallAction;
+};
+
 // Teammate-call (tellask) block events (streaming mode - blocks starting with `!?@...`)
 // callId is determined at finish event via content-hash (see shared/utils/id.ts)
 export type TeammateCallStartEvent = LlmGenDlgEvent & {
@@ -282,6 +297,7 @@ export type DialogEvent =
   // Function calls (LLM native)
   | FuncCallStartEvent
   | FunctionResultEvent
+  | WebSearchCallEvent
   // Tellask call blocks (`!?@...`)
   | TeammateCallStartEvent
   | TeammateCallHeadlineChunkEvent

@@ -32,6 +32,7 @@ const client = await createChatGptClientFromManager(manager);
 const payload = createChatGptStartRequest({
   model: 'gpt-5.2-codex',
   instructions: 'You are Codex CLI.',
+  tools: [{ type: 'web_search', external_web_access: true }],
   userText: 'hello',
 });
 const response = await client.responses(payload);
@@ -146,5 +147,7 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 - The CLI uses the same file schema as Codex Rust.
 - Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
   `reasoning` (and typically includes `reasoning.encrypted_content`).
+- Built-in tool payloads are supported, including native `web_search` / `local_shell` and
+  function/custom tools via the `tools` field.
 - Proxy env vars are detected via `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   (case-insensitive). If set, the verification request uses them.

@@ -194,6 +194,7 @@ export type PersistedDialogRecord =
   | AgentWordsRecord
   | UiOnlyMarkdownRecord
   | FuncCallRecord
+  | WebSearchCallRecord
   | HumanTextRecord
   | FuncResultRecord
   | QuestForSupRecord
@@ -238,6 +239,21 @@ export interface FuncCallRecord {
   id: string;
   name: string;
   arguments: ToolArguments;
+}
+
+export type WebSearchCallActionRecord =
+  | { type: 'search'; query?: string }
+  | { type: 'open_page'; url?: string }
+  | { type: 'find_in_page'; url?: string; pattern?: string };
+
+export interface WebSearchCallRecord {
+  ts: string;
+  type: 'web_search_call_record';
+  genseq: number;
+  phase: 'added' | 'done';
+  itemId?: string;
+  status?: string;
+  action?: WebSearchCallActionRecord;
 }
 
 export interface HumanTextRecord {

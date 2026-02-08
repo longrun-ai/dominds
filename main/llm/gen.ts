@@ -14,6 +14,18 @@ export interface LlmBatchResult {
   llmGenModel?: string;
 }
 
+export type LlmWebSearchAction =
+  | { type: 'search'; query?: string }
+  | { type: 'open_page'; url?: string }
+  | { type: 'find_in_page'; url?: string; pattern?: string };
+
+export type LlmWebSearchCall = {
+  phase: 'added' | 'done';
+  itemId?: string;
+  status?: string;
+  action?: LlmWebSearchAction;
+};
+
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;
   thinkingChunk: (chunk: string) => Promise<void>;
@@ -22,6 +34,7 @@ export interface LlmStreamReceiver {
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;
   funcCall: (callId: string, name: string, args: string) => Promise<void>;
+  webSearchCall?: (call: LlmWebSearchCall) => Promise<void>;
 
   // Optional hook for generators to surface protocol/streaming anomalies (e.g. overlap) via the runtime.
   // Used only for debugging; generators should still attempt best-effort recovery.

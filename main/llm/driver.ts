@@ -2403,6 +2403,11 @@ async function _driveDialogStream(
                         arguments: args,
                       });
                     },
+                    webSearchCall: async (call) => {
+                      throwIfAborted(abortSignal, dlg.id);
+                      sawAnyStreamContent = true;
+                      await dlg.webSearchCall(call);
+                    },
                   },
                   dlg.activeGenSeq,
                   abortSignal,
@@ -3096,11 +3101,9 @@ function buildDrivePolicy(args: {
     };
   }
 
-  const effectiveAgent = agent.fbr_model_params
-    ? (Object.assign(Object.create(agent), {
-        model_params: mergeModelParams(agent.model_params, agent.fbr_model_params),
-      }) as Team.Member)
-    : agent;
+  const effectiveAgent = Object.assign(Object.create(agent), {
+    model_params: mergeModelParams(agent.model_params, agent.fbr_model_params),
+  }) as Team.Member;
 
   return {
     mode: 'fbr_toolless',

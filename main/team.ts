@@ -77,6 +77,7 @@ export namespace Team {
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
+    web_search?: 'disabled' | 'cached' | 'live'; // Native web_search mode (Responses API).
   };
 
   export interface ModelParams {
@@ -448,6 +449,12 @@ export namespace Team {
       id: 'defaulter',
       name: 'Defaulter',
       fbr_effort: 3,
+      // FBR defaults to tool-less web search policy, but users can override via
+      // member_defaults.fbr_model_params / members.<id>.fbr_model_params.
+      fbr_model_params: {
+        codex: { web_search: 'disabled' },
+        openai: { web_search: 'disabled' },
+      },
     });
 
     const fuxi = new Team.Member({
@@ -935,6 +942,7 @@ export namespace Team {
     'reasoning_effort',
     'verbosity',
     'parallel_tool_calls',
+    'web_search',
   ] as const;
   export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS;
   export const TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS = [
@@ -979,6 +987,7 @@ export namespace Team {
       reasoning_effort: `Did you mean \`${atPrefix}.model_params.codex.reasoning_effort\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.reasoning_effort\`? (not supported at ${atPrefix} root)`,
       verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
+      web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.web_search\`? (not supported at ${atPrefix} root)`,
     };
 
     const unknownAtMember = listUnknownKeys(memberObj, TEAM_YAML_MEMBER_KEYS);
@@ -1007,6 +1016,7 @@ export namespace Team {
         reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\` (preferred for provider: codex) or \`${modelParamsAt}.openai.reasoning_effort\`?`,
         verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` (preferred for provider: codex) or \`${modelParamsAt}.openai.verbosity\`?`,
         parallel_tool_calls: `Did you mean \`${modelParamsAt}.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${modelParamsAt}.openai.parallel_tool_calls\`?`,
+        web_search: `Did you mean \`${modelParamsAt}.codex.web_search\` (preferred for provider: codex) or \`${modelParamsAt}.openai.web_search\`?`,
         temperature: `Did you mean \`${modelParamsAt}.codex.temperature\` / \`${modelParamsAt}.openai.temperature\` (or \`${modelParamsAt}.anthropic.temperature\`)?`,
         top_p: `Did you mean \`${modelParamsAt}.codex.top_p\` / \`${modelParamsAt}.openai.top_p\` (or \`${modelParamsAt}.anthropic.top_p\`)?`,
         max_tokens: `Did you mean \`${modelParamsAt}.max_tokens\` / \`${modelParamsAt}.general.max_tokens\` (provider-agnostic), or \`${modelParamsAt}.codex.max_tokens\` / \`${modelParamsAt}.openai.max_tokens\` / \`${modelParamsAt}.anthropic.max_tokens\`?`,
@@ -1747,6 +1757,20 @@ export namespace Team {
         throw new Error(
           `Invalid ${at2}.verbosity: expected low|medium|high (got ${describeValueType(
             verbosity,
+          )})`,
+        );
+      }
+
+      const webSearch = params.web_search;
+      if (
+        webSearch !== undefined &&
+        webSearch !== 'disabled' &&
+        webSearch !== 'cached' &&
+        webSearch !== 'live'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.web_search: expected disabled|cached|live (got ${describeValueType(
+            webSearch,
           )})`,
         );
       }

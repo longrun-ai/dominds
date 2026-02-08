@@ -49,6 +49,16 @@ async function main(): Promise<void> {
       undefined,
       'charlie should be omitted due to invalid config',
     );
+    assert.equal(
+      team.getMember('alice')?.fbr_model_params?.codex?.web_search,
+      'disabled',
+      'member should inherit default fbr codex.web_search=disabled',
+    );
+    assert.equal(
+      team.getMember('alice')?.fbr_model_params?.openai?.web_search,
+      'disabled',
+      'member should inherit default fbr openai.web_search=disabled',
+    );
 
     const snapshot = getProblemsSnapshot();
     const ids = snapshot.problems.map((p) => p.id).sort();
@@ -84,6 +94,7 @@ async function main(): Promise<void> {
         '    codex:',
         '      reasoning_effort: high',
         '      verbosity: low',
+        '      web_search: live',
         '      extra_key: true',
         'default_responder: alice',
         'members:',
@@ -126,6 +137,69 @@ async function main(): Promise<void> {
     assert.ok(mdUnknown.detail.errorText.includes('member_defaults.reasoning_effort'));
     assert.ok(
       mdUnknown.detail.errorText.includes('member_defaults.model_params.codex.reasoning_effort'),
+    );
+
+    // model_params.codex.web_search should accept disabled|cached|live and reject others.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      codex:',
+        '        web_search: nope',
+        '',
+      ].join('\n'),
+    );
+
+    const teamWebSearch = await Team.load();
+    assert.equal(
+      teamWebSearch.getMember('alice'),
+      undefined,
+      'alice should be omitted due to invalid codex web_search mode',
+    );
+    const snapshotWebSearch = getProblemsSnapshot();
+    const aliceProblem = snapshotWebSearch.problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/alice',
+    );
+    assert.ok(aliceProblem && aliceProblem.kind === 'team_workspace_config_error');
+    assert.ok(
+      aliceProblem.detail.errorText.includes('members.alice.model_params.codex.web_search'),
+    );
+
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    fbr_model_params:',
+        '      codex:',
+        '        web_search: live',
+        '',
+      ].join('\n'),
+    );
+
+    const teamFbrWebSearch = await Team.load();
+    assert.equal(
+      teamFbrWebSearch.getMember('alice')?.fbr_model_params?.codex?.web_search,
+      'live',
+      'fbr_model_params should allow user override for codex web_search',
+    );
+    assert.ok(
+      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
+      'no team yaml errors expected for valid fbr_model_params.codex.web_search',
     );
 
     // shell_specialists policy:
