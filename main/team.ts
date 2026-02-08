@@ -349,8 +349,9 @@ export namespace Team {
      * Honors declaration order of toolsets and tools. Logs warnings for duplicate tool names
      * that resolve to different Tool objects. Returns no duplicate tools per name.
      */
-    listResolvedToolsetNames(): string[] {
+    listResolvedToolsetNames(options?: { onMissing?: 'warn' | 'silent' }): string[] {
       if (!this.toolsets) return [];
+      const onMissing = options?.onMissing ?? 'warn';
 
       const excludedToolsets = new Set<string>();
       for (const entry of this.toolsets) {
@@ -376,9 +377,11 @@ export namespace Team {
           if (seen.has(resolvedToolsetName)) continue;
           const tools = getToolset(resolvedToolsetName);
           if (!tools) {
-            log.warn(
-              `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
-            );
+            if (onMissing === 'warn') {
+              log.warn(
+                `Toolset '${resolvedToolsetName}' not found in registry for member '${this.id}'`,
+              );
+            }
             continue;
           }
 
@@ -390,12 +393,17 @@ export namespace Team {
       return resolved;
     }
 
-    listTools(): Tool[] {
+    listTools(options?: {
+      onMissingToolset?: 'warn' | 'silent';
+      onMissingTool?: 'warn' | 'silent';
+    }): Tool[] {
       const toolMap = new Map<string, Tool>();
       const seenNames = new Set<string>();
+      const onMissingToolset = options?.onMissingToolset ?? 'warn';
+      const onMissingTool = options?.onMissingTool ?? 'warn';
 
       // Process toolsets (in declaration order)
-      for (const toolsetName of this.listResolvedToolsetNames()) {
+      for (const toolsetName of this.listResolvedToolsetNames({ onMissing: onMissingToolset })) {
         const tools = getToolset(toolsetName);
         if (!tools) continue;
 
@@ -420,7 +428,9 @@ export namespace Team {
         for (const toolName of this.tools) {
           const tool = getTool(toolName);
           if (!tool) {
-            log.warn(`Tool '${toolName}' not found in registry for member '${this.id}'`);
+            if (onMissingTool === 'warn') {
+              log.warn(`Tool '${toolName}' not found in registry for member '${this.id}'`);
+            }
             continue;
           }
 
@@ -512,7 +522,7 @@ export namespace Team {
 
     function listShellTools(member: Team.Member): ShellToolName[] {
       const out: ShellToolName[] = [];
-      for (const t of member.listTools()) {
+      for (const t of member.listTools({ onMissingToolset: 'silent', onMissingTool: 'silent' })) {
         if (t.type !== 'func') continue;
         if (!isShellToolName(t.name)) continue;
         if (out.includes(t.name)) continue;

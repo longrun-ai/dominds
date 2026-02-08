@@ -82,6 +82,60 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists; otherwise execute the next action now (direct Tellask or local action).',
     '- Do not use @human as a relay for executable teammate work. If you write “ask @X to do Y”, emit \\`!?@X ...\\` in the same response.',
   ].join('\n');
+  const collaborationProtocolZh = [
+    '- \\`!?@...\\` 仅用于诉请队友/@self/@human，不是函数工具调用通道。',
+    '- 函数工具只能通过原生 function-calling 调用；不要把工具名写进 \\`!?@...\\` 诉请头。',
+    '- 对队友诉请（非 \\`!?@self\\`）默认带 \\`!tellaskSession <slug>\\` 并在同一会话续推；仅在确认一次性诉请足够时才可省略，且需说明理由。',
+    '- 队友诉请阶段协议（强制）：',
+    teammatePhaseContractZh,
+  ].join('\n');
+  const collaborationProtocolEn = [
+    '- \\`!?@...\\` is only for tellasking teammates/@self/@human; it is not a function-tool invocation channel.',
+    '- Function tools must be invoked through native function-calling only; do not put tool names in \\`!?@...\\` tellask headlines.',
+    '- For teammate tellasks (non-\\`!?@self\\`), default to \\`!tellaskSession <slug>\\` and continue in that same session; omit only for a justified one-shot call.',
+    '- Teammate Tellask phase contract (mandatory):',
+    teammatePhaseContractEn,
+  ].join('\n');
+  const fbrGuidelinesZh = [
+    '- \\`!?@self\\` 是 FBR 特有机制，不属于“队友诉请”分类；请按本节规则执行，不要套用“队友诉请默认带 \\`!tellaskSession\\`”的规则。',
+    '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须用 \\`!?@self\\` 发起。',
+    fbrScopeRuleZh,
+    '- FBR 的默认入口是瞬态 \\`!?@self\\`（不带 \\`!tellaskSession\\`）；仅当明确需要可恢复的长期 FBR 会话时，才使用 \\`!?@self !tellaskSession <slug>\\`，并说明理由。',
+    '- 即使用户未明确要求，在诉诸 @human（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况作为 FBR 正文；在收到该次 FBR 回贴前，不要提前下最终行动决策。',
+    '- FBR 阶段协议（强制）：',
+    fbrPhaseContractZh,
+    '- 鼓励 FBR 自我建议立即获取哪些未明事实，得到建议利用当前对话工具获取，再补足上下文迭代 FBR 直到获得清晰的下一步行动思路。',
+  ].join('\n');
+  const fbrGuidelinesEn = [
+    '- \\`!?@self\\` is an FBR-specific mechanism, not part of the teammate-tellask category; follow this section’s rules instead of teammate-tellask defaults.',
+    '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must initiate \\`!?@self\\`.',
+    fbrScopeRuleEn,
+    '- The default FBR entry is transient \\`!?@self\\` (without \\`!tellaskSession\\`); use \\`!?@self !tellaskSession <slug>\\` only when you explicitly need a resumable long-lived FBR thread, and explain why.',
+    '- Even without an explicit request, before resorting to @human (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR and summarize current dialog facts as the FBR body; do not finalize the next action before that FBR feedback returns.',
+    '- FBR phase contract (mandatory):',
+    fbrPhaseContractEn,
+    '- Encourage FBR to recommend which missing facts to obtain immediately; then use the current dialog’s tools to fetch them, update context, and iterate FBR until a clear next action emerges.',
+  ].join('\n');
+  const tellaskInteractionRulesZh = [
+    '- 诉请（tellask）使用逐行前缀语法：只有第 0 列以 \\`!?\\` 开头的行才会被当作诉请行。',
+    '- 诉请块以连续 \\`!?...\\` 行组成；遇到第一行普通行即结束。',
+    '- 一个诉请块的第一行必须是 \\`!?@<name> ...\\`。',
+  ].join('\n');
+  const tellaskInteractionRulesEn = [
+    '- Tellask uses a line-prefix grammar: only lines starting at column 0 with \\`!?\\` are tellask lines.',
+    '- A tellask block is a consecutive run of \\`!?...\\` lines; the first non-\\`!?\\` line ends the block.',
+    '- The first tellask line in a block must start with \\`!?@<name> ...\\`.',
+  ].join('\n');
+  const functionToolRulesZh = [
+    '- 回答必须基于可观测事实；为获取事实优先使用可用工具，缺乏观测事实时明确说明并请求/补充获取，不得臆测。',
+    `- 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}`,
+    '- 若遇到权限/沙盒/工具不可用：按要求申请升级或发起 Q4H；禁止编造结果。',
+  ].join('\n');
+  const functionToolRulesEn = [
+    '- Answers must be grounded in observed facts. Use available tools to obtain facts; if facts are missing, say so and request/obtain them—do not guess.',
+    `- You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments that strictly matches the tool schema (no extra fields, include all required fields).${input.funcToolRulesText}`,
+    '- If a tool is unavailable due to permissions/sandboxing, request escalation or ask Q4H; do not fabricate results.',
+  ].join('\n');
 
   if (input.language === 'zh') {
     return `
@@ -141,9 +195,6 @@ ${input.envIntro}
 **特殊成员**：人类（@human）是特殊团队成员。你可以使用 \`!?@human ...\` 发起 Q4H（Question for Human），用于请求必要的澄清/决策/授权/提供缺失输入，或汇报当前环境中无法由智能体自主完成的阻塞事项。
 **注意**：不要把可由智能体完成的执行性工作外包给 @human。向 @human 的请求应尽量最小化、可验证（给出需要的具体信息、预期格式/选项），并在得到答复后继续由智能体自主完成后续工作。
 **补充**：像“发起队友诉请/推进迭代/收集回贴”这类常规协作动作属于智能体的自主工作流，不要向 @human 询问“是否要执行”；直接执行并在必要时汇报进度即可。
-**常见坑（协作推进）**：团队协作通常需要多轮往复与共识收敛。对**队友诉请**（非 \`!?@self\`）而言，默认必须带 \`!tellaskSession <slug>\` 并在同一会话内持续推进；只有在有强烈理由确认“一次性诉请足够且无需回合”时，才可省略，且必须说明理由。发起诉请时明确验收口径；当你说“等待回贴/等待结果”时，必须说明你已发出的诉请与等待的验收证据。
-**队友诉请阶段协议（强制）**：
-${teammatePhaseContractZh}
 
 你与以下智能体队友协作。使用他们的呼号与其交流、安排分项工作。
 
@@ -153,16 +204,13 @@ ${input.teamIntro}
 
 ${input.policyText}
 
+## 协作协议（Tellask 与函数工具边界）
+
+${collaborationProtocolZh}
+
 ## FBR 使用准则
 
-- \`!?@self\` 是 FBR 特有机制，不属于“队友诉请”分类；请按本节规则执行，不要套用“队友诉请默认带 \`!tellaskSession\`”的规则。
-- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须用 \`!?@self\` 发起。
-${fbrScopeRuleZh}
-- FBR 的默认入口是瞬态 \`!?@self\`（不带 \`!tellaskSession\`）；仅当明确需要可恢复的长期 FBR 会话时，才使用 \`!?@self !tellaskSession <slug>\`，并说明理由。
-- 即使用户未明确要求，在诉诸 @human（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况作为 FBR 正文；在收到该次 FBR 回贴前，不要提前下最终行动决策。
-- FBR 阶段协议（强制）：
-${fbrPhaseContractZh}
-- 鼓励 FBR 自我建议立即获取哪些未明事实，得到建议利用当前对话工具获取，再补足上下文迭代 FBR 直到获得清晰的下一步行动思路。
+${fbrGuidelinesZh}
 
 ## 内置工具
 
@@ -172,15 +220,13 @@ ${input.intrinsicToolUsageText}
 
 ${input.toolsetManualIntro}
 
-## 交互能力
-- 诉请（tellask）使用逐行前缀语法：只有第 0 列以 \`!?\` 开头的行才会被当作诉请行。
-- 诉请块以连续 \`!?...\` 行组成；遇到第一行普通行即结束。
-- 一个诉请块的第一行必须是 \`!?@<name> ...\`。
+## 交互协议
 
-### 函数工具
-- 回答必须基于可观测事实；为获取事实优先使用可用工具，缺乏观测事实时明确说明并请求/补充获取，不得臆测。
-- 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}
-- 若遇到权限/沙盒/工具不可用：按要求申请升级或发起 Q4H；禁止编造结果。
+### Tellask（仅用于队友/@self/@human）
+${tellaskInteractionRulesZh}
+
+### 函数工具（仅原生 function-calling）
+${functionToolRulesZh}
 `;
   }
 
@@ -241,9 +287,6 @@ ${input.envIntro}
 **Special member**: Human (@human) is a special team member. You may use \`!?@human ...\` to ask a Q4H (Question for Human) when you need necessary clarification/decision/authorization/missing inputs, or to report blockers that cannot be completed autonomously in the current environment.
 **Note**: Do not outsource executable work to @human. Keep Q4H requests minimal and verifiable (ask for specific info, expected format/options), then continue the remaining work autonomously after receiving the answer.
 **Addendum**: Routine coordination actions (e.g., tellasking teammates, driving iterations, collecting replies) are part of the agent’s autonomous workflow; do not ask @human for permission to do them. Execute and report progress when needed.
-**Common pitfall (coordination)**: Collaboration usually requires multiple rounds and convergence. For **teammate tellasks** (non-\`!?@self\`), the default is to include \`!tellaskSession <slug>\` and keep follow-ups in that session; omit it only with a strong one-shot reason, and state that reason. When you send a tellask, specify acceptance criteria; when you say you are “waiting for a reply/result”, also state which tellask you sent and what acceptance evidence you are waiting for.
-**Teammate Tellask phase contract (mandatory)**:
-${teammatePhaseContractEn}
 
 You collaborate with the following teammates. Use their call signs to address them.
 
@@ -253,16 +296,13 @@ ${input.teamIntro}
 
 ${input.policyText}
 
+## Collaboration Protocol (Tellask vs Function Tools)
+
+${collaborationProtocolEn}
+
 ## FBR Usage Guidelines
 
-- \`!?@self\` is an FBR-specific mechanism, not part of the teammate-tellask category; follow this section’s rules instead of teammate-tellask defaults.
-- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must initiate \`!?@self\`.
-${fbrScopeRuleEn}
-- The default FBR entry is transient \`!?@self\` (without \`!tellaskSession\`); use \`!?@self !tellaskSession <slug>\` only when you explicitly need a resumable long-lived FBR thread, and explain why.
-- Even without an explicit request, before resorting to @human (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR and summarize current dialog facts as the FBR body; do not finalize the next action before that FBR feedback returns.
-- FBR phase contract (mandatory):
-${fbrPhaseContractEn}
-- Encourage FBR to recommend which missing facts to obtain immediately; then use the current dialog’s tools to fetch them, update context, and iterate FBR until a clear next action emerges.
+${fbrGuidelinesEn}
 
 ## Intrinsic Tools
 
@@ -272,14 +312,12 @@ ${input.intrinsicToolUsageText}
 
 ${input.toolsetManualIntro}
 
-## Interaction Abilities
-- Tellask uses a line-prefix grammar: only lines starting at column 0 with \`!?\` are tellask lines.
-- A tellask block is a consecutive run of \`!?...\` lines; the first non-\`!?\` line ends the block.
-- The first tellask line in a block must start with \`!?@<name> ...\`.
+## Interaction Protocols
 
-### Function Tools
-- Answers must be grounded in observed facts. Use available tools to obtain facts; if facts are missing, say so and request/obtain them—do not guess.
-- You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments that strictly matches the tool schema (no extra fields, include all required fields).${input.funcToolRulesText}
-- If a tool is unavailable due to permissions/sandboxing, request escalation or ask Q4H; do not fabricate results.
+### Tellask (teammates/@self/@human only)
+${tellaskInteractionRulesEn}
+
+### Function Tools (native function-calling only)
+${functionToolRulesEn}
 `;
 }

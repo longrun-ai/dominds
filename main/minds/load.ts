@@ -151,6 +151,9 @@ async function readMindsTextPreferred(options: {
 export async function loadAgentMinds(
   agentId?: string,
   dialog?: Dialog,
+  options?: {
+    missingToolsetPolicy?: 'warn' | 'silent';
+  },
 ): Promise<{
   team: Team;
   agent: Team.Member;
@@ -159,6 +162,7 @@ export async function loadAgentMinds(
   agentTools: Tool[];
 }> {
   const workingLanguage = getWorkLanguage();
+  const missingToolsetPolicy = options?.missingToolsetPolicy ?? 'warn';
   let team = await Team.load();
   const agent = agentId === undefined ? team.getDefaultResponder() : team.getMember(agentId);
   if (!agent) throw new Error(`No such agent in team: '${agentId}'`);
@@ -199,7 +203,7 @@ export async function loadAgentMinds(
   const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id) || agent.hidden === true;
 
   const baseAgentTools: Tool[] = (() => {
-    const tools = agent.listTools();
+    const tools = agent.listTools({ onMissingToolset: missingToolsetPolicy });
     if (agentIsShellSpecialist) return tools;
     return tools.filter(
       (t) => !(t.type === 'func' && typeof t.name === 'string' && isShellToolName(t.name)),
@@ -231,10 +235,12 @@ export async function loadAgentMinds(
     return out;
   })();
 
-  const toolsetNames = agent.listResolvedToolsetNames().filter((name) => {
-    if (name === 'os') return agentIsShellSpecialist;
-    return true;
-  });
+  const toolsetNames = agent
+    .listResolvedToolsetNames({ onMissing: missingToolsetPolicy })
+    .filter((name) => {
+      if (name === 'os') return agentIsShellSpecialist;
+      return true;
+    });
   const manualTools = buildToolsetManualTools({
     toolsetNames,
     existingToolNames: new Set(agentTools.map((t) => t.name)),
