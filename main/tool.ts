@@ -140,6 +140,27 @@ function isJsonPrimitiveValue(value: unknown): value is JsonPrimitive {
   );
 }
 
+function formatJsonPrimitiveValue(value: JsonPrimitive): string {
+  return JSON.stringify(value);
+}
+
+function describeShortValue(value: unknown): string {
+  if (isJsonPrimitiveValue(value)) return formatJsonPrimitiveValue(value);
+  if (Array.isArray(value)) return '[array]';
+  if (typeof value === 'object' && value !== null) return '[object]';
+  return JSON.stringify(value);
+}
+
+function formatEnumAllowedList(values: readonly JsonPrimitive[], maxShown: number): string {
+  const shown = values.slice(0, Math.max(0, Math.floor(maxShown)));
+  const shownText = shown.map((v) => formatJsonPrimitiveValue(v)).join(', ');
+  const remaining = values.length - shown.length;
+  if (remaining <= 0) return shownText;
+  return shownText.length > 0
+    ? `${shownText}, ... (+${remaining} more)`
+    : `... (+${remaining} more)`;
+}
+
 function validateValue(
   schema: unknown,
   value: unknown,
@@ -150,18 +171,32 @@ function validateValue(
     return { ok: true };
   }
 
+  // Best-effort const validation (only supports primitive const).
+  // For complex/object const, keep permissive behavior.
+  if ('const' in schema && isJsonPrimitiveValue(schema.const)) {
+    const expected = schema.const;
+    if (!isJsonPrimitiveValue(value) || value !== expected) {
+      return {
+        ok: false,
+        error: `Field ${path} must be ${formatJsonPrimitiveValue(expected)}; got ${describeShortValue(value)}`,
+      };
+    }
+  }
+
   // Best-effort enum validation (only supports primitive enums).
   // For complex/object enums, keep permissive behavior.
   if ('enum' in schema && Array.isArray(schema.enum)) {
     const enumValues = schema.enum;
     const allPrimitive = enumValues.every((v) => isJsonPrimitiveValue(v));
     if (allPrimitive) {
-      if (!isJsonPrimitiveValue(value)) {
-        return { ok: false, error: `Field ${path} is not a valid enum value` };
-      }
-      const allowed = (enumValues as JsonPrimitive[]).some((v) => v === value);
+      const allowedValues = enumValues as JsonPrimitive[];
+      const allowed = isJsonPrimitiveValue(value) && allowedValues.some((v) => v === value);
       if (!allowed) {
-        return { ok: false, error: `Field ${path} is not a valid enum value` };
+        const allowedText = formatEnumAllowedList(allowedValues, 10);
+        return {
+          ok: false,
+          error: `Field ${path} must be one of ${allowedText}; got ${describeShortValue(value)}`,
+        };
       }
     }
   }
