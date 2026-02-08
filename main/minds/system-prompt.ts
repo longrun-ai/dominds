@@ -70,6 +70,18 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- If \\`fbr-effort = N\\`, wait for all N feedback drafts before synthesis; do not finalize based on partial drafts.',
     '- During synthesis, explicitly separate “evidence (FBR feedback facts)” from “decision (next action)”; if key facts are still missing, collect facts first and iterate FBR.',
   ].join('\n');
+  const teammatePhaseContractZh = [
+    '- 队友诉请必须遵循“发起 → 等待 → 判定 → 续推”四段协议：若目标未达成，立即发出下一轮诉请推进。',
+    '- 对队友诉请而言，收到回贴即表示该轮调用已结束；不存在“对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请（通常沿用同一 \\`!tellaskSession <slug>\\`）。',
+    '- 只有在存在明确 pending tellask 时，才可声明“等待回贴/等待结果”；否则必须执行下一动作（直接诉请或本地执行）。',
+    '- 能由队友诉请完成的执行性工作，禁止转交 @human 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 \\`!?@X ...\\`。',
+  ].join('\n');
+  const teammatePhaseContractEn = [
+    '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
+    '- For teammate Tellasks, a delivered response closes that call round; there is no default “still running in background” state for the same Tellask. To continue, emit a new Tellask explicitly (usually reusing the same \\`!tellaskSession <slug>\\`).',
+    '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists; otherwise execute the next action now (direct Tellask or local action).',
+    '- Do not use @human as a relay for executable teammate work. If you write “ask @X to do Y”, emit \\`!?@X ...\\` in the same response.',
+  ].join('\n');
 
   if (input.language === 'zh') {
     return `
@@ -130,6 +142,8 @@ ${input.envIntro}
 **注意**：不要把可由智能体完成的执行性工作外包给 @human。向 @human 的请求应尽量最小化、可验证（给出需要的具体信息、预期格式/选项），并在得到答复后继续由智能体自主完成后续工作。
 **补充**：像“发起队友诉请/推进迭代/收集回贴”这类常规协作动作属于智能体的自主工作流，不要向 @human 询问“是否要执行”；直接执行并在必要时汇报进度即可。
 **常见坑（协作推进）**：团队协作通常需要多轮往复与共识收敛。对**队友诉请**（非 \`!?@self\`）而言，默认必须带 \`!tellaskSession <slug>\` 并在同一会话内持续推进；只有在有强烈理由确认“一次性诉请足够且无需回合”时，才可省略，且必须说明理由。发起诉请时明确验收口径；当你说“等待回贴/等待结果”时，必须说明你已发出的诉请与等待的验收证据。
+**队友诉请阶段协议（强制）**：
+${teammatePhaseContractZh}
 
 你与以下智能体队友协作。使用他们的呼号与其交流、安排分项工作。
 
@@ -228,6 +242,8 @@ ${input.envIntro}
 **Note**: Do not outsource executable work to @human. Keep Q4H requests minimal and verifiable (ask for specific info, expected format/options), then continue the remaining work autonomously after receiving the answer.
 **Addendum**: Routine coordination actions (e.g., tellasking teammates, driving iterations, collecting replies) are part of the agent’s autonomous workflow; do not ask @human for permission to do them. Execute and report progress when needed.
 **Common pitfall (coordination)**: Collaboration usually requires multiple rounds and convergence. For **teammate tellasks** (non-\`!?@self\`), the default is to include \`!tellaskSession <slug>\` and keep follow-ups in that session; omit it only with a strong one-shot reason, and state that reason. When you send a tellask, specify acceptance criteria; when you say you are “waiting for a reply/result”, also state which tellask you sent and what acceptance evidence you are waiting for.
+**Teammate Tellask phase contract (mandatory)**:
+${teammatePhaseContractEn}
 
 You collaborate with the following teammates. Use their call signs to address them.
 

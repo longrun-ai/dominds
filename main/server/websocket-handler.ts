@@ -58,6 +58,7 @@ import {
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { setTeamConfigBroadcaster, startTeamConfigWatcher } from '../team-config-updates';
+import { syncPendingTellaskReminderState } from '../tools/pending-tellask-reminder';
 import { generateDialogID } from '../utils/id';
 import type { AuthConfig } from './auth';
 import { getWebSocketAuthCheck } from './auth';
@@ -87,6 +88,17 @@ const wsSub = new WeakMap<WebSocket, { dialogKey: string; subChan: SubChan<Dialo
 const wsUiLanguage = new WeakMap<WebSocket, LanguageCode>();
 
 let broadcastDialogsIndexMessage: ((msg: WebSocketMessage) => void) | null = null;
+
+async function syncPendingTellaskReminderBestEffort(dialog: Dialog, where: string): Promise<void> {
+  try {
+    await syncPendingTellaskReminderState(dialog);
+  } catch (err) {
+    log.warn(`Failed to sync pending tellask reminder at ${where}`, err, {
+      dialogId: dialog.id.selfId,
+      rootId: dialog.id.rootId,
+    });
+  }
+}
 
 function resolveUserLanguageCode(
   ws: WebSocket,
@@ -903,6 +915,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     // Proactively emit reminders for the newly active dialog
     // todo: maybe emit only to the requestiong websocket, not publish via PubChan as curr impl
     try {
+      await syncPendingTellaskReminderBestEffort(dialog, 'handleDisplayDialog');
       await dialog.processReminderUpdates();
     } catch (err) {
       log.warn(`Failed to emit proactive reminders for ${dialogIdObj}:`, err);
@@ -973,6 +986,7 @@ async function handleDisplayReminders(
       return;
     }
 
+    await syncPendingTellaskReminderBestEffort(live, 'handleDisplayReminders');
     await live.processReminderUpdates();
   } catch (error: unknown) {
     log.warn('Failed to display reminders', error);

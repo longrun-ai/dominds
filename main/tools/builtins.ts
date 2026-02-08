@@ -35,6 +35,7 @@ import {
   shellCmdTool,
   stopDaemonTool,
 } from './os';
+import { pendingTellaskReminderOwner } from './pending-tellask-reminder';
 import { updatePlanTool } from './plan';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
 import {
@@ -245,3 +246,4 @@ setToolsetMeta('diag', {
 // Register ReminderOwners
 registerReminderOwner(shellCmdReminderOwner);
 registerReminderOwner(mcpLeaseReminderOwner);
+registerReminderOwner(pendingTellaskReminderOwner);

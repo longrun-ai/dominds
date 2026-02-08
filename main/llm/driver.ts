@@ -68,6 +68,7 @@ import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from '../tellask';
 import { FuncTool, Tool, validateArgs, type ToolArguments, type ToolCallOutput } from '../tool';
+import { syncPendingTellaskReminderState } from '../tools/pending-tellask-reminder';
 import { generateDialogID } from '../utils/id';
 import { formatTaskDocContent } from '../utils/taskdoc';
 import {
@@ -131,6 +132,21 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
     return member.diligence_push_max;
   }
   return DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS;
+}
+
+async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string): Promise<void> {
+  try {
+    const changed = await syncPendingTellaskReminderState(dlg);
+    if (!changed) return;
+    await dlg.processReminderUpdates();
+  } catch (err) {
+    log.warn('Failed to sync pending tellask reminder', {
+      where,
+      dialogId: dlg.id.selfId,
+      rootId: dlg.id.rootId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 function stripMarkdownFrontmatter(raw: string): string {
@@ -3637,6 +3653,10 @@ export async function createSubdialogForSupdialog(
     await withSuspensionStateLock(supdialog.id, async () => {
       await DialogPersistence.appendPendingSubdialog(supdialog.id, pendingRecord);
     });
+    await syncPendingTellaskReminderBestEffort(
+      supdialog,
+      'createSubdialogForSupdialog:appendPending',
+    );
 
     // Drive the subdialog asynchronously
     void (async () => {
@@ -3808,6 +3828,10 @@ export async function supplyResponseToSupdialog(
     const resolvedAgentId = result.responderAgentId ?? result.responderId;
     const resolvedOriginMemberId = result.originMemberId ?? parentDialog.agentId;
     const resolvedCallId = callId ?? '';
+    await syncPendingTellaskReminderBestEffort(
+      parentDialog,
+      'supplyResponseToSupdialog:savePending',
+    );
 
     await parentDialog.receiveTeammateResponse(
       result.responderId,
@@ -3910,6 +3934,10 @@ export async function incorporateSubdialogResponses(rootDialog: RootDialog): Pro
     const respondedIds = new Set(responses.map((r) => r.subdialogId));
     const filteredPending = pendingSubdialogs.filter((p) => !respondedIds.has(p.subdialogId));
     await DialogPersistence.savePendingSubdialogs(rootDialog.id, filteredPending);
+    await syncPendingTellaskReminderBestEffort(
+      rootDialog,
+      'incorporateSubdialogResponses:savePending',
+    );
 
     return responses;
   } catch (error) {
@@ -4324,6 +4352,10 @@ async function executeTellaskCall(
             records: [...previous, ...pendingRecords],
           }));
         });
+        await syncPendingTellaskReminderBestEffort(
+          dlg,
+          'executeTellaskCall:FBR-TypeC:replacePending',
+        );
 
         for (const sub of createdSubs) {
           void (async () => {
@@ -4491,6 +4523,10 @@ async function executeTellaskCall(
             return { kind: 'replace', records: next };
           });
         });
+        await syncPendingTellaskReminderBestEffort(
+          pendingOwner,
+          'executeTellaskCall:FBR-TypeB:replacePending',
+        );
 
         for (const r of createdOrExisting) {
           void (async () => {
@@ -4696,6 +4732,10 @@ async function executeTellaskCall(
           await withSuspensionStateLock(dlg.id, async () => {
             await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
           });
+          await syncPendingTellaskReminderBestEffort(
+            dlg,
+            'executeTellaskCall:TypeB-fallback:appendPending',
+          );
 
           const task = (async () => {
             try {
@@ -4786,6 +4826,10 @@ async function executeTellaskCall(
             return { kind: 'replace', records: next };
           });
         });
+        await syncPendingTellaskReminderBestEffort(
+          pendingOwner,
+          'executeTellaskCall:TypeB:replacePending',
+        );
 
         const task = (async () => {
           try {
@@ -4869,6 +4913,7 @@ async function executeTellaskCall(
         await withSuspensionStateLock(dlg.id, async () => {
           await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
         });
+        await syncPendingTellaskReminderBestEffort(dlg, 'executeTellaskCall:TypeC:appendPending');
 
         const task = (async () => {
           try {
