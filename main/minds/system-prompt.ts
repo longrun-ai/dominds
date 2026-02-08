@@ -128,12 +128,12 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   ].join('\n');
   const functionToolRulesZh = [
     '- 回答必须基于可观测事实；为获取事实优先使用可用工具，缺乏观测事实时明确说明并请求/补充获取，不得臆测。',
-    `- 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并且严格匹配工具 schema（不允许额外字段，必须包含所有 required 字段）。${input.funcToolRulesText}`,
+    `- 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并尽量匹配工具 schema。Dominds 会对 schema 做 best-effort 校验（例如 required / additionalProperties:false / 基础 type）；其余语义约束以工具报错为准。${input.funcToolRulesText}`,
     '- 若遇到权限/沙盒/工具不可用：按要求申请升级或发起 Q4H；禁止编造结果。',
   ].join('\n');
   const functionToolRulesEn = [
     '- Answers must be grounded in observed facts. Use available tools to obtain facts; if facts are missing, say so and request/obtain them—do not guess.',
-    `- You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments that strictly matches the tool schema (no extra fields, include all required fields).${input.funcToolRulesText}`,
+    `- You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments and match the tool schema as closely as possible. Dominds performs best-effort schema validation (for example required / additionalProperties:false / basic types); other semantic constraints are enforced via tool errors.${input.funcToolRulesText}`,
     '- If a tool is unavailable due to permissions/sandboxing, request escalation or ask Q4H; do not fabricate results.',
   ].join('\n');
 

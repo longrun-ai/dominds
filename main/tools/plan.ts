@@ -85,6 +85,7 @@ export const updatePlanTool: FuncTool = {
             step: { type: 'string', description: 'Step description.' },
             status: {
               type: 'string',
+              enum: ['pending', 'in_progress', 'completed'],
               description: 'One of: pending, in_progress, completed',
             },
           },

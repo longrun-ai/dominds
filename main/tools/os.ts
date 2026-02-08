@@ -1400,9 +1400,15 @@ export const readonlyShellTool: FuncTool = {
       command,
     );
     if (forbiddenHiddenDir) {
+      if (forbiddenHiddenDir === '.minds') {
+        return language === 'zh'
+          ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`.minds/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`.minds/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若团队配置了 \`team-mgmt\` 工具集，请使用其中工具（\`team_mgmt_*\`）代管 \`.minds/**\`。\n- 若团队未配置该工具集或你不具备权限，请诉请具备 \`team-mgmt\` 权限的成员/团队管理员成员代管。\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
+          : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`.minds/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`.minds/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- If your team configured the \`team-mgmt\` toolset, use its tools (\`team_mgmt_*\`) to manage \`.minds/**\`.\n- If the toolset is not configured or you don\'t have permission, tellask a team-admin / a member with \`team-mgmt\` access to manage it for you.\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`;
+      }
+
       return language === 'zh'
-        ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`${forbiddenHiddenDir}/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`${forbiddenHiddenDir}/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若需要访问 \`.minds/**\`，请使用 \`team_mgmt_*\` 工具。\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
-        : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`${forbiddenHiddenDir}/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`${forbiddenHiddenDir}/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- To access \`.minds/**\`, use \`team_mgmt_*\` tools.\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`;
+        ? `❌ **访问被拒绝**\n\n- 工具：\`readonly_shell\`\n- 路径：\`.dialogs/\`\n- 代码：\`ACCESS_DENIED\`\n\n说明：\`.dialogs/\` 是 rtws 根目录下的保留目录，readonly_shell 无条件拒绝访问。\n\n提示：\n- 若需要排查 Dominds，请在子目录 rtws 下复现（例如 \`ux-rtws/.dialogs/**\`）。`
+        : `❌ **Access Denied**\n\n- Tool: \`readonly_shell\`\n- Path: \`.dialogs/\`\n- Code: \`ACCESS_DENIED\`\n\nNote: \`.dialogs/\` is a reserved directory at the rtws root; readonly_shell hard-denies access.\n\nHints:\n- For Dominds debugging, reproduce under a nested rtws (e.g. \`ux-rtws/.dialogs/**\`).`;
     }
 
     const stdoutBuffer = new HeadTailByteBuffer(1024 * 1024);
