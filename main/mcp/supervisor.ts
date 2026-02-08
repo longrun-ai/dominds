@@ -35,6 +35,8 @@ const log = createLogger('mcp/supervisor');
 
 const MCP_YAML_PATH = path.join('.minds', 'mcp.yaml');
 
+const MCP_TOOL_CALL_PROBLEM_PREFIX = 'mcp/tool_call_error/';
+
 type ServerState = {
   serverId: string;
   toolsetName: string;
@@ -167,43 +169,60 @@ class McpServerDispatch {
     mcpToolName: string,
     args: ToolArguments,
   ): Promise<ToolCallOutput> {
+    const serverId = this.serverId;
+
+    const withActionableError = async (fn: () => Promise<unknown>): Promise<ToolCallOutput> => {
+      try {
+        const raw = await fn();
+        const out = await materializeMcpToolCallOutput({
+          dlg,
+          serverId,
+          toolName: mcpToolName,
+          raw,
+        });
+        clearMcpToolCallProblem(serverId);
+        return out;
+      } catch (err: unknown) {
+        const workLanguage = getWorkLanguage();
+        const errorText = err instanceof Error ? err.message : String(err);
+        upsertMcpToolCallProblem({
+          serverId,
+          toolName: mcpToolName,
+          errorText,
+        });
+        const msg =
+          workLanguage === 'zh'
+            ? `MCP 工具调用失败（详见 Problems 面板）：${serverId}.${mcpToolName}: ${errorText}`
+            : `MCP tool call failed (see Problems panel): ${serverId}.${mcpToolName}: ${errorText}`;
+        const wrapped = new Error(msg);
+        // Attach the original error for debugging without relying on ErrorOptions typing.
+        (wrapped as unknown as { cause?: unknown }).cause = err;
+        throw wrapped;
+      }
+    };
+
     if (this.cfg.truelyStateless) {
-      if (!this.sharedRuntime) {
+      const sharedRuntime = this.sharedRuntime;
+      if (!sharedRuntime) {
         throw new Error(`MCP server '${this.serverId}' missing shared runtime`);
       }
-      const raw = await this.sharedRuntime.callToolRaw(mcpToolName, args);
-      return await materializeMcpToolCallOutput({
-        dlg,
-        serverId: this.serverId,
-        toolName: mcpToolName,
-        raw,
-      });
+      return await withActionableError(
+        async () => await sharedRuntime.callToolRaw(mcpToolName, args),
+      );
     }
 
     const dialogKey = dlg.id.key();
     const existing = this.leasesByDialogKey.get(dialogKey);
     if (existing) {
       this.attachLeaseReminder(dlg);
-      const raw = await existing.callToolRaw(mcpToolName, args);
-      return await materializeMcpToolCallOutput({
-        dlg,
-        serverId: this.serverId,
-        toolName: mcpToolName,
-        raw,
-      });
+      return await withActionableError(async () => await existing.callToolRaw(mcpToolName, args));
     }
 
     if (this.stopRequested) {
       const oneShot = await this.connectNewLeaseRuntime();
       this.attachLeaseReminder(dlg);
       try {
-        const raw = await oneShot.callToolRaw(mcpToolName, args);
-        return await materializeMcpToolCallOutput({
-          dlg,
-          serverId: this.serverId,
-          toolName: mcpToolName,
-          raw,
-        });
+        return await withActionableError(async () => await oneShot.callToolRaw(mcpToolName, args));
       } finally {
         oneShot.requestStop({ forceKillAfterMs: 3_000 });
       }
@@ -228,13 +247,7 @@ class McpServerDispatch {
 
     const runtime = await init;
     this.attachLeaseReminder(dlg);
-    const raw = await runtime.callToolRaw(mcpToolName, args);
-    return await materializeMcpToolCallOutput({
-      dlg,
-      serverId: this.serverId,
-      toolName: mcpToolName,
-      raw,
-    });
+    return await withActionableError(async () => await runtime.callToolRaw(mcpToolName, args));
   }
 
   private async connectNewLeaseRuntime(): Promise<McpServerRuntime> {
@@ -309,14 +322,29 @@ let mindsDirWatcher: fs.FSWatcher | undefined;
 let workspaceWatcher: fs.FSWatcher | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
 let debounceTimer: NodeJS.Timeout | undefined;
-let lastSeenMtimeMs: number | undefined;
+let lastSeenMcpYamlSig: string | undefined;
 let reloadChain: Promise<void> = Promise.resolve();
+let supervisorStarted = false;
 
 export function startMcpSupervisor(): void {
+  if (supervisorStarted) return;
+  supervisorStarted = true;
+
   reloadChain = reloadChain
     .then(async () => await reloadNow('startup'))
     .catch((err) => {
       log.warn('MCP initial load failed', err);
+    });
+
+  // Initialize signature baseline (best-effort). This reduces false negatives in polling on filesystems
+  // with coarse mtime resolution.
+  reloadChain = reloadChain
+    .then(async () => {
+      const sig = await readMcpYamlSig();
+      lastSeenMcpYamlSig = sig;
+    })
+    .catch((err: unknown) => {
+      log.warn('MCP initial signature read failed', err);
     });
 
   // Best-effort file watch (fast feedback). `.minds/` may be wiped/recreated during a dev session,
@@ -330,6 +358,7 @@ export function startMcpSupervisor(): void {
       const name = filename ? filename.toString() : '';
       if (name !== '' && name !== path.dirname(MCP_YAML_PATH)) return;
       void ensureMindsDirWatcher('rtws.watch');
+      scheduleReload('rtws.watch');
     });
     workspaceWatcher.on('error', () => {
       if (workspaceWatcher) {
@@ -365,6 +394,9 @@ export function stopMcpSupervisor(): void {
     clearTimeout(debounceTimer);
     debounceTimer = undefined;
   }
+
+  lastSeenMcpYamlSig = undefined;
+  supervisorStarted = false;
 }
 
 export function requestMcpServerRestart(
@@ -455,23 +487,31 @@ function scheduleReload(reason: string): void {
   }, 200);
 }
 
-async function maybePollReload(): Promise<void> {
-  let mtimeMs: number | undefined;
+async function readMcpYamlSig(): Promise<string> {
   try {
     const st = await fs.promises.stat(MCP_YAML_PATH);
-    mtimeMs = st.mtimeMs;
+    if (!st.isFile()) {
+      return `not_file/${st.size}/${st.mtimeMs}/${st.ctimeMs}`;
+    }
+    return `${st.size}/${st.mtimeMs}/${st.ctimeMs}`;
   } catch (err: unknown) {
     const code = isRecord(err) && 'code' in err ? err.code : undefined;
     if (code === 'ENOENT') {
-      mtimeMs = 0;
-    } else {
-      return;
+      return 'missing';
     }
+    return 'error';
   }
-  if (lastSeenMtimeMs === undefined || mtimeMs !== lastSeenMtimeMs) {
-    lastSeenMtimeMs = mtimeMs;
-    scheduleReload('poll');
+}
+
+async function maybePollReload(): Promise<void> {
+  const sig = await readMcpYamlSig();
+  if (lastSeenMcpYamlSig === undefined) {
+    lastSeenMcpYamlSig = sig;
+    return;
   }
+  if (sig === lastSeenMcpYamlSig) return;
+  lastSeenMcpYamlSig = sig;
+  scheduleReload('poll');
 }
 
 async function reloadNow(reason: string): Promise<void> {
@@ -605,6 +645,57 @@ function upsertWorkspaceConfigProblem(errorText: string): void {
 
 function clearWorkspaceConfigProblem(): void {
   removeProblemsByPrefix('mcp/workspace_config_error');
+}
+
+function upsertMcpToolCallProblem(args: {
+  serverId: string;
+  toolName: string;
+  errorText: string;
+}): void {
+  const workLanguage = getWorkLanguage();
+  const normalizedErrorText =
+    args.errorText.length > 10_000 ? `${args.errorText.slice(0, 10_000)}…` : args.errorText;
+  const hintLines =
+    workLanguage === 'zh'
+      ? [
+          '建议排查：',
+          `- 先释放租约：mcp_release({"serverId":"${args.serverId}"})`,
+          `- 重新打开/关闭浏览器窗口，避免 Playwright persistent context 残留`,
+          `- 查看 ${MCP_YAML_PATH} 是否已加载且配置正确（Problems 面板 / 后端日志）`,
+        ]
+      : [
+          'Suggested checks:',
+          `- Release the lease first: mcp_release({"serverId":"${args.serverId}"})`,
+          `- Close/reopen browser windows to avoid leftover Playwright persistent contexts`,
+          `- Verify ${MCP_YAML_PATH} is loaded and valid (Problems panel / backend logs)`,
+        ];
+
+  upsertProblem({
+    kind: 'generic_problem',
+    source: 'system',
+    id: `${MCP_TOOL_CALL_PROBLEM_PREFIX}${sanitizePathSegment(args.serverId)}`,
+    severity: 'error',
+    timestamp: formatUnifiedTimestamp(new Date()),
+    message:
+      workLanguage === 'zh'
+        ? `MCP 工具调用失败：${args.serverId}.${args.toolName}`
+        : `MCP tool call failed: ${args.serverId}.${args.toolName}`,
+    detail: {
+      text: [
+        `serverId=${args.serverId}`,
+        `toolName=${args.toolName}`,
+        '',
+        'error:',
+        normalizedErrorText,
+        '',
+        ...hintLines,
+      ].join('\n'),
+    },
+  });
+}
+
+function clearMcpToolCallProblem(serverId: string): void {
+  removeProblemsByPrefix(`${MCP_TOOL_CALL_PROBLEM_PREFIX}${sanitizePathSegment(serverId)}`);
 }
 
 async function applyWorkspaceConfig(
