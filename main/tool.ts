@@ -131,6 +131,15 @@ export function validateArgs(
   return { ok: true };
 }
 
+function isJsonPrimitiveValue(value: unknown): value is JsonPrimitive {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null
+  );
+}
+
 function validateValue(
   schema: unknown,
   value: unknown,
@@ -139,6 +148,22 @@ function validateValue(
   if (!isRecord(schema)) {
     // Unknown schema shape: don't block execution.
     return { ok: true };
+  }
+
+  // Best-effort enum validation (only supports primitive enums).
+  // For complex/object enums, keep permissive behavior.
+  if ('enum' in schema && Array.isArray(schema.enum)) {
+    const enumValues = schema.enum;
+    const allPrimitive = enumValues.every((v) => isJsonPrimitiveValue(v));
+    if (allPrimitive) {
+      if (!isJsonPrimitiveValue(value)) {
+        return { ok: false, error: `Field ${path} is not a valid enum value` };
+      }
+      const allowed = (enumValues as JsonPrimitive[]).some((v) => v === value);
+      if (!allowed) {
+        return { ok: false, error: `Field ${path} is not a valid enum value` };
+      }
+    }
   }
 
   const typeValue = 'type' in schema ? schema.type : undefined;
