@@ -157,18 +157,75 @@
 4. `动作优先约束`  
    当你写“下一步让 @X 做 Y”时，应在同一回复内直接给出 `!?@X ...`。
 
-### 5.2 协作 Priming 改进（建议 P1）
+### 5.2 协作 Priming 改进（P1）
 
-把“诉请协作节奏”做成一次极短真实演练，让智能体先做一遍再开工。建议流程：
+把“诉请协作节奏”拆成两段短演练，并都落在可复现事实上：
 
-1. 主线向 `@shell_specialist` 发起一次真实诉请（如 `pnpm lint:types` 或安全等价命令）。
-2. 收到第一轮回贴后，主线必须再发第二轮“续推诉请”（不是口头说）。
-3. 产出一条短的 priming 总结，明确写下：
-   - “回贴=本轮结束”
-   - “要继续=再诉请”
-   - “说要让队友做=立刻诉请，不转交人类”
+1. 一次性诉请：`uname -a`（环境基线）。
+2. 长线诉请：`tellaskSession: rtws-vcs-inventory` 两轮盘点仓库现状。
+3. 在两段证据都到位后，再进入 `!?@self` FBR 和综合提炼。
 
-这比在系统提示里加长篇说明更有效，因为它建立的是“刚刚亲手做过”的行为记忆。
+关键原则：
+
+1. 无可用 `shell_specialist` 时，由 Dominds 运行时采集同样事实（`uname -a` + git 盘点），这是标准模式，不是降级。
+2. 回贴即本轮结束；要继续必须显式发起下一轮诉请。
+3. “让队友做”必须直接落成 `!?@...`，不能转交 @human 当转发员。
+
+### 5.3 P1 设计基线（当前实现）
+
+#### 设计目标
+
+1. 短：新增流程集中在 `uname` + 两轮 VCS 盘点，不引入长提示词。
+2. 普适：任何 rtws 都能执行（是否有 shell 专员都可跑通）。
+3. 稳：关键步骤由运行时模板驱动，降低模型自由发挥漂移。
+4. 准：通过真实两轮诉请建立“回贴收束、续推再诉请”的行为记忆。
+
+#### 统一时序
+
+1. `Prelude Intro`：声明 shell 策略（`specialist_only` / `self_is_specialist` / `no_specialist`）。
+2. `uname` 基线：
+   - `specialist_only`：主线 `!?@<shell_specialist>` 发一次性诉请并接收回贴。
+   - 其他两种策略：运行时采集并显示 `uname -a`。
+3. `VCS Round-1`（同一 `tellaskSession`）：确认 rtws 拓扑
+   - 根路径是否 git repo
+   - submodule 列表
+   - 子目录独立 repo 列表
+4. `VCS Round-2`（同一 `tellaskSession` 的续推）：逐 repo 确认
+   - remote（fetch/push）
+   - branch / upstream
+   - dirty 状态
+5. 汇总 `uname + VCS` 作为同一份环境证据，发起 `!?@self` FBR。
+6. 收齐 FBR 回贴后做 distillation，产出 priming note。
+
+#### 诉请模板约束
+
+1. Round-1/2 tellask body 由运行时模板生成。
+2. Round-2 正文必须显式写明“Round-1 已结束，本轮是新的续推诉请”。
+3. 每轮只做单一目标，不夹带修复方案或扩展性任务。
+
+#### 无 shell 专员场景（标准模式）
+
+1. 运行时直接给出 `uname` 与两轮 VCS 盘点文本。
+2. FBR 使用与 shell 专员路径同结构的信息（不缩水，不伪造队友回贴）。
+3. priming note 语义要求完全一致：回贴收束 + 续推再诉请。
+
+#### 数据结构（`agent-priming.ts`）
+
+1. `shell` 使用判别联合：
+   - `specialist_tellask`（含诉请正文、回贴、`uname` 快照）
+   - `direct_shell`（运行时说明 + `uname` 快照）
+2. `vcs` 使用判别联合：
+   - `specialist_session`（两轮 tellask/response + `inventoryText`）
+   - `runtime_inventory`（两轮 runtime note + `inventoryText`）
+3. `buildCoursePrefixMsgs` 注入顺序固定为：shell 快照 → VCS 盘点 → FBR 摘要 → priming note。
+
+#### 验收标准（P1 最小可用）
+
+1. priming 实录可见：`uname` 基线 + VCS 两轮（Round-2 晚于 Round-1 回贴）。
+2. 无 shell 专员时仍可看到两轮 VCS runtime 盘点，且用于同一轮 FBR。
+3. priming note 明确写出“回贴=本轮结束；继续=再诉请”。
+4. replay 可复现对应路径（`specialist_session` 或 `runtime_inventory`）。
+5. `pnpm -C dominds run lint:types` 通过，且不破坏现有 priming/FBR/diligence 约束。
 
 ---
 

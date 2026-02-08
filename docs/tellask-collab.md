@@ -157,16 +157,73 @@ Add or strengthen these coordination constraints:
 
 ### 5.2 Collaboration priming (P1)
 
-Run a short, real collaboration drill so the model feels the rhythm:
+Split the collaboration drill into two short segments, both grounded in verifiable facts:
 
-1. Mainline sends a real Tellask to `@shell_specialist`.
-2. After first response, mainline must send a second Tellask to continue.
-3. Mainline writes a tiny priming note capturing:
-   - response closes this round
-   - continuation requires re-Tellask
-   - delegation statements must become real Tellasks immediately
+1. One-shot Tellask: `uname -a` as the runtime baseline.
+2. Long-session Tellask: `tellaskSession: rtws-vcs-inventory` for a two-round repo inventory.
+3. Run `!?@self` FBR and distillation only after both evidence segments are available.
 
-This creates behavior memory more reliably than longer prose in system prompts.
+Operating rules:
+
+1. If no `shell_specialist` is available, Dominds runtime gathers the same facts (`uname -a` + git inventory). This is a standard mode, not a degraded path.
+2. A response closes the current round; continuation requires a new explicit Tellask.
+3. “Ask teammate to do X” must materialize as `!?@...`, not as a relay request to @human.
+
+### 5.3 P1 design baseline (implemented)
+
+#### Design goals
+
+1. Keep it short: only `uname` plus two VCS rounds are added to existing priming.
+2. Keep it general: works in any rtws, with or without a shell specialist.
+3. Keep it stable: runtime templates script key steps to reduce model drift.
+4. Keep semantics sharp: behavior must reflect “response closes round; continuation requires re-Tellask”.
+
+#### Unified sequence
+
+1. `Prelude Intro`: declare shell policy (`specialist_only` / `self_is_specialist` / `no_specialist`).
+2. `uname` baseline:
+   - `specialist_only`: mainline sends one-shot Tellask to `@<shell_specialist>` and receives response.
+   - other policies: runtime collects and displays `uname -a`.
+3. `VCS Round-1` (same `tellaskSession`): topology inventory
+   - whether rtws root is a git repo
+   - submodule list
+   - nested independent repo list
+4. `VCS Round-2` (continuation in same `tellaskSession`): per-repo status
+   - remotes (fetch/push)
+   - branch / upstream
+   - dirty state
+5. Merge `uname + VCS` into one evidence block for `!?@self` FBR.
+6. Distill after FBR feedback is complete, and produce the priming note.
+
+#### Tellask template constraints
+
+1. Round-1/2 Tellask bodies are runtime-generated.
+2. Round-2 body must explicitly state Round-1 is closed and this is a new continuation Tellask.
+3. Each round has a single objective; no repair plan or scope expansion in the round body.
+
+#### No-shell-specialist mode (standard support)
+
+1. Runtime emits `uname` and both VCS round notes directly.
+2. FBR receives the same structured evidence shape as the specialist path.
+3. Priming note requirements stay identical: close-on-response and explicit re-Tellask for continuation.
+
+#### Data shape (`agent-priming.ts`)
+
+1. `shell` is a discriminated union:
+   - `specialist_tellask` (tellask body, response, `uname` snapshot)
+   - `direct_shell` (runtime note, `uname` snapshot)
+2. `vcs` is a discriminated union:
+   - `specialist_session` (Round-1/2 tellask+response, `inventoryText`)
+   - `runtime_inventory` (Round-1/2 runtime notes, `inventoryText`)
+3. `buildCoursePrefixMsgs` injects in fixed order: shell snapshot -> VCS inventory -> FBR summary -> priming note.
+
+#### P1 acceptance criteria
+
+1. Priming transcript shows `uname` baseline plus two VCS rounds (Round-2 after Round-1 response).
+2. No-shell-specialist path still shows two runtime VCS rounds and uses them for the same FBR step.
+3. Priming note explicitly states “response closes round; continuation requires re-Tellask”.
+4. Replay preserves the path-specific pattern (`specialist_session` or `runtime_inventory`).
+5. `pnpm -C dominds run lint:types` passes without breaking existing priming/FBR/diligence behavior.
 
 ---
 

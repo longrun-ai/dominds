@@ -3,7 +3,11 @@
  *
  * Best-effort Agent Priming prelude generation for new dialogs.
  */
-import type { Dialog } from './dialog';
+import { spawn } from 'node:child_process';
+import type { Dirent } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import { Dialog, RootDialog, SubDialog } from './dialog';
 import { computeIdleRunState, setDialogRunState } from './dialog-run-state';
 import type { ChatMessage } from './llm/client';
 import { driveDialogStream, emitSayingEvents } from './llm/driver';
@@ -33,6 +37,28 @@ type AgentPrimingCacheEntry = Readonly<{
         directNoteMarkdown: string;
         snapshotText: string;
       }>;
+  vcs: Readonly<
+    | {
+        kind: 'specialist_session';
+        specialistId: string;
+        sessionSlug: string;
+        round1: Readonly<{
+          tellaskBody: string;
+          responseText: string;
+        }>;
+        round2: Readonly<{
+          tellaskBody: string;
+          responseText: string;
+        }>;
+        inventoryText: string;
+      }
+    | {
+        kind: 'runtime_inventory';
+        round1NoteMarkdown: string;
+        round2NoteMarkdown: string;
+        inventoryText: string;
+      }
+  >;
   fbr: Readonly<{
     tellaskHead: string;
     tellaskBody: string;
@@ -45,6 +71,7 @@ type AgentPrimingCacheEntry = Readonly<{
 }>;
 
 const BASELINE_ENV_SNAPSHOT_CMD = 'uname -a';
+const PRIMING_VCS_SESSION_SLUG = 'rtws-vcs-inventory';
 
 const cacheByAgentId: Map<string, AgentPrimingCacheEntry> = new Map();
 const inflightByAgentId: Map<string, Promise<AgentPrimingCacheEntry | null>> = new Map();
@@ -244,7 +271,6 @@ function extractLastShellCmdResultText(messages: unknown[]): string | null {
 }
 
 async function runUnameA(): Promise<string> {
-  const { spawn } = await import('child_process');
   return await new Promise<string>((resolveUname) => {
     const child = spawn('uname', ['-a'], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
@@ -271,6 +297,324 @@ async function runUnameA(): Promise<string> {
   });
 }
 
+type ExecResult = Readonly<{
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  errorText?: string;
+}>;
+
+async function runCommand(command: string, args: string[], cwd?: string): Promise<ExecResult> {
+  return await new Promise<ExecResult>((resolveExec) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (buf: Buffer) => {
+      out += buf.toString();
+    });
+    child.stderr.on('data', (buf: Buffer) => {
+      err += buf.toString();
+    });
+    child.on('close', (code) => {
+      resolveExec({
+        ok: code === 0,
+        stdout: out.trim(),
+        stderr: err.trim(),
+        exitCode: code,
+      });
+    });
+    child.on('error', (e) => {
+      resolveExec({
+        ok: false,
+        stdout: out.trim(),
+        stderr: err.trim(),
+        exitCode: null,
+        errorText: e instanceof Error ? e.message : String(e),
+      });
+    });
+  });
+}
+
+async function runGit(args: string[], cwd: string): Promise<ExecResult> {
+  return await runCommand('git', args, cwd);
+}
+
+async function isGitRepo(dir: string): Promise<boolean> {
+  const res = await runGit(['rev-parse', '--is-inside-work-tree'], dir);
+  return res.ok && res.stdout === 'true';
+}
+
+async function listSubmoduleRelPaths(rootDir: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  const res = await runGit(['submodule', 'status', '--recursive'], rootDir);
+  if (!res.ok || !res.stdout) return out;
+  const lines = res.stdout.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const m = trimmed.match(/^[+\-U ]?[0-9a-fA-F]+\s+([^\s]+)/);
+    if (!m) continue;
+    const rel = (m[1] ?? '').trim();
+    if (!rel) continue;
+    out.add(rel.replace(/\\/g, '/'));
+  }
+  return out;
+}
+
+async function findGitMarkerDirs(rootDir: string): Promise<string[]> {
+  const skipDirs = new Set([
+    '.git',
+    'node_modules',
+    '.pnpm-store',
+    '.yarn',
+    '.next',
+    'dist',
+    'build',
+    'out',
+    'target',
+    '.cache',
+  ]);
+  const queue: string[] = [rootDir];
+  const found = new Set<string>();
+  const maxVisited = 20_000;
+  let visited = 0;
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    visited += 1;
+    if (visited > maxVisited) break;
+
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    const hasGitMarker = entries.some((e) => e.name === '.git' && (e.isDirectory() || e.isFile()));
+    if (hasGitMarker) {
+      found.add(current);
+      if (current !== rootDir) {
+        // Treat a nested repo as its own boundary to keep traversal bounded.
+        continue;
+      }
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (skipDirs.has(entry.name)) continue;
+      const next = path.join(current, entry.name);
+      queue.push(next);
+    }
+  }
+
+  return Array.from(found);
+}
+
+type RepoStatusSummary = Readonly<{
+  relPath: string;
+  branch: string;
+  upstream: string;
+  remotes: string[];
+  dirtyCount: number;
+  headShort: string;
+  statusError?: string;
+}>;
+
+type RtwsGitInventory = Readonly<{
+  rootIsRepo: boolean;
+  rootRelPath: string;
+  submoduleRelPaths: string[];
+  nestedRepoRelPaths: string[];
+  repoStatuses: RepoStatusSummary[];
+}>;
+
+async function collectRtwsGitInventory(): Promise<RtwsGitInventory> {
+  const rtws = process.cwd();
+  const rootIsRepo = await isGitRepo(rtws);
+  const markerDirs = await findGitMarkerDirs(rtws);
+  const submoduleSet = rootIsRepo ? await listSubmoduleRelPaths(rtws) : new Set<string>();
+
+  const repoAbsSet = new Set<string>();
+  if (rootIsRepo) repoAbsSet.add(rtws);
+  for (const candidate of markerDirs) {
+    if (candidate === rtws) continue;
+    if (await isGitRepo(candidate)) {
+      repoAbsSet.add(candidate);
+    }
+  }
+
+  const allRepoAbs = Array.from(repoAbsSet).sort();
+  const allRepoRel = allRepoAbs.map((abs) => {
+    const rel = path.relative(rtws, abs).replace(/\\/g, '/');
+    return rel === '' ? '.' : rel;
+  });
+
+  const submoduleRelPaths = allRepoRel.filter((rel) => submoduleSet.has(rel));
+  const nestedRepoRelPaths = allRepoRel.filter((rel) => rel !== '.' && !submoduleSet.has(rel));
+
+  const repoStatuses: RepoStatusSummary[] = [];
+  const maxRepos = 40;
+  for (let i = 0; i < Math.min(allRepoAbs.length, maxRepos); i++) {
+    const repoAbs = allRepoAbs[i];
+    const rel = allRepoRel[i] ?? '.';
+
+    const branchRes = await runGit(['branch', '--show-current'], repoAbs);
+    const headRes = await runGit(['rev-parse', '--short', 'HEAD'], repoAbs);
+    const upstreamRes = await runGit(
+      ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+      repoAbs,
+    );
+    const remoteRes = await runGit(['remote', '-v'], repoAbs);
+    const dirtyRes = await runGit(['status', '--porcelain'], repoAbs);
+
+    const remotes = (() => {
+      if (!remoteRes.ok || !remoteRes.stdout) return [] as string[];
+      const lines = remoteRes.stdout.split('\n');
+      const items = new Set<string>();
+      for (const line of lines) {
+        const m = line.match(/^([^\s]+)\s+([^\s]+)\s+\((fetch|push)\)$/);
+        if (!m) continue;
+        const name = m[1] ?? '';
+        const url = m[2] ?? '';
+        const kind = m[3] ?? '';
+        if (!name || !url || !kind) continue;
+        items.add(`${name}:${kind}=${url}`);
+      }
+      return Array.from(items).sort();
+    })();
+
+    const dirtyCount = (() => {
+      if (!dirtyRes.ok || !dirtyRes.stdout) return 0;
+      return dirtyRes.stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0).length;
+    })();
+
+    const statusErrorParts: string[] = [];
+    if (!branchRes.ok) statusErrorParts.push(`branch: ${branchRes.errorText ?? branchRes.stderr}`);
+    if (!headRes.ok) statusErrorParts.push(`head: ${headRes.errorText ?? headRes.stderr}`);
+    if (!remoteRes.ok) statusErrorParts.push(`remote: ${remoteRes.errorText ?? remoteRes.stderr}`);
+    if (!dirtyRes.ok) statusErrorParts.push(`status: ${dirtyRes.errorText ?? dirtyRes.stderr}`);
+
+    repoStatuses.push({
+      relPath: rel,
+      branch: branchRes.ok && branchRes.stdout ? branchRes.stdout : '(detached-or-unknown)',
+      upstream:
+        upstreamRes.ok && upstreamRes.stdout ? upstreamRes.stdout : '(no-upstream-or-unavailable)',
+      remotes,
+      dirtyCount,
+      headShort: headRes.ok && headRes.stdout ? headRes.stdout : '(unknown)',
+      statusError: statusErrorParts.length > 0 ? statusErrorParts.join('; ') : undefined,
+    });
+  }
+
+  return {
+    rootIsRepo,
+    rootRelPath: '.',
+    submoduleRelPaths,
+    nestedRepoRelPaths,
+    repoStatuses,
+  };
+}
+
+function formatRtwsGitInventoryRound1(language: LanguageCode, inventory: RtwsGitInventory): string {
+  if (language === 'zh') {
+    const submoduleText =
+      inventory.submoduleRelPaths.length < 1
+        ? '无'
+        : inventory.submoduleRelPaths.map((p) => `- ${p}`).join('\n');
+    const nestedText =
+      inventory.nestedRepoRelPaths.length < 1
+        ? '无'
+        : inventory.nestedRepoRelPaths.map((p) => `- ${p}`).join('\n');
+    return [
+      'VCS 长线诉请 Round-1（rtws 仓库拓扑）',
+      '',
+      `- 根路径是否 git repo：${inventory.rootIsRepo ? '是' : '否'}`,
+      `- submodule 数量：${inventory.submoduleRelPaths.length}`,
+      `- 子目录独立 repo 数量：${inventory.nestedRepoRelPaths.length}`,
+      '',
+      'submodule 列表：',
+      submoduleText,
+      '',
+      '子目录独立 repo 列表：',
+      nestedText,
+    ].join('\n');
+  }
+
+  const submoduleText =
+    inventory.submoduleRelPaths.length < 1
+      ? 'none'
+      : inventory.submoduleRelPaths.map((p) => `- ${p}`).join('\n');
+  const nestedText =
+    inventory.nestedRepoRelPaths.length < 1
+      ? 'none'
+      : inventory.nestedRepoRelPaths.map((p) => `- ${p}`).join('\n');
+  return [
+    'VCS Tellask Session Round-1 (rtws repo topology)',
+    '',
+    `- Root path is git repo: ${inventory.rootIsRepo ? 'yes' : 'no'}`,
+    `- Submodule count: ${inventory.submoduleRelPaths.length}`,
+    `- Nested independent repo count: ${inventory.nestedRepoRelPaths.length}`,
+    '',
+    'Submodule list:',
+    submoduleText,
+    '',
+    'Nested independent repo list:',
+    nestedText,
+  ].join('\n');
+}
+
+function formatRtwsGitInventoryRound2(language: LanguageCode, inventory: RtwsGitInventory): string {
+  const rows = inventory.repoStatuses.map((repo, idx) => {
+    const remotes = repo.remotes.length < 1 ? '(none)' : repo.remotes.join(', ');
+    if (language === 'zh') {
+      return [
+        `${idx + 1}. repo: ${repo.relPath}`,
+        `   - head: ${repo.headShort}`,
+        `   - branch: ${repo.branch}`,
+        `   - upstream: ${repo.upstream}`,
+        `   - dirty: ${repo.dirtyCount > 0 ? `yes (${repo.dirtyCount})` : 'no'}`,
+        `   - remotes: ${remotes}`,
+        repo.statusError ? `   - errors: ${repo.statusError}` : '',
+      ]
+        .filter((line) => line !== '')
+        .join('\n');
+    }
+    return [
+      `${idx + 1}. repo: ${repo.relPath}`,
+      `   - head: ${repo.headShort}`,
+      `   - branch: ${repo.branch}`,
+      `   - upstream: ${repo.upstream}`,
+      `   - dirty: ${repo.dirtyCount > 0 ? `yes (${repo.dirtyCount})` : 'no'}`,
+      `   - remotes: ${remotes}`,
+      repo.statusError ? `   - errors: ${repo.statusError}` : '',
+    ]
+      .filter((line) => line !== '')
+      .join('\n');
+  });
+
+  if (language === 'zh') {
+    return [
+      'VCS 长线诉请 Round-2（每个 repo 的 remote / branch 现状）',
+      '',
+      rows.length < 1 ? '未发现可报告的 repo。' : rows.join('\n\n'),
+    ].join('\n');
+  }
+  return [
+    'VCS Tellask Session Round-2 (remote / branch status per repo)',
+    '',
+    rows.length < 1 ? 'No repos available to report.' : rows.join('\n\n'),
+  ].join('\n');
+}
+
 function formatPreludeIntro(
   language: LanguageCode,
   reused: boolean,
@@ -290,13 +634,12 @@ function formatPreludeIntro(
       : shellPolicy === 'self_is_specialist'
         ? [
             '本次对话主理人属于 `shell_specialists`，将略去 shell 诉请环节。',
-            '由 Dominds 运行时执行一个基线命令：`uname -a`，随后进入 `!?@self` FBR。',
+            '由 Dominds 运行时获取标准环境事实（`uname -a` + rtws git 现状），随后进入 `!?@self` FBR。',
           ]
         : [
             '本团队未配置 shell 专员。',
-            '规则：此智能体必须**不执行任何 shell 命令**（不能“自己跑一下看看”）。',
-            '后续只能通过文件读写等非 shell 工具推进；同时要结合环境快照留意系统相关注意事项。',
-            '由 Dominds 运行时仅执行一个基线命令：`uname -a`，随后进入 `!?@self` FBR。',
+            '这是标准支持模式：由 Dominds 运行时主动获取环境事实（`uname -a` + rtws git 现状）并用于后续 FBR。',
+            '规则：此智能体仍然不得自行执行任意 shell 命令。',
           ];
 
   const shellPolicyLinesEn: string[] =
@@ -308,13 +651,12 @@ function formatPreludeIntro(
       : shellPolicy === 'self_is_specialist'
         ? [
             'The dialog owner is a member of `shell_specialists`, so we skip the shell Tellask step.',
-            'Dominds runtime runs one baseline command: `uname -a`, then we enter `!?@self` FBR.',
+            'Dominds runtime collects standard environment facts (`uname -a` + rtws git state), then we enter `!?@self` FBR.',
           ]
         : [
             'This team has no configured shell specialist.',
-            'Rule: this agent must **not run any shell commands** (no “just try it locally”).',
-            'We can only proceed with non-shell tools like file read/write; still, we must watch out for environment-specific constraints.',
-            'Dominds runtime runs one baseline command only: `uname -a`, then we enter `!?@self` FBR.',
+            'This is a standard support mode: Dominds runtime proactively collects environment facts (`uname -a` + rtws git state) for FBR.',
+            'Rule: this agent still must not run arbitrary shell commands directly.',
           ];
 
   if (language === 'zh') {
@@ -396,6 +738,84 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
   ].join('\n');
 }
 
+function formatVcsSessionRound1TellaskBody(language: LanguageCode): string {
+  if (language === 'zh') {
+    return [
+      `这是同一长线诉请（session: ${PRIMING_VCS_SESSION_SLUG}）的 Round-1，请你只做仓库拓扑盘点。`,
+      '',
+      '在当前 rtws 中确认：',
+      '- 根路径是否是 git repo',
+      '- 是否存在 submodule（给出路径列表）',
+      '- 是否存在子目录独立 repo（给出路径列表）',
+      '',
+      '要求：',
+      '- 仅做事实盘点，不做下一步建议',
+      '- 输出必须短且结构化，便于我在 Round-2 继续诉请',
+    ].join('\n');
+  }
+  return [
+    `This is Round-1 of the same Tellask Session (${PRIMING_VCS_SESSION_SLUG}); do topology inventory only.`,
+    '',
+    'In the current rtws, confirm:',
+    '- whether the root path is a git repo',
+    '- whether submodules exist (with path list)',
+    '- whether nested independent repos exist (with path list)',
+    '',
+    'Requirements:',
+    '- facts only, no next-step suggestions',
+    '- keep output short and structured so I can continue in Round-2',
+  ].join('\n');
+}
+
+function formatVcsSessionRound2TellaskBody(language: LanguageCode, round1Response: string): string {
+  const round1Anchor = takeFirstNonEmptyLine(round1Response) ?? '(empty)';
+  if (language === 'zh') {
+    return [
+      `这是同一长线诉请（session: ${PRIMING_VCS_SESSION_SLUG}）的 Round-2。Round-1 已结束，本轮是新的续推诉请。`,
+      `Round-1 摘要锚点：${round1Anchor}`,
+      '',
+      '请继续确认 Round-1 涉及到的每一个 repo：',
+      '- remote（fetch/push）现状',
+      '- 当前 branch / upstream 现状',
+      '- 工作区是否脏（可给简要计数）',
+      '',
+      '要求：',
+      '- 覆盖全部 repo；缺失时明确写 unavailable',
+      '- 输出保持结构化与简短，不扩展到修复建议',
+    ].join('\n');
+  }
+  return [
+    `This is Round-2 of the same Tellask Session (${PRIMING_VCS_SESSION_SLUG}). Round-1 is closed; this is a new continuation Tellask.`,
+    `Round-1 anchor: ${round1Anchor}`,
+    '',
+    'For every repo covered by Round-1, continue with:',
+    '- remote status (fetch/push)',
+    '- current branch / upstream status',
+    '- whether working tree is dirty (brief count is enough)',
+    '',
+    'Requirements:',
+    '- cover all repos; mark unavailable when missing',
+    '- keep output structured and short; do not expand into fix proposals',
+  ].join('\n');
+}
+
+function formatRuntimeVcsRoundNote(language: LanguageCode, round: 1 | 2, content: string): string {
+  if (language === 'zh') {
+    return [
+      `由 Dominds 运行时执行 VCS 盘点 Round-${round}（标准模式，非降级）：`,
+      '',
+      content,
+      '',
+    ].join('\n');
+  }
+  return [
+    `Dominds runtime VCS inventory Round-${round} (standard mode, not degraded):`,
+    '',
+    content,
+    '',
+  ].join('\n');
+}
+
 function formatFbrSelfTeaser(language: LanguageCode): string {
   if (language === 'zh') {
     return '（我会先等待该次 FBR 的全部支线反馈返回；在收齐前不做最终行动决策。收齐后再综合提炼，并在主线对话中输出一条可复用的“智能体启动（Agent Priming）”笔记。）';
@@ -465,12 +885,22 @@ async function generatePrimingNoteViaMainlineAgent(options: {
   dlg: Dialog;
   shellSnapshotText: string;
   shellResponseText?: string;
+  vcsRound1Text?: string;
+  vcsRound2Text?: string;
   fbrResponses: ReadonlyArray<{ subdialogId: string; response: string }>;
   fbrTellaskHead: string;
   fbrCallId: string;
 }): Promise<string> {
-  const { dlg, shellSnapshotText, shellResponseText, fbrResponses, fbrTellaskHead, fbrCallId } =
-    options;
+  const {
+    dlg,
+    shellSnapshotText,
+    shellResponseText,
+    vcsRound1Text,
+    vcsRound2Text,
+    fbrResponses,
+    fbrTellaskHead,
+    fbrCallId,
+  } = options;
 
   // Trigger a normal drive and rely on driver.ts context assembly.
   // Agent Priming must not trigger Diligence Push (“鞭策”); it should be best-effort
@@ -501,6 +931,22 @@ async function generatePrimingNoteViaMainlineAgent(options: {
         language === 'zh'
           ? ['Shell 反馈（完整回传）：', shellReturnTrimmed].join('\n')
           : ['Shell feedback (full return):', shellReturnTrimmed].join('\n'),
+      );
+    }
+    const vcsRound1Trimmed = typeof vcsRound1Text === 'string' ? vcsRound1Text.trim() : '';
+    if (vcsRound1Trimmed) {
+      evidenceParts.push(
+        language === 'zh'
+          ? ['VCS Session Round-1 结果：', vcsRound1Trimmed].join('\n')
+          : ['VCS session Round-1 result:', vcsRound1Trimmed].join('\n'),
+      );
+    }
+    const vcsRound2Trimmed = typeof vcsRound2Text === 'string' ? vcsRound2Text.trim() : '';
+    if (vcsRound2Trimmed) {
+      evidenceParts.push(
+        language === 'zh'
+          ? ['VCS Session Round-2 结果：', vcsRound2Trimmed].join('\n')
+          : ['VCS session Round-2 result:', vcsRound2Trimmed].join('\n'),
       );
     }
 
@@ -564,6 +1010,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
             '- 去重并消解冲突，只保留最关键的结论',
             '- 用 6~12 条 bullet points 输出（每条尽量短）',
             '- 只写结论要点；不要输出推理过程，也不要出现“我在考虑/我将要/让我们检查”等元话语',
+            '- 必须明确写出：收到回贴代表该轮诉请结束；继续推进必须显式发起下一轮诉请',
           ].join('\n')
         : [
             'You are in the Agent Priming distillation step.',
@@ -581,6 +1028,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
             '- Dedupe and reconcile conflicts; keep only the key conclusions',
             '- Output 6–12 concise bullet points',
             '- Conclusion bullets only; no reasoning narration or meta talk (e.g. “I think / I will / let’s inspect”)',
+            '- Explicitly include this rule: a delivered response closes the current Tellask round; continuation requires a new explicit Tellask',
           ].join('\n');
 
     // IMPORTANT: this is an internal (non-persisted) prompt. driver.ts will inject it into
@@ -641,6 +1089,12 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
     : language === 'zh'
       ? '（无）'
       : '(empty)';
+  const vcsInventoryLabel = language === 'zh' ? 'VCS 现状盘点（rtws）' : 'VCS inventory (rtws)';
+  const vcsInventory = entry.vcs.inventoryText.trim()
+    ? entry.vcs.inventoryText.trim()
+    : language === 'zh'
+      ? '（无）'
+      : '(empty)';
 
   const effort = Math.max(0, Math.floor(entry.fbr.effort));
   const fbrLabel =
@@ -685,6 +1139,11 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
       type: 'environment_msg',
       role: 'user',
       content: `${shellSnapshotLabel}:\n\n${shellSnapshot}`,
+    },
+    {
+      type: 'environment_msg',
+      role: 'user',
+      content: `${vcsInventoryLabel}:\n\n${vcsInventory}`,
     },
     {
       type: 'environment_msg',
@@ -784,6 +1243,107 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       );
     }
 
+    // Phase 2.5: VCS long-session drill (two rounds)
+    if (entry.vcs.kind === 'specialist_session') {
+      let round1CallId: string | null = null;
+      let round1TellaskHead: string | null = null;
+      let round2CallId: string | null = null;
+      let round2TellaskHead: string | null = null;
+
+      try {
+        await dlg.notifyGeneratingStart();
+        const round1Content = [
+          `!?@${entry.vcs.specialistId} !tellaskSession ${entry.vcs.sessionSlug}`,
+          ...prefixTellaskBodyLines(entry.vcs.round1.tellaskBody).split('\n'),
+          '',
+        ].join('\n');
+        const round1Calls = await emitSayingEventsAndPersist(dlg, round1Content);
+        const round1 = round1Calls.find((c) => c.validation.kind === 'valid');
+        if (round1) {
+          round1CallId = round1.callId;
+          round1TellaskHead = round1.tellaskHead;
+        }
+      } finally {
+        try {
+          await dlg.notifyGeneratingFinish();
+        } catch (_finishErr) {
+          // best-effort
+        }
+      }
+
+      if (round1CallId && round1TellaskHead) {
+        await dlg.receiveTeammateResponse(
+          entry.vcs.specialistId,
+          round1TellaskHead,
+          'completed',
+          dlg.id,
+          {
+            response: entry.vcs.round1.responseText,
+            agentId: entry.vcs.specialistId,
+            callId: round1CallId,
+            originMemberId: dlg.agentId,
+          },
+        );
+      }
+
+      try {
+        await dlg.notifyGeneratingStart();
+        const round2Content = [
+          `!?@${entry.vcs.specialistId} !tellaskSession ${entry.vcs.sessionSlug}`,
+          ...prefixTellaskBodyLines(entry.vcs.round2.tellaskBody).split('\n'),
+          '',
+        ].join('\n');
+        const round2Calls = await emitSayingEventsAndPersist(dlg, round2Content);
+        const round2 = round2Calls.find((c) => c.validation.kind === 'valid');
+        if (round2) {
+          round2CallId = round2.callId;
+          round2TellaskHead = round2.tellaskHead;
+        }
+      } finally {
+        try {
+          await dlg.notifyGeneratingFinish();
+        } catch (_finishErr) {
+          // best-effort
+        }
+      }
+
+      if (round2CallId && round2TellaskHead) {
+        await dlg.receiveTeammateResponse(
+          entry.vcs.specialistId,
+          round2TellaskHead,
+          'completed',
+          dlg.id,
+          {
+            response: entry.vcs.round2.responseText,
+            agentId: entry.vcs.specialistId,
+            callId: round2CallId,
+            originMemberId: dlg.agentId,
+          },
+        );
+      }
+    } else {
+      try {
+        await dlg.notifyGeneratingStart();
+        await emitSayingEventsAndPersist(dlg, entry.vcs.round1NoteMarkdown);
+      } finally {
+        try {
+          await dlg.notifyGeneratingFinish();
+        } catch (_finishErr) {
+          // best-effort
+        }
+      }
+      try {
+        await dlg.notifyGeneratingStart();
+        await emitSayingEventsAndPersist(dlg, entry.vcs.round2NoteMarkdown);
+      } finally {
+        try {
+          await dlg.notifyGeneratingFinish();
+        } catch (_finishErr) {
+          // best-effort
+        }
+      }
+    }
+
     // Phase 3: FBR ask (call bubble)
     let fbrCallId: string | null = null;
     let fbrTellaskHead: string | null = null;
@@ -874,6 +1434,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
   let shellResponseText = '';
   let snapshotText = '';
   let directNoteMarkdown = '';
+  let vcsRound1Body = '';
+  let vcsRound2Body = '';
+  let vcsRound1ResponseText = '';
+  let vcsRound2ResponseText = '';
+  let vcsRound1NoteMarkdown = '';
+  let vcsRound2NoteMarkdown = '';
+  let vcsInventoryText = '';
   let fbrCallBody = '';
   let selfTeaser = '';
   let fbrEffort = 0;
@@ -1064,6 +1631,212 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       });
     }
 
+    // Phase 2.5: VCS tellask-session drill (two rounds) or runtime inventory.
+    if (shellPolicy === 'specialist_only' && specialistId !== null) {
+      const ensuredSpecialistId = specialistId;
+      try {
+        vcsRound1Body = formatVcsSessionRound1TellaskBody(language);
+        let round1CallId = '';
+        let round1TellaskHead = '';
+        let round1TellaskBodyForSubdialog = '';
+
+        await dlg.withLock(async () => {
+          try {
+            await dlg.notifyGeneratingStart();
+            const round1CallSaying = [
+              `!?@${ensuredSpecialistId} !tellaskSession ${PRIMING_VCS_SESSION_SLUG}`,
+              ...prefixTellaskBodyLines(vcsRound1Body).split('\n'),
+              '',
+            ].join('\n');
+            const calls = await emitSayingEventsAndPersist(dlg, round1CallSaying);
+            const call = calls.find((c) => c.validation.kind === 'valid');
+            if (!call) {
+              throw new Error('Failed to emit VCS session round-1 tellask call');
+            }
+            round1CallId = call.callId;
+            round1TellaskHead = call.tellaskHead;
+            round1TellaskBodyForSubdialog = call.body;
+          } finally {
+            try {
+              await dlg.notifyGeneratingFinish();
+            } catch (_finishErr) {
+              // best-effort
+            }
+          }
+        });
+
+        const round1Sub = await dlg.withLock(async () => {
+          return await dlg.createSubDialog(
+            ensuredSpecialistId,
+            round1TellaskHead,
+            round1TellaskBodyForSubdialog || vcsRound1Body,
+            {
+              originMemberId: dlg.agentId,
+              callerDialogId: dlg.id.selfId,
+              callId: round1CallId,
+              tellaskSession: PRIMING_VCS_SESSION_SLUG,
+              collectiveTargets: [ensuredSpecialistId],
+            },
+          );
+        });
+
+        const rootDialog =
+          dlg instanceof RootDialog ? dlg : dlg instanceof SubDialog ? dlg.rootDialog : undefined;
+        if (rootDialog) {
+          rootDialog.registerSubdialog(round1Sub);
+          await rootDialog.saveSubdialogRegistry();
+        }
+
+        const round1Prompt = formatAssignmentFromSupdialog({
+          fromAgentId: dlg.agentId,
+          toAgentId: round1Sub.agentId,
+          tellaskHead: round1TellaskHead,
+          tellaskBody: round1TellaskBodyForSubdialog || vcsRound1Body,
+          language,
+          collectiveTargets: [ensuredSpecialistId],
+        });
+        await driveDialogStream(
+          round1Sub,
+          { content: round1Prompt, msgId: generateShortId(), grammar: 'markdown' },
+          true,
+        );
+        vcsRound1ResponseText = extractLastAssistantSaying(round1Sub.msgs).trim();
+        if (!vcsRound1ResponseText) {
+          throw new Error('Specialist VCS session round-1 returned empty output');
+        }
+
+        await dlg.withLock(async () => {
+          await dlg.receiveTeammateResponse(
+            ensuredSpecialistId,
+            round1TellaskHead,
+            'completed',
+            round1Sub.id,
+            {
+              response: vcsRound1ResponseText,
+              agentId: ensuredSpecialistId,
+              callId: round1CallId,
+              originMemberId: dlg.agentId,
+            },
+          );
+        });
+
+        vcsRound2Body = formatVcsSessionRound2TellaskBody(language, vcsRound1ResponseText);
+        let round2CallId = '';
+        let round2TellaskHead = '';
+        let round2TellaskBodyForSubdialog = '';
+        await dlg.withLock(async () => {
+          try {
+            await dlg.notifyGeneratingStart();
+            const round2CallSaying = [
+              `!?@${ensuredSpecialistId} !tellaskSession ${PRIMING_VCS_SESSION_SLUG}`,
+              ...prefixTellaskBodyLines(vcsRound2Body).split('\n'),
+              '',
+            ].join('\n');
+            const calls = await emitSayingEventsAndPersist(dlg, round2CallSaying);
+            const call = calls.find((c) => c.validation.kind === 'valid');
+            if (!call) {
+              throw new Error('Failed to emit VCS session round-2 tellask call');
+            }
+            round2CallId = call.callId;
+            round2TellaskHead = call.tellaskHead;
+            round2TellaskBodyForSubdialog = call.body;
+          } finally {
+            try {
+              await dlg.notifyGeneratingFinish();
+            } catch (_finishErr) {
+              // best-effort
+            }
+          }
+        });
+
+        const round2Prompt = formatAssignmentFromSupdialog({
+          fromAgentId: dlg.agentId,
+          toAgentId: round1Sub.agentId,
+          tellaskHead: round2TellaskHead,
+          tellaskBody: round2TellaskBodyForSubdialog || vcsRound2Body,
+          language,
+          collectiveTargets: [ensuredSpecialistId],
+        });
+        await driveDialogStream(
+          round1Sub,
+          { content: round2Prompt, msgId: generateShortId(), grammar: 'markdown' },
+          true,
+        );
+        vcsRound2ResponseText = extractLastAssistantSaying(round1Sub.msgs).trim();
+        if (!vcsRound2ResponseText) {
+          throw new Error('Specialist VCS session round-2 returned empty output');
+        }
+
+        await dlg.withLock(async () => {
+          await dlg.receiveTeammateResponse(
+            ensuredSpecialistId,
+            round2TellaskHead,
+            'completed',
+            round1Sub.id,
+            {
+              response: vcsRound2ResponseText,
+              agentId: ensuredSpecialistId,
+              callId: round2CallId,
+              originMemberId: dlg.agentId,
+            },
+          );
+        });
+
+        vcsInventoryText = [vcsRound1ResponseText, '', vcsRound2ResponseText].join('\n');
+      } catch (err) {
+        log.warn(
+          'VCS tellask-session drill via shell specialist failed; fallback to runtime inventory',
+          err,
+          {
+            dialogId: dlg.id.valueOf(),
+            specialistId: ensuredSpecialistId,
+          },
+        );
+      }
+    }
+
+    if (!vcsInventoryText.trim()) {
+      const inventory = await collectRtwsGitInventory();
+      vcsRound1ResponseText = formatRtwsGitInventoryRound1(language, inventory);
+      vcsRound2ResponseText = formatRtwsGitInventoryRound2(language, inventory);
+      vcsRound1NoteMarkdown = formatRuntimeVcsRoundNote(language, 1, vcsRound1ResponseText);
+      vcsRound2NoteMarkdown = formatRuntimeVcsRoundNote(language, 2, vcsRound2ResponseText);
+      vcsInventoryText = [vcsRound1ResponseText, '', vcsRound2ResponseText].join('\n');
+
+      await dlg.withLock(async () => {
+        try {
+          await dlg.notifyGeneratingStart();
+          await emitSayingEventsAndPersist(dlg, vcsRound1NoteMarkdown);
+        } finally {
+          try {
+            await dlg.notifyGeneratingFinish();
+          } catch (_finishErr) {
+            // best-effort
+          }
+        }
+      });
+
+      await dlg.withLock(async () => {
+        try {
+          await dlg.notifyGeneratingStart();
+          await emitSayingEventsAndPersist(dlg, vcsRound2NoteMarkdown);
+        } finally {
+          try {
+            await dlg.notifyGeneratingFinish();
+          } catch (_finishErr) {
+            // best-effort
+          }
+        }
+      });
+    }
+
+    const fbrSnapshotText = [
+      snapshotText.trim() ? snapshotText.trim() : '',
+      vcsInventoryText.trim() ? vcsInventoryText.trim() : '',
+    ]
+      .filter((part) => part !== '')
+      .join('\n\n---\n\n');
+
     const rawFbrEffort = member ? member.fbr_effort : undefined;
     fbrEffort = (() => {
       if (typeof rawFbrEffort !== 'number' || !Number.isFinite(rawFbrEffort)) return 3;
@@ -1075,7 +1848,11 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       return n;
     })();
 
-    fbrCallBody = formatFbrTellaskBody(language, snapshotText, { fbrEffort });
+    fbrCallBody = formatFbrTellaskBody(
+      language,
+      fbrSnapshotText.trim() ? fbrSnapshotText : snapshotText,
+      { fbrEffort },
+    );
     selfTeaser = formatFbrSelfTeaser(language);
     let fbrCallId: string | null = null;
     let fbrTellaskHead: string | null = null;
@@ -1191,6 +1968,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       dlg,
       shellSnapshotText: snapshotText,
       shellResponseText: shellResponseText,
+      vcsRound1Text: vcsRound1ResponseText,
+      vcsRound2Text: vcsRound2ResponseText,
       fbrResponses: fbrResponsesForInjection,
       fbrTellaskHead: fbrTellaskHead,
       fbrCallId: fbrCallId,
@@ -1213,6 +1992,37 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
               kind: 'direct_shell',
               directNoteMarkdown,
               snapshotText,
+            },
+      vcs:
+        shellPolicy === 'specialist_only' &&
+        specialistId !== null &&
+        vcsRound1ResponseText.trim() &&
+        vcsRound2ResponseText.trim()
+          ? {
+              kind: 'specialist_session',
+              specialistId,
+              sessionSlug: PRIMING_VCS_SESSION_SLUG,
+              round1: {
+                tellaskBody: vcsRound1Body || formatVcsSessionRound1TellaskBody(language),
+                responseText: vcsRound1ResponseText,
+              },
+              round2: {
+                tellaskBody:
+                  vcsRound2Body ||
+                  formatVcsSessionRound2TellaskBody(language, vcsRound1ResponseText),
+                responseText: vcsRound2ResponseText,
+              },
+              inventoryText: vcsInventoryText,
+            }
+          : {
+              kind: 'runtime_inventory',
+              round1NoteMarkdown:
+                vcsRound1NoteMarkdown ||
+                formatRuntimeVcsRoundNote(language, 1, vcsRound1ResponseText),
+              round2NoteMarkdown:
+                vcsRound2NoteMarkdown ||
+                formatRuntimeVcsRoundNote(language, 2, vcsRound2ResponseText),
+              inventoryText: vcsInventoryText,
             },
       fbr: {
         tellaskHead: '@self',
