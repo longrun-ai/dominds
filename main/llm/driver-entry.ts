@@ -16,14 +16,14 @@ export type DriverEngineVersion = 'v1' | 'v2';
 function resolveActiveDriverEngine(): DriverEngineVersion {
   const raw = process.env.DOMINDS_DRIVER_ENGINE;
   if (raw === undefined) {
-    return 'v1';
+    return 'v2';
   }
   const normalized = raw.trim().toLowerCase();
-  if (normalized === '' || normalized === 'v1') {
-    return 'v1';
-  }
-  if (normalized === 'v2') {
+  if (normalized === '' || normalized === 'v2') {
     return 'v2';
+  }
+  if (normalized === 'v1') {
+    return 'v1';
   }
   throw new Error(`Invalid DOMINDS_DRIVER_ENGINE=${JSON.stringify(raw)} (expected "v1" or "v2")`);
 }

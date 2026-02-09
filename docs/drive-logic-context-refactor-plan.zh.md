@@ -150,7 +150,7 @@
    - `main/llm/driver.ts` 继续存在，作为对照基线。
 3. 切换方式：
    - 通过单点入口切换到 v2（建议配置开关或固定切换点），避免多处散改 import。
-   - 当前状态（2026-02-09）：`main/llm/driver-entry.ts` 已支持 `DOMINDS_DRIVER_ENGINE=v1|v2`（默认 `v1`）。
+   - 当前状态（2026-02-09）：`main/llm/driver-entry.ts` 已支持 `DOMINDS_DRIVER_ENGINE=v1|v2`（默认 `v2`）。
 4. Priming 专项支持：
    - v2 内置 `internalDrivePrimingMsg` 注入规则（每轮注入、drive 内有效、绝不持久化）。
 5. 关键回归与复放：
