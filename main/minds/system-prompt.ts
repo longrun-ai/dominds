@@ -75,24 +75,28 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- 对队友诉请而言，收到回贴即表示该轮调用已结束；不存在“对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请（通常沿用同一 \\`!tellaskSession <slug>\\`）。',
     '- 只有在存在明确 pending tellask 时，才可声明“等待回贴/等待结果”；否则必须执行下一动作（直接诉请或本地执行）。',
     '- 能由队友诉请完成的执行性工作，禁止转交 @human 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 \\`!?@X ...\\`。',
+    '- 当你处于队友诉请触发的支线且需要澄清时，必须发回问诉请 \\`!?@tellasker\\`（禁止携带 \\`!tellaskSession\\`）。例如在 @fullstack 诉请你的支线中，禁止写 \\`!?@fullstack !tellaskSession ...\\` 回问；正确写法是 \\`!?@tellasker\\`。',
   ].join('\n');
   const teammatePhaseContractEn = [
     '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
     '- For teammate Tellasks, a delivered response closes that call round; there is no default “still running in background” state for the same Tellask. To continue, emit a new Tellask explicitly (usually reusing the same \\`!tellaskSession <slug>\\`).',
     '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists; otherwise execute the next action now (direct Tellask or local action).',
     '- Do not use @human as a relay for executable teammate work. If you write “ask @X to do Y”, emit \\`!?@X ...\\` in the same response.',
+    '- When you are in a teammate-triggered sideline and need clarification, you MUST issue TellaskBack via \\`!?@tellasker\\` (and it must NOT carry \\`!tellaskSession\\`). For example, in a sideline tellasked by @fullstack, do NOT ask back with \\`!?@fullstack !tellaskSession ...\\`; the correct form is \\`!?@tellasker\\`.',
   ].join('\n');
   const collaborationProtocolZh = [
     '- \\`!?@...\\` 仅用于诉请队友/@self/@human，不是函数工具调用通道。',
     '- 函数工具只能通过原生 function-calling 调用；不要把工具名写进 \\`!?@...\\` 诉请头。',
-    '- 对队友诉请（非 \\`!?@self\\`）默认带 \\`!tellaskSession <slug>\\` 并在同一会话续推；仅在确认一次性诉请足够时才可省略，且需说明理由。',
+    '- 对队友诉请默认带 \\`!tellaskSession <slug>\\` 并在同一会话续推（适用于非 \\`!?@self\\` 且非 \\`!?@tellasker\\` 的目标）；仅在确认一次性诉请足够时才可省略，且需说明理由。',
+    '- 例外优先级（强制）：\\`!?@tellasker\\` 是回问诉请专用目标，不属于“队友长线诉请默认规则”；因此既不适用默认 \\`!tellaskSession\\`，也禁止携带 \\`!tellaskSession\\`。',
     '- 队友诉请阶段协议（强制）：',
     teammatePhaseContractZh,
   ].join('\n');
   const collaborationProtocolEn = [
     '- \\`!?@...\\` is only for tellasking teammates/@self/@human; it is not a function-tool invocation channel.',
     '- Function tools must be invoked through native function-calling only; do not put tool names in \\`!?@...\\` tellask headlines.',
-    '- For teammate tellasks (non-\\`!?@self\\`), default to \\`!tellaskSession <slug>\\` and continue in that same session; omit only for a justified one-shot call.',
+    '- For teammate tellasks, default to \\`!tellaskSession <slug>\\` and continue in that same session (applies to targets other than \\`!?@self\\` and \\`!?@tellasker\\`); omit only for a justified one-shot call.',
+    '- Mandatory exception precedence: \\`!?@tellasker\\` is TellaskBack-only and outside the teammate-session default; it therefore does not use the default \\`!tellaskSession\\` and must never carry \\`!tellaskSession\\`.',
     '- Teammate Tellask phase contract (mandatory):',
     teammatePhaseContractEn,
   ].join('\n');
