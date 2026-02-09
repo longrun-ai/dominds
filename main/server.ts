@@ -11,7 +11,7 @@
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import { reconcileRunStatesAfterRestart } from './dialog-run-state';
-import { runBackendDriver } from './llm/driver';
+import { runBackendDriver } from './llm/driver-entry';
 import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
 import { AuthConfig, computeAuthConfig } from './server/auth';

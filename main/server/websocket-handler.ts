@@ -19,7 +19,7 @@ import {
   setRunStateBroadcaster,
 } from '../dialog-run-state';
 import { dialogEventRegistry, postDialogEvent, setQ4HBroadcaster } from '../evt-registry';
-import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver';
+import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver-entry';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';

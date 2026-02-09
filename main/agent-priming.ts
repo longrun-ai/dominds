@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import { Dialog, RootDialog, SubDialog } from './dialog';
 import { computeIdleRunState, setDialogRunState } from './dialog-run-state';
 import type { ChatMessage } from './llm/client';
-import { driveDialogStream, emitSayingEvents } from './llm/driver';
+import { driveDialogStream, emitSayingEvents } from './llm/driver-entry';
 import { log } from './log';
 import { getWorkLanguage } from './shared/runtime-language';
 import type { LanguageCode } from './shared/types/language';

@@ -251,24 +251,34 @@ type DriveV2Runtime = {
 
 1. `driver-v2/internal-drive-priming-multi-iter.ts`
    - 断言：priming 提示在同一 drive 第 1/2/3 轮均可见。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
 2. `driver-v2/internal-drive-priming-not-persisted.ts`
    - 断言：priming 不进入 `dlg.msgs`、不写 events、不落盘。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
 3. `driver-v2/internal-drive-priming-no-leak-next-drive.ts`
    - 断言：drive 结束后 priming 不泄漏到下一次 drive。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
 4. `driver-v2/subdialog-queue-interrupt-rollback.ts`
    - 断言：take 后 interrupted/error 必 rollback，下一次 drive 可重见。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
 5. `driver-v2/subdialog-queue-commit-mirror.ts`
    - 断言：成功 commit 后镜像到 `dlg.msgs`，后续不依赖队列注入。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
 6. `driver-v2/subdialog-restore-live-equivalence.ts`
    - 断言：restore 路径与 live 路径对 teammate response 的上下文等价。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。`restoreDialogHierarchy(rootId, status)` 需由调用方显式传入状态。
 7. `driver-v2/multi-iter-tool-round-context-continuity.ts`
    - 断言：工具回合 continue 后，前序关键上下文不丢失。
+   - v1 状态：理论可在 `script-rtws + mock provider` 落地；当前未实现。
 8. `driver-v2/v1-v2-parity-basic-tellask.ts`
    - 断言：同 mock 输入下，v1/v2 在可观察语义上等价（除已知 bug 修复差异）。
+   - v1 状态：需 v2 模块后才有对照意义；当前未实现。
 9. `driver-v2/v1-v2-parity-diligence-q4h.ts`
    - 断言：diligence/Q4H 关键事件与 runState 语义一致。
+   - v1 状态：需 v2 模块后才有对照意义；当前未实现。
 10. `driver-v2/replay-39-12-417f4a49-style.ts`
     - 断言：复放样本不再出现“已收到回贴却声称没看到”的语义回归。
+    - v1 状态：可先做“现状复放”脚本；v2 需要转为门禁回归。当前未实现。
 
 ### 11.3 阶段 1/2 的测试门禁
 
@@ -301,6 +311,7 @@ type DriveV2Runtime = {
 ### 11.5 测试基座约定（script-rtws + mock provider）
 
 1. 阶段 1 的集成测试默认基于 `tests/script-rtws` 运行，避免污染真实 rtws。
+   - 执行约束：统一通过 `tests/cli.ts` 入口传 `-C script-rtws`；不允许其它 rtws。
 2. 默认使用 `apiType: mock`，通过 `mock-db/<model>.yaml` 驱动可重复测试。
 3. mock 响应可使用：
    - `delayMs`：整次响应前延迟（用于中断/rollback窗口）
