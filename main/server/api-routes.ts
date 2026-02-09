@@ -21,7 +21,7 @@ import { getWorkLanguage } from '../shared/runtime-language';
 import type { ApiMoveDialogsRequest } from '../shared/types';
 import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
-import type { DialogIdent } from '../shared/types/wire';
+import type { DialogIdent, DialogStatusKind } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
 import { createToolsRegistrySnapshot } from '../tools/registry-snapshot';
@@ -227,7 +227,17 @@ export async function handleApiRoute(
       const rawSelf = parts[4];
       const rootId = rawRoot.replace(/%2F/g, '/');
       const selfId = (rawSelf || rawRoot).replace(/%2F/g, '/');
-      return await handleDeleteDialog(res, { rootId, selfId }, context);
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const fromStatusRaw = urlObj.searchParams.get('fromStatus');
+      if (
+        fromStatusRaw !== 'running' &&
+        fromStatusRaw !== 'completed' &&
+        fromStatusRaw !== 'archived'
+      ) {
+        respondJson(res, 400, { error: 'Invalid fromStatus' });
+        return true;
+      }
+      return await handleDeleteDialog(res, { rootId, selfId, fromStatus: fromStatusRaw }, context);
     }
 
     // Get full hierarchy for a single root dialog
@@ -1188,11 +1198,11 @@ function broadcastDialogCreates(
 
 async function handleDeleteDialog(
   res: ServerResponse,
-  dialog: { rootId: string; selfId: string },
+  dialog: { rootId: string; selfId: string; fromStatus: DialogStatusKind },
   context: ApiRouteContext,
 ): Promise<boolean> {
   try {
-    const { rootId, selfId } = dialog;
+    const { rootId, selfId, fromStatus } = dialog;
     if (typeof rootId !== 'string' || rootId.trim() === '') {
       respondJson(res, 400, { error: 'Invalid root dialog id' });
       return true;
@@ -1208,9 +1218,9 @@ async function handleDeleteDialog(
       return true;
     }
 
-    const fromStatus = await DialogPersistence.deleteRootDialog(new DialogID(rootId));
-    if (!fromStatus) {
-      respondJson(res, 404, { error: 'Dialog not found' });
+    const deleted = await DialogPersistence.deleteRootDialog(new DialogID(rootId), fromStatus);
+    if (!deleted) {
+      respondJson(res, 404, { error: `Dialog not found in ${fromStatus}` });
       return true;
     }
 

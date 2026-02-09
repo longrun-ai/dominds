@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { randomUUID } from 'node:crypto';
 import * as path from 'path';
-import { DialogID, type Dialog } from '../dialog';
+import { type Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
@@ -1297,11 +1297,7 @@ async function materializeMcpToolCallOutput(params: {
     return stringifyMcpToolCallResultSafe(rawValue);
   }
 
-  const rootStatus = await DialogPersistence.findRootDialogStatus(
-    new DialogID(params.dlg.id.rootId),
-  );
-  const status: 'running' | 'completed' | 'archived' = rootStatus ?? 'running';
-  const eventsBase = DialogPersistence.getDialogEventsPath(params.dlg.id, status);
+  const eventsBase = DialogPersistence.getDialogEventsPath(params.dlg.id, params.dlg.status);
 
   const contentItems: FuncResultContentItem[] = [];
   const displayLines: string[] = [];

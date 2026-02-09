@@ -11,6 +11,7 @@ import {
   ApiSubdialogResponse,
   type CreateDialogInput,
   type CreateDialogResult,
+  type DialogStatusKind,
   SetupFileResponse,
   SetupStatusResponse,
   SetupWriteRtwsLlmYamlRequest,
@@ -395,10 +396,12 @@ export class ApiClient {
    */
   async deleteDialog(
     rootDialogId: string,
+    fromStatus: DialogStatusKind,
     selfDialogId?: string,
-  ): Promise<ApiResponse<{ deleted: boolean }>> {
+  ): Promise<ApiResponse<{ deleted: boolean; fromStatus: DialogStatusKind }>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}`, {
+    const query = new URLSearchParams({ fromStatus }).toString();
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}?${query}`, {
       method: 'DELETE',
     });
   }

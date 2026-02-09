@@ -2917,7 +2917,10 @@ async function _driveDialogStream(
  * Single API for restoring the complete dialog hierarchy (main dialog + all subdialogs)
  * This is the only public restoration API - all serialization is implicit
  */
-export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
+export async function restoreDialogHierarchy(
+  rootDialogId: string,
+  status: 'running' | 'completed' | 'archived' = 'running',
+): Promise<{
   rootDialog: Dialog;
   subdialogs: Map<string, Dialog>;
   summary: {
@@ -2927,20 +2930,21 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
   };
 }> {
   try {
+    const rootDialogIdent = new DialogID(rootDialogId);
+
     // Assert that the ID refers to a root dialog, not a subdialog selfId.
-    const rootMeta = await DialogPersistence.loadRootDialogMetadata(
-      new DialogID(rootDialogId),
-      'running',
-    );
+    const rootMeta = await DialogPersistence.loadRootDialogMetadata(rootDialogIdent, status);
     if (rootMeta?.supdialogId) {
       throw new Error(
         `Expected root dialog ${rootDialogId} but found subdialog metadata with supdialogId: ${rootMeta.supdialogId}`,
       );
     }
 
-    const rootDialog = await getOrRestoreRootDialog(rootDialogId, 'running');
+    const rootDialog = await getOrRestoreRootDialog(rootDialogId, status);
     if (!rootDialog) {
-      throw new Error(`Failed to restore dialog hierarchy for ${rootDialogId}`);
+      throw new Error(
+        `Failed to restore dialog hierarchy for ${rootDialogId} from status ${status}`,
+      );
     }
     globalDialogRegistry.register(rootDialog);
 
@@ -2948,7 +2952,7 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
     // then ensuring each subdialog is loaded into the root dialog's local registry.
     const subdialogs = new Map<string, Dialog>();
 
-    const rootPath = DialogPersistence.getRootDialogPath(new DialogID(rootDialogId), 'running');
+    const rootPath = DialogPersistence.getRootDialogPath(rootDialogIdent, status);
     const subPath = path.join(
       rootPath,
       (DialogPersistence as unknown as { SUBDIALOGS_DIR: string }).SUBDIALOGS_DIR,
@@ -2971,7 +2975,7 @@ export async function restoreDialogHierarchy(rootDialogId: string): Promise<{
 
     for (const subdialogId of allSubdialogIds) {
       const restoredSubdialogId = new DialogID(subdialogId, rootDialog.id.rootId);
-      const dialog = await ensureDialogLoaded(rootDialog, restoredSubdialogId, 'running');
+      const dialog = await ensureDialogLoaded(rootDialog, restoredSubdialogId, status);
       if (dialog && dialog.id.selfId !== dialog.id.rootId) {
         subdialogs.set(subdialogId, dialog);
       }
@@ -3410,7 +3414,7 @@ export async function continueDialogWithHumanResponse(
 ): Promise<void> {
   try {
     // Restore the complete dialog hierarchy (pure restoration, no continuation)
-    const result = await restoreDialogHierarchy(rootDialogId);
+    const result = await restoreDialogHierarchy(rootDialogId, 'running');
 
     // Then perform continuation separately
     if (options?.targetSubdialogId && result.subdialogs.has(options.targetSubdialogId)) {
@@ -3436,7 +3440,7 @@ export async function continueRootDialog(
 ): Promise<void> {
   try {
     // Restore the complete dialog hierarchy (pure restoration, no continuation)
-    const result = await restoreDialogHierarchy(rootDialogId);
+    const result = await restoreDialogHierarchy(rootDialogId, 'running');
 
     // Then perform continuation separately
     await driveDialogStream(result.rootDialog, humanPrompt);

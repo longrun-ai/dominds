@@ -4705,56 +4705,18 @@ export class DialogPersistence {
   }
 
   /**
-   * Find the current persistence status directory for a root dialog.
-   * Root dialogs are stored under exactly one of: run/ | done/ | archive/
-   */
-  static async findRootDialogStatus(
-    rootDialogId: DialogID,
-  ): Promise<'running' | 'completed' | 'archived' | null> {
-    if (rootDialogId.selfId !== rootDialogId.rootId) {
-      throw new Error('Expected root dialog id (selfId must equal rootId)');
-    }
-
-    const candidates: Array<{ status: 'running' | 'completed' | 'archived'; dirName: string }> = [
-      { status: 'running', dirName: this.RUN_DIR },
-      { status: 'completed', dirName: this.DONE_DIR },
-      { status: 'archived', dirName: this.ARCHIVE_DIR },
-    ];
-
-    for (const candidate of candidates) {
-      const candidatePath = path.join(
-        this.getDialogsRootDir(),
-        candidate.dirName,
-        rootDialogId.selfId,
-      );
-      try {
-        // `run/` can contain stray placeholder directories (e.g. created by status-agnostic metadata updates).
-        // Treat a status as valid only if it contains the root dialog's dialog.yaml.
-        const dialogYamlPath = path.join(candidatePath, 'dialog.yaml');
-        const st = await fs.promises.stat(dialogYamlPath);
-        if (st.isFile()) {
-          return candidate.status;
-        }
-      } catch (error: unknown) {
-        if (getErrorCode(error) === 'ENOENT') {
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    return null;
-  }
-
-  /**
    * Delete a root dialog directory (including subdialogs) from disk.
-   * Returns the status directory the dialog was deleted from, or null if not found.
+   * Caller must provide the source status explicitly.
    */
   static async deleteRootDialog(
     rootDialogId: DialogID,
-  ): Promise<'running' | 'completed' | 'archived' | null> {
-    const status = await this.findRootDialogStatus(rootDialogId);
-    if (!status) return null;
+    fromStatus: 'running' | 'completed' | 'archived',
+  ): Promise<boolean> {
+    if (rootDialogId.selfId !== rootDialogId.rootId) {
+      throw new Error('deleteRootDialog expects a root dialog id');
+    }
+    const exists = await this.loadRootDialogMetadata(rootDialogId, fromStatus);
+    if (!exists) return false;
 
     // Best-effort cleanup: remove the dialog from all status directories to avoid leaving behind
     // orphaned placeholder paths (e.g. `run/<id>/latest.yaml`) after a delete.
@@ -4767,7 +4729,7 @@ export class DialogPersistence {
       const candidatePath = this.getRootDialogPath(rootDialogId, candidate);
       await fs.promises.rm(candidatePath, { recursive: true, force: true });
     }
-    return status;
+    return true;
   }
 
   // === REGISTRY PERSISTENCE ===

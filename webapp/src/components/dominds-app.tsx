@@ -5622,7 +5622,7 @@ export class DomindsApp extends HTMLElement {
     const confirmed = window.confirm(t.confirmDeleteDialog);
     if (!confirmed) return;
 
-    const resp = await this.apiClient.deleteDialog(rootId);
+    const resp = await this.apiClient.deleteDialog(rootId, fromStatus);
     if (!resp.success) {
       if (resp.status === 401) {
         this.onAuthRejected('api');
