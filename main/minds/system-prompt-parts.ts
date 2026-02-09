@@ -31,13 +31,13 @@ type ShellPolicyCopy = Readonly<{
   specialistFixConfig: string;
   noHighRiskTools: string;
   readonlyAuthorized: string;
-  readonlyDelegateWhenNeeded: string;
+  readonlyDelegateWhenNeeded: (value: string) => string;
   noShellTools: string;
-  delegateWhenNeeded: string;
+  delegateWhenNeeded: (value: string) => string;
   delegationProposalBullets: readonly string[];
   specialistListLine: (value: string) => string;
   delegationSpecialistsLine: (value: string) => string;
-  tellaskBlockReminder: string;
+  tellaskBlockReminder: (exampleHeads: string) => string;
   claimAfterReceiptReminder: string;
   includeDevopsPolicyForSpecialist: boolean;
 }>;
@@ -62,22 +62,22 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
         '在未修复配置前：不要声称自己执行过命令；如需验证，请让人类修复 team.yaml 或把 shell 能力授予正确的成员。',
       noHighRiskTools: '你不具备高权限 shell 工具（shell_cmd/stop_daemon/get_daemon_output）。',
       readonlyAuthorized:
-        '你已被明确授权使用 `readonly_shell` 自行执行只读命令（仅允许白名单命令前缀）：请直接调用，不要去寻找 shell 专员代跑。',
-      readonlyDelegateWhenNeeded:
-        '当你需要的命令不在白名单内，或需要写入/删除/网络/长时间运行/进程管理等高风险能力时：再转交给具备 shell 工具的专员队友，并提供充分理由与可审查的命令提案：',
+        '你仅被授权使用 `readonly_shell` 做只读检查（仅允许白名单命令前缀；不得写入/删除/联网/进程管理）：符合只读目的时请直接调用。',
+      readonlyDelegateWhenNeeded: (value) =>
+        `边界规则：除只读目的外，其它一切 shell 需求都不得自行执行。凡是不在白名单内，或涉及写入/删除/网络/长时间运行/进程管理，必须诉请以下 shell 专员之一执行：${value}。并提供充分理由与可审查的命令提案：`,
       noShellTools:
         '你不具备 shell 工具（本环境仅 shell 专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
-      delegateWhenNeeded:
-        '当你确实需要 shell 执行时：请转交给具备 shell 能力的专员队友，并提供充分理由与可审查的命令提案：',
+      delegateWhenNeeded: (value) =>
+        `当你确实需要 shell 执行时：必须诉请以下 shell 专员之一执行：${value}。并提供充分理由与可审查的命令提案：`,
       delegationProposalBullets: [
         '- 你要达成的目标（why）',
         '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
         '- 风险评估与安全边界（risk & guardrails）',
       ],
       specialistListLine: (value) => `本队 shell 专员列表：${value}`,
-      delegationSpecialistsLine: (value) => `可转交的 shell 专员队友：${value}`,
-      tellaskBlockReminder:
-        '重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（以第 0 列开头的 `!?@<shell-specialist>` 行），不要只说“我会请某人运行”。',
+      delegationSpecialistsLine: (value) => `可诉请的 shell 专员：${value}`,
+      tellaskBlockReminder: (exampleHeads) =>
+        `重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（诉请头第 0 列起始，并直接写真实专员 id）。可用写法示例：${exampleHeads}。不要只说“我会请某人运行”。`,
       claimAfterReceiptReminder:
         '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
       includeDevopsPolicyForSpecialist: false,
@@ -103,22 +103,22 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
     noHighRiskTools:
       'You do not have high-risk shell tools (shell_cmd/stop_daemon/get_daemon_output).',
     readonlyAuthorized:
-      'You are explicitly authorized to use `readonly_shell` yourself for read-only inspection via its small allowlist. Call it directly; do not go looking for a shell specialist to run it for you.',
-    readonlyDelegateWhenNeeded:
-      'When the command you need is not in the allowlist, or you need high-risk capabilities like writes/deletes/network/long-running jobs/process management: delegate to a shell specialist teammate with a justified, reviewable proposal:',
+      'You are authorized to use `readonly_shell` only for read-only inspection (small allowlist only; no writes/deletes/network/process management). When it is truly read-only, call it directly.',
+    readonlyDelegateWhenNeeded: (value) =>
+      `Boundary rule: anything beyond read-only must not be executed by you. If it is outside the allowlist, or involves writes/deletes/network/long-running jobs/process management, you must tellask one of these shell specialists to execute it: ${value}. Provide a justified, reviewable proposal:`,
     noShellTools:
       'You do not have shell tools configured (shell execution is restricted to designated specialists): do not fabricate/assume command output, and do not ask the system to execute commands directly.',
-    delegateWhenNeeded:
-      'When you truly need shell execution, delegate to a shell specialist teammate with a justified, reviewable proposal:',
+    delegateWhenNeeded: (value) =>
+      `When you truly need shell execution, you must tellask one of these shell specialists to execute it: ${value}. Provide a justified, reviewable proposal:`,
     delegationProposalBullets: [
       '- Goal (why)',
       '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
       '- Risk assessment and guardrails (risk & guardrails)',
     ],
     specialistListLine: (value) => `Shell specialists in this team: ${value}`,
-    delegationSpecialistsLine: (value) => `Shell specialist teammates: ${value}`,
-    tellaskBlockReminder:
-      'Important: if you intend to delegate, include the full tellask block (a column-0 `!?@<shell-specialist>` line) in the same message; do not just say “I will ask someone to run it”.',
+    delegationSpecialistsLine: (value) => `Shell specialists you can tellask: ${value}`,
+    tellaskBlockReminder: (exampleHeads) =>
+      `Important: if you intend to delegate, include the full tellask block in the same message (tellask headline must start at column 0 and use a real specialist id). Examples: ${exampleHeads}. Do not just say “I will ask someone to run it”.`,
     claimAfterReceiptReminder:
       'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
     includeDevopsPolicyForSpecialist: true,
@@ -145,6 +145,14 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
 
   const specialistListLine = copy.specialistListLine(shellSpecialists);
   const specialistDelegationLine = copy.delegationSpecialistsLine(shellSpecialists);
+  const tellaskHeadExamples =
+    shellSpecialistMemberIds.length > 0
+      ? shellSpecialistMemberIds
+          .map((id) => `\`!?@${id} ...\``)
+          .join(language === 'zh' ? ' / ' : ' / ')
+      : language === 'zh'
+        ? '（当前无可用 shell 专员）'
+        : '(no available shell specialists)';
   const buildDelegationBlock = (introLine: string): string[] => [
     introLine,
     ...copy.delegationProposalBullets,
@@ -152,7 +160,7 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
     '',
     devopsScriptPolicy,
     '',
-    copy.tellaskBlockReminder,
+    copy.tellaskBlockReminder(tellaskHeadExamples),
     copy.claimAfterReceiptReminder,
   ];
 
@@ -185,9 +193,9 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
         copy.noHighRiskTools,
         copy.readonlyAuthorized,
         '',
-        ...buildDelegationBlock(copy.readonlyDelegateWhenNeeded),
+        ...buildDelegationBlock(copy.readonlyDelegateWhenNeeded(shellSpecialists)),
       ]
-    : [copy.noShellTools, ...buildDelegationBlock(copy.delegateWhenNeeded)];
+    : [copy.noShellTools, ...buildDelegationBlock(copy.delegateWhenNeeded(shellSpecialists))];
 
   return `${copy.title}\n\n${bodyLines.join('\n')}`.trim();
 }

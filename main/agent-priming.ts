@@ -681,14 +681,18 @@ function formatPreludeIntro(
   shellPolicy: AgentPrimingCacheEntry['shellPolicy'],
   shellSpecialistId: string | null,
 ): string {
+  if (
+    shellPolicy === 'specialist_only' &&
+    (!shellSpecialistId || shellSpecialistId.trim() === '')
+  ) {
+    throw new Error('Missing shell specialist id for specialist_only prelude');
+  }
   const shellSpecialistMention =
-    shellSpecialistId && shellSpecialistId.trim()
-      ? `@${shellSpecialistId.trim()}`
-      : '@<shell specialist>';
+    shellSpecialistId && shellSpecialistId.trim() ? `@${shellSpecialistId.trim()}` : '';
   const shellPolicyLinesZh: string[] =
     shellPolicy === 'specialist_only'
       ? [
-          '规则：此智能体**不执行任何 shell 命令**。所有 shell 命令必须由 shell 专员执行并回传。',
+          `规则：此智能体**不执行任何 shell 命令**。所有 shell 命令必须由 shell 专员（${shellSpecialistMention}）执行并回传。`,
           `下面将诉请 shell 专员（${shellSpecialistMention}）仅执行一个低风险命令：\`uname -a\`。`,
         ]
       : shellPolicy === 'self_is_specialist'
@@ -705,7 +709,7 @@ function formatPreludeIntro(
   const shellPolicyLinesEn: string[] =
     shellPolicy === 'specialist_only'
       ? [
-          'Rule: this agent must **not run any shell commands**. All shell commands must be executed by the shell specialist and returned.',
+          `Rule: this agent must **not run any shell commands**. All shell commands must be executed by the shell specialist (${shellSpecialistMention}) and returned.`,
           `Next, we Tellask the shell specialist (${shellSpecialistMention}) to run one low-risk command only: \`uname -a\`.`,
         ]
       : shellPolicy === 'self_is_specialist'
@@ -763,12 +767,11 @@ function formatPreludeIntro(
       ].join('\n');
 }
 
-function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: string | null): string {
-  const shellSpecialistMention =
-    shellSpecialistId && shellSpecialistId.trim() ? `@${shellSpecialistId.trim()}` : undefined;
+function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: string): string {
+  const shellSpecialistMention = `@${shellSpecialistId.trim()}`;
   if (language === 'zh') {
     return [
-      `你是 shell 专员${shellSpecialistMention ? `（${shellSpecialistMention}）` : ''}：请代我执行 \`uname -a\` 获取当前运行环境的基本信息。`,
+      `你是 shell 专员（${shellSpecialistMention}）：请代我执行 \`uname -a\` 获取当前运行环境的基本信息。`,
       '',
       '背景规则：对话主理人不得执行任何 shell 命令；所有 shell 命令必须通过你执行并回传。',
       '请不要建议我“自己在本地跑一下”。',
@@ -783,7 +786,7 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
     ].join('\n');
   }
   return [
-    `You are the shell specialist${shellSpecialistMention ? ` (${shellSpecialistMention})` : ''}: please run \`uname -a\` on my behalf to capture the basic runtime environment.`,
+    `You are the shell specialist (${shellSpecialistMention}): please run \`uname -a\` on my behalf to capture the basic runtime environment.`,
     '',
     'Rule: the dialog owner must not run any shell commands; all shell commands must be executed by you and returned.',
     'Do not suggest that I “just run it locally”.',
@@ -1534,13 +1537,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           ? 'self_is_specialist'
           : 'specialist_only';
 
-    shellTellaskBody = formatShellTellaskBody(language, specialistId);
     let shellCallId: string | null = null;
     let shellTellaskHead: string | null = null;
     let shellTellaskBodyForSubdialog: string | null = null;
 
     // Phase 1: shell ask (and optional prelude intro)
     if (shellPolicy === 'specialist_only' && specialistId !== null) {
+      shellTellaskBody = formatShellTellaskBody(language, specialistId);
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
