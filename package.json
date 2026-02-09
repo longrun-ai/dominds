@@ -1,7 +1,7 @@
 {
   "name": "dominds",
-  "version": "0.6.5",
-  "description": "in-tree developer team with self-improving mindsets",
+  "version": "0.6.6",
+  "description": "DevOps Mindsets — Sustainable Agentic Product Lifecycle",
   "type": "commonjs",
   "private": false,
   "bin": {
