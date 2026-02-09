@@ -746,7 +746,7 @@ function formatPreludeIntro(
         '## Prelude: Agent Priming (Reused)',
         '',
         'This prelude makes Tellask + return + FBR + distillation feel real (guiding the agent to show it to itself).',
-        'Critical timing: `!?@self` is initiation only; mainline synthesis/decision happens only after FBR sideline feedback returns.',
+        'Critical timing: `!?@self` is initiation only; mainline distillation/decision happens only after FBR sideline feedback returns.',
         'This dialog reused the in-process cache (no commands were re-run).',
         '',
         ...shellPolicyLinesEn,
@@ -756,7 +756,7 @@ function formatPreludeIntro(
         '## Prelude: Agent Priming',
         '',
         'This prelude makes Tellask + return + FBR + distillation feel real (guiding the agent to show it to itself).',
-        'Critical timing: `!?@self` is initiation only; mainline synthesis/decision happens only after FBR sideline feedback returns.',
+        'Critical timing: `!?@self` is initiation only; mainline distillation/decision happens only after FBR sideline feedback returns.',
         '',
         ...shellPolicyLinesEn,
         '',
@@ -898,23 +898,23 @@ function formatFbrTellaskBody(
 ): string {
   const effortLineZh =
     options.fbrEffort >= 1
-      ? '运行时提示：运行时会生成多份“初心自我”独立推理草稿，供上游对话综合提炼（这些草稿之间没有稳定映射关系，不要把它们当作固定身份）。上游对话会在收齐全部回贴后才综合决策；请只给出你这一份独立分析，不要替上游下最终行动决策。'
-      : '运行时提示：本成员已禁用 FBR。';
+      ? '对话设定：你现在是被唤起的一份“初心自我”。术语映射：在本 FBR 支线中，你是被诉请者（tellaskee，初心自我）；诉请者（tellasker）就是外表自我（当前主线）。同一轮里还会有其他“初心自我”并行给出草稿（彼此没有稳定映射关系，不要当作固定身份）。外表自我会在收齐全部回贴后再统一决策；你只需给出这一份独立分析，不要替外表自我下最终行动决策。'
+      : '对话设定：当前成员未启用 FBR（无并行“初心自我”草稿）。';
   const effortLineEn =
     options.fbrEffort >= 1
-      ? 'Runtime note: the runtime will generate multiple independent “fresh boots” drafts for the upstream dialog to distill (no stable mapping—do not treat them as fixed identities). The upstream dialog will decide only after all feedback returns; provide your own draft only and do not finalize upstream next-action decisions.'
-      : 'Runtime note: FBR is disabled for this member.';
+      ? 'Conversation setup: you are one awakened “fresh-boots self.” Terminology mapping: in this FBR sideline, you are the tellaskee (the fresh-boots self), and the tellasker is the outer self (current mainline). In this same round, other fresh-boots selves also provide parallel drafts (no stable mapping—do not treat them as fixed identities). The outer self will make unified decisions only after all feedback returns; provide only this one independent draft and do not finalize next-action decisions for the outer self.'
+      : 'Conversation setup: FBR is disabled for this member (no parallel fresh-boots drafts).';
 
   const tellaskBackHintZh = (() => {
     return [
-      '提示：如果你还想知道更多系统细节，可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（上游对话）。',
+      '提示：如果你还想知道更多系统细节，可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（tellasker，也就是外表自我/当前主线）。',
       '（当前这次 FBR 请不要真的发起任何诉请；只需说明你会回问什么。）',
     ].join('\n');
   })();
 
   const tellaskBackHintEn = (() => {
     return [
-      'Hint: if you want more system details, ask back in this FBR sideline dialog via `!?@tellasker` (to the upstream tellasker dialog).',
+      'Hint: if you want more system details, ask back in this FBR sideline dialog via `!?@tellasker` (to the tellasker, i.e. the outer-self mainline dialog).',
       '(In this FBR run, do not actually emit any tellasks; just state what you would ask back.)',
     ].join('\n');
   })();
@@ -928,9 +928,9 @@ function formatFbrTellaskBody(
       '请基于下面环境信息回答：',
       '- 在这个环境里要注意些什么？',
       '- 哪些关键上下文仍然缺失？',
-      '- 请明确区分：事实依据 / 不确定项 / 建议下一步（供上游收齐草稿后综合）。',
+      '- 请明确区分：事实依据 / 不确定项 / 建议下一步（供诉请者 tellasker（外表自我）在收齐草稿后综合提炼）。',
       '',
-      '环境信息（当前 Dominds 运行时环境快照）：',
+      '环境信息（由诉请者 tellasker（外表自我）提供的当前环境快照）：',
       snapshotText,
     ].join('\n');
   }
@@ -942,9 +942,9 @@ function formatFbrTellaskBody(
     'Based on the environment info below, answer:',
     '- What should we watch out for in this environment?',
     '- What critical context is still missing?',
-    '- Clearly separate: factual evidence / uncertainties / suggested next step (for upstream synthesis after all drafts return).',
+    '- Clearly separate: factual evidence / uncertainties / suggested next step (for tellasker / outer-self distillation after all drafts return).',
     '',
-    'Environment info (a snapshot of the current Dominds runtime):',
+    'Environment info (the current snapshot provided by the tellasker / outer self):',
     snapshotText,
   ].join('\n');
 }
@@ -1082,7 +1082,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
           ].join('\n')
         : [
             'You are in the Agent Priming distillation step.',
-            'Receiving this prompt means feedback from this `!?@self` FBR run has already been collected; this step is synthesis/distillation only, not another FBR initiation.',
+            'Receiving this prompt means feedback from this `!?@self` FBR run has already been collected; this step is distillation only, not another FBR initiation.',
             'Based on the environment snapshot (and optional `!?@self` FBR drafts) below, distill a reusable “Agent Priming note”.',
             '',
             'Evidence (for distillation only; do not repeat draft-by-draft):',
