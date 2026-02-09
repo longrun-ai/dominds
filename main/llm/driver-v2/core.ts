@@ -1192,21 +1192,40 @@ export async function driveDialogStreamCoreV2(
 
     if (committedTakenSubdialogResponses && takenSubdialogResponses.length > 0) {
       try {
-        const mirroredMsgs: ChatMessage[] = takenSubdialogResponses.map((response) => ({
-          type: 'tellask_result_msg',
-          role: 'tool',
-          responderId: response.responderId,
-          tellaskHead: response.tellaskHead,
-          status: response.status ?? 'completed',
-          content: formatTeammateResponseContent({
+        const mirroredMsgs: ChatMessage[] = [];
+        for (const response of takenSubdialogResponses) {
+          const content = formatTeammateResponseContent({
             responderId: response.responderId,
             requesterId: response.originMemberId,
             originalCallHeadLine: response.tellaskHead,
             responseBody: response.response,
             language: getWorkLanguage(),
-          }),
-        }));
-        await dlg.addChatMessages(...mirroredMsgs);
+          });
+          const status = response.status ?? 'completed';
+          const alreadyMirrored = dlg.msgs.some(
+            (msg) =>
+              msg.type === 'tellask_result_msg' &&
+              msg.role === 'tool' &&
+              msg.responderId === response.responderId &&
+              msg.tellaskHead === response.tellaskHead &&
+              msg.status === status &&
+              msg.content === content,
+          );
+          if (alreadyMirrored) {
+            continue;
+          }
+          mirroredMsgs.push({
+            type: 'tellask_result_msg',
+            role: 'tool',
+            responderId: response.responderId,
+            tellaskHead: response.tellaskHead,
+            status,
+            content,
+          });
+        }
+        if (mirroredMsgs.length > 0) {
+          await dlg.addChatMessages(...mirroredMsgs);
+        }
       } catch (err) {
         log.warn('driver-v2 failed to mirror committed subdialog responses into dialog msgs', {
           dialogId: dlg.id.selfId,

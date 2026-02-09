@@ -3,9 +3,12 @@ import { globalDialogRegistry } from '../../dialog-global-registry';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
+import { getWorkLanguage } from '../../shared/runtime-language';
 import { generateShortId } from '../../shared/utils/id';
+import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
+import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';
 
 export type SubdialogReplyTarget = {
@@ -196,6 +199,24 @@ export async function supplyResponseToSupdialogV2(args: {
         originMemberId: result.originMemberId ?? parentDialog.agentId,
       },
     );
+
+    // Keep in-memory dialog context in sync with live teammate-response events immediately.
+    // Without this, tellask_result_msg can appear batched at drive-finalization mirror time.
+    const immediateMirror: ChatMessage = {
+      type: 'tellask_result_msg',
+      role: 'tool',
+      responderId: result.responderId,
+      tellaskHead: result.tellaskHead,
+      status,
+      content: formatTeammateResponseContent({
+        responderId: result.responderId,
+        requesterId: result.originMemberId ?? parentDialog.agentId,
+        originalCallHeadLine: result.tellaskHead,
+        responseBody: responseText,
+        language: getWorkLanguage(),
+      }),
+    };
+    await parentDialog.addChatMessages(immediateMirror);
 
     if (result.shouldRevive) {
       log.info(
