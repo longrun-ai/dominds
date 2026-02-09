@@ -120,7 +120,10 @@ export interface HumanPrompt {
 }
 
 type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
-type DriveRunOptions = { suppressDiligencePush?: boolean };
+type DriveRunOptions = {
+  suppressDiligencePush?: boolean;
+  allowResumeFromInterrupted?: boolean;
+};
 
 const DEFAULT_KEEP_GOING_MAX_NUM_PROMPTS = DEFAULT_DILIGENCE_PUSH_MAX;
 
@@ -1240,6 +1243,8 @@ export async function driveDialogStream(
   if (!waitInQue && dlg.isLocked()) {
     throw new Error(`Dialog busy driven, see how it proceeded and try again.`);
   }
+  const allowResumeFromInterrupted =
+    driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
   const release = await dlg.acquire();
   let followUp: UpNextPrompt | undefined;
   let driveResult: { lastAssistantSayingContent: string | null; interrupted: boolean } | undefined;
@@ -1255,6 +1260,29 @@ export async function driveDialogStream(
         latest.runState &&
         latest.runState.kind === 'dead'
       ) {
+        return;
+      }
+      if (latest && latest.runState && latest.runState.kind === 'proceeding_stop_requested') {
+        log.info('Skip drive while stop request is still being processed', undefined, {
+          dialogId: dlg.id.valueOf(),
+          reason: latest.runState.reason,
+        });
+        return;
+      }
+      if (
+        latest &&
+        latest.runState &&
+        latest.runState.kind === 'interrupted' &&
+        !allowResumeFromInterrupted
+      ) {
+        log.info(
+          'Skip drive for interrupted dialog without explicit resume/user prompt',
+          undefined,
+          {
+            dialogId: dlg.id.valueOf(),
+            reason: latest.runState.reason,
+          },
+        );
         return;
       }
     } catch (err) {
@@ -1331,6 +1359,14 @@ export async function runBackendDriver(): Promise<void> {
 
       for (const rootDialog of dialogsToDrive) {
         try {
+          const latest = await DialogPersistence.loadDialogLatest(rootDialog.id, 'running');
+          const runStateKind = latest?.runState?.kind;
+          if (runStateKind === 'interrupted' || runStateKind === 'proceeding_stop_requested') {
+            globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
+            await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
+            continue;
+          }
+
           if (!(await rootDialog.canDrive())) {
             continue;
           }

@@ -8,7 +8,14 @@ import type { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Dialog, RootDialog, SubDialog } from './dialog';
-import { computeIdleRunState, setDialogRunState } from './dialog-run-state';
+import {
+  clearActiveRun,
+  computeIdleRunState,
+  createActiveRun,
+  getStopRequestedReason,
+  hasActiveRun,
+  setDialogRunState,
+} from './dialog-run-state';
 import type { ChatMessage } from './llm/client';
 import { driveDialogStream, emitSayingEvents } from './llm/driver-entry';
 import { log } from './log';
@@ -75,6 +82,33 @@ const PRIMING_VCS_SESSION_SLUG = 'rtws-vcs-inventory';
 
 const cacheByAgentId: Map<string, AgentPrimingCacheEntry> = new Map();
 const inflightByAgentId: Map<string, Promise<AgentPrimingCacheEntry | null>> = new Map();
+
+type AgentPrimingStopReason = 'user_stop' | 'emergency_stop';
+
+class AgentPrimingInterruptedError extends Error {
+  public readonly reason: AgentPrimingStopReason;
+
+  constructor(reason: AgentPrimingStopReason) {
+    super(`Agent Priming interrupted: ${reason}`);
+    this.name = 'AgentPrimingInterruptedError';
+    this.reason = reason;
+  }
+}
+
+function isAgentPrimingInterruptedError(error: unknown): error is AgentPrimingInterruptedError {
+  return error instanceof AgentPrimingInterruptedError;
+}
+
+function throwIfAgentPrimingStopped(dlg: Dialog, abortSignal: AbortSignal): void {
+  if (!abortSignal.aborted) {
+    return;
+  }
+  const reason = getStopRequestedReason(dlg.id);
+  if (reason === 'emergency_stop' || reason === 'user_stop') {
+    throw new AgentPrimingInterruptedError(reason);
+  }
+  throw new AgentPrimingInterruptedError('user_stop');
+}
 
 export type AgentPrimingCacheStatus = Readonly<
   { hasCache: false } | { hasCache: true; createdAt: string; ageSeconds: number }
@@ -198,9 +232,23 @@ export function scheduleAgentPrimingForNewDialog(
       }
       // mode === 'do': wait for in-flight then run again for this dialog.
       if (options.mode === 'do') {
-        return runAgentPrimingLive(dlg).then((next) => {
-          cacheByAgentId.set(agentId, next);
-        });
+        return runAgentPrimingLive(dlg)
+          .then((next) => {
+            cacheByAgentId.set(agentId, next);
+          })
+          .catch((err: unknown) => {
+            if (isAgentPrimingInterruptedError(err)) {
+              log.info('Agent Priming interrupted; will retry on next dialog', undefined, {
+                agentId,
+                reason: err.reason,
+              });
+            } else {
+              log.warn('Agent Priming live run failed; will retry on next dialog', err, {
+                agentId,
+              });
+            }
+            return undefined;
+          });
       }
       return Promise.resolve();
     });
@@ -213,7 +261,14 @@ export function scheduleAgentPrimingForNewDialog(
     })
     .catch((err: unknown) => {
       // Best-effort: avoid unhandled rejections; the dialog itself is already marked interrupted.
-      log.warn('Agent Priming live run failed; will retry on next dialog', err, { agentId });
+      if (isAgentPrimingInterruptedError(err)) {
+        log.info('Agent Priming interrupted; will retry on next dialog', undefined, {
+          agentId,
+          reason: err.reason,
+        });
+      } else {
+        log.warn('Agent Priming live run failed; will retry on next dialog', err, { agentId });
+      }
       return null;
     })
     .finally(() => {
@@ -961,6 +1016,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
   fbrResponses: ReadonlyArray<{ subdialogId: string; response: string }>;
   fbrTellaskHead: string;
   fbrCallId: string;
+  assertNotStopped?: () => void;
 }): Promise<string> {
   const {
     dlg,
@@ -971,6 +1027,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
     fbrResponses,
     fbrTellaskHead,
     fbrCallId,
+    assertNotStopped,
   } = options;
 
   // Trigger a normal drive and rely on driver.ts context assembly.
@@ -1104,6 +1161,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
 
     // IMPORTANT: this is an internal (non-persisted) prompt. driver.ts will inject it into
     // the LLM context for this drive only, without polluting dialog history.
+    assertNotStopped?.();
     await driveDialogStream(
       dlg,
       {
@@ -1115,6 +1173,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
       },
       true,
     );
+    assertNotStopped?.();
     const afterMsgs = dlg.msgs.length;
     if (afterMsgs <= beforeMsgs) {
       throw new Error('Agent Priming distillation produced no new messages.');
@@ -1254,16 +1313,25 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
 }
 
 async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): Promise<void> {
+  const hadActiveRunBefore = hasActiveRun(dlg.id);
+  const primingAbortSignal = createActiveRun(dlg.id);
+  const ownsActiveRun = !hadActiveRunBefore;
+  const assertNotStopped = (): void => {
+    throwIfAgentPrimingStopped(dlg, primingAbortSignal);
+  };
   const release = await dlg.acquire();
+  let interruptedRunState: DialogRunState | null = null;
   try {
     const language = getWorkLanguage();
     dlg.setCoursePrefixMsgs(buildCoursePrefixMsgs(entry));
     await setDialogRunState(dlg.id, { kind: 'proceeding' });
+    assertNotStopped();
 
     // Phase 1: shell ask (and optional prelude intro)
     let shellCallId: string | null = null;
     let shellTellaskHead: string | null = null;
     try {
+      assertNotStopped();
       await dlg.notifyGeneratingStart();
       await emitUiOnlyMarkdownEventsAndPersist(
         dlg,
@@ -1300,6 +1368,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
 
     // Phase 2: shell response (separate bubble)
     if (entry.shell.kind === 'specialist_tellask' && shellCallId && shellTellaskHead) {
+      assertNotStopped();
       await dlg.receiveTeammateResponse(
         entry.shell.specialistId,
         shellTellaskHead,
@@ -1322,6 +1391,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       let round2TellaskHead: string | null = null;
 
       try {
+        assertNotStopped();
         await dlg.notifyGeneratingStart();
         const round1Content = [
           `!?@${entry.vcs.specialistId} !tellaskSession ${entry.vcs.sessionSlug}`,
@@ -1343,6 +1413,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       }
 
       if (round1CallId && round1TellaskHead) {
+        assertNotStopped();
         await dlg.receiveTeammateResponse(
           entry.vcs.specialistId,
           round1TellaskHead,
@@ -1358,6 +1429,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       }
 
       try {
+        assertNotStopped();
         await dlg.notifyGeneratingStart();
         const round2Content = [
           `!?@${entry.vcs.specialistId} !tellaskSession ${entry.vcs.sessionSlug}`,
@@ -1379,6 +1451,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       }
 
       if (round2CallId && round2TellaskHead) {
+        assertNotStopped();
         await dlg.receiveTeammateResponse(
           entry.vcs.specialistId,
           round2TellaskHead,
@@ -1394,6 +1467,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       }
     } else {
       try {
+        assertNotStopped();
         await dlg.notifyGeneratingStart();
         await emitSayingEventsAndPersist(dlg, entry.vcs.round1NoteMarkdown);
       } finally {
@@ -1404,6 +1478,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         }
       }
       try {
+        assertNotStopped();
         await dlg.notifyGeneratingStart();
         await emitSayingEventsAndPersist(dlg, entry.vcs.round2NoteMarkdown);
       } finally {
@@ -1421,6 +1496,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
     const effort = Math.max(0, Math.floor(entry.fbr.effort));
     if (effort >= 1 && entry.fbr.responses.length > 0) {
       try {
+        assertNotStopped();
         await dlg.notifyGeneratingStart();
         const fbrCallBody = [entry.fbr.selfTeaser, '', entry.fbr.tellaskBody].join('\n');
         const fbrCallContent = [
@@ -1447,6 +1523,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         const normalized = Math.max(1, effort);
         const responses = entry.fbr.responses.slice(0, normalized);
         for (let i = 0; i < responses.length; i++) {
+          assertNotStopped();
           const raw = responses[i] ?? '';
           await dlg.receiveTeammateResponse(
             entry.fbr.responderAgentId,
@@ -1466,6 +1543,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
 
     // Phase 5: summary bubble
     try {
+      assertNotStopped();
       await dlg.notifyGeneratingStart();
       await emitSayingEventsAndPersist(dlg, entry.primingNote);
     } finally {
@@ -1476,24 +1554,55 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       }
     }
   } catch (err) {
-    log.warn('Agent Priming replay failed (best-effort)', err, { dialogId: dlg.id.valueOf() });
-  } finally {
-    let nextIdle: DialogRunState = { kind: 'idle_waiting_user' };
-    try {
-      nextIdle = await computeIdleRunState(dlg);
-    } catch (err: unknown) {
-      log.warn('Failed to compute idle runState after Agent Priming replay; falling back', err, {
+    if (isAgentPrimingInterruptedError(err)) {
+      interruptedRunState = {
+        kind: 'interrupted',
+        reason: { kind: err.reason },
+      };
+      log.info('Agent Priming replay interrupted by stop request', undefined, {
         dialogId: dlg.id.valueOf(),
+        reason: err.reason,
       });
+    } else {
+      log.warn('Agent Priming replay failed (best-effort)', err, { dialogId: dlg.id.valueOf() });
     }
-    await setDialogRunState(dlg.id, nextIdle);
-    release();
+  } finally {
+    try {
+      if (interruptedRunState) {
+        await setDialogRunState(dlg.id, interruptedRunState);
+      } else {
+        let nextIdle: DialogRunState = { kind: 'idle_waiting_user' };
+        try {
+          nextIdle = await computeIdleRunState(dlg);
+        } catch (err: unknown) {
+          log.warn(
+            'Failed to compute idle runState after Agent Priming replay; falling back',
+            err,
+            {
+              dialogId: dlg.id.valueOf(),
+            },
+          );
+        }
+        await setDialogRunState(dlg.id, nextIdle);
+      }
+    } finally {
+      if (ownsActiveRun) {
+        clearActiveRun(dlg.id);
+      }
+      release();
+    }
   }
 }
 
 async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry> {
   const createdAt = formatUnifiedTimestamp(new Date());
   const language = getWorkLanguage();
+  const hadActiveRunBefore = hasActiveRun(dlg.id);
+  const primingAbortSignal = createActiveRun(dlg.id);
+  const ownsActiveRun = !hadActiveRunBefore;
+  const assertNotStopped = (): void => {
+    throwIfAgentPrimingStopped(dlg, primingAbortSignal);
+  };
   const prevDisableDiligencePush = dlg.disableDiligencePush;
   // Agent Priming is a bounded bootstrap routine; no keep-going injection should appear
   // during the priming lifecycle (including any auto-revive drives triggered by subdialog replies).
@@ -1521,8 +1630,10 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
   const fbrResponsesForInjection: Array<{ subdialogId: string; response: string }> = [];
   try {
     await setDialogRunState(dlg.id, { kind: 'proceeding' });
+    assertNotStopped();
 
     const team = await Team.load();
+    assertNotStopped();
     const member = team.getMember(dlg.agentId);
     const specialists = team.shellSpecialists
       .filter((s): s is string => typeof s === 'string')
@@ -1544,6 +1655,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
     // Phase 1: shell ask (and optional prelude intro)
     if (shellPolicy === 'specialist_only' && specialistId !== null) {
       shellTellaskBody = formatShellTellaskBody(language, specialistId);
+      assertNotStopped();
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
@@ -1578,6 +1690,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       // In both cases we skip the shell Tellask step and let the runtime capture a baseline snapshot.
       // Keep it safe and deterministic: no network, no writes.
       const unameOutput = await runUnameA();
+      assertNotStopped();
       shellResponseText = unameOutput;
       snapshotText = unameOutput;
       const directNote = (() => {
@@ -1612,6 +1725,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       })();
       directNoteMarkdown = directNote;
 
+      assertNotStopped();
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
@@ -1650,6 +1764,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         throw new Error('Missing shell tellaskHead');
       }
       const tellaskBody = shellTellaskBodyForSubdialog ?? shellTellaskBody;
+      assertNotStopped();
       const sub = await dlg.withLock(async () => {
         return await dlg.createSubDialog(
           ensuredSpecialistId,
@@ -1678,6 +1793,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         { content: initPrompt, msgId: generateShortId(), grammar: 'markdown', skipTaskdoc: true },
         true,
       );
+      assertNotStopped();
 
       shellResponseText = extractLastAssistantSaying(sub.msgs);
       const toolResult = extractLastShellCmdResultText(sub.msgs);
@@ -1686,8 +1802,10 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         // Specialist produced no usable output (misconfigured tools, provider issues, etc.).
         // Fall back to a runtime-executed `uname -a` so we can still proceed to FBR.
         snapshotText = await runUnameA();
+        assertNotStopped();
       }
 
+      assertNotStopped();
       await dlg.withLock(async () => {
         await dlg.receiveTeammateResponse(
           ensuredSpecialistId,
@@ -1738,6 +1856,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           }
         });
 
+        assertNotStopped();
         const round1Sub = await dlg.withLock(async () => {
           return await dlg.createSubDialog(
             ensuredSpecialistId,
@@ -1756,6 +1875,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const rootDialog =
           dlg instanceof RootDialog ? dlg : dlg instanceof SubDialog ? dlg.rootDialog : undefined;
         if (rootDialog) {
+          assertNotStopped();
           rootDialog.registerSubdialog(round1Sub);
           await rootDialog.saveSubdialogRegistry();
         }
@@ -1778,11 +1898,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           },
           true,
         );
+        assertNotStopped();
         vcsRound1ResponseText = extractLastAssistantSaying(round1Sub.msgs).trim();
         if (!vcsRound1ResponseText) {
           throw new Error('Specialist VCS session round-1 returned empty output');
         }
 
+        assertNotStopped();
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             ensuredSpecialistId,
@@ -1845,11 +1967,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           },
           true,
         );
+        assertNotStopped();
         vcsRound2ResponseText = extractLastAssistantSaying(round1Sub.msgs).trim();
         if (!vcsRound2ResponseText) {
           throw new Error('Specialist VCS session round-2 returned empty output');
         }
 
+        assertNotStopped();
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             ensuredSpecialistId,
@@ -1879,6 +2003,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
     }
 
     const runtimeInventory = await collectRtwsGitInventory();
+    assertNotStopped();
     const runtimeRound1Text = formatRtwsGitInventoryRound1(language, runtimeInventory);
     const runtimeRound2Text = formatRtwsGitInventoryRound2(language, runtimeInventory);
     const runtimeInventoryText = [runtimeRound1Text, '', runtimeRound2Text].join('\n');
@@ -1903,6 +2028,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       vcsRound2NoteMarkdown = formatRuntimeVcsRoundNote(language, 2, vcsRound2ResponseText);
       vcsInventoryText = runtimeInventoryText;
 
+      assertNotStopped();
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
@@ -1916,6 +2042,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         }
       });
 
+      assertNotStopped();
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
@@ -1959,6 +2086,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
     // Phase 3: FBR ask (call bubble)
     if (fbrEffort >= 1) {
+      assertNotStopped();
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
@@ -1995,6 +2123,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       const perInstance = Array.from({ length: fbrEffort }, (_, idx) => idx + 1);
       const created = await Promise.all(
         perInstance.map(async (i) => {
+          assertNotStopped();
           const instanceBody =
             fbrEffort > 1
               ? [
@@ -2006,6 +2135,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
                 ].join('\n')
               : fbrCallBody;
 
+          assertNotStopped();
           const sub = await dlg.withLock(async () => {
             return await dlg.createSubDialog(dlg.agentId, ensuredFbrTellaskHead, instanceBody, {
               originMemberId: dlg.agentId,
@@ -2034,13 +2164,16 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
             },
             true,
           );
+          assertNotStopped();
 
           const responseText = extractLastAssistantSaying(sub.msgs);
           return { sub, responseText };
         }),
       );
+      assertNotStopped();
 
       for (const r of created) {
+        assertNotStopped();
         const responseText = r.responseText;
         fbrResponsesForCache.push(responseText);
         fbrResponsesForInjection.push({ subdialogId: r.sub.id.selfId, response: responseText });
@@ -2078,7 +2211,9 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       fbrResponses: fbrResponsesForInjection,
       fbrTellaskHead: fbrTellaskHead,
       fbrCallId: fbrCallId,
+      assertNotStopped,
     });
+    assertNotStopped();
 
     const entry: AgentPrimingCacheEntry = {
       createdAt,
@@ -2145,6 +2280,18 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
     });
     return entry;
   } catch (err) {
+    if (isAgentPrimingInterruptedError(err)) {
+      fatalRunState = {
+        kind: 'interrupted',
+        reason: { kind: err.reason },
+      };
+      log.info('Agent Priming live run interrupted by stop request', undefined, {
+        dialogId: dlg.id.valueOf(),
+        reason: err.reason,
+      });
+      throw err;
+    }
+
     const errText = err instanceof Error ? (err.stack ?? err.message) : String(err);
     const errTextTrimmed = errText.trim().slice(0, 4000);
     fatalRunState = {
@@ -2182,22 +2329,28 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
     throw err;
   } finally {
     dlg.disableDiligencePush = prevDisableDiligencePush;
-    if (fatalRunState) {
-      await setDialogRunState(dlg.id, fatalRunState);
-    } else {
-      let nextIdle: DialogRunState = { kind: 'idle_waiting_user' };
-      try {
-        nextIdle = await computeIdleRunState(dlg);
-      } catch (err: unknown) {
-        log.warn(
-          'Failed to compute idle runState after Agent Priming live run; falling back',
-          err,
-          {
-            dialogId: dlg.id.valueOf(),
-          },
-        );
+    try {
+      if (fatalRunState) {
+        await setDialogRunState(dlg.id, fatalRunState);
+      } else {
+        let nextIdle: DialogRunState = { kind: 'idle_waiting_user' };
+        try {
+          nextIdle = await computeIdleRunState(dlg);
+        } catch (err: unknown) {
+          log.warn(
+            'Failed to compute idle runState after Agent Priming live run; falling back',
+            err,
+            {
+              dialogId: dlg.id.valueOf(),
+            },
+          );
+        }
+        await setDialogRunState(dlg.id, nextIdle);
       }
-      await setDialogRunState(dlg.id, nextIdle);
+    } finally {
+      if (ownsActiveRun) {
+        clearActiveRun(dlg.id);
+      }
     }
   }
 }

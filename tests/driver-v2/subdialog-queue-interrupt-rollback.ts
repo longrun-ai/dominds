@@ -85,7 +85,19 @@ async function main(): Promise<void> {
       'queued subdialog response should be rolled back after interrupted drive',
     );
 
+    // Interrupted dialogs must not continue implicitly.
     await driveDialogStream(dlg, undefined, true, { suppressDiligencePush: true });
+    const queueAfterImplicitRetry = await DialogPersistence.loadSubdialogResponsesQueue(dlg.id);
+    assert.equal(
+      queueAfterImplicitRetry.length,
+      1,
+      'implicit retry must be ignored while dialog stays interrupted',
+    );
+
+    await driveDialogStream(dlg, undefined, true, {
+      suppressDiligencePush: true,
+      allowResumeFromInterrupted: true,
+    });
     await waitFor(
       async () => lastAssistantSaying(dlg) === resumeResponse,
       4_000,

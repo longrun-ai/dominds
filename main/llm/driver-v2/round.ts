@@ -67,6 +67,8 @@ export async function executeDriveRound(args: {
       }
     | undefined;
   let subdialogReplyTarget: SubdialogReplyTarget | undefined;
+  const allowResumeFromInterrupted =
+    driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
     // reliably interrupt queued auto-revive drives during preflight.
@@ -82,6 +84,29 @@ export async function executeDriveRound(args: {
         latest.runState &&
         latest.runState.kind === 'dead'
       ) {
+        return;
+      }
+      if (latest && latest.runState && latest.runState.kind === 'proceeding_stop_requested') {
+        log.info('driver-v2 skip drive while stop request is still being processed', undefined, {
+          dialogId: dialog.id.valueOf(),
+          reason: latest.runState.reason,
+        });
+        return;
+      }
+      if (
+        latest &&
+        latest.runState &&
+        latest.runState.kind === 'interrupted' &&
+        !allowResumeFromInterrupted
+      ) {
+        log.info(
+          'driver-v2 skip drive for interrupted dialog without explicit resume/user prompt',
+          undefined,
+          {
+            dialogId: dialog.id.valueOf(),
+            reason: latest.runState.reason,
+          },
+        );
         return;
       }
     } catch (err) {

@@ -6,6 +6,7 @@ import type { CollectedTellaskCall } from '../../tellask';
 
 export type DriverV2DriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
+  allowResumeFromInterrupted?: boolean;
 }>;
 
 export type DriverV2SubdialogReplyTarget = {

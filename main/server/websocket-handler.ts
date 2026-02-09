@@ -1141,7 +1141,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     ) {
       await driveDialogStream(
         existingDialog,
-        { content, msgId, grammar: 'tellask', userLanguageCode },
+        { content, msgId, grammar: 'tellask', userLanguageCode, origin: 'user' },
         true,
       );
       return;
@@ -1169,7 +1169,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       await setupWebSocketSubscription(ws, dialog);
       await driveDialogStream(
         dialog,
-        { content, msgId, grammar: 'tellask', userLanguageCode },
+        { content, msgId, grammar: 'tellask', userLanguageCode, origin: 'user' },
         true,
       );
       return;
@@ -1268,7 +1268,7 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
   }
 
   const restored = await restoreDialogForDrive(dialogIdObj, 'running');
-  await driveDialogStream(restored, undefined, true);
+  await driveDialogStream(restored, undefined, true, { allowResumeFromInterrupted: true });
 }
 
 async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise<void> {
@@ -1283,7 +1283,7 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
     void (async () => {
       try {
         const dlg = await restoreDialogForDrive(id, 'running');
-        await driveDialogStream(dlg, undefined, true);
+        await driveDialogStream(dlg, undefined, true, { allowResumeFromInterrupted: true });
       } catch (err) {
         log.warn('resume_all: failed to resume dialog', err, { dialogId: id.valueOf() });
       }
@@ -1382,7 +1382,11 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     postDialogEvent(dialog, answeredEvent);
 
     // Resume the dialog with the user's answer.
-    await driveDialogStream(dialog, { content, msgId, grammar: 'tellask', userLanguageCode }, true);
+    await driveDialogStream(
+      dialog,
+      { content, msgId, grammar: 'tellask', userLanguageCode, origin: 'user' },
+      true,
+    );
   } catch (error) {
     log.error('Error processing Q4H user answer:', error);
     ws.send(

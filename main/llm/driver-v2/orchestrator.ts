@@ -58,6 +58,14 @@ export function runBackendDriver(): DriverV2RunBackendResult {
         const dialogsToDrive = globalDialogRegistry.getDialogsNeedingDrive();
         for (const rootDialog of dialogsToDrive) {
           try {
+            const latest = await DialogPersistence.loadDialogLatest(rootDialog.id, 'running');
+            const runStateKind = latest?.runState?.kind;
+            if (runStateKind === 'interrupted' || runStateKind === 'proceeding_stop_requested') {
+              globalDialogRegistry.markNotNeedingDrive(rootDialog.id.rootId);
+              await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
+              continue;
+            }
+
             if (!(await rootDialog.canDrive())) {
               continue;
             }
