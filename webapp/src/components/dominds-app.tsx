@@ -133,6 +133,7 @@ type DiligenceStateSnapshot = {
 
 export class DomindsApp extends HTMLElement {
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
+  private static readonly TOAST_HISTORY_GLOBAL_KEY = '__domindsToastHistoryV1';
   private static readonly TOAST_HISTORY_MAX = 200;
 
   private wsManager = getWebSocketManager();
@@ -362,6 +363,11 @@ export class DomindsApp extends HTMLElement {
   private toastHistory: ToastHistoryEntry[] = [];
   private toastHistoryOpen: boolean = false;
   private toastHistorySeq: number = 0;
+
+  private toastHistoryResyncTimers: Array<ReturnType<typeof setTimeout>> = [];
+  private _toastHistoryStorageSyncCancel?: () => void;
+
+  private runControlRefreshTimers: Array<ReturnType<typeof setTimeout>> = [];
 
   // Tools Registry (snapshot)
   private toolsRegistryTimestamp: string = '';
@@ -1174,6 +1180,7 @@ export class DomindsApp extends HTMLElement {
     this.initializeTheme();
     this.initializeAuth();
     this.loadToastHistoryFromStorage();
+    this.setupToastHistoryStorageSync();
     this.pendingDeepLink = this.parseDeepLinkFromUrl();
 
     // Keep "New Dialog" in a loading state until we have loaded the team config at least once.
@@ -1197,6 +1204,21 @@ export class DomindsApp extends HTMLElement {
 
   disconnectedCallback(): void {
     this.wsManager.disconnect();
+
+    for (const t of this.toastHistoryResyncTimers) {
+      clearTimeout(t);
+    }
+    this.toastHistoryResyncTimers = [];
+
+    for (const t of this.runControlRefreshTimers) {
+      clearTimeout(t);
+    }
+    this.runControlRefreshTimers = [];
+
+    if (this._toastHistoryStorageSyncCancel) {
+      this._toastHistoryStorageSyncCancel();
+      this._toastHistoryStorageSyncCancel = undefined;
+    }
 
     // Cancel WebSocket event subscription to prevent duplicate processing
     if (this._wsEventCancel) {
@@ -1242,18 +1264,19 @@ export class DomindsApp extends HTMLElement {
       runningList.setProps({
         onSelect,
         uiLanguage: this.uiLanguage,
+        maxHeight: '100%',
         generatingDialogKeys: this.generatingDialogKeys,
       });
     }
 
     const doneList = this.shadowRoot.querySelector('#done-dialog-list');
     if (doneList instanceof DoneDialogList) {
-      doneList.setProps({ onSelect, uiLanguage: this.uiLanguage });
+      doneList.setProps({ onSelect, uiLanguage: this.uiLanguage, maxHeight: '100%' });
     }
 
     const archivedList = this.shadowRoot.querySelector('#archived-dialog-list');
     if (archivedList instanceof ArchivedDialogList) {
-      archivedList.setProps({ onSelect, uiLanguage: this.uiLanguage });
+      archivedList.setProps({ onSelect, uiLanguage: this.uiLanguage, maxHeight: '100%' });
     }
 
     const teamMembers = this.shadowRoot.querySelector('#team-members');
@@ -1580,6 +1603,7 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         flex-direction: column;
         height: 100%;
+        min-height: 0;
         width: 100%;
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
@@ -2277,6 +2301,7 @@ export class DomindsApp extends HTMLElement {
 	      .main-content {
 	        display: flex;
 	        flex: 1;
+	        min-height: 0;
         overflow: hidden;
       }
 
@@ -2286,11 +2311,12 @@ export class DomindsApp extends HTMLElement {
         max-width: 600px;
         background: var(--dominds-sidebar-bg);
         border-right: 1px solid var(--dominds-border);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        resize: horizontal;
-        position: relative;
+	        display: flex;
+	        flex-direction: column;
+	        min-height: 0;
+	        overflow: hidden;
+	        resize: horizontal;
+	        position: relative;
       }
 
       .activity-bar {
@@ -2317,12 +2343,13 @@ export class DomindsApp extends HTMLElement {
         flex: 1;
       }
 
-      .sidebar-content {
-        flex: 1;
-        overflow: hidden;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
+	      .sidebar-content {
+	        flex: 1;
+	        min-height: 0;
+	        overflow: hidden;
+	        padding: 0;
+	        display: flex;
+	        flex-direction: column;
       }
 
       .activity-view {
@@ -4360,6 +4387,7 @@ export class DomindsApp extends HTMLElement {
 
         if (this.resumableDialogsCount > 0) {
           this.wsManager.sendRaw({ type: 'resume_all' });
+          this.scheduleRunControlRefresh('resume_all');
         }
         return;
       }
@@ -4381,6 +4409,18 @@ export class DomindsApp extends HTMLElement {
         this.toggleRemindersWidget();
       }
     });
+  }
+
+  private scheduleRunControlRefresh(reason: 'resume_all' | 'run_state_marker_resumed'): void {
+    // This addresses a known flake where resumable count can remain stale even after dialogs resume.
+    // Refreshing from the authoritative persisted index (GET /api/dialogs) makes multi-tab views converge.
+    const delaysMs = reason === 'resume_all' ? [350, 1500, 4200] : [650, 2400];
+    for (const delay of delaysMs) {
+      const t = setTimeout(() => {
+        void this.loadDialogs();
+      }, delay);
+      this.runControlRefreshTimers.push(t);
+    }
   }
 
   /**
@@ -6441,54 +6481,8 @@ export class DomindsApp extends HTMLElement {
   }
 
   private showSuccess(message: string): void {
-    if (this.shadowRoot) {
-      // Show success notification (could be enhanced with toast)
-      const contentEl = this.shadowRoot.querySelector('#dialog-content');
-      if (contentEl) {
-        const existingSuccess = contentEl.querySelector('.success-notification');
-        if (existingSuccess) {
-          existingSuccess.remove();
-        }
-
-        const successEl = document.createElement('div');
-        successEl.className = 'success-notification';
-        successEl.innerHTML = `
-          <div style="
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            background: var(--dominds-success-bg, #d4edda);
-            border: 1px solid var(--dominds-success-border, #c3e6cb);
-            color: var(--dominds-success, #155724);
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            z-index: var(--dominds-z-overlay-modal);
-            animation: slideIn 0.3s ease-out;
-          ">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span>✅</span>
-              <span>${message}</span>
-            </div>
-          </div>
-          <style>
-            @keyframes slideIn {
-              from { transform: translateX(100%); opacity: 0; }
-              to { transform: translateX(0); opacity: 1; }
-            }
-          </style>
-        `;
-
-        contentEl.appendChild(successEl);
-
-        // Auto-remove after 3 seconds
-        setTimeout(() => {
-          if (successEl.parentNode) {
-            successEl.remove();
-          }
-        }, 3000);
-      }
-    }
+    // Success should behave like a normal toast and be recorded in notification history.
+    this.showToast(message, 'info');
   }
 
   private showToast(message: string, kind: ToastKind = 'error'): void {
@@ -6529,29 +6523,90 @@ export class DomindsApp extends HTMLElement {
   }
 
   private loadToastHistoryFromStorage(): void {
+    // Best-effort: use in-memory global store first (helps in dev/HMR), then merge persisted storage.
+    const fromGlobal = this.readToastHistoryFromGlobal();
+    if (fromGlobal) {
+      this.toastHistory = fromGlobal.slice(-DomindsApp.TOAST_HISTORY_MAX);
+    }
+
     try {
       const raw = localStorage.getItem(DomindsApp.TOAST_HISTORY_STORAGE_KEY);
-      if (!raw) return;
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-
-      const next: ToastHistoryEntry[] = [];
-      for (const item of parsed) {
-        if (typeof item !== 'object' || item === null) continue;
-        const rec = item as Record<string, unknown>;
-        const id = typeof rec['id'] === 'string' ? rec['id'] : '';
-        const timestamp = typeof rec['timestamp'] === 'string' ? rec['timestamp'] : '';
-        const kind = rec['kind'];
-        const message = typeof rec['message'] === 'string' ? rec['message'] : '';
-        if (!id || !timestamp || !message) continue;
-        if (kind !== 'error' && kind !== 'warning' && kind !== 'info') continue;
-        next.push({ id, timestamp, kind, message });
+      if (!raw) {
+        // Ensure global store always mirrors the in-memory snapshot.
+        this.writeToastHistoryToGlobal(this.toastHistory);
+        return;
       }
-
-      this.toastHistory = next.slice(-DomindsApp.TOAST_HISTORY_MAX);
+      const parsed: unknown = JSON.parse(raw);
+      const fromStorage = this.parseToastHistoryArray(parsed);
+      this.toastHistory = this.mergeToastHistories(this.toastHistory, fromStorage).slice(
+        -DomindsApp.TOAST_HISTORY_MAX,
+      );
+      this.writeToastHistoryToGlobal(this.toastHistory);
     } catch (error: unknown) {
       console.warn('Failed to load toast history from localStorage', error);
+      // Keep global/in-memory snapshot even if localStorage is unavailable.
+      this.writeToastHistoryToGlobal(this.toastHistory);
     }
+  }
+
+  private setupToastHistoryStorageSync(): void {
+    if (this._toastHistoryStorageSyncCancel) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DomindsApp.TOAST_HISTORY_STORAGE_KEY) return;
+      // Another tab updated history; merge it in.
+      this.loadToastHistoryFromStorage();
+      this.updateToastHistoryUi();
+    };
+    window.addEventListener('storage', onStorage);
+    this._toastHistoryStorageSyncCancel = () => {
+      window.removeEventListener('storage', onStorage);
+    };
+  }
+
+  private readToastHistoryFromGlobal(): ToastHistoryEntry[] | null {
+    const root = globalThis as unknown as Record<string, unknown>;
+    const raw = root[DomindsApp.TOAST_HISTORY_GLOBAL_KEY];
+    if (raw === undefined) return null;
+    return this.parseToastHistoryArray(raw);
+  }
+
+  private writeToastHistoryToGlobal(history: ToastHistoryEntry[]): void {
+    const root = globalThis as unknown as Record<string, unknown>;
+    root[DomindsApp.TOAST_HISTORY_GLOBAL_KEY] = history;
+  }
+
+  private parseToastHistoryArray(value: unknown): ToastHistoryEntry[] {
+    if (!Array.isArray(value)) return [];
+    const next: ToastHistoryEntry[] = [];
+    for (const item of value) {
+      if (typeof item !== 'object' || item === null) continue;
+      const rec = item as Record<string, unknown>;
+      const id = typeof rec['id'] === 'string' ? rec['id'] : '';
+      const timestamp = typeof rec['timestamp'] === 'string' ? rec['timestamp'] : '';
+      const kind = rec['kind'];
+      const message = typeof rec['message'] === 'string' ? rec['message'] : '';
+      if (!id || !timestamp || !message) continue;
+      if (kind !== 'error' && kind !== 'warning' && kind !== 'info') continue;
+      next.push({ id, timestamp, kind, message });
+    }
+    return next;
+  }
+
+  private mergeToastHistories(a: ToastHistoryEntry[], b: ToastHistoryEntry[]): ToastHistoryEntry[] {
+    const seen = new Set<string>();
+    const merged: ToastHistoryEntry[] = [];
+    for (const entry of [...a, ...b]) {
+      const k = `${entry.timestamp}|${entry.kind}|${entry.message}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(entry);
+    }
+    merged.sort((x, y) => {
+      const t = x.timestamp.localeCompare(y.timestamp);
+      if (t !== 0) return t;
+      return x.id.localeCompare(y.id);
+    });
+    return merged;
   }
 
   private persistToastHistoryToStorage(): void {
@@ -6578,18 +6633,31 @@ export class DomindsApp extends HTMLElement {
       message: trimmed,
     };
     this.toastHistory = [...this.toastHistory.slice(-DomindsApp.TOAST_HISTORY_MAX + 1), next];
+    this.writeToastHistoryToGlobal(this.toastHistory);
     this.persistToastHistoryToStorage();
     this.updateToastHistoryUi();
   }
 
   private clearToastHistory(): void {
     this.toastHistory = [];
+    this.writeToastHistoryToGlobal(this.toastHistory);
     this.persistToastHistoryToStorage();
     this.updateToastHistoryUi();
   }
 
   private setToastHistoryOpen(open: boolean): void {
-    if (this.toastHistoryOpen === open) return;
+    if (open) {
+      // Re-sync on open to avoid stale/empty history when localStorage/global state changed
+      // (multi-tab or dev/HMR scenarios).
+      this.loadToastHistoryFromStorage();
+    }
+
+    if (this.toastHistoryOpen === open) {
+      // Even if state is unchanged, refresh list content (e.g. storage events / late toasts).
+      this.updateToastHistoryUi();
+      return;
+    }
+
     this.toastHistoryOpen = open;
     this.updateToastHistoryUi();
   }
@@ -7373,6 +7441,14 @@ export class DomindsApp extends HTMLElement {
           const dialogContainer = this.getDialogContainerForEvent(message);
           if (dialogContainer) {
             await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
+          }
+
+          // Best-effort convergence: marker events are broadcast to all clients.
+          // A short delayed refresh ensures resumable/proceeding counts converge even if some
+          // run-state events were missed due to transient WS hiccups.
+          const kind = (message as { kind?: unknown }).kind;
+          if (kind === 'resumed') {
+            this.scheduleRunControlRefresh('run_state_marker_resumed');
           }
           break;
         }
