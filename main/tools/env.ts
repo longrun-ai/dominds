@@ -150,7 +150,11 @@ export const envGetTool: FuncTool = {
     const raw = process.env[parsed.key];
     const value = raw === undefined ? undefined : String(raw);
 
-    log.info('env_get', { caller: caller.id, key: parsed.key, hasValue: value !== undefined });
+    log.info('env_get', undefined, {
+      caller: caller.id,
+      key: parsed.key,
+      hasValue: value !== undefined,
+    });
 
     if (value === undefined) return '(unset)';
     if (parsed.reveal === true) return value;
@@ -176,7 +180,7 @@ export const envSetTool: FuncTool = {
     const prev = process.env[parsed.key];
     process.env[parsed.key] = parsed.value;
 
-    log.warn('env_set', {
+    log.warn('env_set', undefined, {
       caller: caller.id,
       key: parsed.key,
       prevSet: prev !== undefined,
@@ -211,7 +215,11 @@ export const envUnsetTool: FuncTool = {
     const prev = process.env[parsed.key];
     delete process.env[parsed.key];
 
-    log.warn('env_unset', { caller: caller.id, key: parsed.key, prevSet: prev !== undefined });
+    log.warn('env_unset', undefined, {
+      caller: caller.id,
+      key: parsed.key,
+      prevSet: prev !== undefined,
+    });
 
     const prevStr =
       prev === undefined

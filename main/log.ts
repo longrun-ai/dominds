@@ -423,17 +423,25 @@ export function extractErrorDetails(error: Error | unknown): {
     };
   }
   if (typeof error === 'object' && error !== null) {
-    const maybeError = error as { name?: string; message?: string; stack?: string };
-    const messageValue = maybeError.message;
+    const maybeError = error as {
+      name?: unknown;
+      message?: unknown;
+      stack?: unknown;
+    };
+    const hasMessageProp = Object.prototype.hasOwnProperty.call(maybeError, 'message');
+    const messageValue = hasMessageProp ? maybeError.message : undefined;
+    const name = typeof maybeError.name === 'string' ? maybeError.name : undefined;
+    const stack = typeof maybeError.stack === 'string' ? maybeError.stack : undefined;
+    const resolvedMessage =
+      typeof messageValue === 'string'
+        ? messageValue
+        : hasMessageProp && messageValue !== undefined
+          ? inspectValue(messageValue)
+          : inspectValue(error);
     return {
-      name: typeof maybeError.name === 'string' ? maybeError.name : undefined,
-      message:
-        typeof messageValue === 'string'
-          ? messageValue
-          : messageValue === undefined
-            ? 'Error object has undefined message property'
-            : `Error object has non-string message property of type '${typeof messageValue}'`,
-      stack: typeof maybeError.stack === 'string' ? maybeError.stack : undefined,
+      name,
+      message: resolvedMessage,
+      stack,
     };
   }
   return {
