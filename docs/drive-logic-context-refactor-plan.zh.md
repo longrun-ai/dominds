@@ -2,6 +2,7 @@
 
 状态：Draft  
 语义基线：以 `dominds/main/llm/driver.ts` 与 `dominds/main/persistence.ts` 当前实现为准。
+测试基线（2026-02-09 更新）：drive 相关脚本统一通过 `main/llm/driver-entry.ts` 调用，可用 `DOMINDS_DRIVER_ENGINE=v1|v2` 进行引擎切换验证。
 
 ## 1. 背景与目标
 
@@ -135,13 +136,21 @@
 
 1. 新模块（建议）：
    - `main/llm/driver-v2/index.ts`（对外入口）
+   - `main/llm/driver-v2/orchestrator.ts`（drive 级编排入口）
+   - `main/llm/driver-v2/types.ts`（v2 内部类型与运行态）
    - `main/llm/driver-v2/context.ts`（上下文装配，含 priming 注入）
+   - `main/llm/driver-v2/policy.ts`（策略模型骨架）
+   - `main/llm/driver-v2/context-health.ts`（context-health 决策骨架）
    - `main/llm/driver-v2/subdialog-txn.ts`（take/commit/rollback 事务）
+   - `main/llm/driver-v2/supdialog-response.ts`（subdialog 回贴与 auto-revive 编排）
    - `main/llm/driver-v2/round.ts`（单轮生成与 side effects）
+   - 当前状态（2026-02-09 最新）：`orchestrator` 已去除 `emitSayingEvents / supplyResponseToSupdialog / runBackendDriver` 的 v1 passthrough；`round` 已接管 lock/dead-check/upNext/subdialog-reply 收尾流程；核心循环已切换到 `driver-v2/core.ts:driveDialogStreamCoreV2`，不再调用 `_driveDialogStream/driveDialogStreamCoreV1`。
+   - 仍保留的过渡 bridge（2026-02-09）：`coreV2` 已把重试、diligence、参数校验、saying-event 处理迁入 `driver-v2/`（`runtime-utils.ts`、`saying-events.ts`）；当前仅 `tellask` 执行链仍通过 `driver-v2/tellask-bridge.ts -> driver.ts` 过渡调用，属于阶段 1 末尾需继续收敛的技术债。
 2. 保持旧模块文件不动：
    - `main/llm/driver.ts` 继续存在，作为对照基线。
 3. 切换方式：
    - 通过单点入口切换到 v2（建议配置开关或固定切换点），避免多处散改 import。
+   - 当前状态（2026-02-09）：`main/llm/driver-entry.ts` 已支持 `DOMINDS_DRIVER_ENGINE=v1|v2`（默认 `v1`）。
 4. Priming 专项支持：
    - v2 内置 `internalDrivePrimingMsg` 注入规则（每轮注入、drive 内有效、绝不持久化）。
 5. 关键回归与复放：
@@ -208,7 +217,7 @@ type DriveV2Runtime = {
 
 ## 10. 现有测试合理性评估（针对 dlg drive）
 
-结论：**现有测试有价值，但覆盖面不足以支撑 driver 重写上线**。
+结论（2026-02-09 更新）：**覆盖面已明显提升，足以支撑阶段 1 的持续迁移；但仍有未完成的对照/复放用例，尚未达到“可删除旧模块”的阶段 2 门槛**。
 
 ### 10.1 现有测试的合理性（优点）
 
@@ -220,18 +229,11 @@ type DriveV2Runtime = {
    - diligence push/Q4H 的部分事件行为
 3. 执行成本低，适合快速 smoke。
 
-### 10.2 关键缺口（本次 v2 必补）
+### 10.2 仍存关键缺口（阶段 2 前需补齐）
 
-1. 没有 Agent Priming 专项测试。
-   - 当前没有测试断言 internal drive prompt 在“多轮迭代中持续可见且不持久化”。
-2. queue 事务边界覆盖不完整。
-   - 缺少“take 后 interrupted/error 必 rollback”的端到端断言。
-   - 缺少“commit 后镜像到 `dlg.msgs` 且后续不重复注入”的断言。
-3. 缺少 restore/live 等价性断言。
-   - 没有明确验证 `rebuildFromEvents` 与 live 路径在 teammate response 上下文层等价。
-4. 缺少对“同一 drive 多轮（工具回合）上下文连续性”的精确断言。
-5. 缺少新旧 driver 的并排一致性对照测试。
-   - 阶段 1 保留旧模块的价值尚未转化为自动化对照。
+1. `v1-v2-parity-diligence-q4h.ts` 仍未实现（当前只有 switch-smoke 级别验证，不是逐断言 parity）。
+2. `replay-39-12-417f4a49-style.ts` 仍未实现（尚未形成稳定复放门禁）。
+3. 旧模块仍保留；v2 已激活入口与外围编排，且核心生成循环已独立到 `coreV2`，但仍存在 bridge 依赖（tellask/重试/diligence 等辅助函数），尚未进入“删除旧模块”收敛阶段。
 
 ## 11. v2 测试设计与上线门禁
 
@@ -249,34 +251,38 @@ type DriveV2Runtime = {
 
 ### 11.2 v2 必做用例（最小集）
 
-1. `driver-v2/internal-drive-priming-multi-iter.ts`
+1. `driver-v2/context-assembly-order.ts`
+   - 断言：`base -> ephemeral -> tail` 装配顺序稳定，且 reminders/language guide 插入点与现有语义一致。
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
+2. `driver-v2/internal-drive-priming-multi-iter.ts`
    - 断言：priming 提示在同一 drive 第 1/2/3 轮均可见。
    - v1 状态：可跑；已实现并通过（2026-02-09）。
-2. `driver-v2/internal-drive-priming-not-persisted.ts`
+3. `driver-v2/internal-drive-priming-not-persisted.ts`
    - 断言：priming 不进入 `dlg.msgs`、不写 events、不落盘。
    - v1 状态：可跑；已实现并通过（2026-02-09）。
-3. `driver-v2/internal-drive-priming-no-leak-next-drive.ts`
+4. `driver-v2/internal-drive-priming-no-leak-next-drive.ts`
    - 断言：drive 结束后 priming 不泄漏到下一次 drive。
    - v1 状态：可跑；已实现并通过（2026-02-09）。
-4. `driver-v2/subdialog-queue-interrupt-rollback.ts`
+5. `driver-v2/subdialog-queue-interrupt-rollback.ts`
    - 断言：take 后 interrupted/error 必 rollback，下一次 drive 可重见。
    - v1 状态：可跑；已实现并通过（2026-02-09）。
-5. `driver-v2/subdialog-queue-commit-mirror.ts`
+6. `driver-v2/subdialog-queue-commit-mirror.ts`
    - 断言：成功 commit 后镜像到 `dlg.msgs`，后续不依赖队列注入。
    - v1 状态：可跑；已实现并通过（2026-02-09）。
-6. `driver-v2/subdialog-restore-live-equivalence.ts`
+7. `driver-v2/subdialog-restore-live-equivalence.ts`
    - 断言：restore 路径与 live 路径对 teammate response 的上下文等价。
    - v1 状态：可跑；已实现并通过（2026-02-09）。`restoreDialogHierarchy(rootId, status)` 需由调用方显式传入状态。
-7. `driver-v2/multi-iter-tool-round-context-continuity.ts`
+8. `driver-v2/multi-iter-tool-round-context-continuity.ts`
    - 断言：工具回合 continue 后，前序关键上下文不丢失。
-   - v1 状态：理论可在 `script-rtws + mock provider` 落地；当前未实现。
-8. `driver-v2/v1-v2-parity-basic-tellask.ts`
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
+9. `driver-v2/v1-v2-parity-basic-tellask.ts`
    - 断言：同 mock 输入下，v1/v2 在可观察语义上等价（除已知 bug 修复差异）。
-   - v1 状态：需 v2 模块后才有对照意义；当前未实现。
-9. `driver-v2/v1-v2-parity-diligence-q4h.ts`
-   - 断言：diligence/Q4H 关键事件与 runState 语义一致。
-   - v1 状态：需 v2 模块后才有对照意义；当前未实现。
-10. `driver-v2/replay-39-12-417f4a49-style.ts`
+   - v1 状态：可跑；已实现并通过（2026-02-09）。
+10. `driver-v2/v1-v2-parity-diligence-q4h.ts`
+    - 断言：diligence/Q4H 关键事件与 runState 语义一致。
+    - v1 状态：尚未实现专门 parity 用例；但已通过 `driver-v2:switch-smoke:engine-v1|v2` 覆盖该链路的切换可用性验证（2026-02-09）。
+
+11. `driver-v2/replay-39-12-417f4a49-style.ts`
     - 断言：复放样本不再出现“已收到回贴却声称没看到”的语义回归。
     - v1 状态：可先做“现状复放”脚本；v2 需要转为门禁回归。当前未实现。
 
@@ -308,12 +314,25 @@ type DriveV2Runtime = {
 
 目的：把“能跑”与“可上线”分开，避免只凭单条 smoke 测试判断重写完成。
 
+当前已落地脚本（2026-02-09）：
+
+1. `driver-v2:integration:engine-v1`
+2. `driver-v2:integration:engine-v2`
+3. `driver-v2:switch-smoke:engine-v1`
+4. `driver-v2:switch-smoke:engine-v2`
+5. `driver-v2:parity`
+
 ### 11.5 测试基座约定（script-rtws + mock provider）
 
 1. 阶段 1 的集成测试默认基于 `tests/script-rtws` 运行，避免污染真实 rtws。
    - 执行约束：统一通过 `tests/cli.ts` 入口传 `-C script-rtws`；不允许其它 rtws。
+   - 并发约束：同一时刻只允许一个 `tests/cli.ts` 进程使用 `script-rtws`，禁止并发执行多个脚本（会互相污染快照与恢复过程）。
+   - 运行收尾：`tests/cli.ts` 默认会在脚本结束后将 `tests/script-rtws` 恢复到“测试前快照”（可通过 `DOMINDS_TEST_RTWS_RESTORE_MODE=head` 改为恢复到 git HEAD；`DOMINDS_TEST_RTWS_RESTORE=0` 可禁用自动恢复用于调试）。
 2. 默认使用 `apiType: mock`，通过 `mock-db/<model>.yaml` 驱动可重复测试。
+   - driver 入口切换统一走 `main/llm/driver-entry.ts`，通过环境变量 `DOMINDS_DRIVER_ENGINE=v1|v2` 选择引擎；测试代码避免直接调用 `driveDialogStream` 的 v1 直连入口。
 3. mock 响应可使用：
    - `delayMs`：整次响应前延迟（用于中断/rollback窗口）
    - `chunkDelayMs`：流式分块延迟（用于流顺序与 stop 时序）
+   - `funcCalls`：响应后追加函数调用序列（用于工具回合/continue 测试）
+   - `contextContains`：要求上下文中必须包含指定片段（用于上下文连续性断言）
 4. 需要“慢速请求”场景时，优先在 mock 数据层配置，不依赖真实外部 provider。

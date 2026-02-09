@@ -5,7 +5,7 @@ import path from 'node:path';
 import yaml from 'yaml';
 
 import { DialogID, RootDialog } from '../../main/dialog';
-import { driveDialogStream } from '../../main/llm/driver';
+import { driveDialogStream } from '../../main/llm/driver-entry';
 import { DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
 

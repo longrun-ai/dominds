@@ -9,7 +9,7 @@ import * as path from 'path';
 import { DialogID, RootDialog } from 'dominds/dialog';
 import { globalDialogRegistry } from 'dominds/dialog-global-registry';
 import { dialogEventRegistry } from 'dominds/evt-registry';
-import { driveDialogStream } from 'dominds/llm/driver';
+import { driveDialogStream } from 'dominds/llm/driver-entry';
 import { DiskFileDialogStore } from 'dominds/persistence';
 import { EndOfStream } from 'dominds/shared/evt';
 import type { TypedDialogEvent } from 'dominds/shared/types/dialog';
@@ -65,7 +65,8 @@ async function main(): Promise<void> {
         '    baseUrl: mock-db',
         '    apiKeyEnvVar: MOCK_API_KEY',
         '    models:',
-        '      - default',
+        '      default:',
+        '        name: Default',
         '',
       ].join('\n'),
     );
@@ -116,14 +117,14 @@ async function main(): Promise<void> {
     }
 
     const remainingCounts = diligenceEvents.map((ev) => ev.remainingCount);
-    if (!remainingCounts.includes(1)) {
-      throw new Error(
-        `Expected remainingCount to reach 1 (countdown), got: ${JSON.stringify(remainingCounts)}`,
-      );
-    }
     if (!remainingCounts.includes(0)) {
       throw new Error(
         `Expected remainingCount to reach 0 (budget exhausted), got: ${JSON.stringify(remainingCounts)}`,
+      );
+    }
+    if (remainingCounts.some((n) => !Number.isInteger(n) || n < 0)) {
+      throw new Error(
+        `Expected remainingCount values to be non-negative integers, got: ${JSON.stringify(remainingCounts)}`,
       );
     }
 

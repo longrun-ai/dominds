@@ -82,6 +82,7 @@ import {
   type ModelInfo,
   type ProviderConfig,
 } from './client';
+import { assembleDriveContextMessages } from './driver-v2/context';
 import { getLlmGenerator } from './gen/registry';
 import { projectFuncToolsForProvider } from './tools-projection';
 
@@ -1309,6 +1310,16 @@ export async function driveDialogStream(
   }
 }
 
+// Transitional bridge for driver-v2 development.
+// Keeps v1 behavior unchanged while allowing v2 to invoke the core generation loop directly.
+export async function driveDialogStreamCoreV1(
+  dlg: Dialog,
+  humanPrompt?: HumanPrompt,
+  driveOptions?: DriveRunOptions,
+): Promise<{ lastAssistantSayingContent: string | null; interrupted: boolean }> {
+  return await _driveDialogStream(dlg, humanPrompt, driveOptions);
+}
+
 /**
  * Backend coroutine that continuously drives dialogs.
  * Uses dynamic canDrive() checks instead of stored suspend state.
@@ -1761,14 +1772,6 @@ async function _driveDialogStream(
           return true;
         });
 
-        const ctxMsgs: ChatMessage[] = buildDriveContextMessages({
-          prependedContextMessages: drivePolicy.prependedContextMessages,
-          memories,
-          taskDocMsg,
-          coursePrefixMsgs,
-          dialogMsgsForContext,
-        });
-
         if (genIterNo === 1 && takenSubdialogResponses.length > 0) {
           subdialogResponseContextMsgs = takenSubdialogResponses.map((response) => ({
             type: 'environment_msg',
@@ -1782,16 +1785,6 @@ async function _driveDialogStream(
             }),
           }));
         }
-        if (subdialogResponseContextMsgs.length > 0) {
-          ctxMsgs.push(...subdialogResponseContextMsgs);
-        }
-
-        // Inject the internal (non-persisted) prompt at the end of the fresh user context
-        // so it can steer this drive without polluting dialog history.
-        if (internalDrivePromptMsg) {
-          ctxMsgs.push(internalDrivePromptMsg);
-        }
-
         await dlg.processReminderUpdates();
         const renderedReminders: ChatMessage[] =
           dlg.reminders.length > 0
@@ -1814,52 +1807,30 @@ async function _driveDialogStream(
               )
             : [];
 
-        if (renderedReminders.length > 0) {
-          let insertIndex = -1;
-          for (let i = ctxMsgs.length - 1; i >= 0; i--) {
-            const m = ctxMsgs[i];
-            if (
-              m &&
-              (m.type === 'prompting_msg' || m.type === 'environment_msg') &&
-              m.role === 'user'
-            ) {
-              insertIndex = i;
-              break;
-            }
-          }
-          if (insertIndex >= 0) {
-            ctxMsgs.splice(insertIndex, 0, ...renderedReminders);
-          } else {
-            ctxMsgs.push(...renderedReminders);
-          }
-        }
-
-        {
-          const uiLanguage = dlg.getLastUserLanguageCode();
-          const workingLanguage = getWorkLanguage();
-          const guideMsg: ChatMessage = {
-            type: 'transient_guide_msg',
-            role: 'assistant',
-            content: formatUserFacingLanguageGuide(workingLanguage, uiLanguage),
-          };
-          let insertIndex = -1;
-          for (let i = ctxMsgs.length - 1; i >= 0; i--) {
-            const m = ctxMsgs[i];
-            if (
-              m &&
-              (m.type === 'prompting_msg' || m.type === 'environment_msg') &&
-              m.role === 'user'
-            ) {
-              insertIndex = i;
-              break;
-            }
-          }
-          if (insertIndex >= 0) {
-            ctxMsgs.splice(insertIndex, 0, guideMsg);
-          } else {
-            ctxMsgs.push(guideMsg);
-          }
-        }
+        const uiLanguage = dlg.getLastUserLanguageCode();
+        const workingLanguage = getWorkLanguage();
+        const guideMsg: ChatMessage = {
+          type: 'transient_guide_msg',
+          role: 'assistant',
+          content: formatUserFacingLanguageGuide(workingLanguage, uiLanguage),
+        };
+        const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
+          base: {
+            prependedContextMessages: drivePolicy.prependedContextMessages,
+            memories,
+            taskDocMsg,
+            coursePrefixMsgs,
+            dialogMsgsForContext,
+          },
+          ephemeral: {
+            subdialogResponseContextMsgs,
+            internalDrivePromptMsg,
+          },
+          tail: {
+            renderedReminders,
+            languageGuideMsg: guideMsg,
+          },
+        });
 
         const remediation = await applyContextHealthV3Remediation({
           dlg,
@@ -3185,22 +3156,6 @@ function buildDrivePolicy(args: {
     tellaskPolicy: 'tellasker_only',
     allowFunctionCalls: false,
   };
-}
-
-function buildDriveContextMessages(args: {
-  prependedContextMessages: ChatMessage[];
-  memories: ChatMessage[];
-  taskDocMsg: ChatMessage | undefined;
-  coursePrefixMsgs: ChatMessage[];
-  dialogMsgsForContext: ChatMessage[];
-}): ChatMessage[] {
-  return [
-    ...args.prependedContextMessages,
-    ...args.memories,
-    ...(args.taskDocMsg ? [args.taskDocMsg] : []),
-    ...args.coursePrefixMsgs,
-    ...args.dialogMsgsForContext,
-  ];
 }
 
 function hasTellaskPolicyViolation(

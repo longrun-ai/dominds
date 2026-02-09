@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { requestInterruptDialog } from '../../main/dialog-run-state';
-import { driveDialogStream } from '../../main/llm/driver';
+import { driveDialogStream } from '../../main/llm/driver-entry';
 import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
 import {

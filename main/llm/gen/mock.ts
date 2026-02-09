@@ -59,7 +59,7 @@ import { log } from '../../log';
 import type { LlmUsageStats } from '../../shared/types/context-health';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import type { ChatMessage, ProviderConfig, SayingMsg } from '../client';
+import type { ChatMessage, FuncCallMsg, ProviderConfig, SayingMsg } from '../client';
 import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult } from '../gen';
 
 interface MockResponse {
@@ -71,6 +71,22 @@ interface MockResponse {
 
   /** Mock LLM response */
   response: string;
+
+  /**
+   * Optional function calls emitted after saying content.
+   * Useful to drive deterministic tool-round tests with the mock provider.
+   */
+  funcCalls?: ReadonlyArray<{
+    id?: string;
+    name: string;
+    arguments?: unknown;
+  }>;
+
+  /**
+   * Optional extra matcher: every string in this list must be present in at least
+   * one context message content; otherwise this response does not match.
+   */
+  contextContains?: ReadonlyArray<string>;
 
   /** If set, throws error instead of returning response */
   streamError?: string;
@@ -111,8 +127,12 @@ interface MockDatabase {
 interface CachedDatabase {
   filePath: string;
   lastModified: number;
-  /** Key format: "role:message" for exact matching only (no fallback) */
-  lookupMap: Map<string, MockResponse>;
+  /**
+   * Key format: "role:message" for exact matching only (no fallback).
+   * Multiple entries can share the same key; matching is resolved from latest to oldest
+   * to preserve "last one wins" semantics.
+   */
+  lookupMap: Map<string, MockResponse[]>;
 }
 
 function normalizeDelayMs(value: unknown): number {
@@ -179,7 +199,7 @@ export class MockGen implements LlmGenerator {
 
       // EXACT MATCHING ONLY: Store entries with role prefix
       // No fallback to message-only entries
-      const lookupMap = new Map<string, MockResponse>();
+      const lookupMap = new Map<string, MockResponse[]>();
       for (const resp of rawDatabase.responses) {
         if (typeof resp.message !== 'string') {
           throw new Error('message is required for mock response matching');
@@ -191,7 +211,12 @@ export class MockGen implements LlmGenerator {
         const key = resp.role
           ? `${resp.role}:${resp.message.trim().toLowerCase()}`
           : resp.message.trim().toLowerCase();
-        lookupMap.set(key, resp);
+        const existing = lookupMap.get(key);
+        if (existing) {
+          existing.push(resp);
+        } else {
+          lookupMap.set(key, [resp]);
+        }
       }
 
       const stats = await fs.stat(dbFilePath);
@@ -212,11 +237,51 @@ export class MockGen implements LlmGenerator {
       const emptyDb: CachedDatabase = {
         filePath: dbFilePath,
         lastModified: Date.now(),
-        lookupMap: new Map(),
+        lookupMap: new Map<string, MockResponse[]>(),
       };
       this.databaseCache.set(cacheKey, emptyDb);
       return emptyDb;
     }
+  }
+
+  private responseMatchesContext(resp: MockResponse, context: ReadonlyArray<ChatMessage>): boolean {
+    if (!resp.contextContains || resp.contextContains.length === 0) {
+      return true;
+    }
+    const availableContents: string[] = [];
+    for (const msg of context) {
+      switch (msg.type) {
+        case 'environment_msg':
+        case 'transient_guide_msg':
+        case 'prompting_msg':
+        case 'saying_msg':
+        case 'ui_only_markdown_msg':
+        case 'thinking_msg':
+        case 'func_result_msg':
+        case 'tellask_result_msg':
+          availableContents.push(msg.content);
+          break;
+        case 'func_call_msg':
+          break;
+        default: {
+          const _exhaustive: never = msg;
+          throw new Error(`Unsupported chat message while matching mock context: ${_exhaustive}`);
+        }
+      }
+    }
+    return resp.contextContains.every((required) =>
+      availableContents.some((content) => content.includes(required)),
+    );
+  }
+
+  private normalizeFuncCallArgs(args: unknown): string {
+    if (typeof args === 'string') {
+      return args;
+    }
+    if (args === undefined) {
+      return '{}';
+    }
+    return JSON.stringify(args);
   }
 
   /**
@@ -227,17 +292,26 @@ export class MockGen implements LlmGenerator {
     database: CachedDatabase,
     input: string,
     role: string,
+    context: ReadonlyArray<ChatMessage>,
   ): MockResponse | null {
     if (!role) {
       throw new Error('role is required for mock response matching');
     }
 
     const normalizedInput = input.trim().toLowerCase();
-    const lookupMap = database.lookupMap;
-
     // Exact match only: "role:message"
     const exactKey = `${role}:${normalizedInput}`;
-    return lookupMap.get(exactKey) || null;
+    const candidates = database.lookupMap.get(exactKey);
+    if (!candidates || candidates.length === 0) {
+      return null;
+    }
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const candidate = candidates[i];
+      if (candidate && this.responseMatchesContext(candidate, context)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   private makeFallbackResponse(
@@ -286,7 +360,7 @@ responses:
     }
 
     const db = await this.loadResponseDatabase(dbPath, modelName);
-    const matched = this.findMatchingResponse(db, content, role);
+    const matched = this.findMatchingResponse(db, content, role, context);
     await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
     await receiver.thinkingStart();
@@ -364,6 +438,19 @@ responses:
     }
     await receiver.sayingFinish();
 
+    const funcCalls = matched?.funcCalls ?? [];
+    for (let i = 0; i < funcCalls.length; i++) {
+      const call = funcCalls[i];
+      if (!call || typeof call.name !== 'string' || call.name.trim() === '') {
+        throw new Error(`Invalid mock funcCalls[${String(i)}].name`);
+      }
+      const callId =
+        typeof call.id === 'string' && call.id.trim() !== ''
+          ? call.id
+          : `mock_func_${String(i + 1)}_${call.name}`;
+      await receiver.funcCall(callId, call.name, this.normalizeFuncCallArgs(call.arguments));
+    }
+
     return { usage, llmGenModel: modelName };
   }
 
@@ -391,7 +478,7 @@ responses:
 
     try {
       const db = await this.loadResponseDatabase(dbPath, modelName);
-      const matched = this.findMatchingResponse(db, content, role);
+      const matched = this.findMatchingResponse(db, content, role, context);
       await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
       const responseText =
@@ -460,7 +547,25 @@ responses:
         };
       }
 
-      return { messages: [thinking, saying], usage, llmGenModel: modelName };
+      const funcMsgs: FuncCallMsg[] =
+        matched?.funcCalls?.map((call, idx) => {
+          if (!call || typeof call.name !== 'string' || call.name.trim() === '') {
+            throw new Error(`Invalid mock funcCalls[${String(idx)}].name`);
+          }
+          return {
+            type: 'func_call_msg',
+            role: 'assistant',
+            genseq,
+            id:
+              typeof call.id === 'string' && call.id.trim() !== ''
+                ? call.id
+                : `mock_func_${String(idx + 1)}_${call.name}`,
+            name: call.name,
+            arguments: this.normalizeFuncCallArgs(call.arguments),
+          };
+        }) ?? [];
+
+      return { messages: [thinking, saying, ...funcMsgs], usage, llmGenModel: modelName };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       const saying: SayingMsg = {

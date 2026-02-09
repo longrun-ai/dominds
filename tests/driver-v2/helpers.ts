@@ -13,6 +13,7 @@ import type {
   TellaskEventsReceiver,
 } from '../../main/tellask';
 import { TellaskStreamParser } from '../../main/tellask';
+import '../../main/tools/builtins';
 import { generateDialogID } from '../../main/utils/id';
 
 export type MockEntry = {
@@ -22,6 +23,12 @@ export type MockEntry = {
   delayMs?: number;
   chunkDelayMs?: number;
   streamError?: string;
+  funcCalls?: ReadonlyArray<{
+    id?: string;
+    name: string;
+    arguments?: unknown;
+  }>;
+  contextContains?: ReadonlyArray<string>;
 };
 
 export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Promise<void> {
@@ -36,7 +43,11 @@ export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Prom
 
 export async function writeStandardMinds(
   tmpRoot: string,
-  options?: { includePangu?: boolean },
+  options?: {
+    includePangu?: boolean;
+    memberToolsets?: ReadonlyArray<string>;
+    memberTools?: ReadonlyArray<string>;
+  },
 ): Promise<void> {
   const includePangu = options?.includePangu === true;
   await fs.mkdir(path.join(tmpRoot, '.minds'), { recursive: true });
@@ -71,6 +82,14 @@ export async function writeStandardMinds(
     '    model: default',
     '    diligence-push-max: 2',
   ];
+  if (options?.memberToolsets && options.memberToolsets.length > 0) {
+    const quoted = options.memberToolsets.map((v) => JSON.stringify(v)).join(', ');
+    teamLines.push(`    toolsets: [${quoted}]`);
+  }
+  if (options?.memberTools && options.memberTools.length > 0) {
+    const quoted = options.memberTools.map((v) => JSON.stringify(v)).join(', ');
+    teamLines.push(`    tools: [${quoted}]`);
+  }
   if (includePangu) {
     teamLines.push('  pangu:', '    name: Pangu', '    provider: local-mock', '    model: default');
   }

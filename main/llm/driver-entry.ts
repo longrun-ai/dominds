@@ -13,8 +13,23 @@ import {
 
 export type DriverEngineVersion = 'v1' | 'v2';
 
-// Single switch point for stage-1 rollout.
-const ACTIVE_DRIVER_ENGINE: DriverEngineVersion = 'v1';
+function resolveActiveDriverEngine(): DriverEngineVersion {
+  const raw = process.env.DOMINDS_DRIVER_ENGINE;
+  if (raw === undefined) {
+    return 'v1';
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '' || normalized === 'v1') {
+    return 'v1';
+  }
+  if (normalized === 'v2') {
+    return 'v2';
+  }
+  throw new Error(`Invalid DOMINDS_DRIVER_ENGINE=${JSON.stringify(raw)} (expected "v1" or "v2")`);
+}
+
+// Single switch point for rollout/tests.
+const ACTIVE_DRIVER_ENGINE: DriverEngineVersion = resolveActiveDriverEngine();
 
 export function getActiveDriverEngine(): DriverEngineVersion {
   return ACTIVE_DRIVER_ENGINE;

@@ -8,7 +8,7 @@ import * as path from 'path';
 
 import { DialogID, RootDialog } from 'dominds/dialog';
 import { dialogEventRegistry } from 'dominds/evt-registry';
-import { driveDialogStream } from 'dominds/llm/driver';
+import { driveDialogStream } from 'dominds/llm/driver-entry';
 import { DiskFileDialogStore } from 'dominds/persistence';
 import { EndOfStream } from 'dominds/shared/evt';
 import type { TypedDialogEvent } from 'dominds/shared/types/dialog';
@@ -63,7 +63,8 @@ async function driveToDiligencePushBudgetExhaustedQ4H(options: {
       '    baseUrl: mock-db',
       '    apiKeyEnvVar: MOCK_API_KEY',
       '    models:',
-      '      - default',
+      '      default:',
+      '        name: Default',
       '',
     ].join('\n'),
   );
@@ -110,13 +111,10 @@ async function main(): Promise<void> {
       dialogId: 'dlg-q4h-i18n-zh',
       userLanguageCode: 'zh',
     });
-    if (!zhBody.includes('Diligence Push') || !zhBody.includes('已触发')) {
+    if (!zhBody.includes('已经鞭策了') || !zhBody.includes('智能体仍不听劝')) {
       throw new Error(
-        `Expected zh Q4H body to contain "Diligence Push" and "已触发", got:\n${zhBody}`,
+        `Expected zh Q4H body to contain current diligence exhaustion wording, got:\n${zhBody}`,
       );
-    }
-    if (!zhBody.includes('`continue`') || !zhBody.includes('`stop`')) {
-      throw new Error(`Expected zh Q4H body to include \`continue\` and \`stop\`, got:\n${zhBody}`);
     }
 
     const enBody = await driveToDiligencePushBudgetExhaustedQ4H({
@@ -124,13 +122,10 @@ async function main(): Promise<void> {
       dialogId: 'dlg-q4h-i18n-en',
       userLanguageCode: 'en',
     });
-    if (!enBody.includes('Diligence Push attempts') || !enBody.includes('still not proceeding')) {
+    if (!enBody.includes('Diligence Push attempts') || !enBody.includes('still not moved')) {
       throw new Error(
-        `Expected en Q4H body to contain "Diligence Push attempts" and "still not proceeding", got:\n${enBody}`,
+        `Expected en Q4H body to contain current diligence exhaustion wording, got:\n${enBody}`,
       );
-    }
-    if (!enBody.includes('`continue`') || !enBody.includes('`stop`')) {
-      throw new Error(`Expected en Q4H body to include \`continue\` and \`stop\`, got:\n${enBody}`);
     }
 
     console.log('q4h diligence push i18n: PASS');

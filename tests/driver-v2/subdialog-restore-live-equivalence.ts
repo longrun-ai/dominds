@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
-import { driveDialogStream, restoreDialogHierarchy } from '../../main/llm/driver';
+import { restoreDialogHierarchy } from '../../main/llm/driver';
+import { driveDialogStream } from '../../main/llm/driver-entry';
 import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
 import {
