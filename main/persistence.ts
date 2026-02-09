@@ -250,6 +250,7 @@ function isSubdialogResponseRecord(value: unknown): value is {
   subdialogId: string;
   response: string;
   completedAt: string;
+  status?: 'completed' | 'failed';
   callType: 'A' | 'B' | 'C';
   tellaskHead: string;
   responderId: string;
@@ -261,6 +262,8 @@ function isSubdialogResponseRecord(value: unknown): value is {
   if (typeof value.subdialogId !== 'string') return false;
   if (typeof value.response !== 'string') return false;
   if (typeof value.completedAt !== 'string') return false;
+  if (value.status !== undefined && value.status !== 'completed' && value.status !== 'failed')
+    return false;
   if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
   if (typeof value.tellaskHead !== 'string') return false;
   if (typeof value.responderId !== 'string') return false;
@@ -3595,6 +3598,7 @@ export class DialogPersistence {
       subdialogId: string;
       response: string;
       completedAt: string;
+      status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
       tellaskHead: string;
       responderId: string;
@@ -3613,6 +3617,7 @@ export class DialogPersistence {
           subdialogId: string;
           response: string;
           completedAt: string;
+          status?: 'completed' | 'failed';
           callType: 'A' | 'B' | 'C';
           tellaskHead: string;
           responderId: string;
@@ -3668,6 +3673,7 @@ export class DialogPersistence {
       subdialogId: string;
       response: string;
       completedAt: string;
+      status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
       tellaskHead: string;
       responderId: string;
@@ -3699,6 +3705,7 @@ export class DialogPersistence {
       subdialogId: string;
       response: string;
       completedAt: string;
+      status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
       tellaskHead: string;
       responderId: string;
@@ -3721,6 +3728,7 @@ export class DialogPersistence {
       subdialogId: string;
       response: string;
       completedAt: string;
+      status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
       tellaskHead: string;
       responderId: string;

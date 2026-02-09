@@ -107,7 +107,8 @@ export interface HumanPrompt {
   /**
    * Prompt persistence mode.
    * - 'persist' (default): normal human prompt; saved to dialog history and rendered in UI.
-   * - 'internal': injected into the LLM context for this drive only; not persisted nor rendered.
+   * - 'internal': drive-scoped priming context; injected for this drive only,
+   *   never persisted and never rendered in UI.
    */
   persistMode?: 'persist' | 'internal';
   /**
@@ -1469,10 +1470,15 @@ async function _driveDialogStream(
   >[number];
   let tookSubdialogResponses = false;
   let takenSubdialogResponses: TakenSubdialogResponse[] = [];
+  // Keep injected subdialog replies visible across all gen iterations in the same drive.
+  // Without this, iteration #2 (e.g. after a function call) can lose reply context from iteration #1.
+  let subdialogResponseContextMsgs: ChatMessage[] = [];
+  // Internal prompt is drive-scoped priming context and never persisted.
+  let internalDrivePromptMsg: ChatMessage | undefined;
+  let committedTakenSubdialogResponses = false;
 
   let genIterNo = 0;
   let pendingPrompt: HumanPrompt | undefined = humanPrompt;
-  let internalPromptForThisDrive: HumanPrompt | undefined;
   let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   try {
     while (true) {
@@ -1643,7 +1649,14 @@ async function _driveDialogStream(
             });
           }
           if (persistMode === 'internal') {
-            internalPromptForThisDrive = currentPrompt;
+            const injected = currentPrompt.content.trim();
+            internalDrivePromptMsg = injected
+              ? {
+                  type: 'environment_msg',
+                  role: 'user',
+                  content: injected,
+                }
+              : undefined;
           } else {
             await dlg.addChatMessages({
               type: 'prompting_msg',
@@ -1757,32 +1770,26 @@ async function _driveDialogStream(
         });
 
         if (genIterNo === 1 && takenSubdialogResponses.length > 0) {
-          for (const response of takenSubdialogResponses) {
-            ctxMsgs.push({
-              type: 'environment_msg',
-              role: 'user',
-              content: formatTeammateResponseContent({
-                responderId: response.responderId,
-                requesterId: response.originMemberId,
-                originalCallHeadLine: response.tellaskHead,
-                responseBody: response.response,
-                language: getWorkLanguage(),
-              }),
-            });
-          }
+          subdialogResponseContextMsgs = takenSubdialogResponses.map((response) => ({
+            type: 'environment_msg',
+            role: 'user',
+            content: formatTeammateResponseContent({
+              responderId: response.responderId,
+              requesterId: response.originMemberId,
+              originalCallHeadLine: response.tellaskHead,
+              responseBody: response.response,
+              language: getWorkLanguage(),
+            }),
+          }));
+        }
+        if (subdialogResponseContextMsgs.length > 0) {
+          ctxMsgs.push(...subdialogResponseContextMsgs);
         }
 
         // Inject the internal (non-persisted) prompt at the end of the fresh user context
-        // so it can steer the next response without polluting dialog history.
-        if (genIterNo === 1 && internalPromptForThisDrive) {
-          const injected = internalPromptForThisDrive.content.trim();
-          if (injected) {
-            ctxMsgs.push({
-              type: 'environment_msg',
-              role: 'user',
-              content: injected,
-            });
-          }
+        // so it can steer this drive without polluting dialog history.
+        if (internalDrivePromptMsg) {
+          ctxMsgs.push(internalDrivePromptMsg);
         }
 
         await dlg.processReminderUpdates();
@@ -2803,6 +2810,9 @@ async function _driveDialogStream(
           : undefined;
 
     if (interruptedReason) {
+      // If subdialog responses were taken during this drive, interruption means they
+      // should be rolled back for retry instead of being committed as consumed.
+      generationHadError = true;
       finalRunState = { kind: 'interrupted', reason: interruptedReason };
       broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
       return { lastAssistantSayingContent, interrupted: true };
@@ -2862,12 +2872,37 @@ async function _driveDialogStream(
             await DialogPersistence.rollbackTakenSubdialogResponses(dlg.id);
           } else {
             await DialogPersistence.commitTakenSubdialogResponses(dlg.id);
+            committedTakenSubdialogResponses = true;
           }
         });
       } catch (err2) {
         log.warn('Failed to finalize subdialog response queue after drive', {
           dialogId: dlg.id.selfId,
           error: err2,
+        });
+      }
+    }
+    if (committedTakenSubdialogResponses && takenSubdialogResponses.length > 0) {
+      try {
+        const mirroredMsgs: ChatMessage[] = takenSubdialogResponses.map((response) => ({
+          type: 'tellask_result_msg',
+          role: 'tool',
+          responderId: response.responderId,
+          tellaskHead: response.tellaskHead,
+          status: response.status ?? 'completed',
+          content: formatTeammateResponseContent({
+            responderId: response.responderId,
+            requesterId: response.originMemberId,
+            originalCallHeadLine: response.tellaskHead,
+            responseBody: response.response,
+            language: getWorkLanguage(),
+          }),
+        }));
+        await dlg.addChatMessages(...mirroredMsgs);
+      } catch (err) {
+        log.warn('Failed to mirror committed subdialog responses into dialog msgs', {
+          dialogId: dlg.id.selfId,
+          error: err,
         });
       }
     }
@@ -3809,6 +3844,7 @@ export async function supplyResponseToSupdialog(
         subdialogId: subdialogId.selfId,
         response: responseText,
         completedAt,
+        status,
         callType,
         tellaskHead,
         responderId,
