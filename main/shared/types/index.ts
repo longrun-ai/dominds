@@ -46,6 +46,7 @@ export interface ApiRootDialogResponse {
 export interface ApiSubdialogResponse {
   selfId: string;
   rootId: string;
+  supdialogId?: string;
   agentId: string;
   taskDocPath: string;
   status: 'running' | 'completed' | 'archived';

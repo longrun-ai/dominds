@@ -1283,6 +1283,16 @@ export async function driveDialogStream(
     !driveResult.interrupted &&
     driveResult.lastAssistantSayingContent !== null
   ) {
+    const suspension = await dlg.getSuspensionStatus();
+    if (!suspension.canDrive) {
+      log.info('Skip supplying subdialog response because dialog is still suspended', {
+        rootId: dlg.id.rootId,
+        selfId: dlg.id.selfId,
+        waitingQ4H: suspension.q4h,
+        waitingSubdialogs: suspension.subdialogs,
+      });
+      return;
+    }
     if (subdialogReplyTarget) {
       await supplySubdialogResponseToSpecificCallerIfPending(
         dlg,

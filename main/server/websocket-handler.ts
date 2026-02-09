@@ -843,6 +843,11 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
         : defaultDisableDiligencePush;
     const effectiveDisableDiligencePush = persistedDisableDiligencePush;
     rootDialog.disableDiligencePush = effectiveDisableDiligencePush;
+    const derivedSupdialogId =
+      metadata.assignmentFromSup?.callerDialogId &&
+      metadata.assignmentFromSup.callerDialogId.trim() !== ''
+        ? metadata.assignmentFromSup.callerDialogId
+        : metadata.supdialogId;
     const dialogReadyResponse: DialogReadyMessage = {
       type: 'dialog_ready',
       dialog: {
@@ -851,7 +856,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       },
       agentId: metadata.agentId,
       taskDocPath: metadata.taskDocPath,
-      supdialogId: metadata.supdialogId,
+      supdialogId: derivedSupdialogId,
       tellaskSession: metadata.tellaskSession,
       assignmentFromSup: metadata.assignmentFromSup,
       disableDiligencePush: effectiveDisableDiligencePush,

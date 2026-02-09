@@ -5829,40 +5829,28 @@ export class DomindsApp extends HTMLElement {
                 createdAt: subdialog.createdAt,
                 lastModified: subdialog.lastModified,
                 runState: effectiveRunState,
-                supdialogId: rootId, // Link to parent
+                supdialogId: subdialog.supdialogId ?? rootId,
                 tellaskSession: subdialog.tellaskSession,
                 assignmentFromSup: subdialog.assignmentFromSup,
               });
             }
           }
 
-          const incomingByKey = new Map<string, ApiRootDialogResponse>();
-          for (const incoming of newSubdialogs) {
-            incomingByKey.set(`${incoming.rootId}:${incoming.selfId ?? ''}`, incoming);
-          }
+          const existingSubdialogsUnderRoot = (this.dialogs || []).filter(
+            (d) => d.rootId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
+          );
+          const didSubdialogSetChange =
+            existingSubdialogsUnderRoot.length !== newSubdialogs.length ||
+            existingSubdialogsUnderRoot.some(
+              (d) => !newSubdialogs.some((incoming) => incoming.selfId === d.selfId),
+            );
 
-          let didMerge = false;
-          const mergedDialogs = (this.dialogs || []).map((d) => {
-            if (!d.selfId) return d;
-            if (d.supdialogId !== rootId) return d;
-            const incoming = incomingByKey.get(`${d.rootId}:${d.selfId}`);
-            if (!incoming) return d;
-            incomingByKey.delete(`${d.rootId}:${d.selfId}`);
-            didMerge = true;
-            return {
-              ...d,
-              ...incoming,
-              runState: incoming.runState ?? d.runState,
-            };
-          });
-
-          const toAppend = Array.from(incomingByKey.values());
-          if (toAppend.length > 0) {
-            didMerge = true;
-          }
-
+          const didMerge = didSubdialogSetChange || newSubdialogs.length > 0;
           if (didUpdateRoot || didMerge) {
-            this.dialogs = [...mergedDialogs, ...toAppend];
+            const others = (this.dialogs || []).filter(
+              (d) => d.rootId !== rootId || typeof d.selfId !== 'string' || d.selfId === '',
+            );
+            this.dialogs = [...others, ...newSubdialogs];
             this.renderDialogList();
           }
         }
@@ -6255,17 +6243,24 @@ export class DomindsApp extends HTMLElement {
     // Start from current dialog and build hierarchy
     let current = this.currentDialog;
     while (current) {
+      const currentDialog = current;
       hierarchy.unshift({
-        selfId: current.selfId || current.rootId,
-        rootId: current.rootId,
-        agentId: current.agentId,
+        selfId: currentDialog.selfId || currentDialog.rootId,
+        rootId: currentDialog.rootId,
+        agentId: currentDialog.agentId,
       });
 
       // For subdialogs, we need to find parent - check dialogs list
-      const currentDialogData = this.dialogs.find((d) => d.selfId === current?.selfId);
+      const currentDialogData = this.dialogs.find(
+        (d) => d.rootId === currentDialog.rootId && d.selfId === currentDialog.selfId,
+      );
       if (currentDialogData?.supdialogId) {
         // This is a subdialog, find the parent
-        const parentDialog = this.dialogs.find((d) => d.rootId === currentDialogData.supdialogId);
+        const parentDialog = this.dialogs.find((d) => {
+          if (d.rootId !== currentDialog.rootId) return false;
+          if (d.selfId) return d.selfId === currentDialogData.supdialogId;
+          return d.rootId === currentDialogData.supdialogId;
+        });
         if (parentDialog) {
           current = {
             rootId: parentDialog.rootId,
@@ -6347,12 +6342,12 @@ export class DomindsApp extends HTMLElement {
       typeof rootDialog?.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
     if (expectedCount === 0) return true;
     const alreadyLoaded = this.dialogs.some(
-      (d) => d.supdialogId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
+      (d) => d.rootId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
     );
     if (alreadyLoaded) return true;
     await this.loadSubdialogsForRoot(rootId);
     return this.dialogs.some(
-      (d) => d.supdialogId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
+      (d) => d.rootId === rootId && typeof d.selfId === 'string' && d.selfId !== '',
     );
   }
 
@@ -7207,7 +7202,7 @@ export class DomindsApp extends HTMLElement {
                   createdAt: sd.createdAt,
                   lastModified: sd.lastModified,
                   runState: sdEffectiveRunState,
-                  supdialogId: root.id,
+                  supdialogId: sd.supdialogId ?? root.id,
                   tellaskSession: sd.tellaskSession,
                   assignmentFromSup: sd.assignmentFromSup,
                 });
@@ -7219,9 +7214,7 @@ export class DomindsApp extends HTMLElement {
                 }
               }
               // Merge into existing dialogs: replace any entries under this root
-              this.dialogs = this.dialogs.filter(
-                (d) => d.rootId !== root.id && d.supdialogId !== root.id,
-              );
+              this.dialogs = this.dialogs.filter((d) => d.rootId !== root.id);
               this.dialogs.push(...entries);
               // FIXED: Use surgical update instead of full render to preserve dialog container state
               this.updateDialogList();

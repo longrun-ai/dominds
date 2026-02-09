@@ -834,13 +834,10 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       runState: rootLatest?.runState,
     };
 
-    // Enumerate subdialogs under this root
-    const rootPath = DialogPersistence.getRootDialogPath(new DialogID(rootId), foundStatus);
-    const subPath = path.join(rootPath, 'subdialogs');
-
     let subdialogs: Array<{
       selfId: string;
       rootId: string;
+      supdialogId?: string;
       agentId: string;
       taskDocPath: string;
       status: 'running' | 'completed' | 'archived';
@@ -852,83 +849,39 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
     }> = [];
 
-    // Recursively find all subdialog directories (handles nested paths like c1/78/4c3d759a)
-    async function findSubdialogDirs(dir: string, baseRelative: string = ''): Promise<string[]> {
-      const results: string[] = [];
-      try {
-        const entries = await fsPromises.readdir(dir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (entry.isDirectory()) {
-            const fullPath = path.join(dir, entry.name);
-            const dialogYamlPath = path.join(fullPath, 'dialog.yaml');
-            const entryRelative = baseRelative ? path.join(baseRelative, entry.name) : entry.name;
-            try {
-              await fsPromises.access(dialogYamlPath);
-              // This directory contains dialog.yaml - it's a subdialog
-              // Push the FULL relative path (e.g., "5a/e2/4c424f27" not just "5a")
-              results.push(entryRelative);
-            } catch {
-              // No dialog.yaml - recurse into this directory
-              const nested = await findSubdialogDirs(fullPath, entryRelative);
-              results.push(...nested);
-            }
-          }
-        }
-      } catch (error) {
-        if (
-          typeof error === 'object' &&
-          error !== null &&
-          'code' in error &&
-          (error as { code?: unknown }).code === 'ENOENT'
-        ) {
-          // No subdialogs directory - return empty
-        } else {
-          throw error;
-        }
+    const dialogIds = await DialogPersistence.listAllDialogIds(foundStatus);
+    for (const dialogId of dialogIds) {
+      if (dialogId.rootId !== rootId || dialogId.selfId === rootId) {
+        continue;
       }
-      return results;
-    }
+      const meta = await DialogPersistence.loadDialogMetadata(dialogId, foundStatus);
+      if (!meta) {
+        continue;
+      }
 
-    try {
-      const subIds = await findSubdialogDirs(subPath);
-      for (const subId of subIds) {
-        const meta = await DialogPersistence.loadDialogMetadata(
-          new DialogID(subId, rootId),
-          foundStatus,
-        );
-        if (meta) {
-          // Load latest.yaml for subdialog currentCourse and lastModified timestamp
-          const subLatest = await DialogPersistence.loadDialogLatest(
-            new DialogID(subId, rootId),
-            foundStatus,
-          );
+      const subLatest = await DialogPersistence.loadDialogLatest(dialogId, foundStatus);
+      const derivedSupdialogId =
+        meta.assignmentFromSup?.callerDialogId &&
+        meta.assignmentFromSup.callerDialogId.trim() !== ''
+          ? meta.assignmentFromSup.callerDialogId
+          : typeof meta.supdialogId === 'string' && meta.supdialogId.trim() !== ''
+            ? meta.supdialogId
+            : undefined;
 
-          subdialogs.push({
-            selfId: meta.id,
-            rootId: rootId, // For subdialogs, rootId is the supdialog's ID
-            agentId: meta.agentId,
-            taskDocPath: meta.taskDocPath,
-            status: foundStatus,
-            currentCourse: subLatest?.currentCourse || 1,
-            createdAt: meta.createdAt,
-            lastModified: subLatest?.lastModified || meta.createdAt,
-            runState: subLatest?.runState,
-            tellaskSession: meta.tellaskSession,
-            assignmentFromSup: meta.assignmentFromSup,
-          });
-        }
-      }
-    } catch (error) {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        (error as { code?: unknown }).code === 'ENOENT'
-      ) {
-        subdialogs = [];
-      } else {
-        throw error;
-      }
+      subdialogs.push({
+        selfId: meta.id,
+        rootId,
+        supdialogId: derivedSupdialogId,
+        agentId: meta.agentId,
+        taskDocPath: meta.taskDocPath,
+        status: foundStatus,
+        currentCourse: subLatest?.currentCourse || 1,
+        createdAt: meta.createdAt,
+        lastModified: subLatest?.lastModified || meta.createdAt,
+        runState: subLatest?.runState,
+        tellaskSession: meta.tellaskSession,
+        assignmentFromSup: meta.assignmentFromSup,
+      });
     }
 
     respondJson(res, 200, {
