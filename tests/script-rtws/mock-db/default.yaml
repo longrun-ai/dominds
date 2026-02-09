@@ -1,7 +1,12 @@
 responses:
-  - input: 'Stream test: respond in short chunks.'
+  - message: 'Stream test: respond in short chunks.'
+    role: 'user'
     response: 'Chunked mock response ready. This should stream as space-separated tokens for test verification.'
-  - input: 'Verify streaming dispatch and event flow.'
+    chunkDelayMs: 15
+  - message: 'Verify streaming dispatch and event flow.'
+    role: 'user'
     response: 'Driver streaming verified. Event sink receives start, chunk, and end events without errors.'
-  - input: 'Reminder-only loop regression.'
+    delayMs: 120
+  - message: 'Reminder-only loop regression.'
+    role: 'user'
     response: 'Call the function tool `add_reminder` with {"content":"This is a reminder created by mock LLM."}'

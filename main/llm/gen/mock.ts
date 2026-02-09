@@ -12,6 +12,8 @@
  *   - message: "hello"
  *     role: "user"
  *     response: "Hi there!"
+ *     delayMs: 200
+ *     chunkDelayMs: 20
  *   - message: "error text"
  *     role: "tool"
  *     response: "corrected response"
@@ -88,6 +90,18 @@ interface MockResponse {
     completionTokens?: number;
     totalTokens?: number;
   };
+
+  /**
+   * Optional response latency before generation output starts.
+   * Useful for interruption and timeout tests.
+   */
+  delayMs?: number;
+
+  /**
+   * Optional delay between streamed saying chunks (genToReceiver only).
+   * Useful for stream-ordering and interruption timing tests.
+   */
+  chunkDelayMs?: number;
 }
 
 interface MockDatabase {
@@ -99,6 +113,41 @@ interface CachedDatabase {
   lastModified: number;
   /** Key format: "role:message" for exact matching only (no fallback) */
   lookupMap: Map<string, MockResponse>;
+}
+
+function normalizeDelayMs(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  if (value <= 0) return 0;
+  return Math.floor(value);
+}
+
+async function delayWithAbort(ms: number, abortSignal?: AbortSignal): Promise<void> {
+  const normalized = normalizeDelayMs(ms);
+  if (normalized <= 0) return;
+  if (abortSignal?.aborted) {
+    throw new Error('AbortError');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', onAbort);
+      }
+      resolve();
+    }, normalized);
+
+    const onAbort = (): void => {
+      clearTimeout(timeout);
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', onAbort);
+      }
+      reject(new Error('AbortError'));
+    };
+
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
 }
 
 export class MockGen implements LlmGenerator {
@@ -132,6 +181,9 @@ export class MockGen implements LlmGenerator {
       // No fallback to message-only entries
       const lookupMap = new Map<string, MockResponse>();
       for (const resp of rawDatabase.responses) {
+        if (typeof resp.message !== 'string') {
+          throw new Error('message is required for mock response matching');
+        }
         if (!resp.role) {
           log.warn(`⚠️  Mock response without role: "${resp.message.substring(0, 50)}..."`);
           log.warn('💡 All mock responses should have a "role" field (e.g., "user" or "tool")');
@@ -233,13 +285,14 @@ responses:
       throw new Error('AbortError');
     }
 
+    const db = await this.loadResponseDatabase(dbPath, modelName);
+    const matched = this.findMatchingResponse(db, content, role);
+    await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
+
     await receiver.thinkingStart();
     await receiver.thinkingChunk(`[${modelName}] `);
     await receiver.thinkingChunk(content.substring(0, 50) || '(empty)');
     await receiver.thinkingFinish();
-
-    const db = await this.loadResponseDatabase(dbPath, modelName);
-    const matched = this.findMatchingResponse(db, content, role);
 
     if (matched?.streamError) {
       throw new Error(matched.streamError);
@@ -298,12 +351,16 @@ responses:
     }
 
     await receiver.sayingStart();
+    const chunkDelayMs = normalizeDelayMs(matched?.chunkDelayMs ?? 0);
     const words = responseText.split(/(\s+)/);
     for (const word of words) {
       if (abortSignal?.aborted) {
         throw new Error('AbortError');
       }
       await receiver.sayingChunk(word);
+      if (chunkDelayMs > 0) {
+        await delayWithAbort(chunkDelayMs, abortSignal);
+      }
     }
     await receiver.sayingFinish();
 
@@ -335,6 +392,7 @@ responses:
     try {
       const db = await this.loadResponseDatabase(dbPath, modelName);
       const matched = this.findMatchingResponse(db, content, role);
+      await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
       const responseText =
         matched?.response ?? this.makeFallbackResponse(dbPath, content, role, modelName);
