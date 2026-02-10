@@ -65,6 +65,16 @@ https://github.com/longrun-ai/dominds-feat-dev
 2. 在 dominds-feat-dev/dominds/ 目录下，克隆你自己的 Dominds fork 仓库
 3. 在内层 dominds/ 目录中，向 longrun-ai/dominds 提交 PR
 
+### 贡献者测试约定（脚本测试 rtws 隔离）
+
+当你在 Dominds 仓库里运行脚本测试（如 `pnpm -C tests run rtws -- ...`）时：
+
+- 可先用 `pnpm -C tests run` 查看可用测试脚本，再用 `pnpm -C tests run <script-name>` 运行目标用例。
+- 默认是**隔离 rtws**：每次运行都会把 `tests/script-rtws` 复制到独立临时目录后执行。
+- 因为默认隔离，脚本测试可安全并发运行，不再依赖共享 `script-rtws` 的串行假设。
+- `--shared-rtws` 仅用于调试，会直接使用 `tests/script-rtws`，禁止并发运行多个用例。
+- 需要保留失败现场时，设置 `DOMINDS_TEST_RTWS_KEEP_TMP=1`，测试 CLI 会保留临时 rtws 路径。
+
 ## 快速上手（推荐：通过模板创建运行时工作区）
 
 ```bash

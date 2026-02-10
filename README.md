@@ -108,6 +108,16 @@ https://github.com/longrun-ai/dominds-feat-dev
 2. Clone your dominds fork into dominds-feat-dev/dominds/
 3. Open PRs against [longrun-ai/dominds](https://github.com/longrun-ai/dominds) from that inner repo
 
+### Contributor Test Rule (Script rtws Isolation)
+
+When running script tests inside the Dominds repo (for example `pnpm -C tests run rtws -- ...`):
+
+- Start with `pnpm -C tests run` to list available scripts, then run target suites via `pnpm -C tests run <script-name>`.
+- Default mode is **isolated rtws**: each run copies `tests/script-rtws` into a unique temp rtws before execution.
+- Because isolation is default, script tests are safe to run in parallel; do not rely on shared-rtws serial assumptions.
+- Use `--shared-rtws` for debugging only; it runs directly in `tests/script-rtws` and must not be used concurrently.
+- Set `DOMINDS_TEST_RTWS_KEEP_TMP=1` if you want to keep temporary rtws artifacts for post-failure debugging.
+
 ### rtws Setup
 
 There are two common ways to create an rtws:
