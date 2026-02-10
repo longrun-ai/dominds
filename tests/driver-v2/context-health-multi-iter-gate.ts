@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { driveDialogStream } from '../../main/llm/driver-entry';
-import { formatUserFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
+import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
 import { setWorkLanguage } from '../../main/shared/runtime-language';
 
 import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
@@ -33,7 +33,7 @@ async function main(): Promise<void> {
     );
 
     const trigger = 'Context-health multi-iter guard probe.';
-    const cautionGuide = formatUserFacingContextHealthV3RemediationGuide('en', {
+    const cautionGuide = formatAgentFacingContextHealthV3RemediationGuide('en', {
       kind: 'caution',
       mode: 'soft',
     });

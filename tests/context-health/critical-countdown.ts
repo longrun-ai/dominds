@@ -8,10 +8,10 @@
  */
 
 import assert from 'node:assert/strict';
-import { formatUserFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
+import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
 
 async function main(): Promise<void> {
-  const zh = formatUserFacingContextHealthV3RemediationGuide('zh', {
+  const zh = formatAgentFacingContextHealthV3RemediationGuide('zh', {
     kind: 'critical',
     mode: 'countdown',
     promptsRemainingAfterThis: 4,
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   );
   assert.ok(!zh.includes('轮次'), 'zh guide should avoid “轮次”');
 
-  const en = formatUserFacingContextHealthV3RemediationGuide('en', {
+  const en = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'critical',
     mode: 'countdown',
     promptsRemainingAfterThis: 0,
@@ -34,8 +34,8 @@ async function main(): Promise<void> {
   });
   assert.ok(en.includes('Context state: 🔴 critical'), 'en guide should include critical headline');
   assert.ok(
-    en.includes('at most 0 more time'),
-    'en guide should include reminder countdown number (0)',
+    en.includes('remind you 0 more time'),
+    'en guide should include reminder countdown number (0) in copy',
   );
 
   console.log('OK');

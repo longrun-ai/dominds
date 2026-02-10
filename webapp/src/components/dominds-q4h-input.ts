@@ -862,10 +862,15 @@ export class DomindsQ4HInput extends HTMLElement {
 
     const state = this.runState;
     const isDead = state !== null && state.kind === 'dead';
+    const isProceeding =
+      state !== null && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested');
     const shouldDisable = this.props.disabled || !this.currentDialog || isDead;
     this.inputWrapper.classList.toggle('disabled', shouldDisable);
     this.inputWrapper.classList.toggle('q4h-active', this.selectedQuestionId !== null);
-    this.textInput.disabled = shouldDisable;
+    this.textInput.disabled = shouldDisable || isProceeding;
+
+    this.setAttribute('data-run-state', state ? state.kind : 'none');
+    this.setAttribute('aria-busy', isProceeding ? 'true' : 'false');
     this.updateSendButton();
 
     if (this.declareDeathButton) {

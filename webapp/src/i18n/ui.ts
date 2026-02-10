@@ -121,6 +121,8 @@ export type UiStrings = {
 
   inputNotAvailableToast: string;
   noActiveDialogToast: string;
+  emergencyStopNoProceedingToast: string;
+  resumeAllNoResumableToast: string;
   invalidMessageFormatToast: string;
   linkCopiedToast: string;
   linkCopyFailedToast: string;
@@ -424,6 +426,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
       inputNotAvailableToast: '输入组件不可用。',
       noActiveDialogToast: '当前没有活跃对话。',
+      emergencyStopNoProceedingToast: '当前没有进行中的对话，无法紧急停止。',
+      resumeAllNoResumableToast: '当前没有可继续的已中断对话。',
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
       linkCopiedToast: '链接已复制。',
       linkCopyFailedToast: '复制链接失败。',
@@ -732,6 +736,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
 
     inputNotAvailableToast: 'Input is not available.',
     noActiveDialogToast: 'No active dialog.',
+    emergencyStopNoProceedingToast: 'No proceeding dialogs to stop.',
+    resumeAllNoResumableToast: 'No interrupted dialogs to resume.',
     invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
     linkCopiedToast: 'Link copied.',
     linkCopyFailedToast: 'Failed to copy link.',

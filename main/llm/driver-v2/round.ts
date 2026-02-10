@@ -4,7 +4,7 @@ import { clearActiveRun, createActiveRun } from '../../dialog-run-state';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
-import { formatUserFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
+import { formatAgentFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import { generateShortId } from '../../shared/utils/id';
 import {
@@ -258,11 +258,11 @@ export async function executeDriveRound(args: {
         const language = getWorkLanguage();
         const guideText =
           healthDecision.reason === 'caution_soft_remediation'
-            ? formatUserFacingContextHealthV3RemediationGuide(language, {
+            ? formatAgentFacingContextHealthV3RemediationGuide(language, {
                 kind: 'caution',
                 mode: 'soft',
               })
-            : formatUserFacingContextHealthV3RemediationGuide(language, {
+            : formatAgentFacingContextHealthV3RemediationGuide(language, {
                 kind: 'critical',
                 mode: 'countdown',
                 promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),

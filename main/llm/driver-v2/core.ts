@@ -13,10 +13,10 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '../../shared/diligence';
 import {
+  formatAgentFacingContextHealthV3RemediationGuide,
+  formatCurrentUserLanguagePreference,
   formatDomindsNoteFbrToollessViolation,
   formatReminderItemGuide,
-  formatUserFacingContextHealthV3RemediationGuide,
-  formatUserFacingLanguageGuide,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
@@ -650,11 +650,11 @@ export async function driveDialogStreamCoreV2(
             const language = getWorkLanguage();
             const guideText =
               healthDecision.reason === 'caution_soft_remediation'
-                ? formatUserFacingContextHealthV3RemediationGuide(language, {
+                ? formatAgentFacingContextHealthV3RemediationGuide(language, {
                     kind: 'caution',
                     mode: 'soft',
                   })
-                : formatUserFacingContextHealthV3RemediationGuide(language, {
+                : formatAgentFacingContextHealthV3RemediationGuide(language, {
                     kind: 'critical',
                     mode: 'countdown',
                     promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
@@ -819,7 +819,7 @@ export async function driveDialogStreamCoreV2(
         const guideMsg: ChatMessage = {
           type: 'transient_guide_msg',
           role: 'assistant',
-          content: formatUserFacingLanguageGuide(workingLanguage, uiLanguage),
+          content: formatCurrentUserLanguagePreference(workingLanguage, uiLanguage),
         };
 
         const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({

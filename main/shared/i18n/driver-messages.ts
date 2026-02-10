@@ -1,7 +1,7 @@
 import { formatLanguageName, type LanguageCode } from '../types/language';
 import type { TellaskMalformedReason } from '../types/tellask';
 
-export function formatUserFacingLanguageGuide(
+export function formatCurrentUserLanguagePreference(
   workingLanguage: LanguageCode,
   uiLanguage: LanguageCode,
 ): string {
@@ -188,7 +188,7 @@ export type ContextHealthV3RemediationGuideArgs =
       promptsRemainingAfterThis: number;
       promptsTotal: number;
     };
-export function formatUserFacingContextHealthV3RemediationGuide(
+export function formatAgentFacingContextHealthV3RemediationGuide(
   language: LanguageCode,
   args: ContextHealthV3RemediationGuideArgs,
 ): string {

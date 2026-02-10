@@ -32,6 +32,8 @@ import { removeProblem, upsertProblem } from '../problems';
 import { AsyncFifoMutex } from '../shared/async-fifo-mutex';
 import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import {
+  formatAgentFacingContextHealthV3RemediationGuide,
+  formatCurrentUserLanguagePreference,
   formatDomindsNoteDirectSelfCall,
   formatDomindsNoteFbrDisabled,
   formatDomindsNoteFbrToollessViolation,
@@ -45,8 +47,6 @@ import {
   formatDomindsNoteTellaskForTeammatesOnly,
   formatQ4HDiligencePushBudgetExhausted,
   formatReminderItemGuide,
-  formatUserFacingContextHealthV3RemediationGuide,
-  formatUserFacingLanguageGuide,
 } from '../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
@@ -914,7 +914,7 @@ async function applyContextHealthV3Remediation(args: {
       return { kind: 'proceed', ctxMsgs: args.ctxMsgs };
     }
 
-    const guideText = formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
+    const guideText = formatAgentFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
       kind: 'caution',
       mode: 'soft',
     });
@@ -993,7 +993,7 @@ async function applyContextHealthV3Remediation(args: {
       return { kind: 'continue', nextPrompt };
     }
 
-    const guideText = formatUserFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
+    const guideText = formatAgentFacingContextHealthV3RemediationGuide(getWorkLanguage(), {
       kind: 'critical',
       mode: 'countdown',
       promptsRemainingAfterThis: promptsBeforeAutoClear - 1,
@@ -1848,7 +1848,7 @@ async function _driveDialogStream(
         const guideMsg: ChatMessage = {
           type: 'transient_guide_msg',
           role: 'assistant',
-          content: formatUserFacingLanguageGuide(workingLanguage, uiLanguage),
+          content: formatCurrentUserLanguagePreference(workingLanguage, uiLanguage),
         };
         const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
           base: {

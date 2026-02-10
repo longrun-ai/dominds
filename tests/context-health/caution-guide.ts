@@ -7,10 +7,10 @@
  */
 
 import assert from 'node:assert/strict';
-import { formatUserFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
+import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
 
 async function main(): Promise<void> {
-  const zhSoft = formatUserFacingContextHealthV3RemediationGuide('zh', {
+  const zhSoft = formatAgentFacingContextHealthV3RemediationGuide('zh', {
     kind: 'caution',
     mode: 'soft',
   });
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   assert.ok(zhSoft.includes('clear_mind'), 'zh guide should mention clear_mind');
   assert.ok(zhSoft.includes('update_reminder'), 'zh guide should mention update_reminder');
 
-  const enSoft = formatUserFacingContextHealthV3RemediationGuide('en', {
+  const enSoft = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'caution',
     mode: 'soft',
   });

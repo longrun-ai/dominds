@@ -171,6 +171,9 @@ export class DomindsApp extends HTMLElement {
   private _wsEventCancel?: () => void;
   private _connStateCancel?: () => void;
   private runControlRefreshLastScheduledAtMsByReason = new Map<RunControlRefreshReason, number>();
+  private lastRunControlRefresh: { timestamp: string; reason: RunControlRefreshReason } | null =
+    null;
+  private lastRunControlRefreshScheduledAtMs: number | null = null;
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private authModal: HTMLElement | null = null;
   private createDialogFlow = new CreateDialogFlowController({
@@ -1378,30 +1381,58 @@ export class DomindsApp extends HTMLElement {
       '#toolbar-resume-all',
     ) as HTMLButtonElement | null;
 
+    const applyRunControlRefreshAttrs = (pill: HTMLElement) => {
+      if (this.lastRunControlRefresh) {
+        pill.setAttribute('data-last-run-control-refresh-ts', this.lastRunControlRefresh.timestamp);
+        pill.setAttribute(
+          'data-last-run-control-refresh-reason',
+          this.lastRunControlRefresh.reason,
+        );
+      } else {
+        pill.removeAttribute('data-last-run-control-refresh-ts');
+        pill.removeAttribute('data-last-run-control-refresh-reason');
+      }
+      if (this.lastRunControlRefreshScheduledAtMs !== null) {
+        pill.setAttribute(
+          'data-last-run-control-refresh-scheduled-at-ms',
+          String(this.lastRunControlRefreshScheduledAtMs),
+        );
+      } else {
+        pill.removeAttribute('data-last-run-control-refresh-scheduled-at-ms');
+      }
+    };
+
     if (prevBtn) prevBtn.disabled = this.toolbarCurrentCourse <= 1;
     if (nextBtn) nextBtn.disabled = this.toolbarCurrentCourse >= this.toolbarTotalCourses;
     if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
     if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
     if (stopCount) stopCount.textContent = String(this.proceedingDialogsCount);
     if (resumeCount) resumeCount.textContent = String(this.resumableDialogsCount);
+
+    if (stopCount) stopCount.setAttribute('data-testid', 'toolbar.proceeding_count');
+    if (resumeCount) resumeCount.setAttribute('data-testid', 'toolbar.resumable_count');
+
     const stopDisabled = this.proceedingDialogsCount === 0;
     const resumeDisabled = this.resumableDialogsCount === 0;
+    const t = getUiStrings(this.uiLanguage);
     if (stopBtn) {
       stopBtn.disabled = stopDisabled;
-      stopBtn.setAttribute(
-        'aria-label',
-        `${getUiStrings(this.uiLanguage).emergencyStop} (${this.proceedingDialogsCount})`,
-      );
+      stopBtn.setAttribute('aria-label', `${t.emergencyStop} (${this.proceedingDialogsCount})`);
     }
     if (resumeBtn) {
       resumeBtn.disabled = resumeDisabled;
-      resumeBtn.setAttribute(
-        'aria-label',
-        `${getUiStrings(this.uiLanguage).resumeAll} (${this.resumableDialogsCount})`,
-      );
+      resumeBtn.setAttribute('aria-label', `${t.resumeAll} (${this.resumableDialogsCount})`);
     }
-    if (stopPill) stopPill.setAttribute('data-disabled', stopDisabled ? 'true' : 'false');
-    if (resumePill) resumePill.setAttribute('data-disabled', resumeDisabled ? 'true' : 'false');
+    if (stopPill) {
+      stopPill.setAttribute('data-disabled', stopDisabled ? 'true' : 'false');
+      stopPill.setAttribute('title', `${t.emergencyStop} (${this.proceedingDialogsCount})`);
+      applyRunControlRefreshAttrs(stopPill);
+    }
+    if (resumePill) {
+      resumePill.setAttribute('data-disabled', resumeDisabled ? 'true' : 'false');
+      resumePill.setAttribute('title', `${t.resumeAll} (${this.resumableDialogsCount})`);
+      applyRunControlRefreshAttrs(resumePill);
+    }
     this.updateContextHealthUi();
   }
 
@@ -1835,11 +1866,13 @@ export class DomindsApp extends HTMLElement {
         background: color-mix(in srgb, #22c55e 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 22%, var(--dominds-border, #e0e0e0));
         opacity: 0.6;
+        cursor: not-allowed;
       }
 
       #toolbar-emergency-stop-pill:not([data-disabled='true']) {
         background: color-mix(in srgb, #22c55e 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 65%, var(--dominds-border, #e0e0e0));
+        cursor: pointer;
       }
 
       #toolbar-emergency-stop-pill:hover:not([data-disabled='true']) {
@@ -1850,11 +1883,13 @@ export class DomindsApp extends HTMLElement {
         background: color-mix(in srgb, #ef4444 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 22%, var(--dominds-border, #e0e0e0));
         opacity: 0.6;
+        cursor: not-allowed;
       }
 
       #toolbar-resume-all-pill:not([data-disabled='true']) {
         background: color-mix(in srgb, #ef4444 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 65%, var(--dominds-border, #e0e0e0));
+        cursor: pointer;
       }
 
       #toolbar-resume-all-pill:hover:not([data-disabled='true']) {
@@ -3701,13 +3736,13 @@ export class DomindsApp extends HTMLElement {
                   <button type="button" class="header-run-pill-icon" id="toolbar-emergency-stop" aria-label="${t.emergencyStop} (${String(this.proceedingDialogsCount)})" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
                   </button>
-                  <span class="header-run-pill-count" id="toolbar-emergency-stop-count" aria-hidden="true">${String(this.proceedingDialogsCount)}</span>
+                  <span class="header-run-pill-count" id="toolbar-emergency-stop-count" data-testid="toolbar.proceeding_count" aria-hidden="true">${String(this.proceedingDialogsCount)}</span>
                 </div>
                 <div class="header-run-pill success" id="toolbar-resume-all-pill" data-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}" title="${t.resumeAll}">
                   <button type="button" class="header-run-pill-icon" id="toolbar-resume-all" aria-label="${t.resumeAll} (${String(this.resumableDialogsCount)})" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 3v18l17-9z"></path></svg>
                   </button>
-                  <span class="header-run-pill-count" id="toolbar-resume-all-count" aria-hidden="true">${String(this.resumableDialogsCount)}</span>
+                  <span class="header-run-pill-count" id="toolbar-resume-all-count" data-testid="toolbar.resumable_count" aria-hidden="true">${String(this.resumableDialogsCount)}</span>
                 </div>
               </div>
 		            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
@@ -4423,27 +4458,32 @@ export class DomindsApp extends HTMLElement {
       }
 
       // Global run controls
-      const emergencyStop = target.closest('#toolbar-emergency-stop') as HTMLButtonElement | null;
-      if (emergencyStop) {
-        // Intentional UX: the emergency-stop pill also represents the count of proceeding dialogs.
-        // Only clicks on the icon button are treated as an emergency-stop action to avoid accidental stops
-        // when users click the count area.
-        if (!emergencyStop.disabled && this.proceedingDialogsCount > 0) {
-          const ok = window.confirm(
-            `${getUiStrings(this.uiLanguage).emergencyStop} (${this.proceedingDialogsCount})?`,
-          );
-          if (ok) {
-            this.wsManager.sendRaw({ type: 'emergency_stop' });
-          }
+      const emergencyStopPill = target.closest(
+        '#toolbar-emergency-stop-pill',
+      ) as HTMLElement | null;
+      if (emergencyStopPill) {
+        const t = getUiStrings(this.uiLanguage);
+        if (this.proceedingDialogsCount <= 0) {
+          this.showToast(t.emergencyStopNoProceedingToast, 'warning');
+          return;
+        }
+
+        const ok = window.confirm(`${t.emergencyStop} (${this.proceedingDialogsCount})?`);
+        if (ok) {
+          this.wsManager.sendRaw({ type: 'emergency_stop' });
         }
         return;
       }
 
-      const resumeAll = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
-      if (resumeAll) {
-        if (!resumeAll.disabled && this.resumableDialogsCount > 0) {
-          this.wsManager.sendRaw({ type: 'resume_all' });
+      const resumeAllPill = target.closest('#toolbar-resume-all-pill') as HTMLElement | null;
+      if (resumeAllPill) {
+        const t = getUiStrings(this.uiLanguage);
+        if (this.resumableDialogsCount <= 0) {
+          this.showToast(t.resumeAllNoResumableToast, 'warning');
+          return;
         }
+
+        this.wsManager.sendRaw({ type: 'resume_all' });
         return;
       }
     });
@@ -4466,13 +4506,14 @@ export class DomindsApp extends HTMLElement {
     });
   }
 
-  private scheduleRunControlRefresh(reason: RunControlRefreshReason): void {
+  private scheduleRunControlRefresh(reason: RunControlRefreshReason): boolean {
     // This addresses a known flake where resumable count can remain stale even after dialogs resume.
     // Refreshing from the authoritative persisted index (GET /api/dialogs) makes multi-tab views converge.
     const now = Date.now();
     const last = this.runControlRefreshLastScheduledAtMsByReason.get(reason) ?? 0;
-    if (now - last < 200) return;
+    if (now - last < 200) return false;
     this.runControlRefreshLastScheduledAtMsByReason.set(reason, now);
+    this.lastRunControlRefreshScheduledAtMs = now;
 
     const delaysMs = (() => {
       switch (reason) {
@@ -4489,10 +4530,12 @@ export class DomindsApp extends HTMLElement {
     })();
     for (const delay of delaysMs) {
       const t = setTimeout(() => {
-        void this.loadDialogs();
+        void this.loadDialogs({ preserveCachedRunStates: false });
       }, delay);
       this.runControlRefreshTimers.push(t);
     }
+
+    return true;
   }
 
   /**
@@ -5617,12 +5660,13 @@ export class DomindsApp extends HTMLElement {
     setTimeout(() => input?.focus(), 0);
   }
 
-  private async loadDialogs(): Promise<void> {
+  private async loadDialogs(options?: { preserveCachedRunStates?: boolean }): Promise<void> {
     try {
       const api = getApiClient();
       const resp = await api.getRootDialogs();
 
       if (resp.success && Array.isArray(resp.data)) {
+        const preserveCachedRunStates = options?.preserveCachedRunStates !== false;
         // Store root dialogs with their subdialog counts
         // Subdialogs will be loaded lazily when user expands a root dialog
         const previousRunStates = new Map(this.dialogRunStatesByKey);
@@ -5631,7 +5675,7 @@ export class DomindsApp extends HTMLElement {
           const effectiveSelfId = d.selfId ? d.selfId : d.rootId;
           const key = this.dialogKey(d.rootId, effectiveSelfId);
           const cached = previousRunStates.get(key);
-          if (!d.runState && cached) {
+          if (preserveCachedRunStates && !d.runState && cached) {
             return { ...d, runState: cached };
           }
           return d;
@@ -7174,7 +7218,11 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'run_control_refresh': {
+        this.lastRunControlRefresh = { timestamp: message.timestamp, reason: message.reason };
+        this.lastRunControlRefreshScheduledAtMs = null;
+        this.updateToolbarDisplay();
         this.scheduleRunControlRefresh(message.reason);
+        this.updateToolbarDisplay();
         return true;
       }
       case 'dlg_touched_evt': {
