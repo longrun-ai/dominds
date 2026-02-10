@@ -172,7 +172,6 @@ export class DomindsApp extends HTMLElement {
   private _connStateCancel?: () => void;
   private runControlRefreshLastScheduledAtMsByReason = new Map<RunControlRefreshReason, number>();
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
-  private subdialogHierarchyRefreshTokens = new Map<string, number>();
   private authModal: HTMLElement | null = null;
   private createDialogFlow = new CreateDialogFlowController({
     getLanguage: () => this.uiLanguage,
@@ -1361,10 +1360,16 @@ export class DomindsApp extends HTMLElement {
     ) as HTMLElement | null;
     const courseLabel = this.shadowRoot?.querySelector('#course-nav span') as HTMLElement | null;
     const stopCount = this.shadowRoot?.querySelector(
-      '#toolbar-emergency-stop span',
+      '#toolbar-emergency-stop-count',
     ) as HTMLElement | null;
     const resumeCount = this.shadowRoot?.querySelector(
-      '#toolbar-resume-all span',
+      '#toolbar-resume-all-count',
+    ) as HTMLElement | null;
+    const stopPill = this.shadowRoot?.querySelector(
+      '#toolbar-emergency-stop-pill',
+    ) as HTMLElement | null;
+    const resumePill = this.shadowRoot?.querySelector(
+      '#toolbar-resume-all-pill',
     ) as HTMLElement | null;
     const stopBtn = this.shadowRoot?.querySelector(
       '#toolbar-emergency-stop',
@@ -1379,8 +1384,24 @@ export class DomindsApp extends HTMLElement {
     if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
     if (stopCount) stopCount.textContent = String(this.proceedingDialogsCount);
     if (resumeCount) resumeCount.textContent = String(this.resumableDialogsCount);
-    if (stopBtn) stopBtn.disabled = this.proceedingDialogsCount === 0;
-    if (resumeBtn) resumeBtn.disabled = this.resumableDialogsCount === 0;
+    const stopDisabled = this.proceedingDialogsCount === 0;
+    const resumeDisabled = this.resumableDialogsCount === 0;
+    if (stopBtn) {
+      stopBtn.disabled = stopDisabled;
+      stopBtn.setAttribute(
+        'aria-label',
+        `${getUiStrings(this.uiLanguage).emergencyStop} (${this.proceedingDialogsCount})`,
+      );
+    }
+    if (resumeBtn) {
+      resumeBtn.disabled = resumeDisabled;
+      resumeBtn.setAttribute(
+        'aria-label',
+        `${getUiStrings(this.uiLanguage).resumeAll} (${this.resumableDialogsCount})`,
+      );
+    }
+    if (stopPill) stopPill.setAttribute('data-disabled', stopDisabled ? 'true' : 'false');
+    if (resumePill) resumePill.setAttribute('data-disabled', resumeDisabled ? 'true' : 'false');
     this.updateContextHealthUi();
   }
 
@@ -1741,6 +1762,55 @@ export class DomindsApp extends HTMLElement {
         cursor: not-allowed;
       }
 
+      .header-run-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 500;
+        user-select: none;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        cursor: default;
+        transition: all 0.2s ease;
+      }
+
+      .header-run-pill.danger {
+        color: var(--dominds-danger, #721c24);
+      }
+
+      .header-run-pill.success {
+        color: var(--dominds-success, #155724);
+      }
+
+      .header-run-pill-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px;
+        margin: -2px;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .header-run-pill-icon:focus-visible {
+        outline: 2px solid var(--dominds-primary, #007acc);
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      .header-run-pill-icon:disabled {
+        cursor: not-allowed;
+      }
+
+      .header-run-pill-count {
+        color: var(--dominds-fg, #333333);
+        cursor: default;
+      }
+
       .header-pill-button.danger {
         background: var(--dominds-danger-bg, #f8d7da);
         color: var(--dominds-danger, #721c24);
@@ -1761,49 +1831,33 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-success, #28a745);
       }
 
-      #toolbar-emergency-stop:disabled {
+      #toolbar-emergency-stop-pill[data-disabled='true'] {
         background: color-mix(in srgb, #22c55e 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 22%, var(--dominds-border, #e0e0e0));
+        opacity: 0.6;
       }
 
-      #toolbar-emergency-stop:not(:disabled) {
+      #toolbar-emergency-stop-pill:not([data-disabled='true']) {
         background: color-mix(in srgb, #22c55e 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 65%, var(--dominds-border, #e0e0e0));
-        cursor: default;
       }
 
-      #toolbar-emergency-stop span {
-        color: var(--dominds-fg, #333333);
-      }
-
-      #toolbar-emergency-stop:not(:disabled) svg {
-        cursor: pointer;
-      }
-
-      #toolbar-emergency-stop:hover:not(:disabled) {
+      #toolbar-emergency-stop-pill:hover:not([data-disabled='true']) {
         border-color: color-mix(in srgb, #22c55e 80%, var(--dominds-border, #e0e0e0));
       }
 
-      #toolbar-resume-all:disabled {
+      #toolbar-resume-all-pill[data-disabled='true'] {
         background: color-mix(in srgb, #ef4444 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 22%, var(--dominds-border, #e0e0e0));
+        opacity: 0.6;
       }
 
-      #toolbar-resume-all:not(:disabled) {
+      #toolbar-resume-all-pill:not([data-disabled='true']) {
         background: color-mix(in srgb, #ef4444 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 65%, var(--dominds-border, #e0e0e0));
-        cursor: default;
       }
 
-      #toolbar-resume-all span {
-        color: var(--dominds-fg, #333333);
-      }
-
-      #toolbar-resume-all:not(:disabled) svg {
-        cursor: pointer;
-      }
-
-      #toolbar-resume-all:hover:not(:disabled) {
+      #toolbar-resume-all-pill:hover:not([data-disabled='true']) {
         border-color: color-mix(in srgb, #ef4444 80%, var(--dominds-border, #e0e0e0));
       }
 
@@ -3642,16 +3696,20 @@ export class DomindsApp extends HTMLElement {
 	            📁 ${this.backendRtws || t.backendWorkspaceLoading}
 	          </div>
 	          <div class="header-actions">
-            <div class="header-run-controls">
-              <button class="header-pill-button danger" id="toolbar-emergency-stop" title="${t.emergencyStop}" aria-label="${t.emergencyStop}" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-                <span>${String(this.proceedingDialogsCount)}</span>
-              </button>
-              <button class="header-pill-button success" id="toolbar-resume-all" title="${t.resumeAll}" aria-label="${t.resumeAll}" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 3v18l17-9z"></path></svg>
-                <span>${String(this.resumableDialogsCount)}</span>
-              </button>
-            </div>
+              <div class="header-run-controls">
+                <div class="header-run-pill danger" id="toolbar-emergency-stop-pill" data-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}" title="${t.emergencyStop}">
+                  <button type="button" class="header-run-pill-icon" id="toolbar-emergency-stop" aria-label="${t.emergencyStop} (${String(this.proceedingDialogsCount)})" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+                  </button>
+                  <span class="header-run-pill-count" id="toolbar-emergency-stop-count" aria-hidden="true">${String(this.proceedingDialogsCount)}</span>
+                </div>
+                <div class="header-run-pill success" id="toolbar-resume-all-pill" data-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}" title="${t.resumeAll}">
+                  <button type="button" class="header-run-pill-icon" id="toolbar-resume-all" aria-label="${t.resumeAll} (${String(this.resumableDialogsCount)})" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 3v18l17-9z"></path></svg>
+                  </button>
+                  <span class="header-run-pill-count" id="toolbar-resume-all-count" aria-hidden="true">${String(this.resumableDialogsCount)}</span>
+                </div>
+              </div>
 		            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
 		              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
 		              <span>${String(this.problems.length)}</span>
@@ -4368,12 +4426,9 @@ export class DomindsApp extends HTMLElement {
       const emergencyStop = target.closest('#toolbar-emergency-stop') as HTMLButtonElement | null;
       if (emergencyStop) {
         // Intentional UX: the emergency-stop pill also represents the count of proceeding dialogs.
-        // Only clicks on the icon are treated as an emergency-stop action to avoid accidental stops
+        // Only clicks on the icon button are treated as an emergency-stop action to avoid accidental stops
         // when users click the count area.
-        const emergencyStopIcon = target.closest('#toolbar-emergency-stop svg');
-        if (!emergencyStopIcon) return;
-
-        if (this.proceedingDialogsCount > 0) {
+        if (!emergencyStop.disabled && this.proceedingDialogsCount > 0) {
           const ok = window.confirm(
             `${getUiStrings(this.uiLanguage).emergencyStop} (${this.proceedingDialogsCount})?`,
           );
@@ -4386,10 +4441,7 @@ export class DomindsApp extends HTMLElement {
 
       const resumeAll = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
       if (resumeAll) {
-        const resumeAllIcon = target.closest('#toolbar-resume-all svg');
-        if (!resumeAllIcon) return;
-
-        if (this.resumableDialogsCount > 0) {
+        if (!resumeAll.disabled && this.resumableDialogsCount > 0) {
           this.wsManager.sendRaw({ type: 'resume_all' });
         }
         return;
@@ -7125,6 +7177,13 @@ export class DomindsApp extends HTMLElement {
         this.scheduleRunControlRefresh(message.reason);
         return true;
       }
+      case 'dlg_touched_evt': {
+        this.bumpDialogLastModified(
+          { rootId: message.dialog.rootId, selfId: message.dialog.selfId },
+          message.timestamp,
+        );
+        return true;
+      }
       default: {
         // Check if message has dialog context (TypedDialogEvent)
         if ('dialog' in message && message.dialog && typeof message.dialog === 'object') {
@@ -7197,103 +7256,62 @@ export class DomindsApp extends HTMLElement {
 
         case 'subdialog_created_evt': {
           const subdialogEvent = message as SubdialogEvent;
-          // Handle subdialog creation events
-          const rootId = subdialogEvent.subDialog.rootId || subdialogEvent.parentDialog.rootId;
-          const selfId = subdialogEvent.subDialog.selfId;
-
-          if (!rootId) {
-            // CRITICAL ERROR: Missing rootId in subdialog event - cannot identify dialog to update
+          const node = subdialogEvent.subDialogNode;
+          if (!node) {
             throw new Error(
-              `CRITICAL: subdialog_created event missing rootId. SubDialog: ${JSON.stringify(subdialogEvent.subDialog)}, ParentDialog: ${JSON.stringify(subdialogEvent.parentDialog)}`,
+              `CRITICAL: subdialog_created event missing subDialogNode. rootId=${subdialogEvent.subDialog.rootId} selfId=${subdialogEvent.subDialog.selfId}`,
             );
           }
 
-          const refreshToken = (this.subdialogHierarchyRefreshTokens.get(rootId) || 0) + 1;
-          this.subdialogHierarchyRefreshTokens.set(rootId, refreshToken);
-          try {
-            const resp = await this.apiClient.getDialogHierarchy(rootId);
-            if (this.subdialogHierarchyRefreshTokens.get(rootId) !== refreshToken) {
-              console.warn(
-                `Skipping stale dialog hierarchy response for root ${rootId} (token ${refreshToken})`,
-              );
-              break;
-            }
-            if (resp.success && resp.data) {
-              // resp.data is ApiDialogHierarchyResponse['hierarchy'] which is {root, subdialogs}
-              const h = resp.data;
-              const root = h.root;
-              const subs = Array.isArray(h.subdialogs) ? h.subdialogs : [];
-              // Rebuild entries for this root
-              const entries: ApiRootDialogResponse[] = [];
-              entries.push({
-                rootId: root.id,
-                agentId: root.agentId,
-                taskDocPath: root.taskDocPath,
-                status: root.status,
-                currentCourse: root.currentCourse,
-                createdAt: root.createdAt,
-                lastModified: root.lastModified,
-                runState:
-                  root.runState ?? this.dialogRunStatesByKey.get(this.dialogKey(root.id, root.id)),
-              });
-              const rootRunState =
-                root.runState ?? this.dialogRunStatesByKey.get(this.dialogKey(root.id, root.id));
-              if (rootRunState) {
-                this.dialogRunStatesByKey.set(this.dialogKey(root.id, root.id), rootRunState);
-              }
-              for (const sd of subs) {
-                const sdCachedRunState = this.dialogRunStatesByKey.get(
-                  this.dialogKey(root.id, sd.selfId),
-                );
-                const sdEffectiveRunState = sd.runState ?? sdCachedRunState;
-                entries.push({
-                  rootId: root.id, // Subdialogs belong to the supdialog's root for proper path resolution
-                  selfId: sd.selfId, // Subdialog's own unique identifier
-                  agentId: sd.agentId,
-                  taskDocPath: sd.taskDocPath,
-                  status: sd.status,
-                  currentCourse: sd.currentCourse,
-                  createdAt: sd.createdAt,
-                  lastModified: sd.lastModified,
-                  runState: sdEffectiveRunState,
-                  supdialogId: sd.supdialogId ?? root.id,
-                  tellaskSession: sd.tellaskSession,
-                  assignmentFromSup: sd.assignmentFromSup,
-                });
-                if (sdEffectiveRunState) {
-                  this.dialogRunStatesByKey.set(
-                    this.dialogKey(root.id, sd.selfId),
-                    sdEffectiveRunState,
-                  );
-                }
-              }
-              // Merge into existing dialogs: replace any entries under this root
-              this.dialogs = this.dialogs.filter((d) => d.rootId !== root.id);
-              this.dialogs.push(...entries);
-              // FIXED: Use surgical update instead of full render to preserve dialog container state
-              this.updateDialogList();
-              this.bumpDialogLastModified(
-                { rootId, selfId: rootId },
-                root.lastModified || (message as TypedDialogEvent).timestamp,
-              );
-            } else {
-              // CRITICAL ERROR: Missing hierarchy data in response - cannot proceed without dialog structure
-              throw new Error(
-                `CRITICAL: subdialog_created event missing hierarchy data. RootId: ${rootId}, Response success: ${resp.success}, Has data: ${!!resp.data}`,
-              );
-            }
-          } catch (error) {
-            // CRITICAL ERROR: API call failed - cannot refresh dialog hierarchy
-            if (error instanceof Error) {
-              throw new Error(
-                `CRITICAL: Failed to get dialog hierarchy for rootId: ${rootId} - ${error.message}`,
-              );
-            } else {
-              throw new Error(
-                `CRITICAL: Failed to get dialog hierarchy for rootId: ${rootId} - Unknown error: ${error}`,
-              );
-            }
+          if (node.selfId !== subdialogEvent.subDialog.selfId) {
+            throw new Error(
+              `CRITICAL: subdialog_created event selfId mismatch. node=${node.selfId} evt=${subdialogEvent.subDialog.selfId}`,
+            );
           }
+          if (node.rootId !== subdialogEvent.subDialog.rootId) {
+            throw new Error(
+              `CRITICAL: subdialog_created event rootId mismatch. node=${node.rootId} evt=${subdialogEvent.subDialog.rootId}`,
+            );
+          }
+
+          const subdialogKey = this.dialogKey(node.rootId, node.selfId);
+          const effectiveRunState = node.runState ?? this.dialogRunStatesByKey.get(subdialogKey);
+          if (effectiveRunState) {
+            this.dialogRunStatesByKey.set(subdialogKey, effectiveRunState);
+          }
+
+          const incomingSubdialog: ApiRootDialogResponse = {
+            rootId: node.rootId,
+            selfId: node.selfId,
+            agentId: node.agentId,
+            taskDocPath: node.taskDocPath,
+            status: node.status,
+            currentCourse: node.currentCourse,
+            createdAt: node.createdAt,
+            lastModified: node.lastModified,
+            runState: effectiveRunState,
+            supdialogId: node.supdialogId,
+            tellaskSession: node.tellaskSession,
+            assignmentFromSup: node.assignmentFromSup,
+          };
+
+          let replaced = false;
+          this.dialogs = this.dialogs.map((d) => {
+            if (d.rootId === incomingSubdialog.rootId && d.selfId === incomingSubdialog.selfId) {
+              replaced = true;
+              return incomingSubdialog;
+            }
+            return d;
+          });
+          if (!replaced) {
+            this.dialogs.push(incomingSubdialog);
+          }
+
+          this.updateDialogList();
+          this.bumpDialogLastModified(
+            { rootId: node.rootId, selfId: node.selfId },
+            node.lastModified || (message as TypedDialogEvent).timestamp,
+          );
           break;
         }
 
@@ -7414,6 +7432,11 @@ export class DomindsApp extends HTMLElement {
           // Ensure list views update immediately so the entire hierarchy reflects
           // run-state changes in real-time (not just the currently selected node).
           this.updateDialogList();
+          const ts = (message as TypedDialogEvent).timestamp;
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            typeof ts === 'string' ? ts : undefined,
+          );
 
           // Forward to dialog container if this event targets it
           const dialogContainer = this.getDialogContainerForEvent(message);
@@ -7428,6 +7451,11 @@ export class DomindsApp extends HTMLElement {
           if (dialogContainer) {
             await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
           }
+          const ts = (message as TypedDialogEvent).timestamp;
+          this.bumpDialogLastModified(
+            { rootId: dialog.rootId, selfId: dialog.selfId },
+            typeof ts === 'string' ? ts : undefined,
+          );
 
           // Marker events are broadcast to all connected clients by backend run-state broadcaster.
           // Keep a delayed refresh so counters converge from persisted index even after transient hiccups.

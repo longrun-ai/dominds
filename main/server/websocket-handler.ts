@@ -18,7 +18,11 @@ import {
   setDialogRunState,
   setRunStateBroadcaster,
 } from '../dialog-run-state';
-import { dialogEventRegistry, postDialogEvent, setQ4HBroadcaster } from '../evt-registry';
+import {
+  dialogEventRegistry,
+  postDialogEvent,
+  setGlobalDialogEventBroadcaster,
+} from '../evt-registry';
 import {
   driveDialogStream,
   getActiveDriverEngine,
@@ -1540,9 +1544,11 @@ export function setupWebSocketServer(
     }
   });
 
-  // Broadcast Q4H events globally: Q4H is rtws-global state in the WebUI.
-  // Without this, a client can miss Q4H updates when it's not subscribed to the originating dialog stream.
-  setQ4HBroadcaster((evt) => {
+  // Broadcast global dialog events to all connected clients:
+  // - Q4H updates are rtws-global state in WebUI
+  // - subdialog creation must refresh hierarchy/list even when current subscription is elsewhere
+  // - dlg_touched_evt keeps dialog list timestamps/reordering in sync across clients
+  setGlobalDialogEventBroadcaster((evt) => {
     const data = JSON.stringify(evt);
     for (const ws of clients) {
       if (ws.readyState === 1) {

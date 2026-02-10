@@ -321,6 +321,7 @@ export class DiskFileDialogStore extends DialogStore {
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
+    const nowTs = formatUnifiedTimestamp(new Date());
     // For subdialogs, use the supdialog's root dialog ID as the root
     const subdialogId = new DialogID(generatedId, supdialog.id.rootId);
 
@@ -350,7 +351,7 @@ export class DiskFileDialogStore extends DialogStore {
       id: subdialogId.selfId,
       agentId: targetAgentId,
       taskDocPath: supdialog.taskDocPath,
-      createdAt: formatUnifiedTimestamp(new Date()),
+      createdAt: nowTs,
       supdialogId: supdialog.id.selfId,
       tellaskSession: options.tellaskSession,
       assignmentFromSup: {
@@ -369,7 +370,7 @@ export class DiskFileDialogStore extends DialogStore {
       kind: 'replace',
       next: {
         currentCourse: 1,
-        lastModified: formatUnifiedTimestamp(new Date()),
+        lastModified: nowTs,
         status: 'active',
         messageCount: 0,
         functionCallCount: 0,
@@ -401,6 +402,26 @@ export class DiskFileDialogStore extends DialogStore {
       targetAgentId,
       tellaskHead,
       tellaskBody,
+      subDialogNode: {
+        selfId: subdialogId.selfId,
+        rootId: subdialogId.rootId,
+        supdialogId: supdialog.id.selfId,
+        agentId: targetAgentId,
+        taskDocPath: supdialog.taskDocPath,
+        status: 'running',
+        currentCourse: 1,
+        createdAt: nowTs,
+        lastModified: nowTs,
+        runState: { kind: 'idle_waiting_user' },
+        tellaskSession: options.tellaskSession,
+        assignmentFromSup: {
+          tellaskHead,
+          tellaskBody,
+          originMemberId: options.originMemberId,
+          callerDialogId: options.callerDialogId,
+          callId: options.callId,
+        },
+      },
     };
     // Post subdialog_created_evt to PARENT's PubChan so frontend can receive it
     // The frontend subscribes to the parent's events, not the subdialog's
@@ -1263,7 +1284,7 @@ export class DiskFileDialogStore extends DialogStore {
 
       // Send each persistence event directly to the requesting WebSocket
       for (const event of persistenceEvents) {
-        await this.sendEventDirectlyToWebSocket(ws, dialog, currentCourse, event);
+        await this.sendEventDirectlyToWebSocket(ws, dialog, currentCourse, event, status);
       }
 
       // Rehydrate reminders from dialog state
@@ -1288,6 +1309,7 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     course: number,
     event: PersistedDialogRecord,
+    status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     switch (event.type) {
       case 'human_text_record': {
@@ -1897,25 +1919,79 @@ export class DiskFileDialogStore extends DialogStore {
 
       case 'quest_for_sup_record': {
         // Handle subdialog creation requests
+        const subdialogId = new DialogID(event.subDialogId, dialog.id.rootId);
+        const loadOrder: Array<'running' | 'completed' | 'archived'> = [
+          status,
+          'running',
+          'completed',
+          'archived',
+        ].filter(
+          (candidate, index, arr): candidate is 'running' | 'completed' | 'archived' =>
+            arr.indexOf(candidate) === index,
+        );
+
+        let foundStatus: 'running' | 'completed' | 'archived' | null = null;
+        let subMeta: SubdialogMetadataFile | null = null;
+        let subLatest: DialogLatestFile | null = null;
+        for (const candidateStatus of loadOrder) {
+          const candidateMeta = await DialogPersistence.loadDialogMetadata(
+            subdialogId,
+            candidateStatus,
+          );
+          if (!candidateMeta || !isSubdialogMetadataFile(candidateMeta)) continue;
+          foundStatus = candidateStatus;
+          subMeta = candidateMeta;
+          subLatest = await DialogPersistence.loadDialogLatest(subdialogId, candidateStatus);
+          break;
+        }
+
+        if (!foundStatus || !subMeta) {
+          throw new Error(
+            `subdialog_created_evt replay invariant violation: metadata missing for ${subdialogId.valueOf()}`,
+          );
+        }
+
+        const derivedSupdialogId =
+          subMeta.assignmentFromSup?.callerDialogId &&
+          subMeta.assignmentFromSup.callerDialogId.trim() !== ''
+            ? subMeta.assignmentFromSup.callerDialogId
+            : typeof subMeta.supdialogId === 'string' && subMeta.supdialogId.trim() !== ''
+              ? subMeta.supdialogId
+              : dialog.id.selfId;
+
         const subdialogCreatedEvent = {
           type: 'subdialog_created_evt',
           course,
           dialog: {
             // Add dialog field for proper event routing
-            selfId: event.subDialogId,
-            rootId: dialog.id.rootId,
+            selfId: subdialogId.selfId,
+            rootId: subdialogId.rootId,
           },
           parentDialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
           },
           subDialog: {
-            selfId: event.subDialogId,
-            rootId: dialog.id.rootId, // Use parent's rootId for subdialog's rootId
+            selfId: subdialogId.selfId,
+            rootId: subdialogId.rootId,
           },
-          targetAgentId: 'unknown', // Will be resolved during actual subdialog creation
+          targetAgentId: subMeta.agentId,
           tellaskHead: event.tellaskHead,
           tellaskBody: event.tellaskBody,
+          subDialogNode: {
+            selfId: subMeta.id,
+            rootId: subdialogId.rootId,
+            supdialogId: derivedSupdialogId,
+            agentId: subMeta.agentId,
+            taskDocPath: subMeta.taskDocPath,
+            status: foundStatus,
+            currentCourse: subLatest?.currentCourse || 1,
+            createdAt: subMeta.createdAt,
+            lastModified: subLatest?.lastModified || subMeta.createdAt,
+            runState: subLatest?.runState,
+            tellaskSession: subMeta.tellaskSession,
+            assignmentFromSup: subMeta.assignmentFromSup,
+          },
           timestamp: event.ts,
         };
 

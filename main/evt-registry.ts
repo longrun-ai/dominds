@@ -24,23 +24,48 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
   private pubChans: Map<string, PubChan<TypedDialogEvent>> = new Map();
   private readonly log = createLogger('evt-registry');
 
-  // Q4H (Questions for Human) is globally visible in the WebUI.
-  // These events must reach ALL connected clients, not only those subscribed to a specific dialog stream.
-  private q4hBroadcaster: ((evt: TypedDialogEvent) => void) | null = null;
+  // Some dialog events are global UI state updates. They must reach ALL connected clients,
+  // not only those subscribed to a specific dialog stream.
+  private globalDialogEventBroadcaster: ((evt: TypedDialogEvent) => void) | null = null;
 
-  setQ4HBroadcaster(fn: ((evt: TypedDialogEvent) => void) | null): void {
-    this.q4hBroadcaster = fn;
+  setGlobalDialogEventBroadcaster(fn: ((evt: TypedDialogEvent) => void) | null): void {
+    this.globalDialogEventBroadcaster = fn;
   }
 
-  private dispatchQ4HGloballyIfNeeded(evt: TypedDialogEvent): boolean {
-    // Q4H MUST be global-only: emit to all clients via broadcaster and do not
-    // also write into dialog-scoped stream, otherwise subscribed clients will
-    // receive duplicate deliveries via two independent paths.
-    if (evt.type !== 'new_q4h_asked' && evt.type !== 'q4h_answered') return false;
-    const fn = this.q4hBroadcaster;
+  private broadcastGlobalEvent(evt: TypedDialogEvent): void {
+    const fn = this.globalDialogEventBroadcaster;
+    if (!fn) return;
+    fn(evt);
+  }
+
+  private emitDialogTouched(source: TypedDialogEvent): void {
+    if (source.type === 'dlg_touched_evt') return;
+    const touchedEvt: TypedDialogEvent = {
+      dialog: source.dialog,
+      timestamp: source.timestamp,
+      type: 'dlg_touched_evt',
+      sourceType: source.type,
+    };
+    this.broadcastGlobalEvent(touchedEvt);
+  }
+
+  private dispatchGloballyIfNeeded(evt: TypedDialogEvent): boolean {
+    // Global-only delivery prevents duplicate deliveries from two independent paths
+    // (global broadcaster + dialog-scoped stream).
+    switch (evt.type) {
+      case 'new_q4h_asked':
+      case 'q4h_answered':
+      case 'subdialog_created_evt':
+      case 'dlg_touched_evt':
+        break;
+      default:
+        return false;
+    }
+
+    const fn = this.globalDialogEventBroadcaster;
     if (!fn) {
       throw new Error(
-        `Q4H broadcaster missing: cannot publish ${evt.type} for dialog=${evt.dialog.selfId}`,
+        `Global dialog event broadcaster missing: cannot publish ${evt.type} for dialog=${evt.dialog.selfId}`,
       );
     }
     fn(evt);
@@ -93,7 +118,8 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
    */
   postEvent(dlg: Dialog, event: DialogEvent): void {
     const typedEvent = this.createTypedEvent(dlg.id, event);
-    if (this.dispatchQ4HGloballyIfNeeded(typedEvent)) {
+    this.emitDialogTouched(typedEvent);
+    if (this.dispatchGloballyIfNeeded(typedEvent)) {
       return;
     }
     const chan = this.getPubChan(dlg.id);
@@ -102,7 +128,8 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
 
   postEventById(dialogId: DialogID, event: DialogEvent): void {
     const typedEvent = this.createTypedEvent(dialogId, event);
-    if (this.dispatchQ4HGloballyIfNeeded(typedEvent)) {
+    this.emitDialogTouched(typedEvent);
+    if (this.dispatchGloballyIfNeeded(typedEvent)) {
       return;
     }
     const chan = this.getPubChan(dialogId);
@@ -133,8 +160,15 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
 // Export singleton instance
 export const dialogEventRegistry = new DialogEventRegistryImpl();
 
+export function setGlobalDialogEventBroadcaster(
+  fn: ((evt: TypedDialogEvent) => void) | null,
+): void {
+  dialogEventRegistry.setGlobalDialogEventBroadcaster(fn);
+}
+
+// Backward-compatible alias used by existing tests/callers.
 export function setQ4HBroadcaster(fn: ((evt: TypedDialogEvent) => void) | null): void {
-  dialogEventRegistry.setQ4HBroadcaster(fn);
+  setGlobalDialogEventBroadcaster(fn);
 }
 
 // Export helper function to import in other modules

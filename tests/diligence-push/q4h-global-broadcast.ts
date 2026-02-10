@@ -52,20 +52,92 @@ async function main(): Promise<void> {
       selfId: dlgId.selfId,
     });
 
-    if (received.length !== 2) {
-      throw new Error(`Expected 2 broadcast Q4H events, got ${received.length}`);
+    postDialogEvent(dlg, {
+      type: 'subdialog_created_evt',
+      course: 1,
+      parentDialog: {
+        selfId: dlgId.selfId,
+        rootId: dlgId.rootId,
+      },
+      subDialog: {
+        selfId: 'sub-1',
+        rootId: dlgId.rootId,
+      },
+      targetAgentId: 'coder',
+      tellaskHead: '@coder',
+      tellaskBody: 'Please investigate.',
+      subDialogNode: {
+        selfId: 'sub-1',
+        rootId: dlgId.rootId,
+        supdialogId: dlgId.selfId,
+        agentId: 'coder',
+        taskDocPath: 'task.md',
+        status: 'running',
+        currentCourse: 1,
+        createdAt: '2026-01-29 00:00:01',
+        lastModified: '2026-01-29 00:00:01',
+        runState: { kind: 'idle_waiting_user' },
+        tellaskSession: 'sess-1',
+        assignmentFromSup: {
+          tellaskHead: '@coder',
+          tellaskBody: 'Please investigate.',
+          originMemberId: 'tester',
+          callerDialogId: dlgId.selfId,
+          callId: 'call-1',
+        },
+      },
+    });
+
+    const q4hAskedEvents = received.filter((evt) => evt.type === 'new_q4h_asked');
+    const q4hAnsweredEvents = received.filter((evt) => evt.type === 'q4h_answered');
+    const subdialogCreatedEvents = received.filter((evt) => evt.type === 'subdialog_created_evt');
+    const touchedEvents = received.filter((evt) => evt.type === 'dlg_touched_evt');
+
+    if (q4hAskedEvents.length !== 1) {
+      throw new Error(`Expected 1 new_q4h_asked event, got ${q4hAskedEvents.length}`);
     }
-    if (received[0].type !== 'new_q4h_asked') {
-      throw new Error(`Expected first event new_q4h_asked, got ${received[0].type}`);
+    if (q4hAnsweredEvents.length !== 1) {
+      throw new Error(`Expected 1 q4h_answered event, got ${q4hAnsweredEvents.length}`);
     }
-    if (received[1].type !== 'q4h_answered') {
-      throw new Error(`Expected second event q4h_answered, got ${received[1].type}`);
+    if (subdialogCreatedEvents.length !== 1) {
+      throw new Error(
+        `Expected 1 subdialog_created_evt event, got ${subdialogCreatedEvents.length}`,
+      );
     }
-    if (received[0].dialog.selfId !== dlgId.selfId || received[0].dialog.rootId !== dlgId.rootId) {
-      throw new Error('Expected typed dialog context on broadcast event');
+    if (touchedEvents.length !== 4) {
+      throw new Error(`Expected 4 dlg_touched_evt events, got ${touchedEvents.length}`);
     }
 
-    console.log('q4h global broadcast: PASS');
+    const asked = q4hAskedEvents[0]!;
+    const subCreated = subdialogCreatedEvents[0]!;
+    if (asked.dialog.selfId !== dlgId.selfId || asked.dialog.rootId !== dlgId.rootId) {
+      throw new Error('Expected typed dialog context on new_q4h_asked broadcast');
+    }
+    if (subCreated.dialog.selfId !== dlgId.selfId || subCreated.dialog.rootId !== dlgId.rootId) {
+      throw new Error('Expected typed dialog context on subdialog_created_evt broadcast');
+    }
+
+    const touchedSourceTypes = new Set(
+      touchedEvents.map((evt) => (evt.type === 'dlg_touched_evt' ? evt.sourceType : 'unexpected')),
+    );
+    const expectedTouchedSources = new Set([
+      'dlg_run_state_evt',
+      'new_q4h_asked',
+      'q4h_answered',
+      'subdialog_created_evt',
+    ]);
+    if (touchedSourceTypes.size !== expectedTouchedSources.size) {
+      throw new Error(
+        `Unexpected dlg_touched_evt sourceType set size: got ${touchedSourceTypes.size}, expected ${expectedTouchedSources.size}`,
+      );
+    }
+    for (const sourceType of expectedTouchedSources) {
+      if (!touchedSourceTypes.has(sourceType)) {
+        throw new Error(`Missing dlg_touched_evt sourceType: ${sourceType}`);
+      }
+    }
+
+    console.log('global dialog event broadcast: PASS');
   } finally {
     setQ4HBroadcaster(null);
     process.chdir(originalCwd);
@@ -74,6 +146,6 @@ async function main(): Promise<void> {
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`q4h global broadcast: FAIL\n${message}`);
+  console.error(`global dialog event broadcast: FAIL\n${message}`);
   process.exit(1);
 });

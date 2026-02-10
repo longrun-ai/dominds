@@ -17,6 +17,11 @@ export interface DialogRunStateEvent {
   runState: DialogRunState;
 }
 
+export interface DialogTouchedEvent {
+  type: 'dlg_touched_evt';
+  sourceType: string;
+}
+
 export interface DiligenceBudgetEvent {
   type: 'diligence_budget_evt';
   maxInjectCount: number;
@@ -45,6 +50,26 @@ export interface SubdialogEvent extends DialogEventBase {
   targetAgentId: string;
   tellaskHead: string;
   tellaskBody: string;
+  subDialogNode: {
+    selfId: string;
+    rootId: string;
+    supdialogId: string;
+    agentId: string;
+    taskDocPath: string;
+    status: 'running' | 'completed' | 'archived';
+    currentCourse: number;
+    createdAt: string;
+    lastModified: string;
+    runState?: DialogRunState;
+    tellaskSession?: string;
+    assignmentFromSup?: {
+      tellaskHead: string;
+      tellaskBody: string;
+      originMemberId: string;
+      callerDialogId: string;
+      callId: string;
+    };
+  };
   genseq?: number;
 }
 
@@ -276,6 +301,7 @@ export type TypedDialogEvent = DialogEvent & DialogEventBase;
 
 // Union type for all dialog events
 export type DialogEvent =
+  | DialogTouchedEvent
   // Generation lifecycle
   | GeneratingStartEvent
   | GeneratingFinishEvent
