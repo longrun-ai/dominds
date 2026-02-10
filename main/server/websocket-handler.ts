@@ -46,6 +46,7 @@ import type {
   RefillDiligencePushBudgetRequest,
   ResumeAllRequest,
   ResumeDialogRequest,
+  RunControlRefreshMessage,
   SetDiligencePushRequest,
   WebSocketMessage,
 } from '../shared/types';
@@ -88,6 +89,15 @@ const wsSub = new WeakMap<WebSocket, { dialogKey: string; subChan: SubChan<Dialo
 const wsUiLanguage = new WeakMap<WebSocket, LanguageCode>();
 
 let broadcastDialogsIndexMessage: ((msg: WebSocketMessage) => void) | null = null;
+let broadcastRunControlRefreshMessage: ((msg: RunControlRefreshMessage) => void) | null = null;
+
+function emitRunControlRefresh(reason: RunControlRefreshMessage['reason']): void {
+  broadcastRunControlRefreshMessage?.({
+    type: 'run_control_refresh',
+    reason,
+    timestamp: formatUnifiedTimestamp(new Date()),
+  });
+}
 
 async function syncPendingTellaskReminderBestEffort(dialog: Dialog, where: string): Promise<void> {
   try {
@@ -1245,6 +1255,7 @@ async function handleEmergencyStop(ws: WebSocket, packet: EmergencyStopRequest):
     throw new Error('Internal error: handleEmergencyStop called with non emergency_stop packet');
   }
   await requestEmergencyStopAll();
+  emitRunControlRefresh('emergency_stop');
 }
 
 async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): Promise<void> {
@@ -1289,6 +1300,7 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
       }
     })();
   }
+  emitRunControlRefresh('resume_all');
 }
 
 /**
@@ -1433,6 +1445,16 @@ export function setupWebSocketServer(
   // Broadcast dialog index changes (create/move/delete) so other tabs refresh their lists.
   // This ensures multi-tab/multi-browser updates stay consistent without polling.
   broadcastDialogsIndexMessage = (msg: WebSocketMessage) => {
+    const data = JSON.stringify(msg);
+    for (const ws of clients) {
+      if (ws.readyState === 1) {
+        ws.send(data);
+      }
+    }
+  };
+
+  // Broadcast global run-control refresh hints so all clients converge from persisted dialog index.
+  broadcastRunControlRefreshMessage = (msg: RunControlRefreshMessage) => {
     const data = JSON.stringify(msg);
     for (const ws of clients) {
       if (ws.readyState === 1) {

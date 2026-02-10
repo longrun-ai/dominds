@@ -51,6 +51,7 @@ export type WebSocketMessage =
   | DialogsMovedMessage
   | DialogsDeletedMessage
   | DialogsCreatedMessage
+  | RunControlRefreshMessage
   | InterruptDialogRequest
   | EmergencyStopRequest
   | ResumeDialogRequest
@@ -268,6 +269,18 @@ export interface DialogsCreatedMessage {
   scope: DialogsCreatedScope;
   status: DialogStatusKind;
   createdRootIds: string[];
+  timestamp: string;
+}
+
+export type RunControlRefreshReason =
+  | 'resume_all'
+  | 'emergency_stop'
+  | 'run_state_marker_resumed'
+  | 'run_state_marker_interrupted';
+
+export interface RunControlRefreshMessage {
+  type: 'run_control_refresh';
+  reason: RunControlRefreshReason;
   timestamp: string;
 }
 

@@ -55,6 +55,7 @@ import type {
   ErrorMessage,
   ProblemsSnapshotMessage,
   Q4HStateResponse,
+  RunControlRefreshReason,
   WebSocketMessage,
   WelcomeMessage,
 } from '../shared/types/wire';
@@ -165,6 +166,7 @@ export class DomindsApp extends HTMLElement {
   private activityView: ActivityView = { kind: 'running' };
   private _wsEventCancel?: () => void;
   private _connStateCancel?: () => void;
+  private runControlRefreshLastScheduledAtMsByReason = new Map<RunControlRefreshReason, number>();
   private subdialogContainers = new Map<string, HTMLElement>(); // Map dialogId -> container element
   private subdialogHierarchyRefreshTokens = new Map<string, number>();
   private authModal: HTMLElement | null = null;
@@ -4371,7 +4373,6 @@ export class DomindsApp extends HTMLElement {
 
         if (this.resumableDialogsCount > 0) {
           this.wsManager.sendRaw({ type: 'resume_all' });
-          this.scheduleRunControlRefresh('resume_all');
         }
         return;
       }
@@ -4395,10 +4396,27 @@ export class DomindsApp extends HTMLElement {
     });
   }
 
-  private scheduleRunControlRefresh(reason: 'resume_all' | 'run_state_marker_resumed'): void {
+  private scheduleRunControlRefresh(reason: RunControlRefreshReason): void {
     // This addresses a known flake where resumable count can remain stale even after dialogs resume.
     // Refreshing from the authoritative persisted index (GET /api/dialogs) makes multi-tab views converge.
-    const delaysMs = reason === 'resume_all' ? [350, 1500, 4200] : [650, 2400];
+    const now = Date.now();
+    const last = this.runControlRefreshLastScheduledAtMsByReason.get(reason) ?? 0;
+    if (now - last < 200) return;
+    this.runControlRefreshLastScheduledAtMsByReason.set(reason, now);
+
+    const delaysMs = (() => {
+      switch (reason) {
+        case 'resume_all':
+          // Keep a later refresh because resume work is fan-out async on backend.
+          return [250, 900, 1800, 3200, 4800];
+        case 'emergency_stop':
+          return [250, 900, 1800, 3200];
+        case 'run_state_marker_interrupted':
+          return [350, 1200, 2600, 4200];
+        case 'run_state_marker_resumed':
+          return [650, 2400, 4200];
+      }
+    })();
     for (const delay of delaysMs) {
       const t = setTimeout(() => {
         void this.loadDialogs();
@@ -7071,6 +7089,10 @@ export class DomindsApp extends HTMLElement {
         void this.loadDialogs();
         return true;
       }
+      case 'run_control_refresh': {
+        this.scheduleRunControlRefresh(message.reason);
+        return true;
+      }
       default: {
         // Check if message has dialog context (TypedDialogEvent)
         if ('dialog' in message && message.dialog && typeof message.dialog === 'object') {
@@ -7375,12 +7397,12 @@ export class DomindsApp extends HTMLElement {
             await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
           }
 
-          // Best-effort convergence: marker events are broadcast to all clients.
-          // A short delayed refresh ensures resumable/proceeding counts converge even if some
-          // run-state events were missed due to transient WS hiccups.
-          const kind = (message as { kind?: unknown }).kind;
-          if (kind === 'resumed') {
+          // Marker events are broadcast to all connected clients by backend run-state broadcaster.
+          // Keep a delayed refresh so counters converge from persisted index even after transient hiccups.
+          if (message.kind === 'resumed') {
             this.scheduleRunControlRefresh('run_state_marker_resumed');
+          } else {
+            this.scheduleRunControlRefresh('run_state_marker_interrupted');
           }
           break;
         }
