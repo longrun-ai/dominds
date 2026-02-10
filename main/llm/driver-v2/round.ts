@@ -1,4 +1,4 @@
-import { SubDialog } from '../../dialog';
+import { DialogID, SubDialog } from '../../dialog';
 import { clearActiveRun, createActiveRun } from '../../dialog-run-state';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
@@ -24,13 +24,73 @@ import type {
   DriverV2RuntimeState,
 } from './types';
 
-type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: string };
+type UpNextPrompt = {
+  prompt: string;
+  msgId: string;
+  grammar?: DriverV2HumanPrompt['grammar'];
+  userLanguageCode?: string;
+};
 const defaultCriticalCountdownGenerations = 5;
 
 type DriverV2ContextHealthRoundState = {
   lastSeenLevel?: ContextHealthLevel;
   criticalCountdownRemaining?: number;
 };
+
+type PendingDiagnosticsSnapshot =
+  | {
+      kind: 'loaded';
+      ownerDialogId: string;
+      totalCount: number;
+      matchedSubdialogIds: string[];
+      records: Array<{
+        subdialogId: string;
+        callType: 'A' | 'B' | 'C';
+        targetAgentId: string;
+        tellaskSession?: string;
+        createdAt: string;
+        tellaskHeadSummary: string;
+      }>;
+    }
+  | {
+      kind: 'error';
+      ownerDialogId: string;
+      error: string;
+    };
+
+async function loadPendingDiagnosticsSnapshot(args: {
+  rootId: string;
+  ownerDialogId: string;
+  expectedSubdialogId: string;
+}): Promise<PendingDiagnosticsSnapshot> {
+  const ownerDialogIdObj = new DialogID(args.ownerDialogId, args.rootId);
+  try {
+    const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialogIdObj);
+    const matchedSubdialogIds = pending
+      .filter((record) => record.subdialogId === args.expectedSubdialogId)
+      .map((record) => record.subdialogId);
+    return {
+      kind: 'loaded',
+      ownerDialogId: args.ownerDialogId,
+      totalCount: pending.length,
+      matchedSubdialogIds,
+      records: pending.map((record) => ({
+        subdialogId: record.subdialogId,
+        callType: record.callType,
+        targetAgentId: record.targetAgentId,
+        tellaskSession: record.tellaskSession,
+        createdAt: record.createdAt,
+        tellaskHeadSummary: record.tellaskHead.trim().slice(0, 160),
+      })),
+    };
+  } catch (err) {
+    return {
+      kind: 'error',
+      ownerDialogId: args.ownerDialogId,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
 
 const contextHealthRoundStateByDialogKey: Map<string, DriverV2ContextHealthRoundState> = new Map();
 
@@ -111,7 +171,7 @@ function resolveEffectivePrompt(
   return {
     content: upNext.prompt,
     msgId: upNext.msgId,
-    grammar: 'markdown',
+    grammar: upNext.grammar ?? 'markdown',
     userLanguageCode:
       upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
         ? upNext.userLanguageCode
@@ -305,10 +365,50 @@ export async function executeDriveRound(args: {
       });
     }
 
-    if (!supplied) {
-      log.info('driver-v2 subdialog produced response but found no pending caller to supply', {
+    if (!supplied && subdialogReplyTarget) {
+      const assignment = dialog.assignmentFromSup;
+      const ownerDialogIds = Array.from(
+        new Set([subdialogReplyTarget.ownerDialogId, assignment.callerDialogId]),
+      );
+      const pendingSnapshots = await Promise.all(
+        ownerDialogIds.map(async (ownerDialogId) =>
+          loadPendingDiagnosticsSnapshot({
+            rootId: dialog.id.rootId,
+            ownerDialogId,
+            expectedSubdialogId: dialog.id.selfId,
+          }),
+        ),
+      );
+      const streamErr =
+        `Subdialog response supply invariant violation: ` +
+        `subdialog=${dialog.id.selfId} root=${dialog.id.rootId} ` +
+        `targetOwner=${subdialogReplyTarget.ownerDialogId} targetCallType=${subdialogReplyTarget.callType} targetCallId=${subdialogReplyTarget.callId} ` +
+        `assignmentCaller=${assignment.callerDialogId} assignmentCallId=${assignment.callId} ` +
+        `pendingSnapshots=${pendingSnapshots.length}`;
+      try {
+        await dialog.streamError(streamErr);
+      } catch (streamErrPost) {
+        log.warn('driver-v2 failed to emit stream_error_evt for response supply violation', {
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+          targetCallType: subdialogReplyTarget.callType,
+          targetCallId: subdialogReplyTarget.callId,
+          assignmentCallerDialogId: assignment.callerDialogId,
+          assignmentCallId: assignment.callId,
+          pendingSnapshots,
+          error: streamErrPost instanceof Error ? streamErrPost.message : String(streamErrPost),
+        });
+      }
+      log.error('driver-v2 subdialog produced response but found no pending caller to supply', {
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
+        targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+        targetCallType: subdialogReplyTarget.callType,
+        targetCallId: subdialogReplyTarget.callId,
+        assignmentCallerDialogId: assignment.callerDialogId,
+        assignmentCallId: assignment.callId,
+        pendingSnapshots,
       });
     }
   }
@@ -319,7 +419,7 @@ export async function executeDriveRound(args: {
       humanPrompt: {
         content: followUp.prompt,
         msgId: followUp.msgId,
-        grammar: 'markdown',
+        grammar: followUp.grammar ?? 'markdown',
         userLanguageCode:
           followUp.userLanguageCode === 'zh' || followUp.userLanguageCode === 'en'
             ? followUp.userLanguageCode

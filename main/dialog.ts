@@ -186,8 +186,13 @@ export abstract class Dialog {
   protected _lastUserLanguageCode: LanguageCode;
   protected _lastContextHealth?: ContextHealthSnapshot;
   protected _lastContextHealthGenseq?: number;
-  // Prompt queued for the next course drive (set by startNewCourse).
-  protected _upNext?: { prompt: string; msgId: string; userLanguageCode?: LanguageCode };
+  // Prompt queued for the next drive (set by startNewCourse or deferred-resume flows).
+  protected _upNext?: {
+    prompt: string;
+    msgId: string;
+    grammar?: UserTextGrammar;
+    userLanguageCode?: LanguageCode;
+  };
   // Course prefix messages injected into LLM context on every course.
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
   // like Agent Priming transcripts.
@@ -719,8 +724,33 @@ export abstract class Dialog {
     this._upNext = {
       prompt: trimmed,
       msgId: generateShortId(),
+      grammar: 'markdown',
       userLanguageCode: this._lastUserLanguageCode,
     };
+  }
+
+  public queueUpNextPrompt(options: {
+    prompt: string;
+    msgId: string;
+    grammar: UserTextGrammar;
+    userLanguageCode?: LanguageCode;
+  }): void {
+    if (this._upNext !== undefined) {
+      throw new Error(
+        `UpNext prompt overwrite violation: dialog=${this.id.valueOf()} existingMsgId=${this._upNext.msgId} incomingMsgId=${options.msgId}`,
+      );
+    }
+    const trimmed = options.prompt.trim();
+    if (!trimmed) {
+      throw new Error('Prompt is required to queue upNext');
+    }
+    this._upNext = {
+      prompt: trimmed,
+      msgId: options.msgId,
+      grammar: options.grammar,
+      userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+    };
+    this._updatedAt = formatUnifiedTimestamp(new Date());
   }
 
   public hasUpNext(): boolean {
@@ -728,7 +758,7 @@ export abstract class Dialog {
   }
 
   public takeUpNext():
-    | { prompt: string; msgId: string; userLanguageCode?: LanguageCode }
+    | { prompt: string; msgId: string; grammar?: UserTextGrammar; userLanguageCode?: LanguageCode }
     | undefined {
     const next = this._upNext;
     this._upNext = undefined;

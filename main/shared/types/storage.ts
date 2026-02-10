@@ -359,6 +359,13 @@ export interface HumanQuestion {
    * Some system-generated Q4H questions may not have a callId.
    */
   callId?: string;
+  /**
+   * Optional metadata for merged multi-question Q4H:
+   * when one displayed question aggregates multiple parsed tellask calls,
+   * `callId` is the primary (first) call and the remaining source callIds
+   * are carried here in parser order.
+   */
+  remainingCallIds?: string[];
   callSiteRef: {
     course: number;
     messageIndex: number;

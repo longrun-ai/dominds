@@ -55,7 +55,7 @@ import type {
   SetDiligencePushRequest,
   WebSocketMessage,
 } from '../shared/types';
-import type { DialogEvent, NewQ4HAskedEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
+import type { DialogEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
 import {
   normalizeLanguageCode,
   supportedLanguageCodes,
@@ -991,32 +991,29 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       log.warn(`Failed to send dlg_run_state_evt for ${dialogIdObj.valueOf()}:`, err);
     }
 
-    // Emit Q4H state to ensure frontend has current questions count
-    // Load Q4H from ALL running dialogs for global display (not just this dialog)
+    // Emit one Q4H snapshot to ensure frontend has current global questions state.
+    // Do NOT replay per-question `new_q4h_asked` events here: those are real-time
+    // incremental events and replaying them on display refresh can create duplicate
+    // delivery paths and blur event semantics.
     try {
       const allQuestions = await DialogPersistence.loadAllQ4HState();
-
-      // Emit new_q4h_asked events for each question (best-effort sync on dialog display).
-      // Include full dialog context (selfId/rootId/agentId/taskDocPath) so the frontend can
-      // render origin info without relying on additional lookups.
-      for (const q of allQuestions) {
-        const newQ4HEvent: NewQ4HAskedEvent = {
-          type: 'new_q4h_asked',
-          question: {
-            id: q.id,
-            selfId: q.selfId,
-            rootId: q.rootId,
-            agentId: q.agentId,
-            taskDocPath: q.taskDocPath,
-            tellaskHead: q.tellaskHead,
-            bodyContent: q.bodyContent,
-            askedAt: q.askedAt,
-            callId: q.callId,
-            callSiteRef: q.callSiteRef,
-          },
-        };
-        ws.send(JSON.stringify(newQ4HEvent));
-      }
+      const response: Q4HStateResponse = {
+        type: 'q4h_state_response',
+        questions: allQuestions.map((q) => ({
+          id: q.id,
+          selfId: q.selfId,
+          rootId: q.rootId,
+          agentId: q.agentId,
+          taskDocPath: q.taskDocPath,
+          tellaskHead: q.tellaskHead,
+          bodyContent: q.bodyContent,
+          askedAt: q.askedAt,
+          callId: q.callId,
+          remainingCallIds: q.remainingCallIds,
+          callSiteRef: q.callSiteRef,
+        })),
+      };
+      ws.send(JSON.stringify(response));
     } catch (err) {
       log.warn(`Failed to emit Q4H state for ${dialogIdObj}:`, err);
     }
@@ -1055,6 +1052,7 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       bodyContent: q.bodyContent,
       askedAt: q.askedAt,
       callId: q.callId,
+      remainingCallIds: q.remainingCallIds,
       callSiteRef: q.callSiteRef,
     }));
 
@@ -1486,6 +1484,23 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       selfId: dialogId,
     };
     postDialogEvent(dialog, answeredEvent);
+
+    const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
+    if (hasPendingSubdialogs) {
+      dialog.queueUpNextPrompt({
+        prompt: content,
+        msgId,
+        grammar: 'tellask',
+        userLanguageCode,
+      });
+      log.info('Deferred Q4H answer until pending subdialogs resolve', {
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+        questionId,
+        msgId,
+      });
+      return;
+    }
 
     // Resume the dialog with the user's answer.
     await driveDialogStream(

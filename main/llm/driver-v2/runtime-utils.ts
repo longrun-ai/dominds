@@ -192,6 +192,7 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
       bodyContent: question.bodyContent,
       askedAt: question.askedAt,
       callId: question.callId,
+      remainingCallIds: question.remainingCallIds,
       callSiteRef: question.callSiteRef,
       rootId: dlg.id.rootId,
       agentId: dlg.agentId,

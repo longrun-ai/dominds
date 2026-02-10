@@ -31,7 +31,6 @@ import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { Team } from '../../team';
 import type { CollectedTellaskCall } from '../../tellask';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
-import { generateDialogID } from '../../utils/id';
 import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';
 import type { DriverV2DriveInvoker, DriverV2DriveScheduler, DriverV2HumanPrompt } from './types';
@@ -427,6 +426,7 @@ async function executeTellaskCall(
     allowMultiTeammateTargets?: boolean;
     collectiveTargets?: string[];
     skipTellaskSessionDirectiveValidation?: boolean;
+    q4hRemainingCallIds?: string[];
   },
 ): Promise<{
   toolOutputs: ChatMessage[];
@@ -544,13 +544,28 @@ async function executeTellaskCall(
   const isQ4H = firstMention === 'human';
   if (isQ4H) {
     try {
-      const questionId = `q4h-${generateDialogID()}`;
+      const normalizedCallId = callId.trim();
+      if (normalizedCallId === '') {
+        throw new Error(
+          `Q4H call invariant violation: empty callId (rootId=${dlg.id.rootId} selfId=${dlg.id.selfId})`,
+        );
+      }
+      const questionId = `q4h-${dlg.id.rootId}-${dlg.id.selfId}-c${dlg.currentCourse}-${normalizedCallId}`;
+      const normalizedRemainingCallIds = Array.from(
+        new Set(
+          (options?.q4hRemainingCallIds ?? [])
+            .map((value) => value.trim())
+            .filter((value) => value !== '' && value !== normalizedCallId),
+        ),
+      );
       const question: HumanQuestion = {
         id: questionId,
         tellaskHead: tellaskHead.trim(),
         bodyContent: body.trim(),
         askedAt: formatUnifiedTimestamp(new Date()),
-        callId: callId.trim() === '' ? undefined : callId,
+        callId: normalizedCallId,
+        remainingCallIds:
+          normalizedRemainingCallIds.length > 0 ? normalizedRemainingCallIds : undefined,
         callSiteRef: {
           course: dlg.currentCourse,
           messageIndex: dlg.msgs.length,
@@ -568,6 +583,7 @@ async function executeTellaskCall(
           bodyContent: question.bodyContent,
           askedAt: question.askedAt,
           callId: question.callId,
+          remainingCallIds: question.remainingCallIds,
           callSiteRef: question.callSiteRef,
           rootId: dlg.id.rootId,
           agentId: dlg.agentId,
@@ -1314,19 +1330,80 @@ export async function executeTellaskCalls(args: {
       call.validation.kind === 'valid',
   );
 
-  const results = await Promise.all(
-    validCalls.map((call) =>
-      executeTellaskCall(
-        dlg,
-        agent,
-        call.validation.firstMention,
-        call.tellaskHead,
-        call.body,
-        call.callId,
-        callbacks,
-      ),
-    ),
-  );
+  type ExecutableValidCall = CollectedTellaskCall & {
+    validation: { kind: 'valid'; firstMention: string };
+    q4hRemainingCallIds?: string[];
+  };
+  const q4hCalls = validCalls.filter((call) => call.validation.firstMention === 'human');
+  const nonQ4HCalls: ExecutableValidCall[] = validCalls
+    .filter((call) => call.validation.firstMention !== 'human')
+    .map((call) => ({ ...call }));
+  let mergedQ4HCall: ExecutableValidCall | null = null;
+  if (q4hCalls.length === 1) {
+    mergedQ4HCall = { ...q4hCalls[0]! };
+  } else if (q4hCalls.length > 1) {
+    const primary = q4hCalls[0]!;
+    const remainingCallIds = q4hCalls
+      .slice(1)
+      .map((call) => call.callId.trim())
+      .filter((callId) => callId !== '');
+    const language = getWorkLanguage();
+    const intro =
+      language === 'zh'
+        ? `我这次有 ${q4hCalls.length} 个问题，想请你一次性回复：`
+        : `I have ${q4hCalls.length} questions this round. Please answer them in one response:`;
+    const mergedBody = [
+      intro,
+      ...q4hCalls.map((call, index) => {
+        const body = call.body.trim();
+        const normalizedBody =
+          body !== ''
+            ? body
+            : language === 'zh'
+              ? '请结合当前上下文补充这一项。'
+              : 'Please provide this item based on the current context.';
+        return language === 'zh'
+          ? `问题 ${index + 1}：\n${normalizedBody}`
+          : `Question ${index + 1}:\n${normalizedBody}`;
+      }),
+    ].join('\n\n');
+    mergedQ4HCall = {
+      ...primary,
+      body: mergedBody,
+      q4hRemainingCallIds: remainingCallIds.length > 0 ? remainingCallIds : undefined,
+    };
+    log.info('Q4H multi-question normalized into a single prompt', {
+      rootId: dlg.id.rootId,
+      selfId: dlg.id.selfId,
+      mergedCount: q4hCalls.length,
+      primaryCallId: primary.callId,
+      remainingCallIds,
+    });
+  }
+  const executionCalls: ExecutableValidCall[] = mergedQ4HCall
+    ? [...nonQ4HCalls, mergedQ4HCall]
+    : nonQ4HCalls;
+
+  const results: Array<{
+    toolOutputs: ChatMessage[];
+    suspend: boolean;
+    subdialogsCreated: TDialogID[];
+  }> = [];
+  for (const call of executionCalls) {
+    const result = await executeTellaskCall(
+      dlg,
+      agent,
+      call.validation.firstMention,
+      call.tellaskHead,
+      call.body,
+      call.callId,
+      callbacks,
+      {
+        q4hRemainingCallIds: call.q4hRemainingCallIds,
+      },
+    );
+    results.push(result);
+  }
 
   const suspend = results.some((result) => result.suspend);
   const toolOutputs = [...malformedToolOutputs, ...results.flatMap((result) => result.toolOutputs)];

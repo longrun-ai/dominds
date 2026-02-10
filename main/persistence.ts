@@ -3022,6 +3022,17 @@ export class DialogPersistence {
           }
         }
 
+        if (previousQuestions.length > 0) {
+          const existingIds = previousQuestions.map((q) => q.id).join(',');
+          const existingCallIds = previousQuestions
+            .map((q) => (typeof q.callId === 'string' ? q.callId.trim() : ''))
+            .filter((value) => value !== '')
+            .join(',');
+          throw new Error(
+            `Q4H multi-pending violation: dialog=${dialogId.valueOf()} status=${status} existingCount=${previousQuestions.length} existingQuestionIds=${existingIds} existingCallIds=${existingCallIds} incomingQuestionId=${questionId} incomingCallId=${normalizedCallId ?? ''}`,
+          );
+        }
+
         return { kind: 'append', question };
       },
       status,
@@ -3180,6 +3191,7 @@ export class DialogPersistence {
       bodyContent: string;
       askedAt: string;
       callId?: string;
+      remainingCallIds?: string[];
       callSiteRef: { course: number; messageIndex: number };
     }>
   > {
@@ -3196,6 +3208,7 @@ export class DialogPersistence {
         bodyContent: string;
         askedAt: string;
         callId?: string;
+        remainingCallIds?: string[];
         callSiteRef: { course: number; messageIndex: number };
       }> = [];
 

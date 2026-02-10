@@ -7374,9 +7374,9 @@ export class DomindsApp extends HTMLElement {
             this.updateInputPanelVisibility();
           }
 
-          // Q4H is global, but new_q4h_asked is delivered only via the currently subscribed dialog stream.
-          // When ANY dialog transitions into a blocked state requiring human input, refresh the global Q4H
-          // snapshot so the bottom-panel Q4H badge/panel stays correct even if we missed the event stream.
+          // Q4H is delivered via global broadcast. Keep this snapshot refresh as a
+          // recovery path for reconnect/race windows so the badge/panel can converge
+          // to persisted state even if a transient event was missed.
           if (
             typedRunState.kind === 'blocked' &&
             (typedRunState.reason.kind === 'needs_human_input' ||
@@ -7701,15 +7701,18 @@ export class DomindsApp extends HTMLElement {
   private handleNewQ4HAsked(event: NewQ4HAskedEvent): void {
     const q = event.question;
 
-    // Add to questions array (check for duplicates)
+    // Q4H IDs are unique registration identities from backend.
+    // Receiving the same ID again indicates an upstream invariant violation.
     const existingIndex = this.q4hQuestions.findIndex((eq) => eq.id === q.id);
     if (existingIndex >= 0) {
-      // Update existing question
-      this.q4hQuestions[existingIndex] = q;
-    } else {
-      // Add new question
-      this.q4hQuestions.push(q);
+      const existing = this.q4hQuestions[existingIndex]!;
+      const existingMeta = existing as HumanQuestion & { selfId?: string; callId?: string };
+      const incomingMeta = q as HumanQuestion & { selfId?: string; callId?: string };
+      throw new Error(
+        `Q4H duplicate delivery violation: questionId=${q.id} existingDialog=${existingMeta.selfId ?? ''} incomingDialog=${incomingMeta.selfId ?? ''} existingCallId=${existingMeta.callId ?? ''} incomingCallId=${incomingMeta.callId ?? ''}`,
+      );
     }
+    this.q4hQuestions.push(q);
 
     // Build dialog contexts and update component
     this.updateQ4HComponent();
@@ -7741,7 +7744,14 @@ export class DomindsApp extends HTMLElement {
     // are currently running.
     const incomingById = new Map<string, HumanQuestion>();
     for (const q of event.questions) {
-      if (!q || typeof q.id !== 'string' || q.id.trim() === '') continue;
+      if (!q || typeof q.id !== 'string' || q.id.trim() === '') {
+        throw new Error('Q4H state snapshot violation: invalid question id');
+      }
+      if (incomingById.has(q.id)) {
+        throw new Error(
+          `Q4H state snapshot violation: duplicate question id in snapshot (${q.id})`,
+        );
+      }
       incomingById.set(q.id, q);
     }
 
@@ -7750,7 +7760,12 @@ export class DomindsApp extends HTMLElement {
 
     for (const existing of this.q4hQuestions) {
       const id = typeof existing.id === 'string' ? existing.id : '';
-      if (!id || seenIds.has(id)) continue;
+      if (!id) {
+        throw new Error('Q4H client cache violation: existing question has invalid id');
+      }
+      if (seenIds.has(id)) {
+        throw new Error(`Q4H client cache violation: duplicate cached question id (${id})`);
+      }
       seenIds.add(id);
 
       const existingWithDialog = existing as { selfId?: unknown; rootId?: unknown };
@@ -7784,7 +7799,9 @@ export class DomindsApp extends HTMLElement {
     }
 
     for (const [id, q] of incomingById.entries()) {
-      if (seenIds.has(id)) continue;
+      if (seenIds.has(id)) {
+        throw new Error(`Q4H state merge violation: duplicate id during merge (${id})`);
+      }
       seenIds.add(id);
       next.push(q);
     }

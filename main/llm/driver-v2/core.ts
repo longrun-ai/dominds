@@ -98,7 +98,7 @@ function resolveUpNextPrompt(dlg: Dialog): DriverV2HumanPrompt | undefined {
   return {
     content: upNext.prompt,
     msgId: upNext.msgId,
-    grammar: 'markdown',
+    grammar: upNext.grammar ?? 'markdown',
     userLanguageCode: upNext.userLanguageCode,
   };
 }

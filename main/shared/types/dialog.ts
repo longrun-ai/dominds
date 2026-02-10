@@ -236,6 +236,7 @@ export interface NewQ4HAskedEvent {
     bodyContent: string;
     askedAt: string;
     callId?: string;
+    remainingCallIds?: string[];
     callSiteRef: {
       course: number;
       messageIndex: number;

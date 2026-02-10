@@ -32,11 +32,19 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
     this.q4hBroadcaster = fn;
   }
 
-  private broadcastIfQ4H(evt: TypedDialogEvent): void {
-    // Only broadcast Q4H events; all other dialog events remain dialog-scoped streams.
-    if (evt.type !== 'new_q4h_asked' && evt.type !== 'q4h_answered') return;
+  private dispatchQ4HGloballyIfNeeded(evt: TypedDialogEvent): boolean {
+    // Q4H MUST be global-only: emit to all clients via broadcaster and do not
+    // also write into dialog-scoped stream, otherwise subscribed clients will
+    // receive duplicate deliveries via two independent paths.
+    if (evt.type !== 'new_q4h_asked' && evt.type !== 'q4h_answered') return false;
     const fn = this.q4hBroadcaster;
-    if (fn) fn(evt);
+    if (!fn) {
+      throw new Error(
+        `Q4H broadcaster missing: cannot publish ${evt.type} for dialog=${evt.dialog.selfId}`,
+      );
+    }
+    fn(evt);
+    return true;
   }
 
   /**
@@ -85,14 +93,18 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
    */
   postEvent(dlg: Dialog, event: DialogEvent): void {
     const typedEvent = this.createTypedEvent(dlg.id, event);
-    this.broadcastIfQ4H(typedEvent);
+    if (this.dispatchQ4HGloballyIfNeeded(typedEvent)) {
+      return;
+    }
     const chan = this.getPubChan(dlg.id);
     chan.write(typedEvent);
   }
 
   postEventById(dialogId: DialogID, event: DialogEvent): void {
     const typedEvent = this.createTypedEvent(dialogId, event);
-    this.broadcastIfQ4H(typedEvent);
+    if (this.dispatchQ4HGloballyIfNeeded(typedEvent)) {
+      return;
+    }
     const chan = this.getPubChan(dialogId);
     chan.write(typedEvent);
   }
