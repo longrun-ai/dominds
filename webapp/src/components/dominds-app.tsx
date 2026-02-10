@@ -8040,8 +8040,14 @@ export class DomindsApp extends HTMLElement {
       '#dialog-container',
     ) as DomindsDialogContainer | null;
     if (dialogContainer) {
-      // Navigate to the course if needed
-      void dialogContainer.setCurrentCourse(course);
+      const current = this.currentDialog;
+      const isCurrentDialogTarget =
+        current !== null && current.selfId === dialogId && current.rootId === rootId;
+      const isCurrentCourseTarget = this.toolbarCurrentCourse === course;
+      if (!(isCurrentDialogTarget && isCurrentCourseTarget)) {
+        // Only replay history when course actually needs to change.
+        void dialogContainer.setCurrentCourse(course);
+      }
       // Scroll to call site - dispatch event for dialog container to handle
       dialogContainer.dispatchEvent(
         new CustomEvent('scroll-to-call-site', {
