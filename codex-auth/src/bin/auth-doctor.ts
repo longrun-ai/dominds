@@ -19,16 +19,22 @@ import {
   ChatGptClient,
   ChatGptEventReceiver,
   ChatGptTriggerError,
+  createChatGptContinuationRequest,
   createChatGptStartRequest,
-  type ResolvedProxyConfig,
   resolveChatGptResponsesUrl,
   resolveProxyForBaseUrl,
+  type ChatGptFunctionCallItem,
+  type ChatGptFunctionCallOutputItem,
+  type ChatGptMessageItem,
+  type ChatGptResponseItem,
   type ChatGptResponsesRequest,
   type ChatGptResponsesStreamEvent,
+  type ChatGptTool,
+  type ResolvedProxyConfig,
 } from '../llm/chatgpt.js';
-import { loadCodexPromptSync } from '../prompts.js';
 import { tryRefreshToken } from '../oauth/refresh.js';
 import { parseIdToken } from '../oauth/tokenParsing.js';
+import { loadCodexPromptSync } from '../prompts.js';
 
 interface DoctorOptions {
   codexHome?: string;
@@ -37,6 +43,7 @@ interface DoctorOptions {
   verify: boolean;
   verbose: boolean;
   probeReasoning: boolean;
+  probeFuncResult: boolean;
   model?: string;
   chatgptBaseUrl?: string;
   chatgptModel?: string;
@@ -49,6 +56,7 @@ function parseArgs(argv: string[]): DoctorOptions {
     verify: true,
     verbose: false,
     probeReasoning: false,
+    probeFuncResult: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -82,6 +90,14 @@ function parseArgs(argv: string[]): DoctorOptions {
     }
     if (arg === '--no-probe-reasoning' || arg === '--no-probe-thinking') {
       options.probeReasoning = false;
+      continue;
+    }
+    if (arg === '--probe-func-result') {
+      options.probeFuncResult = true;
+      continue;
+    }
+    if (arg === '--no-probe-func-result') {
+      options.probeFuncResult = false;
       continue;
     }
     if (arg === '--model') {
@@ -126,7 +142,7 @@ function printHelp(): void {
   console.log(`codex-auth doctor
 
 Usage:
-  codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose] [--probe-reasoning]
+  codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose] [--probe-reasoning] [--probe-func-result]
 
 Options:
   --codex-home PATH   Override CODEX_HOME
@@ -135,6 +151,8 @@ Options:
   --verbose           Dump SSE events as pretty-printed JSON (aliases: -v, -verbose)
   --probe-reasoning   Extra probe request enabling reasoning + include to check whether the
                       backend streams response.reasoning_* events (aliases: --probe-thinking)
+  --probe-func-result Extra probe to validate function_call_output can be swapped from
+                      temporary pending output to final output across turns
   --model NAME        Override ChatGPT verification model (alias for --chatgpt-model)
   --base-url URL      Alias for --chatgpt-base-url
   --chatgpt-base-url URL  Override ChatGPT base URL
@@ -190,6 +208,30 @@ interface StreamProbeResult {
   saw_any_reasoning_event?: boolean;
   event_counts?: EventCountByType;
   preflight?: FetchPreflight;
+}
+
+interface FuncResultProbeResult {
+  ok: boolean;
+  skipped?: boolean;
+  status?: number;
+  error?: string;
+  call_id?: string;
+  pending_marker?: string;
+  final_marker?: string;
+  step2_text?: string;
+  step3_text?: string;
+  pending_observed?: boolean;
+  final_observed?: boolean;
+  replacement_ok?: boolean;
+  preflights?: FetchPreflight[];
+}
+
+interface StreamCollectionResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  text: string;
+  firstAskHumanCall?: ChatGptFunctionCallItem;
 }
 
 function buildReport(codexHome: string, auth: AuthDotJson | null) {
@@ -394,7 +436,12 @@ function getEnvProxy(upper: string, lower: string): string | undefined {
 }
 
 interface FetchPreflight {
-  name: 'chatgpt_verify' | 'chatgpt_reasoning_probe';
+  name:
+    | 'chatgpt_verify'
+    | 'chatgpt_reasoning_probe'
+    | 'chatgpt_func_result_probe_round1'
+    | 'chatgpt_func_result_probe_round2_pending'
+    | 'chatgpt_func_result_probe_round3_final';
   request: {
     method: 'POST';
     url: string;
@@ -475,7 +522,12 @@ function describeResolvedProxyForLogs(resolved: ResolvedProxyConfig): Record<str
     case 'disabled':
       return { kind: resolved.kind, reason: resolved.reason };
     case 'bypassed':
-      return { kind: resolved.kind, reason: resolved.reason, host: resolved.host, no_proxy: resolved.noProxy };
+      return {
+        kind: resolved.kind,
+        reason: resolved.reason,
+        host: resolved.host,
+        no_proxy: resolved.noProxy,
+      };
     case 'unset':
       return { kind: resolved.kind, reason: resolved.reason };
     case 'invalid':
@@ -618,6 +670,90 @@ async function emitChatGptEvents(
     dataLines.push(buffer.trim());
   }
   await emit();
+}
+
+function extractAssistantOutputText(item: ChatGptMessageItem): string {
+  const chunks: string[] = [];
+  for (const contentItem of item.content) {
+    if (contentItem.type === 'output_text') {
+      chunks.push(contentItem.text);
+    }
+  }
+  return chunks.join('');
+}
+
+async function collectResponseStream(args: {
+  client: ChatGptClient;
+  req: ChatGptResponsesRequest;
+  conversationId: string;
+  options: DoctorOptions;
+}): Promise<StreamCollectionResult> {
+  const { client, req, conversationId, options } = args;
+  try {
+    const response = await client.responses(req, {
+      headers: {
+        conversation_id: conversationId,
+        session_id: conversationId,
+      },
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      return {
+        ok: false,
+        status: response.status,
+        error: summarizeErrorBody(body || response.statusText),
+        text: '',
+      };
+    }
+
+    let deltaText = '';
+    let doneText = '';
+    let firstAskHumanCall: ChatGptFunctionCallItem | undefined;
+    const receiver: ChatGptEventReceiver = {
+      onEvent: async (event: ChatGptResponsesStreamEvent) => {
+        if (options.verbose && !options.json) {
+          logChatGptEvent(event);
+        }
+        if (event.type === 'response.output_text.delta') {
+          deltaText += event.delta;
+          return;
+        }
+        if (
+          (event.type === 'response.output_item.added' ||
+            event.type === 'response.output_item.done') &&
+          event.item.type === 'function_call' &&
+          event.item.name === 'askHuman'
+        ) {
+          if (!firstAskHumanCall || firstAskHumanCall.call_id === event.item.call_id) {
+            firstAskHumanCall = event.item;
+          }
+          return;
+        }
+        if (
+          event.type === 'response.output_item.done' &&
+          event.item.type === 'message' &&
+          event.item.role === 'assistant'
+        ) {
+          doneText += extractAssistantOutputText(event.item);
+        }
+      },
+    };
+
+    await emitChatGptEvents(response, receiver);
+    const mergedText = deltaText.length > 0 ? deltaText : doneText;
+    return {
+      ok: true,
+      status: response.status,
+      text: mergedText,
+      firstAskHumanCall,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: describeError(error),
+      text: '',
+    };
+  }
 }
 
 function selectChatGptModel(
@@ -925,6 +1061,285 @@ async function probeChatGptReasoningStream(
   }
 }
 
+async function probeChatGptFuncResultReplacement(
+  options: DoctorOptions,
+  codexHome: string,
+  auth: AuthDotJson | null,
+  selection: { model: string; instructions: string } | undefined,
+): Promise<FuncResultProbeResult> {
+  if (!options.verify || !options.probeFuncResult) {
+    return { ok: false, skipped: true };
+  }
+  if (!auth) {
+    return { ok: false, error: 'auth.json missing' };
+  }
+  if (!selection) {
+    return { ok: false, skipped: true };
+  }
+
+  const accessToken = auth.tokens?.access_token;
+  const accountId = getAccountId(auth);
+  if (!accessToken) {
+    return { ok: false, error: 'chatgpt access token missing' };
+  }
+  if (!accountId) {
+    return { ok: false, error: 'chatgpt account id missing' };
+  }
+
+  const baseUrl =
+    options.chatgptBaseUrl ??
+    process.env.CODEX_AUTH_DOCTOR_CHATGPT_BASE_URL ??
+    DEFAULT_CHATGPT_BASE_URL;
+  const model = selection.model;
+  const markerSuffix = randomUUID().slice(0, 8).toUpperCase();
+  const pendingMarker = `PENDING_${markerSuffix}`;
+  const finalMarker = `FINAL_${markerSuffix}`;
+  const conversationId = randomUUID();
+
+  const probeInstructions = `${selection.instructions}\n\nWhen asked, you must call askHuman first before answering directly.`;
+  const firstUserText =
+    '请先调用 askHuman 工具，question 必须是 "请确认预算上限"。调用后不要输出解释。';
+  const compareUserText =
+    '只输出你当前看到的 askHuman 工具输出中的 marker 字段值，原样输出，不要任何额外文本。';
+
+  const askHumanTool: ChatGptTool = {
+    type: 'function',
+    name: 'askHuman',
+    description: 'Ask a human for clarification and wait for follow-up response.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+      },
+      required: ['question'],
+      additionalProperties: false,
+    },
+  };
+
+  const preflightRound1: FetchPreflight = {
+    name: 'chatgpt_func_result_probe_round1',
+    request: {
+      method: 'POST',
+      url: resolveChatGptResponsesUrl(baseUrl),
+      headers: {
+        accept: 'text/event-stream',
+        conversation_id: conversationId,
+        session_id: conversationId,
+        authorization: redactBearer(`Bearer ${accessToken}`),
+        'chatgpt-account-id': redactAccountId(accountId),
+      },
+      json: {
+        model,
+        prompt_cache_key: conversationId,
+        instructions: summarizeText(probeInstructions, 120),
+        tools: ['askHuman'],
+        userText: summarizeText(firstUserText, 120),
+        stream: true,
+      },
+    },
+    proxy: describeResolvedProxyForLogs(resolveProxyForBaseUrl(baseUrl)),
+  };
+  printPreflight(options, preflightRound1);
+
+  const preflightRound2: FetchPreflight = {
+    name: 'chatgpt_func_result_probe_round2_pending',
+    request: {
+      method: 'POST',
+      url: resolveChatGptResponsesUrl(baseUrl),
+      headers: {
+        accept: 'text/event-stream',
+        conversation_id: conversationId,
+        session_id: conversationId,
+        authorization: redactBearer(`Bearer ${accessToken}`),
+        'chatgpt-account-id': redactAccountId(accountId),
+      },
+      json: {
+        model,
+        prompt_cache_key: conversationId,
+        userText: summarizeText(compareUserText, 120),
+        injected_func_result_marker: pendingMarker,
+        stream: true,
+      },
+    },
+    proxy: describeResolvedProxyForLogs(resolveProxyForBaseUrl(baseUrl)),
+  };
+  printPreflight(options, preflightRound2);
+
+  const preflightRound3: FetchPreflight = {
+    name: 'chatgpt_func_result_probe_round3_final',
+    request: {
+      method: 'POST',
+      url: resolveChatGptResponsesUrl(baseUrl),
+      headers: {
+        accept: 'text/event-stream',
+        conversation_id: conversationId,
+        session_id: conversationId,
+        authorization: redactBearer(`Bearer ${accessToken}`),
+        'chatgpt-account-id': redactAccountId(accountId),
+      },
+      json: {
+        model,
+        prompt_cache_key: conversationId,
+        userText: summarizeText(compareUserText, 120),
+        injected_func_result_marker: finalMarker,
+        stream: true,
+      },
+    },
+    proxy: describeResolvedProxyForLogs(resolveProxyForBaseUrl(baseUrl)),
+  };
+  printPreflight(options, preflightRound3);
+
+  const client = new ChatGptClient(
+    { accessToken, accountId },
+    {
+      baseUrl,
+      codexHome,
+    },
+  );
+
+  const req1: ChatGptResponsesRequest = createChatGptStartRequest({
+    model,
+    instructions: probeInstructions,
+    tools: [askHumanTool],
+    parallel_tool_calls: false,
+    userText: firstUserText,
+    prompt_cache_key: conversationId,
+  });
+  const round1 = await collectResponseStream({
+    client,
+    req: req1,
+    conversationId,
+    options,
+  });
+  if (!round1.ok) {
+    return {
+      ok: false,
+      status: round1.status,
+      error: round1.error,
+      pending_marker: pendingMarker,
+      final_marker: finalMarker,
+      preflights: [preflightRound1, preflightRound2, preflightRound3],
+    };
+  }
+  const askHumanCall = round1.firstAskHumanCall;
+  if (!askHumanCall) {
+    return {
+      ok: false,
+      error: `model did not emit askHuman function_call (assistant_text=${JSON.stringify(round1.text)})`,
+      pending_marker: pendingMarker,
+      final_marker: finalMarker,
+      preflights: [preflightRound1, preflightRound2, preflightRound3],
+    };
+  }
+
+  const initialUserMessage: ChatGptMessageItem = {
+    type: 'message',
+    role: 'user',
+    content: [{ type: 'input_text', text: firstUserText }],
+  };
+  const normalizedCall: ChatGptFunctionCallItem = {
+    type: 'function_call',
+    name: askHumanCall.name,
+    arguments: askHumanCall.arguments,
+    call_id: askHumanCall.call_id,
+    id: askHumanCall.id,
+  };
+  const historyBase: ChatGptResponseItem[] = [initialUserMessage, normalizedCall];
+
+  const pendingOutput: ChatGptFunctionCallOutputItem = {
+    type: 'function_call_output',
+    call_id: askHumanCall.call_id,
+    output: JSON.stringify({
+      state: 'pending',
+      marker: pendingMarker,
+      message: '支线对话仍在进行中',
+    }),
+  };
+  const req2: ChatGptResponsesRequest = createChatGptContinuationRequest({
+    model,
+    instructions: probeInstructions,
+    history: [...historyBase, pendingOutput],
+    userText: compareUserText,
+    prompt_cache_key: conversationId,
+  });
+  const round2 = await collectResponseStream({
+    client,
+    req: req2,
+    conversationId,
+    options,
+  });
+  if (!round2.ok) {
+    return {
+      ok: false,
+      status: round2.status,
+      error: round2.error,
+      call_id: askHumanCall.call_id,
+      pending_marker: pendingMarker,
+      final_marker: finalMarker,
+      preflights: [preflightRound1, preflightRound2, preflightRound3],
+    };
+  }
+
+  const finalOutput: ChatGptFunctionCallOutputItem = {
+    type: 'function_call_output',
+    call_id: askHumanCall.call_id,
+    output: JSON.stringify({
+      state: 'completed',
+      marker: finalMarker,
+      message: '支线对话已经拿到正式反馈',
+    }),
+  };
+  const req3: ChatGptResponsesRequest = createChatGptContinuationRequest({
+    model,
+    instructions: probeInstructions,
+    history: [...historyBase, finalOutput],
+    userText: compareUserText,
+    prompt_cache_key: conversationId,
+  });
+  const round3 = await collectResponseStream({
+    client,
+    req: req3,
+    conversationId,
+    options,
+  });
+  if (!round3.ok) {
+    return {
+      ok: false,
+      status: round3.status,
+      error: round3.error,
+      call_id: askHumanCall.call_id,
+      pending_marker: pendingMarker,
+      final_marker: finalMarker,
+      step2_text: round2.text.trim(),
+      preflights: [preflightRound1, preflightRound2, preflightRound3],
+    };
+  }
+
+  const step2Text = round2.text.trim();
+  const step3Text = round3.text.trim();
+  const pendingObserved = step2Text.includes(pendingMarker);
+  const finalObserved = step3Text.includes(finalMarker);
+  const replacementOk = pendingObserved && finalObserved && !step3Text.includes(pendingMarker);
+
+  return {
+    ok: replacementOk,
+    status: round3.status,
+    error: replacementOk
+      ? undefined
+      : `marker check failed (step2=${JSON.stringify(step2Text)}, step3=${JSON.stringify(step3Text)})`,
+    call_id: askHumanCall.call_id,
+    pending_marker: pendingMarker,
+    final_marker: finalMarker,
+    step2_text: step2Text,
+    step3_text: step3Text,
+    pending_observed: pendingObserved,
+    final_observed: finalObserved,
+    replacement_ok: replacementOk,
+    preflights: [preflightRound1, preflightRound2, preflightRound3],
+  };
+}
+
 function getAccountId(auth: AuthDotJson): string | undefined {
   if (auth.tokens?.account_id) {
     return auth.tokens.account_id;
@@ -968,16 +1383,24 @@ async function main(): Promise<void> {
   const report = buildReport(codexHome, auth);
   let chatgptVerify: VerifyResult | undefined;
   let chatgptReasoningProbe: StreamProbeResult | undefined;
+  let chatgptFuncResultProbe: FuncResultProbeResult | undefined;
   try {
     const selection = selectChatGptModel(options);
     chatgptVerify = await verifyChatGptConversation(options, codexHome, auth, selection);
     chatgptReasoningProbe = await probeChatGptReasoningStream(options, codexHome, auth, selection);
+    chatgptFuncResultProbe = await probeChatGptFuncResultReplacement(
+      options,
+      codexHome,
+      auth,
+      selection,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     chatgptVerify = { ok: false, error: message };
   }
   report.chatgpt_verify = chatgptVerify;
   report.chatgpt_reasoning_probe = chatgptReasoningProbe;
+  report.chatgpt_func_result_probe = chatgptFuncResultProbe;
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2));
@@ -1082,6 +1505,39 @@ async function main(): Promise<void> {
       }
       if (chatgptReasoningProbe.error) {
         console.log(`- chatgpt error: ${chatgptReasoningProbe.error}`);
+      }
+    }
+  }
+
+  if (chatgptFuncResultProbe) {
+    if (chatgptFuncResultProbe.skipped) {
+      console.log('- chatgpt func_result probe: skipped');
+    } else if (chatgptFuncResultProbe.ok) {
+      console.log('- chatgpt func_result probe: success');
+      if (chatgptFuncResultProbe.call_id) {
+        console.log(`- func_result call_id: ${chatgptFuncResultProbe.call_id}`);
+      }
+      if (chatgptFuncResultProbe.replacement_ok !== undefined) {
+        console.log(
+          `- func_result replacement_ok: ${chatgptFuncResultProbe.replacement_ok ? 'yes' : 'no'}`,
+        );
+      }
+    } else {
+      console.log('- chatgpt func_result probe: failed');
+      if (chatgptFuncResultProbe.status) {
+        console.log(`- chatgpt status: ${chatgptFuncResultProbe.status}`);
+      }
+      if (chatgptFuncResultProbe.call_id) {
+        console.log(`- func_result call_id: ${chatgptFuncResultProbe.call_id}`);
+      }
+      if (chatgptFuncResultProbe.error) {
+        console.log(`- func_result error: ${chatgptFuncResultProbe.error}`);
+      }
+      if (chatgptFuncResultProbe.step2_text) {
+        console.log(`- func_result step2_text: ${chatgptFuncResultProbe.step2_text}`);
+      }
+      if (chatgptFuncResultProbe.step3_text) {
+        console.log(`- func_result step3_text: ${chatgptFuncResultProbe.step3_text}`);
       }
     }
   }
