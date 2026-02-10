@@ -33,6 +33,7 @@ export type DriveTriggerMeta = Readonly<{
 class GlobalDialogRegistry {
   private static instance: GlobalDialogRegistry | undefined;
   private readonly entries: Map<string, RegistryEntry> = new Map();
+  private readonly lastDriveTriggerByRootId: Map<string, DriveTriggerEvent> = new Map();
   private readonly driveTriggerPubChan: PubChan<DriveTriggerEvent> =
     createPubChan<DriveTriggerEvent>();
   private driveTriggerSubChan: SubChan<DriveTriggerEvent> = createSubChan(this.driveTriggerPubChan);
@@ -86,7 +87,7 @@ class GlobalDialogRegistry {
     nextNeedsDrive: boolean;
     meta: DriveTriggerMeta;
   }): void {
-    this.driveTriggerPubChan.write({
+    const trigger: DriveTriggerEvent = {
       type: 'drive_trigger_evt',
       action: args.action,
       rootId: args.rootId,
@@ -96,7 +97,9 @@ class GlobalDialogRegistry {
       source: args.meta.source,
       reason: args.meta.reason,
       emittedAtMs: Date.now(),
-    });
+    };
+    this.lastDriveTriggerByRootId.set(args.rootId, trigger);
+    this.driveTriggerPubChan.write(trigger);
   }
 
   async waitForDriveTrigger(): Promise<DriveTriggerEvent> {
@@ -154,6 +157,10 @@ class GlobalDialogRegistry {
     return Array.from(this.entries.values())
       .filter((entry) => entry.needsDrive)
       .map((entry) => entry.rootDialog);
+  }
+
+  getLastDriveTrigger(rootId: string): DriveTriggerEvent | undefined {
+    return this.lastDriveTriggerByRootId.get(rootId);
   }
 
   getAll(): RootDialog[] {

@@ -100,11 +100,48 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         });
         await DialogPersistence.setNeedsDrive(rootDialog.id, false, rootDialog.status);
       }
+      const lastTrigger = globalDialogRegistry.getLastDriveTrigger(rootDialog.id.rootId);
+      const lastTriggerAgeMs =
+        lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
       if (status.subdialogs) {
-        log.info(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`);
+        log.info(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`, {
+          rootId: rootDialog.id.rootId,
+          waitingQ4H: status.q4h,
+          waitingSubdialogs: status.subdialogs,
+          hasQueuedUpNext: rootDialog.hasUpNext(),
+          lastDriveTrigger: lastTrigger
+            ? {
+                action: lastTrigger.action,
+                source: lastTrigger.source,
+                reason: lastTrigger.reason,
+                emittedAtMs: lastTrigger.emittedAtMs,
+                ageMs: lastTriggerAgeMs,
+                entryFound: lastTrigger.entryFound,
+                previousNeedsDrive: lastTrigger.previousNeedsDrive,
+                nextNeedsDrive: lastTrigger.nextNeedsDrive,
+              }
+            : null,
+        });
       }
       if (status.q4h) {
-        log.info(`Dialog ${rootDialog.id.rootId} awaiting Q4H answer`);
+        log.info(`Dialog ${rootDialog.id.rootId} awaiting Q4H answer`, {
+          rootId: rootDialog.id.rootId,
+          waitingQ4H: status.q4h,
+          waitingSubdialogs: status.subdialogs,
+          hasQueuedUpNext: rootDialog.hasUpNext(),
+          lastDriveTrigger: lastTrigger
+            ? {
+                action: lastTrigger.action,
+                source: lastTrigger.source,
+                reason: lastTrigger.reason,
+                emittedAtMs: lastTrigger.emittedAtMs,
+                ageMs: lastTriggerAgeMs,
+                entryFound: lastTrigger.entryFound,
+                previousNeedsDrive: lastTrigger.previousNeedsDrive,
+                nextNeedsDrive: lastTrigger.nextNeedsDrive,
+              }
+            : null,
+        });
       }
     } catch (err) {
       log.error(`Error driving dialog ${rootDialog.id.rootId}:`, err, undefined, {

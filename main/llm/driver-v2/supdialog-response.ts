@@ -202,19 +202,38 @@ export async function supplyResponseToSupdialogV2(args: {
     await parentDialog.addChatMessages(immediateMirror);
 
     if (result.shouldRevive) {
+      const isRoot = parentDialog instanceof RootDialog;
+      const hasRegistryEntry = isRoot
+        ? globalDialogRegistry.get(parentDialog.id.rootId) !== undefined
+        : false;
+
       log.info(
-        `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} auto-reviving`,
+        `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} scheduling auto-revive`,
+        {
+          rootId: parentDialog.id.rootId,
+          selfId: parentDialog.id.selfId,
+          via: isRoot && hasRegistryEntry ? 'backend_loop_trigger' : 'direct_schedule_drive',
+          isRoot,
+          hasRegistryEntry,
+        },
       );
-      if (parentDialog instanceof RootDialog) {
+
+      if (isRoot) {
         globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId, {
           source: 'driver_v2_supply_response',
           reason: `all_pending_subdialogs_resolved:type_${callType}`,
         });
       }
-      scheduleDrive(parentDialog, {
-        waitInQue: true,
-        driveOptions: { suppressDiligencePush: parentDialog.disableDiligencePush },
-      });
+
+      // Root dialogs should normally be resumed by backend loop drive-trigger.
+      // Direct schedule is kept only as fallback for non-root callers or when registry
+      // entry is not available yet (e.g., transient bootstrap windows).
+      if (!isRoot || !hasRegistryEntry) {
+        scheduleDrive(parentDialog, {
+          waitInQue: true,
+          driveOptions: { suppressDiligencePush: parentDialog.disableDiligencePush },
+        });
+      }
     }
   } catch (error) {
     log.error('driver-v2 failed to supply subdialog response', {

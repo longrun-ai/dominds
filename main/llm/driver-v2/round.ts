@@ -1,4 +1,5 @@
 import { DialogID, SubDialog } from '../../dialog';
+import { globalDialogRegistry } from '../../dialog-global-registry';
 import { clearActiveRun, createActiveRun } from '../../dialog-run-state';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
@@ -255,6 +256,9 @@ export async function executeDriveRound(args: {
     if (!humanPrompt) {
       const suspension = await dialog.getSuspensionStatus();
       if (!suspension.canDrive) {
+        const lastTrigger = globalDialogRegistry.getLastDriveTrigger(dialog.id.rootId);
+        const lastTriggerAgeMs =
+          lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
         log.info('driver-v2 skip queued auto-drive while dialog is suspended', {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
@@ -263,6 +267,18 @@ export async function executeDriveRound(args: {
           hasQueuedUpNext: dialog.hasUpNext(),
           waitingQ4H: suspension.q4h,
           waitingSubdialogs: suspension.subdialogs,
+          lastDriveTrigger: lastTrigger
+            ? {
+                action: lastTrigger.action,
+                source: lastTrigger.source,
+                reason: lastTrigger.reason,
+                emittedAtMs: lastTrigger.emittedAtMs,
+                ageMs: lastTriggerAgeMs,
+                entryFound: lastTrigger.entryFound,
+                previousNeedsDrive: lastTrigger.previousNeedsDrive,
+                nextNeedsDrive: lastTrigger.nextNeedsDrive,
+              }
+            : null,
         });
         return;
       }
