@@ -1372,7 +1372,7 @@ export async function executeTellaskCalls(args: {
       body: mergedBody,
       q4hRemainingCallIds: remainingCallIds.length > 0 ? remainingCallIds : undefined,
     };
-    log.info('Q4H multi-question normalized into a single prompt', {
+    log.info('Q4H multi-question normalized into a single prompt', undefined, {
       rootId: dlg.id.rootId,
       selfId: dlg.id.selfId,
       mergedCount: q4hCalls.length,

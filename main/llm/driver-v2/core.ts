@@ -683,7 +683,7 @@ export async function driveDialogStreamCoreV2(
           const promptOrigin = currentPrompt.origin ?? 'user';
           const isDiligencePrompt = promptOrigin === 'diligence_push';
           if (isDiligencePrompt && (dlg.disableDiligencePush || suppressDiligencePushForDrive)) {
-            log.info('driver-v2 skip diligence prompt after disable toggle', {
+            log.info('driver-v2 skip diligence prompt after disable toggle', undefined, {
               dialogId: dlg.id.valueOf(),
               msgId: currentPrompt.msgId,
             });

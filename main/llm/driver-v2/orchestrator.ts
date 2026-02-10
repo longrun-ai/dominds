@@ -104,7 +104,7 @@ async function driveQueuedDialogsOnce(): Promise<void> {
       const lastTriggerAgeMs =
         lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
       if (status.subdialogs) {
-        log.info(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`, {
+        log.info(`Dialog ${rootDialog.id.rootId} suspended, waiting for subdialogs`, undefined, {
           rootId: rootDialog.id.rootId,
           waitingQ4H: status.q4h,
           waitingSubdialogs: status.subdialogs,
@@ -124,7 +124,7 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         });
       }
       if (status.q4h) {
-        log.info(`Dialog ${rootDialog.id.rootId} awaiting Q4H answer`, {
+        log.info(`Dialog ${rootDialog.id.rootId} awaiting Q4H answer`, undefined, {
           rootId: rootDialog.id.rootId,
           waitingQ4H: status.q4h,
           waitingSubdialogs: status.subdialogs,

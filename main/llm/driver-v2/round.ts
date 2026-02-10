@@ -193,7 +193,7 @@ export async function executeDriveRound(args: {
         const lastTrigger = globalDialogRegistry.getLastDriveTrigger(dialog.id.rootId);
         const lastTriggerAgeMs =
           lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
-        log.info('driver-v2 skip queued auto-drive while dialog is suspended', {
+        log.info('driver-v2 skip queued auto-drive while dialog is suspended', undefined, {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,

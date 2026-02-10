@@ -1136,28 +1136,17 @@ export class SubDialog extends Dialog {
     this.assignmentFromSup = assignmentFromSup;
     const resolvedSupdialog = rootDialog.lookupDialog(assignmentFromSup.callerDialogId);
     if (resolvedSupdialog && resolvedSupdialog.id.selfId === this.id.selfId) {
-      log.warn(
-        'SubDialog assignmentFromSup.callerDialogId resolved to self; falling back to root',
-        {
-          dialogId: this.id.selfId,
-          callerDialogId: assignmentFromSup.callerDialogId,
-        },
+      throw new Error(
+        `SubDialog supdialog invariant violation: caller resolved to self ` +
+          `(rootId=${rootDialog.id.rootId}, selfId=${this.id.selfId}, callerDialogId=${assignmentFromSup.callerDialogId})`,
       );
-      this._supdialog = rootDialog;
     } else if (resolvedSupdialog) {
       this._supdialog = resolvedSupdialog;
     } else {
-      // If we can't resolve the caller dialog in the in-memory registry, fall back to root.
-      // This can happen when restoring a dialog tree without restoring the full parent chain.
-      log.warn(
-        'SubDialog failed to resolve callerDialogId in root registry; falling back to root',
-        {
-          dialogId: this.id.selfId,
-          callerDialogId: assignmentFromSup.callerDialogId,
-          rootId: rootDialog.id.rootId,
-        },
+      throw new Error(
+        `SubDialog supdialog invariant violation: caller missing from root registry ` +
+          `(rootId=${rootDialog.id.rootId}, selfId=${this.id.selfId}, callerDialogId=${assignmentFromSup.callerDialogId})`,
       );
-      this._supdialog = rootDialog;
     }
     this.rootDialog.registerDialog(this);
   }

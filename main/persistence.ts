@@ -1140,6 +1140,129 @@ export class DiskFileDialogStore extends DialogStore {
     const entries = await DialogPersistence.loadSubdialogRegistry(rootDialog.id, status);
     const shouldPruneDead = status === 'running';
     let prunedDeadRegistryEntries = false;
+    const restoringSubdialogs = new Map<string, Promise<SubDialog>>();
+
+    const ensureSubdialogLoaded = async (
+      subdialogId: DialogID,
+      ancestry: Set<string> = new Set(),
+    ): Promise<SubDialog> => {
+      if (ancestry.has(subdialogId.selfId)) {
+        throw new Error(
+          `Subdialog registry restore invariant violation: cyclic parent chain ` +
+            `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+        );
+      }
+      const existing = rootDialog.lookupDialog(subdialogId.selfId);
+      if (existing) {
+        if (!(existing instanceof SubDialog)) {
+          throw new Error(
+            `Dialog registry type invariant violation: expected SubDialog ` +
+              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+          );
+        }
+        return existing;
+      }
+
+      const inFlight = restoringSubdialogs.get(subdialogId.selfId);
+      if (inFlight) {
+        return await inFlight;
+      }
+
+      const task = (async (): Promise<SubDialog> => {
+        const nextAncestry = new Set(ancestry);
+        nextAncestry.add(subdialogId.selfId);
+        const subdialogState = await DialogPersistence.restoreDialog(subdialogId, status);
+        if (!subdialogState) {
+          throw new Error(
+            `Subdialog registry restore invariant violation: missing dialog state ` +
+              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+          );
+        }
+
+        const metadata = subdialogState.metadata;
+        if (!isSubdialogMetadataFile(metadata)) {
+          throw new Error(
+            `Subdialog registry restore invariant violation: expected subdialog metadata ` +
+              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+          );
+        }
+
+        const assignmentFromSup = metadata.assignmentFromSup;
+        if (!assignmentFromSup) {
+          throw new Error(
+            `Subdialog registry restore invariant violation: missing assignmentFromSup ` +
+              `(rootId=${rootDialog.id.rootId}, selfId=${subdialogId.selfId})`,
+          );
+        }
+
+        const parentIds: string[] = [];
+        const maybePushParentId = (candidate: string | undefined): void => {
+          if (!candidate) return;
+          if (candidate === rootDialog.id.rootId) return;
+          if (candidate === subdialogId.selfId) return;
+          if (parentIds.includes(candidate)) return;
+          parentIds.push(candidate);
+        };
+        maybePushParentId(metadata.supdialogId);
+        maybePushParentId(assignmentFromSup.callerDialogId);
+
+        for (const parentId of parentIds) {
+          if (rootDialog.lookupDialog(parentId)) {
+            continue;
+          }
+          const parentDialogId = new DialogID(parentId, rootDialog.id.rootId);
+          const parentMeta = await DialogPersistence.loadDialogMetadata(parentDialogId, status);
+          if (!parentMeta) {
+            throw new Error(
+              `Subdialog registry restore invariant violation: missing parent metadata ` +
+                `(rootId=${rootDialog.id.rootId}, childId=${subdialogId.selfId}, parentId=${parentId})`,
+            );
+          }
+          if (!isSubdialogMetadataFile(parentMeta)) {
+            throw new Error(
+              `Subdialog registry restore invariant violation: parent is not a subdialog ` +
+                `(rootId=${rootDialog.id.rootId}, childId=${subdialogId.selfId}, parentId=${parentId})`,
+            );
+          }
+          await ensureSubdialogLoaded(parentDialogId, nextAncestry);
+          if (!rootDialog.lookupDialog(parentId)) {
+            throw new Error(
+              `Subdialog registry restore invariant violation: parent restore failed ` +
+                `(rootId=${rootDialog.id.rootId}, childId=${subdialogId.selfId}, parentId=${parentId})`,
+            );
+          }
+        }
+
+        const subdialogStore = new DiskFileDialogStore(subdialogId);
+        const subdialog = new SubDialog(
+          subdialogStore,
+          rootDialog,
+          metadata.taskDocPath,
+          new DialogID(subdialogId.selfId, rootDialog.id.rootId),
+          metadata.agentId,
+          assignmentFromSup,
+          metadata.tellaskSession,
+          {
+            messages: subdialogState.messages,
+            reminders: subdialogState.reminders,
+            currentCourse: subdialogState.currentCourse,
+            contextHealth: subdialogState.contextHealth,
+          },
+        );
+        const latest = await DialogPersistence.loadDialogLatest(subdialogId, status);
+        subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
+        if (subdialog.tellaskSession) {
+          rootDialog.registerSubdialog(subdialog);
+        }
+        return subdialog;
+      })();
+      restoringSubdialogs.set(subdialogId.selfId, task);
+      try {
+        return await task;
+      } finally {
+        restoringSubdialogs.delete(subdialogId.selfId);
+      }
+    };
 
     for (const entry of entries) {
       if (!entry.tellaskSession) continue;
@@ -1160,35 +1283,27 @@ export class DiskFileDialogStore extends DialogStore {
         }
       }
 
-      const existing = rootDialog.lookupDialog(entry.subdialogId.selfId);
-      if (existing) {
-        if (existing instanceof SubDialog && existing.tellaskSession) {
-          rootDialog.registerSubdialog(existing);
-        }
-        continue;
+      const subdialog = await ensureSubdialogLoaded(entry.subdialogId);
+      if (!subdialog.tellaskSession) {
+        throw new Error(
+          `Subdialog registry invariant violation: missing tellaskSession on loaded subdialog ` +
+            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, expectedTellaskSession=${entry.tellaskSession})`,
+        );
       }
-
-      const subdialogState = await DialogPersistence.restoreDialog(entry.subdialogId, status);
-      if (!subdialogState) continue;
-
-      const assignmentFromSup = subdialogState.metadata.assignmentFromSup;
-      if (!assignmentFromSup) continue;
-
-      const subdialogStore = new DiskFileDialogStore(entry.subdialogId);
-      const subdialog = new SubDialog(
-        subdialogStore,
-        rootDialog,
-        subdialogState.metadata.taskDocPath,
-        new DialogID(entry.subdialogId.selfId, rootDialog.id.rootId),
-        subdialogState.metadata.agentId,
-        assignmentFromSup,
-        entry.tellaskSession,
-        {
-          messages: subdialogState.messages,
-          reminders: subdialogState.reminders,
-          currentCourse: subdialogState.currentCourse,
-        },
-      );
+      if (subdialog.tellaskSession !== entry.tellaskSession) {
+        throw new Error(
+          `Subdialog registry invariant violation: tellaskSession mismatch ` +
+            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, ` +
+            `expected=${entry.tellaskSession}, actual=${subdialog.tellaskSession})`,
+        );
+      }
+      if (subdialog.agentId !== entry.agentId) {
+        throw new Error(
+          `Subdialog registry invariant violation: agentId mismatch ` +
+            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, ` +
+            `expected=${entry.agentId}, actual=${subdialog.agentId})`,
+        );
+      }
       rootDialog.registerSubdialog(subdialog);
     }
 

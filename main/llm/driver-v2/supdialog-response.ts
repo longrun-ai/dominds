@@ -209,6 +209,7 @@ export async function supplyResponseToSupdialogV2(args: {
 
       log.info(
         `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} scheduling auto-revive`,
+        undefined,
         {
           rootId: parentDialog.id.rootId,
           selfId: parentDialog.id.selfId,
