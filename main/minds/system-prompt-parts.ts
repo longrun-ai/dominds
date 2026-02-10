@@ -32,7 +32,7 @@ type ShellPolicyCopy = Readonly<{
   noHighRiskTools: string;
   readonlyAuthorized: string;
   readonlyDelegateWhenNeeded: (value: string) => string;
-  noShellTools: string;
+  noShellTools: (value: string) => string;
   delegateWhenNeeded: (value: string) => string;
   delegationProposalBullets: readonly string[];
   specialistListLine: (value: string) => string;
@@ -65,10 +65,12 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
         '你仅被授权使用 `readonly_shell` 做只读检查（仅允许白名单命令前缀；不得写入/删除/联网/进程管理）：符合只读目的时请直接调用。',
       readonlyDelegateWhenNeeded: (value) =>
         `边界规则：除只读目的外，其它一切 shell 需求都不得自行执行。凡是不在白名单内，或涉及写入/删除/网络/长时间运行/进程管理，必须诉请以下 shell 专员之一执行：${value}。并提供充分理由与可审查的命令提案：`,
-      noShellTools:
-        '你不具备 shell 工具（本环境仅 shell 专员可执行 shell）：不要尝试“编造/假设”命令输出，也不要要求系统直接执行。',
+
+      noShellTools: (value) =>
+        `你不具备 shell 工具（本环境仅 shell 专员可执行 shell）：可直接诉请以下 shell 专员执行：${value}。不要尝试“编造/假设”命令输出。`,
+
       delegateWhenNeeded: (value) =>
-        `当你确实需要 shell 执行时：必须诉请以下 shell 专员之一执行：${value}。并提供充分理由与可审查的命令提案：`,
+        `当你确实需要 shell 执行时：直接诉请以下 shell 专员之一执行：${value}。提供充分理由与可审查的命令提案：`,
       delegationProposalBullets: [
         '- 你要达成的目标（why）',
         '- 建议命令（what）+ 预期工作目录（cwd）+ 预期输出/验证方式（how to verify）',
@@ -106,10 +108,10 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
       'You are authorized to use `readonly_shell` only for read-only inspection (small allowlist only; no writes/deletes/network/process management). When it is truly read-only, call it directly.',
     readonlyDelegateWhenNeeded: (value) =>
       `Boundary rule: anything beyond read-only must not be executed by you. If it is outside the allowlist, or involves writes/deletes/network/long-running jobs/process management, you must tellask one of these shell specialists to execute it: ${value}. Provide a justified, reviewable proposal:`,
-    noShellTools:
-      'You do not have shell tools configured (shell execution is restricted to designated specialists): do not fabricate/assume command output, and do not ask the system to execute commands directly.',
+    noShellTools: (value) =>
+      `You do not have shell tools (only shell specialists can execute shell in this environment): directly tellask one of these shell specialists: ${value}. Do not attempt to "fabricate/assume" command outputs.`,
     delegateWhenNeeded: (value) =>
-      `When you truly need shell execution, you must tellask one of these shell specialists to execute it: ${value}. Provide a justified, reviewable proposal:`,
+      `When you genuinely need shell execution, directly tellask one of these shell specialists: ${value}. Provide sufficient rationale and a reviewable command proposal:`,
     delegationProposalBullets: [
       '- Goal (why)',
       '- Proposed command (what) + expected working directory (cwd) + expected output/verification (how to verify)',
@@ -195,7 +197,10 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
         '',
         ...buildDelegationBlock(copy.readonlyDelegateWhenNeeded(shellSpecialists)),
       ]
-    : [copy.noShellTools, ...buildDelegationBlock(copy.delegateWhenNeeded(shellSpecialists))];
+    : [
+        copy.noShellTools(shellSpecialists),
+        ...buildDelegationBlock(copy.delegateWhenNeeded(shellSpecialists)),
+      ];
 
   return `${copy.title}\n\n${bodyLines.join('\n')}`.trim();
 }
@@ -254,7 +259,9 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       subdialogWorkflowLine: `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`,
       mainlineWorkflowLine:
         '工作流：先做事 → 再提炼（`update_reminder` + `change_mind(progress)`）→ 然后 `clear_mind` 清空噪音。',
-      contextHealthLine: '当 context health 变黄/红：立刻停止继续大实现/大阅读；先提炼，再 clear。',
+
+      contextHealthLine:
+        '系统会自动监控并提示上下文健康度：进入"吃紧"或"告急"状态时会插入用户可见提示。当收到此类提示时，立刻停止继续大实现/大阅读；先提炼，再 clear。',
       taskdocLogLine:
         '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；细节只保留必要摘录放提醒项。',
     };
@@ -290,8 +297,9 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     subdialogWorkflowLine: `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft a merged replacement and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`,
     mainlineWorkflowLine:
       'Workflow: do work → distill (`update_reminder` + `change_mind(progress)`) → then `clear_mind` to drop noise.',
+
     contextHealthLine:
-      'When context health turns yellow/red: treat it as a hard stop; distill first, then clear.',
+      'System will automatically monitor and alert on context health: yellow (caution/"Caution") or red (critical/"Critical") will insert a user-visible prompt. When you receive such alerts, immediately stop large implementations/reads; distill first, then clear.',
     taskdocLogLine:
       'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; keep only essential excerpts in reminders.',
   };

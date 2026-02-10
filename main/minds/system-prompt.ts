@@ -52,12 +52,12 @@ export type BuildSystemPromptInput = {
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const fbrScopeRuleZh =
     input.dialogScope === 'mainline'
-      ? '- 每次扪心自问（FBR）之前，务必先基于当前可观测事实调用 \\`change_mind\\` 更新差遣牒，体现任务最新进展情况。\\`!?@self\\` 自诉请正文不要冗余包含差遣牒已有信息。'
-      : '- 每次扪心自问（FBR）之前，务必先基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 \\`!?@self\\` 自诉请正文中。';
+      ? '- 系统会持续自动监控上下文健康度：没有吃紧/告急提示时，可以安全进行 FBR。如果有吃紧/告急提示，系统会提醒你，应先处理（提炼 + clear_mind）。随后基于当前可观测事实调用 \\`change_mind\\` 更新差遣牒，体现任务最新进展情况。\\`!?@self\\` 自诉请正文不要冗余包含差遣牒已有信息。'
+      : '- 系统会持续自动监控上下文健康度：没有吃紧/告急提示时，可以安全进行 FBR。如果有吃紧/告急提示，系统会提醒你，应先处理。随后基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 \\`!?@self\\` 自诉请正文中。';
   const fbrScopeRuleEn =
     input.dialogScope === 'mainline'
-      ? '- Before every FBR, first call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest task progress, do not redundantly include information already present in the Taskdoc in the \\`!?@self\\` tellask body.'
-      : '- Before every FBR, first analyze whether currently observable facts differ from the Taskdoc, and include the findings in the \\`!?@self\\` tellask body.';
+      ? '- Before every FBR, the system will automatically alert on context health status: if there are no yellow/red alerts, you can safely proceed with FBR. If there are yellow/red alerts, handle them first (distill + clear_mind). Then call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest task progress; do not redundantly include information already present in the Taskdoc in the \\`!?@self\\` tellask body.'
+      : '- Before every FBR, the system will automatically alert on context health status: if there are no yellow/red alerts, you can safely proceed with FBR. If there are yellow/red alerts, handle them first. Then analyze whether currently observable facts differ from the Taskdoc, and include the findings in the \\`!?@self\\` tellask body.';
   const fbrPhaseContractZh = [
     '- FBR 必须按“发起 → 等待回贴 → 综合决策”三段执行：\\`!?@self\\` 只代表发起，不代表你已完成这轮推理。',
     '- 发出 \\`!?@self\\` 后必须进入等待态：在该次 FBR 支线回贴返回前，不得给出“最终下一步行动决策”。',
