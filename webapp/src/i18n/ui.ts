@@ -124,6 +124,19 @@ export type UiStrings = {
   invalidMessageFormatToast: string;
   linkCopiedToast: string;
   linkCopyFailedToast: string;
+  toastDefaultNotice: string;
+  dialogCreatedToastPrefix: string;
+  dialogLoadedToast: string;
+  deepLinkDialogNotFoundPrefix: string;
+  dialogDeleteFailedToast: string;
+  moveDialogsFailedToast: string;
+  movedDialogsToastPrefix: string;
+  toolsRegistryLoadFailedToast: string;
+  reminderConnectionIssueToast: string;
+  reminderSyncIssueToast: string;
+  unknownStreamErrorToast: string;
+  teammateCallFailedToast: string;
+  unknownError: string;
   toastHistoryButtonTitle: string;
   toastHistoryTitle: string;
   toastHistoryClearTitle: string;
@@ -414,6 +427,19 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
       linkCopiedToast: '链接已复制。',
       linkCopyFailedToast: '复制链接失败。',
+      toastDefaultNotice: '通知',
+      dialogCreatedToastPrefix: '已创建对话：',
+      dialogLoadedToast: '对话加载成功。',
+      deepLinkDialogNotFoundPrefix: '未找到深链对话：',
+      dialogDeleteFailedToast: '删除对话失败',
+      moveDialogsFailedToast: '移动对话失败',
+      movedDialogsToastPrefix: '已移动对话数量：',
+      toolsRegistryLoadFailedToast: '加载工具注册表失败',
+      reminderConnectionIssueToast: '检测到连接问题，提醒数据可能暂时不可用。',
+      reminderSyncIssueToast: '提醒同步出现问题。如问题持续，请刷新页面。',
+      unknownStreamErrorToast: '未知流错误',
+      teammateCallFailedToast: '队友调用失败',
+      unknownError: '未知错误',
       toastHistoryButtonTitle: '通知历史',
       toastHistoryTitle: '通知历史',
       toastHistoryClearTitle: '清空通知历史',
@@ -709,6 +735,21 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
     linkCopiedToast: 'Link copied.',
     linkCopyFailedToast: 'Failed to copy link.',
+    toastDefaultNotice: 'Notice',
+    dialogCreatedToastPrefix: 'Dialog created:',
+    dialogLoadedToast: 'Dialog loaded successfully.',
+    deepLinkDialogNotFoundPrefix: 'Deep link dialog not found:',
+    dialogDeleteFailedToast: 'Failed to delete dialog',
+    moveDialogsFailedToast: 'Failed to move dialogs',
+    movedDialogsToastPrefix: 'Moved dialog(s): ',
+    toolsRegistryLoadFailedToast: 'Failed to load tools registry',
+    reminderConnectionIssueToast:
+      'Connection issue detected. Reminder data may be temporarily unavailable.',
+    reminderSyncIssueToast:
+      'Reminder synchronization encountered an issue. Please refresh if problems persist.',
+    unknownStreamErrorToast: 'Unknown stream error',
+    teammateCallFailedToast: 'Teammate call failed',
+    unknownError: 'Unknown error',
     toastHistoryButtonTitle: 'Notification history',
     toastHistoryTitle: 'Notification history',
     toastHistoryClearTitle: 'Clear notification history',

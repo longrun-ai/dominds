@@ -550,7 +550,7 @@ export class DomindsTeamMembers extends HTMLElement {
       document.body.removeChild(ta);
       this.emitToast(`${t.teamMembersCopiedPrefix}${mention}`);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = error instanceof Error ? error.message : t.unknownError;
       this.emitToast(`${t.teamMembersCopyFailedPrefix}${msg}`, 'warning');
     }
   }

@@ -916,7 +916,11 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'stream_error_evt':
         if (!this.generationBubble) {
           const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
-          const detail = { message: String(event.error || 'Unknown stream error'), kind: 'error' };
+          const t = getUiStrings(this.uiLanguage);
+          const detail = {
+            message: String(event.error || t.unknownStreamErrorToast),
+            kind: 'error' as const,
+          };
           host?.dispatchEvent(
             new CustomEvent('ui-toast', { detail, bubbles: true, composed: true }),
           );
@@ -1628,9 +1632,10 @@ export class DomindsDialogContainer extends HTMLElement {
     this.attachResultInline(callingSection, display, event.status);
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
+      const t = getUiStrings(this.uiLanguage);
       host?.dispatchEvent(
         new CustomEvent('ui-toast', {
-          detail: { message: String(display || 'Teammate call failed'), kind: 'error' },
+          detail: { message: String(display || t.teammateCallFailedToast), kind: 'error' },
           bubbles: true,
           composed: true,
         }),

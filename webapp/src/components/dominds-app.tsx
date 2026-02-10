@@ -118,6 +118,10 @@ type DeepLinkIntent =
   | { kind: 'genseq'; rootId: string; selfId: string; course: number; genseq: number };
 
 type ToastKind = 'error' | 'warning' | 'info';
+type ToastHistoryPolicy = 'default' | 'persist' | 'skip';
+type ToastOptions = {
+  history?: ToastHistoryPolicy;
+};
 
 type ToastHistoryEntry = {
   id: string;
@@ -317,7 +321,8 @@ export class DomindsApp extends HTMLElement {
   }
 
   private async handleCreateDialogSuccess(result: CreateDialogSuccess): Promise<void> {
-    this.showSuccess(`Dialog created @${result.agentId} with task: ${result.taskDocPath}`);
+    const t = getUiStrings(this.uiLanguage);
+    this.showSuccess(`${t.dialogCreatedToastPrefix} @${result.agentId} • ${result.taskDocPath}`);
     await this.loadDialogs();
     await this.selectDialog({
       selfId: result.selfId,
@@ -3907,10 +3912,15 @@ export class DomindsApp extends HTMLElement {
 
     // Toast relay from child components (e.g., dialog-container)
     this.shadowRoot.addEventListener('ui-toast', (e: Event) => {
-      const ce = e as CustomEvent<{ message: string; kind?: 'error' | 'warning' | 'info' }>;
-      const msg = ce.detail?.message || 'Notice';
+      const ce = e as CustomEvent<{
+        message: string;
+        kind?: 'error' | 'warning' | 'info';
+        history?: ToastHistoryPolicy;
+      }>;
+      const t = getUiStrings(this.uiLanguage);
+      const msg = ce.detail?.message || t.toastDefaultNotice;
       const kind = ce.detail?.kind || 'error';
-      this.showToast(msg, kind);
+      this.showToast(msg, kind, { history: ce.detail?.history ?? 'default' });
     });
 
     // Auth escalation from child panels (HTTP 401)
@@ -5205,6 +5215,7 @@ export class DomindsApp extends HTMLElement {
 
     this.deepLinkInFlight = true;
     try {
+      const t = getUiStrings(this.uiLanguage);
       if (intent.kind === 'dialog') {
         let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
         if (!dialogInfo) {
@@ -5212,7 +5223,7 @@ export class DomindsApp extends HTMLElement {
           dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
         }
         if (!dialogInfo) {
-          this.showToast(`Deep link dialog not found: ${intent.selfId}`, 'warning');
+          this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${intent.selfId}`, 'warning');
           this.pendingDeepLink = null;
           return;
         }
@@ -5230,7 +5241,7 @@ export class DomindsApp extends HTMLElement {
           dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
         }
         if (!dialogInfo) {
-          this.showToast(`Deep link dialog not found: ${intent.selfId}`, 'warning');
+          this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${intent.selfId}`, 'warning');
           this.pendingDeepLink = null;
           return;
         }
@@ -5262,7 +5273,7 @@ export class DomindsApp extends HTMLElement {
           dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
         }
         if (!dialogInfo) {
-          this.showToast(`Deep link dialog not found: ${intent.selfId}`, 'warning');
+          this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${intent.selfId}`, 'warning');
           this.pendingDeepLink = null;
           return;
         }
@@ -5306,7 +5317,7 @@ export class DomindsApp extends HTMLElement {
         dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
       }
       if (!dialogInfo) {
-        this.showToast(`Deep link dialog not found: ${selfId}`, 'warning');
+        this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${selfId}`, 'warning');
         this.pendingDeepLink = null;
         return;
       }
@@ -5654,7 +5665,7 @@ export class DomindsApp extends HTMLElement {
         this.onAuthRejected('api');
         return;
       }
-      this.showToast(resp.error || 'Failed to delete dialog', 'error');
+      this.showToast(resp.error || t.dialogDeleteFailedToast, 'error');
       return;
     }
 
@@ -5675,6 +5686,7 @@ export class DomindsApp extends HTMLElement {
     const toOk = toStatus === 'running' || toStatus === 'completed' || toStatus === 'archived';
     if (!fromOk || !toOk) return;
     if (fromStatus === toStatus) return;
+    const t = getUiStrings(this.uiLanguage);
 
     let request: ApiMoveDialogsRequest;
     if (kind === 'root') {
@@ -5704,18 +5716,18 @@ export class DomindsApp extends HTMLElement {
           this.onAuthRejected('api');
           return;
         }
-        this.showToast(resp.error || 'Failed to move dialogs', 'error');
+        this.showToast(resp.error || t.moveDialogsFailedToast, 'error');
         return;
       }
       const payload = resp.data;
       if (!payload || !payload.success) {
-        const msg = payload && payload.error ? payload.error : 'Failed to move dialogs';
+        const msg = payload && payload.error ? payload.error : t.moveDialogsFailedToast;
         this.showToast(msg, 'error');
         return;
       }
 
       const movedCount = Array.isArray(payload.movedRootIds) ? payload.movedRootIds.length : 0;
-      this.showToast(`Moved ${movedCount} dialog(s).`, 'info');
+      this.showToast(`${t.movedDialogsToastPrefix}${String(movedCount)}`, 'info');
 
       // Optimistic in-memory update so UI reacts immediately (no waiting on loadDialogs()).
       const movedRootIds = Array.isArray(payload.movedRootIds) ? payload.movedRootIds : [];
@@ -5754,8 +5766,8 @@ export class DomindsApp extends HTMLElement {
       this.updateInputPanelVisibility();
       this.updateQ4HComponent();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.showToast(`Failed to move dialogs: ${message}`, 'error');
+      const message = error instanceof Error ? error.message : t.unknownError;
+      this.showToast(`${t.moveDialogsFailedToast}: ${message}`, 'error');
     }
   }
 
@@ -6244,7 +6256,8 @@ export class DomindsApp extends HTMLElement {
         this.setupRemindersWidgetDrag();
       }
 
-      this.showSuccess('Dialog loaded successfully');
+      const t = getUiStrings(this.uiLanguage);
+      this.showSuccess(t.dialogLoadedToast);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showError(`Failed to load dialog: ${message}`, 'error');
@@ -6486,12 +6499,22 @@ export class DomindsApp extends HTMLElement {
   }
 
   private showSuccess(message: string): void {
-    // Success should behave like a normal toast and be recorded in notification history.
-    this.showToast(message, 'info');
+    // Success toasts are transient by default to keep notification history focused.
+    this.showToast(message, 'info', { history: 'skip' });
   }
 
-  private showToast(message: string, kind: ToastKind = 'error'): void {
-    this.pushToastHistoryEntry({ message, kind });
+  private shouldPersistToastHistory(kind: ToastKind, options?: ToastOptions): boolean {
+    const policy = options?.history ?? 'default';
+    if (policy === 'persist') return true;
+    if (policy === 'skip') return false;
+    // Keep history focused on actionable items; informational toasts are transient by default.
+    return kind === 'error' || kind === 'warning';
+  }
+
+  private showToast(message: string, kind: ToastKind = 'error', options?: ToastOptions): void {
+    if (this.shouldPersistToastHistory(kind, options)) {
+      this.pushToastHistoryEntry({ message, kind });
+    }
     if (!this.shadowRoot) return;
     const toast = document.createElement('div');
     const bg =
@@ -6910,7 +6933,8 @@ export class DomindsApp extends HTMLElement {
   private async loadToolsRegistry(): Promise<void> {
     const res = await this.apiClient.getToolsRegistry();
     if (!res.success || !res.data) {
-      const message = res.error || 'Failed to load tools registry';
+      const t = getUiStrings(this.uiLanguage);
+      const message = res.error || t.toolsRegistryLoadFailedToast;
       this.showToast(message, 'warning');
       return;
     }
@@ -7455,6 +7479,7 @@ export class DomindsApp extends HTMLElement {
           break;
       }
     } catch (error) {
+      const t = getUiStrings(this.uiLanguage);
       // Enhanced error handling for WebSocket event processing
       console.error('🔔 [ERROR] WebSocket event processing failed:', {
         messageType: message?.type || 'unknown',
@@ -7470,15 +7495,9 @@ export class DomindsApp extends HTMLElement {
           error.message.includes('Network error') ||
           error.message.includes('connection'))
       ) {
-        this.showToast(
-          'Connection issue detected. Reminder data may be temporarily unavailable.',
-          'error',
-        );
+        this.showToast(t.reminderConnectionIssueToast, 'error');
       } else {
-        this.showToast(
-          'Reminder synchronization encountered an issue. Please refresh if problems persist.',
-          'error',
-        );
+        this.showToast(t.reminderSyncIssueToast, 'error');
       }
     }
   }
