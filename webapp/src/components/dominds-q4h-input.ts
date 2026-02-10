@@ -737,6 +737,8 @@ export class DomindsQ4HInput extends HTMLElement {
     if (!ok) return;
     const note = this.textInput ? this.textInput.value : '';
     this.wsManager.sendRaw({ type: 'declare_subdialog_dead', dialog, note });
+    this.recordInputHistoryEntry(note);
+    this.clear();
   }
 
   private async handlePrimaryAction(): Promise<void> {
