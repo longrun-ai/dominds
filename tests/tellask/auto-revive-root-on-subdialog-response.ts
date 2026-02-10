@@ -169,6 +169,11 @@ async function main(): Promise<void> {
             response: subdialogResponseText,
           },
           {
+            role: 'tool',
+            message: expectedInjected,
+            response: rootResumeResponse,
+          },
+          {
             role: 'user',
             message: expectedInjected,
             response: rootResumeResponse,

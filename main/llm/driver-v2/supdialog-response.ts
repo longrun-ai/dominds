@@ -4,9 +4,7 @@ import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import { generateShortId } from '../../shared/utils/id';
 import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
-import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';
@@ -154,21 +152,6 @@ export async function supplyResponseToSupdialogV2(args: {
         tellaskHead = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
       }
 
-      const completedAt = formatUnifiedTimestamp(new Date());
-      const responseId = generateShortId();
-      await DialogPersistence.appendSubdialogResponse(parentDialog.id, {
-        responseId,
-        subdialogId: subdialogId.selfId,
-        response: responseText,
-        completedAt,
-        status,
-        callType,
-        tellaskHead,
-        responderId,
-        originMemberId,
-        callId: callId ?? '',
-      });
-
       await DialogPersistence.savePendingSubdialogs(parentDialog.id, filteredPending);
 
       const hasQ4H = await parentDialog.hasPendingQ4H();
@@ -201,7 +184,7 @@ export async function supplyResponseToSupdialogV2(args: {
     );
 
     // Keep in-memory dialog context in sync with live teammate-response events immediately.
-    // Without this, tellask_result_msg can appear batched at drive-finalization mirror time.
+    // v2 context assembly now relies on dialog msgs + persisted teammate_response_record only.
     const immediateMirror: ChatMessage = {
       type: 'tellask_result_msg',
       role: 'tool',
@@ -223,7 +206,10 @@ export async function supplyResponseToSupdialogV2(args: {
         `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} auto-reviving`,
       );
       if (parentDialog instanceof RootDialog) {
-        globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId);
+        globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId, {
+          source: 'driver_v2_supply_response',
+          reason: `all_pending_subdialogs_resolved:type_${callType}`,
+        });
       }
       scheduleDrive(parentDialog, {
         waitInQue: true,

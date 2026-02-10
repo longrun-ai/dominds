@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { globalDialogRegistry } from '../../main/dialog-global-registry';
-import { restoreDialogHierarchy } from '../../main/llm/driver';
+import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/driver-entry';
 import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
@@ -13,9 +12,7 @@ import {
 import {
   createRootDialog,
   lastAssistantSaying,
-  listTellaskResultContents,
   parseSingleTellaskCall,
-  persistRootDialogMetadata,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -23,11 +20,27 @@ import {
   writeStandardMinds,
 } from './helpers';
 
+function findMirroredTeammateResultIndex(
+  msgs: readonly ChatMessage[],
+  expectedContent: string,
+): number {
+  return msgs.findIndex(
+    (msg) =>
+      msg.type === 'tellask_result_msg' && msg.role === 'tool' && msg.content === expectedContent,
+  );
+}
+
+function findAssistantSayingIndex(msgs: readonly ChatMessage[], content: string): number {
+  return msgs.findIndex(
+    (msg) => msg.type === 'saying_msg' && msg.role === 'assistant' && msg.content === content,
+  );
+}
+
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const trigger = 'Trigger subdialog and then verify restore/live equivalence.';
+    const trigger = 'Trigger subdialog and verify response ordering without queue injection.';
     const rootFirstResponse = [
       'Start.',
       '!?@pangu Please compute 1+1.',
@@ -35,13 +48,15 @@ async function main(): Promise<void> {
       'separator',
     ].join('\n');
     const parsed = await parseSingleTellaskCall(rootFirstResponse);
+    const tellaskHead = parsed.tellaskHead;
+    const tellaskBody = parsed.body;
     const language = getWorkLanguage();
 
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'tester',
       toAgentId: 'pangu',
-      tellaskHead: parsed.tellaskHead,
-      tellaskBody: parsed.body,
+      tellaskHead,
+      tellaskBody,
       language,
       collectiveTargets: ['pangu'],
     });
@@ -49,11 +64,11 @@ async function main(): Promise<void> {
     const expectedInjected = formatTeammateResponseContent({
       responderId: 'pangu',
       requesterId: 'tester',
-      originalCallHeadLine: parsed.tellaskHead,
+      originalCallHeadLine: tellaskHead,
       responseBody: subdialogResponseText,
       language,
     });
-    const resumeResponse = 'Ack: restore/live comparison ready.';
+    const resumeResponse = 'Ack: subdialog response was visible before follow-up generation.';
 
     await writeMockDb(tmpRoot, [
       { message: trigger, role: 'user', response: rootFirstResponse },
@@ -64,49 +79,43 @@ async function main(): Promise<void> {
 
     const dlg = createRootDialog('tester');
     dlg.disableDiligencePush = true;
-    await persistRootDialogMetadata(dlg);
 
     await driveDialogStream(
       dlg,
-      { content: trigger, msgId: 'driver-v2-restore-live-equivalence', grammar: 'markdown' },
+      { content: trigger, msgId: 'driver-v2-subdialog-order-before-gen', grammar: 'markdown' },
       true,
+      { suppressDiligencePush: true },
     );
     await waitFor(
       async () => lastAssistantSaying(dlg) === resumeResponse,
       3_000,
-      'root dialog to generate after subdialog response',
+      'root dialog to generate follow-up from subdialog response',
     );
     await waitForAllDialogsUnlocked(dlg, 3_000);
 
-    const liveContents = listTellaskResultContents(dlg.msgs);
-    assert.ok(
-      liveContents.includes(expectedInjected),
-      'live dialog should contain mirrored tellask_result_msg',
+    const queueAfter = await DialogPersistence.loadSubdialogResponsesQueue(dlg.id);
+    assert.equal(
+      queueAfter.length,
+      0,
+      'driver-v2 should not rely on persisted subdialog response queue',
     );
 
-    await DialogPersistence.moveDialogStatus(dlg.id, 'running', 'completed');
-    globalDialogRegistry.unregister(dlg.id.rootId);
+    const mirrorIndex = findMirroredTeammateResultIndex(dlg.msgs, expectedInjected);
+    assert.ok(mirrorIndex >= 0, 'expected mirrored teammate-response bubble before generation');
 
-    const restored = await restoreDialogHierarchy(dlg.id.rootId, 'completed');
-    const restoredContents = listTellaskResultContents(restored.rootDialog.msgs);
+    const sayingIndex = findAssistantSayingIndex(dlg.msgs, resumeResponse);
+    assert.ok(sayingIndex >= 0, 'expected assistant saying generated from mirrored response');
     assert.ok(
-      restoredContents.includes(expectedInjected),
-      'restored dialog should contain teammate-response tellask_result_msg',
-    );
-
-    const uniqSorted = (items: string[]): string[] => Array.from(new Set(items)).sort();
-    assert.deepEqual(
-      uniqSorted(restoredContents),
-      uniqSorted(liveContents),
-      'restored and live tellask_result_msg content sets should be equivalent',
+      mirrorIndex < sayingIndex,
+      'teammate-response bubble must appear before assistant saying that uses it',
     );
   });
 
-  console.log('driver-v2 subdialog-restore-live-equivalence: PASS');
+  console.log('driver-v2 subdialog-order-before-gen: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`driver-v2 subdialog-restore-live-equivalence: FAIL\n${message}`);
+  console.error(`driver-v2 subdialog-order-before-gen: FAIL\n${message}`);
   process.exit(1);
 });

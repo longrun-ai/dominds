@@ -19,7 +19,11 @@ import {
   setRunStateBroadcaster,
 } from '../dialog-run-state';
 import { dialogEventRegistry, postDialogEvent, setQ4HBroadcaster } from '../evt-registry';
-import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver-entry';
+import {
+  driveDialogStream,
+  getActiveDriverEngine,
+  supplyResponseToSupdialog,
+} from '../llm/driver-entry';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/driver-v2/runtime-utils';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -532,9 +536,11 @@ async function maybeTriggerImmediateDiligencePrompt(rootDialog: RootDialog): Pro
       return;
     }
 
-    const queuedResponses = await DialogPersistence.loadSubdialogResponsesQueue(rootDialog.id);
-    if (queuedResponses.length > 0) {
-      return;
+    if (getActiveDriverEngine() === 'v1') {
+      const queuedResponses = await DialogPersistence.loadSubdialogResponsesQueue(rootDialog.id);
+      if (queuedResponses.length > 0) {
+        return;
+      }
     }
 
     const team = await Team.load();

@@ -59,6 +59,7 @@ async function main(): Promise<void> {
       'Start.',
       '!?@pangu Please compute 1+1.',
       '!?Return only the number.',
+      'separator',
     ].join('\n');
     const parsed = await parseSingleTellaskCall(rootFirstResponse);
     const language = getWorkLanguage();
@@ -83,6 +84,7 @@ async function main(): Promise<void> {
     await writeMockDb(tmpRoot, [
       { message: trigger, role: 'user', response: rootFirstResponse },
       { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
+      { message: expectedInjected, role: 'tool', response: rootResumeResponse },
       { message: expectedInjected, role: 'user', response: rootResumeResponse },
     ]);
 

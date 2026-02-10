@@ -276,6 +276,43 @@ export async function executeDriveRound(args: {
     release();
   }
 
+  if (
+    dialog instanceof SubDialog &&
+    driveResult &&
+    !driveResult.interrupted &&
+    driveResult.lastAssistantSayingContent !== null
+  ) {
+    let supplied = false;
+    if (subdialogReplyTarget) {
+      supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
+        subdialog: dialog,
+        responseText: driveResult.lastAssistantSayingContent,
+        target: subdialogReplyTarget,
+        scheduleDrive: args.scheduleDrive,
+      });
+      if (!supplied) {
+        supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+          subdialog: dialog,
+          responseText: driveResult.lastAssistantSayingContent,
+          scheduleDrive: args.scheduleDrive,
+        });
+      }
+    } else {
+      supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+        subdialog: dialog,
+        responseText: driveResult.lastAssistantSayingContent,
+        scheduleDrive: args.scheduleDrive,
+      });
+    }
+
+    if (!supplied) {
+      log.info('driver-v2 subdialog produced response but found no pending caller to supply', {
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+      });
+    }
+  }
+
   if (followUp) {
     args.scheduleDrive(dialog, {
       waitInQue: true,
@@ -288,41 +325,6 @@ export async function executeDriveRound(args: {
             ? followUp.userLanguageCode
             : undefined,
       },
-    });
-    return;
-  }
-
-  if (
-    dialog instanceof SubDialog &&
-    driveResult &&
-    !driveResult.interrupted &&
-    driveResult.lastAssistantSayingContent !== null
-  ) {
-    const suspension = await dialog.getSuspensionStatus();
-    if (!suspension.canDrive) {
-      log.info('driver-v2 skip supplying subdialog response because dialog is still suspended', {
-        rootId: dialog.id.rootId,
-        selfId: dialog.id.selfId,
-        waitingQ4H: suspension.q4h,
-        waitingSubdialogs: suspension.subdialogs,
-      });
-      return;
-    }
-
-    if (subdialogReplyTarget) {
-      await supplySubdialogResponseToSpecificCallerIfPendingV2({
-        subdialog: dialog,
-        responseText: driveResult.lastAssistantSayingContent,
-        target: subdialogReplyTarget,
-        scheduleDrive: args.scheduleDrive,
-      });
-      return;
-    }
-
-    await supplySubdialogResponseToAssignedCallerIfPendingV2({
-      subdialog: dialog,
-      responseText: driveResult.lastAssistantSayingContent,
-      scheduleDrive: args.scheduleDrive,
     });
   }
 }

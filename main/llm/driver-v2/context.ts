@@ -9,7 +9,7 @@ export type DriveBaseContextParts = Readonly<{
 }>;
 
 export type DriveEphemeralContextParts = Readonly<{
-  subdialogResponseContextMsgs: readonly ChatMessage[];
+  subdialogResponseContextMsgs?: readonly ChatMessage[];
   internalDrivePromptMsg?: ChatMessage;
 }>;
 
@@ -62,7 +62,10 @@ export function appendDriveEphemeralContext(
   parts: DriveEphemeralContextParts,
 ): ChatMessage[] {
   const next: ChatMessage[] = [...base];
-  if (parts.subdialogResponseContextMsgs.length > 0) {
+  if (
+    Array.isArray(parts.subdialogResponseContextMsgs) &&
+    parts.subdialogResponseContextMsgs.length > 0
+  ) {
     next.push(...parts.subdialogResponseContextMsgs);
   }
   if (parts.internalDrivePromptMsg) {

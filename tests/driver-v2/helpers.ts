@@ -45,6 +45,7 @@ export async function writeStandardMinds(
   tmpRoot: string,
   options?: {
     includePangu?: boolean;
+    extraMembers?: ReadonlyArray<string>;
     memberToolsets?: ReadonlyArray<string>;
     memberTools?: ReadonlyArray<string>;
   },
@@ -92,6 +93,20 @@ export async function writeStandardMinds(
   }
   if (includePangu) {
     teamLines.push('  pangu:', '    name: Pangu', '    provider: local-mock', '    model: default');
+  }
+  if (Array.isArray(options?.extraMembers)) {
+    for (const memberId of options.extraMembers) {
+      const normalized = memberId.trim();
+      if (!normalized || normalized === 'tester' || (includePangu && normalized === 'pangu')) {
+        continue;
+      }
+      teamLines.push(
+        `  ${normalized}:`,
+        `    name: ${normalized}`,
+        '    provider: local-mock',
+        '    model: default',
+      );
+    }
   }
   teamLines.push('');
   await fs.writeFile(path.join(tmpRoot, '.minds', 'team.yaml'), teamLines.join('\n'), 'utf-8');

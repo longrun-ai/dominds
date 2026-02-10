@@ -1,14 +1,41 @@
 import type { RootDialog } from './dialog';
 import { DialogPersistence } from './persistence';
+import {
+  createPubChan,
+  createSubChan,
+  EndOfStream,
+  type PubChan,
+  type SubChan,
+} from './shared/evt';
 
 type RegistryEntry = {
   rootDialog: RootDialog;
   needsDrive: boolean;
 };
 
+export type DriveTriggerEvent = Readonly<{
+  type: 'drive_trigger_evt';
+  action: 'mark_needs_drive' | 'mark_not_needing_drive';
+  rootId: string;
+  entryFound: boolean;
+  previousNeedsDrive: boolean | null;
+  nextNeedsDrive: boolean;
+  source: string;
+  reason: string;
+  emittedAtMs: number;
+}>;
+
+export type DriveTriggerMeta = Readonly<{
+  source: string;
+  reason: string;
+}>;
+
 class GlobalDialogRegistry {
   private static instance: GlobalDialogRegistry | undefined;
   private readonly entries: Map<string, RegistryEntry> = new Map();
+  private readonly driveTriggerPubChan: PubChan<DriveTriggerEvent> =
+    createPubChan<DriveTriggerEvent>();
+  private driveTriggerSubChan: SubChan<DriveTriggerEvent> = createSubChan(this.driveTriggerPubChan);
 
   static getInstance(): GlobalDialogRegistry {
     if (!GlobalDialogRegistry.instance) {
@@ -36,7 +63,10 @@ class GlobalDialogRegistry {
       try {
         const needsDrive = await DialogPersistence.getNeedsDrive(rootDialog.id);
         if (needsDrive) {
-          this.markNeedsDrive(rootDialog.id.rootId);
+          this.markNeedsDrive(rootDialog.id.rootId, {
+            source: 'dialog_registry_hydration',
+            reason: 'persisted_needs_drive_true',
+          });
         }
       } catch {
         // Best-effort hydration; backend driver will still function for runtime-triggered drives.
@@ -48,18 +78,76 @@ class GlobalDialogRegistry {
     this.entries.delete(rootId);
   }
 
-  markNeedsDrive(rootId: string): void {
-    const entry = this.entries.get(rootId);
-    if (entry) {
-      entry.needsDrive = true;
+  private publishDriveTrigger(args: {
+    action: DriveTriggerEvent['action'];
+    rootId: string;
+    entryFound: boolean;
+    previousNeedsDrive: boolean | null;
+    nextNeedsDrive: boolean;
+    meta: DriveTriggerMeta;
+  }): void {
+    this.driveTriggerPubChan.write({
+      type: 'drive_trigger_evt',
+      action: args.action,
+      rootId: args.rootId,
+      entryFound: args.entryFound,
+      previousNeedsDrive: args.previousNeedsDrive,
+      nextNeedsDrive: args.nextNeedsDrive,
+      source: args.meta.source,
+      reason: args.meta.reason,
+      emittedAtMs: Date.now(),
+    });
+  }
+
+  async waitForDriveTrigger(): Promise<DriveTriggerEvent> {
+    for (;;) {
+      const trigger = await this.driveTriggerSubChan.read();
+      if (trigger !== EndOfStream) {
+        return trigger;
+      }
+      // Recreate subscription if EOS is ever observed (should not happen in normal runtime).
+      this.driveTriggerSubChan = createSubChan(this.driveTriggerPubChan);
     }
   }
 
-  markNotNeedingDrive(rootId: string): void {
+  markNeedsDrive(rootId: string, meta?: DriveTriggerMeta): void {
+    const triggerMeta: DriveTriggerMeta = meta ?? {
+      source: 'unknown',
+      reason: 'unspecified',
+    };
     const entry = this.entries.get(rootId);
+    const previousNeedsDrive = entry ? entry.needsDrive : null;
+    if (entry) {
+      entry.needsDrive = true;
+    }
+    this.publishDriveTrigger({
+      action: 'mark_needs_drive',
+      rootId,
+      entryFound: entry !== undefined,
+      previousNeedsDrive,
+      nextNeedsDrive: true,
+      meta: triggerMeta,
+    });
+  }
+
+  markNotNeedingDrive(rootId: string, meta?: DriveTriggerMeta): void {
+    const triggerMeta: DriveTriggerMeta = meta ?? {
+      source: 'unknown',
+      reason: 'unspecified',
+    };
+    const entry = this.entries.get(rootId);
+    const previousNeedsDrive = entry ? entry.needsDrive : null;
     if (entry) {
       entry.needsDrive = false;
     }
+    this.publishDriveTrigger({
+      action: 'mark_not_needing_drive',
+      rootId,
+      entryFound: entry !== undefined,
+      previousNeedsDrive,
+      nextNeedsDrive: false,
+      meta: triggerMeta,
+    });
   }
 
   getDialogsNeedingDrive(): RootDialog[] {

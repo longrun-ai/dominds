@@ -89,11 +89,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private webSearchSectionByItemId = new Map<string, HTMLElement>();
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
 
-  // Teammate-call responses can arrive before the corresponding calling section has finished streaming
-  // (and therefore before teammate_call_finish_evt sets data-call-id + populates callingSectionByCallId).
-  // Buffer by callId and attach when the calling section is finalized.
-  private pendingTeammateCallResponsesByCallId = new Map<string, TeammateCallResponseEvent>();
-
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
   private pendingScrollRequest: PendingScrollRequest | null = null;
@@ -626,7 +621,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.callingSectionByCallId.clear();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
-    this.pendingTeammateCallResponsesByCallId.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -649,7 +643,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.callingSectionByCallId.clear();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
-    this.pendingTeammateCallResponsesByCallId.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -1463,15 +1456,6 @@ export class DomindsDialogContainer extends HTMLElement {
     currentSection.classList.add('completed');
     this.callingSection = undefined;
     this.teammateCallingSectionBySeq.set(event.genseq, currentSection);
-
-    const pending = this.pendingTeammateCallResponsesByCallId.get(callId);
-    if (pending) {
-      const display = this.formatTeammateCallResultForSection(currentSection, pending);
-      if (typeof display === 'string') {
-        this.pendingTeammateCallResponsesByCallId.delete(callId);
-        this.attachResultInline(currentSection, display, pending.status);
-      }
-    }
   }
 
   // === FUNCTION RESULTS ===
@@ -1604,10 +1588,14 @@ export class DomindsDialogContainer extends HTMLElement {
   //   - Uses callId for correlation
   //   - Uses this handler (handleToolCallResponse)
   private handleToolCallResponse(event: TeammateCallResponseEvent): void {
-    // Ignore late tool responses for a different course than the one currently displayed.
-    // This can happen when a dialog-control tool (e.g., clear_mind) triggers a course transition
-    // and the UI clears the previous course before the response event arrives.
     if (typeof this.currentCourse === 'number' && event.course !== this.currentCourse) {
+      this.handleProtocolError(
+        `teammate_call_response_evt course mismatch ${JSON.stringify({
+          eventCourse: event.course,
+          currentCourse: this.currentCourse,
+          callId: event.callId,
+        })}`,
+      );
       return;
     }
 
@@ -1625,21 +1613,19 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const callingSection = this.callingSectionByCallId.get(callId);
     if (!callingSection) {
-      // Normal race: call result can arrive before teammate_call_finish_evt registers the callId.
-      // Buffer and attach when the calling section is finalized.
-      this.pendingTeammateCallResponsesByCallId.set(callId, event);
+      this.handleProtocolError(
+        `teammate_call_response_evt received before teammate_call_finish_evt ${JSON.stringify({
+          callId,
+          course: event.course,
+          calling_genseq: event.calling_genseq,
+          responderId: event.responderId,
+        })}`,
+      );
       return;
     }
 
     const display = this.formatTeammateCallResultForSection(callingSection, event);
-    if (typeof display !== 'string') {
-      // Delay rendering until bubble language becomes known (end_of_user_saying_evt),
-      // otherwise we may incorrectly localize teammate-call errors based on current UI language.
-      this.pendingTeammateCallResponsesByCallId.set(callId, event);
-      return;
-    }
     this.attachResultInline(callingSection, display, event.status);
-    this.pendingTeammateCallResponsesByCallId.delete(callId);
     if (event.status === 'failed') {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       host?.dispatchEvent(
@@ -1668,7 +1654,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private formatTeammateCallResultForSection(
     section: HTMLElement,
     event: TeammateCallResponseEvent,
-  ): string | undefined {
+  ): string {
     const rawResult = String(event.result || '');
     if (event.status !== 'failed') return rawResult;
 
@@ -1677,9 +1663,15 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const bubbleLanguage = this.resolveBubbleLanguageForSection(section);
     if (!bubbleLanguage) {
-      // Don't guess based on current UI language: teammate-call errors must match the language of
-      // the originating user prompt (per-bubble data-user-language-code). Defer until known.
-      return undefined;
+      // Do not defer inline result rendering. Emit loud diagnostics and surface raw backend payload.
+      this.handleProtocolError(
+        `teammate_call_response_evt missing bubble language ${JSON.stringify({
+          callId: event.callId,
+          course: event.course,
+          calling_genseq: event.calling_genseq,
+        })}`,
+      );
+      return rawResult;
     }
 
     return formatTeammateCallErrorInline({
@@ -2174,8 +2166,6 @@ export class DomindsDialogContainer extends HTMLElement {
       } else {
         bubble.removeAttribute('data-user-language-code');
       }
-      // If any call responses were deferred due to missing bubble language, try attaching now.
-      this.flushPendingTeammateCallResponsesForBubble(bubble);
       this.scrollToBottom();
       return;
     }
@@ -2208,30 +2198,7 @@ export class DomindsDialogContainer extends HTMLElement {
     } else {
       bubble.removeAttribute('data-user-language-code');
     }
-
-    // If any call responses were deferred due to missing bubble language, try attaching now.
-    this.flushPendingTeammateCallResponsesForBubble(bubble);
     this.scrollToBottom();
-  }
-
-  private flushPendingTeammateCallResponsesForBubble(bubble: HTMLElement): void {
-    const sections = bubble.querySelectorAll('.calling-section[data-call-id]');
-    if (sections.length < 1) return;
-
-    for (const section of Array.from(sections)) {
-      if (!(section instanceof HTMLElement)) continue;
-      const callId = String(section.getAttribute('data-call-id') || '').trim();
-      if (!callId) continue;
-
-      const pending = this.pendingTeammateCallResponsesByCallId.get(callId);
-      if (!pending) continue;
-
-      const display = this.formatTeammateCallResultForSection(section, pending);
-      if (typeof display !== 'string') continue;
-
-      this.pendingTeammateCallResponsesByCallId.delete(callId);
-      this.attachResultInline(section, display, pending.status);
-    }
   }
 
   // Create thinking section (inside generation bubble)

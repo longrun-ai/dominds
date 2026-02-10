@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 
-import { requestInterruptDialog } from '../../main/dialog-run-state';
+import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/driver-entry';
-import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
 import {
   formatAssignmentFromSupdialog,
@@ -22,98 +21,126 @@ import {
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
+    await writeStandardMinds(tmpRoot, {
+      includePangu: true,
+      extraMembers: ['coder'],
+    });
 
-    const trigger = 'Trigger subdialog then interrupt auto-revive drive.';
+    const trigger =
+      'Trigger subdialog and ensure response is supplied before nested suspension resolves.';
     const rootFirstResponse = [
       'Start.',
-      '!?@pangu Please compute 1+1.',
-      '!?Return only the number.',
+      '!?@pangu Please solve 1+1 and continue if needed.',
+      '!?Return your current best result.',
       'separator',
     ].join('\n');
-    const parsed = await parseSingleTellaskCall(rootFirstResponse);
+    const parsedRootCall = await parseSingleTellaskCall(rootFirstResponse);
     const language = getWorkLanguage();
+
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'tester',
       toAgentId: 'pangu',
-      tellaskHead: parsed.tellaskHead,
-      tellaskBody: parsed.body,
+      tellaskHead: parsedRootCall.tellaskHead,
+      tellaskBody: parsedRootCall.body,
       language,
       collectiveTargets: ['pangu'],
     });
-    const subdialogResponseText = '2';
-    const expectedInjected = formatTeammateResponseContent({
-      responderId: 'pangu',
-      requesterId: 'tester',
-      originalCallHeadLine: parsed.tellaskHead,
-      responseBody: subdialogResponseText,
+
+    const panguFirstResponse = [
+      'Current best result is 2.',
+      '!?@coder Please verify that 1+1 equals 2.',
+      '!?Reply with exactly `2` if correct.',
+      'separator',
+    ].join('\n');
+    const parsedPanguCall = await parseSingleTellaskCall(panguFirstResponse);
+    const expectedCoderPrompt = formatAssignmentFromSupdialog({
+      fromAgentId: 'pangu',
+      toAgentId: 'coder',
+      tellaskHead: parsedPanguCall.tellaskHead,
+      tellaskBody: parsedPanguCall.body,
+      language,
+      collectiveTargets: ['coder'],
+    });
+    const coderReply = '2';
+    const expectedCoderInjected = formatTeammateResponseContent({
+      responderId: 'coder',
+      requesterId: 'pangu',
+      originalCallHeadLine: parsedPanguCall.tellaskHead,
+      responseBody: coderReply,
       language,
     });
-    const resumeResponse = 'Ack: rollback path consumed queued response.';
+    const panguFinalResponse = 'Verified. Final answer remains 2.';
+
+    const expectedInjectedToRoot = formatTeammateResponseContent({
+      responderId: 'pangu',
+      requesterId: 'tester',
+      originalCallHeadLine: parsedRootCall.tellaskHead,
+      responseBody: panguFirstResponse,
+      language,
+    });
+    const rootResumeResponse = 'Ack: got subdialog result before nested verification completed.';
 
     await writeMockDb(tmpRoot, [
       { message: trigger, role: 'user', response: rootFirstResponse },
-      { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
-      // Delay this response so the test can interrupt while auto-revive drive is in-flight.
-      { message: expectedInjected, role: 'user', response: resumeResponse, delayMs: 1800 },
+      { message: expectedSubdialogPrompt, role: 'user', response: panguFirstResponse },
+      { message: expectedInjectedToRoot, role: 'tool', response: rootResumeResponse },
+      { message: expectedInjectedToRoot, role: 'user', response: rootResumeResponse },
+      { message: expectedCoderPrompt, role: 'user', response: coderReply, delayMs: 1800 },
+      { message: expectedCoderInjected, role: 'tool', response: panguFinalResponse },
+      { message: expectedCoderInjected, role: 'user', response: panguFinalResponse },
     ]);
 
     const dlg = createRootDialog('tester');
     dlg.disableDiligencePush = true;
 
+    const startedAt = Date.now();
     await driveDialogStream(
       dlg,
-      { content: trigger, msgId: 'driver-v2-subdialog-rollback-trigger', grammar: 'markdown' },
+      {
+        content: trigger,
+        msgId: 'driver-v2-subdialog-supply-before-suspension',
+        grammar: 'markdown',
+      },
       true,
+      { suppressDiligencePush: true },
     );
 
-    await waitFor(async () => dlg.isLocked(), 4_000, 'root auto-revive drive to start');
-
-    const interruptResult = await requestInterruptDialog(dlg.id, 'user_stop');
-    assert.equal(
-      interruptResult.applied,
-      true,
-      'interrupt should be applied to in-flight auto-revive',
-    );
-
-    await waitFor(async () => !dlg.isLocked(), 4_000, 'root unlock after interruption');
-
-    const queuedAfterInterrupt = await DialogPersistence.loadSubdialogResponsesQueue(dlg.id);
-    assert.equal(
-      queuedAfterInterrupt.length,
-      1,
-      'queued subdialog response should be rolled back after interrupted drive',
-    );
-
-    // Interrupted dialogs must not continue implicitly.
-    await driveDialogStream(dlg, undefined, true, { suppressDiligencePush: true });
-    const queueAfterImplicitRetry = await DialogPersistence.loadSubdialogResponsesQueue(dlg.id);
-    assert.equal(
-      queueAfterImplicitRetry.length,
-      1,
-      'implicit retry must be ignored while dialog stays interrupted',
-    );
-
-    await driveDialogStream(dlg, undefined, true, {
-      suppressDiligencePush: true,
-      allowResumeFromInterrupted: true,
-    });
     await waitFor(
-      async () => lastAssistantSaying(dlg) === resumeResponse,
-      4_000,
-      'manual retry drive to consume rolled-back response',
+      async () => lastAssistantSaying(dlg) === rootResumeResponse,
+      1_200,
+      'root dialog to resume before nested subdialog suspension resolves',
     );
-    await waitForAllDialogsUnlocked(dlg, 4_000);
+    const elapsedMs = Date.now() - startedAt;
+    assert.ok(
+      elapsedMs < 1_600,
+      `root follow-up should not wait nested coder reply delay (elapsed=${elapsedMs}ms)`,
+    );
 
-    const queueAfterRetry = await DialogPersistence.loadSubdialogResponsesQueue(dlg.id);
-    assert.equal(queueAfterRetry.length, 0, 'queue should be empty after successful retry drive');
+    await waitForAllDialogsUnlocked(dlg, 6_000);
+
+    const mirrorIndex = dlg.msgs.findIndex(
+      (msg) =>
+        msg.type === 'tellask_result_msg' &&
+        msg.role === 'tool' &&
+        msg.content === expectedInjectedToRoot,
+    );
+    const sayingIndex = dlg.msgs.findIndex(
+      (msg: ChatMessage) =>
+        msg.type === 'saying_msg' && msg.role === 'assistant' && msg.content === rootResumeResponse,
+    );
+    assert.ok(mirrorIndex >= 0, 'expected mirrored subdialog response in root messages');
+    assert.ok(sayingIndex >= 0, 'expected root follow-up response');
+    assert.ok(
+      mirrorIndex < sayingIndex,
+      'mirrored subdialog response must appear before root follow-up generation',
+    );
   });
 
-  console.log('driver-v2 subdialog-queue-interrupt-rollback: PASS');
+  console.log('driver-v2 subdialog-supply-before-suspension: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`driver-v2 subdialog-queue-interrupt-rollback: FAIL\n${message}`);
+  console.error(`driver-v2 subdialog-supply-before-suspension: FAIL\n${message}`);
   process.exit(1);
 });

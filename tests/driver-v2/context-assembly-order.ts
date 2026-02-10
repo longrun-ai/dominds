@@ -44,16 +44,6 @@ async function main(): Promise<void> {
         ],
       },
       ephemeral: {
-        subdialogResponseContextMsgs: [
-          {
-            type: 'tellask_result_msg',
-            role: 'tool',
-            responderId: 'pangu',
-            tellaskHead: 'head',
-            status: 'completed',
-            content: 'subdialog-response',
-          },
-        ],
         internalDrivePromptMsg: {
           type: 'prompting_msg',
           role: 'user',
@@ -84,7 +74,6 @@ async function main(): Promise<void> {
         'env:taskdoc',
         'env:course',
         'prompting:latest-user',
-        'tellask:subdialog-response',
         'env:reminder-1',
         'env:reminder-2',
         'guide:language-guide',
@@ -104,7 +93,6 @@ async function main(): Promise<void> {
         dialogMsgsForContext: [],
       },
       ephemeral: {
-        subdialogResponseContextMsgs: [],
         internalDrivePromptMsg: undefined,
       },
       tail: {
@@ -134,7 +122,6 @@ async function main(): Promise<void> {
         dialogMsgsForContext: [],
       },
       ephemeral: {
-        subdialogResponseContextMsgs: [],
         internalDrivePromptMsg: undefined,
       },
       tail: {

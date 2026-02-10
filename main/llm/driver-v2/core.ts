@@ -20,7 +20,6 @@ import {
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
-import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
 import { Team } from '../../team';
 import { TellaskStreamParser, type CollectedTellaskCall } from '../../tellask';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../../tool';
@@ -50,13 +49,6 @@ import {
   validateFuncToolArguments,
 } from './runtime-utils';
 import { createSayingEventsReceiver, emitSayingEvents, emitThinkingEvents } from './saying-events';
-import {
-  commitTakenSubdialogResponses,
-  rollbackTakenSubdialogResponses,
-  takeSubdialogResponses,
-  withSubdialogTxnLock,
-  type TakenSubdialogResponse,
-} from './subdialog-txn';
 import { executeTellaskCalls } from './tellask-bridge';
 import type {
   DriverV2CoreResult,
@@ -324,24 +316,6 @@ async function buildProviderContext(args: {
   return { provider, model, providerCfg };
 }
 
-async function hasQueuedSubdialogResponses(dialog: Dialog): Promise<boolean> {
-  try {
-    const queued = await withSubdialogTxnLock(dialog.id, async () => {
-      return await DialogPersistence.loadSubdialogResponsesQueue(dialog.id);
-    });
-    return queued.length > 0;
-  } catch (err) {
-    log.warn(
-      'driver-v2 failed to check queued subdialog responses; suppressing diligence as safe default',
-      {
-        dialogId: dialog.id.valueOf(),
-        error: err,
-      },
-    );
-    return true;
-  }
-}
-
 async function executeFunctionCalls(args: {
   dialog: Dialog;
   agent: Team.Member;
@@ -493,14 +467,6 @@ async function maybeContinueWithDiligencePrompt(args: {
     return { kind: 'break' };
   }
 
-  const queuedResponses = await hasQueuedSubdialogResponses(dlg);
-  if (queuedResponses) {
-    log.info('driver-v2 skip diligence prompt while subdialog responses remain queued', {
-      dialogId: dlg.id.valueOf(),
-    });
-    return { kind: 'break' };
-  }
-
   const prepared = await maybePrepareDiligenceAutoContinuePrompt({
     dlg,
     isRootDialog: true,
@@ -568,13 +534,7 @@ export async function driveDialogStreamCoreV2(
 
   let pubRemindersVer = dlg.remindersVer;
   let lastAssistantSayingContent: string | null = null;
-  let generationHadError = false;
-
-  let tookSubdialogResponses = false;
-  let takenSubdialogResponses: TakenSubdialogResponse[] = [];
-  let subdialogResponseContextMsgs: ChatMessage[] = [];
   let internalDrivePromptMsg: ChatMessage | undefined;
-  let committedTakenSubdialogResponses = false;
 
   let genIterNo = 0;
   let pendingPrompt: DriverV2HumanPrompt | undefined = humanPrompt;
@@ -729,20 +689,6 @@ export async function driveDialogStreamCoreV2(
           break;
         }
 
-        if (genIterNo === 1 && !tookSubdialogResponses) {
-          tookSubdialogResponses = true;
-          try {
-            takenSubdialogResponses = await takeSubdialogResponses(dlg.id);
-          } catch (err) {
-            log.warn('driver-v2 failed to take subdialog responses for injection', {
-              dialogId: dlg.id.selfId,
-              error: err,
-            });
-            generationHadError = true;
-            takenSubdialogResponses = [];
-          }
-        }
-
         const taskDocMsg: ChatMessage | undefined =
           dlg.taskDocPath && !skipTaskdocForThisDrive ? await formatTaskDocContent(dlg) : undefined;
 
@@ -756,20 +702,6 @@ export async function driveDialogStreamCoreV2(
           if (m.type === 'ui_only_markdown_msg') return false;
           return true;
         });
-
-        if (genIterNo === 1 && takenSubdialogResponses.length > 0) {
-          subdialogResponseContextMsgs = takenSubdialogResponses.map((response) => ({
-            type: 'environment_msg',
-            role: 'user',
-            content: formatTeammateResponseContent({
-              responderId: response.responderId,
-              requesterId: response.originMemberId,
-              originalCallHeadLine: response.tellaskHead,
-              responseBody: response.response,
-              language: getWorkLanguage(),
-            }),
-          }));
-        }
 
         await dlg.processReminderUpdates();
         const renderedReminders: ChatMessage[] =
@@ -812,7 +744,6 @@ export async function driveDialogStreamCoreV2(
             dialogMsgsForContext,
           },
           ephemeral: {
-            subdialogResponseContextMsgs,
             internalDrivePromptMsg,
           },
           tail: {
@@ -1264,13 +1195,11 @@ export async function driveDialogStreamCoreV2(
           : undefined;
 
     if (interruptedReason) {
-      generationHadError = true;
       finalRunState = { kind: 'interrupted', reason: interruptedReason };
       broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
       return { lastAssistantSayingContent, interrupted: true };
     }
 
-    generationHadError = true;
     const errText = extractErrorDetails(err).message;
     try {
       await dlg.streamError(errText);
@@ -1314,65 +1243,5 @@ export async function driveDialogStreamCoreV2(
     }
 
     await setDialogRunState(dlg.id, finalRunState);
-
-    if (tookSubdialogResponses) {
-      try {
-        if (generationHadError) {
-          await rollbackTakenSubdialogResponses(dlg.id);
-        } else {
-          await commitTakenSubdialogResponses(dlg.id);
-          committedTakenSubdialogResponses = true;
-        }
-      } catch (err2) {
-        log.warn('driver-v2 failed to finalize subdialog response queue after drive', {
-          dialogId: dlg.id.selfId,
-          error: err2,
-        });
-      }
-    }
-
-    if (committedTakenSubdialogResponses && takenSubdialogResponses.length > 0) {
-      try {
-        const mirroredMsgs: ChatMessage[] = [];
-        for (const response of takenSubdialogResponses) {
-          const content = formatTeammateResponseContent({
-            responderId: response.responderId,
-            requesterId: response.originMemberId,
-            originalCallHeadLine: response.tellaskHead,
-            responseBody: response.response,
-            language: getWorkLanguage(),
-          });
-          const status = response.status ?? 'completed';
-          const alreadyMirrored = dlg.msgs.some(
-            (msg) =>
-              msg.type === 'tellask_result_msg' &&
-              msg.role === 'tool' &&
-              msg.responderId === response.responderId &&
-              msg.tellaskHead === response.tellaskHead &&
-              msg.status === status &&
-              msg.content === content,
-          );
-          if (alreadyMirrored) {
-            continue;
-          }
-          mirroredMsgs.push({
-            type: 'tellask_result_msg',
-            role: 'tool',
-            responderId: response.responderId,
-            tellaskHead: response.tellaskHead,
-            status,
-            content,
-          });
-        }
-        if (mirroredMsgs.length > 0) {
-          await dlg.addChatMessages(...mirroredMsgs);
-        }
-      } catch (err) {
-        log.warn('driver-v2 failed to mirror committed subdialog responses into dialog msgs', {
-          dialogId: dlg.id.selfId,
-          error: err,
-        });
-      }
-    }
   }
 }
