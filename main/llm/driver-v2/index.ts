@@ -4,6 +4,7 @@ import {
   runBackendDriver as runBackendDriverFromOrchestrator,
   supplyResponseToSupdialog as supplyResponseToSupdialogFromOrchestrator,
 } from './orchestrator';
+import { restoreDialogHierarchy as restoreDialogHierarchyFromRestore } from './restore-dialog-hierarchy';
 import type {
   DriverV2DriveArgs,
   DriverV2DriveResult,
@@ -34,4 +35,10 @@ export async function supplyResponseToSupdialog(
 
 export function runBackendDriver(): DriverV2RunBackendResult {
   return runBackendDriverFromOrchestrator();
+}
+
+export async function restoreDialogHierarchy(
+  ...args: Parameters<typeof restoreDialogHierarchyFromRestore>
+): ReturnType<typeof restoreDialogHierarchyFromRestore> {
+  return await restoreDialogHierarchyFromRestore(...args);
 }

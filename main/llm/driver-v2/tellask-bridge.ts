@@ -44,7 +44,7 @@ type PendingSubdialogRecordType = {
   tellaskSession?: string;
 };
 
-type TeammateTellaskParseResult =
+export type TeammateTellaskParseResult =
   | {
       type: 'A';
       agentId: string;
@@ -142,7 +142,7 @@ function extractSingleTellaskSessionFromHeadline(tellaskHead: string): string | 
   return null;
 }
 
-function parseTeammateTellask(
+export function parseTeammateTellask(
   firstMention: string,
   tellaskHead: string,
   currentDialog?: Dialog,

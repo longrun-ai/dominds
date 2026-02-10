@@ -1,4 +1,4 @@
-import { parseTeammateTellask } from '../../main/llm/driver';
+import { parseTeammateTellask } from '../../main/llm/driver-v2/tellask-bridge';
 
 function assertEqual(actual: unknown, expected: unknown, message: string): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {

@@ -23,11 +23,7 @@ import {
   postDialogEvent,
   setGlobalDialogEventBroadcaster,
 } from '../evt-registry';
-import {
-  driveDialogStream,
-  getActiveDriverEngine,
-  supplyResponseToSupdialog,
-} from '../llm/driver-entry';
+import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver-entry';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/driver-v2/runtime-utils';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
@@ -538,13 +534,6 @@ async function maybeTriggerImmediateDiligencePrompt(rootDialog: RootDialog): Pro
     const suspension = await rootDialog.getSuspensionStatus();
     if (!suspension.canDrive) {
       return;
-    }
-
-    if (getActiveDriverEngine() === 'v1') {
-      const queuedResponses = await DialogPersistence.loadSubdialogResponsesQueue(rootDialog.id);
-      if (queuedResponses.length > 0) {
-        return;
-      }
     }
 
     const team = await Team.load();
