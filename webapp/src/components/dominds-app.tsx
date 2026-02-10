@@ -471,6 +471,7 @@ export class DomindsApp extends HTMLElement {
 
   private resolveDiligenceStateFromReady(readyMsg: DialogReadyMessage): DiligenceStateSnapshot {
     const configuredMax = this.normalizeDiligenceMax(readyMsg.diligencePushMax);
+    const defaultDisableDiligencePush = configuredMax !== null ? configuredMax <= 0 : false;
     const normalizedRemaining = this.normalizeDiligenceRemaining(
       readyMsg.diligencePushRemainingBudget,
     );
@@ -481,10 +482,17 @@ export class DomindsApp extends HTMLElement {
       remaining = Math.min(remaining, configuredMax);
     }
     return {
-      disableDiligencePush: readyMsg.disableDiligencePush ?? false,
+      disableDiligencePush: readyMsg.disableDiligencePush ?? defaultDisableDiligencePush,
       configuredMax,
       remaining,
     };
+  }
+
+  private isDiligenceCheckboxChecked(): boolean {
+    if (!this.isDiligenceApplicableToCurrentDialog()) {
+      return false;
+    }
+    return !this.disableDiligencePush;
   }
 
   private getDiligenceBudgetBadgeText(): { text: string; hasRemaining: boolean } {
@@ -552,7 +560,7 @@ export class DomindsApp extends HTMLElement {
     const checkbox = diligenceTab.querySelector('#diligence-toggle') as HTMLInputElement | null;
     if (checkbox) {
       const applicable = this.isDiligenceApplicableToCurrentDialog();
-      checkbox.checked = applicable ? !this.disableDiligencePush : false;
+      checkbox.checked = applicable ? this.isDiligenceCheckboxChecked() : false;
       checkbox.disabled = !applicable;
     }
 
@@ -3862,7 +3870,7 @@ export class DomindsApp extends HTMLElement {
 	                      class="bp-checkbox"
 	                      type="checkbox"
 	                      aria-label="${t.keepGoingToggleAriaLabel}"
-	                      ${this.isDiligenceApplicableToCurrentDialog() ? (this.disableDiligencePush ? '' : 'checked') : ''}
+	                      ${this.isDiligenceApplicableToCurrentDialog() && this.isDiligenceCheckboxChecked() ? 'checked' : ''}
 	                      ${this.isDiligenceApplicableToCurrentDialog() ? '' : 'disabled'}
 	                    />
 	                    <span class="bp-label" data-bp-label="diligence">${t.keepGoingTabTitle}</span>
