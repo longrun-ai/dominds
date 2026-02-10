@@ -18,6 +18,7 @@ import {
   formatUserFacingLanguageGuide,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
 import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
 import { Team } from '../../team';
@@ -121,6 +122,133 @@ async function emitUserMarkdown(dlg: Dialog, content: string): Promise<void> {
 
 function resolveModelInfo(providerCfg: ProviderConfig, model: string): ModelInfo | undefined {
   return providerCfg.models[model];
+}
+
+function resolveModelContextLimitTokens(modelInfo: ModelInfo | undefined): number | null {
+  if (
+    modelInfo &&
+    typeof modelInfo.context_length === 'number' &&
+    Number.isFinite(modelInfo.context_length)
+  ) {
+    const n = Math.floor(modelInfo.context_length);
+    return n > 0 ? n : null;
+  }
+  if (
+    modelInfo &&
+    typeof modelInfo.input_length === 'number' &&
+    Number.isFinite(modelInfo.input_length)
+  ) {
+    const n = Math.floor(modelInfo.input_length);
+    return n > 0 ? n : null;
+  }
+  return null;
+}
+
+function resolveEffectiveOptimalMaxTokens(args: {
+  modelInfo: ModelInfo | undefined;
+  modelContextLimitTokens: number;
+}): {
+  effectiveOptimalMaxTokens: number;
+  optimalMaxTokensConfigured?: number;
+  effectiveCriticalMaxTokens: number;
+  criticalMaxTokensConfigured?: number;
+} {
+  const configuredOptimal =
+    args.modelInfo &&
+    typeof args.modelInfo.optimal_max_tokens === 'number' &&
+    Number.isFinite(args.modelInfo.optimal_max_tokens)
+      ? Math.floor(args.modelInfo.optimal_max_tokens)
+      : undefined;
+  const optimalMaxTokensConfigured =
+    configuredOptimal !== undefined && configuredOptimal > 0 ? configuredOptimal : undefined;
+
+  const configuredCritical =
+    args.modelInfo &&
+    typeof args.modelInfo.critical_max_tokens === 'number' &&
+    Number.isFinite(args.modelInfo.critical_max_tokens)
+      ? Math.floor(args.modelInfo.critical_max_tokens)
+      : undefined;
+  const criticalMaxTokensConfigured =
+    configuredCritical !== undefined && configuredCritical > 0 ? configuredCritical : undefined;
+
+  const defaultOptimal = 100_000;
+  const effectiveOptimalMaxTokens =
+    optimalMaxTokensConfigured !== undefined ? optimalMaxTokensConfigured : defaultOptimal;
+
+  const defaultCritical = Math.max(1, Math.floor(args.modelContextLimitTokens * 0.9));
+  const effectiveCriticalMaxTokens =
+    criticalMaxTokensConfigured !== undefined ? criticalMaxTokensConfigured : defaultCritical;
+
+  return {
+    effectiveOptimalMaxTokens,
+    optimalMaxTokensConfigured,
+    effectiveCriticalMaxTokens,
+    criticalMaxTokensConfigured,
+  };
+}
+
+function computeContextHealthSnapshot(args: {
+  providerCfg: ProviderConfig;
+  model: string;
+  usage: LlmUsageStats;
+}): ContextHealthSnapshot {
+  const modelInfo: ModelInfo | undefined = args.providerCfg.models[args.model];
+  const modelContextWindowText =
+    modelInfo && typeof modelInfo.context_window === 'string'
+      ? modelInfo.context_window
+      : undefined;
+  const modelContextLimitTokens = resolveModelContextLimitTokens(modelInfo);
+  if (modelContextLimitTokens === null) {
+    return { kind: 'unavailable', reason: 'model_limit_unavailable', modelContextWindowText };
+  }
+
+  const {
+    effectiveOptimalMaxTokens,
+    optimalMaxTokensConfigured,
+    effectiveCriticalMaxTokens,
+    criticalMaxTokensConfigured,
+  } = resolveEffectiveOptimalMaxTokens({
+    modelInfo,
+    modelContextLimitTokens,
+  });
+
+  if (args.usage.kind !== 'available') {
+    return {
+      kind: 'unavailable',
+      reason: 'usage_unavailable',
+      modelContextWindowText,
+      modelContextLimitTokens,
+      effectiveOptimalMaxTokens,
+      optimalMaxTokensConfigured,
+      effectiveCriticalMaxTokens,
+      criticalMaxTokensConfigured,
+    };
+  }
+
+  const hardUtil = args.usage.promptTokens / modelContextLimitTokens;
+  const optimalUtil = args.usage.promptTokens / effectiveOptimalMaxTokens;
+  const level =
+    args.usage.promptTokens > effectiveCriticalMaxTokens
+      ? 'critical'
+      : args.usage.promptTokens > effectiveOptimalMaxTokens
+        ? 'caution'
+        : 'healthy';
+
+  return {
+    kind: 'available',
+    promptTokens: args.usage.promptTokens,
+    completionTokens: args.usage.completionTokens,
+    totalTokens: args.usage.totalTokens,
+    modelContextWindowText,
+    modelContextLimitTokens,
+    effectiveOptimalMaxTokens,
+    optimalMaxTokensConfigured,
+    effectiveCriticalMaxTokens,
+    criticalMaxTokensConfigured,
+    hardUtil,
+    optimalUtil,
+    level,
+  };
 }
 
 async function buildProviderContext(args: {
@@ -497,6 +625,7 @@ export async function driveDialogStreamCoreV2(
 
       let suspendForHuman = false;
       let llmGenModelForGen: string = model;
+      let contextHealthForGen: ContextHealthSnapshot | undefined;
 
       await dlg.notifyGeneratingStart();
       try {
@@ -718,6 +847,12 @@ export async function driveDialogStreamCoreV2(
           ) {
             llmGenModelForGen = nonStreamResult.llmGenModel.trim();
           }
+          contextHealthForGen = computeContextHealthSnapshot({
+            providerCfg,
+            model,
+            usage: nonStreamResult.usage,
+          });
+          dlg.setLastContextHealth(contextHealthForGen);
 
           const nonStreamMsgs = nonStreamResult.messages;
           const assistantMsgs = nonStreamMsgs.filter(
@@ -1009,6 +1144,12 @@ export async function driveDialogStreamCoreV2(
         ) {
           llmGenModelForGen = streamResult.llmGenModel.trim();
         }
+        contextHealthForGen = computeContextHealthSnapshot({
+          providerCfg,
+          model,
+          usage: streamResult.usage,
+        });
+        dlg.setLastContextHealth(contextHealthForGen);
 
         const collectedCalls = parser.getCollectedCalls();
 
@@ -1103,7 +1244,7 @@ export async function driveDialogStreamCoreV2(
           break;
         }
       } finally {
-        await dlg.notifyGeneratingFinish(undefined, llmGenModelForGen);
+        await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
       }
     }
 

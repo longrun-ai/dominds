@@ -3,7 +3,10 @@ import { clearActiveRun, createActiveRun } from '../../dialog-run-state';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
+import { formatUserFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import type { ContextHealthLevel, ContextHealthSnapshot } from '../../shared/types/context-health';
+import { generateShortId } from '../../shared/utils/id';
 import { decideDriverV2ContextHealth } from './context-health';
 import { driveDialogStreamCoreV2 } from './core';
 import { buildDriverV2Policy, validateDriverV2PolicyInvariants } from './policy';
@@ -22,6 +25,77 @@ import type {
 } from './types';
 
 type UpNextPrompt = { prompt: string; msgId: string; userLanguageCode?: string };
+const defaultCriticalCountdownGenerations = 5;
+
+type DriverV2ContextHealthRoundState = {
+  lastSeenLevel?: ContextHealthLevel;
+  criticalCountdownRemaining?: number;
+};
+
+const contextHealthRoundStateByDialogKey: Map<string, DriverV2ContextHealthRoundState> = new Map();
+
+function getContextHealthRoundState(dialog: DriverV2DriveArgs[0]): DriverV2ContextHealthRoundState {
+  const key = dialog.id.key();
+  const existing = contextHealthRoundStateByDialogKey.get(key);
+  if (existing) {
+    return existing;
+  }
+  const created: DriverV2ContextHealthRoundState = {};
+  contextHealthRoundStateByDialogKey.set(key, created);
+  return created;
+}
+
+function resetContextHealthRoundState(dialog: DriverV2DriveArgs[0]): void {
+  contextHealthRoundStateByDialogKey.delete(dialog.id.key());
+}
+
+function resolveCriticalCountdownRemaining(
+  dialog: DriverV2DriveArgs[0],
+  snapshot: ContextHealthSnapshot | undefined,
+): number {
+  if (!snapshot || snapshot.kind !== 'available') {
+    resetContextHealthRoundState(dialog);
+    return defaultCriticalCountdownGenerations;
+  }
+
+  if (snapshot.level !== 'critical') {
+    if (snapshot.level === 'healthy') {
+      resetContextHealthRoundState(dialog);
+      return defaultCriticalCountdownGenerations;
+    }
+    const state = getContextHealthRoundState(dialog);
+    state.lastSeenLevel = snapshot.level;
+    state.criticalCountdownRemaining = undefined;
+    return defaultCriticalCountdownGenerations;
+  }
+
+  const state = getContextHealthRoundState(dialog);
+  if (
+    state.lastSeenLevel !== 'critical' ||
+    typeof state.criticalCountdownRemaining !== 'number' ||
+    !Number.isFinite(state.criticalCountdownRemaining)
+  ) {
+    state.lastSeenLevel = 'critical';
+    state.criticalCountdownRemaining = defaultCriticalCountdownGenerations;
+  }
+
+  const remaining = Math.floor(state.criticalCountdownRemaining);
+  return remaining > 0 ? remaining : 0;
+}
+
+function consumeCriticalCountdown(dialog: DriverV2DriveArgs[0]): number {
+  const state = getContextHealthRoundState(dialog);
+  const currentRaw =
+    typeof state.criticalCountdownRemaining === 'number' &&
+    Number.isFinite(state.criticalCountdownRemaining)
+      ? Math.floor(state.criticalCountdownRemaining)
+      : defaultCriticalCountdownGenerations;
+  const current = currentRaw > 0 ? currentRaw : 0;
+  const next = Math.max(0, current - 1);
+  state.lastSeenLevel = 'critical';
+  state.criticalCountdownRemaining = next;
+  return next;
+}
 
 function resolveEffectivePrompt(
   dialog: DriverV2DriveArgs[0],
@@ -128,20 +202,61 @@ export async function executeDriveRound(args: {
       throw new Error(`driver-v2 policy invariant violation: ${validation.detail}`);
     }
 
+    const snapshot = dialog.getLastContextHealth();
+    const hasQueuedUpNext = dialog.hasUpNext();
+    const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dialog, snapshot);
     const healthDecision = decideDriverV2ContextHealth({
-      snapshot: dialog.getLastContextHealth(),
-      hadUserPromptThisGen: args.driveArgs[1] !== undefined,
-      criticalCountdownRemaining: 1,
+      snapshot,
+      hadUserPromptThisGen: humanPrompt !== undefined,
+      criticalCountdownRemaining,
     });
     if (healthDecision.kind === 'suspend') {
       return;
+    }
+
+    let healthPrompt: DriverV2HumanPrompt | undefined;
+    if (healthDecision.kind === 'continue') {
+      if (healthDecision.reason === 'critical_force_new_course') {
+        const language = getWorkLanguage();
+        const newCoursePrompt =
+          language === 'zh'
+            ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+            : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+        await dialog.startNewCourse(newCoursePrompt);
+        dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+        resetContextHealthRoundState(dialog);
+      } else if (!hasQueuedUpNext) {
+        const language = getWorkLanguage();
+        const guideText =
+          healthDecision.reason === 'caution_soft_remediation'
+            ? formatUserFacingContextHealthV3RemediationGuide(language, {
+                kind: 'caution',
+                mode: 'soft',
+              })
+            : formatUserFacingContextHealthV3RemediationGuide(language, {
+                kind: 'critical',
+                mode: 'countdown',
+                promptsRemainingAfterThis: consumeCriticalCountdown(dialog),
+                promptsTotal: defaultCriticalCountdownGenerations,
+              });
+        healthPrompt = {
+          content: guideText,
+          msgId: generateShortId(),
+          grammar: 'markdown',
+          userLanguageCode: language,
+        };
+      }
     }
 
     args.runtime.driveCount += 1;
     args.runtime.totalGenIterations += 1;
     args.runtime.usedLegacyDriveCore = false;
 
-    const effectivePrompt = resolveEffectivePrompt(dialog, humanPrompt);
+    const promptForCore =
+      healthDecision.kind === 'continue' && healthDecision.reason === 'critical_force_new_course'
+        ? undefined
+        : (healthPrompt ?? humanPrompt);
+    const effectivePrompt = resolveEffectivePrompt(dialog, promptForCore);
     subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
