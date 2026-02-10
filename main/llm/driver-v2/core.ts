@@ -15,11 +15,13 @@ import { DEFAULT_DILIGENCE_PUSH_MAX } from '../../shared/diligence';
 import {
   formatDomindsNoteFbrToollessViolation,
   formatReminderItemGuide,
+  formatUserFacingContextHealthV3RemediationGuide,
   formatUserFacingLanguageGuide,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
+import { generateShortId } from '../../shared/utils/id';
 import { Team } from '../../team';
 import { TellaskStreamParser, type CollectedTellaskCall } from '../../tellask';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../../tool';
@@ -37,6 +39,13 @@ import {
 import { getLlmGenerator } from '../gen/registry';
 import { projectFuncToolsForProvider } from '../tools-projection';
 import { assembleDriveContextMessages } from './context';
+import {
+  consumeCriticalCountdown,
+  decideDriverV2ContextHealth,
+  DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+  resetContextHealthRoundState,
+  resolveCriticalCountdownRemaining,
+} from './context-health';
 import {
   buildDriverV2Policy,
   resolveDriverV2PolicyViolationKind,
@@ -101,6 +110,13 @@ function resolveUpNextPrompt(dlg: Dialog): DriverV2HumanPrompt | undefined {
     grammar: upNext.grammar ?? 'markdown',
     userLanguageCode: upNext.userLanguageCode,
   };
+}
+
+function isUserOriginPrompt(prompt: DriverV2HumanPrompt | undefined): boolean {
+  if (!prompt) {
+    return false;
+  }
+  return (prompt.origin ?? 'user') === 'user';
 }
 
 async function emitUserMarkdown(dlg: Dialog, content: string): Promise<void> {
@@ -582,6 +598,77 @@ export async function driveDialogStreamCoreV2(
       );
       const projected = projectFuncToolsForProvider(providerCfg.apiType, canonicalFuncTools);
       const funcTools = projected.tools;
+
+      if (genIterNo > 1) {
+        const snapshot = dlg.getLastContextHealth();
+        const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
+        const criticalCountdownRemaining = resolveCriticalCountdownRemaining(
+          dlg.id.key(),
+          snapshot,
+        );
+        const healthDecision = decideDriverV2ContextHealth({
+          snapshot,
+          hadUserPromptThisGen: isUserOriginPrompt(pendingPrompt),
+          criticalCountdownRemaining,
+        });
+
+        if (healthDecision.kind === 'suspend') {
+          log.info(
+            'driver-v2 suspend iterative generation due to critical context while waiting for human prompt',
+            undefined,
+            {
+              dialogId: dlg.id.valueOf(),
+              rootId: dlg.id.rootId,
+              selfId: dlg.id.selfId,
+              genIterNo,
+              pendingPromptOrigin: pendingPrompt?.origin ?? null,
+            },
+          );
+          break;
+        }
+
+        if (healthDecision.kind === 'continue') {
+          if (healthDecision.reason === 'critical_force_new_course') {
+            const language = getWorkLanguage();
+            const newCoursePrompt =
+              language === 'zh'
+                ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+                : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+            await dlg.startNewCourse(newCoursePrompt);
+            dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+            resetContextHealthRoundState(dlg.id.key());
+
+            const nextPrompt = resolveUpNextPrompt(dlg);
+            if (!nextPrompt) {
+              throw new Error(
+                `driver-v2 critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
+              );
+            }
+            pendingPrompt = nextPrompt;
+            skipTaskdocForThisDrive = false;
+          } else if (!hasQueuedUpNext) {
+            const language = getWorkLanguage();
+            const guideText =
+              healthDecision.reason === 'caution_soft_remediation'
+                ? formatUserFacingContextHealthV3RemediationGuide(language, {
+                    kind: 'caution',
+                    mode: 'soft',
+                  })
+                : formatUserFacingContextHealthV3RemediationGuide(language, {
+                    kind: 'critical',
+                    mode: 'countdown',
+                    promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
+                    promptsTotal: DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+                  });
+            pendingPrompt = {
+              content: guideText,
+              msgId: generateShortId(),
+              grammar: 'markdown',
+              userLanguageCode: language,
+            };
+          }
+        }
+      }
 
       let suspendForHuman = false;
       let llmGenModelForGen: string = model;

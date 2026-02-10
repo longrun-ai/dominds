@@ -4,6 +4,7 @@ import path from 'node:path';
 import yaml from 'yaml';
 
 import { DialogID, RootDialog } from '../../main/dialog';
+import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import type { ChatMessage } from '../../main/llm/client';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
@@ -38,7 +39,14 @@ export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Prom
     );
   }
   const tmpRoot = process.cwd();
-  await fn(tmpRoot);
+  // Driver-v2 tests run without websocket server bootstrap, so provide a no-op
+  // global dialog-event broadcaster to satisfy hard invariants for global-only events.
+  setGlobalDialogEventBroadcaster(() => {});
+  try {
+    await fn(tmpRoot);
+  } finally {
+    setGlobalDialogEventBroadcaster(null);
+  }
 }
 
 export async function writeStandardMinds(

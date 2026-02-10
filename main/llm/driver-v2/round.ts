@@ -6,9 +6,14 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import { formatUserFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import type { ContextHealthLevel, ContextHealthSnapshot } from '../../shared/types/context-health';
 import { generateShortId } from '../../shared/utils/id';
-import { decideDriverV2ContextHealth } from './context-health';
+import {
+  consumeCriticalCountdown,
+  decideDriverV2ContextHealth,
+  DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+  resetContextHealthRoundState,
+  resolveCriticalCountdownRemaining,
+} from './context-health';
 import { driveDialogStreamCoreV2 } from './core';
 import { buildDriverV2Policy, validateDriverV2PolicyInvariants } from './policy';
 import type { ScheduleDriveFn, SubdialogReplyTarget } from './supdialog-response';
@@ -30,12 +35,6 @@ type UpNextPrompt = {
   msgId: string;
   grammar?: DriverV2HumanPrompt['grammar'];
   userLanguageCode?: string;
-};
-const defaultCriticalCountdownGenerations = 5;
-
-type DriverV2ContextHealthRoundState = {
-  lastSeenLevel?: ContextHealthLevel;
-  criticalCountdownRemaining?: number;
 };
 
 type PendingDiagnosticsSnapshot =
@@ -91,71 +90,6 @@ async function loadPendingDiagnosticsSnapshot(args: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
-}
-
-const contextHealthRoundStateByDialogKey: Map<string, DriverV2ContextHealthRoundState> = new Map();
-
-function getContextHealthRoundState(dialog: DriverV2DriveArgs[0]): DriverV2ContextHealthRoundState {
-  const key = dialog.id.key();
-  const existing = contextHealthRoundStateByDialogKey.get(key);
-  if (existing) {
-    return existing;
-  }
-  const created: DriverV2ContextHealthRoundState = {};
-  contextHealthRoundStateByDialogKey.set(key, created);
-  return created;
-}
-
-function resetContextHealthRoundState(dialog: DriverV2DriveArgs[0]): void {
-  contextHealthRoundStateByDialogKey.delete(dialog.id.key());
-}
-
-function resolveCriticalCountdownRemaining(
-  dialog: DriverV2DriveArgs[0],
-  snapshot: ContextHealthSnapshot | undefined,
-): number {
-  if (!snapshot || snapshot.kind !== 'available') {
-    resetContextHealthRoundState(dialog);
-    return defaultCriticalCountdownGenerations;
-  }
-
-  if (snapshot.level !== 'critical') {
-    if (snapshot.level === 'healthy') {
-      resetContextHealthRoundState(dialog);
-      return defaultCriticalCountdownGenerations;
-    }
-    const state = getContextHealthRoundState(dialog);
-    state.lastSeenLevel = snapshot.level;
-    state.criticalCountdownRemaining = undefined;
-    return defaultCriticalCountdownGenerations;
-  }
-
-  const state = getContextHealthRoundState(dialog);
-  if (
-    state.lastSeenLevel !== 'critical' ||
-    typeof state.criticalCountdownRemaining !== 'number' ||
-    !Number.isFinite(state.criticalCountdownRemaining)
-  ) {
-    state.lastSeenLevel = 'critical';
-    state.criticalCountdownRemaining = defaultCriticalCountdownGenerations;
-  }
-
-  const remaining = Math.floor(state.criticalCountdownRemaining);
-  return remaining > 0 ? remaining : 0;
-}
-
-function consumeCriticalCountdown(dialog: DriverV2DriveArgs[0]): number {
-  const state = getContextHealthRoundState(dialog);
-  const currentRaw =
-    typeof state.criticalCountdownRemaining === 'number' &&
-    Number.isFinite(state.criticalCountdownRemaining)
-      ? Math.floor(state.criticalCountdownRemaining)
-      : defaultCriticalCountdownGenerations;
-  const current = currentRaw > 0 ? currentRaw : 0;
-  const next = Math.max(0, current - 1);
-  state.lastSeenLevel = 'critical';
-  state.criticalCountdownRemaining = next;
-  return next;
 }
 
 function resolveEffectivePrompt(
@@ -299,7 +233,7 @@ export async function executeDriveRound(args: {
 
     const snapshot = dialog.getLastContextHealth();
     const hasQueuedUpNext = dialog.hasUpNext();
-    const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dialog, snapshot);
+    const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dialog.id.key(), snapshot);
     const healthDecision = decideDriverV2ContextHealth({
       snapshot,
       hadUserPromptThisGen: humanPrompt !== undefined,
@@ -319,7 +253,7 @@ export async function executeDriveRound(args: {
             : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
         await dialog.startNewCourse(newCoursePrompt);
         dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
-        resetContextHealthRoundState(dialog);
+        resetContextHealthRoundState(dialog.id.key());
       } else if (!hasQueuedUpNext) {
         const language = getWorkLanguage();
         const guideText =
@@ -331,8 +265,8 @@ export async function executeDriveRound(args: {
             : formatUserFacingContextHealthV3RemediationGuide(language, {
                 kind: 'critical',
                 mode: 'countdown',
-                promptsRemainingAfterThis: consumeCriticalCountdown(dialog),
-                promptsTotal: defaultCriticalCountdownGenerations,
+                promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
+                promptsTotal: DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
               });
         healthPrompt = {
           content: guideText,
