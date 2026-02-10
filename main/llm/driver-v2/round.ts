@@ -249,6 +249,25 @@ export async function executeDriveRound(args: {
       });
     }
 
+    // Queued/auto drive (without fresh human input) must not proceed while dialog is
+    // suspended by pending Q4H or subdialogs. This prevents duplicate generations when
+    // multiple wake-ups race around the same subdialog completion boundary.
+    if (!humanPrompt) {
+      const suspension = await dialog.getSuspensionStatus();
+      if (!suspension.canDrive) {
+        log.info('driver-v2 skip queued auto-drive while dialog is suspended', {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          waitInQue,
+          hasQueuedUpNext: dialog.hasUpNext(),
+          waitingQ4H: suspension.q4h,
+          waitingSubdialogs: suspension.subdialogs,
+        });
+        return;
+      }
+    }
+
     const minds = await loadAgentMinds(dialog.agentId, dialog);
     const policy = buildDriverV2Policy({
       dlg: dialog,
