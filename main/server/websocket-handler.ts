@@ -20,6 +20,7 @@ import {
 } from '../dialog-run-state';
 import { dialogEventRegistry, postDialogEvent, setQ4HBroadcaster } from '../evt-registry';
 import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver-entry';
+import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/driver-v2/runtime-utils';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
@@ -460,6 +461,12 @@ async function handleSetDiligencePush(
       return;
     }
 
+    const latestBefore = await DialogPersistence.loadDialogLatest(dialogIdObj, foundStatus);
+    const prevDisableDiligencePush =
+      latestBefore && typeof latestBefore.disableDiligencePush === 'boolean'
+        ? latestBefore.disableDiligencePush
+        : false;
+
     await DialogPersistence.mutateDialogLatest(
       dialogIdObj,
       (previous) => ({
@@ -482,6 +489,15 @@ async function handleSetDiligencePush(
       timestamp: formatUnifiedTimestamp(new Date()),
     };
     ws.send(JSON.stringify(msg));
+
+    const shouldTriggerImmediateDiligence =
+      foundStatus === 'running' &&
+      prevDisableDiligencePush &&
+      !disableDiligencePush &&
+      rootDialog instanceof RootDialog;
+    if (shouldTriggerImmediateDiligence) {
+      void maybeTriggerImmediateDiligencePrompt(rootDialog);
+    }
   } catch (error: unknown) {
     log.warn('Failed to handle set_diligence_push', error);
     ws.send(
@@ -497,6 +513,62 @@ async function handleSetDiligencePush(
 function clampNonNegativeFiniteInt(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.max(0, Math.floor(value));
+}
+
+async function maybeTriggerImmediateDiligencePrompt(rootDialog: RootDialog): Promise<void> {
+  try {
+    if (rootDialog.disableDiligencePush) {
+      return;
+    }
+
+    const latest = await DialogPersistence.loadDialogLatest(rootDialog.id, 'running');
+    const runState = latest?.runState;
+    if (runState && runState.kind !== 'idle_waiting_user') {
+      return;
+    }
+
+    const suspension = await rootDialog.getSuspensionStatus();
+    if (!suspension.canDrive) {
+      return;
+    }
+
+    const queuedResponses = await DialogPersistence.loadSubdialogResponsesQueue(rootDialog.id);
+    if (queuedResponses.length > 0) {
+      return;
+    }
+
+    const team = await Team.load();
+    const prepared = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg: rootDialog,
+      isRootDialog: true,
+      remainingBudget: rootDialog.diligencePushRemainingBudget,
+      diligencePushMax: resolveMemberDiligencePushMax(team, rootDialog.agentId),
+    });
+
+    rootDialog.diligencePushRemainingBudget = prepared.nextRemainingBudget;
+    await DialogPersistence.mutateDialogLatest(rootDialog.id, () => ({
+      kind: 'patch',
+      patch: { diligencePushRemainingBudget: rootDialog.diligencePushRemainingBudget },
+    }));
+
+    if (prepared.kind !== 'disabled') {
+      postDialogEvent(rootDialog, {
+        type: 'diligence_budget_evt',
+        maxInjectCount: prepared.maxInjectCount,
+        injectedCount: Math.max(0, prepared.maxInjectCount - prepared.nextRemainingBudget),
+        remainingCount: Math.max(0, prepared.nextRemainingBudget),
+        disableDiligencePush: rootDialog.disableDiligencePush,
+      });
+    }
+
+    if (prepared.kind === 'prompt') {
+      await driveDialogStream(rootDialog, prepared.prompt, true);
+    }
+  } catch (error) {
+    log.warn('Failed to trigger immediate diligence prompt after enabling keep-going', error, {
+      dialogId: rootDialog.id.valueOf(),
+    });
+  }
 }
 
 async function handleRefillDiligencePushBudget(
