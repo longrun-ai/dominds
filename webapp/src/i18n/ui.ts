@@ -381,7 +381,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       deadDialogInputDisabled: '此支线对话已宣布卡死（不可逆），输入已禁用。',
       declareDeath: '宣布卡死',
       declareDeathConfirm:
-        '宣布此支线对话“卡死”？此操作不可逆转；诉请方对话将收到系统反馈并不再等待该支线对话。',
+        '宣布此支线对话“卡死”？此操作不可逆转；诉请方对话将收到系统反馈并不再等待该支线对话。后续可重用相同 slug 发起全新支线，但此前上下文不再保留，诉请正文需提供最新完整上下文。',
 
       q4hNoPending: '暂无待处理问题',
       q4hPendingQuestions: '待处理问题',
@@ -674,7 +674,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       'This sideline dialog has been declared dead (irreversible); input is disabled.',
     declareDeath: 'Declare Death',
     declareDeathConfirm:
-      'Declare this sideline dialog as “dead”? This is irreversible; the upstream/requesting dialog will receive a system notice and stop waiting for it.',
+      'Declare this sideline dialog as “dead”? This is irreversible; the upstream/requesting dialog will receive a system notice and stop waiting for it. You may reuse the same slug to start a new sideline dialog, but prior context will be gone, so include the latest full context in the tellask body.',
 
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',

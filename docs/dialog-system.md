@@ -60,7 +60,8 @@ A **subdlg.yaml** file indexes pending subdialogs that a supdialog is waiting fo
 
 ### Subdialog Registry
 
-The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!tellaskSession` as its key format and is never deleted during the dialog lifecycle. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
+The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!tellaskSession` as its key format. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
+If a sideline dialog is declared dead, its Type B registry entry is removed so the same `agentId!tellaskSession` can start a brand-new sideline dialog on the next Tellask.
 
 ### Teammate Tellask
 
@@ -367,6 +368,7 @@ flowchart TD
 7. **State Preservation Contract**:
    - `clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
    - Subdialog completion: Writes response to supdialog, removes from pending list (registry unchanged)
+   - Subdialog declared dead: marks runState dead and removes its Type B registry entry; same slug can be reused as a fresh sideline dialog
    - Q4H answer: Clears the answered question from index, continues the dialog
 
 ---
@@ -770,14 +772,14 @@ The **subdialog registry** is a root-dialog-scoped data structure that maintains
 
 ### Key Characteristics
 
-| Aspect          | Description                                            |
-| --------------- | ------------------------------------------------------ |
-| **Scope**       | Root dialog only (not accessible to subdialogs)        |
-| **Key Format**  | `agentId!tellaskSession` (single-level Map)            |
-| **Storage**     | `registry.yaml` in root dialog directory               |
-| **Lifecycle**   | Never deleted during dialog lifetime                   |
-| **Persistence** | Moves with root to `done/` when root completes         |
-| **Restoration** | Rebuilt on root load by scanning done/ subdialog YAMLs |
+| Aspect          | Description                                                     |
+| --------------- | --------------------------------------------------------------- |
+| **Scope**       | Root dialog only (not accessible to subdialogs)                 |
+| **Key Format**  | `agentId!tellaskSession` (single-level Map)                     |
+| **Storage**     | `registry.yaml` in root dialog directory                        |
+| **Lifecycle**   | Retained during normal runs; dead subdialog entries are removed |
+| **Persistence** | Moves with root to `done/` when root completes                  |
+| **Restoration** | Rebuilt on root load by scanning done/ subdialog YAMLs          |
 
 ### Registry Operations
 
@@ -1310,13 +1312,13 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 
 ### Four Core Mechanisms
 
-| Mechanism              | Purpose                       | Survives Clarity | Cleared By    |
-| ---------------------- | ----------------------------- | ---------------- | ------------- |
-| **Dialog Hierarchy**   | Parent-child task delegation  | N/A              | N/A           |
-| **Q4H**                | Human input requests          | No               | clear_mind    |
-| **Mental Clarity**     | Context reset tools           | N/A              | N/A           |
-| **Reminders**          | Persistent working memory     | Yes              | N/A           |
-| **Subdialog Registry** | Registered subdialog tracking | Yes              | Never deleted |
+| Mechanism              | Purpose                       | Survives Clarity | Cleared By                                   |
+| ---------------------- | ----------------------------- | ---------------- | -------------------------------------------- |
+| **Dialog Hierarchy**   | Parent-child task delegation  | N/A              | N/A                                          |
+| **Q4H**                | Human input requests          | No               | clear_mind                                   |
+| **Mental Clarity**     | Context reset tools           | N/A              | N/A                                          |
+| **Reminders**          | Persistent working memory     | Yes              | N/A                                          |
+| **Subdialog Registry** | Registered subdialog tracking | Yes              | dead-entry prune on `declare_subdialog_dead` |
 
 ### Three Types of Teammate Tellasks
 

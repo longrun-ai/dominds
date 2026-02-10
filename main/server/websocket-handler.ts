@@ -354,6 +354,22 @@ async function handleDeclareSubdialogDead(
     metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, 'completed');
   }
   if (!metadata) return;
+
+  if (
+    'tellaskSession' in metadata &&
+    typeof metadata.tellaskSession === 'string' &&
+    metadata.tellaskSession.trim() !== ''
+  ) {
+    const rootRestored = await restoreDialogForDrive(new DialogID(dialogIdObj.rootId), 'running');
+    if (!(rootRestored instanceof RootDialog)) {
+      throw new Error(`Expected root dialog instance for ${dialogIdObj.rootId}`);
+    }
+    const removed = rootRestored.unregisterSubdialog(metadata.agentId, metadata.tellaskSession);
+    if (removed) {
+      await rootRestored.saveSubdialogRegistry();
+    }
+  }
+
   if (!('assignmentFromSup' in metadata)) return;
   if (!metadata.assignmentFromSup) return;
 
@@ -372,8 +388,8 @@ async function handleDeclareSubdialogDead(
 
   const responseText =
     getWorkLanguage() === 'zh'
-      ? `系统反馈：支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。该支线对话不会再回复。`
-      : `System notice: sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). This sideline dialog will not reply further.`;
+      ? `系统反馈：支线对话 ${dialogIdObj.valueOf()} 已被用户宣布卡死（不可逆）。后续可以重用相同的 slug 发起全新支线对话；只是之前的上下文已不再，诉请正文请提供最新的完整上下文信息。`
+      : `System notice: sideline dialog ${dialogIdObj.valueOf()} has been declared dead by the user (irreversible). You may reuse the same slug to start a brand-new sideline dialog, but previous context is no longer retained; include the latest complete context in the tellask body.`;
   const responseTextWithNote =
     note === ''
       ? responseText

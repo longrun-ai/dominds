@@ -5,9 +5,14 @@ import path from 'node:path';
 import yaml from 'yaml';
 
 import { DialogID, RootDialog } from '../../main/dialog';
+import { setDialogRunState } from '../../main/dialog-run-state';
 import { driveDialogStream } from '../../main/llm/driver-entry';
 import { DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -107,6 +112,7 @@ async function main(): Promise<void> {
     );
 
     const trigger = 'Trigger duplicate type B tellasks.';
+    const triggerReuseAfterDead = 'Trigger same slug after declaring old sideline dead.';
     await fs.writeFile(
       path.join(tmpRoot, 'mock-db', 'default.yaml'),
       yaml.stringify({
@@ -123,6 +129,15 @@ async function main(): Promise<void> {
               '!?second call body',
               'separator',
               'Done.',
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            message: triggerReuseAfterDead,
+            response: [
+              'Continue.',
+              '!?@pangu !tellaskSession dupe-session',
+              '!?fresh full context',
             ].join('\n'),
           },
         ],
@@ -166,6 +181,72 @@ async function main(): Promise<void> {
       matching,
       1,
       `expected exactly 1 registered subdialog for agentId=pangu tellaskSession=dupe-session, got ${matching}`,
+    );
+
+    // First round schedules subdialog drives in background.
+    await waitForDialogsToUnlock(dlg, 2_000);
+    const firstRegistered = dlg.lookupSubdialog('pangu', 'dupe-session');
+    assert.ok(firstRegistered, 'expected first registered subdialog for dupe-session');
+    await setDialogRunState(firstRegistered.id, {
+      kind: 'dead',
+      reason: { kind: 'declared_by_user' },
+    });
+
+    await driveDialogStream(
+      dlg,
+      { content: triggerReuseAfterDead, msgId: 'typeb-reuse-after-dead', grammar: 'markdown' },
+      true,
+    );
+
+    await waitForDialogsToUnlock(dlg, 2_000);
+    const secondRegistered = dlg.lookupSubdialog('pangu', 'dupe-session');
+    assert.ok(secondRegistered, 'expected registered subdialog after dead-session reuse');
+    assert.notEqual(
+      secondRegistered.id.selfId,
+      firstRegistered.id.selfId,
+      'expected a new subdialog id when reusing a slug after the previous one is dead',
+    );
+
+    let matchingAfterDeadReuse = 0;
+    const metaPathsAfterDeadReuse = await collectDialogYamlPaths(subdialogsDir);
+    for (const metaPath of metaPathsAfterDeadReuse) {
+      const raw = await fs.readFile(metaPath, 'utf-8');
+      const parsed = yaml.parse(raw) as unknown;
+      if (!isRecord(parsed)) continue;
+      if (!('tellaskSession' in parsed) || !('agentId' in parsed)) continue;
+      const tellaskSession = parsed.tellaskSession;
+      const agentId = parsed.agentId;
+      if (tellaskSession === 'dupe-session' && agentId === 'pangu') {
+        matchingAfterDeadReuse += 1;
+      }
+    }
+    assert.equal(
+      matchingAfterDeadReuse,
+      2,
+      `expected 2 subdialogs for agentId=pangu tellaskSession=dupe-session after dead-session reuse, got ${matchingAfterDeadReuse}`,
+    );
+
+    const registryPath = path.join(tmpRoot, '.dialogs', 'run', rootId, 'registry.yaml');
+    const registryRaw = await fs.readFile(registryPath, 'utf-8');
+    const registryParsed = yaml.parse(registryRaw) as unknown;
+    assert.ok(isRecord(registryParsed), 'expected registry.yaml to be an object');
+    const entries = registryParsed.entries;
+    assert.ok(Array.isArray(entries), 'expected registry.yaml entries to be an array');
+    let matchingRegistryEntries = 0;
+    for (const entry of entries) {
+      if (!isRecord(entry)) continue;
+      if (entry.agentId !== 'pangu' || entry.tellaskSession !== 'dupe-session') continue;
+      matchingRegistryEntries += 1;
+      assert.equal(
+        entry.subdialogId,
+        secondRegistered.id.selfId,
+        'expected registry entry for dupe-session to point to the fresh subdialog id',
+      );
+    }
+    assert.equal(
+      matchingRegistryEntries,
+      1,
+      `expected exactly 1 registry entry for agentId=pangu tellaskSession=dupe-session, got ${matchingRegistryEntries}`,
     );
 
     // executeTellaskCall schedules subdialog drives in the background. Keep the test rtws cwd

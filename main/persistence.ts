@@ -1117,9 +1117,27 @@ export class DiskFileDialogStore extends DialogStore {
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
     const entries = await DialogPersistence.loadSubdialogRegistry(rootDialog.id, status);
+    const shouldPruneDead = status === 'running';
+    let prunedDeadRegistryEntries = false;
 
     for (const entry of entries) {
       if (!entry.tellaskSession) continue;
+
+      if (shouldPruneDead) {
+        const latest = await DialogPersistence.loadDialogLatest(entry.subdialogId, status);
+        const runState = latest?.runState;
+        if (runState && runState.kind === 'dead') {
+          prunedDeadRegistryEntries = true;
+          rootDialog.unregisterSubdialog(entry.agentId, entry.tellaskSession);
+          log.info('Skip dead subdialog while loading Type B registry', undefined, {
+            rootId: rootDialog.id.rootId,
+            subdialogId: entry.subdialogId.selfId,
+            agentId: entry.agentId,
+            tellaskSession: entry.tellaskSession,
+          });
+          continue;
+        }
+      }
 
       const existing = rootDialog.lookupDialog(entry.subdialogId.selfId);
       if (existing) {
@@ -1151,6 +1169,10 @@ export class DiskFileDialogStore extends DialogStore {
         },
       );
       rootDialog.registerSubdialog(subdialog);
+    }
+
+    if (prunedDeadRegistryEntries) {
+      await rootDialog.saveSubdialogRegistry();
     }
   }
 

@@ -254,6 +254,42 @@ async function updateSubdialogAssignment(
   await DialogPersistence.updateSubdialogAssignment(subdialog.id, assignment);
 }
 
+async function lookupLiveRegisteredSubdialog(
+  rootDialog: RootDialog,
+  agentId: string,
+  tellaskSession: string,
+): Promise<SubDialog | undefined> {
+  const existing = rootDialog.lookupSubdialog(agentId, tellaskSession);
+  if (!existing) {
+    return undefined;
+  }
+  const existingSession = existing.tellaskSession;
+  if (!existingSession) {
+    throw new Error(
+      `Type B registry invariant violation: lookupSubdialog returned entry without tellaskSession (root=${rootDialog.id.valueOf()} sub=${existing.id.valueOf()})`,
+    );
+  }
+  const latest = await DialogPersistence.loadDialogLatest(existing.id, rootDialog.status);
+  const runState = latest?.runState;
+  if (!runState || runState.kind !== 'dead') {
+    return existing;
+  }
+  const removed = rootDialog.unregisterSubdialog(existing.agentId, existingSession);
+  if (!removed) {
+    throw new Error(
+      `Failed to unregister dead registered subdialog: root=${rootDialog.id.valueOf()} sub=${existing.id.valueOf()} session=${existingSession}`,
+    );
+  }
+  await rootDialog.saveSubdialogRegistry();
+  log.info('Pruned dead registered subdialog from Type B registry', undefined, {
+    rootId: rootDialog.id.rootId,
+    subdialogId: existing.id.selfId,
+    agentId: existing.agentId,
+    tellaskSession: existingSession,
+  });
+  return undefined;
+}
+
 function extractLastAssistantResponse(
   messages: Array<{ type: string; content?: string }>,
   defaultMessage: string,
@@ -806,7 +842,11 @@ async function executeTellaskCall(
               collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
             };
 
-            const existing = rootDialog.lookupSubdialog(parseResult.agentId, derivedSession);
+            const existing = await lookupLiveRegisteredSubdialog(
+              rootDialog,
+              parseResult.agentId,
+              derivedSession,
+            );
             if (existing) {
               try {
                 await updateSubdialogAssignment(existing, assignment);
@@ -1085,7 +1125,8 @@ async function executeTellaskCall(
         const pendingOwner = callerDialog;
 
         const result = await withSubdialogTxnLock(rootDialog.id, async () => {
-          const existing = rootDialog.lookupSubdialog(
+          const existing = await lookupLiveRegisteredSubdialog(
+            rootDialog,
             parseResult.agentId,
             parseResult.tellaskSession,
           );
