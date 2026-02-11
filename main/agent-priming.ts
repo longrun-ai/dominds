@@ -1047,25 +1047,17 @@ function formatFbrTellaskBody(
       ? 'Conversation setup: you are one awakened “fresh-boots self.” Terminology mapping: in this FBR sideline, you are the tellaskee (the fresh-boots self), and the tellasker is the outer self (current mainline). In this same round, other fresh-boots selves also provide parallel drafts (no stable mapping—do not treat them as fixed identities). The outer self will make unified decisions only after all feedback returns; provide only this one independent draft and do not finalize next-action decisions for the outer self.'
       : 'Conversation setup: FBR is disabled for this member (no parallel fresh-boots drafts).';
 
-  const tellaskBackHintZh = (() => {
-    return [
-      '提示：如果你还想知道更多系统细节，可在本 FBR 支线对话中用 `tellaskBack` 回问诉请者（tellasker，也就是外表自我/当前主线）。',
-      '（当前这次 FBR 请不要真的发起任何诉请；只需说明你会回问什么。）',
-    ].join('\n');
-  })();
+  const missingContextHintZh =
+    '提示：本 FBR 支线禁止任何诉请/函数调用；若信息不足，请直接列出“缺失信息 + 为什么阻塞判断”。';
 
-  const tellaskBackHintEn = (() => {
-    return [
-      'Hint: if you want more system details, ask back in this FBR sideline dialog via `tellaskBack` (to the tellasker, i.e. the outer-self mainline dialog).',
-      '(In this FBR run, do not actually emit any tellasks; just state what you would ask back.)',
-    ].join('\n');
-  })();
+  const missingContextHintEn =
+    'Hint: this FBR sideline forbids all tellask/function calls; if context is missing, list the missing facts and why they block reasoning.';
 
   if (language === 'zh') {
     return [
       effortLineZh,
       '',
-      tellaskBackHintZh,
+      missingContextHintZh,
       '',
       '请基于下面环境信息回答：',
       '- 在这个环境里要注意些什么？',
@@ -1079,7 +1071,7 @@ function formatFbrTellaskBody(
   return [
     effortLineEn,
     '',
-    tellaskBackHintEn,
+    missingContextHintEn,
     '',
     'Based on the environment info below, answer:',
     '- What should we watch out for in this environment?',
