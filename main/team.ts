@@ -118,7 +118,7 @@ export namespace Team {
     toolsets?: string[];
     tools?: string[];
     model_params?: ModelParams;
-    // Fresh Boots Reasoning (FBR): per-member concurrency cap for `!?@self` sideline dialogs.
+    // Fresh Boots Reasoning (FBR): per-member concurrency cap for self-route tellask sideline dialogs.
     // See docs: dominds/docs/fbr.md
     fbr_effort?: number;
     // FBR-only model params overrides (same schema as model_params).

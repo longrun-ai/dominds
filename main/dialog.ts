@@ -222,7 +222,7 @@ export abstract class Dialog {
   private readonly _mutex: AsyncFifoMutex;
 
   // Current callId for tellask call correlation
-  // - Set during teammate_call_finish_evt (from TellaskStreamParser)
+  // - Set during teammate_call_finish_evt (from tellask-special function calls)
   // - Retrieved during inline call-result emission (for receiveTeammateCallResult callId parameter)
   // - Enables frontend to attach result INLINE to the calling section
   // - NOT used for teammate tellasks (which use calleeDialogId instead)
@@ -307,8 +307,8 @@ export abstract class Dialog {
    * Get the current callId for tellask call correlation
    *
    * Call Types:
-   * - Tellask call block (`!?@...`): callId is set during teammate_call_finish_evt, used for inline result correlation
-   * - Teammate tellask (@agentName): Uses calleeDialogId, not callId
+   * - tellask-special function call: callId is set during teammate_call_finish_evt and used for inline result correlation
+   * - Subdialog response bubbles: use calleeDialogId instead of callId
    *
    * @returns The current callId for call correlation, or null if no active call
    */
@@ -317,9 +317,9 @@ export abstract class Dialog {
   }
 
   /**
-   * Set the current callId (called during teammate_call_finish_evt for tellask call blocks)
+   * Set the current callId (called during teammate_call_finish_evt for tellask-special calls)
    *
-   * @param callId - The correlation ID from TellaskEventsReceiver.callFinish()
+   * @param callId - The function-call correlation ID
    */
   public setCurrentCallId(callId: string): void {
     this._currentCallId = callId;

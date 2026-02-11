@@ -1,5 +1,4 @@
 import { formatLanguageName, type LanguageCode } from '../types/language';
-import type { TellaskMalformedReason } from '../types/tellask';
 
 export function formatCurrentUserLanguagePreference(
   workingLanguage: LanguageCode,
@@ -148,14 +147,14 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
     return (
       `错误：诉请（tellask）仅用于队友诉请（tellask-special 函数）。\n` +
       `- 当前目标：\`@${firstMention}\` 不是已知队友呼号。\n` +
-      `- 若你要调用工具：请使用原生 function-calling（函数工具），不要在文本中输出 \`!?@tool\`。\n` +
+      `- 若你要调用工具：请使用原生 function-calling（函数工具）。\n` +
       `- 若你要找队友：请使用 tellask-special 函数并确认 targetAgentId（如 \`pangu\` / \`self\`），支线回问请用 \`tellaskBack\`。`
     );
   }
   return (
     `Error: tellask is reserved for teammate tellasks (tellask-special functions).\n` +
     `- Current target: \`@${firstMention}\` is not a known teammate call sign.\n` +
-    `- If you intended to call a tool: use native function-calling; do not emit \`!?@tool\` in text.\n` +
+    `- If you intended to call a tool: use native function-calling.\n` +
     `- If you intended to call a teammate: use tellask-special functions and verify targetAgentId (e.g. \`pangu\` / \`self\`); use \`tellaskBack\` for ask-back.`
   );
 }
@@ -271,19 +270,6 @@ export function formatDomindsNoteTellaskerOnlyInSidelineDialog(language: Languag
   );
 }
 
-export function formatDomindsNoteTellaskerNoTellaskSession(language: LanguageCode): string {
-  if (language === 'zh') {
-    return (
-      'Dominds 提示：`tellaskBack` 是回问诉请，不接受 tellaskSession。' +
-      '请直接使用 `tellaskBack`；若你需要可恢复的多轮协作，请使用 `tellask(targetAgentId, tellaskSession, body, ...)`。'
-    );
-  }
-  return (
-    'Dominds note: `tellaskBack` is ask-back and does not accept tellaskSession. ' +
-    'Use `tellaskBack` directly, or use `tellask(targetAgentId, tellaskSession, body, ...)` for resumable Tellask Session collaboration.'
-  );
-}
-
 export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string {
   if (language === 'zh') {
     return (
@@ -351,120 +337,10 @@ export function formatDomindsNoteFbrToollessViolation(
 
   return [
     'ERR_FBR_TOOLLESS_VIOLATION',
-    `Dominds note: this is a tool-less @self FBR sideline dialog. ${detail}`,
+    `Dominds note: this is a tool-less self-route FBR sideline dialog. ${detail}`,
     '',
     '- No tools are available: do not emit function tool calls.',
     '- No tellask-special functions are allowed (`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
     '- Provide pure reasoning and a summary grounded in the tellask body (and this sideline dialog’s own tellaskSession history, if any).',
   ].join('\n');
-}
-
-export function formatDomindsNoteMalformedTellaskCall(
-  language: LanguageCode,
-  reason: TellaskMalformedReason,
-  options?: { firstLineAfterPrefix?: string },
-): string {
-  const firstLine = options?.firstLineAfterPrefix?.trim() ?? '';
-  const got = firstLine !== '' ? `\n\nGot: \`!?${firstLine}\`` : '';
-
-  if (language === 'zh') {
-    switch (reason) {
-      case 'missing_mention_prefix': {
-        return (
-          'ERR_MALFORMED_TELLASK\n' +
-          'Dominds 提示：这段内容被解析为“诉请块”，但第一行不是有效的诉请头。\n\n' +
-          '规则：诉请块第一行必须以 `!?@<mention-id>` 开头，例如：`!?@pangu`。\n' +
-          '如果你只是想写普通 markdown，请不要在行首使用 `!?`。' +
-          got
-        );
-      }
-      case 'invalid_mention_id': {
-        return (
-          'ERR_MALFORMED_TELLASK\n' +
-          'Dominds 提示：这段内容被解析为“诉请块”，但 `!?@` 后的 mention-id 为空或无效。\n\n' +
-          '规则：第一行必须是 `!?@<mention-id>`（mention-id 不能为空），例如：`!?@pangu`。' +
-          got
-        );
-      }
-      default: {
-        const _exhaustive: never = reason;
-        return _exhaustive;
-      }
-    }
-  }
-
-  switch (reason) {
-    case 'missing_mention_prefix': {
-      return (
-        'ERR_MALFORMED_TELLASK\n' +
-        'Dominds note: This content was parsed as a tellask block, but the first line is not a valid tellask headline.\n\n' +
-        'Rule: the first line must start with `!?@<mention-id>`, e.g. `!?@pangu`.\n' +
-        'If you want normal markdown, do not start the line with `!?`.' +
-        got
-      );
-    }
-    case 'invalid_mention_id': {
-      return (
-        'ERR_MALFORMED_TELLASK\n' +
-        'Dominds note: This content was parsed as a tellask block, but the mention-id after `!?@` is empty or invalid.\n\n' +
-        'Rule: the first line must be `!?@<mention-id>` (mention-id cannot be empty), e.g. `!?@pangu`.' +
-        got
-      );
-    }
-    default: {
-      const _exhaustive: never = reason;
-      return _exhaustive;
-    }
-  }
-}
-
-export function formatDomindsNoteInvalidMultiTeammateTargets(
-  language: LanguageCode,
-  options: { unknown: string[] },
-): string {
-  const unknown = options.unknown.map((id) => `@${id}`).join(', ');
-  if (language === 'zh') {
-    return (
-      'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
-      `Dominds 提示：这条队友诉请包含未知队友呼号：${unknown}\n\n` +
-      '在队友诉请中，headline 里出现的队友呼号会被视为 collective targets 并被分发（所有目标共享同一 tellaskHead+tellaskBody）。\n' +
-      '请确认这些呼号是否存在于团队目录中；若你只是想写字面上的 @something，请用反引号包裹（例如 `@something`）。'
-    );
-  }
-  return (
-    'ERR_INVALID_MULTI_TEAMMATE_TARGETS\n' +
-    `Dominds note: This teammate tellask includes unknown teammate id(s): ${unknown}\n\n` +
-    'In teammate tellasks, teammate mentions inside the headline are treated as collective targets and fanned out (shared tellaskHead+tellaskBody).\n' +
-    'Confirm those ids exist in the team roster; if you meant a literal `@something`, wrap it in backticks (e.g., `@something`).'
-  );
-}
-
-export function formatDomindsNoteInvalidTellaskSessionDirective(language: LanguageCode): string {
-  if (language === 'zh') {
-    return (
-      'ERR_INVALID_TELLASK_SESSION_DIRECTIVE\n' +
-      'Dominds 提示：检测到 `!tellaskSession` 指令，但 tellaskSession 无效。\n\n' +
-      '规则：`!tellaskSession <tellaskSession>` 的 tellaskSession 必须满足 `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`。'
-    );
-  }
-  return (
-    'ERR_INVALID_TELLASK_SESSION_DIRECTIVE\n' +
-    'Dominds note: Detected a `!tellaskSession` directive, but the tellaskSession is invalid.\n\n' +
-    'Rule: `!tellaskSession <tellaskSession>` must match `^[a-zA-Z][a-zA-Z0-9_-]*(\\.[a-zA-Z0-9_-]+)*$`.'
-  );
-}
-
-export function formatDomindsNoteMultipleTellaskSessionDirectives(language: LanguageCode): string {
-  if (language === 'zh') {
-    return (
-      'ERR_MULTIPLE_TELLASK_SESSION_DIRECTIVES\n' +
-      'Dominds 提示：同一条诉请的 headline 中出现了多个 `!tellaskSession` 指令。\n\n' +
-      '规则：每条诉请最多只能包含一个 `!tellaskSession <tellaskSession>`（对 collective teammate tellask，该 tellaskSession 会对所有目标队友生效）。'
-    );
-  }
-  return (
-    'ERR_MULTIPLE_TELLASK_SESSION_DIRECTIVES\n' +
-    'Dominds note: Multiple `!tellaskSession` directives were found in the headline.\n\n' +
-    'Rule: a tellask may include at most one `!tellaskSession <tellaskSession>` (for collective teammate tellasks, the same tellaskSession applies to all targets).'
-  );
 }

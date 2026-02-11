@@ -550,12 +550,12 @@ export class DiskFileDialogStore extends DialogStore {
    * Receive and handle tellask call results with callId for inline result display
    *
    * Call Types:
-   * - Tellask Call (inline bubble): !?@<mention-id>
+   * - tellask-special function call (inline bubble)
    *   - Result displays INLINE in the same bubble
    *   - Uses callId for correlation between call_start and response
    *   - Uses receiveTeammateCallResult() + callId parameter
    *
-   * - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
+   * - Teammate Tellask (subdialog response bubble)
    *   - Result displays in SEPARATE bubble (subdialog response)
    *   - Uses calleeDialogId for correlation
    *   - Uses receiveTeammateResponse() instead
@@ -609,10 +609,10 @@ export class DiskFileDialogStore extends DialogStore {
   }
 
   /**
-   * Receive and handle TEAMMATE TELLASK responses (separate bubble for @agentName tellasks)
+   * Receive and handle TEAMMATE TELLASK responses (separate bubble for subdialog/supdialog replies)
    *
    * Call Types:
-   * - Teammate Tellask: !?@agentName (e.g., !?@coder, !?@tester)
+   * - Teammate Tellask response
    *   - Result displays in SEPARATE bubble (subdialog or supdialog response)
    *   - Uses calleeDialogId for correlation (not callId)
    *   - Uses this method (receiveTeammateResponse)

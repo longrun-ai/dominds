@@ -1,7 +1,6 @@
 import type { Dialog, DialogID } from '../../dialog';
 import type { LanguageCode } from '../../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
-import type { CollectedTellaskCall } from '../../tellask';
 
 export type DriverV2DriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
@@ -47,7 +46,7 @@ export type DriverV2DriveArgs = [
 export type DriverV2DriveResult = Promise<void>;
 
 export type DriverV2EmitSayingArgs = [dlg: Dialog, content: string];
-export type DriverV2EmitSayingResult = Promise<CollectedTellaskCall[]>;
+export type DriverV2EmitSayingResult = Promise<void>;
 
 export type DriverV2SupplyResponseArgs = [
   parentDialog: Dialog,

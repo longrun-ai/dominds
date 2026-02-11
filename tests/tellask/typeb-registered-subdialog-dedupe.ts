@@ -6,6 +6,7 @@ import yaml from 'yaml';
 
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setDialogRunState } from '../../main/dialog-run-state';
+import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/driver-entry';
 import { DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
@@ -66,6 +67,7 @@ async function waitForDialogsToUnlock(root: RootDialog, timeoutMs: number): Prom
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-typeb-dedupe-'));
+  setGlobalDialogEventBroadcaster(() => {});
 
   try {
     process.chdir(tmpRoot);
@@ -120,25 +122,43 @@ async function main(): Promise<void> {
           {
             role: 'user',
             message: trigger,
-            response: [
-              'Start.',
-              '!?@pangu !tellaskSession dupe-session',
-              '!?first call body',
-              'separator',
-              '!?@pangu !tellaskSession dupe-session',
-              '!?second call body',
-              'separator',
-              'Done.',
-            ].join('\n'),
+            response: 'Start.',
+            funcCalls: [
+              {
+                id: 'dupe-typeb-call-1',
+                name: 'tellask',
+                arguments: {
+                  targetAgentId: 'pangu',
+                  sessionSlug: 'dupe-session',
+                  tellaskContent: 'first call body',
+                },
+              },
+              {
+                id: 'dupe-typeb-call-2',
+                name: 'tellask',
+                arguments: {
+                  targetAgentId: 'pangu',
+                  sessionSlug: 'dupe-session',
+                  tellaskContent: 'second call body',
+                },
+              },
+            ],
           },
           {
             role: 'user',
             message: triggerReuseAfterDead,
-            response: [
-              'Continue.',
-              '!?@pangu !tellaskSession dupe-session',
-              '!?fresh full context',
-            ].join('\n'),
+            response: 'Continue.',
+            funcCalls: [
+              {
+                id: 'dupe-typeb-call-3',
+                name: 'tellask',
+                arguments: {
+                  targetAgentId: 'pangu',
+                  sessionSlug: 'dupe-session',
+                  tellaskContent: 'fresh full context',
+                },
+              },
+            ],
           },
         ],
       }),
@@ -169,10 +189,10 @@ async function main(): Promise<void> {
       // YAML is untyped runtime data; validate minimal fields without assuming structure.
       const parsed = yaml.parse(raw) as unknown;
       if (typeof parsed !== 'object' || parsed === null) continue;
-      if (!('tellaskSession' in parsed) || !('agentId' in parsed)) continue;
-      const tellaskSession = (parsed as { tellaskSession?: unknown }).tellaskSession;
+      if (!('sessionSlug' in parsed) || !('agentId' in parsed)) continue;
+      const sessionSlug = (parsed as { sessionSlug?: unknown }).sessionSlug;
       const agentId = (parsed as { agentId?: unknown }).agentId;
-      if (tellaskSession === 'dupe-session' && agentId === 'pangu') {
+      if (sessionSlug === 'dupe-session' && agentId === 'pangu') {
         matching += 1;
       }
     }
@@ -180,7 +200,7 @@ async function main(): Promise<void> {
     assert.equal(
       matching,
       1,
-      `expected exactly 1 registered subdialog for agentId=pangu tellaskSession=dupe-session, got ${matching}`,
+      `expected exactly 1 registered subdialog for agentId=pangu sessionSlug=dupe-session, got ${matching}`,
     );
 
     // First round schedules subdialog drives in background.
@@ -213,17 +233,17 @@ async function main(): Promise<void> {
       const raw = await fs.readFile(metaPath, 'utf-8');
       const parsed = yaml.parse(raw) as unknown;
       if (!isRecord(parsed)) continue;
-      if (!('tellaskSession' in parsed) || !('agentId' in parsed)) continue;
-      const tellaskSession = parsed.tellaskSession;
+      if (!('sessionSlug' in parsed) || !('agentId' in parsed)) continue;
+      const sessionSlug = parsed.sessionSlug;
       const agentId = parsed.agentId;
-      if (tellaskSession === 'dupe-session' && agentId === 'pangu') {
+      if (sessionSlug === 'dupe-session' && agentId === 'pangu') {
         matchingAfterDeadReuse += 1;
       }
     }
     assert.equal(
       matchingAfterDeadReuse,
       2,
-      `expected 2 subdialogs for agentId=pangu tellaskSession=dupe-session after dead-session reuse, got ${matchingAfterDeadReuse}`,
+      `expected 2 subdialogs for agentId=pangu sessionSlug=dupe-session after dead-session reuse, got ${matchingAfterDeadReuse}`,
     );
 
     const registryPath = path.join(tmpRoot, '.dialogs', 'run', rootId, 'registry.yaml');
@@ -235,7 +255,7 @@ async function main(): Promise<void> {
     let matchingRegistryEntries = 0;
     for (const entry of entries) {
       if (!isRecord(entry)) continue;
-      if (entry.agentId !== 'pangu' || entry.tellaskSession !== 'dupe-session') continue;
+      if (entry.agentId !== 'pangu' || entry.sessionSlug !== 'dupe-session') continue;
       matchingRegistryEntries += 1;
       assert.equal(
         entry.subdialogId,
@@ -246,7 +266,7 @@ async function main(): Promise<void> {
     assert.equal(
       matchingRegistryEntries,
       1,
-      `expected exactly 1 registry entry for agentId=pangu tellaskSession=dupe-session, got ${matchingRegistryEntries}`,
+      `expected exactly 1 registry entry for agentId=pangu sessionSlug=dupe-session, got ${matchingRegistryEntries}`,
     );
 
     // executeTellaskCall schedules subdialog drives in the background. Keep the test rtws cwd
@@ -255,6 +275,7 @@ async function main(): Promise<void> {
 
     console.log('type B registered subdialog dedupe: PASS');
   } finally {
+    setGlobalDialogEventBroadcaster(null);
     process.chdir(oldCwd);
   }
 }

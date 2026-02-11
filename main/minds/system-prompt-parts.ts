@@ -79,7 +79,7 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
       specialistListLine: (value) => `本队 shell 专员列表：${value}`,
       delegationSpecialistsLine: (value) => `可诉请的 shell 专员：${value}`,
       tellaskFunctionReminder: (examples) =>
-        `重要：如果你打算让队友执行命令，请在同一回复中直接发起 tellask-special 函数调用（不要输出 \`!?@...\` 文本诉请）。可用函数调用示例：${examples}。不要只说“我会请某人运行”。`,
+        `重要：如果你打算让队友执行命令，请在同一回复中直接发起 tellask-special 函数调用。可用函数调用示例：${examples}。不要只说“我会请某人运行”。`,
       claimAfterReceiptReminder:
         '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
       includeDevopsPolicyForSpecialist: false,
@@ -120,7 +120,7 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
     specialistListLine: (value) => `Shell specialists in this team: ${value}`,
     delegationSpecialistsLine: (value) => `Shell specialists you can tellask: ${value}`,
     tellaskFunctionReminder: (examples) =>
-      `Important: if you intend to delegate, invoke tellask-special functions directly in the same response (do not emit \`!?@...\` text tellasks). Example function calls: ${examples}. Do not just say “I will ask someone to run it”.`,
+      `Important: if you intend to delegate, invoke tellask-special functions directly in the same response. Example function calls: ${examples}. Do not just say “I will ask someone to run it”.`,
     claimAfterReceiptReminder:
       'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
     includeDevopsPolicyForSpecialist: true,

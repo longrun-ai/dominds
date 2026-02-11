@@ -1271,7 +1271,7 @@ export class DomindsDialogContainer extends HTMLElement {
     detailsEl.textContent = lines.join('\n');
   }
 
-  // === TELLASK CALL EVENTS (Streaming mode - `!?@...` blocks) ===
+  // === TELLASK CALL EVENTS (function-call mode) ===
   // callId is set at finish event (not start) - content-hash based
   private findInFlightToolCallingSectionForGenseq(genseq: number): HTMLElement | undefined {
     const sr = this.shadowRoot;

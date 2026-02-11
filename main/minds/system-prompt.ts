@@ -86,7 +86,6 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   ].join('\n');
   const collaborationProtocolZh = [
     '- Tellask 统一走函数工具通道：\\`tellaskBack\\` / \\`tellask\\` / \\`tellaskSessionless\\` / \\`askHuman\\`。',
-    '- 不要在普通文本中输出 \\`!?@...\\` 作为诉请调用通道。',
     '- 对队友诉请默认使用 \\`tellask\\` 并复用 \\`sessionSlug\\`；仅在确认一次性诉请足够时才使用 \\`tellaskSessionless\\`，且需说明理由。',
     '- 例外优先级（强制）：\\`tellaskBack\\` 仅用于回问上游诉请者，不适用队友长线默认规则，也不携带 \\`sessionSlug\\`。',
     '- 队友诉请阶段协议（强制）：',
@@ -94,7 +93,6 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   ].join('\n');
   const collaborationProtocolEn = [
     '- Tellask must use the function-tool channel: \\`tellaskBack\\` / \\`tellask\\` / \\`tellaskSessionless\\` / \\`askHuman\\`.',
-    '- Do not emit \\`!?@...\\` in plain text as a tellask invocation channel.',
     '- For teammate tellasks, default to \\`tellask\\` and continue with the same \\`sessionSlug\\`; use \\`tellaskSessionless\\` only for justified one-shot calls.',
     '- Mandatory exception precedence: \\`tellaskBack\\` is ask-back-only and outside the teammate-session default; it does not carry \\`sessionSlug\\`.',
     '- Teammate Tellask phase contract (mandatory):',

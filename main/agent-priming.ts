@@ -67,8 +67,8 @@ type AgentPrimingCacheEntry = Readonly<{
       }
   >;
   fbr: Readonly<{
-    tellaskHead: string;
-    tellaskBody: string;
+    mentionList: string[];
+    tellaskContent: string;
     selfTeaser: string;
     responderAgentId: string;
     effort: number;
@@ -119,8 +119,8 @@ export type AgentPrimingMode = 'do' | 'reuse' | 'skip';
 async function emitSayingEventsAndPersist(
   dlg: Dialog,
   content: string,
-): Promise<Awaited<ReturnType<typeof emitSayingEvents>>> {
-  const calls = await emitSayingEvents(dlg, content);
+): Promise<void> {
+  await emitSayingEvents(dlg, content);
   const genseq = dlg.activeGenSeqOrUndefined;
   if (
     dlg.generationStarted &&
@@ -138,7 +138,37 @@ async function emitSayingEventsAndPersist(
       });
     }
   }
-  return calls;
+}
+
+type AgentPrimingSyntheticTellaskCall = Readonly<{
+  callId: string;
+  mentionList: string[];
+  tellaskContent: string;
+}>;
+
+async function emitSyntheticTellaskCall(
+  dlg: Dialog,
+  payload: {
+    mentionList: string[];
+    tellaskContent: string;
+    callId?: string;
+  },
+): Promise<AgentPrimingSyntheticTellaskCall> {
+  const mentionList = payload.mentionList.map((value) => value.trim()).filter((value) => value !== '');
+  if (mentionList.length < 1) {
+    throw new Error('emitSyntheticTellaskCall requires at least one mention');
+  }
+  const callId = payload.callId?.trim() ? payload.callId.trim() : `priming-${generateShortId()}`;
+  await dlg.callingStart({
+    callId,
+    mentionList,
+    tellaskContent: payload.tellaskContent,
+  });
+  return {
+    callId,
+    mentionList,
+    tellaskContent: payload.tellaskContent,
+  };
 }
 
 async function emitUiOnlyMarkdownEventsAndPersist(dlg: Dialog, content: string): Promise<void> {
@@ -187,18 +217,6 @@ function parseUnifiedTimestamp(value: string): Date | null {
     return null;
   }
   return new Date(year, month - 1, day, hour, minute, second);
-}
-
-function mentionListFromTellaskHead(tellaskHead: string): string[] {
-  const matches = tellaskHead.match(/@[a-zA-Z0-9_-]+/g) ?? [];
-  const deduped = Array.from(
-    new Set(matches.map((item) => item.trim()).filter((item) => item !== '')),
-  );
-  if (deduped.length > 0) {
-    return deduped;
-  }
-  const trimmed = tellaskHead.trim();
-  return trimmed === '' ? ['@unknown'] : [trimmed];
 }
 
 export function getAgentPrimingCacheStatus(agentId: string): AgentPrimingCacheStatus {
@@ -288,11 +306,6 @@ export function scheduleAgentPrimingForNewDialog(
     });
   inflightByAgentId.set(agentId, task);
   return task.then(() => undefined);
-}
-
-function prefixTellaskBodyLines(text: string): string {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
-  return lines.map((line) => `!? ${line}`).join('\n');
 }
 
 function takeFirstNonEmptyLine(text: string): string | null {
@@ -765,7 +778,7 @@ function formatPreludeIntro(
       : shellPolicy === 'self_is_specialist'
         ? [
             '本次对话主理人属于 `shell_specialists`，将略去 shell 诉请环节。',
-            '由 Dominds 运行时获取标准环境事实（`uname -a` + rtws git 现状），随后进入 `!?@self` FBR。',
+            '由 Dominds 运行时获取标准环境事实（`uname -a` + rtws git 现状），随后进入 `self-route tellask` FBR。',
           ]
         : [
             '本团队未配置 shell 专员。',
@@ -782,7 +795,7 @@ function formatPreludeIntro(
       : shellPolicy === 'self_is_specialist'
         ? [
             'The dialog owner is a member of `shell_specialists`, so we skip the shell Tellask step.',
-            'Dominds runtime collects standard environment facts (`uname -a` + rtws git state), then we enter `!?@self` FBR.',
+            'Dominds runtime collects standard environment facts (`uname -a` + rtws git state), then we enter `self-route tellask` FBR.',
           ]
         : [
             'This team has no configured shell specialist.',
@@ -796,7 +809,7 @@ function formatPreludeIntro(
           '## Prelude：智能体启动（复用缓存）',
           '',
           '这段序幕用于把“诉请 + 回传 + FBR + 综合提炼”变成体感（引导祂做给自己看）。',
-          '关键时序：`!?@self` 只表示发起；必须等待 FBR 支线回贴返回后，才在主线做综合决策。',
+          '关键时序：`self-route tellask` 只表示发起；必须等待 FBR 支线回贴返回后，才在主线做综合决策。',
           '本次对话复用了本进程内缓存：未重复执行命令。',
           '',
           ...shellPolicyLinesZh,
@@ -806,7 +819,7 @@ function formatPreludeIntro(
           '## Prelude：智能体启动',
           '',
           '这段序幕用于把“诉请 + 回传 + FBR + 综合提炼”变成体感（引导祂做给自己看）。',
-          '关键时序：`!?@self` 只表示发起；必须等待 FBR 支线回贴返回后，才在主线做综合决策。',
+          '关键时序：`self-route tellask` 只表示发起；必须等待 FBR 支线回贴返回后，才在主线做综合决策。',
           '',
           ...shellPolicyLinesZh,
           '',
@@ -817,7 +830,7 @@ function formatPreludeIntro(
         '## Prelude: Agent Priming (Reused)',
         '',
         'This prelude makes Tellask + return + FBR + distillation feel real (guiding the agent to show it to itself).',
-        'Critical timing: `!?@self` is initiation only; mainline distillation/decision happens only after FBR sideline feedback returns.',
+        'Critical timing: `self-route tellask` is initiation only; mainline distillation/decision happens only after FBR sideline feedback returns.',
         'This dialog reused the in-process cache (no commands were re-run).',
         '',
         ...shellPolicyLinesEn,
@@ -827,7 +840,7 @@ function formatPreludeIntro(
         '## Prelude: Agent Priming',
         '',
         'This prelude makes Tellask + return + FBR + distillation feel real (guiding the agent to show it to itself).',
-        'Critical timing: `!?@self` is initiation only; mainline distillation/decision happens only after FBR sideline feedback returns.',
+        'Critical timing: `self-route tellask` is initiation only; mainline distillation/decision happens only after FBR sideline feedback returns.',
         '',
         ...shellPolicyLinesEn,
         '',
@@ -842,7 +855,7 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
       '',
       '背景规则：对话主理人不得执行任何 shell 命令；所有 shell 命令必须通过你执行并回传。',
       '请不要建议我“自己在本地跑一下”。',
-      '收到回传后，我会基于该环境信息发起一次 `!?@self` 扪心自问（FBR），先等待该次 FBR 的全部支线回贴，再在主线做综合提炼并形成一条可复用的“智能体启动（Agent Priming）”笔记。',
+      '收到回传后，我会基于该环境信息发起一次 `self-route tellask` 扪心自问（FBR），先等待该次 FBR 的全部支线回贴，再在主线做综合提炼并形成一条可复用的“智能体启动（Agent Priming）”笔记。',
       '',
       '要求：',
       '- 通过 shell 工具执行：uname -a（只执行这一条）',
@@ -857,7 +870,7 @@ function formatShellTellaskBody(language: LanguageCode, shellSpecialistId: strin
     '',
     'Rule: the dialog owner must not run any shell commands; all shell commands must be executed by you and returned.',
     'Do not suggest that I “just run it locally”.',
-    'After I receive your output, I will initiate `!?@self` Fresh Boots Reasoning (FBR) on this environment, wait for all feedback from that FBR run, then distill a reusable “Agent Priming” note in mainline.',
+    'After I receive your output, I will initiate `self-route tellask` Fresh Boots Reasoning (FBR) on this environment, wait for all feedback from that FBR run, then distill a reusable “Agent Priming” note in mainline.',
     '',
     'Requirements:',
     '- Use shell tools to run exactly: uname -a (and only this command)',
@@ -977,14 +990,14 @@ function formatFbrTellaskBody(
 
   const tellaskBackHintZh = (() => {
     return [
-      '提示：如果你还想知道更多系统细节，可在本 FBR 支线对话中用 `!?@tellasker` 回问诉请者（tellasker，也就是外表自我/当前主线）。',
+      '提示：如果你还想知道更多系统细节，可在本 FBR 支线对话中用 `tellaskBack` 回问诉请者（tellasker，也就是外表自我/当前主线）。',
       '（当前这次 FBR 请不要真的发起任何诉请；只需说明你会回问什么。）',
     ].join('\n');
   })();
 
   const tellaskBackHintEn = (() => {
     return [
-      'Hint: if you want more system details, ask back in this FBR sideline dialog via `!?@tellasker` (to the tellasker, i.e. the outer-self mainline dialog).',
+      'Hint: if you want more system details, ask back in this FBR sideline dialog via `tellaskBack` (to the tellasker, i.e. the outer-self mainline dialog).',
       '(In this FBR run, do not actually emit any tellasks; just state what you would ask back.)',
     ].join('\n');
   })();
@@ -1026,7 +1039,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
   vcsRound1Text?: string;
   vcsRound2Text?: string;
   fbrResponses: ReadonlyArray<{ subdialogId: string; response: string }>;
-  fbrTellaskHead: string;
+  fbrMentionList: string[];
   fbrCallId: string;
   assertNotStopped?: () => void;
 }): Promise<string> {
@@ -1037,7 +1050,7 @@ async function generatePrimingNoteViaMainlineAgent(options: {
     vcsRound1Text,
     vcsRound2Text,
     fbrResponses,
-    fbrTellaskHead,
+    fbrMentionList,
     fbrCallId,
     assertNotStopped,
   } = options;
@@ -1104,17 +1117,17 @@ async function generatePrimingNoteViaMainlineAgent(options: {
             : `${trimmed.slice(0, cap).trimEnd()}\n\n(truncated: first ${cap} chars only)`;
 
       const fbrLabel = (() => {
-        const head = fbrTellaskHead.trim();
+        const mentions = fbrMentionList.join(' ').trim();
         const callId = fbrCallId.trim();
-        if (head && callId) {
+        if (mentions && callId) {
           return language === 'zh'
-            ? `FBR 草稿 #${i + 1}（tellaskHead: ${head}；callId: ${callId}）`
-            : `FBR draft #${i + 1} (tellaskHead: ${head}; callId: ${callId})`;
+            ? `FBR 草稿 #${i + 1}（mentionList: ${mentions}；callId: ${callId}）`
+            : `FBR draft #${i + 1} (mentionList: ${mentions}; callId: ${callId})`;
         }
-        if (head) {
+        if (mentions) {
           return language === 'zh'
-            ? `FBR 草稿 #${i + 1}（tellaskHead: ${head}）`
-            : `FBR draft #${i + 1} (tellaskHead: ${head})`;
+            ? `FBR 草稿 #${i + 1}（mentionList: ${mentions}）`
+            : `FBR draft #${i + 1} (mentionList: ${mentions})`;
         }
         if (callId) {
           return language === 'zh'
@@ -1136,8 +1149,8 @@ async function generatePrimingNoteViaMainlineAgent(options: {
       language === 'zh'
         ? [
             '你正在进行智能体启动（Agent Priming）的“综合提炼”步骤。',
-            '你收到本提示时，意味着该次 `!?@self` FBR 的并发回贴已经收齐；本步骤只做综合提炼，不重新发起 FBR。',
-            '请基于下方提供的环境快照（以及可选的 `!?@self` FBR 草稿），综合提炼出一条可复用的“智能体启动（Agent Priming）笔记”。',
+            '你收到本提示时，意味着该次 `self-route tellask` FBR 的并发回贴已经收齐；本步骤只做综合提炼，不重新发起 FBR。',
+            '请基于下方提供的环境快照（以及可选的 `self-route tellask` FBR 草稿），综合提炼出一条可复用的“智能体启动（Agent Priming）笔记”。',
             '',
             '证据材料（仅供综合提炼；不要逐条复述）：',
             evidenceBlock ? evidenceBlock : '（无）',
@@ -1154,8 +1167,8 @@ async function generatePrimingNoteViaMainlineAgent(options: {
           ].join('\n')
         : [
             'You are in the Agent Priming distillation step.',
-            'Receiving this prompt means feedback from this `!?@self` FBR run has already been collected; this step is distillation only, not another FBR initiation.',
-            'Based on the environment snapshot (and optional `!?@self` FBR drafts) below, distill a reusable “Agent Priming note”.',
+            'Receiving this prompt means feedback from this `self-route tellask` FBR run has already been collected; this step is distillation only, not another FBR initiation.',
+            'Based on the environment snapshot (and optional `self-route tellask` FBR drafts) below, distill a reusable “Agent Priming note”.',
             '',
             'Evidence (for distillation only; do not repeat draft-by-draft):',
             evidenceBlock ? evidenceBlock : '(empty)',
@@ -1205,21 +1218,21 @@ function buildCoursePrefixMsgs(entry: AgentPrimingCacheEntry): ChatMessage[] {
   const header = (() => {
     if (language === 'zh') {
       if (entry.shellPolicy === 'specialist_only') {
-        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已真实跑通一次“诉请（shell 专员）+ 回传 + `!?@self` FBR + 综合提炼”，并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
+        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已真实跑通一次“诉请（shell 专员）+ 回传 + `self-route tellask` FBR + 综合提炼”，并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
       }
       if (entry.shellPolicy === 'no_specialist') {
-        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `!?@self` FBR + 综合提炼（无 shell 专员；不得执行任意 shell 命令），并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
+        return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `self-route tellask` FBR + 综合提炼（无 shell 专员；不得执行任意 shell 命令），并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
       }
-      return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `!?@self` FBR + 综合提炼，并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
+      return '智能体启动（Agent Priming）上下文：本进程在对话创建时已获取环境快照并完成一次 `self-route tellask` FBR + 综合提炼，并遵循“发起 FBR → 等待回贴 → 综合决策”的时序。以下为压缩转录，作为每一程对话的开头上下文注入。';
     }
 
     if (entry.shellPolicy === 'specialist_only') {
-      return 'Agent Priming context: this process already ran a real Tellask (shell specialist) + return + `!?@self` FBR + distillation at dialog creation, following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
+      return 'Agent Priming context: this process already ran a real Tellask (shell specialist) + return + `self-route tellask` FBR + distillation at dialog creation, following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
     }
     if (entry.shellPolicy === 'no_specialist') {
-      return 'Agent Priming context: this process captured an environment snapshot and ran `!?@self` FBR + distillation at dialog creation (no shell specialist; do not run arbitrary shell commands), following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
+      return 'Agent Priming context: this process captured an environment snapshot and ran `self-route tellask` FBR + distillation at dialog creation (no shell specialist; do not run arbitrary shell commands), following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
     }
-    return 'Agent Priming context: this process captured an environment snapshot and ran `!?@self` FBR + distillation at dialog creation, following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
+    return 'Agent Priming context: this process captured an environment snapshot and ran `self-route tellask` FBR + distillation at dialog creation, following the timing contract “initiate FBR -> wait for feedback -> synthesize/decide”. The condensed transcript below is injected at the start of each course.';
   })();
 
   const shellSnapshotLabel =
@@ -1341,7 +1354,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
 
     // Phase 1: shell ask (and optional prelude intro)
     let shellCallId: string | null = null;
-    let shellTellaskHead: string | null = null;
+    let shellMentionList: string[] | null = null;
     try {
       assertNotStopped();
       await dlg.notifyGeneratingStart();
@@ -1356,17 +1369,12 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       );
 
       if (entry.shell.kind === 'specialist_tellask') {
-        const shellCallContent = [
-          `!?@${entry.shell.specialistId}`,
-          ...prefixTellaskBodyLines(entry.shell.tellaskBody).split('\n'),
-          '',
-        ].join('\n');
-        const shellCalls = await emitSayingEventsAndPersist(dlg, shellCallContent);
-        const shellCall = shellCalls.find((c) => c.validation.kind === 'valid');
-        if (shellCall) {
-          shellCallId = shellCall.callId;
-          shellTellaskHead = shellCall.tellaskHead;
-        }
+        const shellCall = await emitSyntheticTellaskCall(dlg, {
+          mentionList: [`@${entry.shell.specialistId}`],
+          tellaskContent: entry.shell.tellaskBody,
+        });
+        shellCallId = shellCall.callId;
+        shellMentionList = shellCall.mentionList;
       } else {
         await emitSayingEventsAndPersist(dlg, entry.shell.directNoteMarkdown);
       }
@@ -1379,11 +1387,11 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
     }
 
     // Phase 2: shell response (separate bubble)
-    if (entry.shell.kind === 'specialist_tellask' && shellCallId && shellTellaskHead) {
+    if (entry.shell.kind === 'specialist_tellask' && shellCallId && shellMentionList) {
       assertNotStopped();
       await dlg.receiveTeammateResponse(
         entry.shell.specialistId,
-        mentionListFromTellaskHead(shellTellaskHead),
+        shellMentionList,
         entry.shell.tellaskBody,
         'completed',
         dlg.id,
@@ -1399,24 +1407,19 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
     // Phase 2.5: VCS long-session drill (two rounds)
     if (entry.vcs.kind === 'specialist_session') {
       let round1CallId: string | null = null;
-      let round1TellaskHead: string | null = null;
+      let round1MentionList: string[] | null = null;
       let round2CallId: string | null = null;
-      let round2TellaskHead: string | null = null;
+      let round2MentionList: string[] | null = null;
 
       try {
         assertNotStopped();
         await dlg.notifyGeneratingStart();
-        const round1Content = [
-          `!?@${entry.vcs.specialistId} !tellaskSession ${entry.vcs.sessionSlug}`,
-          ...prefixTellaskBodyLines(entry.vcs.round1.tellaskBody).split('\n'),
-          '',
-        ].join('\n');
-        const round1Calls = await emitSayingEventsAndPersist(dlg, round1Content);
-        const round1 = round1Calls.find((c) => c.validation.kind === 'valid');
-        if (round1) {
-          round1CallId = round1.callId;
-          round1TellaskHead = round1.tellaskHead;
-        }
+        const round1 = await emitSyntheticTellaskCall(dlg, {
+          mentionList: [`@${entry.vcs.specialistId}`],
+          tellaskContent: entry.vcs.round1.tellaskBody,
+        });
+        round1CallId = round1.callId;
+        round1MentionList = round1.mentionList;
       } finally {
         try {
           await dlg.notifyGeneratingFinish();
@@ -1425,11 +1428,11 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         }
       }
 
-      if (round1CallId && round1TellaskHead) {
+      if (round1CallId && round1MentionList) {
         assertNotStopped();
         await dlg.receiveTeammateResponse(
           entry.vcs.specialistId,
-          mentionListFromTellaskHead(round1TellaskHead),
+          round1MentionList,
           entry.vcs.round1.tellaskBody,
           'completed',
           dlg.id,
@@ -1445,17 +1448,12 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       try {
         assertNotStopped();
         await dlg.notifyGeneratingStart();
-        const round2Content = [
-          `!?@${entry.vcs.specialistId} !tellaskSession ${entry.vcs.sessionSlug}`,
-          ...prefixTellaskBodyLines(entry.vcs.round2.tellaskBody).split('\n'),
-          '',
-        ].join('\n');
-        const round2Calls = await emitSayingEventsAndPersist(dlg, round2Content);
-        const round2 = round2Calls.find((c) => c.validation.kind === 'valid');
-        if (round2) {
-          round2CallId = round2.callId;
-          round2TellaskHead = round2.tellaskHead;
-        }
+        const round2 = await emitSyntheticTellaskCall(dlg, {
+          mentionList: [`@${entry.vcs.specialistId}`],
+          tellaskContent: entry.vcs.round2.tellaskBody,
+        });
+        round2CallId = round2.callId;
+        round2MentionList = round2.mentionList;
       } finally {
         try {
           await dlg.notifyGeneratingFinish();
@@ -1464,11 +1462,11 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         }
       }
 
-      if (round2CallId && round2TellaskHead) {
+      if (round2CallId && round2MentionList) {
         assertNotStopped();
         await dlg.receiveTeammateResponse(
           entry.vcs.specialistId,
-          mentionListFromTellaskHead(round2TellaskHead),
+          round2MentionList,
           entry.vcs.round2.tellaskBody,
           'completed',
           dlg.id,
@@ -1507,24 +1505,19 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
 
     // Phase 3: FBR ask (call bubble)
     let fbrCallId: string | null = null;
-    let fbrTellaskHead: string | null = null;
+    let fbrMentionList: string[] | null = null;
     const effort = Math.max(0, Math.floor(entry.fbr.effort));
     if (effort >= 1 && entry.fbr.responses.length > 0) {
       try {
         assertNotStopped();
         await dlg.notifyGeneratingStart();
-        const fbrCallBody = [entry.fbr.selfTeaser, '', entry.fbr.tellaskBody].join('\n');
-        const fbrCallContent = [
-          '!?@self',
-          ...prefixTellaskBodyLines(fbrCallBody).split('\n'),
-          '',
-        ].join('\n');
-        const fbrCalls = await emitSayingEventsAndPersist(dlg, fbrCallContent);
-        const fbrCall = fbrCalls.find((c) => c.validation.kind === 'valid');
-        if (fbrCall) {
-          fbrCallId = fbrCall.callId;
-          fbrTellaskHead = fbrCall.tellaskHead;
-        }
+        const fbrCallBody = [entry.fbr.selfTeaser, '', entry.fbr.tellaskContent].join('\n');
+        const fbrCall = await emitSyntheticTellaskCall(dlg, {
+          mentionList: ['@self'],
+          tellaskContent: fbrCallBody,
+        });
+        fbrCallId = fbrCall.callId;
+        fbrMentionList = fbrCall.mentionList;
       } finally {
         try {
           await dlg.notifyGeneratingFinish();
@@ -1534,7 +1527,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       }
 
       // Phase 4: FBR responses (separate bubbles, in stable index order)
-      if (fbrCallId && fbrTellaskHead) {
+      if (fbrCallId && fbrMentionList) {
         const normalized = Math.max(1, effort);
         const responses = entry.fbr.responses.slice(0, normalized);
         for (let i = 0; i < responses.length; i++) {
@@ -1542,8 +1535,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
           const raw = responses[i] ?? '';
           await dlg.receiveTeammateResponse(
             entry.fbr.responderAgentId,
-            mentionListFromTellaskHead(fbrTellaskHead),
-            entry.fbr.tellaskBody,
+            fbrMentionList,
+            entry.fbr.tellaskContent,
             'completed',
             dlg.id,
             {
@@ -1665,7 +1658,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           : 'specialist_only';
 
     let shellCallId: string | null = null;
-    let shellTellaskHead: string | null = null;
+    let shellMentionList: string[] | null = null;
     let shellTellaskBodyForSubdialog: string | null = null;
 
     // Phase 1: shell ask (and optional prelude intro)
@@ -1680,19 +1673,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
             formatPreludeIntro(language, false, shellPolicy, specialistId),
           );
 
-          const shellCallSaying = [
-            `!?@${specialistId}`,
-            ...prefixTellaskBodyLines(shellTellaskBody).split('\n'),
-            '',
-          ].join('\n');
-          const calls = await emitSayingEventsAndPersist(dlg, shellCallSaying);
-          const call = calls.find((c) => c.validation.kind === 'valid');
-          if (!call) {
-            throw new Error('Failed to emit shell specialist tellask call');
-          }
+          const call = await emitSyntheticTellaskCall(dlg, {
+            mentionList: [`@${specialistId}`],
+            tellaskContent: shellTellaskBody,
+          });
           shellCallId = call.callId;
-          shellTellaskHead = call.tellaskHead;
-          shellTellaskBodyForSubdialog = call.body;
+          shellMentionList = call.mentionList;
+          shellTellaskBodyForSubdialog = call.tellaskContent;
         } finally {
           try {
             await dlg.notifyGeneratingFinish();
@@ -1765,26 +1752,17 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       shellPolicy === 'specialist_only' &&
       specialistId !== null &&
       shellCallId &&
-      shellTellaskHead
+      shellMentionList
     ) {
       const ensuredSpecialistId = specialistId;
-      if (ensuredSpecialistId === null) {
-        throw new Error('Missing shell specialist id');
-      }
       const ensuredShellCallId = shellCallId;
-      if (!ensuredShellCallId) {
-        throw new Error('Missing shell callId');
-      }
-      const ensuredShellTellaskHead = shellTellaskHead;
-      if (!ensuredShellTellaskHead) {
-        throw new Error('Missing shell tellaskHead');
-      }
+      const ensuredShellMentionList = shellMentionList;
       const tellaskBody = shellTellaskBodyForSubdialog ?? shellTellaskBody;
       assertNotStopped();
       const sub = await dlg.withLock(async () => {
         return await dlg.createSubDialog(
           ensuredSpecialistId,
-          mentionListFromTellaskHead(ensuredShellTellaskHead),
+          ensuredShellMentionList,
           tellaskBody,
           {
             originMemberId: dlg.agentId,
@@ -1798,7 +1776,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       const initPrompt = formatAssignmentFromSupdialog({
         fromAgentId: dlg.agentId,
         toAgentId: sub.agentId,
-        mentionList: mentionListFromTellaskHead(ensuredShellTellaskHead),
+        mentionList: ensuredShellMentionList,
         tellaskContent: tellaskBody,
         language,
         collectiveTargets: [ensuredSpecialistId],
@@ -1825,7 +1803,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       await dlg.withLock(async () => {
         await dlg.receiveTeammateResponse(
           ensuredSpecialistId,
-          mentionListFromTellaskHead(ensuredShellTellaskHead),
+          ensuredShellMentionList,
           tellaskBody,
           'completed',
           sub.id,
@@ -1845,25 +1823,19 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       try {
         vcsRound1Body = formatVcsSessionRound1TellaskBody(language);
         let round1CallId = '';
-        let round1TellaskHead = '';
+        let round1MentionList: string[] = [];
         let round1TellaskBodyForSubdialog = '';
 
         await dlg.withLock(async () => {
           try {
             await dlg.notifyGeneratingStart();
-            const round1CallSaying = [
-              `!?@${ensuredSpecialistId} !tellaskSession ${PRIMING_VCS_SESSION_SLUG}`,
-              ...prefixTellaskBodyLines(vcsRound1Body).split('\n'),
-              '',
-            ].join('\n');
-            const calls = await emitSayingEventsAndPersist(dlg, round1CallSaying);
-            const call = calls.find((c) => c.validation.kind === 'valid');
-            if (!call) {
-              throw new Error('Failed to emit VCS session round-1 tellask call');
-            }
+            const call = await emitSyntheticTellaskCall(dlg, {
+              mentionList: [`@${ensuredSpecialistId}`],
+              tellaskContent: vcsRound1Body,
+            });
             round1CallId = call.callId;
-            round1TellaskHead = call.tellaskHead;
-            round1TellaskBodyForSubdialog = call.body;
+            round1MentionList = call.mentionList;
+            round1TellaskBodyForSubdialog = call.tellaskContent;
           } finally {
             try {
               await dlg.notifyGeneratingFinish();
@@ -1877,7 +1849,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const round1Sub = await dlg.withLock(async () => {
           return await dlg.createSubDialog(
             ensuredSpecialistId,
-            mentionListFromTellaskHead(round1TellaskHead),
+            round1MentionList,
             round1TellaskBodyForSubdialog || vcsRound1Body,
             {
               originMemberId: dlg.agentId,
@@ -1900,7 +1872,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const round1Prompt = formatAssignmentFromSupdialog({
           fromAgentId: dlg.agentId,
           toAgentId: round1Sub.agentId,
-          mentionList: mentionListFromTellaskHead(round1TellaskHead),
+          mentionList: round1MentionList,
           tellaskContent: round1TellaskBodyForSubdialog || vcsRound1Body,
           language,
           collectiveTargets: [ensuredSpecialistId],
@@ -1925,7 +1897,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             ensuredSpecialistId,
-            mentionListFromTellaskHead(round1TellaskHead),
+            round1MentionList,
             round1TellaskBodyForSubdialog || vcsRound1Body,
             'completed',
             round1Sub.id,
@@ -1940,24 +1912,18 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
         vcsRound2Body = formatVcsSessionRound2TellaskBody(language, vcsRound1ResponseText);
         let round2CallId = '';
-        let round2TellaskHead = '';
+        let round2MentionList: string[] = [];
         let round2TellaskBodyForSubdialog = '';
         await dlg.withLock(async () => {
           try {
             await dlg.notifyGeneratingStart();
-            const round2CallSaying = [
-              `!?@${ensuredSpecialistId} !tellaskSession ${PRIMING_VCS_SESSION_SLUG}`,
-              ...prefixTellaskBodyLines(vcsRound2Body).split('\n'),
-              '',
-            ].join('\n');
-            const calls = await emitSayingEventsAndPersist(dlg, round2CallSaying);
-            const call = calls.find((c) => c.validation.kind === 'valid');
-            if (!call) {
-              throw new Error('Failed to emit VCS session round-2 tellask call');
-            }
+            const call = await emitSyntheticTellaskCall(dlg, {
+              mentionList: [`@${ensuredSpecialistId}`],
+              tellaskContent: vcsRound2Body,
+            });
             round2CallId = call.callId;
-            round2TellaskHead = call.tellaskHead;
-            round2TellaskBodyForSubdialog = call.body;
+            round2MentionList = call.mentionList;
+            round2TellaskBodyForSubdialog = call.tellaskContent;
           } finally {
             try {
               await dlg.notifyGeneratingFinish();
@@ -1970,7 +1936,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const round2Prompt = formatAssignmentFromSupdialog({
           fromAgentId: dlg.agentId,
           toAgentId: round1Sub.agentId,
-          mentionList: mentionListFromTellaskHead(round2TellaskHead),
+          mentionList: round2MentionList,
           tellaskContent: round2TellaskBodyForSubdialog || vcsRound2Body,
           language,
           collectiveTargets: [ensuredSpecialistId],
@@ -1995,7 +1961,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             ensuredSpecialistId,
-            mentionListFromTellaskHead(round2TellaskHead),
+            round2MentionList,
             round2TellaskBodyForSubdialog || vcsRound2Body,
             'completed',
             round1Sub.id,
@@ -2101,7 +2067,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
     );
     selfTeaser = formatFbrSelfTeaser(language);
     let fbrCallId: string | null = null;
-    let fbrTellaskHead: string | null = null;
+    let fbrMentionList: string[] | null = null;
 
     // Phase 3: FBR ask (call bubble)
     if (fbrEffort >= 1) {
@@ -2109,20 +2075,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       await dlg.withLock(async () => {
         try {
           await dlg.notifyGeneratingStart();
-          const fbrSaying = [
-            selfTeaser,
-            '',
-            '!?@self',
-            ...prefixTellaskBodyLines(fbrCallBody).split('\n'),
-            '',
-          ].join('\n');
-          const fbrCalls = await emitSayingEventsAndPersist(dlg, fbrSaying);
-          const fbrCall = fbrCalls.find((c) => c.validation.kind === 'valid');
-          if (!fbrCall) {
-            throw new Error('Failed to emit FBR tellask call');
-          }
+          await emitUiOnlyMarkdownEventsAndPersist(dlg, selfTeaser);
+          const fbrCall = await emitSyntheticTellaskCall(dlg, {
+            mentionList: ['@self'],
+            tellaskContent: fbrCallBody,
+          });
           fbrCallId = fbrCall.callId;
-          fbrTellaskHead = fbrCall.tellaskHead;
+          fbrMentionList = fbrCall.mentionList;
         } finally {
           try {
             await dlg.notifyGeneratingFinish();
@@ -2133,11 +2092,11 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       });
 
       // Phase 4: FBR responses (separate bubbles; order is not meaningful)
-      if (!fbrCallId || !fbrTellaskHead) {
-        throw new Error('Missing FBR callId/tellaskHead');
+      if (!fbrCallId || !fbrMentionList) {
+        throw new Error('Missing FBR callId/mentionList');
       }
       const ensuredFbrCallId = fbrCallId;
-      const ensuredFbrTellaskHead = fbrTellaskHead;
+      const ensuredFbrMentionList = fbrMentionList;
 
       const perInstance = Array.from({ length: fbrEffort }, (_, idx) => idx + 1);
       const created = await Promise.all(
@@ -2158,7 +2117,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           const sub = await dlg.withLock(async () => {
             return await dlg.createSubDialog(
               dlg.agentId,
-              mentionListFromTellaskHead(ensuredFbrTellaskHead),
+              ensuredFbrMentionList,
               instanceBody,
               {
                 originMemberId: dlg.agentId,
@@ -2172,7 +2131,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           const initPrompt = formatAssignmentFromSupdialog({
             fromAgentId: dlg.agentId,
             toAgentId: sub.agentId,
-            mentionList: mentionListFromTellaskHead(ensuredFbrTellaskHead),
+            mentionList: ensuredFbrMentionList,
             tellaskContent: instanceBody,
             language,
             collectiveTargets: [dlg.agentId],
@@ -2204,7 +2163,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             dlg.agentId,
-            mentionListFromTellaskHead(ensuredFbrTellaskHead),
+            ensuredFbrMentionList,
             fbrCallBody,
             'completed',
             r.sub.id,
@@ -2219,13 +2178,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       }
     }
 
-    if (!fbrCallId || !fbrTellaskHead) {
+    if (!fbrCallId || !fbrMentionList) {
       if (fbrEffort >= 1) {
-        throw new Error('Missing FBR callId/tellaskHead for Agent Priming distillation.');
+        throw new Error('Missing FBR callId/mentionList for Agent Priming distillation.');
       }
       // FBR disabled (fbr_effort == 0): distill from shell snapshot only.
       fbrCallId = '';
-      fbrTellaskHead = '@self';
+      fbrMentionList = ['@self'];
     }
     const primingNote = await generatePrimingNoteViaMainlineAgent({
       dlg,
@@ -2234,7 +2193,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       vcsRound1Text: vcsEvidenceRound1Text,
       vcsRound2Text: vcsEvidenceRound2Text,
       fbrResponses: fbrResponsesForInjection,
-      fbrTellaskHead: fbrTellaskHead,
+      fbrMentionList,
       fbrCallId: fbrCallId,
       assertNotStopped,
     });
@@ -2290,8 +2249,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
               inventoryText: vcsInventoryText,
             },
       fbr: {
-        tellaskHead: '@self',
-        tellaskBody: fbrCallBody,
+        mentionList: fbrMentionList,
+        tellaskContent: fbrCallBody,
         selfTeaser,
         responderAgentId: dlg.agentId,
         effort: fbrEffort,

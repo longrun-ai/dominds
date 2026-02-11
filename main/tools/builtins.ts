@@ -14,7 +14,6 @@ import {
   recallTaskdocTool,
   updateReminderTool,
 } from './ctrl';
-import { verifyTellaskParsingTool } from './diag';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
 import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
@@ -122,9 +121,6 @@ registerTool(recallTaskdocTool);
 for (const tool of teamMgmtTools) {
   registerTool(tool);
 }
-
-// Diag tools
-registerTool(verifyTellaskParsingTool);
 
 // Register well-known toolsets
 registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, clearMemoryTool]);
@@ -236,11 +232,6 @@ setToolsetMeta('team-mgmt', {
   source: 'dominds',
   descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
   promptFilesI18n: { en: './prompts/team_mgmt.en.md', zh: './prompts/team_mgmt.zh.md' },
-});
-registerToolset('diag', [verifyTellaskParsingTool]);
-setToolsetMeta('diag', {
-  source: 'dominds',
-  descriptionI18n: { en: 'Diagnostics tools', zh: '诊断工具' },
 });
 
 // Register ReminderOwners
