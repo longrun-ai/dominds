@@ -3,7 +3,7 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { log } from '../log';
-import type { FuncResultContentItem, ProviderData, UserTextGrammar } from '../shared/types/storage';
+import type { FuncResultContentItem, ProviderData } from '../shared/types/storage';
 
 export type EnvironmentMsg = {
   type: 'environment_msg';
@@ -23,7 +23,7 @@ export type PromptingMsg = {
   genseq: number;
   msgId: string;
   content: string;
-  grammar: UserTextGrammar;
+  grammar: 'markdown';
 };
 
 export type SayingMsg = {
@@ -73,10 +73,13 @@ export type TellaskCallResultMsg = {
   type: 'tellask_result_msg';
   role: 'tool';
   responderId: string; // id of tool only
-  tellaskHead: string; // headline of original tellask call (body not included in the result)
+  mentionList: string[];
+  tellaskContent: string;
   status: 'completed' | 'failed';
   content: string;
-  // callId REMOVED - UI correlation is handled via ResponseEvent
+  // Optional internal correlation key used for context projection.
+  // UI navigation still relies on response events.
+  callId?: string;
 };
 
 export type ChatMessage =

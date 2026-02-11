@@ -1,7 +1,6 @@
 import type { Dialog, DialogID } from '../../dialog';
 import type { LanguageCode } from '../../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
-import type { UserTextGrammar } from '../../shared/types/storage';
 import type { CollectedTellaskCall } from '../../tellask';
 
 export type DriverV2DriveOptions = Readonly<{
@@ -18,7 +17,7 @@ export type DriverV2SubdialogReplyTarget = {
 export interface DriverV2HumanPrompt {
   content: string;
   msgId: string;
-  grammar: UserTextGrammar;
+  grammar: 'markdown';
   userLanguageCode?: LanguageCode;
   origin?: 'user' | 'diligence_push';
   skipTaskdoc?: boolean;

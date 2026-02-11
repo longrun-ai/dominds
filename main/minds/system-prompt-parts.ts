@@ -37,7 +37,7 @@ type ShellPolicyCopy = Readonly<{
   delegationProposalBullets: readonly string[];
   specialistListLine: (value: string) => string;
   delegationSpecialistsLine: (value: string) => string;
-  tellaskBlockReminder: (exampleHeads: string) => string;
+  tellaskFunctionReminder: (examples: string) => string;
   claimAfterReceiptReminder: string;
   includeDevopsPolicyForSpecialist: boolean;
 }>;
@@ -78,8 +78,8 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
       ],
       specialistListLine: (value) => `本队 shell 专员列表：${value}`,
       delegationSpecialistsLine: (value) => `可诉请的 shell 专员：${value}`,
-      tellaskBlockReminder: (exampleHeads) =>
-        `重要：如果你打算让队友执行命令，请在同一条消息里给出完整的 tellask 诉请块（诉请头第 0 列起始，并直接写真实专员 id）。可用写法示例：${exampleHeads}。不要只说“我会请某人运行”。`,
+      tellaskFunctionReminder: (examples) =>
+        `重要：如果你打算让队友执行命令，请在同一回复中直接发起 tellask-special 函数调用（不要输出 \`!?@...\` 文本诉请）。可用函数调用示例：${examples}。不要只说“我会请某人运行”。`,
       claimAfterReceiptReminder:
         '重要：在你看到 shell 专员的回执（command/exit_code/stdout/stderr）之前，不要声称“已运行/已通过/无错”。',
       includeDevopsPolicyForSpecialist: false,
@@ -119,8 +119,8 @@ function getShellPolicyCopy(language: LanguageCode): ShellPolicyCopy {
     ],
     specialistListLine: (value) => `Shell specialists in this team: ${value}`,
     delegationSpecialistsLine: (value) => `Shell specialists you can tellask: ${value}`,
-    tellaskBlockReminder: (exampleHeads) =>
-      `Important: if you intend to delegate, include the full tellask block in the same message (tellask headline must start at column 0 and use a real specialist id). Examples: ${exampleHeads}. Do not just say “I will ask someone to run it”.`,
+    tellaskFunctionReminder: (examples) =>
+      `Important: if you intend to delegate, invoke tellask-special functions directly in the same response (do not emit \`!?@...\` text tellasks). Example function calls: ${examples}. Do not just say “I will ask someone to run it”.`,
     claimAfterReceiptReminder:
       'Important: do not claim “ran/passed/no errors” until you see the shell specialist’s receipt (command/exit_code/stdout/stderr).',
     includeDevopsPolicyForSpecialist: true,
@@ -147,10 +147,13 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
 
   const specialistListLine = copy.specialistListLine(shellSpecialists);
   const specialistDelegationLine = copy.delegationSpecialistsLine(shellSpecialists);
-  const tellaskHeadExamples =
+  const tellaskFunctionExamples =
     shellSpecialistMemberIds.length > 0
       ? shellSpecialistMemberIds
-          .map((id) => `\`!?@${id} ...\``)
+          .map(
+            (id) =>
+              `\`${language === 'zh' ? 'tellaskSessionless' : 'tellaskSessionless'}({ targetAgentId: "${id}", tellaskContent: "..." })\``,
+          )
           .join(language === 'zh' ? ' / ' : ' / ')
       : language === 'zh'
         ? '（当前无可用 shell 专员）'
@@ -162,7 +165,7 @@ export function buildShellPolicyPrompt(ctx: PromptdocContext): string {
     '',
     devopsScriptPolicy,
     '',
-    copy.tellaskBlockReminder(tellaskHeadExamples),
+    copy.tellaskFunctionReminder(tellaskFunctionExamples),
     copy.claimAfterReceiptReminder,
   ];
 

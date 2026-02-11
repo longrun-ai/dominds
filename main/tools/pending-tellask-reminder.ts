@@ -8,10 +8,11 @@ import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 
 type PendingSubdialogView = Readonly<{
   subdialogId: string;
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
-  tellaskSession?: string;
+  sessionSlug?: string;
 }>;
 
 type PendingTellaskReminderMeta = Readonly<{
@@ -45,9 +46,11 @@ function callTypeLabel(language: LanguageCode, callType: 'A' | 'B' | 'C'): strin
   return 'Fresh Tellask';
 }
 
-function summarizeTellaskHead(tellaskHead: string): string {
-  const normalized = tellaskHead.replace(/\s+/g, ' ').trim();
-  if (!normalized) return '(empty tellaskHead)';
+function summarizeTellask(view: PendingSubdialogView): string {
+  const normalized = `${view.mentionList.join(' ')} ${view.tellaskContent}`
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '(empty tellask)';
   const max = 140;
   if (normalized.length <= max) return normalized;
   return `${normalized.slice(0, max).trimEnd()}...`;
@@ -56,13 +59,9 @@ function summarizeTellaskHead(tellaskHead: string): string {
 function makePendingSignature(pending: ReadonlyArray<PendingSubdialogView>): string {
   return pending
     .map((p) =>
-      [
-        p.subdialogId,
-        p.targetAgentId,
-        p.callType,
-        p.tellaskSession ?? '',
-        summarizeTellaskHead(p.tellaskHead),
-      ].join('|'),
+      [p.subdialogId, p.targetAgentId, p.callType, p.sessionSlug ?? '', summarizeTellask(p)].join(
+        '|',
+      ),
     )
     .sort()
     .join('||');
@@ -93,12 +92,12 @@ function buildReminderContent(
   const lines = pending.map((p, idx) => {
     const base =
       language === 'zh'
-        ? `${idx + 1}. @${p.targetAgentId} | ${callTypeLabel(language, p.callType)} | ${summarizeTellaskHead(p.tellaskHead)}`
-        : `${idx + 1}. @${p.targetAgentId} | ${callTypeLabel(language, p.callType)} | ${summarizeTellaskHead(p.tellaskHead)}`;
-    if (!p.tellaskSession) return base;
+        ? `${idx + 1}. @${p.targetAgentId} | ${callTypeLabel(language, p.callType)} | ${summarizeTellask(p)}`
+        : `${idx + 1}. @${p.targetAgentId} | ${callTypeLabel(language, p.callType)} | ${summarizeTellask(p)}`;
+    if (!p.sessionSlug) return base;
     return language === 'zh'
-      ? `${base} | 会话: ${p.tellaskSession}`
-      : `${base} | session: ${p.tellaskSession}`;
+      ? `${base} | 会话: ${p.sessionSlug}`
+      : `${base} | session: ${p.sessionSlug}`;
   });
 
   return [heading, '', summary, '', ...lines].join('\n');
@@ -127,10 +126,11 @@ async function loadPendingSubdialogView(dlg: Dialog): Promise<PendingSubdialogVi
   const pending = await DialogPersistence.loadPendingSubdialogs(dlg.id, dlg.status);
   return pending.map((p) => ({
     subdialogId: p.subdialogId,
-    tellaskHead: p.tellaskHead,
+    mentionList: p.mentionList,
+    tellaskContent: p.tellaskContent,
     targetAgentId: p.targetAgentId,
     callType: p.callType,
-    tellaskSession: p.tellaskSession,
+    sessionSlug: p.sessionSlug,
   }));
 }
 

@@ -1,4 +1,3 @@
-import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import yaml from 'yaml';
@@ -8,12 +7,6 @@ import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
 import type { ChatMessage } from '../../main/llm/client';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { formatUnifiedTimestamp } from '../../main/shared/utils/time';
-import type {
-  CollectedTellaskCall,
-  TellaskCallValidation,
-  TellaskEventsReceiver,
-} from '../../main/tellask';
-import { TellaskStreamParser } from '../../main/tellask';
 import '../../main/tools/builtins';
 import { generateDialogID } from '../../main/utils/id';
 
@@ -186,26 +179,4 @@ export function listTellaskResultContents(msgs: ChatMessage[]): string[] {
       return msg.type === 'tellask_result_msg';
     })
     .map((msg) => msg.content);
-}
-
-class NoopTellaskReceiver implements TellaskEventsReceiver {
-  async markdownStart(): Promise<void> {}
-  async markdownChunk(_chunk: string): Promise<void> {}
-  async markdownFinish(): Promise<void> {}
-  async callStart(_validation: TellaskCallValidation): Promise<void> {}
-  async callHeadLineChunk(_chunk: string): Promise<void> {}
-  async callHeadLineFinish(): Promise<void> {}
-  async tellaskBodyStart(): Promise<void> {}
-  async tellaskBodyChunk(_chunk: string): Promise<void> {}
-  async tellaskBodyFinish(): Promise<void> {}
-  async callFinish(_call: CollectedTellaskCall, _upstreamEndOffset: number): Promise<void> {}
-}
-
-export async function parseSingleTellaskCall(text: string): Promise<CollectedTellaskCall> {
-  const parser = new TellaskStreamParser(new NoopTellaskReceiver());
-  await parser.takeUpstreamChunk(text);
-  await parser.finalize();
-  const calls = parser.getCollectedCalls();
-  assert.equal(calls.length, 1, `expected exactly 1 tellask call, got ${calls.length}`);
-  return calls[0]!;
 }

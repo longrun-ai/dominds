@@ -146,17 +146,17 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
   const firstMention = args.firstMention;
   if (language === 'zh') {
     return (
-      `错误：诉请（tellask）仅用于队友诉请（\`!?@<teammate>\`）。\n` +
+      `错误：诉请（tellask）仅用于队友诉请（tellask-special 函数）。\n` +
       `- 当前目标：\`@${firstMention}\` 不是已知队友呼号。\n` +
       `- 若你要调用工具：请使用原生 function-calling（函数工具），不要在文本中输出 \`!?@tool\`。\n` +
-      `- 若你要找队友：请确认呼号（如 \`!?@pangu\` / \`!?@tellasker\` / \`!?@self\`）。`
+      `- 若你要找队友：请使用 tellask-special 函数并确认 targetAgentId（如 \`pangu\` / \`self\`），支线回问请用 \`tellaskBack\`。`
     );
   }
   return (
-    `Error: tellask is reserved for teammate tellasks (\`!?@<teammate>\`).\n` +
+    `Error: tellask is reserved for teammate tellasks (tellask-special functions).\n` +
     `- Current target: \`@${firstMention}\` is not a known teammate call sign.\n` +
     `- If you intended to call a tool: use native function-calling; do not emit \`!?@tool\` in text.\n` +
-    `- If you intended to call a teammate: double-check the call sign (e.g. \`!?@pangu\` / \`!?@tellasker\` / \`!?@self\`).`
+    `- If you intended to call a teammate: use tellask-special functions and verify targetAgentId (e.g. \`pangu\` / \`self\`); use \`tellaskBack\` for ask-back.`
   );
 }
 
@@ -260,13 +260,13 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
 export function formatDomindsNoteTellaskerOnlyInSidelineDialog(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!?@tellasker` 只在支线对话中有效，用于向“诉请者”（发起本次诉请的对话）回问澄清。\n' +
+      'Dominds 提示：`tellaskBack` 只在支线对话中有效，用于向“诉请者”（发起本次诉请的对话）回问澄清。\n' +
       '你当前不在支线对话中，因此没有“诉请者”可回问。\n' +
       '（注：诉请者不一定是主线对话；差遣牒 `*.tsk/` 通常由主线对话维护人统一更新。）'
     );
   }
   return (
-    'Dominds note: `!?@tellasker` is only valid inside a sideline dialog and tellasks back to the tellasker (the dialog that issued the current Tellask) for clarification. ' +
+    'Dominds note: `tellaskBack` is only valid inside a sideline dialog and asks back to the tellasker (the dialog that issued the current Tellask) for clarification. ' +
     'You are currently not in a sideline dialog, so there is no tellasker to call.'
   );
 }
@@ -274,13 +274,13 @@ export function formatDomindsNoteTellaskerOnlyInSidelineDialog(language: Languag
 export function formatDomindsNoteTellaskerNoTellaskSession(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：`!?@tellasker` 是回问诉请（TellaskBack），不接受 `!tellaskSession`。' +
-      '请使用不带 `!tellaskSession` 的 `!?@tellasker`；若你需要可恢复的多轮协作，请使用长线诉请：`!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>`。'
+      'Dominds 提示：`tellaskBack` 是回问诉请，不接受 tellaskSession。' +
+      '请直接使用 `tellaskBack`；若你需要可恢复的多轮协作，请使用 `tellask(targetAgentId, tellaskSession, body, ...)`。'
     );
   }
   return (
-    'Dominds note: `!?@tellasker` is a TellaskBack and does not accept `!tellaskSession`. ' +
-    'Use `!?@tellasker` with NO `!tellaskSession`, or use `!?@self !tellaskSession <tellaskSession>` / `!?@<agentId> !tellaskSession <tellaskSession>` for a resumable Tellask Session.'
+    'Dominds note: `tellaskBack` is ask-back and does not accept tellaskSession. ' +
+    'Use `tellaskBack` directly, or use `tellask(targetAgentId, tellaskSession, body, ...)` for resumable Tellask Session collaboration.'
   );
 }
 
@@ -288,29 +288,29 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   if (language === 'zh') {
     return (
       'Dominds 提示：该诉请目标是当前 agent（自诉请/self-tellask）。' +
-      '扪心自问 通常应使用 `!?@self`（不带 `!tellaskSession`）来创建一次性的初心会话；' +
-      '仅在你明确需要可恢复的长期支线对话时才使用 `!?@self !tellaskSession <tellaskSession>`。该诉请将继续执行。'
+      '扪心自问通常应使用一次性 self-route tellask（无 tellaskSession）；' +
+      '仅在你明确需要可恢复的长期支线对话时才使用带 tellaskSession 的 self-route tellask。该诉请将继续执行。'
     );
   }
   return (
     'Dominds note: This call targets the current agent (self-tellask). ' +
-    'Fresh Boots Reasoning should usually use `!?@self` (no `!tellaskSession`) for an ephemeral fresh boots session; use ' +
-    '`!?@self !tellaskSession <tellaskSession>` only when you explicitly want a resumable long-lived sideline dialog. This call will proceed.'
+    'Fresh Boots Reasoning should usually use one-shot self-route tellask (no tellaskSession) for an ephemeral fresh boots session; use ' +
+    'resumable self-route tellask with tellaskSession only when you explicitly want a long-lived sideline dialog. This call will proceed.'
   );
 }
 
 export function formatDomindsNoteFbrDisabled(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      '错误：当前团队配置不允许你使用 `!?@self` 扪心自问（FBR）自诉请。\n' +
+      '错误：当前团队配置不允许你使用 self-route tellask 发起扪心自问（FBR）。\n' +
       '- 请联系团队管理者调整配置后再试。\n' +
-      '- 你仍可使用其它队友诉请（`!?@<teammate>`）或在当前对话中直接分析并给出结论。'
+      '- 你仍可使用其它队友诉请函数（tellask/tellaskSessionless）或在当前对话中直接分析并给出结论。'
     );
   }
   return (
-    'Error: `!?@self` Fresh Boots Reasoning (FBR) is disabled by your team configuration.\n' +
-    '- Ask your team manager to adjust the team config, then retry `!?@self`.\n' +
-    '- You can still tellask other teammates (`!?@<teammate>`) or provide analysis directly in the current dialog.'
+    'Error: self-route Fresh Boots Reasoning (FBR) tellask is disabled by your team configuration.\n' +
+    '- Ask your team manager to adjust the team config, then retry self-route tellask.\n' +
+    '- You can still tellask other teammates via tellask functions (`tellask` / `tellaskSessionless`) or provide analysis directly in the current dialog.'
   );
 }
 
@@ -324,29 +324,29 @@ export function formatDomindsNoteFbrToollessViolation(
   if (language === 'zh') {
     const detail =
       kind === 'tellask'
-        ? '检测到你在 FBR 支线对话里发起了队友诉请（`!?@...`）。'
+        ? '检测到你在 FBR 支线对话里尝试发起诉请（tellask 系列）。'
         : kind === 'tool'
           ? '检测到你在 FBR 支线对话里尝试调用函数工具。'
           : kind === 'tellask_and_tool'
-            ? '检测到你在 FBR 支线对话里同时尝试发起队友诉请与函数工具调用。'
+            ? '检测到你在 FBR 支线对话里同时尝试发起诉请与函数工具调用。'
             : '内部错误：无法安全驱动 FBR 支线对话。';
     return [
       'ERR_FBR_TOOLLESS_VIOLATION',
       `Dominds 提示：当前是扪心自问（FBR）支线对话（无工具模式）。${detail}`,
       '',
       '- 本对话无任何工具：禁止函数工具调用。',
-      '- 本对话禁止任何队友诉请（包括 `!?@human` / `!?@tellasker` / `!?@self`）。',
+      '- 本对话禁止任何 tellask-special 函数（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`）。',
       '- 请只基于诉请正文（以及本支线对话自身的会话历史，如有）进行推理与总结。',
     ].join('\n');
   }
 
   const detail =
     kind === 'tellask'
-      ? 'Detected a teammate tellask (`!?@...`) emitted inside an FBR sideline dialog.'
+      ? 'Detected a tellask-special invocation attempt inside an FBR sideline dialog.'
       : kind === 'tool'
         ? 'Detected a function tool call attempt inside an FBR sideline dialog.'
         : kind === 'tellask_and_tool'
-          ? 'Detected both tellask and tool-call attempts inside an FBR sideline dialog.'
+          ? 'Detected both tellask-special and tool-call attempts inside an FBR sideline dialog.'
           : 'Internal error: cannot safely drive the FBR sideline dialog.';
 
   return [
@@ -354,7 +354,7 @@ export function formatDomindsNoteFbrToollessViolation(
     `Dominds note: this is a tool-less @self FBR sideline dialog. ${detail}`,
     '',
     '- No tools are available: do not emit function tool calls.',
-    '- No tellasks are allowed (including `!?@human` / `!?@tellasker` / `!?@self`).',
+    '- No tellask-special functions are allowed (`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
     '- Provide pure reasoning and a summary grounded in the tellask body (and this sideline dialog’s own tellaskSession history, if any).',
   ].join('\n');
 }

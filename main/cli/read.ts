@@ -143,11 +143,6 @@ function buildPromptAudit(systemPrompt: string): PromptAuditReport {
           /仅用于诉请队友\/@self\/@human/.test(systemPrompt)),
     },
     {
-      id: 'tellask_line_grammar',
-      label: 'Has tellask line-prefix grammar',
-      pass: /line-prefix grammar/.test(systemPrompt) || /逐行前缀语法/.test(systemPrompt),
-    },
-    {
       id: 'fbr_phase_contract',
       label: 'Has FBR phase contract',
       pass: /FBR phase contract|FBR 阶段协议/.test(systemPrompt),

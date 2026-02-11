@@ -187,8 +187,8 @@ export class DomindsQ4HPanel extends HTMLElement {
           questionId: this.selectedQuestionId,
           dialogId: dialogContext.selfId,
           rootId: dialogContext.rootId,
-          tellaskHead: question.tellaskHead,
-          bodyContent: question.bodyContent,
+          mentionList: question.mentionList,
+          tellaskContent: question.tellaskContent,
         },
         bubbles: true,
         composed: true,
@@ -804,9 +804,9 @@ export class DomindsQ4HPanel extends HTMLElement {
         </div>
         <div class="q4h-question-body">
           <div class="q4h-tellask">
-            <div class="q4h-tellask-headline">${renderDomindsMarkdown(question.tellaskHead, { kind: 'chat' })}</div>
+            <div class="q4h-tellask-headline">${renderDomindsMarkdown(question.mentionList.join(' '), { kind: 'chat' })}</div>
             <hr class="q4h-tellask-sep" />
-            <div class="q4h-tellask-body">${renderDomindsMarkdown(question.bodyContent, { kind: 'chat' })}</div>
+            <div class="q4h-tellask-body">${renderDomindsMarkdown(question.tellaskContent, { kind: 'chat' })}</div>
           </div>
         </div>
       </div>

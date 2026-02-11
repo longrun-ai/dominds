@@ -13,26 +13,21 @@ export function createSayingEventsReceiver(dlg: Dialog): TellaskEventsReceiver {
     markdownFinish: async () => {
       await dlg.markdownFinish();
     },
-    callStart: async (validation) => {
-      await dlg.callingStart(validation);
-    },
-    callHeadLineChunk: async (chunk: string) => {
-      await dlg.callingHeadlineChunk(chunk);
-    },
-    callHeadLineFinish: async () => {
-      await dlg.callingHeadlineFinish();
-    },
-    tellaskBodyStart: async () => {
-      await dlg.callingBodyStart();
-    },
-    tellaskBodyChunk: async (chunk: string) => {
-      await dlg.callingBodyChunk(chunk);
-    },
-    tellaskBodyFinish: async () => {
-      await dlg.callingBodyFinish();
-    },
+    callStart: async () => {},
+    callHeadLineChunk: async () => {},
+    callHeadLineFinish: async () => {},
+    tellaskBodyStart: async () => {},
+    tellaskBodyChunk: async () => {},
+    tellaskBodyFinish: async () => {},
     callFinish: async (call: CollectedTellaskCall) => {
-      await dlg.callingFinish(call.callId);
+      if (call.validation.kind !== 'valid') {
+        return;
+      }
+      await dlg.callingStart({
+        callId: call.callId,
+        mentionList: [`@${call.validation.firstMention}`],
+        tellaskContent: call.body,
+      });
     },
   };
 }

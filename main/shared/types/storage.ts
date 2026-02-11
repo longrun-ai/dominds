@@ -40,8 +40,6 @@ export type FuncResultContentItem =
       };
     };
 
-export type UserTextGrammar = 'tellask' | 'markdown';
-
 export interface RootDialogMetadataFile {
   /** Unique dialog identifier (selfDlgId only) */
   id: string;
@@ -58,8 +56,8 @@ export interface RootDialogMetadataFile {
   /** Root dialogs have no parent */
   supdialogId?: undefined;
 
-  /** Root dialogs do not have a tellask session */
-  tellaskSession?: undefined;
+  /** Root dialogs do not have a session slug */
+  sessionSlug?: undefined;
 
   /** Root dialogs have no assignment */
   assignmentFromSup?: undefined;
@@ -89,13 +87,13 @@ export interface SubdialogMetadataFile {
   /** Parent dialog ID for subdialogs */
   supdialogId: string;
 
-  /** Tellask session key for registered subdialogs (Type B) */
-  tellaskSession?: string;
+  /** Session slug for registered subdialogs (Type B) */
+  sessionSlug?: string;
 
   /** Assignment context from supdialog for subdialogs */
   assignmentFromSup: {
-    tellaskHead: string;
-    tellaskBody: string;
+    mentionList: string[];
+    tellaskContent: string;
     originMemberId: string;
     callerDialogId: string;
     callId: string;
@@ -262,7 +260,7 @@ export interface HumanTextRecord {
   genseq: number;
   msgId: string;
   content: string;
-  grammar: UserTextGrammar;
+  grammar: 'markdown';
   userLanguageCode?: LanguageCode;
 }
 
@@ -280,8 +278,8 @@ export interface QuestForSupRecord {
   ts: string;
   type: 'quest_for_sup_record';
   genseq: number;
-  tellaskHead: string;
-  tellaskBody: string;
+  mentionList: string[];
+  tellaskContent: string;
   subDialogId: string; // this is selfId, rootId always be the same as selfId of the supdialog
 }
 
@@ -290,10 +288,11 @@ export interface TeammateCallResultRecord {
   type: 'teammate_call_result_record';
   calling_genseq?: number;
   responderId: string;
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   status: 'completed' | 'failed';
   result: string;
-  callId: string; // Content-hash for replay correlation
+  callId: string;
 }
 
 // Teammate response record - separate bubble for @teammate tellasks
@@ -304,7 +303,8 @@ export interface TeammateResponseRecord {
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   status: 'completed' | 'failed';
   result: string;
   response: string; // full subdialog response text (no truncation)
@@ -351,11 +351,11 @@ export interface ReminderStateFile {
 
 export interface HumanQuestion {
   id: string;
-  tellaskHead: string;
-  bodyContent: string;
+  mentionList: string[];
+  tellaskContent: string;
   askedAt: string;
   /**
-   * Optional tellask callId (content hash) when this Q4H originates from an `!?@human` tellask block.
+   * Optional callId when this Q4H originates from an `askHuman` function call.
    * Some system-generated Q4H questions may not have a callId.
    */
   callId?: string;
@@ -447,11 +447,11 @@ export interface DialogListItem {
 
   /** Parent dialog info for subdialogs */
   supdialogId?: string;
-  /** Tellask session key for registered subdialogs (Type B) */
-  tellaskSession?: string;
+  /** Session slug for registered subdialogs (Type B) */
+  sessionSlug?: string;
   assignmentFromSup?: {
-    tellaskHead: string;
-    tellaskBody: string;
+    mentionList: string[];
+    tellaskContent: string;
     originMemberId: string;
     callerDialogId: string;
     callId: string;

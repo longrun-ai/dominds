@@ -47,9 +47,9 @@ type PendingDiagnosticsSnapshot =
         subdialogId: string;
         callType: 'A' | 'B' | 'C';
         targetAgentId: string;
-        tellaskSession?: string;
+        sessionSlug?: string;
         createdAt: string;
-        tellaskHeadSummary: string;
+        tellaskSummary: string;
       }>;
     }
   | {
@@ -78,9 +78,11 @@ async function loadPendingDiagnosticsSnapshot(args: {
         subdialogId: record.subdialogId,
         callType: record.callType,
         targetAgentId: record.targetAgentId,
-        tellaskSession: record.tellaskSession,
+        sessionSlug: record.sessionSlug,
         createdAt: record.createdAt,
-        tellaskHeadSummary: record.tellaskHead.trim().slice(0, 160),
+        tellaskSummary: `${record.mentionList.join(' ')} ${record.tellaskContent}`
+          .trim()
+          .slice(0, 160),
       })),
     };
   } catch (err) {

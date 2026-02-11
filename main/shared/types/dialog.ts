@@ -9,8 +9,7 @@
 import type { ContextHealthSnapshot } from './context-health';
 import type { LanguageCode } from './language';
 import type { DialogInterruptionReason, DialogRunState } from './run-state';
-import type { FuncResultContentItem, UserTextGrammar } from './storage';
-import type { TellaskCallValidation } from './tellask';
+import type { FuncResultContentItem } from './storage';
 
 export interface DialogRunStateEvent {
   type: 'dlg_run_state_evt';
@@ -48,8 +47,8 @@ export interface SubdialogEvent extends DialogEventBase {
     rootId: string;
   };
   targetAgentId: string;
-  tellaskHead: string;
-  tellaskBody: string;
+  mentionList: string[];
+  tellaskContent: string;
   subDialogNode: {
     selfId: string;
     rootId: string;
@@ -61,10 +60,10 @@ export interface SubdialogEvent extends DialogEventBase {
     createdAt: string;
     lastModified: string;
     runState?: DialogRunState;
-    tellaskSession?: string;
+    sessionSlug?: string;
     assignmentFromSup?: {
-      tellaskHead: string;
-      tellaskBody: string;
+      mentionList: string[];
+      tellaskContent: string;
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -162,38 +161,12 @@ export type WebSearchCallEvent = LlmGenDlgEvent & {
   action?: WebSearchCallAction;
 };
 
-// Teammate-call (tellask) block events (streaming mode - blocks starting with `!?@...`)
-// callId is determined at finish event via content-hash (see shared/utils/id.ts)
+// Teammate-call lifecycle events (function-call based tellask-special channel)
 export type TeammateCallStartEvent = LlmGenDlgEvent & {
   type: 'teammate_call_start_evt';
-  validation: TellaskCallValidation;
-};
-
-export type TeammateCallHeadlineChunkEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_headline_chunk_evt';
-  chunk: string;
-};
-
-export type TeammateCallHeadlineFinishEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_headline_finish_evt';
-};
-
-export type TeammateCallBodyStartEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_body_start_evt';
-};
-
-export type TeammateCallBodyChunkEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_body_chunk_evt';
-  chunk: string;
-};
-
-export type TeammateCallBodyFinishEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_body_finish_evt';
-};
-
-export type TeammateCallFinishEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_finish_evt';
-  callId: string; // Content-hash for replay correlation
+  callId: string;
+  mentionList: string[];
+  tellaskContent: string;
 };
 
 export interface TeammateCallResponseEvent {
@@ -201,10 +174,11 @@ export interface TeammateCallResponseEvent {
   course: number;
   calling_genseq?: number;
   responderId: string;
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   status: 'completed' | 'failed';
   result: string;
-  callId: string; // Content-hash for replay correlation
+  callId: string;
 }
 
 export interface ReminderContent {
@@ -225,7 +199,8 @@ export interface TeammateResponseEvent {
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   status: 'completed' | 'failed';
   result: string;
   response: string; // full subdialog response text (no truncation)
@@ -234,7 +209,7 @@ export interface TeammateResponseEvent {
   originMemberId: string;
 }
 
-// End of user saying event - emitted after user tellask call blocks are parsed/executed
+// End of user saying event - emitted after user content is rendered/executed.
 // Used by frontend to render <hr/> separator between user content and AI response
 export interface EndOfUserSayingEvent {
   type: 'end_of_user_saying_evt';
@@ -242,7 +217,7 @@ export interface EndOfUserSayingEvent {
   genseq: number;
   msgId: string;
   content: string;
-  grammar: UserTextGrammar;
+  grammar: 'markdown';
   userLanguageCode?: LanguageCode;
 }
 
@@ -257,8 +232,8 @@ export interface NewQ4HAskedEvent {
   question: {
     id: string;
     selfId: string;
-    tellaskHead: string;
-    bodyContent: string;
+    mentionList: string[];
+    tellaskContent: string;
     askedAt: string;
     callId?: string;
     remainingCallIds?: string[];
@@ -325,14 +300,8 @@ export type DialogEvent =
   | FuncCallStartEvent
   | FunctionResultEvent
   | WebSearchCallEvent
-  // Tellask call blocks (`!?@...`)
+  // Tellask-special call lifecycle
   | TeammateCallStartEvent
-  | TeammateCallHeadlineChunkEvent
-  | TeammateCallHeadlineFinishEvent
-  | TeammateCallBodyStartEvent
-  | TeammateCallBodyChunkEvent
-  | TeammateCallBodyFinishEvent
-  | TeammateCallFinishEvent
   | TeammateCallResponseEvent
   | TeammateResponseEvent
   // Subdialog events

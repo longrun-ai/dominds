@@ -21,7 +21,7 @@ export interface DialogInfo {
   agentName: string;
   taskDocPath: string;
   supdialogId?: string;
-  tellaskSession?: string;
+  sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
 }
 
@@ -37,7 +37,7 @@ export interface ApiRootDialogResponse {
   lastModified: string;
   runState?: DialogRunState;
   supdialogId?: string; // Optional: supdialog ID for subdialogs in flattened lists
-  tellaskSession?: string;
+  sessionSlug?: string;
   // Optional: present for subdialogs (when available) so the UI can render special cases like `@self` FBR.
   assignmentFromSup?: AssignmentFromSup;
   subdialogCount?: number; // Number of subdialogs (only present in root dialog responses)
@@ -54,7 +54,7 @@ export interface ApiSubdialogResponse {
   createdAt: string;
   lastModified: string;
   runState?: DialogRunState;
-  tellaskSession?: string;
+  sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
 }
 

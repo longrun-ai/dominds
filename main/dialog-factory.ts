@@ -35,13 +35,14 @@ export class DialogFactory {
     supdialog: RootDialog,
     taskDocPath: string,
     targetAgentId: string,
-    tellaskHead: string,
-    tellaskBody: string,
+    mentionList: string[],
+    tellaskContent: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
+      collectiveTargets?: string[];
     },
     initialState?: DialogInitParams['initialState'],
   ): SubDialog {
@@ -55,13 +56,14 @@ export class DialogFactory {
       subdialogId,
       targetAgentId,
       {
-        tellaskHead,
-        tellaskBody,
+        mentionList,
+        tellaskContent,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
+        collectiveTargets: options.collectiveTargets,
       },
-      options.tellaskSession,
+      options.sessionSlug,
       initialState,
     );
   }

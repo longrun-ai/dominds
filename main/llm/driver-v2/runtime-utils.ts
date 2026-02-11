@@ -172,8 +172,8 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
   const language = dlg.getLastUserLanguageCode();
   const question: HumanQuestion = {
     id: questionId,
-    tellaskHead: '@human',
-    bodyContent: formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount }),
+    mentionList: ['@human'],
+    tellaskContent: formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount }),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
       course: dlg.currentCourse,
@@ -188,8 +188,8 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
     question: {
       id: question.id,
       selfId: dlg.id.selfId,
-      tellaskHead: question.tellaskHead,
-      bodyContent: question.bodyContent,
+      mentionList: question.mentionList,
+      tellaskContent: question.tellaskContent,
       askedAt: question.askedAt,
       callId: question.callId,
       remainingCallIds: question.remainingCallIds,

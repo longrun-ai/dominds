@@ -4270,8 +4270,8 @@ export class DomindsApp extends HTMLElement {
         questionId: string | null;
         dialogId: string;
         rootId: string;
-        tellaskHead: string;
-        bodyContent: string;
+        mentionList: string[];
+        tellaskContent: string;
       }>;
       const questionId = ce.detail?.questionId ?? null;
       const dialogId = ce.detail?.dialogId;
@@ -5964,7 +5964,7 @@ export class DomindsApp extends HTMLElement {
                 lastModified: subdialog.lastModified,
                 runState: effectiveRunState,
                 supdialogId: subdialog.supdialogId ?? rootId,
-                tellaskSession: subdialog.tellaskSession,
+                sessionSlug: subdialog.sessionSlug,
                 assignmentFromSup: subdialog.assignmentFromSup,
               });
             }
@@ -6258,7 +6258,9 @@ export class DomindsApp extends HTMLElement {
         // Build display title - all fields are guaranteed to be present
         const isFbrSelfTellask =
           normalizedDialog.assignmentFromSup !== undefined &&
-          /^\s*@self\b/.test(normalizedDialog.assignmentFromSup.tellaskHead);
+          normalizedDialog.assignmentFromSup.mentionList.some((mention) =>
+            /^\s*@self\b/.test(mention),
+          );
         const callsign = isFbrSelfTellask ? '@self' : `@${normalizedDialog.agentId}`;
         titleText = `${callsign} (${normalizedDialog.selfId})`;
 
@@ -7115,16 +7117,17 @@ export class DomindsApp extends HTMLElement {
         }
 
         // Update currentDialog with the ready dialog's ID (from both create and display)
-        this.currentDialog = {
+        const nextDialog: DialogInfo = {
           selfId: readyMsg.dialog.selfId,
           rootId: readyMsg.dialog.rootId,
           agentId: readyMsg.agentId,
           agentName: readyMsg.agentId, // agentId serves as the name for display
           taskDocPath: readyMsg.taskDocPath,
           supdialogId: readyMsg.supdialogId,
-          tellaskSession: readyMsg.tellaskSession,
+          sessionSlug: readyMsg.sessionSlug,
           assignmentFromSup: readyMsg.assignmentFromSup,
         };
+        this.currentDialog = nextDialog;
 
         this.applyDiligenceState(nextDiligenceState);
         this.diligenceRtwsDirty = false;
@@ -7136,7 +7139,7 @@ export class DomindsApp extends HTMLElement {
         }
         // Update q4h-input with the active dialog ID
         if (this.q4hInput && typeof this.q4hInput.setDialog === 'function') {
-          this.q4hInput.setDialog(this.currentDialog);
+          this.q4hInput.setDialog(nextDialog);
         }
 
         // Update docs panel language
@@ -7339,7 +7342,7 @@ export class DomindsApp extends HTMLElement {
             lastModified: node.lastModified,
             runState: effectiveRunState,
             supdialogId: node.supdialogId,
-            tellaskSession: node.tellaskSession,
+            sessionSlug: node.sessionSlug,
             assignmentFromSup: node.assignmentFromSup,
           };
 
@@ -7932,8 +7935,8 @@ export class DomindsApp extends HTMLElement {
       for (const question of context.questions) {
         q4hQuestions.push({
           id: question.id,
-          tellaskHead: question.tellaskHead,
-          bodyContent: question.bodyContent,
+          mentionList: question.mentionList,
+          tellaskContent: question.tellaskContent,
           askedAt: question.askedAt,
           dialogContext: context,
         });

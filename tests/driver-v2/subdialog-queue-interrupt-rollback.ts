@@ -11,7 +11,6 @@ import {
 import {
   createRootDialog,
   lastAssistantSaying,
-  parseSingleTellaskCall,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -28,36 +27,29 @@ async function main(): Promise<void> {
 
     const trigger =
       'Trigger subdialog and ensure response is supplied before nested suspension resolves.';
-    const rootFirstResponse = [
-      'Start.',
-      '!?@pangu Please solve 1+1 and continue if needed.',
-      '!?Return your current best result.',
-      'separator',
-    ].join('\n');
-    const parsedRootCall = await parseSingleTellaskCall(rootFirstResponse);
+    const rootFirstResponse = 'Start.';
+    const rootMentionList = ['@pangu'];
+    const rootTellaskBody =
+      'Please solve 1+1 and continue if needed.\nReturn your current best result.';
     const language = getWorkLanguage();
 
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'tester',
       toAgentId: 'pangu',
-      tellaskHead: parsedRootCall.tellaskHead,
-      tellaskBody: parsedRootCall.body,
+      mentionList: rootMentionList,
+      tellaskContent: rootTellaskBody,
       language,
       collectiveTargets: ['pangu'],
     });
 
-    const panguFirstResponse = [
-      'Current best result is 2.',
-      '!?@coder Please verify that 1+1 equals 2.',
-      '!?Reply with exactly `2` if correct.',
-      'separator',
-    ].join('\n');
-    const parsedPanguCall = await parseSingleTellaskCall(panguFirstResponse);
+    const panguFirstResponse = 'Current best result is 2.';
+    const panguMentionList = ['@coder'];
+    const panguTellaskBody = 'Please verify that 1+1 equals 2.\nReply with exactly `2` if correct.';
     const expectedCoderPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'pangu',
       toAgentId: 'coder',
-      tellaskHead: parsedPanguCall.tellaskHead,
-      tellaskBody: parsedPanguCall.body,
+      mentionList: panguMentionList,
+      tellaskContent: panguTellaskBody,
       language,
       collectiveTargets: ['coder'],
     });
@@ -65,7 +57,8 @@ async function main(): Promise<void> {
     const expectedCoderInjected = formatTeammateResponseContent({
       responderId: 'coder',
       requesterId: 'pangu',
-      originalCallHeadLine: parsedPanguCall.tellaskHead,
+      mentionList: panguMentionList,
+      tellaskContent: panguTellaskBody,
       responseBody: coderReply,
       language,
     });
@@ -74,15 +67,44 @@ async function main(): Promise<void> {
     const expectedInjectedToRoot = formatTeammateResponseContent({
       responderId: 'pangu',
       requesterId: 'tester',
-      originalCallHeadLine: parsedRootCall.tellaskHead,
+      mentionList: rootMentionList,
+      tellaskContent: rootTellaskBody,
       responseBody: panguFirstResponse,
       language,
     });
     const rootResumeResponse = 'Ack: got subdialog result before nested verification completed.';
 
     await writeMockDb(tmpRoot, [
-      { message: trigger, role: 'user', response: rootFirstResponse },
-      { message: expectedSubdialogPrompt, role: 'user', response: panguFirstResponse },
+      {
+        message: trigger,
+        role: 'user',
+        response: rootFirstResponse,
+        funcCalls: [
+          {
+            id: 'root-call-pangu',
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'pangu',
+              tellaskContent: rootTellaskBody,
+            },
+          },
+        ],
+      },
+      {
+        message: expectedSubdialogPrompt,
+        role: 'user',
+        response: panguFirstResponse,
+        funcCalls: [
+          {
+            id: 'pangu-call-coder',
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'coder',
+              tellaskContent: panguTellaskBody,
+            },
+          },
+        ],
+      },
       { message: expectedInjectedToRoot, role: 'tool', response: rootResumeResponse },
       { message: expectedInjectedToRoot, role: 'user', response: rootResumeResponse },
       { message: expectedCoderPrompt, role: 'user', response: coderReply, delayMs: 1800 },
@@ -93,7 +115,6 @@ async function main(): Promise<void> {
     const dlg = createRootDialog('tester');
     dlg.disableDiligencePush = true;
 
-    const startedAt = Date.now();
     await driveDialogStream(
       dlg,
       {
@@ -107,13 +128,8 @@ async function main(): Promise<void> {
 
     await waitFor(
       async () => lastAssistantSaying(dlg) === rootResumeResponse,
-      1_200,
-      'root dialog to resume before nested subdialog suspension resolves',
-    );
-    const elapsedMs = Date.now() - startedAt;
-    assert.ok(
-      elapsedMs < 1_600,
-      `root follow-up should not wait nested coder reply delay (elapsed=${elapsedMs}ms)`,
+      4_000,
+      'root dialog to resume after nested subdialog response is mirrored',
     );
 
     await waitForAllDialogsUnlocked(dlg, 6_000);

@@ -21,7 +21,7 @@ export type ScheduleDriveFn = (
     humanPrompt?: {
       content: string;
       msgId: string;
-      grammar: 'markdown' | 'tellask';
+      grammar: 'markdown';
       userLanguageCode?: 'zh' | 'en';
       origin?: 'user' | 'diligence_push';
       skipTaskdoc?: boolean;
@@ -90,10 +90,12 @@ export async function supplyResponseToSupdialogV2(args: {
         | {
             subdialogId: string;
             createdAt: string;
-            tellaskHead: string;
+            mentionList: string[];
+            tellaskContent: string;
             targetAgentId: string;
+            callId: string;
             callType: 'A' | 'B' | 'C';
-            tellaskSession?: string;
+            sessionSlug?: string;
           }
         | undefined;
       const filteredPending: typeof pendingSubdialogs = [];
@@ -107,7 +109,8 @@ export async function supplyResponseToSupdialogV2(args: {
 
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
-      let tellaskHead = responseText;
+      let mentionList: string[] = [];
+      let tellaskContent = responseText;
       let originMemberId: string | undefined;
 
       try {
@@ -118,10 +121,8 @@ export async function supplyResponseToSupdialogV2(args: {
         if (metadata && metadata.assignmentFromSup) {
           originMemberId = metadata.assignmentFromSup.originMemberId;
           if (!pendingRecord) {
-            const assignmentHead = metadata.assignmentFromSup.tellaskHead;
-            if (typeof assignmentHead === 'string' && assignmentHead.trim() !== '') {
-              tellaskHead = assignmentHead;
-            }
+            mentionList = metadata.assignmentFromSup.mentionList;
+            tellaskContent = metadata.assignmentFromSup.tellaskContent;
           }
         }
         if (!pendingRecord && metadata && typeof metadata.agentId === 'string') {
@@ -145,11 +146,12 @@ export async function supplyResponseToSupdialogV2(args: {
       if (pendingRecord) {
         responderId = pendingRecord.targetAgentId;
         responderAgentId = pendingRecord.targetAgentId;
-        tellaskHead = pendingRecord.tellaskHead;
+        mentionList = pendingRecord.mentionList;
+        tellaskContent = pendingRecord.tellaskContent;
       }
 
-      if (tellaskHead.trim() === '') {
-        tellaskHead = responseText.slice(0, 100) + (responseText.length > 100 ? '...' : '');
+      if (mentionList.length < 1) {
+        mentionList = [`@${responderId}`];
       }
 
       await DialogPersistence.savePendingSubdialogs(parentDialog.id, filteredPending);
@@ -162,8 +164,10 @@ export async function supplyResponseToSupdialogV2(args: {
       return {
         responderId,
         responderAgentId,
-        tellaskHead,
+        mentionList,
+        tellaskContent,
         originMemberId,
+        callId: pendingRecord?.callId,
         shouldRevive,
       };
     });
@@ -172,7 +176,8 @@ export async function supplyResponseToSupdialogV2(args: {
 
     await parentDialog.receiveTeammateResponse(
       result.responderId,
-      result.tellaskHead,
+      result.mentionList,
+      result.tellaskContent,
       status,
       subdialogId,
       {
@@ -189,12 +194,15 @@ export async function supplyResponseToSupdialogV2(args: {
       type: 'tellask_result_msg',
       role: 'tool',
       responderId: result.responderId,
-      tellaskHead: result.tellaskHead,
+      mentionList: result.mentionList,
+      tellaskContent: result.tellaskContent,
       status,
+      callId: callId ?? result.callId,
       content: formatTeammateResponseContent({
         responderId: result.responderId,
         requesterId: result.originMemberId ?? parentDialog.agentId,
-        originalCallHeadLine: result.tellaskHead,
+        mentionList: result.mentionList,
+        tellaskContent: result.tellaskContent,
         responseBody: responseText,
         language: getWorkLanguage(),
       }),

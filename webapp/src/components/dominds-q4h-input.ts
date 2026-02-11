@@ -16,8 +16,8 @@ import { generateShortId } from '../shared/utils/id.js';
 
 export interface Q4HQuestion {
   id: string;
-  tellaskHead: string;
-  bodyContent: string;
+  mentionList: string[];
+  tellaskContent: string;
   askedAt: string;
   dialogContext: Q4HDialogContext;
 }
@@ -219,8 +219,8 @@ export class DomindsQ4HInput extends HTMLElement {
             questionId,
             dialogId: question.dialogContext.selfId,
             rootId: question.dialogContext.rootId,
-            tellaskHead: question.tellaskHead,
-            bodyContent: question.bodyContent,
+            mentionList: question.mentionList,
+            tellaskContent: question.tellaskContent,
           },
           bubbles: true,
           composed: true,

@@ -855,7 +855,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       createdAt: string;
       lastModified: string;
       runState?: DialogLatestFile['runState'];
-      tellaskSession?: string;
+      sessionSlug?: string;
       assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
     }> = [];
 
@@ -889,7 +889,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
         createdAt: meta.createdAt,
         lastModified: subLatest?.lastModified || meta.createdAt,
         runState: subLatest?.runState,
-        tellaskSession: meta.tellaskSession,
+        sessionSlug: meta.sessionSlug,
         assignmentFromSup: meta.assignmentFromSup,
       });
     }

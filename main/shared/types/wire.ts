@@ -16,8 +16,8 @@ export interface DialogIdent {
 }
 
 export interface AssignmentFromSup {
-  tellaskHead: string;
-  tellaskBody: string;
+  mentionList: string[];
+  tellaskContent: string;
   originMemberId: string;
   callerDialogId: string;
   callId: string;
@@ -224,8 +224,8 @@ export interface Q4HStateResponse {
     rootId: string;
     agentId: string;
     taskDocPath: string;
-    tellaskHead: string;
-    bodyContent: string;
+    mentionList: string[];
+    tellaskContent: string;
     askedAt: string;
     callId?: string;
     remainingCallIds?: string[];
@@ -291,7 +291,7 @@ export interface DialogReadyMessage {
   agentId: string;
   taskDocPath: string;
   supdialogId?: string;
-  tellaskSession?: string;
+  sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;
   disableDiligencePush?: boolean;
   diligencePushMax?: number;

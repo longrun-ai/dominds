@@ -189,6 +189,18 @@ function parseUnifiedTimestamp(value: string): Date | null {
   return new Date(year, month - 1, day, hour, minute, second);
 }
 
+function mentionListFromTellaskHead(tellaskHead: string): string[] {
+  const matches = tellaskHead.match(/@[a-zA-Z0-9_-]+/g) ?? [];
+  const deduped = Array.from(
+    new Set(matches.map((item) => item.trim()).filter((item) => item !== '')),
+  );
+  if (deduped.length > 0) {
+    return deduped;
+  }
+  const trimmed = tellaskHead.trim();
+  return trimmed === '' ? ['@unknown'] : [trimmed];
+}
+
 export function getAgentPrimingCacheStatus(agentId: string): AgentPrimingCacheStatus {
   const entry = cacheByAgentId.get(agentId);
   if (!entry) return { hasCache: false };
@@ -1371,7 +1383,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
       assertNotStopped();
       await dlg.receiveTeammateResponse(
         entry.shell.specialistId,
-        shellTellaskHead,
+        mentionListFromTellaskHead(shellTellaskHead),
+        entry.shell.tellaskBody,
         'completed',
         dlg.id,
         {
@@ -1416,7 +1429,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         assertNotStopped();
         await dlg.receiveTeammateResponse(
           entry.vcs.specialistId,
-          round1TellaskHead,
+          mentionListFromTellaskHead(round1TellaskHead),
+          entry.vcs.round1.tellaskBody,
           'completed',
           dlg.id,
           {
@@ -1454,7 +1468,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         assertNotStopped();
         await dlg.receiveTeammateResponse(
           entry.vcs.specialistId,
-          round2TellaskHead,
+          mentionListFromTellaskHead(round2TellaskHead),
+          entry.vcs.round2.tellaskBody,
           'completed',
           dlg.id,
           {
@@ -1527,7 +1542,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
           const raw = responses[i] ?? '';
           await dlg.receiveTeammateResponse(
             entry.fbr.responderAgentId,
-            fbrTellaskHead,
+            mentionListFromTellaskHead(fbrTellaskHead),
+            entry.fbr.tellaskBody,
             'completed',
             dlg.id,
             {
@@ -1768,7 +1784,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       const sub = await dlg.withLock(async () => {
         return await dlg.createSubDialog(
           ensuredSpecialistId,
-          ensuredShellTellaskHead,
+          mentionListFromTellaskHead(ensuredShellTellaskHead),
           tellaskBody,
           {
             originMemberId: dlg.agentId,
@@ -1782,8 +1798,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       const initPrompt = formatAssignmentFromSupdialog({
         fromAgentId: dlg.agentId,
         toAgentId: sub.agentId,
-        tellaskHead: ensuredShellTellaskHead,
-        tellaskBody,
+        mentionList: mentionListFromTellaskHead(ensuredShellTellaskHead),
+        tellaskContent: tellaskBody,
         language,
         collectiveTargets: [ensuredSpecialistId],
       });
@@ -1809,7 +1825,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
       await dlg.withLock(async () => {
         await dlg.receiveTeammateResponse(
           ensuredSpecialistId,
-          ensuredShellTellaskHead,
+          mentionListFromTellaskHead(ensuredShellTellaskHead),
+          tellaskBody,
           'completed',
           sub.id,
           {
@@ -1860,13 +1877,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const round1Sub = await dlg.withLock(async () => {
           return await dlg.createSubDialog(
             ensuredSpecialistId,
-            round1TellaskHead,
+            mentionListFromTellaskHead(round1TellaskHead),
             round1TellaskBodyForSubdialog || vcsRound1Body,
             {
               originMemberId: dlg.agentId,
               callerDialogId: dlg.id.selfId,
               callId: round1CallId,
-              tellaskSession: PRIMING_VCS_SESSION_SLUG,
+              sessionSlug: PRIMING_VCS_SESSION_SLUG,
               collectiveTargets: [ensuredSpecialistId],
             },
           );
@@ -1883,8 +1900,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const round1Prompt = formatAssignmentFromSupdialog({
           fromAgentId: dlg.agentId,
           toAgentId: round1Sub.agentId,
-          tellaskHead: round1TellaskHead,
-          tellaskBody: round1TellaskBodyForSubdialog || vcsRound1Body,
+          mentionList: mentionListFromTellaskHead(round1TellaskHead),
+          tellaskContent: round1TellaskBodyForSubdialog || vcsRound1Body,
           language,
           collectiveTargets: [ensuredSpecialistId],
         });
@@ -1908,7 +1925,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             ensuredSpecialistId,
-            round1TellaskHead,
+            mentionListFromTellaskHead(round1TellaskHead),
+            round1TellaskBodyForSubdialog || vcsRound1Body,
             'completed',
             round1Sub.id,
             {
@@ -1952,8 +1970,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         const round2Prompt = formatAssignmentFromSupdialog({
           fromAgentId: dlg.agentId,
           toAgentId: round1Sub.agentId,
-          tellaskHead: round2TellaskHead,
-          tellaskBody: round2TellaskBodyForSubdialog || vcsRound2Body,
+          mentionList: mentionListFromTellaskHead(round2TellaskHead),
+          tellaskContent: round2TellaskBodyForSubdialog || vcsRound2Body,
           language,
           collectiveTargets: [ensuredSpecialistId],
         });
@@ -1977,7 +1995,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             ensuredSpecialistId,
-            round2TellaskHead,
+            mentionListFromTellaskHead(round2TellaskHead),
+            round2TellaskBodyForSubdialog || vcsRound2Body,
             'completed',
             round1Sub.id,
             {
@@ -2137,19 +2156,24 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
           assertNotStopped();
           const sub = await dlg.withLock(async () => {
-            return await dlg.createSubDialog(dlg.agentId, ensuredFbrTellaskHead, instanceBody, {
-              originMemberId: dlg.agentId,
-              callerDialogId: dlg.id.selfId,
-              callId: ensuredFbrCallId,
-              collectiveTargets: [dlg.agentId],
-            });
+            return await dlg.createSubDialog(
+              dlg.agentId,
+              mentionListFromTellaskHead(ensuredFbrTellaskHead),
+              instanceBody,
+              {
+                originMemberId: dlg.agentId,
+                callerDialogId: dlg.id.selfId,
+                callId: ensuredFbrCallId,
+                collectiveTargets: [dlg.agentId],
+              },
+            );
           });
 
           const initPrompt = formatAssignmentFromSupdialog({
             fromAgentId: dlg.agentId,
             toAgentId: sub.agentId,
-            tellaskHead: ensuredFbrTellaskHead,
-            tellaskBody: instanceBody,
+            mentionList: mentionListFromTellaskHead(ensuredFbrTellaskHead),
+            tellaskContent: instanceBody,
             language,
             collectiveTargets: [dlg.agentId],
           });
@@ -2180,7 +2204,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         await dlg.withLock(async () => {
           await dlg.receiveTeammateResponse(
             dlg.agentId,
-            ensuredFbrTellaskHead,
+            mentionListFromTellaskHead(ensuredFbrTellaskHead),
+            fbrCallBody,
             'completed',
             r.sub.id,
             {

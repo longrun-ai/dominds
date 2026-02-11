@@ -2,11 +2,10 @@ import { Dialog, SubDialog } from '../../dialog';
 import { buildNoToolsNotice } from '../../minds/system-prompt-parts';
 import type { LanguageCode } from '../../shared/types/language';
 import type { Team } from '../../team';
-import type { CollectedTellaskCall } from '../../tellask';
 import type { Tool } from '../../tool';
 import type { ChatMessage } from '../client';
 
-export type DriverV2TellaskPolicy = 'allow_any' | 'tellasker_only';
+export type DriverV2TellaskPolicy = 'allow_any' | 'deny_all';
 
 export type DriverV2PolicyMode = 'default' | 'fbr_toolless';
 
@@ -22,12 +21,12 @@ export type DriverV2PolicyState = Readonly<{
 
 export type DriverV2PolicyViolationKind = 'tellask' | 'tool' | 'tellask_and_tool';
 
-function isFbrSelfTellaskHeadLine(tellaskHead: string): boolean {
-  return /^\s*@self\b/.test(tellaskHead);
+function isFbrSelfTellask(mentionList: string[]): boolean {
+  return mentionList.some((item) => /^\s*@self\b/.test(item));
 }
 
 function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
-  return dlg instanceof SubDialog && isFbrSelfTellaskHeadLine(dlg.assignmentFromSup.tellaskHead);
+  return dlg instanceof SubDialog && isFbrSelfTellask(dlg.assignmentFromSup.mentionList);
 }
 
 function mergeModelParams(
@@ -51,20 +50,20 @@ function buildFbrSystemPrompt(language: LanguageCode): string {
       ? [
           '# 扪心自问（FBR）支线对话',
           '',
-          '- 你正在处理一次由 `!?@self` 发起的 FBR 支线对话。',
-          '- 诉请正文是主要任务上下文；不要假设能访问诉请者对话历史。',
-          '- 若使用可恢复的 `!tellaskSession` 形式，你可以使用本支线对话自身的 `tellaskSession` 历史作为显式上下文。',
+          '- 你正在处理一次由 `tellask` 系列函数触发的 FBR 支线对话（调用方为同一 agent 的 self-route）。',
+          '- 诉请正文是主要任务上下文；不要假设能访问上游对话历史。',
+          '- 若使用可恢复会话，你可以使用本支线对话自身的 tellaskSession 历史作为显式上下文。',
           '- 若诉请正文缺少关键上下文，请在输出中列出缺失信息与阻塞原因。',
-          '- 仅当必须澄清关键缺失上下文时，允许用 `!?@tellasker` 回问诉请者；除此之外不要发起任何诉请。',
+          '- 当前 FBR 为技术性禁函数工具模式：不得发起任何函数调用（包括 tellaskBack / tellask / tellaskSessionless / askHuman）。',
         ].join('\n')
       : [
           '# Fresh Boots Reasoning (FBR) sideline dialog',
           '',
-          '- This is an FBR sideline dialog created by `!?@self`.',
-          '- The tellask body is the primary task context; do not assume access to tellasker dialog history.',
-          '- If this is the resumable `!tellaskSession` form, you may use this sideline dialog’s own tellaskSession history as explicit context.',
+          '- This is an FBR sideline dialog triggered via tellask special functions (self-route).',
+          '- The tellask body is the primary task context; do not assume access to upstream dialog history.',
+          '- If this is a resumable session, you may use this sideline dialog’s own tellaskSession history as explicit context.',
           '- If the tellask body is missing critical context, list what is missing and why it blocks reasoning.',
-          '- `!?@tellasker` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks.',
+          '- This FBR turn is in technical no-function mode: do not emit any function call (including tellaskBack / tellask / tellaskSessionless / askHuman).',
         ].join('\n');
   return prefix.trim();
 }
@@ -105,7 +104,7 @@ export function buildDriverV2Policy(args: {
         content: buildNoToolsNotice(language),
       },
     ],
-    tellaskPolicy: 'tellasker_only',
+    tellaskPolicy: 'deny_all',
     allowFunctionCalls: false,
   };
 }
@@ -123,8 +122,8 @@ export function validateDriverV2PolicyInvariants(
   if (policy.allowFunctionCalls) {
     return { ok: false, detail: 'FBR allowFunctionCalls must be false.' };
   }
-  if (policy.tellaskPolicy !== 'tellasker_only') {
-    return { ok: false, detail: 'FBR tellaskPolicy must be tellasker_only.' };
+  if (policy.tellaskPolicy !== 'deny_all') {
+    return { ok: false, detail: 'FBR tellaskPolicy must be deny_all.' };
   }
   const expectedNoToolsNotice = buildNoToolsNotice(language);
   if (policy.prependedContextMessages.length !== 1) {
@@ -145,27 +144,19 @@ export function validateDriverV2PolicyInvariants(
   return { ok: true };
 }
 
-function hasTellaskPolicyViolation(
-  policy: DriverV2PolicyState,
-  calls: ReadonlyArray<CollectedTellaskCall>,
-): boolean {
+function hasTellaskPolicyViolation(policy: DriverV2PolicyState, tellaskCallCount: number): boolean {
   if (policy.tellaskPolicy === 'allow_any') {
     return false;
   }
-  return calls.some((call) => {
-    if (call.validation.kind !== 'valid') {
-      return true;
-    }
-    return call.validation.firstMention !== 'tellasker';
-  });
+  return tellaskCallCount > 0;
 }
 
 export function resolveDriverV2PolicyViolationKind(args: {
   policy: DriverV2PolicyState;
-  tellaskCalls: ReadonlyArray<CollectedTellaskCall>;
+  tellaskCallCount: number;
   functionCallCount: number;
 }): DriverV2PolicyViolationKind | null {
-  const tellaskViolation = hasTellaskPolicyViolation(args.policy, args.tellaskCalls);
+  const tellaskViolation = hasTellaskPolicyViolation(args.policy, args.tellaskCallCount);
   const toolViolation = !args.policy.allowFunctionCalls && args.functionCallCount > 0;
   if (tellaskViolation && toolViolation) {
     return 'tellask_and_tool';

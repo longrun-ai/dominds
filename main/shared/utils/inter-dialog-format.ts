@@ -7,25 +7,18 @@
  * - Do not store formatted text inside persisted records; keep raw fields only.
  *
  * UI display contract:
- * - Display the record data only (headline + body).
- * - Call display (request/assignment): render headline, then body (no quote/divider).
- * - Response display: render the original tellask headline as a blockquote,
- *   then a horizontal divider (`---`), then the response body.
+ * - Display the record data only (mention list + tellask content).
+ * - Call display (request/assignment): render mention list, then tellask content.
+ * - Response display: render response body first, then original call site summary.
  * - Participant identity (from/to/responder) should live in bubble chrome, not inside content.
- *
- * LLM context contract:
- * - Use the same markdown record layout as the UI for the record data.
- * - Prepend a short natural-language narrative line that states:
- *   who is in what role (requester/responder/assignee) and what action occurred.
- * - Include the original tellask headline in the narrative for clarity.
  */
 
 import type { LanguageCode } from '../types/language';
 import { markdownQuote } from './fmt';
 
 export type InterDialogCallContent = {
-  tellaskHead: string;
-  tellaskBody: string;
+  mentionList: string[];
+  tellaskContent: string;
 };
 
 export type InterDialogParticipants = {
@@ -47,7 +40,8 @@ export type SupdialogCallPromptInput = {
 export type TeammateResponseFormatInput = {
   responderId: string;
   requesterId: string;
-  originalCallHeadLine: string;
+  mentionList: string[];
+  tellaskContent: string;
   responseBody: string;
   language?: LanguageCode;
 };
@@ -59,22 +53,34 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
   return value;
 }
 
+function trimTrailingDots(value: string): string {
+  let out = value;
+  while (out.endsWith('.')) out = out.slice(0, -1);
+  return out;
+}
+
+function requireMentionLine(mentionList: string[]): string {
+  const mentionLine = mentionList.join(' ').trim();
+  return requireNonEmpty(mentionLine, 'mentionList');
+}
+
 export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
   const to = requireNonEmpty(input.toAgentId, 'toAgentId');
   const from = requireNonEmpty(input.fromAgentId, 'fromAgentId');
-  const tellaskHead = requireNonEmpty(input.tellaskHead, 'tellaskHead');
+  const mentionLine = requireMentionLine(input.mentionList);
+  const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
 
-  const isFbrSelfTellask = /^\s*@self\b/.test(tellaskHead);
+  const isFbrSelfTellask = /^\s*@self\b/.test(mentionLine);
   if (isFbrSelfTellask) {
     const intro =
       language === 'zh'
         ? [
             '# 扪心自问（FBR）自诉请',
             '',
-            `- 诉请：\`${tellaskHead}\``,
+            `- 诉请：\`${mentionLine}\``,
             '- 约束：这是一个 FBR 支线对话；请以“初心视角”独立推理与总结。',
-            '- 回问：仅当你需要澄清关键上下文时，允许 `!?@tellasker` 回问诉请者；除此之外不要发起任何队友诉请。',
+            '- 回问：若当前回合函数工具可用，且你需要澄清关键上下文，可使用 `tellaskBack` 回问上游；否则不要发起任何诉请。',
             '- 重要：不要依赖诉请者对话历史；仅基于诉请正文（以及本支线对话自身的会话历史，如有）。',
             '',
             '---',
@@ -82,16 +88,15 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
         : [
             '# @self Fresh Boots Reasoning (FBR) request',
             '',
-            `- Tellask: \`${tellaskHead}\``,
+            `- Tellask: \`${mentionLine}\``,
             '- Constraint: this is an FBR sideline dialog; reason independently from a “fresh boots” perspective.',
-            '- TellaskBack: `!?@tellasker` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks.',
+            '- TellaskBack: if function tools are enabled for this turn and you must clarify critical missing context, use `tellaskBack`; otherwise do not emit tellasks.',
             '- Important: do not rely on the tellasker dialog history; use only the tellask body (and this sideline dialog’s own history, if any).',
             '',
             '---',
           ].join('\n');
 
-    const body = input.tellaskBody ?? '';
-    return `${intro}\n\n${body}\n`;
+    return `${intro}\n\n${tellaskContent}\n`;
   }
 
   const rawTargets =
@@ -116,17 +121,7 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
       : `Hi @${to}, this is @${from}. This is a collective assignment sent to: ${targetsText}. Please proceed in parallel as one of the assignees and coordinate with other teammates when needed:`;
   })();
 
-  return `${greeting}
-
-${markdownQuote(tellaskHead)}
-${markdownQuote(input.tellaskBody)}
-`;
-}
-
-function trimTrailingDots(value: string): string {
-  let out = value;
-  while (out.endsWith('.')) out = out.slice(0, -1);
-  return out;
+  return `${greeting}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
 }
 
 export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {
@@ -140,26 +135,18 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
       ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 回问：`
       : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` TellaskBack:`;
 
-  return `${hello}
-
-${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskHead, 'assignmentHeadLine'))}
-
-${asking}
-
-${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskHead, 'requestHeadLine'))}
-${markdownQuote(input.subdialogRequest.tellaskBody)}
-`;
+  return `${hello}\n\n${markdownQuote(requireMentionLine(input.supdialogAssignment.mentionList))}\n${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${markdownQuote(requireMentionLine(input.subdialogRequest.mentionList))}\n${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
 }
 
 export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
-  const originalCallHeadLine = requireNonEmpty(input.originalCallHeadLine, 'originalCallHeadLine');
-  const isFbrSelfTellask = /^\s*@self\b/.test(originalCallHeadLine);
+  const mentionLine = requireMentionLine(input.mentionList);
+  const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
+  const isFbrSelfTellask = /^\s*@self\b/.test(mentionLine);
 
   if (isFbrSelfTellask) {
     const title =
       language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR @self sideline response]';
-    // Keep response body as plain markdown (no quote) to make it easy to read and integrate.
     return `${title}\n\n${input.responseBody}\n`;
   }
 
@@ -169,12 +156,5 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
       : `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
   const tail = language === 'zh' ? '针对原始诉请：' : 'regarding the original tellask:';
 
-  return `${hello}
-
-${markdownQuote(input.responseBody)}
-
-${tail}
-
-${markdownQuote(originalCallHeadLine)}
-`;
+  return `${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
 }

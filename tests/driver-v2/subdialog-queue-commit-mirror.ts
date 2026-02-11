@@ -11,7 +11,6 @@ import {
 import {
   createRootDialog,
   lastAssistantSaying,
-  parseSingleTellaskCall,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -24,23 +23,16 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const trigger = 'Trigger root subdialog and verify live mirror ordering.';
-    const rootFirstResponse = [
-      'Start.',
-      '!?@pangu Please compute 1+1.',
-      '!?Return only the number.',
-      'separator',
-    ].join('\n');
-
-    const parsed = await parseSingleTellaskCall(rootFirstResponse);
-    const tellaskHead = parsed.tellaskHead;
-    const tellaskBody = parsed.body;
+    const rootFirstResponse = 'Start.';
+    const mentionList = ['@pangu'];
+    const tellaskBody = 'Please compute 1+1.\nReturn only the number.';
     const language = getWorkLanguage();
 
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'tester',
       toAgentId: 'pangu',
-      tellaskHead,
-      tellaskBody,
+      mentionList,
+      tellaskContent: tellaskBody,
       language,
       collectiveTargets: ['pangu'],
     });
@@ -49,7 +41,8 @@ async function main(): Promise<void> {
     const expectedInjected = formatTeammateResponseContent({
       responderId: 'pangu',
       requesterId: 'tester',
-      originalCallHeadLine: tellaskHead,
+      mentionList,
+      tellaskContent: tellaskBody,
       responseBody: subdialogResponseText,
       language,
     });
@@ -57,7 +50,21 @@ async function main(): Promise<void> {
       'Ack: mirrored subdialog response is live before follow-up generation.';
 
     await writeMockDb(tmpRoot, [
-      { message: trigger, role: 'user', response: rootFirstResponse },
+      {
+        message: trigger,
+        role: 'user',
+        response: rootFirstResponse,
+        funcCalls: [
+          {
+            id: 'root-call-pangu',
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'pangu',
+              tellaskContent: tellaskBody,
+            },
+          },
+        ],
+      },
       { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
       { message: expectedInjected, role: 'tool', response: rootResumeResponse },
       { message: expectedInjected, role: 'user', response: rootResumeResponse },

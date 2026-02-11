@@ -260,7 +260,7 @@ Remember: You are operating in workspace ${process.cwd()}`;
         genseq,
         msgId: `stream-func-call-${genseq}`,
         content: scenario.prompt,
-        grammar: 'tellask',
+        grammar: 'markdown',
       },
     ];
 

@@ -360,16 +360,12 @@ async function handleDeclareSubdialogDead(
   }
   if (!metadata) return;
 
-  if (
-    'tellaskSession' in metadata &&
-    typeof metadata.tellaskSession === 'string' &&
-    metadata.tellaskSession.trim() !== ''
-  ) {
+  if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
     const rootRestored = await restoreDialogForDrive(new DialogID(dialogIdObj.rootId), 'running');
     if (!(rootRestored instanceof RootDialog)) {
       throw new Error(`Expected root dialog instance for ${dialogIdObj.rootId}`);
     }
-    const removed = rootRestored.unregisterSubdialog(metadata.agentId, metadata.tellaskSession);
+    const removed = rootRestored.unregisterSubdialog(metadata.agentId, metadata.sessionSlug);
     if (removed) {
       await rootRestored.saveSubdialogRegistry();
     }
@@ -954,7 +950,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       agentId: metadata.agentId,
       taskDocPath: metadata.taskDocPath,
       supdialogId: derivedSupdialogId,
-      tellaskSession: metadata.tellaskSession,
+      sessionSlug: metadata.sessionSlug,
       assignmentFromSup: metadata.assignmentFromSup,
       disableDiligencePush: effectiveDisableDiligencePush,
       diligencePushMax,
@@ -998,8 +994,8 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           rootId: q.rootId,
           agentId: q.agentId,
           taskDocPath: q.taskDocPath,
-          tellaskHead: q.tellaskHead,
-          bodyContent: q.bodyContent,
+          mentionList: q.mentionList,
+          tellaskContent: q.tellaskContent,
           askedAt: q.askedAt,
           callId: q.callId,
           remainingCallIds: q.remainingCallIds,
@@ -1041,8 +1037,8 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       rootId: q.rootId,
       agentId: q.agentId,
       taskDocPath: q.taskDocPath,
-      tellaskHead: q.tellaskHead,
-      bodyContent: q.bodyContent,
+      mentionList: q.mentionList,
+      tellaskContent: q.tellaskContent,
       askedAt: q.askedAt,
       callId: q.callId,
       remainingCallIds: q.remainingCallIds,
@@ -1236,7 +1232,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     ) {
       await driveDialogStream(
         existingDialog,
-        { content, msgId, grammar: 'tellask', userLanguageCode, origin: 'user' },
+        { content, msgId, grammar: 'markdown', userLanguageCode, origin: 'user' },
         true,
       );
       return;
@@ -1264,7 +1260,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       await setupWebSocketSubscription(ws, dialog);
       await driveDialogStream(
         dialog,
-        { content, msgId, grammar: 'tellask', userLanguageCode, origin: 'user' },
+        { content, msgId, grammar: 'markdown', userLanguageCode, origin: 'user' },
         true,
       );
       return;
@@ -1483,7 +1479,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       dialog.queueUpNextPrompt({
         prompt: content,
         msgId,
-        grammar: 'tellask',
+        grammar: 'markdown',
         userLanguageCode,
       });
       log.info('Deferred Q4H answer until pending subdialogs resolve', {
@@ -1498,7 +1494,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     // Resume the dialog with the user's answer.
     await driveDialogStream(
       dialog,
-      { content, msgId, grammar: 'tellask', userLanguageCode, origin: 'user' },
+      { content, msgId, grammar: 'markdown', userLanguageCode, origin: 'user' },
       true,
     );
   } catch (error) {

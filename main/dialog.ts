@@ -32,9 +32,7 @@ import type {
   HumanQuestion,
   ProviderData,
   ToolArguments as StoredToolArguments,
-  UserTextGrammar,
 } from './shared/types/storage';
-import type { TellaskCallValidation } from './shared/types/tellask';
 import { generateShortId } from './shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
@@ -101,10 +99,12 @@ export class DialogID {
 export interface PendingSubdialog {
   subdialogId: DialogID;
   createdAt: string;
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   targetAgentId: string;
+  callId: string;
   callType: 'A' | 'B' | 'C';
-  tellaskSession?: string;
+  sessionSlug?: string;
 }
 
 /**
@@ -149,8 +149,8 @@ export interface DialogInitParams {
  * Assignment from supdialog for subdialogs
  */
 export interface AssignmentFromSup {
-  tellaskHead: string;
-  tellaskBody: string;
+  mentionList: string[];
+  tellaskContent: string;
   originMemberId: string;
   callerDialogId: string;
   callId: string;
@@ -190,7 +190,7 @@ export abstract class Dialog {
   protected _upNext?: {
     prompt: string;
     msgId: string;
-    grammar?: UserTextGrammar;
+    grammar?: 'markdown';
     userLanguageCode?: LanguageCode;
   };
   // Course prefix messages injected into LLM context on every course.
@@ -460,13 +460,13 @@ export abstract class Dialog {
    */
   abstract createSubDialog(
     targetAgentId: string,
-    tellaskHead: string,
-    tellaskBody: string,
+    mentionList: string[],
+    tellaskContent: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog>;
@@ -732,7 +732,7 @@ export abstract class Dialog {
   public queueUpNextPrompt(options: {
     prompt: string;
     msgId: string;
-    grammar: UserTextGrammar;
+    grammar: 'markdown';
     userLanguageCode?: LanguageCode;
   }): void {
     if (this._upNext !== undefined) {
@@ -758,7 +758,7 @@ export abstract class Dialog {
   }
 
   public takeUpNext():
-    | { prompt: string; msgId: string; grammar?: UserTextGrammar; userLanguageCode?: LanguageCode }
+    | { prompt: string; msgId: string; grammar?: 'markdown'; userLanguageCode?: LanguageCode }
     | undefined {
     const next = this._upNext;
     this._upNext = undefined;
@@ -800,8 +800,8 @@ export abstract class Dialog {
         ? `${formatAssignmentFromSupdialog({
             fromAgentId: this.assignmentFromSup.originMemberId,
             toAgentId: this.agentId,
-            tellaskHead: this.assignmentFromSup.tellaskHead,
-            tellaskBody: this.assignmentFromSup.tellaskBody,
+            mentionList: this.assignmentFromSup.mentionList,
+            tellaskContent: this.assignmentFromSup.tellaskContent,
             language: getWorkLanguage(),
             collectiveTargets: this.assignmentFromSup.collectiveTargets ?? [this.agentId],
           })}\n---\n${trimmedPrompt}`
@@ -917,35 +917,15 @@ export abstract class Dialog {
     await this.dlgStore.webSearchCall(this, payload);
   }
 
-  // Tellask call events (streaming mode - `!?@...` blocks)
-  public async callingStart(validation: TellaskCallValidation): Promise<void> {
-    await this.dlgStore.callingStart(this, validation);
-  }
-
-  public async callingHeadlineChunk(chunk: string): Promise<void> {
-    await this.dlgStore.callingHeadlineChunk(this, chunk);
-  }
-
-  public async callingHeadlineFinish(): Promise<void> {
-    await this.dlgStore.callingHeadlineFinish(this);
-  }
-
-  public async callingBodyStart(): Promise<void> {
-    await this.dlgStore.callingBodyStart(this);
-  }
-
-  public async callingBodyChunk(chunk: string): Promise<void> {
-    await this.dlgStore.callingBodyChunk(this, chunk);
-  }
-
-  public async callingBodyFinish(): Promise<void> {
-    await this.dlgStore.callingBodyFinish(this);
-  }
-
-  public async callingFinish(callId: string): Promise<void> {
+  // Tellask-special call lifecycle events
+  public async callingStart(payload: {
+    callId: string;
+    mentionList: string[];
+    tellaskContent: string;
+  }): Promise<void> {
     // Store callId for inline call-result correlation
-    this.setCurrentCallId(callId);
-    await this.dlgStore.callingFinish(this, callId);
+    this.setCurrentCallId(payload.callId);
+    await this.dlgStore.callingStart(this, payload);
   }
 
   /**
@@ -953,7 +933,8 @@ export abstract class Dialog {
    */
   public async receiveTeammateCallResult(
     responderId: string,
-    tellaskHead: string,
+    mentionList: string[],
+    tellaskContent: string,
     result: string,
     status: 'completed' | 'failed',
     callId: string,
@@ -961,7 +942,8 @@ export abstract class Dialog {
     return await this.dlgStore.receiveTeammateCallResult(
       this,
       responderId,
-      tellaskHead,
+      mentionList,
+      tellaskContent,
       result,
       status,
       callId,
@@ -973,7 +955,8 @@ export abstract class Dialog {
    */
   public async receiveTeammateResponse(
     responderId: string,
-    tellaskHead: string,
+    mentionList: string[],
+    tellaskContent: string,
     status: 'completed' | 'failed',
     subdialogId: DialogID | undefined,
     options: {
@@ -986,7 +969,8 @@ export abstract class Dialog {
     return await this.dlgStore.receiveTeammateResponse(
       this,
       responderId,
-      tellaskHead,
+      mentionList,
+      tellaskContent,
       status,
       subdialogId,
       options,
@@ -1000,7 +984,7 @@ export abstract class Dialog {
   public async persistUserMessage(
     content: string,
     msgId: string,
-    grammar: UserTextGrammar,
+    grammar: 'markdown',
     userLanguageCode?: LanguageCode,
   ): Promise<void> {
     return await this.dlgStore.persistUserMessage(this, content, msgId, grammar, userLanguageCode);
@@ -1036,7 +1020,8 @@ export abstract class Dialog {
     try {
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
-      let tellaskHead = response;
+      let mentionList: string[] = [];
+      let tellaskContent = response;
       let originMemberId = responderId;
       let callId = '';
       try {
@@ -1048,7 +1033,8 @@ export abstract class Dialog {
             originMemberId = metadata.agentId;
           }
           if (metadata.assignmentFromSup) {
-            tellaskHead = metadata.assignmentFromSup.tellaskHead;
+            mentionList = metadata.assignmentFromSup.mentionList;
+            tellaskContent = metadata.assignmentFromSup.tellaskContent;
             originMemberId = metadata.assignmentFromSup.originMemberId;
             callId = metadata.assignmentFromSup.callId;
           }
@@ -1066,8 +1052,8 @@ export abstract class Dialog {
           subdialogId: subdialogId.selfId,
         });
       }
-      if (tellaskHead.trim() === '') {
-        tellaskHead = response;
+      if (mentionList.length < 1) {
+        mentionList = [`@${responderId}`];
       }
 
       // NO WAIT - emit immediately with virtual gen markers
@@ -1078,7 +1064,8 @@ export abstract class Dialog {
       const formattedResult = formatTeammateResponseContent({
         responderId,
         requesterId: originMemberId,
-        originalCallHeadLine: tellaskHead,
+        mentionList,
+        tellaskContent,
         responseBody: response,
         language: getWorkLanguage(),
       });
@@ -1088,7 +1075,8 @@ export abstract class Dialog {
         type: 'teammate_response_evt',
         responderId,
         calleeDialogId: subdialogId.selfId,
-        tellaskHead,
+        mentionList,
+        tellaskContent,
         status: 'completed',
         result: formattedResult,
         course: this.currentCourse,
@@ -1116,7 +1104,7 @@ export abstract class Dialog {
  */
 export class SubDialog extends Dialog {
   public readonly rootDialog: RootDialog;
-  public readonly tellaskSession?: string;
+  public readonly sessionSlug?: string;
   public assignmentFromSup: AssignmentFromSup;
   protected readonly _supdialog: Dialog;
 
@@ -1127,12 +1115,12 @@ export class SubDialog extends Dialog {
     id: DialogID | undefined,
     agentId: string,
     assignmentFromSup: AssignmentFromSup,
-    tellaskSession?: string,
+    sessionSlug?: string,
     initialState?: DialogInitParams['initialState'],
   ) {
     super(dlgStore, taskDocPath, id, agentId, initialState);
     this.rootDialog = rootDialog;
-    this.tellaskSession = tellaskSession;
+    this.sessionSlug = sessionSlug;
     this.assignmentFromSup = assignmentFromSup;
     const resolvedSupdialog = rootDialog.lookupDialog(assignmentFromSup.callerDialogId);
     if (resolvedSupdialog && resolvedSupdialog.id.selfId === this.id.selfId) {
@@ -1165,17 +1153,22 @@ export class SubDialog extends Dialog {
    */
   async createSubDialog(
     targetAgentId: string,
-    tellaskHead: string,
-    tellaskBody: string,
+    mentionList: string[],
+    tellaskContent: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
-    return await this.rootDialog.createSubDialog(targetAgentId, tellaskHead, tellaskBody, options);
+    return await this.rootDialog.createSubDialog(
+      targetAgentId,
+      mentionList,
+      tellaskContent,
+      options,
+    );
   }
 }
 
@@ -1190,7 +1183,7 @@ export class RootDialog extends Dialog {
 
   // Tracks all dialogs in this dialog tree for O(1) lookup
   private _localRegistry: Map<string, Dialog> = new Map();
-  // Tracks TYPE B registered subdialogs by agentId!tellaskSession
+  // Tracks Type-B registered subdialogs by agentId!sessionSlug
   private _subdialogRegistry: Map<string, SubDialog> = new Map();
 
   constructor(
@@ -1249,37 +1242,37 @@ export class RootDialog extends Dialog {
   }
 
   /**
-   * Generate a registry key from agentId and tellaskSession.
+   * Generate a registry key from agentId and sessionSlug.
    */
-  static makeSubdialogKey(agentId: string, tellaskSession: string): string {
-    return `${agentId}!${tellaskSession}`;
+  static makeSubdialogKey(agentId: string, sessionSlug: string): string {
+    return `${agentId}!${sessionSlug}`;
   }
 
   /**
-   * Register a TYPE B subdialog for resumption.
+   * Register a Type-B subdialog for resumption.
    */
   registerSubdialog(subdialog: SubDialog): void {
-    if (!subdialog.tellaskSession) {
+    if (!subdialog.sessionSlug) {
       return;
     }
-    const key = RootDialog.makeSubdialogKey(subdialog.agentId, subdialog.tellaskSession);
+    const key = RootDialog.makeSubdialogKey(subdialog.agentId, subdialog.sessionSlug);
     this._subdialogRegistry.set(key, subdialog);
     this.registerDialog(subdialog);
   }
 
   /**
-   * Lookup a TYPE B subdialog by agentId and tellaskSession.
+   * Lookup a Type-B subdialog by agentId and sessionSlug.
    */
-  lookupSubdialog(agentId: string, tellaskSession: string): SubDialog | undefined {
-    const key = RootDialog.makeSubdialogKey(agentId, tellaskSession);
+  lookupSubdialog(agentId: string, sessionSlug: string): SubDialog | undefined {
+    const key = RootDialog.makeSubdialogKey(agentId, sessionSlug);
     return this._subdialogRegistry.get(key);
   }
 
   /**
-   * Remove a TYPE B subdialog from registry.
+   * Remove a Type-B subdialog from registry.
    */
-  unregisterSubdialog(agentId: string, tellaskSession: string): boolean {
-    const key = RootDialog.makeSubdialogKey(agentId, tellaskSession);
+  unregisterSubdialog(agentId: string, sessionSlug: string): boolean {
+    const key = RootDialog.makeSubdialogKey(agentId, sessionSlug);
     const subdialog = this._subdialogRegistry.get(key);
     if (subdialog) {
       this._localRegistry.delete(subdialog.id.selfId);
@@ -1300,21 +1293,21 @@ export class RootDialog extends Dialog {
    */
   async createSubDialog(
     targetAgentId: string,
-    tellaskHead: string,
-    tellaskBody: string,
+    mentionList: string[],
+    tellaskContent: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
     return await this.dlgStore.createSubDialog(
       this,
       targetAgentId,
-      tellaskHead,
-      tellaskBody,
+      mentionList,
+      tellaskContent,
       options,
     );
   }
@@ -1327,7 +1320,7 @@ export class RootDialog extends Dialog {
       key,
       subdialogId: subdialog.id,
       agentId: subdialog.agentId,
-      tellaskSession: subdialog.tellaskSession,
+      sessionSlug: subdialog.sessionSlug,
     }));
     await this.dlgStore.saveSubdialogRegistry(this.id, entries, this.status);
   }
@@ -1351,20 +1344,20 @@ export abstract class DialogStore {
    *
    * @param supdialog
    * @param targetAgentId
-   * @param tellaskHead
-   * @param tellaskBody
+   * @param mentionList
+   * @param tellaskContent
    * @returns
    */
   public async createSubDialog(
     supdialog: RootDialog,
     targetAgentId: string,
-    tellaskHead: string,
-    tellaskBody: string,
+    mentionList: string[],
+    tellaskContent: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
       collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
@@ -1378,14 +1371,14 @@ export abstract class DialogStore {
       subdialogId,
       targetAgentId,
       {
-        tellaskHead,
-        tellaskBody,
+        mentionList,
+        tellaskContent,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
         collectiveTargets: options.collectiveTargets,
       },
-      options.tellaskSession,
+      options.sessionSlug,
     );
   }
 
@@ -1428,7 +1421,8 @@ export abstract class DialogStore {
   public async receiveTeammateCallResult(
     _dialog: Dialog,
     _responderId: string,
-    _tellaskHead: string,
+    _mentionList: string[],
+    _tellaskContent: string,
     _result: string,
     _status: 'completed' | 'failed',
     _callId: string,
@@ -1440,7 +1434,8 @@ export abstract class DialogStore {
   public async receiveTeammateResponse(
     _dialog: Dialog,
     _responderId: string,
-    _tellaskHead: string,
+    _mentionList: string[],
+    _tellaskContent: string,
     _status: 'completed' | 'failed',
     _subdialogId: DialogID | undefined,
     _options: {
@@ -1483,7 +1478,7 @@ export abstract class DialogStore {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
     }>,
     _status: 'running' | 'completed' | 'archived',
   ): Promise<void> {}
@@ -1498,14 +1493,11 @@ export abstract class DialogStore {
    */
   public async clearQuestions4Human(_dialog: Dialog): Promise<void> {}
 
-  // Tellask call streaming methods
-  public async callingStart(_dialog: Dialog, _validation: TellaskCallValidation): Promise<void> {}
-  public async callingHeadlineChunk(_dialog: Dialog, _chunk: string): Promise<void> {}
-  public async callingHeadlineFinish(_dialog: Dialog): Promise<void> {}
-  public async callingBodyStart(_dialog: Dialog): Promise<void> {}
-  public async callingBodyChunk(_dialog: Dialog, _chunk: string): Promise<void> {}
-  public async callingBodyFinish(_dialog: Dialog): Promise<void> {}
-  public async callingFinish(_dialog: Dialog, _callId: string): Promise<void> {}
+  // Tellask-special call lifecycle methods
+  public async callingStart(
+    _dialog: Dialog,
+    _payload: { callId: string; mentionList: string[]; tellaskContent: string },
+  ): Promise<void> {}
 
   // Function call event (non-streaming mode - single event)
   public async funcCallRequested(
@@ -1555,7 +1547,7 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _content: string,
     _msgId: string,
-    _grammar: UserTextGrammar,
+    _grammar: 'markdown',
     _userLanguageCode?: LanguageCode,
   ): Promise<void> {}
 

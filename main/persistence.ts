@@ -31,12 +31,6 @@ import type {
   Q4HAnsweredEvent,
   StreamErrorEvent,
   SubdialogEvent,
-  TeammateCallBodyChunkEvent,
-  TeammateCallBodyFinishEvent,
-  TeammateCallBodyStartEvent,
-  TeammateCallFinishEvent,
-  TeammateCallHeadlineChunkEvent,
-  TeammateCallHeadlineFinishEvent,
   TeammateCallResponseEvent,
   TeammateCallStartEvent,
   TeammateResponseEvent,
@@ -66,10 +60,8 @@ import type {
   TeammateResponseRecord,
   ToolArguments,
   UiOnlyMarkdownRecord,
-  UserTextGrammar,
   WebSearchCallRecord,
 } from './shared/types/storage';
-import type { TellaskCallValidation } from './shared/types/tellask';
 import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import { Reminder } from './tool';
@@ -87,8 +79,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['assignmentFromSup'] {
   if (!isRecord(value)) return false;
-  if (typeof value.tellaskHead !== 'string') return false;
-  if (typeof value.tellaskBody !== 'string') return false;
+  if (!Array.isArray(value.mentionList)) return false;
+  if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+  if (typeof value.tellaskContent !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callerDialogId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
@@ -116,7 +109,7 @@ function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFi
     return false;
   }
   if (value.supdialogId !== undefined) return false;
-  if (value.tellaskSession !== undefined) return false;
+  if (value.sessionSlug !== undefined) return false;
   if (value.assignmentFromSup !== undefined) return false;
   return true;
 }
@@ -128,7 +121,7 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
   if (typeof value.supdialogId !== 'string') return false;
-  if (value.tellaskSession !== undefined && typeof value.tellaskSession !== 'string') return false;
+  if (value.sessionSlug !== undefined && typeof value.sessionSlug !== 'string') return false;
   if (!isAssignmentFromSup(value.assignmentFromSup)) return false;
   return true;
 }
@@ -252,7 +245,8 @@ function isSubdialogResponseRecord(value: unknown): value is {
   completedAt: string;
   status?: 'completed' | 'failed';
   callType: 'A' | 'B' | 'C';
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   responderId: string;
   originMemberId: string;
   callId: string;
@@ -265,7 +259,9 @@ function isSubdialogResponseRecord(value: unknown): value is {
   if (value.status !== undefined && value.status !== 'completed' && value.status !== 'failed')
     return false;
   if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
-  if (typeof value.tellaskHead !== 'string') return false;
+  if (!Array.isArray(value.mentionList)) return false;
+  if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+  if (typeof value.tellaskContent !== 'string') return false;
   if (typeof value.responderId !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
   if (typeof value.callId !== 'string') return false;
@@ -288,9 +284,97 @@ export interface Questions4Human {
 }
 
 // Remove old type definitions - now using shared/types/storage.ts
-
-import { CollectedTellaskCall, TellaskEventsReceiver, TellaskStreamParser } from './tellask';
 import { generateDialogID } from './utils/id';
+
+const TELLASK_SPECIAL_FUNCTION_NAMES = new Set([
+  'tellaskBack',
+  'tellask',
+  'tellaskSessionless',
+  'askHuman',
+]);
+
+type ReplayTellaskSpecialCall = Readonly<{
+  mentionList: string[];
+  tellaskContent: string;
+  callId: string;
+}>;
+
+function isTellaskSpecialFunctionName(name: string): boolean {
+  return TELLASK_SPECIAL_FUNCTION_NAMES.has(name);
+}
+
+function readRequiredStringArgument(args: ToolArguments, field: string): string | null {
+  const value = args[field];
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function readOptionalStringArgument(args: ToolArguments, field: string): string | null {
+  const value = args[field];
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function parseReplayTellaskSpecialCall(record: FuncCallRecord): ReplayTellaskSpecialCall | null {
+  if (!isTellaskSpecialFunctionName(record.name)) {
+    return null;
+  }
+  const tellaskContent = readRequiredStringArgument(record.arguments, 'tellaskContent');
+  if (!tellaskContent) {
+    return null;
+  }
+
+  switch (record.name) {
+    case 'tellaskBack': {
+      return {
+        mentionList: ['@upstream'],
+        tellaskContent,
+        callId: record.id,
+      };
+    }
+    case 'askHuman': {
+      return {
+        mentionList: ['@human'],
+        tellaskContent,
+        callId: record.id,
+      };
+    }
+    case 'tellask': {
+      const targetAgentId = readRequiredStringArgument(record.arguments, 'targetAgentId');
+      const sessionSlug = readRequiredStringArgument(record.arguments, 'sessionSlug');
+      if (!targetAgentId || !sessionSlug) {
+        return null;
+      }
+      return {
+        mentionList: [`@${targetAgentId}`],
+        tellaskContent,
+        callId: record.id,
+      };
+    }
+    case 'tellaskSessionless': {
+      const targetAgentId = readRequiredStringArgument(record.arguments, 'targetAgentId');
+      if (!targetAgentId) {
+        return null;
+      }
+      return {
+        mentionList: [`@${targetAgentId}`],
+        tellaskContent,
+        callId: record.id,
+      };
+    }
+    default:
+      return null;
+  }
+}
 
 /**
  * Uses append-only pattern for events, exceptional overwrite for reminders
@@ -311,13 +395,14 @@ export class DiskFileDialogStore extends DialogStore {
   public async createSubDialog(
     supdialog: RootDialog,
     targetAgentId: string,
-    tellaskHead: string,
-    tellaskBody: string,
+    mentionList: string[],
+    tellaskContent: string,
     options: {
       originMemberId: string;
       callerDialogId: string;
       callId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
+      collectiveTargets?: string[];
     },
   ): Promise<SubDialog> {
     const generatedId = generateDialogID();
@@ -334,13 +419,14 @@ export class DiskFileDialogStore extends DialogStore {
       subdialogId,
       targetAgentId,
       {
-        tellaskHead,
-        tellaskBody,
+        mentionList,
+        tellaskContent,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
+        collectiveTargets: options.collectiveTargets,
       },
-      options.tellaskSession,
+      options.sessionSlug,
     );
 
     // Initial subdialog user prompt is now persisted at first drive (driver.ts)
@@ -353,13 +439,14 @@ export class DiskFileDialogStore extends DialogStore {
       taskDocPath: supdialog.taskDocPath,
       createdAt: nowTs,
       supdialogId: supdialog.id.selfId,
-      tellaskSession: options.tellaskSession,
+      sessionSlug: options.sessionSlug,
       assignmentFromSup: {
-        tellaskHead,
-        tellaskBody,
+        mentionList,
+        tellaskContent,
         originMemberId: options.originMemberId,
         callerDialogId: options.callerDialogId,
         callId: options.callId,
+        collectiveTargets: options.collectiveTargets,
       },
     };
     await DialogPersistence.saveSubdialogMetadata(subdialogId, metadata);
@@ -400,8 +487,8 @@ export class DiskFileDialogStore extends DialogStore {
         rootId: subdialogId.rootId,
       },
       targetAgentId,
-      tellaskHead,
-      tellaskBody,
+      mentionList,
+      tellaskContent,
       subDialogNode: {
         selfId: subdialogId.selfId,
         rootId: subdialogId.rootId,
@@ -413,10 +500,10 @@ export class DiskFileDialogStore extends DialogStore {
         createdAt: nowTs,
         lastModified: nowTs,
         runState: { kind: 'idle_waiting_user' },
-        tellaskSession: options.tellaskSession,
+        sessionSlug: options.sessionSlug,
         assignmentFromSup: {
-          tellaskHead,
-          tellaskBody,
+          mentionList,
+          tellaskContent,
           originMemberId: options.originMemberId,
           callerDialogId: options.callerDialogId,
           callId: options.callId,
@@ -475,7 +562,8 @@ export class DiskFileDialogStore extends DialogStore {
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the tool/agent that responded (e.g., "add_reminder")
-   * @param tellaskHead - Headline of the original call
+   * @param mentionList - Mention list of the original call
+   * @param tellaskContent - Tellask content of the original call
    * @param result - The result content to display
    * @param status - Response status ('completed' | 'failed')
    * @param callId - Correlation ID from call_start_evt (REQUIRED for inline display)
@@ -483,7 +571,8 @@ export class DiskFileDialogStore extends DialogStore {
   public async receiveTeammateCallResult(
     dialog: Dialog,
     responderId: string,
-    tellaskHead: string,
+    mentionList: string[],
+    tellaskContent: string,
     result: string,
     status: 'completed' | 'failed',
     callId: string,
@@ -495,7 +584,8 @@ export class DiskFileDialogStore extends DialogStore {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'teammate_call_result_record',
       responderId,
-      tellaskHead,
+      mentionList,
+      tellaskContent,
       status,
       result,
       calling_genseq,
@@ -507,7 +597,8 @@ export class DiskFileDialogStore extends DialogStore {
     const toolResponseEvt: TeammateCallResponseEvent = {
       type: 'teammate_call_response_evt',
       responderId,
-      tellaskHead,
+      mentionList,
+      tellaskContent,
       status,
       result,
       course,
@@ -528,14 +619,16 @@ export class DiskFileDialogStore extends DialogStore {
    *
    * @param dialog - The dialog receiving the response
    * @param responderId - ID of the teammate agent (e.g., "coder")
-   * @param tellaskHead - Headline of the original teammate tellask
+   * @param mentionList - Mention list of the original teammate tellask
+   * @param tellaskContent - Tellask content of the original teammate tellask
    * @param status - Response status ('completed' | 'failed')
    * @param calleeDialogId - ID of the callee dialog (subdialog OR supdialog) for navigation links
    */
   public async receiveTeammateResponse(
     dialog: Dialog,
     responderId: string,
-    tellaskHead: string,
+    mentionList: string[],
+    tellaskContent: string,
     status: 'completed' | 'failed',
     calleeDialogId: DialogID | undefined,
     options: {
@@ -555,7 +648,8 @@ export class DiskFileDialogStore extends DialogStore {
     const result = formatTeammateResponseContent({
       responderId,
       requesterId: originMemberId,
-      originalCallHeadLine: tellaskHead,
+      mentionList,
+      tellaskContent,
       responseBody: response,
       language: getWorkLanguage(),
     });
@@ -564,7 +658,8 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'teammate_response_record',
       responderId,
       calleeDialogId: calleeDialogSelfId,
-      tellaskHead,
+      mentionList,
+      tellaskContent,
       status,
       result,
       calling_genseq,
@@ -579,7 +674,8 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'teammate_response_evt',
       responderId,
       calleeDialogId: calleeDialogSelfId,
-      tellaskHead,
+      mentionList,
+      tellaskContent,
       status,
       result,
       course,
@@ -796,75 +892,17 @@ export class DiskFileDialogStore extends DialogStore {
     postDialogEvent(dialog, evt);
   }
 
-  // Tellask call streaming methods
-  public async callingStart(dialog: Dialog, validation: TellaskCallValidation): Promise<void> {
+  // Tellask-special call lifecycle methods
+  public async callingStart(
+    dialog: Dialog,
+    payload: { callId: string; mentionList: string[]; tellaskContent: string },
+  ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const evt: TeammateCallStartEvent = {
       type: 'teammate_call_start_evt',
-      validation,
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-
-  public async callingHeadlineChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallHeadlineChunkEvent = {
-      type: 'teammate_call_headline_chunk_evt',
-      chunk,
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-
-  public async callingHeadlineFinish(dialog: Dialog): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallHeadlineFinishEvent = {
-      type: 'teammate_call_headline_finish_evt',
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-
-  public async callingBodyStart(dialog: Dialog): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallBodyStartEvent = {
-      type: 'teammate_call_body_start_evt',
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-
-  public async callingBodyChunk(dialog: Dialog, chunk: string): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallBodyChunkEvent = {
-      type: 'teammate_call_body_chunk_evt',
-      chunk,
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-
-  public async callingBodyFinish(dialog: Dialog): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallBodyFinishEvent = {
-      type: 'teammate_call_body_finish_evt',
-      course,
-      genseq: dialog.activeGenSeq,
-    };
-    postDialogEvent(dialog, evt);
-  }
-
-  public async callingFinish(dialog: Dialog, callId: string): Promise<void> {
-    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallFinishEvent = {
-      type: 'teammate_call_finish_evt',
-      callId,
+      callId: payload.callId,
+      mentionList: payload.mentionList,
+      tellaskContent: payload.tellaskContent,
       course,
       genseq: dialog.activeGenSeq,
     };
@@ -987,7 +1025,7 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     content: string,
     msgId: string,
-    grammar: UserTextGrammar,
+    grammar: 'markdown',
     userLanguageCode?: LanguageCode,
   ): Promise<void> {
     const course = dialog.currentCourse;
@@ -1113,10 +1151,12 @@ export class DiskFileDialogStore extends DialogStore {
     return records.map((record) => ({
       subdialogId: new DialogID(record.subdialogId, rootDialogId.rootId),
       createdAt: record.createdAt,
-      tellaskHead: record.tellaskHead,
+      mentionList: record.mentionList,
+      tellaskContent: record.tellaskContent,
       targetAgentId: record.targetAgentId,
+      callId: record.callId,
       callType: record.callType,
-      tellaskSession: record.tellaskSession,
+      sessionSlug: record.sessionSlug,
     }));
   }
 
@@ -1126,7 +1166,7 @@ export class DiskFileDialogStore extends DialogStore {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
     }>,
     status: 'running' | 'completed' | 'archived',
   ): Promise<void> {
@@ -1241,7 +1281,7 @@ export class DiskFileDialogStore extends DialogStore {
           new DialogID(subdialogId.selfId, rootDialog.id.rootId),
           metadata.agentId,
           assignmentFromSup,
-          metadata.tellaskSession,
+          metadata.sessionSlug,
           {
             messages: subdialogState.messages,
             reminders: subdialogState.reminders,
@@ -1251,7 +1291,7 @@ export class DiskFileDialogStore extends DialogStore {
         );
         const latest = await DialogPersistence.loadDialogLatest(subdialogId, status);
         subdialog.disableDiligencePush = latest?.disableDiligencePush ?? false;
-        if (subdialog.tellaskSession) {
+        if (subdialog.sessionSlug) {
           rootDialog.registerSubdialog(subdialog);
         }
         return subdialog;
@@ -1265,36 +1305,36 @@ export class DiskFileDialogStore extends DialogStore {
     };
 
     for (const entry of entries) {
-      if (!entry.tellaskSession) continue;
+      if (!entry.sessionSlug) continue;
 
       if (shouldPruneDead) {
         const latest = await DialogPersistence.loadDialogLatest(entry.subdialogId, status);
         const runState = latest?.runState;
         if (runState && runState.kind === 'dead') {
           prunedDeadRegistryEntries = true;
-          rootDialog.unregisterSubdialog(entry.agentId, entry.tellaskSession);
+          rootDialog.unregisterSubdialog(entry.agentId, entry.sessionSlug);
           log.info('Skip dead subdialog while loading Type B registry', undefined, {
             rootId: rootDialog.id.rootId,
             subdialogId: entry.subdialogId.selfId,
             agentId: entry.agentId,
-            tellaskSession: entry.tellaskSession,
+            sessionSlug: entry.sessionSlug,
           });
           continue;
         }
       }
 
       const subdialog = await ensureSubdialogLoaded(entry.subdialogId);
-      if (!subdialog.tellaskSession) {
+      if (!subdialog.sessionSlug) {
         throw new Error(
-          `Subdialog registry invariant violation: missing tellaskSession on loaded subdialog ` +
-            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, expectedTellaskSession=${entry.tellaskSession})`,
+          `Subdialog registry invariant violation: missing sessionSlug on loaded subdialog ` +
+            `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, expectedSessionSlug=${entry.sessionSlug})`,
         );
       }
-      if (subdialog.tellaskSession !== entry.tellaskSession) {
+      if (subdialog.sessionSlug !== entry.sessionSlug) {
         throw new Error(
-          `Subdialog registry invariant violation: tellaskSession mismatch ` +
+          `Subdialog registry invariant violation: sessionSlug mismatch ` +
             `(rootId=${rootDialog.id.rootId}, selfId=${entry.subdialogId.selfId}, ` +
-            `expected=${entry.tellaskSession}, actual=${subdialog.tellaskSession})`,
+            `expected=${entry.sessionSlug}, actual=${subdialog.sessionSlug})`,
         );
       }
       if (subdialog.agentId !== entry.agentId) {
@@ -1430,184 +1470,39 @@ export class DiskFileDialogStore extends DialogStore {
       case 'human_text_record': {
         const genseq = event.genseq;
         const content = event.content || '';
-        const grammar: UserTextGrammar = event.grammar ?? 'tellask';
+        const grammar: 'markdown' = 'markdown';
         const userLanguageCode = event.userLanguageCode;
 
         if (content) {
-          if (grammar === 'tellask') {
-            const receiver: TellaskEventsReceiver = {
-              markdownStart: async () => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'markdown_start_evt',
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              markdownChunk: async (chunk: string) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'markdown_chunk_evt',
-                      chunk,
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              markdownFinish: async () => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'markdown_finish_evt',
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              callStart: async (validation) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_start_evt',
-                      validation,
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              callHeadLineChunk: async (chunk: string) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_headline_chunk_evt',
-                      chunk,
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              callHeadLineFinish: async () => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_headline_finish_evt',
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              tellaskBodyStart: async () => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_body_start_evt',
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              tellaskBodyChunk: async (chunk: string) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_body_chunk_evt',
-                      chunk,
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              tellaskBodyFinish: async () => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_body_finish_evt',
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-              callFinish: async (call: CollectedTellaskCall) => {
-                if (ws.readyState === 1) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'teammate_call_finish_evt',
-                      callId: call.callId,
-                      course,
-                      genseq,
-                      dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                      timestamp: event.ts,
-                    }),
-                  );
-                }
-              },
-            };
-
-            // Parse user content through TellaskStreamParser (same as live mode)
-            const streamingParser = new TellaskStreamParser(receiver);
-            await streamingParser.takeUpstreamChunk(content);
-            await streamingParser.finalize();
-          } else {
-            if (ws.readyState === 1) {
-              ws.send(
-                JSON.stringify({
-                  type: 'markdown_start_evt',
-                  course,
-                  genseq,
-                  dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                  timestamp: event.ts,
-                }),
-              );
-              ws.send(
-                JSON.stringify({
-                  type: 'markdown_chunk_evt',
-                  chunk: content,
-                  course,
-                  genseq,
-                  dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                  timestamp: event.ts,
-                }),
-              );
-              ws.send(
-                JSON.stringify({
-                  type: 'markdown_finish_evt',
-                  course,
-                  genseq,
-                  dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
-                  timestamp: event.ts,
-                }),
-              );
-            }
+          if (ws.readyState === 1) {
+            ws.send(
+              JSON.stringify({
+                type: 'markdown_start_evt',
+                course,
+                genseq,
+                dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                timestamp: event.ts,
+              }),
+            );
+            ws.send(
+              JSON.stringify({
+                type: 'markdown_chunk_evt',
+                chunk: content,
+                course,
+                genseq,
+                dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                timestamp: event.ts,
+              }),
+            );
+            ws.send(
+              JSON.stringify({
+                type: 'markdown_finish_evt',
+                course,
+                genseq,
+                dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
+                timestamp: event.ts,
+              }),
+            );
           }
         }
 
@@ -1745,184 +1640,42 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'agent_words_record': {
-        // Replay assistant text using ad-hoc event receiver with closure-based WebSocket access
         const content = event.content || '';
         if (content) {
-          // Create ad-hoc receiver similar to driver pattern with closure-based WebSocket access
-          const receiver: TellaskEventsReceiver = {
-            markdownStart: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'markdown_start_evt',
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            markdownChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'markdown_chunk_evt',
-                    chunk,
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            markdownFinish: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'markdown_finish_evt',
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callStart: async (validation) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_start_evt',
-                    validation,
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callHeadLineChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_headline_chunk_evt',
-                    chunk,
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callHeadLineFinish: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_headline_finish_evt',
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            tellaskBodyStart: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_body_start_evt',
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            tellaskBodyChunk: async (chunk: string) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_body_chunk_evt',
-                    chunk,
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            tellaskBodyFinish: async () => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_body_finish_evt',
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
-            callFinish: async (call: CollectedTellaskCall) => {
-              if (ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: 'teammate_call_finish_evt',
-                    callId: call.callId,
-                    course,
-                    genseq: event.genseq,
-                    dialog: {
-                      selfId: dialog.id.selfId,
-                      rootId: dialog.id.rootId,
-                    },
-                    timestamp: event.ts,
-                  }),
-                );
-              }
-            },
+          const dialogIdent = {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
           };
-
-          // Use the same TellaskStreamParser that live streaming uses
-          const streamingParser = new TellaskStreamParser(receiver);
-
-          // Stream the content through the parser to ensure consistent event emission
-          await streamingParser.takeUpstreamChunk(content);
-          await streamingParser.finalize();
+          if (ws.readyState === 1) {
+            ws.send(
+              JSON.stringify({
+                type: 'markdown_start_evt',
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              }),
+            );
+            ws.send(
+              JSON.stringify({
+                type: 'markdown_chunk_evt',
+                chunk: content,
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              }),
+            );
+            ws.send(
+              JSON.stringify({
+                type: 'markdown_finish_evt',
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              }),
+            );
+          }
         }
         break;
       }
@@ -1966,8 +1719,30 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'func_call_record': {
-        // Handle function call events from persistence
-        // NOTE: func_call_evt REMOVED - emit func_call_requested_evt for UI instead
+        const specialCall = parseReplayTellaskSpecialCall(event);
+        if (specialCall) {
+          const dialogIdent = {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          };
+          if (ws.readyState === 1) {
+            ws.send(
+              JSON.stringify({
+                type: 'teammate_call_start_evt',
+                callId: specialCall.callId,
+                mentionList: specialCall.mentionList,
+                tellaskContent: specialCall.tellaskContent,
+                course,
+                genseq: event.genseq,
+                dialog: dialogIdent,
+                timestamp: event.ts,
+              }),
+            );
+          }
+          break;
+        }
+
+        // Handle normal function call events from persistence.
         const funcCall = {
           type: 'func_call_requested_evt',
           funcId: event.id,
@@ -2091,8 +1866,8 @@ export class DiskFileDialogStore extends DialogStore {
             rootId: subdialogId.rootId,
           },
           targetAgentId: subMeta.agentId,
-          tellaskHead: event.tellaskHead,
-          tellaskBody: event.tellaskBody,
+          mentionList: event.mentionList,
+          tellaskContent: event.tellaskContent,
           subDialogNode: {
             selfId: subMeta.id,
             rootId: subdialogId.rootId,
@@ -2104,7 +1879,7 @@ export class DiskFileDialogStore extends DialogStore {
             createdAt: subMeta.createdAt,
             lastModified: subLatest?.lastModified || subMeta.createdAt,
             runState: subLatest?.runState,
-            tellaskSession: subMeta.tellaskSession,
+            sessionSlug: subMeta.sessionSlug,
             assignmentFromSup: subMeta.assignmentFromSup,
           },
           timestamp: event.ts,
@@ -2121,7 +1896,8 @@ export class DiskFileDialogStore extends DialogStore {
         const responseEvent = {
           type: 'teammate_call_response_evt',
           responderId: event.responderId,
-          tellaskHead: event.tellaskHead,
+          mentionList: event.mentionList,
+          tellaskContent: event.tellaskContent,
           status: event.status,
           result: event.result,
           callId: event.callId || '',
@@ -2145,7 +1921,8 @@ export class DiskFileDialogStore extends DialogStore {
         const formattedResult = formatTeammateResponseContent({
           responderId: event.responderId,
           requesterId: event.originMemberId,
-          originalCallHeadLine: event.tellaskHead,
+          mentionList: event.mentionList,
+          tellaskContent: event.tellaskContent,
           responseBody: event.response,
           language: getWorkLanguage(),
         });
@@ -2153,7 +1930,8 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'teammate_response_evt',
           responderId: event.responderId,
           calleeDialogId: event.calleeDialogId,
-          tellaskHead: event.tellaskHead,
+          mentionList: event.mentionList,
+          tellaskContent: event.tellaskContent,
           status: event.status,
           result: formattedResult,
           response: event.response,
@@ -2276,10 +2054,12 @@ type Q4HMutateOutcome = {
 type PendingSubdialogRecord = {
   subdialogId: string;
   createdAt: string;
-  tellaskHead: string;
+  mentionList: string[];
+  tellaskContent: string;
   targetAgentId: string;
+  callId: string;
   callType: 'A' | 'B' | 'C';
-  tellaskSession?: string;
+  sessionSlug?: string;
 };
 
 type PendingSubdialogsMutation =
@@ -3378,8 +3158,8 @@ export class DialogPersistence {
       rootId: string;
       agentId: string;
       taskDocPath: string;
-      tellaskHead: string;
-      bodyContent: string;
+      mentionList: string[];
+      tellaskContent: string;
       askedAt: string;
       callId?: string;
       remainingCallIds?: string[];
@@ -3395,8 +3175,8 @@ export class DialogPersistence {
         rootId: string;
         agentId: string;
         taskDocPath: string;
-        tellaskHead: string;
-        bodyContent: string;
+        mentionList: string[];
+        tellaskContent: string;
         askedAt: string;
         callId?: string;
         remainingCallIds?: string[];
@@ -3501,12 +3281,15 @@ export class DialogPersistence {
     if (!isRecord(value)) return false;
     if (typeof value.subdialogId !== 'string') return false;
     if (typeof value.createdAt !== 'string') return false;
-    if (typeof value.tellaskHead !== 'string') return false;
+    if (!Array.isArray(value.mentionList)) return false;
+    if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+    if (typeof value.tellaskContent !== 'string') return false;
     if (typeof value.targetAgentId !== 'string') return false;
+    if (typeof value.callId !== 'string') return false;
     if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
-    if ('tellaskSession' in value) {
-      const tellaskSession = value.tellaskSession;
-      if (tellaskSession !== undefined && typeof tellaskSession !== 'string') return false;
+    if ('sessionSlug' in value) {
+      const sessionSlug = value.sessionSlug;
+      if (sessionSlug !== undefined && typeof sessionSlug !== 'string') return false;
     }
     return true;
   }
@@ -3786,7 +3569,8 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      tellaskHead: string;
+      mentionList: string[];
+      tellaskContent: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -3826,7 +3610,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      tellaskHead: string;
+      mentionList: string[];
+      tellaskContent: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -3845,7 +3630,8 @@ export class DialogPersistence {
           completedAt: string;
           status?: 'completed' | 'failed';
           callType: 'A' | 'B' | 'C';
-          tellaskHead: string;
+          mentionList: string[];
+          tellaskContent: string;
           responderId: string;
           originMemberId: string;
           callId: string;
@@ -3901,7 +3687,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      tellaskHead: string;
+      mentionList: string[];
+      tellaskContent: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -3933,7 +3720,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      tellaskHead: string;
+      mentionList: string[];
+      tellaskContent: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -3956,7 +3744,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      tellaskHead: string;
+      mentionList: string[];
+      tellaskContent: string;
       responderId: string;
       originMemberId: string;
       callId: string;
@@ -4784,7 +4573,7 @@ export class DialogPersistence {
             genseq: event.genseq,
             msgId: event.msgId,
             content: event.content,
-            grammar: event.grammar ?? 'tellask',
+            grammar: event.grammar ?? 'markdown',
           });
           break;
         }
@@ -4826,8 +4615,10 @@ export class DialogPersistence {
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
-            tellaskHead: event.tellaskHead,
+            mentionList: event.mentionList,
+            tellaskContent: event.tellaskContent,
             status: event.status,
+            callId: event.callId,
             content: event.result,
           });
           break;
@@ -4839,7 +4630,8 @@ export class DialogPersistence {
           const formattedResult = formatTeammateResponseContent({
             responderId: event.responderId,
             requesterId: event.originMemberId,
-            originalCallHeadLine: event.tellaskHead,
+            mentionList: event.mentionList,
+            tellaskContent: event.tellaskContent,
             responseBody: event.response,
             language: getWorkLanguage(),
           });
@@ -4847,8 +4639,10 @@ export class DialogPersistence {
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
-            tellaskHead: event.tellaskHead,
+            mentionList: event.mentionList,
+            tellaskContent: event.tellaskContent,
             status: event.status,
+            callId: event.callId,
             content: formattedResult,
           });
           break;
@@ -4969,7 +4763,7 @@ export class DialogPersistence {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
     }>,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
@@ -4983,7 +4777,7 @@ export class DialogPersistence {
         key: entry.key,
         subdialogId: entry.subdialogId.selfId,
         agentId: entry.agentId,
-        tellaskSession: entry.tellaskSession,
+        sessionSlug: entry.sessionSlug,
       }));
 
       const yamlContent = yaml.stringify({ entries: serializableEntries });
@@ -5010,7 +4804,7 @@ export class DialogPersistence {
       key: string;
       subdialogId: DialogID;
       agentId: string;
-      tellaskSession?: string;
+      sessionSlug?: string;
     }>
   > {
     try {
@@ -5033,7 +4827,7 @@ export class DialogPersistence {
           key: entry.key as string,
           subdialogId: new DialogID(entry.subdialogId as string, rootDialogId.rootId),
           agentId: entry.agentId as string,
-          tellaskSession: entry.tellaskSession as string | undefined,
+          sessionSlug: entry.sessionSlug as string | undefined,
         };
       });
 

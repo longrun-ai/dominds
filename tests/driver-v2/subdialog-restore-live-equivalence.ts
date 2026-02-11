@@ -14,7 +14,6 @@ import {
   createRootDialog,
   lastAssistantSaying,
   listTellaskResultContents,
-  parseSingleTellaskCall,
   persistRootDialogMetadata,
   waitFor,
   waitForAllDialogsUnlocked,
@@ -28,20 +27,16 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const trigger = 'Trigger subdialog and then verify restore/live equivalence.';
-    const rootFirstResponse = [
-      'Start.',
-      '!?@pangu Please compute 1+1.',
-      '!?Return only the number.',
-      'separator',
-    ].join('\n');
-    const parsed = await parseSingleTellaskCall(rootFirstResponse);
+    const rootFirstResponse = 'Start.';
+    const mentionList = ['@pangu'];
+    const tellaskBody = 'Please compute 1+1.\nReturn only the number.';
     const language = getWorkLanguage();
 
     const expectedSubdialogPrompt = formatAssignmentFromSupdialog({
       fromAgentId: 'tester',
       toAgentId: 'pangu',
-      tellaskHead: parsed.tellaskHead,
-      tellaskBody: parsed.body,
+      mentionList,
+      tellaskContent: tellaskBody,
       language,
       collectiveTargets: ['pangu'],
     });
@@ -49,14 +44,29 @@ async function main(): Promise<void> {
     const expectedInjected = formatTeammateResponseContent({
       responderId: 'pangu',
       requesterId: 'tester',
-      originalCallHeadLine: parsed.tellaskHead,
+      mentionList,
+      tellaskContent: tellaskBody,
       responseBody: subdialogResponseText,
       language,
     });
     const resumeResponse = 'Ack: restore/live comparison ready.';
 
     await writeMockDb(tmpRoot, [
-      { message: trigger, role: 'user', response: rootFirstResponse },
+      {
+        message: trigger,
+        role: 'user',
+        response: rootFirstResponse,
+        funcCalls: [
+          {
+            id: 'root-call-pangu',
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'pangu',
+              tellaskContent: tellaskBody,
+            },
+          },
+        ],
+      },
       { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
       { message: expectedInjected, role: 'tool', response: resumeResponse },
       { message: expectedInjected, role: 'user', response: resumeResponse },

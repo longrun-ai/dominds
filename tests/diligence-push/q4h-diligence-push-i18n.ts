@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { DialogID, RootDialog } from 'dominds/dialog';
-import { dialogEventRegistry } from 'dominds/evt-registry';
+import { dialogEventRegistry, setQ4HBroadcaster } from 'dominds/evt-registry';
 import { driveDialogStream } from 'dominds/llm/driver-entry';
 import { DiskFileDialogStore } from 'dominds/persistence';
 import { EndOfStream } from 'dominds/shared/evt';
@@ -94,7 +94,7 @@ async function driveToDiligencePushBudgetExhaustedQ4H(options: {
     const ev = await readNextEventWithTimeout(ch, 50);
     if (!ev) continue;
     if (ev.type !== 'new_q4h_asked') continue;
-    return ev.question.bodyContent;
+    return ev.question.tellaskContent;
   }
 
   throw new Error('Timed out waiting for diligence_push_budget_exhausted new_q4h_asked');
@@ -104,6 +104,7 @@ async function main(): Promise<void> {
   const originalCwd = process.cwd();
   const tmpBase = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'dominds-q4h-i18n-'));
   process.chdir(tmpBase);
+  setQ4HBroadcaster(() => {});
 
   try {
     const zhBody = await driveToDiligencePushBudgetExhaustedQ4H({
@@ -130,6 +131,7 @@ async function main(): Promise<void> {
 
     console.log('q4h diligence push i18n: PASS');
   } finally {
+    setQ4HBroadcaster(null);
     process.chdir(originalCwd);
   }
 }

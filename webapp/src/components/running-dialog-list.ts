@@ -125,8 +125,8 @@ export class RunningDialogList extends HTMLElement {
 
   private getDialogDisplayCallsign(dialog: ApiRootDialogResponse): string {
     const assignment = dialog.assignmentFromSup;
-    if (assignment && typeof assignment.tellaskHead === 'string') {
-      if (/^\s*@self\b/.test(assignment.tellaskHead)) return '@self';
+    if (assignment && Array.isArray(assignment.mentionList)) {
+      if (assignment.mentionList.some((mention) => /^\s*@self\b/.test(mention))) return '@self';
     }
     return `@${dialog.agentId}`;
   }
@@ -593,7 +593,7 @@ export class RunningDialogList extends HTMLElement {
       kind === 'sub' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
     const rowClass = kind === 'sub' ? 'dialog-item sub-dialog' : 'dialog-item root-dialog';
     const updatedAt = dialog.lastModified || '';
-    const tellaskSessionMark = dialog.tellaskSession ?? '';
+    const sessionSlugMark = dialog.sessionSlug ?? '';
 
     if (kind === 'sub') {
       const callsign = this.getDialogDisplayCallsign(dialog);
@@ -618,7 +618,7 @@ export class RunningDialogList extends HTMLElement {
             </div>
           <div class="dialog-row dialog-submeta">
             <span class="dialog-meta-right">
-              <span class="dialog-topic">${tellaskSessionMark}</span>
+              <span class="dialog-topic">${sessionSlugMark}</span>
             </span>
           </div>
         </div>
@@ -925,7 +925,7 @@ export class RunningDialogList extends HTMLElement {
       agentName: '',
       taskDocPath: dialog.taskDocPath,
       supdialogId: dialog.supdialogId,
-      tellaskSession: dialog.tellaskSession,
+      sessionSlug: dialog.sessionSlug,
       assignmentFromSup: dialog.assignmentFromSup,
     };
 
