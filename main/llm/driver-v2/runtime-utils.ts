@@ -404,7 +404,7 @@ export async function runLlmRequestWithRetry<T>(params: {
       }
 
       const backoffMs = Math.min(30_000, 1000 * 2 ** attempt);
-      log.warn(`Retrying LLM request after retriable error`, {
+      log.warn(`Retrying LLM request after retriable error`, undefined, {
         provider: params.provider,
         attempt: attempt + 1,
         backoffMs,

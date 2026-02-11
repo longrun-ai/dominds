@@ -113,29 +113,29 @@ export class McpStdioClient {
     try {
       parsed = JSON.parse(line);
     } catch (err) {
-      log.warn('Failed to parse MCP JSON-RPC line as JSON', { line, err });
+      log.warn('Failed to parse MCP JSON-RPC line as JSON', undefined, { line, err });
       return;
     }
     if (!isRecord(parsed)) {
-      log.warn('Ignoring MCP line: not an object', { line });
+      log.warn('Ignoring MCP line: not an object', undefined, { line });
       return;
     }
 
     const jsonrpc = parsed.jsonrpc;
     if (jsonrpc !== '2.0') {
-      log.warn('Ignoring MCP line: jsonrpc is not 2.0', { line });
+      log.warn('Ignoring MCP line: jsonrpc is not 2.0', undefined, { line });
       return;
     }
 
     if ('id' in parsed) {
       const id = parsed.id;
       if (typeof id !== 'number') {
-        log.warn('Ignoring MCP response: id is not a number', { line });
+        log.warn('Ignoring MCP response: id is not a number', undefined, { line });
         return;
       }
       const pending = this.pending.get(id);
       if (!pending) {
-        log.warn('Ignoring MCP response: no pending request', { id });
+        log.warn('Ignoring MCP response: no pending request', undefined, { id });
         return;
       }
       this.pending.delete(id);
@@ -156,7 +156,7 @@ export class McpStdioClient {
       return;
     }
 
-    log.warn('Ignoring MCP line: not a response or notification', { line });
+    log.warn('Ignoring MCP line: not a response or notification', undefined, { line });
   }
 
   async initialize(timeoutMs: number = 15_000): Promise<void> {

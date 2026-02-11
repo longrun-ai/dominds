@@ -150,7 +150,7 @@ export const envGetTool: FuncTool = {
     const raw = process.env[parsed.key];
     const value = raw === undefined ? undefined : String(raw);
 
-    log.info('env_get', undefined, {
+    log.debug('env_get', undefined, {
       caller: caller.id,
       key: parsed.key,
       hasValue: value !== undefined,

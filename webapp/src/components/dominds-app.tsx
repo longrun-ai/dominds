@@ -4303,6 +4303,29 @@ export class DomindsApp extends HTMLElement {
     });
 
     // Call-site navigation requests from dialog bubbles (internal link icon).
+    this.shadowRoot.addEventListener('navigate-genseq', (event: Event) => {
+      const ce = event as CustomEvent<unknown>;
+      const detail =
+        ce.detail && typeof ce.detail === 'object' ? (ce.detail as Record<string, unknown>) : null;
+      if (!detail) return;
+      const rootId = typeof detail['rootId'] === 'string' ? detail['rootId'] : '';
+      const selfId = typeof detail['selfId'] === 'string' ? detail['selfId'] : '';
+      const course = typeof detail['course'] === 'number' ? detail['course'] : Number.NaN;
+      const genseq = typeof detail['genseq'] === 'number' ? detail['genseq'] : Number.NaN;
+      if (!rootId || !selfId) return;
+      if (!Number.isFinite(course) || !Number.isFinite(genseq)) return;
+
+      this.pendingDeepLink = {
+        kind: 'genseq',
+        rootId: rootId.trim(),
+        selfId: selfId.trim(),
+        course: Math.floor(course),
+        genseq: Math.floor(genseq),
+      };
+      void this.applyPendingDeepLink();
+    });
+
+    // Call-site navigation requests from dialog bubbles (internal link icon).
     this.shadowRoot.addEventListener('navigate-callsite', (event: Event) => {
       const ce = event as CustomEvent<unknown>;
       const detail =

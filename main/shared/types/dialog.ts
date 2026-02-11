@@ -181,6 +181,19 @@ export interface TeammateCallResponseEvent {
   callId: string;
 }
 
+// Anchor event in callee dialog for locating assignment/response bubbles by tellask callId.
+export interface TeammateCallAnchorEvent {
+  type: 'teammate_call_anchor_evt';
+  course: number;
+  genseq: number;
+  anchorRole: 'assignment' | 'response';
+  callId: string;
+  assignmentCourse?: number;
+  assignmentGenseq?: number;
+  callerDialogId?: string;
+  callerCourse?: number;
+}
+
 export interface ReminderContent {
   content: string;
   meta?: Record<string, unknown>;
@@ -199,6 +212,8 @@ export interface TeammateResponseEvent {
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+  calleeCourse?: number;
+  calleeGenseq?: number;
   mentionList: string[];
   tellaskContent: string;
   status: 'completed' | 'failed';
@@ -303,6 +318,7 @@ export type DialogEvent =
   // Tellask-special call lifecycle
   | TeammateCallStartEvent
   | TeammateCallResponseEvent
+  | TeammateCallAnchorEvent
   | TeammateResponseEvent
   // Subdialog events
   | SubdialogEvent

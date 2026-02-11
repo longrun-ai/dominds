@@ -24,10 +24,11 @@ const log = createLogger('server');
 
 // Setup unhandled rejection handler to capture crashes
 process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled Rejection at:', promise);
+  log.error('Unhandled Rejection at:', undefined, { promise });
   log.error('Reason:', reason instanceof Error ? reason : new Error(String(reason)));
   log.error(
     'Stack trace:',
+    undefined,
     (reason instanceof Error && reason.stack) || 'No stack trace available',
   );
 
@@ -38,7 +39,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // Setup uncaught exception handler
 process.on('uncaughtException', (error) => {
   log.error('Uncaught Exception:', error);
-  log.error('Stack trace:', error.stack);
+  log.error('Stack trace:', undefined, error.stack);
 
   // Optionally, exit with code 1
   // process.exit(1);

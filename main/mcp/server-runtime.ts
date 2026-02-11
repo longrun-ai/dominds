@@ -66,7 +66,7 @@ export class McpServerRuntime {
     }
     if (!this.forceKillTimer) {
       this.forceKillTimer = setTimeout(() => {
-        log.warn(`Force-killing MCP server after timeout`, { serverId: this.serverId });
+        log.warn(`Force-killing MCP server after timeout`, undefined, { serverId: this.serverId });
         void this.closeNow();
       }, forceKillAfterMs);
     }

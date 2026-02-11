@@ -197,6 +197,7 @@ export type PersistedDialogRecord =
   | FuncResultRecord
   | QuestForSupRecord
   | TeammateCallResultRecord
+  | TeammateCallAnchorRecord
   | TeammateResponseRecord
   | GenStartRecord
   | GenFinishRecord;
@@ -295,6 +296,19 @@ export interface TeammateCallResultRecord {
   callId: string;
 }
 
+// Anchor record in callee dialog for locating assignment/response bubbles by tellask callId.
+export interface TeammateCallAnchorRecord {
+  ts: string;
+  type: 'teammate_call_anchor_record';
+  anchorRole: 'assignment' | 'response';
+  callId: string;
+  genseq: number;
+  assignmentCourse?: number;
+  assignmentGenseq?: number;
+  callerDialogId?: string;
+  callerCourse?: number;
+}
+
 // Teammate response record - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
 export interface TeammateResponseRecord {
@@ -303,6 +317,8 @@ export interface TeammateResponseRecord {
   calling_genseq?: number;
   responderId: string;
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+  calleeCourse?: number;
+  calleeGenseq?: number;
   mentionList: string[];
   tellaskContent: string;
   status: 'completed' | 'failed';

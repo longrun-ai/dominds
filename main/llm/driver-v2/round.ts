@@ -134,6 +134,7 @@ export async function executeDriveRound(args: {
   let driveResult:
     | {
         lastAssistantSayingContent: string | null;
+        lastAssistantSayingGenseq: number | null;
         interrupted: boolean;
       }
     | undefined;
@@ -158,7 +159,7 @@ export async function executeDriveRound(args: {
         return;
       }
       if (latest && latest.runState && latest.runState.kind === 'proceeding_stop_requested') {
-        log.info('driver-v2 skip drive while stop request is still being processed', undefined, {
+        log.debug('driver-v2 skip drive while stop request is still being processed', undefined, {
           dialogId: dialog.id.valueOf(),
           reason: latest.runState.reason,
         });
@@ -170,7 +171,7 @@ export async function executeDriveRound(args: {
         latest.runState.kind === 'interrupted' &&
         !allowResumeFromInterrupted
       ) {
-        log.info(
+        log.debug(
           'driver-v2 skip drive for interrupted dialog without explicit resume/user prompt',
           undefined,
           {
@@ -195,7 +196,7 @@ export async function executeDriveRound(args: {
         const lastTrigger = globalDialogRegistry.getLastDriveTrigger(dialog.id.rootId);
         const lastTriggerAgeMs =
           lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
-        log.info('driver-v2 skip queued auto-drive while dialog is suspended', undefined, {
+        log.debug('driver-v2 skip queued auto-drive while dialog is suspended', undefined, {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
@@ -313,11 +314,22 @@ export async function executeDriveRound(args: {
     !driveResult.interrupted &&
     driveResult.lastAssistantSayingContent !== null
   ) {
+    if (
+      typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+      !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+      driveResult.lastAssistantSayingGenseq <= 0
+    ) {
+      throw new Error(
+        `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+      );
+    }
+    const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
     let supplied = false;
     if (subdialogReplyTarget) {
       supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
         subdialog: dialog,
         responseText: driveResult.lastAssistantSayingContent,
+        responseGenseq,
         target: subdialogReplyTarget,
         scheduleDrive: args.scheduleDrive,
       });
@@ -325,6 +337,7 @@ export async function executeDriveRound(args: {
         supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
           subdialog: dialog,
           responseText: driveResult.lastAssistantSayingContent,
+          responseGenseq,
           scheduleDrive: args.scheduleDrive,
         });
       }
@@ -332,6 +345,7 @@ export async function executeDriveRound(args: {
       supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
         subdialog: dialog,
         responseText: driveResult.lastAssistantSayingContent,
+        responseGenseq,
         scheduleDrive: args.scheduleDrive,
       });
     }
@@ -359,7 +373,26 @@ export async function executeDriveRound(args: {
       try {
         await dialog.streamError(streamErr);
       } catch (streamErrPost) {
-        log.warn('driver-v2 failed to emit stream_error_evt for response supply violation', {
+        log.warn(
+          'driver-v2 failed to emit stream_error_evt for response supply violation',
+          undefined,
+          {
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+            targetCallType: subdialogReplyTarget.callType,
+            targetCallId: subdialogReplyTarget.callId,
+            assignmentCallerDialogId: assignment.callerDialogId,
+            assignmentCallId: assignment.callId,
+            pendingSnapshots,
+            error: streamErrPost instanceof Error ? streamErrPost.message : String(streamErrPost),
+          },
+        );
+      }
+      log.error(
+        'driver-v2 subdialog produced response but found no pending caller to supply',
+        undefined,
+        {
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
           targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
@@ -368,19 +401,8 @@ export async function executeDriveRound(args: {
           assignmentCallerDialogId: assignment.callerDialogId,
           assignmentCallId: assignment.callId,
           pendingSnapshots,
-          error: streamErrPost instanceof Error ? streamErrPost.message : String(streamErrPost),
-        });
-      }
-      log.error('driver-v2 subdialog produced response but found no pending caller to supply', {
-        rootId: dialog.id.rootId,
-        selfId: dialog.id.selfId,
-        targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-        targetCallType: subdialogReplyTarget.callType,
-        targetCallId: subdialogReplyTarget.callId,
-        assignmentCallerDialogId: assignment.callerDialogId,
-        assignmentCallId: assignment.callId,
-        pendingSnapshots,
-      });
+        },
+      );
     }
   }
 

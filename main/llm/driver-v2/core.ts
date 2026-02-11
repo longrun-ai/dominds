@@ -21,7 +21,9 @@ import {
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/context-health';
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
+import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
+import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { Team } from '../../team';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../../tool';
 import { formatTaskDocContent } from '../../utils/taskdoc';
@@ -455,7 +457,7 @@ async function executeFunctionCalls(args: {
         rawArgs = JSON.parse(func.arguments);
       } catch (parseErr) {
         rawArgs = null;
-        log.warn('driver-v2 failed to parse function arguments as JSON', {
+        log.warn('driver-v2 failed to parse function arguments as JSON', undefined, {
           funcName: func.name,
           arguments: func.arguments,
           error: parseErr,
@@ -944,6 +946,7 @@ export async function driveDialogStreamCoreV2(
 
   let pubRemindersVer = dlg.remindersVer;
   let lastAssistantSayingContent: string | null = null;
+  let lastAssistantSayingGenseq: number | null = null;
   let internalDrivePromptMsg: ChatMessage | undefined;
 
   let genIterNo = 0;
@@ -1010,7 +1013,7 @@ export async function driveDialogStreamCoreV2(
         });
 
         if (healthDecision.kind === 'suspend') {
-          log.info(
+          log.debug(
             'driver-v2 suspend iterative generation due to critical context while waiting for human prompt',
             undefined,
             {
@@ -1080,7 +1083,7 @@ export async function driveDialogStreamCoreV2(
           const promptOrigin = currentPrompt.origin ?? 'user';
           const isDiligencePrompt = promptOrigin === 'diligence_push';
           if (isDiligencePrompt && (dlg.disableDiligencePush || suppressDiligencePushForDrive)) {
-            log.info('driver-v2 skip diligence prompt after disable toggle', undefined, {
+            log.debug('driver-v2 skip diligence prompt after disable toggle', undefined, {
               dialogId: dlg.id.valueOf(),
               msgId: currentPrompt.msgId,
             });
@@ -1124,6 +1127,34 @@ export async function driveDialogStreamCoreV2(
               promptGrammar,
               persistedUserLanguageCode,
             );
+            if (currentPrompt.subdialogReplyTarget) {
+              const normalizedCallId = currentPrompt.subdialogReplyTarget.callId.trim();
+              if (normalizedCallId === '') {
+                throw new Error(
+                  `driver-v2 assignment anchor invariant violation: empty callId for subdialogReplyTarget (dialog=${dlg.id.valueOf()})`,
+                );
+              }
+              const rawCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+              if (!Number.isFinite(rawCourse) || rawCourse <= 0) {
+                throw new Error(
+                  `driver-v2 assignment anchor invariant violation: invalid course=${String(rawCourse)} (dialog=${dlg.id.valueOf()})`,
+                );
+              }
+              const rawGenseq = dlg.activeGenSeq;
+              if (!Number.isFinite(rawGenseq) || rawGenseq <= 0) {
+                throw new Error(
+                  `driver-v2 assignment anchor invariant violation: invalid genseq=${String(rawGenseq)} (dialog=${dlg.id.valueOf()})`,
+                );
+              }
+              const assignmentAnchor: TeammateCallAnchorRecord = {
+                ts: formatUnifiedTimestamp(new Date()),
+                type: 'teammate_call_anchor_record',
+                anchorRole: 'assignment',
+                callId: normalizedCallId,
+                genseq: Math.floor(rawGenseq),
+              };
+              await DialogPersistence.appendEvent(dlg.id, Math.floor(rawCourse), assignmentAnchor);
+            }
           }
 
           if (persistMode !== 'internal') {
@@ -1269,6 +1300,7 @@ export async function driveDialogStreamCoreV2(
               ) {
                 if (msg.type === 'saying_msg') {
                   lastAssistantSayingContent = msg.content;
+                  lastAssistantSayingGenseq = msg.genseq;
                   await dlg.persistAgentMessage(msg.content, msg.genseq, 'saying_msg');
                   await emitUserMarkdown(dlg, msg.content);
                 }
@@ -1299,8 +1331,9 @@ export async function driveDialogStreamCoreV2(
               content: violationText,
             });
             lastAssistantSayingContent = violationText;
+            lastAssistantSayingGenseq = genseq;
             await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-            return { lastAssistantSayingContent, interrupted: false };
+            return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: false };
           }
 
           const routedFunctionResult = await executeRoutedFunctionCalls({
@@ -1465,6 +1498,7 @@ export async function driveDialogStreamCoreV2(
                   };
                   newMsgs.push(sayingMessage);
                   lastAssistantSayingContent = currentSayingContent;
+                  lastAssistantSayingGenseq = sayingMessage.genseq;
 
                   await dlg.sayingFinish();
                 },
@@ -1526,9 +1560,10 @@ export async function driveDialogStreamCoreV2(
             content: violationText,
           });
           lastAssistantSayingContent = violationText;
+          lastAssistantSayingGenseq = genseq;
           await dlg.addChatMessages(...newMsgs);
           await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-          return { lastAssistantSayingContent, interrupted: false };
+          return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: false };
         }
 
         const routedFunctionResult = await executeRoutedFunctionCalls({
@@ -1593,7 +1628,7 @@ export async function driveDialogStreamCoreV2(
     }
 
     finalRunState = await computeIdleRunState(dlg);
-    return { lastAssistantSayingContent, interrupted: false };
+    return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: false };
   } catch (err) {
     const stopRequested = getStopRequestedReason(dlg.id);
     const interruptedReason: DialogInterruptionReason | undefined =
@@ -1610,7 +1645,7 @@ export async function driveDialogStreamCoreV2(
     if (interruptedReason) {
       finalRunState = { kind: 'interrupted', reason: interruptedReason };
       broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
-      return { lastAssistantSayingContent, interrupted: true };
+      return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: true };
     }
 
     const errText = extractErrorDetails(err).message;
@@ -1624,7 +1659,7 @@ export async function driveDialogStreamCoreV2(
       kind: 'interrupted',
       reason: { kind: 'system_stop', detail: errText },
     });
-    return { lastAssistantSayingContent, interrupted: true };
+    return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: true };
   } finally {
     clearActiveRun(dlg.id);
 

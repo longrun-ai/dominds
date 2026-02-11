@@ -636,6 +636,8 @@ export class DiskFileDialogStore extends DialogStore {
       agentId: string;
       callId: string;
       originMemberId: string;
+      calleeCourse?: number;
+      calleeGenseq?: number;
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
@@ -645,6 +647,8 @@ export class DiskFileDialogStore extends DialogStore {
     const agentId = options.agentId;
     const callId = options.callId;
     const originMemberId = options.originMemberId;
+    const calleeCourse = options.calleeCourse;
+    const calleeGenseq = options.calleeGenseq;
     const result = formatTeammateResponseContent({
       responderId,
       requesterId: originMemberId,
@@ -658,6 +662,8 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'teammate_response_record',
       responderId,
       calleeDialogId: calleeDialogSelfId,
+      calleeCourse,
+      calleeGenseq,
       mentionList,
       tellaskContent,
       status,
@@ -674,6 +680,8 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'teammate_response_evt',
       responderId,
       calleeDialogId: calleeDialogSelfId,
+      calleeCourse,
+      calleeGenseq,
       mentionList,
       tellaskContent,
       status,
@@ -1155,6 +1163,7 @@ export class DiskFileDialogStore extends DialogStore {
       tellaskContent: record.tellaskContent,
       targetAgentId: record.targetAgentId,
       callId: record.callId,
+      callingCourse: record.callingCourse,
       callType: record.callType,
       sessionSlug: record.sessionSlug,
     }));
@@ -1313,7 +1322,7 @@ export class DiskFileDialogStore extends DialogStore {
         if (runState && runState.kind === 'dead') {
           prunedDeadRegistryEntries = true;
           rootDialog.unregisterSubdialog(entry.agentId, entry.sessionSlug);
-          log.info('Skip dead subdialog while loading Type B registry', undefined, {
+          log.debug('Skip dead subdialog while loading Type B registry', undefined, {
             rootId: rootDialog.id.rootId,
             subdialogId: entry.subdialogId.selfId,
             agentId: entry.agentId,
@@ -1916,6 +1925,29 @@ export class DiskFileDialogStore extends DialogStore {
         break;
       }
 
+      case 'teammate_call_anchor_record': {
+        const anchorEvent = {
+          type: 'teammate_call_anchor_evt',
+          course,
+          genseq: event.genseq,
+          anchorRole: event.anchorRole ?? 'response',
+          callId: event.callId,
+          assignmentCourse: event.assignmentCourse,
+          assignmentGenseq: event.assignmentGenseq,
+          callerDialogId: event.callerDialogId,
+          callerCourse: event.callerCourse,
+          dialog: {
+            selfId: dialog.id.selfId,
+            rootId: dialog.id.rootId,
+          },
+          timestamp: event.ts,
+        };
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(anchorEvent));
+        }
+        break;
+      }
+
       case 'teammate_response_record': {
         // Handle teammate response events (separate bubble for @teammate tellasks)
         const formattedResult = formatTeammateResponseContent({
@@ -1930,6 +1962,8 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'teammate_response_evt',
           responderId: event.responderId,
           calleeDialogId: event.calleeDialogId,
+          calleeCourse: event.calleeCourse,
+          calleeGenseq: event.calleeGenseq,
           mentionList: event.mentionList,
           tellaskContent: event.tellaskContent,
           status: event.status,
@@ -2058,6 +2092,7 @@ type PendingSubdialogRecord = {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
+  callingCourse?: number;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 };
@@ -2409,10 +2444,7 @@ export class DialogPersistence {
         }
         return validDialogIds;
       } catch (error) {
-        log.warn(
-          `🔍 listDialogs: Error processing directory ${specificDir}:`,
-          error instanceof Error ? error.message : String(error),
-        );
+        log.warn(`🔍 listDialogs: Error processing directory ${specificDir}:`, error);
         return [];
       }
     } catch (error) {
@@ -2813,7 +2845,7 @@ export class DialogPersistence {
         ) {
           return (parsed as Questions4HumanFile).questions;
         }
-        log.warn(`q4h.yaml has unexpected shape for dialog ${dialogId}`, {
+        log.warn(`q4h.yaml has unexpected shape for dialog ${dialogId}`, undefined, {
           filePath: questionsFilePath,
         });
         return [];
@@ -2843,7 +2875,7 @@ export class DialogPersistence {
         }
 
         if (repairedQuestions) {
-          log.warn(`Repaired corrupted q4h.yaml for dialog ${dialogId}`, {
+          log.warn(`Repaired corrupted q4h.yaml for dialog ${dialogId}`, undefined, {
             filePath: questionsFilePath,
           });
           const repairedFile: Questions4HumanFile = {
@@ -2862,7 +2894,7 @@ export class DialogPersistence {
         try {
           const quarantinePath = `${questionsFilePath}.corrupt-${randomUUID()}`;
           await fs.promises.rename(questionsFilePath, quarantinePath);
-          log.warn(`Quarantined corrupted q4h.yaml for dialog ${dialogId}`, {
+          log.warn(`Quarantined corrupted q4h.yaml for dialog ${dialogId}`, undefined, {
             filePath: questionsFilePath,
             quarantinePath,
           });
@@ -3286,6 +3318,14 @@ export class DialogPersistence {
     if (typeof value.tellaskContent !== 'string') return false;
     if (typeof value.targetAgentId !== 'string') return false;
     if (typeof value.callId !== 'string') return false;
+    if ('callingCourse' in value) {
+      const callingCourse = value.callingCourse;
+      if (callingCourse !== undefined) {
+        if (typeof callingCourse !== 'number') return false;
+        if (!Number.isFinite(callingCourse)) return false;
+        if (Math.floor(callingCourse) <= 0) return false;
+      }
+    }
     if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
     if ('sessionSlug' in value) {
       const sessionSlug = value.sessionSlug;
@@ -4660,6 +4700,10 @@ export class DialogPersistence {
         case 'quest_for_sup_record':
           // These events are handled separately in dialog restoration
           // Skip them for message reconstruction
+          break;
+        case 'teammate_call_anchor_record':
+          // This record is UI navigation metadata for deep links in callee dialogs.
+          // It does not contribute to model context or chat transcript reconstruction.
           break;
 
         default:

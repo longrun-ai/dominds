@@ -4,7 +4,9 @@ import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
 import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
+import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';
@@ -39,7 +41,7 @@ async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string):
     if (!changed) return;
     await dlg.processReminderUpdates();
   } catch (err) {
-    log.warn('Failed to sync pending tellask reminder', {
+    log.warn('Failed to sync pending tellask reminder', undefined, {
       where,
       dialogId: dlg.id.selfId,
       rootId: dlg.id.rootId,
@@ -65,6 +67,53 @@ async function resolveOwnerDialogBySelfId(
   );
 }
 
+async function resolveLatestAssignmentAnchorRef(args: {
+  calleeDialogId: DialogID;
+  callId: string;
+}): Promise<{ course: number; genseq: number } | undefined> {
+  const normalizedCallId = args.callId.trim();
+  if (normalizedCallId === '') {
+    return undefined;
+  }
+
+  const runningLatest = await DialogPersistence.loadDialogLatest(args.calleeDialogId, 'running');
+  const completedLatest = runningLatest
+    ? null
+    : await DialogPersistence.loadDialogLatest(args.calleeDialogId, 'completed');
+  const latest = runningLatest ?? completedLatest;
+  if (!latest) {
+    return undefined;
+  }
+  const status: 'running' | 'completed' = runningLatest ? 'running' : 'completed';
+
+  const maxCourse = Math.floor(latest.currentCourse);
+  for (let course = maxCourse; course >= 1; course -= 1) {
+    const courseEvents = await DialogPersistence.loadCourseEvents(
+      args.calleeDialogId,
+      course,
+      status,
+    );
+    for (let i = courseEvents.length - 1; i >= 0; i -= 1) {
+      const event = courseEvents[i];
+      if (event.type !== 'teammate_call_anchor_record') {
+        continue;
+      }
+      if (event.anchorRole !== 'assignment') {
+        continue;
+      }
+      if (event.callId.trim() !== normalizedCallId) {
+        continue;
+      }
+      if (!Number.isFinite(event.genseq) || event.genseq <= 0) {
+        continue;
+      }
+      return { course, genseq: Math.floor(event.genseq) };
+    }
+  }
+
+  return undefined;
+}
+
 export async function supplyResponseToSupdialogV2(args: {
   parentDialog: Dialog;
   subdialogId: DialogID;
@@ -72,6 +121,7 @@ export async function supplyResponseToSupdialogV2(args: {
   callType: 'A' | 'B' | 'C';
   callId?: string;
   status?: 'completed' | 'failed';
+  calleeResponseRef?: { course: number; genseq: number };
   scheduleDrive: ScheduleDriveFn;
 }): Promise<void> {
   const {
@@ -81,6 +131,7 @@ export async function supplyResponseToSupdialogV2(args: {
     callType,
     callId,
     status = 'completed',
+    calleeResponseRef,
     scheduleDrive,
   } = args;
   try {
@@ -94,6 +145,7 @@ export async function supplyResponseToSupdialogV2(args: {
             tellaskContent: string;
             targetAgentId: string;
             callId: string;
+            callingCourse?: number;
             callType: 'A' | 'B' | 'C';
             sessionSlug?: string;
           }
@@ -132,7 +184,7 @@ export async function supplyResponseToSupdialogV2(args: {
           }
         }
       } catch (err) {
-        log.warn('Failed to load subdialog metadata for response record', {
+        log.warn('Failed to load subdialog metadata for response record', undefined, {
           parentId: parentDialog.id.selfId,
           subdialogId: subdialogId.selfId,
           error: err,
@@ -168,9 +220,47 @@ export async function supplyResponseToSupdialogV2(args: {
         tellaskContent,
         originMemberId,
         callId: pendingRecord?.callId,
+        callingCourse:
+          pendingRecord &&
+          typeof pendingRecord.callingCourse === 'number' &&
+          Number.isFinite(pendingRecord.callingCourse) &&
+          pendingRecord.callingCourse > 0
+            ? Math.floor(pendingRecord.callingCourse)
+            : undefined,
         shouldRevive,
       };
     });
+
+    const normalizedCallId = typeof callId === 'string' ? callId.trim() : '';
+    const fallbackCallId = typeof result.callId === 'string' ? result.callId.trim() : '';
+    const resolvedCallId = normalizedCallId !== '' ? normalizedCallId : fallbackCallId;
+    if (resolvedCallId !== '' && calleeResponseRef) {
+      const assignmentRef = await resolveLatestAssignmentAnchorRef({
+        calleeDialogId: subdialogId,
+        callId: resolvedCallId,
+      });
+      if (!assignmentRef) {
+        log.error('Missing assignment anchor for teammate response anchor', undefined, {
+          parentId: parentDialog.id.selfId,
+          subdialogId: subdialogId.selfId,
+          callId: resolvedCallId,
+          responseCourse: calleeResponseRef.course,
+          responseGenseq: calleeResponseRef.genseq,
+        });
+      }
+      const anchorRecord: TeammateCallAnchorRecord = {
+        ts: formatUnifiedTimestamp(new Date()),
+        type: 'teammate_call_anchor_record',
+        anchorRole: 'response',
+        callId: resolvedCallId,
+        genseq: calleeResponseRef.genseq,
+        assignmentCourse: assignmentRef?.course,
+        assignmentGenseq: assignmentRef?.genseq,
+        callerDialogId: parentDialog.id.selfId,
+        callerCourse: result.callingCourse,
+      };
+      await DialogPersistence.appendEvent(subdialogId, calleeResponseRef.course, anchorRecord);
+    }
 
     await syncPendingTellaskReminderBestEffort(parentDialog, 'driver-v2:supplyResponseToSupdialog');
 
@@ -183,8 +273,10 @@ export async function supplyResponseToSupdialogV2(args: {
       {
         response: responseText,
         agentId: result.responderAgentId ?? result.responderId,
-        callId: callId ?? '',
+        callId: resolvedCallId,
         originMemberId: result.originMemberId ?? parentDialog.agentId,
+        calleeCourse: calleeResponseRef?.course,
+        calleeGenseq: calleeResponseRef?.genseq,
       },
     );
 
@@ -197,7 +289,7 @@ export async function supplyResponseToSupdialogV2(args: {
       mentionList: result.mentionList,
       tellaskContent: result.tellaskContent,
       status,
-      callId: callId ?? result.callId,
+      callId: resolvedCallId,
       content: formatTeammateResponseContent({
         responderId: result.responderId,
         requesterId: result.originMemberId ?? parentDialog.agentId,
@@ -215,7 +307,7 @@ export async function supplyResponseToSupdialogV2(args: {
         ? globalDialogRegistry.get(parentDialog.id.rootId) !== undefined
         : false;
 
-      log.info(
+      log.debug(
         `All Type ${callType} subdialogs complete, parent ${parentDialog.id.selfId} scheduling auto-revive`,
         undefined,
         {
@@ -245,10 +337,9 @@ export async function supplyResponseToSupdialogV2(args: {
       }
     }
   } catch (error) {
-    log.error('driver-v2 failed to supply subdialog response', {
+    log.error('driver-v2 failed to supply subdialog response', error, {
       parentId: parentDialog.id.selfId,
       subdialogId: subdialogId.selfId,
-      error,
     });
     throw error;
   }
@@ -257,10 +348,11 @@ export async function supplyResponseToSupdialogV2(args: {
 export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
   subdialog: SubDialog;
   responseText: string;
+  responseGenseq: number;
   target: SubdialogReplyTarget;
   scheduleDrive: ScheduleDriveFn;
 }): Promise<boolean> {
-  const { subdialog, responseText, target, scheduleDrive } = args;
+  const { subdialog, responseText, responseGenseq, target, scheduleDrive } = args;
   const assignment = subdialog.assignmentFromSup;
   if (!assignment) {
     return false;
@@ -277,13 +369,17 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
     return false;
   }
   if (pendingRecord.callType !== target.callType) {
-    log.warn('Reply target callType does not match pending callType; skipping stale reply target', {
-      rootId: subdialog.rootDialog.id.rootId,
-      subdialogId: subdialog.id.selfId,
-      ownerDialogId: ownerDialog.id.selfId,
-      targetCallType: target.callType,
-      pendingCallType: pendingRecord.callType,
-    });
+    log.warn(
+      'Reply target callType does not match pending callType; skipping stale reply target',
+      undefined,
+      {
+        rootId: subdialog.rootDialog.id.rootId,
+        subdialogId: subdialog.id.selfId,
+        ownerDialogId: ownerDialog.id.selfId,
+        targetCallType: target.callType,
+        pendingCallType: pendingRecord.callType,
+      },
+    );
     return false;
   }
 
@@ -294,6 +390,7 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
     callType: pendingRecord.callType,
     callId: target.callId,
     status: 'completed',
+    calleeResponseRef: { course: subdialog.currentCourse, genseq: responseGenseq },
     scheduleDrive,
   });
   return true;
@@ -302,9 +399,10 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
 export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
   subdialog: SubDialog;
   responseText: string;
+  responseGenseq: number;
   scheduleDrive: ScheduleDriveFn;
 }): Promise<boolean> {
-  const { subdialog, responseText, scheduleDrive } = args;
+  const { subdialog, responseText, responseGenseq, scheduleDrive } = args;
   const assignment = subdialog.assignmentFromSup;
   if (!assignment) {
     return false;
@@ -312,7 +410,7 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
 
   const callerDialog = await resolveOwnerDialogBySelfId(subdialog, assignment.callerDialogId);
   if (!callerDialog) {
-    log.warn('Missing caller dialog for subdialog response supply', {
+    log.warn('Missing caller dialog for subdialog response supply', undefined, {
       rootId: subdialog.rootDialog.id.rootId,
       subdialogId: subdialog.id.selfId,
       callerDialogId: assignment.callerDialogId,
@@ -333,6 +431,7 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
     callType: pendingRecord.callType,
     callId: assignment.callId,
     status: 'completed',
+    calleeResponseRef: { course: subdialog.currentCourse, genseq: responseGenseq },
     scheduleDrive,
   });
   return true;

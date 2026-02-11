@@ -267,7 +267,7 @@ export function scheduleAgentPrimingForNewDialog(
           })
           .catch((err: unknown) => {
             if (isAgentPrimingInterruptedError(err)) {
-              log.info('Agent Priming interrupted; will retry on next dialog', undefined, {
+              log.debug('Agent Priming interrupted; will retry on next dialog', undefined, {
                 agentId,
                 reason: err.reason,
               });
@@ -291,7 +291,7 @@ export function scheduleAgentPrimingForNewDialog(
     .catch((err: unknown) => {
       // Best-effort: avoid unhandled rejections; the dialog itself is already marked interrupted.
       if (isAgentPrimingInterruptedError(err)) {
-        log.info('Agent Priming interrupted; will retry on next dialog', undefined, {
+        log.debug('Agent Priming interrupted; will retry on next dialog', undefined, {
           agentId,
           reason: err.reason,
         });
@@ -1567,7 +1567,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         kind: 'interrupted',
         reason: { kind: err.reason },
       };
-      log.info('Agent Priming replay interrupted by stop request', undefined, {
+      log.debug('Agent Priming replay interrupted by stop request', undefined, {
         dialogId: dlg.id.valueOf(),
         reason: err.reason,
       });
@@ -2263,7 +2263,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
         kind: 'interrupted',
         reason: { kind: err.reason },
       };
-      log.info('Agent Priming live run interrupted by stop request', undefined, {
+      log.debug('Agent Priming live run interrupted by stop request', undefined, {
         dialogId: dlg.id.valueOf(),
         reason: err.reason,
       });

@@ -36,6 +36,7 @@ type PendingSubdialogRecordType = {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
+  callingCourse?: number;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 };
@@ -327,7 +328,7 @@ async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string):
     if (!changed) return;
     await dlg.processReminderUpdates();
   } catch (err) {
-    log.warn('Failed to sync pending tellask reminder', {
+    log.warn('Failed to sync pending tellask reminder', undefined, {
       where,
       dialogId: dlg.id.selfId,
       rootId: dlg.id.rootId,
@@ -433,7 +434,7 @@ async function lookupLiveRegisteredSubdialog(
     );
   }
   await rootDialog.saveSubdialogRegistry();
-  log.info('Pruned dead registered subdialog from Type B registry', undefined, {
+  log.debug('Pruned dead registered subdialog from Type B registry', undefined, {
     rootId: rootDialog.id.rootId,
     subdialogId: existing.id.selfId,
     agentId: existing.agentId,
@@ -472,7 +473,7 @@ async function extractSupdialogResponseForTypeA(supdialog: Dialog): Promise<stri
       'Supdialog completed without producing output.',
     );
   } catch (err) {
-    log.warn('Failed to extract supdialog response for Type A', { error: err });
+    log.warn('Failed to extract supdialog response for Type A', err);
     return 'Supdialog completed with errors.';
   }
 }
@@ -598,6 +599,11 @@ async function executeTellaskCall(
         `tellaskBack invariant violation: expected Type A parseResult (callId=${callId}, got=${parseResult.type})`,
       );
     }
+    const rawCallingCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+    const callingCourse =
+      Number.isFinite(rawCallingCourse) && rawCallingCourse > 0
+        ? Math.floor(rawCallingCourse)
+        : undefined;
     const firstMentionForError = options.targetForError ?? parseResult.agentId;
     if (!isSelfAlias && parseResult.type !== 'A' && member === null) {
       const msg = formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), {
@@ -666,6 +672,7 @@ async function executeTellaskCall(
             tellaskContent: body,
             targetAgentId: parseResult.agentId,
             callId,
+            callingCourse,
             callType: 'C',
           });
         }
@@ -831,6 +838,7 @@ async function executeTellaskCall(
           tellaskContent: body,
           targetAgentId: parseResult.agentId,
           callId,
+          callingCourse,
           callType: 'B',
           sessionSlug: r.sessionSlug,
         }));
@@ -982,7 +990,7 @@ async function executeTellaskCall(
           );
         }
       } else {
-        log.warn('Type A call on dialog without supdialog, falling back to Type C', {
+        log.warn('Type A call on dialog without supdialog, falling back to Type C', undefined, {
           dialogId: dlg.id.selfId,
         });
       }
@@ -996,7 +1004,7 @@ async function executeTellaskCall(
       }
 
       if (!rootDialog) {
-        log.warn('Type B call without root dialog, falling back to Type C', {
+        log.warn('Type B call without root dialog, falling back to Type C', undefined, {
           dialogId: dlg.id.selfId,
         });
         try {
@@ -1021,6 +1029,7 @@ async function executeTellaskCall(
             tellaskContent: body,
             targetAgentId: parseResult.agentId,
             callId,
+            callingCourse,
             callType: 'C',
             sessionSlug: parseResult.sessionSlug,
           };
@@ -1107,6 +1116,7 @@ async function executeTellaskCall(
           tellaskContent: body,
           targetAgentId: parseResult.agentId,
           callId,
+          callingCourse,
           callType: 'B',
           sessionSlug: parseResult.sessionSlug,
         };
@@ -1188,6 +1198,7 @@ async function executeTellaskCall(
           tellaskContent: body,
           targetAgentId: parseResult.agentId,
           callId,
+          callingCourse,
           callType: 'C',
         };
         await withSubdialogTxnLock(dlg.id, async () => {
@@ -1351,7 +1362,7 @@ function normalizeQ4HCalls(
     tellaskContent: mergedBody,
     q4hRemainingCallIds: remainingCallIds.length > 0 ? remainingCallIds : undefined,
   };
-  log.info('Q4H multi-question normalized into a single prompt', undefined, {
+  log.debug('Q4H multi-question normalized into a single prompt', undefined, {
     rootId: dlg.id.rootId,
     selfId: dlg.id.selfId,
     mergedCount: q4hCalls.length,

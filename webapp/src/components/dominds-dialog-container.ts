@@ -34,6 +34,15 @@ type PendingScrollRequest =
   | { kind: 'by_message_index'; course: number; messageIndex: number }
   | { kind: 'by_genseq'; course: number; genseq: number };
 
+type TeammateCallAnchorMeta = {
+  callId: string;
+  anchorRole: 'assignment' | 'response';
+  assignmentCourse?: number;
+  assignmentGenseq?: number;
+  callerDialogId?: string;
+  callerCourse?: number;
+};
+
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
@@ -83,6 +92,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private callTimingTicker: number | null = null;
   private webSearchSectionByItemId = new Map<string, HTMLElement>();
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
+  private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -228,6 +238,52 @@ export class DomindsDialogContainer extends HTMLElement {
       sr.addEventListener('click', async (e: Event) => {
         const target = e.target as HTMLElement | null;
         if (!target) return;
+        const assignmentBtn = target.closest(
+          '.bubble-anchor-assignment-btn',
+        ) as HTMLButtonElement | null;
+        if (assignmentBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const bubble = assignmentBtn.closest('.generation-bubble') as HTMLElement | null;
+          if (!bubble) return;
+          const assignmentCourseRaw = Number.parseInt(
+            bubble.getAttribute('data-assignment-course') ?? '',
+            10,
+          );
+          const assignmentGenseqRaw = Number.parseInt(
+            bubble.getAttribute('data-assignment-genseq') ?? '',
+            10,
+          );
+          if (!Number.isFinite(assignmentCourseRaw) || assignmentCourseRaw <= 0) return;
+          if (!Number.isFinite(assignmentGenseqRaw) || assignmentGenseqRaw <= 0) return;
+          this.navigateToGenerationBubbleInApp(
+            Math.floor(assignmentCourseRaw),
+            Math.floor(assignmentGenseqRaw),
+          );
+          return;
+        }
+        const requesterCallsiteBtn = target.closest(
+          '.bubble-anchor-caller-callsite-btn',
+        ) as HTMLButtonElement | null;
+        if (requesterCallsiteBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const bubble = requesterCallsiteBtn.closest('.generation-bubble') as HTMLElement | null;
+          if (!bubble) return;
+          const callId = (bubble.getAttribute('data-call-id') ?? '').trim();
+          const callerDialogId = (bubble.getAttribute('data-caller-dialog-id') ?? '').trim();
+          const callerCourseRaw = Number.parseInt(
+            bubble.getAttribute('data-caller-course') ?? '',
+            10,
+          );
+          if (callId === '' || callerDialogId === '') return;
+          if (!Number.isFinite(callerCourseRaw) || callerCourseRaw <= 0) return;
+          this.openCallSiteDeepLinkInNewTab(callId, {
+            selfId: callerDialogId,
+            course: Math.floor(callerCourseRaw),
+          });
+          return;
+        }
         const shareBtn = target.closest('.bubble-share-link-btn') as HTMLButtonElement | null;
         if (shareBtn) {
           e.preventDefault();
@@ -377,6 +433,18 @@ export class DomindsDialogContainer extends HTMLElement {
     this.maybeApplyPendingScrollRequest();
   };
 
+  private buildCallIdSelector(callId: string): string {
+    const escaped = CSS.escape(callId);
+    return `.calling-section[data-call-id="${escaped}"], .generation-bubble[data-call-id="${escaped}"]`;
+  }
+
+  private findCallSiteTargetByCallId(messages: HTMLElement, callId: string): HTMLElement | null {
+    const selector = this.buildCallIdSelector(callId);
+    const matches = Array.from(messages.querySelectorAll<HTMLElement>(selector));
+    if (matches.length < 1) return null;
+    return matches[matches.length - 1] ?? null;
+  }
+
   private maybeApplyPendingScrollRequest(): void {
     const req = this.pendingScrollRequest;
     if (!req) return;
@@ -397,9 +465,7 @@ export class DomindsDialogContainer extends HTMLElement {
     let target: HTMLElement | null = null;
 
     if (req.kind === 'by_call_id') {
-      const selector = `.calling-section[data-call-id="${CSS.escape(req.callId)}"]`;
-      const found = messages.querySelector(selector);
-      target = found instanceof HTMLElement ? found : null;
+      target = this.findCallSiteTargetByCallId(messages, req.callId);
     } else if (req.kind === 'by_genseq') {
       const found = messages.querySelector(`.generation-bubble[data-seq="${String(req.genseq)}"]`);
       target = found instanceof HTMLElement ? found : null;
@@ -437,7 +503,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // first matching node we see until expiry.
     let selector: string | null = null;
     if (req.kind === 'by_call_id') {
-      selector = `.calling-section[data-call-id="${CSS.escape(req.callId)}"]`;
+      selector = this.buildCallIdSelector(req.callId);
     } else if (req.kind === 'by_genseq') {
       selector = `.generation-bubble[data-seq="${String(req.genseq)}"]`;
     } else {
@@ -618,6 +684,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopCallTimingTicker();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
+    this.pendingTeammateCallAnchorByGenseq.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -642,6 +709,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopCallTimingTicker();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
+    this.pendingTeammateCallAnchorByGenseq.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -876,6 +944,9 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'teammate_call_response_evt':
         this.handleToolCallResponse(event);
         break;
+      case 'teammate_call_anchor_evt':
+        this.handleTeammateCallAnchor(event);
+        break;
 
       // Teammate responses (separate bubble)
       case 'teammate_response_evt':
@@ -932,6 +1003,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
   private handleGeneratingStart(seq: number, timestamp: string): void {
+    const applyPendingCallAnchor = (bubble: HTMLElement): void => {
+      const pendingAnchor = this.pendingTeammateCallAnchorByGenseq.get(seq);
+      if (!pendingAnchor) return;
+      this.applyTeammateCallAnchorToBubble(bubble, pendingAnchor);
+      this.pendingTeammateCallAnchorByGenseq.delete(seq);
+    };
+
     const existingBubble = this.generationBubble;
     if (existingBubble) {
       const existingSeq = existingBubble.getAttribute('data-seq');
@@ -942,6 +1020,7 @@ export class DomindsDialogContainer extends HTMLElement {
         existingBubble.setAttribute('data-finalized', 'false');
         this.setBubbleTimestamp(existingBubble, timestamp);
         this.activeGenSeq = seq;
+        applyPendingCallAnchor(existingBubble);
         this.startAutoScrollObservation(existingBubble);
         this.scrollToBottom();
         return;
@@ -964,6 +1043,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const bubble = this.createGenerationBubble(timestamp);
     bubble.setAttribute('data-seq', String(seq));
+    applyPendingCallAnchor(bubble);
     bubble.classList.add('generating'); // Start breathing glow animation
     if (container) {
       container.appendChild(bubble);
@@ -974,8 +1054,16 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private ensureGenerationBubbleForSeq(seq: number, timestamp: string): HTMLElement | null {
+    const applyPendingCallAnchor = (bubble: HTMLElement): void => {
+      const pendingAnchor = this.pendingTeammateCallAnchorByGenseq.get(seq);
+      if (!pendingAnchor) return;
+      this.applyTeammateCallAnchorToBubble(bubble, pendingAnchor);
+      this.pendingTeammateCallAnchorByGenseq.delete(seq);
+    };
+
     const currentBubble = this.generationBubble;
     if (currentBubble && currentBubble.getAttribute('data-seq') === String(seq)) {
+      applyPendingCallAnchor(currentBubble);
       this.startAutoScrollObservation(currentBubble);
       return currentBubble;
     }
@@ -987,6 +1075,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (existing) {
       this.generationBubble = existing;
       this.activeGenSeq = seq;
+      applyPendingCallAnchor(existing);
       this.startAutoScrollObservation(existing);
       return existing;
     }
@@ -1683,6 +1772,122 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
+  private parseOptionalPositiveInt(value: unknown): number | undefined {
+    if (typeof value !== 'number') {
+      return undefined;
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      return undefined;
+    }
+    return Math.floor(value);
+  }
+
+  private applyTeammateCallAnchorToBubble(
+    bubble: HTMLElement,
+    anchor: TeammateCallAnchorMeta,
+  ): void {
+    bubble.setAttribute('data-call-id', anchor.callId);
+    bubble.setAttribute('data-teammate-call-anchor-role', anchor.anchorRole);
+
+    const assignmentCourse =
+      typeof anchor.assignmentCourse === 'number' && Number.isFinite(anchor.assignmentCourse)
+        ? Math.floor(anchor.assignmentCourse)
+        : undefined;
+    const assignmentGenseq =
+      typeof anchor.assignmentGenseq === 'number' && Number.isFinite(anchor.assignmentGenseq)
+        ? Math.floor(anchor.assignmentGenseq)
+        : undefined;
+    if (assignmentCourse !== undefined) {
+      bubble.setAttribute('data-assignment-course', String(assignmentCourse));
+    } else {
+      bubble.removeAttribute('data-assignment-course');
+    }
+    if (assignmentGenseq !== undefined) {
+      bubble.setAttribute('data-assignment-genseq', String(assignmentGenseq));
+    } else {
+      bubble.removeAttribute('data-assignment-genseq');
+    }
+
+    const callerDialogId =
+      typeof anchor.callerDialogId === 'string' ? anchor.callerDialogId.trim() : '';
+    if (callerDialogId !== '') {
+      bubble.setAttribute('data-caller-dialog-id', callerDialogId);
+    } else {
+      bubble.removeAttribute('data-caller-dialog-id');
+    }
+    const callerCourse =
+      typeof anchor.callerCourse === 'number' && Number.isFinite(anchor.callerCourse)
+        ? Math.floor(anchor.callerCourse)
+        : undefined;
+    if (callerCourse !== undefined) {
+      bubble.setAttribute('data-caller-course', String(callerCourse));
+    } else {
+      bubble.removeAttribute('data-caller-course');
+    }
+
+    this.upsertGenerationBubbleAnchorActions(bubble);
+  }
+
+  private handleTeammateCallAnchor(
+    event: Extract<TypedDialogEvent, { type: 'teammate_call_anchor_evt' }>,
+  ): void {
+    const rawCallId = typeof event.callId === 'string' ? event.callId.trim() : '';
+    if (rawCallId === '') {
+      this.handleProtocolError('teammate_call_anchor_evt missing callId');
+      return;
+    }
+    if (!Number.isFinite(event.genseq) || event.genseq <= 0) {
+      this.handleProtocolError(
+        `teammate_call_anchor_evt invalid genseq ${JSON.stringify({
+          genseq: event.genseq,
+          callId: rawCallId,
+        })}`,
+      );
+      return;
+    }
+    const rawAnchorRole =
+      typeof (event as { anchorRole?: unknown }).anchorRole === 'string'
+        ? (event as { anchorRole: string }).anchorRole.trim()
+        : '';
+    if (rawAnchorRole !== 'assignment' && rawAnchorRole !== 'response') {
+      this.handleProtocolError(
+        `teammate_call_anchor_evt invalid anchorRole ${JSON.stringify({
+          anchorRole: rawAnchorRole,
+          callId: rawCallId,
+          genseq: event.genseq,
+        })}`,
+      );
+      return;
+    }
+
+    const assignmentCourse = this.parseOptionalPositiveInt(event.assignmentCourse);
+    const assignmentGenseq = this.parseOptionalPositiveInt(event.assignmentGenseq);
+    const callerCourse = this.parseOptionalPositiveInt(event.callerCourse);
+    const callerDialogId =
+      typeof event.callerDialogId === 'string' ? event.callerDialogId.trim() : undefined;
+    const anchorMeta: TeammateCallAnchorMeta = {
+      callId: rawCallId,
+      anchorRole: rawAnchorRole,
+      assignmentCourse,
+      assignmentGenseq,
+      callerDialogId,
+      callerCourse,
+    };
+    const genseq = Math.floor(event.genseq);
+    const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    const bubble = messages
+      ? (messages.querySelector(
+          `.generation-bubble[data-seq="${String(genseq)}"]`,
+        ) as HTMLElement | null)
+      : null;
+    if (bubble) {
+      this.applyTeammateCallAnchorToBubble(bubble, anchorMeta);
+      this.pendingTeammateCallAnchorByGenseq.delete(genseq);
+      return;
+    }
+    this.pendingTeammateCallAnchorByGenseq.set(genseq, anchorMeta);
+  }
+
   // === TEAMMATE RESPONSE HANDLER ===
   // Handles responses for @agentName calls - displays result in SEPARATE bubble
   // Now includes full response and agentId from subdialog completion
@@ -1759,6 +1964,9 @@ export class DomindsDialogContainer extends HTMLElement {
       event.callId,
       event.originMemberId,
       event.mentionList,
+      typeof event.calleeCourse === 'number' && Number.isFinite(event.calleeCourse)
+        ? Math.floor(event.calleeCourse)
+        : undefined,
     );
 
     const container = this.shadowRoot?.querySelector('.messages');
@@ -1811,6 +2019,7 @@ export class DomindsDialogContainer extends HTMLElement {
     callId?: string,
     originMemberId?: string,
     mentionList?: string[],
+    calleeCourse?: number,
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
@@ -1896,7 +2105,10 @@ export class DomindsDialogContainer extends HTMLElement {
       externalBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.openCallSiteDeepLinkInNewTab(callId);
+        this.openCallSiteDeepLinkInNewTab(callId, {
+          selfId: calleeDialogId,
+          course: calleeCourse,
+        });
       });
     }
 
@@ -1905,7 +2117,10 @@ export class DomindsDialogContainer extends HTMLElement {
       shareBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        void this.copyCallSiteDeepLinkToClipboard(callId);
+        void this.copyCallSiteDeepLinkToClipboard(callId, {
+          selfId: calleeDialogId,
+          course: calleeCourse,
+        });
       });
     }
     return el;
@@ -1928,10 +2143,50 @@ export class DomindsDialogContainer extends HTMLElement {
     // navigation that requires dialog/course resolution.
   }
 
-  private openCallSiteDeepLinkInNewTab(callId: string): void {
+  private navigateToGenerationBubbleInApp(course: number, genseq: number): void {
+    if (!Number.isFinite(course) || course <= 0) return;
+    if (!Number.isFinite(genseq) || genseq <= 0) return;
+    const normalizedCourse = Math.floor(course);
+    const normalizedGenseq = Math.floor(genseq);
     const dialog = this.currentDialog;
-    const course = this.currentCourse;
-    if (!dialog || typeof course !== 'number') return;
+    if (!dialog) return;
+
+    if (this.currentCourse === normalizedCourse) {
+      this.pendingScrollRequest = {
+        kind: 'by_genseq',
+        course: normalizedCourse,
+        genseq: normalizedGenseq,
+      };
+      this.maybeApplyPendingScrollRequest();
+      return;
+    }
+
+    this.dispatchEvent(
+      new CustomEvent('navigate-genseq', {
+        detail: {
+          rootId: dialog.rootId,
+          selfId: dialog.selfId,
+          course: normalizedCourse,
+          genseq: normalizedGenseq,
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private openCallSiteDeepLinkInNewTab(
+    callId: string,
+    target?: { selfId?: string; course?: number },
+  ): void {
+    const dialog = this.currentDialog;
+    if (!dialog) return;
+    const selfId = typeof target?.selfId === 'string' ? target.selfId.trim() : '';
+    const resolvedSelfId = selfId !== '' ? selfId : dialog.selfId;
+    const course = target?.course;
+    const resolvedCourse =
+      typeof course === 'number' && Number.isFinite(course) ? course : this.currentCourse;
+    if (typeof resolvedCourse !== 'number' || !Number.isFinite(resolvedCourse)) return;
 
     const url = new URL(window.location.href);
     // Preserve auth and other non-deeplink params; override only deeplink keys.
@@ -1944,18 +2199,26 @@ export class DomindsDialogContainer extends HTMLElement {
     url.hash = '';
     url.pathname = `/dl/callsite`;
     url.searchParams.set('rootId', dialog.rootId);
-    url.searchParams.set('selfId', dialog.selfId);
-    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('selfId', resolvedSelfId);
+    url.searchParams.set('course', String(Math.floor(resolvedCourse)));
     url.searchParams.set('callId', callId);
     const urlStr = url.toString();
     const w = window.open(urlStr, '_blank', 'noopener,noreferrer');
     if (w) w.opener = null;
   }
 
-  private async copyCallSiteDeepLinkToClipboard(callId: string): Promise<void> {
+  private async copyCallSiteDeepLinkToClipboard(
+    callId: string,
+    target?: { selfId?: string; course?: number },
+  ): Promise<void> {
     const dialog = this.currentDialog;
-    const course = this.currentCourse;
-    if (!dialog || typeof course !== 'number') return;
+    if (!dialog) return;
+    const selfId = typeof target?.selfId === 'string' ? target.selfId.trim() : '';
+    const resolvedSelfId = selfId !== '' ? selfId : dialog.selfId;
+    const course = target?.course;
+    const resolvedCourse =
+      typeof course === 'number' && Number.isFinite(course) ? course : this.currentCourse;
+    if (typeof resolvedCourse !== 'number' || !Number.isFinite(resolvedCourse)) return;
 
     const url = new URL(window.location.href);
     url.searchParams.delete('rootId');
@@ -1967,8 +2230,8 @@ export class DomindsDialogContainer extends HTMLElement {
     url.hash = '';
     url.pathname = `/dl/callsite`;
     url.searchParams.set('rootId', dialog.rootId);
-    url.searchParams.set('selfId', dialog.selfId);
-    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('selfId', resolvedSelfId);
+    url.searchParams.set('course', String(Math.floor(resolvedCourse)));
     url.searchParams.set('callId', callId);
     await this.copyLinkToClipboardWithToast(url.toString());
   }
@@ -2078,6 +2341,85 @@ export class DomindsDialogContainer extends HTMLElement {
     return ` → ${caller}`;
   }
 
+  private upsertGenerationBubbleAnchorActions(bubble: HTMLElement): void {
+    const headerRight = bubble.querySelector('.bubble-header-right') as HTMLElement | null;
+    if (!headerRight) {
+      return;
+    }
+    const existingActions = headerRight.querySelector(
+      '.bubble-anchor-actions',
+    ) as HTMLElement | null;
+    const anchorRole = bubble.getAttribute('data-teammate-call-anchor-role');
+    if (anchorRole !== 'response') {
+      existingActions?.remove();
+      return;
+    }
+
+    const callId = (bubble.getAttribute('data-call-id') ?? '').trim();
+    const assignmentCourseRaw = Number.parseInt(
+      bubble.getAttribute('data-assignment-course') ?? '',
+      10,
+    );
+    const assignmentGenseqRaw = Number.parseInt(
+      bubble.getAttribute('data-assignment-genseq') ?? '',
+      10,
+    );
+    const callerDialogId = (bubble.getAttribute('data-caller-dialog-id') ?? '').trim();
+    const callerCourseRaw = Number.parseInt(bubble.getAttribute('data-caller-course') ?? '', 10);
+    const hasAssignmentRef =
+      Number.isFinite(assignmentCourseRaw) &&
+      assignmentCourseRaw > 0 &&
+      Number.isFinite(assignmentGenseqRaw) &&
+      assignmentGenseqRaw > 0;
+    const hasCallerRef =
+      callId !== '' &&
+      callerDialogId !== '' &&
+      Number.isFinite(callerCourseRaw) &&
+      callerCourseRaw > 0;
+    if (!hasAssignmentRef || !hasCallerRef) {
+      this.handleProtocolError(
+        `response anchor bubble missing link refs ${JSON.stringify({
+          callId,
+          assignmentCourse: bubble.getAttribute('data-assignment-course'),
+          assignmentGenseq: bubble.getAttribute('data-assignment-genseq'),
+          callerDialogId,
+          callerCourse: bubble.getAttribute('data-caller-course'),
+        })}`,
+      );
+      existingActions?.remove();
+      return;
+    }
+
+    const t = getUiStrings(this.uiLanguage);
+    const actions = existingActions ?? document.createElement('div');
+    actions.className = 'bubble-anchor-actions';
+    actions.innerHTML = `
+      <button type="button" class="bubble-anchor-assignment-btn" aria-label="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}" title="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 2v3"></path>
+          <path d="M12 19v3"></path>
+          <path d="M2 12h3"></path>
+          <path d="M19 12h3"></path>
+        </svg>
+      </button>
+      <button type="button" class="bubble-anchor-caller-callsite-btn" aria-label="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}" title="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 3h7v7"></path>
+          <path d="M10 14L21 3"></path>
+          <path d="M21 14v7H3V3h7"></path>
+        </svg>
+      </button>
+    `;
+
+    const shareBtn = headerRight.querySelector('.bubble-share-link-btn');
+    if (shareBtn) {
+      headerRight.insertBefore(actions, shareBtn);
+    } else {
+      headerRight.appendChild(actions);
+    }
+  }
+
   private buildGenerationBubbleHeaderHtml(timestamp: string): string {
     const t = getUiStrings(this.uiLanguage);
     const authorLabel = this.getAuthorLabel('assistant');
@@ -2092,6 +2434,7 @@ export class DomindsDialogContainer extends HTMLElement {
           </div>
         </div>
         <div class="bubble-header-right">
+          <div class="bubble-anchor-actions"></div>
           <button type="button" class="bubble-share-link-btn" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
@@ -2745,6 +3088,16 @@ export class DomindsDialogContainer extends HTMLElement {
         flex-shrink: 0;
       }
 
+      .bubble-anchor-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .bubble-anchor-actions:empty {
+        display: none;
+      }
+
       .bubble-share-link-btn {
         width: 22px;
         height: 22px;
@@ -2767,6 +3120,35 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .bubble-share-link-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
+        outline-offset: 2px;
+      }
+
+      .bubble-anchor-assignment-btn,
+      .bubble-anchor-caller-callsite-btn {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .bubble-anchor-assignment-btn:hover,
+      .bubble-anchor-caller-callsite-btn:hover {
+        background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
+        border-color: var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+      }
+
+      .bubble-anchor-assignment-btn:focus-visible,
+      .bubble-anchor-caller-callsite-btn:focus-visible {
         outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
         outline-offset: 2px;
       }

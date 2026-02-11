@@ -55,6 +55,10 @@ export type DriverV2SupplyResponseArgs = [
   callType: 'A' | 'B' | 'C',
   callId?: string,
   status?: 'completed' | 'failed',
+  calleeResponseRef?: {
+    course: number;
+    genseq: number;
+  },
 ];
 export type DriverV2SupplyResponseResult = Promise<void>;
 
@@ -70,6 +74,7 @@ export type DriverV2RuntimeState = {
 
 export type DriverV2CoreResult = {
   lastAssistantSayingContent: string | null;
+  lastAssistantSayingGenseq: number | null;
   interrupted: boolean;
 };
 

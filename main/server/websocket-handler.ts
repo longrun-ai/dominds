@@ -1482,7 +1482,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         grammar: 'markdown',
         userLanguageCode,
       });
-      log.info('Deferred Q4H answer until pending subdialogs resolve', {
+      log.debug('Deferred Q4H answer until pending subdialogs resolve', undefined, {
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
         questionId,

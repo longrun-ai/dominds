@@ -103,6 +103,8 @@ export type UiStrings = {
   q4hGoToCallSiteTitle: string;
   q4hOpenInNewTabTitle: string;
   q4hCopyLinkTitle: string;
+  teammateAssignmentBubbleTitle: string;
+  teammateRequesterCallSiteTitle: string;
 
   keepGoingTabTitle: string;
   keepGoingWorkspaceNote: string;
@@ -406,6 +408,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hGoToCallSiteTitle: '定位到提问点',
       q4hOpenInNewTabTitle: '新标签打开',
       q4hCopyLinkTitle: '复制链接',
+      teammateAssignmentBubbleTitle: '定位到任务安排气泡',
+      teammateRequesterCallSiteTitle: '在新标签打开诉请发起点',
 
       keepGoingTabTitle: '鞭策',
       keepGoingWorkspaceNote: '注意：修改鞭策语会影响整个 rtws（运行时工作区）！',
@@ -714,6 +718,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hGoToCallSiteTitle: 'Go to call site',
     q4hOpenInNewTabTitle: 'Open in new tab',
     q4hCopyLinkTitle: 'Copy link',
+    teammateAssignmentBubbleTitle: 'Go to assignment bubble',
+    teammateRequesterCallSiteTitle: 'Open requester call site in new tab',
 
     keepGoingTabTitle: 'Diligence Push',
     keepGoingWorkspaceNote:

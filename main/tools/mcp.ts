@@ -101,9 +101,22 @@ export const mcpRestartTool: FuncTool = {
 
     const res = await requestMcpServerRestart(parsed.serverId);
 
-    log.warn('mcp_restart', { caller: caller.id, serverId: parsed.serverId, ok: res.ok });
+    if (res.ok) {
+      log.debug('mcp_restart', undefined, {
+        caller: caller.id,
+        serverId: parsed.serverId,
+        ok: true,
+      });
+    } else {
+      log.warn('mcp_restart failed', undefined, {
+        caller: caller.id,
+        serverId: parsed.serverId,
+        ok: false,
+        errorText: res.errorText,
+      });
+      return `error: ${res.errorText}`;
+    }
 
-    if (!res.ok) return `error: ${res.errorText}`;
     return `ok: restarted ${parsed.serverId}`;
   },
 };
@@ -125,14 +138,23 @@ export const mcpReleaseTool: FuncTool = {
 
     const res = releaseMcpToolsetLeaseForDialog(parsed.serverId, dialogKey);
 
-    log.warn('mcp_release', {
-      caller: caller.id,
-      serverId: parsed.serverId,
-      ok: res.ok,
-      released: res.ok ? res.released : undefined,
-    });
+    if (res.ok) {
+      log.debug('mcp_release', undefined, {
+        caller: caller.id,
+        serverId: parsed.serverId,
+        ok: true,
+        released: res.released,
+      });
+    } else {
+      log.warn('mcp_release failed', undefined, {
+        caller: caller.id,
+        serverId: parsed.serverId,
+        ok: false,
+        errorText: res.errorText,
+      });
+      return `error: ${res.errorText}`;
+    }
 
-    if (!res.ok) return `error: ${res.errorText}`;
     if (!res.released) {
       return `ok: no active lease for ${parsed.serverId} (or server is truely-stateless)`;
     }

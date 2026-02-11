@@ -132,7 +132,7 @@ export class McpSdkClient {
     try {
       await this.client.close();
     } catch (err) {
-      log.debug('MCP SDK client close failed', { serverId: this.serverId, err });
+      log.debug('MCP SDK client close failed', err, { serverId: this.serverId });
     }
   }
 

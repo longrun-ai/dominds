@@ -32,7 +32,7 @@ export function applyToolNameTransforms(
         break;
       default: {
         const _exhaustive: never = t;
-        log.warn('Unknown transform kind (exhaustiveness failure)', _exhaustive);
+        log.warn('Unknown transform kind (exhaustiveness failure)', undefined, _exhaustive);
         break;
       }
     }

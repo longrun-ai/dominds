@@ -103,6 +103,7 @@ export interface PendingSubdialog {
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
+  callingCourse?: number;
   callType: 'A' | 'B' | 'C';
   sessionSlug?: string;
 }
@@ -369,7 +370,7 @@ export abstract class Dialog {
       const questions = await this.dlgStore.loadQuestions4Human(this.id, this.status);
       return questions.length > 0;
     } catch (err) {
-      log.warn('Failed to load Q4H state for pending check', {
+      log.warn('Failed to load Q4H state for pending check', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -385,7 +386,7 @@ export abstract class Dialog {
       const pending = await this.dlgStore.loadPendingSubdialogs(this.id, this.status);
       return pending.length > 0;
     } catch (err) {
-      log.warn('Failed to load pending subdialogs for pending check', {
+      log.warn('Failed to load pending subdialogs for pending check', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -447,7 +448,7 @@ export abstract class Dialog {
       this.clearPendingSubdialogs();
       this.addPendingSubdialogs(pending.map((record) => record.subdialogId));
     } catch (err) {
-      log.warn('Failed to load pending subdialogs from persistence', {
+      log.warn('Failed to load pending subdialogs from persistence', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -964,6 +965,8 @@ export abstract class Dialog {
       agentId: string;
       callId: string;
       originMemberId: string;
+      calleeCourse?: number;
+      calleeGenseq?: number;
     },
   ): Promise<void> {
     return await this.dlgStore.receiveTeammateResponse(
@@ -1040,7 +1043,7 @@ export abstract class Dialog {
           }
         }
       } catch (err) {
-        log.warn('Failed to load subdialog metadata for response labeling', {
+        log.warn('Failed to load subdialog metadata for response labeling', undefined, {
           dialogId: this.id.selfId,
           subdialogId: subdialogId.selfId,
           error: err,
@@ -1443,6 +1446,8 @@ export abstract class DialogStore {
       agentId: string;
       callId: string;
       originMemberId: string;
+      calleeCourse?: number;
+      calleeGenseq?: number;
     },
   ): Promise<void> {}
 
