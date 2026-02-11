@@ -18,6 +18,7 @@ export interface DriverV2HumanPrompt {
   msgId: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
+  q4hAnswerCallIds?: string[];
   origin?: 'user' | 'diligence_push';
   skipTaskdoc?: boolean;
   persistMode?: 'persist' | 'internal';

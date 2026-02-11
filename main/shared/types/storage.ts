@@ -264,6 +264,11 @@ export interface HumanTextRecord {
   content: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
+  /**
+   * Optional callIds when this user message is an answer to one merged Q4H prompt.
+   * Includes the primary askHuman callId and any merged remaining callIds.
+   */
+  q4hAnswerCallIds?: string[];
 }
 
 export interface FuncResultRecord {

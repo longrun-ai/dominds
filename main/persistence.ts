@@ -1232,10 +1232,25 @@ export class DiskFileDialogStore extends DialogStore {
     msgId: string,
     grammar: 'markdown',
     userLanguageCode?: LanguageCode,
+    q4hAnswerCallIds?: string[],
   ): Promise<void> {
     const course = dialog.currentCourse;
     // Use activeGenSeqOrUndefined to handle case when genseq hasn't been initialized yet
     const genseq = dialog.activeGenSeqOrUndefined ?? 1;
+    const normalizedQ4HAnswerCallIds = (() => {
+      if (!q4hAnswerCallIds || q4hAnswerCallIds.length === 0) {
+        return undefined;
+      }
+      const seen = new Set<string>();
+      const normalized: string[] = [];
+      for (const raw of q4hAnswerCallIds) {
+        const callId = raw.trim();
+        if (callId === '' || seen.has(callId)) continue;
+        seen.add(callId);
+        normalized.push(callId);
+      }
+      return normalized.length > 0 ? normalized : undefined;
+    })();
 
     const humanEv: HumanTextRecord = {
       ts: formatUnifiedTimestamp(new Date()),
@@ -1245,6 +1260,7 @@ export class DiskFileDialogStore extends DialogStore {
       msgId: msgId,
       grammar,
       userLanguageCode,
+      q4hAnswerCallIds: normalizedQ4HAnswerCallIds,
     };
     await this.appendEvent(course, humanEv);
 
@@ -1723,6 +1739,7 @@ export class DiskFileDialogStore extends DialogStore {
               content,
               grammar,
               userLanguageCode,
+              q4hAnswerCallIds: event.q4hAnswerCallIds,
               dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },
               timestamp: event.ts,
             }),
@@ -3320,13 +3337,21 @@ export class DialogPersistence {
     dialogId: DialogID,
     questionId: string,
     status: 'running' | 'completed' | 'archived' = 'running',
-  ): Promise<{ found: boolean; remainingQuestions: HumanQuestion[] }> {
+  ): Promise<{
+    found: boolean;
+    remainingQuestions: HumanQuestion[];
+    removedQuestion?: HumanQuestion;
+  }> {
     const out = await this.mutateQuestions4HumanState(
       dialogId,
       () => ({ kind: 'remove', questionId }),
       status,
     );
-    return { found: typeof out.removedQuestion !== 'undefined', remainingQuestions: out.questions };
+    return {
+      found: typeof out.removedQuestion !== 'undefined',
+      remainingQuestions: out.questions,
+      removedQuestion: out.removedQuestion,
+    };
   }
 
   private static async flushQ4HWriteBack(key: string): Promise<void> {

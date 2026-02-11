@@ -114,6 +114,7 @@ function resolveUpNextPrompt(dlg: Dialog): DriverV2HumanPrompt | undefined {
     msgId: upNext.msgId,
     grammar: upNext.grammar ?? 'markdown',
     userLanguageCode: upNext.userLanguageCode,
+    q4hAnswerCallIds: upNext.q4hAnswerCallIds,
   };
 }
 
@@ -122,6 +123,19 @@ function isUserOriginPrompt(prompt: DriverV2HumanPrompt | undefined): boolean {
     return false;
   }
   return (prompt.origin ?? 'user') === 'user';
+}
+
+function normalizeQ4HAnswerCallIds(raw: readonly string[] | undefined): string[] | undefined {
+  if (!raw || raw.length === 0) return undefined;
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of raw) {
+    const callId = value.trim();
+    if (callId === '' || seen.has(callId)) continue;
+    seen.add(callId);
+    normalized.push(callId);
+  }
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 async function emitUserMarkdown(dlg: Dialog, content: string): Promise<void> {
@@ -1117,6 +1131,7 @@ export async function driveDialogStreamCoreV2(
           const promptGrammar = currentPrompt.grammar;
           const persistedUserLanguageCode =
             currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
+          const q4hAnswerCallIds = normalizeQ4HAnswerCallIds(currentPrompt.q4hAnswerCallIds);
 
           const requestedPersistMode = currentPrompt.persistMode ?? 'persist';
           const persistMode = isDiligencePrompt ? 'persist' : requestedPersistMode;
@@ -1144,6 +1159,7 @@ export async function driveDialogStreamCoreV2(
               msgId,
               promptGrammar,
               persistedUserLanguageCode,
+              q4hAnswerCallIds,
             );
             if (currentPrompt.subdialogReplyTarget) {
               const normalizedCallId = currentPrompt.subdialogReplyTarget.callId.trim();
@@ -1189,6 +1205,7 @@ export async function driveDialogStreamCoreV2(
                 content: promptContent,
                 grammar: promptGrammar,
                 userLanguageCode: persistedUserLanguageCode,
+                q4hAnswerCallIds,
               });
             } catch (err) {
               log.warn('driver-v2 failed to emit end_of_user_saying_evt', err);

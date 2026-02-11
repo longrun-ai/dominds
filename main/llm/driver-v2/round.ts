@@ -35,6 +35,7 @@ type UpNextPrompt = {
   msgId: string;
   grammar?: DriverV2HumanPrompt['grammar'];
   userLanguageCode?: string;
+  q4hAnswerCallIds?: string[];
 };
 
 type PendingDiagnosticsSnapshot =
@@ -113,6 +114,7 @@ function resolveEffectivePrompt(
       upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
         ? upNext.userLanguageCode
         : undefined,
+    q4hAnswerCallIds: upNext.q4hAnswerCallIds,
   };
 }
 

@@ -274,6 +274,11 @@ export interface EndOfUserSayingEvent {
   content: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
+  /**
+   * Optional callIds for Q4H answers that settle one or more askHuman call sites.
+   * When present, UI may render quick links from the answer bubble back to each call site.
+   */
+  q4hAnswerCallIds?: string[];
 }
 
 export interface CourseEvent {

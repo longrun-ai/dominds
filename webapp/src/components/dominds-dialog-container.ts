@@ -288,6 +288,17 @@ export class DomindsDialogContainer extends HTMLElement {
           });
           return;
         }
+        const userAnswerCallsiteBtn = target.closest(
+          '.user-answer-callsite-link-btn',
+        ) as HTMLButtonElement | null;
+        if (userAnswerCallsiteBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const callId = (userAnswerCallsiteBtn.getAttribute('data-call-id') ?? '').trim();
+          if (callId === '') return;
+          this.navigateToCallSiteInApp(callId);
+          return;
+        }
         const shareBtn = target.closest('.bubble-share-link-btn') as HTMLButtonElement | null;
         if (shareBtn) {
           e.preventDefault();
@@ -2616,6 +2627,63 @@ export class DomindsDialogContainer extends HTMLElement {
     return el;
   }
 
+  private normalizeQ4HAnswerCallIds(raw: unknown): string[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const value of raw) {
+      if (typeof value !== 'string') continue;
+      const callId = value.trim();
+      if (callId === '' || seen.has(callId)) continue;
+      seen.add(callId);
+      normalized.push(callId);
+    }
+    return normalized;
+  }
+
+  private upsertUserAnswerCallSiteLinks(bubble: HTMLElement, callIds: readonly string[]): void {
+    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
+    if (!body) return;
+    const existing = body.querySelector('.user-answer-callsite-links') as HTMLElement | null;
+    if (callIds.length === 0) {
+      existing?.remove();
+      bubble.removeAttribute('data-q4h-answer-call-ids');
+      return;
+    }
+
+    bubble.setAttribute('data-q4h-answer-call-ids', callIds.join(','));
+    const t = getUiStrings(this.uiLanguage);
+    const callSiteButtons = callIds
+      .map((callId, index) => {
+        const label = `#${String(index + 1)}`;
+        const safeCallId = this.escapeHtml(callId);
+        const safeLabel = this.escapeHtml(label);
+        const safeTitle = this.escapeHtml(`${t.q4hGoToCallSiteTitle} ${label}`);
+        return `<button type="button" class="user-answer-callsite-link-btn" data-call-id="${safeCallId}" aria-label="${safeTitle}" title="${safeTitle}">${safeLabel}</button>`;
+      })
+      .join('');
+    const html = `
+      <div class="user-answer-callsite-label">${this.escapeHtml(t.q4hAnswerCallSitesLabel)}</div>
+      <div class="user-answer-callsite-actions">${callSiteButtons}</div>
+    `;
+    if (existing) {
+      existing.innerHTML = html;
+      return;
+    }
+
+    const linksEl = document.createElement('div');
+    linksEl.className = 'user-answer-callsite-links';
+    linksEl.innerHTML = html;
+    const divider = body.querySelector('.user-response-divider');
+    if (divider?.nextSibling) {
+      body.insertBefore(linksEl, divider.nextSibling);
+      return;
+    }
+    body.appendChild(linksEl);
+  }
+
   // Render <hr/> separator between user content and AI response
   // Called when end_of_user_saying_evt is received
   private handleEndOfUserSaying(event: EndOfUserSayingEvent): void {
@@ -2646,6 +2714,8 @@ export class DomindsDialogContainer extends HTMLElement {
     if (body.querySelector('.user-response-divider')) {
       bubble.setAttribute('data-user-msg-id', event.msgId);
       bubble.setAttribute('data-raw-user-msg', event.content);
+      const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
+      this.upsertUserAnswerCallSiteLinks(bubble, q4hAnswerCallIds);
       if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
         bubble.setAttribute('data-user-language-code', event.userLanguageCode);
       } else {
@@ -2678,6 +2748,8 @@ export class DomindsDialogContainer extends HTMLElement {
     body.appendChild(divider);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
+    const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
+    this.upsertUserAnswerCallSiteLinks(bubble, q4hAnswerCallIds);
     if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
       bubble.setAttribute('data-user-language-code', event.userLanguageCode);
     } else {
@@ -3479,8 +3551,49 @@ export class DomindsDialogContainer extends HTMLElement {
         border-top: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         margin: 8px 0;
       }
-      
-      
+
+      .user-answer-callsite-links {
+        margin-top: -2px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .user-answer-callsite-label {
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-size: 11px;
+        line-height: 1.3;
+      }
+
+      .user-answer-callsite-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .user-answer-callsite-link-btn {
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #d1d5db));
+        background: var(--color-bg-secondary, #ffffff);
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        border-radius: 999px;
+        min-width: 26px;
+        height: 22px;
+        padding: 0 8px;
+        font-size: 11px;
+        line-height: 20px;
+        cursor: pointer;
+      }
+
+      .user-answer-callsite-link-btn:hover {
+        background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9));
+      }
+
+      .user-answer-callsite-link-btn:focus-visible {
+        outline: 2px solid var(--dominds-primary, var(--color-accent-primary, #007acc));
+        outline-offset: 1px;
+      }
+
       /* Section styles (thinking, markdown) */
   .thinking-section, .markdown-section {
         margin-bottom: 0; /* bubble-body gap provides spacing */

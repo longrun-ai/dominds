@@ -101,6 +101,7 @@ export type UiStrings = {
   q4hEnterToSendTitle: string;
   q4hCtrlEnterToSendTitle: string;
   q4hGoToCallSiteTitle: string;
+  q4hAnswerCallSitesLabel: string;
   q4hOpenInNewTabTitle: string;
   q4hCopyLinkTitle: string;
   teammateAssignmentBubbleTitle: string;
@@ -406,6 +407,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hEnterToSendTitle: '按 Enter 发送（Cmd/Ctrl+Enter 换行）',
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
       q4hGoToCallSiteTitle: '定位到提问点',
+      q4hAnswerCallSitesLabel: '本次回答对应提问点：',
       q4hOpenInNewTabTitle: '新标签打开',
       q4hCopyLinkTitle: '复制链接',
       teammateAssignmentBubbleTitle: '定位到任务安排气泡',
@@ -716,6 +718,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hEnterToSendTitle: 'Enter to send (Cmd/Ctrl+Enter for newline)',
     q4hCtrlEnterToSendTitle: 'Cmd/Ctrl+Enter to send (Enter for newline)',
     q4hGoToCallSiteTitle: 'Go to call site',
+    q4hAnswerCallSitesLabel: 'Answer applies to call sites:',
     q4hOpenInNewTabTitle: 'Open in new tab',
     q4hCopyLinkTitle: 'Copy link',
     teammateAssignmentBubbleTitle: 'Go to assignment bubble',

@@ -1464,6 +1464,32 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     // Ensure the requesting WebSocket receives q4h_answered and subsequent resume stream events.
     await setupWebSocketSubscription(ws, dialog);
 
+    const removedQuestion = removed.removedQuestion;
+    if (!removedQuestion) {
+      throw new Error(
+        `Q4H remove invariant violation: found=true but removedQuestion missing (rootId=${dialog.id.rootId} selfId=${dialog.id.selfId} questionId=${questionId})`,
+      );
+    }
+
+    const askHumanCallIds = Array.from(
+      new Set(
+        [removedQuestion.callId, ...(removedQuestion.remainingCallIds ?? [])]
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value !== ''),
+      ),
+    );
+    for (const callId of askHumanCallIds) {
+      await dialog.receiveTeammateCallResult(
+        'human',
+        'askHuman',
+        undefined,
+        removedQuestion.tellaskContent,
+        content,
+        'completed',
+        callId,
+      );
+    }
+
     // Emit q4h_answered event for answered question
     const answeredEvent: Q4HAnsweredEvent = {
       type: 'q4h_answered',
@@ -1479,6 +1505,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         msgId,
         grammar: 'markdown',
         userLanguageCode,
+        q4hAnswerCallIds: askHumanCallIds,
       });
       log.debug('Deferred Q4H answer until pending subdialogs resolve', undefined, {
         rootId: dialog.id.rootId,
@@ -1492,7 +1519,14 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     // Resume the dialog with the user's answer.
     await driveDialogStream(
       dialog,
-      { content, msgId, grammar: 'markdown', userLanguageCode, origin: 'user' },
+      {
+        content,
+        msgId,
+        grammar: 'markdown',
+        userLanguageCode,
+        q4hAnswerCallIds: askHumanCallIds,
+        origin: 'user',
+      },
       true,
     );
   } catch (error) {

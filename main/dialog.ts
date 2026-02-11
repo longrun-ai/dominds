@@ -191,6 +191,7 @@ export abstract class Dialog {
     msgId: string;
     grammar?: 'markdown';
     userLanguageCode?: LanguageCode;
+    q4hAnswerCallIds?: string[];
   };
   // Course prefix messages injected into LLM context on every course.
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
@@ -734,6 +735,7 @@ export abstract class Dialog {
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
+    q4hAnswerCallIds?: string[];
   }): void {
     if (this._upNext !== undefined) {
       throw new Error(
@@ -749,6 +751,7 @@ export abstract class Dialog {
       msgId: options.msgId,
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+      q4hAnswerCallIds: options.q4hAnswerCallIds,
     };
     this._updatedAt = formatUnifiedTimestamp(new Date());
   }
@@ -758,7 +761,13 @@ export abstract class Dialog {
   }
 
   public takeUpNext():
-    | { prompt: string; msgId: string; grammar?: 'markdown'; userLanguageCode?: LanguageCode }
+    | {
+        prompt: string;
+        msgId: string;
+        grammar?: 'markdown';
+        userLanguageCode?: LanguageCode;
+        q4hAnswerCallIds?: string[];
+      }
     | undefined {
     const next = this._upNext;
     this._upNext = undefined;
@@ -994,8 +1003,16 @@ export abstract class Dialog {
     msgId: string,
     grammar: 'markdown',
     userLanguageCode?: LanguageCode,
+    q4hAnswerCallIds?: string[],
   ): Promise<void> {
-    return await this.dlgStore.persistUserMessage(this, content, msgId, grammar, userLanguageCode);
+    return await this.dlgStore.persistUserMessage(
+      this,
+      content,
+      msgId,
+      grammar,
+      userLanguageCode,
+      q4hAnswerCallIds,
+    );
   }
 
   public async persistAgentMessage(
@@ -1598,6 +1615,7 @@ export abstract class DialogStore {
     _msgId: string,
     _grammar: 'markdown',
     _userLanguageCode?: LanguageCode,
+    _q4hAnswerCallIds?: string[],
   ): Promise<void> {}
 
   /**
