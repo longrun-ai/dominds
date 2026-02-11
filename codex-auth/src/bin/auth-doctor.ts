@@ -773,7 +773,7 @@ function selectChatGptModel(
     };
   }
 
-  const fallbackModels = ['gpt-5.2-codex', 'gpt-5.2'];
+  const fallbackModels = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2'];
   for (const model of fallbackModels) {
     const instructions = resolveLocalInstructions(model);
     if (instructions) {
@@ -782,7 +782,7 @@ function selectChatGptModel(
   }
 
   return {
-    model: 'gpt-5.2-codex',
+    model: 'gpt-5.3-codex',
     instructions: 'You are Codex CLI.',
   };
 }

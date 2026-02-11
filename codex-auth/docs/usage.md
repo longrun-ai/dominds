@@ -10,7 +10,7 @@ way to start or continue a conversation.
 import { createChatGptContinuationRequest, createChatGptStartRequest } from '@longrun-ai/codex-auth';
 
 const payload = createChatGptStartRequest({
-  model: 'gpt-5.2-codex',
+  model: 'gpt-5.3-codex',
   instructions: 'You are Codex CLI.',
   // Native built-in tools are supported:
   // - web_search: cached/live web retrieval handled by Responses API
@@ -28,7 +28,7 @@ const payload = createChatGptStartRequest({
 
 const history = JSON.parse(historyJson);
 const followup = createChatGptContinuationRequest({
-  model: 'gpt-5.2-codex',
+  model: 'gpt-5.3-codex',
   instructions: 'You are Codex CLI.',
   history,
   userText: 'continue',

@@ -30,7 +30,7 @@ if (!auth) {
 
 const client = await createChatGptClientFromManager(manager);
 const payload = createChatGptStartRequest({
-  model: 'gpt-5.2-codex',
+  model: 'gpt-5.3-codex',
   instructions: 'You are Codex CLI.',
   tools: [{ type: 'web_search', external_web_access: true }],
   userText: 'hello',
@@ -47,7 +47,7 @@ import { createChatGptContinuationRequest } from '@longrun-ai/codex-auth';
 
 const history = JSON.parse(historyJson);
 const followup = createChatGptContinuationRequest({
-  model: 'gpt-5.2-codex',
+  model: 'gpt-5.3-codex',
   instructions: 'You are Codex CLI.',
   history,
   userText: 'continue',
@@ -131,7 +131,7 @@ npx @longrun-ai/codex-auth --verbose
 Override model or base URL:
 
 ```sh
-npx @longrun-ai/codex-auth --model gpt-5.2-codex \
+npx @longrun-ai/codex-auth --model gpt-5.3-codex \
   --chatgpt-base-url https://chatgpt.com/backend-api/
 ```
 
