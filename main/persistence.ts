@@ -968,12 +968,27 @@ export class DiskFileDialogStore extends DialogStore {
   private thinkingContent: string = '';
 
   public async sayingStart(dialog: Dialog): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Reset saying content tracker
     this.sayingContent = '';
+    const evt: MarkdownStartEvent = {
+      type: 'markdown_start_evt',
+      course,
+      genseq: dialog.activeGenSeq,
+    };
+    postDialogEvent(dialog, evt);
   }
   public async sayingChunk(dialog: Dialog, chunk: string): Promise<void> {
+    const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Collect saying content for persistence
     this.sayingContent += chunk;
+    const evt: MarkdownChunkEvent = {
+      type: 'markdown_chunk_evt',
+      chunk,
+      course,
+      genseq: dialog.activeGenSeq,
+    };
+    postDialogEvent(dialog, evt);
   }
   public async sayingFinish(dialog: Dialog): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
@@ -988,6 +1003,12 @@ export class DiskFileDialogStore extends DialogStore {
       };
       await this.appendEvent(course, sayingMessageEvent);
     }
+    const evt: MarkdownFinishEvent = {
+      type: 'markdown_finish_evt',
+      course,
+      genseq: dialog.activeGenSeq,
+    };
+    postDialogEvent(dialog, evt);
   }
 
   public async thinkingStart(dialog: Dialog): Promise<void> {
