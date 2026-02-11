@@ -45,7 +45,6 @@ async function main(): Promise<void> {
       questions: [
         {
           id: 'q1',
-          mentionList: ['@human'],
           tellaskContent: 'Answer me',
           askedAt: new Date().toISOString(),
           callId: 'call-q1',

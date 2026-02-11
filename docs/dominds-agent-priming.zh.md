@@ -4,7 +4,7 @@
 
 ## 摘要
 
-Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR，`self-route tellask`）并不是“写在系统提示里的约定”，而是**后端真实可驱动、可执行、可回传、可持久化**的机制。
+Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR，`freshBootsReasoning`）并不是“写在系统提示里的约定”，而是**后端真实可驱动、可执行、可回传、可持久化**的机制。
 
 问题在于：即使系统提示把这些机制写得再细，大多数基础模型也并未在“真的可以随时拉一个队友去跑 shell 命令并把结果带回来”的世界里被训练过，因此容易把提示当成“说说而已 / 仅供参考”。这会直接削弱诉请与 FBR 的可用性。
 
@@ -20,7 +20,7 @@ Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR�
 
 - 诉请机制与对话系统：[`dialog-system.zh.md`](./dialog-system.zh.md)
 - 术语约定（主线/支线；诉请方/应答方）：[`dominds-terminology.md`](./dominds-terminology.md)
-- FBR（`self-route tellask`）：[`fbr.zh.md`](./fbr.zh.md)
+- FBR（`freshBootsReasoning`）：[`fbr.zh.md`](./fbr.zh.md)
 - 工作语言 vs UI 语言：[`i18n.zh.md`](./i18n.zh.md)
 
 ---
@@ -28,7 +28,7 @@ Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR�
 ## 目标
 
 - 在对话一开始就建立“诉请/回传/持久化都是真的”的信任。
-- 在对话一开始就跑通一次 `self-route tellask` 的 FBR 回路。
+- 在对话一开始就跑通一次 `freshBootsReasoning` 的 FBR 回路。
 - 把“发起 FBR 后先等待回贴，再做综合决策”的时序固化为肌肉记忆。
 - 把多份 FBR 草稿做一次**综合提炼**，把“取精华、去糟粕”的动作也变成体感的一部分。
 - 过程足够小、可控、低风险（默认只执行 `uname -a`）。
@@ -48,7 +48,7 @@ Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR�
 - **支线对话**：由诉请 / FBR 触发的临时工作线，产出结果回传主线。
 - **诉请（Tellask）**：以 `tellask({ targetAgentId: "<memberId>", sessionSlug: "<slug>", tellaskContent: "..." })` 向队友/对话发起的结构化请求。
 - **Shell 专员（shell specialist）**：被允许执行 shell 命令并回传结果的队友（由 `shell_specialists` 配置指定）。
-- **FBR（扪心自问）**：以 `self-route tellask` 触发的“无工具支线推理”，产出报告回传主线。
+- **FBR（扪心自问）**：以 `freshBootsReasoning` 触发的“无工具支线推理”，产出报告回传主线。
 
 ---
 
@@ -83,7 +83,7 @@ Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR�
 
 ### 3）真实 FBR：基于环境信息做一次“扪心自问”
 
-拿到环境快照后，主线智能体触发一次 `self-route tellask` FBR，并在 FBR 的诉请正文里带上：
+拿到环境快照后，主线智能体触发一次 `freshBootsReasoning` FBR，并在 FBR 的诉请正文里带上：
 
 - 命令 `uname -a` 的完整输出（明确注明命令名，未来可能更换命令，不能靠猜）
 - FBR 的工具约束（FBR 无工具；主线工具另论）
@@ -91,14 +91,14 @@ Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR�
 
 并发草稿（可选）：
 
-- 若团队成员配置启用了 `fbr_effort`（默认值为 `3`），运行时会并发创建多份 `self-route tellask` FBR 支线对话，让“初心自我”从不同角度独立推理，形成多份草稿供主线对话综合提炼。
+- 若团队成员配置启用了 `fbr_effort`（默认值为 `3`），运行时会并发创建多份 `freshBootsReasoning` FBR 支线对话，让“初心自我”从不同角度独立推理，形成多份草稿供主线对话综合提炼。
 - 这些草稿之间**没有稳定身份映射**，也没有必须遵循的先后顺序；主线对话应当把它们当作“多份匿名草稿”，而不是“固定的三个角色”。
 - 若 `fbr_effort` 为 `0`，则跳过 FBR。
 - 若 `fbr_effort` 大于 `100`，运行时会报错并终止启动流程（配置错误）。
 
 阶段边界（关键）：
 
-- `self-route tellask` 只是**发起动作**，不是“已完成决策”。
+- `freshBootsReasoning` 只是**发起动作**，不是“已完成决策”。
 - 主线对话必须先进入等待态，直到该次 FBR 的回贴返回。
 - 若 `fbr_effort = N`，主线必须等待全部 N 条回贴后再进入综合提炼；不得基于部分草稿提前定稿。
 
@@ -175,7 +175,7 @@ Dominds 的诉请（Tellask，`tellask* function call`）与扪心自问（FBR�
 - 智能体启动应以真实对话转录展示，用户可展开查看细节。
 - 建议在对话顶部提供一个可折叠区域，并带上清晰标签：
   - “队友诉请（shell）”
-  - “FBR（`self-route tellask`）”
+  - “FBR（`freshBootsReasoning`）”
   - “智能体启动（Agent Priming）”
 
 ### 创建对话时可选择跳过（opt-out）

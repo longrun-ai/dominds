@@ -35,9 +35,10 @@ export class DialogFactory {
     supdialog: RootDialog,
     taskDocPath: string,
     targetAgentId: string,
-    mentionList: string[],
+    mentionList: string[] | undefined,
     tellaskContent: string,
     options: {
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -56,6 +57,7 @@ export class DialogFactory {
       subdialogId,
       targetAgentId,
       {
+        callName: options.callName,
         mentionList,
         tellaskContent,
         originMemberId: options.originMemberId,

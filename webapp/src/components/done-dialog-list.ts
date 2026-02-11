@@ -103,8 +103,8 @@ export class DoneDialogList extends HTMLElement {
 
   private getDialogDisplayCallsign(dialog: ApiRootDialogResponse): string {
     const assignment = dialog.assignmentFromSup;
-    if (assignment && Array.isArray(assignment.mentionList)) {
-      if (assignment.mentionList.some((mention) => /^\s*@self\b/.test(mention))) return '@self';
+    if (assignment?.callName === 'freshBootsReasoning') {
+      return 'FBR';
     }
     return `@${dialog.agentId}`;
   }

@@ -141,7 +141,8 @@ export async function supplyResponseToSupdialogV2(args: {
         | {
             subdialogId: string;
             createdAt: string;
-            mentionList: string[];
+            callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+            mentionList?: string[];
             tellaskContent: string;
             targetAgentId: string;
             callId: string;
@@ -161,7 +162,9 @@ export async function supplyResponseToSupdialogV2(args: {
 
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
-      let mentionList: string[] = [];
+      let callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' =
+        'tellaskSessionless';
+      let mentionList: string[] | undefined;
       let tellaskContent = responseText;
       let originMemberId: string | undefined;
 
@@ -173,6 +176,7 @@ export async function supplyResponseToSupdialogV2(args: {
         if (metadata && metadata.assignmentFromSup) {
           originMemberId = metadata.assignmentFromSup.originMemberId;
           if (!pendingRecord) {
+            callName = metadata.assignmentFromSup.callName;
             mentionList = metadata.assignmentFromSup.mentionList;
             tellaskContent = metadata.assignmentFromSup.tellaskContent;
           }
@@ -196,13 +200,17 @@ export async function supplyResponseToSupdialogV2(args: {
       }
 
       if (pendingRecord) {
+        callName = pendingRecord.callName;
         responderId = pendingRecord.targetAgentId;
         responderAgentId = pendingRecord.targetAgentId;
         mentionList = pendingRecord.mentionList;
         tellaskContent = pendingRecord.tellaskContent;
       }
 
-      if (mentionList.length < 1) {
+      if (
+        (callName === 'tellask' || callName === 'tellaskSessionless') &&
+        (!Array.isArray(mentionList) || mentionList.length < 1)
+      ) {
         mentionList = [`@${responderId}`];
       }
 
@@ -216,6 +224,7 @@ export async function supplyResponseToSupdialogV2(args: {
       return {
         responderId,
         responderAgentId,
+        callName,
         mentionList,
         tellaskContent,
         originMemberId,
@@ -266,6 +275,7 @@ export async function supplyResponseToSupdialogV2(args: {
 
     await parentDialog.receiveTeammateResponse(
       result.responderId,
+      result.callName,
       result.mentionList,
       result.tellaskContent,
       status,
@@ -291,6 +301,7 @@ export async function supplyResponseToSupdialogV2(args: {
       status,
       callId: resolvedCallId,
       content: formatTeammateResponseContent({
+        callName: result.callName,
         responderId: result.responderId,
         requesterId: result.originMemberId ?? parentDialog.agentId,
         mentionList: result.mentionList,

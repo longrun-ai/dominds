@@ -237,10 +237,10 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Terminology](docs/dominds-terminology.md)** — Canonical vocabulary across prompts and implementation docs (Taskdoc, Teammate Tellask, etc.)
 - **[Memory System](docs/memory-system.md)** — The hierarchical memory system
 - **[CLI Usage Guide](docs/cli-usage.md)** — Commands, options, and usage patterns
-- **[Q4H](docs/q4h.md)** — Questions for Human (`!?@human`) mechanism and WebUI support
+- **[Q4H](docs/q4h.md)** — Questions for Human (`askHuman`) mechanism and WebUI support
 - **[MCP Support](docs/mcp-support.md)** — MCP tool integration
 - **[Encapsulated Taskdocs](docs/encapsulated-taskdoc.md)** — `*.tsk/` Taskdoc packages and parsing
-- **[FBR](docs/fbr.md)** — Fresh Boots Reasoning (`!?@self`) design and enhancements
+- **[FBR](docs/fbr.md)** — Fresh Boots Reasoning (`freshBootsReasoning`) design and enhancements
 - **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
 - **[Diligence Push](docs/diligence-push.md)** — Auto-continue (diligence) mechanism
 - **[Showing-by-Doing](docs/showing-by-doing.md)** — A dialog-creation prelude that makes Tellask feel real

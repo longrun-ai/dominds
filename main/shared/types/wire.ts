@@ -16,7 +16,8 @@ export interface DialogIdent {
 }
 
 export interface AssignmentFromSup {
-  mentionList: string[];
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   originMemberId: string;
   callerDialogId: string;
@@ -224,7 +225,6 @@ export interface Q4HStateResponse {
     rootId: string;
     agentId: string;
     taskDocPath: string;
-    mentionList: string[];
     tellaskContent: string;
     askedAt: string;
     callId?: string;

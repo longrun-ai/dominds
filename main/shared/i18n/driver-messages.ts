@@ -148,14 +148,14 @@ export function formatDomindsNoteTellaskForTeammatesOnly(
       `错误：诉请（tellask）仅用于队友诉请（tellask-special 函数）。\n` +
       `- 当前目标：\`@${firstMention}\` 不是已知队友呼号。\n` +
       `- 若你要调用工具：请使用原生 function-calling（函数工具）。\n` +
-      `- 若你要找队友：请使用 tellask-special 函数并确认 targetAgentId（如 \`pangu\` / \`self\`），支线回问请用 \`tellaskBack\`。`
+      `- 若你要找队友：请使用 tellask-special 函数并确认 targetAgentId（如 \`pangu\`），支线回问请用 \`tellaskBack\`。`
     );
   }
   return (
     `Error: tellask is reserved for teammate tellasks (tellask-special functions).\n` +
     `- Current target: \`@${firstMention}\` is not a known teammate call sign.\n` +
     `- If you intended to call a tool: use native function-calling.\n` +
-    `- If you intended to call a teammate: use tellask-special functions and verify targetAgentId (e.g. \`pangu\` / \`self\`); use \`tellaskBack\` for ask-back.`
+    `- If you intended to call a teammate: use tellask-special functions and verify targetAgentId (e.g. \`pangu\`); use \`tellaskBack\` for ask-back.`
   );
 }
 
@@ -166,14 +166,14 @@ export function formatDomindsNoteQ4HRegisterFailed(
   const error = args.error;
   if (language === 'zh') {
     return (
-      `错误：Q4H（\`@human\`）登记失败。\n` +
+      `错误：Q4H（\`askHuman\`）登记失败。\n` +
       `- 原因：${error}\n` +
       `- 建议：请重试；若持续失败，可删除该对话的 \`q4h.yaml\`（会丢失该对话的待答问题），或查看服务端日志。`
     );
   }
 
   return (
-    `Error: failed to register Q4H (\`@human\`).\n` +
+    `Error: failed to register Q4H (\`askHuman\`).\n` +
     `- Reason: ${error}\n` +
     `- Next: retry; if this keeps failing, delete the dialog's \`q4h.yaml\` (will drop pending questions) or check server logs.`
   );
@@ -273,29 +273,29 @@ export function formatDomindsNoteTellaskerOnlyInSidelineDialog(language: Languag
 export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      'Dominds 提示：该诉请目标是当前 agent（自诉请/self-tellask）。' +
-      '扪心自问通常应使用一次性 self-route tellask（无 tellaskSession）；' +
-      '仅在你明确需要可恢复的长期支线对话时才使用带 tellaskSession 的 self-route tellask。该诉请将继续执行。'
+      '错误：不允许通过 `tellask` / `tellaskSessionless` 对当前 agent 发起自诉请。\n' +
+      '- 若你要发起扪心自问（FBR），请使用 `freshBootsReasoning({ tellaskContent })`。\n' +
+      '- `tellask` / `tellaskSessionless` 仅用于队友诉请（targetAgentId 必须是队友 id）。'
     );
   }
   return (
-    'Dominds note: This call targets the current agent (self-tellask). ' +
-    'Fresh Boots Reasoning should usually use one-shot self-route tellask (no tellaskSession) for an ephemeral fresh boots session; use ' +
-    'resumable self-route tellask with tellaskSession only when you explicitly want a long-lived sideline dialog. This call will proceed.'
+    'Error: self-targeted calls via `tellask` / `tellaskSessionless` are not allowed.\n' +
+    '- For FBR, use `freshBootsReasoning({ tellaskContent })`.\n' +
+    '- `tellask` / `tellaskSessionless` are teammate-only (targetAgentId must be a teammate id).'
   );
 }
 
 export function formatDomindsNoteFbrDisabled(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      '错误：当前团队配置不允许你使用 self-route tellask 发起扪心自问（FBR）。\n' +
+      '错误：当前团队配置不允许你使用 `freshBootsReasoning` 发起扪心自问（FBR）。\n' +
       '- 请联系团队管理者调整配置后再试。\n' +
       '- 你仍可使用其它队友诉请函数（tellask/tellaskSessionless）或在当前对话中直接分析并给出结论。'
     );
   }
   return (
-    'Error: self-route Fresh Boots Reasoning (FBR) tellask is disabled by your team configuration.\n' +
-    '- Ask your team manager to adjust the team config, then retry self-route tellask.\n' +
+    'Error: `freshBootsReasoning` (FBR) is disabled by your team configuration.\n' +
+    '- Ask your team manager to adjust the team config, then retry `freshBootsReasoning`.\n' +
     '- You can still tellask other teammates via tellask functions (`tellask` / `tellaskSessionless`) or provide analysis directly in the current dialog.'
   );
 }
@@ -337,7 +337,7 @@ export function formatDomindsNoteFbrToollessViolation(
 
   return [
     'ERR_FBR_TOOLLESS_VIOLATION',
-    `Dominds note: this is a tool-less self-route FBR sideline dialog. ${detail}`,
+    `Dominds note: this is a tool-less FBR sideline dialog (triggered by \`freshBootsReasoning\`). ${detail}`,
     '',
     '- No tools are available: do not emit function tool calls.',
     '- No tellask-special functions are allowed (`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',

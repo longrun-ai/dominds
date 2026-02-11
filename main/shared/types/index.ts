@@ -38,7 +38,7 @@ export interface ApiRootDialogResponse {
   runState?: DialogRunState;
   supdialogId?: string; // Optional: supdialog ID for subdialogs in flattened lists
   sessionSlug?: string;
-  // Optional: present for subdialogs (when available) so the UI can render special cases like `@self` FBR.
+  // Optional: present for subdialogs (when available) so the UI can render special cases like FBR.
   assignmentFromSup?: AssignmentFromSup;
   subdialogCount?: number; // Number of subdialogs (only present in root dialog responses)
 }

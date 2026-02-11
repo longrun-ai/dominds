@@ -47,7 +47,8 @@ export interface SubdialogEvent extends DialogEventBase {
     rootId: string;
   };
   targetAgentId: string;
-  mentionList: string[];
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   subDialogNode: {
     selfId: string;
@@ -62,7 +63,8 @@ export interface SubdialogEvent extends DialogEventBase {
     runState?: DialogRunState;
     sessionSlug?: string;
     assignmentFromSup?: {
-      mentionList: string[];
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+      mentionList?: string[];
       tellaskContent: string;
       originMemberId: string;
       callerDialogId: string;
@@ -162,24 +164,45 @@ export type WebSearchCallEvent = LlmGenDlgEvent & {
 };
 
 // Teammate-call lifecycle events (function-call based tellask-special channel)
-export type TeammateCallStartEvent = LlmGenDlgEvent & {
-  type: 'teammate_call_start_evt';
-  callId: string;
-  mentionList: string[];
-  tellaskContent: string;
-};
+export type TeammateCallStartEvent =
+  | (LlmGenDlgEvent & {
+      type: 'teammate_call_start_evt';
+      callName: 'tellask' | 'tellaskSessionless';
+      callId: string;
+      mentionList: string[];
+      tellaskContent: string;
+    })
+  | (LlmGenDlgEvent & {
+      type: 'teammate_call_start_evt';
+      callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
+      callId: string;
+      tellaskContent: string;
+    });
 
-export interface TeammateCallResponseEvent {
-  type: 'teammate_call_response_evt';
-  course: number;
-  calling_genseq?: number;
-  responderId: string;
-  mentionList: string[];
-  tellaskContent: string;
-  status: 'completed' | 'failed';
-  result: string;
-  callId: string;
-}
+export type TeammateCallResponseEvent =
+  | {
+      type: 'teammate_call_response_evt';
+      course: number;
+      calling_genseq?: number;
+      responderId: string;
+      callName: 'tellask' | 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      result: string;
+      callId: string;
+    }
+  | {
+      type: 'teammate_call_response_evt';
+      course: number;
+      calling_genseq?: number;
+      responderId: string;
+      callName: 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      result: string;
+      callId: string;
+    };
 
 // Anchor event in callee dialog for locating assignment/response bubbles by tellask callId.
 export interface TeammateCallAnchorEvent {
@@ -206,23 +229,42 @@ export interface FullRemindersEvent {
 
 // Teammate response event - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
-export interface TeammateResponseEvent {
-  type: 'teammate_response_evt';
-  course: number;
-  calling_genseq?: number;
-  responderId: string;
-  calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-  calleeCourse?: number;
-  calleeGenseq?: number;
-  mentionList: string[];
-  tellaskContent: string;
-  status: 'completed' | 'failed';
-  result: string;
-  response: string; // full subdialog response text (no truncation)
-  agentId: string;
-  callId: string; // For navigation from response back to call site
-  originMemberId: string;
-}
+export type TeammateResponseEvent =
+  | {
+      type: 'teammate_response_evt';
+      course: number;
+      calling_genseq?: number;
+      responderId: string;
+      calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+      calleeCourse?: number;
+      calleeGenseq?: number;
+      callName: 'tellask' | 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      result: string;
+      response: string; // full subdialog response text (no truncation)
+      agentId: string;
+      callId: string; // For navigation from response back to call site
+      originMemberId: string;
+    }
+  | {
+      type: 'teammate_response_evt';
+      course: number;
+      calling_genseq?: number;
+      responderId: string;
+      calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+      calleeCourse?: number;
+      calleeGenseq?: number;
+      callName: 'tellaskBack' | 'freshBootsReasoning';
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      result: string;
+      response: string; // full subdialog response text (no truncation)
+      agentId: string;
+      callId: string; // For navigation from response back to call site
+      originMemberId: string;
+    };
 
 // End of user saying event - emitted after user content is rendered/executed.
 // Used by frontend to render <hr/> separator between user content and AI response
@@ -247,7 +289,6 @@ export interface NewQ4HAskedEvent {
   question: {
     id: string;
     selfId: string;
-    mentionList: string[];
     tellaskContent: string;
     askedAt: string;
     callId?: string;

@@ -19,7 +19,7 @@ description: Start from a blank taskdoc, initialize and launch a new task
 
 ## Constraints:
 
-- Except for taskdoc sections (`change_mind(selector, category)`), do not create new documents unless explicitly requested by the human user; if truly required for the task, tellask @human for permission
+- Except for taskdoc sections (`change_mind(selector, category)`), do not create new documents unless explicitly requested by the human user; if truly required for the task, call `askHuman` for permission
 
 ## Grants:
 

@@ -172,7 +172,6 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
   const language = dlg.getLastUserLanguageCode();
   const question: HumanQuestion = {
     id: questionId,
-    mentionList: ['@human'],
     tellaskContent: formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount }),
     askedAt: formatUnifiedTimestamp(new Date()),
     callSiteRef: {
@@ -188,7 +187,6 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
     question: {
       id: question.id,
       selfId: dlg.id.selfId,
-      mentionList: question.mentionList,
       tellaskContent: question.tellaskContent,
       askedAt: question.askedAt,
       callId: question.callId,

@@ -204,7 +204,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'tellaskBack',
-    description: 'Ask back to upstream dialog in sideline context.',
+    description: 'Ask back to the requester dialog in sideline context.',
     parameters: {
       type: 'object',
       properties: {
@@ -266,6 +266,22 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     },
     call: async (): Promise<ToolCallOutput> => {
       throw new Error('askHuman is handled by driver-v2 tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
+    name: 'freshBootsReasoning',
+    description: 'Start an FBR sideline dialog for tool-less fresh-boots reasoning.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tellaskContent: { type: 'string' },
+      },
+      required: ['tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('freshBootsReasoning is handled by driver-v2 tellask-special channel');
     },
   },
 ];
@@ -558,10 +574,12 @@ async function executeRoutedFunctionCalls(args: {
   const toPersistedSpecialCallArgs = (
     call: ReturnType<typeof classifyTellaskSpecialFunctionCalls>['specialCalls'][number],
   ): ToolArguments => {
-    switch (call.kind) {
+    switch (call.callName) {
       case 'tellaskBack':
         return { tellaskContent: call.tellaskContent };
       case 'askHuman':
+        return { tellaskContent: call.tellaskContent };
+      case 'freshBootsReasoning':
         return { tellaskContent: call.tellaskContent };
       case 'tellask':
         return {

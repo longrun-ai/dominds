@@ -99,7 +99,7 @@ export class DialogID {
 export interface PendingSubdialog {
   subdialogId: DialogID;
   createdAt: string;
-  mentionList: string[];
+  mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
@@ -150,7 +150,8 @@ export interface DialogInitParams {
  * Assignment from supdialog for subdialogs
  */
 export interface AssignmentFromSup {
-  mentionList: string[];
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   originMemberId: string;
   callerDialogId: string;
@@ -461,9 +462,10 @@ export abstract class Dialog {
    */
   abstract createSubDialog(
     targetAgentId: string,
-    mentionList: string[],
+    mentionList: string[] | undefined,
     tellaskContent: string,
     options: {
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -801,6 +803,7 @@ export abstract class Dialog {
         ? `${formatAssignmentFromSupdialog({
             fromAgentId: this.assignmentFromSup.originMemberId,
             toAgentId: this.agentId,
+            callName: this.assignmentFromSup.callName,
             mentionList: this.assignmentFromSup.mentionList,
             tellaskContent: this.assignmentFromSup.tellaskContent,
             language: getWorkLanguage(),
@@ -920,8 +923,9 @@ export abstract class Dialog {
 
   // Tellask-special call lifecycle events
   public async callingStart(payload: {
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
     callId: string;
-    mentionList: string[];
+    mentionList?: string[];
     tellaskContent: string;
   }): Promise<void> {
     // Store callId for inline call-result correlation
@@ -934,7 +938,8 @@ export abstract class Dialog {
    */
   public async receiveTeammateCallResult(
     responderId: string,
-    mentionList: string[],
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
+    mentionList: string[] | undefined,
     tellaskContent: string,
     result: string,
     status: 'completed' | 'failed',
@@ -943,6 +948,7 @@ export abstract class Dialog {
     return await this.dlgStore.receiveTeammateCallResult(
       this,
       responderId,
+      callName,
       mentionList,
       tellaskContent,
       result,
@@ -956,7 +962,8 @@ export abstract class Dialog {
    */
   public async receiveTeammateResponse(
     responderId: string,
-    mentionList: string[],
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
+    mentionList: string[] | undefined,
     tellaskContent: string,
     status: 'completed' | 'failed',
     subdialogId: DialogID | undefined,
@@ -972,6 +979,7 @@ export abstract class Dialog {
     return await this.dlgStore.receiveTeammateResponse(
       this,
       responderId,
+      callName,
       mentionList,
       tellaskContent,
       status,
@@ -1023,7 +1031,8 @@ export abstract class Dialog {
     try {
       let responderId = subdialogId.rootId;
       let responderAgentId: string | undefined;
-      let mentionList: string[] = [];
+      let callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning' = 'tellaskSessionless';
+      let mentionList: string[] | undefined;
       let tellaskContent = response;
       let originMemberId = responderId;
       let callId = '';
@@ -1036,6 +1045,7 @@ export abstract class Dialog {
             originMemberId = metadata.agentId;
           }
           if (metadata.assignmentFromSup) {
+            callName = metadata.assignmentFromSup.callName;
             mentionList = metadata.assignmentFromSup.mentionList;
             tellaskContent = metadata.assignmentFromSup.tellaskContent;
             originMemberId = metadata.assignmentFromSup.originMemberId;
@@ -1055,7 +1065,10 @@ export abstract class Dialog {
           subdialogId: subdialogId.selfId,
         });
       }
-      if (mentionList.length < 1) {
+      if (
+        (callName === 'tellask' || callName === 'tellaskSessionless') &&
+        (!Array.isArray(mentionList) || mentionList.length < 1)
+      ) {
         mentionList = [`@${responderId}`];
       }
 
@@ -1065,29 +1078,52 @@ export abstract class Dialog {
       await this.notifyGeneratingStart();
 
       const formattedResult = formatTeammateResponseContent({
+        callName,
         responderId,
         requesterId: originMemberId,
-        mentionList,
+        mentionList: mentionList ?? [],
         tellaskContent,
         responseBody: response,
         language: getWorkLanguage(),
       });
 
       // Emit TeammateResponseEvent
-      const evt: TeammateResponseEvent = {
-        type: 'teammate_response_evt',
-        responderId,
-        calleeDialogId: subdialogId.selfId,
-        mentionList,
-        tellaskContent,
-        status: 'completed',
-        result: formattedResult,
-        course: this.currentCourse,
-        response,
-        agentId: responderAgentId ?? responderId,
-        callId,
-        originMemberId,
-      };
+      const evt: TeammateResponseEvent = (() => {
+        switch (callName) {
+          case 'tellask':
+          case 'tellaskSessionless':
+            return {
+              type: 'teammate_response_evt',
+              responderId,
+              calleeDialogId: subdialogId.selfId,
+              callName,
+              mentionList: mentionList ?? [],
+              tellaskContent,
+              status: 'completed',
+              result: formattedResult,
+              course: this.currentCourse,
+              response,
+              agentId: responderAgentId ?? responderId,
+              callId,
+              originMemberId,
+            };
+          case 'freshBootsReasoning':
+            return {
+              type: 'teammate_response_evt',
+              responderId,
+              calleeDialogId: subdialogId.selfId,
+              callName,
+              tellaskContent,
+              status: 'completed',
+              result: formattedResult,
+              course: this.currentCourse,
+              response,
+              agentId: responderAgentId ?? responderId,
+              callId,
+              originMemberId,
+            };
+        }
+      })();
       postDialogEvent(this, evt);
 
       // Emit virtual generating_finish_evt
@@ -1156,9 +1192,10 @@ export class SubDialog extends Dialog {
    */
   async createSubDialog(
     targetAgentId: string,
-    mentionList: string[],
+    mentionList: string[] | undefined,
     tellaskContent: string,
     options: {
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -1296,9 +1333,10 @@ export class RootDialog extends Dialog {
    */
   async createSubDialog(
     targetAgentId: string,
-    mentionList: string[],
+    mentionList: string[] | undefined,
     tellaskContent: string,
     options: {
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -1354,9 +1392,10 @@ export abstract class DialogStore {
   public async createSubDialog(
     supdialog: RootDialog,
     targetAgentId: string,
-    mentionList: string[],
+    mentionList: string[] | undefined,
     tellaskContent: string,
     options: {
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -1374,6 +1413,7 @@ export abstract class DialogStore {
       subdialogId,
       targetAgentId,
       {
+        callName: options.callName,
         mentionList,
         tellaskContent,
         originMemberId: options.originMemberId,
@@ -1424,7 +1464,13 @@ export abstract class DialogStore {
   public async receiveTeammateCallResult(
     _dialog: Dialog,
     _responderId: string,
-    _mentionList: string[],
+    _callName:
+      | 'tellaskBack'
+      | 'tellask'
+      | 'tellaskSessionless'
+      | 'askHuman'
+      | 'freshBootsReasoning',
+    _mentionList: string[] | undefined,
     _tellaskContent: string,
     _result: string,
     _status: 'completed' | 'failed',
@@ -1437,7 +1483,8 @@ export abstract class DialogStore {
   public async receiveTeammateResponse(
     _dialog: Dialog,
     _responderId: string,
-    _mentionList: string[],
+    _callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
+    _mentionList: string[] | undefined,
     _tellaskContent: string,
     _status: 'completed' | 'failed',
     _subdialogId: DialogID | undefined,
@@ -1501,7 +1548,17 @@ export abstract class DialogStore {
   // Tellask-special call lifecycle methods
   public async callingStart(
     _dialog: Dialog,
-    _payload: { callId: string; mentionList: string[]; tellaskContent: string },
+    _payload: {
+      callName:
+        | 'tellaskBack'
+        | 'tellask'
+        | 'tellaskSessionless'
+        | 'askHuman'
+        | 'freshBootsReasoning';
+      callId: string;
+      mentionList?: string[];
+      tellaskContent: string;
+    },
   ): Promise<void> {}
 
   // Function call event (non-streaming mode - single event)

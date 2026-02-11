@@ -4270,7 +4270,6 @@ export class DomindsApp extends HTMLElement {
         questionId: string | null;
         dialogId: string;
         rootId: string;
-        mentionList: string[];
         tellaskContent: string;
       }>;
       const questionId = ce.detail?.questionId ?? null;
@@ -6279,12 +6278,9 @@ export class DomindsApp extends HTMLElement {
         let titleText = '';
 
         // Build display title - all fields are guaranteed to be present
-        const isFbrSelfTellask =
-          normalizedDialog.assignmentFromSup !== undefined &&
-          normalizedDialog.assignmentFromSup.mentionList.some((mention) =>
-            /^\s*@self\b/.test(mention),
-          );
-        const callsign = isFbrSelfTellask ? '@self' : `@${normalizedDialog.agentId}`;
+        const isFbrSideline =
+          normalizedDialog.assignmentFromSup?.callName === 'freshBootsReasoning';
+        const callsign = isFbrSideline ? 'FBR' : `@${normalizedDialog.agentId}`;
         titleText = `${callsign} (${normalizedDialog.selfId})`;
 
         // Add Taskdoc info
@@ -7958,7 +7954,6 @@ export class DomindsApp extends HTMLElement {
       for (const question of context.questions) {
         q4hQuestions.push({
           id: question.id,
-          mentionList: question.mentionList,
           tellaskContent: question.tellaskContent,
           askedAt: question.askedAt,
           dialogContext: context,

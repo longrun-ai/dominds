@@ -90,7 +90,7 @@
 
 ### 4.1 协作阶段协议（Teammate Tellask 版）
 
-对**队友诉请（非 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`）**，统一执行四段协议：
+对**队友诉请（非 `freshBootsReasoning({ tellaskContent: "..." })`）**，统一执行四段协议：
 
 1. `发起`：明确目标、约束、验收口径，发出 `tellask* function call`。
 2. `等待`：等待本轮回贴，不预设对方会自动继续。
@@ -163,7 +163,7 @@ tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tell
 
 1. 一次性诉请：`uname -a`（环境基线）。
 2. 长线诉请：`tellaskSession: rtws-vcs-inventory` 两轮盘点仓库现状。
-3. 在两段证据都到位后，再进入 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR 和综合提炼。
+3. 在两段证据都到位后，再进入 `freshBootsReasoning({ tellaskContent: "..." })` FBR 和综合提炼。
 
 关键原则：
 
@@ -194,7 +194,7 @@ tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tell
    - remote（fetch/push）
    - branch / upstream
    - dirty 状态
-5. 汇总 `uname + VCS` 作为同一份环境证据，发起 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR。
+5. 汇总 `uname + VCS` 作为同一份环境证据，发起 `freshBootsReasoning({ tellaskContent: "..." })` FBR。
 6. 收齐 FBR 回贴后做 distillation，产出 priming note。
 
 #### 诉请模板约束

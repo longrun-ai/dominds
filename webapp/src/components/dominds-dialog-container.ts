@@ -1564,9 +1564,34 @@ export class DomindsDialogContainer extends HTMLElement {
     event: Extract<TypedDialogEvent, { type: 'teammate_call_start_evt' }>,
   ): void {
     const genseq = event.genseq;
-    const mentionList = Array.isArray(event.mentionList) ? event.mentionList : [];
-    const primaryMention = mentionList[0] ?? '@unknown';
-    const firstMention = primaryMention.startsWith('@') ? primaryMention.slice(1) : primaryMention;
+    const mentionList = (() => {
+      switch (event.callName) {
+        case 'tellask':
+        case 'tellaskSessionless':
+          return event.mentionList;
+        case 'tellaskBack':
+        case 'askHuman':
+        case 'freshBootsReasoning':
+          return [] as string[];
+      }
+    })();
+    const firstMention = (() => {
+      if (mentionList.length > 0) {
+        const primaryMention = mentionList[0] ?? '@unknown';
+        return primaryMention.startsWith('@') ? primaryMention.slice(1) : primaryMention;
+      }
+      switch (event.callName) {
+        case 'tellaskBack':
+          return 'tellaskBack';
+        case 'askHuman':
+          return 'askHuman';
+        case 'freshBootsReasoning':
+          return 'freshBootsReasoning';
+        case 'tellask':
+        case 'tellaskSessionless':
+          return 'unknown';
+      }
+    })();
 
     const bubble = this.ensureGenerationBubbleForSeq(genseq, event.timestamp);
     if (!bubble) {
@@ -1575,14 +1600,13 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     const body = bubble.querySelector('.bubble-body');
 
-    const callingSection = this.createCallingSection(firstMention);
+    const callingSection = this.createCallingSection(event.callName, firstMention);
     const startedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
     callingSection.setAttribute('data-call-start-ms', String(startedAtMs));
     callingSection.setAttribute('data-call-id', event.callId);
-    this.renderMentionList(
-      callingSection,
-      mentionList.length > 0 ? mentionList : [`@${firstMention}`],
-    );
+    if (mentionList.length > 0) {
+      this.renderMentionList(callingSection, mentionList);
+    }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement | null;
     if (bodyEl) {
       bodyEl.textContent = event.tellaskContent;
@@ -1730,10 +1754,14 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const callId = String(event.callId || '').trim();
     if (!callId) {
+      const mentionListForLog =
+        event.callName === 'tellask' || event.callName === 'tellaskSessionless'
+          ? event.mentionList
+          : undefined;
       this.handleProtocolError(
         `teammate_call_response_evt missing callId ${JSON.stringify({
           responderId: event.responderId,
-          mentionList: event.mentionList,
+          mentionList: mentionListForLog,
           tellaskContent: event.tellaskContent,
           calling_genseq: event.calling_genseq,
         })}`,
@@ -1937,10 +1965,15 @@ export class DomindsDialogContainer extends HTMLElement {
     // In prod, trust the backend to send the fully-formatted narrative. In dev, verify that
     // `event.result` matches the canonical formatting from structured fields.
     if (import.meta.env.DEV) {
+      const responseMentionList =
+        event.callName === 'tellask' || event.callName === 'tellaskSessionless'
+          ? event.mentionList
+          : undefined;
       const expectedResult = formatTeammateResponseContent({
+        callName: event.callName,
         responderId: event.responderId,
         requesterId,
-        mentionList: event.mentionList,
+        mentionList: responseMentionList,
         tellaskContent: event.tellaskContent,
         responseBody: event.response,
         language: this.serverWorkLanguage,
@@ -1963,7 +1996,7 @@ export class DomindsDialogContainer extends HTMLElement {
       event.calling_genseq,
       event.callId,
       event.originMemberId,
-      event.mentionList,
+      event.callName,
       typeof event.calleeCourse === 'number' && Number.isFinite(event.calleeCourse)
         ? Math.floor(event.calleeCourse)
         : undefined,
@@ -2018,7 +2051,7 @@ export class DomindsDialogContainer extends HTMLElement {
     callSiteId?: number,
     callId?: string,
     originMemberId?: string,
-    mentionList?: string[],
+    callName?: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
     calleeCourse?: number,
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
@@ -2031,10 +2064,9 @@ export class DomindsDialogContainer extends HTMLElement {
     if (callId) {
       el.setAttribute('data-call-id', callId);
     }
-    const isFbrSelfTellask =
-      Array.isArray(mentionList) && mentionList.some((mention) => /^\s*@self\b/.test(mention));
-    const callsign = isFbrSelfTellask ? '@self' : agentId ? `@${agentId}` : 'Teammate';
-    const responseIndicator = isFbrSelfTellask
+    const isFbr = callName === 'freshBootsReasoning';
+    const callsign = isFbr ? 'FBR' : agentId ? `@${agentId}` : 'Teammate';
+    const responseIndicator = isFbr
       ? ' · FBR'
       : this.getTeammateResponseIndicator(agentId, originMemberId);
     el.innerHTML = `
@@ -2310,18 +2342,12 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private formatAgentLabel(agentId: string): string {
-    if (agentId === 'human' || agentId === '@human') {
-      return 'Human';
-    }
     return agentId.startsWith('@') ? agentId : `@${agentId}`;
   }
 
   private formatCallerLabel(assignment: AssignmentFromSup): string {
     const originMemberId = assignment.originMemberId;
     if (originMemberId && originMemberId.trim() !== '') {
-      if (originMemberId === 'human') {
-        return 'Human';
-      }
       return this.formatAgentLabel(originMemberId);
     }
     return 'Assistant';
@@ -2333,9 +2359,7 @@ export class DomindsDialogContainer extends HTMLElement {
       return 'Response';
     }
     let caller = this.formatAgentLabel(dialog.agentId);
-    if (originMemberId === 'human') {
-      caller = 'Human';
-    } else if (originMemberId && originMemberId.trim() !== '') {
+    if (originMemberId && originMemberId.trim() !== '') {
       caller = this.formatAgentLabel(originMemberId);
     }
     return ` → ${caller}`;
@@ -2556,15 +2580,19 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // Create calling section (inside markdown section) - streaming mode for tellask call blocks
-  private createCallingSection(firstMention: string): HTMLElement {
-    const isFbrSelf = firstMention.trim() === 'self';
+  private createCallingSection(
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
+    firstMention: string,
+  ): HTMLElement {
+    const isFbr = callName === 'freshBootsReasoning';
     const el = document.createElement('div');
-    el.className = isFbrSelf ? 'calling-section fbr' : 'calling-section';
+    el.className = isFbr ? 'calling-section fbr' : 'calling-section';
     el.setAttribute('data-first-mention', firstMention);
+    el.setAttribute('data-call-name', callName);
     el.innerHTML = `
       <div class="calling-header">
         ${
-          isFbrSelf
+          isFbr
             ? `<span class="calling-icon fbr-icon" aria-hidden="true">✨</span>`
             : `<span class="calling-icon tool-icon">
                  <img src="${mannedToolIcon}" class="calling-img" alt="calling">

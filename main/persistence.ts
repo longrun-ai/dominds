@@ -77,23 +77,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isAssignmentFromSup(value: unknown): value is SubdialogMetadataFile['assignmentFromSup'] {
-  if (!isRecord(value)) return false;
-  if (!Array.isArray(value.mentionList)) return false;
-  if (!value.mentionList.every((item) => typeof item === 'string')) return false;
-  if (typeof value.tellaskContent !== 'string') return false;
-  if (typeof value.originMemberId !== 'string') return false;
-  if (typeof value.callerDialogId !== 'string') return false;
-  if (typeof value.callId !== 'string') return false;
-  if ('collectiveTargets' in value) {
-    const collectiveTargets = (value as Record<string, unknown>).collectiveTargets;
-    if (collectiveTargets === undefined) return true;
-    if (!Array.isArray(collectiveTargets)) return false;
-    if (!collectiveTargets.every((item) => typeof item === 'string')) return false;
-  }
-  return true;
-}
-
 function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFile {
   if (!isRecord(value)) return false;
   if (typeof value.id !== 'string') return false;
@@ -122,7 +105,32 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
   if (typeof value.createdAt !== 'string') return false;
   if (typeof value.supdialogId !== 'string') return false;
   if (value.sessionSlug !== undefined && typeof value.sessionSlug !== 'string') return false;
-  if (!isAssignmentFromSup(value.assignmentFromSup)) return false;
+  const assignment = value.assignmentFromSup;
+  if (!isRecord(assignment)) return false;
+  if (typeof assignment.tellaskContent !== 'string') return false;
+  if (typeof assignment.originMemberId !== 'string') return false;
+  if (typeof assignment.callerDialogId !== 'string') return false;
+  if (typeof assignment.callId !== 'string') return false;
+  if (assignment.collectiveTargets !== undefined) {
+    if (!Array.isArray(assignment.collectiveTargets)) return false;
+    if (!assignment.collectiveTargets.every((item) => typeof item === 'string')) return false;
+  }
+
+  switch (assignment.callName) {
+    case 'tellask':
+    case 'tellaskSessionless': {
+      if (!Array.isArray(assignment.mentionList)) return false;
+      if (assignment.mentionList.length < 1) return false;
+      if (!assignment.mentionList.every((item) => typeof item === 'string')) return false;
+      break;
+    }
+    case 'freshBootsReasoning': {
+      if (assignment.mentionList !== undefined) return false;
+      break;
+    }
+    default:
+      return false;
+  }
   return true;
 }
 
@@ -245,7 +253,8 @@ function isSubdialogResponseRecord(value: unknown): value is {
   completedAt: string;
   status?: 'completed' | 'failed';
   callType: 'A' | 'B' | 'C';
-  mentionList: string[];
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   responderId: string;
   originMemberId: string;
@@ -259,8 +268,26 @@ function isSubdialogResponseRecord(value: unknown): value is {
   if (value.status !== undefined && value.status !== 'completed' && value.status !== 'failed')
     return false;
   if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
-  if (!Array.isArray(value.mentionList)) return false;
-  if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+  if (
+    value.callName !== 'tellaskBack' &&
+    value.callName !== 'tellask' &&
+    value.callName !== 'tellaskSessionless' &&
+    value.callName !== 'freshBootsReasoning'
+  ) {
+    return false;
+  }
+  switch (value.callName) {
+    case 'tellask':
+    case 'tellaskSessionless':
+      if (!Array.isArray(value.mentionList)) return false;
+      if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+      if (value.mentionList.length < 1) return false;
+      break;
+    case 'tellaskBack':
+    case 'freshBootsReasoning':
+      if (value.mentionList !== undefined) return false;
+      break;
+  }
   if (typeof value.tellaskContent !== 'string') return false;
   if (typeof value.responderId !== 'string') return false;
   if (typeof value.originMemberId !== 'string') return false;
@@ -291,13 +318,37 @@ const TELLASK_SPECIAL_FUNCTION_NAMES = new Set([
   'tellask',
   'tellaskSessionless',
   'askHuman',
+  'freshBootsReasoning',
 ]);
 
-type ReplayTellaskSpecialCall = Readonly<{
-  mentionList: string[];
-  tellaskContent: string;
-  callId: string;
-}>;
+type ReplayTellaskSpecialCall =
+  | Readonly<{
+      callName: 'tellaskBack';
+      tellaskContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'tellask';
+      mentionList: string[];
+      tellaskContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'askHuman';
+      tellaskContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'freshBootsReasoning';
+      tellaskContent: string;
+      callId: string;
+    }>;
 
 function isTellaskSpecialFunctionName(name: string): boolean {
   return TELLASK_SPECIAL_FUNCTION_NAMES.has(name);
@@ -336,14 +387,21 @@ function parseReplayTellaskSpecialCall(record: FuncCallRecord): ReplayTellaskSpe
   switch (record.name) {
     case 'tellaskBack': {
       return {
-        mentionList: ['@upstream'],
+        callName: 'tellaskBack',
         tellaskContent,
         callId: record.id,
       };
     }
     case 'askHuman': {
       return {
-        mentionList: ['@human'],
+        callName: 'askHuman',
+        tellaskContent,
+        callId: record.id,
+      };
+    }
+    case 'freshBootsReasoning': {
+      return {
+        callName: 'freshBootsReasoning',
         tellaskContent,
         callId: record.id,
       };
@@ -355,6 +413,7 @@ function parseReplayTellaskSpecialCall(record: FuncCallRecord): ReplayTellaskSpe
         return null;
       }
       return {
+        callName: 'tellask',
         mentionList: [`@${targetAgentId}`],
         tellaskContent,
         callId: record.id,
@@ -366,6 +425,7 @@ function parseReplayTellaskSpecialCall(record: FuncCallRecord): ReplayTellaskSpe
         return null;
       }
       return {
+        callName: 'tellaskSessionless',
         mentionList: [`@${targetAgentId}`],
         tellaskContent,
         callId: record.id,
@@ -395,9 +455,10 @@ export class DiskFileDialogStore extends DialogStore {
   public async createSubDialog(
     supdialog: RootDialog,
     targetAgentId: string,
-    mentionList: string[],
+    mentionList: string[] | undefined,
     tellaskContent: string,
     options: {
+      callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
       originMemberId: string;
       callerDialogId: string;
       callId: string;
@@ -419,6 +480,7 @@ export class DiskFileDialogStore extends DialogStore {
       subdialogId,
       targetAgentId,
       {
+        callName: options.callName,
         mentionList,
         tellaskContent,
         originMemberId: options.originMemberId,
@@ -441,6 +503,7 @@ export class DiskFileDialogStore extends DialogStore {
       supdialogId: supdialog.id.selfId,
       sessionSlug: options.sessionSlug,
       assignmentFromSup: {
+        callName: options.callName,
         mentionList,
         tellaskContent,
         originMemberId: options.originMemberId,
@@ -487,6 +550,7 @@ export class DiskFileDialogStore extends DialogStore {
         rootId: subdialogId.rootId,
       },
       targetAgentId,
+      callName: options.callName,
       mentionList,
       tellaskContent,
       subDialogNode: {
@@ -502,6 +566,7 @@ export class DiskFileDialogStore extends DialogStore {
         runState: { kind: 'idle_waiting_user' },
         sessionSlug: options.sessionSlug,
         assignmentFromSup: {
+          callName: options.callName,
           mentionList,
           tellaskContent,
           originMemberId: options.originMemberId,
@@ -571,7 +636,8 @@ export class DiskFileDialogStore extends DialogStore {
   public async receiveTeammateCallResult(
     dialog: Dialog,
     responderId: string,
-    mentionList: string[],
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning',
+    mentionList: string[] | undefined,
     tellaskContent: string,
     result: string,
     status: 'completed' | 'failed',
@@ -580,31 +646,73 @@ export class DiskFileDialogStore extends DialogStore {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const calling_genseq = dialog.activeGenSeqOrUndefined;
     // Persist record WITH callId for replay correlation
-    const ev: TeammateCallResultRecord = {
-      ts: formatUnifiedTimestamp(new Date()),
-      type: 'teammate_call_result_record',
-      responderId,
-      mentionList,
-      tellaskContent,
-      status,
-      result,
-      calling_genseq,
-      callId,
-    };
+    const ev: TeammateCallResultRecord = (() => {
+      switch (callName) {
+        case 'tellask':
+        case 'tellaskSessionless':
+          return {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'teammate_call_result_record',
+            responderId,
+            callName,
+            mentionList: mentionList ?? [],
+            tellaskContent,
+            status,
+            result,
+            calling_genseq,
+            callId,
+          };
+        case 'tellaskBack':
+        case 'askHuman':
+        case 'freshBootsReasoning':
+          return {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'teammate_call_result_record',
+            responderId,
+            callName,
+            tellaskContent,
+            status,
+            result,
+            calling_genseq,
+            callId,
+          };
+      }
+    })();
     await this.appendEvent(course, ev);
 
     // Emit TeammateCallResponseEvent WITH callId for UI correlation
-    const toolResponseEvt: TeammateCallResponseEvent = {
-      type: 'teammate_call_response_evt',
-      responderId,
-      mentionList,
-      tellaskContent,
-      status,
-      result,
-      course,
-      calling_genseq,
-      callId,
-    };
+    const toolResponseEvt: TeammateCallResponseEvent = (() => {
+      switch (callName) {
+        case 'tellask':
+        case 'tellaskSessionless':
+          return {
+            type: 'teammate_call_response_evt',
+            responderId,
+            callName,
+            mentionList: mentionList ?? [],
+            tellaskContent,
+            status,
+            result,
+            course,
+            calling_genseq,
+            callId,
+          };
+        case 'tellaskBack':
+        case 'askHuman':
+        case 'freshBootsReasoning':
+          return {
+            type: 'teammate_call_response_evt',
+            responderId,
+            callName,
+            tellaskContent,
+            status,
+            result,
+            course,
+            calling_genseq,
+            callId,
+          };
+      }
+    })();
     postDialogEvent(dialog, toolResponseEvt);
   }
 
@@ -627,7 +735,8 @@ export class DiskFileDialogStore extends DialogStore {
   public async receiveTeammateResponse(
     dialog: Dialog,
     responderId: string,
-    mentionList: string[],
+    callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
+    mentionList: string[] | undefined,
     tellaskContent: string,
     status: 'completed' | 'failed',
     calleeDialogId: DialogID | undefined,
@@ -649,50 +758,104 @@ export class DiskFileDialogStore extends DialogStore {
     const originMemberId = options.originMemberId;
     const calleeCourse = options.calleeCourse;
     const calleeGenseq = options.calleeGenseq;
+    const normalizedMentionList = mentionList ?? [];
     const result = formatTeammateResponseContent({
+      callName,
       responderId,
       requesterId: originMemberId,
-      mentionList,
+      mentionList: normalizedMentionList,
       tellaskContent,
       responseBody: response,
       language: getWorkLanguage(),
     });
-    const ev: TeammateResponseRecord = {
-      ts: formatUnifiedTimestamp(new Date()),
-      type: 'teammate_response_record',
-      responderId,
-      calleeDialogId: calleeDialogSelfId,
-      calleeCourse,
-      calleeGenseq,
-      mentionList,
-      tellaskContent,
-      status,
-      result,
-      calling_genseq,
-      response,
-      agentId,
-      callId,
-      originMemberId,
-    };
+    const ev: TeammateResponseRecord = (() => {
+      switch (callName) {
+        case 'tellask':
+        case 'tellaskSessionless':
+          return {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'teammate_response_record',
+            responderId,
+            callName,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+            mentionList: normalizedMentionList,
+            tellaskContent,
+            status,
+            result,
+            calling_genseq,
+            response,
+            agentId,
+            callId,
+            originMemberId,
+          };
+        case 'tellaskBack':
+        case 'freshBootsReasoning':
+          return {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'teammate_response_record',
+            responderId,
+            callName,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+            tellaskContent,
+            status,
+            result,
+            calling_genseq,
+            response,
+            agentId,
+            callId,
+            originMemberId,
+          };
+      }
+    })();
     await this.appendEvent(course, ev);
 
-    const teammateResponseEvt: TeammateResponseEvent = {
-      type: 'teammate_response_evt',
-      responderId,
-      calleeDialogId: calleeDialogSelfId,
-      calleeCourse,
-      calleeGenseq,
-      mentionList,
-      tellaskContent,
-      status,
-      result,
-      course,
-      calling_genseq,
-      response,
-      agentId,
-      callId,
-      originMemberId,
-    };
+    const teammateResponseEvt: TeammateResponseEvent = (() => {
+      switch (callName) {
+        case 'tellask':
+        case 'tellaskSessionless':
+          return {
+            type: 'teammate_response_evt',
+            responderId,
+            callName,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+            mentionList: normalizedMentionList,
+            tellaskContent,
+            status,
+            result,
+            course,
+            calling_genseq,
+            response,
+            agentId,
+            callId,
+            originMemberId,
+          };
+        case 'tellaskBack':
+        case 'freshBootsReasoning':
+          return {
+            type: 'teammate_response_evt',
+            responderId,
+            callName,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+            tellaskContent,
+            status,
+            result,
+            course,
+            calling_genseq,
+            response,
+            agentId,
+            callId,
+            originMemberId,
+          };
+      }
+    })();
     postDialogEvent(dialog, teammateResponseEvt);
   }
 
@@ -903,17 +1066,45 @@ export class DiskFileDialogStore extends DialogStore {
   // Tellask-special call lifecycle methods
   public async callingStart(
     dialog: Dialog,
-    payload: { callId: string; mentionList: string[]; tellaskContent: string },
+    payload: {
+      callName:
+        | 'tellaskBack'
+        | 'tellask'
+        | 'tellaskSessionless'
+        | 'askHuman'
+        | 'freshBootsReasoning';
+      callId: string;
+      mentionList?: string[];
+      tellaskContent: string;
+    },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const evt: TeammateCallStartEvent = {
-      type: 'teammate_call_start_evt',
-      callId: payload.callId,
-      mentionList: payload.mentionList,
-      tellaskContent: payload.tellaskContent,
-      course,
-      genseq: dialog.activeGenSeq,
-    };
+    const evt: TeammateCallStartEvent = (() => {
+      switch (payload.callName) {
+        case 'tellask':
+        case 'tellaskSessionless':
+          return {
+            type: 'teammate_call_start_evt',
+            callName: payload.callName,
+            callId: payload.callId,
+            mentionList: payload.mentionList ?? [],
+            tellaskContent: payload.tellaskContent,
+            course,
+            genseq: dialog.activeGenSeq,
+          };
+        case 'tellaskBack':
+        case 'askHuman':
+        case 'freshBootsReasoning':
+          return {
+            type: 'teammate_call_start_evt',
+            callName: payload.callName,
+            callId: payload.callId,
+            tellaskContent: payload.tellaskContent,
+            course,
+            genseq: dialog.activeGenSeq,
+          };
+      }
+    })();
     postDialogEvent(dialog, evt);
   }
 
@@ -1734,19 +1925,38 @@ export class DiskFileDialogStore extends DialogStore {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
           };
+          const callStartEvent = (() => {
+            switch (specialCall.callName) {
+              case 'tellask':
+              case 'tellaskSessionless':
+                return {
+                  type: 'teammate_call_start_evt',
+                  callName: specialCall.callName,
+                  callId: specialCall.callId,
+                  mentionList: specialCall.mentionList,
+                  tellaskContent: specialCall.tellaskContent,
+                  course,
+                  genseq: event.genseq,
+                  dialog: dialogIdent,
+                  timestamp: event.ts,
+                };
+              case 'tellaskBack':
+              case 'askHuman':
+              case 'freshBootsReasoning':
+                return {
+                  type: 'teammate_call_start_evt',
+                  callName: specialCall.callName,
+                  callId: specialCall.callId,
+                  tellaskContent: specialCall.tellaskContent,
+                  course,
+                  genseq: event.genseq,
+                  dialog: dialogIdent,
+                  timestamp: event.ts,
+                };
+            }
+          })();
           if (ws.readyState === 1) {
-            ws.send(
-              JSON.stringify({
-                type: 'teammate_call_start_evt',
-                callId: specialCall.callId,
-                mentionList: specialCall.mentionList,
-                tellaskContent: specialCall.tellaskContent,
-                course,
-                genseq: event.genseq,
-                dialog: dialogIdent,
-                timestamp: event.ts,
-              }),
-            );
+            ws.send(JSON.stringify(callStartEvent));
           }
           break;
         }
@@ -1902,22 +2112,48 @@ export class DiskFileDialogStore extends DialogStore {
 
       case 'teammate_call_result_record': {
         // Handle teammate-call inline results
-        const responseEvent = {
-          type: 'teammate_call_response_evt',
-          responderId: event.responderId,
-          mentionList: event.mentionList,
-          tellaskContent: event.tellaskContent,
-          status: event.status,
-          result: event.result,
-          callId: event.callId || '',
-          course,
-          calling_genseq: event.calling_genseq,
-          dialog: {
-            selfId: dialog.id.selfId,
-            rootId: dialog.id.rootId,
-          },
-          timestamp: event.ts,
-        };
+        const responseEvent = (() => {
+          switch (event.callName) {
+            case 'tellask':
+            case 'tellaskSessionless':
+              return {
+                type: 'teammate_call_response_evt',
+                responderId: event.responderId,
+                callName: event.callName,
+                mentionList: event.mentionList,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                result: event.result,
+                callId: event.callId || '',
+                course,
+                calling_genseq: event.calling_genseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+            case 'tellaskBack':
+            case 'askHuman':
+            case 'freshBootsReasoning':
+              return {
+                type: 'teammate_call_response_evt',
+                responderId: event.responderId,
+                callName: event.callName,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                result: event.result,
+                callId: event.callId || '',
+                course,
+                calling_genseq: event.calling_genseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+          }
+        })();
 
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(responseEvent));
@@ -1950,36 +2186,78 @@ export class DiskFileDialogStore extends DialogStore {
 
       case 'teammate_response_record': {
         // Handle teammate response events (separate bubble for @teammate tellasks)
+        const mentionList = (() => {
+          switch (event.callName) {
+            case 'tellask':
+            case 'tellaskSessionless':
+              return event.mentionList;
+            case 'tellaskBack':
+            case 'freshBootsReasoning':
+              return undefined;
+          }
+        })();
         const formattedResult = formatTeammateResponseContent({
+          callName: event.callName,
           responderId: event.responderId,
           requesterId: event.originMemberId,
-          mentionList: event.mentionList,
+          mentionList,
           tellaskContent: event.tellaskContent,
           responseBody: event.response,
           language: getWorkLanguage(),
         });
-        const teammateResponseEvent = {
-          type: 'teammate_response_evt',
-          responderId: event.responderId,
-          calleeDialogId: event.calleeDialogId,
-          calleeCourse: event.calleeCourse,
-          calleeGenseq: event.calleeGenseq,
-          mentionList: event.mentionList,
-          tellaskContent: event.tellaskContent,
-          status: event.status,
-          result: formattedResult,
-          response: event.response,
-          agentId: event.agentId,
-          callId: event.callId,
-          originMemberId: event.originMemberId,
-          course,
-          calling_genseq: event.calling_genseq,
-          dialog: {
-            selfId: dialog.id.selfId,
-            rootId: dialog.id.rootId,
-          },
-          timestamp: event.ts,
-        };
+        const teammateResponseEvent = (() => {
+          switch (event.callName) {
+            case 'tellask':
+            case 'tellaskSessionless':
+              return {
+                type: 'teammate_response_evt',
+                responderId: event.responderId,
+                callName: event.callName,
+                calleeDialogId: event.calleeDialogId,
+                calleeCourse: event.calleeCourse,
+                calleeGenseq: event.calleeGenseq,
+                mentionList,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                result: formattedResult,
+                response: event.response,
+                agentId: event.agentId,
+                callId: event.callId,
+                originMemberId: event.originMemberId,
+                course,
+                calling_genseq: event.calling_genseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+            case 'tellaskBack':
+            case 'freshBootsReasoning':
+              return {
+                type: 'teammate_response_evt',
+                responderId: event.responderId,
+                callName: event.callName,
+                calleeDialogId: event.calleeDialogId,
+                calleeCourse: event.calleeCourse,
+                calleeGenseq: event.calleeGenseq,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                result: formattedResult,
+                response: event.response,
+                agentId: event.agentId,
+                callId: event.callId,
+                originMemberId: event.originMemberId,
+                course,
+                calling_genseq: event.calling_genseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+          }
+        })();
 
         if (ws.readyState === 1) {
           ws.send(JSON.stringify(teammateResponseEvent));
@@ -2088,7 +2366,8 @@ type Q4HMutateOutcome = {
 type PendingSubdialogRecord = {
   subdialogId: string;
   createdAt: string;
-  mentionList: string[];
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
   callId: string;
@@ -3190,7 +3469,6 @@ export class DialogPersistence {
       rootId: string;
       agentId: string;
       taskDocPath: string;
-      mentionList: string[];
       tellaskContent: string;
       askedAt: string;
       callId?: string;
@@ -3207,7 +3485,6 @@ export class DialogPersistence {
         rootId: string;
         agentId: string;
         taskDocPath: string;
-        mentionList: string[];
         tellaskContent: string;
         askedAt: string;
         callId?: string;
@@ -3313,8 +3590,24 @@ export class DialogPersistence {
     if (!isRecord(value)) return false;
     if (typeof value.subdialogId !== 'string') return false;
     if (typeof value.createdAt !== 'string') return false;
-    if (!Array.isArray(value.mentionList)) return false;
-    if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+    if (
+      value.callName !== 'tellask' &&
+      value.callName !== 'tellaskSessionless' &&
+      value.callName !== 'freshBootsReasoning'
+    ) {
+      return false;
+    }
+    switch (value.callName) {
+      case 'tellask':
+      case 'tellaskSessionless':
+        if (!Array.isArray(value.mentionList)) return false;
+        if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+        if (value.mentionList.length < 1) return false;
+        break;
+      case 'freshBootsReasoning':
+        if (value.mentionList !== undefined) return false;
+        break;
+    }
     if (typeof value.tellaskContent !== 'string') return false;
     if (typeof value.targetAgentId !== 'string') return false;
     if (typeof value.callId !== 'string') return false;
@@ -3609,7 +3902,8 @@ export class DialogPersistence {
       response: string;
       completedAt: string;
       callType: 'A' | 'B' | 'C';
-      mentionList: string[];
+      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+      mentionList?: string[];
       tellaskContent: string;
       responderId: string;
       originMemberId: string;
@@ -3650,7 +3944,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      mentionList: string[];
+      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+      mentionList?: string[];
       tellaskContent: string;
       responderId: string;
       originMemberId: string;
@@ -3670,7 +3965,8 @@ export class DialogPersistence {
           completedAt: string;
           status?: 'completed' | 'failed';
           callType: 'A' | 'B' | 'C';
-          mentionList: string[];
+          callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+          mentionList?: string[];
           tellaskContent: string;
           responderId: string;
           originMemberId: string;
@@ -3727,7 +4023,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      mentionList: string[];
+      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+      mentionList?: string[];
       tellaskContent: string;
       responderId: string;
       originMemberId: string;
@@ -3760,7 +4057,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      mentionList: string[];
+      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+      mentionList?: string[];
       tellaskContent: string;
       responderId: string;
       originMemberId: string;
@@ -3784,7 +4082,8 @@ export class DialogPersistence {
       completedAt: string;
       status?: 'completed' | 'failed';
       callType: 'A' | 'B' | 'C';
-      mentionList: string[];
+      callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+      mentionList?: string[];
       tellaskContent: string;
       responderId: string;
       originMemberId: string;
@@ -4651,11 +4950,22 @@ export class DialogPersistence {
 
         case 'teammate_call_result_record': {
           // Convert teammate-call inline result to ChatMessage
+          const mentionList = (() => {
+            switch (event.callName) {
+              case 'tellask':
+              case 'tellaskSessionless':
+                return event.mentionList;
+              case 'tellaskBack':
+              case 'askHuman':
+              case 'freshBootsReasoning':
+                return undefined;
+            }
+          })();
           messages.push({
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
-            mentionList: event.mentionList,
+            mentionList,
             tellaskContent: event.tellaskContent,
             status: event.status,
             callId: event.callId,
@@ -4667,10 +4977,21 @@ export class DialogPersistence {
         case 'teammate_response_record': {
           // Convert teammate response to ChatMessage (teammate - separate bubble)
           // Note: Teammate responses are stored as separate records but use same message type
+          const mentionList = (() => {
+            switch (event.callName) {
+              case 'tellask':
+              case 'tellaskSessionless':
+                return event.mentionList;
+              case 'tellaskBack':
+              case 'freshBootsReasoning':
+                return undefined;
+            }
+          })();
           const formattedResult = formatTeammateResponseContent({
+            callName: event.callName,
             responderId: event.responderId,
             requesterId: event.originMemberId,
-            mentionList: event.mentionList,
+            mentionList,
             tellaskContent: event.tellaskContent,
             responseBody: event.response,
             language: getWorkLanguage(),
@@ -4679,7 +5000,7 @@ export class DialogPersistence {
             type: 'tellask_result_msg',
             role: 'tool',
             responderId: event.responderId,
-            mentionList: event.mentionList,
+            mentionList,
             tellaskContent: event.tellaskContent,
             status: event.status,
             callId: event.callId,

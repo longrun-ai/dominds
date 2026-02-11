@@ -36,7 +36,6 @@ async function main(): Promise<void> {
       question: {
         id: 'q1',
         selfId: dlgId.selfId,
-        mentionList: ['@human'],
         tellaskContent: 'Please confirm.',
         askedAt: '2026-01-29 00:00:00',
         callId: 'call-q1',

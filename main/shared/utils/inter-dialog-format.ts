@@ -17,7 +17,8 @@ import type { LanguageCode } from '../types/language';
 import { markdownQuote } from './fmt';
 
 export type InterDialogCallContent = {
-  mentionList: string[];
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
 };
 
@@ -38,9 +39,10 @@ export type SupdialogCallPromptInput = {
 };
 
 export type TeammateResponseFormatInput = {
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   responderId: string;
   requesterId: string;
-  mentionList: string[];
+  mentionList?: string[];
   tellaskContent: string;
   responseBody: string;
   language?: LanguageCode;
@@ -68,17 +70,15 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   const language: LanguageCode = input.language ?? 'en';
   const to = requireNonEmpty(input.toAgentId, 'toAgentId');
   const from = requireNonEmpty(input.fromAgentId, 'fromAgentId');
-  const mentionLine = requireMentionLine(input.mentionList);
   const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
 
-  const isFbrSelfTellask = /^\s*@self\b/.test(mentionLine);
-  if (isFbrSelfTellask) {
+  const isFbr = input.callName === 'freshBootsReasoning';
+  if (isFbr) {
     const intro =
       language === 'zh'
         ? [
             '# 扪心自问（FBR）自诉请',
             '',
-            `- 诉请：\`${mentionLine}\``,
             '- 约束：这是一个 FBR 支线对话；请以“初心视角”独立推理与总结。',
             '- 回问：若当前回合函数工具可用，且你需要澄清关键上下文，可使用 `tellaskBack` 回问上游；否则不要发起任何诉请。',
             '- 重要：不要依赖诉请者对话历史；仅基于诉请正文（以及本支线对话自身的会话历史，如有）。',
@@ -86,9 +86,8 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
             '---',
           ].join('\n')
         : [
-            '# @self Fresh Boots Reasoning (FBR) request',
+            '# Fresh Boots Reasoning (FBR) request',
             '',
-            `- Tellask: \`${mentionLine}\``,
             '- Constraint: this is an FBR sideline dialog; reason independently from a “fresh boots” perspective.',
             '- TellaskBack: if function tools are enabled for this turn and you must clarify critical missing context, use `tellaskBack`; otherwise do not emit tellasks.',
             '- Important: do not rely on the tellasker dialog history; use only the tellask body (and this sideline dialog’s own history, if any).',
@@ -99,6 +98,11 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
     return `${intro}\n\n${tellaskContent}\n`;
   }
 
+  if (input.callName !== 'tellask' && input.callName !== 'tellaskSessionless') {
+    throw new Error(`Unsupported callName for assignment formatting: ${input.callName}`);
+  }
+
+  const mentionLine = requireMentionLine(input.mentionList ?? []);
   const rawTargets =
     input.collectiveTargets && input.collectiveTargets.length > 0 ? input.collectiveTargets : [to];
   const cleanedTargets = rawTargets.map(trimTrailingDots).filter((t) => t.trim() !== '');
@@ -135,20 +139,50 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
       ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 回问：`
       : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` TellaskBack:`;
 
-  return `${hello}\n\n${markdownQuote(requireMentionLine(input.supdialogAssignment.mentionList))}\n${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${markdownQuote(requireMentionLine(input.subdialogRequest.mentionList))}\n${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
+  const supMention = (() => {
+    if (
+      input.supdialogAssignment.callName === 'tellask' ||
+      input.supdialogAssignment.callName === 'tellaskSessionless'
+    ) {
+      return markdownQuote(requireMentionLine(input.supdialogAssignment.mentionList ?? []));
+    }
+    return '';
+  })();
+  const subMention = (() => {
+    if (
+      input.subdialogRequest.callName === 'tellask' ||
+      input.subdialogRequest.callName === 'tellaskSessionless'
+    ) {
+      return markdownQuote(requireMentionLine(input.subdialogRequest.mentionList ?? []));
+    }
+    return '';
+  })();
+
+  return `${hello}\n\n${supMention ? `${supMention}\n` : ''}${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${subMention ? `${subMention}\n` : ''}${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
 }
 
 export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
-  const mentionLine = requireMentionLine(input.mentionList);
   const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
-  const isFbrSelfTellask = /^\s*@self\b/.test(mentionLine);
+  const isFbr = input.callName === 'freshBootsReasoning';
 
-  if (isFbrSelfTellask) {
-    const title =
-      language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR @self sideline response]';
+  if (isFbr) {
+    const title = language === 'zh' ? '【扪心自问（FBR）支线对话回贴】' : '[FBR sideline response]';
     return `${title}\n\n${input.responseBody}\n`;
   }
+
+  if (
+    input.callName !== 'tellask' &&
+    input.callName !== 'tellaskSessionless' &&
+    input.callName !== 'tellaskBack'
+  ) {
+    throw new Error(`Unsupported callName for teammate response formatting: ${input.callName}`);
+  }
+
+  const mentionLine =
+    input.callName === 'tellask' || input.callName === 'tellaskSessionless'
+      ? requireMentionLine(input.mentionList ?? [])
+      : '';
 
   const hello =
     language === 'zh'
@@ -156,5 +190,5 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
       : `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
   const tail = language === 'zh' ? '针对原始诉请：' : 'regarding the original tellask:';
 
-  return `${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
+  return `${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${mentionLine ? `${markdownQuote(mentionLine)}\n` : ''}${markdownQuote(tellaskContent)}\n`;
 }

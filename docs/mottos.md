@@ -161,9 +161,8 @@ Taskdoc Structure:
 **In dominds (recommended syntax)**
 
 - Fresh Boots Reasoning (FBR) is **common**, and should usually be done via **transient self-subdialogs**.
-- Use `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` for the default “fresh boots” session: isolate one sub-problem, answer, and return.
-- Use `tellask({ targetAgentId: "self", sessionSlug: "<slug>", tellaskContent: "..." })` **rarely**, only when you explicitly want a **resumable** long-lived fresh-boots session
-  for a multi-step sub-problem.
+- Use `freshBootsReasoning({ tellaskContent: "..." })` for the default “fresh boots” session: isolate one sub-problem, answer, and return.
+- Use `freshBootsReasoning({ tellaskContent: "..." })` whenever you need tool-less, clean-slate reasoning on a bounded sub-problem.
 
 **Traditional vs. Fresh Boots Approach**
 

@@ -141,7 +141,7 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 ```mermaid
 flowchart TD
   M[LLM emits tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{Is this a subdialog telling its direct supdialog?}
-  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) (NO sessionSlug)]
+  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: tellaskBack({ tellaskContent: "..." }) (NO sessionSlug)]
   Q -- no --> T{Is sessionSlug present?}
   T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
   T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
@@ -149,7 +149,7 @@ flowchart TD
 
 ### TYPE A: Supdialog Tellask (Type A / `TellaskBack` / 回问诉请)
 
-**Primary syntax**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`) — `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) sessionSlug ...` is a **syntax error**
+**Primary syntax**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`) — `tellaskBack({ tellaskContent: "..." }) sessionSlug ...` is a **syntax error**
 
 **Tolerated fallback**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`)
 
@@ -167,7 +167,7 @@ flowchart TD
 - Supdialog is always the direct parent in the hierarchy
 - `tellaskBack({ tellaskContent: "..." })` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask).
 - This matters especially when the supdialog’s `agentId` is identical to the subdialog’s `agentId` (common when a sideline
-  is created via `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`), where an explicit `tellaskBack({ tellaskContent: "..." })` is easier to get wrong by accident.
+  is created via `freshBootsReasoning({ tellaskContent: "..." })`), where an explicit `tellaskBack({ tellaskContent: "..." })` is easier to get wrong by accident.
 - The explicit `tellaskBack({ tellaskContent: "..." })` form is accepted as a semantic fallback for backwards compatibility, but is more
   error-prone in FBR/self-subdialog cases.
 
@@ -190,15 +190,11 @@ Result:
 
 **Syntax**: `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<tellaskSession>", tellaskContent: "..." })` (note the space before `sessionSlug`)
 
-**Fresh Boots Reasoning (FBR) self-tellask syntax (rare; resumable)**: `tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`
+**Fresh Boots Reasoning (FBR) syntax**: `freshBootsReasoning({ tellaskContent: "..." })`
 
-- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
-- This is an **unambiguous** syntax for self-tellasks and helps avoid accidental `@teammate`→`@teammate` self-tellasks caused by
-  echoing/quoting prior call headlines.
-- In Dominds, `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` Tellasks are treated as FBR and are driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
-- **FBR itself should be common**, but the `sessionSlug`-addressed variant should be rare. Prefer `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` (TYPE C, transient)
-  for most FBR usage. Use `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." }) sessionSlug ...` only when you explicitly want a resumable, long-lived “fresh boots session”
-  for a multi-step sub-problem.
+- `freshBootsReasoning` is a dedicated function tool, not a Tellask special-target alias.
+- FBR does not accept `sessionSlug` or `mentionList`.
+- FBR is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
 
 **Tellask Session Key Schema**: `<tellaskSession>` uses the same identifier schema as `<mention-id>`:
 `[a-zA-Z][a-zA-Z0-9_-]*`. Parsing stops at whitespace or punctuation; any trailing
@@ -270,10 +266,10 @@ Result (second call):
 
 **Syntax**: `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` (NO `sessionSlug`)
 
-**Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
+**Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `freshBootsReasoning({ tellaskContent: "..." })`
 
-- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` targets the current dialog’s agentId and creates a **new ephemeral subdialog** routed to the same agentId.
-- The sideline dialog created by `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
+- `freshBootsReasoning({ tellaskContent: "..." })` targets the current dialog’s agentId and creates a **new ephemeral subdialog** routed to the same agentId.
+- The sideline dialog created by `freshBootsReasoning({ tellaskContent: "..." })` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
 - Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
 
 **Behavior**:
@@ -282,7 +278,7 @@ Result (second call):
 2. Create **NEW subdialog** with the specified agentId
 3. Drive the new subdialog:
    - For general Type C, the subdialog is full-fledged (supcalls, teammate Tellasks, tools per config).
-   - For `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; restricted Tellasks).
+   - For `freshBootsReasoning({ tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; restricted Tellasks).
 4. Subdialog response flows back to parent
 5. Parent **resumes** with subdialog's response
 
@@ -290,7 +286,7 @@ Result (second call):
 
 - **No registry lookup** - always creates a new subdialog
 - **Not registered** - no persistence across Tellasks
-- The subdialog itself is fully capable **except** for `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR, which is tool-less and Tellask-restricted (see `fbr.md`).
+- The subdialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and Tellask-restricted (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -1107,7 +1103,7 @@ sequenceDiagram
   Driver-->>Sub: resume subdialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`; `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." }) sessionSlug ...` is FBR tool-less)
+#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`)
 
 ```mermaid
 sequenceDiagram
@@ -1132,7 +1128,7 @@ sequenceDiagram
   end
 ```
 
-#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is FBR tool-less)
+#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `freshBootsReasoning({ tellaskContent: "..." })` is FBR tool-less)
 
 ```mermaid
 sequenceDiagram

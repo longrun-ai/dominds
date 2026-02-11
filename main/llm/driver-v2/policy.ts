@@ -21,12 +21,9 @@ export type DriverV2PolicyState = Readonly<{
 
 export type DriverV2PolicyViolationKind = 'tellask' | 'tool' | 'tellask_and_tool';
 
-function isFbrSelfTellask(mentionList: string[]): boolean {
-  return mentionList.some((item) => /^\s*@self\b/.test(item));
-}
-
 function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
-  return dlg instanceof SubDialog && isFbrSelfTellask(dlg.assignmentFromSup.mentionList);
+  if (!(dlg instanceof SubDialog)) return false;
+  return dlg.assignmentFromSup.callName === 'freshBootsReasoning';
 }
 
 function mergeModelParams(
@@ -50,7 +47,7 @@ function buildFbrSystemPrompt(language: LanguageCode): string {
       ? [
           '# 扪心自问（FBR）支线对话',
           '',
-          '- 你正在处理一次由 `tellask` 系列函数触发的 FBR 支线对话（调用方为同一 agent 的 self-route）。',
+          '- 你正在处理一次由 `freshBootsReasoning` 函数触发的 FBR 支线对话。',
           '- 诉请正文是主要任务上下文；不要假设能访问上游对话历史。',
           '- 若使用可恢复会话，你可以使用本支线对话自身的 tellaskSession 历史作为显式上下文。',
           '- 若诉请正文缺少关键上下文，请在输出中列出缺失信息与阻塞原因。',
@@ -59,7 +56,7 @@ function buildFbrSystemPrompt(language: LanguageCode): string {
       : [
           '# Fresh Boots Reasoning (FBR) sideline dialog',
           '',
-          '- This is an FBR sideline dialog triggered via tellask special functions (self-route).',
+          '- This is an FBR sideline dialog triggered via the `freshBootsReasoning` function.',
           '- The tellask body is the primary task context; do not assume access to upstream dialog history.',
           '- If this is a resumable session, you may use this sideline dialog’s own tellaskSession history as explicit context.',
           '- If the tellask body is missing critical context, list what is missing and why it blocks reasoning.',

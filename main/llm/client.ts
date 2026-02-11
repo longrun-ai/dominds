@@ -73,7 +73,7 @@ export type TellaskCallResultMsg = {
   type: 'tellask_result_msg';
   role: 'tool';
   responderId: string; // id of tool only
-  mentionList: string[];
+  mentionList?: string[];
   tellaskContent: string;
   status: 'completed' | 'failed';
   content: string;

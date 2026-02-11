@@ -117,13 +117,13 @@
 - EN (what “Back” means): “Back” refers to routing back to the tellasker dialog; it does **not** imply hierarchy/seniority.
 - ZH（Back 的含义）: “Back” 指回到诉请者对话，**不暗示上下级**。
 
-- EN (typical carrier): `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) ...` (only available inside a sideline dialog)
-- ZH（典型载体）: `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) ...`（只在你处于支线对话语境时可用）
+- EN (typical carrier): `tellaskBack({ tellaskContent: "..." }) ...` (only available inside a sideline dialog)
+- ZH（典型载体）: `tellaskBack({ tellaskContent: "..." }) ...`（只在你处于支线对话语境时可用）
 
 Example / 示例（概念）:
 
-- EN: `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) I need you to confirm the file extensions: only .md, or also .txt/.rst?`
-- ZH: `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) 我需要你确认要扫描的文件扩展名：只包含 .md 还是也包含 .txt/.rst？`
+- EN: `tellaskBack({ tellaskContent: "..." }) I need you to confirm the file extensions: only .md, or also .txt/.rst?`
+- ZH: `tellaskBack({ tellaskContent: "..." }) 我需要你确认要扫描的文件扩展名：只包含 .md 还是也包含 .txt/.rst？`
 
 #### 2) Tellask Session（长线诉请）
 

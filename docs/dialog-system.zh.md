@@ -148,7 +148,7 @@ flowchart TD
 
 ### TYPE A：上位 Tellask（Type A / `TellaskBack` / 回问诉请）
 
-**主要语法**：`tellaskBack({ tellaskContent: "..." })`（无 `sessionSlug`）— `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) sessionSlug ...` 是**语法错误**
+**主要语法**：`tellaskBack({ tellaskContent: "..." })`（无 `sessionSlug`）— `tellaskBack({ tellaskContent: "..." }) sessionSlug ...` 是**语法错误**
 
 **可容忍的回退**：`tellaskBack({ tellaskContent: "..." })`（无 `sessionSlug`）
 
@@ -185,12 +185,11 @@ LLM 发出：tellaskSessionless({ targetAgentId: "orchestrator", tellaskContent:
 
 **语法**：`tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`（注意 `sessionSlug` 前的空格）
 
-**扪心自问 (FBR) 自调用语法（罕见；可恢复）**：`tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`
+**扪心自问 (FBR) 语法**：`freshBootsReasoning({ tellaskContent: "..." })`
 
-- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 是一个显式的"相同角色"调用，指向**当前对话的 agentId**（不是单独队友）。
-- 这是自调用的**明确**语法，有助于避免因回声/引用先前调用标题而导致的意外 `@teammate`→`@teammate` 自调用。
-- 注意：在 Dominds 中，`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 会触发扪心自问（FBR）机制，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
-- **FBR 本身应该很常见**，但使用 `sessionSlug` 寻址的变体应该很罕见。对于大多数 FBR 使用，首选 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`（TYPE C，瞬态）。仅当你明确想要一个可恢复的、长期存在的"初心会话"用于多步骤子问题时，才使用 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." }) sessionSlug ...`。
+- `freshBootsReasoning` 是专用函数工具，不是 Tellask 的特殊 target 别名。
+- FBR 不接受 `sessionSlug` 或 `mentionList`。
+- FBR 由更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
 
 **Tellask 会话键模式**：`<tellaskSession>` 使用与 `<mention-id>` 相同的标识符模式：`[a-zA-Z][a-zA-Z0-9_-]*`。解析在空白或标点处停止；任何尾随的标题文本在 tellaskSession 解析时被忽略。
 
@@ -260,10 +259,10 @@ LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-a
 
 **语法**：`tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })`（无 `sessionSlug`）
 
-**扪心自问 (FBR) 自调用语法（默认；最常见）**：`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
+**扪心自问 (FBR) 自调用语法（默认；最常见）**：`freshBootsReasoning({ tellaskContent: "..." })`
 
-- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 指向当前对话的 agentId，并创建一条路由到同一 agentId 的**新的临时子对话**。
-- 由 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 创建的支线对话属于 FBR，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
+- `freshBootsReasoning({ tellaskContent: "..." })` 指向当前对话的 agentId，并创建一条路由到同一 agentId 的**新的临时子对话**。
+- 由 `freshBootsReasoning({ tellaskContent: "..." })` 创建的支线对话属于 FBR，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
 - 对于大多数扪心自问 会话使用此方式：隔离单个子问题，产生答案，然后返回。
 
 **行为**：
@@ -272,7 +271,7 @@ LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-a
 2. 使用指定的 agentId 创建**新的子对话**
 3. 驱动新的子对话：
    - 一般 TYPE C 子对话是“完整能力”的（可上位调用、队友诉请、按配置使用工具）。
-   - `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 属于 FBR 特例：无工具、诉请受限（见 `fbr.zh.md`）。
+   - `freshBootsReasoning({ tellaskContent: "..." })` 属于 FBR 特例：无工具、诉请受限（见 `fbr.zh.md`）。
 4. 子对话的响应流回父级
 5. 父级**恢复**，子对话的响应在上下文中
 
@@ -280,7 +279,7 @@ LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-a
 
 - **无注册表查找** - 总是创建新的子对话
 - **不注册** - 在 Tellask 之间不持久化
-- 子对话本身一般是“完整能力”的；但 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR 是特例：无工具且诉请受限（见 `fbr.zh.md`）。
+- 子对话本身一般是“完整能力”的；但 `freshBootsReasoning({ tellaskContent: "..." })` FBR 是特例：无工具且诉请受限（见 `fbr.zh.md`）。
 - 与 TYPE B 的唯一区别：无注册表查找/恢复能力
 - 用于一次性的、独立的任务
 
@@ -1089,7 +1088,7 @@ sequenceDiagram
   Driver-->>Sub: 恢复子对话，响应在上下文中
 ```
 
-#### TYPE B：已注册子对话 Tellask（`Tellask Session`）（`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`，或 `tellask({ targetAgentId: "self", sessionSlug: "tellaskSession", tellaskContent: "..." })`）
+#### TYPE B：已注册子对话 Tellask（`Tellask Session`）（`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`）
 
 ```mermaid
 sequenceDiagram
@@ -1117,7 +1116,7 @@ end
 
 ````
 
-#### TYPE C：瞬态子对话 Tellask（`Fresh Tellask`）（`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`，或 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`）
+#### TYPE C：瞬态子对话 Tellask（`Fresh Tellask`）（`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`，或 `freshBootsReasoning({ tellaskContent: "..." })`）
 
 ```mermaid
 sequenceDiagram

@@ -80,7 +80,7 @@ async function loadPendingDiagnosticsSnapshot(args: {
         targetAgentId: record.targetAgentId,
         sessionSlug: record.sessionSlug,
         createdAt: record.createdAt,
-        tellaskSummary: `${record.mentionList.join(' ')} ${record.tellaskContent}`
+        tellaskSummary: `${(record.mentionList ?? []).join(' ')} ${record.tellaskContent}`
           .trim()
           .slice(0, 160),
       })),

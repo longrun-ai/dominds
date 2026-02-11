@@ -92,7 +92,8 @@ export interface SubdialogMetadataFile {
 
   /** Assignment context from supdialog for subdialogs */
   assignmentFromSup: {
-    mentionList: string[];
+    callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+    mentionList?: string[];
     tellaskContent: string;
     originMemberId: string;
     callerDialogId: string;
@@ -289,7 +290,8 @@ export interface TeammateCallResultRecord {
   type: 'teammate_call_result_record';
   calling_genseq?: number;
   responderId: string;
-  mentionList: string[];
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   status: 'completed' | 'failed';
   result: string;
@@ -319,7 +321,8 @@ export interface TeammateResponseRecord {
   calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
   calleeCourse?: number;
   calleeGenseq?: number;
-  mentionList: string[];
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+  mentionList?: string[];
   tellaskContent: string;
   status: 'completed' | 'failed';
   result: string;
@@ -367,7 +370,6 @@ export interface ReminderStateFile {
 
 export interface HumanQuestion {
   id: string;
-  mentionList: string[];
   tellaskContent: string;
   askedAt: string;
   /**
@@ -466,7 +468,8 @@ export interface DialogListItem {
   /** Session slug for registered subdialogs (Type B) */
   sessionSlug?: string;
   assignmentFromSup?: {
-    mentionList: string[];
+    callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
+    mentionList?: string[];
     tellaskContent: string;
     originMemberId: string;
     callerDialogId: string;

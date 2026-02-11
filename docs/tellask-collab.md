@@ -93,7 +93,7 @@ That is a workflow break. The model should send the Tellask directly.
 
 ### 4.1 Four-step teammate Tellask loop
 
-For teammate Tellasks (non-`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`), always run this loop:
+For teammate Tellasks (non-`freshBootsReasoning({ tellaskContent: "..." })`), always run this loop:
 
 1. `Initiate`: send a Tellask with scope, constraints, and acceptance evidence.
 2. `Wait`: wait for that specific response.
@@ -161,7 +161,7 @@ Split the collaboration drill into two short segments, both grounded in verifiab
 
 1. One-shot Tellask: `uname -a` as the runtime baseline.
 2. Long-session Tellask: `tellaskSession: rtws-vcs-inventory` for a two-round repo inventory.
-3. Run `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR and distillation only after both evidence segments are available.
+3. Run `freshBootsReasoning({ tellaskContent: "..." })` FBR and distillation only after both evidence segments are available.
 
 Operating rules:
 
@@ -192,7 +192,7 @@ Operating rules:
    - remotes (fetch/push)
    - branch / upstream
    - dirty state
-5. Merge `uname + VCS` into one evidence block for `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR.
+5. Merge `uname + VCS` into one evidence block for `freshBootsReasoning({ tellaskContent: "..." })` FBR.
 6. Distill after FBR feedback is complete, and produce the priming note.
 
 #### Tellask template constraints

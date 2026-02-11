@@ -139,8 +139,8 @@ function buildPromptAudit(systemPrompt: string): PromptAuditReport {
       label: 'Has tellask vs function-calling boundary',
       pass:
         /native function-calling/.test(systemPrompt) &&
-        (/is only for tellasking teammates\/@self\/@human/.test(systemPrompt) ||
-          /仅用于诉请队友\/@self\/@human/.test(systemPrompt)),
+        (/is only for tellasking teammates\/freshBootsReasoning\/askHuman/.test(systemPrompt) ||
+          /仅用于诉请队友\/freshBootsReasoning\/askHuman/.test(systemPrompt)),
     },
     {
       id: 'fbr_phase_contract',

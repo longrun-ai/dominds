@@ -8,10 +8,11 @@ import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 
 type PendingSubdialogView = Readonly<{
   subdialogId: string;
-  mentionList: string[];
+  mentionList?: string[];
   tellaskContent: string;
   targetAgentId: string;
   callType: 'A' | 'B' | 'C';
+  callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   sessionSlug?: string;
 }>;
 
@@ -47,9 +48,8 @@ function callTypeLabel(language: LanguageCode, callType: 'A' | 'B' | 'C'): strin
 }
 
 function summarizeTellask(view: PendingSubdialogView): string {
-  const normalized = `${view.mentionList.join(' ')} ${view.tellaskContent}`
-    .replace(/\s+/g, ' ')
-    .trim();
+  const mentionPrefix = Array.isArray(view.mentionList) ? view.mentionList.join(' ') : '';
+  const normalized = `${mentionPrefix} ${view.tellaskContent}`.replace(/\s+/g, ' ').trim();
   if (!normalized) return '(empty tellask)';
   const max = 140;
   if (normalized.length <= max) return normalized;
@@ -130,6 +130,7 @@ async function loadPendingSubdialogView(dlg: Dialog): Promise<PendingSubdialogVi
     tellaskContent: p.tellaskContent,
     targetAgentId: p.targetAgentId,
     callType: p.callType,
+    callName: p.callName,
     sessionSlug: p.sessionSlug,
   }));
 }

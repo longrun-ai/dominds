@@ -9,8 +9,8 @@ Chinese version: [中文版](./fbr.zh.md)
 **Fresh Boots Reasoning (FBR)** is a Dominds mechanism for “reasoning again from a clean slate” on a bounded sub-problem,
 then reporting back to the mainline dialog.
 
-In Dominds, FBR is triggered via Tellask syntax. `targetAgentId: "self"` is only the entry-point syntax (“tellask the current dialog
-itself”); the mechanism is the runtime-enforced contract applied to the spawned sideline dialog(s).
+In Dominds, FBR is triggered by the dedicated function tool `freshBootsReasoning({ tellaskContent: "..." })`.
+The mechanism is the runtime-enforced contract applied to the spawned sideline dialog(s).
 
 ## 2. Design principles and tradeoffs
 
@@ -24,7 +24,7 @@ predictable, FBR sideline dialogs must be:
 
 ### 2.2 No silent failure
 
-If FBR is disabled by configuration (e.g. `fbr-effort: 0`), the runtime MUST reject `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` loudly and clearly. A
+If FBR is disabled by configuration (e.g. `fbr-effort: 0`), the runtime MUST reject `freshBootsReasoning({ tellaskContent: "..." })` loudly and clearly. A
 silent ignore is worse than an error.
 
 ### 2.3 Many-shot reasoning, not “multi-agent collaboration”
@@ -32,28 +32,25 @@ silent ignore is worse than an error.
 `fbr-effort` is for producing multiple _independent_ reasoning samples in parallel. The mainline dialog is responsible
 for synthesis; FBR sidelines do not coordinate with each other.
 
-## 3. User syntax (`targetAgentId: "self"` is just the entry point)
+## 3. User syntax
 
 ### 3.1 Trigger forms
 
-Both forms below trigger FBR:
+Use the dedicated FBR form:
 
-- **Default (transient)**: `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
-- **Rare (resumable)**: `tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`
+- `freshBootsReasoning({ tellaskContent: "..." })`
 
 Notes:
 
-- `targetAgentId: "self"` means “tellask the current dialog itself (same agentId)”. It is an explicit self-tellask marker to avoid
-  accidental self-calls caused by echoing/quoting `@teammate` headlines.
-- Resumability comes from `sessionSlug`, not from `targetAgentId: "self"`.
+- FBR does not use `targetAgentId`, `sessionSlug`, or `mentionList`.
+- `tellaskContent` is the authoritative task context for the FBR sideline.
 
 ### 3.2 Scope
 
-This document specifies the FBR mechanism and its `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` contract. General teammate Tellasks (`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`) follow
+This document specifies the FBR mechanism and its `freshBootsReasoning({ tellaskContent: "..." })` contract. General teammate Tellasks (`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`) follow
 the taxonomy and capability model in [`dialog-system.md`](./dialog-system.md).
 
-If you want a “fresh” sideline dialog that still has tools, do not use `targetAgentId: "self"`. Use an explicit teammate identity that
-is granted the needed toolsets (or use the general `tellaskSessionless({ targetAgentId: "<agentId>", tellaskContent: "..." })` mechanism intentionally).
+If you want a “fresh” sideline dialog that still has tools, use an explicit teammate identity via the general teammate Tellask flow.
 
 ## 4. Runtime contract (normative)
 
@@ -61,20 +58,17 @@ This section uses MUST / MUST NOT / SHOULD / MAY for requirements.
 
 ### 4.1 Isolation and context
 
-When driving an FBR sideline dialog created by `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`, runtime MUST enforce:
+When driving an FBR sideline dialog created by `freshBootsReasoning({ tellaskContent: "..." })`, runtime MUST enforce:
 
 - **No dependency on tellasker dialog history**
   - the tellaskee MUST NOT assume access to the tellasker’s mainline/sideline history
   - the tellaskee MUST treat the tellask body as the primary, authoritative task context
-  - for resumable `sessionSlug` calls, the tellaskee MAY use the sideline’s _own_ session history as
-    explicit context
 - **No tool-based context fetch**
   - no reading files / running commands / browsing
   - no accessing Memory or rtws (runtime workspace) state
 
 Intuition: “fresh boots” means “fresh relative to the caller thread”, not “ignores baseline system rules”. Runtime may
-still inject baseline policy/safety/formatting context, but the tellask body remains the authority (except when using
-the sideline’s own resumable history).
+still inject baseline policy/safety/formatting context, but the tellask body remains the authority.
 
 ### 4.2 Tool-less (prompt + technical enforcement)
 
@@ -113,7 +107,7 @@ Under no circumstances should the FBR sideline dialog see any tool definitions.
 
 #### 4.2.3 The LLM request MUST be “zero tools”
 
-The LLM request for an FBR sideline dialog (`targetAgentId: "self"`) MUST have **zero tools available**:
+The LLM request for an FBR sideline dialog (`freshBootsReasoning`) MUST have **zero tools available**:
 
 - the request payload must not include tool/function definitions (effective tool list must be empty)
 - provider tool-calling / function-calling modes must not be enabled
@@ -133,7 +127,7 @@ FBR sideline dialogs MUST NOT issue teammate Tellasks (including `askHuman({ tel
 An FBR sideline dialog should produce a compact artifact that is easy for the tellasker to integrate. Suggested shape:
 
 1. **Conclusion**
-2. **Reasoning** (grounded in the tellask body; plus resumable history when applicable)
+2. **Reasoning** (grounded in the tellask body)
 3. **Assumptions** (explicitly sourced: body vs session history)
 4. **Unknowns / missing context**
 5. **Next steps for mainline** (where tools/teammates may exist)
@@ -150,25 +144,22 @@ An FBR sideline dialog should produce a compact artifact that is easy for the te
 
 - Type: integer
 - Default: `3`
-- `0`: disable `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR for that member (runtime MUST reject `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` clearly)
-- `1..100`: spawn N FBR sideline dialogs per `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
+- `0`: disable `freshBootsReasoning({ tellaskContent: "..." })` FBR for that member (runtime MUST reject `freshBootsReasoning({ tellaskContent: "..." })` clearly)
+- `1..100`: spawn N FBR sideline dialogs per `freshBootsReasoning({ tellaskContent: "..." })`
 - `> 100` / non-integer / negative: validation error (reject; no clamping)
 
 When `fbr-effort = N`:
 
-- runtime expands a single `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` into **N parallel tool-less FBR sideline dialogs**
+- runtime expands a single `freshBootsReasoning({ tellaskContent: "..." })` into **N parallel tool-less FBR sideline dialogs**
 - each sideline receives the same tellask body and the same tool-less constraints
 - mainline receives all N responses; **ordering must not be relied on** (completion order is fine)
-
-For resumable `tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })` with `N > 1`, runtime MUST derive **distinct** session keys so
-parallel sidelines do not share history (recommended: `<tellaskSession>.fbr-<i>`).
 
 ## 6. FBR-only model overrides: `fbr_model_params`
 
 `fbr_model_params` overrides model params **only when driving FBR sideline dialogs**:
 
 - Schema: identical to `model_params` (documented by `model_param_options` in `dominds/main/llm/defaults.yaml`)
-- Scope: `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` only
+- Scope: `freshBootsReasoning({ tellaskContent: "..." })` only
 - Merge: recommended deep-merge on top of the member’s effective `model_params`
 - `max_tokens` may be configured as top-level `max_tokens` or `general.max_tokens` (pick one; do not set both)
 
@@ -179,25 +170,25 @@ parallel sidelines do not share history (recommended: `<tellaskSession>.fbr-<i>`
 Bad (depends on external context/tools):
 
 ```text
-tellaskSessionless({ targetAgentId: "self", tellaskContent: "Find the bug and fix it." })
+freshBootsReasoning({ tellaskContent: "Find the bug and fix it." })
 ```
 
 Good (puts the actual context into the body):
 
 ```text
-tellaskSessionless({ targetAgentId: "self", tellaskContent: "You are doing tool-less FBR. Use ONLY the text below.\n\nGoal: identify the most likely root cause and propose 2–3 viable fixes.\n\nObserved:\n- Clicking “Run” sometimes freezes the UI for ~10s.\n\nConstraint:\n- We cannot change the backend protocol.\n\nEvidence:\n<paste relevant logs / code / stack trace here>" })
+freshBootsReasoning({ tellaskContent: "You are doing tool-less FBR. Use ONLY the text below.\n\nGoal: identify the most likely root cause and propose 2–3 viable fixes.\n\nObserved:\n- Clicking “Run” sometimes freezes the UI for ~10s.\n\nConstraint:\n- We cannot change the backend protocol.\n\nEvidence:\n<paste relevant logs / code / stack trace here>" })
 ```
 
 ### 7.2 `.minds/team.yaml`
 
 ```yaml
 member_defaults:
-  # Spawn 3 tool-less FBR sideline dialogs per `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` by default.
+  # Spawn 3 tool-less FBR sideline dialogs per `freshBootsReasoning({ tellaskContent: "..." })` by default.
   fbr-effort: 3
 
 members:
   ux:
-    # Spawn 5 independent reasoning samples per `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`.
+    # Spawn 5 independent reasoning samples per `freshBootsReasoning({ tellaskContent: "..." })`.
     fbr-effort: 5
 
     # Make FBR more exploratory without changing mainline behavior.
@@ -211,13 +202,13 @@ members:
 
 ## 8. Relationship to general sideline dialogs
 
-- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is a special case: tool-less, body-first, tellask-restricted, optionally fanned out via `fbr-effort`.
+- `freshBootsReasoning({ tellaskContent: "..." })` is a special case: tool-less, body-first, tellask-restricted, optionally fanned out via `fbr-effort`.
 - General `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })` sidelines remain fully capable (tools/toolsets as configured).
-- If you need “same persona + tools” in a sideline, do not use `targetAgentId: "self"`; use an explicit teammate identity.
+- If you need “same persona + tools” in a sideline, use an explicit teammate identity (`tellask` / `tellaskSessionless`).
 
 ## 9. Acceptance checklist
 
-- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` triggers tool-less FBR; the LLM request is technically “zero tools”.
+- `freshBootsReasoning({ tellaskContent: "..." })` triggers tool-less FBR; the LLM request is technically “zero tools”.
 - The system prompt body contains no tool instructions; tool-related wording comes only from the separate fixed notice.
 - FBR sidelines cannot issue teammate Tellasks; only `tellaskBack({ tellaskContent: "..." })` is allowed when necessary.
 - `fbr-effort` defaults to `3`, accepts `0..100`, rejects invalid values, and fails loudly when disabled.
