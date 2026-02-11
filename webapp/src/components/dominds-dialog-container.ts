@@ -786,7 +786,7 @@ export class DomindsDialogContainer extends HTMLElement {
         event.dialog.rootId === this.previousDialog.rootId;
 
       if (!isCurrentDialog && !isPreviousDialog) {
-        console.warn('DialogContainer: Ignoring event for different dialog', {
+        console.debug('DialogContainer: Ignoring event for different dialog', {
           eventDialog: event.dialog,
           currentDialog: this.currentDialog,
           previousDialog: this.previousDialog,
