@@ -121,6 +121,12 @@ providers:
           max: 1
           description: Fully supported. Nucleus sampling parameter.
     models:
+      MiniMax-M2.5:
+        name: MiniMax M2.5
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
         context_length: 204800
@@ -159,6 +165,12 @@ providers:
           max: 1
           description: Fully supported. Nucleus sampling parameter.
     models:
+      MiniMax-M2.5:
+        name: MiniMax M2.5
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
         context_length: 204800
@@ -197,6 +209,12 @@ providers:
           max: 1
           description: Fully supported. Nucleus sampling parameter.
     models:
+      MiniMax-M2.5:
+        name: MiniMax M2.5
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
         context_length: 204800
@@ -235,6 +253,12 @@ providers:
           max: 1
           description: Fully supported. Nucleus sampling parameter.
     models:
+      MiniMax-M2.5:
+        name: MiniMax M2.5
+        context_length: 204800
+        input_length: 204800
+        output_length: 8192
+        context_window: '204K'
       MiniMax-M2.1:
         name: MiniMax M2.1
         context_length: 204800
