@@ -20,7 +20,6 @@ import { generateShortId } from '../../shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
-  formatTeammateResponseContent,
 } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { Team } from '../../team';
@@ -1007,15 +1006,7 @@ async function executeTellaskCall(
           await callbacks.driveDialog(supdialog, { humanPrompt: supPrompt, waitInQue: true });
 
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
-          const responseContent = formatTeammateResponseContent({
-            callName,
-            responderId: parseResult.agentId,
-            requesterId: dlg.agentId,
-            mentionList,
-            tellaskContent: body,
-            responseBody: responseText,
-            language: getWorkLanguage(),
-          });
+          const responseContent = responseText;
 
           dlg.setSuspensionState('resumed');
 

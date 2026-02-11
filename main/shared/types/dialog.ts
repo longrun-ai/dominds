@@ -242,8 +242,7 @@ export type TeammateResponseEvent =
       mentionList: string[];
       tellaskContent: string;
       status: 'completed' | 'failed';
-      result: string;
-      response: string; // full subdialog response text (no truncation)
+      response: string; // raw full response text for UI-only formatting
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;
@@ -259,8 +258,7 @@ export type TeammateResponseEvent =
       callName: 'tellaskBack' | 'freshBootsReasoning';
       tellaskContent: string;
       status: 'completed' | 'failed';
-      result: string;
-      response: string; // full subdialog response text (no truncation)
+      response: string; // raw full response text for UI-only formatting
       agentId: string;
       callId: string; // For navigation from response back to call site
       originMemberId: string;

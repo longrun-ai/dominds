@@ -2054,7 +2054,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!event.calleeDialogId) {
       console.error('handleTeammateResponse: Missing calleeDialogId', {
         responderId: event.responderId,
-        result: event.result?.substring(0, 100),
+        response: event.response?.substring(0, 100),
       });
       return;
     }
@@ -2070,33 +2070,23 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!requesterId || requesterId.trim() === '') {
       throw new Error('handleTeammateResponse: Missing originMemberId (requesterId)');
     }
-    if (typeof event.result !== 'string') {
-      throw new Error('handleTeammateResponse: Missing result payload');
+    if (typeof event.response !== 'string') {
+      throw new Error('handleTeammateResponse: Missing response payload');
     }
 
-    // In prod, trust the backend to send the fully-formatted narrative. In dev, verify that
-    // `event.result` matches the canonical formatting from structured fields.
-    if (import.meta.env.DEV) {
-      const responseMentionList =
-        event.callName === 'tellask' || event.callName === 'tellaskSessionless'
-          ? event.mentionList
-          : undefined;
-      const expectedResult = formatTeammateResponseContent({
-        callName: event.callName,
-        responderId: event.responderId,
-        requesterId,
-        mentionList: responseMentionList,
-        tellaskContent: event.tellaskContent,
-        responseBody: event.response,
-        language: this.serverWorkLanguage,
-      });
-      if (event.result !== expectedResult) {
-        throw new Error(
-          `handleTeammateResponse: Response formatting mismatch. Expected "${expectedResult}" but received "${event.result}".`,
-        );
-      }
-    }
-    const responseNarr = event.result;
+    const responseMentionList =
+      event.callName === 'tellask' || event.callName === 'tellaskSessionless'
+        ? event.mentionList
+        : undefined;
+    const responseNarr = formatTeammateResponseContent({
+      callName: event.callName,
+      responderId: event.responderId,
+      requesterId,
+      mentionList: responseMentionList,
+      tellaskContent: event.tellaskContent,
+      responseBody: event.response,
+      language: this.serverWorkLanguage,
+    });
 
     // callId is used for navigation between call site ↔ response bubble.
 

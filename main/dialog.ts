@@ -34,10 +34,7 @@ import type {
   ToolArguments as StoredToolArguments,
 } from './shared/types/storage';
 import { generateShortId } from './shared/utils/id';
-import {
-  formatAssignmentFromSupdialog,
-  formatTeammateResponseContent,
-} from './shared/utils/inter-dialog-format';
+import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
 import { Reminder, ReminderOwner } from './tool';
@@ -1077,15 +1074,7 @@ export abstract class Dialog {
       // Emit virtual generating_start_evt for subdialog response bubble
       await this.notifyGeneratingStart();
 
-      const formattedResult = formatTeammateResponseContent({
-        callName,
-        responderId,
-        requesterId: originMemberId,
-        mentionList: mentionList ?? [],
-        tellaskContent,
-        responseBody: response,
-        language: getWorkLanguage(),
-      });
+      const rawResponse = response;
 
       // Emit TeammateResponseEvent
       const evt: TeammateResponseEvent = (() => {
@@ -1100,9 +1089,8 @@ export abstract class Dialog {
               mentionList: mentionList ?? [],
               tellaskContent,
               status: 'completed',
-              result: formattedResult,
               course: this.currentCourse,
-              response,
+              response: rawResponse,
               agentId: responderAgentId ?? responderId,
               callId,
               originMemberId,
@@ -1115,9 +1103,8 @@ export abstract class Dialog {
               callName,
               tellaskContent,
               status: 'completed',
-              result: formattedResult,
               course: this.currentCourse,
-              response,
+              response: rawResponse,
               agentId: responderAgentId ?? responderId,
               callId,
               originMemberId,

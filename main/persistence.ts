@@ -16,7 +16,6 @@ import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg } from './llm/client';
 import { log } from './log';
 import { AsyncFifoMutex } from './shared/async-fifo-mutex';
-import { getWorkLanguage } from './shared/runtime-language';
 import type { ContextHealthSnapshot } from './shared/types/context-health';
 import type {
   ContextHealthEvent,
@@ -62,7 +61,6 @@ import type {
   UiOnlyMarkdownRecord,
   WebSearchCallRecord,
 } from './shared/types/storage';
-import { formatTeammateResponseContent } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import { Reminder } from './tool';
 import { getReminderOwner } from './tools/registry';
@@ -759,15 +757,6 @@ export class DiskFileDialogStore extends DialogStore {
     const calleeCourse = options.calleeCourse;
     const calleeGenseq = options.calleeGenseq;
     const normalizedMentionList = mentionList ?? [];
-    const result = formatTeammateResponseContent({
-      callName,
-      responderId,
-      requesterId: originMemberId,
-      mentionList: normalizedMentionList,
-      tellaskContent,
-      responseBody: response,
-      language: getWorkLanguage(),
-    });
     const ev: TeammateResponseRecord = (() => {
       switch (callName) {
         case 'tellask':
@@ -783,7 +772,6 @@ export class DiskFileDialogStore extends DialogStore {
             mentionList: normalizedMentionList,
             tellaskContent,
             status,
-            result,
             calling_genseq,
             response,
             agentId,
@@ -802,7 +790,6 @@ export class DiskFileDialogStore extends DialogStore {
             calleeGenseq,
             tellaskContent,
             status,
-            result,
             calling_genseq,
             response,
             agentId,
@@ -827,7 +814,6 @@ export class DiskFileDialogStore extends DialogStore {
             mentionList: normalizedMentionList,
             tellaskContent,
             status,
-            result,
             course,
             calling_genseq,
             response,
@@ -846,7 +832,6 @@ export class DiskFileDialogStore extends DialogStore {
             calleeGenseq,
             tellaskContent,
             status,
-            result,
             course,
             calling_genseq,
             response,
@@ -2217,15 +2202,6 @@ export class DiskFileDialogStore extends DialogStore {
               return undefined;
           }
         })();
-        const formattedResult = formatTeammateResponseContent({
-          callName: event.callName,
-          responderId: event.responderId,
-          requesterId: event.originMemberId,
-          mentionList,
-          tellaskContent: event.tellaskContent,
-          responseBody: event.response,
-          language: getWorkLanguage(),
-        });
         const teammateResponseEvent = (() => {
           switch (event.callName) {
             case 'tellask':
@@ -2240,7 +2216,6 @@ export class DiskFileDialogStore extends DialogStore {
                 mentionList,
                 tellaskContent: event.tellaskContent,
                 status: event.status,
-                result: formattedResult,
                 response: event.response,
                 agentId: event.agentId,
                 callId: event.callId,
@@ -2264,7 +2239,6 @@ export class DiskFileDialogStore extends DialogStore {
                 calleeGenseq: event.calleeGenseq,
                 tellaskContent: event.tellaskContent,
                 status: event.status,
-                result: formattedResult,
                 response: event.response,
                 agentId: event.agentId,
                 callId: event.callId,
@@ -5008,15 +4982,6 @@ export class DialogPersistence {
                 return undefined;
             }
           })();
-          const formattedResult = formatTeammateResponseContent({
-            callName: event.callName,
-            responderId: event.responderId,
-            requesterId: event.originMemberId,
-            mentionList,
-            tellaskContent: event.tellaskContent,
-            responseBody: event.response,
-            language: getWorkLanguage(),
-          });
           messages.push({
             type: 'tellask_result_msg',
             role: 'tool',
@@ -5025,7 +4990,7 @@ export class DialogPersistence {
             tellaskContent: event.tellaskContent,
             status: event.status,
             callId: event.callId,
-            content: formattedResult,
+            content: event.response,
           });
           break;
         }

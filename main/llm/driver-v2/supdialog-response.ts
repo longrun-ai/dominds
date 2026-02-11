@@ -3,9 +3,7 @@ import { globalDialogRegistry } from '../../dialog-global-registry';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
-import { getWorkLanguage } from '../../shared/runtime-language';
 import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
-import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
@@ -300,15 +298,7 @@ export async function supplyResponseToSupdialogV2(args: {
       tellaskContent: result.tellaskContent,
       status,
       callId: resolvedCallId,
-      content: formatTeammateResponseContent({
-        callName: result.callName,
-        responderId: result.responderId,
-        requesterId: result.originMemberId ?? parentDialog.agentId,
-        mentionList: result.mentionList,
-        tellaskContent: result.tellaskContent,
-        responseBody: responseText,
-        language: getWorkLanguage(),
-      }),
+      content: responseText,
     };
     await parentDialog.addChatMessages(immediateMirror);
 
