@@ -167,6 +167,8 @@ export class DomindsApp extends HTMLElement {
   private remindersWidgetVisible: boolean = false;
   private remindersWidgetX: number = 12;
   private remindersWidgetY: number = 120;
+  private remindersWidgetWidthPx: number = 320;
+  private remindersWidgetHeightPx: number = 320;
   private activityView: ActivityView = { kind: 'running' };
   private _wsEventCancel?: () => void;
   private _connStateCancel?: () => void;
@@ -1156,7 +1158,38 @@ export class DomindsApp extends HTMLElement {
     const closeBtn = this.shadowRoot?.querySelector(
       '#reminders-widget-close',
     ) as HTMLElement | null;
+    const resizeHandle = this.shadowRoot?.querySelector(
+      '#reminders-widget-resize-handle',
+    ) as HTMLElement | null;
     if (!widget || !header) return;
+    const margin = 12;
+    const minWidth = 260;
+    const minHeight = 160;
+    const clamp = (value: number, min: number, max: number): number => {
+      return Math.max(min, Math.min(max, value));
+    };
+    const syncWidgetRect = (): void => {
+      const maxWidth = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+      const maxHeight = Math.max(minHeight, Math.floor(window.innerHeight - margin * 2));
+      this.remindersWidgetWidthPx = clamp(this.remindersWidgetWidthPx, minWidth, maxWidth);
+      this.remindersWidgetHeightPx = clamp(this.remindersWidgetHeightPx, minHeight, maxHeight);
+      const maxX = Math.max(margin, window.innerWidth - this.remindersWidgetWidthPx - margin);
+      const maxY = Math.max(margin, window.innerHeight - this.remindersWidgetHeightPx - margin);
+      this.remindersWidgetX = clamp(this.remindersWidgetX, margin, maxX);
+      this.remindersWidgetY = clamp(this.remindersWidgetY, margin, maxY);
+      widget.style.left = `${this.remindersWidgetX}px`;
+      widget.style.top = `${this.remindersWidgetY}px`;
+      widget.style.width = `${this.remindersWidgetWidthPx}px`;
+      widget.style.height = `${this.remindersWidgetHeightPx}px`;
+    };
+    const initialRect = widget.getBoundingClientRect();
+    if (Number.isFinite(initialRect.width) && initialRect.width > 0) {
+      this.remindersWidgetWidthPx = Math.floor(initialRect.width);
+    }
+    if (Number.isFinite(initialRect.height) && initialRect.height > 0) {
+      this.remindersWidgetHeightPx = Math.floor(initialRect.height);
+    }
+    syncWidgetRect();
     let dragging = false;
     let offsetX = 0;
     let offsetY = 0;
@@ -1164,8 +1197,7 @@ export class DomindsApp extends HTMLElement {
       if (!dragging) return;
       this.remindersWidgetX = e.clientX - offsetX;
       this.remindersWidgetY = e.clientY - offsetY;
-      widget.style.left = `${this.remindersWidgetX}px`;
-      widget.style.top = `${this.remindersWidgetY}px`;
+      syncWidgetRect();
     };
     const onUp = () => {
       dragging = false;
@@ -1173,6 +1205,10 @@ export class DomindsApp extends HTMLElement {
       window.removeEventListener('mouseup', onUp);
     };
     header.onmousedown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement | null)?.closest('#reminders-widget-close')) {
+        return;
+      }
+      e.preventDefault();
       dragging = true;
       const rect = widget.getBoundingClientRect();
       offsetX = e.clientX - rect.left;
@@ -1180,13 +1216,50 @@ export class DomindsApp extends HTMLElement {
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     };
+    if (resizeHandle) {
+      let resizing = false;
+      let startTop = 0;
+      let startRight = 0;
+      const onResizeMove = (e: MouseEvent) => {
+        if (!resizing) return;
+        const maxWidthByViewport = Math.max(minWidth, Math.floor(window.innerWidth - margin * 2));
+        const maxHeightByViewport = Math.max(
+          minHeight,
+          Math.floor(window.innerHeight - margin * 2),
+        );
+        const maxLeft = Math.max(margin, startRight - minWidth);
+        const nextLeft = clamp(e.clientX, margin, maxLeft);
+        const nextWidth = clamp(startRight - nextLeft, minWidth, maxWidthByViewport);
+        const nextHeight = clamp(e.clientY - startTop, minHeight, maxHeightByViewport);
+        this.remindersWidgetX = Math.floor(startRight - nextWidth);
+        this.remindersWidgetY = Math.floor(startTop);
+        this.remindersWidgetWidthPx = Math.floor(nextWidth);
+        this.remindersWidgetHeightPx = Math.floor(nextHeight);
+        syncWidgetRect();
+      };
+      const onResizeUp = () => {
+        resizing = false;
+        window.removeEventListener('mousemove', onResizeMove);
+        window.removeEventListener('mouseup', onResizeUp);
+      };
+      resizeHandle.onmousedown = (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizing = true;
+        const rect = widget.getBoundingClientRect();
+        startTop = rect.top;
+        startRight = rect.right;
+        window.addEventListener('mousemove', onResizeMove);
+        window.addEventListener('mouseup', onResizeUp);
+      };
+    }
     if (closeBtn) {
-      closeBtn.addEventListener('click', (e) => {
+      closeBtn.onclick = (e: MouseEvent) => {
         e.stopPropagation();
         this.remindersWidgetVisible = false;
         const existing = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
         if (existing) existing.remove();
-      });
+      };
     }
   }
   connectedCallback(): void {
@@ -3901,7 +3974,7 @@ export class DomindsApp extends HTMLElement {
             ${
               this.remindersWidgetVisible
                 ? `
-            <div id="reminders-widget" style="position: fixed; left: ${this.remindersWidgetX}px; top: ${this.remindersWidgetY}px; width: 320px; max-height: 50vh; overflow: auto; border: 1px solid var(--dominds-border); background: var(--dominds-bg); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: var(--dominds-z-overlay-reminders);">
+            <div id="reminders-widget" style="position: fixed; left: ${this.remindersWidgetX}px; top: ${this.remindersWidgetY}px; width: ${this.remindersWidgetWidthPx}px; height: ${this.remindersWidgetHeightPx}px; min-width: 260px; min-height: 160px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--dominds-border); background: var(--dominds-bg); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: var(--dominds-z-overlay-reminders);">
               <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
                 <div style="display:flex; align-items:center; gap:8px;">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
@@ -3911,12 +3984,18 @@ export class DomindsApp extends HTMLElement {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
               </div>
-              <div id="reminders-widget-content" style="padding:8px 10px;">
+              <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;">
                 ${
                   this.toolbarReminders.length === 0
                     ? `<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">${t.noReminders}</div>`
                     : '<div class="reminders-widget-content"></div>'
                 }
+              </div>
+              <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M1.5 1.5L10.5 10.5"></path>
+                  <path d="M1.5 4.5L7.5 10.5"></path>
+                </svg>
               </div>
             </div>
             `
@@ -7672,17 +7751,29 @@ export class DomindsApp extends HTMLElement {
     if (this.remindersWidgetVisible) {
       const tb = this.shadowRoot?.querySelector('.toolbar') as HTMLElement;
       const rect = tb ? tb.getBoundingClientRect() : ({ right: 340, bottom: 80 } as DOMRect);
-      this.remindersWidgetX = Math.max(12, rect.right - 340);
-      this.remindersWidgetY = Math.max(12, rect.bottom + 8);
+      const margin = 12;
+      const maxX = Math.max(margin, window.innerWidth - this.remindersWidgetWidthPx - margin);
+      const maxY = Math.max(margin, window.innerHeight - this.remindersWidgetHeightPx - margin);
+      this.remindersWidgetX = Math.max(
+        margin,
+        Math.min(maxX, Math.floor(rect.right - this.remindersWidgetWidthPx - 8)),
+      );
+      this.remindersWidgetY = Math.max(margin, Math.min(maxY, Math.floor(rect.bottom + 8)));
       if (!existing) {
         const widget = document.createElement('div');
         widget.id = 'reminders-widget';
         widget.style.position = 'fixed';
         widget.style.left = `${this.remindersWidgetX}px`;
         widget.style.top = `${this.remindersWidgetY}px`;
-        widget.style.width = '320px';
-        widget.style.maxHeight = '50vh';
-        widget.style.overflow = 'auto';
+        widget.style.width = `${this.remindersWidgetWidthPx}px`;
+        widget.style.height = `${this.remindersWidgetHeightPx}px`;
+        widget.style.minWidth = '260px';
+        widget.style.minHeight = '160px';
+        widget.style.maxWidth = 'calc(100vw - 24px)';
+        widget.style.maxHeight = 'calc(100vh - 24px)';
+        widget.style.overflow = 'hidden';
+        widget.style.display = 'flex';
+        widget.style.flexDirection = 'column';
         widget.style.border = '1px solid var(--dominds-border)';
         widget.style.background = 'var(--dominds-bg)';
         widget.style.borderRadius = '10px';
@@ -7698,7 +7789,13 @@ export class DomindsApp extends HTMLElement {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
-          <div id="reminders-widget-content" style="padding:8px 10px;"></div>
+          <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;"></div>
+          <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <path d="M1.5 1.5L10.5 10.5"></path>
+              <path d="M1.5 4.5L7.5 10.5"></path>
+            </svg>
+          </div>
         `;
         this.shadowRoot?.appendChild(widget);
       }

@@ -100,7 +100,8 @@ function buildReminderContent(
       : `${base} | session: ${p.sessionSlug}`;
   });
 
-  return [heading, '', summary, '', ...lines].join('\n');
+  const detailList = lines.join('\n\n');
+  return [heading, '', summary, '', detailList].join('\n');
 }
 
 function findOwnedReminderIndices(dlg: Dialog): number[] {
