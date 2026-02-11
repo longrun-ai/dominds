@@ -43,6 +43,9 @@ type TeammateCallAnchorMeta = {
   callerCourse?: number;
 };
 
+const CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX = 120;
+const CALLING_EXPAND_STEP_VIEWPORT_RATIO = 1 / 3;
+
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
   private currentDialog?: DialogContext;
@@ -93,6 +96,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private webSearchSectionByItemId = new Map<string, HTMLElement>();
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
   private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
+  private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -786,11 +790,6 @@ export class DomindsDialogContainer extends HTMLElement {
         event.dialog.rootId === this.previousDialog.rootId;
 
       if (!isCurrentDialog && !isPreviousDialog) {
-        console.debug('DialogContainer: Ignoring event for different dialog', {
-          eventDialog: event.dialog,
-          currentDialog: this.currentDialog,
-          previousDialog: this.previousDialog,
-        });
         return;
       }
     }
@@ -1245,6 +1244,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     const body = this.generationBubble.querySelector('.bubble-body');
     (body || this.generationBubble).appendChild(funcCallSection);
+    this.setupFuncCallArgsProgressiveExpand(funcCallSection);
     this.scrollToBottom();
   }
 
@@ -1560,6 +1560,115 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
+  private getProgressiveExpandLabel(): { text: string; title: string } {
+    if (this.uiLanguage === 'zh') {
+      return { text: '展开更多（+1/3屏高）', title: '每次展开约 1/3 屏高' };
+    }
+    return { text: 'Show More (+1/3 viewport)', title: 'Expand by ~1/3 viewport' };
+  }
+
+  private setupProgressiveExpand(options: {
+    target: HTMLElement;
+    footer: HTMLElement;
+    button: HTMLButtonElement;
+  }): void {
+    const { target, footer, button } = options;
+    const label = this.getProgressiveExpandLabel();
+    button.textContent = label.text;
+    button.title = label.title;
+
+    const collapseToInitial = (): void => {
+      target.style.maxHeight = `${CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX}px`;
+      target.style.overflowY = 'hidden';
+    };
+
+    const expandFully = (): void => {
+      target.style.maxHeight = 'none';
+      target.style.overflowY = 'visible';
+      footer.classList.add('is-hidden');
+    };
+
+    const refreshExpandFooter = (): void => {
+      if (!target.isConnected) return;
+      const overflow = target.scrollHeight > target.clientHeight + 1;
+      if (overflow) {
+        footer.classList.remove('is-hidden');
+        return;
+      }
+      expandFully();
+    };
+
+    button.onclick = () => {
+      const stepPx = Math.max(
+        1,
+        Math.floor(window.innerHeight * CALLING_EXPAND_STEP_VIEWPORT_RATIO),
+      );
+      const nextMaxHeightPx =
+        Math.max(target.clientHeight, CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX) + stepPx;
+      target.style.maxHeight = `${nextMaxHeightPx}px`;
+      target.style.overflowY = 'hidden';
+      requestAnimationFrame(() => {
+        refreshExpandFooter();
+        this.scrollToBottom();
+      });
+    };
+
+    const previousObserver = this.progressiveExpandObserverByTarget.get(target);
+    if (previousObserver) {
+      previousObserver.disconnect();
+    }
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => {
+        refreshExpandFooter();
+      });
+      observer.observe(target);
+      this.progressiveExpandObserverByTarget.set(target, observer);
+    }
+
+    collapseToInitial();
+    requestAnimationFrame(() => {
+      refreshExpandFooter();
+    });
+  }
+
+  private setupCallingProgressiveExpand(section: HTMLElement): void {
+    const content = section.querySelector('.calling-content') as HTMLElement | null;
+    const footer = section.querySelector('.calling-expand-footer') as HTMLElement | null;
+    const button = section.querySelector('.calling-expand-btn') as HTMLButtonElement | null;
+    if (!content || !footer || !button) return;
+    this.setupProgressiveExpand({ target: content, footer, button });
+  }
+
+  private setupFuncCallArgsProgressiveExpand(section: HTMLElement): void {
+    const target = section.querySelector('.func-call-arguments') as HTMLElement | null;
+    const footer = section.querySelector(
+      '.func-call-arguments-expand-footer',
+    ) as HTMLElement | null;
+    const button = section.querySelector(
+      '.func-call-arguments-expand-btn',
+    ) as HTMLButtonElement | null;
+    if (!target || !footer || !button) return;
+    this.setupProgressiveExpand({ target, footer, button });
+  }
+
+  private setupFuncCallResultProgressiveExpand(section: HTMLElement): void {
+    const target = section.querySelector('.func-call-result') as HTMLElement | null;
+    const footer = section.querySelector('.func-call-result-expand-footer') as HTMLElement | null;
+    const button = section.querySelector(
+      '.func-call-result-expand-btn',
+    ) as HTMLButtonElement | null;
+    if (!target || !footer || !button) return;
+    this.setupProgressiveExpand({ target, footer, button });
+  }
+
+  private setupTeammateResponseProgressiveExpand(section: HTMLElement): void {
+    const target = section.querySelector('.teammate-content') as HTMLElement | null;
+    const footer = section.querySelector('.teammate-expand-footer') as HTMLElement | null;
+    const button = section.querySelector('.teammate-expand-btn') as HTMLButtonElement | null;
+    if (!target || !footer || !button) return;
+    this.setupProgressiveExpand({ target, footer, button });
+  }
+
   private handleToolCallStart(
     event: Extract<TypedDialogEvent, { type: 'teammate_call_start_evt' }>,
   ): void {
@@ -1615,6 +1724,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.renderCallTiming(callingSection, 'pending', startedAtMs);
     callingSection.setAttribute('data-genseq', String(genseq));
     (body || bubble).appendChild(callingSection);
+    this.setupCallingProgressiveExpand(callingSection);
     this.callingSection = undefined;
     this.teammateCallingSectionBySeq.set(genseq, callingSection);
     this.callingSectionByCallId.set(event.callId, callingSection);
@@ -1716,6 +1826,7 @@ export class DomindsDialogContainer extends HTMLElement {
             resultEl.classList.add('completed');
             resultEl.style.display = 'block';
           }
+          this.setupFuncCallResultProgressiveExpand(funcCallSection);
         }
         this.scrollToBottom();
         return;
@@ -1729,6 +1840,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const container = this.shadowRoot?.querySelector('.messages');
     if (container) {
       container.appendChild(messageEl);
+      this.setupTeammateResponseProgressiveExpand(messageEl);
       this.scrollToBottom();
     }
   }
@@ -2110,6 +2222,9 @@ export class DomindsDialogContainer extends HTMLElement {
         </div>
         <div class="bubble-body">
           <div class="teammate-content"></div>
+          <div class="teammate-expand-footer progressive-expand-footer is-hidden">
+            <button type="button" class="teammate-expand-btn progressive-expand-btn"></button>
+          </div>
         </div>
       </div>
     `;
@@ -2606,6 +2721,9 @@ export class DomindsDialogContainer extends HTMLElement {
       <div class="calling-content">
         <div class="calling-body"></div>
       </div>
+      <div class="calling-expand-footer progressive-expand-footer is-hidden">
+        <button type="button" class="calling-expand-btn progressive-expand-btn"></button>
+      </div>
     `;
     return el;
   }
@@ -2651,11 +2769,32 @@ export class DomindsDialogContainer extends HTMLElement {
     // Use `textContent` to prevent HTML/custom element interpretation.
     argsEl.textContent = argsDisplay;
 
+    const argsWrap = document.createElement('div');
+    argsWrap.className = 'func-call-arguments-wrap';
+    const argsExpandFooter = document.createElement('div');
+    argsExpandFooter.className =
+      'func-call-arguments-expand-footer progressive-expand-footer is-hidden';
+    const argsExpandBtn = document.createElement('button');
+    argsExpandBtn.type = 'button';
+    argsExpandBtn.className = 'func-call-arguments-expand-btn progressive-expand-btn';
+    argsExpandFooter.appendChild(argsExpandBtn);
+    argsWrap.append(argsEl, argsExpandFooter);
+
     const resultEl = document.createElement('div');
     resultEl.className = 'func-call-result';
     resultEl.style.display = 'none';
+    const resultWrap = document.createElement('div');
+    resultWrap.className = 'func-call-result-wrap';
+    const resultExpandFooter = document.createElement('div');
+    resultExpandFooter.className =
+      'func-call-result-expand-footer progressive-expand-footer is-hidden';
+    const resultExpandBtn = document.createElement('button');
+    resultExpandBtn.type = 'button';
+    resultExpandBtn.className = 'func-call-result-expand-btn progressive-expand-btn';
+    resultExpandFooter.appendChild(resultExpandBtn);
+    resultWrap.append(resultEl, resultExpandFooter);
 
-    contentEl.append(argsEl, resultEl);
+    contentEl.append(argsWrap, resultWrap);
     el.append(headerEl, contentEl);
     return el;
   }
@@ -3541,8 +3680,8 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .calling-content {
         margin-left: 18px;
-        max-height: 120px;
-        overflow: auto;
+        max-height: none;
+        overflow: visible;
       }
 
       .calling-body {
@@ -3550,6 +3689,48 @@ export class DomindsDialogContainer extends HTMLElement {
         white-space: pre-wrap;
         font-size: 12px;
         line-height: 1.35;
+      }
+
+      .progressive-expand-footer {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        display: flex;
+        justify-content: center;
+      }
+
+      .progressive-expand-footer.is-hidden {
+        display: none;
+      }
+
+      .progressive-expand-btn {
+        border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
+        background: var(--color-bg-secondary, #ffffff);
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        border-radius: 999px;
+        font-size: 11px;
+        line-height: 1.2;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+
+      .progressive-expand-btn:hover {
+        background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9));
+      }
+
+      .progressive-expand-btn:focus-visible {
+        outline: 2px solid var(--dominds-primary, var(--color-accent-primary, #007acc));
+        outline-offset: 1px;
+      }
+
+      .calling-expand-footer {
+        margin-left: 18px;
+      }
+
+      .func-call-arguments-expand-footer,
+      .func-call-result-expand-footer,
+      .teammate-expand-footer {
+        margin-left: 0;
       }
 
       .calling-section.failed {
@@ -3595,6 +3776,10 @@ export class DomindsDialogContainer extends HTMLElement {
         margin-left: 18px;
       }
 
+      .func-call-arguments-wrap {
+        margin: 0;
+      }
+
       .func-call-arguments {
         margin: 0;
         padding: 8px;
@@ -3607,15 +3792,19 @@ export class DomindsDialogContainer extends HTMLElement {
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
       }
 
-      .func-call-result {
+      .func-call-result-wrap {
         margin-top: 8px;
+      }
+
+      .func-call-result {
+        margin-top: 0;
         padding: 8px;
         border-radius: 6px;
         font-size: 12px;
         line-height: 1.4;
         white-space: normal;
-        max-height: calc(20 * 1.4em + 16px);
-        overflow: auto;
+        max-height: none;
+        overflow: visible;
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));

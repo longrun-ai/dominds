@@ -47,7 +47,8 @@ export class DomindsCodeBlock extends HTMLElement {
   private render() {
     // If we have no code yet, try to get it from textContent
     if (!this._code && this.textContent) {
-      this._code = this.textContent.trim();
+      // Preserve exact leading whitespace; trimming shifts the first line left.
+      this._code = this.textContent;
     }
 
     if (!this._code) return;

@@ -1612,10 +1612,12 @@ export class DomindsApp extends HTMLElement {
     let resumable = 0;
 
     for (const d of this.dialogs) {
+      // Global operator controls (Emergency Stop / Resume all) are defined in terms of *root dialogs*.
+      // Subdialogs are loaded lazily and can differ across tabs depending on what the user expanded;
+      // counting them would make the global counters depend on browser-side in-memory state.
+      if (d.selfId) continue;
       if (d.status !== 'running') continue;
-      const selfId = d.selfId ? d.selfId : d.rootId;
-      const key = this.dialogKey(d.rootId, selfId);
-      const state = this.dialogRunStatesByKey.get(key) ?? d.runState;
+      const state = d.runState;
       if (!state) continue;
 
       if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
@@ -4480,10 +4482,10 @@ export class DomindsApp extends HTMLElement {
       }
 
       // Global run controls
-      const emergencyStopPill = target.closest(
-        '#toolbar-emergency-stop-pill',
-      ) as HTMLElement | null;
-      if (emergencyStopPill) {
+      const emergencyStopBtn = target.closest(
+        '#toolbar-emergency-stop',
+      ) as HTMLButtonElement | null;
+      if (emergencyStopBtn) {
         const t = getUiStrings(this.uiLanguage);
         if (this.proceedingDialogsCount <= 0) {
           this.showToast(t.emergencyStopNoProceedingToast, 'warning');
@@ -4497,8 +4499,8 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const resumeAllPill = target.closest('#toolbar-resume-all-pill') as HTMLElement | null;
-      if (resumeAllPill) {
+      const resumeAllBtn = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
+      if (resumeAllBtn) {
         const t = getUiStrings(this.uiLanguage);
         if (this.resumableDialogsCount <= 0) {
           this.showToast(t.resumeAllNoResumableToast, 'warning');
@@ -4552,7 +4554,7 @@ export class DomindsApp extends HTMLElement {
     })();
     for (const delay of delaysMs) {
       const t = setTimeout(() => {
-        void this.loadDialogs({ preserveCachedRunStates: false });
+        void this.loadDialogs();
       }, delay);
       this.runControlRefreshTimers.push(t);
     }
@@ -5682,26 +5684,16 @@ export class DomindsApp extends HTMLElement {
     setTimeout(() => input?.focus(), 0);
   }
 
-  private async loadDialogs(options?: { preserveCachedRunStates?: boolean }): Promise<void> {
+  private async loadDialogs(): Promise<void> {
     try {
       const api = getApiClient();
       const resp = await api.getRootDialogs();
 
       if (resp.success && Array.isArray(resp.data)) {
-        const preserveCachedRunStates = options?.preserveCachedRunStates !== false;
         // Store root dialogs with their subdialog counts
         // Subdialogs will be loaded lazily when user expands a root dialog
-        const previousRunStates = new Map(this.dialogRunStatesByKey);
         const merged = this.mergeRootDialogsWithExistingSubdialogs(resp.data);
-        this.dialogs = merged.map((d) => {
-          const effectiveSelfId = d.selfId ? d.selfId : d.rootId;
-          const key = this.dialogKey(d.rootId, effectiveSelfId);
-          const cached = previousRunStates.get(key);
-          if (preserveCachedRunStates && !d.runState && cached) {
-            return { ...d, runState: cached };
-          }
-          return d;
-        });
+        this.dialogs = merged;
         this.dialogRunStatesByKey.clear();
         for (const d of this.dialogs) {
           const selfId = d.selfId ? d.selfId : d.rootId;
