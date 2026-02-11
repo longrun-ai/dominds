@@ -8,7 +8,7 @@
 
 **扪心自问（FBR, Fresh Boots Reasoning）** 是 Dominds 的一种工作机制：在主线对话推进过程中，智能体可以把一个边界清晰的子问题“拆出去”，以 **更干净的上下文** 重新推理一次，然后把结论回贴到主线对话中。
 
-在 Dominds 里，FBR 通过 **诉请（Tellask）语法** 触发，其中 `@self` 只是入口语法（“对当前对话自身发起诉请”）；FBR 的核心是运行时对这条支线对话施加的一组强制约束与并发语义。
+在 Dominds 里，FBR 通过 **诉请（Tellask）语法** 触发，其中 `targetAgentId: "self"` 只是入口语法（“对当前对话自身发起诉请”）；FBR 的核心是运行时对这条支线对话施加的一组强制约束与并发语义。
 
 ## 2. 设计原则与取舍（为什么这样做）
 
@@ -23,31 +23,31 @@ FBR 的价值来自“把推理拉回文本”：让被诉请者只围绕诉请�
 
 ### 2.2 不搞隐式魔法：禁用就要明确失败
 
-如果团队配置禁用了 FBR（例如 `fbr-effort: 0`），运行时必须 **对用户可见且清晰地拒绝** `!?@self`，避免“看起来发了诉请、实际上被静默忽略”的隐性失败。
+如果团队配置禁用了 FBR（例如 `fbr-effort: 0`），运行时必须 **对用户可见且清晰地拒绝** `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`，避免“看起来发了诉请、实际上被静默忽略”的隐性失败。
 
 ### 2.3 多样本推理，而不是“多代理协作”
 
 `fbr-effort` 的并发语义并不是让多条支线相互对话或协作，而是 **并行产生多个互相独立的推理样本**，由主线对话负责综合提炼。
 
-## 3. 用户语法（`@self` 只是入口）
+## 3. 用户语法（`targetAgentId: "self"` 只是入口）
 
 ### 3.1 触发语法
 
 以下两种语法都触发 FBR：
 
-- **默认（瞬态）**：`!?@self`
-- **少用（可恢复）**：`!?@self !tellaskSession <tellaskSession>`
+- **默认（瞬态）**：`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
+- **少用（可恢复）**：`tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`
 
 说明：
 
-- `@self` 表示“对当前对话自身（同一 agentId）发起诉请”。它是 **自诉请的显式语法**，用于避免把 `@teammate` 的引用/回声误判成“自己给自己诉请”。
-- FBR 的“可恢复”能力来自 `!tellaskSession`（Tellask 会话寻址），而不是来自 `@self` 本身。
+- `targetAgentId: "self"` 表示“对当前对话自身（同一 agentId）发起诉请”。它是 **自诉请的显式语法**，用于避免把 `@teammate` 的引用/回声误判成“自己给自己诉请”。
+- FBR 的“可恢复”能力来自 `sessionSlug`（Tellask 会话寻址），而不是来自 `targetAgentId: "self"` 本身。
 
 ### 3.2 作用域
 
-本文档只定义 **FBR 机制**，并说明其通过 `!?@self` 触发的行为契约。一般的队友诉请（`!?@<teammate>`）仍按 [`dialog-system.zh.md`](./dialog-system.zh.md) 的 Tellask 分类与能力模型执行。
+本文档只定义 **FBR 机制**，并说明其通过 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 触发的行为契约。一般的队友诉请（`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`）仍按 [`dialog-system.zh.md`](./dialog-system.zh.md) 的 Tellask 分类与能力模型执行。
 
-如果你需要“同人设但可用工具”的支线对话，不要用 `@self`；请使用一个明确的队友身份并授予其相应工具集（或用显式 `@<agentId>` 的一般诉请机制）。
+如果你需要“同人设但可用工具”的支线对话，不要用 `targetAgentId: "self"`；请使用一个明确的队友身份并授予其相应工具集（或用显式 `targetAgentId: "<agentId>"` 的一般诉请机制）。
 
 ## 4. 运行时契约（必须做到什么）
 
@@ -55,12 +55,12 @@ FBR 的价值来自“把推理拉回文本”：让被诉请者只围绕诉请�
 
 ### 4.1 隔离与上下文
 
-当运行时驱动由 `!?@self` 创建的 FBR 支线对话时，必须强制满足：
+当运行时驱动由 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 创建的 FBR 支线对话时，必须强制满足：
 
 - **不依赖诉请者对话上下文**：
   - 被诉请者不得假设能访问诉请者的主线/支线对话历史
   - 被诉请者必须把诉请正文当作主要且权威的任务上下文
-  - 若使用 `!tellaskSession`（可恢复）形式，被诉请者可以使用 **自身** 的 `tellaskSession` 历史作为显式上下文
+  - 若使用可恢复 `sessionSlug` 形式，被诉请者可以使用 **自身** 的会话历史作为显式上下文
 - **不得通过工具补上下文**：
   - 不得读文件/跑命令/浏览
   - 不得读取 Memory 或 rtws（运行时工作区）状态
@@ -81,7 +81,7 @@ FBR 支线对话的 system prompt 必须明确包含（措辞可不同，但语�
 - 这是一次 FBR 支线对话，诉请正文是主要任务上下文
 - 不要假设能访问诉请者对话历史
 - 若诉请正文缺少关键上下文，需要列出缺失信息与阻塞原因
-- 仅当必须澄清关键缺失上下文时，允许 `!?@tellasker` 回问诉请者；除此之外不要发起任何诉请
+- 仅当必须澄清关键缺失上下文时，允许 `tellaskBack({ tellaskContent: "..." })` 回问诉请者；除此之外不要发起任何诉请
 
 同时，**system prompt 本体不得包含任何工具说明**（不得出现“有哪些工具/如何用工具/例子命令/白名单”等）。
 
@@ -104,16 +104,16 @@ FBR 支线对话的 system prompt 必须明确包含（措辞可不同，但语�
 
 #### 4.2.3 LLM 请求必须是“0 工具”
 
-发起 `@self` FBR 支线对话的 LLM 请求必须做到 **0 个可用工具**：
+发起 `targetAgentId: "self"` FBR 支线对话的 LLM 请求必须做到 **0 个可用工具**：
 
 - 请求 payload 中不得包含任何 tool/function 定义（有效工具列表必须为空）
 - 不得启用提供方支持的任何“工具调用模式 / 工具选择 / 函数调用”开关
 
 并且：如果模型仍尝试发出 tool/function call，运行时必须视为违规并硬拒绝（见 4.5）。
 
-### 4.3 诉请限制：仅允许 `!?@tellasker`
+### 4.3 诉请限制：仅允许 `tellaskBack({ tellaskContent: "..." })`
 
-FBR 支线对话不得发起任何队友诉请（包括 `!?@human`）。唯一例外是 `!?@tellasker`：
+FBR 支线对话不得发起任何队友诉请（包括 `askHuman({ tellaskContent: "..." })`）。唯一例外是 `tellaskBack({ tellaskContent: "..." })`：
 
 - 仅支线对话可用，用于回问上游诉请者对话
 - 仅当必须澄清关键缺失上下文时才允许
@@ -131,7 +131,7 @@ FBR 支线对话应产出一份便于诉请者整合的简明推理结果。推�
 
 ### 4.5 违规与报错（必须“响亮可调试”）
 
-- 若 FBR 支线对话尝试发起违规诉请（非 `@tellasker`）或尝试 tool/function call，运行时必须硬拒绝该次驱动。
+- 若 FBR 支线对话尝试发起违规诉请（非 `tellaskBack({ tellaskContent: "..." })`）或尝试 tool/function call，运行时必须硬拒绝该次驱动。
 - 反馈必须 **对用户可见、语义清晰**，并且日志/事件中应包含可检索的错误原因字符串，避免静默吞掉。
 
 ## 5. 并发语义：`fbr-effort`
@@ -140,17 +140,17 @@ FBR 支线对话应产出一份便于诉请者整合的简明推理结果。推�
 
 - 类型：整数
 - 默认：`3`
-- `0`：禁用该成员的 `!?@self` FBR（必须明确报错拒绝）
-- `1..100`：每次 `!?@self` 并发创建 N 条 FBR 支线对话
+- `0`：禁用该成员的 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR（必须明确报错拒绝）
+- `1..100`：每次 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 并发创建 N 条 FBR 支线对话
 - `> 100` / 非整数 / 负数：配置错误（直接报错，不做 clamp）
 
 当 `fbr-effort = N`：
 
-- 运行时必须把一条 `!?@self` 扩展为 **N 条并行的无工具 FBR 支线对话**
+- 运行时必须把一条 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 扩展为 **N 条并行的无工具 FBR 支线对话**
 - 每条支线接收相同的诉请正文与相同的 FBR 提示词约束
 - 主线必须接收全部 N 条回贴；**不应依赖固定顺序**（可按完成顺序回贴）
 
-对可恢复的 `!?@self !tellaskSession <tellaskSession>` 形式，若 `N > 1`，运行时必须派生出 **不同的**
+对可恢复的 `tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })` 形式，若 `N > 1`，运行时必须派生出 **不同的**
 会话键，使并行支线互不共享历史（推荐：`<tellaskSession>.fbr-<i>`）。
 
 ## 6. 模型参数覆盖：`fbr_model_params`
@@ -158,7 +158,7 @@ FBR 支线对话应产出一份便于诉请者整合的简明推理结果。推�
 `fbr_model_params` 用于只在驱动 FBR 支线对话时覆盖模型参数：
 
 - 结构：与 `model_params` 完全一致（参考 `dominds/main/llm/defaults.yaml` 的 `model_param_options`）
-- 作用域：仅对 `!?@self` FBR 生效
+- 作用域：仅对 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR 生效
 - 合并：建议在成员的有效 `model_params` 之上做深合并覆盖（便于只改少数字段，如 `temperature`）
 - `max_tokens` 允许写成顶层 `max_tokens`，也允许写成 `general.max_tokens`；二选一，禁止同时设置
 
@@ -169,38 +169,25 @@ FBR 支线对话应产出一份便于诉请者整合的简明推理结果。推�
 坏例（依赖外部上下文与工具）：
 
 ```text
-!?@self
-把 bug 找出来并修掉。
+tellaskSessionless({ targetAgentId: "self", tellaskContent: "把 bug 找出来并修掉。" })
 ```
 
 好例（把关键上下文写进正文）：
 
 ```text
-!?@self
-你正在做无工具的 FBR。请只使用下方文本推理。
-
-目标：判断最可能的根因，并给出 2–3 个可行修复方向。
-
-现象：
-- 点击 “Run” 偶发卡死 ~10 秒。
-
-约束：
-- 不能改后端协议。
-
-线索（日志/片段）：
-<粘贴相关日志或代码片段>
+tellaskSessionless({ targetAgentId: "self", tellaskContent: "你正在做无工具的 FBR。请只使用下方文本推理。\n\n目标：判断最可能的根因，并给出 2–3 个可行修复方向。\n\n现象：\n- 点击 \"Run\" 偶发卡死 ~10 秒。\n\n约束：\n- 不能改后端协议。\n\n线索（日志/片段）：\n<粘贴相关日志或代码片段>" })
 ```
 
 ### 7.2 `.minds/team.yaml`
 
 ```yaml
 member_defaults:
-  # 默认每次 `!?@self` 并发创建 3 条无工具 FBR 支线对话。
+  # 默认每次 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 并发创建 3 条无工具 FBR 支线对话。
   fbr-effort: 3
 
 members:
   ux:
-    # 每次 `!?@self` 并发创建 5 条独立推理样本。
+    # 每次 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 并发创建 5 条独立推理样本。
     fbr-effort: 5
 
     # 让 FBR 更“发散”，但不影响主线风格。
@@ -214,14 +201,14 @@ members:
 
 ## 8. 与一般支线对话的关系（避免混用）
 
-- `!?@self` 的 FBR 支线对话是 **特例**：无工具、正文优先、诉请受限、可并发扩展。
-- 一般的 `!?@<teammate>` 支线对话仍是“完整能力”的（可按配置拥有工具与工具集）。
-- 若你需要“同人设 + 可用工具”的支线，不要用 `@self`；请显式配置一个队友身份来承载这类工作线程。
+- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 的 FBR 支线对话是 **特例**：无工具、正文优先、诉请受限、可并发扩展。
+- 一般的 `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })` 支线对话仍是“完整能力”的（可按配置拥有工具与工具集）。
+- 若你需要“同人设 + 可用工具”的支线，不要用 `targetAgentId: "self"`；请显式配置一个队友身份来承载这类工作线程。
 
 ## 9. 验收清单（实现检查点）
 
-- `!?@self` 触发 FBR：支线对话必须无工具，并且在 API 层确认为“0 工具”请求。
+- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 触发 FBR：支线对话必须无工具，并且在 API 层确认为“0 工具”请求。
 - system prompt 本体不含工具说明；工具相关文本只能来自独立、固定的“无工具提示”。
-- FBR 支线对话不得发起队友诉请；仅允许必要时 `!?@tellasker` 回问。
+- FBR 支线对话不得发起队友诉请；仅允许必要时 `tellaskBack({ tellaskContent: "..." })` 回问。
 - `fbr-effort` 默认 `3`，接受 `0..100`，禁用时明确报错拒绝。
 - `fbr_model_params` 仅对 FBR 生效，且与 `model_params` 同结构、按深合并覆盖。

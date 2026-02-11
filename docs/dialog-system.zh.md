@@ -48,7 +48,7 @@
 
 ### Q4H (向人类提问)
 
-**Q4H** 是由对话（主对话或子对话）提出的待处理问题，需要人工输入才能继续。Q4H 被索引在对话的 `q4h.yaml` 文件中（一个索引，不是真理之源），并由 `clear_mind` 操作清除。实际的问题内容存储在对话的对话消息中，其中记录了 `!?@human` Tellask。
+**Q4H** 是由对话（主对话或子对话）提出的待处理问题，需要人工输入才能继续。Q4H 被索引在对话的 `q4h.yaml` 文件中（一个索引，不是真理之源），并由 `clear_mind` 操作清除。实际的问题内容存储在对话的对话消息中，其中记录了 `!?askHuman()` Tellask。
 
 ### 子对话索引 (subdlg.yaml)
 
@@ -60,7 +60,7 @@
 
 ### 子对话注册表
 
-**子对话注册表** 是根对话作用域的 Map，维护对已注册子对话的持久引用。注册表使用 `agentId!tellaskSession` 作为其键格式。当根完成时，它随根移动到 `done/`，并在根加载时通过扫描 done/ 子对话 YAML 重建。若某个支线对话被宣布卡死，其对应的 TYPE B 注册表条目会被移除，以便后续可用同一 `agentId!tellaskSession` 创建全新的支线对话。
+**子对话注册表** 是根对话作用域的 Map，维护对已注册子对话的持久引用。注册表使用 `agentId!sessionSlug` 作为其键格式。当根完成时，它随根移动到 `done/`，并在根加载时通过扫描 done/ 子对话 YAML 重建。若某个支线对话被宣布卡死，其对应的 TYPE B 注册表条目会被移除，以便后续可用同一 `agentId!sessionSlug` 创建全新的支线对话。
 
 ### 队友 Tellask
 
@@ -68,9 +68,9 @@
 
 **诉请块结构**（另见 [`dominds-terminology.md`](./dominds-terminology.md)）：
 
-- **诉请头（Tellask headline）**：诉请块第一行 `!?@<name> ...`（同一诉请块内，后续以 `!?@...` 开头的行会并入诉请头）。
-- **诉请正文（Tellask body）**：后续以 `!?` 开头但不以 `!?@` 开头的行。
-- `!tellaskSession <slug>` 等结构化指令必须写在诉请头中。
+- **诉请头（Tellask headline）**：诉请块第一行 `tellaskSessionless({ targetAgentId: "<name>", tellaskContent: "..." })`（同一诉请块内，后续以 `tellask* function call` 开头的行会并入诉请头）。
+- **诉请正文（Tellask body）**：由 tellask-special 函数参数 `tellaskContent` 承载的正文载荷。
+- `sessionSlug` 等结构化指令必须写在诉请头中。
 
 ---
 
@@ -91,7 +91,7 @@
 每个根的 `selfId → Dialog` 对象映射。此注册表包含根对话本身以及所有已加载的子对话，支持在层级内对任何对话进行 O(1) 查找。
 
 **子对话注册表（每个根对话）**
-每个根的 `agentId!tellaskSession → Subdialog` 对象映射。此注册表跟踪用于在多次交互中恢复的 TYPE B 已注册子对话。TYPE C 瞬态子对话永远不会被注册。
+每个根的 `agentId!sessionSlug → Subdialog` 对象映射。此注册表跟踪用于在多次交互中恢复的 TYPE B 已注册子对话。TYPE C 瞬态子对话永远不会被注册。
 
 ### 每对话互斥锁
 
@@ -139,18 +139,18 @@
 
 ```mermaid
 flowchart TD
-  M[LLM 发出 !?@mention] --> Q{这是子对话在告诉其直接上位对话吗？}
-  Q -- 是 --> A[TYPE A：回问诉请<br/>(`TellaskBack` / 回问诉请)<br/>主要：`!?@tellasker`（无 !tellaskSession）]
-  Q -- 否 --> T{是否存在 !tellaskSession？}
-  T -- 是 --> B[TYPE B：已注册子对话 Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !tellaskSession tellaskSession]
-  T -- 否 --> C[TYPE C：瞬态子对话 Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>!?@agentId]
+  M[LLM 发出 tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{这是子对话在告诉其直接上位对话吗？}
+  Q -- 是 --> A[TYPE A：回问诉请<br/>(`TellaskBack` / 回问诉请)<br/>主要：`tellaskBack({ tellaskContent: "..." })`（无 sessionSlug）]
+  Q -- 否 --> T{是否存在 sessionSlug？}
+  T -- 是 --> B[TYPE B：已注册子对话 Tellask<br/>(`Tellask Session` / 长线诉请)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
+  T -- 否 --> C[TYPE C：瞬态子对话 Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
 ```
 
 ### TYPE A：上位 Tellask（Type A / `TellaskBack` / 回问诉请）
 
-**主要语法**：`!?@tellasker`（无 `!tellaskSession`）— `!?@tellasker !tellaskSession ...` 是**语法错误**
+**主要语法**：`tellaskBack({ tellaskContent: "..." })`（无 `sessionSlug`）— `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) sessionSlug ...` 是**语法错误**
 
-**可容忍的回退**：`!?@<supdialogAgentId>`（无 `!tellaskSession`）
+**可容忍的回退**：`tellaskBack({ tellaskContent: "..." })`（无 `sessionSlug`）
 
 **行为**：
 
@@ -164,7 +164,7 @@ flowchart TD
 - 使用 `subdialog.supdialog` 引用（无注册表查找）
 - 无需注册 — 上位对话关系是固有的
 - 上位对话始终是层级中的直接父级
-- `!?@tellasker` 是**规范**的 TYPE A 语法：它始终路由到“诉请者”（发起本次诉请的对话），避免自行猜测。
+- `tellaskBack({ tellaskContent: "..." })` 是**规范**的 TYPE A 语法：它始终路由到“诉请者”（发起本次诉请的对话），避免自行猜测。
 
 **示例**：
 
@@ -172,7 +172,7 @@ flowchart TD
 当前对话：sub-001（agentId: "backend-dev"）
 父上位对话："orchestrator"（agentId）
 
-LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
+LLM 发出：tellaskSessionless({ targetAgentId: "orchestrator", tellaskContent: "..." }) 我应该如何处理数据库迁移？
 
 结果：
 - sub-001 挂起
@@ -183,31 +183,31 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 
 ### TYPE B：已注册子对话 Tellask（Type B / `Tellask Session` / 长线诉请）
 
-**语法**：`!?@<anyAgentId> !tellaskSession <tellaskSession>`（注意 `!tellaskSession` 前的空格）
+**语法**：`tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`（注意 `sessionSlug` 前的空格）
 
-**扪心自问 (FBR) 自调用语法（罕见；可恢复）**：`!?@self !tellaskSession <tellaskSession>`
+**扪心自问 (FBR) 自调用语法（罕见；可恢复）**：`tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`
 
-- `!?@self` 是一个显式的"相同角色"调用，指向**当前对话的 agentId**（不是单独队友）。
+- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 是一个显式的"相同角色"调用，指向**当前对话的 agentId**（不是单独队友）。
 - 这是自调用的**明确**语法，有助于避免因回声/引用先前调用标题而导致的意外 `@teammate`→`@teammate` 自调用。
-- 注意：在 Dominds 中，`!?@self` 会触发扪心自问（FBR）机制，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
-- **FBR 本身应该很常见**，但使用 `!tellaskSession` 寻址的变体应该很罕见。对于大多数 FBR 使用，首选 `!?@self`（TYPE C，瞬态）。仅当你明确想要一个可恢复的、长期存在的"初心会话"用于多步骤子问题时，才使用 `!?@self !tellaskSession ...`。
+- 注意：在 Dominds 中，`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 会触发扪心自问（FBR）机制，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
+- **FBR 本身应该很常见**，但使用 `sessionSlug` 寻址的变体应该很罕见。对于大多数 FBR 使用，首选 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`（TYPE C，瞬态）。仅当你明确想要一个可恢复的、长期存在的"初心会话"用于多步骤子问题时，才使用 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." }) sessionSlug ...`。
 
 **Tellask 会话键模式**：`<tellaskSession>` 使用与 `<mention-id>` 相同的标识符模式：`[a-zA-Z][a-zA-Z0-9_-]*`。解析在空白或标点处停止；任何尾随的标题文本在 tellaskSession 解析时被忽略。
 
-**注册表键**：`agentId!tellaskSession`
+**注册表键**：`agentId!sessionSlug`
 
 **行为**：
 
-1. 检查注册表中是否存在键为 `agentId!tellaskSession` 的现有子对话
+1. 检查注册表中是否存在键为 `agentId!sessionSlug` 的现有子对话
 2. **如果存在**：恢复已注册的子对话
-3. **如果不存在**：创建新的子对话并使用键 `agentId!tellaskSession` 注册它
+3. **如果不存在**：创建新的子对话并使用键 `agentId!sessionSlug` 注册它
 4. 父对话在子对话运行时**挂起**
 5. 子对话的响应流回父级
 6. 父级**恢复**，子对话的响应在上下文中
 
 **当前调用者跟踪（对复用很重要）：**
 
-当已注册的子对话被再次 Tellask（相同的 `agentId!tellaskSession`）时，调用者可能是**不同的对话**（主线对话或其他支线对话）。在每次 TYPE B Tellask 时，子对话的元数据都会更新为：
+当已注册的子对话被再次 Tellask（相同的 `agentId!sessionSlug`）时，调用者可能是**不同的对话**（主线对话或其他支线对话）。在每次 TYPE B Tellask 时，子对话的元数据都会更新为：
 
 - **当前调用者对话 ID**（这样响应就会路由回*最新*的调用者）
 - **Tellask 信息**（标题/正文、来源角色、来源成员、callId）
@@ -216,7 +216,7 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 
 **恢复时的 Tellask 上下文**：
 
-- 在每次 TYPE B Tellask（新的或恢复的）时，父级提供的 `tellaskHead`/`tellaskBody`
+- 在每次 TYPE B Tellask（新的或恢复的）时，父级提供的 `mentionList`/`tellaskContent`
   在驱动子对话之前作为新用户消息追加到子对话中。
   这确保子对话在每次 Tellask 时都能收到最新的请求上下文。
 - 系统注入的恢复提示仅用于上下文，**不会被解析**为队友/工具 Tellask。
@@ -234,7 +234,7 @@ LLM 发出：!?@orchestrator 我应该如何处理数据库迁移？
 根对话：orchestrator
 注册表：{}（空）
 
-LLM 发出：!?@researcher !tellaskSession market-analysis
+LLM 发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-analysis", tellaskContent: "..." })
 
 结果（第一次调用）：
 - 注册表查找：不存在 "researcher!market-analysis"
@@ -245,7 +245,7 @@ LLM 发出：!?@researcher !tellaskSession market-analysis
 - 响应流回 orchestrator
 - orchestrator 恢复
 
-LLM 再次发出：!?@researcher !tellaskSession market-analysis
+LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-analysis", tellaskContent: "..." })
 
 结果（第二次调用）：
 - 注册表查找："researcher!market-analysis" 存在
@@ -258,12 +258,12 @@ LLM 再次发出：!?@researcher !tellaskSession market-analysis
 
 ### TYPE C：瞬态子对话 Tellask（Type C / `Fresh Tellask` / 一次性诉请）
 
-**语法**：`!?@<nonSupdialogAgentId>`（无 `!tellaskSession`）
+**语法**：`tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })`（无 `sessionSlug`）
 
-**扪心自问 (FBR) 自调用语法（默认；最常见）**：`!?@self`
+**扪心自问 (FBR) 自调用语法（默认；最常见）**：`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
 
-- `!?@self` 指向当前对话的 agentId，并创建一条路由到同一 agentId 的**新的临时子对话**。
-- 由 `!?@self` 创建的支线对话属于 FBR，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
+- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 指向当前对话的 agentId，并创建一条路由到同一 agentId 的**新的临时子对话**。
+- 由 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 创建的支线对话属于 FBR，并以更严格的“无工具”策略驱动；详见 [`fbr.zh.md`](./fbr.zh.md)。
 - 对于大多数扪心自问 会话使用此方式：隔离单个子问题，产生答案，然后返回。
 
 **行为**：
@@ -272,7 +272,7 @@ LLM 再次发出：!?@researcher !tellaskSession market-analysis
 2. 使用指定的 agentId 创建**新的子对话**
 3. 驱动新的子对话：
    - 一般 TYPE C 子对话是“完整能力”的（可上位调用、队友诉请、按配置使用工具）。
-   - `!?@self` 属于 FBR 特例：无工具、诉请受限（见 `fbr.zh.md`）。
+   - `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 属于 FBR 特例：无工具、诉请受限（见 `fbr.zh.md`）。
 4. 子对话的响应流回父级
 5. 父级**恢复**，子对话的响应在上下文中
 
@@ -280,7 +280,7 @@ LLM 再次发出：!?@researcher !tellaskSession market-analysis
 
 - **无注册表查找** - 总是创建新的子对话
 - **不注册** - 在 Tellask 之间不持久化
-- 子对话本身一般是“完整能力”的；但 `!?@self` FBR 是特例：无工具且诉请受限（见 `fbr.zh.md`）。
+- 子对话本身一般是“完整能力”的；但 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR 是特例：无工具且诉请受限（见 `fbr.zh.md`）。
 - 与 TYPE B 的唯一区别：无注册表查找/恢复能力
 - 用于一次性的、独立的任务
 
@@ -309,16 +309,16 @@ LLM 再次发出：@code-reviewer 审查这个其他 PR
 
 ### 对比总结
 
-| 方面                | TYPE A：上位 Tellask (`TellaskBack`) | TYPE B：已注册子对话 Tellask (`Tellask Session`) | TYPE C：瞬态子对话 Tellask (`Fresh Tellask`) |
-| ------------------- | ------------------------------------ | ------------------------------------------------ | -------------------------------------------- |
-| **语法**            | `!?@<supdialogAgentId>`              | `!?@<anyAgentId> !tellaskSession <id>`           | `!?@<nonSupdialogAgentId>`                   |
-| **!tellaskSession** | 不允许                               | 必须                                             | 不允许                                       |
-| **注册表查找**      | 否（使用 `subdialog.supdialog`）     | 是（`agentId!tellaskSession`）                   | 否（永不注册）                               |
-| **恢复**            | 否（上位对话不是子对话）             | 是（查找找到现有的）                             | 否（总是新的）                               |
-| **注册**            | 不适用                               | 创建并注册                                       | 永不注册                                     |
-| **父级行为**        | 子对话挂起                           | 父级挂起                                         | 父级挂起                                     |
-| **子对话能力**      | 完整（上位调用、队友、工具）         | 完整（上位调用、队友、工具）                     | 完整（上位调用、队友、工具）                 |
-| **用例**            | 从父级澄清（`TellaskBack`）          | 恢复持久子任务（`Tellask Session`）              | 一次性独立任务（`Fresh Tellask`）            |
+| 方面            | TYPE A：上位 Tellask (`TellaskBack`)     | TYPE B：已注册子对话 Tellask (`Tellask Session`)                                         | TYPE C：瞬态子对话 Tellask (`Fresh Tellask`)                                            |
+| --------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **语法**        | `tellaskBack({ tellaskContent: "..." })` | `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<id>", tellaskContent: "..." })` | `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` |
+| **sessionSlug** | 不允许                                   | 必须                                                                                     | 不允许                                                                                  |
+| **注册表查找**  | 否（使用 `subdialog.supdialog`）         | 是（`agentId!sessionSlug`）                                                              | 否（永不注册）                                                                          |
+| **恢复**        | 否（上位对话不是子对话）                 | 是（查找找到现有的）                                                                     | 否（总是新的）                                                                          |
+| **注册**        | 不适用                                   | 创建并注册                                                                               | 永不注册                                                                                |
+| **父级行为**    | 子对话挂起                               | 父级挂起                                                                                 | 父级挂起                                                                                |
+| **子对话能力**  | 完整（上位调用、队友、工具）             | 完整（上位调用、队友、工具）                                                             | 完整（上位调用、队友、工具）                                                            |
+| **用例**        | 从父级澄清（`TellaskBack`）              | 恢复持久子任务（`Tellask Session`）                                                      | 一次性独立任务（`Fresh Tellask`）                                                       |
 
 ---
 
@@ -329,7 +329,7 @@ Dominds 对话系统建立在四个相互关联的核心机制之上，这些机
 ```mermaid
 flowchart TD
   H[对话层级<br/>(root ↔ 子对话)] <--> S[子对话供应<br/>(响应、待处理列表、注册表)]
-  H --> Q[Q4H (!?@human)<br/>(q4h.yaml 索引)]
+  H --> Q[Q4H (!?askHuman())<br/>(q4h.yaml 索引)]
   S --> Q
 
   Q --> UI[前端 Q4H 面板<br/>(questions_count_update)]
@@ -343,7 +343,7 @@ flowchart TD
 
 ### 关键设计原则
 
-1. **Q4H 索引在 `q4h.yaml` 中**：Q4H 问题被索引在 `q4h.yaml` 中（作为索引，不是真理之源），并由思维清晰操作清除。实际的问题内容在对话的对话消息中，其中记录了 `!?@human` Tellask。它们不会在 `clear_mind` 中存活。
+1. **Q4H 索引在 `q4h.yaml` 中**：Q4H 问题被索引在 `q4h.yaml` 中（作为索引，不是真理之源），并由思维清晰操作清除。实际的问题内容在对话的对话消息中，其中记录了 `!?askHuman()` Tellask。它们不会在 `clear_mind` 中存活。
 
 2. **层级 Q4H**：层级中的任何对话都可以自行提出 Q4H（根对话或子对话）。问题被索引在提出问题的对话中，而不是向上传递。
 
@@ -375,20 +375,20 @@ Q4H（向人类提问）是对话可以暂停执行并请求人工输入的机�
 /**
  * HumanQuestion - 索引条目持久化在每个对话的 q4h.yaml 中
  * 注意：这是索引，不是真理之源。实际的 question
- * 内容在对话的对话消息中，其中记录了 @human Tellask
- *（通过 !?@human 调用）。
+ * 内容在对话的对话消息中，其中记录了 askHuman() Tellask
+ *（通过 !?askHuman() 调用）。
  */
 interface HumanQuestion {
   readonly id: string; // 唯一标识符（UUID）- 匹配消息 ID
-  readonly tellaskHead: string; // 问题标题
-  readonly bodyContent: string; // 详细问题上下文
+  readonly mentionList: string; // 问题标题
+  readonly tellaskContent: string; // 详细问题上下文
   readonly askedAt: string; // ISO 时间戳
 }
 ```
 
 **存储位置**：`<dialog-path>/q4h.yaml` - 作为快速查找的索引
 
-**真理之源**：实际的 `!?@human` Tellask 存储在对话的对话消息中（course JSONL 文件），即提出问题的地方。
+**真理之源**：实际的 `!?askHuman()` Tellask 存储在对话的对话消息中（course JSONL 文件），即提出问题的地方。
 
 ### Q4H 机制流程
 
@@ -412,33 +412,33 @@ sequenceDiagram
 
 ### 对话何时提出 Q4H？
 
-当 `!?@human` 队友 Tellask 被任何对话（根或子对话）自行调用时，会提出 Q4H：
+当 `!?askHuman()` 队友 Tellask 被任何对话（根或子对话）自行调用时，会提出 Q4H：
 
 ```typescript
 // 来自 main/llm/driver.ts，executeTellaskCall 函数
-const isQ4H = firstMention === 'human';
+const isQ4H = callKind === 'askHuman';
 ```
 
 **调用模式**：
 
 ```
-!?@human <问题标题>
+!?askHuman() <问题标题>
 !?<问题正文内容>
 ```
 
 ### Q4H 记录过程
 
 ```typescript
-// 当检测到 !?@human 作为队友 Tellask 时
+// 当检测到 !?askHuman() 作为队友 Tellask 时
 async function recordQuestionForHuman(
   dlg: Dialog,
-  tellaskHead: string,
-  bodyContent: string,
+  mentionList: string,
+  tellaskContent: string,
 ): Promise<void> {
   const question: HumanQuestion = {
     id: generateDialogID(),
-    tellaskHead,
-    bodyContent,
+    mentionList,
+    tellaskContent,
     askedAt: formatUnifiedTimestamp(new Date()),
   };
 
@@ -503,7 +503,7 @@ interface DriveDialogByUserAnswerRequest {
 **流程（智能体拉取模型）**：
 
 1. 用户在 UI 中看到 Q4H 指示器/徽章
-2. 用户点击面板/列表中的 Q4H，导航到 `@human` Tellask 站点
+2. 用户点击面板/列表中的 Q4H，导航到 `askHuman()` Tellask 站点
 3. 用户在输入文本区域中输入答案（与常规消息相同）
 4. 前端发送 `drive_dialog_by_user_answer` 数据包
 5. 后端根据 q4h.yaml 验证 `questionId`
@@ -547,7 +547,7 @@ sequenceDiagram
   Sup->>Sub: 创建子对话（TYPE B 或 C）
   Note over Sup: 上位对话因待处理子对话而阻塞
 
-  Sub->>WS: 发出 !?@human 问题
+  Sub->>WS: 发出 !?askHuman() 问题
   WS-->>UI: questions_count_update
   Note over Sub: 子对话在回答之前无法继续
 
@@ -719,7 +719,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 
 **实现说明**：
 
-- `change_mind` 仅在根对话中可用（不在子对话中）；子对话必须通过回问诉请（`!?@tellasker`）询问诉请者以更新共享 Taskdoc。
+- `change_mind` 仅在根对话中可用（不在子对话中）；子对话必须通过回问诉请（`tellaskBack({ tellaskContent: "..." })`）询问诉请者以更新共享 Taskdoc。
 - 对于 `*.tsk/` Taskdoc 包，Taskdoc 是封装的：通用文件工具不得读取/写入/列出/删除 `*.tsk/` 下的任何内容。请参阅 [`encapsulated-taskdoc.zh.md`](./encapsulated-taskdoc.zh.md)。
 
 ---
@@ -759,7 +759,7 @@ async function checkSubdialogRevival(supdialog: Dialog): Promise<void> {
 | 方面         | 描述                                       |
 | ------------ | ------------------------------------------ |
 | **作用域**   | 仅限根对话（子对话无法访问）               |
-| **键格式**   | `agentId!tellaskSession`（单级 Map）       |
+| **键格式**   | `agentId!sessionSlug`（单级 Map）          |
 | **存储**     | 根对话目录中的 `registry.yaml`             |
 | **生命周期** | 正常流程保留；被宣布卡死的子对话条目会移除 |
 | **持久化**   | 根完成时随根移动到 `done/`                 |
@@ -780,7 +780,7 @@ researcher!market-analysis:
 
 ```mermaid
 flowchart TD
-  Tellask[TYPE B Tellask: !?@agentId !tellaskSession tellaskSession] --> Key[计算键：agentId!tellaskSession]
+  Tellask[TYPE B Tellask: tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })] --> Key[计算键：agentId!sessionSlug]
   Key --> Lookup{注册表命中？}
   Lookup -- 是 --> Resume[恢复 + 驱动现有子对话]
   Lookup -- 否 --> Create[创建 + 注册 + 驱动新的子对话]
@@ -796,9 +796,9 @@ flowchart TD
 
 - `RootDialog`
   - 拥有 TYPE B 子对话注册表（`registry.yaml`）
-  - 创建/注册/查找已注册的子对话（`agentId!tellaskSession`）
+  - 创建/注册/查找已注册的子对话（`agentId!sessionSlug`）
 - `SubDialog`
-  - 有一个 `supdialog` 引用（直接父级）并将其用于 TYPE A（`!?@tellasker`）
+  - 有一个 `supdialog` 引用（直接父级）并将其用于 TYPE A（`tellaskBack({ tellaskContent: "..." })`）
   - 无法访问或更改根注册表（按设计）
 
 **互斥锁语义**：
@@ -910,7 +910,7 @@ interface RegistryMethods {
 **上下文继承**：新的子对话自动接收：
 
 - 对相同 rtws（运行时工作区）Taskdoc 的引用（推荐：`tasks/feature-auth.tsk/`）；`dlg.taskDocPath` 在对话创建时固定，永不重新分配
-- 上位 Tellask 上下文（tellaskHead + tellaskBody）解释其目的
+- 上位 Tellask 上下文（mentionList + tellaskContent）解释其目的
 - 访问共享团队内存
 - 访问其智能体的个人内存
 
@@ -1075,7 +1075,7 @@ flowchart TD
 
 这些图表专注于**控制流**，避免框图对齐，以便在不同的markdown查看器中呈现时保持可读性。
 
-#### TYPE A：回问诉请（`TellaskBack`）（`!?@tellasker`，无 `!tellaskSession`）
+#### TYPE A：回问诉请（`TellaskBack`）（`tellaskBack({ tellaskContent: "..." })`，无 `sessionSlug`）
 
 ```mermaid
 sequenceDiagram
@@ -1083,13 +1083,13 @@ sequenceDiagram
   participant Driver as 后端驱动程序
   participant Sup as 上位对话（直接父级）
 
-  Sub->>Driver: 发出 `!?@tellasker` + 问题
+  Sub->>Driver: 发出 `tellaskBack({ tellaskContent: "..." })` + 问题
   Driver->>Sup: 驱动上位对话以回答
   Sup-->>Driver: 响应文本
   Driver-->>Sub: 恢复子对话，响应在上下文中
 ```
 
-#### TYPE B：已注册子对话 Tellask（`Tellask Session`）（`!?@agentId !tellaskSession tellaskSession`，或 `!?@self !tellaskSession tellaskSession`）
+#### TYPE B：已注册子对话 Tellask（`Tellask Session`）（`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`，或 `tellask({ targetAgentId: "self", sessionSlug: "tellaskSession", tellaskContent: "..." })`）
 
 ```mermaid
 sequenceDiagram
@@ -1098,8 +1098,8 @@ sequenceDiagram
   participant Reg as 根子对话注册表
   participant Sub as 已注册的子对话
 
-  Caller->>Driver: 发出 `!?@agentId !tellaskSession tellaskSession`
-  Driver->>Reg: 查找 `agentId!tellaskSession`
+  Caller->>Driver: 发出 `tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`
+  Driver->>Reg: 查找 `agentId!sessionSlug`
   alt 注册表命中
     Reg-->>Driver: 现有子对话 selfId
     Driver->>Sub: 恢复 + 驱动
@@ -1117,7 +1117,7 @@ end
 
 ````
 
-#### TYPE C：瞬态子对话 Tellask（`Fresh Tellask`）（`!?@agentId`，或 `!?@self`）
+#### TYPE C：瞬态子对话 Tellask（`Fresh Tellask`）（`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`，或 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`）
 
 ```mermaid
 sequenceDiagram
@@ -1125,7 +1125,7 @@ sequenceDiagram
   participant Driver as 后端驱动程序
   participant Sub as 瞬态子对话
 
-  Caller->>Driver: 发出 `!?@agentId`
+  Caller->>Driver: 发出 `tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`
   Driver->>Sub: 创建（不注册）
   Driver->>Sub: 驱动
   Sub-->>Driver: 最终响应
@@ -1136,7 +1136,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[!?@human Tellask 发出] --> B[将 HumanQuestion 条目追加到 q4h.yaml]
+  A[!?askHuman() Tellask 发出] --> B[将 HumanQuestion 条目追加到 q4h.yaml]
   B --> C[发出 questions_count_update]
   C --> D[UI 显示 Q4H 徽章/列表]
   D --> E{如何清除？}
@@ -1160,7 +1160,7 @@ sequenceDiagram
 
   Sup->>Sub: 创建子对话（TYPE B 或 C）
   Note over Sup,Sub: 上位对话因待处理子对话而阻塞
-  Sub->>WS: 发出 !?@human 问题（Q4H）
+  Sub->>WS: 发出 !?askHuman() 问题（Q4H）
   WS-->>UI: questions_count_update（全局）
 
   Note over Sub: 子对话在回答之前无法继续
@@ -1189,7 +1189,7 @@ sequenceDiagram
   participant Store as 持久化（q4h.yaml）
   participant UI as 前端
 
-  User->>Main: !?@human 问题
+  User->>Main: !?askHuman() 问题
   Main->>Store: recordQuestionForHuman()
   Main-->>UI: questions_count_update
   Main-->>Main: 暂停根驱动循环
@@ -1246,7 +1246,7 @@ sequenceDiagram
 sequenceDiagram
   participant Root as 根对话
   participant Store as 持久化（registry.yaml + dialogs/）
-  participant Sub as 子对话（@researcher !tellaskSession market）
+  participant Sub as 子对话（@researcher sessionSlug market）
 
   Root->>Store: lookup registry key "researcher!market"
   alt not found
@@ -1320,11 +1320,11 @@ Dominds 对话系统为层次化、人在回路的 AI 协作提供了一个强�
 
 ### 三种队友 Tellask 类型
 
-| 类型（内部） | 用户可见术语      | 语法                              | 注册表                   | 用例             |
-| ------------ | ----------------- | --------------------------------- | ------------------------ | ---------------- |
-| TYPE A       | `TellaskBack`     | `!?@tellasker`                    | 无注册表                 | 澄清（询问来源） |
-| TYPE B       | `Tellask Session` | `!?@agentId !tellaskSession <id>` | `agentId!tellaskSession` | 可恢复多轮工作   |
-| TYPE C       | `Fresh Tellask`   | `!?@agentId`                      | 未注册                   | 单次 / 不可恢复  |
+| 类型（内部） | 用户可见术语      | 语法                                                                                | 注册表                | 用例             |
+| ------------ | ----------------- | ----------------------------------------------------------------------------------- | --------------------- | ---------------- |
+| TYPE A       | `TellaskBack`     | `tellaskBack({ tellaskContent: "..." })`                                            | 无注册表              | 澄清（询问来源） |
+| TYPE B       | `Tellask Session` | `tellask({ targetAgentId: "agentId", sessionSlug: "<id>", tellaskContent: "..." })` | `agentId!sessionSlug` | 可恢复多轮工作   |
+| TYPE C       | `Fresh Tellask`   | `tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`           | 未注册                | 单次 / 不可恢复  |
 
 ### 类职责
 

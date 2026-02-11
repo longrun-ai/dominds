@@ -27,7 +27,7 @@ For FBR policy, runtime:
 - uses `buildFbrSystemPrompt(...)` (no tool instructions)
 - injects a separate `buildNoToolsNotice(...)`
 - forces `effectiveAgentTools = []`
-- forces `tellaskPolicy = tellasker_only`
+- forces `tellaskPolicy = deny_all`
 - forces `allowFunctionCalls = false`
 - applies `fbr_model_params` override when configured
 
@@ -39,7 +39,7 @@ For FBR policy, runtime:
 
 Both streaming and non-streaming paths call `resolveDrivePolicyViolationKind(...)` to detect:
 
-- disallowed tellasks (FBR allows only `@tellasker`)
+- disallowed tellask-special function calls (FBR technical mode disallows all function calls)
 - disallowed tool/function calls (FBR disallows all)
 
 On violation, runtime emits `formatDomindsNoteFbrToollessViolation(...)` consistently.
@@ -51,7 +51,7 @@ Before generation, runtime runs `validateDrivePolicyInvariants(...)` and fail-fa
 - system prompt must exactly equal `buildFbrSystemPrompt(...)`
 - `effectiveAgentTools` must be empty
 - `allowFunctionCalls` must be `false`
-- `tellaskPolicy` must be `tellasker_only`
+- `tellaskPolicy` must be `deny_all`
 - `prependedContextMessages` must contain exactly one `buildNoToolsNotice(...)`
 
 If any check fails, runtime throws `FBR policy isolation violation`, preventing global tool-manual/tool-prompt paths from leaking into FBR.
@@ -74,4 +74,4 @@ If any check fails, runtime throws `FBR policy isolation violation`, preventing 
 - FBR system prompt has no tool instructions.
 - Tool-related wording appears only in the separate `buildNoToolsNotice(...)`.
 - FBR/non-FBR context assembly flow is structurally identical; only policy fields differ.
-- Any FBR tool/function call or non-`@tellasker` tellask is hard-rejected with explicit feedback.
+- Any FBR tool/function call or tellask-special function call is hard-rejected with explicit feedback.

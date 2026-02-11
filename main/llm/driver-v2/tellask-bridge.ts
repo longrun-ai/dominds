@@ -505,9 +505,7 @@ async function executeTellaskCall(
   const isSelfAlias =
     parseResult !== null && parseResult.type !== 'A' && parseResult.agentId === dlg.agentId;
   const member =
-    parseResult !== null && parseResult.type !== 'A'
-      ? team.getMember(parseResult.agentId)
-      : null;
+    parseResult !== null && parseResult.type !== 'A' ? team.getMember(parseResult.agentId) : null;
 
   const isQ4H = callKind === 'askHuman';
   if (isQ4H) {

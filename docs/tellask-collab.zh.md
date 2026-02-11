@@ -28,15 +28,15 @@
 
 ### 2.1 Tellask 三形态
 
-- `TellaskBack`（回问诉请）：`!?@tellasker`，用于向诉请者回问澄清。
-- `Tellask Session`（长线诉请）：`!?@<teammate> !tellaskSession <slug>`，可恢复上下文的多轮协作。
-- `Fresh Tellask`（一次性诉请）：`!?@<teammate>`，一次性、不可恢复。
+- `TellaskBack`（回问诉请）：`tellaskBack({ tellaskContent: "..." })`，用于向诉请者回问澄清。
+- `Tellask Session`（长线诉请）：`tellask({ targetAgentId: "<teammate>", sessionSlug: "<slug>", tellaskContent: "..." })`，可恢复上下文的多轮协作。
+- `Fresh Tellask`（一次性诉请）：`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`，一次性、不可恢复。
 
 ### 2.2 `Tellask Session` 的真实语义
 
-- `!tellaskSession <slug>` 的作用是“会话寻址 + 历史复用”。
+- `sessionSlug` 的作用是“会话寻址 + 历史复用”。
 - 它**不是**“后台持续执行开关”。
-- 同一个 `<slug>` 下，每一次新任务推进，仍然需要新的 `!?@...` 诉请触发。
+- 同一个 `<slug>` 下，每一次新任务推进，仍然需要新的 `tellask* function call` 诉请触发。
 
 一句话：`Session` 是“可续接的对话容器”，不是“会自动前进的后台 worker”。
 
@@ -44,7 +44,7 @@
 
 对诉请者来说，一次队友诉请的运行时节奏是：
 
-1. 发出 `!?@<teammate> ...`。
+1. 发出 `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." }) ...`。
 2. 当前对话进入挂起/等待（pending subdialogs）。
 3. 被诉请者完成本轮驱动并回贴结果。
 4. 诉请者恢复继续。
@@ -90,12 +90,12 @@
 
 ### 4.1 协作阶段协议（Teammate Tellask 版）
 
-对**队友诉请（非 `!?@self`）**，统一执行四段协议：
+对**队友诉请（非 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`）**，统一执行四段协议：
 
-1. `发起`：明确目标、约束、验收口径，发出 `!?@...`。
+1. `发起`：明确目标、约束、验收口径，发出 `tellask* function call`。
 2. `等待`：等待本轮回贴，不预设对方会自动继续。
 3. `判定`：回贴到达后判断“已达成 / 未达成 / 需澄清”。
-4. `续推`：若未达成，立即发下一轮诉请（通常沿用同一 `!tellaskSession <slug>`）。
+4. `续推`：若未达成，立即发下一轮诉请（通常沿用同一 `sessionSlug`）。
 
 强约束：
 
@@ -107,7 +107,7 @@
 推荐写法：
 
 ```text
-!?@shell_specialist !tellaskSession typecheck-loop
+tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
 !?执行 `pnpm lint:types`，仅回贴原始输出。
 !?若失败：只列前 3 个错误（含文件路径与行号），并给出你建议先处理的 1 个错误。
 !?验收：我需要看到命令退出码与首个错误锚点。
@@ -130,7 +130,7 @@
 正例（自主闭环）：
 
 ```text
-!?@shell_specialist !tellaskSession typecheck-loop
+tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
 !?请立即执行 `pnpm lint:types` 并原样回贴结果。
 !?若命令不存在，回贴错误并给出本仓可行替代命令。
 ```
@@ -153,9 +153,9 @@
 2. `等待声明约束`  
    只有当存在明确 pending tellask 时，才可声明“等待中”；否则必须执行下一动作。
 3. `自主执行约束`  
-   能通过队友 tellask 完成的执行动作，不得转交给 @human 当“转发员”。
+   能通过队友 tellask 完成的执行动作，不得转交给 askHuman() 当“转发员”。
 4. `动作优先约束`  
-   当你写“下一步让 @X 做 Y”时，应在同一回复内直接给出 `!?@X ...`。
+   当你写“下一步让 @X 做 Y”时，应在同一回复内直接给出 `tellaskSessionless({ targetAgentId: "X", tellaskContent: "..." })`。
 
 ### 5.2 协作 Priming 改进（P1）
 
@@ -163,13 +163,13 @@
 
 1. 一次性诉请：`uname -a`（环境基线）。
 2. 长线诉请：`tellaskSession: rtws-vcs-inventory` 两轮盘点仓库现状。
-3. 在两段证据都到位后，再进入 `!?@self` FBR 和综合提炼。
+3. 在两段证据都到位后，再进入 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR 和综合提炼。
 
 关键原则：
 
 1. 无可用 `shell_specialist` 时，由 Dominds 运行时采集同样事实（`uname -a` + git 盘点），这是标准模式，不是降级。
 2. 回贴即本轮结束；要继续必须显式发起下一轮诉请。
-3. “让队友做”必须直接落成 `!?@...`，不能转交 @human 当转发员。
+3. “让队友做”必须直接落成 `tellask* function call`，不能转交 askHuman() 当转发员。
 
 ### 5.3 P1 设计基线（当前实现）
 
@@ -184,7 +184,7 @@
 
 1. `Prelude Intro`：声明 shell 策略（`specialist_only` / `self_is_specialist` / `no_specialist`）。
 2. `uname` 基线：
-   - `specialist_only`：主线 `!?@<shell_specialist>` 发一次性诉请并接收回贴。
+   - `specialist_only`：主线 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收回贴。
    - 其他两种策略：运行时采集并显示 `uname -a`。
 3. `VCS Round-1`（同一 `tellaskSession`）：确认 rtws 拓扑
    - 根路径是否 git repo
@@ -194,7 +194,7 @@
    - remote（fetch/push）
    - branch / upstream
    - dirty 状态
-5. 汇总 `uname + VCS` 作为同一份环境证据，发起 `!?@self` FBR。
+5. 汇总 `uname + VCS` 作为同一份环境证据，发起 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR。
 6. 收齐 FBR 回贴后做 distillation，产出 priming note。
 
 #### 诉请模板约束
@@ -236,7 +236,7 @@
 1. 我这轮是否已经发出明确 tellask（有目标、约束、验收）？
 2. 我现在说“等待”时，是否真有 pending tellask 对应？
 3. 回贴到达后，我是否做了“判定 + 下一轮诉请/本地动作”？
-4. 我是否把“让队友做”落成了真实 `!?@...`，而不是口头转派给 @human？
+4. 我是否把“让队友做”落成了真实 `tellask* function call`，而不是口头转派给 askHuman()？
 5. 关键决策是否已写回 Taskdoc（主线）而不是只留在聊天里？
 
 ---

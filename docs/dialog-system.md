@@ -34,7 +34,7 @@ For Taskdoc package structure and encapsulation rules, see [`encapsulated-taskdo
 
 A **supdialog** (short for "super dialog") is the supdialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
 
-A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `!?@tellasker` (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
+A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `tellaskBack({ tellaskContent: "..." })` (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
 
 ### Subdialog
 
@@ -48,7 +48,7 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `!?@human` Tellask was recorded.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `!?askHuman()` Tellask was recorded.
 
 ### Subdialog Index (subdlg.yaml)
 
@@ -60,8 +60,8 @@ A **subdlg.yaml** file indexes pending subdialogs that a supdialog is waiting fo
 
 ### Subdialog Registry
 
-The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!tellaskSession` as its key format. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
-If a sideline dialog is declared dead, its Type B registry entry is removed so the same `agentId!tellaskSession` can start a brand-new sideline dialog on the next Tellask.
+The **subdialog registry** is a root dialog-scoped Map that maintains persistent references to registered subdialogs. The registry uses `agentId!sessionSlug` as its key format. It moves with the root to `done/` when the root completes, and is rebuilt on root load by scanning done/ subdialog YAMLs.
+If a sideline dialog is declared dead, its Type B registry entry is removed so the same `agentId!sessionSlug` can start a brand-new sideline dialog on the next Tellask.
 
 ### Teammate Tellask
 
@@ -69,9 +69,9 @@ A **teammate Tellask** is a Dominds specific syntax that triggers communication 
 
 **Tellask block structure** (see also [`dominds-terminology.md`](./dominds-terminology.md)):
 
-- **Tellask headline**: the first line `!?@<name> ...` (additional `!?@...` lines in the same block are appended to the headline).
-- **Tellask body**: subsequent lines that start with `!?` but not `!?@`.
-- Structured directives like `!tellaskSession <slug>` MUST be in the headline.
+- **Tellask headline**: the first line `tellaskSessionless({ targetAgentId: "<name>", tellaskContent: "..." })` (additional `tellask* function call` lines in the same block are appended to the headline).
+- **Tellask body**: `tellaskContent` payload carried by tellask-special function arguments.
+- Structured directives like `sessionSlug` MUST be in the headline.
 
 ---
 
@@ -92,7 +92,7 @@ A server-wide mapping of `rootId → RootDialog` objects. This is the single sou
 A per-root mapping of `selfId → Dialog` objects. This registry contains the root dialog itself plus all loaded subdialogs, enabling O(1) lookup of any dialog within a hierarchy.
 
 **Subdialog Registry (Per RootDialog)**
-A per-root mapping of `agentId!tellaskSession → Subdialog` objects. This registry tracks TYPE B registered subdialogs for resumption across multiple interactions. TYPE C transient subdialogs are never registered.
+A per-root mapping of `agentId!sessionSlug → Subdialog` objects. This registry tracks TYPE B registered subdialogs for resumption across multiple interactions. TYPE C transient subdialogs are never registered.
 
 ### Per-Dialog Mutex
 
@@ -140,18 +140,18 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 
 ```mermaid
 flowchart TD
-  M[LLM emits !?@mention] --> Q{Is this a subdialog telling its direct supdialog?}
-  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: !?@tellasker (NO !tellaskSession)]
-  Q -- no --> T{Is !tellaskSession present?}
-  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>!?@agentId !tellaskSession tellaskSession]
-  T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>!?@agentId]
+  M[LLM emits tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{Is this a subdialog telling its direct supdialog?}
+  Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) (NO sessionSlug)]
+  Q -- no --> T{Is sessionSlug present?}
+  T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
+  T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
 ```
 
 ### TYPE A: Supdialog Tellask (Type A / `TellaskBack` / 回问诉请)
 
-**Primary syntax**: `!?@tellasker` (NO `!tellaskSession`) — `!?@tellasker !tellaskSession ...` is a **syntax error**
+**Primary syntax**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`) — `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) sessionSlug ...` is a **syntax error**
 
-**Tolerated fallback**: `!?@<supdialogAgentId>` (NO `!tellaskSession`)
+**Tolerated fallback**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`)
 
 **Behavior**:
 
@@ -165,10 +165,10 @@ flowchart TD
 - Uses `subdialog.supdialog` reference (no registry lookup)
 - No registration - supdialog relationship is inherent
 - Supdialog is always the direct parent in the hierarchy
-- `!?@tellasker` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask).
+- `tellaskBack({ tellaskContent: "..." })` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask).
 - This matters especially when the supdialog’s `agentId` is identical to the subdialog’s `agentId` (common when a sideline
-  is created via `!?@self`), where an explicit `!?@<supdialogAgentId>` is easier to get wrong by accident.
-- The explicit `!?@<supdialogAgentId>` form is accepted as a semantic fallback for backwards compatibility, but is more
+  is created via `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`), where an explicit `tellaskBack({ tellaskContent: "..." })` is easier to get wrong by accident.
+- The explicit `tellaskBack({ tellaskContent: "..." })` form is accepted as a semantic fallback for backwards compatibility, but is more
   error-prone in FBR/self-subdialog cases.
 
 **Example**:
@@ -177,7 +177,7 @@ flowchart TD
 Current dialog: sub-001 (agentId: "backend-dev")
 Parent supdialog: "orchestrator" (agentId)
 
-LLM emits: !?@orchestrator How should I handle the database migration?
+LLM emits: tellaskSessionless({ targetAgentId: "orchestrator", tellaskContent: "..." }) How should I handle the database migration?
 
 Result:
 - sub-001 suspends
@@ -188,36 +188,36 @@ Result:
 
 ### TYPE B: Registered Subdialog Tellask (Type B / `Tellask Session` / 长线诉请)
 
-**Syntax**: `!?@<anyAgentId> !tellaskSession <tellaskSession>` (note the space before `!tellaskSession`)
+**Syntax**: `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<tellaskSession>", tellaskContent: "..." })` (note the space before `sessionSlug`)
 
-**Fresh Boots Reasoning (FBR) self-tellask syntax (rare; resumable)**: `!?@self !tellaskSession <tellaskSession>`
+**Fresh Boots Reasoning (FBR) self-tellask syntax (rare; resumable)**: `tellask({ targetAgentId: "self", sessionSlug: "<tellaskSession>", tellaskContent: "..." })`
 
-- `!?@self` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
+- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is an explicit “same persona” call that targets the **current dialog’s agentId** (not a separate teammate).
 - This is an **unambiguous** syntax for self-tellasks and helps avoid accidental `@teammate`→`@teammate` self-tellasks caused by
   echoing/quoting prior call headlines.
-- In Dominds, `!?@self` Tellasks are treated as FBR and are driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
-- **FBR itself should be common**, but the `!tellaskSession`-addressed variant should be rare. Prefer `!?@self` (TYPE C, transient)
-  for most FBR usage. Use `!?@self !tellaskSession ...` only when you explicitly want a resumable, long-lived “fresh boots session”
+- In Dominds, `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` Tellasks are treated as FBR and are driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
+- **FBR itself should be common**, but the `sessionSlug`-addressed variant should be rare. Prefer `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` (TYPE C, transient)
+  for most FBR usage. Use `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." }) sessionSlug ...` only when you explicitly want a resumable, long-lived “fresh boots session”
   for a multi-step sub-problem.
 
 **Tellask Session Key Schema**: `<tellaskSession>` uses the same identifier schema as `<mention-id>`:
 `[a-zA-Z][a-zA-Z0-9_-]*`. Parsing stops at whitespace or punctuation; any trailing
 headline text is ignored for tellaskSession parsing.
 
-**Registry Key**: `agentId!tellaskSession`
+**Registry Key**: `agentId!sessionSlug`
 
 **Behavior**:
 
-1. Check registry for existing subdialog with key `agentId!tellaskSession`
+1. Check registry for existing subdialog with key `agentId!sessionSlug`
 2. **If exists**: Resume the registered subdialog
-3. **If not exists**: Create NEW subdialog AND register it with key `agentId!tellaskSession`
+3. **If not exists**: Create NEW subdialog AND register it with key `agentId!sessionSlug`
 4. Parent dialog **suspends** while subdialog runs
 5. Subdialog response flows back to parent
 6. Parent **resumes** with subdialog's response
 
 **Current Caller Tracking (important for reuse):**
 
-When a registered subdialog is Tellasked again (same `agentId!tellaskSession`), the caller can be a **different dialog** (mainline or another sideline). On every Type B Tellask, the subdialog’s metadata is updated with:
+When a registered subdialog is Tellasked again (same `agentId!sessionSlug`), the caller can be a **different dialog** (mainline or another sideline). On every Type B Tellask, the subdialog’s metadata is updated with:
 
 - The **current caller dialog ID** (so responses route back to the _latest_ caller)
 - The **Tellask info** (headline/body, origin role, origin member, callId)
@@ -226,7 +226,7 @@ This makes Type B subdialogs reusable across multiple Tellask sites without losi
 
 **Tellask Context on Resume**:
 
-- On every TYPE B Tellask (new or resumed), the parent-provided `tellaskHead`/`tellaskBody`
+- On every TYPE B Tellask (new or resumed), the parent-provided `mentionList`/`tellaskContent`
   is appended to the subdialog as a new user message before the subdialog is driven.
   This ensures the subdialog receives the latest request context for each Tellask.
 - System-injected resume prompts are context only and are **not parsed** for teammate/tool Tellasks.
@@ -244,7 +244,7 @@ This makes Type B subdialogs reusable across multiple Tellask sites without losi
 Root dialog: orchestrator
 Registry: {} (empty)
 
-LLM emits: !?@researcher !tellaskSession market-analysis
+LLM emits: tellask({ targetAgentId: "researcher", sessionSlug: "market-analysis", tellaskContent: "..." })
 
 Result (first call):
 - Registry lookup: no "researcher!market-analysis" exists
@@ -255,7 +255,7 @@ Result (first call):
 - Response flows back to orchestrator
 - orchestrator resumes
 
-LLM emits again: !?@researcher !tellaskSession market-analysis
+LLM emits again: tellask({ targetAgentId: "researcher", sessionSlug: "market-analysis", tellaskContent: "..." })
 
 Result (second call):
 - Registry lookup: "researcher!market-analysis" exists
@@ -268,12 +268,12 @@ Result (second call):
 
 ### TYPE C: Transient Subdialog Tellask (Type C / `Fresh Tellask` / 一次性诉请)
 
-**Syntax**: `!?@<nonSupdialogAgentId>` (NO `!tellaskSession`)
+**Syntax**: `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` (NO `sessionSlug`)
 
-**Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `!?@self`
+**Fresh Boots Reasoning (FBR) self-tellask syntax (default; most common)**: `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`
 
-- `!?@self` targets the current dialog’s agentId and creates a **new ephemeral subdialog** routed to the same agentId.
-- The sideline dialog created by `!?@self` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
+- `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` targets the current dialog’s agentId and creates a **new ephemeral subdialog** routed to the same agentId.
+- The sideline dialog created by `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is FBR and is driven under a stricter, tool-less policy; see [`fbr.md`](./fbr.md).
 - Use this for most Fresh Boots Reasoning sessions: isolate a single sub-problem, produce an answer, and return.
 
 **Behavior**:
@@ -282,7 +282,7 @@ Result (second call):
 2. Create **NEW subdialog** with the specified agentId
 3. Drive the new subdialog:
    - For general Type C, the subdialog is full-fledged (supcalls, teammate Tellasks, tools per config).
-   - For `!?@self`, runtime applies the FBR tool-less policy (no tools; restricted Tellasks).
+   - For `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; restricted Tellasks).
 4. Subdialog response flows back to parent
 5. Parent **resumes** with subdialog's response
 
@@ -290,7 +290,7 @@ Result (second call):
 
 - **No registry lookup** - always creates a new subdialog
 - **Not registered** - no persistence across Tellasks
-- The subdialog itself is fully capable **except** for `!?@self` FBR, which is tool-less and Tellask-restricted (see `fbr.md`).
+- The subdialog itself is fully capable **except** for `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR, which is tool-less and Tellask-restricted (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -319,16 +319,16 @@ Result:
 
 ### Comparison Summary
 
-| Aspect                     | TYPE A: Supdialog Tellask (`TellaskBack`) | TYPE B: Registered Subdialog Tellask (`Tellask Session`) | TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) |
-| -------------------------- | ----------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
-| **Syntax**                 | `!?@<supdialogAgentId>`                   | `!?@<anyAgentId> !tellaskSession <id>`                   | `!?@<nonSupdialogAgentId>`                            |
-| **!tellaskSession**        | Not allowed                               | Required                                                 | Not allowed                                           |
-| **Registry Lookup**        | No (uses `subdialog.supdialog`)           | Yes (`agentId!tellaskSession`)                           | No (never registered)                                 |
-| **Resumption**             | No (supdialog not a subdialog)            | Yes (lookup finds existing)                              | No (always new)                                       |
-| **Registration**           | Not applicable                            | Created AND registered                                   | Never registered                                      |
-| **Parent Behavior**        | Subdialog suspends                        | Parent suspends                                          | Parent suspends                                       |
-| **Subdialog Capabilities** | Full (supcalls, teammates, tools)         | Full (supcalls, teammates, tools)                        | Full (supcalls, teammates, tools)                     |
-| **Use Case**               | Clarification from parent (`TellaskBack`) | Resume persistent subtask (`Tellask Session`)            | One-off independent task (`Fresh Tellask`)            |
+| Aspect                     | TYPE A: Supdialog Tellask (`TellaskBack`) | TYPE B: Registered Subdialog Tellask (`Tellask Session`)                                 | TYPE C: Transient Subdialog Tellask (`Fresh Tellask`)                                   |
+| -------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Syntax**                 | `tellaskBack({ tellaskContent: "..." })`  | `tellask({ targetAgentId: "<anyAgentId>", sessionSlug: "<id>", tellaskContent: "..." })` | `tellaskSessionless({ targetAgentId: "<nonSupdialogAgentId>", tellaskContent: "..." })` |
+| **sessionSlug**            | Not allowed                               | Required                                                                                 | Not allowed                                                                             |
+| **Registry Lookup**        | No (uses `subdialog.supdialog`)           | Yes (`agentId!sessionSlug`)                                                              | No (never registered)                                                                   |
+| **Resumption**             | No (supdialog not a subdialog)            | Yes (lookup finds existing)                                                              | No (always new)                                                                         |
+| **Registration**           | Not applicable                            | Created AND registered                                                                   | Never registered                                                                        |
+| **Parent Behavior**        | Subdialog suspends                        | Parent suspends                                                                          | Parent suspends                                                                         |
+| **Subdialog Capabilities** | Full (supcalls, teammates, tools)         | Full (supcalls, teammates, tools)                                                        | Full (supcalls, teammates, tools)                                                       |
+| **Use Case**               | Clarification from parent (`TellaskBack`) | Resume persistent subtask (`Tellask Session`)                                            | One-off independent task (`Fresh Tellask`)                                              |
 
 ---
 
@@ -339,7 +339,7 @@ The Dominds dialog system is built on four interconnected core mechanisms that w
 ```mermaid
 flowchart TD
   H[Dialog hierarchy<br/>(root ↔ subdialogs)] <--> S[Subdialog supply<br/>(responses, pending list, registry)]
-  H --> Q[Q4H (!?@human)<br/>(q4h.yaml index)]
+  H --> Q[Q4H (!?askHuman())<br/>(q4h.yaml index)]
   S --> Q
 
   Q --> UI[Frontend Q4H panel<br/>(questions_count_update)]
@@ -353,7 +353,7 @@ flowchart TD
 
 ### Key Design Principles
 
-1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's messages where the `!?@human` Tellask was recorded. They do not survive `clear_mind`.
+1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's messages where the `!?askHuman()` Tellask was recorded. They do not survive `clear_mind`.
 
 2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
 
@@ -385,20 +385,20 @@ Q4H (Questions for Human) is the mechanism by which dialogs can suspend executio
 /**
  * HumanQuestion - index entry persisted in q4h.yaml per dialog
  * NOTE: This is an INDEX, not the source of truth. The actual question
- * content is in the dialog's messages where the @human Tellask was recorded
- * (invoked via !?@human).
+ * content is in the dialog's messages where the askHuman() Tellask was recorded
+ * (invoked via !?askHuman()).
  */
 interface HumanQuestion {
   readonly id: string; // Unique identifier (UUID) - matches message ID
-  readonly tellaskHead: string; // Question headline/title
-  readonly bodyContent: string; // Detailed question context
+  readonly mentionList: string; // Question headline/title
+  readonly tellaskContent: string; // Detailed question context
   readonly askedAt: string; // ISO timestamp
 }
 ```
 
 **Storage Location**: `<dialog-path>/q4h.yaml` - serves as an index for quick lookup
 
-**Source of Truth**: The actual `!?@human` Tellask is stored in the dialog's messages (course JSONL files), where the question was asked.
+**Source of Truth**: The actual `!?askHuman()` Tellask is stored in the dialog's messages (course JSONL files), where the question was asked.
 
 ### Q4H Mechanism Flow
 
@@ -422,33 +422,33 @@ sequenceDiagram
 
 ### When Does a Dialog Raise Q4H?
 
-Q4H is raised when the `!?@human` teammate Tellask is invoked by ANY dialog (root or subdialog) on its own right:
+Q4H is raised when the `!?askHuman()` teammate Tellask is invoked by ANY dialog (root or subdialog) on its own right:
 
 ```typescript
 // From main/llm/driver.ts, executeTellaskCall function
-const isQ4H = firstMention === 'human';
+const isQ4H = callKind === 'askHuman';
 ```
 
 **Invocation Pattern**:
 
 ```
-!?@human <question headline>
+!?askHuman() <question headline>
 !?<question body content>
 ```
 
 ### Q4H Recording Process
 
 ```typescript
-// When !?@human is detected as a teammate Tellask
+// When !?askHuman() is detected as a teammate Tellask
 async function recordQuestionForHuman(
   dlg: Dialog,
-  tellaskHead: string,
-  bodyContent: string,
+  mentionList: string,
+  tellaskContent: string,
 ): Promise<void> {
   const question: HumanQuestion = {
     id: generateDialogID(),
-    tellaskHead,
-    bodyContent,
+    mentionList,
+    tellaskContent,
     askedAt: formatUnifiedTimestamp(new Date()),
   };
 
@@ -513,7 +513,7 @@ interface DriveDialogByUserAnswerRequest {
 **Process (Agent-Pull Model)**:
 
 1. User sees Q4H indicator/badge in UI
-2. User clicks Q4H in panel/list, navigates to the `@human` Tellask site
+2. User clicks Q4H in panel/list, navigates to the `askHuman()` Tellask site
 3. User types answer in the input textarea (same as regular messages)
 4. Frontend sends `drive_dialog_by_user_answer` packet
 5. Backend validates `questionId` against q4h.yaml
@@ -557,7 +557,7 @@ sequenceDiagram
   Sup->>Sub: creates subdialog (Type B or C)
   Note over Sup: Supdialog is blocked on pending subdialogs
 
-  Sub->>WS: emits !?@human question
+  Sub->>WS: emits !?askHuman() question
   WS-->>UI: questions_count_update
   Note over Sub: Subdialog cannot proceed until answered
 
@@ -735,7 +735,7 @@ Invoke the function tool `change_mind` with:
 
 **Implementation Notes**:
 
-- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the tellasker via a TellaskBack (`!?@tellasker`) to update the shared Taskdoc.
+- `change_mind` is only available in root dialogs (not subdialogs); subdialogs must ask the tellasker via a TellaskBack (`tellaskBack({ tellaskContent: "..." })`) to update the shared Taskdoc.
 - For `*.tsk/` Taskdoc packages, the Taskdoc is encapsulated: general file tools must not read/write/list/delete anything under `*.tsk/`. See [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ---
@@ -775,7 +775,7 @@ The **subdialog registry** is a root-dialog-scoped data structure that maintains
 | Aspect          | Description                                                     |
 | --------------- | --------------------------------------------------------------- |
 | **Scope**       | Root dialog only (not accessible to subdialogs)                 |
-| **Key Format**  | `agentId!tellaskSession` (single-level Map)                     |
+| **Key Format**  | `agentId!sessionSlug` (single-level Map)                        |
 | **Storage**     | `registry.yaml` in root dialog directory                        |
 | **Lifecycle**   | Retained during normal runs; dead subdialog entries are removed |
 | **Persistence** | Moves with root to `done/` when root completes                  |
@@ -796,7 +796,7 @@ researcher!market-analysis:
 
 ```mermaid
 flowchart TD
-  Tellask[TYPE B Tellask: !?@agentId !tellaskSession tellaskSession] --> Key[Compute key: agentId!tellaskSession]
+  Tellask[TYPE B Tellask: tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })] --> Key[Compute key: agentId!sessionSlug]
   Key --> Lookup{Registry hit?}
   Lookup -- yes --> Resume[Restore + drive existing subdialog]
   Lookup -- no --> Create[Create + register + drive new subdialog]
@@ -812,9 +812,9 @@ flowchart TD
 
 - `RootDialog`
   - Owns the TYPE B subdialog registry (`registry.yaml`)
-  - Creates/registers/looks up registered subdialogs (`agentId!tellaskSession`)
+  - Creates/registers/looks up registered subdialogs (`agentId!sessionSlug`)
 - `SubDialog`
-  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`!?@tellasker`)
+  - Has a `supdialog` reference (direct parent) and uses it for TYPE A (`tellaskBack({ tellaskContent: "..." })`)
   - Cannot access or mutate the root registry (by design)
 
 **Mutex Semantics**:
@@ -926,7 +926,7 @@ interface RegistryMethods {
 **Context Inheritance**: New subdialogs automatically receive:
 
 - Reference to the same rtws (runtime workspace) Taskdoc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
-- Supdialog Tellask context (tellaskHead + tellaskBody) explaining their purpose
+- Supdialog Tellask context (mentionList + tellaskContent) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories
 
@@ -1093,7 +1093,7 @@ flowchart TD
 These diagrams focus on **control flow** and avoid box-art alignment so they stay readable even when
 rendered in different markdown viewers.
 
-#### TYPE A: TellaskBack (`TellaskBack`) (`!?@tellasker`, no `!tellaskSession`)
+#### TYPE A: TellaskBack (`TellaskBack`) (`tellaskBack({ tellaskContent: "..." })`, no `sessionSlug`)
 
 ```mermaid
 sequenceDiagram
@@ -1101,13 +1101,13 @@ sequenceDiagram
   participant Driver as Backend driver
   participant Sup as Supdialog (direct parent)
 
-  Sub->>Driver: emits `!?@tellasker` + question
+  Sub->>Driver: emits `tellaskBack({ tellaskContent: "..." })` + question
   Driver->>Sup: drive supdialog to answer
   Sup-->>Driver: response text
   Driver-->>Sub: resume subdialog with response in context
 ```
 
-#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`!?@agentId !tellaskSession tellaskSession`; `!?@self !tellaskSession ...` is FBR tool-less)
+#### TYPE B: Registered Subdialog Tellask (`Tellask Session`) (`tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`; `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." }) sessionSlug ...` is FBR tool-less)
 
 ```mermaid
 sequenceDiagram
@@ -1116,8 +1116,8 @@ sequenceDiagram
   participant Reg as Root subdialog registry
   participant Sub as Registered subdialog
 
-  Caller->>Driver: emits `!?@agentId !tellaskSession tellaskSession`
-  Driver->>Reg: lookup `agentId!tellaskSession`
+  Caller->>Driver: emits `tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })`
+  Driver->>Reg: lookup `agentId!sessionSlug`
   alt registry hit
     Reg-->>Driver: existing subdialog selfId
     Driver->>Sub: restore + drive
@@ -1132,7 +1132,7 @@ sequenceDiagram
   end
 ```
 
-#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`!?@agentId`; `!?@self` is FBR tool-less)
+#### TYPE C: Transient Subdialog Tellask (`Fresh Tellask`) (`tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`; `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` is FBR tool-less)
 
 ```mermaid
 sequenceDiagram
@@ -1140,7 +1140,7 @@ sequenceDiagram
   participant Driver as Backend driver
   participant Sub as Transient subdialog
 
-  Caller->>Driver: emits `!?@agentId`
+  Caller->>Driver: emits `tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`
   Driver->>Sub: create (NOT registered)
   Driver->>Sub: drive
   Sub-->>Driver: final response
@@ -1151,7 +1151,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[!?@human Tellask emitted] --> B[Append HumanQuestion entry to q4h.yaml]
+  A[!?askHuman() Tellask emitted] --> B[Append HumanQuestion entry to q4h.yaml]
   B --> C[Emit questions_count_update]
   C --> D[UI shows Q4H badge / list]
   D --> E{How is it cleared?}
@@ -1176,7 +1176,7 @@ sequenceDiagram
 
   Sup->>Sub: create subdialog (Type B or C)
   Note over Sup,Sub: Supdialog becomes blocked on pending subdialogs
-  Sub->>WS: emits !?@human question (Q4H)
+  Sub->>WS: emits !?askHuman() question (Q4H)
   WS-->>UI: questions_count_update (global)
 
   Note over Sub: Subdialog cannot proceed until answered
@@ -1205,7 +1205,7 @@ sequenceDiagram
   participant Store as Persistence (q4h.yaml)
   participant UI as Frontend
 
-  User->>Main: !?@human question
+  User->>Main: !?askHuman() question
   Main->>Store: recordQuestionForHuman()
   Main-->>UI: questions_count_update
   Main-->>Main: suspend root drive loop
@@ -1248,7 +1248,7 @@ sequenceDiagram
 sequenceDiagram
   participant Root as Root Dialog
   participant Store as Persistence (registry.yaml + dialogs/)
-  participant Sub as Subdialog (@researcher !tellaskSession market)
+  participant Sub as Subdialog (@researcher sessionSlug market)
 
   Root->>Store: lookup registry key "researcher!market"
   alt not found
@@ -1322,11 +1322,11 @@ The Dominds dialog system provides a robust framework for hierarchical, human-in
 
 ### Three Types of Teammate Tellasks
 
-| Type (internal) | User-facing term  | Syntax                            | Registry                 | Use Case                   |
-| --------------- | ----------------- | --------------------------------- | ------------------------ | -------------------------- |
-| TYPE A          | `TellaskBack`     | `!?@tellasker`                    | no registry              | clarification (ask origin) |
-| TYPE B          | `Tellask Session` | `!?@agentId !tellaskSession <id>` | `agentId!tellaskSession` | resumable multi-turn work  |
-| TYPE C          | `Fresh Tellask`   | `!?@agentId`                      | not registered           | one-shot / non-resumable   |
+| Type (internal) | User-facing term  | Syntax                                                                              | Registry              | Use Case                   |
+| --------------- | ----------------- | ----------------------------------------------------------------------------------- | --------------------- | -------------------------- |
+| TYPE A          | `TellaskBack`     | `tellaskBack({ tellaskContent: "..." })`                                            | no registry           | clarification (ask origin) |
+| TYPE B          | `Tellask Session` | `tellask({ targetAgentId: "agentId", sessionSlug: "<id>", tellaskContent: "..." })` | `agentId!sessionSlug` | resumable multi-turn work  |
+| TYPE C          | `Fresh Tellask`   | `tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })`           | not registered        | one-shot / non-resumable   |
 
 ### Class Responsibility
 

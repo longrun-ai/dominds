@@ -241,8 +241,8 @@ taskDocPath: 'task.tsk' # Path to rtws Taskdoc package directory (inherited from
 createdAt: '2024-01-15T10:35:00Z' # ISO timestamp when created
 supdialogId: 'aa/bb/cccccccc' # Parent dialog's selfDlgId
 assignmentFromSup: # Assignment context from parent
-  tellaskHead: 'Implement user authentication'
-  tellaskBody: 'Create secure login system with JWT tokens'
+  mentionList: ['@bob']
+  tellaskContent: 'Implement user authentication; create secure login system with JWT tokens'
   originMemberId: 'alice'
 ```
 

@@ -161,8 +161,8 @@
 **在 dominds 中（推荐语法）**
 
 - 扪心自问（FBR）是**常见的**，通常应该通过**瞬态子对话**完成。
-- 使用 `@self`（不带 `!tellaskSession`）进行默认的"初心"会话：隔离一个子问题，回答，然后返回。
-- **很少**使用 `@self !tellaskSession <tellaskSession>`，仅当你明确想要一个**可恢复的**长期初心会话用于多步骤子问题时。
+- 使用 `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` 进行默认的“初心”会话：隔离一个子问题，回答，然后返回。
+- **很少**使用 `tellask({ targetAgentId: "self", sessionSlug: "<slug>", tellaskContent: "..." })`，仅当你明确想要一个**可恢复的**长期初心会话用于多步骤子问题时。
 
 **传统 vs. 初心方法**
 

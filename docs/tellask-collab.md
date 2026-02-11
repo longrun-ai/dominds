@@ -28,13 +28,13 @@ These points reflect current behavior in `dialog-system.md`, `fbr.md`, `dominds-
 
 ### 2.1 Three Tellask modes
 
-- `TellaskBack`: `!?@tellasker`
-- `Tellask Session`: `!?@<teammate> !tellaskSession <slug>`
-- `Fresh Tellask`: `!?@<teammate>`
+- `TellaskBack`: `tellaskBack({ tellaskContent: "..." })`
+- `Tellask Session`: `tellask({ targetAgentId: "<teammate>", sessionSlug: "<slug>", tellaskContent: "..." })`
+- `Fresh Tellask`: `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`
 
 ### 2.2 What `Tellask Session` really means
 
-- `!tellaskSession <slug>` gives resumable addressing and reusable context.
+- `sessionSlug` gives resumable addressing and reusable context.
 - It does not create an always-running worker.
 - Progress still happens one Tellask call at a time.
 
@@ -93,7 +93,7 @@ That is a workflow break. The model should send the Tellask directly.
 
 ### 4.1 Four-step teammate Tellask loop
 
-For teammate Tellasks (non-`!?@self`), always run this loop:
+For teammate Tellasks (non-`tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })`), always run this loop:
 
 1. `Initiate`: send a Tellask with scope, constraints, and acceptance evidence.
 2. `Wait`: wait for that specific response.
@@ -109,7 +109,7 @@ Hard rule:
 Recommended pattern:
 
 ```text
-!?@shell_specialist !tellaskSession typecheck-loop
+tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
 !?Run `pnpm lint:types` and return raw output only.
 !?If it fails, include the first 3 errors with file + line.
 !?Acceptance: include exit code and the first actionable anchor.
@@ -132,7 +132,7 @@ I cannot run shell here; please ask @shell_specialist to execute `pnpm lint:type
 Good:
 
 ```text
-!?@shell_specialist !tellaskSession typecheck-loop
+tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
 !?Please execute `pnpm lint:types` now and paste raw output.
 !?If command is unavailable, paste the error and one safe alternative.
 ```
@@ -152,8 +152,8 @@ Add or strengthen these coordination constraints:
 
 1. `Response-closes-call`: teammate response closes the current call; continuation requires a new Tellask.
 2. `Wait-state guard`: only claim waiting when a concrete pending Tellask exists.
-3. `Autonomy guard`: do not use @human as a relay for executable teammate work.
-4. `Action-over-narration`: if you write “next ask @X to do Y”, emit `!?@X ...` in the same turn.
+3. `Autonomy guard`: do not use askHuman() as a relay for executable teammate work.
+4. `Action-over-narration`: if you write “next ask @X to do Y”, emit `tellaskSessionless({ targetAgentId: "X", tellaskContent: "..." })` in the same turn.
 
 ### 5.2 Collaboration priming (P1)
 
@@ -161,13 +161,13 @@ Split the collaboration drill into two short segments, both grounded in verifiab
 
 1. One-shot Tellask: `uname -a` as the runtime baseline.
 2. Long-session Tellask: `tellaskSession: rtws-vcs-inventory` for a two-round repo inventory.
-3. Run `!?@self` FBR and distillation only after both evidence segments are available.
+3. Run `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR and distillation only after both evidence segments are available.
 
 Operating rules:
 
 1. If no `shell_specialist` is available, Dominds runtime gathers the same facts (`uname -a` + git inventory). This is a standard mode, not a degraded path.
 2. A response closes the current round; continuation requires a new explicit Tellask.
-3. “Ask teammate to do X” must materialize as `!?@...`, not as a relay request to @human.
+3. “Ask teammate to do X” must materialize as `tellask* function call`, not as a relay request to askHuman().
 
 ### 5.3 P1 design baseline (implemented)
 
@@ -192,7 +192,7 @@ Operating rules:
    - remotes (fetch/push)
    - branch / upstream
    - dirty state
-5. Merge `uname + VCS` into one evidence block for `!?@self` FBR.
+5. Merge `uname + VCS` into one evidence block for `tellaskSessionless({ targetAgentId: "self", tellaskContent: "..." })` FBR.
 6. Distill after FBR feedback is complete, and produce the priming note.
 
 #### Tellask template constraints
@@ -234,7 +234,7 @@ Before and after each collaboration step:
 1. Did I send a concrete Tellask with acceptance evidence?
 2. If I say “waiting”, which pending Tellask am I waiting on?
 3. After receiving feedback, did I either close the task or send the next Tellask?
-4. Did I turn “ask teammate to do X” into an actual `!?@...` block?
+4. Did I turn “ask teammate to do X” into an actual `tellask* function call` block?
 5. Did I write key decisions back to Taskdoc instead of leaving them in chat only?
 
 ---

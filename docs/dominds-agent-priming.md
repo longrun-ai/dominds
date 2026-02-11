@@ -4,8 +4,8 @@ Chinese version: [中文版](./dominds-agent-priming.zh.md)
 
 ## Summary
 
-Dominds has a real, runtime-enforced Tellask mechanism (`!?@...`) and a real, runtime-enforced Fresh Boots Reasoning
-(FBR) mechanism (`!?@self`). Even if system prompts explain these mechanisms in detail, most foundation models were not
+Dominds has a real, runtime-enforced Tellask mechanism (`tellask* function call`) and a real, runtime-enforced Fresh Boots Reasoning
+(FBR) mechanism (`self-route tellask`). Even if system prompts explain these mechanisms in detail, most foundation models were not
 trained in a world where “asking a teammate to run a shell command” is actually possible, so they often treat such text
 as aspirational or hypothetical.
 
@@ -14,7 +14,7 @@ short, real Tellask + real return + real FBR + real distillation so the model ga
 
 - teammate Tellasks are real and will be executed
 - tool outputs are real and will be returned and persisted
-- `!?@self` FBR is real and will report back
+- `self-route tellask` FBR is real and will report back
 - distillation is expected (extract the best, dedupe, reconcile), not “repeat each draft”
 
 More precisely: it **guides the agent to show it to itself** — letting it personally walk through
@@ -31,7 +31,7 @@ Related docs:
 
 - Tellask runtime: [`dialog-system.md`](./dialog-system.md)
 - Terminology (Mainline/Sideline): [`dominds-terminology.md`](./dominds-terminology.md)
-- FBR (`!?@self`): [`fbr.md`](./fbr.md)
+- FBR (`self-route tellask`): [`fbr.md`](./fbr.md)
 - Work language vs UI language: [`i18n.md`](./i18n.md)
 
 ---
@@ -39,7 +39,7 @@ Related docs:
 ## Goals
 
 - Establish immediate trust that Tellask/return/persistence are real.
-- Run a real `!?@self` FBR loop at dialog creation.
+- Run a real `self-route tellask` FBR loop at dialog creation.
 - Build muscle memory for the timing contract: initiate FBR, wait for feedback, then synthesize/decide.
 - Make distillation itself part of the “felt” experience (dedupe/reconcile/extract-the-best).
 - Keep the procedure safe, small, and deterministic (default command: `uname -a`).
@@ -57,9 +57,9 @@ Related docs:
 
 - **Mainline dialog**: the primary thread where the user and the main agent interact.
 - **Sideline dialog**: a temporary work thread created by Tellask / FBR, reporting results back to the mainline.
-- **Tellask**: a structured request (`!?@<memberId> ...`) from a tellasker to a tellaskee.
+- **Tellask**: a structured request (`tellask({ targetAgentId: "<memberId>", sessionSlug: "<slug>", tellaskContent: "..." })`) from a tellasker to a tellaskee.
 - **Shell specialist**: a teammate designated to run shell commands safely (configured via `shell_specialists`).
-- **FBR**: Fresh Boots Reasoning, implemented as `!?@self` (a tool-less sideline dialog). See [`fbr.md`](./fbr.md).
+- **FBR**: Fresh Boots Reasoning, implemented as `self-route tellask` (a tool-less sideline dialog). See [`fbr.md`](./fbr.md).
 
 ---
 
@@ -92,7 +92,7 @@ The Tellask body should be short and operational:
 
 ### 3) Real FBR: reflect on what the environment implies
 
-After obtaining the environment snapshot, the main agent issues a real `!?@self` Tellask to trigger FBR.
+After obtaining the environment snapshot, the main agent issues a real `self-route tellask` Tellask to trigger FBR.
 
 The FBR body should include:
 
@@ -102,7 +102,7 @@ The FBR body should include:
 
 Optional parallel drafts:
 
-- If the team member config enables `fbr_effort` (default `3`), the runtime creates multiple `!?@self` FBR sideline
+- If the team member config enables `fbr_effort` (default `3`), the runtime creates multiple `self-route tellask` FBR sideline
   dialogs concurrently so the agent produces multiple independent “fresh boots” drafts for the mainline dialog to
   distill.
 - These drafts have **no stable identity mapping**, and there is no meaningful ordering requirement; the mainline dialog
@@ -112,7 +112,7 @@ Optional parallel drafts:
 
 Phase boundary (critical):
 
-- `!?@self` is the **initiation action**, not completed decision-making.
+- `self-route tellask` is the **initiation action**, not completed decision-making.
 - Mainline must enter a wait phase until feedback from that FBR run returns.
 - If `fbr_effort = N`, mainline must wait for all N drafts before distillation; do not finalize from partial drafts.
 
@@ -197,7 +197,7 @@ Instead, inject a small, stable **course prefix** into model context at the star
 - Render Agent Priming as a realistic transcript the user can inspect.
 - Prefer a collapsible top section with clear labels:
   - “Teammate Tellask (shell)”
-  - “FBR (`!?@self`)"
+  - “FBR (`self-route tellask`)"
   - “Agent Priming”
 
 ### Opt-out

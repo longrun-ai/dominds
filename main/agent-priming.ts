@@ -116,10 +116,7 @@ export type AgentPrimingCacheStatus = Readonly<
 
 export type AgentPrimingMode = 'do' | 'reuse' | 'skip';
 
-async function emitSayingEventsAndPersist(
-  dlg: Dialog,
-  content: string,
-): Promise<void> {
+async function emitSayingEventsAndPersist(dlg: Dialog, content: string): Promise<void> {
   await emitSayingEvents(dlg, content);
   const genseq = dlg.activeGenSeqOrUndefined;
   if (
@@ -154,7 +151,9 @@ async function emitSyntheticTellaskCall(
     callId?: string;
   },
 ): Promise<AgentPrimingSyntheticTellaskCall> {
-  const mentionList = payload.mentionList.map((value) => value.trim()).filter((value) => value !== '');
+  const mentionList = payload.mentionList
+    .map((value) => value.trim())
+    .filter((value) => value !== '');
   if (mentionList.length < 1) {
     throw new Error('emitSyntheticTellaskCall requires at least one mention');
   }
@@ -2115,17 +2114,12 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
           assertNotStopped();
           const sub = await dlg.withLock(async () => {
-            return await dlg.createSubDialog(
-              dlg.agentId,
-              ensuredFbrMentionList,
-              instanceBody,
-              {
-                originMemberId: dlg.agentId,
-                callerDialogId: dlg.id.selfId,
-                callId: ensuredFbrCallId,
-                collectiveTargets: [dlg.agentId],
-              },
-            );
+            return await dlg.createSubDialog(dlg.agentId, ensuredFbrMentionList, instanceBody, {
+              originMemberId: dlg.agentId,
+              callerDialogId: dlg.id.selfId,
+              callId: ensuredFbrCallId,
+              collectiveTargets: [dlg.agentId],
+            });
           });
 
           const initPrompt = formatAssignmentFromSupdialog({

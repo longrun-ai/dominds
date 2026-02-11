@@ -27,7 +27,7 @@
 - 切换到 `buildFbrSystemPrompt(...)`（不含工具说明）
 - 注入单独 `buildNoToolsNotice(...)`
 - 强制 `effectiveAgentTools = []`
-- 强制 `tellaskPolicy = tellasker_only`
+- 强制 `tellaskPolicy = deny_all`
 - 强制 `allowFunctionCalls = false`
 - 在需要时对成员应用 `fbr_model_params` 覆盖
 
@@ -39,7 +39,7 @@
 
 流式与非流式两条路径都调用 `resolveDrivePolicyViolationKind(...)`：
 
-- 违规 tellask（FBR 仅允许 `@tellasker`）
+- 违规 tellask-special 函数调用（FBR 技术模式下禁止全部函数调用）
 - 违规 function/tool call（FBR 禁止）
 
 一旦违规，统一产出 `formatDomindsNoteFbrToollessViolation(...)`，保持用户反馈与日志语义一致。
@@ -51,7 +51,7 @@
 - system prompt 必须严格等于 `buildFbrSystemPrompt(...)`
 - `effectiveAgentTools` 必须为空
 - `allowFunctionCalls` 必须为 `false`
-- `tellaskPolicy` 必须为 `tellasker_only`
+- `tellaskPolicy` 必须为 `deny_all`
 - `prependedContextMessages` 必须且仅能包含一条 `buildNoToolsNotice(...)`
 
 若任一条件不满足，运行时直接抛出 `FBR policy isolation violation`，防止全局工具手册/工具提示路径回流污染 FBR。
@@ -74,4 +74,4 @@
 - FBR system prompt 不包含工具说明。
 - “无工具”文案仅来自独立 `buildNoToolsNotice(...)`。
 - FBR 与非 FBR 的上下文装配主流程一致，差异只来自策略字段。
-- FBR 中任意 tool/function call 或非 `@tellasker` tellask 都被运行时硬拒绝并给出明确回执。
+- FBR 中任意 tool/function call 或 tellask-special 函数调用都被运行时硬拒绝并给出明确回执。

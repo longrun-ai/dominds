@@ -238,8 +238,8 @@ taskDocPath: 'task.tsk' # rtws 差遣牒任务包（*.tsk/）目录的路径（�
 createdAt: '2024-01-15T10:35:00Z' # 创建时的 ISO 时间戳
 supdialogId: 'aa/bb/cccccccc' # 父对话的 selfDlgId
 assignmentFromSup: # 来自父级的任务上下文
-  tellaskHead: 'Implement user authentication'
-  tellaskBody: 'Create secure login system with JWT tokens'
+  mentionList: ['@bob']
+  tellaskContent: 'Implement user authentication; create secure login system with JWT tokens'
   originMemberId: 'alice'
 ```
 

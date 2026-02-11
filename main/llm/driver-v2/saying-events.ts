@@ -14,10 +14,7 @@ export async function emitThinkingEvents(
   return signatureMatch?.[1]?.trim();
 }
 
-export async function emitSayingEvents(
-  dlg: Dialog,
-  content: string,
-): Promise<void> {
+export async function emitSayingEvents(dlg: Dialog, content: string): Promise<void> {
   if (!content.trim()) return;
   await dlg.markdownStart();
   await dlg.markdownChunk(content);

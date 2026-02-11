@@ -42,7 +42,7 @@
 - EN: `Sideline dialog` | ZH: `支线对话`
 - EN: `Taskdoc` | ZH: `差遣牒`
 - EN: `Taskdoc package (*.tsk/)` | ZH: `任务包`
-- EN: `!tellaskSession <slug>` | ZH: 会话 Slug（只写在 headline）
+- EN: `sessionSlug` | ZH: 会话 Slug（只写在 headline）
 - EN: `CLI (entrypoint UI)` | ZH: `CLI（入口界面）`
 - EN: `TUI (interactive UI)` | ZH: `TUI（交互前端）`
 - EN: `WebUI (interactive UI)` | ZH: `WebUI（交互前端）`
@@ -82,19 +82,19 @@
 
 #### Tellask headline（诉请头）
 
-- EN: The first line of a Tellask block, starting with `!?@<name> ...`.
-- ZH: 诉请块的第一行，以 `!?@<name> ...` 开头。
+- EN: The first line of a Tellask block, starting with `tellaskSessionless({ targetAgentId: "<name>", tellaskContent: "..." })`.
+- ZH: 诉请块的第一行，以 `tellaskSessionless({ targetAgentId: "<name>", tellaskContent: "..." })` 开头。
 
-- EN: Additional lines starting with `!?@...` in the same block are appended to the headline (they do not start a new Tellask).
-- ZH: 同一诉请块内，后续以 `!?@...` 开头的行会被并入诉请头（不会开启新的诉请）。
+- EN: Additional lines starting with `tellask* function call` in the same block are appended to the headline (they do not start a new Tellask).
+- ZH: 同一诉请块内，后续以 `tellask* function call` 开头的行会被并入诉请头（不会开启新的诉请）。
 
-- EN: Put structured directives such as `!tellaskSession <slug>` in the headline.
-- ZH: 结构化指令（例如 `!tellaskSession <slug>`）必须放在诉请头中。
+- EN: Put structured directives such as `sessionSlug` in the headline.
+- ZH: 结构化指令（例如 `sessionSlug`）必须放在诉请头中。
 
 #### Tellask body（诉请正文）
 
-- EN: Lines in the Tellask block that start with `!?` but do not start with `!?@`. They carry the request context (steps, constraints, acceptance criteria, etc.).
-- ZH: 诉请块内以 `!?` 开头但不以 `!?@` 开头的行，用于承载诉请正文（步骤、上下文、约束、验收标准等）。
+- EN: The `tellaskContent` argument in tellask-special function calls. It carries request context (steps, constraints, acceptance criteria, etc.).
+- ZH: tellask-special 函数调用里的 `tellaskContent` 参数，用于承载诉请正文（步骤、上下文、约束、验收标准等）。
 
 ### 3 种诉请形态（Three Tellask Modes）
 
@@ -117,13 +117,13 @@
 - EN (what “Back” means): “Back” refers to routing back to the tellasker dialog; it does **not** imply hierarchy/seniority.
 - ZH（Back 的含义）: “Back” 指回到诉请者对话，**不暗示上下级**。
 
-- EN (typical carrier): `!?@tellasker ...` (only available inside a sideline dialog)
-- ZH（典型载体）: `!?@tellasker ...`（只在你处于支线对话语境时可用）
+- EN (typical carrier): `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) ...` (only available inside a sideline dialog)
+- ZH（典型载体）: `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) ...`（只在你处于支线对话语境时可用）
 
 Example / 示例（概念）:
 
-- EN: `!?@tellasker I need you to confirm the file extensions: only .md, or also .txt/.rst?`
-- ZH: `!?@tellasker 我需要你确认要扫描的文件扩展名：只包含 .md 还是也包含 .txt/.rst？`
+- EN: `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) I need you to confirm the file extensions: only .md, or also .txt/.rst?`
+- ZH: `tellaskBack({ targetAgentId: "upstream", tellaskContent: "..." }) 我需要你确认要扫描的文件扩展名：只包含 .md 还是也包含 .txt/.rst？`
 
 #### 2) Tellask Session（长线诉请）
 
@@ -135,8 +135,8 @@ Example / 示例（概念）:
 
 ##### 会话 Slug（Session Slug）
 
-- EN (directive; headline only): `!tellaskSession <slug>`
-- ZH（指令；仅 headline）: `!tellaskSession <slug>`
+- EN (directive; headline only): `sessionSlug`
+- ZH（指令；仅 headline）: `sessionSlug`
 
 - EN (parameter name concept): `tellaskSession` (parameter names are English-only; not i18n'd)
 - ZH（参数名概念）: `tellaskSession`（参数名只用英文，不做 i18n）
@@ -144,8 +144,8 @@ Example / 示例（概念）:
 - EN (slug format): short, stable, human-readable (e.g. `ws-schema-v2`, `tooling-read-file-ux`).
 - ZH（slug 格式）: 简短、稳定、可读（例如 `ws-schema-v2`、`tooling-read-file-ux`）。
 
-- EN (placement rule): Put `!tellaskSession` in the Tellask headline; do not put it on a second line (it would become body text).
-- ZH（位置规则）: `!tellaskSession` 必须写在诉请 headline 中；不要放到第二行（否则会进入 body 变成普通文本）。
+- EN (placement rule): Put `sessionSlug` in the Tellask headline; do not put it on a second line (it would become body text).
+- ZH（位置规则）: `sessionSlug` 必须写在诉请 headline 中；不要放到第二行（否则会进入 body 变成普通文本）。
 
 ##### 多人会话（Multi-Party Sessions）
 
@@ -161,11 +161,11 @@ Example / 示例（概念）:
 Example / 示例（概念）:
 
 ```plain-text
-!?@server !tellaskSession ws-schema-v2
+tellask({ targetAgentId: "server", sessionSlug: "ws-schema-v2", tellaskContent: "..." })
 !?Please confirm the WS packet schema versioning strategy and point to code anchors.
 !?请确认 WS packet schema 的版本化策略，并指出相关代码锚点。
 
-!?@webui !tellaskSession ws-schema-v2
+tellask({ targetAgentId: "webui", sessionSlug: "ws-schema-v2", tellaskContent: "..." })
 !?Explain which missing fields cause UX degradation along the current WebUI subscribe/render path.
 !?按当前 WebUI 订阅/渲染路径说明：哪些字段缺失会导致 UX 退化。
 ```
@@ -181,18 +181,18 @@ Example / 示例（概念）:
 - EN (key property): “Fresh/one-shot” is not only “new context”; it also means **no continuation semantics** — later Tellasks are not expected to resume the same session context.
 - ZH（关键性质）: “Fresh/一次性”不仅表示“新开上下文”，更表示：**没有后续续话语义** —— 后续诉请不应被期待能自动续接本次一次性诉请的上下文。
 
-- EN (practical guidance): If you need a follow-up after a Fresh Tellask, treat it as a new request and restate necessary context; if you need iterative follow-ups, use `Tellask Session` with `!tellaskSession <slug>`.
-- ZH（实践建议）: 如果你在一次性诉请后还要追问，应当把追问当作全新请求并补齐必要上下文；如果你需要可迭代的追问/推进，请使用 `Tellask Session` 并提供 `!tellaskSession <slug>`。
+- EN (practical guidance): If you need a follow-up after a Fresh Tellask, treat it as a new request and restate necessary context; if you need iterative follow-ups, use `Tellask Session` with `sessionSlug`.
+- ZH（实践建议）: 如果你在一次性诉请后还要追问，应当把追问当作全新请求并补齐必要上下文；如果你需要可迭代的追问/推进，请使用 `Tellask Session` 并提供 `sessionSlug`。
 
 Example / 示例（概念）:
 
-- EN: `!?@<shell-specialist> Please run a single build and paste the failure output.`
-- ZH: `!?@<shell-specialist> 请运行一次构建并回贴失败信息。`
+- EN: `tellaskSessionless({ targetAgentId: "shell-specialist", tellaskContent: "Please run a single build and paste the failure output." })`
+- ZH: `tellaskSessionless({ targetAgentId: "shell-specialist", tellaskContent: "请运行一次构建并回贴失败信息。" })`
 
 ### 系统提示可复用的一句话（One-Sentence Summary for System Prompts）
 
-- EN: `TellaskBack` asks the tellasker dialog for clarification; `Tellask Session` uses `!tellaskSession <slug>` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
-- ZH: `TellaskBack` 回问诉请者澄清；`Tellask Session` 用 `!tellaskSession <slug>` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
+- EN: `TellaskBack` asks the tellasker dialog for clarification; `Tellask Session` uses `sessionSlug` for resumable multi-turn work; `Fresh Tellask` is one-shot and non-resumable.
+- ZH: `TellaskBack` 回问诉请者澄清；`Tellask Session` 用 `sessionSlug` 进行可续用多轮协作；`Fresh Tellask` 是一次性且不可恢复。
 
 ### 为何保留 `!` 前缀？（Why keep the `!` prefix?）
 
@@ -260,8 +260,8 @@ Example / 示例（概念）:
 
 ### Q4H (Question for Human) （向人类的诉请）
 
-- EN: A mechanism for raising questions to humans, initiated via `!?@human`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**
-- ZH: 一种通过 `!?@human` 向人类提问的机制，暂停对话进度直到人类响应。**统一使用"Q4H"（大写 Q、数字 4、大写 H）；禁止使用"Q-for-H"、"QforH"、"每四小时"等变体。**
+- EN: A mechanism for raising questions to humans, initiated via `!?askHuman()`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**
+- ZH: 一种通过 `!?askHuman()` 向人类提问的机制，暂停对话进度直到人类响应。**统一使用"Q4H"（大写 Q、数字 4、大写 H）；禁止使用"Q-for-H"、"QforH"、"每四小时"等变体。**
 
 ### Fresh Boots Reasoning（扪心自问）
 
@@ -402,16 +402,16 @@ Example / 示例（概念）:
 - EN: The implementation may still use the internal labels **Type A/B/C** to classify teammate-tellask patterns.
 - ZH: 实现层仍可能使用 **Type A/B/C** 作为队友诉请形态的内部分类。
 
-- EN: Type A: TellaskBack call (a subdialog asking back to its tellasker dialog); primary syntax `!?@tellasker` (NO `!tellaskSession`).
-- ZH: Type A：回问诉请（子对话回问其诉请者对话）；主语法 `!?@tellasker`（不带 `!tellaskSession`）。
+- EN: Type A: TellaskBack call (a subdialog asking back to its tellasker dialog); primary syntax `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`).
+- ZH: Type A：回问诉请（子对话回问其诉请者对话）；主语法 `tellaskBack({ tellaskContent: "..." })`（不带 `sessionSlug`）。
 
-- EN: Type B: registered subdialog call (resumable) keyed by `agentId!tellaskSession`.
-- ZH: Type B：registered subdialog call（可恢复），用 `agentId!tellaskSession` 作为 registry key。
+- EN: Type B: registered subdialog call (resumable) keyed by `agentIdsessionSlug`.
+- ZH: Type B：registered subdialog call（可恢复），用 `agentIdsessionSlug` 作为 registry key。
 
 - EN: Type C: transient subdialog call (one-shot), not registered.
 - ZH: Type C：transient subdialog call（一次性），不注册到 registry。
 
-### `!tellaskSession` / 会话 Slug 指令
+### `sessionSlug` / 会话 Slug 指令
 
-- EN: Resumable registered subdialogs use `!tellaskSession <slug>` in the Tellask headline.
-- ZH: 可恢复的注册子对话使用 Tellask headline 内的 `!tellaskSession <slug>`。
+- EN: Resumable registered subdialogs use `sessionSlug` in the Tellask headline.
+- ZH: 可恢复的注册子对话使用 Tellask headline 内的 `sessionSlug`。
