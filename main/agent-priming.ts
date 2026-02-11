@@ -22,6 +22,7 @@ import { log } from './log';
 import { getWorkLanguage } from './shared/runtime-language';
 import type { LanguageCode } from './shared/types/language';
 import type { DialogRunState } from './shared/types/run-state';
+import type { ToolArguments } from './shared/types/storage';
 import { generateShortId } from './shared/utils/id';
 import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
@@ -152,15 +153,34 @@ type AgentPrimingSyntheticTellaskCall =
 async function emitSyntheticTellaskCall(
   dlg: Dialog,
   payload: {
-    callName: 'tellask' | 'tellaskSessionless';
+    callName: 'tellask';
     mentionList: string[];
+    targetAgentId: string;
+    sessionSlug: string;
     tellaskContent: string;
     callId?: string;
   },
 ): Promise<
   Readonly<{
     callId: string;
-    callName: 'tellask' | 'tellaskSessionless';
+    callName: 'tellask';
+    mentionList: string[];
+    tellaskContent: string;
+  }>
+>;
+async function emitSyntheticTellaskCall(
+  dlg: Dialog,
+  payload: {
+    callName: 'tellaskSessionless';
+    mentionList: string[];
+    targetAgentId: string;
+    tellaskContent: string;
+    callId?: string;
+  },
+): Promise<
+  Readonly<{
+    callId: string;
+    callName: 'tellaskSessionless';
     mentionList: string[];
     tellaskContent: string;
   }>
@@ -185,11 +205,17 @@ async function emitSyntheticTellaskCall(
   payload: {
     callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
     mentionList?: string[];
+    targetAgentId?: string;
+    sessionSlug?: string;
     tellaskContent: string;
     callId?: string;
   },
 ): Promise<AgentPrimingSyntheticTellaskCall> {
   const callId = payload.callId?.trim() ? payload.callId.trim() : `priming-${generateShortId()}`;
+  const activeGenseq = dlg.activeGenSeqOrUndefined;
+  if (typeof activeGenseq !== 'number' || !Number.isFinite(activeGenseq) || activeGenseq <= 0) {
+    throw new Error('emitSyntheticTellaskCall requires an active genseq');
+  }
   switch (payload.callName) {
     case 'tellask':
     case 'tellaskSessionless': {
@@ -199,6 +225,33 @@ async function emitSyntheticTellaskCall(
       if (mentionList.length < 1) {
         throw new Error('emitSyntheticTellaskCall requires mentionList for teammate tellasks');
       }
+      const normalizedTargetAgentId = payload.targetAgentId?.trim() ?? '';
+      if (normalizedTargetAgentId === '') {
+        throw new Error('emitSyntheticTellaskCall requires targetAgentId for teammate tellasks');
+      }
+      let functionCallArguments: ToolArguments;
+      if (payload.callName === 'tellask') {
+        const sessionSlug = payload.sessionSlug?.trim() ?? '';
+        if (sessionSlug === '') {
+          throw new Error('emitSyntheticTellaskCall requires sessionSlug for tellask');
+        }
+        functionCallArguments = {
+          targetAgentId: normalizedTargetAgentId,
+          sessionSlug,
+          tellaskContent: payload.tellaskContent,
+        };
+      } else {
+        functionCallArguments = {
+          targetAgentId: normalizedTargetAgentId,
+          tellaskContent: payload.tellaskContent,
+        };
+      }
+      await dlg.persistFunctionCall(
+        callId,
+        payload.callName,
+        functionCallArguments,
+        Math.floor(activeGenseq),
+      );
       await dlg.callingStart({
         callName: payload.callName,
         callId,
@@ -216,6 +269,15 @@ async function emitSyntheticTellaskCall(
       if (payload.mentionList !== undefined && payload.mentionList.length > 0) {
         throw new Error('emitSyntheticTellaskCall: freshBootsReasoning must not carry mentionList');
       }
+      const functionCallArguments: ToolArguments = {
+        tellaskContent: payload.tellaskContent,
+      };
+      await dlg.persistFunctionCall(
+        callId,
+        payload.callName,
+        functionCallArguments,
+        Math.floor(activeGenseq),
+      );
       await dlg.callingStart({
         callName: payload.callName,
         callId,
@@ -1410,6 +1472,7 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         const shellCall = await emitSyntheticTellaskCall(dlg, {
           callName: 'tellaskSessionless',
           mentionList: [`@${entry.shell.specialistId}`],
+          targetAgentId: entry.shell.specialistId,
           tellaskContent: entry.shell.tellaskBody,
         });
         shellCallId = shellCall.callId;
@@ -1457,6 +1520,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         const round1 = await emitSyntheticTellaskCall(dlg, {
           callName: 'tellask',
           mentionList: [`@${entry.vcs.specialistId}`],
+          targetAgentId: entry.vcs.specialistId,
+          sessionSlug: entry.vcs.sessionSlug,
           tellaskContent: entry.vcs.round1.tellaskBody,
         });
         round1CallId = round1.callId;
@@ -1493,6 +1558,8 @@ async function replayAgentPriming(dlg: Dialog, entry: AgentPrimingCacheEntry): P
         const round2 = await emitSyntheticTellaskCall(dlg, {
           callName: 'tellask',
           mentionList: [`@${entry.vcs.specialistId}`],
+          targetAgentId: entry.vcs.specialistId,
+          sessionSlug: entry.vcs.sessionSlug,
           tellaskContent: entry.vcs.round2.tellaskBody,
         });
         round2CallId = round2.callId;
@@ -1706,6 +1773,7 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
 
     // Phase 1: shell ask (and optional prelude intro)
     if (shellPolicy === 'specialist_only' && specialistId !== null) {
+      const ensuredSpecialistId = specialistId;
       shellTellaskBody = formatShellTellaskBody(language, specialistId);
       assertNotStopped();
       await dlg.withLock(async () => {
@@ -1713,12 +1781,13 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
           await dlg.notifyGeneratingStart();
           await emitUiOnlyMarkdownEventsAndPersist(
             dlg,
-            formatPreludeIntro(language, false, shellPolicy, specialistId),
+            formatPreludeIntro(language, false, shellPolicy, ensuredSpecialistId),
           );
 
           const call = await emitSyntheticTellaskCall(dlg, {
             callName: 'tellaskSessionless',
-            mentionList: [`@${specialistId}`],
+            mentionList: [`@${ensuredSpecialistId}`],
+            targetAgentId: ensuredSpecialistId,
             tellaskContent: shellTellaskBody,
           });
           shellCallId = call.callId;
@@ -1879,6 +1948,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
             const call = await emitSyntheticTellaskCall(dlg, {
               callName: 'tellask',
               mentionList: [`@${ensuredSpecialistId}`],
+              targetAgentId: ensuredSpecialistId,
+              sessionSlug: PRIMING_VCS_SESSION_SLUG,
               tellaskContent: vcsRound1Body,
             });
             round1CallId = call.callId;
@@ -1971,6 +2042,8 @@ async function runAgentPrimingLive(dlg: Dialog): Promise<AgentPrimingCacheEntry>
             const call = await emitSyntheticTellaskCall(dlg, {
               callName: 'tellask',
               mentionList: [`@${ensuredSpecialistId}`],
+              targetAgentId: ensuredSpecialistId,
+              sessionSlug: PRIMING_VCS_SESSION_SLUG,
               tellaskContent: vcsRound2Body,
             });
             round2CallId = call.callId;

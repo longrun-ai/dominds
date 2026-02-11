@@ -186,8 +186,8 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
 
   const hello =
     language === 'zh'
-      ? `你好 @${requireNonEmpty(input.requesterId, 'toAgentId')}，@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
-      : `Hi @${requireNonEmpty(input.requesterId, 'toAgentId')}, @${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
+      ? `@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
+      : `@${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
   const tail = language === 'zh' ? '针对原始诉请：' : 'regarding the original tellask:';
 
   return `${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${mentionLine ? `${markdownQuote(mentionLine)}\n` : ''}${markdownQuote(tellaskContent)}\n`;

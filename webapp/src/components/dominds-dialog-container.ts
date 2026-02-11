@@ -439,7 +439,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private buildCallIdSelector(callId: string): string {
     const escaped = CSS.escape(callId);
-    return `.calling-section[data-call-id="${escaped}"], .generation-bubble[data-call-id="${escaped}"]`;
+    return `.calling-section[data-call-id="${escaped}"]`;
   }
 
   private findCallSiteTargetByCallId(messages: HTMLElement, callId: string): HTMLElement | null {
@@ -1562,9 +1562,9 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private getProgressiveExpandLabel(): { text: string; title: string } {
     if (this.uiLanguage === 'zh') {
-      return { text: '展开更多（+1/3屏高）', title: '每次展开约 1/3 屏高' };
+      return { text: '展开更多', title: '展开更多' };
     }
-    return { text: 'Show More (+1/3 viewport)', title: 'Expand by ~1/3 viewport' };
+    return { text: 'Show more', title: 'Show more' };
   }
 
   private setupProgressiveExpand(options: {
@@ -1574,7 +1574,15 @@ export class DomindsDialogContainer extends HTMLElement {
   }): void {
     const { target, footer, button } = options;
     const label = this.getProgressiveExpandLabel();
-    button.textContent = label.text;
+    button.innerHTML = `
+      <span class="progressive-expand-icon" aria-hidden="true">
+        <svg class="progressive-expand-icon-svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.5 4.5L8 9l4.5-4.5"></path>
+          <path d="M3.5 8.5L8 13l4.5-4.5"></path>
+        </svg>
+      </span>
+    `;
+    button.setAttribute('aria-label', label.text);
     button.title = label.title;
 
     const collapseToInitial = (): void => {
@@ -2048,7 +2056,20 @@ export class DomindsDialogContainer extends HTMLElement {
     const normalizedCallId = String(event.callId || '').trim();
     if (normalizedCallId !== '') {
       const endedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
-      this.markCallSiteSettled(normalizedCallId, event.status, endedAtMs);
+      const hasCallSite = this.callingSectionByCallId.has(normalizedCallId);
+      if (!hasCallSite) {
+        this.handleProtocolError(
+          `teammate_response_evt received before teammate_call_start_evt ${JSON.stringify({
+            callId: normalizedCallId,
+            course: event.course,
+            calling_genseq: event.calling_genseq,
+            responderId: event.responderId,
+            status: event.status,
+          })}`,
+        );
+      } else {
+        this.markCallSiteSettled(normalizedCallId, event.status, endedAtMs);
+      }
     }
     // Validate calleeDialogId is present
     if (!event.calleeDialogId) {
@@ -3698,10 +3719,13 @@ export class DomindsDialogContainer extends HTMLElement {
         background: var(--color-bg-secondary, #ffffff);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
         border-radius: 999px;
-        font-size: 11px;
-        line-height: 1.2;
-        padding: 4px 10px;
+        width: 26px;
+        height: 22px;
+        padding: 0;
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .progressive-expand-btn:hover {
@@ -3711,6 +3735,37 @@ export class DomindsDialogContainer extends HTMLElement {
       .progressive-expand-btn:focus-visible {
         outline: 2px solid var(--dominds-primary, var(--color-accent-primary, #007acc));
         outline-offset: 1px;
+      }
+
+      .progressive-expand-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.72;
+        animation: progressive-expand-flash 2.2s ease-in-out infinite;
+      }
+
+      .progressive-expand-icon-svg {
+        display: block;
+      }
+
+      .progressive-expand-btn:hover .progressive-expand-icon,
+      .progressive-expand-btn:focus-visible .progressive-expand-icon {
+        opacity: 0.96;
+        animation-play-state: paused;
+      }
+
+      @keyframes progressive-expand-flash {
+        0%,
+        72%,
+        100% {
+          opacity: 0.68;
+          transform: translateY(0);
+        }
+        82% {
+          opacity: 0.98;
+          transform: translateY(0.5px);
+        }
       }
 
       .calling-expand-footer {
