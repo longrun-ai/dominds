@@ -211,7 +211,7 @@ registerToolset('ws_mod', [
 setToolsetMeta('ws_mod', {
   source: 'dominds',
   descriptionI18n: { en: 'rtws read/write tools', zh: '运行时工作区读写工具' },
-  promptFilesI18n: { en: './prompts/ws_mod.en.md', zh: './prompts/ws_mod.zh.md' },
+  promptFilesI18n: { en: './prompts/ws_mod/en/index.md', zh: './prompts/ws_mod/zh/index.md' },
 });
 
 // Codex-focused toolsets (function tools only; suitable for Codex provider)
@@ -231,7 +231,7 @@ registerToolset('team-mgmt', [...teamMgmtTools]);
 setToolsetMeta('team-mgmt', {
   source: 'dominds',
   descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
-  promptFilesI18n: { en: './prompts/team_mgmt.en.md', zh: './prompts/team_mgmt.zh.md' },
+  promptFilesI18n: { en: './prompts/team_mgmt/en/index.md', zh: './prompts/team_mgmt/zh/index.md' },
 });
 
 // Register ReminderOwners
