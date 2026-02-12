@@ -139,6 +139,7 @@ async function funcResultToChatCompletionMessages(
       const bytes = await readDialogArtifactBytes({
         rootId: item.artifact.rootId,
         selfId: item.artifact.selfId,
+        status: item.artifact.status,
         relPath: item.artifact.relPath,
       });
       if (!bytes) {
@@ -220,6 +221,7 @@ async function orphanedFuncResultToChatCompletionMessages(
       const bytes = await readDialogArtifactBytes({
         rootId: item.artifact.rootId,
         selfId: item.artifact.selfId,
+        status: item.artifact.status,
         relPath: item.artifact.relPath,
       });
       if (!bytes) {

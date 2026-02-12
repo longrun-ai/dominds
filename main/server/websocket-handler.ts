@@ -37,6 +37,7 @@ import type {
   CreateDialogResult,
   DeclareSubdialogDeadRequest,
   DialogReadyMessage,
+  DialogStatusKind,
   DiligencePushUpdatedMessage,
   DisplayCourseRequest,
   DisplayDialogRequest,
@@ -85,6 +86,13 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
 function normalizeDiligencePushMax(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.floor(value);
+}
+
+function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
+  if (raw !== 'running' && raw !== 'completed' && raw !== 'archived') {
+    return null;
+  }
+  return raw;
 }
 
 const log = createLogger('websocket-handler');
@@ -331,7 +339,17 @@ async function handleDeclareSubdialogDead(
   }
 
   const dialogIdObj = new DialogID(dialog.selfId, dialog.rootId);
-  const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, 'running');
+  const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+  if (requestedStatus !== 'running') {
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: 'declare_subdialog_dead is available only for running dialogs',
+      }),
+    );
+    return;
+  }
+  const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
   if (!latest) {
     ws.send(
       JSON.stringify({
@@ -354,10 +372,7 @@ async function handleDeclareSubdialogDead(
 
   // If a supdialog is waiting on this subdialog (pending-subdialogs.json), supply a system-style
   // response so the supdialog can unblock and the model sees the failure reason.
-  let metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, 'running');
-  if (!metadata) {
-    metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, 'completed');
-  }
+  const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
   if (!metadata) return;
 
   if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
@@ -378,7 +393,7 @@ async function handleDeclareSubdialogDead(
   if (typeof callerDialogId !== 'string' || callerDialogId.trim() === '') return;
 
   const callerDialogIdObj = new DialogID(callerDialogId, dialogIdObj.rootId);
-  const pending = await DialogPersistence.loadPendingSubdialogs(callerDialogIdObj, 'running');
+  const pending = await DialogPersistence.loadPendingSubdialogs(callerDialogIdObj, requestedStatus);
   const pendingRecord = pending.find((p) => p.subdialogId === dialogIdObj.selfId);
   if (!pendingRecord) {
     // Caller is not waiting on this subdialog anymore; do not auto-revive.
@@ -440,28 +455,19 @@ async function handleSetDiligencePush(
 
     // Diligence Push is root-dialog state. Even if a subdialog is displayed, always mutate the root.
     const dialogIdObj = new DialogID(rootId);
-
-    // Locate dialog status (running/completed/archived) for persistence.
-    const statuses: Array<'running' | 'completed' | 'archived'> = [
-      'running',
-      'completed',
-      'archived',
-    ];
-    let foundStatus: 'running' | 'completed' | 'archived' | null = null;
-    for (const status of statuses) {
-      const meta = await DialogPersistence.loadDialogMetadata(dialogIdObj, status);
-      if (!meta) continue;
-      foundStatus = status;
-      break;
-    }
-    if (!foundStatus) {
+    const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+    const rootMeta = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
+    if (!rootMeta) {
       ws.send(
-        JSON.stringify({ type: 'error', message: `Dialog ${dialogIdObj.valueOf()} not found` }),
+        JSON.stringify({
+          type: 'error',
+          message: `Dialog ${dialogIdObj.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
+        }),
       );
       return;
     }
 
-    const latestBefore = await DialogPersistence.loadDialogLatest(dialogIdObj, foundStatus);
+    const latestBefore = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
     const prevDisableDiligencePush =
       latestBefore && typeof latestBefore.disableDiligencePush === 'boolean'
         ? latestBefore.disableDiligencePush
@@ -473,25 +479,25 @@ async function handleSetDiligencePush(
         kind: 'patch',
         patch: { disableDiligencePush },
       }),
-      foundStatus,
+      requestedStatus,
     );
 
     // Update live in-memory instance if it's loaded.
-    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, foundStatus);
+    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, requestedStatus);
     if (rootDialog) {
       rootDialog.disableDiligencePush = disableDiligencePush;
     }
 
     const msg: DiligencePushUpdatedMessage = {
       type: 'diligence_push_updated',
-      dialog: { selfId: dialogIdObj.selfId, rootId: dialogIdObj.rootId },
+      dialog: { selfId: dialogIdObj.selfId, rootId: dialogIdObj.rootId, status: requestedStatus },
       disableDiligencePush,
       timestamp: formatUnifiedTimestamp(new Date()),
     };
     ws.send(JSON.stringify(msg));
 
     const shouldTriggerImmediateDiligence =
-      foundStatus === 'running' &&
+      requestedStatus === 'running' &&
       prevDisableDiligencePush &&
       !disableDiligencePush &&
       rootDialog instanceof RootDialog;
@@ -589,26 +595,19 @@ async function handleRefillDiligencePushBudget(
   }
 
   const rootDialogId = new DialogID(rootId);
-  const statuses: Array<'running' | 'completed' | 'archived'> = [
-    'running',
-    'completed',
-    'archived',
-  ];
-  let foundStatus: 'running' | 'completed' | 'archived' | null = null;
-  for (const status of statuses) {
-    const meta = await DialogPersistence.loadDialogMetadata(rootDialogId, status);
-    if (!meta) continue;
-    foundStatus = status;
-    break;
-  }
-  if (!foundStatus) {
+  const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+  const rootMeta = await DialogPersistence.loadDialogMetadata(rootDialogId, requestedStatus);
+  if (!rootMeta) {
     ws.send(
-      JSON.stringify({ type: 'error', message: `Dialog ${rootDialogId.valueOf()} not found` }),
+      JSON.stringify({
+        type: 'error',
+        message: `Dialog ${rootDialogId.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
+      }),
     );
     return;
   }
 
-  const rootDialog = await getOrRestoreRootDialog(rootDialogId.rootId, foundStatus);
+  const rootDialog = await getOrRestoreRootDialog(rootDialogId.rootId, requestedStatus);
   if (!rootDialog) {
     ws.send(
       JSON.stringify({
@@ -636,7 +635,7 @@ async function handleRefillDiligencePushBudget(
       kind: 'patch',
       patch: { diligencePushRemainingBudget: rootDialog.diligencePushRemainingBudget },
     }),
-    foundStatus,
+    requestedStatus,
   );
 
   postDialogEvent(rootDialog, {
@@ -847,35 +846,23 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     }
 
     const dialogIdObj = new DialogID(dialogId, rootDialogId);
-    const statuses: Array<'running' | 'completed' | 'archived'> = [
-      'running',
-      'completed',
-      'archived',
-    ];
-    let foundStatus: 'running' | 'completed' | 'archived' | null = null;
-    let dialogState: Awaited<ReturnType<typeof DialogPersistence.restoreDialog>> | null = null;
-    let metadata: Awaited<ReturnType<typeof DialogPersistence.loadDialogMetadata>> | null = null;
-    for (const status of statuses) {
-      const state = await DialogPersistence.restoreDialog(dialogIdObj, status);
-      if (!state) continue;
-      const meta = await DialogPersistence.loadDialogMetadata(dialogIdObj, status);
-      if (!meta) continue;
-      foundStatus = status;
-      dialogState = state;
-      metadata = meta;
-      break;
-    }
+    const requestedStatus =
+      parseDialogStatusKind((dialogIdent as { status?: unknown }).status) ?? 'running';
+    const dialogState = await DialogPersistence.restoreDialog(dialogIdObj, requestedStatus);
+    const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
 
-    if (!foundStatus || !dialogState || !metadata) {
-      throw new Error('Dialog not found');
+    if (!dialogState || !metadata) {
+      throw new Error(
+        `Dialog ${dialogIdObj.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
+      );
     }
 
     const decidedCourse =
-      (await DialogPersistence.getCurrentCourseNumber(dialogIdObj, foundStatus)) ||
+      (await DialogPersistence.getCurrentCourseNumber(dialogIdObj, requestedStatus)) ||
       (dialogState.currentCourse ?? 1);
 
-    const enableLive = foundStatus === 'running';
-    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, foundStatus);
+    const enableLive = requestedStatus === 'running';
+    const rootDialog = await getOrRestoreRootDialog(dialogIdObj.rootId, requestedStatus);
     if (!rootDialog) {
       throw new Error('Root dialog not found');
     }
@@ -887,7 +874,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     if (dialogIdObj.selfId === dialogIdObj.rootId) {
       dialog = rootDialog;
     } else {
-      const loaded = await ensureDialogLoaded(rootDialog, dialogIdObj, foundStatus);
+      const loaded = await ensureDialogLoaded(rootDialog, dialogIdObj, requestedStatus);
       if (!loaded) {
         throw new Error('Dialog not found');
       }
@@ -911,7 +898,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           dialog,
           decidedCourse,
           decidedCourse,
-          foundStatus,
+          requestedStatus,
         );
       } else {
         throw new Error('Unexpected dialog store type for sendDialogEventsDirectly');
@@ -927,7 +914,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     );
     const rootLatest = await DialogPersistence.loadDialogLatest(
       new DialogID(dialogIdObj.rootId),
-      foundStatus,
+      requestedStatus,
     );
     const defaultDisableDiligencePush = diligencePushMax <= 0;
     const persistedDisableDiligencePush =
@@ -946,6 +933,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       dialog: {
         selfId: dialogId,
         rootId: rootDialogId,
+        status: requestedStatus,
       },
       agentId: metadata.agentId,
       taskDocPath: metadata.taskDocPath,
@@ -963,12 +951,12 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
 
     // Send authoritative run state for this dialog so the client can render Send↔Stop and Continue.
     try {
-      const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, foundStatus);
+      const latest = await DialogPersistence.loadDialogLatest(dialogIdObj, requestedStatus);
       const runState =
         latest?.runState ??
-        (foundStatus === 'running'
+        (requestedStatus === 'running'
           ? { kind: 'idle_waiting_user' }
-          : foundStatus === 'completed'
+          : requestedStatus === 'completed'
             ? { kind: 'terminal', status: 'completed' }
             : { kind: 'terminal', status: 'archived' });
       const runStateEvt = dialogEventRegistry.createTypedEvent(dialogIdObj, {
@@ -1112,45 +1100,41 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
     const dialogId = new DialogID(dialogIdStr, rootDialogIdStr);
 
     try {
-      const statuses: Array<'running' | 'completed' | 'archived'> = [
-        'running',
-        'completed',
-        'archived',
-      ];
-      let foundStatus: 'running' | 'completed' | 'archived' | null = null;
-      let metadata: Awaited<ReturnType<typeof DialogPersistence.loadDialogMetadata>> | null = null;
-      for (const status of statuses) {
-        const meta = await DialogPersistence.loadDialogMetadata(dialogId, status);
-        if (!meta) continue;
-        foundStatus = status;
-        metadata = meta;
-        break;
-      }
-
-      if (!foundStatus || !metadata) {
-        log.warn('Metadata not found for display_course', undefined, { dialogId: dialogId.selfId });
+      const requestedStatus = parseDialogStatusKind(dialog.status) ?? 'running';
+      const metadata = await DialogPersistence.loadDialogMetadata(dialogId, requestedStatus);
+      if (!metadata) {
+        log.warn('Metadata not found for display_course', undefined, {
+          dialogId: dialogId.selfId,
+          status: requestedStatus,
+        });
         return;
       }
 
       const totalCourses =
-        (await DialogPersistence.getCurrentCourseNumber(dialogId, foundStatus)) || course;
+        (await DialogPersistence.getCurrentCourseNumber(dialogId, requestedStatus)) || course;
 
-      const rootDialog = await getOrRestoreRootDialog(dialogId.rootId, foundStatus);
+      const rootDialog = await getOrRestoreRootDialog(dialogId.rootId, requestedStatus);
       if (!rootDialog) return;
 
-      const dialog =
+      const restoredDialog =
         dialogId.selfId === dialogId.rootId
           ? rootDialog
-          : await ensureDialogLoaded(rootDialog, dialogId, foundStatus);
-      if (!dialog) return;
+          : await ensureDialogLoaded(rootDialog, dialogId, requestedStatus);
+      if (!restoredDialog) return;
 
-      const store = dialog.dlgStore;
+      const store = restoredDialog.dlgStore;
       if (!(store instanceof DiskFileDialogStore)) {
         throw new Error('Unexpected dialog store type for display_course');
       }
       // Send the requested course's persisted events directly to this WebSocket.
       // This is a UI navigation operation; do not emit via PubChan.
-      await store.sendDialogEventsDirectly(ws, dialog, course, totalCourses, foundStatus);
+      await store.sendDialogEventsDirectly(
+        ws,
+        restoredDialog,
+        course,
+        totalCourses,
+        requestedStatus,
+      );
     } catch (err) {
       log.warn('Failed to send dialog events for display_course', err);
     }

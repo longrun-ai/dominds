@@ -34,6 +34,7 @@ export type FuncResultContentItem =
       artifact: {
         rootId: string;
         selfId: string;
+        status: 'running' | 'completed' | 'archived';
         // Relative to the dialog events directory (DialogPersistence.getDialogEventsPath).
         // Must start with "artifacts/".
         relPath: string;

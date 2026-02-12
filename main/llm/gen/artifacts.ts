@@ -12,6 +12,7 @@ import { DialogPersistence } from '../../persistence';
 export type DialogArtifactIdent = {
   rootId: string;
   selfId: string;
+  status: 'running' | 'completed' | 'archived';
   // Relative to the dialog events directory (DialogPersistence.getDialogEventsPath).
   // Must start with "artifacts/".
   relPath: string;
@@ -56,42 +57,40 @@ function ensureTrailingSep(p: string): string {
   return p.endsWith(path.sep) ? p : p + path.sep;
 }
 
+function isDialogStatusKind(value: unknown): value is 'running' | 'completed' | 'archived' {
+  return value === 'running' || value === 'completed' || value === 'archived';
+}
+
 export async function locateDialogArtifactFilePath(params: {
   rootId: string;
   selfId: string;
+  status: 'running' | 'completed' | 'archived';
   relPath: string;
 }): Promise<string | null> {
   const relPath = normalizeDialogArtifactRelPath(params.relPath);
   if (!relPath) return null;
+  if (!isDialogStatusKind(params.status)) return null;
 
-  const statusCandidates: Array<'running' | 'completed' | 'archived'> = [
-    'running',
-    'completed',
-    'archived',
-  ];
-  for (const status of statusCandidates) {
-    const baseDir = DialogPersistence.getDialogEventsPath(
-      new DialogID(params.selfId, params.rootId),
-      status,
-    );
-    const candidatePath = path.join(baseDir, ...relPath.split('/'));
-    const baseAbs = ensureTrailingSep(path.resolve(baseDir));
-    const candAbs = path.resolve(candidatePath);
-    if (!candAbs.startsWith(baseAbs)) continue;
-    try {
-      const st = await fsPromises.stat(candAbs);
-      if (!st.isFile()) continue;
-      return candAbs;
-    } catch (error) {
-      const code =
-        typeof error === 'object' && error !== null && 'code' in error
-          ? (error as { code?: unknown }).code
-          : undefined;
-      if (code === 'ENOENT') continue;
-      throw error;
-    }
+  const baseDir = DialogPersistence.getDialogEventsPath(
+    new DialogID(params.selfId, params.rootId),
+    params.status,
+  );
+  const candidatePath = path.join(baseDir, ...relPath.split('/'));
+  const baseAbs = ensureTrailingSep(path.resolve(baseDir));
+  const candAbs = path.resolve(candidatePath);
+  if (!candAbs.startsWith(baseAbs)) return null;
+  try {
+    const st = await fsPromises.stat(candAbs);
+    if (!st.isFile()) return null;
+    return candAbs;
+  } catch (error) {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? (error as { code?: unknown }).code
+        : undefined;
+    if (code === 'ENOENT') return null;
+    throw error;
   }
-  return null;
 }
 
 export async function readDialogArtifactBytes(params: DialogArtifactIdent): Promise<Buffer | null> {

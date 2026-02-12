@@ -17,12 +17,13 @@ import type {
 import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
-import type { AssignmentFromSup, DialogIdent } from '../shared/types/wire';
+import type { AssignmentFromSup, DialogIdent, DialogStatusKind } from '../shared/types/wire';
 import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
 
 type DialogContext = DialogIdent & {
+  status?: DialogStatusKind;
   agentId?: string;
   supdialogId?: string;
   sessionSlug?: string;
@@ -1796,6 +1797,10 @@ export class DomindsDialogContainer extends HTMLElement {
                 const api = getApiClient();
                 const params = new URLSearchParams();
                 params.set('path', item.artifact.relPath);
+                params.set(
+                  'status',
+                  item.artifact.status ?? this.currentDialog?.status ?? 'running',
+                );
                 const endpoint = `/api/dialogs/${encodeURIComponent(item.artifact.rootId)}/${encodeURIComponent(
                   item.artifact.selfId,
                 )}/artifact?${params.toString()}`;

@@ -66,6 +66,7 @@ export class ArchivedDialogList extends HTMLElement {
   private collapsedTasks: Set<string> = new Set();
   private collapsedRoots: Set<string> = new Set();
   private knownRootIds: Set<string> = new Set();
+  // Request markers only; this is not a data cache.
   private requestedSubdialogRoots: Set<string> = new Set();
 
   constructor() {
@@ -131,7 +132,8 @@ export class ArchivedDialogList extends HTMLElement {
       }
     }
     // Once a root's subdialogs are present, the request has been satisfied.
-    // Clearing this allows re-request if subdialogs later get pruned from props.
+    // We clear markers so a later expand can refetch after collapse-prune.
+    // Frontend never keeps a global/all-dialog cache.
     for (const existing of Array.from(this.requestedSubdialogRoots)) {
       if (loadedSubdialogRoots.has(existing)) {
         this.requestedSubdialogRoots.delete(existing);
@@ -698,7 +700,7 @@ export class ArchivedDialogList extends HTMLElement {
         this.requestedSubdialogRoots.add(rootId);
         this.dispatchEvent(
           new CustomEvent('dialog-expand', {
-            detail: { rootId },
+            detail: { rootId, status: 'archived' },
             bubbles: true,
             composed: true,
           }),
@@ -706,6 +708,14 @@ export class ArchivedDialogList extends HTMLElement {
       }
     } else {
       this.collapsedRoots.add(rootId);
+      this.requestedSubdialogRoots.delete(rootId);
+      this.dispatchEvent(
+        new CustomEvent('dialog-collapse', {
+          detail: { rootId, status: 'archived' },
+          bubbles: true,
+          composed: true,
+        }),
+      );
     }
     this.renderList();
   }
@@ -781,6 +791,7 @@ export class ArchivedDialogList extends HTMLElement {
       agentId: dialog.agentId,
       agentName: '',
       taskDocPath: dialog.taskDocPath,
+      status: 'archived',
       supdialogId: dialog.supdialogId,
       sessionSlug: dialog.sessionSlug,
       assignmentFromSup: dialog.assignmentFromSup,

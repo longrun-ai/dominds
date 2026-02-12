@@ -42,6 +42,7 @@ type PendingDiagnosticsSnapshot =
   | {
       kind: 'loaded';
       ownerDialogId: string;
+      status: 'running' | 'completed' | 'archived';
       totalCount: number;
       matchedSubdialogIds: string[];
       records: Array<{
@@ -56,6 +57,7 @@ type PendingDiagnosticsSnapshot =
   | {
       kind: 'error';
       ownerDialogId: string;
+      status: 'running' | 'completed' | 'archived';
       error: string;
     };
 
@@ -63,16 +65,18 @@ async function loadPendingDiagnosticsSnapshot(args: {
   rootId: string;
   ownerDialogId: string;
   expectedSubdialogId: string;
+  status: 'running' | 'completed' | 'archived';
 }): Promise<PendingDiagnosticsSnapshot> {
   const ownerDialogIdObj = new DialogID(args.ownerDialogId, args.rootId);
   try {
-    const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialogIdObj);
+    const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialogIdObj, args.status);
     const matchedSubdialogIds = pending
       .filter((record) => record.subdialogId === args.expectedSubdialogId)
       .map((record) => record.subdialogId);
     return {
       kind: 'loaded',
       ownerDialogId: args.ownerDialogId,
+      status: args.status,
       totalCount: pending.length,
       matchedSubdialogIds,
       records: pending.map((record) => ({
@@ -90,6 +94,7 @@ async function loadPendingDiagnosticsSnapshot(args: {
     return {
       kind: 'error',
       ownerDialogId: args.ownerDialogId,
+      status: args.status,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -363,6 +368,7 @@ export async function executeDriveRound(args: {
             rootId: dialog.id.rootId,
             ownerDialogId,
             expectedSubdialogId: dialog.id.selfId,
+            status: dialog.status,
           }),
         ),
       );

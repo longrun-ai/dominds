@@ -20,6 +20,7 @@ export interface DialogInfo {
   agentId: string;
   agentName: string;
   taskDocPath: string;
+  status?: DialogStatusKind;
   supdialogId?: string;
   sessionSlug?: string;
   assignmentFromSup?: AssignmentFromSup;

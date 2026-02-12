@@ -1,6 +1,6 @@
 import { Dialog, DialogID, RootDialog, SubDialog } from '../../dialog';
 import { globalDialogRegistry } from '../../dialog-global-registry';
-import { ensureDialogLoaded } from '../../dialog-instance-registry';
+import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
@@ -54,43 +54,82 @@ async function resolveOwnerDialogBySelfId(
   ownerDialogId: string,
 ): Promise<Dialog | undefined> {
   const rootDialog = subdialog.rootDialog;
+  if (!(await ensureDialogFreshOrDiscard(rootDialog, 'resolveOwnerDialogBySelfId:root'))) {
+    return undefined;
+  }
   if (ownerDialogId === rootDialog.id.selfId) {
     return rootDialog;
   }
   const existing = rootDialog.lookupDialog(ownerDialogId);
-  if (existing) return existing;
-  return await ensureDialogLoaded(
+  if (existing) {
+    if (!(await ensureDialogFreshOrDiscard(existing, 'resolveOwnerDialogBySelfId:lookup'))) {
+      return undefined;
+    }
+    return existing;
+  }
+  const restored = await ensureDialogLoaded(
     rootDialog,
     new DialogID(ownerDialogId, rootDialog.id.rootId),
-    'running',
+    rootDialog.status,
   );
+  if (!restored) {
+    return undefined;
+  }
+  if (!(await ensureDialogFreshOrDiscard(restored, 'resolveOwnerDialogBySelfId:restore'))) {
+    return undefined;
+  }
+  return restored;
+}
+
+async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promise<boolean> {
+  try {
+    const metadata = await DialogPersistence.loadDialogMetadata(dialog.id, dialog.status);
+    if (metadata) {
+      return true;
+    }
+  } catch (err) {
+    log.warn('driver-v2 failed to verify dialog freshness against persisted status', undefined, {
+      where,
+      rootId: dialog.id.rootId,
+      selfId: dialog.id.selfId,
+      status: dialog.status,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  log.warn('driver-v2 discarding stale dialog object due to status/path mismatch', undefined, {
+    where,
+    rootId: dialog.id.rootId,
+    selfId: dialog.id.selfId,
+    status: dialog.status,
+  });
+  if (dialog instanceof RootDialog) {
+    globalDialogRegistry.unregister(dialog.id.rootId);
+  }
+  return false;
 }
 
 async function resolveLatestAssignmentAnchorRef(args: {
   calleeDialogId: DialogID;
   callId: string;
+  status: DialogPersistenceStatus;
 }): Promise<{ course: number; genseq: number } | undefined> {
   const normalizedCallId = args.callId.trim();
   if (normalizedCallId === '') {
     return undefined;
   }
 
-  const runningLatest = await DialogPersistence.loadDialogLatest(args.calleeDialogId, 'running');
-  const completedLatest = runningLatest
-    ? null
-    : await DialogPersistence.loadDialogLatest(args.calleeDialogId, 'completed');
-  const latest = runningLatest ?? completedLatest;
+  const latest = await DialogPersistence.loadDialogLatest(args.calleeDialogId, args.status);
   if (!latest) {
     return undefined;
   }
-  const status: 'running' | 'completed' = runningLatest ? 'running' : 'completed';
 
   const maxCourse = Math.floor(latest.currentCourse);
   for (let course = maxCourse; course >= 1; course -= 1) {
     const courseEvents = await DialogPersistence.loadCourseEvents(
       args.calleeDialogId,
       course,
-      status,
+      args.status,
     );
     for (let i = courseEvents.length - 1; i >= 0; i -= 1) {
       const event = courseEvents[i];
@@ -135,7 +174,10 @@ export async function supplyResponseToSupdialogV2(args: {
   } = args;
   try {
     const result = await withSubdialogTxnLock(parentDialog.id, async () => {
-      const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(parentDialog.id);
+      const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+        parentDialog.id,
+        parentDialog.status,
+      );
       let pendingRecord:
         | {
             subdialogId: string;
@@ -168,10 +210,10 @@ export async function supplyResponseToSupdialogV2(args: {
       let originMemberId: string | undefined;
 
       try {
-        let metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'running');
-        if (!metadata) {
-          metadata = await DialogPersistence.loadDialogMetadata(subdialogId, 'completed');
-        }
+        const metadata = await DialogPersistence.loadDialogMetadata(
+          subdialogId,
+          parentDialog.status,
+        );
         if (metadata && metadata.assignmentFromSup) {
           originMemberId = metadata.assignmentFromSup.originMemberId;
           if (!pendingRecord) {
@@ -213,7 +255,11 @@ export async function supplyResponseToSupdialogV2(args: {
         mentionList = [`@${responderId}`];
       }
 
-      await DialogPersistence.savePendingSubdialogs(parentDialog.id, filteredPending);
+      await DialogPersistence.savePendingSubdialogs(
+        parentDialog.id,
+        filteredPending,
+        parentDialog.status,
+      );
 
       const hasQ4H = await parentDialog.hasPendingQ4H();
       const shouldRevive = !hasQ4H && filteredPending.length === 0;
@@ -246,6 +292,7 @@ export async function supplyResponseToSupdialogV2(args: {
       const assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: subdialogId,
         callId: resolvedCallId,
+        status: parentDialog.status,
       });
       if (!assignmentRef) {
         log.error('Missing assignment anchor for teammate response anchor', undefined, {
@@ -267,7 +314,12 @@ export async function supplyResponseToSupdialogV2(args: {
         callerDialogId: parentDialog.id.selfId,
         callerCourse: result.callingCourse,
       };
-      await DialogPersistence.appendEvent(subdialogId, calleeResponseRef.course, anchorRecord);
+      await DialogPersistence.appendEvent(
+        subdialogId,
+        calleeResponseRef.course,
+        anchorRecord,
+        parentDialog.status,
+      );
     }
 
     await syncPendingTellaskReminderBestEffort(parentDialog, 'driver-v2:supplyResponseToSupdialog');
@@ -364,8 +416,16 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
   if (!ownerDialog) {
     return false;
   }
+  if (
+    !(await ensureDialogFreshOrDiscard(
+      ownerDialog,
+      'supplySubdialogResponseToSpecificCallerIfPendingV2:owner',
+    ))
+  ) {
+    return false;
+  }
 
-  const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialog.id);
+  const pending = await DialogPersistence.loadPendingSubdialogs(ownerDialog.id, ownerDialog.status);
   const pendingRecord = pending.find((p) => p.subdialogId === subdialog.id.selfId);
   if (!pendingRecord) {
     return false;
@@ -419,8 +479,19 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
     });
     return false;
   }
+  if (
+    !(await ensureDialogFreshOrDiscard(
+      callerDialog,
+      'supplySubdialogResponseToAssignedCallerIfPendingV2:caller',
+    ))
+  ) {
+    return false;
+  }
 
-  const pending = await DialogPersistence.loadPendingSubdialogs(callerDialog.id);
+  const pending = await DialogPersistence.loadPendingSubdialogs(
+    callerDialog.id,
+    callerDialog.status,
+  );
   const pendingRecord = pending.find((p) => p.subdialogId === subdialog.id.selfId);
   if (!pendingRecord) {
     return false;

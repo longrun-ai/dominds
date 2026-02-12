@@ -1349,6 +1349,7 @@ async function materializeMcpToolCallOutput(params: {
         artifact: {
           rootId: params.dlg.id.rootId,
           selfId: params.dlg.id.selfId,
+          status: params.dlg.status,
           relPath,
         },
       });

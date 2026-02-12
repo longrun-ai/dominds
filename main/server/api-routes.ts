@@ -92,6 +92,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function parseDialogStatusFromUrl(urlObj: URL): DialogStatusKind | null {
+  const raw = urlObj.searchParams.get('status');
+  if (raw === null) return 'running';
+  if (raw === 'running' || raw === 'completed' || raw === 'archived') {
+    return raw;
+  }
+  return null;
+}
+
 export interface ApiRouteContext {
   clients?: Set<WebSocket>;
   mode: 'development' | 'production';
@@ -199,7 +208,13 @@ export async function handleApiRoute(
 
     // Dialog list endpoint
     if (pathname === '/api/dialogs' && req.method === 'GET') {
-      return await handleGetDialogs(res);
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const status = parseDialogStatusFromUrl(urlObj);
+      if (!status) {
+        respondJson(res, 400, { success: false, error: 'Invalid status' });
+        return true;
+      }
+      return await handleGetDialogs(res, status);
     }
 
     // Create dialog endpoint
@@ -248,7 +263,13 @@ export async function handleApiRoute(
     ) {
       const parts = pathname.split('/');
       const rootId = parts[3].replace(/%2F/g, '/');
-      return await handleGetDialogHierarchy(res, rootId);
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const status = parseDialogStatusFromUrl(urlObj);
+      if (!status) {
+        respondJson(res, 400, { success: false, error: 'Invalid status' });
+        return true;
+      }
+      return await handleGetDialogHierarchy(res, rootId, status);
     }
 
     // Serve persisted dialog artifacts (binary)
@@ -275,7 +296,13 @@ export async function handleApiRoute(
         respondJson(res, 404, { error: 'Not Found' });
         return true;
       }
-      return await handleGetDialogArtifact(req, res, { rootId, selfId });
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const status = parseDialogStatusFromUrl(urlObj);
+      if (!status) {
+        respondJson(res, 400, { success: false, error: 'Invalid status' });
+        return true;
+      }
+      return await handleGetDialogArtifact(req, res, { rootId, selfId }, status);
     }
 
     // Get specific dialog
@@ -283,8 +310,14 @@ export async function handleApiRoute(
       const parts = pathname.split('/');
       const selfId = (parts[4] || parts[3]).replace(/%2F/g, '/');
       const rootId = parts[3].replace(/%2F/g, '/');
-      const dialog: DialogIdent = { selfId, rootId };
-      return await handleGetDialog(res, dialog);
+      const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+      const status = parseDialogStatusFromUrl(urlObj);
+      if (!status) {
+        respondJson(res, 400, { success: false, error: 'Invalid status' });
+        return true;
+      }
+      const dialog: DialogIdent = { selfId, rootId, status };
+      return await handleGetDialog(res, dialog, status);
     }
 
     // Taskdocs endpoint
@@ -717,9 +750,8 @@ async function handleGetTeamConfig(res: ServerResponse): Promise<boolean> {
 /**
  * Get dialog list - returns root dialogs with subdialogCount
  */
-async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
+async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): Promise<boolean> {
   try {
-    const statuses: ('running' | 'completed' | 'archived')[] = ['running', 'completed', 'archived'];
     const rootDialogs: Array<{
       rootId: string;
       agentId: string;
@@ -732,32 +764,30 @@ async function handleGetDialogs(res: ServerResponse): Promise<boolean> {
       subdialogCount: number;
     }> = [];
 
-    for (const status of statuses) {
-      const ids = await DialogPersistence.listDialogs(status);
-      for (const id of ids) {
-        const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(id), status);
-        if (!meta) continue;
+    const ids = await DialogPersistence.listDialogs(status);
+    for (const id of ids) {
+      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(id), status);
+      if (!meta) continue;
 
-        // Load latest.yaml for currentCourse and lastModified timestamp
-        const latest = await DialogPersistence.loadDialogLatest(new DialogID(id), status);
+      // Load latest.yaml for currentCourse and lastModified timestamp
+      const latest = await DialogPersistence.loadDialogLatest(new DialogID(id), status);
 
-        // Count subdialogs for this root dialog
-        const rootPath = DialogPersistence.getRootDialogPath(new DialogID(id), status);
-        const subPath = path.join(rootPath, 'subdialogs');
-        const subdialogCount = await countSubdialogs(subPath);
+      // Count subdialogs for this root dialog
+      const rootPath = DialogPersistence.getRootDialogPath(new DialogID(id), status);
+      const subPath = path.join(rootPath, 'subdialogs');
+      const subdialogCount = await countSubdialogs(subPath);
 
-        rootDialogs.push({
-          rootId: meta.id,
-          agentId: meta.agentId,
-          taskDocPath: meta.taskDocPath,
-          status,
-          currentCourse: latest?.currentCourse || 1,
-          createdAt: meta.createdAt,
-          lastModified: latest?.lastModified || meta.createdAt,
-          runState: latest?.runState,
-          subdialogCount,
-        });
-      }
+      rootDialogs.push({
+        rootId: meta.id,
+        agentId: meta.agentId,
+        taskDocPath: meta.taskDocPath,
+        status,
+        currentCourse: latest?.currentCourse || 1,
+        createdAt: meta.createdAt,
+        lastModified: latest?.lastModified || meta.createdAt,
+        runState: latest?.runState,
+        subdialogCount,
+      });
     }
 
     respondJson(res, 200, { success: true, dialogs: rootDialogs });
@@ -807,37 +837,32 @@ async function countSubdialogs(dirPath: string): Promise<number> {
 /**
  * Get full hierarchy (root + subdialogs) for a single root dialog
  */
-async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Promise<boolean> {
+async function handleGetDialogHierarchy(
+  res: ServerResponse,
+  rootId: string,
+  status: DialogStatusKind,
+): Promise<boolean> {
   try {
-    const statuses: ('running' | 'completed' | 'archived')[] = ['running', 'completed', 'archived'];
-
-    let foundStatus: 'running' | 'completed' | 'archived' | null = null;
-    let rootMeta: DialogMetadataFile | null = null;
-    for (const status of statuses) {
-      const meta = await DialogPersistence.loadRootDialogMetadata(new DialogID(rootId), status);
-      if (meta) {
-        foundStatus = status;
-        rootMeta = meta;
-        break;
-      }
-    }
-
-    if (!foundStatus || !rootMeta) {
-      respondJson(res, 404, { success: false, error: `Root dialog ${rootId} not found` });
+    const rootMeta = await DialogPersistence.loadRootDialogMetadata(new DialogID(rootId), status);
+    if (!rootMeta) {
+      respondJson(res, 404, {
+        success: false,
+        error: `Root dialog ${rootId} not found in ${status}`,
+      });
       return true;
     }
 
     // Load latest.yaml for root dialog currentCourse and lastModified timestamp
     const rootLatest: DialogLatestFile | null = await DialogPersistence.loadDialogLatest(
       new DialogID(rootId),
-      foundStatus,
+      status,
     );
 
     const rootInfo = {
       id: rootMeta.id,
       agentId: rootMeta.agentId,
       taskDocPath: rootMeta.taskDocPath,
-      status: foundStatus,
+      status,
       currentCourse: rootLatest?.currentCourse || 1,
       createdAt: rootMeta.createdAt,
       lastModified: rootLatest?.lastModified || rootMeta.createdAt,
@@ -859,17 +884,17 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
       assignmentFromSup?: DialogMetadataFile['assignmentFromSup'];
     }> = [];
 
-    const dialogIds = await DialogPersistence.listAllDialogIds(foundStatus);
+    const dialogIds = await DialogPersistence.listAllDialogIds(status);
     for (const dialogId of dialogIds) {
       if (dialogId.rootId !== rootId || dialogId.selfId === rootId) {
         continue;
       }
-      const meta = await DialogPersistence.loadDialogMetadata(dialogId, foundStatus);
+      const meta = await DialogPersistence.loadDialogMetadata(dialogId, status);
       if (!meta) {
         continue;
       }
 
-      const subLatest = await DialogPersistence.loadDialogLatest(dialogId, foundStatus);
+      const subLatest = await DialogPersistence.loadDialogLatest(dialogId, status);
       const derivedSupdialogId =
         meta.assignmentFromSup?.callerDialogId &&
         meta.assignmentFromSup.callerDialogId.trim() !== ''
@@ -884,7 +909,7 @@ async function handleGetDialogHierarchy(res: ServerResponse, rootId: string): Pr
         supdialogId: derivedSupdialogId,
         agentId: meta.agentId,
         taskDocPath: meta.taskDocPath,
-        status: foundStatus,
+        status,
         currentCourse: subLatest?.currentCourse || 1,
         createdAt: meta.createdAt,
         lastModified: subLatest?.lastModified || meta.createdAt,
@@ -1246,14 +1271,18 @@ async function handleDeleteDialog(
 /**
  * Get specific dialog
  */
-async function handleGetDialog(res: ServerResponse, dialog: DialogIdent): Promise<boolean> {
+async function handleGetDialog(
+  res: ServerResponse,
+  dialog: DialogIdent,
+  status: DialogStatusKind,
+): Promise<boolean> {
   try {
     const metadata: DialogMetadataFile | null = await DialogPersistence.loadDialogMetadata(
       new DialogID(dialog.selfId, dialog.rootId),
-      'running',
+      status,
     );
     if (!metadata) {
-      respondJson(res, 404, { success: false, error: 'Dialog not found' });
+      respondJson(res, 404, { success: false, error: `Dialog not found in ${status}` });
       return true;
     }
 
@@ -1268,13 +1297,13 @@ async function handleGetDialog(res: ServerResponse, dialog: DialogIdent): Promis
 
     const currentCourse = await DialogPersistence.getCurrentCourseNumber(
       new DialogID(dialog.selfId, dialog.rootId),
-      'running',
+      status,
     );
 
     const dialogData = {
       id: metadata.id,
       agentId: metadata.agentId,
-      status: 'running',
+      status,
       createdAt: metadata.createdAt,
       currentCourse,
     };
@@ -1336,6 +1365,7 @@ async function handleGetDialogArtifact(
   req: IncomingMessage,
   res: ServerResponse,
   dialog: DialogIdent,
+  status: DialogStatusKind,
 ): Promise<boolean> {
   try {
     const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
@@ -1350,42 +1380,38 @@ async function handleGetDialogArtifact(
       return true;
     }
 
-    const statusCandidates: Array<'running' | 'completed' | 'archived'> = [
-      'running',
-      'completed',
-      'archived',
-    ];
-    for (const status of statusCandidates) {
-      const baseDir = DialogPersistence.getDialogEventsPath(
-        new DialogID(dialog.selfId, dialog.rootId),
-        status,
-      );
-      const candidatePath = path.join(baseDir, ...relPath.split('/'));
-      const baseAbs = ensureTrailingSep(path.resolve(baseDir));
-      const candAbs = path.resolve(candidatePath);
-      if (!candAbs.startsWith(baseAbs)) {
-        respondJson(res, 400, { success: false, error: 'Invalid artifact path' });
-        return true;
-      }
-
-      try {
-        const st = await fsPromises.stat(candAbs);
-        if (!st.isFile()) continue;
-      } catch (error) {
-        if (getErrorCode(error) === 'ENOENT') continue;
-        throw error;
-      }
-
-      const data = await fsPromises.readFile(candAbs);
-      res.writeHead(200, {
-        'Content-Type': guessContentTypeFromPath(relPath),
-        'Cache-Control': 'no-store',
-      });
-      res.end(data);
+    const baseDir = DialogPersistence.getDialogEventsPath(
+      new DialogID(dialog.selfId, dialog.rootId),
+      status,
+    );
+    const candidatePath = path.join(baseDir, ...relPath.split('/'));
+    const baseAbs = ensureTrailingSep(path.resolve(baseDir));
+    const candAbs = path.resolve(candidatePath);
+    if (!candAbs.startsWith(baseAbs)) {
+      respondJson(res, 400, { success: false, error: 'Invalid artifact path' });
       return true;
     }
 
-    respondJson(res, 404, { success: false, error: 'Artifact not found' });
+    try {
+      const st = await fsPromises.stat(candAbs);
+      if (!st.isFile()) {
+        respondJson(res, 404, { success: false, error: 'Artifact not found' });
+        return true;
+      }
+    } catch (error) {
+      if (getErrorCode(error) === 'ENOENT') {
+        respondJson(res, 404, { success: false, error: 'Artifact not found' });
+        return true;
+      }
+      throw error;
+    }
+
+    const data = await fsPromises.readFile(candAbs);
+    res.writeHead(200, {
+      'Content-Type': guessContentTypeFromPath(relPath),
+      'Cache-Control': 'no-store',
+    });
+    res.end(data);
     return true;
   } catch (error) {
     log.error('Error serving dialog artifact', error);

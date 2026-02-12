@@ -282,10 +282,13 @@ export class ApiClient {
   }
 
   /**
-   * Get all root dialogs (renamed from getDialogs to clarify it only returns root dialogs)
+   * Get root dialogs in a specific status directory.
    */
-  async getRootDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
-    const response = await this.request('/api/dialogs');
+  async getRootDialogsByStatus(
+    status: DialogStatusKind,
+  ): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+    const query = new URLSearchParams({ status }).toString();
+    const response = await this.request(`/api/dialogs?${query}`);
     if (response.success && response.data) {
       const payload = response.data as
         | { dialogs: ApiRootDialogResponse[] }
@@ -306,10 +309,17 @@ export class ApiClient {
   }
 
   /**
-   * Get all dialogs (backward-compatible alias for getRootDialogs)
+   * Get running root dialogs.
+   */
+  async getRootDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
+    return await this.getRootDialogsByStatus('running');
+  }
+
+  /**
+   * Backward-compatible alias for getRootDialogs().
    */
   async getDialogs(): Promise<ApiResponse<ApiRootDialogResponse[]>> {
-    return this.getRootDialogs();
+    return await this.getRootDialogs();
   }
 
   /**
@@ -318,9 +328,11 @@ export class ApiClient {
   async getDialog(
     rootDialogId: string,
     selfDialogId?: string,
+    status: DialogStatusKind = 'running',
   ): Promise<ApiResponse<ApiSubdialogResponse | ApiRootDialogResponse>> {
     const seg = selfDialogId ? `/${encodeURIComponent(selfDialogId)}` : '';
-    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}`);
+    const query = new URLSearchParams({ status }).toString();
+    return this.request(`/api/dialogs/${encodeURIComponent(rootDialogId)}${seg}?${query}`);
   }
 
   /**
@@ -328,9 +340,11 @@ export class ApiClient {
    */
   async getDialogHierarchy(
     rootDialogId: string,
+    status: DialogStatusKind = 'running',
   ): Promise<ApiResponse<ApiDialogHierarchyResponse['hierarchy']>> {
+    const query = new URLSearchParams({ status }).toString();
     const response = await this.request(
-      `/api/dialogs/${encodeURIComponent(rootDialogId)}/hierarchy`,
+      `/api/dialogs/${encodeURIComponent(rootDialogId)}/hierarchy?${query}`,
     );
     if (response.success && response.data) {
       // Backend returns {success: true, hierarchy: {root, subdialogs}}

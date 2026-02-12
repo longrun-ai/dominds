@@ -2052,36 +2052,14 @@ export class DiskFileDialogStore extends DialogStore {
       case 'quest_for_sup_record': {
         // Handle subdialog creation requests
         const subdialogId = new DialogID(event.subDialogId, dialog.id.rootId);
-        const loadOrder: Array<'running' | 'completed' | 'archived'> = [
-          status,
-          'running',
-          'completed',
-          'archived',
-        ].filter(
-          (candidate, index, arr): candidate is 'running' | 'completed' | 'archived' =>
-            arr.indexOf(candidate) === index,
-        );
-
-        let foundStatus: 'running' | 'completed' | 'archived' | null = null;
-        let subMeta: SubdialogMetadataFile | null = null;
-        let subLatest: DialogLatestFile | null = null;
-        for (const candidateStatus of loadOrder) {
-          const candidateMeta = await DialogPersistence.loadDialogMetadata(
-            subdialogId,
-            candidateStatus,
-          );
-          if (!candidateMeta || !isSubdialogMetadataFile(candidateMeta)) continue;
-          foundStatus = candidateStatus;
-          subMeta = candidateMeta;
-          subLatest = await DialogPersistence.loadDialogLatest(subdialogId, candidateStatus);
-          break;
-        }
-
-        if (!foundStatus || !subMeta) {
+        const metadata = await DialogPersistence.loadDialogMetadata(subdialogId, status);
+        if (!metadata || !isSubdialogMetadataFile(metadata)) {
           throw new Error(
-            `subdialog_created_evt replay invariant violation: metadata missing for ${subdialogId.valueOf()}`,
+            `subdialog_created_evt replay invariant violation: metadata missing for ${subdialogId.valueOf()} in ${status}`,
           );
         }
+        const subMeta = metadata;
+        const subLatest = await DialogPersistence.loadDialogLatest(subdialogId, status);
 
         const derivedSupdialogId =
           subMeta.assignmentFromSup?.callerDialogId &&
@@ -2116,7 +2094,7 @@ export class DiskFileDialogStore extends DialogStore {
             supdialogId: derivedSupdialogId,
             agentId: subMeta.agentId,
             taskDocPath: subMeta.taskDocPath,
-            status: foundStatus,
+            status,
             currentCourse: subLatest?.currentCourse || 1,
             createdAt: subMeta.createdAt,
             lastModified: subLatest?.lastModified || subMeta.createdAt,

@@ -13,6 +13,9 @@ export type DialogStatusKind = 'running' | 'completed' | 'archived';
 export interface DialogIdent {
   selfId: string;
   rootId: string;
+  // Persistence status directory of this dialog tree.
+  // Callers should always provide it for read/navigation operations.
+  status?: DialogStatusKind;
 }
 
 export interface AssignmentFromSup {
@@ -26,11 +29,21 @@ export interface AssignmentFromSup {
 }
 
 // Utility function to create DialogIdent from various formats
-export function createDialogIdent(selfId: string, rootId?: string): DialogIdent {
-  return {
-    selfId,
-    rootId: rootId || selfId,
-  };
+export function createDialogIdent(
+  selfId: string,
+  rootId?: string,
+  status?: DialogStatusKind,
+): DialogIdent {
+  return status
+    ? {
+        selfId,
+        rootId: rootId || selfId,
+        status,
+      }
+    : {
+        selfId,
+        rootId: rootId || selfId,
+      };
 }
 
 // WebSocket Protocol Discriminated Union for Dominds WebUI

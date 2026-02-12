@@ -118,6 +118,7 @@ Frontend clients never drive dialogs. Instead, they:
 - Subscribe to the current dialog's PubChan for real-time updates
 - Receive events for messages, state changes, and UI indicators
 - Send user input via API endpoints (drive_dlg_by_user_msg, drive_dialog_by_user_answer)
+- Never maintain a full cached dialog corpus in frontend memory: keep only render-scope view data; fetch non-rendered nodes on demand, and drop collapsed subtrees so re-expand always refetches from backend
 
 All driving logic, resumption decisions, and state management remain purely backend concerns.
 
