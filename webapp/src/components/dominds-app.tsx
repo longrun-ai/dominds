@@ -5338,6 +5338,11 @@ export class DomindsApp extends HTMLElement {
         status: match.status,
       };
     }
+    if (selfId !== rootId) {
+      // For subdialogs, do not fallback to root metadata.
+      // Caller should load the root hierarchy first, then resolve the real subdialog node.
+      return null;
+    }
     const rootMatch = this.dialogs.find((d) => d.rootId === rootId && !d.selfId);
     if (!rootMatch) return null;
     return {
@@ -5424,12 +5429,69 @@ export class DomindsApp extends HTMLElement {
     this.deepLinkInFlight = true;
     try {
       const t = getUiStrings(this.uiLanguage);
-      if (intent.kind === 'dialog') {
-        let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
-        if (!dialogInfo) {
-          await this.loadSubdialogsForRoot(intent.rootId);
-          dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
+      const resolveDialogInfoForDeepLink = async (
+        rootId: string,
+        selfId: string,
+      ): Promise<DialogInfo | null> => {
+        // Deep-link private path only:
+        // resolve actual status by id from backend instead of relying on in-memory list freshness.
+        let resolvedStatus: DialogStatusKind | null = null;
+        try {
+          const url = new URL('/api/dialogs/resolve-status', this.apiClient.getBaseURL());
+          url.searchParams.set('rootId', rootId);
+          if (selfId.trim() !== '') {
+            url.searchParams.set('selfId', selfId);
+          }
+          const headers: Record<string, string> = {
+            Accept: 'application/json',
+          };
+          if (this.authState.kind === 'active') {
+            headers['Authorization'] = `Bearer ${this.authState.key}`;
+          }
+          const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers,
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!response.ok) {
+            return null;
+          }
+          const payload: unknown = await response.json();
+          if (typeof payload !== 'object' || payload === null) {
+            return null;
+          }
+          const dialog = (payload as { dialog?: unknown }).dialog;
+          if (typeof dialog !== 'object' || dialog === null) {
+            return null;
+          }
+          const status = (dialog as { status?: unknown }).status;
+          if (status === 'running' || status === 'completed' || status === 'archived') {
+            resolvedStatus = status;
+          } else {
+            return null;
+          }
+        } catch {
+          return null;
         }
+        if (resolvedStatus === null) {
+          return null;
+        }
+        let dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
+        if (!dialogInfo) {
+          await this.loadSubdialogsForRoot(rootId, resolvedStatus);
+          dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
+        }
+        if (!dialogInfo) {
+          return null;
+        }
+        return {
+          ...dialogInfo,
+          status: resolvedStatus,
+        };
+      };
+
+      if (intent.kind === 'dialog') {
+        const dialogInfo = await resolveDialogInfoForDeepLink(intent.rootId, intent.selfId);
         if (!dialogInfo) {
           this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${intent.selfId}`, 'warning');
           this.pendingDeepLink = null;
@@ -5443,11 +5505,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       if (intent.kind === 'callsite') {
-        let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
-        if (!dialogInfo) {
-          await this.loadSubdialogsForRoot(intent.rootId);
-          dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
-        }
+        const dialogInfo = await resolveDialogInfoForDeepLink(intent.rootId, intent.selfId);
         if (!dialogInfo) {
           this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${intent.selfId}`, 'warning');
           this.pendingDeepLink = null;
@@ -5475,11 +5533,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       if (intent.kind === 'genseq') {
-        let dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
-        if (!dialogInfo) {
-          await this.loadSubdialogsForRoot(intent.rootId);
-          dialogInfo = this.buildDialogInfoForIds(intent.rootId, intent.selfId);
-        }
+        const dialogInfo = await resolveDialogInfoForDeepLink(intent.rootId, intent.selfId);
         if (!dialogInfo) {
           this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${intent.selfId}`, 'warning');
           this.pendingDeepLink = null;
@@ -5519,11 +5573,7 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      let dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
-      if (!dialogInfo) {
-        await this.loadSubdialogsForRoot(rootId);
-        dialogInfo = this.buildDialogInfoForIds(rootId, selfId);
-      }
+      const dialogInfo = await resolveDialogInfoForDeepLink(rootId, selfId);
       if (!dialogInfo) {
         this.showToast(`${t.deepLinkDialogNotFoundPrefix} ${selfId}`, 'warning');
         this.pendingDeepLink = null;
@@ -6363,6 +6413,20 @@ export class DomindsApp extends HTMLElement {
       selfId,
       rootId,
     };
+
+    // Selecting a subdialog may come from deep links / programmatic navigation where only roots
+    // are loaded. Ensure the root hierarchy is fetched before selection state is propagated to lists.
+    if (selfId !== rootId) {
+      const subdialogLoaded = this.dialogs.some((d) => d.rootId === rootId && d.selfId === selfId);
+      if (!subdialogLoaded) {
+        const inferredStatus =
+          normalizedDialog.status ??
+          this.resolveDialogStatusByIds(rootId, selfId) ??
+          this.resolveDialogStatusByIds(rootId, rootId) ??
+          'running';
+        await this.loadSubdialogsForRoot(rootId, inferredStatus);
+      }
+    }
 
     // Store current dialog for refresh functionality
     this.currentDialog = normalizedDialog;

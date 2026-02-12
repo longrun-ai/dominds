@@ -217,6 +217,11 @@ export async function handleApiRoute(
       return await handleGetDialogs(res, status);
     }
 
+    // Resolve dialog status by id without relying on frontend-maintained lists.
+    if (pathname === '/api/dialogs/resolve-status' && req.method === 'GET') {
+      return await handleResolveDialogStatus(req, res);
+    }
+
     // Create dialog endpoint
     if (pathname === '/api/dialogs' && req.method === 'POST') {
       return await handleCreateDialog(req, res, context);
@@ -1313,6 +1318,49 @@ async function handleGetDialog(
   } catch (error) {
     log.error('Error getting dialog:', error);
     respondJson(res, 500, { success: false, error: 'Failed to get dialog' });
+    return true;
+  }
+}
+
+async function handleResolveDialogStatus(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  try {
+    const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+    const rootIdRaw = urlObj.searchParams.get('rootId');
+    const selfIdRaw = urlObj.searchParams.get('selfId');
+    const rootId = typeof rootIdRaw === 'string' ? rootIdRaw.trim() : '';
+    if (rootId === '') {
+      respondJson(res, 400, { success: false, error: 'rootId is required' });
+      return true;
+    }
+    const selfId = (() => {
+      const raw = typeof selfIdRaw === 'string' ? selfIdRaw.trim() : '';
+      return raw === '' ? rootId : raw;
+    })();
+
+    const dialogId = new DialogID(selfId, rootId);
+    const candidates: DialogStatusKind[] = ['running', 'completed', 'archived'];
+    for (const status of candidates) {
+      const metadata = await DialogPersistence.loadDialogMetadata(dialogId, status);
+      if (!metadata) continue;
+      respondJson(res, 200, {
+        success: true,
+        dialog: {
+          rootId,
+          selfId,
+          status,
+        },
+      });
+      return true;
+    }
+
+    respondJson(res, 404, { success: false, error: 'Dialog not found in any status' });
+    return true;
+  } catch (error) {
+    log.error('Error resolving dialog status:', error);
+    respondJson(res, 500, { success: false, error: 'Failed to resolve dialog status' });
     return true;
   }
 }
