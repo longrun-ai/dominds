@@ -118,6 +118,14 @@ const md = new MarkdownIt({
   linkify: true,
 });
 
+// Only autolink explicit schemes (http/https/mailto/etc).
+// Avoid fuzzy host detection like `tools.md` -> `http://tools.md/`.
+md.linkify.set({
+  fuzzyLink: false,
+  fuzzyIP: false,
+  fuzzyEmail: false,
+});
+
 md.core.ruler.push('dominds_heading_ids', (state) => {
   const used = new Set<string>();
   for (let i = 0; i < state.tokens.length; i += 1) {
