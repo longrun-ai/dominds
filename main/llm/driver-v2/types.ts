@@ -76,6 +76,7 @@ export type DriverV2RuntimeState = {
 export type DriverV2CoreResult = {
   lastAssistantSayingContent: string | null;
   lastAssistantSayingGenseq: number | null;
+  lastFunctionCallGenseq: number | null;
   interrupted: boolean;
 };
 

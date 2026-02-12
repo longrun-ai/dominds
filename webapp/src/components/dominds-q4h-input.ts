@@ -769,6 +769,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private async sendMessage(): Promise<{ success: true; msgId: string }> {
     const content = this.textInput.value.trim();
+    const answeredQuestionId = this.selectedQuestionId;
 
     if (!content) {
       throw new Error('Message content is empty');
@@ -789,13 +790,13 @@ export class DomindsQ4HInput extends HTMLElement {
       const active = sr ? sr.activeElement : null;
       const restoreFocus = active === this.textInput || active === this.sendButton;
 
-      if (this.selectedQuestionId) {
+      if (answeredQuestionId) {
         this.wsManager.sendRaw({
           type: 'drive_dialog_by_user_answer',
           dialog: this.currentDialog,
           content,
           msgId,
-          questionId: this.selectedQuestionId,
+          questionId: answeredQuestionId,
           continuationType: 'answer',
           userLanguageCode: this.uiLanguage,
         });
@@ -810,6 +811,10 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       this.recordInputHistoryEntry(content);
+      if (answeredQuestionId !== null) {
+        // Exit Q4H answer styling immediately after sending the answer payload.
+        this.selectQuestion(null);
+      }
       this.clear();
       this.dispatchEvent(
         new CustomEvent('usersend', {

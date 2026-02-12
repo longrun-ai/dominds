@@ -979,6 +979,7 @@ export async function driveDialogStreamCoreV2(
   let pubRemindersVer = dlg.remindersVer;
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
+  let lastFunctionCallGenseq: number | null = null;
   let internalDrivePromptMsg: ChatMessage | undefined;
 
   let genIterNo = 0;
@@ -1349,6 +1350,16 @@ export async function driveDialogStreamCoreV2(
           const funcCalls = nonStreamMsgs.filter(
             (m): m is FuncCallMsg => m.type === 'func_call_msg',
           );
+          for (const call of funcCalls) {
+            const rawCallGenseq = call.genseq;
+            if (!Number.isFinite(rawCallGenseq) || rawCallGenseq <= 0) {
+              continue;
+            }
+            const callGenseq = Math.floor(rawCallGenseq);
+            if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
+              lastFunctionCallGenseq = callGenseq;
+            }
+          }
           const toolPolicyViolation = resolveDriverV2PolicyViolationKind({
             policy,
             tellaskCallCount: 0,
@@ -1368,7 +1379,12 @@ export async function driveDialogStreamCoreV2(
             lastAssistantSayingContent = violationText;
             lastAssistantSayingGenseq = genseq;
             await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-            return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: false };
+            return {
+              lastAssistantSayingContent,
+              lastAssistantSayingGenseq,
+              lastFunctionCallGenseq,
+              interrupted: false,
+            };
           }
 
           const routedFunctionResult = await executeRoutedFunctionCalls({
@@ -1583,6 +1599,16 @@ export async function driveDialogStreamCoreV2(
           tellaskCallCount: 0,
           functionCallCount: streamedFuncCalls.length,
         });
+        for (const call of streamedFuncCalls) {
+          const rawCallGenseq = call.genseq;
+          if (!Number.isFinite(rawCallGenseq) || rawCallGenseq <= 0) {
+            continue;
+          }
+          const callGenseq = Math.floor(rawCallGenseq);
+          if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
+            lastFunctionCallGenseq = callGenseq;
+          }
+        }
         if (policyViolation) {
           const violationText = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
             kind: policyViolation,
@@ -1598,7 +1624,12 @@ export async function driveDialogStreamCoreV2(
           lastAssistantSayingGenseq = genseq;
           await dlg.addChatMessages(...newMsgs);
           await dlg.persistAgentMessage(violationText, genseq, 'saying_msg');
-          return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: false };
+          return {
+            lastAssistantSayingContent,
+            lastAssistantSayingGenseq,
+            lastFunctionCallGenseq,
+            interrupted: false,
+          };
         }
 
         const routedFunctionResult = await executeRoutedFunctionCalls({
@@ -1663,7 +1694,12 @@ export async function driveDialogStreamCoreV2(
     }
 
     finalRunState = await computeIdleRunState(dlg);
-    return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: false };
+    return {
+      lastAssistantSayingContent,
+      lastAssistantSayingGenseq,
+      lastFunctionCallGenseq,
+      interrupted: false,
+    };
   } catch (err) {
     const stopRequested = getStopRequestedReason(dlg.id);
     const interruptedReason: DialogInterruptionReason | undefined =
@@ -1680,7 +1716,12 @@ export async function driveDialogStreamCoreV2(
     if (interruptedReason) {
       finalRunState = { kind: 'interrupted', reason: interruptedReason };
       broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
-      return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: true };
+      return {
+        lastAssistantSayingContent,
+        lastAssistantSayingGenseq,
+        lastFunctionCallGenseq,
+        interrupted: true,
+      };
     }
 
     const errText = extractErrorDetails(err).message;
@@ -1694,7 +1735,12 @@ export async function driveDialogStreamCoreV2(
       kind: 'interrupted',
       reason: { kind: 'system_stop', detail: errText },
     });
-    return { lastAssistantSayingContent, lastAssistantSayingGenseq, interrupted: true };
+    return {
+      lastAssistantSayingContent,
+      lastAssistantSayingGenseq,
+      lastFunctionCallGenseq,
+      interrupted: true,
+    };
   } finally {
     clearActiveRun(dlg.id);
 

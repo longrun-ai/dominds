@@ -142,6 +142,7 @@ export async function executeDriveRound(args: {
     | {
         lastAssistantSayingContent: string | null;
         lastAssistantSayingGenseq: number | null;
+        lastFunctionCallGenseq: number | null;
         interrupted: boolean;
       }
     | undefined;
@@ -322,95 +323,133 @@ export async function executeDriveRound(args: {
     driveResult.lastAssistantSayingContent !== null
   ) {
     if (
-      typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-      !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-      driveResult.lastAssistantSayingGenseq <= 0
+      typeof driveResult.lastFunctionCallGenseq === 'number' &&
+      Number.isFinite(driveResult.lastFunctionCallGenseq) &&
+      driveResult.lastFunctionCallGenseq > 0 &&
+      (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+        !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+        driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq)
     ) {
-      throw new Error(
-        `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
-      );
-    }
-    const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
-    let supplied = false;
-    if (subdialogReplyTarget) {
-      supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
-        subdialog: dialog,
-        responseText: driveResult.lastAssistantSayingContent,
-        responseGenseq,
-        target: subdialogReplyTarget,
-        scheduleDrive: args.scheduleDrive,
-      });
-      if (!supplied) {
-        supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-          subdialog: dialog,
-          responseText: driveResult.lastAssistantSayingContent,
-          responseGenseq,
-          scheduleDrive: args.scheduleDrive,
-        });
-      }
-    } else {
-      supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-        subdialog: dialog,
-        responseText: driveResult.lastAssistantSayingContent,
-        responseGenseq,
-        scheduleDrive: args.scheduleDrive,
-      });
-    }
-
-    if (!supplied && subdialogReplyTarget) {
-      const assignment = dialog.assignmentFromSup;
-      const ownerDialogIds = Array.from(
-        new Set([subdialogReplyTarget.ownerDialogId, assignment.callerDialogId]),
-      );
-      const pendingSnapshots = await Promise.all(
-        ownerDialogIds.map(async (ownerDialogId) =>
-          loadPendingDiagnosticsSnapshot({
-            rootId: dialog.id.rootId,
-            ownerDialogId,
-            expectedSubdialogId: dialog.id.selfId,
-            status: dialog.status,
-          }),
-        ),
-      );
-      const streamErr =
-        `Subdialog response supply invariant violation: ` +
-        `subdialog=${dialog.id.selfId} root=${dialog.id.rootId} ` +
-        `targetOwner=${subdialogReplyTarget.ownerDialogId} targetCallType=${subdialogReplyTarget.callType} targetCallId=${subdialogReplyTarget.callId} ` +
-        `assignmentCaller=${assignment.callerDialogId} assignmentCallId=${assignment.callId} ` +
-        `pendingSnapshots=${pendingSnapshots.length}`;
-      try {
-        await dialog.streamError(streamErr);
-      } catch (streamErrPost) {
-        log.warn(
-          'driver-v2 failed to emit stream_error_evt for response supply violation',
-          undefined,
-          {
-            rootId: dialog.id.rootId,
-            selfId: dialog.id.selfId,
-            targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-            targetCallType: subdialogReplyTarget.callType,
-            targetCallId: subdialogReplyTarget.callId,
-            assignmentCallerDialogId: assignment.callerDialogId,
-            assignmentCallId: assignment.callId,
-            pendingSnapshots,
-            error: streamErrPost instanceof Error ? streamErrPost.message : String(streamErrPost),
-          },
-        );
-      }
-      log.error(
-        'driver-v2 subdialog produced response but found no pending caller to supply',
+      // Any function call means execution is still in-progress. Only supply when the callee
+      // has produced a newer assistant saying after the latest function call.
+      log.debug(
+        'driver-v2 skip subdialog response supply because latest saying is not after function calls',
         undefined,
         {
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
-          targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-          targetCallType: subdialogReplyTarget.callType,
-          targetCallId: subdialogReplyTarget.callId,
-          assignmentCallerDialogId: assignment.callerDialogId,
-          assignmentCallId: assignment.callId,
-          pendingSnapshots,
+          lastAssistantSayingGenseq: driveResult.lastAssistantSayingGenseq,
+          lastFunctionCallGenseq: driveResult.lastFunctionCallGenseq,
         },
       );
+    } else {
+      const suspension = await dialog.getSuspensionStatus();
+      if (!suspension.canDrive || followUp !== undefined) {
+        log.debug(
+          'driver-v2 skip subdialog response supply while callee is not finalized',
+          undefined,
+          {
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            waitingQ4H: suspension.q4h,
+            waitingSubdialogs: suspension.subdialogs,
+            hasFollowUp: followUp !== undefined,
+          },
+        );
+      } else {
+        if (
+          typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+          !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+          driveResult.lastAssistantSayingGenseq <= 0
+        ) {
+          throw new Error(
+            `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+          );
+        }
+        const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
+        let supplied = false;
+        if (subdialogReplyTarget) {
+          supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
+            subdialog: dialog,
+            responseText: driveResult.lastAssistantSayingContent,
+            responseGenseq,
+            target: subdialogReplyTarget,
+            scheduleDrive: args.scheduleDrive,
+          });
+          if (!supplied) {
+            supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+              subdialog: dialog,
+              responseText: driveResult.lastAssistantSayingContent,
+              responseGenseq,
+              scheduleDrive: args.scheduleDrive,
+            });
+          }
+        } else {
+          supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+            subdialog: dialog,
+            responseText: driveResult.lastAssistantSayingContent,
+            responseGenseq,
+            scheduleDrive: args.scheduleDrive,
+          });
+        }
+
+        if (!supplied && subdialogReplyTarget) {
+          const assignment = dialog.assignmentFromSup;
+          const ownerDialogIds = Array.from(
+            new Set([subdialogReplyTarget.ownerDialogId, assignment.callerDialogId]),
+          );
+          const pendingSnapshots = await Promise.all(
+            ownerDialogIds.map(async (ownerDialogId) =>
+              loadPendingDiagnosticsSnapshot({
+                rootId: dialog.id.rootId,
+                ownerDialogId,
+                expectedSubdialogId: dialog.id.selfId,
+                status: dialog.status,
+              }),
+            ),
+          );
+          const streamErr =
+            `Subdialog response supply invariant violation: ` +
+            `subdialog=${dialog.id.selfId} root=${dialog.id.rootId} ` +
+            `targetOwner=${subdialogReplyTarget.ownerDialogId} targetCallType=${subdialogReplyTarget.callType} targetCallId=${subdialogReplyTarget.callId} ` +
+            `assignmentCaller=${assignment.callerDialogId} assignmentCallId=${assignment.callId} ` +
+            `pendingSnapshots=${pendingSnapshots.length}`;
+          try {
+            await dialog.streamError(streamErr);
+          } catch (streamErrPost) {
+            log.warn(
+              'driver-v2 failed to emit stream_error_evt for response supply violation',
+              undefined,
+              {
+                rootId: dialog.id.rootId,
+                selfId: dialog.id.selfId,
+                targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+                targetCallType: subdialogReplyTarget.callType,
+                targetCallId: subdialogReplyTarget.callId,
+                assignmentCallerDialogId: assignment.callerDialogId,
+                assignmentCallId: assignment.callId,
+                pendingSnapshots,
+                error:
+                  streamErrPost instanceof Error ? streamErrPost.message : String(streamErrPost),
+              },
+            );
+          }
+          log.error(
+            'driver-v2 subdialog produced response but found no pending caller to supply',
+            undefined,
+            {
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+              targetCallType: subdialogReplyTarget.callType,
+              targetCallId: subdialogReplyTarget.callId,
+              assignmentCallerDialogId: assignment.callerDialogId,
+              assignmentCallId: assignment.callId,
+              pendingSnapshots,
+            },
+          );
+        }
+      }
     }
   }
 
