@@ -1,4 +1,4 @@
-# team-mgmt 使用场景
+# team_mgmt 使用场景
 
 ## 常见场景
 

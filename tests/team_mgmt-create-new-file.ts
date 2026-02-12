@@ -5,11 +5,11 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/shared/runtime-language';
 import { Team } from '../main/team';
-import { teamMgmtCreateNewFileTool, teamMgmtReadFileTool } from '../main/tools/team-mgmt';
+import { teamMgmtCreateNewFileTool, teamMgmtReadFileTool } from '../main/tools/team_mgmt';
 
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team-mgmt-create-'));
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team_mgmt-create-'));
   try {
     process.chdir(tmpRoot);
     setWorkLanguage('en');
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
     assert.ok(notAFile.includes('status: error'));
     assert.ok(notAFile.includes('error: NOT_A_FILE'));
 
-    console.log('✅ team-mgmt-create-new-file tests passed');
+    console.log('✅ team_mgmt-create-new-file tests passed');
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

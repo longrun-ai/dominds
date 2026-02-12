@@ -180,7 +180,7 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
   }
 
   // Minds (`.minds/**`) is reserved rtws state.
-  // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
+  // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team_mgmt)
   // may bypass this via an internal-only flag.
   const isMinds = isMindsPath(relativePath);
   const allowMindsBypass = member.internal_allow_minds === true;
@@ -251,7 +251,7 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
   }
 
   // Minds (`.minds/**`) is reserved rtws state.
-  // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team-mgmt)
+  // It is hard-denied for general file tools; only dedicated `.minds/`-scoped tools (team_mgmt)
   // may bypass this via an internal-only flag.
   const isMinds = isMindsPath(relativePath);
   const allowMindsBypass = member.internal_allow_minds === true;
@@ -345,14 +345,14 @@ export function getAccessDeniedMessage(
         `- 说明：\`.minds/\` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录，通用文件工具无法读写（硬编码无条件拒绝）。`,
       );
       lines.push(
-        `- 提示：若团队配置了 \`team-mgmt\` 工具集，请使用其中工具（\`team_mgmt_*\`）代管；若未配置或你不具备权限，请诉请具备 \`team-mgmt\` 权限的成员/团队管理员成员代管。`,
+        `- 提示：若团队配置了 \`team_mgmt\` 工具集，请使用其中工具（\`team_mgmt_*\`）代管；若未配置或你不具备权限，请诉请具备 \`team_mgmt\` 权限的成员/团队管理员成员代管。`,
       );
     } else {
       lines.push(
         `- Note: \`.minds/\` stores rtws (runtime workspace) team config/memory/assets and is hard-denied for general file tools.`,
       );
       lines.push(
-        `- Hint: If your team configured the \`team-mgmt\` toolset, use its tools (\`team_mgmt_*\`); otherwise (or if you lack access), tellask a team-admin / a member with \`team-mgmt\` access to manage it for you.`,
+        `- Hint: If your team configured the \`team_mgmt\` toolset, use its tools (\`team_mgmt_*\`); otherwise (or if you lack access), tellask a team-admin / a member with \`team_mgmt\` access to manage it for you.`,
       );
     }
   }

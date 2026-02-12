@@ -1,5 +1,5 @@
 /**
- * Shared team-mgmt manual topic definitions.
+ * Shared team_mgmt manual topic definitions.
  *
  * This module is intentionally dependency-free so it can be imported by both:
  * - backend (`dominds/main/**`)

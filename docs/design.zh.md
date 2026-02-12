@@ -552,7 +552,7 @@ dominds dialog start --taskdoc-path tasks/auth-system.tsk
 - 要求通过 `change_mind` 操作演变
 - rtws 硬性规则：
   - `*.tsk/**` 是封装的差遣牒状态，所有通用文件工具都硬性拒绝。
-  - `.minds/**` 是保留的 rtws 状态（团队配置/内存/资产），所有通用文件工具都硬性拒绝；通过 `team-mgmt` 等专用工具进行管理。
+  - `.minds/**` 是保留的 rtws 状态（团队配置/内存/资产），所有通用文件工具都硬性拒绝；通过 `team_mgmt` 等专用工具进行管理。
   - DevOps 场景：忌讳临时脚本。如需工具脚本，应与队友和人类对齐后，在 rtws 中正式设计/命名/规范化再使用。
 
 **协作示例：**

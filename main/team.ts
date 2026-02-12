@@ -134,7 +134,7 @@ export namespace Team {
     hidden?: boolean;
 
     // Internal-only flag: allow `.minds/**` access for tool implementations that are explicitly
-    // scoped to `.minds/` (e.g. the `team-mgmt` toolset). This must NOT be configurable from
+    // scoped to `.minds/` (e.g. the `team_mgmt` toolset). This must NOT be configurable from
     // `.minds/team.yaml`.
     internal_allow_minds?: boolean;
 
@@ -472,7 +472,7 @@ export namespace Team {
       name: '伏羲(Fuxi)',
       icon: '☯️',
       hidden: true,
-      toolsets: ['team-mgmt'],
+      toolsets: ['team_mgmt'],
       diligence_push_max: 0,
     });
     Object.setPrototypeOf(fuxi, md);
@@ -484,7 +484,7 @@ export namespace Team {
       name: '盘古(Pangu)',
       icon: '⛰️',
       hidden: true,
-      toolsets: ['*', '!team-mgmt'],
+      toolsets: ['*', '!team_mgmt'],
       no_read_dirs: ['.minds/**'],
       no_write_dirs: ['.minds/**'],
       diligence_push_max: 0,
@@ -859,18 +859,18 @@ export namespace Team {
   }
 
   function enforceShadowMemberDefaults(fuxi: Team.Member, pangu: Team.Member): void {
-    // fuxi: always hidden + always has team-mgmt available
+    // fuxi: always hidden + always has team_mgmt available
     fuxi.setHidden(true);
     const fuxiToolsets = fuxi.toolsets ? [...fuxi.toolsets] : [];
-    const withoutExclude = fuxiToolsets.filter((t) => t !== '!team-mgmt');
-    if (!withoutExclude.includes('team-mgmt')) withoutExclude.unshift('team-mgmt');
+    const withoutExclude = fuxiToolsets.filter((t) => t !== '!team_mgmt');
+    if (!withoutExclude.includes('team_mgmt')) withoutExclude.unshift('team_mgmt');
     fuxi.setToolsets(withoutExclude);
 
-    // pangu: always hidden + never has team-mgmt + never reads/writes .minds/**
+    // pangu: always hidden + never has team_mgmt + never reads/writes .minds/**
     pangu.setHidden(true);
     const panguToolsets = pangu.toolsets ? [...pangu.toolsets] : [];
-    const withoutMgmt = panguToolsets.filter((t) => t !== 'team-mgmt');
-    if (!withoutMgmt.includes('!team-mgmt')) withoutMgmt.push('!team-mgmt');
+    const withoutMgmt = panguToolsets.filter((t) => t !== 'team_mgmt');
+    if (!withoutMgmt.includes('!team_mgmt')) withoutMgmt.push('!team_mgmt');
     if (!withoutMgmt.includes('*')) withoutMgmt.unshift('*');
     pangu.setToolsets(withoutMgmt);
 

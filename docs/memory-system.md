@@ -46,7 +46,7 @@ The same information can be categorized by “who needs to see it / who maintain
 team governance and team management are functions too.
 
 - Team-memory tools (`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`) are typically granted only to a small subset of agents (governance roles).
-- Content under `rtws/.minds/` (including env notes) is typically editable only by agents with the **team-mgmt toolset**.
+- Content under `rtws/.minds/` (including env notes) is typically editable only by agents with the **team_mgmt toolset**.
 - If you don’t have the permission, the right move is: draft a patch-level proposal (content + rationale + impact) and tellask the responsible role agent to apply it, instead of leaving key agreements in chat or private reminders.
 
 ---
@@ -194,7 +194,7 @@ The goal for agents’ day-to-day work is not “write more docs”. It’s a lo
 3. **Maintain your working set (individual memory)**: compress token-worthy details into a tiny reminders set (1–3 items, prefer update-in-place).
 4. **Drop noise (when needed)**: when noise starts degrading attention and judgment, distill first, then `clear_mind` to start a new course.
 
-> Permission note: if you don’t have team-memory tools or the team-mgmt toolset, don’t skip “public declaration”. Draft a merge-ready update and ask the governance/team-mgmt role agent to apply it to `team_memory` or `.minds/**`.
+> Permission note: if you don’t have team-memory tools or the team_mgmt toolset, don’t skip “public declaration”. Draft a merge-ready update and ask the governance/team_mgmt role agent to apply it to `team_memory` or `.minds/**`.
 
 ### Where to write what (quick rules)
 

@@ -159,7 +159,7 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - **[Roadmap](docs/roadmap.zh.md)** — 发展规划与版本演进方向
 - **[OEC Philosophy](docs/OEC-philosophy.zh.md)** — 全方位优化管理法
 
-- **[Team Mgmt Toolset](docs/team-mgmt-toolset.zh.md)** — 团队管理工具集
+- **[Team Mgmt Toolset](docs/team_mgmt-toolset.zh.md)** — 团队管理工具集
 - **[Text Editing Tools (ws_mod)](docs/txt-editing-tools.zh.md)** — 文本编辑工具集设计文档（以当前实现为准）
 - **[i18n](docs/i18n.zh.md)** — 语言支持与本地化配置
 - **[Dialog System](docs/dialog-system.zh.md)** — 对话系统与流式事件

@@ -1,4 +1,4 @@
-# team-mgmt 错误处理
+# team_mgmt 错误处理
 
 ## 常见错误
 
@@ -20,7 +20,7 @@
 **PATH_OUTSIDE_MINDS**
 
 - 原因：路径最终解析不在 `.minds/` 内
-- 说明：team-mgmt 会自动将 `path` 解析到 `.minds/` 下，任何最终不在 `.minds/` 内的路径都会被拒绝
+- 说明：team_mgmt 会自动将 `path` 解析到 `.minds/` 下，任何最终不在 `.minds/` 内的路径都会被拒绝
 - 解决：检查提供的路径是否正确
 
 ## 配置验证错误

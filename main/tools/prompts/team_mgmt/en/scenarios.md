@@ -1,4 +1,4 @@
-# team-mgmt Usage Scenarios
+# team_mgmt Usage Scenarios
 
 ## Common Scenarios
 

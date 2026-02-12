@@ -4,7 +4,7 @@ import {
   type TeamMgmtManualTopicKey,
   getTeamMgmtManualTopicTitle,
   isTeamMgmtManualTopicKey,
-} from '../../../main/shared/team-mgmt-manual';
+} from '../../../main/shared/team_mgmt-manual';
 import { getUiStrings } from '../i18n/ui';
 import { getApiClient } from '../services/api';
 import type { LanguageCode } from '../shared/types/language';

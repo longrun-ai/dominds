@@ -1,4 +1,4 @@
-# team-mgmt Core Principles
+# team_mgmt Core Principles
 
 ## Principles
 
@@ -42,4 +42,4 @@ The YAML header from `team_mgmt_read_file` includes:
 | Scope              | Any file in rtws            | Only `.minds/`                  |
 | Tool prefix        | None                        | `team_mgmt_`                    |
 | Path resolution    | Relative/absolute path      | Auto prepends `.minds/`         |
-| Permission control | Depends on rtws permissions | Determined by team-mgmt wrapper |
+| Permission control | Depends on rtws permissions | Determined by team_mgmt wrapper |

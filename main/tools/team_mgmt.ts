@@ -1,5 +1,5 @@
 /**
- * Module: tools/team-mgmt
+ * Module: tools/team_mgmt
  *
  * Team management tooling scoped strictly to `.minds/**`.
  *
@@ -18,8 +18,8 @@ import { LlmConfig } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
 import { getProblemsSnapshot, reconcileProblemsByPrefix } from '../problems';
-import type { TeamMgmtManualTopicKey } from '../shared/team-mgmt-manual';
-import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team-mgmt-manual';
+import type { TeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
+import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
 import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -3029,7 +3029,7 @@ function renderTeamManual(language: LanguageCode): string {
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以通过 tellask-special 函数诉请。',
         '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入；如需修订同一个预览，可再次调用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
-        '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team-mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team-mgmt` 或由人类直接维护文件。',
+        '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team_mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team_mgmt` 或由人类直接维护文件。',
       ]) +
       fmtSubHeader('Schema Snapshot（自动生成，来自当前解析器白名单）') +
       fmtList([
@@ -3053,7 +3053,7 @@ function renderTeamManual(language: LanguageCode): string {
       'members:\n' +
       '  team_manager:\n' +
       '    hidden: true\n' +
-      "    toolsets: ['team-mgmt']\n" +
+      "    toolsets: ['team_mgmt']\n" +
       '  primary:\n' +
       '    hidden: true\n' +
       '    toolsets:\n' +
@@ -3086,7 +3086,7 @@ function renderTeamManual(language: LanguageCode): string {
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.',
         'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target is `provider: codex`, add `codex_style_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
-        'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team-mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
+        'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same prepared diff, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
     ) +
@@ -3112,7 +3112,7 @@ function renderTeamManual(language: LanguageCode): string {
     'members:\n' +
     '  team_manager:\n' +
     '    hidden: true\n' +
-    "    toolsets: ['team-mgmt']\n" +
+    "    toolsets: ['team_mgmt']\n" +
     '  primary:\n' +
     '    hidden: true\n' +
     '    toolsets:\n' +
@@ -3246,7 +3246,7 @@ function renderPermissionsManual(language: LanguageCode): string {
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
         '`*.tsk/` 是封装差遣牒：只能用函数工具 `change_mind` 维护。任何通用文件工具都无法访问该目录树（硬编码无条件拒绝）。',
-        '`.minds/**` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team-mgmt`）可访问它。',
+        '`.minds/**` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录：任何通用文件工具都无法访问（硬编码无条件拒绝）。只有专用的 `.minds/` 工具集（例如 `team_mgmt`）可访问它。',
         '说明：如果你在 `team.yaml` 的 allow-list（`read_dirs`/`write_dirs`）里写了 `.minds/**` 或 `*.tsk/**` 试图绕过限制，运行时会忽略并上报 err 级别问题。',
       ]) +
       fmtCodeBlock('yaml', [
@@ -3271,7 +3271,7 @@ function renderPermissionsManual(language: LanguageCode): string {
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
       '`*.tsk/` is an encapsulated Taskdoc: it must be maintained via the function tool `change_mind` only. It is hard-denied for all general file tools.',
-      '`.minds/**` stores rtws (runtime workspace) team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team-mgmt`) may access it.',
+      '`.minds/**` stores rtws (runtime workspace) team config/memory/assets: it is hard-denied for all general file tools. Only dedicated `.minds/`-scoped toolsets (e.g. `team_mgmt`) may access it.',
       'Note: If you try to whitelist `.minds/**` or `*.tsk/**` via `read_dirs`/`write_dirs`, the runtime ignores it and reports an error-level Problem.',
     ]) +
     fmtCodeBlock('yaml', [
@@ -3502,7 +3502,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     '',
     '# Team manager (explicit, minimal)',
     'toolsets:',
-    '  - team-mgmt',
+    '  - team_mgmt',
     '',
     '# Operator / DevOps (explicit; higher risk)',
     'toolsets:',

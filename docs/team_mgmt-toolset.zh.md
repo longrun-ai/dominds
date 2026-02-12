@@ -1,6 +1,6 @@
-# 团队管理工具集（`team-mgmt`）
+# 团队管理工具集（`team_mgmt`）
 
-英文版：[English](./team-mgmt-toolset.md)
+英文版：[English](./team_mgmt-toolset.md)
 
 本文档指定了一个专用的**团队管理工具集**，其唯一职责是管理 rtws（运行时工作区）`.minds/` 下的"心智"配置文件（团队名单、LLM 提供商和智能体心智文件），而不授予广泛的运行时工作区访问权限。
 
@@ -23,7 +23,7 @@
 
 ## 迁移计划（替换传统的内置团队管理者知识）
 
-本文档是新的 `team-mgmt` 工具集的**设计规范**。这不是我们应该在运行时让智能体"查阅"的内容。
+本文档是新的 `team_mgmt` 工具集的**设计规范**。这不是我们应该在运行时让智能体"查阅"的内容。
 
 相反，运行时团队管理的"单一事实来源"应该是函数工具 `team_mgmt_manual` 的输出。
 
@@ -61,9 +61,9 @@
 - 提供跨仓库的通用文件编辑
 - 默认让 `.minds/` 可广泛写入
 
-## 提议的 `team-mgmt` 工具集
+## 提议的 `team_mgmt` 工具集
 
-`team-mgmt` 工具集镜像 `fs`/`txt` 的最小子集，但**硬作用域**所有操作到 `.minds/` 并拒绝任何外部操作。
+`team_mgmt` 工具集镜像 `fs`/`txt` 的最小子集，但**硬作用域**所有操作到 `.minds/` 并拒绝任何外部操作。
 
 ### 命名约定（人类 / UI）
 
@@ -104,12 +104,12 @@
   - 拒绝包含 `..` 的路径
   - 拒绝规范化后解析到 `.minds/` 之外的任何路径
 - 优先使用显式白名单而非" rtws 中的任何内容"
-  - 对于 `team-mgmt`，该显式白名单是 `.minds/**`（包括 `.minds/memory/**`），以便团队管理者可以修复其他工具造成的意外损坏（即使 `.minds/memory/**` 已有专用的 `memory` / `team_memory` 工具供正常使用）
+  - 对于 `team_mgmt`，该显式白名单是 `.minds/**`（包括 `.minds/memory/**`），以便团队管理者可以修复其他工具造成的意外损坏（即使 `.minds/memory/**` 已有专用的 `memory` / `team_memory` 工具供正常使用）
 - 需要显式的 `.minds/...` 路径并验证它们；不支持像 `team.yaml` 这样的"隐式作用域"路径
 
 ### 为什么需要专用工具集（而不是仅 `read_dirs` / `write_dirs`）？
 
-`read_dirs` / `write_dirs` 仍然很有价值，但它们配置在 `.minds/team.yaml` 中，在引导期间可能不存在。专用的 `team-mgmt` 工具集：
+`read_dirs` / `write_dirs` 仍然很有价值，但它们配置在 `.minds/team.yaml` 中，在引导期间可能不存在。专用的 `team_mgmt` 工具集：
 
 - 让团队管理者能够从"零状态"安全地创建 `.minds/team.yaml`
 - 即使成员的目录允许/拒绝列表为空，也保持作用域边界
@@ -335,7 +335,7 @@ member_defaults:
     - ws_read
     - memory
   # 默认姿态：拒绝普通成员的 `.minds/` 编辑
-  #（团队管理应通过 `team-mgmt` 工具完成，而非通用文件工具）
+  #（团队管理应通过 `team_mgmt` 工具完成，而非通用文件工具）
   no_read_dirs:
     - .minds/team.yaml
     - .minds/llm.yaml
@@ -372,7 +372,7 @@ members:
 - 保持 `.minds/team.yaml` 的所有权严格；只有团队管理者应该能够编辑它
 - 避免在 `team.yaml` 中重复内置约束：
   - `*.tsk/**`（封装的 Taskdocs）对所有通用文件工具被硬性拒绝
-  - `.minds/**` 对通用文件工具被硬性拒绝；只有专用的 `team-mgmt` 工具集可以访问它
+  - `.minds/**` 对通用文件工具被硬性拒绝；只有专用的 `team_mgmt` 工具集可以访问它
     - 只有当你需要额外的显式性时才将这些放入 `no_*`；无论如何都会强制执行
 
 ## 管理 `.minds/team/<member>/*.md`（智能体心智）
@@ -406,8 +406,8 @@ members:
 
 初始引导的首选行为：
 
-- 影子成员 `fuxi` 实例应该获得 `team-mgmt`（和手册工具），而不是广泛的 `ws_mod`
-- 影子成员 `pangu` 实例应该获得广泛的 rtws 工具集（例如 `ws_read`、`ws_mod`、`os`），但不获得 `team-mgmt`
+- 影子成员 `fuxi` 实例应该获得 `team_mgmt`（和手册工具），而不是广泛的 `ws_mod`
+- 影子成员 `pangu` 实例应该获得广泛的 rtws 工具集（例如 `ws_read`、`ws_mod`、`os`），但不获得 `team_mgmt`
 - 在创建 `.minds/team.yaml` 后，团队定义成为事实来源
 
 这避免了需要授予完整的 rtws 访问权限来配置团队。
@@ -416,7 +416,7 @@ members:
 
 - **"缺少必需的 provider/model"**：确保 `.minds/team.yaml` 有 `member_defaults.provider` 和 `member_defaults.model`
 - **找不到提供商**：确保 `.minds/team.yaml` 的 `provider` 键存在于合并的提供商配置中（`dominds/main/llm/defaults.yaml` + `.minds/llm.yaml`）
-- **编辑 `.minds/` 时访问被拒绝**：通用文件工具的预期行为；使用 `team-mgmt` 工具
+- **编辑 `.minds/` 时访问被拒绝**：通用文件工具的预期行为；使用 `team_mgmt` 工具
 - **MCP 工具在工具视图中不可见**：
   - 确认 `.minds/mcp.yaml` 存在且有效
   - 打开**问题**并查找 MCP 相关错误

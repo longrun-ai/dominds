@@ -1,4 +1,4 @@
-# team-mgmt 工具参考
+# team_mgmt 工具参考
 
 ## 读取/定位工具
 

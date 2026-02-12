@@ -188,7 +188,7 @@ dominds
    - Provide the required provider env var and write it to your shell rc (or set it manually). Setup applies it immediately to the running server.
    - Click **Go to App**.
 3. In the app, create a new dialog with **shadow member** `@fuxi` (Fuxi is hidden by default; use the “Shadow members” picker in the dialog creation modal). Until you add visible members, you’ll mostly work through shadow members.
-4. Tell `@fuxi` your product idea and ask it to propose and apply a suitable agentic team configuration by updating `.minds/team.yaml` (Fuxi has the `team-mgmt` toolset scoped to `.minds/**`).
+4. Tell `@fuxi` your product idea and ask it to propose and apply a suitable agentic team configuration by updating `.minds/team.yaml` (Fuxi has the `team_mgmt` toolset scoped to `.minds/**`).
 
 ## Core Philosophy
 
@@ -248,7 +248,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Roadmap](docs/roadmap.md)** — Major-version plan and evolution
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance
 
-- **[Team Mgmt Toolset](docs/team-mgmt-toolset.md)** — Managing team members via tools
+- **[Team Mgmt Toolset](docs/team_mgmt-toolset.md)** — Managing team members via tools
 - **[Text Editing Tools (ws_mod)](docs/txt-editing-tools.md)** — `ws_mod` toolset design doc (as implemented)
 - **[i18n](docs/i18n.md)** — Language and localization rules
 - **[Dialog System](docs/dialog-system.md)** — Dialog runtime model and streaming

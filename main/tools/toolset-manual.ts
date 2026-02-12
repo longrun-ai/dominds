@@ -57,7 +57,7 @@ function buildManTool(): FuncTool {
       properties: {
         toolsetId: {
           type: 'string',
-          description: 'The toolset ID to show manual for (e.g., "ws_mod", "team-mgmt")',
+          description: 'The toolset ID to show manual for. Use without toolsetId to get available toolsets.',
         },
         topic: {
           type: 'string',
@@ -73,7 +73,6 @@ function buildManTool(): FuncTool {
           description: 'Multiple topics to display (union)',
         },
       },
-      required: ['toolsetId'],
     },
     argsValidation: 'dominds',
     async call(_dlg: Dialog, _caller: Team.Member, args: JsonObject): Promise<string> {
@@ -82,18 +81,44 @@ function buildManTool(): FuncTool {
       // Get toolsetId from args
       const toolsetId = args?.toolsetId as string | undefined;
       if (!toolsetId) {
+        // When no toolsetId is provided, show all available toolsets
+        const availableToolsetNames = _caller.listResolvedToolsetNames();
+        const list = availableToolsetNames.map((t) => `\`${t}\``).join(', ');
         return language === 'zh'
-          ? '请提供 toolsetId 参数。'
-          : 'Please provide toolsetId parameter.';
+          ? `可用的工具集：${list}`
+          : `Available toolsets: ${list}`;
       }
 
-      // Check if the toolset exists
+      // Step 1: Get available toolsets for this caller (dynamic availability)
+      const availableToolsetNames = _caller.listResolvedToolsetNames();
+
+      // Find closest match for fuzzy matching
+      const allToolsets = Object.keys(listToolsets());
+      const suggestion = findClosestToolset(toolsetId, allToolsets);
+
+      // Step 2: Check if the toolset is available for this caller
+      if (!availableToolsetNames.includes(toolsetId)) {
+        // Toolset is not available for this user
+        if (suggestion && availableToolsetNames.includes(suggestion)) {
+          // The suggested toolset IS available, user might have meant that
+          return language === 'zh'
+            ? `工具集 '${toolsetId}' 暂未配置给您使用。您是否在找：'${suggestion}'？`
+            : `Toolset '${toolsetId}' is not available to you. Did you mean: '${suggestion}'?`;
+        }
+        // No suggestion available, just report unavailability and list available toolsets
+        const list = availableToolsetNames.map((t) => `\`${t}\``).join(', ');
+        return language === 'zh'
+          ? `工具集 '${toolsetId}' 暂未配置给您使用。可用工具集：${list}`
+          : `Toolset '${toolsetId}' is not available to you. Available toolsets: ${list}`;
+      }
+
+      // Step 3: Check if the toolset exists
       const meta = getToolsetMeta(toolsetId);
       if (!meta) {
-        const availableToolsets = Object.keys(listToolsets()).join(', ');
+        // This shouldn't happen if we got here (already verified available), but handle it
         return language === 'zh'
-          ? `未找到 toolset '${toolsetId}'。可用的 toolsets: ${availableToolsets}`
-          : `Toolset '${toolsetId}' not found. Available toolsets: ${availableToolsets}`;
+          ? `未找到 toolset '${toolsetId}'。可用的 toolsets: ${Object.keys(listToolsets()).join(', ')}`
+          : `Toolset '${toolsetId}' not found. Available toolsets: ${Object.keys(listToolsets()).join(', ')}`;
       }
 
       // Determine which topics to load
@@ -186,4 +211,76 @@ function getTopicTitleEn(topic: LoadableTopic): string {
     errors: 'Error Handling',
   };
   return titles[topic];
+}
+
+/**
+ * Find the closest matching toolset name using substring matching and edit distance.
+ * Priority: substring match > edit distance
+ */
+function findClosestToolset(input: string, toolsets: string[]): string | null {
+  if (toolsets.length === 0 || !input) {
+    return null;
+  }
+
+  // First, try substring match (case-insensitive)
+  const lowerInput = input.toLowerCase();
+  for (const toolset of toolsets) {
+    if (toolset.toLowerCase().includes(lowerInput) || lowerInput.includes(toolset.toLowerCase())) {
+      return toolset;
+    }
+  }
+
+  // Second, try edit distance (Levenshtein distance)
+  let bestMatch: string | null = null;
+  let bestDistance = Infinity;
+
+  for (const toolset of toolsets) {
+    const distance = levenshteinDistance(input.toLowerCase(), toolset.toLowerCase());
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestMatch = toolset;
+    }
+  }
+
+  // Only suggest if the distance is reasonable (less than half the length of the shorter string)
+  if (bestMatch && bestDistance <= Math.min(input.length, bestMatch.length) / 2) {
+    return bestMatch;
+  }
+
+  return null;
+}
+
+/**
+ * Calculate Levenshtein distance between two strings.
+ */
+function levenshteinDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix: number[][] = [];
+
+  // Initialize matrix
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  // Fill matrix
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1, // insertion
+          matrix[i - 1][j] + 1, // deletion
+        );
+      }
+    }
+  }
+
+  return matrix[b.length][a.length];
 }

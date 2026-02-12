@@ -111,7 +111,7 @@ function buildAccessControlGlobs(member: Team.Member): { include: string[]; excl
   exclude.push('.dialogs/**');
 
   // `.minds/**` is reserved rtws state and hard-denied for general file tools.
-  // Dedicated `.minds/`-scoped tools (team-mgmt) may bypass this with internal_allow_minds=true.
+  // Dedicated `.minds/`-scoped tools (team_mgmt) may bypass this with internal_allow_minds=true.
   if (member.internal_allow_minds !== true) {
     exclude.push('.minds');
     exclude.push('.minds/**');

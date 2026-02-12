@@ -402,7 +402,7 @@ export async function handleApiRoute(
       return true;
     }
 
-    if (pathname === '/api/team-mgmt/manual' && req.method === 'POST') {
+    if (pathname === '/api/team_mgmt/manual' && req.method === 'POST') {
       const rawBody = await readRequestBody(req);
       const payload = await handleTeamMgmtManual(rawBody);
       respondJson(res, payload.success ? 200 : 400, payload);
@@ -553,7 +553,7 @@ const DOCS_WHITELIST = new Set<string>([
   'memory-system',
   'mcp-support',
   'context-health',
-  'team-mgmt-toolset',
+  'team_mgmt-toolset',
   'i18n',
   'txt-editing-tools',
   'fbr',
@@ -574,7 +574,7 @@ const DOCS_WHITELIST = new Set<string>([
   'memory-system.md',
   'mcp-support.md',
   'context-health.md',
-  'team-mgmt-toolset.md',
+  'team_mgmt-toolset.md',
   'i18n.md',
   'txt-editing-tools.md',
   'fbr.md',

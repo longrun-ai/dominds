@@ -44,7 +44,7 @@ import {
   ripgrepSearchTool,
   ripgrepSnippetsTool,
 } from './ripgrep';
-import { teamMgmtTools } from './team-mgmt';
+import { teamMgmtTools } from './team_mgmt';
 import {
   applyFileModificationTool,
   createNewFileTool,
@@ -127,6 +127,7 @@ registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, cle
 setToolsetMeta('memory', {
   source: 'dominds',
   descriptionI18n: { en: 'Personal memory tools', zh: '个人记忆工具' },
+  promptFilesI18n: { en: './prompts/memory/en/index.md', zh: './prompts/memory/zh/index.md' },
 });
 registerToolset('team_memory', [
   addSharedMemoryTool,
@@ -137,6 +138,7 @@ registerToolset('team_memory', [
 setToolsetMeta('team_memory', {
   source: 'dominds',
   descriptionI18n: { en: 'Shared team memory tools', zh: '团队共享记忆工具' },
+  promptFilesI18n: { en: './prompts/team_memory/en/index.md', zh: './prompts/team_memory/zh/index.md' },
 });
 registerToolset('control', [
   addReminderTool,
@@ -149,6 +151,7 @@ registerToolset('control', [
 setToolsetMeta('control', {
   source: 'dominds',
   descriptionI18n: { en: 'Dialog control tools', zh: '对话控制工具' },
+  promptFilesI18n: { en: './prompts/control/en/index.md', zh: './prompts/control/zh/index.md' },
 });
 registerToolset('os', [
   shellCmdTool,
@@ -161,6 +164,7 @@ registerToolset('os', [
 setToolsetMeta('os', {
   source: 'dominds',
   descriptionI18n: { en: 'Shell and process tools', zh: '命令行与进程工具' },
+  promptFilesI18n: { en: './prompts/os/en/index.md', zh: './prompts/os/zh/index.md' },
 });
 registerToolset('mcp_admin', [
   mcpRestartTool,
@@ -172,6 +176,7 @@ registerToolset('mcp_admin', [
 setToolsetMeta('mcp_admin', {
   source: 'dominds',
   descriptionI18n: { en: 'MCP administration tools', zh: 'MCP 管理工具' },
+  promptFilesI18n: { en: './prompts/mcp_admin/en/index.md', zh: './prompts/mcp_admin/zh/index.md' },
 });
 registerToolset('ws_read', [
   listDirTool,
@@ -185,6 +190,7 @@ registerToolset('ws_read', [
 setToolsetMeta('ws_read', {
   source: 'dominds',
   descriptionI18n: { en: 'rtws read-only tools', zh: '运行时工作区只读工具' },
+  promptFilesI18n: { en: './prompts/ws_read/en/index.md', zh: './prompts/ws_read/zh/index.md' },
 });
 registerToolset('ws_mod', [
   listDirTool,
@@ -226,9 +232,10 @@ setToolsetMeta('codex_style_tools', {
     en: 'Use `apply_patch` (Codex-style patch format) to modify files. Use `readonly_shell` for simple rtws (runtime workspace) inspection via its small allowlist; commands outside the allowlist are rejected. For node/python, only exact version probes are allowed (no scripts). Chains via |/&&/|| are validated segment-by-segment. Use `update_plan` to record/update the task plan (stored as a reminder). You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the rtws (runtime workspace). Hard denies: `readonly_shell` refuses rtws-root `.minds/` and `.dialogs/`; `apply_patch` is subject to the same access-control (including hard denies for `*.tsk/`, `.minds/`, and rtws-root `.dialogs/`).',
     zh: '使用 `apply_patch`（Codex 风格 patch 格式）修改文件；使用 `readonly_shell` 做少量只读命令行检查，仅允许白名单命令前缀，白名单之外的命令会被拒绝。对 node/python 仅允许版本探针（不允许脚本执行）。通过 |/&&/|| 串联命令时会按子命令逐段校验。使用 `update_plan` 记录/更新任务计划（作为 reminder 存储）。你已被明确授权自行调用 `readonly_shell`，不要把它委派给 shell 专员。不建议多行脚本式命令，优先单行（允许 |、&&、||）。路径必须相对 rtws（运行时工作区）根目录。硬拒绝点：`readonly_shell` 无条件拒绝访问 rtws root 的 `.minds/` 与 `.dialogs/`；`apply_patch` 也受相同的访问控制约束（包含对 `*.tsk/`、`.minds/`、rtws root `.dialogs/` 的硬拒绝）。',
   },
+  promptFilesI18n: { en: './prompts/codex_style_tools/en/index.md', zh: './prompts/codex_style_tools/zh/index.md' },
 });
-registerToolset('team-mgmt', [...teamMgmtTools]);
-setToolsetMeta('team-mgmt', {
+registerToolset('team_mgmt', [...teamMgmtTools]);
+setToolsetMeta('team_mgmt', {
   source: 'dominds',
   descriptionI18n: { en: 'Team management tools', zh: '团队管理工具' },
   promptFilesI18n: { en: './prompts/team_mgmt/en/index.md', zh: './prompts/team_mgmt/zh/index.md' },

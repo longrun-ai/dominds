@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import { Team } from 'dominds/team';
-import { teamMgmtManualTool } from 'dominds/tools/team-mgmt';
+import { teamMgmtManualTool } from 'dominds/tools/team_mgmt';
 import assert from 'node:assert/strict';
 
 function assertNotIncludes(haystack: string, needle: string): void {
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   ];
 
   for (const out of outputs) {
-    assertNotIncludes(out, '!team-mgmt');
+    assertNotIncludes(out, '!team_mgmt');
     assertNotIncludes(out, '!diag');
     assertNotIncludes(out, 'toolsets: ["*"]');
     assertNotIncludes(out, "toolsets: ['*']");

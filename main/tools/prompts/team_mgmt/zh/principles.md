@@ -1,4 +1,4 @@
-# team-mgmt 核心原则
+# team_mgmt 核心原则
 
 ## 总原则
 
@@ -42,4 +42,4 @@
 | 作用范围 | rtws 任意文件  | 仅限 `.minds/`          |
 | 工具前缀 | 无             | `team_mgmt_`            |
 | 路径解析 | 相对/绝对路径  | 自动加 `.minds/` 前缀   |
-| 权限控制 | 依赖 rtws 权限 | 由 team-mgmt 包装层决定 |
+| 权限控制 | 依赖 rtws 权限 | 由 team_mgmt 包装层决定 |

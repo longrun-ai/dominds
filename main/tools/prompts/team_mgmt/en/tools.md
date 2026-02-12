@@ -1,4 +1,4 @@
-# team-mgmt Tool Reference
+# team_mgmt Tool Reference
 
 ## Read/Locate Tools
 

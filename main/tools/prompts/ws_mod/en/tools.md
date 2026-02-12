@@ -98,5 +98,5 @@ Full file overwrite (**no prepare/apply**).
 
 ## 5. Relationship with .minds/
 
-`.minds/` is the core of team configuration and rtws (runtime workspace) memory, and should usually be operated through the `team-mgmt` toolset's mirrored tools (e.g., `team_mgmt_prepare_file_insert_after`, etc.).
-This toolset's "prepare-first + single apply" mental model remains consistent, but path and permission semantics are determined by the team-mgmt tool wrapper layer (see team-mgmt documentation).
+`.minds/` is the core of team configuration and rtws (runtime workspace) memory, and should usually be operated through the `team_mgmt` toolset's mirrored tools (e.g., `team_mgmt_prepare_file_insert_after`, etc.).
+This toolset's "prepare-first + single apply" mental model remains consistent, but path and permission semantics are determined by the team_mgmt tool wrapper layer (see team_mgmt documentation).

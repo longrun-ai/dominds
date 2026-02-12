@@ -1,4 +1,4 @@
-# team-mgmt Error Handling
+# team_mgmt Error Handling
 
 ## Common Errors
 
@@ -20,7 +20,7 @@
 **PATH_OUTSIDE_MINDS**
 
 - Cause: Path resolves outside `.minds/` after normalization
-- Note: team-mgmt automatically prepends `.minds/` to path; any path that doesn't end up in `.minds/` is rejected
+- Note: team_mgmt automatically prepends `.minds/` to path; any path that doesn't end up in `.minds/` is rejected
 - Solution: Check if the provided path is correct
 
 ## Config Validation Errors

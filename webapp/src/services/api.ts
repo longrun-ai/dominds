@@ -588,7 +588,7 @@ export class ApiClient {
   }
 
   async teamMgmtManual(req: TeamMgmtManualRequest): Promise<ApiResponse<TeamMgmtManualResponse>> {
-    return this.request('/api/team-mgmt/manual', { method: 'POST', body: req });
+    return this.request('/api/team_mgmt/manual', { method: 'POST', body: req });
   }
 
   /**

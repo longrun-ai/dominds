@@ -554,7 +554,7 @@ dominds dialog start --taskdoc-path tasks/auth-system.tsk
 - Requirements evolve through `change_mind` operations
 - rtws hard rules:
   - `*.tsk/**` is encapsulated Taskdoc state and is hard-denied for all general file tools.
-  - `.minds/**` is reserved rtws state (team config/memory/assets) and is hard-denied for all general file tools; manage it via dedicated tools like `team-mgmt`.
+  - `.minds/**` is reserved rtws state (team config/memory/assets) and is hard-denied for all general file tools; manage it via dedicated tools like `team_mgmt`.
   - DevOps context: ad-hoc temp scripts are a taboo. If a tool script is needed, align with teammates and the human, then formalize it in the rtws before use.
 
 **Collaboration Example**:

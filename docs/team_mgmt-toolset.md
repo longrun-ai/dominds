@@ -1,6 +1,6 @@
-# Team Management Toolset (`team-mgmt`)
+# Team Management Toolset (`team_mgmt`)
 
-Chinese version: [中文版](./team-mgmt-toolset.zh.md)
+Chinese version: [中文版](./team_mgmt-toolset.zh.md)
 
 This document specifies a dedicated **team management toolset** whose only job is managing the
 rtws’s “mindset” configuration files under `.minds/` (team roster, LLM providers, and agent
@@ -29,7 +29,7 @@ equivalent of the `ws_mod` toolset + unrestricted `read_dirs`/`write_dirs`), bec
 
 ## Migration Plan (Replacing legacy builtin team-manager knowledge)
 
-This document is a **design spec** for the new `team-mgmt` toolset. It is not something we should
+This document is a **design spec** for the new `team_mgmt` toolset. It is not something we should
 ever tell an agent to “look up” at runtime.
 
 Instead, the runtime “single source of truth” for team management guidance should be
@@ -75,9 +75,9 @@ This makes sense for “normal” agents, but it blocks the team manager from do
 - Providing general-purpose file editing across the repo.
 - Making `.minds/` broadly writable by default team members.
 
-## Proposed `team-mgmt` Toolset
+## Proposed `team_mgmt` Toolset
 
-The `team-mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scopes** all operations to
+The `team_mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scopes** all operations to
 `.minds/` and rejects anything outside.
 
 ### Naming Conventions (Human / UI)
@@ -124,7 +124,7 @@ Notes:
   - Reject paths containing `..`.
   - Reject any path that resolves outside `.minds/` after normalization.
 - Prefer an explicit allowlist over “anything in the rtws”.
-  - For `team-mgmt`, that explicit allowlist is `.minds/**` (including `.minds/memory/**`) so the
+  - For `team_mgmt`, that explicit allowlist is `.minds/**` (including `.minds/memory/**`) so the
     team manager can repair accidental corruptions made by other tools (even though `.minds/memory/**`
     already has dedicated `memory` / `team_memory` tools for normal use).
 - Require explicit `.minds/...` paths and validate them; do not support “implicitly scoped” paths
@@ -133,7 +133,7 @@ Notes:
 ### Why a dedicated toolset (instead of only `read_dirs` / `write_dirs`)?
 
 `read_dirs` / `write_dirs` are still valuable, but they are configured in `.minds/team.yaml`, which
-may not exist during bootstrap. A dedicated `team-mgmt` toolset:
+may not exist during bootstrap. A dedicated `team_mgmt` toolset:
 
 - Lets the team manager create `.minds/team.yaml` safely from “zero state”.
 - Keeps the scope bounded even if the member’s directory allow/deny lists are empty.
@@ -387,7 +387,7 @@ member_defaults:
     - ws_read
     - memory
   # Default posture: deny `.minds/` edits for normal members.
-  # (Team management should be done via `team-mgmt` tools, not general file tools.)
+  # (Team management should be done via `team_mgmt` tools, not general file tools.)
   no_read_dirs:
     - .minds/team.yaml
     - .minds/llm.yaml
@@ -426,7 +426,7 @@ Best practices:
 - Keep `.minds/team.yaml` ownership tight; only the team manager should be able to edit it.
 - Avoid repeating built-in constraints in `team.yaml`:
   - `*.tsk/**` (encapsulated Taskdocs) are hard-denied for all general file tools.
-  - `.minds/**` is hard-denied for general file tools; only the dedicated `team-mgmt` toolset can access it.
+  - `.minds/**` is hard-denied for general file tools; only the dedicated `team_mgmt` toolset can access it.
     Put these in `no_*` only when you need extra explicitness; they are enforced regardless.
 
 ## Managing `.minds/team/<member>/*.md` (agent minds)
@@ -460,8 +460,8 @@ Suggested structure:
 
 Preferred behavior for initial bootstrap:
 
-- The shadow `fuxi` instance should get `team-mgmt` (and the manual tool), not broad `ws_mod`.
-- The shadow `pangu` instance should get broad rtws toolsets (e.g. `ws_read`, `ws_mod`, `os`), but not `team-mgmt`.
+- The shadow `fuxi` instance should get `team_mgmt` (and the manual tool), not broad `ws_mod`.
+- The shadow `pangu` instance should get broad rtws toolsets (e.g. `ws_read`, `ws_mod`, `os`), but not `team_mgmt`.
 - After `.minds/team.yaml` is created, the team definition becomes the source of truth.
 
 This avoids needing to grant full rtws access to configure the team.
@@ -472,7 +472,7 @@ This avoids needing to grant full rtws access to configure the team.
   `member_defaults.model`.
 - **Provider not found**: Ensure `.minds/team.yaml` `provider` keys exist in merged provider config
   (`dominds/main/llm/defaults.yaml` + `.minds/llm.yaml`).
-- **Access denied when editing `.minds/`**: Intended for general file tools; use `team-mgmt` tools.
+- **Access denied when editing `.minds/`**: Intended for general file tools; use `team_mgmt` tools.
 - **MCP tools not visible in Tools view**:
   - Confirm `.minds/mcp.yaml` exists and is valid.
   - Open **Problems** and look for MCP-related errors.
