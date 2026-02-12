@@ -4367,6 +4367,7 @@ export class DomindsApp extends HTMLElement {
       if (!event.composedPath().includes(input)) {
         input.selectQuestion(questionId);
       }
+      this.q4hPanel?.setSelectedQuestionIdFromApp(questionId);
       if (questionId) {
         setTimeout(() => {
           const current = this.q4hInput;

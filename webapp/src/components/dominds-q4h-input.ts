@@ -252,31 +252,38 @@ export class DomindsQ4HInput extends HTMLElement {
     this.updateUI();
   }
 
+  private hasSelectedQ4HTarget(): boolean {
+    return (
+      this.selectedQuestionId !== null &&
+      this.questions.some((q) => q.id === this.selectedQuestionId)
+    );
+  }
+
+  private resolvePrimaryActionMode(): 'send' | 'stop' | 'stopping' {
+    if (this.hasSelectedQ4HTarget()) return 'send';
+    if (this.currentDialog === null) return 'send';
+
+    const state = this.runState;
+    if (state === null) return 'send';
+    if (state.kind === 'proceeding_stop_requested') return 'stopping';
+    if (state.kind === 'proceeding') return 'stop';
+    return 'send';
+  }
+
   private applyPrimaryActionMode(): void {
     if (!this.sendButton) return;
     const t = getUiStrings(this.uiLanguage);
-    const state = this.runState;
-    const nextMode: 'send' | 'stop' | 'stopping' =
-      state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')
-        ? state.kind === 'proceeding_stop_requested'
-          ? 'stopping'
-          : 'stop'
-        : 'send';
-
-    if (nextMode === this.primaryActionMode) {
-      const title = nextMode === 'send' ? t.send : nextMode === 'stop' ? t.stop : t.stopping;
-      this.sendButton.title = title;
-      this.sendButton.setAttribute('aria-label', title);
-      return;
-    }
-
-    this.primaryActionMode = nextMode;
+    const nextMode = this.resolvePrimaryActionMode();
     const title = nextMode === 'send' ? t.send : nextMode === 'stop' ? t.stop : t.stopping;
     this.sendButton.title = title;
     this.sendButton.setAttribute('aria-label', title);
 
-    this.sendButton.classList.toggle('stop', nextMode !== 'send');
+    if (nextMode === this.primaryActionMode) {
+      return;
+    }
 
+    this.primaryActionMode = nextMode;
+    this.sendButton.classList.toggle('stop', nextMode !== 'send');
     if (nextMode === 'send') {
       this.sendButton.innerHTML = `
         <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -285,13 +292,13 @@ export class DomindsQ4HInput extends HTMLElement {
           <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
         </svg>
       `;
-    } else {
-      this.sendButton.innerHTML = `
-        <svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-        </svg>
-      `;
+      return;
     }
+    this.sendButton.innerHTML = `
+      <svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      </svg>
+    `;
   }
 
   private restoreInputHistory(): void {
@@ -703,18 +710,6 @@ export class DomindsQ4HInput extends HTMLElement {
     }
   }
 
-  private async requestStop(): Promise<void> {
-    if (!this.currentDialog) {
-      throw new Error('No active dialog');
-    }
-
-    if (this.props.disabled) {
-      throw new Error('Input is disabled');
-    }
-
-    this.wsManager.sendRaw({ type: 'interrupt_dialog', dialog: this.currentDialog });
-  }
-
   private async requestDeclareDeath(): Promise<void> {
     const dialog = this.currentDialog;
     if (!dialog) {
@@ -739,14 +734,24 @@ export class DomindsQ4HInput extends HTMLElement {
     this.clear();
   }
 
+  private async requestStop(): Promise<void> {
+    if (!this.currentDialog) {
+      throw new Error('No active dialog');
+    }
+    if (this.props.disabled) {
+      throw new Error('Input is disabled');
+    }
+    this.wsManager.sendRaw({ type: 'interrupt_dialog', dialog: this.currentDialog });
+  }
+
   private async handlePrimaryAction(): Promise<void> {
     try {
-      const state = this.runState;
-      if (state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')) {
-        if (state.kind === 'proceeding_stop_requested') {
-          return;
-        }
+      const mode = this.resolvePrimaryActionMode();
+      if (mode === 'stop') {
         await this.requestStop();
+        return;
+      }
+      if (mode === 'stopping') {
         return;
       }
       await this.sendMessage();
@@ -770,13 +775,27 @@ export class DomindsQ4HInput extends HTMLElement {
   private async sendMessage(): Promise<{ success: true; msgId: string }> {
     const content = this.textInput.value.trim();
     const answeredQuestionId = this.selectedQuestionId;
+    const answeredQuestion =
+      answeredQuestionId !== null
+        ? (this.questions.find((q) => q.id === answeredQuestionId) ?? null)
+        : null;
+    if (answeredQuestionId !== null && answeredQuestion === null) {
+      throw new Error(`Selected Q4H question is stale: ${answeredQuestionId}`);
+    }
+    const targetDialog =
+      answeredQuestion !== null
+        ? {
+            selfId: answeredQuestion.dialogContext.selfId,
+            rootId: answeredQuestion.dialogContext.rootId,
+          }
+        : this.currentDialog;
 
     if (!content) {
       throw new Error('Message content is empty');
     }
 
-    if (!this.currentDialog) {
-      throw new Error('No active dialog');
+    if (!targetDialog) {
+      throw new Error('No routable target: select a Q4H question or an active dialog');
     }
 
     if (this.props.disabled) {
@@ -790,20 +809,20 @@ export class DomindsQ4HInput extends HTMLElement {
       const active = sr ? sr.activeElement : null;
       const restoreFocus = active === this.textInput || active === this.sendButton;
 
-      if (answeredQuestionId) {
+      if (answeredQuestion !== null) {
         this.wsManager.sendRaw({
           type: 'drive_dialog_by_user_answer',
-          dialog: this.currentDialog,
+          dialog: targetDialog,
           content,
           msgId,
-          questionId: answeredQuestionId,
+          questionId: answeredQuestion.id,
           continuationType: 'answer',
           userLanguageCode: this.uiLanguage,
         });
       } else {
         this.wsManager.sendRaw({
           type: 'drive_dlg_by_user_msg',
-          dialog: this.currentDialog,
+          dialog: targetDialog,
           content,
           msgId,
           userLanguageCode: this.uiLanguage,
@@ -811,9 +830,27 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       this.recordInputHistoryEntry(content);
-      if (answeredQuestionId !== null) {
-        // Exit Q4H answer styling immediately after sending the answer payload.
+      if (answeredQuestion !== null) {
+        // Q4H answer flow: clear question selection/styling immediately after answer routing.
         this.selectQuestion(null);
+        const dialogId = answeredQuestion.dialogContext.selfId;
+        const rootId = answeredQuestion.dialogContext.rootId;
+        if (typeof dialogId === 'string' && typeof rootId === 'string') {
+          this.dispatchEvent(
+            new CustomEvent('q4h-select-question', {
+              detail: {
+                questionId: null,
+                dialogId,
+                rootId,
+                tellaskContent: '',
+              },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        }
+      } else {
+        // Normal user-message flow: no Q4H style transition side effects.
       }
       this.clear();
       this.dispatchEvent(
@@ -827,7 +864,6 @@ export class DomindsQ4HInput extends HTMLElement {
       if (restoreFocus) {
         queueMicrotask(() => {
           if (this.props.disabled) return;
-          if (!this.currentDialog) return;
           this.focusInput();
         });
       }
@@ -844,19 +880,19 @@ export class DomindsQ4HInput extends HTMLElement {
   private updateSendButton(): void {
     if (!this.sendButton || !this.textInput) return;
 
-    const state = this.runState;
-    const isDead = state !== null && state.kind === 'dead';
-    if (state && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested')) {
-      this.applyPrimaryActionMode();
-      const canStop = !this.props.disabled && !isDead && !!this.currentDialog;
-      this.sendButton.disabled = state.kind === 'proceeding_stop_requested' || !canStop;
+    this.applyPrimaryActionMode();
+    const mode = this.resolvePrimaryActionMode();
+    if (mode !== 'send') {
+      const canStop = !this.props.disabled && this.currentDialog !== null;
+      this.sendButton.disabled = mode === 'stopping' || !canStop;
       return;
     }
 
-    this.applyPrimaryActionMode();
-
     const hasContent = this.textInput.value.trim().length > 0;
-    const canSend = hasContent && !this.props.disabled && !isDead && !!this.currentDialog;
+    const hasSelectedQ4H = this.hasSelectedQ4HTarget();
+    const hasCurrentDialog = this.currentDialog !== null;
+    const hasRoutableTarget = hasSelectedQ4H || hasCurrentDialog;
+    const canSend = hasContent && !this.props.disabled && hasRoutableTarget;
     this.sendButton.disabled = !canSend;
   }
 
@@ -864,13 +900,13 @@ export class DomindsQ4HInput extends HTMLElement {
     if (!this.inputWrapper || !this.textInput) return;
 
     const state = this.runState;
-    const isDead = state !== null && state.kind === 'dead';
     const isProceeding =
       state !== null && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested');
-    const shouldDisable = this.props.disabled || !this.currentDialog || isDead;
+    const shouldDisable = this.props.disabled === true;
     this.inputWrapper.classList.toggle('disabled', shouldDisable);
     this.inputWrapper.classList.toggle('q4h-active', this.selectedQuestionId !== null);
-    this.textInput.disabled = shouldDisable || isProceeding;
+    this.textInput.disabled = shouldDisable;
+    this.textInput.readOnly = false;
 
     this.setAttribute('data-run-state', state ? state.kind : 'none');
     this.setAttribute('aria-busy', isProceeding ? 'true' : 'false');
@@ -878,8 +914,8 @@ export class DomindsQ4HInput extends HTMLElement {
 
     if (this.declareDeathButton) {
       const dialog = this.currentDialog;
+      const isDead = state !== null && state.kind === 'dead';
       const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
-      const state = this.runState;
       const shouldShow = isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
       this.declareDeathButton.hidden = !shouldShow;
       this.declareDeathButton.disabled = this.props.disabled || dialog === null;
@@ -911,14 +947,12 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private getComponentHTML(): string {
     const t = getUiStrings(this.uiLanguage);
-    const state = this.runState;
-    const isProceeding =
-      state !== null && (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested');
-    const isStopping = state !== null && state.kind === 'proceeding_stop_requested';
-    const primaryTitle = isProceeding ? (isStopping ? t.stopping : t.stop) : t.send;
-    const primaryClass = isProceeding ? 'send-button stop' : 'send-button';
+    const mode = this.resolvePrimaryActionMode();
+    const primaryTitle = mode === 'send' ? t.send : mode === 'stop' ? t.stop : t.stopping;
+    const primaryClass = mode === 'send' ? 'send-button' : 'send-button stop';
     const dialog = this.currentDialog;
     const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
+    const state = this.runState;
     const isDead = state !== null && state.kind === 'dead';
     const showDeclareDeath =
       isSubdialog && !isDead && state !== null && state.kind === 'interrupted';
@@ -945,14 +979,14 @@ export class DomindsQ4HInput extends HTMLElement {
               </button>
               <button class="${primaryClass}" type="button" disabled title="${primaryTitle}" aria-label="${primaryTitle}">
                 ${
-                  isProceeding
-                    ? `<svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      </svg>`
-                    : `<svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  mode === 'send'
+                    ? `<svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                         <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
                         <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
                         <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
+                      </svg>`
+                    : `<svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                       </svg>`
                 }
               </button>
@@ -1213,6 +1247,7 @@ export class DomindsQ4HInput extends HTMLElement {
         width: 16px;
         height: 16px;
       }
+
     `;
   }
 }
