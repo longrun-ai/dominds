@@ -1355,6 +1355,7 @@ async function emitTellaskSpecialCallEvents(args: {
   dlg: Dialog;
   callName: TellaskSpecialCall['callName'];
   mentionList?: string[];
+  sessionSlug?: string;
   tellaskContent: string;
   callId: string;
 }): Promise<void> {
@@ -1362,6 +1363,7 @@ async function emitTellaskSpecialCallEvents(args: {
     callName: args.callName,
     callId: args.callId,
     mentionList: args.mentionList,
+    sessionSlug: args.sessionSlug,
     tellaskContent: args.tellaskContent,
   });
 }
@@ -1531,10 +1533,12 @@ async function executeValidTellaskCalls(args: {
       }
     })();
     if (args.emitCallEvents) {
+      const sessionSlug = call.callName === 'tellask' ? call.sessionSlug : undefined;
       await emitTellaskSpecialCallEvents({
         dlg: args.dlg,
         callName: call.callName,
         mentionList: runtimeMentionList,
+        sessionSlug,
         tellaskContent: call.tellaskContent,
         callId: call.callId,
       });

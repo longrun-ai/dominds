@@ -9,9 +9,13 @@ import { getWebSocketManager } from '../services/websocket.js';
 import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
 
 export class DomindsConnectionStatus extends HTMLElement {
+  private static readonly INITIAL_DISCONNECTED_GRACE_MS = 1200;
   private wsManager = getWebSocketManager();
   private reconnectButton: HTMLButtonElement | null = null;
   private uiLanguage: LanguageCode = 'en';
+  private mountedAtMs = 0;
+  private firstConnStateEventSeen = false;
+  private initialStatusRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super();
@@ -19,18 +23,26 @@ export class DomindsConnectionStatus extends HTMLElement {
   }
 
   connectedCallback(): void {
+    this.mountedAtMs = Date.now();
+    this.firstConnStateEventSeen = false;
     this.render();
     this.setupEventListeners();
     const raw = this.getAttribute('ui-language') || '';
     const parsed = normalizeLanguageCode(raw);
     this.uiLanguage = parsed ?? 'en';
-    this.updateDisplay();
     const initial = this.wsManager.getConnectionState();
-    this.setAttribute('status', initial.status);
-    if (initial.error) this.setAttribute('error', initial.error);
+    if (!this.hasAttribute('status')) {
+      this.setAttribute('status', initial.status);
+    }
+    if (initial.error && !this.hasAttribute('error')) {
+      this.setAttribute('error', initial.error);
+    }
+    this.updateDisplay();
+    this.scheduleInitialStatusRefresh();
     const sub = this.wsManager.subscribeToConnectionState();
     (async () => {
       for await (const state of sub.stream()) {
+        this.firstConnStateEventSeen = true;
         this.setAttribute('status', state.status);
         if (state.error) this.setAttribute('error', state.error);
         else this.removeAttribute('error');
@@ -39,7 +51,10 @@ export class DomindsConnectionStatus extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    // Cleanup if needed
+    if (this.initialStatusRefreshTimer) {
+      clearTimeout(this.initialStatusRefreshTimer);
+      this.initialStatusRefreshTimer = null;
+    }
   }
 
   static get observedAttributes(): string[] {
@@ -264,8 +279,9 @@ export class DomindsConnectionStatus extends HTMLElement {
       return;
     }
 
-    const status = (this.getAttribute('status') as ConnectionStatus) || 'disconnected';
+    const rawStatus = (this.getAttribute('status') as ConnectionStatus) || 'disconnected';
     const error = this.getAttribute('error') || '';
+    const status = this.getDisplayStatus(rawStatus, error);
 
     const container = this.shadowRoot.querySelector('#status-container') as HTMLElement;
     const indicator = this.shadowRoot.querySelector('#status-indicator') as HTMLElement;
@@ -307,6 +323,28 @@ export class DomindsConnectionStatus extends HTMLElement {
 
     // Add additional visual feedback
     this.addVisualFeedback(status);
+  }
+
+  private scheduleInitialStatusRefresh(): void {
+    if (this.initialStatusRefreshTimer) {
+      clearTimeout(this.initialStatusRefreshTimer);
+      this.initialStatusRefreshTimer = null;
+    }
+    this.initialStatusRefreshTimer = setTimeout(() => {
+      this.initialStatusRefreshTimer = null;
+      this.updateDisplay();
+    }, DomindsConnectionStatus.INITIAL_DISCONNECTED_GRACE_MS + 20);
+  }
+
+  private getDisplayStatus(status: ConnectionStatus, error: string): ConnectionStatus {
+    if (status !== 'disconnected') return status;
+    if (error.trim() !== '') return status;
+    if (this.firstConnStateEventSeen) return status;
+    const elapsed = Date.now() - this.mountedAtMs;
+    if (elapsed < DomindsConnectionStatus.INITIAL_DISCONNECTED_GRACE_MS) {
+      return 'connecting';
+    }
+    return status;
   }
 
   private getStatusInfo(status: ConnectionStatus): { text: string; details: string } {

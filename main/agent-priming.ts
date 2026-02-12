@@ -256,6 +256,7 @@ async function emitSyntheticTellaskCall(
         callName: payload.callName,
         callId,
         mentionList,
+        sessionSlug: payload.callName === 'tellask' ? payload.sessionSlug?.trim() : undefined,
         tellaskContent: payload.tellaskContent,
       });
       return {

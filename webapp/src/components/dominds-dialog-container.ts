@@ -1528,7 +1528,11 @@ export class DomindsDialogContainer extends HTMLElement {
     return out;
   }
 
-  private renderMentionList(section: HTMLElement, mentions: readonly string[]): void {
+  private renderMentionList(
+    section: HTMLElement,
+    mentions: readonly string[],
+    sessionSlug?: string,
+  ): void {
     const mentionEl = section.querySelector('.calling-headline') as HTMLElement | null;
     if (!mentionEl) return;
     const normalized = mentions
@@ -1537,8 +1541,14 @@ export class DomindsDialogContainer extends HTMLElement {
     const unique = Array.from(new Set(normalized));
     const joined =
       unique.length > 0 ? unique.join(', ') : this.uiLanguage === 'zh' ? '（无）' : '(none)';
+    const sessionPart = (() => {
+      if (!sessionSlug || sessionSlug.trim() === '') return '';
+      return ` · ${sessionSlug}`;
+    })();
     mentionEl.textContent =
-      this.uiLanguage === 'zh' ? `诉请对象: ${joined}` : `Mentions: ${joined}`;
+      this.uiLanguage === 'zh'
+        ? `诉请对象: ${joined}${sessionPart}`
+        : `Mentions: ${joined}${sessionPart}`;
   }
 
   private renderCallTiming(
@@ -1788,8 +1798,17 @@ export class DomindsDialogContainer extends HTMLElement {
     const startedAtMs = this.parseEventTimestampMs(event.timestamp) ?? Date.now();
     callingSection.setAttribute('data-call-start-ms', String(startedAtMs));
     callingSection.setAttribute('data-call-id', event.callId);
-    if (mentionList.length > 0) {
-      this.renderMentionList(callingSection, mentionList);
+    switch (event.callName) {
+      case 'tellask':
+        this.renderMentionList(callingSection, mentionList, event.sessionSlug);
+        break;
+      case 'tellaskSessionless':
+        this.renderMentionList(callingSection, mentionList);
+        break;
+      case 'tellaskBack':
+      case 'askHuman':
+      case 'freshBootsReasoning':
+        break;
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement | null;
     if (bodyEl) {

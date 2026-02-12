@@ -16,6 +16,7 @@ export interface RunningDialogListProps {
   onSelect?: (dialog: DialogInfo) => void;
   uiLanguage: LanguageCode;
   generatingDialogKeys: ReadonlySet<string>;
+  loading: boolean;
 }
 
 export type DialogCreateAction =
@@ -52,6 +53,7 @@ export class RunningDialogList extends HTMLElement {
     maxHeight: 'none',
     uiLanguage: 'en',
     generatingDialogKeys: new Set(),
+    loading: false,
   };
   private listState: ListState = { kind: 'empty' };
   private selectionState: SelectionState = { kind: 'none' };
@@ -397,6 +399,13 @@ export class RunningDialogList extends HTMLElement {
     if (!this.listEl) return;
 
     const t = getUiStrings(this.props.uiLanguage);
+
+    if (this.props.loading) {
+      this.listEl.innerHTML = `
+        <div class="empty">${t.loading}</div>
+      `;
+      return;
+    }
 
     this.rootIndex.clear();
     this.subIndex.clear();

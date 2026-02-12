@@ -16,6 +16,7 @@ export interface ArchivedDialogListProps {
   maxHeight?: string;
   onSelect?: (dialog: DialogInfo) => void;
   uiLanguage: LanguageCode;
+  loading: boolean;
 }
 
 type DialogCreateAction =
@@ -57,6 +58,7 @@ export class ArchivedDialogList extends HTMLElement {
     dialogs: [],
     maxHeight: 'none',
     uiLanguage: 'en',
+    loading: false,
   };
   private listState: ListState = { kind: 'empty' };
   private selectionState: SelectionState = { kind: 'none' };
@@ -309,6 +311,13 @@ export class ArchivedDialogList extends HTMLElement {
     if (!this.listEl) return;
 
     const t = getUiStrings(this.props.uiLanguage);
+
+    if (this.props.loading) {
+      this.listEl.innerHTML = `
+        <div class="empty">${t.loading}</div>
+      `;
+      return;
+    }
 
     this.rootIndex.clear();
     this.subIndex.clear();

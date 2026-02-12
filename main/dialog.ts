@@ -932,6 +932,7 @@ export abstract class Dialog {
     callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
     callId: string;
     mentionList?: string[];
+    sessionSlug?: string;
     tellaskContent: string;
   }): Promise<void> {
     // Store callId for inline call-result correlation
@@ -1561,6 +1562,7 @@ export abstract class DialogStore {
         | 'freshBootsReasoning';
       callId: string;
       mentionList?: string[];
+      sessionSlug?: string;
       tellaskContent: string;
     },
   ): Promise<void> {}

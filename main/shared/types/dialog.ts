@@ -174,7 +174,15 @@ export type GenerationDiscardEvent = LlmGenDlgEvent & {
 export type TeammateCallStartEvent =
   | (LlmGenDlgEvent & {
       type: 'teammate_call_start_evt';
-      callName: 'tellask' | 'tellaskSessionless';
+      callName: 'tellask';
+      callId: string;
+      mentionList: string[];
+      sessionSlug: string;
+      tellaskContent: string;
+    })
+  | (LlmGenDlgEvent & {
+      type: 'teammate_call_start_evt';
+      callName: 'tellaskSessionless';
       callId: string;
       mentionList: string[];
       tellaskContent: string;

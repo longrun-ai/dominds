@@ -328,6 +328,7 @@ type ReplayTellaskSpecialCall =
   | Readonly<{
       callName: 'tellask';
       mentionList: string[];
+      sessionSlug: string;
       tellaskContent: string;
       callId: string;
     }>
@@ -413,6 +414,7 @@ function parseReplayTellaskSpecialCall(record: FuncCallRecord): ReplayTellaskSpe
       return {
         callName: 'tellask',
         mentionList: [`@${targetAgentId}`],
+        sessionSlug,
         tellaskContent,
         callId: record.id,
       };
@@ -1081,6 +1083,7 @@ export class DiskFileDialogStore extends DialogStore {
         | 'freshBootsReasoning';
       callId: string;
       mentionList?: string[];
+      sessionSlug?: string;
       tellaskContent: string;
     },
   ): Promise<void> {
@@ -1088,6 +1091,21 @@ export class DiskFileDialogStore extends DialogStore {
     const evt: TeammateCallStartEvent = (() => {
       switch (payload.callName) {
         case 'tellask':
+          if (!payload.sessionSlug || payload.sessionSlug.trim() === '') {
+            throw new Error(
+              `callingStart invariant violation: tellask requires sessionSlug (callId=${payload.callId})`,
+            );
+          }
+          return {
+            type: 'teammate_call_start_evt',
+            callName: payload.callName,
+            callId: payload.callId,
+            mentionList: payload.mentionList ?? [],
+            sessionSlug: payload.sessionSlug,
+            tellaskContent: payload.tellaskContent,
+            course,
+            genseq: dialog.activeGenSeq,
+          };
         case 'tellaskSessionless':
           return {
             type: 'teammate_call_start_evt',
@@ -1951,6 +1969,23 @@ export class DiskFileDialogStore extends DialogStore {
           const callStartEvent = (() => {
             switch (specialCall.callName) {
               case 'tellask':
+                if (!specialCall.sessionSlug || specialCall.sessionSlug.trim() === '') {
+                  throw new Error(
+                    `Replay tellask event invariant violation: missing sessionSlug (callId=${specialCall.callId})`,
+                  );
+                }
+                return {
+                  type: 'teammate_call_start_evt',
+                  callName: specialCall.callName,
+                  callId: specialCall.callId,
+                  mentionList: specialCall.mentionList,
+                  sessionSlug: specialCall.sessionSlug,
+                  tellaskContent: specialCall.tellaskContent,
+                  course,
+                  genseq: event.genseq,
+                  dialog: dialogIdent,
+                  timestamp: event.ts,
+                };
               case 'tellaskSessionless':
                 return {
                   type: 'teammate_call_start_evt',
