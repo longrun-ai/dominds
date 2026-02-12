@@ -347,6 +347,8 @@ export async function runLlmRequestWithRetry<T>(params: {
   abortSignal?: AbortSignal;
   maxRetries: number;
   canRetry: () => boolean;
+  onRetry?: () => Promise<void> | void;
+  onGiveUp?: () => Promise<void> | void;
   doRequest: () => Promise<T>;
 }): Promise<T> {
   const providerProblemId = `llm/provider_rejected/${params.dlg.id.valueOf()}`;
@@ -389,6 +391,9 @@ export async function runLlmRequestWithRetry<T>(params: {
       const canRetry = failure.kind === 'retriable' && params.canRetry();
       const isLastAttempt = attempt >= params.maxRetries;
       if (!canRetry || isLastAttempt) {
+        if (params.onGiveUp) {
+          await params.onGiveUp();
+        }
         try {
           await params.dlg.streamError(detail);
         } catch {
@@ -408,6 +413,9 @@ export async function runLlmRequestWithRetry<T>(params: {
         backoffMs,
         failure,
       });
+      if (params.onRetry) {
+        await params.onRetry();
+      }
       await sleepWithAbort(backoffMs, params.abortSignal);
       continue;
     }

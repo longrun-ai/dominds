@@ -890,6 +890,9 @@ export class DomindsDialogContainer extends HTMLElement {
           this.clearGenerationGlow();
         }
         break;
+      case 'genseq_discard_evt':
+        this.handleGenerationDiscard(event.genseq);
+        break;
       case 'context_health_evt':
         // Handled at the app toolbar layer; ignore in dialog timeline.
         break;
@@ -1142,6 +1145,58 @@ export class DomindsDialogContainer extends HTMLElement {
     this.generationBubble = undefined;
     // Clear previousDialog since we've completed the generation for that dialog
     this.previousDialog = undefined;
+  }
+
+  private handleGenerationDiscard(seq: number): void {
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    const activeBubble = this.generationBubble;
+    const targetBubble =
+      activeBubble && activeBubble.getAttribute('data-seq') === String(seq)
+        ? activeBubble
+        : container
+          ? (container.querySelector(
+              `.generation-bubble[data-seq="${String(seq)}"]`,
+            ) as HTMLElement | null)
+          : null;
+
+    if (targetBubble) {
+      targetBubble.remove();
+    }
+
+    if (this.generationBubble && this.generationBubble.getAttribute('data-seq') === String(seq)) {
+      this.generationBubble = undefined;
+      this.thinkingSection = undefined;
+      this.markdownSection = undefined;
+      this.callingSection = undefined;
+    }
+
+    this.teammateCallingSectionBySeq.delete(seq);
+    this.webSearchSectionBySeq.delete(seq);
+    this.pendingTeammateCallAnchorByGenseq.delete(seq);
+
+    for (const [itemId, section] of this.webSearchSectionByItemId.entries()) {
+      const sectionSeq = section.getAttribute('data-genseq');
+      if (sectionSeq === String(seq) || !section.isConnected) {
+        this.webSearchSectionByItemId.delete(itemId);
+      }
+    }
+
+    for (const [callId, section] of this.callingSectionByCallId.entries()) {
+      if (!section.isConnected || section.getAttribute('data-genseq') === String(seq)) {
+        this.callingSectionByCallId.delete(callId);
+      }
+    }
+    for (const [callId, pending] of this.pendingCallTimingById.entries()) {
+      if (
+        !pending.section.isConnected ||
+        pending.section.getAttribute('data-genseq') === String(seq)
+      ) {
+        this.pendingCallTimingById.delete(callId);
+      }
+    }
+    if (this.pendingCallTimingById.size === 0) {
+      this.stopCallTimingTicker();
+    }
   }
 
   // === THINKING EVENTS (Inside Generation Bubble) ===

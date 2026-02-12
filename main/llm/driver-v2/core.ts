@@ -1444,18 +1444,65 @@ export async function driveDialogStreamCoreV2(
         let currentThinkingContent = '';
         let currentThinkingSignature = '';
         let currentSayingContent = '';
-        let sawAnyStreamContent = false;
+        let streamAttemptCourse: number | undefined;
+        let streamAttemptCheckpointOffset: number | undefined;
+        let streamAttemptSayingContent: string | undefined;
+        let streamAttemptSayingGenseq: number | undefined;
 
         type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
         let streamActive: StreamActiveState = { kind: 'idle' };
+        const rollbackStreamAttempt = async (): Promise<void> => {
+          if (streamAttemptCourse === undefined || streamAttemptCheckpointOffset === undefined) {
+            throw new Error(
+              `driver-v2 stream retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
+            );
+          }
+          await DialogPersistence.rollbackCourseFileToOffset(
+            dlg.id,
+            streamAttemptCourse,
+            streamAttemptCheckpointOffset,
+            dlg.status,
+          );
+          postDialogEvent(dlg, {
+            type: 'genseq_discard_evt',
+            course: streamAttemptCourse,
+            genseq: dlg.activeGenSeq,
+            reason: 'retry',
+          });
+
+          streamActive = { kind: 'idle' };
+          currentThinkingContent = '';
+          currentThinkingSignature = '';
+          currentSayingContent = '';
+          streamAttemptSayingContent = undefined;
+          streamAttemptSayingGenseq = undefined;
+          streamedFuncCalls.length = 0;
+          newMsgs.length = 0;
+        };
 
         const streamResult = await runLlmRequestWithRetry({
           dlg,
           provider,
           abortSignal,
           maxRetries: 5,
-          canRetry: () => !sawAnyStreamContent,
+          canRetry: () => true,
+          onRetry: rollbackStreamAttempt,
+          onGiveUp: rollbackStreamAttempt,
           doRequest: async () => {
+            streamAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+            streamAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
+              dlg.id,
+              streamAttemptCourse,
+              dlg.status,
+            );
+            streamActive = { kind: 'idle' };
+            currentThinkingContent = '';
+            currentThinkingSignature = '';
+            currentSayingContent = '';
+            streamAttemptSayingContent = undefined;
+            streamAttemptSayingGenseq = undefined;
+            streamedFuncCalls.length = 0;
+            newMsgs.length = 0;
             return await llmGen.genToReceiver(
               providerCfg,
               agent,
@@ -1468,7 +1515,6 @@ export async function driveDialogStreamCoreV2(
                 },
                 thinkingStart: async () => {
                   throwIfAborted(abortSignal, dlg);
-                  sawAnyStreamContent = true;
                   if (streamActive.kind !== 'idle') {
                     const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active`;
                     await dlg.streamError(detail);
@@ -1481,7 +1527,6 @@ export async function driveDialogStreamCoreV2(
                 },
                 thinkingChunk: async (chunk: string) => {
                   throwIfAborted(abortSignal, dlg);
-                  sawAnyStreamContent = true;
                   currentThinkingContent += chunk;
                   const signatureMatch = currentThinkingContent.match(
                     /<thinking[^>]*>(.*?)<\/thinking>/s,
@@ -1516,7 +1561,6 @@ export async function driveDialogStreamCoreV2(
                 },
                 sayingStart: async () => {
                   throwIfAborted(abortSignal, dlg);
-                  sawAnyStreamContent = true;
                   if (streamActive.kind !== 'idle') {
                     const detail = `Protocol violation: sayingStart while ${streamActive.kind} is active`;
                     await dlg.streamError(detail);
@@ -1528,7 +1572,6 @@ export async function driveDialogStreamCoreV2(
                 },
                 sayingChunk: async (chunk: string) => {
                   throwIfAborted(abortSignal, dlg);
-                  sawAnyStreamContent = true;
                   currentSayingContent += chunk;
                   await dlg.sayingChunk(chunk);
                 },
@@ -1548,14 +1591,13 @@ export async function driveDialogStreamCoreV2(
                     content: currentSayingContent,
                   };
                   newMsgs.push(sayingMessage);
-                  lastAssistantSayingContent = currentSayingContent;
-                  lastAssistantSayingGenseq = sayingMessage.genseq;
+                  streamAttemptSayingContent = currentSayingContent;
+                  streamAttemptSayingGenseq = sayingMessage.genseq;
 
                   await dlg.sayingFinish();
                 },
                 funcCall: async (callId: string, name: string, args: string) => {
                   throwIfAborted(abortSignal, dlg);
-                  sawAnyStreamContent = true;
                   const genseq = dlg.activeGenSeq;
                   if (genseq === undefined) {
                     return;
@@ -1571,7 +1613,6 @@ export async function driveDialogStreamCoreV2(
                 },
                 webSearchCall: async (call) => {
                   throwIfAborted(abortSignal, dlg);
-                  sawAnyStreamContent = true;
                   await dlg.webSearchCall(call);
                 },
               },
@@ -1630,6 +1671,12 @@ export async function driveDialogStreamCoreV2(
             lastFunctionCallGenseq,
             interrupted: false,
           };
+        }
+
+        if (streamAttemptSayingContent !== undefined) {
+          lastAssistantSayingContent = streamAttemptSayingContent;
+          lastAssistantSayingGenseq =
+            streamAttemptSayingGenseq === undefined ? null : streamAttemptSayingGenseq;
         }
 
         const routedFunctionResult = await executeRoutedFunctionCalls({

@@ -1379,6 +1379,25 @@ export class DomindsApp extends HTMLElement {
     this.renderDialogList();
   }
 
+  /**
+   * Read root expanded/collapsed state directly from running-list DOM.
+   * No app-level expanded-root cache is maintained.
+   */
+  private isRootExpandedInRunningListDom(rootId: string): boolean {
+    const host = this.shadowRoot?.querySelector('#running-dialog-list') as HTMLElement | null;
+    if (!host) return false;
+    const listShadow = host.shadowRoot;
+    if (!listShadow) return false;
+
+    const escapedRootId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(rootId) : rootId;
+    const childrenNode = listShadow.querySelector(
+      `.rdlg-node[data-rdlg-root-id="${escapedRootId}"] > .sdlg-children`,
+    );
+    if (!(childrenNode instanceof HTMLElement)) return false;
+    return !childrenNode.classList.contains('collapsed');
+  }
+
   private updateActivityView(): void {
     if (!this.shadowRoot) return;
 
@@ -7488,6 +7507,8 @@ export class DomindsApp extends HTMLElement {
           const hadLoadedSubdialogs = this.dialogs.some(
             (d) => d.rootId === node.rootId && typeof d.selfId === 'string' && d.selfId !== '',
           );
+          const rootExpandedInDom =
+            node.status === 'running' && this.isRootExpandedInRunningListDom(node.rootId);
           let replaced = false;
           this.dialogs = this.dialogs.map((d) => {
             if (d.rootId !== node.rootId) return d;
@@ -7506,7 +7527,7 @@ export class DomindsApp extends HTMLElement {
             }
             return d;
           });
-          if (hadLoadedSubdialogs && !replaced) {
+          if ((hadLoadedSubdialogs || rootExpandedInDom) && !replaced) {
             this.dialogs.push(incomingSubdialog);
           }
 

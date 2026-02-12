@@ -163,6 +163,13 @@ export type WebSearchCallEvent = LlmGenDlgEvent & {
   action?: WebSearchCallAction;
 };
 
+// Transient event to notify frontend that current genseq output was discarded and retried.
+// This event is NOT persisted and only applies to the active live stream.
+export type GenerationDiscardEvent = LlmGenDlgEvent & {
+  type: 'genseq_discard_evt';
+  reason: 'retry';
+};
+
 // Teammate-call lifecycle events (function-call based tellask-special channel)
 export type TeammateCallStartEvent =
   | (LlmGenDlgEvent & {
@@ -359,6 +366,7 @@ export type DialogEvent =
   | FuncCallStartEvent
   | FunctionResultEvent
   | WebSearchCallEvent
+  | GenerationDiscardEvent
   // Tellask-special call lifecycle
   | TeammateCallStartEvent
   | TeammateCallResponseEvent

@@ -2441,6 +2441,14 @@ export class DialogPersistence {
     return created;
   }
 
+  private static getCourseAppendMutexKey(
+    dialogId: DialogID,
+    course: number,
+    status: 'running' | 'completed' | 'archived',
+  ): string {
+    return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|course:${course}`;
+  }
+
   private static getPendingSubdialogsWriteBackMutex(key: string): AsyncFifoMutex {
     const existing = this.pendingSubdialogsWriteBackMutexes.get(key);
     if (existing) return existing;
@@ -2847,7 +2855,7 @@ export class DialogPersistence {
     event: PersistedDialogRecord,
     status: 'running' | 'completed' | 'archived' = 'running',
   ): Promise<void> {
-    const appendMutexKey = `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|course:${course}`;
+    const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
     const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
     try {
       const dialogPath = this.getDialogEventsPath(dialogId, status);
@@ -2878,6 +2886,107 @@ export class DialogPersistence {
     } catch (error) {
       log.error(`Failed to append event to dialog ${dialogId} course ${course}:`, error);
       throw error;
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Capture the current byte offset of a course JSONL file.
+   * Used as rollback checkpoint before a streaming LLM attempt.
+   */
+  static async captureCourseFileOffset(
+    dialogId: DialogID,
+    course: number,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<number> {
+    const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
+    const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
+    try {
+      const dialogPath = this.getDialogEventsPath(dialogId, status);
+      const courseFilePath = path.join(dialogPath, this.getCourseFilename(course));
+      try {
+        const st = await fs.promises.stat(courseFilePath);
+        return st.size;
+      } catch (err) {
+        if (getErrorCode(err) === 'ENOENT') {
+          return 0;
+        }
+        throw err;
+      }
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Rollback a course JSONL file to a previously captured byte offset.
+   * This is used to discard partial streaming artifacts before retrying.
+   */
+  static async rollbackCourseFileToOffset(
+    dialogId: DialogID,
+    course: number,
+    offset: number,
+    status: 'running' | 'completed' | 'archived' = 'running',
+  ): Promise<void> {
+    if (!Number.isFinite(offset) || offset < 0) {
+      throw new Error(
+        `Invalid rollback offset: dialog=${dialogId.valueOf()} course=${String(course)} offset=${String(
+          offset,
+        )}`,
+      );
+    }
+    const normalizedOffset = Math.floor(offset);
+    const appendMutexKey = this.getCourseAppendMutexKey(dialogId, course, status);
+    const release = await this.getCourseAppendMutex(appendMutexKey).acquire();
+    try {
+      const dialogPath = this.getDialogEventsPath(dialogId, status);
+      const courseFilePath = path.join(dialogPath, this.getCourseFilename(course));
+      let currentSize = 0;
+      try {
+        const st = await fs.promises.stat(courseFilePath);
+        currentSize = st.size;
+      } catch (err) {
+        if (getErrorCode(err) !== 'ENOENT') {
+          throw err;
+        }
+        if (normalizedOffset === 0) {
+          return;
+        }
+        throw new Error(
+          `Rollback target missing: dialog=${dialogId.valueOf()} course=${String(course)} offset=${String(
+            normalizedOffset,
+          )}`,
+        );
+      }
+
+      if (normalizedOffset > currentSize) {
+        throw new Error(
+          `Rollback offset beyond file size: dialog=${dialogId.valueOf()} course=${String(
+            course,
+          )} offset=${String(normalizedOffset)} size=${String(currentSize)}`,
+        );
+      }
+      if (normalizedOffset === currentSize) {
+        return;
+      }
+
+      await fs.promises.truncate(courseFilePath, normalizedOffset);
+      await this.mutateDialogLatest(
+        dialogId,
+        () => ({
+          kind: 'patch',
+          patch: { lastModified: formatUnifiedTimestamp(new Date()) },
+        }),
+        status,
+      );
+      log.warn('Rolled back course JSONL after streaming retry', undefined, {
+        dialogId: dialogId.valueOf(),
+        course,
+        status,
+        fromSize: currentSize,
+        toSize: normalizedOffset,
+      });
     } finally {
       release();
     }
