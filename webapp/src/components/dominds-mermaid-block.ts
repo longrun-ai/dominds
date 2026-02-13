@@ -8,16 +8,23 @@ export class DomindsMermaidBlock extends HTMLElement {
   private _id: string = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
 
   private normalizeMermaidDefinition(definition: string): string {
-    // Mermaid flowchart node labels require quoting when they contain characters like `<` (e.g. `<br/>`).
-    // Humans/LLMs often write `A[foo<br/>bar]`, but Mermaid expects `A["foo<br/>bar"]`.
+    // Mermaid flowchart node labels require quoting when they include parser-significant characters.
+    // Humans/LLMs often write `A[foo<br/>bar]` or `A[Registry (root only)]`, but Mermaid expects quotes.
     const normalizedNewlines = definition.replace(/\r\n/g, '\n');
 
     return normalizedNewlines.replace(
-      /(\b[\w-]+)\[([^\]\n]*?<br\s*\/?>[^\]\n]*?)\]/gi,
+      /(\b[\w-]+)\[([^\]\n]*?)\]/g,
       (_full, rawId: string, rawLabel: string) => {
         const id = String(rawId);
         const label = String(rawLabel).trim();
+
+        // Keep empty labels and already quoted labels intact.
+        if (!label) return `${id}[]`;
         if (label.startsWith('"') || label.startsWith("'")) return `${id}[${label}]`;
+
+        // Characters like `<`, `(`, `)` and `|` can break unquoted flowchart labels.
+        if (!/[<>()|]/.test(label)) return `${id}[${label}]`;
+
         const escaped = label.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         return `${id}["${escaped}"]`;
       },
