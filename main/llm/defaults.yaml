@@ -67,6 +67,13 @@ providers:
         input_length: 272000
         output_length: 32768
         context_window: '272K'
+      gpt-5.3-codex-spark:
+        name: GPT-5.3 Codex Spark
+        optimal_max_tokens: 80000
+        context_length: 128000
+        input_length: 128000
+        output_length: 32768
+        context_window: '128K'
       gpt-5.2-codex:
         name: GPT-5.2 Codex
         optimal_max_tokens: 200000

@@ -42,6 +42,7 @@ interface DoctorOptions {
   json: boolean;
   verify: boolean;
   verbose: boolean;
+  probeModels: boolean;
   probeReasoning: boolean;
   probeFuncResult: boolean;
   model?: string;
@@ -55,6 +56,7 @@ function parseArgs(argv: string[]): DoctorOptions {
     json: false,
     verify: true,
     verbose: false,
+    probeModels: true,
     probeReasoning: false,
     probeFuncResult: false,
   };
@@ -86,6 +88,14 @@ function parseArgs(argv: string[]): DoctorOptions {
     }
     if (arg === '--probe-reasoning' || arg === '--probe-thinking') {
       options.probeReasoning = true;
+      continue;
+    }
+    if (arg === '--probe-models') {
+      options.probeModels = true;
+      continue;
+    }
+    if (arg === '--no-probe-models') {
+      options.probeModels = false;
       continue;
     }
     if (arg === '--no-probe-reasoning' || arg === '--no-probe-thinking') {
@@ -142,13 +152,15 @@ function printHelp(): void {
   console.log(`codex-auth doctor
 
 Usage:
-  codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose] [--probe-reasoning] [--probe-func-result]
+  codex-auth [--codex-home PATH] [--refresh] [--json] [--no-verify] [--verbose] [--probe-models] [--probe-reasoning] [--probe-func-result]
 
 Options:
   --codex-home PATH   Override CODEX_HOME
   --refresh           Refresh ChatGPT tokens if possible
   --json              Emit JSON output
   --verbose           Dump SSE events as pretty-printed JSON (aliases: -v, -verbose)
+  --probe-models      Extra probe request to GET ChatGPT codex /models and report model list
+  --no-probe-models   Disable the /models probe
   --probe-reasoning   Extra probe request enabling reasoning + include to check whether the
                       backend streams response.reasoning_* events (aliases: --probe-thinking)
   --probe-func-result Extra probe to validate function_call_output can be swapped from
@@ -188,6 +200,27 @@ interface VerifyResult {
   error?: string;
   responseId?: string;
   models?: string[];
+  preflight?: FetchPreflight;
+}
+
+interface ModelsProbeModel {
+  slug: string;
+  display_name?: string;
+  context_window?: number;
+  auto_compact_token_limit?: number;
+  effective_context_window_percent?: number;
+  visibility?: string;
+}
+
+interface ModelsProbeResult {
+  ok: boolean;
+  skipped?: boolean;
+  status?: number;
+  error?: string;
+  models_count?: number;
+  model_slugs?: string[];
+  codex_53_family?: ModelsProbeModel[];
+  spark_model?: ModelsProbeModel | null;
   preflight?: FetchPreflight;
 }
 
@@ -438,15 +471,16 @@ function getEnvProxy(upper: string, lower: string): string | undefined {
 interface FetchPreflight {
   name:
     | 'chatgpt_verify'
+    | 'chatgpt_models_probe'
     | 'chatgpt_reasoning_probe'
     | 'chatgpt_func_result_probe_round1'
     | 'chatgpt_func_result_probe_round2_pending'
     | 'chatgpt_func_result_probe_round3_final';
   request: {
-    method: 'POST';
+    method: 'POST' | 'GET';
     url: string;
     headers: Record<string, string>;
-    json: Record<string, unknown>;
+    json?: Record<string, unknown>;
   };
   proxy: Record<string, unknown>;
 }
@@ -461,7 +495,9 @@ function printPreflight(options: DoctorOptions, preflight: FetchPreflight): void
   console.log(`- url: ${preflight.request.url}`);
   console.log(`- proxy: ${JSON.stringify(preflight.proxy)}`);
   console.log(`- headers: ${JSON.stringify(preflight.request.headers)}`);
-  console.log(`- json: ${JSON.stringify(preflight.request.json)}`);
+  if (preflight.request.json) {
+    console.log(`- json: ${JSON.stringify(preflight.request.json)}`);
+  }
   console.log('');
 }
 
@@ -785,6 +821,208 @@ function selectChatGptModel(
     model: 'gpt-5.3-codex',
     instructions: 'You are Codex CLI.',
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return undefined;
+}
+
+function resolveClientVersionForModelsProbe(codexHome: string): string {
+  try {
+    const raw = readFileSync(path.join(codexHome, 'version.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) {
+      return '0.0.0';
+    }
+
+    const latestVersion = parsed.latest_version;
+    if (typeof latestVersion === 'string') {
+      const semver = latestVersion.match(/(\d+)\.(\d+)\.(\d+)/);
+      if (semver) {
+        return `${semver[1]}.${semver[2]}.${semver[3]}`;
+      }
+    }
+
+    const version = parsed.version;
+    if (typeof version === 'string') {
+      const semver = version.match(/(\d+)\.(\d+)\.(\d+)/);
+      if (semver) {
+        return `${semver[1]}.${semver[2]}.${semver[3]}`;
+      }
+    }
+  } catch {
+    return '0.0.0';
+  }
+  return '0.0.0';
+}
+
+function resolveChatGptModelsProbeUrl(baseUrl: string, clientVersion: string): string {
+  const responsesUrl = resolveChatGptResponsesUrl(baseUrl);
+  const modelsUrl = new URL('models', responsesUrl);
+  modelsUrl.searchParams.set('client_version', clientVersion);
+  return modelsUrl.toString();
+}
+
+function parseModelsProbeResponse(raw: string): { models: ModelsProbeModel[]; parseError?: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      models: [],
+      parseError: `failed to parse JSON: ${describeError(error)}`,
+    };
+  }
+  if (!isRecord(parsed)) {
+    return {
+      models: [],
+      parseError: 'response body is not a JSON object',
+    };
+  }
+
+  const modelsUnknown = parsed.models;
+  if (!Array.isArray(modelsUnknown)) {
+    return {
+      models: [],
+      parseError: 'response JSON missing `models` array',
+    };
+  }
+
+  const models: ModelsProbeModel[] = [];
+  for (const entry of modelsUnknown) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const slug = entry.slug;
+    if (typeof slug !== 'string' || slug.length === 0) {
+      continue;
+    }
+    const model: ModelsProbeModel = { slug };
+    if (typeof entry.display_name === 'string') {
+      model.display_name = entry.display_name;
+    }
+    const contextWindow = asFiniteNumber(entry.context_window);
+    if (contextWindow !== undefined) {
+      model.context_window = contextWindow;
+    }
+    const autoCompactLimit = asFiniteNumber(entry.auto_compact_token_limit);
+    if (autoCompactLimit !== undefined) {
+      model.auto_compact_token_limit = autoCompactLimit;
+    }
+    const effectivePercent = asFiniteNumber(entry.effective_context_window_percent);
+    if (effectivePercent !== undefined) {
+      model.effective_context_window_percent = effectivePercent;
+    }
+    if (typeof entry.visibility === 'string') {
+      model.visibility = entry.visibility;
+    }
+    models.push(model);
+  }
+
+  return { models };
+}
+
+async function probeChatGptModels(
+  options: DoctorOptions,
+  codexHome: string,
+  auth: AuthDotJson | null,
+): Promise<ModelsProbeResult> {
+  if (!options.verify || !options.probeModels) {
+    return { ok: false, skipped: true };
+  }
+  if (!auth) {
+    return { ok: false, error: 'auth.json missing' };
+  }
+
+  const accessToken = auth.tokens?.access_token;
+  const accountId = getAccountId(auth);
+  if (!accessToken) {
+    return { ok: false, error: 'chatgpt access token missing' };
+  }
+  if (!accountId) {
+    return { ok: false, error: 'chatgpt account id missing' };
+  }
+
+  const baseUrl =
+    options.chatgptBaseUrl ??
+    process.env.CODEX_AUTH_DOCTOR_CHATGPT_BASE_URL ??
+    DEFAULT_CHATGPT_BASE_URL;
+  const clientVersion = resolveClientVersionForModelsProbe(codexHome);
+  const modelsUrl = resolveChatGptModelsProbeUrl(baseUrl, clientVersion);
+
+  const preflight: FetchPreflight = {
+    name: 'chatgpt_models_probe',
+    request: {
+      method: 'GET',
+      url: modelsUrl,
+      headers: {
+        accept: 'application/json',
+        authorization: redactBearer(`Bearer ${accessToken}`),
+        'chatgpt-account-id': redactAccountId(accountId),
+      },
+    },
+    proxy: describeResolvedProxyForLogs(resolveProxyForBaseUrl(baseUrl)),
+  };
+  printPreflight(options, preflight);
+
+  const client = new ChatGptClient(
+    { accessToken, accountId },
+    {
+      baseUrl,
+      codexHome,
+    },
+  );
+
+  try {
+    const response = await client.request(modelsUrl, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+      },
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: summarizeErrorBody(body || response.statusText),
+        preflight,
+      };
+    }
+
+    const parsed = parseModelsProbeResponse(body);
+    if (parsed.parseError) {
+      return {
+        ok: false,
+        status: response.status,
+        error: parsed.parseError,
+        preflight,
+      };
+    }
+
+    const modelSlugs = parsed.models.map((model) => model.slug);
+    const codex53Family = parsed.models.filter((model) => model.slug.startsWith('gpt-5.3-codex'));
+    const sparkModel = parsed.models.find((model) => model.slug === 'gpt-5.3-codex-spark') ?? null;
+
+    return {
+      ok: true,
+      status: response.status,
+      models_count: parsed.models.length,
+      model_slugs: modelSlugs,
+      codex_53_family: codex53Family,
+      spark_model: sparkModel,
+      preflight,
+    };
+  } catch (error) {
+    return { ok: false, error: describeError(error), preflight };
+  }
 }
 
 async function verifyChatGptConversation(
@@ -1382,10 +1620,12 @@ async function main(): Promise<void> {
 
   const report = buildReport(codexHome, auth);
   let chatgptVerify: VerifyResult | undefined;
+  let chatgptModelsProbe: ModelsProbeResult | undefined;
   let chatgptReasoningProbe: StreamProbeResult | undefined;
   let chatgptFuncResultProbe: FuncResultProbeResult | undefined;
   try {
     const selection = selectChatGptModel(options);
+    chatgptModelsProbe = await probeChatGptModels(options, codexHome, auth);
     chatgptVerify = await verifyChatGptConversation(options, codexHome, auth, selection);
     chatgptReasoningProbe = await probeChatGptReasoningStream(options, codexHome, auth, selection);
     chatgptFuncResultProbe = await probeChatGptFuncResultReplacement(
@@ -1398,6 +1638,7 @@ async function main(): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     chatgptVerify = { ok: false, error: message };
   }
+  report.chatgpt_models_probe = chatgptModelsProbe;
   report.chatgpt_verify = chatgptVerify;
   report.chatgpt_reasoning_probe = chatgptReasoningProbe;
   report.chatgpt_func_result_probe = chatgptFuncResultProbe;
@@ -1471,6 +1712,51 @@ async function main(): Promise<void> {
       }
       if (chatgptVerify.error) {
         console.log(`- chatgpt error: ${chatgptVerify.error}`);
+      }
+    }
+  }
+
+  if (chatgptModelsProbe) {
+    if (chatgptModelsProbe.skipped) {
+      console.log('- chatgpt /models probe: skipped');
+    } else if (chatgptModelsProbe.ok) {
+      console.log('- chatgpt /models probe: success');
+      if (chatgptModelsProbe.status) {
+        console.log(`- chatgpt /models status: ${chatgptModelsProbe.status}`);
+      }
+      if (typeof chatgptModelsProbe.models_count === 'number') {
+        console.log(`- chatgpt /models count: ${chatgptModelsProbe.models_count}`);
+      }
+      if (chatgptModelsProbe.codex_53_family && chatgptModelsProbe.codex_53_family.length > 0) {
+        const family = chatgptModelsProbe.codex_53_family.map((model) => model.slug).join(', ');
+        console.log(`- gpt-5.3-codex family: ${family}`);
+      } else {
+        console.log('- gpt-5.3-codex family: none');
+      }
+      if (chatgptModelsProbe.spark_model) {
+        const spark = chatgptModelsProbe.spark_model;
+        console.log(`- spark model found: ${spark.slug}`);
+        if (typeof spark.context_window === 'number') {
+          console.log(`- spark context_window: ${spark.context_window}`);
+        }
+        if (typeof spark.auto_compact_token_limit === 'number') {
+          console.log(`- spark auto_compact_token_limit: ${spark.auto_compact_token_limit}`);
+        }
+        if (typeof spark.effective_context_window_percent === 'number') {
+          console.log(
+            `- spark effective_context_window_percent: ${spark.effective_context_window_percent}`,
+          );
+        }
+      } else {
+        console.log('- spark model found: no');
+      }
+    } else {
+      console.log('- chatgpt /models probe: failed');
+      if (chatgptModelsProbe.status) {
+        console.log(`- chatgpt /models status: ${chatgptModelsProbe.status}`);
+      }
+      if (chatgptModelsProbe.error) {
+        console.log(`- chatgpt /models error: ${chatgptModelsProbe.error}`);
       }
     }
   }

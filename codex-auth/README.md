@@ -128,6 +128,18 @@ Dump SSE events from the verification request:
 npx @longrun-ai/codex-auth --verbose
 ```
 
+Probe remote `/models` (enabled by default) and print model metadata:
+
+```sh
+npx @longrun-ai/codex-auth --probe-models
+```
+
+Disable `/models` probe:
+
+```sh
+npx @longrun-ai/codex-auth --no-probe-models
+```
+
 Override model or base URL:
 
 ```sh
