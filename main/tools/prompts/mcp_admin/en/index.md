@@ -1,6 +1,18 @@
 # mcp_admin MCP Administration Tools Manual
 
-## Overview
+## Template (Index)
+### One-line Positioning
+- <What this toolset is for, in one sentence>
+### Tool List
+- <Enumerate core tools or point to Tools/Schema section>
+### 30-Second Quickstart
+1) <call ...>
+2) <observe ...>
+3) <next step ...>
+### Navigation
+- principles / tools / scenarios / errors
+### Boundaries vs Other Toolsets
+- <When to use this vs a sibling toolset>
 
 mcp_admin is Dominds' **MCP administration toolset** for managing MCP (Model Context Protocol) connections and resources:
 

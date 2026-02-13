@@ -1,5 +1,14 @@
 # mcp_admin Usage Scenarios
 
+## Template (Scenarios)
+### Scenario Format
+- Goal
+- Preconditions
+- Steps
+- Expected Signal
+- Failure Branch
+- Completion Criteria
+
 ## Scenario 1: Restart MCP Service
 
 ### Scenario Description

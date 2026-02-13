@@ -17,6 +17,7 @@ import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
 import type { DialogInterruptionReason, DialogRunState } from './shared/types/run-state';
 import type { WebSocketMessage } from './shared/types/wire';
+import { formatUnifiedTimestamp } from './shared/utils/time';
 
 const log = createLogger('dialog-run-state');
 
@@ -31,8 +32,76 @@ let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;
 
 const activeRunsByDialogKey: Map<string, ActiveRun> = new Map();
 
+export type RunControlCountsSnapshot = {
+  proceeding: number;
+  resumable: number;
+};
+
 export function setRunStateBroadcaster(fn: (msg: WebSocketMessage) => void): void {
   broadcastToClients = fn;
+}
+
+type RunControlBucket = 'proceeding' | 'resumable' | 'none';
+
+function classifyRunControlBucket(state: DialogRunState | undefined): RunControlBucket {
+  if (!state) return 'none';
+  if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
+    return 'proceeding';
+  }
+  if (state.kind === 'interrupted') {
+    return 'resumable';
+  }
+  return 'none';
+}
+
+function shouldBroadcastRunControlCounts(
+  previous: DialogRunState | undefined,
+  next: DialogRunState,
+): boolean {
+  return classifyRunControlBucket(previous) !== classifyRunControlBucket(next);
+}
+
+export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSnapshot> {
+  let proceeding = 0;
+  let resumable = 0;
+  const activeRunDialogKeys = new Set(activeRunsByDialogKey.keys());
+  const seenDialogKeys = new Set<string>();
+  const dialogIds = await DialogPersistence.listAllDialogIds('running');
+  for (const dialogId of dialogIds) {
+    const dialogKey = dialogId.key();
+    seenDialogKeys.add(dialogKey);
+    // Active in-memory drives are authoritative for "proceeding". This avoids transient
+    // under-count windows when runState persistence lags behind an already started drive.
+    if (activeRunDialogKeys.has(dialogKey)) {
+      proceeding++;
+      continue;
+    }
+    const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    const state = latest?.runState;
+    if (!state) continue;
+    if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
+      proceeding++;
+    } else if (state.kind === 'interrupted') {
+      resumable++;
+    }
+  }
+  for (const dialogKey of activeRunDialogKeys) {
+    if (!seenDialogKeys.has(dialogKey)) {
+      proceeding++;
+    }
+  }
+  return { proceeding, resumable };
+}
+
+export async function broadcastRunControlCountsSnapshot(): Promise<void> {
+  if (!broadcastToClients) return;
+  const counts = await getRunControlCountsSnapshot();
+  broadcastToClients({
+    type: 'run_control_counts_evt',
+    proceeding: counts.proceeding,
+    resumable: counts.resumable,
+    timestamp: formatUnifiedTimestamp(new Date()),
+  });
 }
 
 export function hasActiveRun(dialogId: DialogID): boolean {
@@ -74,10 +143,12 @@ export async function setDialogRunState(
     return;
   }
 
+  let previousRunState: DialogRunState | undefined;
   // "dead" is irreversible. Once a dialog is marked dead, do not allow overwriting it with
   // another state (best-effort; races may still exist across concurrent writers).
   try {
     const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    previousRunState = latest?.runState;
     if (
       dialogId.selfId !== dialogId.rootId &&
       latest &&
@@ -116,6 +187,15 @@ export async function setDialogRunState(
 
   if (broadcastToClients) {
     broadcastToClients(typed);
+  }
+  if (shouldBroadcastRunControlCounts(previousRunState, runState)) {
+    try {
+      await broadcastRunControlCountsSnapshot();
+    } catch (err) {
+      log.warn('Failed to broadcast run-control counts snapshot', err, {
+        dialogId: dialogId.valueOf(),
+      });
+    }
   }
 }
 

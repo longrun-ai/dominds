@@ -18,6 +18,7 @@
     "dev": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "test": "echo 'Dominds backend: Use lint:types for type checking.'",
     "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
+    "manual": "pnpm exec tsx main/cli/manual.ts",
     "prepare": "pnpm run build:deps",
     "prepublishOnly": "pnpm run build",
     "build": "pnpm run build:deps && pnpm run build:backend && pnpm run build:frontend",

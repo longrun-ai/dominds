@@ -1528,6 +1528,14 @@ export class DomindsDialogContainer extends HTMLElement {
     return out;
   }
 
+  private extractSessionSlugFromHeadline(headline: string): string | undefined {
+    const sessionSlugMatch = headline.match(/sessionSlug:\s*([^\u00b7]+)/u);
+    if (!sessionSlugMatch) return undefined;
+    const raw = sessionSlugMatch[1]?.trim();
+    if (!raw) return undefined;
+    return raw;
+  }
+
   private renderMentionList(
     section: HTMLElement,
     mentions: readonly string[],
@@ -2189,11 +2197,21 @@ export class DomindsDialogContainer extends HTMLElement {
       event.callName === 'tellask' || event.callName === 'tellaskSessionless'
         ? event.mentionList
         : undefined;
+    const sessionSlugForNarrative = (() => {
+      if (event.callName !== 'tellask') return undefined;
+      if (normalizedCallId === '') return undefined;
+      const callSection = this.callingSectionByCallId.get(normalizedCallId);
+      if (!callSection) return undefined;
+      const headlineEl = callSection.querySelector('.calling-headline') as HTMLElement | null;
+      if (!headlineEl) return undefined;
+      return this.extractSessionSlugFromHeadline(headlineEl.textContent ?? '');
+    })();
     const responseNarr = formatTeammateResponseContent({
       callName: event.callName,
       responderId: event.responderId,
       requesterId,
       mentionList: responseMentionList,
+      sessionSlug: sessionSlugForNarrative,
       tellaskContent: event.tellaskContent,
       responseBody: event.response,
       language: this.serverWorkLanguage,
@@ -2723,9 +2741,20 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private upsertUserAnswerCallSiteLinks(bubble: HTMLElement, callIds: readonly string[]): void {
-    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
-    if (!body) return;
-    const existing = body.querySelector('.user-answer-callsite-links') as HTMLElement | null;
+    const headerRight = bubble.querySelector('.bubble-header-right') as HTMLElement | null;
+    if (!headerRight) return;
+    let actions = headerRight.querySelector('.bubble-anchor-actions') as HTMLElement | null;
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.className = 'bubble-anchor-actions';
+      const shareBtn = headerRight.querySelector('.bubble-share-link-btn');
+      if (shareBtn) {
+        headerRight.insertBefore(actions, shareBtn);
+      } else {
+        headerRight.appendChild(actions);
+      }
+    }
+    const existing = actions.querySelector('.user-answer-callsite-actions') as HTMLElement | null;
     if (callIds.length === 0) {
       existing?.remove();
       bubble.removeAttribute('data-q4h-answer-call-ids');
@@ -2734,7 +2763,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     bubble.setAttribute('data-q4h-answer-call-ids', callIds.join(','));
     const t = getUiStrings(this.uiLanguage);
-    const callSiteButtons = callIds
+    const html = callIds
       .map((callId, index) => {
         const label = `#${String(index + 1)}`;
         const safeCallId = this.escapeHtml(callId);
@@ -2743,24 +2772,15 @@ export class DomindsDialogContainer extends HTMLElement {
         return `<button type="button" class="user-answer-callsite-link-btn" data-call-id="${safeCallId}" aria-label="${safeTitle}" title="${safeTitle}">${safeLabel}</button>`;
       })
       .join('');
-    const html = `
-      <div class="user-answer-callsite-label">${this.escapeHtml(t.q4hAnswerCallSitesLabel)}</div>
-      <div class="user-answer-callsite-actions">${callSiteButtons}</div>
-    `;
     if (existing) {
       existing.innerHTML = html;
       return;
     }
 
     const linksEl = document.createElement('div');
-    linksEl.className = 'user-answer-callsite-links';
+    linksEl.className = 'user-answer-callsite-actions';
     linksEl.innerHTML = html;
-    const divider = body.querySelector('.user-response-divider');
-    if (divider?.nextSibling) {
-      body.insertBefore(linksEl, divider.nextSibling);
-      return;
-    }
-    body.appendChild(linksEl);
+    actions.appendChild(linksEl);
   }
 
   // Render <hr/> separator between user content and AI response
@@ -3631,22 +3651,9 @@ export class DomindsDialogContainer extends HTMLElement {
         margin: 8px 0;
       }
 
-      .user-answer-callsite-links {
-        margin-top: -2px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-
-      .user-answer-callsite-label {
-        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        font-size: 11px;
-        line-height: 1.3;
-      }
-
       .user-answer-callsite-actions {
         display: inline-flex;
+        align-items: center;
         flex-wrap: wrap;
         gap: 6px;
       }

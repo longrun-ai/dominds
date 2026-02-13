@@ -12,7 +12,6 @@ import type {
 import type { LanguageCode } from '../shared/types/language';
 
 export interface ArchivedDialogListProps {
-  dialogs: ApiRootDialogResponse[];
   maxHeight?: string;
   onSelect?: (dialog: DialogInfo) => void;
   uiLanguage: LanguageCode;
@@ -47,29 +46,37 @@ type TaskGroup = {
   roots: RootGroup[];
 };
 
-type ListState = { kind: 'empty' } | { kind: 'ready'; groups: TaskGroup[] };
-
 type SelectionState =
   | { kind: 'none' }
   | { kind: 'selected'; rootId: string; selfId: string; isRoot: boolean };
 
+type DialogDomEntry = {
+  key: string;
+  rootId: string;
+  selfId: string;
+  el: HTMLElement;
+};
+
 export class ArchivedDialogList extends HTMLElement {
   private props: ArchivedDialogListProps = {
-    dialogs: [],
     maxHeight: 'none',
     uiLanguage: 'en',
     loading: false,
   };
-  private listState: ListState = { kind: 'empty' };
   private selectionState: SelectionState = { kind: 'none' };
+  private selectedKey: string | null = null;
   private listEl: HTMLElement | null = null;
-  private rootIndex: Map<string, ApiRootDialogResponse> = new Map();
-  private subIndex: Map<string, Map<string, ApiRootDialogResponse>> = new Map();
+  private dialogIndex: Map<string, DialogDomEntry> = new Map();
   private collapsedTasks: Set<string> = new Set();
   private collapsedRoots: Set<string> = new Set();
   private knownRootIds: Set<string> = new Set();
   // Request markers only; this is not a data cache.
   private requestedSubdialogRoots: Set<string> = new Set();
+  private snapshotDialogs: ApiRootDialogResponse[] = [];
+  private snapshotGroups: TaskGroup[] = [];
+  private visibleRootCountByTask: Map<string, number> = new Map();
+  private visibleSubdialogCountByRoot: Map<string, number> = new Map();
+  private static readonly SHOW_MORE_STEP = 5;
 
   constructor() {
     super();
@@ -77,31 +84,86 @@ export class ArchivedDialogList extends HTMLElement {
   }
 
   connectedCallback(): void {
-    this.updateListState(this.props.dialogs);
     this.render();
   }
 
   public setProps(props: Partial<ArchivedDialogListProps>): void {
+    const prevLanguage = this.props.uiLanguage;
     this.props = { ...this.props, ...props };
-    this.updateListState(this.props.dialogs);
-    this.render();
+    if (this.props.loading) {
+      this.renderLoading();
+      return;
+    }
+    if (prevLanguage !== this.props.uiLanguage || props.maxHeight) {
+      this.refreshFromDom();
+    }
   }
 
   public setDialogs(dialogs: ApiRootDialogResponse[]): void {
-    this.props = { ...this.props, dialogs };
-    this.updateListState(dialogs);
-    this.renderList();
+    this.applySnapshot(dialogs);
   }
 
   public setCurrentDialog(dialog: DialogInfo): void {
     const isRoot = dialog.selfId === dialog.rootId;
-    const match = this.findDialogByIds(dialog.rootId, dialog.selfId, isRoot);
+    let match = this.findDialogByIds(dialog.rootId, dialog.selfId, isRoot);
     if (!match) {
-      this.selectionState = { kind: 'none' };
-      this.renderList();
+      const didExpand = this.ensureDialogVisible(dialog.rootId, dialog.selfId, isRoot);
+      if (didExpand) {
+        this.applySnapshot(this.snapshotDialogs);
+        match = this.findDialogByIds(dialog.rootId, dialog.selfId, isRoot);
+      }
+    }
+    if (!match) {
+      this.clearSelection();
       return;
     }
     this.applySelection(match);
+  }
+
+  public updateDialogEntry(
+    rootId: string,
+    selfId: string,
+    patch: Partial<ApiRootDialogResponse>,
+  ): boolean {
+    if (!rootId) return false;
+    const targetSelf = selfId || rootId;
+    const targetKey = this.dialogKey(rootId, targetSelf);
+    const cacheIndex = this.snapshotDialogs.findIndex(
+      (dialog) => this.getDialogKey(dialog) === targetKey,
+    );
+    if (cacheIndex >= 0) {
+      const cached = this.snapshotDialogs[cacheIndex];
+      const nextCached: ApiRootDialogResponse = { ...cached, ...patch };
+      nextCached.rootId = cached.rootId;
+      nextCached.selfId = cached.selfId;
+      this.snapshotDialogs[cacheIndex] = nextCached;
+      this.snapshotGroups = this.buildGroups(this.snapshotDialogs);
+    }
+    if (this.dialogIndex.size === 0) {
+      this.refreshFromDom();
+    }
+    const entry = this.dialogIndex.get(targetKey);
+    if (!entry) return false;
+    const existing = this.decodeDialogDataset(entry.el);
+    if (!existing) return false;
+    const next: ApiRootDialogResponse = { ...existing, ...patch };
+    next.rootId = existing.rootId;
+    next.selfId = existing.selfId;
+
+    entry.el.dataset.dialogJson = this.encodeDialogDataset(next);
+    if (patch.lastModified !== undefined) {
+      const timeEl = entry.el.querySelector('.dialog-time');
+      if (timeEl instanceof HTMLElement) {
+        timeEl.textContent = next.lastModified || '';
+      }
+    }
+    if (patch.subdialogCount !== undefined && targetSelf === rootId) {
+      const countEl = entry.el.querySelector('.dialog-count');
+      if (countEl instanceof HTMLElement) {
+        countEl.textContent = String(typeof next.subdialogCount === 'number' ? next.subdialogCount : 0);
+      }
+    }
+    return true;
   }
 
   private getDialogDisplayCallsign(dialog: ApiRootDialogResponse): string {
@@ -112,53 +174,14 @@ export class ArchivedDialogList extends HTMLElement {
     return `@${dialog.agentId}`;
   }
 
-  private updateListState(dialogs: ApiRootDialogResponse[]): void {
-    const validated = this.validateDialogs(dialogs);
-    const groups = this.buildGroups(validated);
-    const rootIds = new Set<string>(validated.map((dialog) => dialog.rootId));
-    const loadedSubdialogRoots = new Set<string>();
-    for (const dialog of validated) {
-      if (dialog.selfId) loadedSubdialogRoots.add(dialog.rootId);
-    }
-    for (const rootId of rootIds) {
-      if (!this.knownRootIds.has(rootId)) {
-        this.knownRootIds.add(rootId);
-        this.collapsedRoots.add(rootId);
-      }
-    }
-    for (const existing of Array.from(this.knownRootIds)) {
-      if (!rootIds.has(existing)) {
-        this.knownRootIds.delete(existing);
-        this.collapsedRoots.delete(existing);
-        this.requestedSubdialogRoots.delete(existing);
-      }
-    }
-    // Once a root's subdialogs are present, the request has been satisfied.
-    // We clear markers so a later expand can refetch after collapse-prune.
-    // Frontend never keeps a global/all-dialog cache.
-    for (const existing of Array.from(this.requestedSubdialogRoots)) {
-      if (loadedSubdialogRoots.has(existing)) {
-        this.requestedSubdialogRoots.delete(existing);
-      }
-    }
-    const taskPaths = new Set<string>(groups.map((group) => group.taskDocPath));
-    for (const existing of Array.from(this.collapsedTasks)) {
-      if (!taskPaths.has(existing)) {
-        this.collapsedTasks.delete(existing);
-      }
-    }
-    if (groups.length === 0) {
-      this.listState = { kind: 'empty' };
-    } else {
-      this.listState = { kind: 'ready', groups };
-    }
-    const selection = this.selectionState;
-    if (selection.kind === 'selected') {
-      const hasSelection = validated.some((dialog) => this.isSelectedDialog(dialog, selection));
-      if (!hasSelection) {
-        this.selectionState = { kind: 'none' };
-      }
-    }
+  private dialogKey(rootId: string, selfId: string): string {
+    return selfId === rootId ? rootId : `${rootId}#${selfId}`;
+  }
+
+  private getDialogKey(dialog: ApiRootDialogResponse): string {
+    const rootId = dialog.rootId;
+    const selfId = dialog.selfId ? dialog.selfId : dialog.rootId;
+    return this.dialogKey(rootId, selfId);
   }
 
   private validateDialogs(dialogs: ApiRootDialogResponse[]): ApiRootDialogResponse[] {
@@ -309,88 +332,276 @@ export class ArchivedDialogList extends HTMLElement {
 
   private renderList(): void {
     if (!this.listEl) return;
-
-    const t = getUiStrings(this.props.uiLanguage);
-
     if (this.props.loading) {
-      this.listEl.innerHTML = `
-        <div class="empty">${t.loading}</div>
-      `;
+      this.renderLoading();
+      return;
+    }
+    this.refreshFromDom();
+  }
+
+  public applySnapshot(dialogs: ApiRootDialogResponse[]): void {
+    if (!this.listEl) return;
+    if (this.props.loading) {
+      this.renderLoading();
       return;
     }
 
-    this.rootIndex.clear();
-    this.subIndex.clear();
-
-    switch (this.listState.kind) {
-      case 'empty': {
-        this.listEl.innerHTML = `
-          <div class="empty">${t.noArchivedDialogs}</div>
-        `;
-        return;
+    const validated = this.validateDialogs(dialogs);
+    this.snapshotDialogs = [...validated];
+    const groups = this.buildGroups(validated);
+    this.snapshotGroups = groups;
+    const rootIds = new Set<string>(validated.map((dialog) => dialog.rootId));
+    const loadedSubdialogRoots = new Set<string>();
+    for (const dialog of validated) {
+      if (dialog.selfId) loadedSubdialogRoots.add(dialog.rootId);
+    }
+    for (const rootId of rootIds) {
+      if (!this.knownRootIds.has(rootId)) {
+        this.knownRootIds.add(rootId);
+        this.collapsedRoots.add(rootId);
       }
-      case 'ready': {
-        const html = this.listState.groups
-          .map((group) => {
-            const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
-            const taskToggle = this.renderToggleIcon(taskCollapsed);
-            const rootNodes = group.roots
-              .map((rootGroup) => {
-                const rootDialog = rootGroup.root;
-                const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
-                const rootToggle = this.renderToggleIcon(rootCollapsed);
-                const rootRow = rootDialog
-                  ? this.renderRootRow(rootDialog, rootToggle, rootGroup.subdialogs.length)
-                  : `
-                    <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
-                      <div class="dialog-row">
-                        <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button">${rootToggle}</button>
-                        <span class="dialog-title">${t.missingRoot}</span>
-                        <span class="dialog-meta-right">
-                          <span class="dialog-count">${rootGroup.subdialogs.length}</span>
-                          <span class="dialog-status">${rootGroup.rootId}</span>
-                        </span>
-                      </div>
-                    </div>
-                  `;
-                const subNodes = rootGroup.subdialogs
-                  .map((subdialog) => this.renderDialogRow(subdialog))
-                  .join('');
-                const subCollapsed = taskCollapsed || rootCollapsed;
-                return `
-                  <div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}">
-                    ${rootRow}
-                    <div class="sdlg-children ${subCollapsed ? 'collapsed' : ''}">${subNodes}</div>
-                  </div>
-                `;
-              })
-              .join('');
-            return `
-              <div class="task-group task-node">
-                <div class="task-title" data-task-path="${group.taskDocPath}">
-                  <div class="task-title-left">
-                    <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button">${taskToggle}</button>
-                    <span>${group.taskDocPath}</span>
-                  </div>
-                  <div class="task-title-right">
-                    <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
-                      ${this.renderCreateIcon()}
-                    </button>
-                    <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
-                      ${this.renderReviveIcon()}
-                    </button>
-                    <span class="dialog-count">${group.roots.length}</span>
+    }
+    for (const existing of Array.from(this.knownRootIds)) {
+      if (!rootIds.has(existing)) {
+        this.knownRootIds.delete(existing);
+        this.collapsedRoots.delete(existing);
+        this.requestedSubdialogRoots.delete(existing);
+        this.visibleSubdialogCountByRoot.delete(existing);
+      }
+    }
+    for (const existing of Array.from(this.requestedSubdialogRoots)) {
+      if (loadedSubdialogRoots.has(existing)) {
+        this.requestedSubdialogRoots.delete(existing);
+      }
+    }
+    const taskPaths = new Set<string>(groups.map((group) => group.taskDocPath));
+    for (const existing of Array.from(this.collapsedTasks)) {
+      if (!taskPaths.has(existing)) {
+        this.collapsedTasks.delete(existing);
+      }
+    }
+    for (const taskPath of taskPaths) {
+      if (!this.visibleRootCountByTask.has(taskPath)) {
+        this.visibleRootCountByTask.set(taskPath, ArchivedDialogList.SHOW_MORE_STEP);
+      }
+    }
+    for (const existing of Array.from(this.visibleRootCountByTask.keys())) {
+      if (!taskPaths.has(existing)) {
+        this.visibleRootCountByTask.delete(existing);
+      }
+    }
+    for (const rootId of rootIds) {
+      if (!this.visibleSubdialogCountByRoot.has(rootId)) {
+        this.visibleSubdialogCountByRoot.set(rootId, ArchivedDialogList.SHOW_MORE_STEP);
+      }
+    }
+    for (const existing of Array.from(this.visibleSubdialogCountByRoot.keys())) {
+      if (!rootIds.has(existing)) {
+        this.visibleSubdialogCountByRoot.delete(existing);
+      }
+    }
+
+    if (this.selectedKey) {
+      const [rootId, selfId] = this.splitDialogKey(this.selectedKey);
+      if (rootId && selfId) {
+        this.selectionState = {
+          kind: 'selected',
+          rootId,
+          selfId,
+          isRoot: rootId === selfId,
+        };
+      }
+    }
+
+    if (this.selectionState.kind === 'selected') {
+      const hasSelection = validated.some((dialog) => this.isSelectedDialog(dialog, this.selectionState));
+      if (!hasSelection) {
+        this.clearSelection();
+      } else {
+        this.ensureDialogVisible(
+          this.selectionState.rootId,
+          this.selectionState.selfId,
+          this.selectionState.isRoot,
+        );
+      }
+    }
+
+    const t = getUiStrings(this.props.uiLanguage);
+    if (groups.length === 0) {
+      this.listEl.innerHTML = `
+        <div class="empty">${t.noArchivedDialogs}</div>
+      `;
+      this.refreshFromDom();
+      return;
+    }
+
+    const html = groups
+      .map((group) => {
+        const taskCollapsed = this.collapsedTasks.has(group.taskDocPath);
+        const taskToggle = this.renderToggleIcon(taskCollapsed);
+        const visibleRootCount =
+          this.visibleRootCountByTask.get(group.taskDocPath) ?? ArchivedDialogList.SHOW_MORE_STEP;
+        const visibleRoots = group.roots.slice(0, visibleRootCount);
+        const hiddenRootCount = Math.max(group.roots.length - visibleRoots.length, 0);
+        const rootNodes = visibleRoots
+          .map((rootGroup) => {
+            const rootDialog = rootGroup.root;
+            const rootCollapsed = this.collapsedRoots.has(rootGroup.rootId);
+            const rootToggle = this.renderToggleIcon(rootCollapsed);
+            const rootRow = rootDialog
+              ? this.renderRootRow(rootDialog, rootToggle, rootGroup.subdialogs.length)
+              : `
+                <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
+                  <div class="dialog-row">
+                    <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button">${rootToggle}</button>
+                    <span class="dialog-title">${t.missingRoot}</span>
+                    <span class="dialog-meta-right">
+                      <span class="dialog-count">${rootGroup.subdialogs.length}</span>
+                      <span class="dialog-status">${rootGroup.rootId}</span>
+                    </span>
                   </div>
                 </div>
-                <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">${rootNodes}</div>
+              `;
+            const visibleSubdialogCount =
+              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ??
+              ArchivedDialogList.SHOW_MORE_STEP;
+            const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
+            const hiddenSubdialogCount = Math.max(
+              rootGroup.subdialogs.length - visibleSubdialogs.length,
+              0,
+            );
+            const subNodes = visibleSubdialogs
+              .map((subdialog) => this.renderDialogRow(subdialog))
+              .join('');
+            const subShowMore =
+              hiddenSubdialogCount > 0
+                ? this.renderShowMoreButton({
+                    action: 'show-more-subdialogs',
+                    rootId: rootGroup.rootId,
+                    hiddenCount: hiddenSubdialogCount,
+                  })
+                : '';
+            const subCollapsed = taskCollapsed || rootCollapsed;
+            return `
+              <div class="rdlg-node" data-rdlg-root-id="${rootGroup.rootId}">
+                ${rootRow}
+                <div class="sdlg-children ${subCollapsed ? 'collapsed' : ''}">
+                  ${subNodes}
+                  ${subShowMore}
+                </div>
               </div>
             `;
           })
           .join('');
-        this.listEl.innerHTML = html;
-        return;
-      }
+        const rootShowMore =
+          hiddenRootCount > 0
+            ? this.renderShowMoreButton({
+                action: 'show-more-roots',
+                taskDocPath: group.taskDocPath,
+                hiddenCount: hiddenRootCount,
+              })
+            : '';
+        return `
+          <div class="task-group task-node">
+            <div class="task-title" data-task-path="${group.taskDocPath}">
+              <div class="task-title-left">
+                <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button">${taskToggle}</button>
+                <span>${group.taskDocPath}</span>
+              </div>
+              <div class="task-title-right">
+                <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
+                  ${this.renderCreateIcon()}
+                </button>
+                <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
+                  ${this.renderReviveIcon()}
+                </button>
+                <span class="dialog-count">${group.roots.length}</span>
+              </div>
+            </div>
+            <div class="task-rows ${taskCollapsed ? 'collapsed' : ''}">
+              ${rootNodes}
+              ${rootShowMore}
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+    this.listEl.innerHTML = html;
+    this.refreshFromDom();
+  }
+
+  private renderLoading(): void {
+    if (!this.listEl) return;
+    const t = getUiStrings(this.props.uiLanguage);
+    this.listEl.innerHTML = `
+      <div class="empty">${t.loading}</div>
+    `;
+    this.dialogIndex.clear();
+  }
+
+  private encodeDialogDataset(dialog: ApiRootDialogResponse): string {
+    return encodeURIComponent(JSON.stringify(dialog));
+  }
+
+  private decodeDialogDataset(el: HTMLElement): ApiRootDialogResponse | null {
+    const raw = el.dataset.dialogJson;
+    if (!raw) return null;
+    try {
+      return JSON.parse(decodeURIComponent(raw)) as ApiRootDialogResponse;
+    } catch {
+      return null;
     }
+  }
+
+  private refreshFromDom(): void {
+    if (!this.listEl) return;
+    this.dialogIndex.clear();
+    const items = this.listEl.querySelectorAll<HTMLElement>('.dialog-item[data-root-id]');
+    items.forEach((el) => {
+      if (!el.dataset.dialogJson) return;
+      const rootId = (el.getAttribute('data-root-id') ?? '').trim();
+      if (!rootId) return;
+      const selfRaw = (el.getAttribute('data-self-id') ?? '').trim();
+      const selfId = selfRaw === '' ? rootId : selfRaw;
+      const key = this.dialogKey(rootId, selfId);
+      this.dialogIndex.set(key, { key, rootId, selfId, el });
+    });
+
+    if (this.listEl) {
+      this.listEl
+        .querySelectorAll<HTMLElement>('.dialog-item.selected')
+        .forEach((node) => node.classList.remove('selected'));
+    }
+
+    if (this.selectedKey && this.dialogIndex.has(this.selectedKey)) {
+      const entry = this.dialogIndex.get(this.selectedKey);
+      if (entry) {
+        entry.el.classList.add('selected');
+        this.selectionState = {
+          kind: 'selected',
+          rootId: entry.rootId,
+          selfId: entry.selfId,
+          isRoot: entry.selfId === entry.rootId,
+        };
+      }
+    } else if (this.selectedKey) {
+      this.clearSelection();
+    }
+  }
+
+  private clearSelection(): void {
+    if (this.listEl) {
+      const selected = this.listEl.querySelector('.dialog-item.selected');
+      selected?.classList.remove('selected');
+    }
+    this.selectionState = { kind: 'none' };
+    this.selectedKey = null;
+  }
+
+  private splitDialogKey(key: string): [string, string] {
+    const idx = key.indexOf('#');
+    if (idx < 0) return [key, key];
+    return [key.slice(0, idx), key.slice(idx + 1) || key.slice(0, idx)];
   }
 
   private renderToggleIcon(collapsed: boolean): string {
@@ -453,22 +664,60 @@ export class ArchivedDialogList extends HTMLElement {
     `;
   }
 
+  private renderShowMoreIcon(): string {
+    return `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <polyline points="6 8 12 14 18 8"></polyline>
+        <polyline points="6 13 12 19 18 13"></polyline>
+      </svg>
+    `;
+  }
+
+  private renderShowMoreButton(args: {
+    action: 'show-more-roots' | 'show-more-subdialogs';
+    hiddenCount: number;
+    taskDocPath?: string;
+    rootId?: string;
+  }): string {
+    const actionAttrs =
+      args.action === 'show-more-roots'
+        ? `data-task-path="${args.taskDocPath ?? ''}"`
+        : `data-root-id="${args.rootId ?? ''}"`;
+    return `
+      <div class="show-more-row">
+        <button
+          class="action icon-button show-more-button"
+          data-action="${args.action}"
+          ${actionAttrs}
+          type="button"
+          aria-label="Show ${String(args.hiddenCount)} more"
+          title="Show ${String(args.hiddenCount)} more"
+        >
+          ${this.renderShowMoreIcon()}
+        </button>
+      </div>
+    `;
+  }
+
   private renderRootRow(
     dialog: ApiRootDialogResponse,
     toggleIcon: string,
     subdialogCount: number,
   ): string {
-    this.indexDialog(dialog);
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
     const dialogId = dialog.rootId;
     const updatedAt = dialog.lastModified || '';
+    const dialogKey = this.getDialogKey(dialog);
+    const dialogJson = this.encodeDialogDataset(dialog);
 
     return `
       <div
         class="dialog-item root-dialog${isSelected ? ' selected' : ''}"
         data-root-id="${dialog.rootId}"
         data-self-id=""
+        data-dialog-key="${dialogKey}"
+        data-dialog-json="${dialogJson}"
       >
         <div class="dialog-row">
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button">${toggleIcon}</button>
@@ -503,18 +752,21 @@ export class ArchivedDialogList extends HTMLElement {
   }
 
   private renderDialogRow(dialog: ApiRootDialogResponse): string {
-    this.indexDialog(dialog);
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
     const updatedAt = dialog.lastModified || '';
     const sessionSlugMark = dialog.sessionSlug ?? '';
     const callsign = this.getDialogDisplayCallsign(dialog);
+    const dialogKey = this.getDialogKey(dialog);
+    const dialogJson = this.encodeDialogDataset(dialog);
 
     return `
       <div
         class="dialog-item sub-dialog sdlg-node${isSelected ? ' selected' : ''}"
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
+        data-dialog-key="${dialogKey}"
+        data-dialog-json="${dialogJson}"
       >
         <div class="dialog-row dialog-subrow">
           <span class="dialog-title">${callsign}</span>
@@ -550,6 +802,20 @@ export class ArchivedDialogList extends HTMLElement {
         }
         return;
       }
+      if (action === 'show-more-roots') {
+        const taskPath = actionEl.getAttribute('data-task-path');
+        if (taskPath) {
+          this.showMoreRoots(taskPath);
+        }
+        return;
+      }
+      if (action === 'show-more-subdialogs') {
+        const rootId = actionEl.getAttribute('data-root-id');
+        if (rootId) {
+          this.showMoreSubdialogs(rootId);
+        }
+        return;
+      }
       if (action === 'task-create-dialog') {
         const taskDocPath = actionEl.getAttribute('data-task-path');
         if (taskDocPath) {
@@ -579,7 +845,8 @@ export class ArchivedDialogList extends HTMLElement {
       if (action === 'root-create-dialog') {
         const rootId = actionEl.getAttribute('data-root-id');
         if (rootId) {
-          const rootDialog = this.rootIndex.get(rootId);
+          const rootEl = this.findDialogElement(rootId, rootId);
+          const rootDialog = rootEl ? this.decodeDialogDataset(rootEl) : null;
           if (rootDialog) {
             this.emitCreateDialogAction({
               kind: 'root',
@@ -640,28 +907,42 @@ export class ArchivedDialogList extends HTMLElement {
 
   private applySelection(dialog: ApiRootDialogResponse): void {
     const isRoot = !dialog.selfId;
+    const key = this.getDialogKey(dialog);
     this.selectionState = {
       kind: 'selected',
       rootId: dialog.rootId,
       selfId: dialog.selfId ?? dialog.rootId,
       isRoot,
     };
+    this.selectedKey = key;
     this.collapsedTasks.delete(dialog.taskDocPath);
     this.collapsedRoots.delete(dialog.rootId);
-    this.renderList();
-  }
-
-  private indexDialog(dialog: ApiRootDialogResponse): void {
-    if (dialog.selfId) {
-      let subs = this.subIndex.get(dialog.rootId);
-      if (!subs) {
-        subs = new Map<string, ApiRootDialogResponse>();
-        this.subIndex.set(dialog.rootId, subs);
+    if (this.listEl) {
+      const selected = this.listEl.querySelector('.dialog-item.selected');
+      if (selected instanceof HTMLElement) {
+        selected.classList.remove('selected');
       }
-      subs.set(dialog.selfId, dialog);
-      return;
+      if (this.dialogIndex.size === 0) {
+        this.refreshFromDom();
+      }
+      const entry = this.dialogIndex.get(key);
+      entry?.el.classList.add('selected');
+
+      const taskTitle = this.listEl.querySelector(
+        `.task-title[data-task-path="${this.escapeSelector(dialog.taskDocPath)}"]`,
+      );
+      const taskGroup = taskTitle?.closest('.task-group');
+      const taskRows = taskGroup?.querySelector('.task-rows');
+      if (taskRows instanceof HTMLElement) {
+        taskRows.classList.remove('collapsed');
+      }
+      const rootChildren = this.listEl.querySelector(
+        `.rdlg-node[data-rdlg-root-id="${this.escapeSelector(dialog.rootId)}"] > .sdlg-children`,
+      );
+      if (rootChildren instanceof HTMLElement) {
+        rootChildren.classList.remove('collapsed');
+      }
     }
-    this.rootIndex.set(dialog.rootId, dialog);
   }
 
   private findDialogByIds(
@@ -669,19 +950,10 @@ export class ArchivedDialogList extends HTMLElement {
     selfId: string,
     isRoot: boolean,
   ): ApiRootDialogResponse | undefined {
-    if (isRoot) {
-      const rootDialog = this.rootIndex.get(rootId);
-      if (rootDialog) return rootDialog;
-      return this.props.dialogs.find((dialog) => dialog.rootId === rootId && !dialog.selfId);
-    }
-    const subs = this.subIndex.get(rootId);
-    if (subs) {
-      const subDialog = subs.get(selfId);
-      if (subDialog) return subDialog;
-    }
-    return this.props.dialogs.find(
-      (dialog) => dialog.rootId === rootId && dialog.selfId === selfId,
-    );
+    const targetSelf = isRoot ? rootId : selfId;
+    const el = this.findDialogElement(rootId, targetSelf);
+    if (!el) return undefined;
+    return this.decodeDialogDataset(el) ?? undefined;
   }
 
   private isSelectedDialog(dialog: ApiRootDialogResponse, selection: SelectionState): boolean {
@@ -693,13 +965,63 @@ export class ArchivedDialogList extends HTMLElement {
     return dialog.selfId === selection.selfId;
   }
 
+  private ensureDialogVisible(rootId: string, selfId: string, isRoot: boolean): boolean {
+    if (this.snapshotGroups.length === 0) return false;
+    let changed = false;
+    for (const group of this.snapshotGroups) {
+      const rootIndex = group.roots.findIndex((root) => root.rootId === rootId);
+      if (rootIndex < 0) continue;
+      const currentTaskLimit =
+        this.visibleRootCountByTask.get(group.taskDocPath) ?? ArchivedDialogList.SHOW_MORE_STEP;
+      if (currentTaskLimit < rootIndex + 1) {
+        this.visibleRootCountByTask.set(group.taskDocPath, rootIndex + 1);
+        changed = true;
+      }
+      if (!isRoot) {
+        const rootGroup = group.roots[rootIndex];
+        const subIndex = rootGroup.subdialogs.findIndex((sub) => sub.selfId === selfId);
+        if (subIndex >= 0) {
+          const currentSubLimit =
+            this.visibleSubdialogCountByRoot.get(rootId) ?? ArchivedDialogList.SHOW_MORE_STEP;
+          if (currentSubLimit < subIndex + 1) {
+            this.visibleSubdialogCountByRoot.set(rootId, subIndex + 1);
+            changed = true;
+          }
+        }
+      }
+      break;
+    }
+    return changed;
+  }
+
+  private showMoreRoots(taskDocPath: string): void {
+    const current =
+      this.visibleRootCountByTask.get(taskDocPath) ?? ArchivedDialogList.SHOW_MORE_STEP;
+    this.visibleRootCountByTask.set(taskDocPath, current + ArchivedDialogList.SHOW_MORE_STEP);
+    this.applySnapshot(this.snapshotDialogs);
+  }
+
+  private showMoreSubdialogs(rootId: string): void {
+    const current = this.visibleSubdialogCountByRoot.get(rootId) ?? ArchivedDialogList.SHOW_MORE_STEP;
+    this.visibleSubdialogCountByRoot.set(rootId, current + ArchivedDialogList.SHOW_MORE_STEP);
+    this.applySnapshot(this.snapshotDialogs);
+  }
+
   private toggleTask(taskPath: string): void {
     if (this.collapsedTasks.has(taskPath)) {
       this.collapsedTasks.delete(taskPath);
     } else {
       this.collapsedTasks.add(taskPath);
     }
-    this.renderList();
+    if (!this.listEl) return;
+    const title = this.listEl.querySelector(
+      `.task-title[data-task-path="${this.escapeSelector(taskPath)}"]`,
+    );
+    const taskGroup = title?.closest('.task-group');
+    const taskRows = taskGroup?.querySelector('.task-rows');
+    if (taskRows instanceof HTMLElement) {
+      taskRows.classList.toggle('collapsed', this.collapsedTasks.has(taskPath));
+    }
   }
 
   private toggleRoot(rootId: string): void {
@@ -726,7 +1048,14 @@ export class ArchivedDialogList extends HTMLElement {
         }),
       );
     }
-    this.renderList();
+    if (this.listEl) {
+      const rootChildren = this.listEl.querySelector(
+        `.rdlg-node[data-rdlg-root-id="${this.escapeSelector(rootId)}"] > .sdlg-children`,
+      );
+      if (rootChildren instanceof HTMLElement) {
+        rootChildren.classList.toggle('collapsed', this.collapsedRoots.has(rootId));
+      }
+    }
   }
 
   private emitStatusAction(detail: ApiMoveDialogsRequest): void {
@@ -788,7 +1117,30 @@ export class ArchivedDialogList extends HTMLElement {
   }
 
   private hasSubdialogsLoaded(rootId: string): boolean {
-    return this.props.dialogs.some((dialog) => dialog.rootId === rootId && !!dialog.selfId);
+    if (this.dialogIndex.size === 0) {
+      this.refreshFromDom();
+    }
+    for (const entry of this.dialogIndex.values()) {
+      if (entry.rootId === rootId && entry.selfId !== rootId) return true;
+    }
+    return false;
+  }
+
+  private findDialogElement(rootId: string, selfId: string): HTMLElement | null {
+    if (!this.listEl) return null;
+    const rootEscaped = this.escapeSelector(rootId);
+    const selfValue = selfId === rootId ? '' : selfId;
+    const selfEscaped = this.escapeSelector(selfValue);
+    return this.listEl.querySelector(
+      `.dialog-item[data-root-id="${rootEscaped}"][data-self-id="${selfEscaped}"]`,
+    );
+  }
+
+  private escapeSelector(value: string): string {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+      return CSS.escape(value);
+    }
+    return value.replace(/"/g, '\\"');
   }
 
   private notifySelection(dialog: ApiRootDialogResponse): void {
@@ -880,6 +1232,16 @@ export class ArchivedDialogList extends HTMLElement {
 
       .sdlg-children.collapsed {
         display: none;
+      }
+
+      .show-more-row {
+        display: flex;
+        justify-content: center;
+        padding: 6px 0 10px;
+      }
+
+      .show-more-button {
+        color: var(--dominds-muted, #666666);
       }
 
       .dialog-item {

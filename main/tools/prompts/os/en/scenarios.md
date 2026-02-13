@@ -1,5 +1,14 @@
 # os Usage Scenarios
 
+## Template (Scenarios)
+### Scenario Format
+- Goal
+- Preconditions
+- Steps
+- Expected Signal
+- Failure Branch
+- Completion Criteria
+
 ## Scenario 1: File Operations
 
 ### Scenario Description

@@ -11,6 +11,7 @@
  *   tui      - Start Text User Interface
  *   run      - Run task dialog (alias for tui)
  *   read     - Read team configuration
+ *   manual   - Render toolset manual to stdout
  *   create   - Create a new runtime workspace (rtws) from a template
  *   new      - Alias for create
  *   help     - Show help
@@ -24,6 +25,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { main as createMain } from './cli/create';
+import { main as manualMain } from './cli/manual';
 import { main as readMain } from './cli/read';
 import { main as tuiMain } from './cli/tui';
 import { main as webuiMain } from './cli/webui';
@@ -46,6 +48,7 @@ Subcommands:
   tui [options]      Start Text User Interface
   run [options]      Run task dialog (alias for tui)
   read [options]     Read team configuration
+  manual [options]   Render toolset manual to stdout
   create [options]   Create a new runtime workspace (rtws) from a template
   new [options]      Alias for create
   help               Show this help message
@@ -57,6 +60,7 @@ Examples:
   dominds tui --help         # Show TUI help
   dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
+  dominds manual ws_read --lang zh --all
   dominds create web-scaffold my-project   # Create rtws from a template
 
 Installation:
@@ -127,6 +131,7 @@ async function main(): Promise<void> {
     (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
     (subcommand === 'run' && subcommandArgs.includes('-h')) ||
     (subcommand === 'read' && subcommandArgs.includes('-h')) ||
+    (subcommand === 'manual' && subcommandArgs.includes('-h')) ||
     ((subcommand === 'create' || subcommand === 'new') && subcommandArgs.includes('-h'));
 
   if (!shouldSkipRtwsSetup) {
@@ -160,6 +165,9 @@ async function main(): Promise<void> {
     case 'read':
       await runSubcommand('read', subcommandArgs);
       break;
+    case 'manual':
+      await runSubcommand('manual', subcommandArgs);
+      break;
     case 'create':
     case 'new':
       await runSubcommand('create', subcommandArgs);
@@ -185,6 +193,8 @@ async function runSubcommand(subcommand: string, args: string[]): Promise<void> 
       await tuiMain();
     } else if (subcommand === 'read') {
       await readMain();
+    } else if (subcommand === 'manual') {
+      await manualMain();
     } else if (subcommand === 'create') {
       await createMain();
     } else {

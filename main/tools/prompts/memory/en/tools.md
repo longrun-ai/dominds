@@ -1,5 +1,18 @@
 # memory Tool Reference
 
+## Template (Tools)
+### How to Read
+- The schema-generated "Tool Contract (Schema)" section is canonical for parameters/returns.
+### Per-Tool Fields (order)
+1) Purpose
+2) Call Signature
+3) Parameters (refer to schema)
+4) Preconditions
+5) Success Signal
+6) Failure/Errors
+7) Copy-Ready Example
+8) Common Misuse
+
 ## Tool List
 
 ### 1. add_memory

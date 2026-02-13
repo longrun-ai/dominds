@@ -1,6 +1,4 @@
-# ws_read Tool Reference
-
-## Tool List
+### Tool List
 
 ### 1. list_dir
 
@@ -141,7 +139,7 @@ pattern: <search pattern>
 results: <search results>
 ```
 
-## YAML Output Contract
+### YAML Output Contract
 
 All tool outputs use YAML format for programmatic processing:
 

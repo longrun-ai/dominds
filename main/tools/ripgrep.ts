@@ -399,6 +399,10 @@ export const ripgrepFilesTool: FuncTool = {
   type: 'func',
   name: 'ripgrep_files',
   description: 'Search file paths containing a pattern (rg-backed).',
+  descriptionI18n: {
+    en: 'Search file paths containing a pattern (rg-backed).',
+    zh: '搜索包含匹配内容的文件路径（rg 驱动）。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -517,6 +521,10 @@ export const ripgrepCountTool: FuncTool = {
   type: 'func',
   name: 'ripgrep_count',
   description: 'Count matches per file (rg-backed).',
+  descriptionI18n: {
+    en: 'Count matches per file (rg-backed).',
+    zh: '统计每个文件的匹配数量（rg 驱动）。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -681,6 +689,10 @@ export const ripgrepSnippetsTool: FuncTool = {
   type: 'func',
   name: 'ripgrep_snippets',
   description: 'Search snippets with line/col (rg-backed).',
+  descriptionI18n: {
+    en: 'Search snippets with line/col (rg-backed).',
+    zh: '搜索并显示带行列的匹配片段（rg 驱动）。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -731,6 +743,10 @@ export const ripgrepFixedTool: FuncTool = {
   name: 'ripgrep_fixed',
   description:
     'Fixed-string ripgrep convenience tool (routes to ripgrep_files/ripgrep_snippets/ripgrep_count with fixed_strings=true).',
+  descriptionI18n: {
+    en: 'Fixed-string ripgrep convenience tool (routes to ripgrep_files/ripgrep_snippets/ripgrep_count with fixed_strings=true).',
+    zh: '固定字符串 ripgrep 便捷工具（等同于对 ripgrep_files/ripgrep_snippets/ripgrep_count 使用 fixed_strings=true）。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -932,6 +948,10 @@ export const ripgrepSearchTool: FuncTool = {
   name: 'ripgrep_search',
   description:
     'Escape hatch: run rg-style search (snippets output, with a limited allowlist). Output is normalized to YAML snippets mode.',
+  descriptionI18n: {
+    en: 'Escape hatch: run rg-style search (snippets output, with a limited allowlist). Output is normalized to YAML snippets mode.',
+    zh: '逃生舱：运行 rg 风格搜索（片段输出，参数白名单）。输出归一为 YAML snippets 模式。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,

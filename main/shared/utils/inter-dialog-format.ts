@@ -28,7 +28,11 @@ export type InterDialogParticipants = {
 };
 
 export type SubdialogAssignmentFormatInput = InterDialogParticipants &
-  InterDialogCallContent & { language?: LanguageCode; collectiveTargets?: string[] };
+  InterDialogCallContent & {
+    language?: LanguageCode;
+    collectiveTargets?: string[];
+    sessionSlug?: string;
+  };
 
 export type SupdialogCallPromptInput = {
   fromAgentId: string;
@@ -43,6 +47,7 @@ export type TeammateResponseFormatInput = {
   responderId: string;
   requesterId: string;
   mentionList?: string[];
+  sessionSlug?: string;
   tellaskContent: string;
   responseBody: string;
   language?: LanguageCode;
@@ -55,21 +60,28 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
   return value;
 }
 
-function trimTrailingDots(value: string): string {
-  let out = value;
-  while (out.endsWith('.')) out = out.slice(0, -1);
-  return out;
+function requireMentionLine(mentionList: string[]): string {
+  const mentionLine = mentionList
+    .map((item) => {
+      const core = stripMentionPrefix(item);
+      return core === '' ? '' : `@${core}`;
+    })
+    .filter((item) => item !== '')
+    .join(' ')
+    .trim();
+  return requireNonEmpty(mentionLine, 'mentionList');
 }
 
-function requireMentionLine(mentionList: string[]): string {
-  const mentionLine = mentionList.join(' ').trim();
-  return requireNonEmpty(mentionLine, 'mentionList');
+function stripMentionPrefix(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '') return '';
+  return trimmed.startsWith('@') ? trimmed.slice(1).trim() : trimmed;
 }
 
 export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatInput): string {
   const language: LanguageCode = input.language ?? 'en';
-  const to = requireNonEmpty(input.toAgentId, 'toAgentId');
-  const from = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  requireNonEmpty(input.toAgentId, 'toAgentId');
+  requireNonEmpty(input.fromAgentId, 'fromAgentId');
   const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
 
   const isFbr = input.callName === 'freshBootsReasoning';
@@ -103,27 +115,15 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   }
 
   const mentionLine = requireMentionLine(input.mentionList ?? []);
-  const rawTargets =
-    input.collectiveTargets && input.collectiveTargets.length > 0 ? input.collectiveTargets : [to];
-  const cleanedTargets = rawTargets.map(trimTrailingDots).filter((t) => t.trim() !== '');
-  const uniqueTargets = Array.from(new Set(cleanedTargets));
-  if (!uniqueTargets.includes(to)) {
-    uniqueTargets.unshift(to);
-  }
-  const isCollective = uniqueTargets.length >= 2;
-
-  const greeting = (() => {
-    if (!isCollective) {
-      return language === 'zh'
-        ? `你好 @${to}，我是 @${from}, 现在：`
-        : `Hi @${to}, this is @${from} speaking, now:`;
-    }
-
-    const targetsText = uniqueTargets.map((id) => `@${id}`).join(', ');
-    return language === 'zh'
-      ? `你好 @${to}，我是 @${from}。这是一项集体诉请（collective assignment），同时发给：${targetsText}。请作为其中一员并行推进，必要时与其他队友对齐：`
-      : `Hi @${to}, this is @${from}. This is a collective assignment sent to: ${targetsText}. Please proceed in parallel as one of the assignees and coordinate with other teammates when needed:`;
-  })();
+  const sessionSlug = input.sessionSlug?.trim() ?? '';
+  const greeting =
+    language === 'zh'
+      ? sessionSlug === ''
+        ? '现在：'
+        : `现在（${sessionSlug}）：`
+      : sessionSlug === ''
+        ? 'Now:'
+        : `Now (${sessionSlug}):`;
 
   return `${greeting}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
 }
@@ -179,16 +179,29 @@ export function formatTeammateResponseContent(input: TeammateResponseFormatInput
     throw new Error(`Unsupported callName for teammate response formatting: ${input.callName}`);
   }
 
-  const mentionLine =
-    input.callName === 'tellask' || input.callName === 'tellaskSessionless'
-      ? requireMentionLine(input.mentionList ?? [])
-      : '';
+  const mentionLine = (() => {
+    const mentionIds = (input.mentionList ?? [])
+      .map((item) => stripMentionPrefix(item))
+      .filter((item) => item !== '');
+    if (mentionIds.length === 0) {
+      return `@${requireNonEmpty(input.requesterId, 'requesterId')}`;
+    }
+    return mentionIds.map((mentionId) => `@${mentionId}`).join(' ');
+  })();
 
   const hello =
     language === 'zh'
       ? `@${requireNonEmpty(input.responderId, 'fromAgentId')} 已回复：`
       : `@${requireNonEmpty(input.responderId, 'fromAgentId')} provided response:`;
-  const tail = language === 'zh' ? '针对原始诉请：' : 'regarding the original tellask:';
+  const sessionSlug = input.sessionSlug?.trim() ?? '';
+  const tail =
+    language === 'zh'
+      ? sessionSlug === ''
+        ? `针对原始诉请： ${mentionLine}`
+        : `针对原始诉请： ${mentionLine} • ${sessionSlug}`
+      : sessionSlug === ''
+        ? `regarding the original tellask: ${mentionLine}`
+        : `regarding the original tellask: ${mentionLine} • ${sessionSlug}`;
 
-  return `${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${mentionLine ? `${markdownQuote(mentionLine)}\n` : ''}${markdownQuote(tellaskContent)}\n`;
+  return `${hello}\n\n${markdownQuote(input.responseBody)}\n\n${tail}\n\n${markdownQuote(tellaskContent)}\n`;
 }

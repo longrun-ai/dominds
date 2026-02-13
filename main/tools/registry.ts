@@ -8,6 +8,7 @@ import path from 'path';
 import type { I18nText } from '../shared/types/i18n';
 import type { ToolsetSource } from '../shared/types/tools-registry';
 import type { ReminderOwner, Tool } from '../tool';
+import type { ManualSpec } from './manual/spec';
 
 // Global public registry of tools, shared across the application
 export const toolsRegistry: Map<string, Tool> = new Map<string, Tool>();
@@ -29,6 +30,11 @@ export type ToolsetMeta = {
    * Paths are relative to the directory of the compiled JS module (i.e. `__dirname`).
    */
   promptFilesI18n?: Partial<Record<keyof I18nText, string>>;
+  /**
+   * Optional manual metadata for the generic `man` tool.
+   * When omitted, `man` falls back to deriving topic files from `promptFilesI18n`.
+   */
+  manualSpec?: ManualSpec;
 };
 
 export const toolsetMetaRegistry: Map<string, ToolsetMeta> = new Map<string, ToolsetMeta>();

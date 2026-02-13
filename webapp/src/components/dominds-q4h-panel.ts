@@ -600,26 +600,17 @@ export class DomindsQ4HPanel extends HTMLElement {
         padding: 10px 10px;
       }
 
-      .q4h-tellask-headline,
       .q4h-tellask-body {
         white-space: normal;
         word-break: break-word;
       }
 
-      .q4h-tellask-headline p,
       .q4h-tellask-body p {
         margin: 0;
       }
 
-      .q4h-tellask-headline pre,
       .q4h-tellask-body pre {
         margin: 8px 0 0 0;
-      }
-
-      .q4h-tellask-sep {
-        border: none;
-        border-top: 1px solid var(--color-border-primary, #e2e8f0);
-        margin: 8px 0;
       }
 
       .q4h-goto-site-btn {
@@ -803,8 +794,6 @@ export class DomindsQ4HPanel extends HTMLElement {
         </div>
         <div class="q4h-question-body">
           <div class="q4h-tellask">
-            <div class="q4h-tellask-headline">Q4H</div>
-            <hr class="q4h-tellask-sep" />
             <div class="q4h-tellask-body">${renderDomindsMarkdown(question.tellaskContent, { kind: 'chat' })}</div>
           </div>
         </div>

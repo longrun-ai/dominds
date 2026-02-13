@@ -1,6 +1,18 @@
 # mcp_admin MCP 管理工具手册
 
-## 概述
+## 模板（概述）
+### 一句话定位
+- <该工具集用途，一句话描述>
+### 工具清单
+- <列出核心工具，或指向 Tools/Schema 章节>
+### 30 秒上手
+1) <调用 ...>
+2) <观察 ...>
+3) <下一步 ...>
+### 导航
+- principles / tools / scenarios / errors
+### 与其他工具集的边界
+- <何时用本工具集、何时用相邻工具集>
 
 mcp_admin 是 Dominds 的 **MCP 管理工具集**，用于管理 MCP（Model Context Protocol）连接和资源：
 
@@ -10,7 +22,7 @@ mcp_admin 是 Dominds 的 **MCP 管理工具集**，用于管理 MCP（Model Con
 
 ## 快速导航
 
-| Topic                         | 描述                           |
+| 主题                          | 描述                           |
 | ----------------------------- | ------------------------------ |
 | [principles](./principles.md) | 核心概念、连接管理、最佳实践   |
 | [tools](./tools.md)           | 完整工具列表与接口契约         |

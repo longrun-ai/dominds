@@ -40,6 +40,8 @@
     "openai-compatible-context-normalization": "tsx provider/openai-compatible-context-normalization.ts",
     "openai-compatible-image-fallback": "tsx provider/openai-compatible-image-fallback.ts",
     "toolset-registry": "tsx toolsets/registry.ts",
+    "man-structure": "tsx toolsets/man-structure.ts",
+    "man-missing-warning": "tsx toolsets/man-missing-warning.ts",
     "readonly-shell": "tsx toolsets/readonly-shell.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
     "reminder-format": "tsx reminders/reminder-format.ts",

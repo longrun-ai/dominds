@@ -1,5 +1,18 @@
 # team_mgmt Core Principles
 
+## Template (Principles)
+### Design Goals
+- <Goal 1>
+- <Goal 2>
+### Contract Principles
+- <Input/Output contract rules>
+### Safety & Boundaries
+- <Access constraints / guardrails>
+### Failure & Recovery
+- <What to do when a call fails>
+### Glossary
+- <Toolset-specific terms>
+
 ## Principles
 
 - **Incremental edits (preferred)**: Use `team_mgmt_prepare_*` to generate reviewable YAML + diff + `hunk_id`, then write via `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })`

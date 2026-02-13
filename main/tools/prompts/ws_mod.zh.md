@@ -48,14 +48,14 @@
 1. Prepare（返回 `hunk_id` + unified diff）：
 
 ```text
-Call the function tool `prepare_file_insert_after` with:
+按以下参数调用函数工具 `prepare_file_insert_after`：
 { "path": "docs/spec.md", "anchor": "## Configuration", "content": "### Defaults\\n- provider: codex\\n" }
 ```
 
 2. Apply（必须单独一轮/单独一步）：
 
 ```text
-Call the function tool `apply_file_modification` with:
+按以下参数调用函数工具 `apply_file_modification`：
 { "hunk_id": "<hunk_id>" }
 ```
 
@@ -64,21 +64,21 @@ Call the function tool `apply_file_modification` with:
 - 末尾追加：
 
 ```text
-Call the function tool `prepare_file_append` with:
+按以下参数调用函数工具 `prepare_file_append`：
 { "path": "notes/prompt.md", "content": "## Tools\\n- Use prepare_* + apply_file_modification for incremental edits.\\n" }
 ```
 
 - 行号范围替换（`content` 可为空字符串表示删除）：
 
 ```text
-Call the function tool `prepare_file_range_edit` with:
+按以下参数调用函数工具 `prepare_file_range_edit`：
 { "path": "README.md", "range": "10~12", "content": "New line 10\\nNew line 11\\n" }
 ```
 
 - 双锚点块替换：
 
 ```text
-Call the function tool `prepare_file_block_replace` with:
+按以下参数调用函数工具 `prepare_file_block_replace`：
 { "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\\nNEW BLOCK LINE 2\\n" }
 ```
 

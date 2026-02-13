@@ -260,6 +260,10 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   private resolvePrimaryActionMode(): 'send' | 'stop' | 'stopping' {
+    // Design choice: when a Q4H item is selected, primary action is always "send answer".
+    // The selected Q4H target is treated as the active routing context and intentionally
+    // takes precedence over stop semantics for the currently selected dialog.
+    // Do not reorder this priority without revisiting the product behavior.
     if (this.hasSelectedQ4HTarget()) return 'send';
     if (this.currentDialog === null) return 'send';
 

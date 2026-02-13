@@ -144,6 +144,7 @@ type RootDialogsByStatus = {
 type DialogListBootstrapState = { kind: 'loading' } | { kind: 'ready' };
 
 export class DomindsApp extends HTMLElement {
+  private static readonly DEFAULT_BROWSER_TITLE = 'Dominds - DevOps Mindsets';
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v1';
   private static readonly TOAST_HISTORY_MAX = 200;
 
@@ -165,6 +166,7 @@ export class DomindsApp extends HTMLElement {
   private dialogRunStatesByKey = new Map<string, DialogRunState>();
   private proceedingDialogsCount: number = 0;
   private resumableDialogsCount: number = 0;
+  private hasFetchedInitialRunControlCounts: boolean = false;
   private generatingDialogKeys = new Set<string>();
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
@@ -1355,7 +1357,6 @@ export class DomindsApp extends HTMLElement {
       runningList.setProps({
         onSelect,
         uiLanguage: this.uiLanguage,
-        generatingDialogKeys: this.generatingDialogKeys,
         loading: this.isDialogListBootstrapping(),
       });
     }
@@ -1388,7 +1389,7 @@ export class DomindsApp extends HTMLElement {
 
     this.updateThemeToggle();
     this.updateActivityView();
-    this.renderDialogList();
+    this.syncAllDialogLists();
     this.applyUiLanguageToDom();
     this.updateProblemsUi();
     this.updateToolsRegistryUi();
@@ -1399,7 +1400,7 @@ export class DomindsApp extends HTMLElement {
    * Use this after dialog list changes (e.g., subdialog creation, dialog loading).
    */
   private updateDialogList(): void {
-    this.renderDialogList();
+    this.syncAllDialogLists();
   }
 
   /**
@@ -1846,26 +1847,6 @@ export class DomindsApp extends HTMLElement {
     }
     this.rootStatusById.set(nextRoot.rootId, incomingStatus);
     this.updateVisibleSubdialogStatusesForRoot(nextRoot.rootId, incomingStatus);
-  }
-
-  private recomputeRunControlCounts(): void {
-    let proceeding = 0;
-    let resumable = 0;
-
-    for (const d of this.rootDialogsByStatus.running) {
-      const state = d.runState;
-      if (!state) continue;
-
-      if (state.kind === 'proceeding' || state.kind === 'proceeding_stop_requested') {
-        proceeding++;
-      } else if (state.kind === 'interrupted') {
-        resumable++;
-      }
-    }
-
-    this.proceedingDialogsCount = proceeding;
-    this.resumableDialogsCount = resumable;
-    this.updateToolbarDisplay();
   }
 
   public getStyles(): string {
@@ -4316,10 +4297,11 @@ export class DomindsApp extends HTMLElement {
     }) as EventListener);
     // Collapse explicitly drops subdialog nodes from frontend memory.
     this.shadowRoot.addEventListener('dialog-collapse', ((event: Event) => {
-      const ce = event as CustomEvent<{ rootId?: string }>;
+      const ce = event as CustomEvent<{ rootId?: string; status?: DialogStatusKind }>;
       const rootId = ce.detail ? ce.detail.rootId : undefined;
+      const status = ce.detail ? ce.detail.status : undefined;
       if (typeof rootId !== 'string' || rootId.trim() === '') return;
-      this.pruneSubdialogsForRoot(rootId);
+      this.pruneSubdialogsForRoot(rootId, status);
     }) as EventListener);
 
     // Team members events from dominds-team-members (sidebar activity)
@@ -4368,7 +4350,7 @@ export class DomindsApp extends HTMLElement {
       if (!sr) return;
       const runningList = sr.querySelector('#running-dialog-list');
       if (runningList instanceof RunningDialogList) {
-        runningList.setProps({ generatingDialogKeys: this.generatingDialogKeys });
+        runningList.setGeneratingKeys(this.generatingDialogKeys);
       }
     });
 
@@ -6009,10 +5991,14 @@ export class DomindsApp extends HTMLElement {
   private async loadDialogs(): Promise<void> {
     try {
       const api = getApiClient();
-      const [runningResp, doneResp, archivedResp] = await Promise.all([
+      const runControlCountsPromise = this.hasFetchedInitialRunControlCounts
+        ? Promise.resolve(null)
+        : api.getRunControlCounts();
+      const [runningResp, doneResp, archivedResp, runControlCountsResp] = await Promise.all([
         api.getRootDialogsByStatus('running'),
         api.getRootDialogsByStatus('completed'),
         api.getRootDialogsByStatus('archived'),
+        runControlCountsPromise,
       ]);
 
       const responses = [runningResp, doneResp, archivedResp];
@@ -6024,7 +6010,7 @@ export class DomindsApp extends HTMLElement {
         }
         console.warn('Failed to load dialogs via API', response.error);
         this.markDialogListBootstrapReady();
-        this.renderDialogList();
+        this.syncAllDialogLists();
         return;
       }
 
@@ -6044,7 +6030,14 @@ export class DomindsApp extends HTMLElement {
         if (!root.runState) continue;
         this.dialogRunStatesByKey.set(this.dialogKey(root.rootId, selfId), root.runState);
       }
-      this.recomputeRunControlCounts();
+      if (!this.hasFetchedInitialRunControlCounts) {
+        this.hasFetchedInitialRunControlCounts = true;
+        if (runControlCountsResp && runControlCountsResp.success && runControlCountsResp.data) {
+          this.proceedingDialogsCount = runControlCountsResp.data.proceeding;
+          this.resumableDialogsCount = runControlCountsResp.data.resumable;
+          this.updateToolbarDisplay();
+        }
+      }
       this.markDialogListBootstrapReady();
       if (this.currentDialog) {
         const status = this.resolveDialogStatus(this.currentDialog);
@@ -6056,12 +6049,12 @@ export class DomindsApp extends HTMLElement {
       } else {
         this.currentDialogStatus = null;
       }
-      this.renderDialogList();
+      this.syncAllDialogLists();
       this.updateQ4HComponent();
       this.updateInputPanelVisibility();
     } catch (error) {
       this.markDialogListBootstrapReady();
-      this.renderDialogList();
+      this.syncAllDialogLists();
       console.error('Error in loadDialogs:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showError(`Failed to load dialogs: ${message}`, 'error');
@@ -6071,6 +6064,7 @@ export class DomindsApp extends HTMLElement {
   private clearCurrentDialogSelection(): void {
     this.currentDialog = null;
     this.currentDialogStatus = null;
+    this.updateBrowserTitle(null);
 
     const root = this.shadowRoot;
     if (!root) return;
@@ -6090,6 +6084,14 @@ export class DomindsApp extends HTMLElement {
       this.q4hInput.clearDialog();
       this.q4hInput.setRunState(null);
     }
+  }
+
+  private updateBrowserTitle(dialog: Pick<DialogInfo, 'agentId' | 'taskDocPath'> | null): void {
+    if (dialog === null) {
+      document.title = DomindsApp.DEFAULT_BROWSER_TITLE;
+      return;
+    }
+    document.title = `Dominds • @${dialog.agentId} • ${dialog.taskDocPath}`;
   }
 
   private async handleDialogDeleteAction(detail: unknown): Promise<void> {
@@ -6329,7 +6331,7 @@ export class DomindsApp extends HTMLElement {
 
           this.upsertRootDialogSnapshot(nextRoot);
           this.setVisibleSubdialogsForRoot(rootId, newSubdialogs);
-          this.renderDialogList();
+          this.syncDialogListByStatus(status);
         }
       }
     } catch (hierarchyError) {
@@ -6341,7 +6343,7 @@ export class DomindsApp extends HTMLElement {
    * Drop all subdialogs under a collapsed root to keep frontend memory bounded.
    * Re-expanding must refetch from backend instead of reusing stale in-memory copies.
    */
-  private pruneSubdialogsForRoot(rootId: string): void {
+  private pruneSubdialogsForRoot(rootId: string, status?: DialogStatusKind): void {
     if (!this.visibleSubdialogsByRoot.has(rootId)) return;
     this.visibleSubdialogsByRoot.delete(rootId);
 
@@ -6356,7 +6358,8 @@ export class DomindsApp extends HTMLElement {
       }
     }
 
-    this.renderDialogList();
+    const rootStatus = status ?? this.getRootDialog(rootId)?.status ?? 'running';
+    this.syncDialogListByStatus(rootStatus);
   }
 
   private async loadTeamMembers(options?: { silent?: boolean }): Promise<void> {
@@ -6468,43 +6471,90 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  private renderDialogList(): void {
-    if (!this.shadowRoot) return;
-
-    const loading = this.isDialogListBootstrapping();
-    const runningDialogs = this.getDisplayedDialogsForStatus('running');
-    const doneDialogs = this.getDisplayedDialogsForStatus('completed');
-    const archivedDialogs = this.getDisplayedDialogsForStatus('archived');
-    const allDialogs = [...runningDialogs, ...doneDialogs, ...archivedDialogs];
-
-    // Validate all dialogs have valid taskDocPath - fail loudly on invalid data
-    allDialogs.forEach((dialog, index) => {
+  private validateDialogTaskDocPaths(dialogs: ApiRootDialogResponse[]): void {
+    dialogs.forEach((dialog, index) => {
       if (!dialog.taskDocPath || dialog.taskDocPath.trim() === '') {
         throw new Error(
           `❌ CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid Taskdoc path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Taskdoc is mandatory for all dialogs.`,
         );
       }
     });
+  }
 
-    const runningList = this.shadowRoot.querySelector('#running-dialog-list');
-    if (runningList instanceof RunningDialogList) {
-      runningList.setProps({ loading });
-      runningList.setDialogs(runningDialogs);
-      if (this.currentDialog) runningList.setCurrentDialog(this.currentDialog);
+  private syncDialogListByStatus(status: DialogStatusKind): void {
+    if (!this.shadowRoot) return;
+    const loading = this.isDialogListBootstrapping();
+    const dialogs = this.getDisplayedDialogsForStatus(status);
+    this.validateDialogTaskDocPaths(dialogs);
+
+    switch (status) {
+      case 'running': {
+        const runningList = this.shadowRoot.querySelector('#running-dialog-list');
+        if (runningList instanceof RunningDialogList) {
+          runningList.setProps({ loading });
+          runningList.applySnapshot(dialogs);
+          runningList.setGeneratingKeys(this.generatingDialogKeys);
+          if (this.currentDialog) runningList.setCurrentDialog(this.currentDialog);
+        }
+        break;
+      }
+      case 'completed': {
+        const doneList = this.shadowRoot.querySelector('#done-dialog-list');
+        if (doneList instanceof DoneDialogList) {
+          doneList.setProps({ loading });
+          doneList.applySnapshot(dialogs);
+          if (this.currentDialog) doneList.setCurrentDialog(this.currentDialog);
+        }
+        break;
+      }
+      case 'archived': {
+        const archivedList = this.shadowRoot.querySelector('#archived-dialog-list');
+        if (archivedList instanceof ArchivedDialogList) {
+          archivedList.setProps({ loading });
+          archivedList.applySnapshot(dialogs);
+          if (this.currentDialog) archivedList.setCurrentDialog(this.currentDialog);
+        }
+        break;
+      }
+      default: {
+        const _exhaustive: never = status;
+        throw new Error(`Unhandled dialog status sync: ${String(_exhaustive)}`);
+      }
     }
+  }
 
-    const doneList = this.shadowRoot.querySelector('#done-dialog-list');
-    if (doneList instanceof DoneDialogList) {
-      doneList.setProps({ loading });
-      doneList.setDialogs(doneDialogs);
-      if (this.currentDialog) doneList.setCurrentDialog(this.currentDialog);
-    }
+  private syncAllDialogLists(): void {
+    this.syncDialogListByStatus('running');
+    this.syncDialogListByStatus('completed');
+    this.syncDialogListByStatus('archived');
+  }
 
-    const archivedList = this.shadowRoot.querySelector('#archived-dialog-list');
-    if (archivedList instanceof ArchivedDialogList) {
-      archivedList.setProps({ loading });
-      archivedList.setDialogs(archivedDialogs);
-      if (this.currentDialog) archivedList.setCurrentDialog(this.currentDialog);
+  private patchDialogListEntry(
+    status: DialogStatusKind,
+    dialogId: { rootId: string; selfId: string },
+    patch: Partial<ApiRootDialogResponse>,
+  ): boolean {
+    if (!this.shadowRoot) return false;
+    switch (status) {
+      case 'running': {
+        const list = this.shadowRoot.querySelector('#running-dialog-list');
+        if (!(list instanceof RunningDialogList)) return false;
+        return list.updateDialogEntry(dialogId.rootId, dialogId.selfId, patch);
+      }
+      case 'completed': {
+        const list = this.shadowRoot.querySelector('#done-dialog-list');
+        if (!(list instanceof DoneDialogList)) return false;
+        return list.updateDialogEntry(dialogId.rootId, dialogId.selfId, patch);
+      }
+      case 'archived': {
+        const list = this.shadowRoot.querySelector('#archived-dialog-list');
+        if (!(list instanceof ArchivedDialogList)) return false;
+        return list.updateDialogEntry(dialogId.rootId, dialogId.selfId, patch);
+      }
+      default: {
+        const _exhaustive: never = status;
+        throw new Error(`Unhandled dialog status patch: ${String(_exhaustive)}`);
+      }
     }
   }
 
@@ -6666,6 +6716,7 @@ export class DomindsApp extends HTMLElement {
 
         dialogTitle.textContent = titleText;
       }
+      this.updateBrowserTitle(normalizedDialog);
 
       // Dialog events are forwarded by backend after display_dialog; global handler will process
 
@@ -7616,6 +7667,12 @@ export class DomindsApp extends HTMLElement {
         void this.loadDialogs();
         return true;
       }
+      case 'run_control_counts_evt': {
+        this.proceedingDialogsCount = message.proceeding;
+        this.resumableDialogsCount = message.resumable;
+        this.updateToolbarDisplay();
+        return true;
+      }
       case 'run_control_refresh': {
         this.lastRunControlRefresh = { timestamp: message.timestamp, reason: message.reason };
         this.lastRunControlRefreshScheduledAtMs = null;
@@ -7625,9 +7682,14 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'dlg_touched_evt': {
+        const status = this.resolveDialogStatusByIds(
+          message.dialog.rootId,
+          message.dialog.selfId,
+        );
         this.bumpDialogLastModified(
           { rootId: message.dialog.rootId, selfId: message.dialog.selfId },
           message.timestamp,
+          status === 'running' ? { suppressRender: true } : undefined,
         );
         return true;
       }
@@ -7694,9 +7756,11 @@ export class DomindsApp extends HTMLElement {
           if (dc && typeof dc.resetForCourse === 'function') {
             dc.resetForCourse(message.course);
           }
+          const status = this.resolveDialogStatusByIds(dialog.rootId, dialog.selfId);
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
             (message as TypedDialogEvent).timestamp,
+            status === 'running' ? { suppressRender: true } : undefined,
           );
           break;
         }
@@ -7771,10 +7835,22 @@ export class DomindsApp extends HTMLElement {
             }
           }
 
-          this.updateDialogList();
+          if (hadLoadedSubdialogs || rootExpandedInDom || node.status !== 'running') {
+            this.syncDialogListByStatus(node.status);
+          } else {
+            this.patchDialogListEntry(
+              'running',
+              { rootId: node.rootId, selfId: node.rootId },
+              {
+                subdialogCount: nextCount,
+                lastModified: node.lastModified || rootDialog.lastModified,
+              },
+            );
+          }
           this.bumpDialogLastModified(
             { rootId: node.rootId, selfId: node.selfId },
             node.lastModified || (message as TypedDialogEvent).timestamp,
+            node.status === 'running' ? { suppressRender: true } : undefined,
           );
           break;
         }
@@ -7818,9 +7894,11 @@ export class DomindsApp extends HTMLElement {
           }
 
           const ts = (message as TypedDialogEvent).timestamp;
+          const status = this.resolveDialogStatusByIds(dialog.rootId, dialog.selfId);
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
             typeof ts === 'string' ? ts : undefined,
+            status === 'running' ? { suppressRender: true } : undefined,
           );
           break;
         }
@@ -7836,9 +7914,11 @@ export class DomindsApp extends HTMLElement {
 
           await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
           const ts = (message as TypedDialogEvent).timestamp;
+          const status = this.resolveDialogStatusByIds(dialog.rootId, dialog.selfId);
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
             typeof ts === 'string' ? ts : undefined,
+            status === 'running' ? { suppressRender: true } : undefined,
           );
           break;
         }
@@ -7896,15 +7976,18 @@ export class DomindsApp extends HTMLElement {
             this.wsManager.sendRaw({ type: 'get_q4h_state' });
           }
 
-          this.recomputeRunControlCounts();
-
-          // Ensure list views update immediately so the entire hierarchy reflects
-          // run-state changes in real-time (not just the currently selected node).
-          this.updateDialogList();
+          const status = this.resolveDialogStatusByIds(rootId, selfId);
+          if (status === 'running') {
+            const runningList = this.shadowRoot?.querySelector('#running-dialog-list');
+            if (runningList instanceof RunningDialogList) {
+              runningList.updateDialogEntry(rootId, selfId, { runState: typedRunState });
+            }
+          }
           const ts = (message as TypedDialogEvent).timestamp;
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
             typeof ts === 'string' ? ts : undefined,
+            { suppressRender: true },
           );
 
           // Forward to dialog container if this event targets it
@@ -7924,6 +8007,7 @@ export class DomindsApp extends HTMLElement {
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
             typeof ts === 'string' ? ts : undefined,
+            { suppressRender: true },
           );
 
           // Marker events are broadcast to all connected clients by backend run-state broadcaster.
@@ -7969,9 +8053,11 @@ export class DomindsApp extends HTMLElement {
             console.warn('Failed to forward dialog event to container:', err);
           }
           const ts = (message as TypedDialogEvent).timestamp;
+          const status = this.resolveDialogStatusByIds(dialog.rootId, dialog.selfId);
           this.bumpDialogLastModified(
             { rootId: dialog.rootId, selfId: dialog.selfId },
             typeof ts === 'string' ? ts : undefined,
+            status === 'running' ? { suppressRender: true } : undefined,
           );
           break;
       }
@@ -8002,6 +8088,7 @@ export class DomindsApp extends HTMLElement {
   private bumpDialogLastModified(
     dialogId: { rootId: string; selfId: string },
     isoTs?: string,
+    options?: { suppressRender?: boolean },
   ): void {
     if (!isoTs) return;
     let changed = false;
@@ -8023,9 +8110,20 @@ export class DomindsApp extends HTMLElement {
       this.setVisibleSubdialogsForRoot(dialogId.rootId, updated);
     }
 
-    if (changed) {
-      this.renderDialogList();
+    if (!changed) return;
+    const status = this.resolveDialogStatusByIds(dialogId.rootId, dialogId.selfId);
+    if (!status) return;
+    let patched = this.patchDialogListEntry(status, dialogId, { lastModified: isoTs });
+    if (dialogId.selfId !== dialogId.rootId) {
+      const patchedRoot = this.patchDialogListEntry(
+        status,
+        { rootId: dialogId.rootId, selfId: dialogId.rootId },
+        { lastModified: isoTs },
+      );
+      patched = patched || patchedRoot;
     }
+    if (patched && options?.suppressRender) return;
+    this.syncDialogListByStatus(status);
   }
 
   /**

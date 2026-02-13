@@ -344,7 +344,7 @@ export class CreateDialogFlowController {
 
     const t = getUiStrings(this.deps.getLanguage());
     let createInFlight = false;
-    let currentAgentPrimingMode: AgentPrimingMode = 'do';
+    let currentAgentPrimingMode: AgentPrimingMode = 'skip';
     let selectedSuggestionIndex = -1;
     let currentSuggestions: SuggestionDoc[] = [];
     let agentPrimingRenderSeq = 0;
@@ -501,8 +501,7 @@ export class CreateDialogFlowController {
       const allowed: AgentPrimingMode[] = args.hasCache ? ['reuse', 'do', 'skip'] : ['do', 'skip'];
       const selected: AgentPrimingMode = (() => {
         if (stored && allowed.includes(stored)) return stored;
-        if (args.scope === 'shadow') return 'skip';
-        return args.hasCache ? 'reuse' : 'do';
+        return 'skip';
       })();
       currentAgentPrimingMode = selected;
       const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.agentPrimingReuseAgeSuffix}`;

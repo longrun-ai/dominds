@@ -1,5 +1,18 @@
 # team_memory Principles and Core Concepts
 
+## Template (Principles)
+### Design Goals
+- <Goal 1>
+- <Goal 2>
+### Contract Principles
+- <Input/Output contract rules>
+### Safety & Boundaries
+- <Access constraints / guardrails>
+### Failure & Recovery
+- <What to do when a call fails>
+### Glossary
+- <Toolset-specific terms>
+
 ## Memory Model
 
 The team_memory toolset uses a **path key-value storage** model, similar to memory but with shared properties:

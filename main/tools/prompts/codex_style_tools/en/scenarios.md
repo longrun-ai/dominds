@@ -1,5 +1,14 @@
 # codex_style_tools Usage Scenarios
 
+## Template (Scenarios)
+### Scenario Format
+- Goal
+- Preconditions
+- Steps
+- Expected Signal
+- Failure Branch
+- Completion Criteria
+
 ## Scenario 1: Apply Code Patch
 
 ### Scenario Description

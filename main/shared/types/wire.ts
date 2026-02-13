@@ -66,6 +66,7 @@ export type WebSocketMessage =
   | DialogsDeletedMessage
   | DialogsCreatedMessage
   | RunControlRefreshMessage
+  | RunControlCountsMessage
   | InterruptDialogRequest
   | EmergencyStopRequest
   | ResumeDialogRequest
@@ -295,6 +296,13 @@ export type RunControlRefreshReason =
 export interface RunControlRefreshMessage {
   type: 'run_control_refresh';
   reason: RunControlRefreshReason;
+  timestamp: string;
+}
+
+export interface RunControlCountsMessage {
+  type: 'run_control_counts_evt';
+  proceeding: number;
+  resumable: number;
   timestamp: string;
 }
 

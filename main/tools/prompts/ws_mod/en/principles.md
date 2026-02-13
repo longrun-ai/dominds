@@ -1,5 +1,18 @@
 # ws_mod Core Principles
 
+## Template (Principles)
+### Design Goals
+- <Goal 1>
+- <Goal 2>
+### Contract Principles
+- <Input/Output contract rules>
+### Safety & Boundaries
+- <Access constraints / guardrails>
+### Failure & Recovery
+- <What to do when a call fails>
+### Glossary
+- <Toolset-specific terms>
+
 ## 1. Background: Why "prepare-first + single apply"
 
 Historically, text editing tools had multiple mental models ("direct write" vs "plan first then apply"), causing:
@@ -84,4 +97,4 @@ Writing follows "each line ends with `\n` (including last line)":
 
 ### 5.2 Blank Line Style (observable only)
 
-For append/insert, prepare phase outputs `blankline_style` and `style_warning` to alert about "potential double blank lines /粘连" risks; currently does not actively modify content blank line style
+For append/insert, prepare phase outputs `blankline_style` and `style_warning` to alert about "potential double blank lines / stuck-together" risks; currently does not actively modify content blank line style

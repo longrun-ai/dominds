@@ -1,5 +1,18 @@
 # team_memory 工具参考
 
+## 模板（工具）
+### 阅读方式
+- "工具契约（Schema）" 为参数/返回的权威来源。
+### 单工具字段顺序
+1) 用途
+2) 调用签名
+3) 参数（参见 schema）
+4) 前置条件
+5) 成功信号
+6) 失败/错误
+7) 可直接执行示例
+8) 常见误用
+
 ## 工具列表
 
 ### 1. add_shared_memory
@@ -94,7 +107,7 @@ cleared_at: <删除时间戳>
 add_shared_memory({
   path: 'team/conventions/commit-message',
   content:
-    '## 提交信息规范\n\n格式: <type>(<scope>): <description>\n\n### Type\n- feat: 新功能\n- fix: 修复\n- docs: 文档\n- style: 格式\n- refactor: 重构\n- test: 测试\n- chore: 维护\n\n### 示例\nfeat(auth): 添加登录验证\nfix(ui): 修复按钮样式',
+    '## 提交信息规范\n\n格式: <type>(<scope>): <description>\n\n### 类型\n- feat: 新功能\n- fix: 修复\n- docs: 文档\n- style: 格式\n- refactor: 重构\n- test: 测试\n- chore: 维护\n\n### 示例\nfeat(auth): 添加登录验证\nfix(ui): 修复按钮样式',
 });
 ```
 

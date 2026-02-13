@@ -12,6 +12,7 @@ import {
   resolveInheritedSubdialogAgentPrimingMode,
   scheduleAgentPrimingForNewDialog,
 } from '../agent-priming';
+import { getRunControlCountsSnapshot } from '../dialog-run-state';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { createLogger } from '../log';
@@ -215,6 +216,10 @@ export async function handleApiRoute(
         return true;
       }
       return await handleGetDialogs(res, status);
+    }
+
+    if (pathname === '/api/dialogs/run-control-counts' && req.method === 'GET') {
+      return await handleGetRunControlCounts(res);
     }
 
     // Resolve dialog status by id without relying on frontend-maintained lists.
@@ -804,6 +809,24 @@ async function handleGetDialogs(res: ServerResponse, status: DialogStatusKind): 
   }
 }
 
+async function handleGetRunControlCounts(res: ServerResponse): Promise<boolean> {
+  try {
+    const counts = await getRunControlCountsSnapshot();
+    respondJson(res, 200, {
+      success: true,
+      counts: {
+        proceeding: counts.proceeding,
+        resumable: counts.resumable,
+      },
+    });
+    return true;
+  } catch (error) {
+    log.error('Error getting run control counts:', error);
+    respondJson(res, 500, { success: false, error: 'Failed to get run control counts' });
+    return true;
+  }
+}
+
 /**
  * Count subdialog directories recursively
  */
@@ -1122,6 +1145,9 @@ async function handleMoveDialogs(
         movedRootIds,
         timestamp: formatUnifiedTimestamp(new Date()),
       });
+      if (fromStatus === 'running' || toStatus === 'running') {
+        await broadcastRunControlCounts(context.clients);
+      }
       return true;
     }
 
@@ -1157,6 +1183,9 @@ async function handleMoveDialogs(
       movedRootIds,
       timestamp: formatUnifiedTimestamp(new Date()),
     });
+    if (fromStatus === 'running' || toStatus === 'running') {
+      await broadcastRunControlCounts(context.clients);
+    }
     return true;
   } catch (error) {
     log.error('Error moving dialogs:', error);
@@ -1199,6 +1228,24 @@ function broadcastDialogDeletes(
   if (!clients) return;
   if (message.deletedRootIds.length === 0) return;
   const data = JSON.stringify(message);
+  for (const ws of clients) {
+    if (ws.readyState === 1) {
+      ws.send(data);
+    }
+  }
+}
+
+async function broadcastRunControlCounts(
+  clients: Set<WebSocket> | undefined,
+): Promise<void> {
+  if (!clients) return;
+  const counts = await getRunControlCountsSnapshot();
+  const data = JSON.stringify({
+    type: 'run_control_counts_evt',
+    proceeding: counts.proceeding,
+    resumable: counts.resumable,
+    timestamp: formatUnifiedTimestamp(new Date()),
+  });
   for (const ws of clients) {
     if (ws.readyState === 1) {
       ws.send(data);
@@ -1265,6 +1312,9 @@ async function handleDeleteDialog(
       deletedRootIds: [rootId],
       timestamp: formatUnifiedTimestamp(new Date()),
     });
+    if (fromStatus === 'running') {
+      await broadcastRunControlCounts(context.clients);
+    }
     return true;
   } catch (error) {
     log.error('Error deleting dialog:', error);

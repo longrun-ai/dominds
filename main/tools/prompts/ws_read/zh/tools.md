@@ -1,8 +1,6 @@
-# ws_read 工具参考
+### 工具列表
 
-## 工具列表
-
-### 1. list_dir
+#### 1. list_dir
 
 列出目录内容。
 
@@ -22,7 +20,7 @@ entries:
     modified: <修改时间>
 ```
 
-### 2. read_file
+#### 2. read_file
 
 读取文件内容。
 
@@ -44,7 +42,7 @@ content: |
   <文件内容>
 ```
 
-### 3. ripgrep_files
+#### 3. ripgrep_files
 
 搜索包含匹配的文件。
 
@@ -65,7 +63,7 @@ matches:
   - path: <文件路径>
 ```
 
-### 4. ripgrep_snippets
+#### 4. ripgrep_snippets
 
 搜索并显示匹配片段。
 
@@ -87,7 +85,7 @@ matches:
     content: <匹配内容>
 ```
 
-### 5. ripgrep_count
+#### 5. ripgrep_count
 
 统计匹配数量。
 
@@ -106,7 +104,7 @@ counts:
     count: <匹配数>
 ```
 
-### 6. ripgrep_fixed
+#### 6. ripgrep_fixed
 
 固定字符串搜索。
 
@@ -123,7 +121,7 @@ literal: <搜索字符串>
 matches: <匹配列表>
 ```
 
-### 7. ripgrep_search
+#### 7. ripgrep_search
 
 使用 rg 高级搜索。
 
@@ -141,7 +139,7 @@ pattern: <搜索模式>
 results: <搜索结果>
 ```
 
-## YAML 输出契约
+### YAML 输出契约
 
 所有工具的输出都使用 YAML 格式，便于程序化处理：
 

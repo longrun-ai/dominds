@@ -1,6 +1,6 @@
 import { DialogID, SubDialog } from '../../dialog';
 import { globalDialogRegistry } from '../../dialog-global-registry';
-import { clearActiveRun, createActiveRun } from '../../dialog-run-state';
+import { clearActiveRun, createActiveRun, getActiveRunSignal, hasActiveRun } from '../../dialog-run-state';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
@@ -22,6 +22,7 @@ import {
   supplySubdialogResponseToSpecificCallerIfPendingV2,
 } from './supdialog-response';
 import type {
+  DriverV2CoreResult,
   DriverV2DriveArgs,
   DriverV2DriveInvoker,
   DriverV2DriveResult,
@@ -136,24 +137,20 @@ export async function executeDriveRound(args: {
 
   const release = await dialog.acquire();
   let activeRunPrimed = false;
-  let activeRunHandedToCore = false;
+  let ownsActiveRun = false;
+  let interruptedBySignal = false;
   let followUp: UpNextPrompt | undefined;
-  let driveResult:
-    | {
-        lastAssistantSayingContent: string | null;
-        lastAssistantSayingGenseq: number | null;
-        lastFunctionCallGenseq: number | null;
-        interrupted: boolean;
-      }
-    | undefined;
+  let driveResult: DriverV2CoreResult | undefined;
   let subdialogReplyTarget: SubdialogReplyTarget | undefined;
   const allowResumeFromInterrupted =
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
     // reliably interrupt queued auto-revive drives during preflight.
+    const hadActiveRunBefore = hasActiveRun(dialog.id);
     createActiveRun(dialog.id);
     activeRunPrimed = true;
+    ownsActiveRun = !hadActiveRunBefore;
 
     // "dead" is irreversible for subdialogs. Skip drive if marked dead.
     try {
@@ -305,12 +302,12 @@ export async function executeDriveRound(args: {
       scheduleDrive: args.scheduleDrive,
       driveDialog: args.driveDialog,
     });
-    activeRunHandedToCore = true;
-    if (!driveResult.interrupted) {
+    interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
+    if (!interruptedBySignal) {
       followUp = dialog.takeUpNext() as UpNextPrompt | undefined;
     }
   } finally {
-    if (activeRunPrimed && !activeRunHandedToCore) {
+    if (activeRunPrimed && ownsActiveRun) {
       clearActiveRun(dialog.id);
     }
     release();
@@ -319,7 +316,7 @@ export async function executeDriveRound(args: {
   if (
     dialog instanceof SubDialog &&
     driveResult &&
-    !driveResult.interrupted &&
+    !interruptedBySignal &&
     driveResult.lastAssistantSayingContent !== null
   ) {
     if (

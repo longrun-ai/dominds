@@ -1,6 +1,18 @@
 # team_mgmt 工具手册
 
-## 概述
+## 模板（概述）
+### 一句话定位
+- <该工具集用途，一句话描述>
+### 工具清单
+- <列出核心工具，或指向 Tools/Schema 章节>
+### 30 秒上手
+1) <调用 ...>
+2) <观察 ...>
+3) <下一步 ...>
+### 导航
+- principles / tools / scenarios / errors
+### 与其他工具集的边界
+- <何时用本工具集、何时用相邻工具集>
 
 team_mgmt 是 Dominds 用于管理 `.minds/`（团队配置与 rtws 记忆）的工具集，采用 **prepare-first + single apply** 架构：
 
@@ -9,11 +21,11 @@ team_mgmt 是 Dominds 用于管理 `.minds/`（团队配置与 rtws 记忆）的
 
 ## 快速导航
 
-| Topic                         | 描述                                           |
+| 主题                          | 描述                                           |
 | ----------------------------- | ---------------------------------------------- |
 | [principles](./principles.md) | 核心原则、路径规则、read_file 输出、apply 语义 |
 | [tools](./tools.md)           | 完整工具列表与接口契约                         |
-| [scenarios](./scenarios.md)   | 常见使用场景与模板（复制即用）                 |
+| [scenarios](./scenarios.md)   | 常见使用场景与示例（复制即用）                 |
 | [errors](./errors.md)         | 错误处理指南                                   |
 
 ## 与 ws_mod 的关系

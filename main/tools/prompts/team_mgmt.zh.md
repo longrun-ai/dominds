@@ -51,20 +51,20 @@
 1. Prepare：
 
 ```text
-Call the function tool `team_mgmt_prepare_file_range_edit` with:
+按以下参数调用函数工具 `team_mgmt_prepare_file_range_edit`：
 { "path": "team.yaml", "range": "10~12", "content": "..." }
 ```
 
 2. Apply（必须单独一轮）：
 
 ```text
-Call the function tool `team_mgmt_apply_file_modification` with:
+按以下参数调用函数工具 `team_mgmt_apply_file_modification`：
 { "hunk_id": "<hunk_id>" }
 ```
 
 ## 创建空文件示例
 
 ```text
-Call the function tool `team_mgmt_create_new_file` with:
+按以下参数调用函数工具 `team_mgmt_create_new_file`：
 { "path": "team/domains/new-domain.md", "content": "" }
 ```

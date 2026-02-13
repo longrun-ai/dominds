@@ -1,6 +1,4 @@
-# ws_read Error Handling
-
-## Error Codes
+### Error Codes
 
 ### FILE_NOT_FOUND
 
@@ -60,7 +58,7 @@
 - Check if search pattern is correct
 - Check if search path exists
 
-## Frequently Asked Questions
+### Frequently Asked Questions
 
 ### Q: Why can't I read the file?
 

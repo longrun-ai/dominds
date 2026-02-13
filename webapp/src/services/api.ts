@@ -315,6 +315,34 @@ export class ApiClient {
     return await this.getRootDialogsByStatus('running');
   }
 
+  async getRunControlCounts(): Promise<
+    ApiResponse<{
+      proceeding: number;
+      resumable: number;
+    }>
+  > {
+    const response = await this.request('/api/dialogs/run-control-counts');
+    if (response.success && response.data) {
+      const payload = response.data as Record<string, unknown>;
+      const countsRec =
+        typeof payload['counts'] === 'object' && payload['counts'] !== null
+          ? (payload['counts'] as Record<string, unknown>)
+          : payload;
+      const proceedingRaw = countsRec['proceeding'];
+      const resumableRaw = countsRec['resumable'];
+      return {
+        success: true,
+        status: response.status,
+        data: {
+          proceeding: typeof proceedingRaw === 'number' ? proceedingRaw : 0,
+          resumable: typeof resumableRaw === 'number' ? resumableRaw : 0,
+        },
+        timestamp: response.timestamp,
+      };
+    }
+    return response as ApiResponse<{ proceeding: number; resumable: number }>;
+  }
+
   /**
    * Backward-compatible alias for getRootDialogs().
    */

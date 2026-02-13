@@ -1,6 +1,4 @@
-# ws_read Usage Scenarios
-
-## Scenario 1: View Directory Structure
+### Scenario 1: View Directory Structure
 
 ### Scenario Description
 
@@ -14,7 +12,7 @@ list_dir({
 });
 ```
 
-## Scenario 2: Read File Content
+### Scenario 2: Read File Content
 
 ### Scenario Description
 
@@ -34,7 +32,7 @@ read_file({
 });
 ```
 
-## Scenario 3: Search Code
+### Scenario 3: Search Code
 
 ### Scenario Description
 
@@ -57,7 +55,7 @@ ripgrep_snippets({
 });
 ```
 
-## Scenario 4: Count Matches
+### Scenario 4: Count Matches
 
 ### Scenario Description
 
@@ -72,7 +70,7 @@ ripgrep_count({
 });
 ```
 
-## Scenario 5: Fixed String Search
+### Scenario 5: Fixed String Search
 
 ### Scenario Description
 
@@ -87,7 +85,7 @@ ripgrep_fixed({
 });
 ```
 
-## Scenario 6: Search by File Type
+### Scenario 6: Search by File Type
 
 ### Scenario Description
 
@@ -103,7 +101,7 @@ ripgrep_files({
 });
 ```
 
-## Scenario 7: Code Review
+### Scenario 7: Code Review
 
 ### Scenario Description
 

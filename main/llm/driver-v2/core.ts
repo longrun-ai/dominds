@@ -1,7 +1,6 @@
 import { Dialog, RootDialog } from '../../dialog';
 import {
   broadcastRunStateMarker,
-  clearActiveRun,
   computeIdleRunState,
   createActiveRun,
   getStopRequestedReason,
@@ -515,6 +514,7 @@ async function executeFunctionCalls(args: {
       try {
         throwIfAborted(abortSignal, dialog);
         const output: ToolCallOutput = await tool.call(dialog, agent, argsObj);
+        throwIfAborted(abortSignal, dialog);
         const normalized =
           typeof output === 'string'
             ? { content: output, contentItems: undefined }
@@ -541,6 +541,9 @@ async function executeFunctionCalls(args: {
           role: 'tool',
           genseq: callGenseq,
         };
+        if (abortSignal.aborted || err instanceof DialogInterruptedError) {
+          throw err;
+        }
       }
     } else {
       result = {
@@ -579,6 +582,7 @@ async function executeRoutedFunctionCalls(args: {
   if (funcCalls.length === 0) {
     return { suspendForHuman: false, pairedMessages: [], tellaskToolOutputs: [] };
   }
+  throwIfAborted(abortSignal, dialog);
 
   const classified = classifyTellaskSpecialFunctionCalls(funcCalls);
   const specialCallById = new Map(
@@ -610,6 +614,7 @@ async function executeRoutedFunctionCalls(args: {
   };
 
   for (const callMsg of funcCalls) {
+    throwIfAborted(abortSignal, dialog);
     const special = specialCallById.get(callMsg.id);
     if (!special) {
       continue;
@@ -644,12 +649,14 @@ async function executeRoutedFunctionCalls(args: {
     issueResults.push(result);
   }
 
+  throwIfAborted(abortSignal, dialog);
   const specialResult = await executeTellaskSpecialCalls({
     dlg: dialog,
     agent,
     calls: classified.specialCalls,
     callbacks,
   });
+  throwIfAborted(abortSignal, dialog);
   const specialCallIds = new Set(classified.specialCalls.map((call) => call.callId));
 
   const genericResults = await executeFunctionCalls({
@@ -954,6 +961,7 @@ export async function driveDialogStreamCoreV2(
   const abortSignal = createActiveRun(dlg.id);
 
   let finalRunState: DialogRunState | undefined;
+  let finalResult: DriverV2CoreResult | undefined;
   let shouldEmitResumedMarker = false;
   if (!humanPrompt) {
     try {
@@ -1383,7 +1391,6 @@ export async function driveDialogStreamCoreV2(
               lastAssistantSayingContent,
               lastAssistantSayingGenseq,
               lastFunctionCallGenseq,
-              interrupted: false,
             };
           }
 
@@ -1669,7 +1676,6 @@ export async function driveDialogStreamCoreV2(
             lastAssistantSayingContent,
             lastAssistantSayingGenseq,
             lastFunctionCallGenseq,
-            interrupted: false,
           };
         }
 
@@ -1740,12 +1746,13 @@ export async function driveDialogStreamCoreV2(
       }
     }
 
+    throwIfAborted(abortSignal, dlg);
     finalRunState = await computeIdleRunState(dlg);
-    return {
+    throwIfAborted(abortSignal, dlg);
+    finalResult = {
       lastAssistantSayingContent,
       lastAssistantSayingGenseq,
       lastFunctionCallGenseq,
-      interrupted: false,
     };
   } catch (err) {
     const stopRequested = getStopRequestedReason(dlg.id);
@@ -1763,34 +1770,30 @@ export async function driveDialogStreamCoreV2(
     if (interruptedReason) {
       finalRunState = { kind: 'interrupted', reason: interruptedReason };
       broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: interruptedReason });
-      return {
+      finalResult = {
         lastAssistantSayingContent,
         lastAssistantSayingGenseq,
         lastFunctionCallGenseq,
-        interrupted: true,
+      };
+    } else {
+      const errText = extractErrorDetails(err).message;
+      try {
+        await dlg.streamError(errText);
+      } catch {
+        // best-effort
+      }
+      finalRunState = { kind: 'interrupted', reason: { kind: 'system_stop', detail: errText } };
+      broadcastRunStateMarker(dlg.id, {
+        kind: 'interrupted',
+        reason: { kind: 'system_stop', detail: errText },
+      });
+      finalResult = {
+        lastAssistantSayingContent,
+        lastAssistantSayingGenseq,
+        lastFunctionCallGenseq,
       };
     }
-
-    const errText = extractErrorDetails(err).message;
-    try {
-      await dlg.streamError(errText);
-    } catch {
-      // best-effort
-    }
-    finalRunState = { kind: 'interrupted', reason: { kind: 'system_stop', detail: errText } };
-    broadcastRunStateMarker(dlg.id, {
-      kind: 'interrupted',
-      reason: { kind: 'system_stop', detail: errText },
-    });
-    return {
-      lastAssistantSayingContent,
-      lastAssistantSayingGenseq,
-      lastFunctionCallGenseq,
-      interrupted: true,
-    };
   } finally {
-    clearActiveRun(dlg.id);
-
     if (!finalRunState) {
       try {
         finalRunState = await computeIdleRunState(dlg);
@@ -1799,6 +1802,25 @@ export async function driveDialogStreamCoreV2(
           dialogId: dlg.id.valueOf(),
         });
         finalRunState = { kind: 'idle_waiting_user' };
+      }
+    }
+
+    if (
+      abortSignal.aborted &&
+      finalRunState.kind !== 'interrupted' &&
+      finalRunState.kind !== 'dead'
+    ) {
+      const stopRequested = getStopRequestedReason(dlg.id);
+      const lateInterruptedReason: DialogInterruptionReason =
+        stopRequested === 'emergency_stop'
+          ? { kind: 'emergency_stop' }
+          : stopRequested === 'user_stop'
+            ? { kind: 'user_stop' }
+            : { kind: 'system_stop', detail: 'Aborted.' };
+      finalRunState = { kind: 'interrupted', reason: lateInterruptedReason };
+
+      if (finalResult) {
+        broadcastRunStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
       }
     }
 
@@ -1820,4 +1842,9 @@ export async function driveDialogStreamCoreV2(
 
     await setDialogRunState(dlg.id, finalRunState);
   }
+
+  if (!finalResult) {
+    throw new Error(`driver-v2 core invariant violation: missing final result (dialog=${dlg.id.valueOf()})`);
+  }
+  return finalResult;
 }

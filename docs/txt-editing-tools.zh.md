@@ -1,5 +1,5 @@
 ---
-title: Text Editing Tools (ws_mod) — Design Doc
+title: 文本编辑工具（ws_mod）— 设计文档
 status: implemented
 updated: 2026-01-24
 ---
@@ -48,7 +48,7 @@ updated: 2026-01-24
 - 不保证跨进程/重启的 hunk 持久化（当前 hunk registry 为进程内内存 + TTL=1h）。
 - 不承诺"自动格式化/自动空行风格对齐"；只做可观测（style_warning）与最小必要规范化（EOF 换行）。
 
-## 3. Toolset Prompt（i18n）设计
+## 3. 工具集提示（i18n）设计
 
 ### 3.1 需求
 
@@ -239,26 +239,26 @@ updated: 2026-01-24
 - 末尾追加：
 
 ```text
-Call the function tool `prepare_file_append` with:
+按以下参数调用函数工具 `prepare_file_append`：
 { "path": "notes/prompt.md", "content": "## Tools\n- Use prepare_* + apply_file_modification for incremental edits.\n" }
 ```
 
 - 行号范围替换（`content` 可为空字符串表示删除）：
 
 ```text
-Call the function tool `prepare_file_range_edit` with:
+按以下参数调用函数工具 `prepare_file_range_edit`：
 { "path": "README.md", "range": "10~12", "content": "New line 10\nNew line 11\n" }
 ```
 
 - 双锚点块替换：
 
 ```text
-Call the function tool `prepare_file_block_replace` with:
+按以下参数调用函数工具 `prepare_file_block_replace`：
 { "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
 ```
 
 ```text
-Call the function tool `apply_file_modification` with:
+按以下参数调用函数工具 `apply_file_modification`：
 { "hunk_id": "<hunk_id>" }
 ```
 

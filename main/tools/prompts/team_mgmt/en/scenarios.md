@@ -1,5 +1,14 @@
 # team_mgmt Usage Scenarios
 
+## Template (Scenarios)
+### Scenario Format
+- Goal
+- Preconditions
+- Steps
+- Expected Signal
+- Failure Branch
+- Completion Criteria
+
 ## Common Scenarios
 
 ### 1. Read Team Configuration

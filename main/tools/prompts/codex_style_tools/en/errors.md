@@ -1,5 +1,13 @@
 # codex_style_tools Error Handling
 
+## Template (Errors)
+### Error Chain (required)
+1) Trigger Condition
+2) Detection Signal
+3) Recovery Steps
+4) Success Criteria
+5) Escalation Path (optional)
+
 ## Error Codes
 
 ### PATCH_INVALID

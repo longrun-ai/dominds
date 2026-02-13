@@ -1,20 +1,11 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import type { Dialog } from '../dialog';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import type { FuncTool, JsonObject } from '../tool';
-import { getToolsetMeta, listToolsets } from './registry';
-
-type Topic = 'index' | 'principles' | 'tools' | 'scenarios' | 'errors' | 'all';
-
-const ALL_TOPICS: Topic[] = ['index', 'principles', 'tools', 'scenarios', 'errors'];
-
-const DEFAULT_TOPICS: Topic[] = ['index', 'tools'];
-
-// LoadableTopic excludes 'all' which is a special keyword
-type LoadableTopic = 'index' | 'principles' | 'tools' | 'scenarios' | 'errors';
+import { MANUAL_TOPICS } from './manual/spec';
+import { renderToolsetManual } from './manual/render';
+import { listToolsets } from './registry';
 
 type ToolsetManualResult = {
   tools: FuncTool[];
@@ -43,6 +34,7 @@ export function formatToolsetManualIntro(language: LanguageCode, toolNames: stri
 }
 
 function buildManTool(): FuncTool {
+  const topicEnums = [...MANUAL_TOPICS, 'all'];
   return {
     type: 'func',
     name: 'man',
@@ -61,14 +53,14 @@ function buildManTool(): FuncTool {
         },
         topic: {
           type: 'string',
-          enum: ['index', 'principles', 'tools', 'scenarios', 'errors', 'all'],
+          enum: topicEnums,
           description: 'Single topic to display',
         },
         topics: {
           type: 'array',
           items: {
             type: 'string',
-            enum: ['index', 'principles', 'tools', 'scenarios', 'errors'],
+            enum: [...MANUAL_TOPICS],
           },
           description: 'Multiple topics to display (union)',
         },
@@ -112,105 +104,32 @@ function buildManTool(): FuncTool {
           : `Toolset '${toolsetId}' is not available to you. Available toolsets: ${list}`;
       }
 
-      // Step 3: Check if the toolset exists
-      const meta = getToolsetMeta(toolsetId);
-      if (!meta) {
-        // This shouldn't happen if we got here (already verified available), but handle it
+      const availableToolNames = new Set(
+        _caller
+          .listTools({ onMissingToolset: 'silent', onMissingTool: 'silent' })
+          .map((tool) => tool.name),
+      );
+
+      const rendered = renderToolsetManual({
+        toolsetId,
+        language,
+        request: {
+          requestedTopic: typeof args?.topic === 'string' ? (args.topic as string) : undefined,
+          requestedTopics: Array.isArray(args?.topics)
+            ? (args.topics as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+            : undefined,
+        },
+        availableToolNames,
+      });
+
+      if (!rendered.foundToolset) {
         return language === 'zh'
           ? `未找到 toolset '${toolsetId}'。可用的 toolsets: ${Object.keys(listToolsets()).join(', ')}`
           : `Toolset '${toolsetId}' not found. Available toolsets: ${Object.keys(listToolsets()).join(', ')}`;
       }
-
-      // Determine which topics to load
-      const topicArg = args?.topic as Topic | undefined;
-      const topicsArg = args?.topics as Topic[] | undefined;
-
-      let topicsToLoad: LoadableTopic[];
-      if (topicArg) {
-        if (topicArg === 'all') {
-          topicsToLoad = ALL_TOPICS as LoadableTopic[];
-        } else {
-          topicsToLoad = [topicArg] as LoadableTopic[];
-        }
-      } else if (topicsArg && topicsArg.length > 0) {
-        topicsToLoad = topicsArg as LoadableTopic[];
-      } else {
-        topicsToLoad = DEFAULT_TOPICS as LoadableTopic[];
-      }
-
-      // Load content for each topic
-      const sections: string[] = [];
-      for (const topic of topicsToLoad) {
-        const content = loadToolsetTopicContent(toolsetId, language, topic);
-        if (content.trim()) {
-          const topicTitle = language === 'zh' ? getTopicTitleZh(topic) : getTopicTitleEn(topic);
-          sections.push(`## ${topicTitle}\n\n${content.trim()}`);
-        }
-      }
-
-      if (sections.length === 0) {
-        return language === 'zh'
-          ? `该工具集 '${toolsetId}' 暂未配置手册。`
-          : `Toolset '${toolsetId}' has no manual configured.`;
-      }
-
-      const title =
-        language === 'zh' ? `**工具集手册：${toolsetId}**` : `**Toolset manual: ${toolsetId}**`;
-
-      return `${title}\n\n${sections.join('\n\n---\n\n')}`;
+      return rendered.content;
     },
   };
-}
-
-function loadToolsetTopicContent(
-  toolsetName: string,
-  language: LanguageCode,
-  topic: LoadableTopic,
-): string {
-  const meta = getToolsetMeta(toolsetName);
-  if (!meta?.promptFilesI18n) {
-    return '';
-  }
-
-  const langKey = language === 'zh' ? 'zh' : 'en';
-  const basePath = meta.promptFilesI18n[langKey];
-  if (!basePath) {
-    return '';
-  }
-
-  // Derive the topic file path from the base path
-  // e.g., ./prompts/ws_mod/en/index.md -> ./prompts/ws_mod/en/{topic}.md
-  const baseDir = path.dirname(basePath);
-  const topicFilePath = path.join(baseDir, `${topic}.md`);
-
-  try {
-    const absPath = path.resolve(__dirname, topicFilePath);
-    return fs.readFileSync(absPath, 'utf8');
-  } catch {
-    return '';
-  }
-}
-
-function getTopicTitleZh(topic: LoadableTopic): string {
-  const titles: Record<LoadableTopic, string> = {
-    index: '概述',
-    principles: '原则',
-    tools: '工具',
-    scenarios: '场景',
-    errors: '错误处理',
-  };
-  return titles[topic];
-}
-
-function getTopicTitleEn(topic: LoadableTopic): string {
-  const titles: Record<LoadableTopic, string> = {
-    index: 'Overview',
-    principles: 'Principles',
-    tools: 'Tools',
-    scenarios: 'Scenarios',
-    errors: 'Error Handling',
-  };
-  return titles[topic];
 }
 
 /**

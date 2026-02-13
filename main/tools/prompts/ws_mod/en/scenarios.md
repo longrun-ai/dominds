@@ -1,5 +1,14 @@
 # ws_mod Usage Scenarios
 
+## Template (Scenarios)
+### Scenario Format
+- Goal
+- Preconditions
+- Steps
+- Expected Signal
+- Failure Branch
+- Completion Criteria
+
 ## Scenario Quick Reference
 
 | Scenario                        | Recommended Tools                                        | Description                                 |

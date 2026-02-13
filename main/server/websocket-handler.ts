@@ -13,6 +13,7 @@ import { Dialog, DialogID, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
 import {
+  getRunControlCountsSnapshot,
   requestEmergencyStopAll,
   requestInterruptDialog,
   setDialogRunState,
@@ -827,7 +828,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       const existingId = existing.id;
       const isSameDialog = existingId.selfId === dialogId && existingId.rootId === rootDialogId;
       if (isSameDialog) {
-        log.warn(
+        log.debug(
           'display_dialog: refreshing the same dialog; cancelling existing subscription to prevent duplicate stream events',
           undefined,
           { dialogId, rootDialogId },
@@ -1623,6 +1624,21 @@ export function setupWebSocketServer(
 
     // Send an initial snapshot so the UI can render a stable Problems indicator immediately.
     ws.send(JSON.stringify(createProblemsSnapshotMessage()));
+    void (async () => {
+      try {
+        const counts = await getRunControlCountsSnapshot();
+        ws.send(
+          JSON.stringify({
+            type: 'run_control_counts_evt',
+            proceeding: counts.proceeding,
+            resumable: counts.resumable,
+            timestamp: formatUnifiedTimestamp(new Date()),
+          }),
+        );
+      } catch (error) {
+        log.warn('Failed to send initial run-control counts snapshot', error);
+      }
+    })();
 
     ws.on('message', async (data: Buffer) => {
       try {

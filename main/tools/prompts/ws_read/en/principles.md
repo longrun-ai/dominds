@@ -1,6 +1,4 @@
-# ws_read Principles and Core Concepts
-
-## Core Concepts
+### Core Concepts
 
 ### 1. Runtime Workspace (rtws)
 
@@ -27,7 +25,7 @@ Ripgrep (rg) is an efficient text search tool, supporting regular expressions an
 - `-l`: Show only filenames
 - `-C`: Show context lines
 
-## Tool Overview
+### Tool Overview
 
 | Tool             | Function                             |
 | ---------------- | ------------------------------------ |
@@ -39,7 +37,7 @@ Ripgrep (rg) is an efficient text search tool, supporting regular expressions an
 | ripgrep_fixed    | Fixed string search                  |
 | ripgrep_search   | Advanced rg search                   |
 
-## Best Practices
+### Best Practices
 
 ### 1. Directory Listing
 
@@ -56,7 +54,7 @@ Ripgrep (rg) is an efficient text search tool, supporting regular expressions an
 - Use `ripgrep_snippets` to find code locations
 - Use `ripgrep_count` to count matches
 
-## Limitations and Notes
+### Limitations and Notes
 
 1. Can only read files within rtws
 2. Cannot write or delete files

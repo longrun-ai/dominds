@@ -1,5 +1,18 @@
 # ws_mod Tool Reference
 
+## Template (Tools)
+### How to Read
+- The schema-generated "Tool Contract (Schema)" section is canonical for parameters/returns.
+### Per-Tool Fields (order)
+1) Purpose
+2) Call Signature
+3) Parameters (refer to schema)
+4) Preconditions
+5) Success Signal
+6) Failure/Errors
+7) Copy-Ready Example
+8) Common Misuse
+
 ## 1. Supporting Tools (Read/Locate/Review)
 
 - `read_file` (function tool): Read-only view with limit and optional line number decoration (for review and positioning)
