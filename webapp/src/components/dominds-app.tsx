@@ -3465,7 +3465,10 @@ export class DomindsApp extends HTMLElement {
         max-width: 500px;
         width: 90vw;
         max-height: 85vh;
-        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
         animation: modalFadeIn 0.2s ease-out;
       }
 
@@ -3513,6 +3516,10 @@ export class DomindsApp extends HTMLElement {
 
       .modal-body {
         padding: 20px 24px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
 
       .modal-description {
@@ -3572,6 +3579,8 @@ export class DomindsApp extends HTMLElement {
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 6px;
         display: none;
+        max-height: min(30vh, 260px);
+        overflow-y: auto;
       }
 
       .task-doc-container {
@@ -4041,22 +4050,13 @@ export class DomindsApp extends HTMLElement {
             </div>
             <div class="sidebar-content">
               <div class="activity-view" data-activity-view="running">
-                <running-dialog-list 
-                  id="running-dialog-list"
-                  max-height="calc(100vh - 200px)"
-                ></running-dialog-list>
+                <running-dialog-list id="running-dialog-list"></running-dialog-list>
               </div>
               <div class="activity-view hidden" data-activity-view="done">
-                <done-dialog-list
-                  id="done-dialog-list"
-                  max-height="calc(100vh - 200px)"
-                ></done-dialog-list>
+                <done-dialog-list id="done-dialog-list"></done-dialog-list>
               </div>
               <div class="activity-view hidden" data-activity-view="archived">
-                <archived-dialog-list
-                  id="archived-dialog-list"
-                  max-height="calc(100vh - 200px)"
-                ></archived-dialog-list>
+                <archived-dialog-list id="archived-dialog-list"></archived-dialog-list>
               </div>
               <div class="activity-view hidden" data-activity-view="search">
                 <div class="activity-placeholder">

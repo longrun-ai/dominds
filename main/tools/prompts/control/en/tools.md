@@ -102,6 +102,7 @@ updated_at: <update timestamp>
 - Each call replaces entire chapter
 - Does not reset dialog rounds
 - Changes visible to all teammates
+- Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
 
 ### 5. recall_taskdoc
 

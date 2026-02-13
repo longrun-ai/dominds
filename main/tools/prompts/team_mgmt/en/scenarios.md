@@ -20,7 +20,23 @@ Call the function tool `team_mgmt_read_file` with:
 { "path": "team.yaml" }
 ```
 
-### 2. Modify Team Configuration (Two Steps)
+### 2. List Available Providers / Models
+
+First, list providers (built-in + rtws):
+
+```text
+Call the function tool `team_mgmt_list_providers` with:
+{ "provider_pattern": "*", "show_models": true }
+```
+
+Then list models by provider/model filters:
+
+```text
+Call the function tool `team_mgmt_list_models` with:
+{ "source": "effective", "provider_pattern": "openai*", "model_pattern": "*", "include_param_options": false }
+```
+
+### 3. Modify Team Configuration (Two Steps)
 
 **Step 1: Prepare**
 
@@ -36,7 +52,7 @@ Call the function tool `team_mgmt_apply_file_modification` with:
 { "hunk_id": "<hunk_id>" }
 ```
 
-### 3. Create New Mind File
+### 4. Create New Mind File
 
 ```text
 Call the function tool `team_mgmt_create_new_file` with:
@@ -52,7 +68,7 @@ Call the function tool `team_mgmt_prepare_file_append` with:
 
 Then apply.
 
-### 4. Validate Configuration
+### 5. Validate Configuration
 
 After modifying `.minds/team.yaml`, always run:
 
@@ -63,14 +79,14 @@ Call the function tool `team_mgmt_validate_team_cfg` with:
 
 Ensure no errors in Problems panel before proceeding.
 
-### 5. Search Team Configuration
+### 6. Search Team Configuration
 
 ```text
 Call the function tool `team_mgmt_ripgrep_snippets` with:
 { "pattern": "member", "path": "team.yaml" }
 ```
 
-### 6. Overwrite Entire Config File
+### 7. Overwrite Entire Config File
 
 ```text
 Call the function tool `team_mgmt_read_file` with:

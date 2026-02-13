@@ -66,11 +66,21 @@ A: Check the following:
 
 ### Q: What commands can readonly_shell execute?
 
-A: Read-only commands such as:
+A: Only the following command prefixes are allowed (full list):
 
-- ls, cat, grep
-- git status, git log
-- find, which
+```
+cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date,
+diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid,
+git show, git status, git diff, git log, git blame, find, tree, jq, true
+```
+
+Also allowed (additional rules):
+
+- Exact version probes only: `node --version|-v`, `python3 --version|-V`
+- `git -C <relative-path> <show|status|diff|log|blame> ...`
+- `cd <relative-path> && <allowed command...>` (or `||`)
+- Chains via `|` / `&&` / `||` are validated segment-by-segment
+- Script execution like `node -e` / `python3 -c` is always rejected
 
 ### Q: What are the limitations of update_plan?
 
@@ -89,8 +99,4 @@ A: Possible reasons:
 
 ### Q: How to view available read-only commands?
 
-A: Common read-only commands include:
-
-- File viewing: ls, cat, head, tail
-- Search: grep, find
-- Git status: git status, git log, git diff
+A: The list above is the full whitelist. When a command is rejected, the error message echoes the full list and the rejected segment.

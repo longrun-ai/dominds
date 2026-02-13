@@ -11,7 +11,6 @@ import {
 } from '../utils/run-control-visual';
 
 export interface RunningDialogListProps {
-  maxHeight?: string;
   onSelect?: (dialog: DialogInfo) => void;
   uiLanguage: LanguageCode;
   loading: boolean;
@@ -52,7 +51,6 @@ type DialogDomEntry = {
 
 export class RunningDialogList extends HTMLElement {
   private props: RunningDialogListProps = {
-    maxHeight: 'none',
     uiLanguage: 'en',
     loading: false,
   };
@@ -96,7 +94,7 @@ export class RunningDialogList extends HTMLElement {
       this.renderLoading();
       return;
     }
-    if (prevLanguage !== this.props.uiLanguage || props.maxHeight) {
+    if (prevLanguage !== this.props.uiLanguage) {
       this.refreshFromDom();
     }
   }
@@ -1476,12 +1474,13 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private getStyles(): string {
-    const maxHeight = this.props.maxHeight ?? 'none';
     return `
       :host {
         display: block;
         height: 100%;
+        min-height: 0;
         width: 100%;
+        overflow: hidden;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         color: var(--dominds-fg, #333333);
         background: var(--dominds-sidebar-bg, #ffffff);
@@ -1490,8 +1489,8 @@ export class RunningDialogList extends HTMLElement {
       .running-dialog-list {
         display: flex;
         flex-direction: column;
+        height: 100%;
         overflow-y: auto;
-        max-height: ${maxHeight};
         min-height: 0;
       }
 

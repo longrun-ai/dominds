@@ -66,11 +66,21 @@ A: 检查以下内容：
 
 ### Q: readonly_shell 可以执行哪些命令？
 
-A: 只读命令，如：
+A: 仅允许以下命令前缀（完整清单）：
 
-- ls, cat, grep
-- git status, git log
-- find, which
+```
+cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date,
+diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid,
+git show, git status, git diff, git log, git blame, find, tree, jq, true
+```
+
+另外允许（附加规则）：
+
+- 仅版本探针：`node --version|-v`、`python3 --version|-V`
+- `git -C <相对路径> <show|status|diff|log|blame> ...`
+- `cd <相对路径> && <允许命令...>`（或 `||`）
+- 链式命令 `|` / `&&` / `||` 会逐段校验
+- `node -e` / `python3 -c` 这类脚本执行一律拒绝
 
 ### Q: update_plan 有什么限制？
 
@@ -89,8 +99,4 @@ A: 可能原因：
 
 ### Q: 如何查看可用的只读命令？
 
-A: 常用的只读命令包括：
-
-- 文件查看：ls, cat, head, tail
-- 搜索：grep, find
-- Git 状态：git status, git log, git diff
+A: 以上清单即为完整白名单；若命令被拒绝，错误提示会回显完整白名单和被拒的子命令段。

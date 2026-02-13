@@ -20,7 +20,23 @@ Call the function tool `team_mgmt_read_file` with:
 { "path": "team.yaml" }
 ```
 
-### 2. 修改团队配置（两步）
+### 2. 列出可用的 providers / models
+
+先看当前有哪些 provider（内置 + rtws）：
+
+```text
+调用函数工具 `team_mgmt_list_providers`：
+{ "provider_pattern": "*", "show_models": true }
+```
+
+再按 provider/model 过滤查看模型清单：
+
+```text
+调用函数工具 `team_mgmt_list_models`：
+{ "source": "effective", "provider_pattern": "openai*", "model_pattern": "*", "include_param_options": false }
+```
+
+### 3. 修改团队配置（两步）
 
 **步骤 1: Prepare**
 
@@ -36,7 +52,7 @@ Call the function tool `team_mgmt_apply_file_modification` with:
 { "hunk_id": "<hunk_id>" }
 ```
 
-### 3. 创建新的 mind 文件
+### 4. 创建新的 mind 文件
 
 ```text
 Call the function tool `team_mgmt_create_new_file` with:
@@ -52,7 +68,7 @@ Call the function tool `team_mgmt_prepare_file_append` with:
 
 然后 apply。
 
-### 4. 验证配置
+### 5. 验证配置
 
 修改完 `.minds/team.yaml` 后务必运行：
 
@@ -63,14 +79,14 @@ Call the function tool `team_mgmt_validate_team_cfg` with:
 
 确保 Problems 面板无错误后再继续。
 
-### 5. 搜索团队配置
+### 6. 搜索团队配置
 
 ```text
 Call the function tool `team_mgmt_ripgrep_snippets` with:
 { "pattern": "member", "path": "team.yaml" }
 ```
 
-### 6. 覆盖整个配置文件
+### 7. 覆盖整个配置文件
 
 ```text
 Call the function tool `team_mgmt_read_file` with:

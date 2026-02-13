@@ -21,6 +21,8 @@
 
 - `team_mgmt_read_file`: Read file content from `.minds/`, with YAML header (includes total_lines/size_bytes)
 - `team_mgmt_list_dir`: List directory contents under `.minds/`
+- `team_mgmt_list_providers`: List built-in/rtws providers, env-var readiness, and model overview (wildcard filters supported)
+- `team_mgmt_list_models`: List models by provider/model wildcard; can include `model_param_options`
 - `team_mgmt_ripgrep_files`: Search file paths under `.minds/`
 - `team_mgmt_ripgrep_snippets`: Search snippets under `.minds/` (with context)
 - `team_mgmt_ripgrep_count`: Count matches under `.minds/`
@@ -64,6 +66,8 @@
 | Operation                | Recommended Tool                                                                   |
 | ------------------------ | ---------------------------------------------------------------------------------- |
 | Read file                | `team_mgmt_read_file`                                                              |
+| List providers           | `team_mgmt_list_providers`                                                         |
+| List models              | `team_mgmt_list_models`                                                            |
 | Search content           | `team_mgmt_ripgrep_snippets`                                                       |
 | Create new file          | `team_mgmt_create_new_file`                                                        |
 | Small edits (line range) | `team_mgmt_prepare_file_range_edit` → `team_mgmt_apply_file_modification`          |

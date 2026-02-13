@@ -21,6 +21,8 @@
 
 - `team_mgmt_read_file`：读取 `.minds/` 下的文件内容，带 YAML header（含 total_lines/size_bytes）
 - `team_mgmt_list_dir`：列出 `.minds/` 下的目录内容
+- `team_mgmt_list_providers`：列出内置与 rtws 的 provider，显示 env 变量就绪情况与模型概览（可用通配符过滤）
+- `team_mgmt_list_models`：按 provider/model 通配符列出模型，可选展示 `model_param_options`
 - `team_mgmt_ripgrep_files`：在 `.minds/` 下搜索文件路径
 - `team_mgmt_ripgrep_snippets`：在 `.minds/` 下搜索片段（带上下文）
 - `team_mgmt_ripgrep_count`：在 `.minds/` 下计数匹配
@@ -64,6 +66,8 @@
 | 操作               | 推荐工具                                                                           |
 | ------------------ | ---------------------------------------------------------------------------------- |
 | 读取文件           | `team_mgmt_read_file`                                                              |
+| 列出 provider      | `team_mgmt_list_providers`                                                         |
+| 列出模型           | `team_mgmt_list_models`                                                            |
 | 搜索内容           | `team_mgmt_ripgrep_snippets`                                                       |
 | 创建新文件         | `team_mgmt_create_new_file`                                                        |
 | 小改动（行号范围） | `team_mgmt_prepare_file_range_edit` → `team_mgmt_apply_file_modification`          |

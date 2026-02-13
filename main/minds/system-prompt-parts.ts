@@ -244,9 +244,9 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       progressLine:
         '- 其中 `progress` 是全队共享公告牌：用于“阶段性进度快照”（关键决策/当前状态/下一步），不是流水账。',
       injectedTaskdocLine:
-        '- 重要：差遣牒内容会被系统以内联形式注入到上下文中（本轮生成视角下即为最新）。需要回顾时请直接基于上下文里的差遣牒内容回顾与决策，不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
+        '- 重要：差遣牒内容会被系统以内联形式注入到上下文中（本轮生成视角下即为最新；注入内容不包括全局约束）。需要回顾时请直接基于上下文里的差遣牒内容回顾与决策，不要试图用通用文件工具读取 `*.tsk/` 下的文件（会被拒绝）。',
       constraintsLine:
-        '- 约定：`constraints` 尽量只写任务特有的硬要求。系统提示/工具文档里已明确且由系统强制执行的通用规则（例如 `*.tsk/` 封装禁止通用文件工具）无需重复写入 `constraints.md`。',
+        '- 约定：`constraints` 只写任务特有的硬要求，不得写入系统提示/工具文档里已明确且由系统强制执行的通用规则（例如 `*.tsk/` 封装禁止通用文件工具）。一经发现重复，必须删除并告知用户。',
       remindersLine:
         '- 提醒项（工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。',
       teamMemoryLine: '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。',
@@ -282,9 +282,9 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     progressLine:
       '- Taskdoc `progress` is the team’s shared bulletin board: distilled milestone snapshots (key decisions/current status/next steps), not raw logs.',
     injectedTaskdocLine:
-      '- Important: the Taskdoc content is injected inline into the context (the latest as of this generation). Review the injected Taskdoc instead of trying to read files under `*.tsk/` via general file tools (they will be rejected).',
+      '- Important: the Taskdoc content is injected inline into the context (the latest as of this generation; injected content excludes global constraints). Review the injected Taskdoc instead of trying to read files under `*.tsk/` via general file tools (they will be rejected).',
     constraintsLine:
-      '- Convention: keep Taskdoc `constraints` focused on task-specific requirements. Do not duplicate global, system-enforced rules already stated in system prompt/tool docs (e.g. `.tsk/` encapsulation bans general file tools).',
+      '- Convention: Taskdoc `constraints` must contain task-specific requirements only; do not include global, system-enforced rules already stated in system prompt/tool docs (e.g. `.tsk/` encapsulation bans general file tools). If duplication is found, you MUST remove it and notify the user.',
     remindersLine:
       '- Reminders (working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small (often 1–3 items), prefer `update_reminder` to compress/merge; delete when obsolete.',
     teamMemoryLine: '- Team memory: stable shared conventions (cross-task).',
