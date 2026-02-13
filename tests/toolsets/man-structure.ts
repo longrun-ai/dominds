@@ -2,10 +2,10 @@
 
 import 'dominds/tools/builtins';
 
-import assert from 'node:assert/strict';
 import { setWorkLanguage } from 'dominds/shared/runtime-language';
 import { Team } from 'dominds/team';
 import { buildToolsetManualTools } from 'dominds/tools/toolset-manual';
+import assert from 'node:assert/strict';
 
 function createManTool() {
   const built = buildToolsetManualTools({ toolsetNames: [], existingToolNames: new Set<string>() });

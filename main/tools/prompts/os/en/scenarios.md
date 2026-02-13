@@ -1,7 +1,9 @@
 # os Usage Scenarios
 
 ## Template (Scenarios)
+
 ### Scenario Format
+
 - Goal
 - Preconditions
 - Steps

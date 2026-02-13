@@ -1860,7 +1860,9 @@ export async function driveDialogStreamCoreV2(
   }
 
   if (!finalResult) {
-    throw new Error(`driver-v2 core invariant violation: missing final result (dialog=${dlg.id.valueOf()})`);
+    throw new Error(
+      `driver-v2 core invariant violation: missing final result (dialog=${dlg.id.valueOf()})`,
+    );
   }
   return finalResult;
 }

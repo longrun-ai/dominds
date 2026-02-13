@@ -210,7 +210,9 @@ export class RunningDialogList extends HTMLElement {
     if (patch.subdialogCount !== undefined && targetSelf === rootId) {
       const countEl = entry.el.querySelector('.dialog-count');
       if (countEl instanceof HTMLElement) {
-        countEl.textContent = String(typeof next.subdialogCount === 'number' ? next.subdialogCount : 0);
+        countEl.textContent = String(
+          typeof next.subdialogCount === 'number' ? next.subdialogCount : 0,
+        );
       }
     }
     return true;
@@ -581,7 +583,8 @@ export class RunningDialogList extends HTMLElement {
                 </div>
               `;
             const visibleSubdialogCount =
-              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ?? RunningDialogList.SHOW_MORE_STEP;
+              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ??
+              RunningDialogList.SHOW_MORE_STEP;
             const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
             const hiddenSubdialogCount = Math.max(
               rootGroup.subdialogs.length - visibleSubdialogs.length,
@@ -743,7 +746,8 @@ export class RunningDialogList extends HTMLElement {
     );
     if (subRows.length <= 1) return;
     subRows.sort((a, b) => {
-      const delta = this.getDialogUpdatedAtMsFromElement(b) - this.getDialogUpdatedAtMsFromElement(a);
+      const delta =
+        this.getDialogUpdatedAtMsFromElement(b) - this.getDialogUpdatedAtMsFromElement(a);
       if (delta !== 0) return delta;
       const aSelf = a.getAttribute('data-self-id') ?? '';
       const bSelf = b.getAttribute('data-self-id') ?? '';
@@ -786,19 +790,17 @@ export class RunningDialogList extends HTMLElement {
 
   private reorderTaskGroups(): void {
     if (!this.listEl) return;
-    const groups = Array.from(this.listEl.querySelectorAll<HTMLElement>(':scope > .task-group.task-node'));
+    const groups = Array.from(
+      this.listEl.querySelectorAll<HTMLElement>(':scope > .task-group.task-node'),
+    );
     if (groups.length <= 1) return;
     groups.sort((a, b) => {
       const aTs = this.getTaskMaxUpdatedAtMs(a);
       const bTs = this.getTaskMaxUpdatedAtMs(b);
       const delta = bTs - aTs;
       if (delta !== 0) return delta;
-      const aPath = (
-        a.querySelector('.task-title')?.getAttribute('data-task-path') ?? ''
-      ).trim();
-      const bPath = (
-        b.querySelector('.task-title')?.getAttribute('data-task-path') ?? ''
-      ).trim();
+      const aPath = (a.querySelector('.task-title')?.getAttribute('data-task-path') ?? '').trim();
+      const bPath = (b.querySelector('.task-title')?.getAttribute('data-task-path') ?? '').trim();
       return aPath.localeCompare(bPath);
     });
     for (const group of groups) {
@@ -809,7 +811,9 @@ export class RunningDialogList extends HTMLElement {
 
   private getTaskMaxUpdatedAtMs(taskGroup: HTMLElement): number {
     let max = 0;
-    const roots = taskGroup.querySelectorAll<HTMLElement>('.dialog-item.root-dialog[data-dialog-json]');
+    const roots = taskGroup.querySelectorAll<HTMLElement>(
+      '.dialog-item.root-dialog[data-dialog-json]',
+    );
     roots.forEach((row) => {
       const ts = this.getDialogUpdatedAtMsFromElement(row);
       if (ts > max) max = ts;
@@ -1314,13 +1318,15 @@ export class RunningDialogList extends HTMLElement {
   }
 
   private showMoreRoots(taskDocPath: string): void {
-    const current = this.visibleRootCountByTask.get(taskDocPath) ?? RunningDialogList.SHOW_MORE_STEP;
+    const current =
+      this.visibleRootCountByTask.get(taskDocPath) ?? RunningDialogList.SHOW_MORE_STEP;
     this.visibleRootCountByTask.set(taskDocPath, current + RunningDialogList.SHOW_MORE_STEP);
     this.applySnapshot(this.snapshotDialogs);
   }
 
   private showMoreSubdialogs(rootId: string): void {
-    const current = this.visibleSubdialogCountByRoot.get(rootId) ?? RunningDialogList.SHOW_MORE_STEP;
+    const current =
+      this.visibleSubdialogCountByRoot.get(rootId) ?? RunningDialogList.SHOW_MORE_STEP;
     this.visibleSubdialogCountByRoot.set(rootId, current + RunningDialogList.SHOW_MORE_STEP);
     this.applySnapshot(this.snapshotDialogs);
   }

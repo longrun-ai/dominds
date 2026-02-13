@@ -41,6 +41,22 @@ export function setRunStateBroadcaster(fn: (msg: WebSocketMessage) => void): voi
   broadcastToClients = fn;
 }
 
+function syncRunControlCountsAfterActiveRunChange(
+  trigger: 'create_active_run' | 'clear_active_run',
+  dialogId: DialogID,
+): void {
+  void (async () => {
+    try {
+      await broadcastRunControlCountsSnapshot();
+    } catch (err) {
+      log.warn('Failed to broadcast run-control counts snapshot after active-run change', err, {
+        dialogId: dialogId.valueOf(),
+        trigger,
+      });
+    }
+  })();
+}
+
 type RunControlBucket = 'proceeding' | 'resumable' | 'none';
 
 function classifyRunControlBucket(state: DialogRunState | undefined): RunControlBucket {
@@ -121,11 +137,14 @@ export function createActiveRun(dialogId: DialogID): AbortSignal {
   }
   const run: ActiveRun = { abortController: new AbortController() };
   activeRunsByDialogKey.set(key, run);
+  syncRunControlCountsAfterActiveRunChange('create_active_run', dialogId);
   return run.abortController.signal;
 }
 
 export function clearActiveRun(dialogId: DialogID): void {
-  activeRunsByDialogKey.delete(dialogId.key());
+  const deleted = activeRunsByDialogKey.delete(dialogId.key());
+  if (!deleted) return;
+  syncRunControlCountsAfterActiveRunChange('clear_active_run', dialogId);
 }
 
 export function getStopRequestedReason(dialogId: DialogID): StopRequestedReason | undefined {

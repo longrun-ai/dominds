@@ -16,6 +16,7 @@ import {
 } from './ctrl';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
+import { buildStandardManualSpec } from './manual/spec';
 import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
   addMemoryTool,
@@ -56,7 +57,6 @@ import {
   prepareFileRangeEditTool,
   readFileTool,
 } from './txt';
-import { buildStandardManualSpec } from './manual/spec';
 
 function promptFilesFor(toolsetId: string): { en: string; zh: string } {
   return {

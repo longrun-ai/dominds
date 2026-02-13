@@ -1,7 +1,9 @@
 # mcp_admin Usage Scenarios
 
 ## Template (Scenarios)
+
 ### Scenario Format
+
 - Goal
 - Preconditions
 - Steps

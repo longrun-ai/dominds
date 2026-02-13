@@ -166,7 +166,6 @@ export class DomindsApp extends HTMLElement {
   private dialogRunStatesByKey = new Map<string, DialogRunState>();
   private proceedingDialogsCount: number = 0;
   private resumableDialogsCount: number = 0;
-  private hasFetchedInitialRunControlCounts: boolean = false;
   private generatingDialogKeys = new Set<string>();
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: DialogStatusKind | null = null;
@@ -5991,14 +5990,11 @@ export class DomindsApp extends HTMLElement {
   private async loadDialogs(): Promise<void> {
     try {
       const api = getApiClient();
-      const runControlCountsPromise = this.hasFetchedInitialRunControlCounts
-        ? Promise.resolve(null)
-        : api.getRunControlCounts();
       const [runningResp, doneResp, archivedResp, runControlCountsResp] = await Promise.all([
         api.getRootDialogsByStatus('running'),
         api.getRootDialogsByStatus('completed'),
         api.getRootDialogsByStatus('archived'),
-        runControlCountsPromise,
+        api.getRunControlCounts(),
       ]);
 
       const responses = [runningResp, doneResp, archivedResp];
@@ -6030,13 +6026,12 @@ export class DomindsApp extends HTMLElement {
         if (!root.runState) continue;
         this.dialogRunStatesByKey.set(this.dialogKey(root.rootId, selfId), root.runState);
       }
-      if (!this.hasFetchedInitialRunControlCounts) {
-        this.hasFetchedInitialRunControlCounts = true;
-        if (runControlCountsResp && runControlCountsResp.success && runControlCountsResp.data) {
-          this.proceedingDialogsCount = runControlCountsResp.data.proceeding;
-          this.resumableDialogsCount = runControlCountsResp.data.resumable;
-          this.updateToolbarDisplay();
-        }
+      if (runControlCountsResp.success && runControlCountsResp.data) {
+        this.proceedingDialogsCount = runControlCountsResp.data.proceeding;
+        this.resumableDialogsCount = runControlCountsResp.data.resumable;
+        this.updateToolbarDisplay();
+      } else {
+        console.warn('Failed to refresh run-control counts via API', runControlCountsResp.error);
       }
       this.markDialogListBootstrapReady();
       if (this.currentDialog) {
@@ -6647,9 +6642,9 @@ export class DomindsApp extends HTMLElement {
     // Selecting a subdialog may come from deep links / programmatic navigation where only roots
     // are loaded. Ensure the root hierarchy is fetched before selection state is propagated to lists.
     if (selfId !== rootId) {
-      const subdialogLoaded = this
-        .getVisibleSubdialogsForRoot(rootId)
-        .some((d) => d.selfId === selfId);
+      const subdialogLoaded = this.getVisibleSubdialogsForRoot(rootId).some(
+        (d) => d.selfId === selfId,
+      );
       if (!subdialogLoaded) {
         const inferredStatus =
           normalizedDialog.status ??
@@ -7682,10 +7677,7 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'dlg_touched_evt': {
-        const status = this.resolveDialogStatusByIds(
-          message.dialog.rootId,
-          message.dialog.selfId,
-        );
+        const status = this.resolveDialogStatusByIds(message.dialog.rootId, message.dialog.selfId);
         this.bumpDialogLastModified(
           { rootId: message.dialog.rootId, selfId: message.dialog.selfId },
           message.timestamp,
@@ -7815,7 +7807,8 @@ export class DomindsApp extends HTMLElement {
               `CRITICAL: subdialog_created event for unknown rootId=${node.rootId} selfId=${node.selfId}`,
             );
           }
-          const prevCount = typeof rootDialog.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
+          const prevCount =
+            typeof rootDialog.subdialogCount === 'number' ? rootDialog.subdialogCount : 0;
           const nextCount = Math.max(prevCount + 1, 1);
           this.upsertRootDialogSnapshot({
             ...rootDialog,

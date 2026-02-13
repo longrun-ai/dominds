@@ -52,7 +52,6 @@ export function shouldIncludeSchemaToolsSection(spec?: ManualSpec): boolean {
   return spec?.includeSchemaToolsSection ?? true;
 }
 
-
 export function buildStandardManualSpec(options: {
   baseDir: string;
   topics?: readonly ManualTopic[];
@@ -60,7 +59,8 @@ export function buildStandardManualSpec(options: {
   includeSchemaToolsSection?: boolean;
 }): ManualSpec {
   const baseDir = stripTrailingSlash(options.baseDir);
-  const topics = options.topics && options.topics.length > 0 ? [...options.topics] : [...MANUAL_TOPICS];
+  const topics =
+    options.topics && options.topics.length > 0 ? [...options.topics] : [...MANUAL_TOPICS];
 
   return {
     topics,

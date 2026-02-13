@@ -3,17 +3,17 @@ import * as path from 'path';
 import type { LanguageCode } from '../../shared/types/language';
 import type { FuncTool } from '../../tool';
 import { getToolset, getToolsetMeta } from '../registry';
+import { buildSchemaToolsSection } from './schema';
 import {
   DEFAULT_MANUAL_TOPICS,
-  type ManualSpec,
   MANUAL_TOPICS,
+  type ManualSpec,
   type ManualTopic,
   getManualSpecTopics,
   getManualTopicTitle,
   shouldIncludeSchemaToolsSection,
   shouldWarnMissingSection,
 } from './spec';
-import { buildSchemaToolsSection } from './schema';
 
 export type ManualRequest = {
   requestedTopic?: string;
@@ -64,7 +64,12 @@ export function renderToolsetManual(input: RenderManualInput): RenderManualResul
   const missingTopics: MissingTopic[] = [];
 
   for (const topic of resolvedTopics) {
-    const loaded = loadTopicDoc({ toolsetId: input.toolsetId, topic, language: input.language, spec });
+    const loaded = loadTopicDoc({
+      toolsetId: input.toolsetId,
+      topic,
+      language: input.language,
+      spec,
+    });
     if (loaded.status !== 'ok') {
       if (shouldWarnMissingSection(spec)) {
         missingTopics.push({ topic, filePath: loaded.filePath, status: loaded.status });
@@ -86,7 +91,11 @@ export function renderToolsetManual(input: RenderManualInput): RenderManualResul
   }
 
   if (shouldIncludeSchemaToolsSection(spec) && resolvedTopics.includes('tools')) {
-    const schemaSection = buildSchemaSection(input.toolsetId, input.language, input.availableToolNames);
+    const schemaSection = buildSchemaSection(
+      input.toolsetId,
+      input.language,
+      input.availableToolNames,
+    );
     if (schemaSection !== '') {
       const toolsSection = topicSections.find((section) => section.topic === 'tools');
       if (toolsSection) {
@@ -237,7 +246,9 @@ function buildSchemaSection(
   language: LanguageCode,
   availableToolNames: Set<string>,
 ): string {
-  const tools = (getToolsetMetaTools(toolsetId) ?? []).filter((tool) => availableToolNames.has(tool.name));
+  const tools = (getToolsetMetaTools(toolsetId) ?? []).filter((tool) =>
+    availableToolNames.has(tool.name),
+  );
   if (tools.length === 0) {
     return '';
   }
@@ -251,7 +262,12 @@ function getToolsetMetaTools(toolsetId: string): FuncTool[] | null {
   }
   const out: FuncTool[] = [];
   for (const tool of toolset) {
-    if (tool && typeof tool === 'object' && 'type' in tool && (tool as { type: string }).type === 'func') {
+    if (
+      tool &&
+      typeof tool === 'object' &&
+      'type' in tool &&
+      (tool as { type: string }).type === 'func'
+    ) {
       out.push(tool as FuncTool);
     }
   }

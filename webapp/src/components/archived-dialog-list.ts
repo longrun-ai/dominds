@@ -160,7 +160,9 @@ export class ArchivedDialogList extends HTMLElement {
     if (patch.subdialogCount !== undefined && targetSelf === rootId) {
       const countEl = entry.el.querySelector('.dialog-count');
       if (countEl instanceof HTMLElement) {
-        countEl.textContent = String(typeof next.subdialogCount === 'number' ? next.subdialogCount : 0);
+        countEl.textContent = String(
+          typeof next.subdialogCount === 'number' ? next.subdialogCount : 0,
+        );
       }
     }
     return true;
@@ -414,7 +416,9 @@ export class ArchivedDialogList extends HTMLElement {
     }
 
     if (this.selectionState.kind === 'selected') {
-      const hasSelection = validated.some((dialog) => this.isSelectedDialog(dialog, this.selectionState));
+      const hasSelection = validated.some((dialog) =>
+        this.isSelectedDialog(dialog, this.selectionState),
+      );
       if (!hasSelection) {
         this.clearSelection();
       } else {
@@ -1002,7 +1006,8 @@ export class ArchivedDialogList extends HTMLElement {
   }
 
   private showMoreSubdialogs(rootId: string): void {
-    const current = this.visibleSubdialogCountByRoot.get(rootId) ?? ArchivedDialogList.SHOW_MORE_STEP;
+    const current =
+      this.visibleSubdialogCountByRoot.get(rootId) ?? ArchivedDialogList.SHOW_MORE_STEP;
     this.visibleSubdialogCountByRoot.set(rootId, current + ArchivedDialogList.SHOW_MORE_STEP);
     this.applySnapshot(this.snapshotDialogs);
   }

@@ -1,7 +1,9 @@
 # ws_mod Usage Scenarios
 
 ## Template (Scenarios)
+
 ### Scenario Format
+
 - Goal
 - Preconditions
 - Steps

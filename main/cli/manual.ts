@@ -12,12 +12,12 @@
  *   dominds manual team_mgmt --topics index,tools
  */
 
+import type { LanguageCode } from '../shared/types/language';
+import type { FuncTool } from '../tool';
+import '../tools/builtins';
 import { renderToolsetManual } from '../tools/manual/render';
 import { MANUAL_TOPICS } from '../tools/manual/spec';
 import { getToolset, getToolsetMeta, listToolsets } from '../tools/registry';
-import type { FuncTool } from '../tool';
-import type { LanguageCode } from '../shared/types/language';
-import '../tools/builtins';
 
 type ParsedArgs = Readonly<{
   toolsetId?: string;
@@ -28,7 +28,9 @@ type ParsedArgs = Readonly<{
 }>;
 
 function printUsage(): void {
-  console.log('Usage: dominds manual <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]');
+  console.log(
+    'Usage: dominds manual <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]',
+  );
   console.log('       dominds manual --list');
   console.log('');
   console.log('Examples:');
@@ -164,7 +166,12 @@ function toAvailableToolNames(toolsetId: string): Set<string> {
   const toolset = getToolset(toolsetId) ?? [];
   const names = new Set<string>();
   for (const tool of toolset) {
-    if (tool && typeof tool === 'object' && 'type' in tool && (tool as { type: string }).type === 'func') {
+    if (
+      tool &&
+      typeof tool === 'object' &&
+      'type' in tool &&
+      (tool as { type: string }).type === 'func'
+    ) {
       names.add((tool as FuncTool).name);
     }
   }

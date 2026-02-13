@@ -1,7 +1,9 @@
 # team_mgmt Usage Scenarios
 
 ## Template (Scenarios)
+
 ### Scenario Format
+
 - Goal
 - Preconditions
 - Steps

@@ -12,9 +12,9 @@ import {
   resolveInheritedSubdialogAgentPrimingMode,
   scheduleAgentPrimingForNewDialog,
 } from '../agent-priming';
-import { getRunControlCountsSnapshot } from '../dialog-run-state';
 import { DialogID, DialogStore, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
+import { getRunControlCountsSnapshot } from '../dialog-run-state';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
@@ -1235,9 +1235,7 @@ function broadcastDialogDeletes(
   }
 }
 
-async function broadcastRunControlCounts(
-  clients: Set<WebSocket> | undefined,
-): Promise<void> {
+async function broadcastRunControlCounts(clients: Set<WebSocket> | undefined): Promise<void> {
   if (!clients) return;
   const counts = await getRunControlCountsSnapshot();
   const data = JSON.stringify({

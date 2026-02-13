@@ -453,7 +453,7 @@ const isQ4H = callName === 'askHuman';
 **Invocation Pattern**:
 
 ```typescript
-askHuman({ tellaskContent: "<question headline>\n<question body content>" });
+askHuman({ tellaskContent: '<question headline>\n<question body content>' });
 ```
 
 ### Q4H Recording Process

@@ -3,8 +3,8 @@ import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
 import type { FuncTool, JsonObject } from '../tool';
-import { MANUAL_TOPICS } from './manual/spec';
 import { renderToolsetManual } from './manual/render';
+import { MANUAL_TOPICS } from './manual/spec';
 import { listToolsets } from './registry';
 
 type ToolsetManualResult = {
@@ -49,7 +49,8 @@ function buildManTool(): FuncTool {
       properties: {
         toolsetId: {
           type: 'string',
-          description: 'The toolset ID to show manual for. Use without toolsetId to get available toolsets.',
+          description:
+            'The toolset ID to show manual for. Use without toolsetId to get available toolsets.',
         },
         topic: {
           type: 'string',
@@ -76,9 +77,7 @@ function buildManTool(): FuncTool {
         // When no toolsetId is provided, show all available toolsets
         const availableToolsetNames = _caller.listResolvedToolsetNames();
         const list = availableToolsetNames.map((t) => `\`${t}\``).join(', ');
-        return language === 'zh'
-          ? `可用的工具集：${list}`
-          : `Available toolsets: ${list}`;
+        return language === 'zh' ? `可用的工具集：${list}` : `Available toolsets: ${list}`;
       }
 
       // Step 1: Get available toolsets for this caller (dynamic availability)
@@ -116,7 +115,9 @@ function buildManTool(): FuncTool {
         request: {
           requestedTopic: typeof args?.topic === 'string' ? (args.topic as string) : undefined,
           requestedTopics: Array.isArray(args?.topics)
-            ? (args.topics as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+            ? (args.topics as unknown[]).filter(
+                (entry): entry is string => typeof entry === 'string',
+              )
             : undefined,
         },
         availableToolNames,

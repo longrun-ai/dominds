@@ -444,7 +444,7 @@ const isQ4H = callName === 'askHuman';
 **调用模式**：
 
 ```typescript
-askHuman({ tellaskContent: "<问题标题>\n<问题正文内容>" });
+askHuman({ tellaskContent: '<问题标题>\n<问题正文内容>' });
 ```
 
 ### Q4H 记录过程

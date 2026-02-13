@@ -1,16 +1,26 @@
 # ws_mod Core Principles
 
 ## Template (Principles)
+
 ### Design Goals
+
 - <Goal 1>
 - <Goal 2>
+
 ### Contract Principles
+
 - <Input/Output contract rules>
+
 ### Safety & Boundaries
+
 - <Access constraints / guardrails>
+
 ### Failure & Recovery
+
 - <What to do when a call fails>
+
 ### Glossary
+
 - <Toolset-specific terms>
 
 ## 1. Background: Why "prepare-first + single apply"

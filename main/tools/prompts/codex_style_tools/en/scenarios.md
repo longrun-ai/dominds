@@ -1,7 +1,9 @@
 # codex_style_tools Usage Scenarios
 
 ## Template (Scenarios)
+
 ### Scenario Format
+
 - Goal
 - Preconditions
 - Steps

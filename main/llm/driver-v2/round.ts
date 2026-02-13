@@ -1,6 +1,11 @@
 import { DialogID, SubDialog } from '../../dialog';
 import { globalDialogRegistry } from '../../dialog-global-registry';
-import { clearActiveRun, createActiveRun, getActiveRunSignal, hasActiveRun } from '../../dialog-run-state';
+import {
+  clearActiveRun,
+  createActiveRun,
+  getActiveRunSignal,
+  hasActiveRun,
+} from '../../dialog-run-state';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';

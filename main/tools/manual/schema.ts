@@ -52,7 +52,10 @@ const FIELD_HEADERS: Record<
 const REQUIRED_LABEL: Record<LanguageCode, string> = { en: 'yes', zh: '是' };
 const OPTIONAL_LABEL: Record<LanguageCode, string> = { en: 'no', zh: '否' };
 
-export function buildSchemaToolsSection(language: LanguageCode, tools: readonly FuncTool[]): string {
+export function buildSchemaToolsSection(
+  language: LanguageCode,
+  tools: readonly FuncTool[],
+): string {
   const lines: string[] = [`## ${SCHEMA_TITLE[language]}`, ''];
   const sortedSpecs = tools
     .map((tool) => describeTool(tool, language))
@@ -71,7 +74,9 @@ export function buildSchemaToolsSection(language: LanguageCode, tools: readonly 
     lines.push('| --- | --- | --- | --- | --- |');
 
     if (spec.fields.length === 0) {
-      lines.push(`| ${NO_DATA[language]} | ${NO_DATA[language]} | ${OPTIONAL_LABEL[language]} | ${NO_DATA[language]} | ${NO_DATA[language]} |`);
+      lines.push(
+        `| ${NO_DATA[language]} | ${NO_DATA[language]} | ${OPTIONAL_LABEL[language]} | ${NO_DATA[language]} | ${NO_DATA[language]} |`,
+      );
     } else {
       for (const field of spec.fields) {
         lines.push(
@@ -91,7 +96,9 @@ export function buildSchemaToolsSection(language: LanguageCode, tools: readonly 
 function describeTool(tool: FuncTool, language: LanguageCode): SchemaToolSpec {
   const schema = toSchemaObject(tool.parameters);
   const requiredSet = new Set(
-    Array.isArray(schema.required) ? schema.required.filter((x): x is string => typeof x === 'string') : [],
+    Array.isArray(schema.required)
+      ? schema.required.filter((x): x is string => typeof x === 'string')
+      : [],
   );
   const properties = toObjectRecord(schema.properties);
   const fields: SchemaField[] = [];
@@ -141,20 +148,40 @@ function renderMinimalCallBlock(spec: SchemaToolSpec, language: LanguageCode): s
 
   const lines: string[] = ['```text'];
   lines.push(`# ${goalTitle}`);
-  lines.push(language === 'zh' ? `调用 \`${spec.name}\` 并验证最小参数契约。` : `Call \`${spec.name}\` with the minimum required arguments.`);
+  lines.push(
+    language === 'zh'
+      ? `调用 \`${spec.name}\` 并验证最小参数契约。`
+      : `Call \`${spec.name}\` with the minimum required arguments.`,
+  );
   lines.push('');
   lines.push(`# ${preconditionsTitle}`);
-  lines.push(language === 'zh' ? '确认当前成员具备该 toolset 访问权限。' : 'Ensure caller has access to this toolset.');
+  lines.push(
+    language === 'zh'
+      ? '确认当前成员具备该 toolset 访问权限。'
+      : 'Ensure caller has access to this toolset.',
+  );
   lines.push('');
   lines.push(`# ${callTitle}`);
-  lines.push(language === 'zh' ? `按以下参数调用函数工具 \`${spec.name}\`：` : `Call the function tool \`${spec.name}\` with:`);
+  lines.push(
+    language === 'zh'
+      ? `按以下参数调用函数工具 \`${spec.name}\`：`
+      : `Call the function tool \`${spec.name}\` with:`,
+  );
   lines.push(JSON.stringify(args, null, 2));
   lines.push('');
   lines.push(`# ${expectedTitle}`);
-  lines.push(language === 'zh' ? '返回 YAML/文本结果，且无参数校验错误。' : 'Returns YAML/text output without argument validation errors.');
+  lines.push(
+    language === 'zh'
+      ? '返回 YAML/文本结果，且无参数校验错误。'
+      : 'Returns YAML/text output without argument validation errors.',
+  );
   lines.push('');
   lines.push(`# ${onFailureTitle}`);
-  lines.push(language === 'zh' ? '检查缺失字段与字段类型，再按 schema 重试。' : 'Check missing fields and field types, then retry against the schema contract.');
+  lines.push(
+    language === 'zh'
+      ? '检查缺失字段与字段类型，再按 schema 重试。'
+      : 'Check missing fields and field types, then retry against the schema contract.',
+  );
   lines.push('```');
   return lines.join('\n');
 }

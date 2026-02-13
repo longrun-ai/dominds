@@ -160,7 +160,9 @@ export class DoneDialogList extends HTMLElement {
     if (patch.subdialogCount !== undefined && targetSelf === rootId) {
       const countEl = entry.el.querySelector('.dialog-count');
       if (countEl instanceof HTMLElement) {
-        countEl.textContent = String(typeof next.subdialogCount === 'number' ? next.subdialogCount : 0);
+        countEl.textContent = String(
+          typeof next.subdialogCount === 'number' ? next.subdialogCount : 0,
+        );
       }
     }
     return true;
@@ -414,7 +416,9 @@ export class DoneDialogList extends HTMLElement {
     }
 
     if (this.selectionState.kind === 'selected') {
-      const hasSelection = validated.some((dialog) => this.isSelectedDialog(dialog, this.selectionState));
+      const hasSelection = validated.some((dialog) =>
+        this.isSelectedDialog(dialog, this.selectionState),
+      );
       if (!hasSelection) {
         this.clearSelection();
       } else {
@@ -463,7 +467,8 @@ export class DoneDialogList extends HTMLElement {
                 </div>
               `;
             const visibleSubdialogCount =
-              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ?? DoneDialogList.SHOW_MORE_STEP;
+              this.visibleSubdialogCountByRoot.get(rootGroup.rootId) ??
+              DoneDialogList.SHOW_MORE_STEP;
             const visibleSubdialogs = rootGroup.subdialogs.slice(0, visibleSubdialogCount);
             const hiddenSubdialogCount = Math.max(
               rootGroup.subdialogs.length - visibleSubdialogs.length,
