@@ -256,20 +256,6 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
   ].join('\n');
 }
 
-export function formatDomindsNoteTellaskerOnlyInSidelineDialog(language: LanguageCode): string {
-  if (language === 'zh') {
-    return (
-      'Dominds 提示：`tellaskBack` 只在支线对话中有效，用于向“诉请者”（发起本次诉请的对话）回问澄清。\n' +
-      '你当前不在支线对话中，因此没有“诉请者”可回问。\n' +
-      '（注：诉请者不一定是主线对话；差遣牒 `*.tsk/` 通常由主线对话维护人统一更新。）'
-    );
-  }
-  return (
-    'Dominds note: `tellaskBack` is only valid inside a sideline dialog and asks back to the tellasker (the dialog that issued the current Tellask) for clarification. ' +
-    'You are currently not in a sideline dialog, so there is no tellasker to call.'
-  );
-}
-
 export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string {
   if (language === 'zh') {
     return (

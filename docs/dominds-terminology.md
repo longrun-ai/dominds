@@ -35,6 +35,8 @@
 - EN: `Tellask body` | ZH: `诉请正文`
 - EN: `tellasker` | ZH: `诉请者`
 - EN: `tellaskee` | ZH: `被诉请者`
+- EN: `tellasker dialog` | ZH: `诉请者对话`
+- EN: `tellaskee dialog` | ZH: `被诉请者对话`
 - EN: `TellaskBack` | ZH: `回问诉请`
 - EN: `Tellask Session` | ZH: `长线诉请`
 - EN: `Fresh Tellask` | ZH: `一次性诉请`
@@ -57,6 +59,15 @@
 
 - EN: A **sideline dialog** is a temporary work dialog for a subtask. Between dialogs/agents, there is no hierarchy — only **tellasker/tellaskee** roles.
 - ZH: **支线对话**是为推进某个分项任务临时创建的工作对话。对话/智能体之间没有上下级关系，只有 **诉请者/被诉请者**。
+
+- EN: A **tellasker dialog** is the dialog that issued the current Tellask; it can be the mainline dialog or any sideline dialog.
+- ZH: **诉请者对话**是当前诉请的发起对话；它可以是主线对话，也可以是任意支线对话。
+
+- EN: A **tellaskee dialog** is the dialog handling the current Tellask (this dialog).
+- ZH: **被诉请者对话**是处理当前诉请的对话（也就是此对话）。
+
+- EN: These are **call roles**, not hierarchy; a tellasker dialog may or may not be the structural supdialog.
+- ZH: 这是一次诉请的**角色关系**，不是层级关系；诉请者对话可能是也可能不是结构上的上位对话。
 
 - EN (cross-reference): In implementation-facing docs/code you may see `root dialog` / `main dialog` for “mainline dialog”, and `subdialog` for “sideline dialog”.
 - ZH（交叉说明）: 在系统实现语境（文档/代码）中，你可能会看到 **根对话 / 主对话（root dialog / main dialog）** 来指代“主线对话”，以及 **subdialog（子对话）** 来指代“支线对话”。这些实现术语不应出现在使用者语境的提示词/示例中。
@@ -161,13 +172,17 @@ Example / 示例（概念）:
 Example / 示例（概念）:
 
 ```plain-text
-tellask({ targetAgentId: "server", sessionSlug: "ws-schema-v2", tellaskContent: "..." })
-!?Please confirm the WS packet schema versioning strategy and point to code anchors.
-!?请确认 WS packet schema 的版本化策略，并指出相关代码锚点。
+tellask({
+  targetAgentId: "server",
+  sessionSlug: "ws-schema-v2",
+  tellaskContent: "Please confirm the WS packet schema versioning strategy and point to code anchors.\n请确认 WS packet schema 的版本化策略，并指出相关代码锚点。",
+})
 
-tellask({ targetAgentId: "webui", sessionSlug: "ws-schema-v2", tellaskContent: "..." })
-!?Explain which missing fields cause UX degradation along the current WebUI subscribe/render path.
-!?按当前 WebUI 订阅/渲染路径说明：哪些字段缺失会导致 UX 退化。
+tellask({
+  targetAgentId: "webui",
+  sessionSlug: "ws-schema-v2",
+  tellaskContent: "Explain which missing fields cause UX degradation along the current WebUI subscribe/render path.\n按当前 WebUI 订阅/渲染路径说明：哪些字段缺失会导致 UX 退化。",
+})
 ```
 
 #### 3) Fresh Tellask（一次性诉请）
@@ -260,8 +275,8 @@ Example / 示例（概念）:
 
 ### Q4H (Question for Human) （向人类的诉请）
 
-- EN: A mechanism for raising questions to humans, initiated via `!?askHuman()`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**
-- ZH: 一种通过 `!?askHuman()` 向人类提问的机制，暂停对话进度直到人类响应。**统一使用"Q4H"（大写 Q、数字 4、大写 H）；禁止使用"Q-for-H"、"QforH"、"每四小时"等变体。**
+- EN: A mechanism for raising questions to humans, initiated via `askHuman({ tellaskContent: "..." })`, which suspends dialog progression until the human responds. **Always use "Q4H" (capital Q, numeral 4, capital H); never use "Q-for-H", "QforH", or "4-hour".**
+- ZH: 一种通过 `askHuman({ tellaskContent: "..." })` 向人类提问的机制，暂停对话进度直到人类响应。**统一使用"Q4H"（大写 Q、数字 4、大写 H）；禁止使用"Q-for-H"、"QforH"、"每四小时"等变体。**
 
 ### Fresh Boots Reasoning（扪心自问）
 
@@ -379,13 +394,13 @@ Example / 示例（概念）:
 - EN: A **dialog** is a persisted, driveable conversation state machine.
 - ZH: **对话（dialog）**是一个可持久化、可被后端驱动的对话状态机。
 
-### Supdialog / 上游对话
+### Supdialog / 上位对话
 
 - EN: A **supdialog** ("super dialog") is the orchestrating dialog in a hierarchical dialog relationship. It spawns subdialogs, provides context/objectives, and receives results/questions/escalations from its subdialogs.
-- ZH: **supdialog（上游对话）**是在层级对话关系中负责编排的对话：它创建 subdialog，提供上下文/目标，并接收 subdialog 的结果/问题/升级请求。
+- ZH: **supdialog（上位对话）**是在层级对话关系中负责编排的对话：它创建 subdialog，提供上下文/目标，并接收 subdialog 的结果/问题/升级请求。
 
-- EN: A supdialog may receive **supdialog calls** from its subdialogs during execution.
-- ZH: supdialog 在执行过程中可能接收来自 subdialog 的 **supdialog call（回问/回呼）**。
+- EN: A supdialog may receive **TellaskBack calls** from its subdialogs during execution.
+- ZH: supdialog 在执行过程中可能接收来自 subdialog 的 **TellaskBack call（回问诉请）**。
 
 ### Subdialog / 子对话
 
@@ -405,8 +420,8 @@ Example / 示例（概念）:
 - EN: Type A: TellaskBack call (a subdialog asking back to its tellasker dialog); primary syntax `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`).
 - ZH: Type A：回问诉请（子对话回问其诉请者对话）；主语法 `tellaskBack({ tellaskContent: "..." })`（不带 `sessionSlug`）。
 
-- EN: Type B: registered subdialog call (resumable) keyed by `agentIdsessionSlug`.
-- ZH: Type B：registered subdialog call（可恢复），用 `agentIdsessionSlug` 作为 registry key。
+- EN: Type B: registered subdialog call (resumable) keyed by `agentId!sessionSlug`.
+- ZH: Type B：registered subdialog call（可恢复），用 `agentId!sessionSlug` 作为 registry key。
 
 - EN: Type C: transient subdialog call (one-shot), not registered.
 - ZH: Type C：transient subdialog call（一次性），不注册到 registry。

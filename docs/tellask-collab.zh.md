@@ -56,7 +56,7 @@
 
 ### 2.4 Diligence Push 的边界
 
-- Diligence Push 会鞭策根/主线对话继续思考和推进。
+- Diligence Push 会鞭策诉请者对话继续思考和推进。
 - 它不负责自动补发队友诉请，也不改变 tellask 的调用生命周期。
 - 所以它能缓解“发呆”，但不能根治“口头安排不落地”的协作停滞。
 
@@ -68,7 +68,7 @@
 
 表象：
 
-- 主线收到“阶段 1 完成”的反馈后，写下“等待对方继续执行”，但没有再次诉请。
+- 诉请者对话收到“阶段 1 完成”的反馈后，写下“等待对方继续执行”，但没有再次诉请。
 - 实际上队友对应支线已结束，系统也没有自动继续执行原诉请。
 
 根因：
@@ -87,6 +87,22 @@
 ---
 
 ## 4. 最佳实践（立即可执行）
+
+### 4.0 交付标记与支线规则（强制）
+
+**首行标记（强制）**：
+
+- `【tellaskBack】` — 回问诉请者对话时必须使用（首行）。
+- `【最终完成】` — 完成全部目标后的最终交付（首行）。
+- FBR 专用：`【FBR-直接回复】` 或 `【FBR-仅推理】`。
+
+**支线交付规则**：
+
+- 只有当所有目标完成时，支线对话才可直接回贴诉请者对话。
+- 若任何目标未完成或关键信息缺失，必须先用 `tellaskBack({ tellaskContent: "..." })` 回问诉请者对话再继续。
+- **FBR 例外**：FBR 禁止任何诉请（包括 `tellaskBack` / `askHuman`）；只列缺口 + 推理与摘要并直接回贴。
+
+说明：不需要额外的 “Status: …” 行；首行标记即为阶段提醒。
 
 ### 4.1 协作阶段协议（Teammate Tellask 版）
 
@@ -107,10 +123,15 @@
 推荐写法：
 
 ```text
-tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
-!?执行 `pnpm lint:types`，仅回贴原始输出。
-!?若失败：只列前 3 个错误（含文件路径与行号），并给出你建议先处理的 1 个错误。
-!?验收：我需要看到命令退出码与首个错误锚点。
+tellask({
+  targetAgentId: "shell_specialist",
+  sessionSlug: "typecheck-loop",
+  tellaskContent: [
+    "执行 `pnpm lint:types`，仅回贴原始输出。",
+    "若失败：只列前 3 个错误（含文件路径与行号），并给出你建议先处理的 1 个错误。",
+    "验收：我需要看到命令退出码与首个错误锚点。",
+  ].join("\n"),
+})
 ```
 
 反例（禁止）：
@@ -130,9 +151,14 @@ tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tell
 正例（自主闭环）：
 
 ```text
-tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
-!?请立即执行 `pnpm lint:types` 并原样回贴结果。
-!?若命令不存在，回贴错误并给出本仓可行替代命令。
+tellask({
+  targetAgentId: "shell_specialist",
+  sessionSlug: "typecheck-loop",
+  tellaskContent: [
+    "请立即执行 `pnpm lint:types` 并原样回贴结果。",
+    "若命令不存在，回贴错误并给出本仓可行替代命令。",
+  ].join("\n"),
+})
 ```
 
 ---
@@ -184,7 +210,7 @@ tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tell
 
 1. `Prelude Intro`：声明 shell 策略（`specialist_only` / `self_is_specialist` / `no_specialist`）。
 2. `uname` 基线：
-   - `specialist_only`：主线 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收回贴。
+   - `specialist_only`：诉请者对话 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收回贴。
    - 其他两种策略：运行时采集并显示 `uname -a`。
 3. `VCS Round-1`（同一 `tellaskSession`）：确认 rtws 拓扑
    - 根路径是否 git repo
@@ -229,7 +255,7 @@ tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tell
 
 ---
 
-## 6. 面向主线主理人的协作清单
+## 6. 面向诉请者对话主理人的协作清单
 
 每次协作循环前后，快速自检：
 
@@ -237,7 +263,7 @@ tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tell
 2. 我现在说“等待”时，是否真有 pending tellask 对应？
 3. 回贴到达后，我是否做了“判定 + 下一轮诉请/本地动作”？
 4. 我是否把“让队友做”落成了真实 `tellask* function call`，而不是口头转派给 askHuman()？
-5. 关键决策是否已写回 Taskdoc（主线）而不是只留在聊天里？
+5. 关键决策是否已写回 Taskdoc（仅根对话）而不是只留在聊天里？
 
 ---
 

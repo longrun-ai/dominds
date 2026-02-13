@@ -60,6 +60,24 @@ function requireNonEmpty(value: string, fieldLabel: string): string {
   return value;
 }
 
+type SubdialogRoleHeaderInput = {
+  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+  fromAgentId: string;
+  language: LanguageCode;
+};
+
+function buildSubdialogRoleHeader(input: SubdialogRoleHeaderInput): string {
+  const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
+  if (input.callName === 'freshBootsReasoning') {
+    return input.language === 'zh'
+      ? `这是一次 FBR 支线对话；诉请者对话（tellasker dialog）为 @${requesterId}（可能与当前对话同一 agent）。`
+      : `This is an FBR sideline dialog; the tellasker dialog is @${requesterId} (may be the same agent).`;
+  }
+  return input.language === 'zh'
+    ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。`
+    : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller).`;
+}
+
 function requireMentionLine(mentionList: string[]): string {
   const mentionLine = mentionList
     .map((item) => {
@@ -83,6 +101,11 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
   requireNonEmpty(input.toAgentId, 'toAgentId');
   requireNonEmpty(input.fromAgentId, 'fromAgentId');
   const tellaskContent = requireNonEmpty(input.tellaskContent, 'tellaskContent');
+  const roleHeader = buildSubdialogRoleHeader({
+    callName: input.callName,
+    fromAgentId: input.fromAgentId,
+    language,
+  });
 
   const isFbr = input.callName === 'freshBootsReasoning';
   if (isFbr) {
@@ -107,7 +130,7 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
             '---',
           ].join('\n');
 
-    return `${intro}\n\n${tellaskContent}\n`;
+    return `${roleHeader}\n\n${intro}\n\n${tellaskContent}\n`;
   }
 
   if (input.callName !== 'tellask' && input.callName !== 'tellaskSessionless') {
@@ -125,20 +148,11 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
         ? 'Now:'
         : `Now (${sessionSlug}):`;
 
-  return `${greeting}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
+  return `${roleHeader}\n\n${greeting}\n\n${markdownQuote(mentionLine)}\n${markdownQuote(tellaskContent)}\n`;
 }
 
 export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): string {
   const language: LanguageCode = input.language ?? 'en';
-  const hello =
-    language === 'zh'
-      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理以下任务期间（如下引文）：`
-      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, while working on the following original task:`;
-  const asking =
-    language === 'zh'
-      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 回问：`
-      : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` TellaskBack:`;
-
   const supMention = (() => {
     if (
       input.supdialogAssignment.callName === 'tellask' ||
@@ -148,6 +162,15 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
     }
     return '';
   })();
+  const hello =
+    language === 'zh'
+      ? `你好 @${requireNonEmpty(input.toAgentId, 'toAgentId')}，在处理 ${supMention} 以下任务期间（如下引文）：`
+      : `Hi @${requireNonEmpty(input.toAgentId, 'toAgentId')}, while working on the following original task of ${supMention} (quoted following):`;
+  const asking =
+    language === 'zh'
+      ? `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` 回问：`
+      : `\`@${requireNonEmpty(input.fromAgentId, 'fromAgentId')}\` TellaskBack:`;
+
   const subMention = (() => {
     if (
       input.subdialogRequest.callName === 'tellask' ||
@@ -158,7 +181,7 @@ export function formatSupdialogCallPrompt(input: SupdialogCallPromptInput): stri
     return '';
   })();
 
-  return `${hello}\n\n${supMention ? `${supMention}\n` : ''}${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${subMention ? `${subMention}\n` : ''}${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
+  return `${hello}\n\n${markdownQuote(requireNonEmpty(input.supdialogAssignment.tellaskContent, 'assignmentTellaskContent'))}\n\n${asking}\n\n${subMention ? `${subMention}\n` : ''}${markdownQuote(requireNonEmpty(input.subdialogRequest.tellaskContent, 'requestTellaskContent'))}\n`;
 }
 
 export function formatTeammateResponseContent(input: TeammateResponseFormatInput): string {

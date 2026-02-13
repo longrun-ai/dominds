@@ -76,6 +76,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- 只有在存在明确 pending tellask 时，才可声明“等待回贴/等待结果”；否则必须执行下一动作（直接诉请或本地执行）。',
     '- 能由队友诉请完成的执行性工作，禁止转交 \\`askHuman\\` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 \\`tellask\\` 或 \\`tellaskSessionless\\`。',
     '- 当你处于队友诉请触发的支线且需要澄清时，必须使用 \\`tellaskBack\\` 回问上游诉请者；\\`tellaskBack\\` 不携带 \\`sessionSlug\\`。',
+    '- 若被诉请者未按首行标记（【tellaskBack】/【最终完成】/FBR 标记），或未完成却直接中间汇报，诉请者必须立即提醒其遵守协议并要求重发；只有【最终完成】才视为最终交付。',
   ].join('\n');
   const teammatePhaseContractEn = [
     '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
@@ -83,23 +84,48 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists; otherwise execute the next action now (direct Tellask or local action).',
     '- Do not use \\`askHuman\\` as a relay for executable teammate work. If you write “ask @X to do Y”, emit \\`tellask\\` or \\`tellaskSessionless\\` in the same response.',
     '- When you are in a teammate-triggered sideline and need clarification, you MUST issue \\`tellaskBack\\` to ask back upstream; \\`tellaskBack\\` must not carry \\`sessionSlug\\`.',
+    '- If the tellaskee omits the required first-line markers (【tellaskBack】/【最终完成】/FBR markers) or reports intermediate status without completing the work, the tellasker must immediately remind them and request a resend; only 【最终完成】 counts as final delivery.',
+  ].join('\n');
+  const sidelineCompletionContractZh = [
+    '- 仅当完成全部目标时，才可使用【最终完成】交付最终结果。',
+    '- 未完成/不确定/阻塞时，必须以【tellaskBack】开头并提出具体问题。',
+    '- 例外：FBR 支线为工具禁用模式（不得调用 \`tellaskBack\`），但仍需首行标记为【FBR-直接回复】或【FBR-仅推理】。',
+  ].join('\n');
+  const sidelineCompletionContractEn = [
+    '- Only when all objectives are completed may you use 【最终完成】 to deliver the final result.',
+    '- If unfinished/uncertain/blocked, you must start with 【tellaskBack】 and ask concrete questions.',
+    '- Exception: FBR sideline is tool-less (no \`tellaskBack\`), but you must still mark the first line as 【FBR-直接回复】 or 【FBR-仅推理】.',
   ].join('\n');
   const collaborationProtocolZh = [
     '- Tellask 统一走函数工具通道：\\`tellaskBack\\` / \\`tellask\\` / \\`tellaskSessionless\\` / \\`askHuman\\` / \\`freshBootsReasoning\\`。',
     '- 对队友诉请默认使用 \\`tellask\\` 并复用 \\`sessionSlug\\`；仅在确认一次性诉请足够时才使用 \\`tellaskSessionless\\`，且需说明理由。',
     '- 例外优先级（强制）：\\`tellaskBack\\` 仅用于回问上游诉请者，不适用队友长线默认规则，也不携带 \\`sessionSlug\\`。',
+    '- 内容标记（首行强制）：必须以【tellaskBack】或【最终完成】开头；FBR 用【FBR-直接回复】或【FBR-仅推理】；未标注视为违规。',
+    '- 未完成/不确定/阻塞时：必须使用【tellaskBack】并附上具体问题，不得直接给结果。',
+    '- 仅当确认完成全部目标：才可使用【最终完成】交付最终结果。',
     '- 队友诉请阶段协议（强制）：',
     teammatePhaseContractZh,
+    ...(input.dialogScope === 'sideline'
+      ? ['- 支线对话交付规则（强制）：', sidelineCompletionContractZh]
+      : []),
   ].join('\n');
   const collaborationProtocolEn = [
     '- Tellask must use the function-tool channel: \\`tellaskBack\\` / \\`tellask\\` / \\`tellaskSessionless\\` / \\`askHuman\\` / \\`freshBootsReasoning\\`.',
     '- For teammate tellasks, default to \\`tellask\\` and continue with the same \\`sessionSlug\\`; use \\`tellaskSessionless\\` only for justified one-shot calls.',
     '- Mandatory exception precedence: \\`tellaskBack\\` is ask-back-only and outside the teammate-session default; it does not carry \\`sessionSlug\\`.',
+    '- Content marking (first line required): must start with 【tellaskBack】 or 【最终完成】; FBR uses 【FBR-直接回复】 or 【FBR-仅推理】; missing markers are violations.',
+    '- If unfinished/uncertain/blocked: must use 【tellaskBack】 with concrete questions; do not deliver results directly.',
+    '- Only when all objectives are completed: you may use 【最终完成】 to deliver the final result.',
     '- Teammate Tellask phase contract (mandatory):',
     teammatePhaseContractEn,
+    ...(input.dialogScope === 'sideline'
+      ? ['- Sideline completion rule (mandatory):', sidelineCompletionContractEn]
+      : []),
   ].join('\n');
   const fbrGuidelinesZh = [
     '- FBR 由 \\`freshBootsReasoning\\` 触发，不属于普通队友诉请分类；请按本节规则执行。',
+    '- FBR 不可调用 \`tellaskBack\`；但仍需首行标记为【FBR-直接回复】或【FBR-仅推理】。',
+    '- FBR 禁止一切 tellask（包括 \`tellaskBack\` / \`tellask\` / \`tellaskSessionless\` / \`askHuman\`）。',
     '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须发起 \\`freshBootsReasoning\\`。',
     fbrScopeRuleZh,
     '- FBR 的标准入口是 \\`freshBootsReasoning({ tellaskContent })\\`；禁止用 \\`tellask\\` / \\`tellaskSessionless\\` 对自己发起 self-target 诉请来替代。',
@@ -110,6 +136,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   ].join('\n');
   const fbrGuidelinesEn = [
     '- FBR is triggered by `freshBootsReasoning`, not by normal teammate tellasks; follow this section’s rules.',
+    '- FBR cannot call \`tellaskBack\`, but must still mark the first line as 【FBR-直接回复】 or 【FBR-仅推理】.',
+    '- FBR forbids all tellask calls (including \`tellaskBack\` / \`tellask\` / \`tellaskSessionless\` / \`askHuman\`).',
     '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must call `freshBootsReasoning`.',
     fbrScopeRuleEn,
     '- The standard FBR entry is \\`freshBootsReasoning({ tellaskContent })\\`; do not emulate FBR via self-targeted \\`tellask\\` / \\`tellaskSessionless\\`.',

@@ -4,11 +4,11 @@
 
 ## 摘要
 
-Q4H 是 Dominds 的运行时机制：在任何对话中通过向 `askHuman()` 发起诉请（`!?askHuman() ...`），把一个“必须由人类决策/澄清/确认”的问题抛给人类，并**合法暂停**对话推进，直到人类回应。
+Q4H 是 Dominds 的运行时机制：在任何对话中通过向 `askHuman({ tellaskContent: "..." })` 发起诉请，把一个“必须由人类决策/澄清/确认”的问题抛给人类，并**合法暂停**对话推进，直到人类回应。
 
 本文档指定一次 WebUI 增强：
 
-1. 支持 **外链 deep link（URL）**：打开后可直达某个 Q4H 的“提问点”（call site，即对话中出现 `!?askHuman()` 的位置），并在条件允许时让输入框进入“回答模式”。
+1. 支持 **外链 deep link（URL）**：打开后可直达某个 Q4H 的“提问点”（call site，即对话中出现 `askHuman({ tellaskContent: "..." })` 的位置），并在条件允许时让输入框进入“回答模式”。
 2. 统一并增强 **call site 行为** 的 UI：同一处功能提供
    - **内链**（同一 tab 内导航）与
    - **外链**（新 tab/窗口打开）
@@ -36,7 +36,7 @@ Q4H 是 Dominds 的运行时机制：在任何对话中通过向 `askHuman()` �
 ## 定义（使用者语境）
 
 - **主线对话 / 支线对话**：对外术语，用于描述主要推进线程与临时工作线程。
-- **提问点（call site）**：对话中发起诉请的具体位置；对 Q4H 即 `!?askHuman()` 出现的位置。
+- **提问点（call site）**：对话中发起诉请的具体位置；对 Q4H 即 `askHuman({ tellaskContent: "..." })` 出现的位置。
 - **回答模式（answer mode）**：输入框绑定到某个待处理 Q4H 问题，`Send` 的语义变为“回答该问题”。
 
 ## UX / 产品需求
@@ -89,7 +89,7 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 - `selfId`：来源对话 id（主线或支线）
 - `course`：course 编号（1-based）
 - `msg`：messageIndex（仅用于 best-effort 回退定位）
-- `callId`：当该 Q4H 来源于 `!?askHuman()` 诉请块时，对应的 tellask `callId`（更精确的定位方式）
+- `callId`：当该 Q4H 来源于 `askHuman({ tellaskContent: "..." })` 诉请块时，对应的 tellask `callId`（更精确的定位方式）
 
 行为：
 
@@ -149,7 +149,7 @@ WebUI 通过 `window.location.search` 识别 deep link 参数。
 
 增强：
 
-- 为由 `!?askHuman()` 诉请块产生的 Q4H 问题增加可选字段 `callId?: string`。
+- 为由 `askHuman({ tellaskContent: "..." })` 诉请块产生的 Q4H 问题增加可选字段 `callId?: string`。
   - 使前端可通过 `data-call-id` 精确滚动定位。
   - 对于非诉请块产生的系统型 Q4H，允许没有 `callId`。
 

@@ -11,7 +11,6 @@ import {
   formatDomindsNoteFbrToollessViolation,
   formatDomindsNoteQ4HRegisterFailed,
   formatDomindsNoteTellaskForTeammatesOnly,
-  formatDomindsNoteTellaskerOnlyInSidelineDialog,
 } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
@@ -303,7 +302,10 @@ function parseTellaskSpecialCall(
   }
 }
 
-export function classifyTellaskSpecialFunctionCalls(funcCalls: readonly FuncCallMsg[]): {
+export function classifyTellaskSpecialFunctionCalls(
+  funcCalls: readonly FuncCallMsg[],
+  options?: { allowedSpecials?: ReadonlySet<TellaskSpecialFunctionName> },
+): {
   specialCalls: TellaskSpecialCall[];
   normalCalls: FuncCallMsg[];
   parseIssues: TellaskSpecialCallParseIssue[];
@@ -311,9 +313,14 @@ export function classifyTellaskSpecialFunctionCalls(funcCalls: readonly FuncCall
   const specialCalls: TellaskSpecialCall[] = [];
   const normalCalls: FuncCallMsg[] = [];
   const parseIssues: TellaskSpecialCallParseIssue[] = [];
+  const allowed = options?.allowedSpecials ?? null;
 
   for (const call of funcCalls) {
     if (!isTellaskSpecialFunctionName(call.name)) {
+      normalCalls.push(call);
+      continue;
+    }
+    if (allowed && !allowed.has(call.name)) {
       normalCalls.push(call);
       continue;
     }
@@ -1322,12 +1329,9 @@ async function executeTellaskCall(
       }
     }
   } else {
-    const msg =
-      callName === 'tellaskBack'
-        ? formatDomindsNoteTellaskerOnlyInSidelineDialog(getWorkLanguage())
-        : formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), {
-            firstMention: options.targetForError ?? 'unknown',
-          });
+    const msg = formatDomindsNoteTellaskForTeammatesOnly(getWorkLanguage(), {
+      firstMention: options.targetForError ?? 'unknown',
+    });
     toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
     toolOutputs.push({
       type: 'tellask_result_msg',

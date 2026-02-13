@@ -62,6 +62,7 @@ import {
   classifyTellaskSpecialFunctionCalls,
   executeTellaskSpecialCalls,
   isTellaskSpecialFunctionName,
+  type TellaskSpecialFunctionName,
 } from './tellask-bridge';
 import type {
   DriverV2CoreResult,
@@ -299,10 +300,16 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   },
 ];
 
-function mergeTellaskSpecialVirtualTools(baseTools: readonly FuncTool[]): FuncTool[] {
+function mergeTellaskSpecialVirtualTools(
+  baseTools: readonly FuncTool[],
+  options: { includeTellaskBack: boolean },
+): FuncTool[] {
   const merged: FuncTool[] = [...baseTools];
   const seen = new Set(merged.map((tool) => tool.name));
-  for (const virtualTool of TELLASK_SPECIAL_VIRTUAL_TOOLS) {
+  const specialTools = options.includeTellaskBack
+    ? TELLASK_SPECIAL_VIRTUAL_TOOLS
+    : TELLASK_SPECIAL_VIRTUAL_TOOLS.filter((tool) => tool.name !== 'tellaskBack');
+  for (const virtualTool of specialTools) {
     if (seen.has(virtualTool.name)) {
       throw new Error(
         `driver-v2 tool invariant violation: function tool name '${virtualTool.name}' collides with tellask-special virtual tool`,
@@ -584,7 +591,15 @@ async function executeRoutedFunctionCalls(args: {
   }
   throwIfAborted(abortSignal, dialog);
 
-  const classified = classifyTellaskSpecialFunctionCalls(funcCalls);
+  const allowTellaskBack = dialog.id.rootId !== dialog.id.selfId;
+  const allowedSpecials = new Set<TellaskSpecialFunctionName>([
+    'tellask',
+    'tellaskSessionless',
+    'askHuman',
+    'freshBootsReasoning',
+    ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
+  ]);
+  const classified = classifyTellaskSpecialFunctionCalls(funcCalls, { allowedSpecials });
   const specialCallById = new Map(
     classified.specialCalls.map((call) => [call.callId, call] as const),
   );
@@ -1034,8 +1049,9 @@ export async function driveDialogStreamCoreV2(
       const canonicalFuncTools: FuncTool[] = agentTools.filter(
         (t): t is FuncTool => t.type === 'func',
       );
+      const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
       const effectiveFuncTools: FuncTool[] = policy.allowFunctionCalls
-        ? mergeTellaskSpecialVirtualTools(canonicalFuncTools)
+        ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, { includeTellaskBack: isSubdialog })
         : canonicalFuncTools;
       const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
       const funcTools = projected.tools;

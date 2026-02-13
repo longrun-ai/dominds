@@ -7,7 +7,7 @@ Chinese version: [中文版](./fbr.zh.md)
 ## 1. What it is
 
 **Fresh Boots Reasoning (FBR)** is a Dominds mechanism for “reasoning again from a clean slate” on a bounded sub-problem,
-then reporting back to the mainline dialog.
+then reporting back to the tellasker dialog.
 
 In Dominds, FBR is triggered by the dedicated function tool `freshBootsReasoning({ tellaskContent: "..." })`.
 The mechanism is the runtime-enforced contract applied to the spawned sideline dialog(s).
@@ -29,7 +29,7 @@ silent ignore is worse than an error.
 
 ### 2.3 Many-shot reasoning, not “multi-agent collaboration”
 
-`fbr-effort` is for producing multiple _independent_ reasoning samples in parallel. The mainline dialog is responsible
+`fbr-effort` is for producing multiple _independent_ reasoning samples in parallel. The tellasker dialog is responsible
 for synthesis; FBR sidelines do not coordinate with each other.
 
 ## 3. User syntax
@@ -61,7 +61,7 @@ This section uses MUST / MUST NOT / SHOULD / MAY for requirements.
 When driving an FBR sideline dialog created by `freshBootsReasoning({ tellaskContent: "..." })`, runtime MUST enforce:
 
 - **No dependency on tellasker dialog history**
-  - the tellaskee MUST NOT assume access to the tellasker’s mainline/sideline history
+  - the tellaskee MUST NOT assume access to the tellasker dialog’s history
   - the tellaskee MUST treat the tellask body as the primary, authoritative task context
 - **No tool-based context fetch**
   - no reading files / running commands / browsing
@@ -84,7 +84,7 @@ The FBR system prompt MUST communicate (wording may vary, meaning must hold):
 - this is an FBR sideline dialog; the tellask body is the primary context
 - do not assume access to tellasker dialog history
 - if critical context is missing, list what is missing and why it blocks reasoning
-- `tellaskBack({ tellaskContent: "..." })` is allowed only when you must clarify critical missing context; otherwise do not emit any tellasks
+- do not emit any tellasks (including `tellaskBack` or `askHuman`)
 
 And: the **system prompt body MUST NOT include tool instructions** (no tool lists, allowlists, example commands, “how to
 use tools”, etc.).
@@ -114,13 +114,10 @@ The LLM request for an FBR sideline dialog (`freshBootsReasoning`) MUST have **z
 
 If the model attempts a tool/function call anyway, runtime MUST hard-reject it (see 4.5).
 
-### 4.3 Tellask restriction: only `tellaskBack({ tellaskContent: "..." })`
+### 4.3 Tellask restriction: none allowed
 
-FBR sideline dialogs MUST NOT issue teammate Tellasks (including `askHuman({ tellaskContent: "..." })`). The only exception is `tellaskBack({ tellaskContent: "..." })`:
-
-- sideline-only TellaskBack to the upstream tellasker dialog
-- allowed only when critical context must be clarified
-- intended for clarification, not delegation
+FBR sideline dialogs MUST NOT issue any teammate Tellasks (including `tellaskBack({ tellaskContent: "..." })` or `askHuman({ tellaskContent: "..." })`).
+If critical context is missing, the FBR sideline should **list the missing items** and why they block reasoning, then return.
 
 ### 4.4 Output contract (easy to synthesize)
 
@@ -130,11 +127,11 @@ An FBR sideline dialog should produce a compact artifact that is easy for the te
 2. **Reasoning** (grounded in the tellask body)
 3. **Assumptions** (explicitly sourced: body vs session history)
 4. **Unknowns / missing context**
-5. **Next steps for mainline** (where tools/teammates may exist)
+5. **Next steps for tellasker dialog** (where tools/teammates may exist)
 
 ### 4.5 Violations and errors (loud + debuggable)
 
-- Any disallowed tellask (anything other than `tellaskBack({ tellaskContent: "..." })`) or any tool/function call attempt inside FBR MUST be treated as a hard
+- Any teammate Tellask attempt or any tool/function call attempt inside FBR MUST be treated as a hard
   violation.
 - The runtime MUST return a clear, user-visible error, and MUST log/emit a debuggable reason string (no silent swallow).
 
@@ -152,7 +149,7 @@ When `fbr-effort = N`:
 
 - runtime expands a single `freshBootsReasoning({ tellaskContent: "..." })` into **N parallel tool-less FBR sideline dialogs**
 - each sideline receives the same tellask body and the same tool-less constraints
-- mainline receives all N responses; **ordering must not be relied on** (completion order is fine)
+- tellasker dialog receives all N responses; **ordering must not be relied on** (completion order is fine)
 
 ## 6. FBR-only model overrides: `fbr_model_params`
 
@@ -191,7 +188,7 @@ members:
     # Spawn 5 independent reasoning samples per `freshBootsReasoning({ tellaskContent: "..." })`.
     fbr-effort: 5
 
-    # Make FBR more exploratory without changing mainline behavior.
+    # Make FBR more exploratory without changing tellasker dialog behavior.
     fbr_model_params:
       codex:
         temperature: 0.9
@@ -210,6 +207,6 @@ members:
 
 - `freshBootsReasoning({ tellaskContent: "..." })` triggers tool-less FBR; the LLM request is technically “zero tools”.
 - The system prompt body contains no tool instructions; tool-related wording comes only from the separate fixed notice.
-- FBR sidelines cannot issue teammate Tellasks; only `tellaskBack({ tellaskContent: "..." })` is allowed when necessary.
+- FBR sidelines cannot issue teammate Tellasks (including `tellaskBack`).
 - `fbr-effort` defaults to `3`, accepts `0..100`, rejects invalid values, and fails loudly when disabled.
 - `fbr_model_params` applies only to FBR and follows the same schema/merge intent as `model_params`.

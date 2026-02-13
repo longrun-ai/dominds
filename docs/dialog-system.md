@@ -27,12 +27,14 @@ This document provides detailed implementation specifications for the Dominds di
 ## Terminology
 
 This chapter defines the implementation-facing terms used throughout this document.
-For bilingual / user-facing naming conventions (mainline dialog / sideline dialog; tellasker / tellaskee), see [`dominds-terminology.md`](./dominds-terminology.md).
+For bilingual / user-facing naming conventions (mainline dialog / sideline dialog; tellasker dialog / tellaskee dialog), see [`dominds-terminology.md`](./dominds-terminology.md).
 For Taskdoc package structure and encapsulation rules, see [`encapsulated-taskdoc.md`](./encapsulated-taskdoc.md).
 
 ### Supdialog
 
 A **supdialog** (short for "super dialog") is the supdialog in a hierarchical dialog relationship. It orchestrates and manages subdialogs, providing context, objectives, and guidance while receiving results, questions, and escalations from its subdialogs. The supdialog maintains the overall task context and determines when subdialogs are no longer needed.
+
+Note: **supdialog** is a structural parent in the dialog hierarchy. It is not the same as the **tellasker dialog** (the caller for the current Tellask). For TYPE A (`tellaskBack`), the tellasker dialog is the direct supdialog; for TYPE B/C, the tellasker dialog may be a different dialog.
 
 A supdialog may receive **TellaskBack** from its subdialogs during their task execution. When a subdialog needs guidance or additional context, it can Tellask back via `tellaskBack({ tellaskContent: "..." })` (TYPE A / `TellaskBack` / 回问诉请), which provides responses that feed back into the subdialog's context.
 
@@ -40,7 +42,15 @@ A supdialog may receive **TellaskBack** from its subdialogs during their task ex
 
 A **subdialog** is a specialized dialog spawned by a supdialog to handle specific subtasks. Subdialogs operate with fresh context, focusing on targeted objectives while maintaining a communication link back to their supdialog.
 
-**TellaskBack**: A subdialog can Tellask its supdialog (tellasker) to request clarification during task execution. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
+**TellaskBack**: A subdialog can Tellask its **tellasker dialog** to request clarification during task execution. In TYPE A, the tellasker dialog is the direct supdialog. This allows the subdialog to ask questions and receive guidance while maintaining its own context and progress.
+
+### Tellasker dialog / Tellaskee dialog (caller roles)
+
+A **tellasker dialog** is the dialog that issued the current Tellask (the caller). A **tellaskee dialog** is the dialog handling that Tellask (this dialog). These are **call roles**, not hierarchy:
+
+- For TYPE A (`tellaskBack`), the tellasker dialog is the direct supdialog.
+- For TYPE B/C, the tellasker dialog may be a different dialog (root dialog or another sideline dialog).
+- Responses route to the **current tellasker dialog** recorded in `assignmentFromSup`.
 
 ### Main Dialog (Root Dialog)
 
@@ -48,7 +58,7 @@ The **main dialog** (also called **root dialog**) is the top-level dialog in a d
 
 ### Q4H (Questions for Human)
 
-A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `!?askHuman()` Tellask was recorded.
+A **Q4H** is a pending question raised by a dialog (main or subdialog) that requires human input to proceed. Q4Hs are indexed in the dialog's `q4h.yaml` file (an index, not source of truth) and are **cleared by `clear_mind` operations**. The actual question content is stored in the dialog's messages where the `askHuman({ tellaskContent: "..." })` Tellask was recorded.
 
 ### Subdialog Index (subdlg.yaml)
 
@@ -141,14 +151,14 @@ This section documents the three distinct types of teammate Tellasks in the Domi
 
 ```mermaid
 flowchart TD
-  M[LLM emits tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{Is this a subdialog telling its direct supdialog?}
+  M[LLM emits tellaskSessionless({ targetAgentId: "mention", tellaskContent: "..." })] --> Q{Is this a subdialog Tellasking its direct supdialog (tellasker dialog for TYPE A)?}
   Q -- yes --> A[TYPE A: TellaskBack<br/>(`TellaskBack` / 回问诉请)<br/>Primary: tellaskBack({ tellaskContent: "..." }) (NO sessionSlug)]
   Q -- no --> T{Is sessionSlug present?}
   T -- yes --> B[TYPE B: Registered subdialog Tellask<br/>(`Tellask Session` / 长线诉请)<br/>tellask({ targetAgentId: "agentId", sessionSlug: "tellaskSession", tellaskContent: "..." })]
   T -- no --> C[TYPE C: Transient subdialog Tellask<br/>(`Fresh Tellask` / 一次性诉请)<br/>tellaskSessionless({ targetAgentId: "agentId", tellaskContent: "..." })]
 ```
 
-### TYPE A: Supdialog Tellask (Type A / `TellaskBack` / 回问诉请)
+### TYPE A: TellaskBack (Type A / `TellaskBack` / 回问诉请)
 
 **Primary syntax**: `tellaskBack({ tellaskContent: "..." })` (NO `sessionSlug`) — `tellaskBack({ tellaskContent: "..." }) sessionSlug ...` is a **syntax error**
 
@@ -157,20 +167,34 @@ flowchart TD
 **Behavior**:
 
 1. Current subdialog **suspends**
-2. Driver switches to drive the **supdialog** (using `subdialog.supdialog` reference)
-3. Supdialog response flows back to the subdialog
-4. Subdialog **resumes** with supdialog's response in context
+2. Driver switches to drive the **tellasker dialog** (direct supdialog for TYPE A; uses `subdialog.supdialog` reference)
+3. Tellasker dialog response flows back to the subdialog
+4. Subdialog **resumes** with tellasker dialog's response in context
 
 **Key Characteristics**:
 
 - Uses `subdialog.supdialog` reference (no registry lookup)
 - No registration - supdialog relationship is inherent
-- Supdialog is always the direct parent in the hierarchy
+- Supdialog is always the direct parent in the hierarchy (the tellasker dialog for TYPE A)
 - `tellaskBack({ tellaskContent: "..." })` is the canonical Type A syntax: it always routes to the tellasker (the dialog that issued the current Tellask).
 - This matters especially when the supdialog’s `agentId` is identical to the subdialog’s `agentId` (common when a sideline
   is created via `freshBootsReasoning({ tellaskContent: "..." })`), where an explicit `tellaskBack({ tellaskContent: "..." })` is easier to get wrong by accident.
 - The explicit `tellaskBack({ tellaskContent: "..." })` form is accepted as a semantic fallback for backwards compatibility, but is more
   error-prone in FBR/self-subdialog cases.
+
+**Sideline delivery rule (normative)**:
+
+- A sideline dialog may reply directly to the tellasker dialog **only when all assigned goals are complete**.
+- If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
+- **FBR exception**: FBR sideline dialogs are tellask-free (no `tellaskBack`); they must list missing context and return.
+
+**Content markers (first line required)**:
+
+- `【tellaskBack】` — required when asking the tellasker dialog for clarification / next-step confirmation.
+- `【最终完成】` — required for final delivery when all goals are complete.
+- FBR-only: `【FBR-直接回复】` or `【FBR-仅推理】` for FBR sideline responses.
+
+Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 
 **Example**:
 
@@ -214,7 +238,7 @@ headline text is ignored for tellaskSession parsing.
 
 **Current Caller Tracking (important for reuse):**
 
-When a registered subdialog is Tellasked again (same `agentId!sessionSlug`), the caller can be a **different dialog** (mainline or another sideline). On every Type B Tellask, the subdialog’s metadata is updated with:
+When a registered subdialog is Tellasked again (same `agentId!sessionSlug`), the caller can be a **different dialog** (root dialog or another sideline dialog). On every Type B Tellask, the subdialog’s metadata is updated with:
 
 - The **current caller dialog ID** (so responses route back to the _latest_ caller)
 - The **Tellask info** (headline/body, origin role, origin member, callId)
@@ -279,7 +303,7 @@ Result (second call):
 2. Create **NEW subdialog** with the specified agentId
 3. Drive the new subdialog:
    - For general Type C, the subdialog is full-fledged (supcalls, teammate Tellasks, tools per config).
-   - For `freshBootsReasoning({ tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; restricted Tellasks).
+   - For `freshBootsReasoning({ tellaskContent: "..." })`, runtime applies the FBR tool-less policy (no tools; no Tellasks).
 4. Subdialog response flows back to parent
 5. Parent **resumes** with subdialog's response
 
@@ -287,7 +311,7 @@ Result (second call):
 
 - **No registry lookup** - always creates a new subdialog
 - **Not registered** - no persistence across Tellasks
-- The subdialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and Tellask-restricted (see `fbr.md`).
+- The subdialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see `fbr.md`).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
@@ -336,7 +360,7 @@ The Dominds dialog system is built on four interconnected core mechanisms that w
 ```mermaid
 flowchart TD
   H[Dialog hierarchy<br/>(root ↔ subdialogs)] <--> S[Subdialog supply<br/>(responses, pending list, registry)]
-  H --> Q[Q4H (!?askHuman())<br/>(q4h.yaml index)]
+  H --> Q[Q4H (askHuman({ tellaskContent: "..." }))<br/>(q4h.yaml index)]
   S --> Q
 
   Q --> UI[Frontend Q4H panel<br/>(questions_count_update)]
@@ -350,7 +374,7 @@ flowchart TD
 
 ### Key Design Principles
 
-1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's messages where the `!?askHuman()` Tellask was recorded. They do not survive `clear_mind`.
+1. **Q4H Index in `q4h.yaml`**: Q4H questions are indexed in `q4h.yaml` (as an index, not source of truth) and cleared by mental clarity operations. The actual question content is in the dialog's messages where the `askHuman({ tellaskContent: "..." })` Tellask was recorded. They do not survive `clear_mind`.
 
 2. **Hierarchical Q4H**: Any dialog in the hierarchy can raise Q4H on its own right (root dialog or subdialog). Questions are indexed in the dialog that asked them, not passed upward.
 
@@ -364,7 +388,7 @@ flowchart TD
 
 7. **State Preservation Contract**:
    - `clear_mind`: Clears messages, clears Q4H index, preserves reminders, preserves registry
-   - Subdialog completion: Writes response to supdialog, removes from pending list (registry unchanged)
+   - Subdialog completion: Writes response to the current tellasker dialog, removes from pending list (registry unchanged)
    - Subdialog declared dead: marks runState dead and removes its Type B registry entry; same slug can be reused as a fresh sideline dialog
    - Q4H answer: Clears the answered question from index, continues the dialog
 
@@ -383,7 +407,7 @@ Q4H (Questions for Human) is the mechanism by which dialogs can suspend executio
  * HumanQuestion - index entry persisted in q4h.yaml per dialog
  * NOTE: This is an INDEX, not the source of truth. The actual question
  * content is in the dialog's messages where the askHuman() Tellask was recorded
- * (invoked via !?askHuman()).
+ * (invoked via askHuman({ tellaskContent: "..." })).
  */
 interface HumanQuestion {
   readonly id: string; // Unique identifier (UUID) - matches message ID
@@ -395,7 +419,7 @@ interface HumanQuestion {
 
 **Storage Location**: `<dialog-path>/q4h.yaml` - serves as an index for quick lookup
 
-**Source of Truth**: The actual `!?askHuman()` Tellask is stored in the dialog's messages (course JSONL files), where the question was asked.
+**Source of Truth**: The actual `askHuman({ tellaskContent: "..." })` Tellask is stored in the dialog's messages (course JSONL files), where the question was asked.
 
 ### Q4H Mechanism Flow
 
@@ -419,24 +443,23 @@ sequenceDiagram
 
 ### When Does a Dialog Raise Q4H?
 
-Q4H is raised when the `!?askHuman()` teammate Tellask is invoked by ANY dialog (root or subdialog) on its own right:
+Q4H is raised when the `askHuman({ tellaskContent: "..." })` tellask function is invoked by ANY dialog (root or subdialog) on its own right:
 
 ```typescript
-// From main/llm/driver.ts, executeTellaskCall function
-const isQ4H = callKind === 'askHuman';
+// From main/llm/driver-v2/tellask-bridge.ts
+const isQ4H = callName === 'askHuman';
 ```
 
 **Invocation Pattern**:
 
-```
-!?askHuman() <question headline>
-!?<question body content>
+```typescript
+askHuman({ tellaskContent: "<question headline>\n<question body content>" });
 ```
 
 ### Q4H Recording Process
 
 ```typescript
-// When !?askHuman() is detected as a teammate Tellask
+// When askHuman({ tellaskContent: "..." }) is detected as a teammate Tellask
 async function recordQuestionForHuman(
   dlg: Dialog,
   mentionList: string,
@@ -554,7 +577,7 @@ sequenceDiagram
   Sup->>Sub: creates subdialog (Type B or C)
   Note over Sup: Supdialog is blocked on pending subdialogs
 
-  Sub->>WS: emits !?askHuman() question
+  Sub->>WS: emits askHuman({ tellaskContent: "..." }) question
   WS-->>UI: questions_count_update
   Note over Sub: Subdialog cannot proceed until answered
 
@@ -607,11 +630,11 @@ flowchart TD
 
 ### Subdialog Response Supply Mechanism
 
-**Core Principle**: Subdialogs supply responses to supdialog's context via persistence, not callbacks.
+**Core Principle**: Subdialogs supply responses to the **current tellasker dialog's** context via persistence, not callbacks (the tellasker is the direct supdialog for TYPE A; for TYPE B/C it may be a different dialog).
 
 ```mermaid
 sequenceDiagram
-  participant Sup as Supdialog
+  participant Sup as Tellasker dialog
   participant Driver as Backend driver
   participant Sub as Subdialog
   participant Store as Persistence
@@ -923,9 +946,24 @@ interface RegistryMethods {
 **Context Inheritance**: New subdialogs automatically receive:
 
 - Reference to the same rtws (runtime workspace) Taskdoc (recommended: `tasks/feature-auth.tsk/`); `dlg.taskDocPath` is fixed at dialog creation and never reassigned
-- Supdialog Tellask context (mentionList + tellaskContent) explaining their purpose
+- Tellasker dialog Tellask context (mentionList + tellaskContent) explaining their purpose
 - Access to shared team memories
 - Access to their agent's individual memories
+
+### Subdialog course header (required)
+
+At the start of every subdialog course, the runtime must prepend a role header to the assignment prompt:
+
+- EN: `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @xxx (the current caller).`
+- ZH: `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @xxx（当前发起本次诉请）。`
+
+**FBR special handling**: FBR is a self-subdialog and must keep a dedicated header to avoid confusion:
+
+- EN (example): `This is an FBR sideline dialog; the tellasker dialog is @xxx (may be the same agent).`
+- ZH（示例）: `这是一次 FBR 支线对话；诉请者对话为 @xxx（可能与当前对话同一 agent）。`
+
+**Insertion point**: prefer a single insertion point by updating `formatAssignmentFromSupdialog()` (covers `dialog.ts`, `tellask-bridge`, and `agent-priming`).
+Frontend twin must stay in sync: `dominds/webapp/src/shared/utils/inter-dialog-format.ts`.
 
 **Storage**: All subdialogs are stored flat under the main dialog's (root dialog's) `subdialogs/` directory, regardless of nesting depth.
 
@@ -950,9 +988,9 @@ interface RegistryMethods {
 
 ### Communication Patterns
 
-**Upward Communication**: Subdialogs communicate results, questions, and escalations to their supdialogs.
+**Upward Communication**: Subdialogs communicate results, questions, and escalations to their **tellasker dialog** (the caller).
 
-- **Clarification Requests (TYPE A / `TellaskBack`)**: A subdialog may Tellask its supdialog to request clarification while working on its subtask. The supdialog provides guidance, and the subdialog continues with updated context.
+- **Clarification Requests (TYPE A / `TellaskBack`)**: A subdialog may Tellask its tellasker dialog to request clarification while working on its subtask. For TYPE A, the tellasker dialog is the direct supdialog. The tellasker dialog provides guidance, and the subdialog continues with updated context.
 - **Subtask Response**: When a subdialog produces a final "saying" content block (no pending Q4H), that message is treated as the response to the **current caller** recorded in `assignmentFromSup` (root or another subdialog). This keeps responses aligned with the most recent Tellask site.
 - **Q4H Escalation**: If a subdialog has Q4H, it suspends. The user can answer via the UI, which triggers continuation of the subdialog only.
 - **Registered Subdialogs (TYPE B / `Tellask Session`)**: A parent can resume a previously created registered subdialog, enabling ongoing task continuation.
@@ -1045,7 +1083,7 @@ To make the UI **faithfully reflect the original generation order**, and to ensu
 
 **Teammate Tellask Capability**: Agents can invoke all three types of teammate Tellasks:
 
-- TYPE A / `TellaskBack`: Tellask supdialog for clarification
+- TYPE A / `TellaskBack`: Tellask the tellasker dialog for clarification (direct supdialog for TYPE A)
 - TYPE B / `Tellask Session`: Tellask/resume registered subdialogs
 - TYPE C / `Fresh Tellask`: Spawn transient subdialogs
 
@@ -1096,10 +1134,10 @@ rendered in different markdown viewers.
 sequenceDiagram
   participant Sub as Subdialog
   participant Driver as Backend driver
-  participant Sup as Supdialog (direct parent)
+  participant Sup as Tellasker dialog (direct supdialog)
 
   Sub->>Driver: emits `tellaskBack({ tellaskContent: "..." })` + question
-  Driver->>Sup: drive supdialog to answer
+  Driver->>Sup: drive tellasker dialog to answer
   Sup-->>Driver: response text
   Driver-->>Sub: resume subdialog with response in context
 ```
@@ -1148,7 +1186,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[!?askHuman() Tellask emitted] --> B[Append HumanQuestion entry to q4h.yaml]
+  A[askHuman({ tellaskContent: "..." }) Tellask emitted] --> B[Append HumanQuestion entry to q4h.yaml]
   B --> C[Emit questions_count_update]
   C --> D[UI shows Q4H badge / list]
   D --> E{How is it cleared?}
@@ -1173,7 +1211,7 @@ sequenceDiagram
 
   Sup->>Sub: create subdialog (Type B or C)
   Note over Sup,Sub: Supdialog becomes blocked on pending subdialogs
-  Sub->>WS: emits !?askHuman() question (Q4H)
+  Sub->>WS: emits askHuman({ tellaskContent: "..." }) question (Q4H)
   WS-->>UI: questions_count_update (global)
 
   Note over Sub: Subdialog cannot proceed until answered
@@ -1202,7 +1240,7 @@ sequenceDiagram
   participant Store as Persistence (q4h.yaml)
   participant UI as Frontend
 
-  User->>Main: !?askHuman() question
+  User->>Main: askHuman({ tellaskContent: "..." }) question
   Main->>Store: recordQuestionForHuman()
   Main-->>UI: questions_count_update
   Main-->>Main: suspend root drive loop

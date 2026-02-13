@@ -58,7 +58,7 @@ So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 ### 2.4 Diligence Push boundary
 
-- Diligence Push helps mainline avoid going idle.
+- Diligence Push helps the tellasker dialog avoid going idle.
 - It does not send teammate Tellasks on the agent’s behalf.
 - It is a pressure mechanism, not an execution orchestrator.
 
@@ -70,8 +70,8 @@ So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 Observed behavior:
 
-- Mainline receives “phase 1 done”.
-- Mainline then says “waiting for them to continue”.
+- Tellasker dialog receives “phase 1 done”.
+- Tellasker dialog then says “waiting for them to continue”.
 - No new Tellask is sent, so progress stops.
 
 Root cause:
@@ -91,6 +91,22 @@ That is a workflow break. The model should send the Tellask directly.
 
 ## 4. Best-practice execution protocol
 
+### 4.0 Delivery markers and sideline rule (mandatory)
+
+**First-line markers (required)**:
+
+- `【tellaskBack】` — required when asking the tellasker dialog for clarification / next-step confirmation.
+- `【最终完成】` — required for final delivery after all assigned goals are complete.
+- FBR-only: `【FBR-直接回复】` or `【FBR-仅推理】`.
+
+**Sideline delivery rule**:
+
+- A sideline dialog may reply directly to the tellasker dialog **only when all goals are complete**.
+- If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding.
+- **FBR exception**: FBR forbids all tellasks (including `tellaskBack` / `askHuman`); list missing context + reasoning and return.
+
+Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
+
 ### 4.1 Four-step teammate Tellask loop
 
 For teammate Tellasks (non-`freshBootsReasoning({ tellaskContent: "..." })`), always run this loop:
@@ -109,10 +125,15 @@ Hard rule:
 Recommended pattern:
 
 ```text
-tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
-!?Run `pnpm lint:types` and return raw output only.
-!?If it fails, include the first 3 errors with file + line.
-!?Acceptance: include exit code and the first actionable anchor.
+tellask({
+  targetAgentId: "shell_specialist",
+  sessionSlug: "typecheck-loop",
+  tellaskContent: [
+    "Run `pnpm lint:types` and return raw output only.",
+    "If it fails, include the first 3 errors with file + line.",
+    "Acceptance: include exit code and the first actionable anchor.",
+  ].join("\n"),
+})
 ```
 
 Do not do this:
@@ -132,9 +153,14 @@ I cannot run shell here; please ask @shell_specialist to execute `pnpm lint:type
 Good:
 
 ```text
-tellask({ targetAgentId: "shell_specialist", sessionSlug: "typecheck-loop", tellaskContent: "..." })
-!?Please execute `pnpm lint:types` now and paste raw output.
-!?If command is unavailable, paste the error and one safe alternative.
+tellask({
+  targetAgentId: "shell_specialist",
+  sessionSlug: "typecheck-loop",
+  tellaskContent: [
+    "Please execute `pnpm lint:types` now and paste raw output.",
+    "If command is unavailable, paste the error and one safe alternative.",
+  ].join("\n"),
+})
 ```
 
 ---
@@ -182,7 +208,7 @@ Operating rules:
 
 1. `Prelude Intro`: declare shell policy (`specialist_only` / `self_is_specialist` / `no_specialist`).
 2. `uname` baseline:
-   - `specialist_only`: mainline sends one-shot Tellask to `@<shell_specialist>` and receives response.
+   - `specialist_only`: tellasker dialog sends one-shot Tellask to `@<shell_specialist>` and receives response.
    - other policies: runtime collects and displays `uname -a`.
 3. `VCS Round-1` (same `tellaskSession`): topology inventory
    - whether rtws root is a git repo
@@ -227,7 +253,7 @@ Operating rules:
 
 ---
 
-## 6. Mainline operator checklist
+## 6. Tellasker dialog operator checklist
 
 Before and after each collaboration step:
 
@@ -235,7 +261,7 @@ Before and after each collaboration step:
 2. If I say “waiting”, which pending Tellask am I waiting on?
 3. After receiving feedback, did I either close the task or send the next Tellask?
 4. Did I turn “ask teammate to do X” into an actual `tellask* function call` block?
-5. Did I write key decisions back to Taskdoc instead of leaving them in chat only?
+5. Did I write key decisions back to Taskdoc (root dialog only) instead of leaving them in chat only?
 
 ---
 
