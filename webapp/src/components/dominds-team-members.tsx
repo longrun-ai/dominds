@@ -632,7 +632,7 @@ export class DomindsTeamMembers extends HTMLElement {
 
       .team-members-title {
         flex: 1;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
         white-space: nowrap;
@@ -646,7 +646,7 @@ export class DomindsTeamMembers extends HTMLElement {
         color: var(--dominds-fg, #333333);
         border-radius: 8px;
         padding: 4px 8px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
       }
 
@@ -669,7 +669,7 @@ export class DomindsTeamMembers extends HTMLElement {
         color: var(--dominds-fg, #333333);
         border-radius: 10px;
         padding: 8px 10px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         outline: none;
       }
 
@@ -682,7 +682,7 @@ export class DomindsTeamMembers extends HTMLElement {
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         user-select: none;
       }
@@ -711,7 +711,7 @@ export class DomindsTeamMembers extends HTMLElement {
       }
 
       .section-title {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--dominds-muted, #666666);
@@ -748,7 +748,7 @@ export class DomindsTeamMembers extends HTMLElement {
         justify-content: center;
         background: var(--dominds-primary, #007acc);
         color: #ffffff;
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         flex-shrink: 0;
       }
 
@@ -768,7 +768,7 @@ export class DomindsTeamMembers extends HTMLElement {
       }
 
       .member-name {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
         white-space: nowrap;
@@ -784,14 +784,14 @@ export class DomindsTeamMembers extends HTMLElement {
       }
 
       .member-id {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         white-space: nowrap;
       }
 
       .member-meta {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         white-space: nowrap;
         overflow: hidden;
@@ -815,7 +815,7 @@ export class DomindsTeamMembers extends HTMLElement {
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .member-action:hover {
@@ -825,7 +825,7 @@ export class DomindsTeamMembers extends HTMLElement {
       .badge {
         border: 1px solid rgba(224, 224, 224, 0.8);
         border-radius: 999px;
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         padding: 1px 6px;
         color: var(--dominds-muted, #666666);
         background: rgba(0, 0, 0, 0.02);
@@ -888,7 +888,7 @@ export class DomindsTeamMembers extends HTMLElement {
       .details-row {
         display: flex;
         gap: 10px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .details-row .k {
@@ -912,14 +912,14 @@ export class DomindsTeamMembers extends HTMLElement {
       }
 
       .empty-title {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
         margin-bottom: 4px;
       }
 
       .empty-text {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         line-height: 1.4;
       }
@@ -932,7 +932,7 @@ export class DomindsTeamMembers extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         z-index: 10;
         border-radius: 10px;
       }

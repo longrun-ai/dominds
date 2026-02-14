@@ -1234,7 +1234,7 @@ export class DoneDialogList extends HTMLElement {
         align-items: center;
         justify-content: space-between;
         padding: 10px 12px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 600;
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
@@ -1326,7 +1326,7 @@ export class DoneDialogList extends HTMLElement {
         padding: 0;
         margin-right: 6px;
         color: var(--dominds-muted, #666666);
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1;
         cursor: pointer;
         display: inline-flex;
@@ -1376,7 +1376,7 @@ export class DoneDialogList extends HTMLElement {
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
       }
 
@@ -1400,7 +1400,7 @@ export class DoneDialogList extends HTMLElement {
       }
 
       .dialog-count {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         padding: 2px 6px;
         border-radius: 999px;
         background: var(--dominds-border, #e0e0e0);
@@ -1413,28 +1413,28 @@ export class DoneDialogList extends HTMLElement {
       }
 
       .dialog-subrow {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
       }
 
       .dialog-status {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
       }
 
       .dialog-time {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #888888);
       }
 
       .dialog-topic {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #888888);
       }
 
       .empty {
         padding: 16px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-muted, #666666);
       }
     `;

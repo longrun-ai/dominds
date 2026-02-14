@@ -1117,7 +1117,7 @@ export class DomindsQ4HInput extends HTMLElement {
         border: 1px solid var(--dominds-danger, #dc3545);
         background: transparent;
         color: var(--dominds-danger, #dc3545);
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         font-weight: 600;
         cursor: pointer;
         user-select: none;
@@ -1143,7 +1143,7 @@ export class DomindsQ4HInput extends HTMLElement {
         background: transparent;
         color: var(--color-fg-tertiary, #64748b);
         cursor: pointer;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         transition: all 0.2s ease;
         padding: 0;
       }
@@ -1188,8 +1188,8 @@ export class DomindsQ4HInput extends HTMLElement {
         border: none;
         outline: none;
         padding: 12px 16px;
-        font-size: 14px;
-        line-height: 1.4;
+        font-size: var(--dominds-font-size-md, 13px);
+        line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--dominds-fg, #333333);
         resize: none;
         min-height: 48px;

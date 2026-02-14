@@ -1855,10 +1855,21 @@ export class DomindsApp extends HTMLElement {
         width: 100%;
         height: 100vh;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: var(--dominds-font-size-base, 14px);
+        line-height: var(--dominds-line-height-base, 1.5);
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
         overflow: hidden;
         color-scheme: inherit;
+        --dominds-ui-scale: 0.8;
+        --dominds-font-size-micro: calc(10px * var(--dominds-ui-scale, 1));
+        --dominds-font-size-xs: calc(11px * var(--dominds-ui-scale, 1));
+        --dominds-font-size-sm: calc(12px * var(--dominds-ui-scale, 1));
+        --dominds-font-size-md: calc(13px * var(--dominds-ui-scale, 1));
+        --dominds-font-size-base: calc(14px * var(--dominds-ui-scale, 1));
+        --dominds-line-height-tight: 1.18;
+        --dominds-line-height-dense: 1.24;
+        --dominds-line-height-base: 1.38;
         --dominds-z-sidebar-mobile: 10;
         --dominds-z-overlay-modal: 1000;
         --dominds-z-overlay-popover: 1002;
@@ -1889,15 +1900,15 @@ export class DomindsApp extends HTMLElement {
 	        flex-shrink: 0;
 	      }
 
-	      .logo {
-	        display: flex;
-	        align-items: flex-end;
-	        gap: 12px;
-	        font-weight: 600;
-	        font-size: 18px;
-	        line-height: 1;
-	        color: var(--dominds-primary, #007acc);
-	        flex: none;
+		      .logo {
+		        display: flex;
+		        align-items: flex-end;
+		        gap: 12px;
+		        font-weight: 600;
+		        font-size: calc(18px * var(--dominds-ui-scale, 1));
+		        line-height: 1;
+		        color: var(--dominds-primary, #007acc);
+		        flex: none;
 	        min-width: auto;
 	        width: auto;
 	        margin-right: 0;
@@ -1930,7 +1941,7 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      .rtws-indicator {
-	        font-size: 11px;
+	        font-size: var(--dominds-font-size-xs, 11px);
 	        color: var(--dominds-muted, #666666);
 	        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
 	        background: var(--dominds-hover, #f8f9fa);
@@ -1991,7 +2002,7 @@ export class DomindsApp extends HTMLElement {
         gap: 8px;
         padding: 4px 12px;
         border-radius: 16px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;
         user-select: none;
         border: 1px solid var(--dominds-border, #e0e0e0);
@@ -2017,7 +2028,7 @@ export class DomindsApp extends HTMLElement {
         gap: 8px;
         padding: 4px 12px;
         border-radius: 16px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;
         user-select: none;
         border: 1px solid var(--dominds-border, #e0e0e0);
@@ -2212,7 +2223,7 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-bg, #ffffff);
         padding: 6px 8px;
         border-radius: 6px;
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1.25;
         text-align: left;
         width: max-content;
@@ -2272,7 +2283,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .problems-panel-title {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
       }
@@ -2289,7 +2300,7 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
         border-radius: 8px;
         padding: 4px 8px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
       }
 
@@ -2334,20 +2345,20 @@ export class DomindsApp extends HTMLElement {
       }
 
       .problem-message {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
       }
 
       .problem-meta {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         white-space: nowrap;
       }
 
       .problem-detail {
         margin-top: 6px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         white-space: pre-wrap;
         word-break: break-word;
@@ -2360,7 +2371,7 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-sidebar-bg, #f8f9fa);
         color: var(--dominds-fg, #333333);
         padding: 0 10px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -2437,7 +2448,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .ui-language-menu-item-label {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.3;
       }
 
@@ -2447,7 +2458,7 @@ export class DomindsApp extends HTMLElement {
         padding-left: 10px;
         border-left: 2px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
         color: var(--dominds-muted, #666666);
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1.4;
         white-space: normal;
       }
@@ -2467,11 +2478,11 @@ export class DomindsApp extends HTMLElement {
       }
 
       .ui-language-menu-button-caret {
-        font-size: 10px;
+        font-size: var(--dominds-font-size-micro, 10px);
         opacity: 0.7;
       }
 
-      .theme-toggle {
+	      .theme-toggle {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2482,9 +2493,9 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-sidebar-bg, #f8f9fa);
         color: var(--dominds-fg, #333333);
         cursor: pointer;
-        font-size: 16px;
-        transition: all 0.2s ease;
-      }
+	        font-size: calc(16px * var(--dominds-ui-scale, 1));
+	        transition: all 0.2s ease;
+	      }
 
       .theme-toggle:hover {
         background: var(--dominds-hover, #f0f0f0);
@@ -2532,7 +2543,7 @@ export class DomindsApp extends HTMLElement {
 	      }
 	
 	      .toast-history-title {
-	        font-size: 13px;
+	        font-size: var(--dominds-font-size-md, 13px);
 	        font-weight: 600;
 	        color: var(--dominds-fg, #333333);
 	      }
@@ -2560,13 +2571,13 @@ export class DomindsApp extends HTMLElement {
 	      .toast-history-list {
 	        padding: 10px 12px;
 	        overflow: auto;
-	        font-size: 12px;
+	        font-size: var(--dominds-font-size-sm, 12px);
 	        color: var(--dominds-fg, #333333);
 	      }
 	
 	      .toast-history-empty {
 	        color: var(--dominds-muted, #666666);
-	        font-size: 12px;
+	        font-size: var(--dominds-font-size-sm, 12px);
 	        padding: 12px 2px;
 	      }
 	
@@ -2601,7 +2612,7 @@ export class DomindsApp extends HTMLElement {
 	      .toast-history-meta {
 	        margin-top: 2px;
 	        color: var(--dominds-muted, #666666);
-	        font-size: 11px;
+	        font-size: var(--dominds-font-size-xs, 11px);
 	      }
 
 	      .main-content {
@@ -2672,7 +2683,7 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-muted, #666666);
       }
 
@@ -2707,7 +2718,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .tools-registry-title {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--dominds-fg, #333333);
       }
@@ -2715,7 +2726,7 @@ export class DomindsApp extends HTMLElement {
       .tools-registry-timestamp {
         flex: 1;
         text-align: center;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         white-space: nowrap;
         overflow: hidden;
@@ -2728,7 +2739,7 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
         border-radius: 8px;
         padding: 4px 8px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
       }
 
@@ -2763,7 +2774,7 @@ export class DomindsApp extends HTMLElement {
         border-bottom: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
         font-weight: 600;
         color: var(--dominds-muted, #666666);
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         letter-spacing: 0.04em;
         text-transform: uppercase;
         list-style: none;
@@ -2841,7 +2852,7 @@ export class DomindsApp extends HTMLElement {
         margin-top: 2px;
         font-weight: 400;
         color: var(--dominds-muted, #666666);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.3;
         text-transform: none;
         letter-spacing: normal;
@@ -2877,20 +2888,20 @@ export class DomindsApp extends HTMLElement {
         border-radius: 6px;
         border: 1px solid var(--dominds-border, #e0e0e0);
         color: var(--dominds-muted, #666666);
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         flex-shrink: 0;
       }
 
       .tool-name {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-fg, #333333);
       }
 
       .tool-desc {
         margin-top: 4px;
         color: var(--dominds-muted, #666666);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.35;
         white-space: pre-wrap;
         word-break: break-word;
@@ -2899,7 +2910,7 @@ export class DomindsApp extends HTMLElement {
       .tools-empty {
         padding: 8px 10px;
         color: var(--dominds-muted, #666666);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .activity-view running-dialog-list,
@@ -3087,7 +3098,7 @@ export class DomindsApp extends HTMLElement {
         color: var(--color-fg-secondary, #475569);
         border-radius: 999px;
         padding: 6px 10px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
         display: inline-flex;
         align-items: center;
@@ -3116,7 +3127,7 @@ export class DomindsApp extends HTMLElement {
 	        border-radius: 999px;
 	        background: var(--color-bg-tertiary, #f1f5f9);
 	        color: var(--color-fg-tertiary, #64748b);
-	        font-size: 11px;
+	        font-size: var(--dominds-font-size-xs, 11px);
 	        border: 1px solid var(--color-border-primary, #e2e8f0);
 	        justify-content: center;
 	        text-align: center;
@@ -3239,7 +3250,7 @@ export class DomindsApp extends HTMLElement {
 	      .bp-q4h-empty {
 	        padding: 18px 12px;
 	        color: var(--color-fg-tertiary, #64748b);
-	        font-size: 12px;
+	        font-size: var(--dominds-font-size-sm, 12px);
 	        flex: 1;
 	        min-height: 0;
 	        display: flex;
@@ -3262,7 +3273,7 @@ export class DomindsApp extends HTMLElement {
 
       .bp-diligence-help {
         flex: 1;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--color-fg-tertiary, #64748b);
       }
 
@@ -3277,7 +3288,7 @@ export class DomindsApp extends HTMLElement {
 	        resize: none;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
           'Courier New', monospace;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.45;
         color: var(--color-fg-primary, #0f172a);
         background: var(--dominds-bg, #ffffff);
@@ -3288,7 +3299,7 @@ export class DomindsApp extends HTMLElement {
 	        border-top: 1px solid var(--dominds-border, #e0e0e0);
 	        background: var(--dominds-toolbar-bg, #f8f9fa);
 	        color: var(--dominds-muted, #666666);
-	        font-size: 13px;
+	        font-size: var(--dominds-font-size-md, 13px);
 	      }
 
       .loading {
@@ -3321,7 +3332,7 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-primary, #007acc);
         color: white;
         cursor: pointer;
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         transition: background-color 0.2s;
       }
 
@@ -3349,7 +3360,7 @@ export class DomindsApp extends HTMLElement {
         gap: 6px;
         padding: 4px 8px;
         border-radius: 12px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;
       }
 
@@ -3414,7 +3425,7 @@ export class DomindsApp extends HTMLElement {
         }
 
         .rtws-indicator {
-          font-size: 10px;
+          font-size: var(--dominds-font-size-micro, 10px);
         }
       }
 
@@ -3441,7 +3452,7 @@ export class DomindsApp extends HTMLElement {
         border: 1px solid var(--dominds-danger-border, #f5c6cb);
         background: var(--dominds-danger-bg, #f8d7da);
         color: var(--dominds-danger, #721c24);
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         line-height: 1.4;
       }
 
@@ -3491,19 +3502,19 @@ export class DomindsApp extends HTMLElement {
         border-bottom: 1px solid var(--dominds-border, #e0e0e0);
       }
 
-      .modal-header h3 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: 600;
-        color: var(--dominds-fg, #333333);
-      }
+	      .modal-header h3 {
+	        margin: 0;
+	        font-size: calc(18px * var(--dominds-ui-scale, 1));
+	        font-weight: 600;
+	        color: var(--dominds-fg, #333333);
+	      }
 
-      .modal-close {
-        background: none;
-        border: none;
-        font-size: 18px;
-        cursor: pointer;
-        color: var(--dominds-muted, #666666);
+	      .modal-close {
+	        background: none;
+	        border: none;
+	        font-size: calc(18px * var(--dominds-ui-scale, 1));
+	        cursor: pointer;
+	        color: var(--dominds-muted, #666666);
         padding: 4px;
         border-radius: 4px;
         transition: all 0.2s ease;
@@ -3525,7 +3536,7 @@ export class DomindsApp extends HTMLElement {
       .modal-description {
         margin: 0 0 20px 0;
         color: var(--dominds-muted, #666666);
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         line-height: 1.5;
       }
 
@@ -3538,7 +3549,7 @@ export class DomindsApp extends HTMLElement {
         margin-bottom: 6px;
         font-weight: 500;
         color: var(--dominds-fg, #333333);
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
       }
 
       .form-group-horizontal > label {
@@ -3547,7 +3558,7 @@ export class DomindsApp extends HTMLElement {
         margin-bottom: 0;
         font-weight: 500;
         color: var(--dominds-fg, #333333);
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
       }
 
       .form-group-horizontal {
@@ -3562,7 +3573,7 @@ export class DomindsApp extends HTMLElement {
         border-radius: 6px;
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         transition: border-color 0.2s ease;
       }
 
@@ -3597,7 +3608,7 @@ export class DomindsApp extends HTMLElement {
         border-radius: 6px;
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         transition: border-color 0.2s ease;
       }
 
@@ -3640,14 +3651,14 @@ export class DomindsApp extends HTMLElement {
       }
 
       .suggestion-path {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         margin-bottom: 2px;
         word-break: break-all;
       }
 
       .suggestion-name {
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         color: var(--dominds-fg, #333333);
         font-weight: 500;
       }
@@ -3662,7 +3673,7 @@ export class DomindsApp extends HTMLElement {
       .form-help {
         display: block;
         margin-top: 4px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
       }
 
@@ -3680,13 +3691,13 @@ export class DomindsApp extends HTMLElement {
         align-self: center;
         font-weight: 500;
         color: var(--dominds-fg, #333333);
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         line-height: 1.2;
         white-space: nowrap;
       }
 
       .dominds-feel-loading {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
       }
 
@@ -3721,16 +3732,16 @@ export class DomindsApp extends HTMLElement {
         line-height: 1.2;
       }
 
-      .teammate-details h4 {
-        margin: 0 0 8px 0;
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--dominds-fg, #333333);
-      }
+	      .teammate-details h4 {
+	        margin: 0 0 8px 0;
+	        font-size: calc(16px * var(--dominds-ui-scale, 1));
+	        font-weight: 600;
+	        color: var(--dominds-fg, #333333);
+	      }
 
       .teammate-details p {
         margin: 4px 0;
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         color: var(--dominds-muted, #666666);
       }
 
@@ -3751,7 +3762,7 @@ export class DomindsApp extends HTMLElement {
         padding: 8px 16px;
         border: none;
         border-radius: 6px;
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
@@ -3853,7 +3864,7 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-hover, #f8f9fa);
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 6px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         line-height: 1.4;
         color: var(--dominds-fg, #333333);
         word-wrap: break-word;
@@ -5918,7 +5929,7 @@ export class DomindsApp extends HTMLElement {
             <label for="auth-key-input">${t.authKeyLabel}</label>
             <input type="password" id="auth-key-input" class="task-doc-input" placeholder="${t.authKeyPlaceholder}" autocomplete="off">
           </div>
-          <div class="form-group" id="auth-modal-error" style="display:none;color:var(--dominds-danger,#dc3545);font-size:13px;"></div>
+          <div class="form-group" id="auth-modal-error" style="display:none;color:var(--dominds-danger,#dc3545);font-size: var(--dominds-font-size-md, 13px);"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-primary" id="auth-submit-btn">${t.connect}</button>
@@ -7014,7 +7025,7 @@ export class DomindsApp extends HTMLElement {
             color: ${color};
           ">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <span style="font-size: 18px;">${icon}</span>
+              <span style="font-size: calc(18px * var(--dominds-ui-scale, 1));">${icon}</span>
               <strong>${type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Info'}</strong>
             </div>
             <div>${message}</div>
@@ -7028,7 +7039,7 @@ export class DomindsApp extends HTMLElement {
                 background: ${color};
                 color: white;
                 cursor: pointer;
-                font-size: 12px;
+                font-size: var(--dominds-font-size-sm, 12px);
               ">Dismiss</button>
             </div>`
                 : ''
@@ -7077,7 +7088,7 @@ export class DomindsApp extends HTMLElement {
           ? 'var(--dominds-warning-border, #ffeaa7)'
           : 'var(--dominds-border, #e0e0e0)';
     const box = document.createElement('div');
-    box.style.cssText = `position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: var(--dominds-z-overlay-toast); font-size: 12px; display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;`;
+    box.style.cssText = `position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: var(--dominds-z-overlay-toast); font-size: var(--dominds-font-size-sm, 12px); display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;`;
     const iconSpan = document.createElement('span');
     iconSpan.textContent = kind === 'error' ? '❌' : kind === 'warning' ? '⚠️' : 'ℹ️';
     const msgSpan = document.createElement('span');

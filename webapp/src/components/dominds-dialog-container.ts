@@ -3280,7 +3280,12 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private getStyles(): string {
     return `
-      :host { display: block; height: 100%; }
+      :host {
+        display: block;
+        height: 100%;
+        font-size: var(--dominds-font-size-base, 14px);
+        line-height: var(--dominds-line-height-base, 1.5);
+      }
       .container { height: 100%; background: var(--dominds-bg, var(--color-bg-primary, #ffffff)); }
       .messages { box-sizing: border-box; padding: 16px; }
 
@@ -3356,12 +3361,12 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .resume-title {
         font-weight: 600;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
       }
 
       .resume-reason {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
         margin-top: 2px;
       }
@@ -3386,7 +3391,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .system-marker {
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
       }
       
@@ -3577,12 +3582,12 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .call-context {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
       }
       
       .bubble-header { 
-        font-size: 12px; 
+        font-size: var(--dominds-font-size-sm, 12px); 
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); 
         margin-left: 8px;
       }
@@ -3628,7 +3633,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .user-message {
         font-family: inherit;
         font-weight: 500;
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
         line-height: 1.4;
         color: var(--dominds-fg, var(--color-fg-primary, #333));
         margin: 0;
@@ -3666,7 +3671,7 @@ export class DomindsDialogContainer extends HTMLElement {
         min-width: 26px;
         height: 22px;
         padding: 0 8px;
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 20px;
         cursor: pointer;
       }
@@ -3700,14 +3705,15 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .markdown-content {
+        font-size: var(--dominds-font-size-base, 14px);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
         word-wrap: break-word;
-        line-height: 1.5;
+        line-height: var(--dominds-line-height-base, 1.5);
       }
 
       .markdown-content p {
         margin-top: 0;
-        margin-bottom: 0.75em;
+        margin-bottom: 0.5em;
       }
 
       .markdown-content p:last-child {
@@ -3716,7 +3722,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .markdown-content ul, .markdown-content ol {
         margin-top: 0;
-        margin-bottom: 0.75em;
+        margin-bottom: 0.5em;
         padding-left: 1.5em;
       }
 
@@ -3726,20 +3732,28 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .markdown-content h1, .markdown-content h2, .markdown-content h3, 
       .markdown-content h4, .markdown-content h5, .markdown-content h6 {
-        margin-top: 1.25em;
-        margin-bottom: 0.5em;
+        margin-top: 0.9em;
+        margin-bottom: 0.3em;
         font-weight: 600;
-        line-height: 1.25;
+        line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--dominds-fg-primary, var(--color-fg-primary, #1e293b));
       }
+
+      .markdown-content h1 { font-size: calc(var(--dominds-font-size-base, 14px) + 4px); }
+      .markdown-content h2 { font-size: calc(var(--dominds-font-size-base, 14px) + 2px); }
+      .markdown-content h3 { font-size: calc(var(--dominds-font-size-base, 14px) + 1px); }
+      .markdown-content h4 { font-size: var(--dominds-font-size-base, 14px); }
+      .markdown-content h5 { font-size: var(--dominds-font-size-md, 13px); }
+      .markdown-content h6 { font-size: var(--dominds-font-size-sm, 12px); }
 
       .markdown-content h1:first-child, .markdown-content h2:first-child, .markdown-content h3:first-child {
         margin-top: 0;
       }
 
       .markdown-content blockquote {
-        margin: 0 0 0.75em 0;
+        margin: 0 0 0.5em 0;
         padding: 0 1em;
+        font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-fg-muted, var(--color-fg-muted, #64748b));
         border-left: 0.25em solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
       }
@@ -3749,13 +3763,13 @@ export class DomindsDialogContainer extends HTMLElement {
         padding: 0.2em 0.4em;
         border-radius: 4px;
         font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-        font-size: 85%;
+        font-size: 90%;
       }
 
       .markdown-content table {
         border-collapse: collapse;
         width: 100%;
-        margin-bottom: 0.75em;
+        margin-bottom: 0.5em;
       }
 
       .markdown-content th,
@@ -3776,13 +3790,13 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       
       .section-icon { 
-        font-size: 16px; 
+        font-size: calc(16px * var(--dominds-ui-scale, 1)); 
       }
       
       .section-title { 
         font-weight: 600; 
         color: var(--dominds-fg, var(--color-fg-secondary, #475569)); 
-        font-size: 14px; 
+        font-size: var(--dominds-font-size-base, 14px); 
       }
       
       .thinking-content, .markdown-text-block { 
@@ -3841,7 +3855,7 @@ export class DomindsDialogContainer extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 18px;
+        font-size: calc(18px * var(--dominds-ui-scale, 1));
       }
 
       .calling-img {
@@ -3865,7 +3879,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .calling-headline {
         font-weight: 600;
         color: var(--color-info, #06b6d4);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -3877,14 +3891,14 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .calling-timing {
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1.35;
         white-space: pre-wrap;
       }
 
       .subdialog-arrow {
         color: var(--color-info, #06b6d4);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;
       }
 
@@ -3897,7 +3911,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .calling-body {
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
         white-space: pre-wrap;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.35;
       }
 
@@ -4007,13 +4021,13 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .func-call-icon {
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
       }
 
       .func-call-title {
         font-weight: 600;
         color: var(--color-warning, #f59e0b);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .func-call-content {
@@ -4030,7 +4044,7 @@ export class DomindsDialogContainer extends HTMLElement {
         border-radius: 4px;
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
         overflow-x: auto;
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
@@ -4044,7 +4058,7 @@ export class DomindsDialogContainer extends HTMLElement {
         margin-top: 0;
         padding: 8px;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.4;
         white-space: normal;
         max-height: none;
@@ -4084,19 +4098,19 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .web-search-icon {
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
       }
 
       .web-search-title {
         font-weight: 600;
         color: var(--color-info, #06b6d4);
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .web-search-state {
         border-radius: 999px;
         padding: 1px 8px;
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1.4;
         margin-left: auto;
         background: color-mix(in srgb, var(--color-info, #06b6d4) 14%, transparent);
@@ -4116,7 +4130,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .web-search-summary {
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         margin-bottom: 6px;
         white-space: normal;
         word-break: break-word;
@@ -4129,7 +4143,7 @@ export class DomindsDialogContainer extends HTMLElement {
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1.45;
         white-space: pre-wrap;
         word-break: break-word;
@@ -4158,13 +4172,13 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       
       .codeblock-icon { 
-        font-size: 14px; 
+        font-size: var(--dominds-font-size-base, 14px); 
       }
       
       .codeblock-title { 
         font-weight: 500; 
         color: var(--dominds-fg, var(--color-fg-secondary, #475569)); 
-        font-size: 13px; 
+        font-size: var(--dominds-font-size-md, 13px); 
       }
       
       .codeblock-actions {
@@ -4177,7 +4191,7 @@ export class DomindsDialogContainer extends HTMLElement {
         border: none;
         padding: 2px 6px;
         border-radius: 3px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
         transition: all 0.2s ease;
@@ -4194,7 +4208,7 @@ export class DomindsDialogContainer extends HTMLElement {
         display: block;
         padding: 12px;
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.4;
         color: var(--dominds-fg, var(--color-fg-primary, #333));
         white-space: pre;
@@ -4210,17 +4224,22 @@ export class DomindsDialogContainer extends HTMLElement {
       /* Content area styles */
       .content-area { flex: 1; min-width: 0; }
       .content-area .bubble-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
-      .content-area .author { font-weight: 600; color: var(--dominds-fg, var(--color-fg-primary, #333)); }
-      .content-area .timestamp { font-size: 12px; color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); }
+      .content-area .author {
+        font-weight: 600;
+        font-size: var(--dominds-font-size-md, 13px);
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+      }
+      .content-area .timestamp { font-size: var(--dominds-font-size-sm, 12px); color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); }
       .content { 
-        line-height: 1.5; 
+        font-size: var(--dominds-font-size-base, 14px);
+        line-height: var(--dominds-line-height-base, 1.5); 
         color: var(--dominds-fg, var(--color-fg-primary, #333)); 
         white-space: pre-wrap; 
         word-wrap: break-word;
       }
-      .status { font-size: 12px; color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); margin-top: 4px; font-style: italic; }
+      .status { font-size: var(--dominds-font-size-sm, 12px); color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); margin-top: 4px; font-style: italic; }
       .timestamp { 
-        font-size: 12px; 
+        font-size: var(--dominds-font-size-sm, 12px); 
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); 
         margin-top: 4px; 
       }
@@ -4233,9 +4252,11 @@ export class DomindsDialogContainer extends HTMLElement {
         .generation-bubble { margin-bottom: 12px; padding: 12px; }
         .avatar { width: 28px; height: 28px; }
         .bubble-avatar { width: 32px; height: 32px; }
-        .author, .content, .status, .timestamp { font-size: 14px; }
-        .section-title { font-size: 13px; }
-        .calling-headline, .calling-body { font-size: 12px; }
+        .author { font-size: var(--dominds-font-size-md, 13px); }
+        .content { font-size: var(--dominds-font-size-base, 14px); }
+        .status, .timestamp { font-size: var(--dominds-font-size-sm, 12px); }
+        .section-title { font-size: var(--dominds-font-size-md, 13px); }
+        .calling-headline, .calling-body { font-size: var(--dominds-font-size-sm, 12px); }
       }
 
       /* Teammate bubble styles */

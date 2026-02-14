@@ -416,7 +416,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 500;
         color: var(--color-fg-secondary, #475569);
         margin-bottom: 6px;
@@ -425,7 +425,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-dialog-icon {
-        font-size: 14px;
+        font-size: var(--dominds-font-size-base, 14px);
       }
 
       .q4h-dialog-name {
@@ -436,7 +436,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-agent-badge {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         padding: 2px 6px;
         border-radius: 4px;
         background: var(--color-bg-tertiary, #f1f5f9);
@@ -520,7 +520,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-checkbox-check {
         display: none;
         color: white;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1;
       }
 
@@ -530,7 +530,7 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       .q4h-question-title {
         flex: 1;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--color-fg-primary, #0f172a);
         line-height: 1.35;
@@ -592,7 +592,7 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       .q4h-tellask {
         margin-top: 12px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--color-fg-secondary, #334155);
         background: var(--color-bg-tertiary, #f8fafc);
         border: 1px solid var(--color-border-primary, #e2e8f0);
@@ -603,14 +603,78 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-tellask-body {
         white-space: normal;
         word-break: break-word;
+        font-size: var(--dominds-font-size-sm, 12px);
+        line-height: var(--dominds-line-height-base, 1.5);
       }
 
       .q4h-tellask-body p {
-        margin: 0;
+        margin-top: 0;
+        margin-bottom: 0.45em;
+      }
+
+      .q4h-tellask-body p:last-child {
+        margin-bottom: 0;
+      }
+
+      .q4h-tellask-body ul,
+      .q4h-tellask-body ol {
+        margin-top: 0;
+        margin-bottom: 0.45em;
+        padding-left: 1.25em;
+      }
+
+      .q4h-tellask-body li {
+        margin-bottom: 0.2em;
+      }
+
+      .q4h-tellask-body h1,
+      .q4h-tellask-body h2,
+      .q4h-tellask-body h3,
+      .q4h-tellask-body h4,
+      .q4h-tellask-body h5,
+      .q4h-tellask-body h6 {
+        margin-top: 0.75em;
+        margin-bottom: 0.25em;
+        font-weight: 600;
+        line-height: var(--dominds-line-height-dense, 1.4);
+        color: var(--color-fg-primary, #0f172a);
+      }
+
+      .q4h-tellask-body h1 { font-size: calc(var(--dominds-font-size-sm, 12px) + 2px); }
+      .q4h-tellask-body h2 { font-size: calc(var(--dominds-font-size-sm, 12px) + 1px); }
+      .q4h-tellask-body h3 { font-size: var(--dominds-font-size-sm, 12px); }
+      .q4h-tellask-body h4 { font-size: var(--dominds-font-size-sm, 12px); }
+      .q4h-tellask-body h5 { font-size: var(--dominds-font-size-xs, 11px); }
+      .q4h-tellask-body h6 { font-size: var(--dominds-font-size-xs, 11px); }
+
+      .q4h-tellask-body h1:first-child,
+      .q4h-tellask-body h2:first-child,
+      .q4h-tellask-body h3:first-child {
+        margin-top: 0;
+      }
+
+      .q4h-tellask-body blockquote {
+        margin: 0 0 0.45em 0;
+        padding: 0 0.8em;
+        font-size: var(--dominds-font-size-xs, 11px);
+        color: var(--color-fg-tertiary, #64748b);
+        border-left: 0.25em solid var(--color-border-primary, #e2e8f0);
+      }
+
+      .q4h-tellask-body code:not([class]) {
+        background-color: var(--color-bg-secondary, #f1f5f9);
+        padding: 0.18em 0.35em;
+        border-radius: 4px;
+        font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+        font-size: 90%;
       }
 
       .q4h-tellask-body pre {
-        margin: 8px 0 0 0;
+        margin: 8px 0 0.45em 0;
+      }
+
+      .q4h-tellask-body pre:last-child {
+        margin-bottom: 0;
       }
 
       .q4h-goto-site-btn {

@@ -99,7 +99,7 @@ export class DomindsConnectionStatus extends HTMLElement {
         gap: 8px;
         padding: 4px 12px;
         border-radius: 16px;
-        font-size: 12px;
+        font-size: calc(12px * var(--dominds-ui-scale, 1));
         font-weight: 500;
         cursor: default;
         user-select: none;
@@ -184,7 +184,7 @@ export class DomindsConnectionStatus extends HTMLElement {
       }
 
       .status-details {
-        font-size: 6px;
+        font-size: calc(6px * var(--dominds-ui-scale, 1));
         opacity: 0.8;
         margin-left: 4px;
       }
@@ -197,7 +197,7 @@ export class DomindsConnectionStatus extends HTMLElement {
         background: transparent;
         color: inherit;
         cursor: pointer;
-        font-size: 6px;
+        font-size: calc(6px * var(--dominds-ui-scale, 1));
         font-weight: 600;
         transition: all 0.2s ease;
         opacity: 0.7;
@@ -223,7 +223,7 @@ export class DomindsConnectionStatus extends HTMLElement {
         color: white;
         padding: 4px 8px;
         border-radius: 4px;
-        font-size: 6px;
+        font-size: calc(6px * var(--dominds-ui-scale, 1));
         white-space: nowrap;
         z-index: 1000;
         opacity: 0;
@@ -247,7 +247,7 @@ export class DomindsConnectionStatus extends HTMLElement {
       }
 
       .last-connected {
-        font-size: 6px;
+        font-size: calc(6px * var(--dominds-ui-scale, 1));
         opacity: 0.6;
         margin-left: 4px;
       }

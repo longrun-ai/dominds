@@ -1505,7 +1505,7 @@ export class RunningDialogList extends HTMLElement {
         align-items: center;
         justify-content: space-between;
         padding: 10px 12px;
-        font-size: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 600;
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
@@ -1777,7 +1777,7 @@ export class RunningDialogList extends HTMLElement {
         height: 18px;
         padding: 0 6px;
         border-radius: 999px;
-        font-size: 10px;
+        font-size: var(--dominds-font-size-xs, 11px);
         font-weight: 700;
         letter-spacing: 0.02em;
         border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
@@ -1822,7 +1822,7 @@ export class RunningDialogList extends HTMLElement {
         padding: 0;
         margin-right: 6px;
         color: var(--dominds-muted, #666666);
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1;
         cursor: pointer;
         display: inline-flex;
@@ -1872,7 +1872,7 @@ export class RunningDialogList extends HTMLElement {
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
       }
 
@@ -1897,30 +1897,30 @@ export class RunningDialogList extends HTMLElement {
       }
 
       .dialog-status {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
       }
 
       .dialog-count {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
       }
 
       .dialog-topic {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #666666);
         letter-spacing: 0.02em;
       }
 
       .dialog-time {
-        font-size: 11px;
+        font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #888888);
       }
 
       .dialog-subrow {
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
       }
 
       .dialog-submeta {
@@ -1929,7 +1929,7 @@ export class RunningDialogList extends HTMLElement {
 
       .empty {
         padding: 16px;
-        font-size: 13px;
+        font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-muted, #666666);
       }
     `;

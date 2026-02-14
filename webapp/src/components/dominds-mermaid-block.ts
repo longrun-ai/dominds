@@ -95,7 +95,7 @@ export class DomindsMermaidBlock extends HTMLElement {
             white-space: pre;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
               'Courier New', monospace;
-            font-size: 12px;
+            font-size: calc(12px * var(--dominds-ui-scale, 1));
             line-height: 1.4;
           }
         </style>

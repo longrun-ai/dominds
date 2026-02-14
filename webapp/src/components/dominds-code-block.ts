@@ -81,7 +81,7 @@ export class DomindsCodeBlock extends HTMLElement {
             background: #161b22;
             border-bottom: 1px solid #30363d;
             color: #8b949e;
-            font-size: 12px;
+            font-size: calc(12px * var(--dominds-ui-scale, 1));
             font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
           }
           .copy-btn {
@@ -91,7 +91,7 @@ export class DomindsCodeBlock extends HTMLElement {
             color: #c9d1d9;
             cursor: pointer;
             padding: 2px 8px;
-            font-size: 14px;
+            font-size: calc(14px * var(--dominds-ui-scale, 1));
             transition: all 0.2s;
           }
           .copy-btn:hover {
