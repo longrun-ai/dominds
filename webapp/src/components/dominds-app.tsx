@@ -4268,7 +4268,8 @@ export class DomindsApp extends HTMLElement {
     // Input area error events (e.g., no dialog selected)
     this.shadowRoot.addEventListener('input-error', (e: Event) => {
       const ce = e as CustomEvent<{ message: string; type?: 'error' | 'warning' | 'info' }>;
-      const msg = ce.detail?.message || 'Input error';
+      const t = getUiStrings(this.uiLanguage);
+      const msg = ce.detail?.message || t.toastDefaultNotice;
       const kind = ce.detail?.type || 'error';
       this.showToast(msg, kind);
     });

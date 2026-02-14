@@ -104,6 +104,14 @@ export type UiStrings = {
   q4hAnswerCallSitesLabel: string;
   q4hOpenInNewTabTitle: string;
   q4hCopyLinkTitle: string;
+  q4hInvalidDialogToast: string;
+  q4hDeclareDeadOnlySidelineToast: string;
+  q4hDeclareDeadOnlyInterruptedToast: string;
+  q4hActionFailedToast: string;
+  q4hSelectedQuestionStaleToastPrefix: string;
+  q4hMessageEmptyToast: string;
+  q4hNoRoutableTargetToast: string;
+  q4hSendFailedToast: string;
   teammateAssignmentBubbleTitle: string;
   teammateRequesterCallSiteTitle: string;
 
@@ -410,6 +418,14 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hAnswerCallSitesLabel: '本次回答对应提问点：',
       q4hOpenInNewTabTitle: '新标签打开',
       q4hCopyLinkTitle: '复制链接',
+      q4hInvalidDialogToast: '对话标识无效：selfId/rootId 必须是字符串。',
+      q4hDeclareDeadOnlySidelineToast: '只有支线对话支持“宣布卡死”。',
+      q4hDeclareDeadOnlyInterruptedToast: '只有已中断的对话支持“宣布卡死”。',
+      q4hActionFailedToast: '操作失败',
+      q4hSelectedQuestionStaleToastPrefix: '已选问题已失效：',
+      q4hMessageEmptyToast: '消息内容不能为空。',
+      q4hNoRoutableTargetToast: '没有可路由的目标：请选择一个 Q4H 问题或活跃对话。',
+      q4hSendFailedToast: '发送消息失败。',
       teammateAssignmentBubbleTitle: '定位到任务安排气泡',
       teammateRequesterCallSiteTitle: '在新标签打开诉请发起点',
 
@@ -721,6 +737,15 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hAnswerCallSitesLabel: 'Answer applies to call sites:',
     q4hOpenInNewTabTitle: 'Open in new tab',
     q4hCopyLinkTitle: 'Copy link',
+    q4hInvalidDialogToast: 'Invalid dialog id: selfId/rootId must be strings.',
+    q4hDeclareDeadOnlySidelineToast: 'Declare dead is available only for sideline dialogs.',
+    q4hDeclareDeadOnlyInterruptedToast:
+      'Declare dead is available only when the dialog is interrupted.',
+    q4hActionFailedToast: 'Action failed',
+    q4hSelectedQuestionStaleToastPrefix: 'Selected Q4H question is stale: ',
+    q4hMessageEmptyToast: 'Message content is empty.',
+    q4hNoRoutableTargetToast: 'No routable target: select a Q4H question or an active dialog.',
+    q4hSendFailedToast: 'Failed to send message.',
     teammateAssignmentBubbleTitle: 'Go to assignment bubble',
     teammateRequesterCallSiteTitle: 'Open requester call site in new tab',
 

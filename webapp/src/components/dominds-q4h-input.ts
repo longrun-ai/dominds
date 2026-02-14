@@ -233,7 +233,8 @@ export class DomindsQ4HInput extends HTMLElement {
 
   public setDialog(dialog: DialogIdent): void {
     if (typeof dialog.selfId !== 'string' || typeof dialog.rootId !== 'string') {
-      this.showError('Invalid dialog id: selfId/rootId must be strings');
+      const t = getUiStrings(this.uiLanguage);
+      this.showError(t.q4hInvalidDialogToast);
       return;
     }
     this.currentDialog = dialog;
@@ -715,21 +716,21 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   private async requestDeclareDeath(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
     const dialog = this.currentDialog;
     if (!dialog) {
-      throw new Error('No active dialog');
+      throw new Error(t.noActiveDialogToast);
     }
     if (dialog.selfId === dialog.rootId) {
-      throw new Error('Declare dead is available only for sideline dialogs');
+      throw new Error(t.q4hDeclareDeadOnlySidelineToast);
     }
     const state = this.runState;
     if (state === null || state.kind !== 'interrupted') {
-      throw new Error('Declare dead is available only when the dialog is interrupted');
+      throw new Error(t.q4hDeclareDeadOnlyInterruptedToast);
     }
     if (this.props.disabled) {
-      throw new Error('Input is disabled');
+      throw new Error(t.inputNotAvailableToast);
     }
-    const t = getUiStrings(this.uiLanguage);
     const ok = window.confirm(t.declareDeathConfirm);
     if (!ok) return;
     const note = this.textInput ? this.textInput.value : '';
@@ -739,11 +740,12 @@ export class DomindsQ4HInput extends HTMLElement {
   }
 
   private async requestStop(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
     if (!this.currentDialog) {
-      throw new Error('No active dialog');
+      throw new Error(t.noActiveDialogToast);
     }
     if (this.props.disabled) {
-      throw new Error('Input is disabled');
+      throw new Error(t.inputNotAvailableToast);
     }
     this.wsManager.sendRaw({ type: 'interrupt_dialog', dialog: this.currentDialog });
   }
@@ -761,7 +763,8 @@ export class DomindsQ4HInput extends HTMLElement {
       await this.sendMessage();
     } catch (error: unknown) {
       console.error('Primary action failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Action failed';
+      const t = getUiStrings(this.uiLanguage);
+      const errorMessage = error instanceof Error ? error.message : t.q4hActionFailedToast;
       this.showError(errorMessage);
     }
   }
@@ -771,12 +774,14 @@ export class DomindsQ4HInput extends HTMLElement {
       await this.requestDeclareDeath();
     } catch (error: unknown) {
       console.error('Declare dead failed:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Action failed';
+      const t = getUiStrings(this.uiLanguage);
+      const errorMessage = error instanceof Error ? error.message : t.q4hActionFailedToast;
       this.showError(errorMessage);
     }
   }
 
   private async sendMessage(): Promise<{ success: true; msgId: string }> {
+    const t = getUiStrings(this.uiLanguage);
     const content = this.textInput.value.trim();
     const answeredQuestionId = this.selectedQuestionId;
     const answeredQuestion =
@@ -784,7 +789,7 @@ export class DomindsQ4HInput extends HTMLElement {
         ? (this.questions.find((q) => q.id === answeredQuestionId) ?? null)
         : null;
     if (answeredQuestionId !== null && answeredQuestion === null) {
-      throw new Error(`Selected Q4H question is stale: ${answeredQuestionId}`);
+      throw new Error(`${t.q4hSelectedQuestionStaleToastPrefix}${answeredQuestionId}`);
     }
     const targetDialog =
       answeredQuestion !== null
@@ -795,15 +800,15 @@ export class DomindsQ4HInput extends HTMLElement {
         : this.currentDialog;
 
     if (!content) {
-      throw new Error('Message content is empty');
+      throw new Error(t.q4hMessageEmptyToast);
     }
 
     if (!targetDialog) {
-      throw new Error('No routable target: select a Q4H question or an active dialog');
+      throw new Error(t.q4hNoRoutableTargetToast);
     }
 
     if (this.props.disabled) {
-      throw new Error('Input is disabled');
+      throw new Error(t.inputNotAvailableToast);
     }
 
     const msgId = generateShortId();
@@ -875,7 +880,7 @@ export class DomindsQ4HInput extends HTMLElement {
       return { success: true, msgId };
     } catch (error: unknown) {
       console.error('Failed to send message:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
+      const errorMessage = error instanceof Error ? error.message : t.q4hSendFailedToast;
       this.showError(errorMessage);
       throw error;
     }
