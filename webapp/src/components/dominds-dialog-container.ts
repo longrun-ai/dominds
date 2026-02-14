@@ -3691,7 +3691,7 @@ export class DomindsDialogContainer extends HTMLElement {
       /* Section styles (thinking, markdown) */
   .thinking-section, .markdown-section {
         margin-bottom: 0; /* bubble-body gap provides spacing */
-        padding: 2px 3px; 
+        padding: 2px 3px 2px 6px;
         border-radius: 6px; 
         background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9)); 
         border-left: 3px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); 
@@ -3820,7 +3820,7 @@ export class DomindsDialogContainer extends HTMLElement {
       /* Calling section styles (nested inside markdown) */
 	      .calling-section { 
 	        margin: 4px 0; 
-	        padding: 2px 3px; 
+	        padding: 2px 3px 2px 6px;
 	        border-radius: 6px; 
 	        background: var(--color-bg-tertiary, #f1f5f9); 
 	        border-left: 3px solid var(--color-info, #06b6d4);
@@ -3906,7 +3906,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .calling-content {
-        margin-left: 8px;
+        margin-left: 3px;
         max-height: none;
         overflow: visible;
       }
@@ -3985,7 +3985,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .calling-expand-footer {
-        margin-left: 8px;
+        margin-left: 3px;
       }
 
       .func-call-arguments-expand-footer,
@@ -4010,10 +4010,10 @@ export class DomindsDialogContainer extends HTMLElement {
       /* Function call section styles (nested inside markdown) - non-streaming mode */
       .func-call-section {
         margin: 4px 0;
-        padding: 2px 3px;
+        padding: 2px 3px 2px 6px;
         border-radius: 6px;
         background: var(--color-bg-tertiary, #f1f5f9);
-        border-left: 3px solid var(--color-warning, #f59e0b);
+        border-left: 3px solid var(--color-func-call, var(--color-warning, #f59e0b));
       }
 
       .func-call-header {
@@ -4029,12 +4029,12 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .func-call-title {
         font-weight: 600;
-        color: var(--color-warning, #f59e0b);
+        color: var(--color-func-call, var(--color-warning, #f59e0b));
         font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .func-call-content {
-        margin-left: 8px;
+        margin-left: 0;
       }
 
       .func-call-arguments-wrap {
@@ -4087,7 +4087,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .web-search-section {
         margin: 4px 0;
-        padding: 2px 3px;
+        padding: 2px 3px 2px 6px;
         border-radius: 6px;
         background: var(--color-bg-tertiary, #f1f5f9);
         border-left: 3px solid var(--color-info, #06b6d4);

@@ -39,7 +39,9 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
   }
 
   private emitDialogTouched(source: TypedDialogEvent): void {
-    if (source.type === 'dlg_touched_evt') return;
+    // `full_reminders_update` is a reminder snapshot/sync event and should not mutate
+    // dialog ordering timestamps. Emitting touched here causes list reordering on mere display.
+    if (source.type === 'dlg_touched_evt' || source.type === 'full_reminders_update') return;
     const touchedEvt: TypedDialogEvent = {
       dialog: source.dialog,
       timestamp: source.timestamp,

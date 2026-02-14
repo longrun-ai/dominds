@@ -57,7 +57,7 @@ import type {
   SetDiligencePushRequest,
   WebSocketMessage,
 } from '../shared/types';
-import type { DialogEvent, Q4HAnsweredEvent } from '../shared/types/dialog';
+import type { DialogEvent, Q4HAnsweredEvent, TypedDialogEvent } from '../shared/types/dialog';
 import {
   normalizeLanguageCode,
   supportedLanguageCodes,
@@ -960,10 +960,17 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           : requestedStatus === 'completed'
             ? { kind: 'terminal', status: 'completed' }
             : { kind: 'terminal', status: 'archived' });
-      const runStateEvt = dialogEventRegistry.createTypedEvent(dialogIdObj, {
+      // `display_dialog` is a read/navigation action. Use persisted lastModified as timestamp
+      // so the frontend list does not reorder as if there were new activity "now".
+      const runStateEvt: TypedDialogEvent = {
+        dialog: {
+          selfId: dialogIdObj.selfId,
+          rootId: dialogIdObj.rootId,
+        },
+        timestamp: latest?.lastModified ?? formatUnifiedTimestamp(new Date()),
         type: 'dlg_run_state_evt',
         runState,
-      });
+      };
       ws.send(JSON.stringify(runStateEvt));
     } catch (err) {
       log.warn(`Failed to send dlg_run_state_evt for ${dialogIdObj.valueOf()}:`, err);
