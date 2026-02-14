@@ -66,8 +66,8 @@ export class DomindsCodeBlock extends HTMLElement {
             margin: 0.75em 0;
             border-radius: 6px;
             overflow: hidden;
-            background: #0d1117;
-            border: 1px solid #30363d;
+            background: var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff));
+            border: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
             font-size: var(--dominds-font-size-sm, 12px);
             line-height: var(--dominds-line-height-dense, 1.24);
           }
@@ -80,36 +80,38 @@ export class DomindsCodeBlock extends HTMLElement {
             justify-content: space-between;
             align-items: center;
             padding: 2px 3px;
-            background: #161b22;
-            border-bottom: 1px solid #30363d;
-            color: #8b949e;
+            background: var(--color-bg-tertiary, #f2f2f2);
+            border-bottom: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
+            color: var(--dominds-muted, var(--color-fg-tertiary, #616161));
             font-size: var(--dominds-font-size-xs, 11px);
             font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
           }
           .copy-btn {
             background: transparent;
-            border: 1px solid #30363d;
+            border: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
             border-radius: 4px;
-            color: #c9d1d9;
+            color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
             cursor: pointer;
             padding: 1px 3px;
             font-size: var(--dominds-font-size-xs, 11px);
             transition: all 0.2s;
           }
           .copy-btn:hover {
-            background: #30363d;
-            border-color: #8b949e;
+            background: var(--dominds-hover, var(--color-bg-tertiary, #f2f2f2));
+            border-color: var(--dominds-primary, var(--color-accent-primary, #005fb8));
           }
           pre {
             margin: 0;
             padding: 2px 3px;
             font-size: var(--dominds-font-size-sm, 12px);
             line-height: var(--dominds-line-height-dense, 1.24);
+            background: var(--dominds-bg, var(--color-bg-primary, #f8f8f8));
             overflow: auto;
           }
           code.hljs {
             padding: 0;
             background: transparent;
+            color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
           }
         </style>
         <div class="code-block-wrapper">

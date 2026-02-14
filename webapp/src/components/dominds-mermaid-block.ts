@@ -66,11 +66,13 @@ export class DomindsMermaidBlock extends HTMLElement {
             display: block;
             margin: 0.35em 0;
             padding: 2px 3px;
-            background: white;
+            background: var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff));
+            border: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
             border-radius: 6px;
             overflow: auto;
             display: flex;
             justify-content: center;
+            color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
             font-size: var(--dominds-font-size-sm, 12px);
             line-height: var(--dominds-line-height-dense, 1.24);
           }
@@ -89,9 +91,11 @@ export class DomindsMermaidBlock extends HTMLElement {
             display: block;
             margin: 0.35em 0;
             padding: 2px 3px;
-            background: white;
+            background: var(--dominds-bg-secondary, var(--color-bg-secondary, #ffffff));
+            border: 1px solid var(--dominds-border, var(--color-border-primary, #e5e5e5));
             border-radius: 6px;
             overflow: auto;
+            color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
             font-size: var(--dominds-font-size-sm, 12px);
             line-height: var(--dominds-line-height-dense, 1.24);
           }
@@ -101,6 +105,7 @@ export class DomindsMermaidBlock extends HTMLElement {
               'Courier New', monospace;
             font-size: var(--dominds-font-size-xs, 11px);
             line-height: var(--dominds-line-height-dense, 1.24);
+            color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
           }
         </style>
         <pre class="mermaid-error"></pre>
