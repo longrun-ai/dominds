@@ -53,14 +53,21 @@ export class DomindsMathBlock extends HTMLElement {
     try {
       this.innerHTML = `
         <style>
+          dominds-math-block {
+            font-size: var(--dominds-font-size-base, 14px);
+            line-height: var(--dominds-line-height-dense, 1.24);
+          }
+          dominds-math-block .katex {
+            font-size: 1em;
+          }
           dominds-math-block[display="block"] {
             display: block;
-            margin: 0.75em 0;
+            margin: 0.35em 0;
             text-align: center;
           }
           dominds-math-block[display="inline"] {
             display: inline-block;
-            padding: 0 2px;
+            padding: 0 1px;
           }
         </style>
         ${katex.renderToString(this._tex, {

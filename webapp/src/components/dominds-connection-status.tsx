@@ -96,10 +96,10 @@ export class DomindsConnectionStatus extends HTMLElement {
       .status-container {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 4px 12px;
-        border-radius: 16px;
-        font-size: calc(12px * var(--dominds-ui-scale, 1));
+        gap: 5px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 9px;
         font-weight: 500;
         cursor: default;
         user-select: none;
@@ -184,20 +184,20 @@ export class DomindsConnectionStatus extends HTMLElement {
       }
 
       .status-details {
-        font-size: calc(6px * var(--dominds-ui-scale, 1));
+        font-size: 5px;
         opacity: 0.8;
-        margin-left: 4px;
+        margin-left: 2px;
       }
 
       .reconnect-btn {
-        margin-left: 8px;
-        padding: 2px 6px;
+        margin-left: 5px;
+        padding: 1px 4px;
         border: 1px solid currentColor;
-        border-radius: 12px;
+        border-radius: 8px;
         background: transparent;
         color: inherit;
         cursor: pointer;
-        font-size: calc(6px * var(--dominds-ui-scale, 1));
+        font-size: 5px;
         font-weight: 600;
         transition: all 0.2s ease;
         opacity: 0.7;
@@ -223,7 +223,7 @@ export class DomindsConnectionStatus extends HTMLElement {
         color: white;
         padding: 4px 8px;
         border-radius: 4px;
-        font-size: calc(6px * var(--dominds-ui-scale, 1));
+        font-size: 5px;
         white-space: nowrap;
         z-index: 1000;
         opacity: 0;
@@ -247,7 +247,7 @@ export class DomindsConnectionStatus extends HTMLElement {
       }
 
       .last-connected {
-        font-size: calc(6px * var(--dominds-ui-scale, 1));
+        font-size: 5px;
         opacity: 0.6;
         margin-left: 4px;
       }

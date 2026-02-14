@@ -358,35 +358,20 @@ export class DomindsSnippetsPanel extends HTMLElement {
               <div class="section section-templates">${this.renderTemplates(templates)}</div>
             </div>
           </div>
-          <div class="pane right">
-            <div class="pane-scroll">
-              <div class="section section-editor">
-                <div class="section-title">${this.escapeHtml(editorTitle)}</div>
-                <div class="form">
-                  <div class="form-row">
-                    <label class="label filename">
-                      <div class="label-text">${this.escapeHtml(t.promptTemplatesFileNameLabel)}</div>
-                      <input id="new-filename" class="input" type="text" value="${this.escapeHtml(this.draftFileName)}" />
-                    </label>
-                    <label class="label name">
-                      <div class="label-text">${this.escapeHtml(t.promptTemplatesNameLabel)}</div>
-                      <input id="new-name" class="input" type="text" value="${this.escapeHtml(this.draftName)}" />
-                    </label>
-                    <label class="label description">
-                      <div class="label-text">${this.escapeHtml(t.promptTemplatesDescriptionLabel)}</div>
-                      <input id="new-description" class="input" type="text" value="${this.escapeHtml(this.draftDescription)}" />
-                    </label>
-                  </div>
-                  <label class="label">
-                    <div class="label-text">${this.escapeHtml(t.promptTemplatesContentLabel)}</div>
-                    <textarea id="new-content" class="textarea" spellcheck="false">${this.escapeHtml(
-                      this.draftContent,
-                    )}</textarea>
-                  </label>
-                  <div class="actions">
-                    <div class="actions-left">
-                      <button type="button" class="btn btn-icon" id="save" title="${this.escapeHtml(t.promptTemplatesSave)}" aria-label="${this.escapeHtml(t.promptTemplatesSave)}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+	          <div class="pane right">
+	            <div class="pane-scroll">
+		              <div class="section section-editor">
+		                <div class="form">
+		                  <label class="label">
+		                    <textarea id="new-content" class="textarea" spellcheck="false">${this.escapeHtml(
+                          this.draftContent,
+                        )}</textarea>
+		                  </label>
+	                  <div class="actions">
+	                    <div class="actions-left">
+	                      <span class="section-title section-title-inline">${this.escapeHtml(editorTitle)}</span>
+	                      <button type="button" class="btn btn-icon" id="save" title="${this.escapeHtml(t.promptTemplatesSave)}" aria-label="${this.escapeHtml(t.promptTemplatesSave)}">
+	                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
                           <polyline points="17 21 17 13 7 13 7 21"></polyline>
                           <polyline points="7 3 7 8 15 8"></polyline>
@@ -395,15 +380,29 @@ export class DomindsSnippetsPanel extends HTMLElement {
                     </div>
                     <div class="actions-right">
                       <button type="button" class="btn btn-icon" id="insert" title="${this.escapeHtml(t.promptTemplatesInsert)}" aria-label="${this.escapeHtml(t.promptTemplatesInsert)}">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                           <line x1="12" y1="4" x2="12" y2="14"></line>
                           <polyline points="6.5 12.5 12 18 17.5 12.5"></polyline>
                         </svg>
                       </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+		                    </div>
+		                  </div>
+	                  <div class="form-row">
+	                    <label class="label filename">
+	                      <div class="label-text">${this.escapeHtml(t.promptTemplatesFileNameLabel)}</div>
+	                      <input id="new-filename" class="input" type="text" value="${this.escapeHtml(this.draftFileName)}" />
+	                    </label>
+	                    <label class="label name">
+	                      <div class="label-text">${this.escapeHtml(t.promptTemplatesNameLabel)}</div>
+	                      <input id="new-name" class="input" type="text" value="${this.escapeHtml(this.draftName)}" />
+	                    </label>
+	                    <label class="label description">
+	                      <div class="label-text">${this.escapeHtml(t.promptTemplatesDescriptionLabel)}</div>
+	                      <input id="new-description" class="input" type="text" value="${this.escapeHtml(this.draftDescription)}" />
+	                    </label>
+	                  </div>
+		                </div>
+		              </div>
             </div>
           </div>
         </div>
@@ -552,57 +551,58 @@ export class DomindsSnippetsPanel extends HTMLElement {
     return `
       :host{display:flex;flex-direction:column;min-height:0;width:100%;}
       .wrap{display:flex;flex-direction:column;min-height:0;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;padding:0;background:var(--dominds-bg,#fff);}
-      .groups{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;padding:8px 12px;border:none;border-bottom:1px solid var(--color-border-primary,#e2e8f0);border-radius:0;background:var(--color-bg-secondary,#f8fafc);}
+      .groups{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;padding:2px 8px;border:none;border-bottom:1px solid var(--color-border-primary,#e2e8f0);border-radius:0;background:var(--color-bg-secondary,#f8fafc);}
       .groups-title{font-size: var(--dominds-font-size-sm, 12px);color:var(--color-fg-tertiary,#64748b);}
-      .groups-buttons{display:flex;gap:6px;align-items:center;overflow-x:auto;min-width:0;flex:1;}
+      .groups-buttons{display:flex;gap:4px;align-items:center;overflow-x:auto;min-width:0;flex:1;}
       .groups-buttons::-webkit-scrollbar{height:8px;}
       .groups-buttons::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--color-border-primary,#e2e8f0) 60%, transparent);border-radius:999px;}
-      .group{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:6px 10px;font-size: var(--dominds-font-size-sm, 12px);cursor:pointer;flex:0 0 auto;}
+      .group{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);cursor:pointer;flex:0 0 auto;}
       .group.active{border-color:var(--dominds-primary,#007acc);color:var(--dominds-primary,#007acc);box-shadow:0 0 0 2px color-mix(in srgb, var(--dominds-primary,#007acc) 18%, transparent);}
-      .group-add{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;}
-      .group-input{display:inline-flex;align-items:center;gap:6px;padding:0 8px;min-height:34px;border-radius:999px;border:1px solid var(--dominds-primary,#007acc);background:var(--dominds-bg,#fff);flex:0 0 auto;}
+      .group-add{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;}
+      .group-input{display:inline-flex;align-items:center;gap:4px;padding:0 6px;min-height:24px;border-radius:999px;border:1px solid var(--dominds-primary,#007acc);background:var(--dominds-bg,#fff);flex:0 0 auto;}
       .group-input-el{border:none;outline:none;background:transparent;font-size: var(--dominds-font-size-sm, 12px);min-width:120px;color:var(--dominds-fg,#0f172a);}
 
-      .layout{display:flex;gap:12px;flex:1;min-height:0;width:100%;max-width:100%;box-sizing:border-box;}
+      .layout{display:flex;gap:6px;flex:1;min-height:0;width:100%;max-width:100%;box-sizing:border-box;}
       .pane{display:flex;flex-direction:column;min-height:0;min-width:0;}
       .pane.left{flex:0 0 360px;max-width:420px;border-right:1px solid var(--color-border-primary,#e2e8f0);}
       .pane.right{flex:1 1 auto;}
       .pane-scroll{overflow:auto;min-height:0;}
-      .section{display:flex;flex-direction:column;gap:8px;padding:12px 12px 0 12px;}
+      .section{display:flex;flex-direction:column;gap:4px;padding:6px 8px 0 8px;}
       .section-title{font-weight:600;font-size: var(--dominds-font-size-sm, 12px);color:var(--color-fg-secondary,#475569);}
-      .tpl-list{display:flex;flex-direction:column;gap:8px;}
-      .tpl{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:10px;padding:10px 10px;background:var(--dominds-bg,#fff);}
+      .section-title-inline{display:inline-flex;align-items:center;line-height:1;}
+      .tpl-list{display:flex;flex-direction:column;gap:4px;}
+      .tpl{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:8px;padding:4px 6px;background:var(--dominds-bg,#fff);}
       .tpl.selected{border-color:var(--dominds-primary,#007acc);box-shadow:0 0 0 2px color-mix(in srgb, var(--dominds-primary,#007acc) 15%, transparent);}
-      .tpl-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .tpl-head{display:flex;align-items:center;justify-content:space-between;gap:6px;}
       .tpl-name{font-weight:600;font-size: var(--dominds-font-size-sm, 12px);color:var(--dominds-fg,#0f172a);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-      .tpl-actions{display:flex;align-items:center;gap:8px;}
-      .badge{font-size: var(--dominds-font-size-xs, 11px);color:var(--color-fg-tertiary,#64748b);border:1px solid var(--color-border-primary,#e2e8f0);padding:2px 8px;border-radius:999px;background:var(--color-bg-secondary,#f8fafc);}
-      .tpl-desc{margin-top:6px;font-size: var(--dominds-font-size-sm, 12px);color:var(--color-fg-tertiary,#64748b);white-space:pre-wrap;}
+      .tpl-actions{display:flex;align-items:center;gap:4px;}
+      .badge{font-size: var(--dominds-font-size-xs, 11px);color:var(--color-fg-tertiary,#64748b);border:1px solid var(--color-border-primary,#e2e8f0);padding:1px 6px;border-radius:999px;background:var(--color-bg-secondary,#f8fafc);}
+      .tpl-desc{margin-top:3px;font-size: var(--dominds-font-size-sm, 12px);color:var(--color-fg-tertiary,#64748b);white-space:pre-wrap;}
       .muted{color:var(--color-fg-tertiary,#64748b);font-size: var(--dominds-font-size-sm, 12px);}
       .error{color:var(--dominds-danger,#dc3545);font-size: var(--dominds-font-size-sm, 12px);white-space:pre-wrap;}
-      .form{display:flex;flex-direction:column;gap:10px;}
-      .form-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
-      .label{display:flex;flex-direction:column;gap:6px;}
+      .form{display:flex;flex-direction:column;gap:6px;}
+      .form-row{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;}
+      .label{display:flex;flex-direction:column;gap:3px;}
       .form-row .label{min-width:0;}
       .form-row .label.filename{flex:0 0 140px;}
       .form-row .label.name{flex:0 0 180px;}
       .form-row .label.description{flex:1 1 320px;}
       .label-text{font-size: var(--dominds-font-size-sm, 12px);color:var(--color-fg-secondary,#475569);}
-      .input{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:8px;padding:8px 10px;font-size: var(--dominds-font-size-sm, 12px);background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);}
+      .input{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:6px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);}
       .form-row .input{width:100%;box-sizing:border-box;}
-      .textarea{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:8px;padding:8px 10px;font-size: var(--dominds-font-size-sm, 12px);min-height:140px;resize:vertical;background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
-      .section-editor{padding-bottom:12px;}
-      .actions{display:flex;align-items:center;justify-content:space-between;gap:12px;}
-      .actions-left,.actions-right{display:flex;align-items:center;gap:10px;}
-      .btn{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:6px 10px;font-size: var(--dominds-font-size-sm, 12px);cursor:pointer;}
-      .btn.btn-icon{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;}
+      .textarea{border:1px solid var(--color-border-primary,#e2e8f0);border-radius:6px;padding:3px 8px;font-size: var(--dominds-font-size-sm, 12px);min-height:110px;resize:vertical;background:var(--dominds-bg,#fff);color:var(--dominds-fg,#0f172a);font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+      .section-editor{padding-bottom:6px;}
+      .actions{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+      .actions-left,.actions-right{display:flex;align-items:center;gap:6px;}
+      .btn{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);cursor:pointer;}
+      .btn.btn-icon{width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;}
       .btn.btn-icon svg{display:block;}
       .btn.disabled{opacity:0.45;cursor:not-allowed;box-shadow:none !important;border-color:var(--color-border-primary,#e2e8f0);color:var(--color-fg-tertiary,#64748b);}
       .btn.soft{border-color:color-mix(in srgb, var(--dominds-primary,#007acc) 22%, var(--color-border-primary,#e2e8f0));color:color-mix(in srgb, var(--dominds-primary,#007acc) 55%, var(--color-fg-secondary,#475569));background:color-mix(in srgb, var(--dominds-primary,#007acc) 6%, var(--dominds-bg,#fff));box-shadow:none;}
       .btn.preferred{border-color:var(--dominds-primary,#007acc);color:var(--dominds-primary,#007acc);box-shadow:0 0 0 2px color-mix(in srgb, var(--dominds-primary,#007acc) 15%, transparent);}
 
       @media (max-width: 860px) {
-        .layout{flex-direction:column;gap:10px;}
+        .layout{flex-direction:column;gap:6px;}
         .pane.left{flex:0 0 auto;max-width:none;border-right:none;border-bottom:1px solid var(--color-border-primary,#e2e8f0);}
       }
     `;

@@ -1046,7 +1046,7 @@ export class DomindsQ4HInput extends HTMLElement {
         top: 0;
         left: 0;
         right: 0;
-        height: 16px;
+        height: 12px;
         cursor: ns-resize;
         display: flex;
         align-items: center;
@@ -1079,7 +1079,7 @@ export class DomindsQ4HInput extends HTMLElement {
         display: flex;
         flex-direction: column;
         border-top: 1px solid var(--color-border-primary, #e2e8f0);
-        padding: 16px;
+        padding: 10px;
         background: inherit;
         position: relative;
         z-index: 1;
@@ -1090,29 +1090,29 @@ export class DomindsQ4HInput extends HTMLElement {
         align-items: stretch;
         flex: 1;
         min-height: 0;
-        gap: 8px;
+        gap: 6px;
         background: var(--dominds-input-bg, #f8f9fa);
-        border: 2px solid var(--dominds-border, #e0e0e0);
-        border-radius: 24px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 18px;
         transition: all 0.2s ease;
         overflow: hidden;
-        padding-right: 12px;
+        padding-right: 8px;
       }
 
       .input-actions {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         align-self: flex-end;
-        padding-bottom: 8px;
+        padding-bottom: 6px;
       }
 
       .declare-death-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 4px 10px;
+        padding: 3px 8px;
         border-radius: 999px;
         border: 1px solid var(--dominds-danger, #dc3545);
         background: transparent;
@@ -1136,8 +1136,8 @@ export class DomindsQ4HInput extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 24px;
-        height: 24px;
+        width: 22px;
+        height: 22px;
         border: 1px solid transparent;
         border-radius: 6px;
         background: transparent;
@@ -1162,7 +1162,7 @@ export class DomindsQ4HInput extends HTMLElement {
         background: color-mix(in srgb, var(--dominds-primary, #007acc) 12%, var(--color-bg-secondary, #ffffff));
         border-color: var(--dominds-primary, #007acc);
         border-top-color: transparent;
-        border-radius: 0 0 24px 24px;
+        border-radius: 0 0 18px 18px;
       }
 
       .input-wrapper.q4h-active:focus-within {
@@ -1187,12 +1187,12 @@ export class DomindsQ4HInput extends HTMLElement {
         background: transparent;
         border: none;
         outline: none;
-        padding: 12px 16px;
+        padding: 9px 12px;
         font-size: var(--dominds-font-size-md, 13px);
         line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--dominds-fg, #333333);
         resize: none;
-        min-height: 48px;
+        min-height: 42px;
         font-family: inherit;
         white-space: pre-wrap;
         overflow-y: auto;
@@ -1210,8 +1210,8 @@ export class DomindsQ4HInput extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 40px;
-        height: 40px;
+        width: 34px;
+        height: 34px;
         border: none;
         border-radius: 50%;
         background: var(--dominds-primary, #007acc);
@@ -1248,13 +1248,13 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .send-icon {
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
       }
 
       .stop-icon {
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
       }
 
     `;

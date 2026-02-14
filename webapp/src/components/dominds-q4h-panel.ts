@@ -401,7 +401,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-panel-content {
-        padding: 8px 16px;
+        padding: 6px 10px;
         height: 100%;
         min-height: 0;
         overflow-y: auto;
@@ -409,18 +409,18 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       /* Dialog group styles */
       .q4h-dialog-group {
-        margin-bottom: 12px;
+        margin-bottom: 8px;
       }
 
       .q4h-dialog-header {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         font-size: var(--dominds-font-size-md, 13px);
         font-weight: 500;
         color: var(--color-fg-secondary, #475569);
-        margin-bottom: 6px;
-        padding-bottom: 6px;
+        margin-bottom: 4px;
+        padding-bottom: 4px;
         border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
       }
 
@@ -447,8 +447,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-question-card {
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 8px;
-        margin-bottom: 6px;
+        border-radius: 6px;
+        margin-bottom: 4px;
         overflow: hidden;
         transition: all 0.2s ease;
       }
@@ -473,8 +473,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-question-header {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
+        gap: 6px;
+        padding: 6px 8px;
         cursor: pointer;
       }
 
@@ -485,8 +485,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-expand-icon {
         color: var(--color-fg-tertiary, #64748b);
         transition: transform 0.2s ease;
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -500,8 +500,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-checkbox {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
         border: 2px solid var(--color-border-primary, #94a3b8);
         border-radius: 4px;
         flex-shrink: 0;
@@ -533,9 +533,9 @@ export class DomindsQ4HPanel extends HTMLElement {
         font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
         color: var(--color-fg-primary, #0f172a);
-        line-height: 1.35;
+        line-height: 1.25;
         display: inline-flex;
-        gap: 6px;
+        gap: 4px;
         align-items: baseline;
         min-width: 0;
       }
@@ -543,7 +543,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-question-actions-top {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 2px;
         margin-left: auto;
         flex-shrink: 0;
       }
@@ -570,7 +570,7 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       .q4h-question-body {
         display: none;
-        padding: 0 10px 10px;
+        padding: 0 8px 8px;
         border-top: 1px solid var(--color-border-primary, #e2e8f0);
       }
 
@@ -591,25 +591,25 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-tellask {
-        margin-top: 12px;
+        margin-top: 8px;
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--color-fg-secondary, #334155);
         background: var(--color-bg-tertiary, #f8fafc);
         border: 1px solid var(--color-border-primary, #e2e8f0);
-        border-radius: 8px;
-        padding: 10px 10px;
+        border-radius: 6px;
+        padding: 8px;
       }
 
       .q4h-tellask-body {
         white-space: normal;
         word-break: break-word;
         font-size: var(--dominds-font-size-sm, 12px);
-        line-height: var(--dominds-line-height-base, 1.5);
+        line-height: var(--dominds-line-height-dense, 1.4);
       }
 
       .q4h-tellask-body p {
         margin-top: 0;
-        margin-bottom: 0.45em;
+        margin-bottom: 0.35em;
       }
 
       .q4h-tellask-body p:last-child {
@@ -619,8 +619,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-tellask-body ul,
       .q4h-tellask-body ol {
         margin-top: 0;
-        margin-bottom: 0.45em;
-        padding-left: 1.25em;
+        margin-bottom: 0.35em;
+        padding-left: 1.15em;
       }
 
       .q4h-tellask-body li {
@@ -633,8 +633,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-tellask-body h4,
       .q4h-tellask-body h5,
       .q4h-tellask-body h6 {
-        margin-top: 0.75em;
-        margin-bottom: 0.25em;
+        margin-top: 0.6em;
+        margin-bottom: 0.2em;
         font-weight: 600;
         line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--color-fg-primary, #0f172a);
@@ -670,7 +670,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-tellask-body pre {
-        margin: 8px 0 0.45em 0;
+        margin: 6px 0 0.35em 0;
       }
 
       .q4h-tellask-body pre:last-child {
@@ -678,8 +678,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-goto-site-btn {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
         padding: 0;
         display: inline-flex;
         align-items: center;
@@ -693,8 +693,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-open-external-btn {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
         padding: 0;
         display: inline-flex;
         align-items: center;
@@ -708,8 +708,8 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-share-link-btn {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
         padding: 0;
         display: inline-flex;
         align-items: center;

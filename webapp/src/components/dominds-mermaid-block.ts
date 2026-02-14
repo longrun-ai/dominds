@@ -64,13 +64,15 @@ export class DomindsMermaidBlock extends HTMLElement {
         <style>
           dominds-mermaid-block {
             display: block;
-            margin: 0.75em 0;
-            padding: 1em;
+            margin: 0.35em 0;
+            padding: 2px 3px;
             background: white;
             border-radius: 6px;
             overflow: auto;
             display: flex;
             justify-content: center;
+            font-size: var(--dominds-font-size-sm, 12px);
+            line-height: var(--dominds-line-height-dense, 1.24);
           }
           dominds-mermaid-block svg {
             max-width: 100%;
@@ -85,18 +87,20 @@ export class DomindsMermaidBlock extends HTMLElement {
         <style>
           dominds-mermaid-block {
             display: block;
-            margin: 0.75em 0;
-            padding: 1em;
+            margin: 0.35em 0;
+            padding: 2px 3px;
             background: white;
             border-radius: 6px;
             overflow: auto;
+            font-size: var(--dominds-font-size-sm, 12px);
+            line-height: var(--dominds-line-height-dense, 1.24);
           }
           .mermaid-error {
             white-space: pre;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
               'Courier New', monospace;
-            font-size: calc(12px * var(--dominds-ui-scale, 1));
-            line-height: 1.4;
+            font-size: var(--dominds-font-size-xs, 11px);
+            line-height: var(--dominds-line-height-dense, 1.24);
           }
         </style>
         <pre class="mermaid-error"></pre>

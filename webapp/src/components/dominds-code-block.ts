@@ -68,6 +68,8 @@ export class DomindsCodeBlock extends HTMLElement {
             overflow: hidden;
             background: #0d1117;
             border: 1px solid #30363d;
+            font-size: var(--dominds-font-size-sm, 12px);
+            line-height: var(--dominds-line-height-dense, 1.24);
           }
           .code-block-wrapper {
             display: flex;
@@ -77,11 +79,11 @@ export class DomindsCodeBlock extends HTMLElement {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 16px;
+            padding: 2px 3px;
             background: #161b22;
             border-bottom: 1px solid #30363d;
             color: #8b949e;
-            font-size: calc(12px * var(--dominds-ui-scale, 1));
+            font-size: var(--dominds-font-size-xs, 11px);
             font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
           }
           .copy-btn {
@@ -90,8 +92,8 @@ export class DomindsCodeBlock extends HTMLElement {
             border-radius: 4px;
             color: #c9d1d9;
             cursor: pointer;
-            padding: 2px 8px;
-            font-size: calc(14px * var(--dominds-ui-scale, 1));
+            padding: 1px 3px;
+            font-size: var(--dominds-font-size-xs, 11px);
             transition: all 0.2s;
           }
           .copy-btn:hover {
@@ -100,7 +102,9 @@ export class DomindsCodeBlock extends HTMLElement {
           }
           pre {
             margin: 0;
-            padding: 16px;
+            padding: 2px 3px;
+            font-size: var(--dominds-font-size-sm, 12px);
+            line-height: var(--dominds-line-height-dense, 1.24);
             overflow: auto;
           }
           code.hljs {

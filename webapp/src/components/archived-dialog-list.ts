@@ -1195,7 +1195,7 @@ export class ArchivedDialogList extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 10px 12px;
+        padding: 3px 5px;
         font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 600;
         color: var(--dominds-muted, #666666);
@@ -1241,7 +1241,7 @@ export class ArchivedDialogList extends HTMLElement {
       .show-more-row {
         display: flex;
         justify-content: center;
-        padding: 6px 0 10px;
+        padding: 4px 0 8px;
       }
 
       .show-more-button {
@@ -1251,18 +1251,23 @@ export class ArchivedDialogList extends HTMLElement {
       .dialog-item {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        padding: 10px 12px;
+        gap: 3px;
+        padding: 2px 8px;
         cursor: pointer;
       }
 
       .root-dialog {
-        padding-left: 12px;
+        padding-left: 8px;
+        gap: 0;
         border-top: 1px solid var(--dominds-border, #e0e0e0);
       }
 
+      .sdlg-node {
+        gap: 0;
+      }
+
       .sub-dialog {
-        padding-left: 28px;
+        padding-left: 20px;
       }
 
       .dialog-item.missing {
@@ -1286,7 +1291,7 @@ export class ArchivedDialogList extends HTMLElement {
         border: none;
         background: transparent;
         padding: 0;
-        margin-right: 6px;
+        margin-right: 4px;
         color: var(--dominds-muted, #666666);
         font-size: var(--dominds-font-size-xs, 11px);
         line-height: 1;
@@ -1294,8 +1299,8 @@ export class ArchivedDialogList extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
       }
 
       .toggle:focus-visible {
@@ -1315,13 +1320,18 @@ export class ArchivedDialogList extends HTMLElement {
       .icon-button {
         border: none;
         background: transparent;
-        padding: 2px;
+        padding: 1px;
         margin: 0;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         color: var(--dominds-muted, #666666);
+      }
+
+      .icon-button svg {
+        width: 11px;
+        height: 11px;
       }
 
       .icon-button:hover {
@@ -1337,7 +1347,7 @@ export class ArchivedDialogList extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 6px;
         font-size: var(--dominds-font-size-md, 13px);
         font-weight: 600;
       }
@@ -1345,7 +1355,7 @@ export class ArchivedDialogList extends HTMLElement {
       .dialog-title {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 5px;
         min-width: 0;
         flex: 1;
         overflow: hidden;
@@ -1356,7 +1366,7 @@ export class ArchivedDialogList extends HTMLElement {
       .dialog-meta-right {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex: none;
         white-space: nowrap;
       }
@@ -1395,8 +1405,8 @@ export class ArchivedDialogList extends HTMLElement {
       }
 
       .empty {
-        padding: 16px;
-        font-size: var(--dominds-font-size-md, 13px);
+        padding: 12px;
+        font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
       }
     `;

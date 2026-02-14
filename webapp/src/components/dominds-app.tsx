@@ -1861,12 +1861,11 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
         overflow: hidden;
         color-scheme: inherit;
-        --dominds-ui-scale: 0.8;
-        --dominds-font-size-micro: calc(10px * var(--dominds-ui-scale, 1));
-        --dominds-font-size-xs: calc(11px * var(--dominds-ui-scale, 1));
-        --dominds-font-size-sm: calc(12px * var(--dominds-ui-scale, 1));
-        --dominds-font-size-md: calc(13px * var(--dominds-ui-scale, 1));
-        --dominds-font-size-base: calc(14px * var(--dominds-ui-scale, 1));
+        --dominds-font-size-micro: 8px;
+        --dominds-font-size-xs: 9px;
+        --dominds-font-size-sm: 10px;
+        --dominds-font-size-md: 11px;
+        --dominds-font-size-base: 11.5px;
         --dominds-line-height-tight: 1.18;
         --dominds-line-height-dense: 1.24;
         --dominds-line-height-base: 1.38;
@@ -1889,26 +1888,26 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
       }
 
-	      .header {
-	        display: flex;
-	        align-items: flex-end;
-	        justify-content: flex-start;
-	        gap: 16px;
-	        padding: 12px 16px;
-	        background: var(--dominds-header-bg);
-	        border-bottom: 1px solid var(--dominds-border);
-	        flex-shrink: 0;
-	      }
-
-		      .logo {
+		      .header {
 		        display: flex;
-		        align-items: flex-end;
-		        gap: 12px;
-		        font-weight: 600;
-		        font-size: calc(18px * var(--dominds-ui-scale, 1));
-		        line-height: 1;
-		        color: var(--dominds-primary, #007acc);
-		        flex: none;
+		        align-items: center;
+		        justify-content: flex-start;
+		        gap: 8px;
+		        padding: 4px 8px;
+		        background: var(--dominds-header-bg);
+		        border-bottom: 1px solid var(--dominds-border);
+		        flex-shrink: 0;
+		      }
+
+			      .logo {
+			        display: flex;
+			        align-items: center;
+			        gap: 6px;
+			        font-weight: 600;
+			        font-size: 13px;
+			        line-height: 1;
+			        color: var(--dominds-primary, #007acc);
+			        flex: none;
 	        min-width: auto;
 	        width: auto;
 	        margin-right: 0;
@@ -1916,13 +1915,13 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      .logo img {
-	        align-self: flex-end;
+	        align-self: center;
 	        display: block;
 	      }
 
 	      .logo-text {
 	        display: flex;
-	        align-items: flex-end;
+	        align-items: center;
 	        gap: 6px;
 	        line-height: 1;
 	      }
@@ -1945,13 +1944,12 @@ export class DomindsApp extends HTMLElement {
 	        color: var(--dominds-muted, #666666);
 	        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
 	        background: var(--dominds-hover, #f8f9fa);
-	        padding: 5px 8px;
+	        padding: 3px 6px;
 	        border-radius: 4px;
 	        border: 1px solid var(--dominds-border, #e0e0e0);
 	        flex: 1;
 	        max-width: 50%;
 	        min-width: 0;
-	        height: calc(1em * 1.4 * 0.85);
 	        display: flex;
 	        align-items: center;
 	        justify-content: flex-start;
@@ -1984,24 +1982,24 @@ export class DomindsApp extends HTMLElement {
       }
 
 	      .header-actions {
-	        display: flex;
-	        align-items: center;
-	        gap: 12px;
-	        margin-left: auto;
-	      }
+		        display: flex;
+		        align-items: center;
+		        gap: 6px;
+		        margin-left: auto;
+		      }
 
       .header-run-controls {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 5px;
       }
 
       .header-pill-button {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 4px 12px;
-        border-radius: 16px;
+        gap: 5px;
+        padding: 2px 9px;
+        border-radius: 12px;
         font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;
         user-select: none;
@@ -2025,9 +2023,9 @@ export class DomindsApp extends HTMLElement {
       .header-run-pill {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 4px 12px;
-        border-radius: 16px;
+        gap: 5px;
+        padding: 2px 9px;
+        border-radius: 12px;
         font-size: var(--dominds-font-size-sm, 12px);
         font-weight: 500;
         user-select: none;
@@ -2048,8 +2046,8 @@ export class DomindsApp extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 2px;
-        margin: -2px;
+        padding: 1px;
+        margin: -1px;
         border: none;
         background: transparent;
         color: inherit;
@@ -2254,12 +2252,12 @@ export class DomindsApp extends HTMLElement {
 
       .problems-panel {
         position: fixed;
-        top: 68px;
-        right: 12px;
-        width: min(520px, calc(100vw - 24px));
-        max-height: calc(100vh - 92px);
+        top: 52px;
+        right: 8px;
+        width: min(500px, calc(100vw - 16px));
+        max-height: calc(100vh - 64px);
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 10px;
+        border-radius: 8px;
         background: var(--dominds-bg, #ffffff);
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
         overflow: hidden;
@@ -2276,8 +2274,8 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
-        padding: 10px 12px;
+        gap: 6px;
+        padding: 8px 10px;
         border-bottom: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-sidebar-bg, #f8f9fa);
       }
@@ -2290,7 +2288,7 @@ export class DomindsApp extends HTMLElement {
 
       .problems-panel-actions {
         display: inline-flex;
-        gap: 6px;
+        gap: 4px;
         align-items: center;
       }
 
@@ -2298,8 +2296,8 @@ export class DomindsApp extends HTMLElement {
         border: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
-        border-radius: 8px;
-        padding: 4px 8px;
+        border-radius: 6px;
+        padding: 3px 6px;
         font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
       }
@@ -2308,23 +2306,23 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-primary, #007acc);
       }
 
-	      .problems-list {
-	        padding: 10px 12px;
-	        overflow: auto;
-	      }
+      .problems-list {
+        padding: 8px 10px;
+        overflow: auto;
+      }
 
-	      .problems-list.empty {
+      .problems-list.empty {
 	        display: flex;
 	        flex-direction: column;
 	        justify-content: center;
-	        min-height: 96px;
-	      }
+        min-height: 72px;
+      }
 
       .problem-item {
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 8px;
-        padding: 8px 10px;
-        margin-bottom: 8px;
+        border-radius: 6px;
+        padding: 6px 8px;
+        margin-bottom: 6px;
         background: var(--dominds-bg, #ffffff);
       }
 
@@ -2341,7 +2339,7 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
-        gap: 10px;
+        gap: 6px;
       }
 
       .problem-message {
@@ -2357,7 +2355,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .problem-detail {
-        margin-top: 6px;
+        margin-top: 4px;
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
         white-space: pre-wrap;
@@ -2365,18 +2363,18 @@ export class DomindsApp extends HTMLElement {
       }
 
       .lang-select {
-        height: 36px;
+        height: 24px;
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 8px;
+        border-radius: 7px;
         background: var(--dominds-sidebar-bg, #f8f9fa);
         color: var(--dominds-fg, #333333);
-        padding: 0 10px;
+        padding: 0 9px;
         font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: 8px;
         white-space: nowrap;
       }
 
@@ -2400,15 +2398,15 @@ export class DomindsApp extends HTMLElement {
 
       .ui-language-menu-popover {
         position: absolute;
-        top: calc(100% + 6px);
+        top: calc(100% + 4px);
         right: 0;
-        min-width: 320px;
-        max-width: 420px;
+        min-width: 300px;
+        max-width: 380px;
         background: var(--dominds-sidebar-bg, #f8f9fa);
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 10px;
+        border-radius: 8px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        padding: 6px;
+        padding: 4px;
         z-index: var(--dominds-z-overlay-popover);
       }
 
@@ -2419,8 +2417,8 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-fg, #333333);
         cursor: pointer;
         text-align: left;
-        padding: 10px 10px;
-        border-radius: 8px;
+        padding: 8px 8px;
+        border-radius: 6px;
       }
 
       .ui-language-menu-item:hover {
@@ -2453,9 +2451,9 @@ export class DomindsApp extends HTMLElement {
       }
 
       .ui-language-menu-item-tip {
-        margin-top: 6px;
-        margin-left: 12px;
-        padding-left: 10px;
+        margin-top: 4px;
+        margin-left: 8px;
+        padding-left: 8px;
         border-left: 2px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 80%, transparent);
         color: var(--dominds-muted, #666666);
         font-size: var(--dominds-font-size-xs, 11px);
@@ -2469,12 +2467,12 @@ export class DomindsApp extends HTMLElement {
 
       .ui-language-menu-item-tip ul,
       .ui-language-menu-item-tip ol {
-        margin: 6px 0 0 0;
-        padding-left: 18px;
+        margin: 4px 0 0 0;
+        padding-left: 14px;
       }
 
       .ui-language-menu-item-tip li {
-        margin: 2px 0 0 0;
+        margin: 1px 0 0 0;
       }
 
       .ui-language-menu-button-caret {
@@ -2482,20 +2480,20 @@ export class DomindsApp extends HTMLElement {
         opacity: 0.7;
       }
 
-	      .theme-toggle {
+      .theme-toggle {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 36px;
+        width: 24px;
+        height: 24px;
         border: none;
-        border-radius: 8px;
+        border-radius: 5px;
         background: var(--dominds-sidebar-bg, #f8f9fa);
         color: var(--dominds-fg, #333333);
         cursor: pointer;
-	        font-size: calc(16px * var(--dominds-ui-scale, 1));
-	        transition: all 0.2s ease;
-	      }
+        font-size: 15px;
+        transition: all 0.2s ease;
+      }
 
       .theme-toggle:hover {
         background: var(--dominds-hover, #f0f0f0);
@@ -2506,41 +2504,41 @@ export class DomindsApp extends HTMLElement {
 	        transform: scale(0.95);
 	      }
 	
-		      .toast-history-modal {
+      .toast-history-modal {
 		        position: fixed;
 		        inset: 0;
 		        z-index: var(--dominds-z-overlay-toast-history);
 		        display: flex;
 		        align-items: flex-start;
 		        justify-content: center;
-	        padding: 64px 16px 16px;
-	        background: rgba(0, 0, 0, 0.35);
-	      }
+        padding: 48px 10px 10px;
+        background: rgba(0, 0, 0, 0.35);
+      }
 	
 	      .toast-history-modal.hidden {
 	        display: none;
 	      }
 	
-	      .toast-history-panel {
-	        width: min(860px, calc(100vw - 32px));
-	        max-height: calc(100vh - 96px);
-	        background: var(--dominds-bg, #ffffff);
-	        border: 1px solid var(--dominds-border, #e0e0e0);
-	        border-radius: 12px;
+      .toast-history-panel {
+        width: min(860px, calc(100vw - 32px));
+        max-height: calc(100vh - 72px);
+        background: var(--dominds-bg, #ffffff);
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 10px;
 	        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 	        overflow: hidden;
 	        display: flex;
 	        flex-direction: column;
 	      }
 	
-	      .toast-history-header {
+      .toast-history-header {
 	        display: flex;
 	        align-items: center;
 	        justify-content: space-between;
-	        gap: 12px;
-	        padding: 10px 12px;
-	        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
-	      }
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
+      }
 	
 	      .toast-history-title {
 	        font-size: var(--dominds-font-size-md, 13px);
@@ -2548,53 +2546,53 @@ export class DomindsApp extends HTMLElement {
 	        color: var(--dominds-fg, #333333);
 	      }
 	
-	      .toast-history-actions {
-	        display: inline-flex;
-	        gap: 8px;
-	        align-items: center;
-	      }
+      .toast-history-actions {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
 	
-	      .toast-history-actions button {
-	        width: 32px;
-	        height: 32px;
-	        border: 1px solid var(--dominds-border, #e0e0e0);
-	        border-radius: 8px;
-	        background: var(--dominds-bg, #ffffff);
-	        color: var(--dominds-fg, #333333);
-	        cursor: pointer;
-	      }
+      .toast-history-actions button {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 6px;
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-fg, #333333);
+        cursor: pointer;
+      }
 	
 	      .toast-history-actions button:hover {
 	        background: var(--dominds-hover, #f0f0f0);
 	      }
 	
-	      .toast-history-list {
-	        padding: 10px 12px;
-	        overflow: auto;
-	        font-size: var(--dominds-font-size-sm, 12px);
-	        color: var(--dominds-fg, #333333);
-	      }
+      .toast-history-list {
+        padding: 8px 10px;
+        overflow: auto;
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg, #333333);
+      }
 	
-	      .toast-history-empty {
-	        color: var(--dominds-muted, #666666);
-	        font-size: var(--dominds-font-size-sm, 12px);
-	        padding: 12px 2px;
-	      }
+      .toast-history-empty {
+        color: var(--dominds-muted, #666666);
+        font-size: var(--dominds-font-size-sm, 12px);
+        padding: 8px 2px;
+      }
 	
-	      .toast-history-item {
-	        display: flex;
-	        gap: 10px;
-	        padding: 8px 0;
-	        border-bottom: 1px dashed color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
-	      }
+      .toast-history-item {
+        display: flex;
+        gap: 8px;
+        padding: 6px 0;
+        border-bottom: 1px dashed color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
+      }
 	
 	      .toast-history-item:last-child {
 	        border-bottom: none;
 	      }
 	
-	      .toast-history-icon {
-	        width: 18px;
-	        flex-shrink: 0;
+      .toast-history-icon {
+        width: 16px;
+        flex-shrink: 0;
 	        text-align: center;
 	        margin-top: 2px;
 	      }
@@ -2623,7 +2621,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .sidebar {
-        width: 360px;
+        width: 288px;
         min-width: 200px;
         max-width: 600px;
         background: var(--dominds-sidebar-bg);
@@ -2637,13 +2635,14 @@ export class DomindsApp extends HTMLElement {
       }
 
       .activity-bar {
-        padding: 8px 10px;
+        padding: 1px 6px;
+        min-height: 30px;
         border-bottom: 1px solid var(--dominds-border);
         flex-shrink: 0;
         display: flex;
         flex-direction: row;
         align-items: center;
-        gap: 6px;
+        gap: 4px;
       }
 
       .activity-button {
@@ -2672,17 +2671,17 @@ export class DomindsApp extends HTMLElement {
       .activity-view {
         flex: 1;
         overflow: hidden;
-        padding: 8px 0;
+        padding: 4px 0;
         display: flex;
         flex-direction: column;
         min-height: 0;
       }
 
       .activity-placeholder {
-        padding: 16px;
+        padding: 10px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 3px;
         font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-muted, #666666);
       }
@@ -2697,7 +2696,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .activity-placeholder dominds-team-members {
-        margin-top: 6px;
+        margin-top: 4px;
       }
 
       .tools-registry {
@@ -2711,8 +2710,8 @@ export class DomindsApp extends HTMLElement {
       .tools-registry-header {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
+        gap: 6px;
+        padding: 6px 8px;
         border: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-bg, #ffffff);
       }
@@ -2737,8 +2736,8 @@ export class DomindsApp extends HTMLElement {
         border: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
-        border-radius: 8px;
-        padding: 4px 8px;
+        border-radius: 6px;
+        padding: 3px 6px;
         font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
       }
@@ -2751,14 +2750,14 @@ export class DomindsApp extends HTMLElement {
         overflow: auto;
         border: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-bg, #ffffff);
-        padding: 8px;
+        padding: 6px;
       }
 
       .tools-section {
         border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
         background: var(--dominds-bg-secondary, #ffffff);
         overflow: hidden;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
 
       .tools-section:last-child {
@@ -2769,7 +2768,7 @@ export class DomindsApp extends HTMLElement {
         cursor: pointer;
         display: flex;
         align-items: center;
-        padding: 6px 10px;
+        padding: 5px 8px;
         background: color-mix(in srgb, var(--dominds-fg, #333333) 4%, transparent);
         border-bottom: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
         font-weight: 600;
@@ -2868,24 +2867,24 @@ export class DomindsApp extends HTMLElement {
 
       .tool-item {
         border: 1px solid color-mix(in srgb, var(--dominds-border, #e0e0e0) 70%, transparent);
-        border-radius: 10px;
-        padding: 8px 10px;
+        border-radius: 8px;
+        padding: 6px 8px;
         background: var(--dominds-bg, #ffffff);
       }
 
       .tool-main {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
       }
 
       .tool-kind {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 5px;
         border: 1px solid var(--dominds-border, #e0e0e0);
         color: var(--dominds-muted, #666666);
         font-size: var(--dominds-font-size-xs, 11px);
@@ -2908,7 +2907,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .tools-empty {
-        padding: 8px 10px;
+        padding: 6px 8px;
         color: var(--dominds-muted, #666666);
         font-size: var(--dominds-font-size-sm, 12px);
       }
@@ -2932,8 +2931,9 @@ export class DomindsApp extends HTMLElement {
       .toolbar {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 12px 16px;
+        gap: 5px;
+        padding: 1px 6px;
+        min-height: 30px;
         background: var(--dominds-toolbar-bg, #f8f9fa);
         border-bottom: 1px solid var(--dominds-border, #e0e0e0);
         flex-shrink: 0;
@@ -2943,7 +2943,7 @@ export class DomindsApp extends HTMLElement {
       .toolbar-left {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 6px;
         min-width: 0;
       }
 
@@ -2951,7 +2951,7 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         align-items: center;
         flex-shrink: 0;
-        gap: 4px;
+        gap: 3px;
       }
 
       #reminders-callout {
@@ -2964,11 +2964,11 @@ export class DomindsApp extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
         border: none;
         background: transparent;
-        border-radius: 6px;
+        border-radius: 5px;
         cursor: pointer;
         color: var(--dominds-fg, #333333);
       }
@@ -2985,12 +2985,12 @@ export class DomindsApp extends HTMLElement {
       .badge-button {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 4px;
         border: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-bg, #ffffff);
         color: var(--dominds-fg, #333333);
-        padding: 4px 8px;
-        border-radius: 6px;
+        padding: 1px 6px;
+        border-radius: 5px;
         cursor: pointer;
         transition: all 0.2s ease;
       }
@@ -3047,14 +3047,13 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      .bottom-panel-resize-handle {
-	        height: 16px;
-	        cursor: ns-resize;
+	        position: relative;
+	        height: 12px;
 	        display: flex;
 	        align-items: center;
 	        justify-content: center;
 	        flex: none;
-	        background: var(--dominds-bg, #ffffff);
-	        border-top: 1px solid var(--color-border-primary, #e2e8f0);
+	        background: transparent;
 	        touch-action: none;
 	        user-select: none;
 	      }
@@ -3063,7 +3062,32 @@ export class DomindsApp extends HTMLElement {
 	        display: none;
 	      }
 
-	      .bottom-panel-resize-handle::before {
+	      .bp-resize-grip {
+	        position: absolute;
+	        top: 50%;
+	        transform: translate(-50%, -50%);
+	        width: 44px;
+	        height: 12px;
+	        padding: 0;
+	        border: none;
+	        background: transparent;
+	        border-radius: 999px;
+	        cursor: ns-resize;
+	        display: flex;
+	        align-items: center;
+	        justify-content: center;
+	        touch-action: none;
+	      }
+
+	      .bp-resize-grip.left {
+	        left: 33.333%;
+	      }
+
+	      .bp-resize-grip.right {
+	        left: 66.667%;
+	      }
+
+	      .bp-resize-grip::before {
 	        content: '';
 	        width: 44px;
 	        height: 3px;
@@ -3071,22 +3095,57 @@ export class DomindsApp extends HTMLElement {
 	        background: var(--dominds-border, #e0e0e0);
 	      }
 
-	      .bottom-panel-resize-handle:hover::before {
+	      .bottom-panel-resize-handle:hover:not(.bp-collapse-hover) .bp-resize-grip::before,
+	      .bottom-panel-resize-handle.resizing .bp-resize-grip::before {
 	        background: var(--dominds-primary, #007acc);
+	      }
+
+	      .bp-collapse-btn {
+	        position: absolute;
+	        left: 50%;
+	        top: 50%;
+	        transform: translate(-50%, -50%);
+	        width: 78px;
+	        height: 16px;
+	        border: 1px solid transparent;
+	        background: transparent;
+	        color: var(--dominds-muted, #64748b);
+	        border-radius: 999px;
+	        cursor: pointer;
+	        display: inline-flex;
+	        align-items: center;
+	        justify-content: center;
+	        padding: 0;
+	      }
+
+	      .bp-collapse-btn:hover {
+	        color: var(--dominds-primary, #007acc);
+	        background: var(--dominds-hover, #f0f0f0);
+	        border-color: var(--dominds-border, #e0e0e0);
+	      }
+
+	      .bp-collapse-btn:focus-visible {
+	        outline: 2px solid var(--dominds-primary, #007acc);
+	        outline-offset: 1px;
+	      }
+
+	      .bp-collapse-btn svg {
+	        display: block;
+	        pointer-events: none;
 	      }
 
 	      .bottom-panel-footer {
 	        display: flex;
-	        gap: 8px;
+	        gap: 4px;
 	        align-items: center;
-	        padding: 8px 12px;
+	        padding: 2px 8px;
 	        border-top: 1px solid var(--color-border-primary, #e2e8f0);
 	        background: var(--color-bg-secondary, #f8fafc);
 	      }
 
 	      .bp-tabs-right {
 	        display: inline-flex;
-	        gap: 8px;
+	        gap: 4px;
 	        align-items: center;
 	        margin-left: auto;
 	      }
@@ -3097,12 +3156,12 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-bg, #ffffff);
         color: var(--color-fg-secondary, #475569);
         border-radius: 999px;
-        padding: 6px 10px;
+        padding: 2px 8px;
         font-size: var(--dominds-font-size-sm, 12px);
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
       }
 
 	      .bp-tab.active {
@@ -3113,8 +3172,8 @@ export class DomindsApp extends HTMLElement {
 
 
 	      .bp-checkbox {
-	        width: 16px;
-	        height: 16px;
+	        width: 14px;
+	        height: 14px;
 	        margin: 0;
 	        cursor: pointer;
 	        accent-color: var(--dominds-primary, #007acc);
@@ -3122,8 +3181,8 @@ export class DomindsApp extends HTMLElement {
 
 	      .bp-badge {
 	        display: inline-flex;
-	        min-width: 26px;
-	        padding: 2px 8px;
+	        min-width: 22px;
+	        padding: 1px 6px;
 	        border-radius: 999px;
 	        background: var(--color-bg-tertiary, #f1f5f9);
 	        color: var(--color-fg-tertiary, #64748b);
@@ -3150,7 +3209,7 @@ export class DomindsApp extends HTMLElement {
 
 	      button.bp-tab[data-bp-tab='diligence'] .bp-badge {
 	        min-width: 56px;
-	        padding: 2px 8px;
+	        padding: 1px 8px;
 	        box-sizing: border-box;
 	      }
 
@@ -3248,7 +3307,7 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      .bp-q4h-empty {
-	        padding: 18px 12px;
+	        padding: 3px 8px;
 	        color: var(--color-fg-tertiary, #64748b);
 	        font-size: var(--dominds-font-size-sm, 12px);
 	        flex: 1;
@@ -3264,9 +3323,9 @@ export class DomindsApp extends HTMLElement {
 
       .bp-diligence-row {
         display: flex;
-        gap: 10px;
+        gap: 6px;
         align-items: center;
-        padding: 8px 12px;
+        padding: 2px 8px;
         border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
         background: var(--color-bg-secondary, #f8fafc);
       }
@@ -3282,20 +3341,20 @@ export class DomindsApp extends HTMLElement {
 	        box-sizing: border-box;
 	        flex: 1;
 	        min-height: 0;
-	        padding: 10px 12px;
+	        padding: 3px 8px;
 	        border: none;
 	        outline: none;
 	        resize: none;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
           'Courier New', monospace;
         font-size: var(--dominds-font-size-sm, 12px);
-        line-height: 1.45;
+        line-height: 1.35;
         color: var(--color-fg-primary, #0f172a);
         background: var(--dominds-bg, #ffffff);
       }
 
 	      .q4h-readonly-banner {
-	        padding: 10px 12px;
+	        padding: 2px 8px;
 	        border-top: 1px solid var(--dominds-border, #e0e0e0);
 	        background: var(--dominds-toolbar-bg, #f8f9fa);
 	        color: var(--dominds-muted, #666666);
@@ -3306,18 +3365,18 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 200px;
+        height: 150px;
         color: var(--dominds-muted, #666666);
       }
 
       .spinner {
-        width: 20px;
-        height: 20px;
+        width: 16px;
+        height: 16px;
         border: 2px solid var(--dominds-border, #e0e0e0);
         border-top: 2px solid var(--dominds-primary, #007acc);
         border-radius: 50%;
         animation: spin 1s linear infinite;
-        margin-right: 8px;
+        margin-right: 6px;
       }
 
       @keyframes spin {
@@ -3326,7 +3385,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .button {
-        padding: 8px 16px;
+        padding: 6px 12px;
         border: none;
         border-radius: 6px;
         background: var(--dominds-primary, #007acc);
@@ -3403,11 +3462,11 @@ export class DomindsApp extends HTMLElement {
         }
 
         .header {
-          padding: 10px 12px;
+          padding: 4px 6px;
         }
 
         .toolbar {
-          padding: 8px 12px;
+          padding: 1px 6px;
         }
       }
 
@@ -3446,9 +3505,9 @@ export class DomindsApp extends HTMLElement {
 
       .modal-error {
         display: none;
-        margin-top: 12px;
-        padding: 10px 12px;
-        border-radius: 8px;
+        margin-top: 8px;
+        padding: 8px 10px;
+        border-radius: 6px;
         border: 1px solid var(--dominds-danger-border, #f5c6cb);
         background: var(--dominds-danger-bg, #f8d7da);
         color: var(--dominds-danger, #721c24);
@@ -3470,9 +3529,9 @@ export class DomindsApp extends HTMLElement {
         position: relative;
         background: var(--dominds-bg, #ffffff);
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 12px;
+        border-radius: 10px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        min-width: 400px;
+        min-width: 360px;
         max-width: 500px;
         width: 90vw;
         max-height: 85vh;
@@ -3498,13 +3557,13 @@ export class DomindsApp extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 20px 24px 16px;
+        padding: 12px 16px 10px;
         border-bottom: 1px solid var(--dominds-border, #e0e0e0);
       }
 
 	      .modal-header h3 {
 	        margin: 0;
-	        font-size: calc(18px * var(--dominds-ui-scale, 1));
+	        font-size: 14px;
 	        font-weight: 600;
 	        color: var(--dominds-fg, #333333);
 	      }
@@ -3512,7 +3571,7 @@ export class DomindsApp extends HTMLElement {
 	      .modal-close {
 	        background: none;
 	        border: none;
-	        font-size: calc(18px * var(--dominds-ui-scale, 1));
+	        font-size: 14px;
 	        cursor: pointer;
 	        color: var(--dominds-muted, #666666);
         padding: 4px;
@@ -3526,7 +3585,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       .modal-body {
-        padding: 20px 24px;
+        padding: 12px 16px;
         flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
@@ -3534,19 +3593,19 @@ export class DomindsApp extends HTMLElement {
       }
 
       .modal-description {
-        margin: 0 0 20px 0;
+        margin: 0 0 12px 0;
         color: var(--dominds-muted, #666666);
         font-size: var(--dominds-font-size-base, 14px);
         line-height: 1.5;
       }
 
       .form-group {
-        margin-bottom: 16px;
+        margin-bottom: 12px;
       }
 
       .form-group-vertical > label {
         display: block;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
         font-weight: 500;
         color: var(--dominds-fg, #333333);
         font-size: var(--dominds-font-size-base, 14px);
@@ -3562,13 +3621,13 @@ export class DomindsApp extends HTMLElement {
       }
 
       .form-group-horizontal {
-        margin: 16px;
+        margin: 12px;
       }
 
       .teammate-dropdown {
         width: 100%;
         box-sizing: border-box;
-        padding: 10px 12px;
+        padding: 8px 10px;
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 6px;
         background: var(--dominds-bg, #ffffff);
@@ -3584,8 +3643,8 @@ export class DomindsApp extends HTMLElement {
       }
 
       .teammate-info {
-        margin-top: 16px;
-        padding: 16px;
+        margin-top: 12px;
+        padding: 12px;
         background: var(--dominds-hover, #f8f9fa);
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 6px;
@@ -3603,7 +3662,7 @@ export class DomindsApp extends HTMLElement {
       .task-doc-input {
         width: 100%;
         box-sizing: border-box;
-        padding: 10px 12px;
+        padding: 8px 10px;
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 6px;
         background: var(--dominds-bg, #ffffff);
@@ -3734,7 +3793,7 @@ export class DomindsApp extends HTMLElement {
 
 	      .teammate-details h4 {
 	        margin: 0 0 8px 0;
-	        font-size: calc(16px * var(--dominds-ui-scale, 1));
+	        font-size: 13px;
 	        font-weight: 600;
 	        color: var(--dominds-fg, #333333);
 	      }
@@ -3753,20 +3812,20 @@ export class DomindsApp extends HTMLElement {
       .modal-footer {
         display: flex;
         justify-content: flex-end;
-        gap: 12px;
-        padding: 16px 24px 20px;
+        gap: 8px;
+        padding: 10px 16px 12px;
         border-top: 1px solid var(--dominds-border, #e0e0e0);
       }
 
       .btn {
-        padding: 8px 16px;
+        padding: 6px 12px;
         border: none;
         border-radius: 6px;
         font-size: var(--dominds-font-size-base, 14px);
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
-        min-width: 80px;
+        min-width: 68px;
       }
 
       .btn-secondary {
@@ -3858,12 +3917,12 @@ export class DomindsApp extends HTMLElement {
       .rem-item {
         display: flex;
         align-items: flex-start;
-        gap: 8px;
-        padding: 6px 8px;
-        margin-bottom: 4px;
+        gap: 6px;
+        padding: 4px 6px;
+        margin-bottom: 3px;
         background: var(--dominds-hover, #f8f9fa);
         border: 1px solid var(--dominds-border, #e0e0e0);
-        border-radius: 6px;
+        border-radius: 5px;
         font-size: var(--dominds-font-size-md, 13px);
         line-height: 1.4;
         color: var(--dominds-fg, #333333);
@@ -4156,13 +4215,29 @@ export class DomindsApp extends HTMLElement {
                 : ''
             }
 
-            <div class="dialog-section">
-              <div class="conversation-scroll-area">
-                <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
-              </div>
-	              <div class="bottom-panel ${this.bottomPanelExpanded ? 'expanded' : 'collapsed'}" id="bottom-panel">
-	                <div class="bottom-panel-resize-handle ${this.bottomPanelExpanded ? '' : 'hidden'}" id="bottom-panel-resize-handle" role="separator" aria-orientation="horizontal"></div>
-	                <div class="bottom-panel-content" id="bottom-panel-content">
+	            <div class="dialog-section">
+	              <div class="conversation-scroll-area">
+	                <dominds-dialog-container id="dialog-container" ui-language="${this.uiLanguage}"></dominds-dialog-container>
+	              </div>
+		              <div class="bottom-panel ${this.bottomPanelExpanded ? 'expanded' : 'collapsed'}" id="bottom-panel">
+		                <div class="bottom-panel-resize-handle ${this.bottomPanelExpanded ? '' : 'hidden'}" id="bottom-panel-resize-handle" role="separator" aria-orientation="horizontal">
+		                  <div class="bp-resize-grip left" data-role="resize" aria-hidden="true"></div>
+		                  <button
+		                    id="bottom-panel-collapse-btn"
+		                    class="bp-collapse-btn"
+		                    type="button"
+		                    aria-label="${t.close}"
+		                    title="${t.close}"
+		                  >
+		                    <svg width="56" height="8" viewBox="0 0 56 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		                      <path d="M2 2.2L8 5.8L14 2.2"></path>
+		                      <path d="M21 2.2L27 5.8L33 2.2"></path>
+		                      <path d="M40 2.2L46 5.8L52 2.2"></path>
+		                    </svg>
+		                  </button>
+		                  <div class="bp-resize-grip right" data-role="resize" aria-hidden="true"></div>
+		                </div>
+		                <div class="bottom-panel-content" id="bottom-panel-content">
 	                  <div class="bp-content bp-q4h ${this.bottomPanelTab === 'q4h' ? '' : 'hidden'}">
 	                    <div class="bp-q4h-empty ${this.q4hQuestionCount === 0 ? '' : 'hidden'}">${t.q4hNoPending}</div>
 	                    <dominds-q4h-panel id="q4h-panel" ui-language="${this.uiLanguage}" class="${this.q4hQuestionCount === 0 ? 'hidden' : ''}"></dominds-q4h-panel>
@@ -4998,20 +5073,26 @@ export class DomindsApp extends HTMLElement {
       '#bottom-panel-resize-handle',
     ) as HTMLElement | null;
     if (bottomPanelResizeHandle && bottomPanel) {
-      bottomPanelResizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+      const startBottomPanelResize = (e: PointerEvent): void => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest('#bottom-panel-collapse-btn')) return;
+
+        const resizeTarget = bottomPanelResizeHandle;
         e.preventDefault();
         e.stopPropagation();
         if (!this.bottomPanelExpanded) {
           setBottomPanelExpanded(true);
         }
         this.bottomPanelIsResizing = true;
+        bottomPanelResizeHandle.classList.add('resizing');
         this.bottomPanelResizeStartY = e.clientY;
         this.bottomPanelResizeStartHeight = this.bottomPanelHeightPx;
         this.bottomPanelResizeLastHeight = this.bottomPanelHeightPx;
 
         let hasPointerCapture = false;
         try {
-          bottomPanelResizeHandle.setPointerCapture(e.pointerId);
+          resizeTarget.setPointerCapture(e.pointerId);
           hasPointerCapture = true;
         } catch {
           // ignore
@@ -5035,18 +5116,19 @@ export class DomindsApp extends HTMLElement {
         const onUp = () => {
           if (!this.bottomPanelIsResizing) return;
           this.bottomPanelIsResizing = false;
+          bottomPanelResizeHandle.classList.remove('resizing');
 
-          bottomPanelResizeHandle.removeEventListener('pointermove', onMove);
+          resizeTarget.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointermove', onMove);
           try {
-            bottomPanelResizeHandle.releasePointerCapture(e.pointerId);
+            resizeTarget.releasePointerCapture(e.pointerId);
           } catch {
             // ignore
           }
 
-          bottomPanelResizeHandle.removeEventListener('pointerup', onUp);
-          bottomPanelResizeHandle.removeEventListener('pointercancel', onUp);
-          bottomPanelResizeHandle.removeEventListener('lostpointercapture', onUp);
+          resizeTarget.removeEventListener('pointerup', onUp);
+          resizeTarget.removeEventListener('pointercancel', onUp);
+          resizeTarget.removeEventListener('lostpointercapture', onUp);
           window.removeEventListener('pointerup', onUp);
 
           if (this.bottomPanelUserResized) {
@@ -5054,18 +5136,50 @@ export class DomindsApp extends HTMLElement {
           }
         };
 
-        bottomPanelResizeHandle.addEventListener('pointermove', onMove);
+        resizeTarget.addEventListener('pointermove', onMove);
         if (!hasPointerCapture) {
           window.addEventListener('pointermove', onMove);
         }
-        bottomPanelResizeHandle.addEventListener('pointerup', onUp);
-        bottomPanelResizeHandle.addEventListener('pointercancel', onUp);
-        bottomPanelResizeHandle.addEventListener('lostpointercapture', onUp);
+        resizeTarget.addEventListener('pointerup', onUp);
+        resizeTarget.addEventListener('pointercancel', onUp);
+        resizeTarget.addEventListener('lostpointercapture', onUp);
 
         // Fallback: in some browsers, pointerup may not be delivered to the capture element
         // if the pointer is released outside the window.
         window.addEventListener('pointerup', onUp);
+      };
+      bottomPanelResizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+        startBottomPanelResize(e);
       });
+
+      const collapseBtn = bottomPanelResizeHandle.querySelector<HTMLButtonElement>(
+        '#bottom-panel-collapse-btn',
+      );
+      if (collapseBtn) {
+        const setCollapseHover = (active: boolean): void => {
+          bottomPanelResizeHandle.classList.toggle('bp-collapse-hover', active);
+        };
+        collapseBtn.addEventListener('pointerenter', () => {
+          setCollapseHover(true);
+        });
+        collapseBtn.addEventListener('pointerleave', () => {
+          setCollapseHover(false);
+        });
+        collapseBtn.addEventListener('focus', () => {
+          setCollapseHover(true);
+        });
+        collapseBtn.addEventListener('blur', () => {
+          setCollapseHover(false);
+        });
+        collapseBtn.addEventListener('pointerdown', (e: PointerEvent) => {
+          e.stopPropagation();
+        });
+        collapseBtn.addEventListener('click', (e: MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setBottomPanelExpanded(false);
+        });
+      }
     }
 
     this.shadowRoot.addEventListener('q4h-question-expanded', (event: Event) => {
@@ -7025,7 +7139,7 @@ export class DomindsApp extends HTMLElement {
             color: ${color};
           ">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <span style="font-size: calc(18px * var(--dominds-ui-scale, 1));">${icon}</span>
+              <span style="font-size: 14px;">${icon}</span>
               <strong>${type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Info'}</strong>
             </div>
             <div>${message}</div>
