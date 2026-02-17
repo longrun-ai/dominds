@@ -60,6 +60,9 @@
 - `team_mgmt_validate_team_cfg({})`：验证 `.minds/team.yaml` 配置是否有效
   - 修改完 `team.yaml` 后必须运行
   - 清空 Problems 面板里的 team.yaml 错误后再继续
+- `team_mgmt_validate_mcp_cfg({})`：验证 `.minds/mcp.yaml` 配置与 MCP 相关问题
+  - 修改完 `mcp.yaml` 后必须运行
+  - 清空 Problems 面板里的 MCP 相关错误后再继续
 
 ## 工具选择指南
 
@@ -75,4 +78,5 @@
 | 锚点插入           | `team_mgmt_prepare_file_insert_after/before` → `team_mgmt_apply_file_modification` |
 | 块替换             | `team_mgmt_prepare_file_block_replace` → `team_mgmt_apply_file_modification`       |
 | 覆盖整个文件       | `team_mgmt_overwrite_entire_file`                                                  |
-| 验证配置           | `team_mgmt_validate_team_cfg({})`                                                  |
+| 验证 team 配置     | `team_mgmt_validate_team_cfg({})`                                                  |
+| 验证 mcp 配置      | `team_mgmt_validate_mcp_cfg({})`                                                   |

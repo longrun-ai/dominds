@@ -32,6 +32,7 @@
 - 双锚点块替换：`team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
 - 应用写入：`team_mgmt_apply_file_modification({ hunk_id })`
 - 修改完 `.minds/team.yaml`：务必运行 `team_mgmt_validate_team_cfg({})`，并清空 Problems 面板里的 team.yaml 错误后再继续。
+- 修改完 `.minds/mcp.yaml`：务必运行 `team_mgmt_validate_mcp_cfg({})`，并清空 Problems 面板里的 MCP 相关错误后再继续。
 
 > 注意：有些 provider（例如 Codex）会要求函数工具参数字段都“必填”（schema 全 required）。  
 > 如果你用的是这类 provider，但语义上想表达“未指定/使用默认”，再用哨兵值；否则（大多数 provider）省略可选字段即可：

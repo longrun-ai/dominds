@@ -422,6 +422,30 @@ export function requestMcpServerRestart(
   });
 }
 
+export function requestMcpConfigReload(
+  reason: string = 'manual',
+): Promise<{ ok: true } | { ok: false; errorText: string }> {
+  const normalizedReason = reason.trim() === '' ? 'manual' : reason.trim();
+  return new Promise((resolve) => {
+    reloadChain = reloadChain
+      .then(async () => {
+        try {
+          await reloadNow(`manual request (${normalizedReason})`);
+          resolve({ ok: true });
+        } catch (err: unknown) {
+          const errorText = err instanceof Error ? err.message : String(err);
+          log.warn(`MCP config reload failed`, err, { reason: normalizedReason });
+          resolve({ ok: false, errorText });
+        }
+      })
+      .catch((err: unknown) => {
+        const errorText = err instanceof Error ? err.message : String(err);
+        log.warn(`MCP config reload enqueue failed`, err, { reason: normalizedReason });
+        resolve({ ok: false, errorText });
+      });
+  });
+}
+
 async function ensureMindsDirWatcher(reason: string): Promise<void> {
   let st: fs.Stats | null = null;
   try {

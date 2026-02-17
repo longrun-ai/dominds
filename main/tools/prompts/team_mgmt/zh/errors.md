@@ -44,14 +44,25 @@
   3. 重新验证直到无错误
   4. 清空 Problems 面板后再继续
 
+**MCP_VALIDATION_ERROR**
+
+- 原因：`.minds/mcp.yaml` 格式错误、server 配置错误，或 MCP 运行时报错
+- 解决：
+  1. 运行 `team_mgmt_validate_mcp_cfg({})` 汇总具体错误
+  2. 修复 mcp.yaml 或对应 MCP server 配置
+  3. 必要时运行 `mcp_restart({"serverId":"<serverId>"})`
+  4. 重新验证直到无错误，并清空 Problems 面板
+
 ## 错误预防
 
 1. **修改配置后必须验证**：每次修改 `team.yaml` 后运行 `team_mgmt_validate_team_cfg({})`
 
-2. **prepare → apply 必须分两轮**：同轮并行执行可能导致 apply 看不到 hunk
+2. **修改 MCP 配置后必须验证**：每次修改 `mcp.yaml` 后运行 `team_mgmt_validate_mcp_cfg({})`
 
-3. **路径会自动加前缀**：提供 `team.yaml` 会自动解析为 `.minds/team.yaml`
+3. **prepare → apply 必须分两轮**：同轮并行执行可能导致 apply 看不到 hunk
 
-4. **hunk 有 TTL**：尽快 apply，避免 hunk 过期
+4. **路径会自动加前缀**：提供 `team.yaml` 会自动解析为 `.minds/team.yaml`
 
-5. **先读后写**：使用 `overwrite_entire_file` 前先读取获取快照
+5. **hunk 有 TTL**：尽快 apply，避免 hunk 过期
+
+6. **先读后写**：使用 `overwrite_entire_file` 前先读取获取快照

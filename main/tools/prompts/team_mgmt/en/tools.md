@@ -60,6 +60,9 @@
 - `team_mgmt_validate_team_cfg({})`: Validate `.minds/team.yaml` configuration
   - Must run after modifying `team.yaml`
   - Clear all team.yaml errors in Problems panel before proceeding
+- `team_mgmt_validate_mcp_cfg({})`: Validate `.minds/mcp.yaml` and MCP-related problems
+  - Must run after modifying `mcp.yaml`
+  - Clear all MCP-related errors in Problems panel before proceeding
 
 ## Tool Selection Guide
 
@@ -75,4 +78,5 @@
 | Anchor insertion         | `team_mgmt_prepare_file_insert_after/before` → `team_mgmt_apply_file_modification` |
 | Block replacement        | `team_mgmt_prepare_file_block_replace` → `team_mgmt_apply_file_modification`       |
 | Overwrite entire file    | `team_mgmt_overwrite_entire_file`                                                  |
-| Validate config          | `team_mgmt_validate_team_cfg({})`                                                  |
+| Validate team config     | `team_mgmt_validate_team_cfg({})`                                                  |
+| Validate MCP config      | `team_mgmt_validate_mcp_cfg({})`                                                   |

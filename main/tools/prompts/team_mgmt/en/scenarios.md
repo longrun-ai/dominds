@@ -79,6 +79,15 @@ Call the function tool `team_mgmt_validate_team_cfg` with:
 
 Ensure no errors in Problems panel before proceeding.
 
+After modifying `.minds/mcp.yaml`, always run:
+
+```text
+Call the function tool `team_mgmt_validate_mcp_cfg` with:
+{}
+```
+
+Ensure no MCP-related errors in Problems panel before proceeding.
+
 ### 6. Search Team Configuration
 
 ```text
@@ -125,5 +134,6 @@ Call the function tool `team_mgmt_overwrite_entire_file` with:
 ## Important Reminders
 
 - Run `team_mgmt_validate_team_cfg({})` after every `team.yaml` modification and confirm no errors
+- Run `team_mgmt_validate_mcp_cfg({})` after every `mcp.yaml` modification and confirm no errors
 - When using prepare/apply, prepare and apply must be in separate steps
 - All paths are automatically prefixed with `.minds/`

@@ -79,6 +79,15 @@ Call the function tool `team_mgmt_validate_team_cfg` with:
 
 确保 Problems 面板无错误后再继续。
 
+修改完 `.minds/mcp.yaml` 后务必运行：
+
+```text
+Call the function tool `team_mgmt_validate_mcp_cfg` with:
+{}
+```
+
+确保 Problems 面板无 MCP 相关错误后再继续。
+
 ### 6. 搜索团队配置
 
 ```text
@@ -125,5 +134,6 @@ Call the function tool `team_mgmt_overwrite_entire_file` with:
 ## 重要提醒
 
 - 每次修改 `team.yaml` 后都要运行 `team_mgmt_validate_team_cfg({})` 并确认无错误
+- 每次修改 `mcp.yaml` 后都要运行 `team_mgmt_validate_mcp_cfg({})` 并确认无错误
 - 使用 prepare/apply 时，prepare 和 apply 必须分两轮
 - 所有路径会自动加上 `.minds/` 前缀

@@ -44,14 +44,25 @@
   3. Re-validate until no errors
   4. Clear Problems panel before proceeding
 
+**MCP_VALIDATION_ERROR**
+
+- Cause: `.minds/mcp.yaml` format errors, server config errors, or MCP runtime failures
+- Solution:
+  1. Run `team_mgmt_validate_mcp_cfg({})` to summarize specific errors
+  2. Fix mcp.yaml or the relevant MCP server config
+  3. Run `mcp_restart({"serverId":"<serverId>"})` when needed
+  4. Re-validate until no errors and clear the Problems panel
+
 ## Error Prevention
 
 1. **Must validate after config changes**: Run `team_mgmt_validate_team_cfg({})` after every `team.yaml` modification
 
-2. **prepare → apply must be two steps**: Parallel execution in same step may cause apply to not see hunk
+2. **Must validate MCP config changes**: Run `team_mgmt_validate_mcp_cfg({})` after every `mcp.yaml` modification
 
-3. **Path auto-prepends `.minds/`**: Providing `team.yaml` auto-resolves to `.minds/team.yaml`
+3. **prepare → apply must be two steps**: Parallel execution in same step may cause apply to not see hunk
 
-4. **Hunk has TTL**: Apply promptly to avoid hunk expiration
+4. **Path auto-prepends `.minds/`**: Providing `team.yaml` auto-resolves to `.minds/team.yaml`
 
-5. **Read before write**: Get snapshot via read before using overwrite
+5. **Hunk has TTL**: Apply promptly to avoid hunk expiration
+
+6. **Read before write**: Get snapshot via read before using overwrite

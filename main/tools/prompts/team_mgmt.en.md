@@ -32,6 +32,7 @@ The YAML header from `team_mgmt_read_file` includes:
 - Block replace between anchors: `team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
 - Apply: `team_mgmt_apply_file_modification({ hunk_id })`
 - After editing `.minds/team.yaml`: always run `team_mgmt_validate_team_cfg({})` and clear all Problems panel errors before proceeding.
+- After editing `.minds/mcp.yaml`: always run `team_mgmt_validate_mcp_cfg({})` and clear all MCP-related Problems panel errors before proceeding.
 
 > Note: some providers (e.g. Codex) require all function-tool parameter fields to be present (schema all required).
 > If you use such a provider but semantically want “unset / default”, use sentinel values; otherwise most providers can omit optional fields:

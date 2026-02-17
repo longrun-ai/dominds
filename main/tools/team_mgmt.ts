@@ -17,6 +17,8 @@ import type { ChatMessage, ModelParamOption, ProviderConfig } from '../llm/clien
 import { LlmConfig } from '../llm/client';
 import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
+import { parseMcpYaml } from '../mcp/config';
+import { requestMcpConfigReload } from '../mcp/supervisor';
 import { getProblemsSnapshot, reconcileProblemsByPrefix } from '../problems';
 import type { TeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
 import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
@@ -49,6 +51,9 @@ const MINDS_ALLOW = ['.minds/**'] as const;
 const MINDS_DIR = '.minds';
 const TEAM_YAML_REL = `${MINDS_DIR}/team.yaml`;
 const TEAM_YAML_PROBLEM_PREFIX = 'team/team_yaml_error/';
+const MCP_YAML_REL = `${MINDS_DIR}/mcp.yaml`;
+const MCP_WORKSPACE_PROBLEM_PREFIX = 'mcp/workspace_config_error';
+const MCP_SERVER_PROBLEM_PREFIX = 'mcp/server/';
 
 function ok(result: string, messages?: ChatMessage[]): string {
   void messages;
@@ -322,6 +327,23 @@ function listTeamYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): TeamCo
   for (const p of problems) {
     if (p.source !== 'team') continue;
     if (p.id.startsWith(TEAM_YAML_PROBLEM_PREFIX)) {
+      out.push(p);
+    }
+  }
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
+
+type McpConfigProblem = Extract<WorkspaceProblem, { source: 'mcp' }>;
+
+function listMcpYamlProblems(problems: ReadonlyArray<WorkspaceProblem>): McpConfigProblem[] {
+  const out: McpConfigProblem[] = [];
+  for (const p of problems) {
+    if (p.source !== 'mcp') continue;
+    if (
+      p.id.startsWith(MCP_WORKSPACE_PROBLEM_PREFIX) ||
+      p.id.startsWith(MCP_SERVER_PROBLEM_PREFIX)
+    ) {
       out.push(p);
     }
   }
@@ -3136,7 +3158,7 @@ function renderMcpManual(language: LanguageCode): string {
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
         '常见坑：stdio transport 需要可执行命令路径/工作目录正确，且受成员目录权限（`read_dirs/write_dirs/no_*`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
         '高频坑（stdio 路径）：相对路径会受 `cwd` 影响而失败；推荐用绝对路径，或显式设置 `cwd` 来固定相对路径的解析。',
-        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 最后检查 MCP 侧报错（Problems 面板/相关日志提示），必要时 `mcp_restart`，用完记得 `mcp_release`。',
+        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小模板（stdio）',
@@ -3189,7 +3211,7 @@ function renderMcpManual(language: LanguageCode): string {
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
       'Common pitfalls: stdio transport needs a correct executable/command path and working directory, and is subject to member directory permissions (`read_dirs/write_dirs/no_*`); HTTP transport requires the server URL to be reachable.',
       'High-frequency pitfall (stdio paths): relative paths depend on `cwd` and can break; prefer absolute paths, or set `cwd` explicitly to make relative paths stable.',
-      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) check MCP-side errors (Problems panel / logs), use `mcp_restart` if needed, and `mcp_release` when done.',
+      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Minimal template (stdio)',
@@ -3380,7 +3402,7 @@ function renderTroubleshooting(language: LanguageCode): string {
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
         '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
         '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
-        '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：打开 Problems 面板查看错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
+        '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：先运行 `team_mgmt_validate_mcp_cfg({})` 汇总错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
   }
@@ -3392,7 +3414,7 @@ function renderTroubleshooting(language: LanguageCode): string {
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
       'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
       'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `read_dirs/write_dirs/no_*` config.',
-      'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: check Problems panel; use `mcp_restart`; call `mcp_release` when done.',
+      'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: run `team_mgmt_validate_mcp_cfg({})` first, then use `mcp_restart` if needed; call `mcp_release` when done.',
     ])
   );
 }
@@ -3649,6 +3671,187 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
   },
 };
 
+export const teamMgmtValidateMcpCfgTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_validate_mcp_cfg',
+  description: `Validate ${MCP_YAML_REL} and surface MCP issues to the WebUI Problems panel.`,
+  descriptionI18n: {
+    en: `Validate ${MCP_YAML_REL} and surface MCP issues to the WebUI Problems panel.`,
+    zh: `校验 ${MCP_YAML_REL}，并将 MCP 问题上报到 WebUI 的 Problems 面板。`,
+  },
+  parameters: { type: 'object', additionalProperties: false, properties: {} },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, _args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    try {
+      const minds = await getMindsDirState();
+      if (minds.kind === 'not_directory') {
+        const msg =
+          language === 'zh'
+            ? `错误：\`${MINDS_DIR}/\` 存在但不是目录：\`${minds.abs}\``
+            : `Error: \`${MINDS_DIR}/\` exists but is not a directory: \`${minds.abs}\``;
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const reloadRes = await requestMcpConfigReload('team_mgmt_validate_mcp_cfg');
+      if (!reloadRes.ok) {
+        const msg =
+          language === 'zh'
+            ? `MCP 配置重载失败：${reloadRes.errorText}`
+            : `MCP config reload failed: ${reloadRes.errorText}`;
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const cwd = path.resolve(process.cwd());
+      const mcpYamlAbs = path.resolve(cwd, MCP_YAML_REL);
+      let mcpRaw: string | null = null;
+      let declaredServerCount = 0;
+      let fallbackInvalidServers: ReadonlyArray<{ serverId: string; errorText: string }> = [];
+
+      try {
+        const st = await fs.stat(mcpYamlAbs);
+        if (!st.isFile()) {
+          const msg =
+            language === 'zh'
+              ? `错误：\`${MCP_YAML_REL}\` 存在但不是文件。`
+              : `Error: \`${MCP_YAML_REL}\` exists but is not a file.`;
+          return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+        mcpRaw = await fs.readFile(mcpYamlAbs, 'utf8');
+        const parsed = parseMcpYaml(mcpRaw);
+        if (!parsed.ok) {
+          const msg =
+            language === 'zh'
+              ? fmtHeader('mcp.yaml 校验失败') +
+                fmtList([
+                  `\`${MCP_YAML_REL}\`：❌ YAML/结构解析失败`,
+                  '说明：该错误会直接影响 MCP 配置加载（详见 Problems 面板）。',
+                ]) +
+                '\n' +
+                parsed.errorText
+              : fmtHeader('mcp.yaml Validation Failed') +
+                fmtList([
+                  `\`${MCP_YAML_REL}\`: ❌ YAML/structure parse failed`,
+                  'Note: this directly affects MCP config loading (see Problems panel).',
+                ]) +
+                '\n' +
+                parsed.errorText;
+          return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+        }
+        declaredServerCount = parsed.serverIdsInYamlOrder.length;
+        fallbackInvalidServers = parsed.invalidServers;
+      } catch (err: unknown) {
+        if (!(isFsErrWithCode(err) && err.code === 'ENOENT')) {
+          throw err;
+        }
+      }
+
+      const snapshot = getProblemsSnapshot();
+      const mcpProblems = listMcpYamlProblems(snapshot.problems);
+      const fallbackOnlyInvalidServers: Array<{ serverId: string; errorText: string }> = [];
+      for (const s of fallbackInvalidServers) {
+        const hasMatchingProblem = mcpProblems.some(
+          (p) => p.kind === 'mcp_server_error' && p.detail.serverId === s.serverId,
+        );
+        if (!hasMatchingProblem) {
+          fallbackOnlyInvalidServers.push(s);
+        }
+      }
+
+      if (mcpProblems.length === 0 && fallbackOnlyInvalidServers.length === 0) {
+        const msg =
+          language === 'zh'
+            ? fmtHeader('mcp.yaml 校验通过') +
+              fmtList([
+                mcpRaw === null
+                  ? `\`${MCP_YAML_REL}\`：✅ 未发现（按空配置处理）`
+                  : `\`${MCP_YAML_REL}\`：✅ 未检测到问题（已声明 ${declaredServerCount} 个 server）`,
+                '提示：每次修改 mcp.yaml 后都应运行本工具，确认 MCP 相关问题已清空。',
+              ])
+            : fmtHeader('mcp.yaml Validation Passed') +
+              fmtList([
+                mcpRaw === null
+                  ? `\`${MCP_YAML_REL}\`: ✅ not found (treated as empty config)`
+                  : `\`${MCP_YAML_REL}\`: ✅ no issues detected (${declaredServerCount} declared server(s))`,
+                'Tip: run this after every mcp.yaml change to confirm MCP problems are cleared.',
+              ]);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const issueLines: string[] = [];
+      for (const p of mcpProblems) {
+        issueLines.push(`- [${p.severity}] ${p.id}: ${p.message}`);
+        switch (p.kind) {
+          case 'mcp_workspace_config_error':
+            issueLines.push(`  file: ${p.detail.filePath}`);
+            issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
+            break;
+          case 'mcp_server_error':
+            issueLines.push(`  serverId: ${p.detail.serverId}`);
+            issueLines.push('  ' + p.detail.errorText.split('\n').join('\n  '));
+            break;
+          case 'mcp_tool_collision':
+            issueLines.push(
+              language === 'zh'
+                ? `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, 冲突目标=${p.detail.domindsToolName}`
+                : `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, collides_with=${p.detail.domindsToolName}`,
+            );
+            break;
+          case 'mcp_tool_blacklisted':
+            issueLines.push(
+              `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, pattern=${p.detail.pattern}`,
+            );
+            break;
+          case 'mcp_tool_not_whitelisted':
+            issueLines.push(
+              `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, pattern=${p.detail.pattern}`,
+            );
+            break;
+          case 'mcp_tool_invalid_name':
+            issueLines.push(
+              `  serverId=${p.detail.serverId}, tool=${p.detail.toolName}, rule=${p.detail.rule}`,
+            );
+            break;
+          default: {
+            const _exhaustive: never = p;
+            void _exhaustive;
+          }
+        }
+      }
+      for (const s of fallbackOnlyInvalidServers) {
+        issueLines.push(`- [error] ${MCP_SERVER_PROBLEM_PREFIX}${s.serverId}/server_error`);
+        issueLines.push(`  serverId: ${s.serverId}`);
+        issueLines.push('  ' + s.errorText.split('\n').join('\n  '));
+      }
+
+      const totalIssues = mcpProblems.length + fallbackOnlyInvalidServers.length;
+      const msg =
+        language === 'zh'
+          ? fmtHeader('mcp.yaml 校验失败') +
+            fmtList([
+              `\`${MCP_YAML_REL}\`：❌ 检测到 ${totalIssues} 个问题（详见 Problems 面板）`,
+              '说明：MCP 配置问题会导致 server/toolset 加载失败、部分工具不可用或运行时异常。',
+            ]) +
+            '\n' +
+            issueLines.join('\n')
+          : fmtHeader('mcp.yaml Validation Failed') +
+            fmtList([
+              `\`${MCP_YAML_REL}\`: ❌ ${totalIssues} issue(s) detected (see Problems panel)`,
+              'Note: MCP config issues can block server/toolset loading and cause runtime tool failures.',
+            ]) +
+            '\n' +
+            issueLines.join('\n');
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `校验失败：${err instanceof Error ? err.message : String(err)}`
+          : `Validation failed: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
 export const teamMgmtManualTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_manual',
@@ -3845,6 +4048,7 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtListProvidersTool,
   teamMgmtListModelsTool,
   teamMgmtValidateTeamCfgTool,
+  teamMgmtValidateMcpCfgTool,
   teamMgmtListDirTool,
   teamMgmtReadFileTool,
   teamMgmtCreateNewFileTool,
