@@ -129,7 +129,7 @@ Dominds **必须**确保工具名称在以下范围内唯一：
   - 在重新加载时注销陈旧工具（`unregisterTool`）和工具集（`unregisterToolset`）。
   - 避免在配置编辑后留下旧工具。
 - 每个服务器的 MCP 客户端实现（官方 SDK），它：
-  - 通过 `stdio`（生成 `command` + `args` + `env`）或 `streamable_http`（`url` + `headers`）连接。
+  - 通过 `stdio`（生成 `command` + `args` + 可选 `cwd` + `env`）或 `streamable_http`（`url` + `headers`）连接。
   - 执行 MCP 握手并获取工具列表（包括每个工具的 JSON 模式）。
   - 将每个 MCP 工具公开为 Dominds `FuncTool`，其 `call()` 执行 MCP `callTool` 请求。
 
@@ -296,6 +296,7 @@ env:
 
 - 子进程环境从 `process.env`（继承）开始，然后在其上应用 `env` 映射。
 - 对于 `{ env: EXISTING_ENV_VAR_NAME }`，值在运行时从 Dominds 进程环境获取；如果缺失，服务器启动应失败并显示清晰的消息。
+- 对于 stdio 服务器，`cwd` 为可选；若省略，Dominds 使用 `process.cwd()`（通常是 rtws 根目录）。相对 `cwd` 基于 `process.cwd()` 解析。若解析后的 `cwd` 不存在或不是目录，服务器启动应失败并给出清晰错误。
 
 ## HTTP 头（`streamable_http`）
 
@@ -327,6 +328,8 @@ servers:
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']
+    # 可选：固定相对路径解析目录
+    # cwd: "."
 
     # 可选环境接线
     env: {}
@@ -356,6 +359,7 @@ servers:
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']
+    cwd: '.'
     tools:
       whitelist: ['browser_*', 'page_*']
       blacklist: ['*_unsafe']
@@ -432,7 +436,7 @@ members:
 
 ### 差异规则（添加/移除/更改）
 
-计算每个服务器定义的稳定哈希（包括传输特定字段如 command/args/env 或 url/headers/sessionId，加上工具过滤器/转换）。
+计算每个服务器定义的稳定哈希（包括传输特定字段如 command/args/cwd/env 或 url/headers/sessionId，加上工具过滤器/转换）。
 
 - **添加的服务器**：生成客户端，列出工具，注册其工具 + 工具集。
 - **移除的服务器**：注销其工具集，注销其工具，停止其客户端。

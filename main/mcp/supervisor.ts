@@ -259,7 +259,7 @@ class McpServerDispatch {
             command: this.cfg.command,
             args: this.cfg.args,
             env: buildChildEnv(this.cfg, serverId),
-            cwd: process.cwd(),
+            cwd: await resolveStdioServerCwd(this.cfg, serverId),
           })
         : await McpSdkClient.connectStreamableHttp({
             serverId,
@@ -973,7 +973,7 @@ async function tryBuildServerState(
             command: cfg.command,
             args: cfg.args,
             env: buildChildEnv(cfg, serverId),
-            cwd: process.cwd(),
+            cwd: await resolveStdioServerCwd(cfg, serverId),
           })
         : await McpSdkClient.connectStreamableHttp({
             serverId,
@@ -1194,6 +1194,27 @@ function buildChildEnv(cfg: McpServerConfig, serverId: string): Record<string, s
   return env;
 }
 
+async function resolveStdioServerCwd(cfg: McpServerConfig, serverId: string): Promise<string> {
+  if (cfg.transport !== 'stdio') {
+    throw new Error(`MCP server '${serverId}' resolveStdioServerCwd requires stdio transport`);
+  }
+  const baseCwd = path.resolve(process.cwd());
+  const resolved = cfg.cwd === undefined ? baseCwd : path.resolve(baseCwd, cfg.cwd);
+  try {
+    const st = await fs.promises.stat(resolved);
+    if (!st.isDirectory()) {
+      throw new Error(`MCP server '${serverId}' cwd is not a directory: ${resolved}`);
+    }
+    return resolved;
+  } catch (err: unknown) {
+    if (isRecord(err) && 'code' in err && err.code === 'ENOENT') {
+      const source = cfg.cwd === undefined ? '<process.cwd()>' : cfg.cwd;
+      throw new Error(`MCP server '${serverId}' cwd does not exist: ${source} -> ${resolved}`);
+    }
+    throw err;
+  }
+}
+
 function fingerprintServerConfig(cfg: McpServerConfig): string {
   const obj =
     cfg.transport === 'stdio'
@@ -1202,6 +1223,7 @@ function fingerprintServerConfig(cfg: McpServerConfig): string {
           transport: cfg.transport,
           command: cfg.command,
           args: cfg.args,
+          cwd: cfg.cwd ?? null,
           env: sortedEntries(cfg.env),
           tools: cfg.tools,
           transform: cfg.transform,

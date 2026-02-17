@@ -160,7 +160,8 @@ At minimum:
   - Unregister stale tools (`unregisterTool`) and toolsets (`unregisterToolset`) on reload.
   - Avoid leaving old tools behind after config edits.
 - An MCP client implementation per server (official SDK), which:
-  - Connects via `stdio` (spawn `command` + `args` + `env`) or `streamable_http` (`url` + `headers`).
+  - Connects via `stdio` (spawn `command` + `args` + optional `cwd` + `env`) or `streamable_http`
+    (`url` + `headers`).
   - Performs MCP handshake and fetches the tool list (including per-tool JSON schema).
   - Exposes each MCP tool as a Dominds `FuncTool` whose `call()` performs the MCP `callTool` request.
 
@@ -363,6 +364,9 @@ Semantics:
 - Child process env starts from `process.env` (inherit), then applies the `env` mappings on top.
 - For `{ env: EXISTING_ENV_VAR_NAME }`, the value is taken from the Dominds process environment at
   runtime; if missing, server startup should fail with a clear message.
+- For stdio servers, `cwd` is optional. If omitted, Dominds uses `process.cwd()` (typically the rtws
+  root). Relative `cwd` values are resolved against `process.cwd()`. Startup fails if the resolved
+  `cwd` does not exist or is not a directory.
 
 ## HTTP Headers (`streamable_http`)
 
@@ -395,6 +399,8 @@ servers:
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']
+    # optional: fix relative-path resolution for command args
+    # cwd: "."
 
     # Optional environment wiring
     env: {}
@@ -424,6 +430,7 @@ servers:
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']
+    cwd: '.'
     tools:
       whitelist: ['browser_*', 'page_*']
       blacklist: ['*_unsafe']
@@ -508,7 +515,7 @@ Rules:
 ### Diff rules (added/removed/changed)
 
 Compute a stable hash per server definition (including transport-specific fields like
-command/args/env or url/headers/sessionId, plus tool filters/transforms).
+command/args/cwd/env or url/headers/sessionId, plus tool filters/transforms).
 
 - **Added server**: spawn client, list tools, register its tools + toolset.
 - **Removed server**: unregister its toolset, unregister its tools, stop its client.

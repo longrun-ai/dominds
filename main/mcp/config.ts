@@ -24,6 +24,7 @@ export type McpStdioServerConfig = McpServerConfigBase & {
   transport: 'stdio';
   command: string;
   args: string[];
+  cwd?: string;
   env: Record<string, McpEnvValue>;
 };
 
@@ -172,6 +173,18 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
               throw new Error(`Invalid mcp.yaml: servers.${serverId}.args must be string[]`);
             })();
 
+    const cwdVal = obj.cwd;
+    const cwd =
+      cwdVal === undefined
+        ? undefined
+        : typeof cwdVal === 'string' && cwdVal.trim().length > 0
+          ? cwdVal.trim()
+          : (() => {
+              throw new Error(
+                `Invalid mcp.yaml: servers.${serverId}.cwd must be a non-empty string`,
+              );
+            })();
+
     const envVal = obj.env;
     const envRecord = envVal === undefined ? {} : asRecord(envVal, `servers.${serverId}.env`);
     const env: Record<string, McpEnvValue> = {};
@@ -196,6 +209,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
       transport: 'stdio',
       command,
       args,
+      cwd,
       env,
       tools: { whitelist, blacklist },
       transform,

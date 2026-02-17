@@ -263,6 +263,7 @@ servers:
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']
+    cwd: '.' # 可选；默认是 Dominds 进程 cwd
     env: {}
 
     # 传输：streamable_http

@@ -309,6 +309,7 @@ servers:
     transport: stdio
     command: npx
     args: ['-y', '@playwright/mcp@latest']
+    cwd: '.' # optional; defaults to Dominds process cwd
     env: {}
 
     # Transport: streamable_http
