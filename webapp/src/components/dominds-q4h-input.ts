@@ -1210,8 +1210,8 @@ export class DomindsQ4HInput extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 34px;
-        height: 34px;
+        width: 27px;
+        height: 27px;
         border: none;
         border-radius: 50%;
         background: var(--dominds-primary, #007acc);
@@ -1248,13 +1248,13 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .send-icon {
-        width: 14px;
-        height: 14px;
+        width: 11px;
+        height: 11px;
       }
 
       .stop-icon {
-        width: 14px;
-        height: 14px;
+        width: 11px;
+        height: 11px;
       }
 
     `;

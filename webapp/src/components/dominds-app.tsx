@@ -1937,6 +1937,7 @@ export class DomindsApp extends HTMLElement {
 	        color: var(--dominds-muted, #666666);
 	        opacity: 0.85;
 	        line-height: 1;
+          align-self: flex-end;
 	      }
 
 	      .rtws-indicator {
