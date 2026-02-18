@@ -60,6 +60,7 @@
 - `team_mgmt_validate_team_cfg({})`：验证 `.minds/team.yaml` 配置是否有效
   - 修改完 `team.yaml` 后必须运行
   - 清空 Problems 面板里的 team.yaml 错误后再继续
+  - 会读取 `.minds/mcp.yaml` 声明做 toolset 绑定校验；即使当前场景未加载 MCP toolsets（例如 read mind），也会检查 `members.<id>.toolsets` 是否引用了不存在/无效的 MCP serverId
 - `team_mgmt_validate_mcp_cfg({})`：验证 `.minds/mcp.yaml` 配置与 MCP 相关问题
   - 修改完 `mcp.yaml` 后必须运行
   - 清空 Problems 面板里的 MCP 相关错误后再继续

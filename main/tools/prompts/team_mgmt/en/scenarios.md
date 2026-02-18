@@ -88,14 +88,27 @@ Call the function tool `team_mgmt_validate_mcp_cfg` with:
 
 Ensure no MCP-related errors in Problems panel before proceeding.
 
-### 6. Search Team Configuration
+### 6. Configure Shell Specialists (with `os`)
+
+Toolset `os` includes `shell_cmd` / `stop_daemon` / `get_daemon_output`. Grant it only to a small specialist set and keep `shell_specialists` aligned:
+
+```yaml
+shell_specialists: [ops]
+members:
+  ops:
+    toolsets: [ws_read, ws_mod, os]
+```
+
+After editing, run `team_mgmt_validate_team_cfg({})` and confirm there are no `shell_specialists`-related errors.
+
+### 7. Search Team Configuration
 
 ```text
 Call the function tool `team_mgmt_ripgrep_snippets` with:
 { "pattern": "member", "path": "team.yaml" }
 ```
 
-### 7. Overwrite Entire Config File
+### 8. Overwrite Entire Config File
 
 ```text
 Call the function tool `team_mgmt_read_file` with:
@@ -135,5 +148,6 @@ Call the function tool `team_mgmt_overwrite_entire_file` with:
 
 - Run `team_mgmt_validate_team_cfg({})` after every `team.yaml` modification and confirm no errors
 - Run `team_mgmt_validate_mcp_cfg({})` after every `mcp.yaml` modification and confirm no errors
+- If you grant `os` or other shell tools, you must maintain top-level `shell_specialists`
 - When using prepare/apply, prepare and apply must be in separate steps
 - All paths are automatically prefixed with `.minds/`

@@ -88,14 +88,27 @@ Call the function tool `team_mgmt_validate_mcp_cfg` with:
 
 确保 Problems 面板无 MCP 相关错误后再继续。
 
-### 6. 搜索团队配置
+### 6. 配置 shell 专员（使用 os 工具集）
+
+`os` 包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。建议只给少数专员成员，并同步设置 `shell_specialists`：
+
+```yaml
+shell_specialists: [ops]
+members:
+  ops:
+    toolsets: [ws_read, ws_mod, os]
+```
+
+改完后运行 `team_mgmt_validate_team_cfg({})`，确认无 `shell_specialists` 相关错误。
+
+### 7. 搜索团队配置
 
 ```text
 Call the function tool `team_mgmt_ripgrep_snippets` with:
 { "pattern": "member", "path": "team.yaml" }
 ```
 
-### 7. 覆盖整个配置文件
+### 8. 覆盖整个配置文件
 
 ```text
 Call the function tool `team_mgmt_read_file` with:
@@ -135,5 +148,6 @@ Call the function tool `team_mgmt_overwrite_entire_file` with:
 
 - 每次修改 `team.yaml` 后都要运行 `team_mgmt_validate_team_cfg({})` 并确认无错误
 - 每次修改 `mcp.yaml` 后都要运行 `team_mgmt_validate_mcp_cfg({})` 并确认无错误
+- 如授予 `os` 或其他 shell 工具，必须同步维护顶层 `shell_specialists`
 - 使用 prepare/apply 时，prepare 和 apply 必须分两轮
 - 所有路径会自动加上 `.minds/` 前缀

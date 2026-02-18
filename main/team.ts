@@ -11,6 +11,7 @@ import YAML from 'yaml';
 
 import { LlmConfig } from './llm/client';
 import { log } from './log';
+import { parseMcpYaml } from './mcp/config';
 import { reconcileProblemsByPrefix } from './problems';
 import type { WorkspaceProblem } from './shared/types/problems';
 import { formatUnifiedTimestamp } from './shared/utils/time';
@@ -587,6 +588,126 @@ export namespace Team {
       }
     }
 
+    type McpDeclaredToolsets =
+      | { kind: 'missing' }
+      | { kind: 'invalid'; errorText: string }
+      | {
+          kind: 'loaded';
+          declaredServerIds: ReadonlySet<string>;
+          invalidServerIds: ReadonlySet<string>;
+        };
+
+    async function readMcpDeclaredToolsets(): Promise<McpDeclaredToolsets> {
+      const mcpPath = '.minds/mcp.yaml';
+      let raw: string;
+      try {
+        raw = await fs.readFile(mcpPath, 'utf8');
+      } catch (err: unknown) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code?: unknown }).code === 'ENOENT'
+        ) {
+          return { kind: 'missing' };
+        }
+        return { kind: 'invalid', errorText: err instanceof Error ? err.message : String(err) };
+      }
+
+      const parsed = parseMcpYaml(raw);
+      if (!parsed.ok) {
+        return { kind: 'invalid', errorText: parsed.errorText };
+      }
+
+      return {
+        kind: 'loaded',
+        declaredServerIds: new Set(parsed.serverIdsInYamlOrder),
+        invalidServerIds: new Set(parsed.invalidServers.map((s) => s.serverId)),
+      };
+    }
+
+    function listExplicitToolsetsForValidation(member: Team.Member): string[] {
+      if (!member.toolsets) return [];
+      const out: string[] = [];
+      const seen = new Set<string>();
+      for (const entry of member.toolsets) {
+        if (entry === '*' || entry.startsWith('!')) continue;
+        if (seen.has(entry)) continue;
+        seen.add(entry);
+        out.push(entry);
+      }
+      return out;
+    }
+
+    async function validateMemberToolsetBindings(team: Team, md: Team.Member): Promise<void> {
+      const registeredToolsets = new Set(Object.keys(listToolsets()));
+      const mcpDeclared = await readMcpDeclaredToolsets();
+
+      const validateAt = (args: {
+        idPrefix: string;
+        atPrefix: string;
+        toolsets: ReadonlyArray<string>;
+      }) => {
+        for (const toolsetName of args.toolsets) {
+          if (registeredToolsets.has(toolsetName)) continue;
+
+          if (mcpDeclared.kind === 'loaded' && mcpDeclared.declaredServerIds.has(toolsetName)) {
+            if (mcpDeclared.invalidServerIds.has(toolsetName)) {
+              addIssue(
+                `${args.idPrefix}/toolsets/${sanitizeProblemIdSegment(toolsetName)}/mcp_declared_invalid`,
+                `Invalid .minds/team.yaml: ${args.atPrefix}.toolsets contains an MCP toolset whose server config is invalid.`,
+                [
+                  `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', and '${toolsetName}' is declared in .minds/mcp.yaml.`,
+                  `But servers.${toolsetName} failed MCP config validation; fix .minds/mcp.yaml first.`,
+                  `Tip: run team_mgmt_validate_mcp_cfg({}) to inspect MCP parse/server errors.`,
+                ].join('\n'),
+              );
+            }
+            continue;
+          }
+
+          if (mcpDeclared.kind === 'invalid') {
+            addIssue(
+              `${args.idPrefix}/toolsets/${sanitizeProblemIdSegment(toolsetName)}/unresolved_with_invalid_mcp`,
+              `Invalid .minds/team.yaml: ${args.atPrefix}.toolsets contains an unresolved toolset, and .minds/mcp.yaml is invalid.`,
+              [
+                `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', but this toolset is not registered in runtime registry.`,
+                `Cannot verify whether '${toolsetName}' is an MCP-declared toolset because .minds/mcp.yaml is invalid.`,
+                `mcp.yaml error: ${mcpDeclared.errorText}`,
+                `Fix .minds/mcp.yaml, then run team_mgmt_validate_team_cfg({}) and team_mgmt_validate_mcp_cfg({}).`,
+              ].join('\n'),
+            );
+            continue;
+          }
+
+          addIssue(
+            `${args.idPrefix}/toolsets/${sanitizeProblemIdSegment(toolsetName)}/missing`,
+            `Invalid .minds/team.yaml: ${args.atPrefix}.toolsets contains an unknown toolset.`,
+            [
+              `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', but this toolset is neither registered nor declared in .minds/mcp.yaml.`,
+              `Fix: change ${args.atPrefix}.toolsets to a valid toolset name, or declare MCP server '${toolsetName}' in .minds/mcp.yaml.`,
+              `Tip: run team_mgmt_validate_mcp_cfg({}) to confirm MCP declarations are valid and loaded.`,
+            ].join('\n'),
+          );
+        }
+      };
+
+      validateAt({
+        idPrefix: 'member_defaults',
+        atPrefix: 'member_defaults',
+        toolsets: listExplicitToolsetsForValidation(md),
+      });
+
+      for (const member of Object.values(team.members)) {
+        const idSeg = sanitizeProblemIdSegment(member.id);
+        validateAt({
+          idPrefix: `members/${idSeg}`,
+          atPrefix: `members.${member.id}`,
+          toolsets: listExplicitToolsetsForValidation(member),
+        });
+      }
+    }
+
     function previewKeys(obj: Record<string, unknown>, max: number): string {
       const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
       const head = keys.slice(0, Math.max(0, max));
@@ -819,6 +940,7 @@ export namespace Team {
     // Validate provider/model bindings (models must exist under the selected provider's models list).
     // Fail-open: always keep Team usable; publish config errors to Problems panel.
     await validateResolvedProviderModelBindings(team, md);
+    await validateMemberToolsetBindings(team, md);
 
     finalizeProblems();
     return team;

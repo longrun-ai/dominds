@@ -60,6 +60,7 @@
 - `team_mgmt_validate_team_cfg({})`: Validate `.minds/team.yaml` configuration
   - Must run after modifying `team.yaml`
   - Clear all team.yaml errors in Problems panel before proceeding
+  - Also reads declarations from `.minds/mcp.yaml` for toolset binding checks; even when MCP toolsets are not loaded in the current scene (e.g. read-mind flows), it still detects unknown/invalid MCP serverId references in `members.<id>.toolsets`
 - `team_mgmt_validate_mcp_cfg({})`: Validate `.minds/mcp.yaml` and MCP-related problems
   - Must run after modifying `mcp.yaml`
   - Clear all MCP-related errors in Problems panel before proceeding

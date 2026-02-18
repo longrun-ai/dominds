@@ -27,6 +27,7 @@
 
 - **增量编辑（推荐）**：用 `team_mgmt_prepare_*` 先生成可复核的 YAML + diff + `hunk_id`，再用 `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })` 显式写入
 - **并行约束**：同一轮生成中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**
+- **shell 最小授权**：`os` toolset 包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`；只授予少数专员成员，并在顶层 `shell_specialists` 显式列出这些成员 id
 - **例外（创建）**：`team_mgmt_create_new_file` 只负责创建新文件（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）
 - **例外（整文件覆盖）**：`team_mgmt_overwrite_entire_file` 会直接写盘（不走 prepare/apply），必须提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏；建议先用 `team_mgmt_read_file` 从 YAML header 读取 `total_lines/size_bytes` 再填写
 - **规范化**：写入遵循"每行以 `\n` 结尾（含最后一行）"；必要时会补齐并通过输出字段呈现（例如 `normalized_trailing_newline_added` / `normalized.*`）

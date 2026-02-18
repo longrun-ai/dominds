@@ -3021,7 +3021,7 @@ function renderTeamManual(language: LanguageCode): string {
     'to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })`',
     'streaming: Codex providers (apiType=codex) are streaming-only. Setting members.<id>.streaming=false with a Codex provider is a config error and will abort requests.',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only rtws members)',
-    '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. If any member has shell tools (e.g. toolset `os` / tools like `shell_exec`), they must be listed in shell_specialists; null/empty means “no shell specialists”.',
+    '`shell_specialists`: optional allow-list of member ids permitted to have shell tools. Toolset `os` currently includes shell tools (`shell_cmd`, `stop_daemon`, `get_daemon_output`). If any member has shell tools, that member must be listed in `shell_specialists`; `null`/empty means “no shell specialists”.',
     'hidden: true marks a shadow member (not listed in system prompt)',
   ];
   if (language === 'zh') {
@@ -3037,7 +3037,7 @@ function renderTeamManual(language: LanguageCode): string {
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
         '重要：Codex provider（`apiType=codex`）仅支持流式输出。若成员解析后的 provider 是 Codex，则 `members.<id>.streaming: false` 属于配置错误，会在校验/运行时作为严重问题上报并中止请求。',
-        '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。如某成员获得了 shell 工具（例如 toolset `os` 或 tools 里的 `shell_exec` 等），则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示（运行期 fail-open，但你仍应修复）。',
+        '`shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。toolset `os` 当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。如某成员获得了 shell 工具，则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示（运行期 fail-open，但你仍应修复）。',
 
         '风格提醒：保持 `team.yaml` 的可读性。推荐用空行分隔段落/成员块，避免连续多行空行；每次修改后运行 `team_mgmt_validate_team_cfg({})` 以便在 Problems 面板看到错误与风格提醒。',
 
@@ -3499,7 +3499,8 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
           '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，在基线上追加 `codex_style_tools`（`apply_patch` 等），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
-          '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”）。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
+          '`os` 是 shell 工具集，当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。一旦成员拥有这些工具（包括通过 `os` 获得），其 id 必须出现在顶层 `shell_specialists`。',
+          '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”），并同步维护 `shell_specialists`。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
       : fmtList([
@@ -3507,7 +3508,8 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
           'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; for `provider: codex` (Codex CLI-style prompts/tool names), add `codex_style_tools` (`apply_patch`, etc.) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
-          'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”). For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
+          '`os` is the shell toolset, currently including `shell_cmd`, `stop_daemon`, and `get_daemon_output`. If a member has any of these tools (including via `os`), that member id must appear in top-level `shell_specialists`.',
+          'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”), and keep `shell_specialists` in sync. For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
           'Three common patterns (in `.minds/team.yaml` under `members.<id>.toolsets`):',
         ]);
 
