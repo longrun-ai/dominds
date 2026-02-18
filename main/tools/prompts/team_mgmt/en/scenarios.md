@@ -68,7 +68,35 @@ Call the function tool `team_mgmt_prepare_file_append` with:
 
 Then apply.
 
-### 5. Validate Configuration
+### 5. Add Member Persona / Lessons Assets (Recommended)
+
+Strongly recommended: maintain `persona/knowledge/lessons` assets for each member. Minimal starting examples:
+
+```markdown
+# .minds/team/coder/persona.en.md
+
+# @coder Persona
+
+## Core Identity
+
+- Professional programmer responsible for implementing approved development specs.
+
+## Work Boundaries
+
+- Not responsible for requirement discovery or product strategy.
+- Implements/refactors only against confirmed specs.
+```
+
+```markdown
+# .minds/team/coder/lessons.en.md
+
+# @coder Lessons
+
+- Trace call chain and data flow before editing; avoid patching only symptoms.
+- After changing permissions/config, run corresponding validators and clear Problems.
+```
+
+### 6. Validate Configuration
 
 After modifying `.minds/team.yaml`, always run:
 
@@ -88,7 +116,7 @@ Call the function tool `team_mgmt_validate_mcp_cfg` with:
 
 Ensure no MCP-related errors in Problems panel before proceeding.
 
-### 6. Configure Shell Specialists (with `os`)
+### 7. Configure Shell Specialists (with `os`)
 
 Toolset `os` includes `shell_cmd` / `stop_daemon` / `get_daemon_output`. Grant it only to a small specialist set and keep `shell_specialists` aligned:
 
@@ -101,14 +129,14 @@ members:
 
 After editing, run `team_mgmt_validate_team_cfg({})` and confirm there are no `shell_specialists`-related errors.
 
-### 7. Search Team Configuration
+### 8. Search Team Configuration
 
 ```text
 Call the function tool `team_mgmt_ripgrep_snippets` with:
 { "pattern": "member", "path": "team.yaml" }
 ```
 
-### 8. Overwrite Entire Config File
+### 9. Overwrite Entire Config File
 
 ```text
 Call the function tool `team_mgmt_read_file` with:

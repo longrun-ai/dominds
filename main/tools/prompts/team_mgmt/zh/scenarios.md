@@ -68,7 +68,35 @@ Call the function tool `team_mgmt_prepare_file_append` with:
 
 然后 apply。
 
-### 5. 验证配置
+### 5. 为成员补充 persona / lessons 资产（推荐）
+
+强烈建议每个成员都维护 `persona/knowledge/lessons` 资产。下面给一个最小可用起点（可按团队语境改写）：
+
+```markdown
+# .minds/team/coder/persona.zh.md
+
+# @coder 角色设定
+
+## 核心身份
+
+- 专业程序员，负责按规格完成代码开发。
+
+## 工作边界
+
+- 不负责需求分析或产品策略决策。
+- 只根据已确认的开发规格进行实现与重构。
+```
+
+```markdown
+# .minds/team/coder/lessons.zh.md
+
+# @coder 经验教训
+
+- 修改前先定位调用链与数据流，避免“只改表面”。
+- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。
+```
+
+### 6. 验证配置
 
 修改完 `.minds/team.yaml` 后务必运行：
 
@@ -88,7 +116,7 @@ Call the function tool `team_mgmt_validate_mcp_cfg` with:
 
 确保 Problems 面板无 MCP 相关错误后再继续。
 
-### 6. 配置 shell 专员（使用 os 工具集）
+### 7. 配置 shell 专员（使用 os 工具集）
 
 `os` 包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。建议只给少数专员成员，并同步设置 `shell_specialists`：
 
@@ -101,14 +129,14 @@ members:
 
 改完后运行 `team_mgmt_validate_team_cfg({})`，确认无 `shell_specialists` 相关错误。
 
-### 7. 搜索团队配置
+### 8. 搜索团队配置
 
 ```text
 Call the function tool `team_mgmt_ripgrep_snippets` with:
 { "pattern": "member", "path": "team.yaml" }
 ```
 
-### 8. 覆盖整个配置文件
+### 9. 覆盖整个配置文件
 
 ```text
 Call the function tool `team_mgmt_read_file` with:

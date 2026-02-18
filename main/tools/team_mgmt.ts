@@ -26,9 +26,9 @@ import type { LanguageCode } from '../shared/types/language';
 import type { WorkspaceProblem } from '../shared/types/problems';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
 import { Team } from '../team';
-import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
+import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
 import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileTool } from './fs';
-import { listToolsets } from './registry';
+import { getToolsetMeta, listToolsets } from './registry';
 import {
   ripgrepCountTool,
   ripgrepFilesTool,
@@ -3031,7 +3031,8 @@ function renderTeamManual(language: LanguageCode): string {
         '团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。',
         '强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。',
         '每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
-        '角色职责（Markdown）通过 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 绑定到 `members.<id>`：同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
+        '强烈建议为每个成员配置 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 三类资产，用来明确角色职责、工作边界与可复用经验；同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
+        '典型内容示例（可直接作为起点，按团队语境改写）：\n```markdown\n# .minds/team/coder/persona.zh.md\n# @coder 角色设定\n## 核心身份\n- 专业程序员，负责按规格完成代码开发。\n## 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n## 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n```markdown\n# .minds/team/coder/lessons.zh.md\n# @coder 经验教训\n- 修改前先定位调用链与数据流，避免“只改表面”。\n- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。\n- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。\n```',
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 用于写该长期 agent 的“职责速记卡/工作边界/交付物摘要”（建议 5 行内）：用于快速路由与提醒；更完整的规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。\n示例（gofor）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain script-style smoke tests and how to run them\n      - Reject changes that break lint/types/tests (or request fixes)\n      - Track high-risk areas and required manual verification\n```\n示例（gofor, object；按 YAML key 顺序渲染）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
@@ -3102,7 +3103,8 @@ function renderTeamManual(language: LanguageCode): string {
     fmtList(
       common.concat([
         'The team definition entrypoint is `.minds/team.yaml` (no `.minds/team.yml` alias today).',
-        'Role responsibilities (Markdown) live under `.minds/team/<id>/{persona,knowledge,lessons}.*.md` and are linked by member id: the same `<id>` must exist in `members.<id>` in `team.yaml`.',
+        'Strongly recommended: for each member, configure `.minds/team/<id>/{persona,knowledge,lessons}.*.md` assets to define role ownership, work boundaries, and reusable lessons. The same `<id>` must exist in `members.<id>` in `team.yaml`.',
+        'Typical content examples (use as a starting point, then adapt to your team context):\n```markdown\n# .minds/team/coder/persona.en.md\n# @coder Persona\n## Core Identity\n- Professional programmer responsible for implementing approved development specs.\n## Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n## Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n```markdown\n# .minds/team/coder/lessons.en.md\n# @coder Lessons\n- Trace call chain and data flow before editing; avoid patching only symptoms.\n- After changing permissions/config, run corresponding validators and clear Problems.\n- For high-risk changes, start with a minimal reviewable plan before expansion.\n```',
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
@@ -3147,7 +3149,10 @@ function renderTeamManual(language: LanguageCode): string {
   );
 }
 
-function renderMcpManual(language: LanguageCode): string {
+async function renderMcpManual(language: LanguageCode): Promise<string> {
+  const mcpSnapshot = await readMcpToolsetMappingSnapshot();
+  const mcpMapping = renderMcpToolsetMappingSection(language, mcpSnapshot);
+  const mcpSetup = renderMcpToolsetSetupGuideSection(language, mcpSnapshot);
   if (language === 'zh') {
     return (
       fmtHeader('.minds/mcp.yaml') +
@@ -3196,7 +3201,9 @@ function renderMcpManual(language: LanguageCode): string {
         '    url: http://127.0.0.1:3000/mcp',
         '    tools: { whitelist: [], blacklist: [] }',
         '    transform: []',
-      ])
+      ]) +
+      mcpMapping +
+      mcpSetup
     );
   }
 
@@ -3247,7 +3254,9 @@ function renderMcpManual(language: LanguageCode): string {
       '    url: http://127.0.0.1:3000/mcp',
       '    tools: { whitelist: [], blacklist: [] }',
       '    transform: []',
-    ])
+    ]) +
+    mcpMapping +
+    mcpSetup
   );
 }
 
@@ -3309,6 +3318,7 @@ function renderMindsManual(language: LanguageCode): string {
     return (
       fmtHeader('.minds/team/<id>/*') +
       fmtList([
+        '推荐实践（建议默认采用）：每个 `members.<id>` 同时维护 `persona.*.md` / `knowledge.*.md` / `lessons.*.md`，把角色设定、领域知识、经验教训分层管理。',
         '最小要求：每个 `members.<id>` 建议至少提供 `persona.*.md`（否则该成员将缺少可发现的角色设定；具体忽略/回退/报错行为以当前实现为准）。',
         'persona.*.md：角色设定（稳定的工作方式与职责）。',
         'knowledge.*.md：领域知识（可维护）。',
@@ -3322,12 +3332,31 @@ function renderMindsManual(language: LanguageCode): string {
         '      persona.zh.md',
         '      knowledge.zh.md',
         '      lessons.zh.md',
+      ]) +
+      fmtCodeBlock('markdown', [
+        '# .minds/team/coder/persona.zh.md（示例）',
+        '# @coder 角色设定',
+        '## 核心身份',
+        '- 专业程序员，负责按规格完成代码开发。',
+        '## 工作边界',
+        '- 不负责需求分析或产品策略决策。',
+        '- 只根据已确认的开发规格进行实现与重构。',
+        '## 交付标准',
+        '- 输出可运行代码，并附关键验证步骤。',
+      ]) +
+      fmtCodeBlock('markdown', [
+        '# .minds/team/coder/lessons.zh.md（示例）',
+        '# @coder 经验教训',
+        '- 修改前先定位调用链与数据流，避免“只改表面”。',
+        '- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。',
+        '- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。',
       ])
     );
   }
   return (
     fmtHeader('.minds/team/<id>/*') +
     fmtList([
+      'Recommended default practice: for each `members.<id>`, maintain `persona.*.md` / `knowledge.*.md` / `lessons.*.md` together so persona, domain knowledge, and lessons stay layered and maintainable.',
       'Minimum: for each `members.<id>`, provide at least `persona.*.md` (otherwise the member may lack a discoverable persona; ignore/fallback/error behavior follows current implementation).',
       'persona.*.md: persona and operating style.',
       'knowledge.*.md: domain knowledge (maintainable).',
@@ -3341,6 +3370,24 @@ function renderMindsManual(language: LanguageCode): string {
       '      persona.en.md',
       '      knowledge.en.md',
       '      lessons.en.md',
+    ]) +
+    fmtCodeBlock('markdown', [
+      '# .minds/team/coder/persona.en.md (example)',
+      '# @coder Persona',
+      '## Core Identity',
+      '- Professional programmer responsible for implementing approved development specs.',
+      '## Work Boundaries',
+      '- Not responsible for requirement discovery or product strategy.',
+      '- Implements/refactors only against confirmed specs.',
+      '## Delivery Standard',
+      '- Deliver runnable code plus key verification steps.',
+    ]) +
+    fmtCodeBlock('markdown', [
+      '# .minds/team/coder/lessons.en.md (example)',
+      '# @coder Lessons',
+      '- Trace call chain and data flow before editing; avoid patching only symptoms.',
+      '- After changing permissions/config, run corresponding validators and clear Problems.',
+      '- For high-risk changes, start with a minimal reviewable plan before expansion.',
     ])
   );
 }
@@ -3487,8 +3534,310 @@ async function renderModelParamsManual(language: LanguageCode): Promise<string> 
   );
 }
 
+type McpToolsetMappingEntry = {
+  serverId: string;
+  transport: 'stdio' | 'streamable_http' | 'invalid';
+  status: 'registered' | 'declared_unloaded' | 'declared_invalid';
+  loadedToolCount?: number;
+  loadedToolNamesPreview?: string[];
+  errorText?: string;
+};
+
+type McpToolsetMappingSnapshot =
+  | { kind: 'missing' }
+  | { kind: 'invalid_yaml'; errorText: string }
+  | { kind: 'loaded'; entries: ReadonlyArray<McpToolsetMappingEntry> };
+
+function firstNonEmptyLine(raw: string): string {
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed !== '') return trimmed;
+  }
+  return raw.trim();
+}
+
+async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapshot> {
+  const mcpAbsPath = path.resolve(process.cwd(), MCP_YAML_REL);
+  let rawText: string;
+  try {
+    rawText = await fs.readFile(mcpAbsPath, 'utf8');
+  } catch (err: unknown) {
+    if (isFsErrWithCode(err) && err.code === 'ENOENT') {
+      return { kind: 'missing' };
+    }
+    return {
+      kind: 'invalid_yaml',
+      errorText: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const parsed = parseMcpYaml(rawText);
+  if (!parsed.ok) {
+    return { kind: 'invalid_yaml', errorText: parsed.errorText };
+  }
+
+  const registeredToolsets = listToolsets();
+  const invalidByServerId = new Map<string, string>();
+  for (const invalid of parsed.invalidServers) {
+    invalidByServerId.set(invalid.serverId, invalid.errorText);
+  }
+
+  const entries: McpToolsetMappingEntry[] = [];
+  for (const serverId of parsed.serverIdsInYamlOrder) {
+    const invalidError = invalidByServerId.get(serverId);
+    if (invalidError) {
+      entries.push({
+        serverId,
+        transport: 'invalid',
+        status: 'declared_invalid',
+        errorText: invalidError,
+      });
+      continue;
+    }
+
+    const transport = parsed.config.servers[serverId]?.transport ?? 'invalid';
+    const loadedTools = registeredToolsets[serverId];
+    if (loadedTools) {
+      entries.push({
+        serverId,
+        transport,
+        status: 'registered',
+        loadedToolCount: loadedTools.length,
+        loadedToolNamesPreview: loadedTools.slice(0, 6).map((t) => t.name),
+      });
+      continue;
+    }
+
+    entries.push({
+      serverId,
+      transport,
+      status: 'declared_unloaded',
+    });
+  }
+
+  return { kind: 'loaded', entries };
+}
+
+function renderMcpToolsetMappingSection(
+  language: LanguageCode,
+  snapshot: McpToolsetMappingSnapshot,
+): string {
+  const header =
+    language === 'zh'
+      ? fmtSubHeader('MCP serverId -> toolset 当前映射（动态读取 .minds/mcp.yaml）')
+      : fmtSubHeader('Current MCP serverId -> toolset mapping (from .minds/mcp.yaml)');
+
+  if (snapshot.kind === 'missing') {
+    const items =
+      language === 'zh'
+        ? [
+            `未发现 \`${MCP_YAML_REL}\`；当前没有可映射的 MCP toolset。`,
+            `设置方法：在 \`${MCP_YAML_REL}\` 增加 \`servers.<serverId>\`，该 \`serverId\` 会映射为同名 toolset。`,
+          ]
+        : [
+            `\`${MCP_YAML_REL}\` not found; there are currently no MCP toolsets to map.`,
+            `Setup rule: add \`servers.<serverId>\` in \`${MCP_YAML_REL}\`; that \`serverId\` maps to a toolset with the same name.`,
+          ];
+    return header + fmtList(items);
+  }
+
+  if (snapshot.kind === 'invalid_yaml') {
+    const items =
+      language === 'zh'
+        ? [
+            `\`${MCP_YAML_REL}\` 解析失败，暂时无法生成 serverId -> toolset 映射。`,
+            `错误：${firstNonEmptyLine(snapshot.errorText)}`,
+            `先运行 \`team_mgmt_validate_mcp_cfg({})\` 修复配置，再查看映射。`,
+          ]
+        : [
+            `Failed to parse \`${MCP_YAML_REL}\`; cannot build serverId -> toolset mapping yet.`,
+            `Error: ${firstNonEmptyLine(snapshot.errorText)}`,
+            `Run \`team_mgmt_validate_mcp_cfg({})\` first, then re-check mapping.`,
+          ];
+    return header + fmtList(items);
+  }
+
+  if (snapshot.entries.length === 0) {
+    const items =
+      language === 'zh'
+        ? [
+            `\`${MCP_YAML_REL}\` 已存在，但 \`servers\` 为空；当前没有 MCP toolset。`,
+            `添加 \`servers.<serverId>\` 后，对应 \`serverId\` 会映射为同名 toolset。`,
+          ]
+        : [
+            `\`${MCP_YAML_REL}\` exists but \`servers\` is empty; there are currently no MCP toolsets.`,
+            `After adding \`servers.<serverId>\`, that \`serverId\` maps to a same-name toolset.`,
+          ];
+    return header + fmtList(items);
+  }
+
+  const lines: string[] = [];
+  for (const entry of snapshot.entries) {
+    const transportText =
+      entry.transport === 'invalid' ? 'invalid' : entry.transport === 'stdio' ? 'stdio' : 'http';
+    if (entry.status === 'registered') {
+      const preview = entry.loadedToolNamesPreview ?? [];
+      const previewText =
+        preview.length > 0
+          ? preview.join(', ') +
+            (entry.loadedToolCount !== undefined && entry.loadedToolCount > preview.length
+              ? ', ...'
+              : '')
+          : '(none)';
+      lines.push(
+        language === 'zh'
+          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已加载，tools=${entry.loadedToolCount ?? 0}：${previewText}）`
+          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=loaded, tools=${entry.loadedToolCount ?? 0}: ${previewText})`,
+      );
+      continue;
+    }
+    if (entry.status === 'declared_unloaded') {
+      lines.push(
+        language === 'zh'
+          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已声明但未加载）`
+          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=declared but not loaded)`,
+      );
+      continue;
+    }
+    lines.push(
+      language === 'zh'
+        ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（状态=声明无效：${firstNonEmptyLine(entry.errorText ?? '')}）`
+        : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (status=invalid declaration: ${firstNonEmptyLine(entry.errorText ?? '')})`,
+    );
+  }
+
+  const tail =
+    language === 'zh'
+      ? [
+          '说明：`已声明但未加载` 通常表示当前会话尚未完成 MCP 重载，或 server 启动失败。',
+          '建议：运行 `team_mgmt_validate_mcp_cfg({})`，必要时执行 `mcp_restart`。',
+        ]
+      : [
+          '`declared but not loaded` usually means MCP reload has not completed in the current session, or server startup failed.',
+          'Recommendation: run `team_mgmt_validate_mcp_cfg({})`, then `mcp_restart` if needed.',
+        ];
+
+  return header + fmtList(lines.concat(tail));
+}
+
+function renderMcpToolsetSetupGuideSection(
+  language: LanguageCode,
+  snapshot: McpToolsetMappingSnapshot,
+): string {
+  const title =
+    language === 'zh'
+      ? fmtSubHeader('MCP toolset 设置方法与示例')
+      : fmtSubHeader('How To Set Up MCP Toolsets (with example)');
+
+  const fallbackServerId = 'your_mcp_server';
+  const exampleServerId =
+    snapshot.kind === 'loaded' && snapshot.entries.length > 0
+      ? (snapshot.entries[0]?.serverId ?? fallbackServerId)
+      : fallbackServerId;
+  const exampleTransport =
+    snapshot.kind === 'loaded'
+      ? (snapshot.entries.find((e) => e.transport !== 'invalid')?.transport ?? 'stdio')
+      : 'stdio';
+
+  const notes =
+    language === 'zh'
+      ? fmtList([
+          `步骤 1：在 \`${MCP_YAML_REL}\` 声明 \`servers.${exampleServerId}\`。`,
+          `步骤 2：在 \`${TEAM_YAML_REL}\` 的 \`members.<id>.toolsets\` 添加 \`${exampleServerId}\`。`,
+          `规则：MCP toolset 名称恒等于 \`serverId\`（不加前缀）。`,
+        ])
+      : fmtList([
+          `Step 1: declare \`servers.${exampleServerId}\` in \`${MCP_YAML_REL}\`.`,
+          `Step 2: add \`${exampleServerId}\` under \`members.<id>.toolsets\` in \`${TEAM_YAML_REL}\`.`,
+          `Rule: MCP toolset name is exactly the \`serverId\` (no prefix).`,
+        ]);
+
+  const mcpExample =
+    exampleTransport === 'streamable_http'
+      ? fmtCodeBlock('yaml', [
+          '# .minds/mcp.yaml',
+          'version: 1',
+          'servers:',
+          `  ${exampleServerId}:`,
+          '    truely-stateless: false',
+          '    transport: streamable_http',
+          '    url: http://127.0.0.1:3000/mcp',
+          '    tools: { whitelist: [], blacklist: [] }',
+          '    transform: []',
+        ])
+      : fmtCodeBlock('yaml', [
+          '# .minds/mcp.yaml',
+          'version: 1',
+          'servers:',
+          `  ${exampleServerId}:`,
+          '    truely-stateless: false',
+          '    transport: stdio',
+          '    command: npx',
+          "    args: ['-y', '@some/mcp-server@latest']",
+          '    tools: { whitelist: [], blacklist: [] }',
+          '    transform: []',
+        ]);
+
+  const teamExample = fmtCodeBlock('yaml', [
+    '# .minds/team.yaml',
+    'members:',
+    '  operator:',
+    '    toolsets:',
+    '      - ws_read',
+    `      - ${exampleServerId}`,
+  ]);
+
+  return title + notes + mcpExample + teamExample;
+}
+
+function renderToolsetCapabilitySummary(
+  language: LanguageCode,
+  ids: ReadonlyArray<string>,
+  toolsetsById: Record<string, Tool[]>,
+): string {
+  const header =
+    language === 'zh' ? fmtSubHeader('工具集能力摘要') : fmtSubHeader('Toolset Capability Summary');
+  const lines: string[] = [];
+
+  for (const id of ids) {
+    const tools = toolsetsById[id] ?? [];
+    const meta = getToolsetMeta(id);
+    const source = meta?.source ?? 'dominds';
+    const desc = language === 'zh' ? meta?.descriptionI18n?.zh : meta?.descriptionI18n?.en;
+    const fallbackDesc =
+      source === 'mcp'
+        ? language === 'zh'
+          ? 'MCP server 映射工具集（能力取决于 server 实际暴露）'
+          : 'MCP server-mapped toolset (capabilities depend on exposed server tools)'
+        : language === 'zh'
+          ? '内建工具集（暂无描述）'
+          : 'Built-in toolset (no description)';
+    const descText = desc && desc.trim() !== '' ? desc : fallbackDesc;
+    const previewNames = tools.slice(0, 6).map((t) => `\`${t.name}\``);
+    const preview =
+      previewNames.length > 0
+        ? `${previewNames.join(', ')}${tools.length > previewNames.length ? ', ...' : ''}`
+        : language === 'zh'
+          ? '无工具'
+          : 'no tools';
+
+    if (language === 'zh') {
+      lines.push(
+        `\`${id}\`（${source === 'mcp' ? 'MCP' : '内建'}）：${descText}；tools=${tools.length}（${preview}）`,
+      );
+    } else {
+      lines.push(
+        `\`${id}\` (${source === 'mcp' ? 'MCP' : 'built-in'}): ${descText}; tools=${tools.length} (${preview})`,
+      );
+    }
+  }
+
+  return header + fmtList(lines);
+}
+
 async function renderToolsets(language: LanguageCode): Promise<string> {
-  const ids = Object.keys(listToolsets()).filter((id) => id !== 'control');
+  const toolsetsById = listToolsets();
+  const ids = Object.keys(toolsetsById).filter((id) => id !== 'control');
   const header =
     language === 'zh' ? fmtHeader('已注册 toolsets') : fmtHeader('Registered toolsets');
 
@@ -3499,7 +3848,9 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
           '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，在基线上追加 `codex_style_tools`（`apply_patch` 等），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
+          'MCP toolset 不是静态写死：它由 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射而来（toolset 名称 = `serverId`）。下方会展示当前映射快照。',
           '`os` 是 shell 工具集，当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。一旦成员拥有这些工具（包括通过 `os` 获得），其 id 必须出现在顶层 `shell_specialists`。',
+          '`mcp_admin` 用于 MCP 运维：`mcp_restart` / `mcp_release` 管理 server 会话租用，并配有 `env_get` / `env_set` / `env_unset` 便于联调环境变量。',
           '最佳实践：把 `os`（尤其 `shell_cmd`）只授予具备良好纪律/风控意识的人设成员（例如 “cmdr/ops”），并同步维护 `shell_specialists`。对不具备 shell 工具的成员，系统提示会明确要求其将 shell 执行委派给这类专员，并提供可审查的命令提案与理由。',
           '常见三种模式（示例写在 `.minds/team.yaml` 的 `members.<id>.toolsets` 下）：',
         ])
@@ -3508,7 +3859,9 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
           'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; for `provider: codex` (Codex CLI-style prompts/tool names), add `codex_style_tools` (`apply_patch`, etc.) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
+          'MCP toolsets are not hardcoded: they are dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). The current mapping snapshot is shown below.',
           '`os` is the shell toolset, currently including `shell_cmd`, `stop_daemon`, and `get_daemon_output`. If a member has any of these tools (including via `os`), that member id must appear in top-level `shell_specialists`.',
+          '`mcp_admin` is for MCP operations: use `mcp_restart` / `mcp_release` to manage server leasing lifecycle, with `env_get` / `env_set` / `env_unset` available for environment debugging.',
           'Best practice: grant `os` (especially `shell_cmd`) only to a disciplined, risk-aware operator persona (e.g. “cmdr/ops”), and keep `shell_specialists` in sync. For members without shell tools, the system prompt explicitly tells them to delegate shell execution to such a specialist, with a reviewable command proposal and justification.',
           'Three common patterns (in `.minds/team.yaml` under `members.<id>.toolsets`):',
         ]);
@@ -3533,7 +3886,11 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
   ]);
 
   const list = fmtList(ids.map((id) => `\`${id}\``));
-  return header + intro + patterns + '\n' + list;
+  const capabilitySummary = renderToolsetCapabilitySummary(language, ids, toolsetsById);
+  const mcpSnapshot = await readMcpToolsetMappingSnapshot();
+  const mcpMapping = renderMcpToolsetMappingSection(language, mcpSnapshot);
+  const mcpSetup = renderMcpToolsetSetupGuideSection(language, mcpSnapshot);
+  return header + intro + patterns + '\n' + list + capabilitySummary + mcpMapping + mcpSetup;
 }
 
 async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
@@ -4004,7 +4361,7 @@ export const teamMgmtManualTool: FuncTool = {
         return ok(llmText, [{ type: 'environment_msg', role: 'user', content: llmText }]);
       }
       if (want('mcp')) {
-        const content = renderMcpManual(language);
+        const content = await renderMcpManual(language);
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
       if (want('minds')) {

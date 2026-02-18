@@ -29,6 +29,7 @@ team_mgmt is Dominds' toolset for managing `.minds/` (team configuration and rtw
 - **Incremental edits (preferred)**: Use `team_mgmt_prepare_*` to generate reviewable YAML + diff + `hunk_id`, then write via `team_mgmt_apply_file_modification`
 - **Only operates in `.minds/`**: This toolset only operates within the `.minds/` subtree and should not touch other rtws files
 - **Shell guardrail**: toolset `os` includes `shell_cmd` / `stop_daemon` / `get_daemon_output`; any member with these shell tools must be listed in top-level `shell_specialists`
+- **Member assets recommended**: strongly recommend `persona/knowledge/lessons` files for every `members.<id>` to define ownership, boundaries, and reusable lessons
 
 ## Quick Navigation
 

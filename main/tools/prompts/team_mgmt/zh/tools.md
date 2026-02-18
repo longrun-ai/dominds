@@ -65,6 +65,15 @@
   - 修改完 `mcp.yaml` 后必须运行
   - 清空 Problems 面板里的 MCP 相关错误后再继续
 
+## 常见 toolset 能力速览
+
+- `os`：shell 与进程管理（`shell_cmd` / `stop_daemon` / `get_daemon_output`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）
+- `memory`：个人记忆维护（添加/替换/删除/清空个人 memory）
+- `team_memory`：团队共享记忆维护（添加/替换/删除/清空 shared memory）
+- `codex_style_tools`：Codex 风格工具（`apply_patch` / `readonly_shell` / `update_plan`）
+- `mcp_admin`：MCP 运维（`mcp_restart` / `mcp_release`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）
+- MCP 声明型 toolset：来源于 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射（toolset 名称 = `serverId`）。具体能力以该 MCP server 实际暴露工具为准；可在 `team_mgmt_manual({ topics: ["toolsets"] })` 查看当前映射快照
+
 ## 工具选择指南
 
 | 操作               | 推荐工具                                                                           |

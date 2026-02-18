@@ -65,6 +65,15 @@
   - Must run after modifying `mcp.yaml`
   - Clear all MCP-related errors in Problems panel before proceeding
 
+## Common Toolset Capability Quick Map
+
+- `os`: shell/process operations (`shell_cmd` / `stop_daemon` / `get_daemon_output`), plus env tools (`env_get` / `env_set` / `env_unset`)
+- `memory`: personal memory maintenance (add/replace/drop/clear member memory)
+- `team_memory`: shared team memory maintenance (add/replace/drop/clear shared memory)
+- `codex_style_tools`: Codex-style tools (`apply_patch` / `readonly_shell` / `update_plan`)
+- `mcp_admin`: MCP operations (`mcp_restart` / `mcp_release`), plus env tools (`env_get` / `env_set` / `env_unset`)
+- MCP-declared toolsets: dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). Exact capabilities depend on each MCP server’s exposed tools; use `team_mgmt_manual({ topics: ["toolsets"] })` to view the current mapping snapshot
+
 ## Tool Selection Guide
 
 | Operation                | Recommended Tool                                                                   |
