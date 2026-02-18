@@ -30,6 +30,7 @@ team_mgmt is Dominds' toolset for managing `.minds/` (team configuration and rtw
 - **Only operates in `.minds/`**: This toolset only operates within the `.minds/` subtree and should not touch other rtws files
 - **Shell guardrail**: toolset `os` includes `shell_cmd` / `stop_daemon` / `get_daemon_output`; any member with these shell tools must be listed in top-level `shell_specialists`
 - **Member assets recommended**: strongly recommend `persona/knowledge/lessons` files for every `members.<id>` to define ownership, boundaries, and reusable lessons
+- **Default responder recommendation**: `default_responder` is not technically required, but should be set explicitly to avoid implicit fallback drift
 
 ## Quick Navigation
 

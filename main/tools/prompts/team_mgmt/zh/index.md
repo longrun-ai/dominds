@@ -30,6 +30,7 @@ team_mgmt 是 Dominds 用于管理 `.minds/`（团队配置与 rtws 记忆）的
 - **只操作 `.minds/`**：该 toolset 只允许操作 `.minds/` 子树，不会也不应触碰 rtws 其他文件
 - **shell 权限约束**：`os` toolset 包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`；任何拿到这些工具的成员都必须出现在顶层 `shell_specialists`
 - **成员资产推荐**：强烈建议为每个 `members.<id>` 配置 `persona/knowledge/lessons` 资产文件，显式定义角色职责、边界和经验复用
+- **默认响应者建议**：`default_responder` 虽非技术必填，但强烈建议显式配置，避免隐式兜底带来的行为漂移
 
 ## 快速导航
 

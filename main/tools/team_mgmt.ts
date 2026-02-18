@@ -3015,6 +3015,7 @@ function renderMemberProperties(language: LanguageCode): string {
 function renderTeamManual(language: LanguageCode): string {
   const common = [
     'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
+    'default_responder: not a hard requirement, but strongly recommended to set explicitly to avoid implicit fallback responder selection and cross-run drift',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
     'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
     'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
@@ -3030,6 +3031,7 @@ function renderTeamManual(language: LanguageCode): string {
       fmtList([
         '团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。',
         '强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。',
+        '`default_responder` 虽然不是技术必填项，但实践上强烈建议显式设置：否则会退回到实现内置的响应者选择逻辑（例如按可见成员/内置成员兜底），容易造成跨环境或跨轮次行为漂移。',
         '每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
         '强烈建议为每个成员配置 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 三类资产，用来明确角色职责、工作边界与可复用经验；同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
         '典型内容示例（可直接作为起点，按团队语境改写）：\n```markdown\n# .minds/team/coder/persona.zh.md\n# @coder 角色设定\n## 核心身份\n- 专业程序员，负责按规格完成代码开发。\n## 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n## 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n```markdown\n# .minds/team/coder/lessons.zh.md\n# @coder 经验教训\n- 修改前先定位调用链与数据流，避免“只改表面”。\n- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。\n- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。\n```',
@@ -3103,6 +3105,7 @@ function renderTeamManual(language: LanguageCode): string {
     fmtList(
       common.concat([
         'The team definition entrypoint is `.minds/team.yaml` (no `.minds/team.yml` alias today).',
+        '`default_responder` is not technically required, but strongly recommended in practice: without it, runtime falls back to implementation-defined responder selection (for example visible-member/built-in fallback), which can drift across environments/runs.',
         'Strongly recommended: for each member, configure `.minds/team/<id>/{persona,knowledge,lessons}.*.md` assets to define role ownership, work boundaries, and reusable lessons. The same `<id>` must exist in `members.<id>` in `team.yaml`.',
         'Typical content examples (use as a starting point, then adapt to your team context):\n```markdown\n# .minds/team/coder/persona.en.md\n# @coder Persona\n## Core Identity\n- Professional programmer responsible for implementing approved development specs.\n## Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n## Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n```markdown\n# .minds/team/coder/lessons.en.md\n# @coder Lessons\n- Trace call chain and data flow before editing; avoid patching only symptoms.\n- After changing permissions/config, run corresponding validators and clear Problems.\n- For high-risk changes, start with a minimal reviewable plan before expansion.\n```',
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
