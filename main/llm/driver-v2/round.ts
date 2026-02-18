@@ -12,11 +12,13 @@ import { DialogPersistence } from '../../persistence';
 import { formatAgentFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import { generateShortId } from '../../shared/utils/id';
+import { LlmConfig } from '../client';
 import {
   consumeCriticalCountdown,
   decideDriverV2ContextHealth,
   DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
   resetContextHealthRoundState,
+  resolveCautionRemediationCadenceGenerations,
   resolveCriticalCountdownRemaining,
 } from './context-health';
 import { driveDialogStreamCoreV2 } from './core';
@@ -246,10 +248,24 @@ export async function executeDriveRound(args: {
 
     const snapshot = dialog.getLastContextHealth();
     const hasQueuedUpNext = dialog.hasUpNext();
+    const provider = policy.effectiveAgent.provider ?? minds.team.memberDefaults.provider;
+    const model = policy.effectiveAgent.model ?? minds.team.memberDefaults.model;
+    let cautionRemediationCadenceGenerations =
+      resolveCautionRemediationCadenceGenerations(undefined);
+    if (provider && model) {
+      const llmCfg = await LlmConfig.load();
+      const providerCfg = llmCfg.getProvider(provider);
+      cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+        providerCfg?.models[model]?.caution_remediation_cadence_generations,
+      );
+    }
     const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dialog.id.key(), snapshot);
     const healthDecision = decideDriverV2ContextHealth({
+      dialogKey: dialog.id.key(),
       snapshot,
       hadUserPromptThisGen: humanPrompt !== undefined,
+      canInjectPromptThisGen: !hasQueuedUpNext,
+      cautionRemediationCadenceGenerations,
       criticalCountdownRemaining,
     });
     if (healthDecision.kind === 'suspend') {

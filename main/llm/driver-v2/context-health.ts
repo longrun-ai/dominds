@@ -14,9 +14,12 @@ export type DriverV2ContextHealthDecision =
 type DriverV2ContextHealthRoundState = {
   lastSeenLevel?: ContextHealthLevel;
   criticalCountdownRemaining?: number;
+  cautionPromptDue?: boolean;
+  cautionGenerationsSincePrompt?: number;
 };
 
 export const DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS = 5;
+export const DRIVER_V2_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS = 10;
 
 const contextHealthRoundStateByDialogKey: Map<string, DriverV2ContextHealthRoundState> = new Map();
 
@@ -49,7 +52,6 @@ export function resolveCriticalCountdownRemaining(
       return DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS;
     }
     const state = getContextHealthRoundState(dialogKey);
-    state.lastSeenLevel = snapshot.level;
     state.criticalCountdownRemaining = undefined;
     return DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS;
   }
@@ -82,12 +84,28 @@ export function consumeCriticalCountdown(dialogKey: string): number {
   return next;
 }
 
+export function resolveCautionRemediationCadenceGenerations(
+  configured: number | undefined,
+): number {
+  if (typeof configured !== 'number' || !Number.isFinite(configured)) {
+    return DRIVER_V2_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS;
+  }
+  const normalized = Math.floor(configured);
+  if (normalized <= 0) {
+    return DRIVER_V2_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS;
+  }
+  return normalized;
+}
+
 export function decideDriverV2ContextHealth(args: {
+  dialogKey: string;
   snapshot?: ContextHealthSnapshot;
   hadUserPromptThisGen: boolean;
+  canInjectPromptThisGen: boolean;
+  cautionRemediationCadenceGenerations: number;
   criticalCountdownRemaining: number;
 }): DriverV2ContextHealthDecision {
-  const { snapshot } = args;
+  const { snapshot, dialogKey } = args;
   if (!snapshot || snapshot.kind !== 'available') {
     return { kind: 'proceed' };
   }
@@ -95,11 +113,46 @@ export function decideDriverV2ContextHealth(args: {
     return { kind: 'proceed' };
   }
   if (snapshot.level === 'caution') {
-    return args.hadUserPromptThisGen
-      ? { kind: 'proceed' }
-      : { kind: 'continue', reason: 'caution_soft_remediation' };
+    const state = getContextHealthRoundState(dialogKey);
+    const cadence = resolveCautionRemediationCadenceGenerations(
+      args.cautionRemediationCadenceGenerations,
+    );
+    const enteringCaution = state.lastSeenLevel !== 'caution';
+
+    state.lastSeenLevel = 'caution';
+    state.criticalCountdownRemaining = undefined;
+
+    if (enteringCaution) {
+      state.cautionPromptDue = true;
+      state.cautionGenerationsSincePrompt = 0;
+    } else if (state.cautionPromptDue !== true) {
+      const previous =
+        typeof state.cautionGenerationsSincePrompt === 'number' &&
+        Number.isFinite(state.cautionGenerationsSincePrompt)
+          ? Math.max(0, Math.floor(state.cautionGenerationsSincePrompt))
+          : 0;
+      const next = previous + 1;
+      state.cautionGenerationsSincePrompt = next;
+      if (next >= cadence) {
+        state.cautionPromptDue = true;
+      }
+    }
+
+    const shouldInjectPrompt =
+      state.cautionPromptDue === true && !args.hadUserPromptThisGen && args.canInjectPromptThisGen;
+    if (!shouldInjectPrompt) {
+      return { kind: 'proceed' };
+    }
+
+    state.cautionPromptDue = false;
+    state.cautionGenerationsSincePrompt = 0;
+    return { kind: 'continue', reason: 'caution_soft_remediation' };
   }
   if (snapshot.level === 'critical') {
+    const state = getContextHealthRoundState(dialogKey);
+    state.lastSeenLevel = 'critical';
+    state.cautionPromptDue = undefined;
+    state.cautionGenerationsSincePrompt = undefined;
     if (args.criticalCountdownRemaining <= 0) {
       return { kind: 'continue', reason: 'critical_force_new_course' };
     }

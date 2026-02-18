@@ -63,6 +63,8 @@ providers:
       gpt-5.3-codex:
         name: GPT-5.3 Codex
         optimal_max_tokens: 200000
+        # Caution remediation reinjection cadence in generation turns (default: 10).
+        caution_remediation_cadence_generations: 10
         context_length: 272000
         input_length: 272000
         output_length: 32768
@@ -70,6 +72,8 @@ providers:
       gpt-5.3-codex-spark:
         name: GPT-5.3 Codex Spark
         optimal_max_tokens: 80000
+        # Caution remediation reinjection cadence in generation turns (default: 10).
+        caution_remediation_cadence_generations: 3
         context_length: 128000
         input_length: 128000
         output_length: 32768
@@ -77,6 +81,8 @@ providers:
       gpt-5.2-codex:
         name: GPT-5.2 Codex
         optimal_max_tokens: 200000
+        # Caution remediation reinjection cadence in generation turns (default: 10).
+        caution_remediation_cadence_generations: 10
         context_length: 272000
         input_length: 272000
         output_length: 32768
@@ -84,6 +90,8 @@ providers:
       gpt-5.2:
         name: GPT-5.2
         optimal_max_tokens: 200000
+        # Caution remediation reinjection cadence in generation turns (default: 10).
+        caution_remediation_cadence_generations: 10
         context_length: 272000
         input_length: 272000
         output_length: 32768

@@ -44,6 +44,7 @@ import {
   decideDriverV2ContextHealth,
   DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
   resetContextHealthRoundState,
+  resolveCautionRemediationCadenceGenerations,
   resolveCriticalCountdownRemaining,
 } from './context-health';
 import {
@@ -1059,13 +1060,20 @@ export async function driveDialogStreamCoreV2(
       if (genIterNo > 1) {
         const snapshot = dlg.getLastContextHealth();
         const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
+        const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
+        const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+          modelInfoForRemediation?.caution_remediation_cadence_generations,
+        );
         const criticalCountdownRemaining = resolveCriticalCountdownRemaining(
           dlg.id.key(),
           snapshot,
         );
         const healthDecision = decideDriverV2ContextHealth({
+          dialogKey: dlg.id.key(),
           snapshot,
           hadUserPromptThisGen: isUserOriginPrompt(pendingPrompt),
+          canInjectPromptThisGen: !hasQueuedUpNext,
+          cautionRemediationCadenceGenerations,
           criticalCountdownRemaining,
         });
 
