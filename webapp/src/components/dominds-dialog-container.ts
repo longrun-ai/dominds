@@ -1820,7 +1820,9 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement | null;
     if (bodyEl) {
-      bodyEl.textContent = event.tellaskContent;
+      bodyEl.innerHTML = renderDomindsMarkdown(event.tellaskContent, { kind: 'chat' });
+      bodyEl.classList.add('markdown-content');
+      bodyEl.setAttribute('data-raw-md', event.tellaskContent);
       bodyEl.classList.add('completed');
     }
     this.renderCallTiming(callingSection, 'pending', startedAtMs);
@@ -3913,7 +3915,6 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .calling-body {
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        white-space: pre-wrap;
         font-size: var(--dominds-font-size-sm, 12px);
         line-height: 1.35;
       }
