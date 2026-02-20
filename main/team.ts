@@ -130,6 +130,10 @@ export namespace Team {
     write_dirs?: string[];
     no_read_dirs?: string[];
     no_write_dirs?: string[];
+    read_file_ext_names?: string[];
+    write_file_ext_names?: string[];
+    no_read_file_ext_names?: string[];
+    no_write_file_ext_names?: string[];
     icon?: string;
     streaming?: boolean;
     hidden?: boolean;
@@ -155,6 +159,10 @@ export namespace Team {
       write_dirs?: string[];
       no_read_dirs?: string[];
       no_write_dirs?: string[];
+      read_file_ext_names?: string[];
+      write_file_ext_names?: string[];
+      no_read_file_ext_names?: string[];
+      no_write_file_ext_names?: string[];
       icon?: string;
       streaming?: boolean;
       hidden?: boolean;
@@ -178,6 +186,14 @@ export namespace Team {
       if (params.write_dirs !== undefined) this.write_dirs = params.write_dirs;
       if (params.no_read_dirs !== undefined) this.no_read_dirs = params.no_read_dirs;
       if (params.no_write_dirs !== undefined) this.no_write_dirs = params.no_write_dirs;
+      if (params.read_file_ext_names !== undefined)
+        this.read_file_ext_names = params.read_file_ext_names;
+      if (params.write_file_ext_names !== undefined)
+        this.write_file_ext_names = params.write_file_ext_names;
+      if (params.no_read_file_ext_names !== undefined)
+        this.no_read_file_ext_names = params.no_read_file_ext_names;
+      if (params.no_write_file_ext_names !== undefined)
+        this.no_write_file_ext_names = params.no_write_file_ext_names;
       if (params.icon !== undefined) this.icon = params.icon;
       if (params.streaming !== undefined) this.streaming = params.streaming;
       if (params.hidden !== undefined) this.hidden = params.hidden;
@@ -201,6 +217,10 @@ export namespace Team {
         'write_dirs',
         'no_read_dirs',
         'no_write_dirs',
+        'read_file_ext_names',
+        'write_file_ext_names',
+        'no_read_file_ext_names',
+        'no_write_file_ext_names',
         'icon',
         'streaming',
         'hidden',
@@ -319,6 +339,38 @@ export namespace Team {
         return;
       }
       this.no_write_dirs = noWriteDirs;
+    }
+
+    setReadFileExtNames(readFileExtNames: string[] | undefined): void {
+      if (readFileExtNames === undefined) {
+        delete this.read_file_ext_names;
+        return;
+      }
+      this.read_file_ext_names = readFileExtNames;
+    }
+
+    setWriteFileExtNames(writeFileExtNames: string[] | undefined): void {
+      if (writeFileExtNames === undefined) {
+        delete this.write_file_ext_names;
+        return;
+      }
+      this.write_file_ext_names = writeFileExtNames;
+    }
+
+    setNoReadFileExtNames(noReadFileExtNames: string[] | undefined): void {
+      if (noReadFileExtNames === undefined) {
+        delete this.no_read_file_ext_names;
+        return;
+      }
+      this.no_read_file_ext_names = noReadFileExtNames;
+    }
+
+    setNoWriteFileExtNames(noWriteFileExtNames: string[] | undefined): void {
+      if (noWriteFileExtNames === undefined) {
+        delete this.no_write_file_ext_names;
+        return;
+      }
+      this.no_write_file_ext_names = noWriteFileExtNames;
     }
 
     setIcon(icon: string | undefined): void {
@@ -1046,6 +1098,10 @@ export namespace Team {
     'write_dirs',
     'no_read_dirs',
     'no_write_dirs',
+    'read_file_ext_names',
+    'write_file_ext_names',
+    'no_read_file_ext_names',
+    'no_write_file_ext_names',
     'icon',
     'streaming',
     'hidden',
@@ -1245,6 +1301,10 @@ export namespace Team {
     write_dirs?: string[];
     no_read_dirs?: string[];
     no_write_dirs?: string[];
+    read_file_ext_names?: string[];
+    write_file_ext_names?: string[];
+    no_read_file_ext_names?: string[];
+    no_write_file_ext_names?: string[];
     icon?: string;
     streaming?: boolean;
     hidden?: boolean;
@@ -1486,6 +1546,46 @@ export namespace Team {
         errors.push(asErrorText(err));
       }
     }
+    if (hasOwnKey(rv, 'read_file_ext_names')) {
+      try {
+        overrides.read_file_ext_names = requireDefined(
+          asOptionalStringArray(rv['read_file_ext_names'], `${at}.read_file_ext_names`),
+          `${at}.read_file_ext_names`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'write_file_ext_names')) {
+      try {
+        overrides.write_file_ext_names = requireDefined(
+          asOptionalStringArray(rv['write_file_ext_names'], `${at}.write_file_ext_names`),
+          `${at}.write_file_ext_names`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'no_read_file_ext_names')) {
+      try {
+        overrides.no_read_file_ext_names = requireDefined(
+          asOptionalStringArray(rv['no_read_file_ext_names'], `${at}.no_read_file_ext_names`),
+          `${at}.no_read_file_ext_names`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
+    if (hasOwnKey(rv, 'no_write_file_ext_names')) {
+      try {
+        overrides.no_write_file_ext_names = requireDefined(
+          asOptionalStringArray(rv['no_write_file_ext_names'], `${at}.no_write_file_ext_names`),
+          `${at}.no_write_file_ext_names`,
+        );
+      } catch (err: unknown) {
+        errors.push(asErrorText(err));
+      }
+    }
     if (hasOwnKey(rv, 'icon')) {
       try {
         overrides.icon = requireDefined(asOptionalString(rv['icon'], `${at}.icon`), `${at}.icon`);
@@ -1535,6 +1635,14 @@ export namespace Team {
     if (overrides.write_dirs !== undefined) member.setWriteDirs(overrides.write_dirs);
     if (overrides.no_read_dirs !== undefined) member.setNoReadDirs(overrides.no_read_dirs);
     if (overrides.no_write_dirs !== undefined) member.setNoWriteDirs(overrides.no_write_dirs);
+    if (overrides.read_file_ext_names !== undefined)
+      member.setReadFileExtNames(overrides.read_file_ext_names);
+    if (overrides.write_file_ext_names !== undefined)
+      member.setWriteFileExtNames(overrides.write_file_ext_names);
+    if (overrides.no_read_file_ext_names !== undefined)
+      member.setNoReadFileExtNames(overrides.no_read_file_ext_names);
+    if (overrides.no_write_file_ext_names !== undefined)
+      member.setNoWriteFileExtNames(overrides.no_write_file_ext_names);
     if (overrides.icon !== undefined) member.setIcon(overrides.icon);
     if (overrides.streaming !== undefined) member.setStreaming(overrides.streaming);
     if (overrides.hidden !== undefined) member.setHidden(overrides.hidden);

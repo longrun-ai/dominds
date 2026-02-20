@@ -2992,7 +2992,7 @@ function renderMemberProperties(language: LanguageCode): string {
         '`diligence-push-max`：鞭策 上限（number）。也接受兼容别名 `diligence_push_max`，但请优先用 `diligence-push-max`。',
         '`streaming`：是否启用流式输出。注意：若该成员解析后的 provider 的 `apiType` 是 `codex`，则 `streaming: false` 属于配置错误（Codex 仅支持流式）；会在 team 校验与运行期被视为严重问题并中止请求。',
         '`hidden`（影子/隐藏成员：不出现在系统提示的团队目录里，但仍可被诉请）',
-        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
+        '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
       ])
     );
   }
@@ -3007,7 +3007,7 @@ function renderMemberProperties(language: LanguageCode): string {
       '`diligence-push-max`: Diligence Push cap (number). Compatibility alias `diligence_push_max` is accepted, but prefer `diligence-push-max`.',
       '`streaming`: whether to enable streaming output. Note: if the member resolves to a provider whose `apiType` is `codex`, then `streaming: false` is a configuration error (Codex is streaming-only); it is treated as a severe issue during validation/runtime and the request will be aborted.',
       '`hidden` (shadow/hidden member: excluded from system-prompt team directory, but callable)',
-      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
+      '`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`（冲突规则见 `team_mgmt_manual({ topics: ["permissions"] })`；read 与 write 是独立控制，别默认 write implies read）',
     ])
   );
 }
@@ -3165,7 +3165,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '默认按“每个对话租用一个 MCP client”运行（更安全）：首次使用该 toolset 会产生 sticky reminder，完成后用 `mcp_release` 释放；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。',
         'stdio 配置格式：`command` 必须是字符串（可执行命令），参数放在 `args`（string[]，可省略，默认空数组）。`cwd` 可选（字符串）：用于固定相对路径解析目录。',
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
-        '常见坑：stdio transport 需要可执行命令路径正确，且受成员目录权限（`read_dirs/write_dirs/no_*`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
+        '常见坑：stdio transport 需要可执行命令路径正确，且受成员权限（目录 + 扩展名：`*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
         '高频坑（stdio 路径）：若未设置 `cwd`，相对路径按 Dominds 进程工作目录（通常 rtws 根目录）解析；建议显式配置 `cwd` 或直接使用绝对路径。`cwd` 必须存在且是目录。',
         '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
@@ -3218,7 +3218,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       "Default is per-dialog MCP client leasing (safer): first use adds a sticky reminder; call `mcp_release` when you're sure you won't need the toolset soon. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing.",
       'Stdio shape: `command` must be a string executable; parameters go in `args` (string[], optional, defaults to empty). Optional `cwd` (string) fixes the working directory used for relative paths.',
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
-      'Common pitfalls: stdio transport needs a correct executable/command path, and is subject to member directory permissions (`read_dirs/write_dirs/no_*`); HTTP transport requires the server URL to be reachable.',
+      'Common pitfalls: stdio transport needs a correct executable/command path, and is subject to member permissions (directory + extension: `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`); HTTP transport requires the server URL to be reachable.',
       'High-frequency pitfall (stdio paths): if `cwd` is omitted, relative paths are resolved from Dominds process cwd (usually rtws root). Prefer setting `cwd` explicitly or use absolute paths. `cwd` must exist and be a directory.',
       'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
@@ -3266,12 +3266,15 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
 function renderPermissionsManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
-      fmtHeader('目录权限（read_dirs / write_dirs）') +
+      fmtHeader('权限（目录 + 扩展名）') +
       fmtList([
-        '权限字段：`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`。',
-        'deny-list（no_*）优先于 allow-list（*_dirs）。',
-        '若未配置 allow-list，则默认允许（在 deny-list 不命中的前提下）。这很方便，但也更容易“权限过大”；如需最小权限，建议显式收敛 allow-list 并对敏感目录加 deny-list。',
+        '目录字段：`read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`。',
+        '扩展名字段：`read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`。',
+        'deny-list（`no_*`）优先于 allow-list（`*`）。目录与扩展名两个维度都需要通过。',
+        '若某维度未配置 allow-list，则该维度默认允许（在 deny-list 不命中的前提下）。这很方便，但也更容易“权限过大”；如需最小权限，建议显式收敛 allow-list 并对敏感目录/扩展名加 deny-list。',
         '`read_dirs` 与 `write_dirs` 是独立控制：不要默认 write implies read（以当前实现的权限检查为准）。',
+        '`read_file_ext_names` 与 `write_file_ext_names` 同样是独立控制。',
+        '扩展名按文件名后缀精确匹配（大小写不敏感，配置项可写 `ts` 或 `.ts`）。',
         '模式支持 `*` 和 `**`，按“目录范围”语义匹配（按目录/路径前缀范围来理解）。',
         '示例：`dominds/**` 会匹配 `dominds/README.md`、`dominds/main/server.ts`、`dominds/webapp/src/...` 等路径。',
         '示例：`.minds/**` 会匹配 `.minds/team.yaml`、`.minds/team/<id>/persona.zh.md` 等；常用于限制普通成员访问 minds 资产。',
@@ -3291,12 +3294,15 @@ function renderPermissionsManual(language: LanguageCode): string {
     );
   }
   return (
-    fmtHeader('Directory Permissions (read_dirs / write_dirs)') +
+    fmtHeader('Permissions (Directory + Extension)') +
     fmtList([
-      'Fields: `read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`.',
-      'Deny-lists (no_*) override allow-lists (*_dirs).',
-      'If no allow-list is configured, access defaults to allow (after deny-list check). This is convenient but can be overly permissive; for least privilege, explicitly narrow allow-lists and deny sensitive directories.',
+      'Directory fields: `read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs`.',
+      'Extension fields: `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names`.',
+      'Deny-lists (`no_*`) override allow-lists (`*`). Both directory and extension dimensions must pass.',
+      'If a dimension has no allow-list, that dimension defaults to allow (after deny-list check). This is convenient but can be overly permissive; for least privilege, explicitly narrow allow-lists and deny sensitive directories/extensions.',
       '`read_dirs` and `write_dirs` are controlled independently (do not assume write implies read; follow current implementation).',
+      '`read_file_ext_names` and `write_file_ext_names` are also controlled independently.',
+      'Extension names are exact suffix matches (case-insensitive; config accepts `ts` or `.ts`).',
       'Patterns support `*` and `**` with directory-scope semantics (think directory/path-range matching).',
       'Example: `dominds/**` matches `dominds/README.md`, `dominds/main/server.ts`, `dominds/webapp/src/...`, etc.',
       'Example: `.minds/**` matches `.minds/team.yaml` and `.minds/team/<id>/persona.*.md`; commonly used to restrict normal members from minds assets.',
@@ -3447,7 +3453,7 @@ function renderTroubleshooting(language: LanguageCode): string {
         '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
         '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
-        '症状：提示“permission denied / forbidden / not allowed” → 原因：目录权限（read/write/no_*）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `read_dirs/write_dirs/no_*` 配置。',
+        '症状：提示“permission denied / forbidden / not allowed” → 原因：权限规则（目录或扩展名）命中 deny-list 或未被 allow-list 覆盖 → 步骤：用 `team_mgmt_manual({ topics: [\"permissions\"] })` 复核规则，并检查该成员的 `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` 配置。',
         '症状：MCP 不生效 → 原因：mcp 配置错误/服务不可用/租用未释放 → 步骤：先运行 `team_mgmt_validate_mcp_cfg({})` 汇总错误；必要时用 `mcp_restart`；完成后用 `mcp_release` 释放租用。',
       ])
     );
@@ -3459,7 +3465,7 @@ function renderTroubleshooting(language: LanguageCode): string {
       'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
       'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
-      'Symptom: "permission denied / forbidden / not allowed" → Cause: directory permissions (read/write/no_*) hit deny-list or not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `read_dirs/write_dirs/no_*` config.',
+      'Symptom: "permission denied / forbidden / not allowed" → Cause: permission rules (directory or extension) hit deny-list or are not covered by allow-list → Steps: review `team_mgmt_manual({ topics: [\"permissions\"] })` and the member `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names` config.',
       'Symptom: MCP not working → Cause: bad config / server down / leasing issues → Steps: run `team_mgmt_validate_mcp_cfg({})` first, then use `mcp_restart` if needed; call `mcp_release` when done.',
     ])
   );
@@ -4272,7 +4278,7 @@ export const teamMgmtManualTool: FuncTool = {
             `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
             `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
             `\`team_mgmt_manual({ topics: ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
-            `\`team_mgmt_manual({ topics: ["permissions"] })\`：${topicTitle('permissions')} — 目录权限（read_dirs/write_dirs/no_* 语义与冲突规则）`,
+            `\`team_mgmt_manual({ topics: ["permissions"] })\`：${topicTitle('permissions')} — 目录+扩展名权限（*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names 语义与冲突规则）`,
             `\`team_mgmt_manual({ topics: ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
             `\`team_mgmt_manual({ topics: ["llm"] })\`：${topicTitle('llm')} — .minds/llm.yaml（provider key 如何定义/引用；env var 安全边界）`,
             `\`team_mgmt_manual({ topics: ["mcp"] })\`：${topicTitle('mcp')} — .minds/mcp.yaml（MCP serverId→toolset；热重载与租用；可复制最小模板）`,
@@ -4294,7 +4300,7 @@ export const teamMgmtManualTool: FuncTool = {
           `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
           `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
           `\`team_mgmt_manual({ topics: ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
-          `\`team_mgmt_manual({ topics: ["permissions"] })\`: ${topicTitle('permissions')} — directory permissions (semantics + conflict rules)`,
+          `\`team_mgmt_manual({ topics: ["permissions"] })\`: ${topicTitle('permissions')} — directory + extension permissions (semantics + conflict rules)`,
           `\`team_mgmt_manual({ topics: ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
           `\`team_mgmt_manual({ topics: ["llm"] })\`: ${topicTitle('llm')} — .minds/llm.yaml (provider keys, env var boundaries)`,
           `\`team_mgmt_manual({ topics: ["mcp"] })\`: ${topicTitle('mcp')} — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)`,

@@ -1,7 +1,7 @@
 /**
  * Module: access-control
  *
- * Directory-based access control helpers:
+ * Directory/file-extension based access control helpers:
  * - `matchesPattern` for glob-like directory scope matching (supports `*` and `**`)
  * - `hasReadAccess`/`hasWriteAccess` to evaluate member permissions
  * - `getAccessDeniedMessage` to format denial responses
@@ -26,6 +26,49 @@ function isRootDialogsPath(targetPath: string): boolean {
   // Only deny `.dialogs/**` at rtws root; allow nested `foo/.dialogs/**` for dev rtws layouts.
   const normalized = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
   return normalized === '.dialogs' || normalized.startsWith('.dialogs/');
+}
+
+function normalizeFileExtName(raw: string): string {
+  return raw.trim().toLowerCase().replace(/^\.+/, '');
+}
+
+function extractFileExtName(targetPath: string): string | undefined {
+  const normalized = targetPath.replace(/\\/g, '/').replace(/\/+$/g, '');
+  if (normalized === '' || normalized === '.') return undefined;
+  const baseName = normalized.split('/').pop();
+  if (!baseName || baseName === '.' || baseName === '..') return undefined;
+
+  const dotIndex = baseName.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex === baseName.length - 1) return undefined;
+  return normalizeFileExtName(baseName.slice(dotIndex + 1));
+}
+
+function hasFileExtAccess(
+  fileExtName: string | undefined,
+  whitelist: string[] | undefined,
+  blacklist: string[] | undefined,
+): boolean {
+  // Extension rules only apply to file-like paths with a detectable extension.
+  if (!fileExtName) return true;
+
+  for (const ext of blacklist ?? []) {
+    if (normalizeFileExtName(ext) === fileExtName) {
+      return false;
+    }
+  }
+
+  const allow = whitelist ?? [];
+  if (allow.length === 0) {
+    return true;
+  }
+
+  for (const ext of allow) {
+    if (normalizeFileExtName(ext) === fileExtName) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -152,8 +195,10 @@ export function matchesPattern(targetPath: string, dirPattern: string): boolean 
  * Access control logic:
  * 1. Check blacklist first (no_read_dirs) - if path matches any blacklist pattern, deny access
  * 2. Check whitelist (read_dirs) - if path matches any whitelist pattern, allow access
- * 3. If no whitelist patterns are defined, allow access (default allow)
- * 4. If whitelist patterns exist but none match, deny access
+ * 3. Check extension blacklist (no_read_file_ext_names) - if extension matches, deny access
+ * 4. Check extension whitelist (read_file_ext_names)
+ * 5. If no whitelist patterns are defined for a dimension, allow access (default allow)
+ * 6. If whitelist patterns exist but none match, deny access
  */
 export function hasReadAccess(member: Team.Member, targetPath: string): boolean {
   // Get resolved relative path from rtws root
@@ -202,19 +247,24 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
   // Note: `.minds/**` is handled above as a hard deny (unless internal bypass is enabled).
 
   // If no whitelist is defined, allow access (after blacklist check)
-  if (whitelist.length === 0) {
-    return true;
-  }
-
-  // Check if path matches any whitelist pattern
-  for (const pattern of whitelist) {
-    if (matchesPattern(relativePath, pattern)) {
-      return true; // Explicitly allowed
+  let directoryAllowed = whitelist.length === 0;
+  if (!directoryAllowed) {
+    // Check if path matches any whitelist pattern
+    for (const pattern of whitelist) {
+      if (matchesPattern(relativePath, pattern)) {
+        directoryAllowed = true;
+        break;
+      }
     }
   }
 
-  // Path doesn't match any whitelist pattern
-  return false;
+  if (!directoryAllowed) return false;
+
+  return hasFileExtAccess(
+    extractFileExtName(relativePath),
+    member.read_file_ext_names,
+    member.no_read_file_ext_names,
+  );
 }
 
 /**
@@ -223,8 +273,10 @@ export function hasReadAccess(member: Team.Member, targetPath: string): boolean 
  * Access control logic:
  * 1. Check blacklist first (no_write_dirs) - if path matches any blacklist pattern, deny access
  * 2. Check whitelist (write_dirs) - if path matches any whitelist pattern, allow access
- * 3. If no whitelist patterns are defined, allow access (default allow)
- * 4. If whitelist patterns exist but none match, deny access
+ * 3. Check extension blacklist (no_write_file_ext_names) - if extension matches, deny access
+ * 4. Check extension whitelist (write_file_ext_names)
+ * 5. If no whitelist patterns are defined for a dimension, allow access (default allow)
+ * 6. If whitelist patterns exist but none match, deny access
  */
 export function hasWriteAccess(member: Team.Member, targetPath: string): boolean {
   // Get resolved relative path from rtws root
@@ -273,19 +325,24 @@ export function hasWriteAccess(member: Team.Member, targetPath: string): boolean
   // Note: `.minds/**` is handled above as a hard deny (unless internal bypass is enabled).
 
   // If no whitelist is defined, allow access (after blacklist check)
-  if (whitelist.length === 0) {
-    return true;
-  }
-
-  // Check if path matches any whitelist pattern
-  for (const pattern of whitelist) {
-    if (matchesPattern(relativePath, pattern)) {
-      return true; // Explicitly allowed
+  let directoryAllowed = whitelist.length === 0;
+  if (!directoryAllowed) {
+    // Check if path matches any whitelist pattern
+    for (const pattern of whitelist) {
+      if (matchesPattern(relativePath, pattern)) {
+        directoryAllowed = true;
+        break;
+      }
     }
   }
 
-  // Path doesn't match any whitelist pattern
-  return false;
+  if (!directoryAllowed) return false;
+
+  return hasFileExtAccess(
+    extractFileExtName(relativePath),
+    member.write_file_ext_names,
+    member.no_write_file_ext_names,
+  );
 }
 
 /**
@@ -374,6 +431,16 @@ export function getAccessDeniedMessage(
         `- Hint: For Dominds debugging, reproduce in a nested rtws (e.g. \`ux-rtws/.dialogs/\`), which is not covered by this hard deny.`,
       );
     }
+  }
+
+  if (language === 'zh') {
+    lines.push(
+      `- 说明：该路径可能命中目录权限（\`read_dirs/write_dirs/no_*_dirs\`）或扩展名权限（\`*_file_ext_names/no_*_file_ext_names\`）。`,
+    );
+  } else {
+    lines.push(
+      `- Note: This path may be blocked by directory rules (\`read_dirs/write_dirs/no_*_dirs\`) or file-extension rules (\`*_file_ext_names/no_*_file_ext_names\`).`,
+    );
   }
 
   return lines.join('\n');
