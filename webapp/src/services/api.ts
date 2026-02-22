@@ -533,7 +533,7 @@ export class ApiClient {
   }
 
   /**
-   * Write shell env var to ~/.bashrc and/or ~/.zshrc (managed block)
+   * Write env var to one target: .env.local, ~/.bashrc, or ~/.zshrc
    */
   async writeShellEnv(
     req: SetupWriteShellEnvRequest,

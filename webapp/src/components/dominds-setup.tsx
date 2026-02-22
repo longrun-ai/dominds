@@ -629,7 +629,11 @@ export class DomindsSetup extends HTMLElement {
     if (this.state.kind !== 'ready') return;
     const envVar = btn.getAttribute('data-env-var');
     const target = btn.getAttribute('data-target');
-    if (typeof envVar !== 'string' || (target !== 'bashrc' && target !== 'zshrc')) return;
+    if (
+      typeof envVar !== 'string' ||
+      (target !== 'env_local' && target !== 'bashrc' && target !== 'zshrc')
+    )
+      return;
 
     const value = this.envInputs[envVar] ?? '';
     if (!value) {
@@ -637,7 +641,7 @@ export class DomindsSetup extends HTMLElement {
       return;
     }
 
-    const resp = await this.apiClient.writeShellEnv({ envVar, value, targets: [target] });
+    const resp = await this.apiClient.writeShellEnv({ envVar, value, target });
     if (!resp.success) {
       alert(resp.error || 'Failed to write shell env');
       return;
@@ -930,12 +934,21 @@ export class DomindsSetup extends HTMLElement {
     const detail = escapeHtml(formatSetupRequirementDetail(this.uiLanguage, t, req));
 
     const shell = status.shell.kind === 'other' ? 'unknown' : status.shell.kind;
-    const defaultRc =
+    const defaultRcLabel =
       status.shell.defaultRc === 'bashrc'
         ? '~/.bashrc'
         : status.shell.defaultRc === 'zshrc'
           ? '~/.zshrc'
-          : '(unknown)';
+          : '(n/a)';
+    const hasPosixRc = status.shell.platform === 'linux' || status.shell.platform === 'macos';
+    const envLocal = status.envLocal.path;
+    const summaryParts = [
+      `${escapeHtml(t.setupSummaryShell)}: ${escapeHtml(shell)}`,
+      `${escapeHtml(t.setupSummaryEnvLocal)}: ${escapeHtml(envLocal)}`,
+    ];
+    if (hasPosixRc) {
+      summaryParts.push(`${escapeHtml(t.setupSummaryDefaultRc)}: ${escapeHtml(defaultRcLabel)}`);
+    }
 
     return `
       <div class="card">
@@ -943,9 +956,7 @@ export class DomindsSetup extends HTMLElement {
           <div class="badge ${badgeClass}">${badgeText}</div>
           <div class="muted">${detail}</div>
           <div class="spacer"></div>
-          <div class="muted">${escapeHtml(t.setupSummaryShell)}: ${escapeHtml(
-            shell,
-          )} • ${escapeHtml(t.setupSummaryDefaultRc)}: ${escapeHtml(defaultRc)}</div>
+          <div class="muted">${summaryParts.join(' • ')}</div>
         </div>
       </div>
     `;
@@ -1152,18 +1163,24 @@ export class DomindsSetup extends HTMLElement {
   private renderProvidersSection(status: SetupStatusResponse): string {
     const t = getUiStrings(this.uiLanguage);
     const preferredRc = status.shell.defaultRc;
+    const showShellRcOptions =
+      status.shell.platform === 'linux' || status.shell.platform === 'macos';
 
     const configured = status.providers.filter((p) => p.envVar.isSet);
     const unconfigured = status.providers.filter((p) => !p.envVar.isSet);
 
     const configuredHtml =
       configured.length > 0
-        ? configured.map((p) => this.renderProviderCard(p, preferredRc)).join('')
+        ? configured
+            .map((p) => this.renderProviderCard(p, preferredRc, showShellRcOptions))
+            .join('')
         : `<div class="muted">(none)</div>`;
 
     const unconfiguredHtml =
       unconfigured.length > 0
-        ? unconfigured.map((p) => this.renderProviderCard(p, preferredRc)).join('')
+        ? unconfigured
+            .map((p) => this.renderProviderCard(p, preferredRc, showShellRcOptions))
+            .join('')
         : `<div class="muted">(none)</div>`;
 
     return `
@@ -1190,7 +1207,11 @@ export class DomindsSetup extends HTMLElement {
     `;
   }
 
-  private renderProviderCard(p: SetupProviderSummary, preferredRc: string): string {
+  private renderProviderCard(
+    p: SetupProviderSummary,
+    preferredRc: string,
+    showShellRcOptions: boolean,
+  ): string {
     const t = getUiStrings(this.uiLanguage);
     const envVar = p.apiKeyEnvVar;
     const inputVal = this.envInputs[envVar] ?? '';
@@ -1202,6 +1223,8 @@ export class DomindsSetup extends HTMLElement {
     const zshState = p.envVar.zshrcHas ? 'present' : 'absent';
     const bashVerb = p.envVar.bashrcHas ? t.setupWriteRcOverwrite : t.setupWriteRcWrite;
     const zshVerb = p.envVar.zshrcHas ? t.setupWriteRcOverwrite : t.setupWriteRcWrite;
+    const envLocalState = p.envVar.envLocalHas ? 'present' : 'absent';
+    const envLocalVerb = p.envVar.envLocalHas ? t.setupWriteRcOverwrite : t.setupWriteRcWrite;
 
     const links: string[] = [];
     if (typeof p.apiMgmtUrl === 'string') {
@@ -1248,12 +1271,19 @@ export class DomindsSetup extends HTMLElement {
             data-env-input="${escapeHtmlAttr(envVar)}"
           />
           <div class="rc-buttons">
-            <button class="btn ${bashPreferred}" data-write-env="1" data-env-var="${escapeHtmlAttr(
+            <button class="btn preferred" data-write-env="1" data-env-var="${escapeHtmlAttr(
               envVar,
-            )}" data-target="bashrc">${bashVerb} ~/.bashrc</button>
+            )}" data-target="env_local">${envLocalVerb} .env.local</button>
+            ${
+              showShellRcOptions
+                ? `<button class="btn ${bashPreferred}" data-write-env="1" data-env-var="${escapeHtmlAttr(
+                    envVar,
+                  )}" data-target="bashrc">${bashVerb} ~/.bashrc</button>
             <button class="btn ${zshPreferred}" data-write-env="1" data-env-var="${escapeHtmlAttr(
               envVar,
-            )}" data-target="zshrc">${zshVerb} ~/.zshrc</button>
+            )}" data-target="zshrc">${zshVerb} ~/.zshrc</button>`
+                : ''
+            }
           </div>
         </div>
 
@@ -1269,8 +1299,13 @@ export class DomindsSetup extends HTMLElement {
             ${p.models.length > 24 ? `<span class="muted">…</span>` : ''}
           </div>
           <div class="rc-tags">
-            <span class="rc-tag ${bashState}">~/.bashrc</span>
-            <span class="rc-tag ${zshState}">~/.zshrc</span>
+            <span class="rc-tag ${envLocalState}">.env.local</span>
+            ${
+              showShellRcOptions
+                ? `<span class="rc-tag ${bashState}">~/.bashrc</span>
+            <span class="rc-tag ${zshState}">~/.zshrc</span>`
+                : ''
+            }
           </div>
         </div>
       </div>

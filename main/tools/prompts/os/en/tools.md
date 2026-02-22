@@ -26,7 +26,7 @@ Execute Shell command.
 **Parameters:**
 
 - `command` (required): Command to execute
-- `shell` (optional): Shell to use for execution (default: `bash`)
+- `shell` (optional): Shell to use for execution (default: `bash` on Linux/macOS, `cmd.exe` on Windows)
 - `bufferSize` (optional): Maximum number of lines to keep in scrolling buffer
 - `timeoutSeconds` (optional): Timeout in seconds before switching to daemon tracking
 

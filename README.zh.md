@@ -89,8 +89,12 @@ dominds
 首次启动后，通常会自动跳转至 `http://localhost:5666/setup` 配置页面，按以下步骤操作：
 
 1. 选择提供商（provider）及模型（model），创建或覆盖 `.minds/team.yaml`（最小化可运行配置文件）。
-2. 根据提示设置提供商所需的环境变量（配置页可协助将变量写入 `~/.zshrc` 或 `~/.bashrc` 的托管区块）。
+2. 根据提示设置提供商所需的环境变量（配置页可将变量写入 `.env.local`，并在 Linux/macOS 上额外支持写入 `~/.zshrc` 或 `~/.bashrc` 的托管区块）。
 3. 进入主界面，创建对话即可开始工作（对话、记忆、差遣牒等运行态数据均存储在当前 rtws 下）。
+
+平台说明：
+
+- Windows 运行时不会注册 `codex_style_tools` 工具集。在 Windows 主机上的 `.minds/team.yaml` 中不要授予 `codex_style_tools`。
 
 ## 从零开始（空文件夹启动）
 

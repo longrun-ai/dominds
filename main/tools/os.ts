@@ -204,6 +204,12 @@ interface GetDaemonOutputArgs {
   stream?: 'stdout' | 'stderr';
 }
 
+type ShellSpawnSpec = Readonly<{
+  command: string;
+  args: string[];
+  shellLabel: string;
+}>;
+
 type ShellCmdReminderMeta = JsonObject & {
   pid: number;
   completed?: boolean;
@@ -387,6 +393,61 @@ function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
   return { pid, stream: stream === '' ? undefined : stream };
 }
 
+function resolveShellCmdSpawnSpec(command: string, shell: string | undefined): ShellSpawnSpec {
+  const preferredShell =
+    typeof shell === 'string' && shell.trim() !== '' ? shell.trim() : undefined;
+  if (process.platform === 'win32') {
+    if (preferredShell) {
+      const base = path.basename(preferredShell).toLowerCase();
+      if (
+        base === 'powershell' ||
+        base === 'powershell.exe' ||
+        base === 'pwsh' ||
+        base === 'pwsh.exe'
+      ) {
+        return {
+          command: preferredShell,
+          args: ['-NoLogo', '-NoProfile', '-Command', command],
+          shellLabel: preferredShell,
+        };
+      }
+      if (base === 'cmd' || base === 'cmd.exe') {
+        return {
+          command: preferredShell,
+          args: ['/d', '/s', '/c', command],
+          shellLabel: preferredShell,
+        };
+      }
+      return {
+        command: preferredShell,
+        args: ['-c', command],
+        shellLabel: preferredShell,
+      };
+    }
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/s', '/c', command],
+      shellLabel: 'cmd.exe',
+    };
+  }
+
+  const resolvedShell = preferredShell ?? 'bash';
+  return {
+    command: resolvedShell,
+    args: ['-c', command],
+    shellLabel: resolvedShell,
+  };
+}
+
+function resolveReadonlyShellSpawnSpec(
+  command: string,
+): Readonly<{ command: string; args: string[] }> {
+  if (process.platform === 'win32') {
+    return { command: 'cmd.exe', args: ['/d', '/s', '/c', command] };
+  }
+  return { command: 'bash', args: ['-c', command] };
+}
+
 // JSON Schema for shell_cmd parameters
 const shellCmdSchema: JsonSchema = {
   type: 'object',
@@ -397,7 +458,7 @@ const shellCmdSchema: JsonSchema = {
     },
     shell: {
       type: 'string',
-      description: 'Shell to use for execution (default: bash)',
+      description: 'Shell to use for execution (default: bash on Linux/macOS; cmd.exe on Windows)',
     },
     bufferSize: {
       type: 'number',
@@ -630,13 +691,14 @@ export const shellCmdTool: FuncTool = {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const parsedArgs = parseShellCmdArgs(args);
-    const { command, shell = 'bash', bufferSize = 500, timeoutSeconds = 5 } = parsedArgs;
+    const { command, shell, bufferSize = 500, timeoutSeconds = 5 } = parsedArgs;
+    const spawnSpec = resolveShellCmdSpawnSpec(command, shell);
 
     const stdoutBuffer = new ScrollingBuffer(bufferSize);
     const stderrBuffer = new ScrollingBuffer(bufferSize);
 
     return new Promise((resolve) => {
-      const childProcess = spawn(shell, ['-c', command], {
+      const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
@@ -658,7 +720,7 @@ export const shellCmdTool: FuncTool = {
         const daemon: DaemonProcess = {
           pid,
           command,
-          shell,
+          shell: spawnSpec.shellLabel,
           process: childProcess,
           startTime,
           stdoutBuffer,
@@ -675,7 +737,7 @@ export const shellCmdTool: FuncTool = {
           type: 'daemon',
           pid,
           command,
-          shell,
+          shell: spawnSpec.shellLabel,
           startTime: formatUnifiedTimestamp(startTime),
         });
 
@@ -1422,7 +1484,8 @@ export const readonlyShellTool: FuncTool = {
         resolve(content.trim());
       };
 
-      const childProcess = spawn('bash', ['-c', command], {
+      const spawnSpec = resolveReadonlyShellSpawnSpec(command);
+      const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 

@@ -167,8 +167,12 @@ Then:
 1. Your browser should land on `http://localhost:5666/setup` (either directly, or via an automatic redirect).
 2. In **Setup**, pick a provider + model. If your template didn’t create `.minds/team.yaml`, use Setup to create/overwrite it (this writes a minimal `member_defaults` config).
 3. Still in **Setup**, set the required provider env var (the name comes from the provider catalog, e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CODEX_HOME`, etc.).
-   - The setup UI can write it into `~/.zshrc` / `~/.bashrc` in a managed block, and also applies it to the running server process immediately.
+   - The setup UI can write it to `.env.local` (all platforms), and on Linux/macOS it can also write into `~/.zshrc` / `~/.bashrc` in managed blocks. It also applies the value to the running server process immediately.
 4. Click **Go to App**, create a dialog, and start working.
+
+Platform note:
+
+- On Windows, the runtime does not register the `codex_style_tools` toolset. Do not grant `codex_style_tools` in `.minds/team.yaml` for Windows hosts.
 
 ## Start from scratch
 

@@ -84,8 +84,12 @@ runTest('Individual tool lookup', () => {
   console.log('Tool lookup verification passed');
 });
 
-runTest('codex_style_tools includes update_plan', () => {
+runTest('codex_style_tools platform behavior', () => {
   const codexTools = getToolset('codex_style_tools');
+  if (process.platform === 'win32') {
+    assertEqual(codexTools, undefined, 'codex_style_tools should not be registered on Windows');
+    return;
+  }
   assertTrue(Array.isArray(codexTools), 'codex_style_tools should be an array');
   if (!codexTools) throw new Error('unreachable');
   const names = codexTools.map((t) => t.name);

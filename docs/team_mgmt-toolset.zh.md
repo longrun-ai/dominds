@@ -370,6 +370,7 @@ members:
 
 - 使 `member_defaults` 保守。按成员授予额外的工具/目录
 - 优先使用工具集而不是单独枚举工具，除非你需要一次性工具
+- 平台说明：Windows 运行时不会注册 `codex_style_tools`；在 Windows 主机上的 `.minds/team.yaml` 中不要授予该工具集
 - 保持 `.minds/team.yaml` 的所有权严格；只有团队管理者应该能够编辑它
 - 避免在 `team.yaml` 中重复内置约束：
   - `*.tsk/**`（封装的 Taskdocs）对所有通用文件工具被硬性拒绝

@@ -71,9 +71,18 @@
 - `os`：shell 与进程管理（`shell_cmd` / `stop_daemon` / `get_daemon_output`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）
 - `memory`：个人记忆维护（添加/替换/删除/清空个人 memory）
 - `team_memory`：团队共享记忆维护（添加/替换/删除/清空 shared memory）
-- `codex_style_tools`：Codex 风格工具（`apply_patch` / `readonly_shell` / `update_plan`）
+- `codex_style_tools`：Codex 风格工具（`apply_patch` / `readonly_shell` / `update_plan`）；**Windows 环境下不要配置该 toolset**
 - `mcp_admin`：MCP 运维（`mcp_restart` / `mcp_release`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）
 - MCP 声明型 toolset：来源于 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射（toolset 名称 = `serverId`）。具体能力以该 MCP server 实际暴露工具为准；可在 `team_mgmt_manual({ topics: ["toolsets"] })` 查看当前映射快照
+
+## ripgrep 依赖（检测与安装）
+
+- `team_mgmt_ripgrep_*` 与 `ws_read/ws_mod` 的搜索能力依赖系统可执行 `rg`（ripgrep）
+- 检测：`rg --version`
+- Windows 安装（任选其一）：`winget install BurntSushi.ripgrep.MSVC` / `choco install ripgrep` / `scoop install ripgrep`
+- macOS：`brew install ripgrep`
+- Ubuntu/Debian：`sudo apt-get update && sudo apt-get install -y ripgrep`
+- Fedora：`sudo dnf install -y ripgrep`
 
 ## 工具选择指南
 

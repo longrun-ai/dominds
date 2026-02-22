@@ -25,6 +25,7 @@ const log = createLogger('setup-routes');
 
 const TEAM_YAML_PATH = path.join('.minds', 'team.yaml');
 const RTWS_LLM_YAML_PATH = path.join('.minds', 'llm.yaml');
+const RTWS_ENV_LOCAL_PATH = '.env.local';
 const BUILTIN_DEFAULTS_YAML_PATH = path.join(__dirname, '..', 'llm', 'defaults.yaml');
 
 const DOMINDS_ENV_BLOCK_START = '# >>> dominds env >>>';
@@ -38,9 +39,11 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
   const builtin = await loadBuiltinProviders();
   const merged = await LlmConfig.load();
 
+  const shellPlatform = resolveSetupPlatform(process.platform);
   const shellEnv = typeof process.env.SHELL === 'string' ? process.env.SHELL : null;
   const shellKind = resolveShellKind(shellEnv);
 
+  const envLocal = await statRcFile(RTWS_ENV_LOCAL_PATH);
   const home = os.homedir();
   const bashrcPath = path.join(home, '.bashrc');
   const zshrcPath = path.join(home, '.zshrc');
@@ -62,7 +65,13 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
     return {
       success: false,
       requirement,
-      shell: { env: shellEnv, kind: shellKind, defaultRc: shellKindToDefaultRc(shellKind) },
+      shell: {
+        platform: shellPlatform,
+        env: shellEnv,
+        kind: shellKind,
+        defaultRc: shellKindToDefaultRc(shellKind),
+      },
+      envLocal,
       rc,
       teamYaml,
       rtwsLlmYaml,
@@ -72,6 +81,7 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
   }
 
   const providers = await buildProviderSummaries(builtin.providers, builtin.providerKeysInOrder, {
+    envLocalPath: RTWS_ENV_LOCAL_PATH,
     bashrcPath,
     zshrcPath,
   });
@@ -79,7 +89,13 @@ export async function buildSetupStatusResponse(): Promise<SetupStatusResponse> {
   return {
     success: true,
     requirement,
-    shell: { env: shellEnv, kind: shellKind, defaultRc: shellKindToDefaultRc(shellKind) },
+    shell: {
+      platform: shellPlatform,
+      env: shellEnv,
+      kind: shellKind,
+      defaultRc: shellKindToDefaultRc(shellKind),
+    },
+    envLocal,
     rc,
     teamYaml,
     rtwsLlmYaml,
@@ -148,17 +164,27 @@ export async function handleWriteShellEnv(
     // Apply to the current backend process immediately so setup can proceed without a restart.
     process.env[req.envVar] = req.value;
 
-    const home = os.homedir();
-    const targets = req.targets;
-    type WriteOk = Extract<SetupWriteShellEnvResponse, { success: true }>;
-    const outcomes: WriteOk['outcomes'] = [];
-    for (const target of targets) {
-      const filePath = path.join(home, target === 'bashrc' ? '.bashrc' : '.zshrc');
-      const result = await upsertEnvVarIntoRcFile(filePath, req.envVar, req.value);
-      outcomes.push({ target, path: filePath, result });
+    let filePath: string;
+    let result: 'created' | 'updated';
+    if (req.target === 'env_local') {
+      filePath = RTWS_ENV_LOCAL_PATH;
+      result = await upsertEnvVarIntoDotenvFile(filePath, req.envVar, req.value);
+    } else {
+      if (!isPosixSetupPlatform(process.platform)) {
+        return {
+          kind: 'bad_request',
+          errorText: `Unsupported target on this platform: ${req.target}`,
+        };
+      }
+      const home = os.homedir();
+      filePath = path.join(home, req.target === 'bashrc' ? '.bashrc' : '.zshrc');
+      result = await upsertEnvVarIntoRcFile(filePath, req.envVar, req.value);
     }
 
-    return { kind: 'ok', response: { success: true, outcomes } };
+    return {
+      kind: 'ok',
+      response: { success: true, outcome: { target: req.target, path: filePath, result } },
+    };
   } catch (error) {
     log.error('Failed to write shell env vars', error);
     return { kind: 'error', errorText: 'Failed to write shell env vars' };
@@ -321,7 +347,7 @@ async function buildAllowedEnvVarSet(): Promise<Set<string>> {
 async function buildProviderSummaries(
   providers: Record<string, ProviderConfig>,
   providerKeysInOrder: string[],
-  paths: { bashrcPath: string; zshrcPath: string },
+  paths: { envLocalPath: string; bashrcPath: string; zshrcPath: string },
 ): Promise<SetupStatusResponse['providers']> {
   const envSet: SetupStatusResponse['providers'] = [];
   const envMissing: SetupStatusResponse['providers'] = [];
@@ -330,8 +356,9 @@ async function buildProviderSummaries(
     const envVar = cfg.apiKeyEnvVar;
     const envVarIsSet = typeof process.env[envVar] === 'string' && process.env[envVar] !== '';
 
-    const bashrcHas = await rcHasEnvVar(paths.bashrcPath, envVar);
-    const zshrcHas = await rcHasEnvVar(paths.zshrcPath, envVar);
+    const envLocalHas = await fileHasEnvVar(paths.envLocalPath, envVar);
+    const bashrcHas = await fileHasEnvVar(paths.bashrcPath, envVar);
+    const zshrcHas = await fileHasEnvVar(paths.zshrcPath, envVar);
 
     const models = Object.entries(cfg.models ?? {}).map(([modelKey, modelInfo]) => {
       const info = isRecord(modelInfo) ? modelInfo : {};
@@ -362,7 +389,7 @@ async function buildProviderSummaries(
       apiKeyEnvVar: envVar,
       techSpecUrl: cfg.tech_spec_url,
       apiMgmtUrl: cfg.api_mgmt_url,
-      envVar: { isSet: envVarIsSet, bashrcHas, zshrcHas },
+      envVar: { isSet: envVarIsSet, envLocalHas, bashrcHas, zshrcHas },
       models,
       ...(prominent.length > 0 ? { prominentModelParams: prominent } : {}),
     };
@@ -607,6 +634,18 @@ async function resolveSetupRequirement(params: {
 }
 
 type ShellKind = SetupStatusResponse['shell']['kind'];
+type SetupPlatform = SetupStatusResponse['shell']['platform'];
+
+function resolveSetupPlatform(platform: NodeJS.Platform): SetupPlatform {
+  if (platform === 'win32') return 'windows';
+  if (platform === 'darwin') return 'macos';
+  if (platform === 'linux') return 'linux';
+  return 'other';
+}
+
+function isPosixSetupPlatform(platform: NodeJS.Platform): boolean {
+  return platform === 'darwin' || platform === 'linux';
+}
 
 function resolveShellKind(shellEnv: string | null): ShellKind {
   if (!shellEnv) return 'other';
@@ -626,16 +665,11 @@ function parseWriteShellEnvRequest(value: unknown): SetupWriteShellEnvRequest | 
   if (!isRecord(value)) return null;
   const envVar = value['envVar'];
   const rawVal = value['value'];
-  const targetsUnknown = value['targets'];
+  const target = value['target'];
   if (typeof envVar !== 'string' || !isSafeEnvVarName(envVar)) return null;
   if (typeof rawVal !== 'string') return null;
-  if (!Array.isArray(targetsUnknown)) return null;
-  const targets: Array<'bashrc' | 'zshrc'> = [];
-  for (const t of targetsUnknown) {
-    if (t === 'bashrc' || t === 'zshrc') targets.push(t);
-  }
-  if (targets.length === 0) return null;
-  return { envVar, value: rawVal, targets };
+  if (target !== 'env_local' && target !== 'bashrc' && target !== 'zshrc') return null;
+  return { envVar, value: rawVal, target };
 }
 
 function parseWriteTeamYamlRequest(value: unknown): SetupWriteTeamYamlRequest | null {
@@ -727,10 +761,10 @@ async function isWritable(filePath: string): Promise<boolean> {
   }
 }
 
-async function rcHasEnvVar(rcPath: string, envVar: string): Promise<boolean> {
+async function fileHasEnvVar(filePath: string, envVar: string): Promise<boolean> {
   try {
-    const raw = await fsPromises.readFile(rcPath, 'utf-8');
-    const re = new RegExp(`(^|\\n)\\s*export\\s+${escapeRegExp(envVar)}=`, 'm');
+    const raw = await fsPromises.readFile(filePath, 'utf-8');
+    const re = new RegExp(`(^|\\n)\\s*(?:export\\s+)?${escapeRegExp(envVar)}\\s*=`, 'm');
     return re.test(raw);
   } catch {
     return false;
@@ -744,6 +778,33 @@ function escapeRegExp(value: string): string {
 function shellQuoteSingle(value: string): string {
   // Safe POSIX shell single-quoted string: close quote, escape single quote, reopen.
   return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function dotenvQuoteDouble(value: string): string {
+  const escaped = value
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
+async function upsertEnvVarIntoDotenvFile(
+  filePath: string,
+  envVar: string,
+  value: string,
+): Promise<'created' | 'updated'> {
+  const line = `${envVar}=${dotenvQuoteDouble(value)}`;
+  const exists = await fileExists(filePath);
+  const original = exists ? await fsPromises.readFile(filePath, 'utf-8') : '';
+  const normalized = original.replace(/\r\n/g, '\n');
+  const lines = normalized === '' ? [] : normalized.split('\n');
+  const nextLines = upsertDotenvLine(lines, envVar, line);
+  let next = nextLines.join('\n');
+  if (!next.endsWith('\n')) next += '\n';
+  await fsPromises.writeFile(filePath, next, 'utf-8');
+  return exists ? 'updated' : 'created';
 }
 
 async function upsertEnvVarIntoRcFile(
@@ -779,6 +840,17 @@ async function upsertEnvVarIntoRcFile(
 
   await fsPromises.writeFile(filePath, next, 'utf-8');
   return exists ? 'updated' : 'created';
+}
+
+function upsertDotenvLine(lines: string[], envVar: string, envLine: string): string[] {
+  const re = new RegExp(`^\\s*(?:export\\s+)?${escapeRegExp(envVar)}\\s*=`);
+  const idx = lines.findIndex((l) => re.test(l));
+  if (idx >= 0) {
+    const copy = [...lines];
+    copy[idx] = envLine;
+    return copy;
+  }
+  return [...lines, envLine];
 }
 
 function upsertExportLine(lines: string[], envVar: string, exportLine: string): string[] {

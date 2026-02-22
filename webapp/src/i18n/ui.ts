@@ -279,6 +279,7 @@ export type UiStrings = {
   setupSummaryReady: string;
   setupSummaryRequired: string;
   setupSummaryShell: string;
+  setupSummaryEnvLocal: string;
   setupSummaryDefaultRc: string;
   setupProviderApiKeys: string;
   setupProviderDocs: string;
@@ -568,7 +569,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupWriteTeamYamlCreate: '创建 team.yaml',
       setupWriteTeamYamlOverwrite: '覆盖 team.yaml',
       setupProvidersTitle: '内置LLM提供商',
-      setupProvidersHelp: '先配置提供商的环境变量（必要时写入 shell rc），再使用该提供商。',
+      setupProvidersHelp:
+        '先写入 .env.local（主保存方式），在 Linux/macOS 上可选写入 shell rc，再使用该提供商。',
       setupProvidersGroupConfigured: '已配置',
       setupProvidersGroupUnconfigured: '未配置',
       setupViewWorkspaceLlmYaml: '查看 .minds/llm.yaml',
@@ -581,6 +583,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupSummaryReady: '已就绪',
       setupSummaryRequired: '需要设置',
       setupSummaryShell: 'Shell',
+      setupSummaryEnvLocal: '.env.local',
       setupSummaryDefaultRc: '默认 rc',
       setupProviderApiKeys: '管理鉴权信息（API Key）',
       setupProviderDocs: '访问模型文档',
@@ -893,7 +896,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupWriteTeamYamlOverwrite: 'Overwrite team.yaml',
     setupProvidersTitle: 'Built-in LLM providers',
     setupProvidersHelp:
-      'Set the provider env var (and persist to your shell rc) before using the provider.',
+      'Write provider env vars to .env.local first (primary). On Linux/macOS, shell rc writes are optional.',
     setupProvidersGroupConfigured: 'Configured',
     setupProvidersGroupUnconfigured: 'Unconfigured',
     setupViewWorkspaceLlmYaml: 'View .minds/llm.yaml',
@@ -907,6 +910,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupSummaryReady: 'Ready',
     setupSummaryRequired: 'Setup Required',
     setupSummaryShell: 'Shell',
+    setupSummaryEnvLocal: '.env.local',
     setupSummaryDefaultRc: 'Default rc',
     setupProviderApiKeys: 'Manage auth (API Key)',
     setupProviderDocs: 'Open model docs',

@@ -26,7 +26,7 @@
 **参数：**
 
 - `command`（必需）：要执行的命令
-- `shell`（可选）：执行时使用的 shell（默认：`bash`）
+- `shell`（可选）：执行时使用的 shell（默认：Linux/macOS 为 `bash`，Windows 为 `cmd.exe`）
 - `bufferSize`（可选）：滚动缓冲区保留的最大行数
 - `timeoutSeconds`（可选）：超时秒数；超时后转为守护进程追踪
 

@@ -12,6 +12,7 @@ export type SetupRequirement =
   | { kind: 'missing_provider_env'; provider: string; envVar: string };
 
 export type SetupShellInfo = {
+  platform: 'windows' | 'macos' | 'linux' | 'other';
   env: string | null;
   kind: 'bash' | 'zsh' | 'other';
   defaultRc: 'bashrc' | 'zshrc' | 'unknown';
@@ -66,7 +67,7 @@ export type SetupProviderSummary = {
   apiKeyEnvVar: string;
   techSpecUrl?: string;
   apiMgmtUrl?: string;
-  envVar: { isSet: boolean; bashrcHas: boolean; zshrcHas: boolean };
+  envVar: { isSet: boolean; envLocalHas: boolean; bashrcHas: boolean; zshrcHas: boolean };
   models: SetupProviderModelSummary[];
   prominentModelParams?: SetupProminentEnumModelParam[];
 };
@@ -76,6 +77,7 @@ export type SetupStatusResponse =
       success: true;
       requirement: SetupRequirement;
       shell: SetupShellInfo;
+      envLocal: SetupRcFileInfo;
       rc: { bashrc: SetupRcFileInfo; zshrc: SetupRcFileInfo };
       teamYaml: SetupTeamYamlInfo;
       rtwsLlmYaml: SetupRtwsLlmYamlInfo;
@@ -85,6 +87,7 @@ export type SetupStatusResponse =
       success: false;
       requirement: SetupRequirement;
       shell: SetupShellInfo;
+      envLocal: SetupRcFileInfo;
       rc: { bashrc: SetupRcFileInfo; zshrc: SetupRcFileInfo };
       teamYaml: SetupTeamYamlInfo;
       rtwsLlmYaml: SetupRtwsLlmYamlInfo;
@@ -92,20 +95,22 @@ export type SetupStatusResponse =
       error: string;
     };
 
+export type SetupWriteShellEnvTarget = 'env_local' | 'bashrc' | 'zshrc';
+
 export type SetupWriteShellEnvRequest = {
   envVar: string;
   value: string;
-  targets: Array<'bashrc' | 'zshrc'>;
+  target: SetupWriteShellEnvTarget;
 };
 
 export type SetupWriteShellEnvOutcome = {
-  target: 'bashrc' | 'zshrc';
+  target: SetupWriteShellEnvTarget;
   path: string;
   result: 'created' | 'updated';
 };
 
 export type SetupWriteShellEnvResponse =
-  | { success: true; outcomes: SetupWriteShellEnvOutcome[] }
+  | { success: true; outcome: SetupWriteShellEnvOutcome }
   | { success: false; error: string };
 
 export type SetupFileKind = 'defaults_yaml' | 'rtws_llm_yaml';

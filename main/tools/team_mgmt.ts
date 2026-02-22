@@ -2844,6 +2844,10 @@ function fmtKeyList(keys: readonly string[]): string {
   return keys.map((k) => `\`${k}\``).join(' / ');
 }
 
+function isWindowsRuntimeHost(): boolean {
+  return process.platform === 'win32';
+}
+
 async function loadBuiltinLlmDefaultsText(): Promise<string> {
   const defaultsPath = path.join(__dirname, '..', 'llm', 'defaults.yaml');
   const raw = await fs.readFile(defaultsPath, 'utf-8');
@@ -3013,6 +3017,7 @@ function renderMemberProperties(language: LanguageCode): string {
 }
 
 function renderTeamManual(language: LanguageCode): string {
+  const windowsHost = isWindowsRuntimeHost();
   const common = [
     'member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)',
     'default_responder: not a hard requirement, but strongly recommended to set explicitly to avoid implicit fallback responder selection and cross-run drift',
@@ -3044,9 +3049,13 @@ function renderTeamManual(language: LanguageCode): string {
 
         '风格提醒：保持 `team.yaml` 的可读性。推荐用空行分隔段落/成员块，避免连续多行空行；每次修改后运行 `team_mgmt_validate_team_cfg({})` 以便在 Problems 面板看到错误与风格提醒。',
 
-        '默认策略（可被用户覆盖）：\n' +
-          '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
-          '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标是 `provider: codex` 时，在基线上追加 `codex_style_tools`（而不是替代），除非用户明确要求其他组合。',
+        windowsHost
+          ? '默认策略（可被用户覆盖）：\n' +
+            '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
+            '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；在 Windows 环境下不要配置 `codex_style_tools`。如需读/探测 rtws，再按需授权 `os` 给少数专员成员。'
+          : '默认策略（可被用户覆盖）：\n' +
+            '1) 新增成员时，`diligence-push-max` 默认设为 `3`（除非用户明确要求其他值）。\n' +
+            '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标是 `provider: codex` 时，在基线上追加 `codex_style_tools`（而不是替代），除非用户明确要求其他组合。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
         '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
@@ -3084,7 +3093,7 @@ function renderTeamManual(language: LanguageCode): string {
       '    toolsets:\n' +
       '      - ws_read\n' +
       '      - ws_mod\n' +
-      '      - codex_style_tools\n' +
+      (windowsHost ? '' : '      - codex_style_tools\n') +
       "    no_read_dirs: ['.minds/**']\n" +
       "    no_write_dirs: ['.minds/**']\n" +
       '  qa_guard:\n' +
@@ -3112,7 +3121,9 @@ function renderTeamManual(language: LanguageCode): string {
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
         'Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.',
-        'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target is `provider: codex`, add `codex_style_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
+        windowsHost
+          ? 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; on Windows, do not configure `codex_style_tools`. If runtime probing is needed, grant `os` only to a small specialist set.'
+          : 'Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `3` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target is `provider: codex`, add `codex_style_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.',
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`; to revise the same prepared diff, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
@@ -3145,7 +3156,7 @@ function renderTeamManual(language: LanguageCode): string {
     '    toolsets:\n' +
     '      - ws_read\n' +
     '      - ws_mod\n' +
-    '      - codex_style_tools\n' +
+    (windowsHost ? '' : '      - codex_style_tools\n') +
     "    no_read_dirs: ['.minds/**']\n" +
     "    no_write_dirs: ['.minds/**']\n" +
     '```\n'
@@ -3845,6 +3856,7 @@ function renderToolsetCapabilitySummary(
 }
 
 async function renderToolsets(language: LanguageCode): Promise<string> {
+  const windowsHost = isWindowsRuntimeHost();
   const toolsetsById = listToolsets();
   const ids = Object.keys(toolsetsById).filter((id) => id !== 'control');
   const header =
@@ -3856,7 +3868,9 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`control`：对话控制类工具属于“内建必备能力”，运行时会自动包含给所有成员；因此不需要（也不建议）在 `members.<id>.toolsets` 里显式列出，本页也默认不展示它。',
           '`diag`：诊断类工具集不应默认授予任何成员；仅当用户明确要求“诊断/排查/验证解析/流式分段”等能力时才添加。',
           '多数情况下推荐用 `members.<id>.toolsets` 做粗粒度授权；`members.<id>.tools` 更适合做少量补充/收敛。',
-          '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，在基线上追加 `codex_style_tools`（`apply_patch` 等），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
+          windowsHost
+            ? '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；在 Windows 环境下不要配置 `codex_style_tools`。如果还需要“读/探测 rtws”，通常再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。'
+            : '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当 `provider: codex`（偏 Codex CLI 风格提示/工具名）时，在基线上追加 `codex_style_tools`（`apply_patch` 等），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
           'MCP toolset 不是静态写死：它由 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射而来（toolset 名称 = `serverId`）。下方会展示当前映射快照。',
           '`os` 是 shell 工具集，当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。一旦成员拥有这些工具（包括通过 `os` 获得），其 id 必须出现在顶层 `shell_specialists`。',
           '`mcp_admin` 用于 MCP 运维：`mcp_restart` / `mcp_release` 管理 server 会话租用，并配有 `env_get` / `env_set` / `env_unset` 便于联调环境变量。',
@@ -3867,7 +3881,9 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
           '`control`: dialog-control tools are intrinsic and automatically included for all members at runtime; you do not need (and should not) list it under `members.<id>.toolsets`. It is omitted from the list below.',
           '`diag`: diagnostics tools should not be granted by default; only add it when the user explicitly asks for diagnostics/troubleshooting/streaming-parse verification.',
           'Typically use `members.<id>.toolsets` for coarse-grained access; use `members.<id>.tools` for a small number of additions/limits.',
-          'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; for `provider: codex` (Codex CLI-style prompts/tool names), add `codex_style_tools` (`apply_patch`, etc.) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
+          windowsHost
+            ? 'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; on Windows, do not configure `codex_style_tools`. If you also need to read/probe the rtws, grant `os` (`shell_cmd`) only to a small specialist operator set.'
+            : 'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; for `provider: codex` (Codex CLI-style prompts/tool names), add `codex_style_tools` (`apply_patch`, etc.) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
           'MCP toolsets are not hardcoded: they are dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). The current mapping snapshot is shown below.',
           '`os` is the shell toolset, currently including `shell_cmd`, `stop_daemon`, and `get_daemon_output`. If a member has any of these tools (including via `os`), that member id must appear in top-level `shell_specialists`.',
           '`mcp_admin` is for MCP operations: use `mcp_restart` / `mcp_release` to manage server leasing lifecycle, with `env_get` / `env_set` / `env_unset` available for environment debugging.',
@@ -3880,7 +3896,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     'toolsets:',
     '  - ws_read',
     '  - ws_mod',
-    '  - codex_style_tools',
+    ...(windowsHost ? [] : ['  - codex_style_tools']),
     '',
     '# Team manager (explicit, minimal)',
     'toolsets:',
@@ -3894,12 +3910,81 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     '  - mcp_admin',
   ]);
 
+  const ripgrepGuide =
+    language === 'zh'
+      ? fmtSubHeader('ripgrep 依赖（检测与安装）') +
+        fmtList([
+          '`ws_read` / `ws_mod` / `team_mgmt_ripgrep_*` 依赖系统可执行 `rg`（ripgrep）。',
+          '检测：在终端运行 `rg --version`（返回版本即表示可用）。',
+          '安装后请重开终端，再运行 `rg --version` 复核 PATH。',
+        ]) +
+        fmtCodeBlock('powershell', [
+          '# Windows (任选其一)',
+          'winget install BurntSushi.ripgrep.MSVC',
+          'choco install ripgrep',
+          'scoop install ripgrep',
+          '',
+          '# 检测',
+          'rg --version',
+        ]) +
+        fmtCodeBlock('bash', [
+          '# macOS',
+          'brew install ripgrep',
+          '',
+          '# Ubuntu / Debian',
+          'sudo apt-get update && sudo apt-get install -y ripgrep',
+          '',
+          '# Fedora',
+          'sudo dnf install -y ripgrep',
+          '',
+          '# 检测',
+          'rg --version',
+        ])
+      : fmtSubHeader('ripgrep Dependency (Detection & Install)') +
+        fmtList([
+          '`ws_read` / `ws_mod` / `team_mgmt_ripgrep_*` require system `rg` (ripgrep).',
+          'Detect: run `rg --version` in terminal (version output means available).',
+          'After install, restart the terminal and re-run `rg --version` to verify PATH.',
+        ]) +
+        fmtCodeBlock('powershell', [
+          '# Windows (pick one)',
+          'winget install BurntSushi.ripgrep.MSVC',
+          'choco install ripgrep',
+          'scoop install ripgrep',
+          '',
+          '# Detect',
+          'rg --version',
+        ]) +
+        fmtCodeBlock('bash', [
+          '# macOS',
+          'brew install ripgrep',
+          '',
+          '# Ubuntu / Debian',
+          'sudo apt-get update && sudo apt-get install -y ripgrep',
+          '',
+          '# Fedora',
+          'sudo dnf install -y ripgrep',
+          '',
+          '# Detect',
+          'rg --version',
+        ]);
+
   const list = fmtList(ids.map((id) => `\`${id}\``));
   const capabilitySummary = renderToolsetCapabilitySummary(language, ids, toolsetsById);
   const mcpSnapshot = await readMcpToolsetMappingSnapshot();
   const mcpMapping = renderMcpToolsetMappingSection(language, mcpSnapshot);
   const mcpSetup = renderMcpToolsetSetupGuideSection(language, mcpSnapshot);
-  return header + intro + patterns + '\n' + list + capabilitySummary + mcpMapping + mcpSetup;
+  return (
+    header +
+    intro +
+    patterns +
+    ripgrepGuide +
+    '\n' +
+    list +
+    capabilitySummary +
+    mcpMapping +
+    mcpSetup
+  );
 }
 
 async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
