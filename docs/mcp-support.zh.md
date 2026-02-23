@@ -347,6 +347,15 @@ servers:
 
     # 工具名称转换（可选）
     transform: []
+
+    # 可选：给智能体看的每个 toolset 手册
+    #（没有手册并不代表 toolset 不可用）
+    manual:
+      content: "该 MCP toolset 的用途说明"
+      sections:
+        - title: "何时使用"
+          content: "当 ... 时使用"
+        Guardrails: "避免 ..."
 ```
 
 ### 示例：Playwright MCP 服务器

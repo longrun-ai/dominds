@@ -3167,6 +3167,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
   const mcpSnapshot = await readMcpToolsetMappingSnapshot();
   const mcpMapping = renderMcpToolsetMappingSection(language, mcpSnapshot);
   const mcpSetup = renderMcpToolsetSetupGuideSection(language, mcpSnapshot);
+  const mcpManualDetails = renderMcpToolsetManualDetailsSection(language, mcpSnapshot);
   if (language === 'zh') {
     return (
       fmtHeader('.minds/mcp.yaml') +
@@ -3178,6 +3179,9 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
         '常见坑：stdio transport 需要可执行命令路径正确，且受成员权限（目录 + 扩展名：`*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
         '高频坑（stdio 路径）：若未设置 `cwd`，相对路径按 Dominds 进程工作目录（通常 rtws 根目录）解析；建议显式配置 `cwd` 或直接使用绝对路径。`cwd` 必须存在且是目录。',
+        '可选手册字段：你可以在 `servers.<serverId>.manual` 放手册内容。支持 `content`（总说明）+ `sections`（章节列表），用于告诉智能体该 toolset 该怎么用。',
+        '重要：`manual` 缺失并不代表 MCP toolset 不可用；这只是团队管理工作不足。智能体应继续依据每个工具 description/参数自行判断并使用。',
+        '团队管理者建议：配置并验证 MCP 后，应先精读该 server 暴露的每个工具 description/参数，再与人类用户讨论本 rtws 中这些工具的使用意图，最后把“典型用法 + 主要意图方向”沉淀到 `servers.<serverId>.manual`（`content + sections`）。',
         '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
@@ -3193,6 +3197,18 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '    env: {}',
         '    tools: { whitelist: [], blacklist: [] }',
         '    transform: []',
+        '    manual:',
+        '      content: |',
+        '        这个 MCP toolset 负责 xx，优先用于 xx 场景。',
+        '      sections:',
+        "        - title: '何时使用'",
+        '          content: |',
+        '            1) 当你需要 ...',
+        '            2) 执行前先确认 ...',
+        "        - title: '安全边界'",
+        '          content: |',
+        '            - 不要用于 ...',
+        '            - 若失败先看 ...',
       ]) +
       fmtCodeBlock('yaml', [
         '# stdio 路径示例（最小）',
@@ -3215,9 +3231,15 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '    url: http://127.0.0.1:3000/mcp',
         '    tools: { whitelist: [], blacklist: [] }',
         '    transform: []',
+        '    manual:',
+        '      content: "用于远端 MCP 接口调用"',
+        '      sections:',
+        "        UseCases: '适用于 ...'",
+        "        Guardrails: '避免 ...'",
       ]) +
       mcpMapping +
-      mcpSetup
+      mcpSetup +
+      mcpManualDetails
     );
   }
 
@@ -3231,6 +3253,9 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
       'Common pitfalls: stdio transport needs a correct executable/command path, and is subject to member permissions (directory + extension: `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`); HTTP transport requires the server URL to be reachable.',
       'High-frequency pitfall (stdio paths): if `cwd` is omitted, relative paths are resolved from Dominds process cwd (usually rtws root). Prefer setting `cwd` explicitly or use absolute paths. `cwd` must exist and be a directory.',
+      'Optional manual field: place guide text at `servers.<serverId>.manual`. Supported shapes: `content` (overview) + `sections` (chapter list) to explain practical usage for this toolset.',
+      'Important: missing `manual` does not mean the MCP toolset is unavailable. It only indicates team-management coverage is incomplete; continue by reading each tool description/argument schema.',
+      'Team-manager recommendation: after MCP config is validated, carefully read descriptions/arguments of each exposed tool, discuss intended usage for this rtws with the human user, then write `servers.<serverId>.manual` (`content + sections`) capturing typical usage patterns and primary intent directions.',
       'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
@@ -3246,6 +3271,18 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       '    env: {}',
       '    tools: { whitelist: [], blacklist: [] }',
       '    transform: []',
+      '    manual:',
+      '      content: |',
+      '        This MCP toolset is for xx and should be preferred in xx cases.',
+      '      sections:',
+      "        - title: 'When To Use'",
+      '          content: |',
+      '            1) Use when ...',
+      '            2) Confirm ... before execution.',
+      "        - title: 'Guardrails'",
+      '          content: |',
+      '            - Avoid using for ...',
+      '            - On failures, first inspect ...',
     ]) +
     fmtCodeBlock('yaml', [
       '# stdio path example (minimal)',
@@ -3268,9 +3305,15 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       '    url: http://127.0.0.1:3000/mcp',
       '    tools: { whitelist: [], blacklist: [] }',
       '    transform: []',
+      '    manual:',
+      '      content: "For remote MCP endpoint calls"',
+      '      sections:',
+      "        UseCases: 'Use for ...'",
+      "        Guardrails: 'Avoid ...'",
     ]) +
     mcpMapping +
-    mcpSetup
+    mcpSetup +
+    mcpManualDetails
   );
 }
 
@@ -3561,7 +3604,23 @@ type McpToolsetMappingEntry = {
   loadedToolCount?: number;
   loadedToolNamesPreview?: string[];
   errorText?: string;
+  manualState: McpToolsetManualState;
 };
+
+type McpToolsetManualSection = {
+  title: string;
+  content: string;
+};
+
+type McpToolsetManual = {
+  content?: string;
+  sections: ReadonlyArray<McpToolsetManualSection>;
+};
+
+type McpToolsetManualState =
+  | { kind: 'missing' }
+  | { kind: 'invalid'; errorText: string }
+  | { kind: 'present'; manual: McpToolsetManual };
 
 type McpToolsetMappingSnapshot =
   | { kind: 'missing' }
@@ -3574,6 +3633,225 @@ function firstNonEmptyLine(raw: string): string {
     if (trimmed !== '') return trimmed;
   }
   return raw.trim();
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type McpToolsetManualByServer = {
+  manualByServerId: ReadonlyMap<string, McpToolsetManual>;
+  invalidByServerId: ReadonlyMap<string, string>;
+};
+
+function parseMcpManualByServer(rawText: string): McpToolsetManualByServer {
+  const manualByServerId = new Map<string, McpToolsetManual>();
+  const invalidByServerId = new Map<string, string>();
+
+  let parsedRoot: unknown;
+  try {
+    parsedRoot = YAML.parse(rawText);
+  } catch {
+    return { manualByServerId, invalidByServerId };
+  }
+
+  if (!isObjectRecord(parsedRoot)) {
+    return { manualByServerId, invalidByServerId };
+  }
+
+  const serversVal = parsedRoot['servers'];
+  if (!isObjectRecord(serversVal)) {
+    return { manualByServerId, invalidByServerId };
+  }
+
+  for (const [serverId, serverVal] of Object.entries(serversVal)) {
+    if (!isObjectRecord(serverVal)) continue;
+    const manualVal = serverVal['manual'];
+    if (manualVal === undefined || manualVal === null) continue;
+    const parsed = parseMcpManualField(serverId, manualVal);
+    if (parsed.kind === 'present') {
+      manualByServerId.set(serverId, parsed.manual);
+      continue;
+    }
+    if (parsed.kind === 'invalid') {
+      invalidByServerId.set(serverId, parsed.errorText);
+    }
+  }
+
+  return { manualByServerId, invalidByServerId };
+}
+
+function parseMcpManualField(
+  serverId: string,
+  value: unknown,
+): { kind: 'present'; manual: McpToolsetManual } | { kind: 'invalid'; errorText: string } {
+  const fieldPath = `servers.${serverId}.manual`;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (text === '') {
+      return { kind: 'invalid', errorText: `${fieldPath} must not be empty` };
+    }
+    return { kind: 'present', manual: { content: text, sections: [] } };
+  }
+
+  if (!isObjectRecord(value)) {
+    return {
+      kind: 'invalid',
+      errorText: `${fieldPath} must be either a string, or an object with optional content + sections`,
+    };
+  }
+
+  const contentVal = value['content'];
+  let content: string | undefined;
+  if (contentVal !== undefined) {
+    if (!isNonEmptyString(contentVal)) {
+      return {
+        kind: 'invalid',
+        errorText: `${fieldPath}.content must be a non-empty string when provided`,
+      };
+    }
+    content = contentVal.trim();
+  }
+
+  const sectionsVal = value['sections'];
+  const sections: McpToolsetManualSection[] = [];
+  if (sectionsVal !== undefined) {
+    if (Array.isArray(sectionsVal)) {
+      for (let i = 0; i < sectionsVal.length; i++) {
+        const sectionVal = sectionsVal[i];
+        if (!isObjectRecord(sectionVal)) {
+          return {
+            kind: 'invalid',
+            errorText: `${fieldPath}.sections[${i}] must be an object with title/content non-empty strings`,
+          };
+        }
+        const title = sectionVal['title'];
+        const sectionContent = sectionVal['content'];
+        if (!isNonEmptyString(title) || !isNonEmptyString(sectionContent)) {
+          return {
+            kind: 'invalid',
+            errorText: `${fieldPath}.sections[${i}] must provide non-empty title/content strings`,
+          };
+        }
+        sections.push({ title: title.trim(), content: sectionContent.trim() });
+      }
+    } else if (isObjectRecord(sectionsVal)) {
+      for (const [sectionTitle, sectionContent] of Object.entries(sectionsVal)) {
+        if (!isNonEmptyString(sectionTitle) || !isNonEmptyString(sectionContent)) {
+          return {
+            kind: 'invalid',
+            errorText: `${fieldPath}.sections object entries must be non-empty string -> string`,
+          };
+        }
+        sections.push({ title: sectionTitle.trim(), content: sectionContent.trim() });
+      }
+    } else {
+      return {
+        kind: 'invalid',
+        errorText: `${fieldPath}.sections must be either [{ title, content }] or { "<title>": "<content>" }`,
+      };
+    }
+  }
+
+  if (!content && sections.length === 0) {
+    return {
+      kind: 'invalid',
+      errorText: `${fieldPath} must include at least one of content or sections`,
+    };
+  }
+
+  return { kind: 'present', manual: { content, sections } };
+}
+
+function describeMcpManualState(language: LanguageCode, state: McpToolsetManualState): string {
+  if (state.kind === 'present') {
+    const contentText =
+      state.manual.content && state.manual.content.trim() !== ''
+        ? language === 'zh'
+          ? '有'
+          : 'yes'
+        : language === 'zh'
+          ? '无'
+          : 'no';
+    return language === 'zh'
+      ? `手册=已配置（content=${contentText}，sections=${state.manual.sections.length}）`
+      : `manual=configured (content=${contentText}, sections=${state.manual.sections.length})`;
+  }
+  if (state.kind === 'invalid') {
+    return language === 'zh'
+      ? `手册=声明无效（${firstNonEmptyLine(state.errorText)}；不影响 toolset 可用性，但这是团队管理配置问题）`
+      : `manual=invalid declaration (${firstNonEmptyLine(state.errorText)}; toolset availability is unaffected, but team management should fix this)`;
+  }
+  return language === 'zh'
+    ? '手册=缺失（不影响 toolset 可用性；这是团队管理配置不足，请根据每个工具 description/参数自行判断使用）'
+    : 'manual=missing (toolset availability is unaffected; this is a team-management gap, so rely on each tool description/arguments and proceed)';
+}
+
+function renderMcpToolsetManualDetailsSection(
+  language: LanguageCode,
+  snapshot: McpToolsetMappingSnapshot,
+): string {
+  const header =
+    language === 'zh'
+      ? fmtSubHeader('MCP toolset 手册（来自 `.minds/mcp.yaml` 的 `servers.<serverId>.manual`）')
+      : fmtSubHeader('MCP Toolset Manuals (from `.minds/mcp.yaml` `servers.<serverId>.manual`)');
+
+  if (snapshot.kind !== 'loaded') return '';
+  const entries = snapshot.entries.filter((entry) => entry.manualState.kind !== 'missing');
+  if (entries.length === 0) {
+    return (
+      header +
+      fmtList([
+        language === 'zh'
+          ? '当前所有 MCP toolset 都没有配置 `manual`。这不代表不可用；只代表团队管理者没有提供使用章节。请继续依据工具自身 description/参数定义来使用，并提醒团队管理者补齐手册。'
+          : 'No MCP toolset currently provides `manual`. This does not mean unavailable; it only means the team manager has not provided usage chapters yet. Continue by reading each tool description/argument schema, and ask the team manager to fill manuals.',
+      ])
+    );
+  }
+
+  let out = header;
+  for (const entry of entries) {
+    if (entry.manualState.kind === 'invalid') {
+      out += `\n### toolset \`${entry.serverId}\`\n`;
+      out += fmtList([
+        language === 'zh'
+          ? `\`servers.${entry.serverId}.manual\` 声明无效：${firstNonEmptyLine(entry.manualState.errorText)}`
+          : `\`servers.${entry.serverId}.manual\` is invalid: ${firstNonEmptyLine(entry.manualState.errorText)}`,
+        language === 'zh'
+          ? '这不影响 toolset 可用性；请根据工具说明继续使用，并通知团队管理者修复手册字段。'
+          : 'Toolset availability is unaffected; continue by tool-level descriptions and ask the team manager to fix the manual field.',
+      ]);
+      continue;
+    }
+    if (entry.manualState.kind !== 'present') continue;
+    const manual = entry.manualState.manual;
+    out += `\n### toolset \`${entry.serverId}\`\n`;
+    if (manual.content && manual.content.trim() !== '') {
+      out +=
+        fmtList([language === 'zh' ? '总说明（content）：' : 'Overview (`content`):']) +
+        fmtCodeBlock('markdown', [manual.content]);
+    } else {
+      out += fmtList([
+        language === 'zh'
+          ? '总说明（content）：（未提供）'
+          : 'Overview (`content`): (not provided)',
+      ]);
+    }
+    if (manual.sections.length > 0) {
+      for (const section of manual.sections) {
+        out +=
+          fmtList([language === 'zh' ? `章节：${section.title}` : `Section: ${section.title}`]) +
+          fmtCodeBlock('markdown', [section.content]);
+      }
+    } else {
+      out += fmtList([
+        language === 'zh'
+          ? '章节（sections）：（未提供）'
+          : 'Sections (`sections`): (not provided)',
+      ]);
+    }
+  }
+  return out;
 }
 
 async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapshot> {
@@ -3595,6 +3873,7 @@ async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapsho
   if (!parsed.ok) {
     return { kind: 'invalid_yaml', errorText: parsed.errorText };
   }
+  const manualInfo = parseMcpManualByServer(rawText);
 
   const registeredToolsets = listToolsets();
   const invalidByServerId = new Map<string, string>();
@@ -3605,12 +3884,20 @@ async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapsho
   const entries: McpToolsetMappingEntry[] = [];
   for (const serverId of parsed.serverIdsInYamlOrder) {
     const invalidError = invalidByServerId.get(serverId);
+    const manualError = manualInfo.invalidByServerId.get(serverId);
+    const manual = manualInfo.manualByServerId.get(serverId);
+    const manualState: McpToolsetManualState = manualError
+      ? { kind: 'invalid', errorText: manualError }
+      : manual
+        ? { kind: 'present', manual }
+        : { kind: 'missing' };
     if (invalidError) {
       entries.push({
         serverId,
         transport: 'invalid',
         status: 'declared_invalid',
         errorText: invalidError,
+        manualState,
       });
       continue;
     }
@@ -3624,6 +3911,7 @@ async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapsho
         status: 'registered',
         loadedToolCount: loadedTools.length,
         loadedToolNamesPreview: loadedTools.slice(0, 6).map((t) => t.name),
+        manualState,
       });
       continue;
     }
@@ -3632,6 +3920,7 @@ async function readMcpToolsetMappingSnapshot(): Promise<McpToolsetMappingSnapsho
       serverId,
       transport,
       status: 'declared_unloaded',
+      manualState,
     });
   }
 
@@ -3695,6 +3984,7 @@ function renderMcpToolsetMappingSection(
   for (const entry of snapshot.entries) {
     const transportText =
       entry.transport === 'invalid' ? 'invalid' : entry.transport === 'stdio' ? 'stdio' : 'http';
+    const manualText = describeMcpManualState(language, entry.manualState);
     if (entry.status === 'registered') {
       const preview = entry.loadedToolNamesPreview ?? [];
       const previewText =
@@ -3706,23 +3996,23 @@ function renderMcpToolsetMappingSection(
           : '(none)';
       lines.push(
         language === 'zh'
-          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已加载，tools=${entry.loadedToolCount ?? 0}：${previewText}）`
-          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=loaded, tools=${entry.loadedToolCount ?? 0}: ${previewText})`,
+          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已加载，tools=${entry.loadedToolCount ?? 0}：${previewText}；${manualText}）`
+          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=loaded, tools=${entry.loadedToolCount ?? 0}: ${previewText}; ${manualText})`,
       );
       continue;
     }
     if (entry.status === 'declared_unloaded') {
       lines.push(
         language === 'zh'
-          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已声明但未加载）`
-          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=declared but not loaded)`,
+          ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（transport=${transportText}，状态=已声明但未加载；${manualText}）`
+          : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (transport=${transportText}, status=declared but not loaded; ${manualText})`,
       );
       continue;
     }
     lines.push(
       language === 'zh'
-        ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（状态=声明无效：${firstNonEmptyLine(entry.errorText ?? '')}）`
-        : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (status=invalid declaration: ${firstNonEmptyLine(entry.errorText ?? '')})`,
+        ? `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\`（状态=声明无效：${firstNonEmptyLine(entry.errorText ?? '')}；${manualText}）`
+        : `\`servers.${entry.serverId}\` -> toolset \`${entry.serverId}\` (status=invalid declaration: ${firstNonEmptyLine(entry.errorText ?? '')}; ${manualText})`,
     );
   }
 
@@ -3730,10 +4020,12 @@ function renderMcpToolsetMappingSection(
     language === 'zh'
       ? [
           '说明：`已声明但未加载` 通常表示当前会话尚未完成 MCP 重载，或 server 启动失败。',
+          '说明：MCP toolset “没有 manual” 不等于“不可用”。无 manual 仅表示团队管理者没有提供章节化手册；你应继续阅读每个工具的 description/参数并谨慎使用。',
           '建议：运行 `team_mgmt_validate_mcp_cfg({})`，必要时执行 `mcp_restart`。',
         ]
       : [
           '`declared but not loaded` usually means MCP reload has not completed in the current session, or server startup failed.',
+          'Important: “missing manual” for an MCP toolset does NOT mean unavailable. It only means the team manager did not provide chapterized manual text; continue by reading each tool description/arguments and use with care.',
           'Recommendation: run `team_mgmt_validate_mcp_cfg({})`, then `mcp_restart` if needed.',
         ];
 
@@ -3974,6 +4266,7 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
   const mcpSnapshot = await readMcpToolsetMappingSnapshot();
   const mcpMapping = renderMcpToolsetMappingSection(language, mcpSnapshot);
   const mcpSetup = renderMcpToolsetSetupGuideSection(language, mcpSnapshot);
+  const mcpManualDetails = renderMcpToolsetManualDetailsSection(language, mcpSnapshot);
   return (
     header +
     intro +
@@ -3983,7 +4276,8 @@ async function renderToolsets(language: LanguageCode): Promise<string> {
     list +
     capabilitySummary +
     mcpMapping +
-    mcpSetup
+    mcpSetup +
+    mcpManualDetails
   );
 }
 

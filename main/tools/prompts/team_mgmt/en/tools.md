@@ -74,6 +74,9 @@
 - `codex_style_tools`: Codex-style tools (`apply_patch` / `readonly_shell` / `update_plan`); **do not configure this toolset on Windows**
 - `mcp_admin`: MCP operations (`mcp_restart` / `mcp_release`), plus env tools (`env_get` / `env_set` / `env_unset`)
 - MCP-declared toolsets: dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). Exact capabilities depend on each MCP server’s exposed tools; use `team_mgmt_manual({ topics: ["toolsets"] })` to view the current mapping snapshot
+  - Optional per-toolset manual can be placed at `servers.<serverId>.manual` using `content` (overview) and `sections` (chapters)
+  - Missing manual does **not** mean the toolset is unavailable; it means team-management documentation is incomplete. Continue by reading each tool’s description/arguments
+  - Team managers should, after MCP validation passes, carefully read each exposed tool description, align with the human user on intended rtws usage, then write `servers.<serverId>.manual` with typical usage patterns and primary intent directions
 
 ## ripgrep Dependency (Detection & Install)
 

@@ -56,7 +56,8 @@
     "snippets-catalog-i18n": "tsx snippets/catalog-i18n.ts",
     "access-control-dialogs-root-deny": "tsx access-control/dialogs-root-deny.ts",
     "access-control-file-ext-names": "tsx access-control/file-ext-names.ts",
-    "team_mgmt-manual-no-toolsets-glob": "tsx team_mgmt-manual/no-toolsets-glob.ts"
+    "team_mgmt-manual-no-toolsets-glob": "tsx team_mgmt-manual/no-toolsets-glob.ts",
+    "team_mgmt-manual-mcp-manual-hints": "tsx team_mgmt-manual/mcp-manual-hints.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

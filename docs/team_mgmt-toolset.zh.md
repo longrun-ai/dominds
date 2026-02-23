@@ -252,6 +252,11 @@ members:
 
 - MCP 工具名称在所有工具集（内置 + MCP）中是全局的。冲突导致工具被跳过，应通过问题 + 日志暴露
 - `mcp_admin` 是一个内置工具集，包含 `mcp_restart`（每个服务器最佳努力重启）
+- 可选手册：可在 `.minds/mcp.yaml` 的 `servers.<serverId>.manual` 为每个 MCP toolset 提供手册：
+  - `content`：总说明
+  - `sections`：章节化指导（`[{ title, content }]` 或 `{ "<title>": "<content>" }`）
+- 没有手册 **不代表** 该 toolset 不可用；这只表示团队管理文档覆盖不足。智能体应继续依据每个工具自身的 description/参数来使用。
+- 建议团队管理者在 MCP 配置验证通过后：先精读该 server 暴露的每个工具说明，再与人类用户讨论本 rtws 的使用意图，最后把“典型用法 + 主要意图方向”沉淀为 `servers.<serverId>.manual`。
 
 ### 文件格式（模板）
 
@@ -279,6 +284,14 @@ servers:
 
     # 工具名称转换
     transform: [] # 可选
+
+    # 可选：给智能体看的 toolset 手册
+    manual:
+      content: "该 MCP toolset 的用途说明"
+      sections:
+        - title: "何时使用"
+          content: "当 ... 时使用"
+        Guardrails: "避免 ..."
 ```
 
 ### 工具暴露控制（白名单 / 黑名单）

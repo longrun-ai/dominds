@@ -418,6 +418,15 @@ servers:
 
     # Tool name transforms (optional)
     transform: []
+
+    # Optional per-toolset manual shown to agents
+    # (missing manual does NOT make the toolset unavailable)
+    manual:
+      content: "What this MCP toolset is for"
+      sections:
+        - title: "When To Use"
+          content: "Use when ..."
+        Guardrails: "Avoid ..."
 ```
 
 ### Example: Playwright MCP server

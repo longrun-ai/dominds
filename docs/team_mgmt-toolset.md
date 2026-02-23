@@ -298,6 +298,14 @@ Notes:
 - MCP tool names are global across all toolsets (built-in + MCP). Collisions cause tools to be
   skipped and should surface via Problems + logs.
 - `mcp_admin` is a built-in toolset that contains `mcp_restart` (best-effort per-server restart).
+- Optional per-toolset manual can live in `.minds/mcp.yaml` at `servers.<serverId>.manual` using:
+  - `content`: overview text
+  - `sections`: chapterized guidance (`[{ title, content }]` or `{ "<title>": "<content>" }`)
+- Missing manual does **not** mean the toolset is unavailable; it means team-manager documentation
+  is incomplete. Agents should continue by reading each tool’s own description/arguments.
+- Team-manager recommendation: after MCP config validation passes, carefully read each exposed tool
+  description, discuss intended rtws usage with the human user, then write
+  `servers.<serverId>.manual` that captures typical usage patterns and primary intent directions.
 
 ### File format (template)
 
@@ -325,6 +333,14 @@ servers:
 
     # Tool name transforms
     transform: [] # optional
+
+    # Optional toolset manual for agents
+    manual:
+      content: "What this MCP toolset is for"
+      sections:
+        - title: "When To Use"
+          content: "Use when ..."
+        Guardrails: "Avoid ..."
 ```
 
 ### Tool exposure controls (whitelist / blacklist)

@@ -74,6 +74,9 @@
 - `codex_style_tools`：Codex 风格工具（`apply_patch` / `readonly_shell` / `update_plan`）；**Windows 环境下不要配置该 toolset**
 - `mcp_admin`：MCP 运维（`mcp_restart` / `mcp_release`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）
 - MCP 声明型 toolset：来源于 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射（toolset 名称 = `serverId`）。具体能力以该 MCP server 实际暴露工具为准；可在 `team_mgmt_manual({ topics: ["toolsets"] })` 查看当前映射快照
+  - 可选：在 `servers.<serverId>.manual` 放手册内容，支持 `content`（总说明）+ `sections`（章节）
+  - 注意：没有手册 **不代表** toolset 不可用；这表示团队管理文档不足。应继续阅读每个工具的 description/参数并使用
+  - 团队管理者应在 MCP 配置验证通过后：先精读该 server 各工具说明，再与人类用户讨论本 rtws 的使用意图，最后把典型用法与主要意图方向写入 `servers.<serverId>.manual`
 
 ## ripgrep 依赖（检测与安装）
 
