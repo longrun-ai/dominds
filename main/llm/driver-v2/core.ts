@@ -105,6 +105,21 @@ function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   return DEFAULT_DILIGENCE_PUSH_MAX;
 }
 
+function emitDiligenceBudgetEvent(
+  dlg: RootDialog,
+  options: { maxInjectCount: number; nextRemainingBudget: number },
+): void {
+  const maxInjectCount = Math.max(0, Math.floor(options.maxInjectCount));
+  const remainingCount = Math.max(0, Math.floor(options.nextRemainingBudget));
+  postDialogEvent(dlg, {
+    type: 'diligence_budget_evt',
+    maxInjectCount,
+    injectedCount: Math.max(0, maxInjectCount - remainingCount),
+    remainingCount,
+    disableDiligencePush: dlg.disableDiligencePush,
+  });
+}
+
 function resolveUpNextPrompt(dlg: Dialog): DriverV2HumanPrompt | undefined {
   const upNext = dlg.takeUpNext();
   if (!upNext) {
@@ -947,6 +962,13 @@ async function maybeContinueWithDiligencePrompt(args: {
     kind: 'patch',
     patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
   }));
+
+  if (prepared.kind !== 'disabled') {
+    emitDiligenceBudgetEvent(dlg, {
+      maxInjectCount: prepared.maxInjectCount,
+      nextRemainingBudget: prepared.nextRemainingBudget,
+    });
+  }
 
   if (prepared.kind === 'budget_exhausted') {
     await suspendForKeepGoingBudgetExhausted({

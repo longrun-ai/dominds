@@ -8,7 +8,7 @@ import * as path from 'path';
 
 import { DialogID, RootDialog } from 'dominds/dialog';
 import { globalDialogRegistry } from 'dominds/dialog-global-registry';
-import { dialogEventRegistry } from 'dominds/evt-registry';
+import { dialogEventRegistry, setGlobalDialogEventBroadcaster } from 'dominds/evt-registry';
 import { driveDialogStream } from 'dominds/llm/driver-entry';
 import { DiskFileDialogStore } from 'dominds/persistence';
 import { EndOfStream } from 'dominds/shared/evt';
@@ -86,7 +86,10 @@ async function main(): Promise<void> {
     const dlgId = new DialogID('dlg-keep-going-test');
     const store = new DiskFileDialogStore(dlgId);
     const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
+    // Simulate normal root-dialog initialization done by server create/display handlers.
+    dlg.diligencePushRemainingBudget = 2;
     globalDialogRegistry.register(dlg);
+    setGlobalDialogEventBroadcaster(() => {});
 
     const ch = dialogEventRegistry.createSubChan(dlgId);
 
@@ -117,6 +120,11 @@ async function main(): Promise<void> {
     }
 
     const remainingCounts = diligenceEvents.map((ev) => ev.remainingCount);
+    if (!remainingCounts.includes(1)) {
+      throw new Error(
+        `Expected remainingCount to include 1 after first diligence auto-continue, got: ${JSON.stringify(remainingCounts)}`,
+      );
+    }
     if (!remainingCounts.includes(0)) {
       throw new Error(
         `Expected remainingCount to reach 0 (budget exhausted), got: ${JSON.stringify(remainingCounts)}`,
@@ -130,6 +138,7 @@ async function main(): Promise<void> {
 
     console.log('keep-going diligence budget event (streaming): PASS');
   } finally {
+    setGlobalDialogEventBroadcaster(null);
     process.chdir(originalCwd);
   }
 }
