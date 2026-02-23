@@ -1190,7 +1190,6 @@ export class DomindsSetup extends HTMLElement {
             t.setupProvidersGroupConfigured,
           )}</div>
         </div>
-        <div class="muted">${escapeHtml(t.setupProvidersHelp)}</div>
         <div class="providers">${configuredHtml}</div>
       </div>
 

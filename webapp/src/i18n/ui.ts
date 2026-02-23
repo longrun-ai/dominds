@@ -252,7 +252,6 @@ export type UiStrings = {
   setupWriteTeamYamlCreate: string;
   setupWriteTeamYamlOverwrite: string;
   setupProvidersTitle: string;
-  setupProvidersHelp: string;
   setupProvidersGroupConfigured: string;
   setupProvidersGroupUnconfigured: string;
   setupViewWorkspaceLlmYaml: string;
@@ -569,8 +568,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupWriteTeamYamlCreate: '创建 team.yaml',
       setupWriteTeamYamlOverwrite: '覆盖 team.yaml',
       setupProvidersTitle: '内置LLM提供商',
-      setupProvidersHelp:
-        '先写入 .env.local（主保存方式），在 Linux/macOS 上可选写入 shell rc，再使用该提供商。',
       setupProvidersGroupConfigured: '已配置',
       setupProvidersGroupUnconfigured: '未配置',
       setupViewWorkspaceLlmYaml: '查看 .minds/llm.yaml',
@@ -895,8 +892,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupWriteTeamYamlCreate: 'Create team.yaml',
     setupWriteTeamYamlOverwrite: 'Overwrite team.yaml',
     setupProvidersTitle: 'Built-in LLM providers',
-    setupProvidersHelp:
-      'Write provider env vars to .env.local first (primary). On Linux/macOS, shell rc writes are optional.',
     setupProvidersGroupConfigured: 'Configured',
     setupProvidersGroupUnconfigured: 'Unconfigured',
     setupViewWorkspaceLlmYaml: 'View .minds/llm.yaml',
