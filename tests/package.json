@@ -57,7 +57,8 @@
     "access-control-dialogs-root-deny": "tsx access-control/dialogs-root-deny.ts",
     "access-control-file-ext-names": "tsx access-control/file-ext-names.ts",
     "team_mgmt-manual-no-toolsets-glob": "tsx team_mgmt-manual/no-toolsets-glob.ts",
-    "team_mgmt-manual-mcp-manual-hints": "tsx team_mgmt-manual/mcp-manual-hints.ts"
+    "team_mgmt-manual-mcp-manual-hints": "tsx team_mgmt-manual/mcp-manual-hints.ts",
+    "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",

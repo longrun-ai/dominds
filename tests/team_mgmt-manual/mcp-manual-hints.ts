@@ -52,8 +52,24 @@ async function main(): Promise<void> {
         'zh mcp manual should explicitly say missing manual does not affect availability',
       );
       assert.ok(
+        zh.includes('章节：tools 列表（运行时快照）'),
+        'zh mcp manual should auto-generate a tools-list section when manual is missing',
+      );
+      assert.ok(
+        zh.includes('与人类用户确认意图与边界'),
+        'zh mcp manual should remind team manager to confirm intent with human user',
+      );
+      assert.ok(
         en.includes('toolset availability is unaffected'),
         'en mcp manual should explicitly say missing manual does not affect availability',
+      );
+      assert.ok(
+        en.includes('Section: Tools list (runtime snapshot)'),
+        'en mcp manual should auto-generate a tools-list section when manual is missing',
+      );
+      assert.ok(
+        en.includes('confirm intent/boundaries with the human user'),
+        'en mcp manual should remind team manager to confirm intent with human user',
       );
     },
   );

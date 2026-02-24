@@ -75,7 +75,8 @@
 - `mcp_admin`: MCP operations (`mcp_restart` / `mcp_release`), plus env tools (`env_get` / `env_set` / `env_unset`)
 - MCP-declared toolsets: dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). Exact capabilities depend on each MCP server’s exposed tools; use `team_mgmt_manual({ topics: ["toolsets"] })` to view the current mapping snapshot
   - Optional per-toolset manual can be placed at `servers.<serverId>.manual` using `content` (overview) and `sections` (chapters)
-  - Missing manual does **not** mean the toolset is unavailable; it means team-management documentation is incomplete. Continue by reading each tool’s description/arguments
+  - Missing manual does **not** mean the toolset is unavailable; runtime manual will auto-generate a baseline draft (at least a tools-list section) for temporary use
+  - Auto-generated draft is only a scaffold: team manager must confirm intent/boundaries with the human user, then replace it with accurate manual content
   - Team managers should, after MCP validation passes, carefully read each exposed tool description, align with the human user on intended rtws usage, then write `servers.<serverId>.manual` with typical usage patterns and primary intent directions
 
 ## ripgrep Dependency (Detection & Install)
