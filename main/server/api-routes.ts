@@ -12,10 +12,25 @@ import { globalDialogRegistry } from '../dialog-global-registry';
 import { getRunControlCountsSnapshot } from '../dialog-run-state';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import type { PrimingScriptLoadIssue } from '../priming';
+import {
+  applyPrimingScriptsToDialog,
+  buildRootDialogPrimingMetadata,
+  listApplicablePrimingScripts,
+  saveDialogCourseAsIndividualPrimingScript,
+  searchApplicablePrimingScripts,
+} from '../priming';
 import { DEFAULT_DILIGENCE_PUSH_MAX, DILIGENCE_FALLBACK_TEXT } from '../shared/diligence';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { ApiMoveDialogsRequest } from '../shared/types';
 import { normalizeLanguageCode } from '../shared/types/language';
+import type {
+  ListPrimingScriptsResponse,
+  PrimingScriptWarningSummary,
+  SaveCurrentCoursePrimingRequest,
+  SaveCurrentCoursePrimingResponse,
+  SearchPrimingScriptsResponse,
+} from '../shared/types/priming';
 import type { DialogLatestFile, DialogMetadataFile } from '../shared/types/storage';
 import type { DialogIdent, DialogStatusKind } from '../shared/types/wire';
 import { formatUnifiedTimestamp } from '../shared/utils/time';
@@ -43,6 +58,7 @@ import {
 // Dialog lookup is performed via file-backed persistence; no in-memory registry
 
 const log = createLogger('api-routes');
+const PRIMING_WARNING_SAMPLE_MAX = 5;
 
 let cachedDomindsVersion: string | null | undefined;
 
@@ -95,6 +111,225 @@ function parseDialogStatusFromUrl(urlObj: URL): DialogStatusKind | null {
     return raw;
   }
   return null;
+}
+
+function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
+  if (raw === 'running' || raw === 'completed' || raw === 'archived') {
+    return raw;
+  }
+  return null;
+}
+
+function buildPrimingWarningSummary(
+  warnings: PrimingScriptLoadIssue[],
+): PrimingScriptWarningSummary | undefined {
+  if (warnings.length === 0) return undefined;
+  return {
+    skippedCount: warnings.length,
+    samples: warnings.slice(0, PRIMING_WARNING_SAMPLE_MAX),
+  };
+}
+
+async function handleListPrimingScripts(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  try {
+    const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+    const agentId =
+      typeof urlObj.searchParams.get('agentId') === 'string'
+        ? urlObj.searchParams.get('agentId')!
+        : '';
+    if (agentId.trim() === '') {
+      const payload: ListPrimingScriptsResponse = {
+        success: false,
+        error: 'agentId is required',
+      };
+      respondJson(res, 400, payload);
+      return true;
+    }
+    const qRaw = urlObj.searchParams.get('q');
+    const query = typeof qRaw === 'string' ? qRaw.trim() : '';
+    if (query !== '') {
+      const matched = await searchApplicablePrimingScripts({
+        agentId,
+        query,
+        limit: 50,
+      });
+      const warningSummary = buildPrimingWarningSummary(matched.warnings);
+      if (warningSummary) {
+        log.warn('Skipped invalid priming scripts while searching', undefined, {
+          agentId,
+          query,
+          skippedCount: warningSummary.skippedCount,
+          samples: warningSummary.samples,
+        });
+      }
+      const payload: SearchPrimingScriptsResponse = {
+        success: true,
+        scripts: matched.scripts,
+        warningSummary,
+      };
+      respondJson(res, 200, payload);
+      return true;
+    }
+
+    const data = await listApplicablePrimingScripts(agentId);
+    const warningSummary = buildPrimingWarningSummary(data.warnings);
+    if (warningSummary) {
+      log.warn('Skipped invalid priming scripts while listing recent scripts', undefined, {
+        agentId,
+        skippedCount: warningSummary.skippedCount,
+        samples: warningSummary.samples,
+      });
+    }
+    const payload: ListPrimingScriptsResponse = {
+      success: true,
+      recent: data.recent,
+      warningSummary,
+    };
+    respondJson(res, 200, payload);
+    return true;
+  } catch (error: unknown) {
+    log.error('Failed to list priming scripts', error);
+    const payload: ListPrimingScriptsResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to list priming scripts',
+    };
+    respondJson(res, 500, payload);
+    return true;
+  }
+}
+
+async function handleSaveCurrentCoursePriming(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  let parsed: unknown;
+  try {
+    const rawBody = await readRequestBody(req);
+    parsed = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'Invalid JSON body',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+
+  if (!isRecord(parsed)) {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'Invalid request body',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+
+  const dialogRaw = parsed['dialog'];
+  const courseRaw = parsed['course'];
+  const slugRaw = parsed['slug'];
+  const overwriteRaw = parsed['overwrite'];
+  if (!isRecord(dialogRaw)) {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'dialog is required',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+
+  const rootId = typeof dialogRaw['rootId'] === 'string' ? dialogRaw['rootId'].trim() : '';
+  const selfId = typeof dialogRaw['selfId'] === 'string' ? dialogRaw['selfId'].trim() : '';
+  const status = parseDialogStatusKind(dialogRaw['status']) ?? 'running';
+  const course =
+    typeof courseRaw === 'number' && Number.isFinite(courseRaw) ? Math.floor(courseRaw) : 0;
+  const slug = typeof slugRaw === 'string' ? slugRaw.trim() : '';
+  const overwrite = overwriteRaw === true;
+
+  if (rootId === '' || selfId === '') {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'dialog.rootId and dialog.selfId are required',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+  if (course <= 0) {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'course must be a positive integer',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+  if (slug === '') {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'slug is required',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+  if (overwriteRaw !== undefined && typeof overwriteRaw !== 'boolean') {
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: 'overwrite must be a boolean when provided',
+      errorCode: 'INVALID_REQUEST',
+    };
+    respondJson(res, 400, payload);
+    return true;
+  }
+
+  const request: SaveCurrentCoursePrimingRequest = {
+    dialog: { rootId, selfId, status },
+    course,
+    slug,
+    overwrite,
+  };
+
+  try {
+    const result = await saveDialogCourseAsIndividualPrimingScript({
+      dialogId: new DialogID(request.dialog.selfId, request.dialog.rootId),
+      status: request.dialog.status ?? 'running',
+      course: request.course,
+      slug: request.slug,
+      overwrite: request.overwrite,
+    });
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: true,
+      script: result.script,
+      messageCount: result.messageCount,
+      path: result.path,
+    };
+    respondJson(res, 200, payload);
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to save priming script';
+    const errorCode = getErrorCode(error);
+    const isAlreadyExists =
+      errorCode === 'PRIMING_SCRIPT_EXISTS' ||
+      errorCode === 'EEXIST' ||
+      message.includes('already exists');
+    const isBadRequest =
+      message.includes('required') ||
+      message.includes('Invalid') ||
+      message.includes('Cannot save priming') ||
+      message.includes('slug must be');
+    const payload: SaveCurrentCoursePrimingResponse = {
+      success: false,
+      error: message,
+      errorCode: isAlreadyExists
+        ? 'ALREADY_EXISTS'
+        : isBadRequest
+          ? 'INVALID_REQUEST'
+          : 'INTERNAL_ERROR',
+    };
+    const statusCode = isAlreadyExists ? 409 : isBadRequest ? 400 : 500;
+    respondJson(res, statusCode, payload);
+    return true;
+  }
 }
 
 export interface ApiRouteContext {
@@ -200,6 +435,15 @@ export async function handleApiRoute(
       }
       respondJson(res, 500, { success: false, path: result.path, error: result.errorText });
       return true;
+    }
+
+    // Dialog list endpoint
+    if (pathname === '/api/priming/scripts' && req.method === 'GET') {
+      return await handleListPrimingScripts(req, res);
+    }
+
+    if (pathname === '/api/priming/save-current-course' && req.method === 'POST') {
+      return await handleSaveCurrentCoursePriming(req, res);
     }
 
     // Dialog list endpoint
@@ -544,6 +788,7 @@ const DOCS_WHITELIST = new Set<string>([
   'i18n',
   'txt-editing-tools',
   'fbr',
+  'agent-priming',
   'q4h',
   'roadmap',
   'OEC-philosophy',
@@ -564,6 +809,7 @@ const DOCS_WHITELIST = new Set<string>([
   'i18n.md',
   'txt-editing-tools.md',
   'fbr.md',
+  'agent-priming.md',
   'q4h.md',
   'roadmap.md',
   'OEC-philosophy.md',
@@ -970,7 +1216,7 @@ async function handleCreateDialog(
       return true;
     }
 
-    const { requestId, agentId, taskDocPath } = request;
+    const { requestId, agentId, taskDocPath, priming } = request;
 
     // Generate dialog ID
     const generatedId = generateDialogID();
@@ -999,6 +1245,7 @@ async function handleCreateDialog(
       agentId: agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
+      priming: buildRootDialogPrimingMetadata(priming),
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
@@ -1017,6 +1264,15 @@ async function handleCreateDialog(
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
       },
     }));
+
+    if (priming && priming.scriptRefs.length > 0) {
+      await applyPrimingScriptsToDialog({
+        dialog,
+        agentId,
+        status: 'running',
+        priming,
+      });
+    }
 
     // Dialog is registered with the global registry on creation
     // No need to call registerDialog

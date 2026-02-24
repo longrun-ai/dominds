@@ -1,3 +1,4 @@
+import { normalizePrimingConfig } from '../priming';
 import type {
   CreateDialogErrorCode,
   CreateDialogInput,
@@ -53,10 +54,31 @@ export function parseCreateDialogInput(
     };
   }
 
+  const rawPriming = parsed['priming'];
+  const priming = (() => {
+    if (rawPriming === undefined) {
+      return { ok: true as const, value: undefined };
+    }
+    const normalized = normalizePrimingConfig(rawPriming);
+    if (!normalized.ok) {
+      return { ok: false as const, error: normalized.error };
+    }
+    return { ok: true as const, value: normalized.priming };
+  })();
+  if (!priming.ok) {
+    return {
+      requestId,
+      status: 400,
+      errorCode: 'CREATE_FAILED',
+      error: `Invalid priming config: ${priming.error}`,
+    };
+  }
+
   return {
     requestId,
     agentId,
     taskDocPath,
+    priming: priming.value,
   };
 }
 

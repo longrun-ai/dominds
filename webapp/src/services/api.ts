@@ -9,9 +9,10 @@ import {
   ApiMoveDialogsResponse,
   ApiRootDialogResponse,
   ApiSubdialogResponse,
-  type CreateDialogInput,
-  type CreateDialogResult,
-  type DialogStatusKind,
+  ListPrimingScriptsResponse,
+  SaveCurrentCoursePrimingRequest,
+  SaveCurrentCoursePrimingResponse,
+  SearchPrimingScriptsResponse,
   SetupFileResponse,
   SetupStatusResponse,
   SetupWriteRtwsLlmYamlRequest,
@@ -21,6 +22,9 @@ import {
   SetupWriteTeamYamlRequest,
   SetupWriteTeamYamlResponse,
   ToolsetInfo,
+  type CreateDialogInput,
+  type CreateDialogResult,
+  type DialogStatusKind,
 } from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 import type {
@@ -183,12 +187,12 @@ export class ApiClient {
 
       const apiError: ApiError =
         error instanceof Error ? (error as ApiError) : (new Error('Unknown error') as ApiError);
-      console.error(`API request failed: ${method} ${url}`, apiError);
 
       return {
         success: false,
         status: apiError.status,
         error: apiError.message,
+        data: apiError.response as T,
         timestamp: formatUnifiedTimestamp(new Date()),
       };
     }
@@ -244,7 +248,6 @@ export class ApiClient {
       }
       const apiError: ApiError =
         error instanceof Error ? (error as ApiError) : (new Error('Unknown error') as ApiError);
-      console.error(`API request failed: GET ${url}`, apiError);
       return {
         success: false,
         status: apiError.status,
@@ -395,6 +398,35 @@ export class ApiClient {
    */
   async createDialog(request: CreateDialogInput): Promise<ApiResponse<CreateDialogResult>> {
     return this.request('/api/dialogs', {
+      method: 'POST',
+      body: request,
+    });
+  }
+
+  async listPrimingScripts(agentId: string): Promise<ApiResponse<ListPrimingScriptsResponse>> {
+    const query = new URLSearchParams({
+      agentId,
+      ts: String(Date.now()),
+    }).toString();
+    return this.request(`/api/priming/scripts?${query}`);
+  }
+
+  async searchPrimingScripts(
+    agentId: string,
+    queryText: string,
+  ): Promise<ApiResponse<SearchPrimingScriptsResponse>> {
+    const query = new URLSearchParams({
+      agentId,
+      q: queryText,
+      ts: String(Date.now()),
+    }).toString();
+    return this.request(`/api/priming/scripts?${query}`);
+  }
+
+  async saveCurrentCourseAsPrimingScript(
+    request: SaveCurrentCoursePrimingRequest,
+  ): Promise<ApiResponse<SaveCurrentCoursePrimingResponse>> {
+    return this.request('/api/priming/save-current-course', {
       method: 'POST',
       body: request,
     });
@@ -782,13 +814,9 @@ export function getApiClient(config?: { baseURL?: string; timeout?: number }): A
     let baseURL = config?.baseURL;
     if (!baseURL) {
       const { protocol, hostname, port } = window.location;
-      // In dev, the WebUI is served by Vite (5555) while the backend API is on 5556.
-      // Prefer talking to the backend directly to avoid relying on proxy edge-cases.
-      if (port === '5555') {
-        baseURL = `${protocol}//${hostname}:5556`;
-      } else {
-        baseURL = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
-      }
+      // Always use same-origin API base URL in both dev and prod.
+      // In dev, Vite proxy forwards /api and /ws to backend.
+      baseURL = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
     }
     const timeout = config?.timeout || 30000;
     globalApiClient = new ApiClient(baseURL, timeout);

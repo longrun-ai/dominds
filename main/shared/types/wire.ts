@@ -120,10 +120,16 @@ export type CreateDialogErrorCode =
   | 'AUTH_REQUIRED'
   | 'CREATE_FAILED';
 
+export interface DialogPrimingInput {
+  scriptRefs: string[];
+  showInUi: boolean;
+}
+
 export interface CreateDialogInput {
   requestId: string;
   agentId: string;
   taskDocPath: string;
+  priming?: DialogPrimingInput;
 }
 
 export interface CreateDialogRequest extends CreateDialogInput {

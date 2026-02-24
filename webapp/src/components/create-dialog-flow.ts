@@ -1,5 +1,10 @@
 import { getUiStrings } from '../i18n/ui';
 import type { FrontendTeamMember } from '../services/api';
+import type {
+  DialogPrimingInput,
+  PrimingScriptSummary,
+  PrimingScriptWarningSummary,
+} from '../shared/types';
 import type { LanguageCode } from '../shared/types/language';
 import { escapeHtml } from '../shared/utils/html.js';
 
@@ -31,6 +36,7 @@ export type CreateDialogRequest = {
   agentId: string;
   taskDocPath: string;
   requestId: string;
+  priming?: DialogPrimingInput;
 };
 
 export type CreateDialogSuccess = {
@@ -64,6 +70,13 @@ type CreateDialogControllerDeps = {
   getTeamMembers: () => FrontendTeamMember[];
   getDefaultResponder: () => string | null;
   getTaskDocuments: () => Array<{ path: string; relativePath: string; name: string }>;
+  listPrimingScripts: (
+    agentId: string,
+  ) => Promise<{ recent: PrimingScriptSummary[]; warningSummary?: PrimingScriptWarningSummary }>;
+  searchPrimingScripts: (
+    agentId: string,
+    query: string,
+  ) => Promise<{ scripts: PrimingScriptSummary[]; warningSummary?: PrimingScriptWarningSummary }>;
   ensureTeamMembersReady: () => Promise<{ ok: true } | { ok: false; error: CreateDialogError }>;
   submitCreateDialog: (request: CreateDialogRequest) => Promise<CreateDialogResult>;
   onCreated: (result: CreateDialogSuccess) => Promise<void>;
@@ -72,12 +85,27 @@ type CreateDialogControllerDeps = {
 };
 
 type SuggestionDoc = { path: string; relativePath: string; name: string };
+type PrimingCatalog = {
+  recent: PrimingScriptSummary[];
+  warningSummary?: PrimingScriptWarningSummary;
+};
+type PrimingSelectionPreference = {
+  scriptRefs: string[];
+  showInUi: boolean;
+};
+type PrimingSelectionPreferenceStore = {
+  version: 1;
+  byAgent: Record<string, PrimingSelectionPreference>;
+};
+
+const PRIMING_SELECTION_STORAGE_KEY = 'dominds-create-dialog-priming-selection-v1';
 
 export class CreateDialogFlowController {
   private readonly deps: CreateDialogControllerDeps;
   private state: CreateDialogUiState = { kind: 'idle' };
   private modal: HTMLElement | null = null;
   private activeKeydownListener: ((e: KeyboardEvent) => void) | null = null;
+  private refreshI18nInModal: (() => void) | null = null;
 
   constructor(deps: CreateDialogControllerDeps) {
     this.deps = deps;
@@ -139,6 +167,7 @@ export class CreateDialogFlowController {
     }
     this.modal.remove();
     this.modal = null;
+    this.refreshI18nInModal = null;
     this.state = { kind: 'idle' };
   }
 
@@ -166,6 +195,9 @@ export class CreateDialogFlowController {
       create.textContent =
         create.dataset.createState === 'creating' ? t.createDialogCreating : t.createDialog;
     }
+    if (this.refreshI18nInModal) {
+      this.refreshI18nInModal();
+    }
   }
 
   private applyIntentPreset(intent: CreateDialogIntent): void {
@@ -180,7 +212,11 @@ export class CreateDialogFlowController {
     if (typeof intent.presetAgentId === 'string' && intent.presetAgentId.trim() !== '') {
       const teammateSelect = this.modal.querySelector('#teammate-select');
       if (teammateSelect instanceof HTMLSelectElement) {
-        teammateSelect.value = intent.presetAgentId.trim();
+        const nextAgentId = intent.presetAgentId.trim();
+        if (teammateSelect.value !== nextAgentId) {
+          teammateSelect.value = nextAgentId;
+          teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       }
     }
   }
@@ -222,39 +258,43 @@ export class CreateDialogFlowController {
         </div>
         <div class="modal-body">
           <div class="form-group form-group-vertical">
-            <label for="task-doc-input">${escapeHtml(t.taskDocumentLabel)}</label>
-            <div class="task-doc-container">
-              <input type="text" id="task-doc-input" class="task-doc-input" placeholder="${escapeHtml(
-                t.taskDocumentPlaceholder,
-              )}" autocomplete="off" value="${escapeHtml(taskPreset)}">
-              <div id="task-doc-suggestions" class="task-doc-suggestions"></div>
+            <div class="form-inline-row">
+              <label for="task-doc-input">${escapeHtml(t.taskDocumentLabel)}</label>
+              <div class="task-doc-container">
+                <input type="text" id="task-doc-input" class="task-doc-input" placeholder="${escapeHtml(
+                  t.taskDocumentPlaceholder,
+                )}" autocomplete="off" value="${escapeHtml(taskPreset)}">
+                <div id="task-doc-suggestions" class="task-doc-suggestions"></div>
+              </div>
             </div>
             <small class="form-help">${escapeHtml(t.taskDocumentHelp)}</small>
           </div>
           <div class="form-group form-group-vertical">
-            <label for="teammate-select">${escapeHtml(t.teammateLabel)}</label>
-            <select id="teammate-select" class="teammate-dropdown">
-              ${visibleMembers
-                .map((member) => {
-                  const isDefault = member.id === defaultResponder;
-                  const emoji = this.getAgentEmoji(member.icon);
-                  const selected =
-                    (typeof intent.presetAgentId === 'string' &&
-                      intent.presetAgentId === member.id) ||
-                    (!intent.presetAgentId && isDefault);
-                  return `<option value="${escapeHtml(member.id)}" ${selected ? 'selected' : ''}>${escapeHtml(
-                    `${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}`,
-                  )}</option>`;
-                })
-                .join('')}
-              ${
-                shadowMembers.length > 0
-                  ? `<option value="__shadow__" ${initialPickShadow ? 'selected' : ''}>${escapeHtml(
-                      t.shadowMembersOption,
-                    )}</option>`
-                  : ''
-              }
-            </select>
+            <div class="form-inline-row">
+              <label for="teammate-select">${escapeHtml(t.teammateLabel)}</label>
+              <select id="teammate-select" class="teammate-dropdown">
+                ${visibleMembers
+                  .map((member) => {
+                    const isDefault = member.id === defaultResponder;
+                    const emoji = this.getAgentEmoji(member.icon);
+                    const selected =
+                      (typeof intent.presetAgentId === 'string' &&
+                        intent.presetAgentId === member.id) ||
+                      (!intent.presetAgentId && isDefault);
+                    return `<option value="${escapeHtml(member.id)}" ${selected ? 'selected' : ''}>${escapeHtml(
+                      `${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}`,
+                    )}</option>`;
+                  })
+                  .join('')}
+                ${
+                  shadowMembers.length > 0
+                    ? `<option value="__shadow__" ${initialPickShadow ? 'selected' : ''}>${escapeHtml(
+                        t.shadowMembersOption,
+                      )}</option>`
+                    : ''
+                }
+              </select>
+            </div>
           </div>
           <div class="form-group form-group-vertical shadow-members-group" id="shadow-members-group" style="${
             initialPickShadow ? '' : 'display:none;'
@@ -277,6 +317,26 @@ export class CreateDialogFlowController {
             </select>
           </div>
           <div class="teammate-info" id="teammate-info"></div>
+          <div class="form-group form-group-vertical priming-group">
+            <div class="priming-header-row">
+              <label for="priming-recent-select" id="priming-scripts-label">${escapeHtml(t.primingScriptsLabel)}</label>
+              <select id="priming-recent-select" class="teammate-dropdown priming-inline-select">
+                <option value="__none__">${escapeHtml(t.primingNoneOption)}</option>
+                <option value="__more__">${escapeHtml(t.primingMoreOption)}</option>
+              </select>
+              <label class="priming-ui-toggle" for="priming-show-in-ui">
+                <input type="checkbox" id="priming-show-in-ui" checked>
+                <span id="priming-show-in-ui-label">${escapeHtml(t.primingShowInUiLabel)}</span>
+              </label>
+            </div>
+            <div id="priming-more-section" class="priming-more-section" style="display:none;">
+              <input type="text" id="priming-search-input" class="task-doc-input" placeholder="${escapeHtml(
+                t.primingSearchPlaceholder,
+              )}" autocomplete="off">
+              <div id="priming-search-results" class="priming-search-results"></div>
+            </div>
+            <small class="form-help" id="priming-help">${escapeHtml(t.primingHelpText)}</small>
+          </div>
           <div class="modal-error" id="create-dialog-error" aria-live="polite"></div>
         </div>
         <div class="modal-footer">
@@ -308,6 +368,14 @@ export class CreateDialogFlowController {
     const closeBtn = modal.querySelector('.modal-close');
     const cancelBtn = modal.querySelector('#modal-cancel-btn');
     const backdrop = modal.querySelector('.modal-backdrop');
+    const primingRecentSelect = modal.querySelector('#priming-recent-select');
+    const primingMoreSection = modal.querySelector('#priming-more-section');
+    const primingSearchInput = modal.querySelector('#priming-search-input');
+    const primingSearchResults = modal.querySelector('#priming-search-results');
+    const primingShowInUi = modal.querySelector('#priming-show-in-ui');
+    const primingScriptsLabel = modal.querySelector('#priming-scripts-label');
+    const primingShowInUiLabel = modal.querySelector('#priming-show-in-ui-label');
+    const primingHelp = modal.querySelector('#priming-help');
 
     if (
       !(select instanceof HTMLSelectElement) ||
@@ -317,16 +385,102 @@ export class CreateDialogFlowController {
       !(teammateInfo instanceof HTMLElement) ||
       !(closeBtn instanceof HTMLButtonElement) ||
       !(cancelBtn instanceof HTMLButtonElement) ||
-      !(backdrop instanceof HTMLElement)
+      !(backdrop instanceof HTMLElement) ||
+      !(primingRecentSelect instanceof HTMLSelectElement) ||
+      !(primingMoreSection instanceof HTMLElement) ||
+      !(primingSearchInput instanceof HTMLInputElement) ||
+      !(primingSearchResults instanceof HTMLElement) ||
+      !(primingShowInUi instanceof HTMLInputElement) ||
+      !(primingScriptsLabel instanceof HTMLElement) ||
+      !(primingShowInUiLabel instanceof HTMLElement) ||
+      !(primingHelp instanceof HTMLElement)
     ) {
       this.close();
       return;
     }
 
-    const t = getUiStrings(this.deps.getLanguage());
+    const strings = () => getUiStrings(this.deps.getLanguage());
     let createInFlight = false;
     let selectedSuggestionIndex = -1;
     let currentSuggestions: SuggestionDoc[] = [];
+    let primingCatalog: PrimingCatalog = { recent: [] };
+    let knownPrimingScriptsByRef = new Map<string, PrimingScriptSummary>();
+    let selectedPrimingRef: string | null = null;
+    let selectedPrimingDropdownValue = '__none__';
+    let primingSearchTerm = '';
+    let primingLoading = false;
+    let primingSearchLoading = false;
+    let primingSearchMatches: PrimingScriptSummary[] = [];
+    let primingLoadSeq = 0;
+    let primingSearchSeq = 0;
+    let primingBoundAgentId = '';
+    const isRecord = (value: unknown): value is Record<string, unknown> => {
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
+    };
+
+    const normalizePreference = (value: unknown): PrimingSelectionPreference | null => {
+      if (!isRecord(value)) return null;
+      const scriptRefsRaw = value['scriptRefs'];
+      const showInUiRaw = value['showInUi'];
+      if (!Array.isArray(scriptRefsRaw)) return null;
+      if (typeof showInUiRaw !== 'boolean') return null;
+      const dedupedRefs: string[] = [];
+      const seen = new Set<string>();
+      for (const item of scriptRefsRaw) {
+        if (typeof item !== 'string') continue;
+        const trimmed = item.trim();
+        if (trimmed === '' || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        dedupedRefs.push(trimmed);
+      }
+      return {
+        scriptRefs: dedupedRefs,
+        showInUi: showInUiRaw,
+      };
+    };
+
+    const readPrimingPreference = (agentId: string): PrimingSelectionPreference | null => {
+      const normalizedAgentId = agentId.trim();
+      if (normalizedAgentId === '') return null;
+      try {
+        const raw = window.localStorage.getItem(PRIMING_SELECTION_STORAGE_KEY);
+        if (typeof raw !== 'string' || raw.trim() === '') return null;
+        const parsed: unknown = JSON.parse(raw);
+        if (!isRecord(parsed)) return null;
+        if (parsed['version'] !== 1) return null;
+        const byAgentRaw = parsed['byAgent'];
+        if (!isRecord(byAgentRaw)) return null;
+        return normalizePreference(byAgentRaw[normalizedAgentId]);
+      } catch {
+        return null;
+      }
+    };
+
+    const writePrimingPreference = (agentId: string, pref: PrimingSelectionPreference): void => {
+      const normalizedAgentId = agentId.trim();
+      if (normalizedAgentId === '') return;
+      const normalizedPref = normalizePreference(pref);
+      if (!normalizedPref) return;
+      const byAgent: Record<string, PrimingSelectionPreference> = {};
+      try {
+        const raw = window.localStorage.getItem(PRIMING_SELECTION_STORAGE_KEY);
+        if (typeof raw === 'string' && raw.trim() !== '') {
+          const parsed: unknown = JSON.parse(raw);
+          if (isRecord(parsed) && parsed['version'] === 1 && isRecord(parsed['byAgent'])) {
+            for (const [key, value] of Object.entries(parsed['byAgent'])) {
+              const normalized = normalizePreference(value);
+              if (!normalized) continue;
+              byAgent[key] = normalized;
+            }
+          }
+        }
+        byAgent[normalizedAgentId] = normalizedPref;
+        const payload: PrimingSelectionPreferenceStore = { version: 1, byAgent };
+        window.localStorage.setItem(PRIMING_SELECTION_STORAGE_KEY, JSON.stringify(payload));
+      } catch {
+        // Ignore localStorage errors and continue without persisted defaults.
+      }
+    };
 
     suggestions.style.display = 'none';
 
@@ -342,9 +496,19 @@ export class CreateDialogFlowController {
       errorEl.textContent = error.message;
       errorEl.style.display = 'block';
     };
+    const primingUiToggle = primingShowInUi.closest('.priming-ui-toggle');
+    const syncPrimingShowInUiDisabled = (): void => {
+      const disabledByNone = selectedPrimingDropdownValue === '__none__';
+      const disabled = createInFlight || disabledByNone;
+      primingShowInUi.disabled = disabled;
+      if (primingUiToggle instanceof HTMLElement) {
+        primingUiToggle.classList.toggle('disabled', disabledByNone);
+      }
+    };
 
     const setCreateInFlight = (inFlight: boolean): void => {
       createInFlight = inFlight;
+      const t = strings();
       createBtn.disabled = inFlight;
       createBtn.dataset.createState = inFlight ? 'creating' : 'idle';
       createBtn.textContent = inFlight ? t.createDialogCreating : t.createDialog;
@@ -353,6 +517,284 @@ export class CreateDialogFlowController {
       select.disabled = inFlight;
       if (shadowSelect instanceof HTMLSelectElement) shadowSelect.disabled = inFlight;
       taskInput.disabled = inFlight;
+      primingSearchInput.disabled = inFlight;
+      primingRecentSelect.disabled = inFlight || primingLoading;
+      primingSearchResults
+        .querySelectorAll<HTMLButtonElement>('button.priming-script-select')
+        .forEach((btn) => {
+          btn.disabled = inFlight;
+        });
+      syncPrimingShowInUiDisabled();
+    };
+
+    const formatPrimingScriptLabel = (script: PrimingScriptSummary): string => {
+      const title = typeof script.title === 'string' ? script.title.trim() : '';
+      if (title !== '' && title !== script.slug) {
+        return `${title} (${script.slug})`;
+      }
+      return script.slug;
+    };
+
+    const setPrimingMoreVisible = (visible: boolean): void => {
+      primingMoreSection.style.display = visible ? 'block' : 'none';
+      if (!visible) {
+        primingSearchSeq += 1;
+        primingSearchTerm = '';
+        primingSearchInput.value = '';
+        primingSearchLoading = false;
+        primingSearchMatches = [];
+      }
+    };
+
+    const renderPrimingRecentOptions = (): void => {
+      const t = strings();
+      const optionValues = new Set<string>();
+      const options: string[] = [
+        `<option value="__none__">${escapeHtml(t.primingNoneOption)}</option>`,
+      ];
+      optionValues.add('__none__');
+
+      const recentSeen = new Set<string>();
+      for (const script of primingCatalog.recent) {
+        if (recentSeen.has(script.ref)) continue;
+        recentSeen.add(script.ref);
+        optionValues.add(script.ref);
+        options.push(
+          `<option value="${escapeHtml(script.ref)}">${escapeHtml(formatPrimingScriptLabel(script))}</option>`,
+        );
+      }
+      if (selectedPrimingRef !== null && !recentSeen.has(selectedPrimingRef)) {
+        const selectedScript = knownPrimingScriptsByRef.get(selectedPrimingRef);
+        const selectedLabel = selectedScript
+          ? formatPrimingScriptLabel(selectedScript)
+          : selectedPrimingRef;
+        optionValues.add(selectedPrimingRef);
+        options.push(
+          `<option value="${escapeHtml(selectedPrimingRef)}">${escapeHtml(selectedLabel)}</option>`,
+        );
+      }
+
+      optionValues.add('__more__');
+      options.push(`<option value="__more__">${escapeHtml(t.primingMoreOption)}</option>`);
+      primingRecentSelect.innerHTML = options.join('');
+      if (!optionValues.has(selectedPrimingDropdownValue)) {
+        selectedPrimingDropdownValue =
+          selectedPrimingRef !== null ? selectedPrimingRef : '__none__';
+      }
+      primingRecentSelect.value = optionValues.has(selectedPrimingDropdownValue)
+        ? selectedPrimingDropdownValue
+        : '__none__';
+      primingRecentSelect.disabled = createInFlight || primingLoading;
+      syncPrimingShowInUiDisabled();
+    };
+
+    const renderPrimingSearchResults = (): void => {
+      const t = strings();
+      if (primingMoreSection.style.display === 'none') {
+        primingSearchResults.innerHTML = '';
+        return;
+      }
+      if (primingSearchLoading) {
+        primingSearchResults.innerHTML = `<div class="priming-search-empty">${escapeHtml(t.loading)}</div>`;
+        return;
+      }
+      const normalized = primingSearchTerm.trim();
+      if (normalized === '') {
+        primingSearchResults.innerHTML = '';
+        return;
+      }
+      const matches = primingSearchMatches;
+      if (matches.length === 0) {
+        primingSearchResults.innerHTML = `<div class="priming-search-empty">${escapeHtml(t.primingNoMatches)}</div>`;
+        return;
+      }
+      primingSearchResults.innerHTML = matches
+        .map((script) => {
+          const scopeLabel =
+            script.scope === 'team_shared'
+              ? t.primingScopeTeamShared
+              : script.ownerAgentId
+                ? `@${script.ownerAgentId}`
+                : t.primingScopeIndividual;
+          return `<div class="priming-search-item"><div class="priming-search-meta"><div class="priming-search-name">${escapeHtml(
+            formatPrimingScriptLabel(script),
+          )}</div><div class="priming-search-ref">${escapeHtml(script.ref)} · ${escapeHtml(
+            scopeLabel,
+          )}</div></div><button type="button" class="priming-script-select" data-script-ref="${escapeHtml(
+            script.ref,
+          )}">${escapeHtml(t.primingAddScriptAction)}</button></div>`;
+        })
+        .join('');
+      primingSearchResults
+        .querySelectorAll<HTMLButtonElement>('button.priming-script-select')
+        .forEach((btn) => {
+          btn.disabled = createInFlight;
+        });
+    };
+
+    const refreshPrimingLocalizedTexts = (): void => {
+      const t = strings();
+      primingScriptsLabel.textContent = t.primingScriptsLabel;
+      primingShowInUiLabel.textContent = t.primingShowInUiLabel;
+      primingSearchInput.placeholder = t.primingSearchPlaceholder;
+      primingHelp.textContent = t.primingHelpText;
+      renderPrimingRecentOptions();
+      renderPrimingSearchResults();
+    };
+
+    this.refreshI18nInModal = refreshPrimingLocalizedTexts;
+    refreshPrimingLocalizedTexts();
+
+    const setPrimingLoading = (loading: boolean): void => {
+      primingLoading = loading;
+      primingRecentSelect.disabled = loading || createInFlight;
+      if (loading) {
+        const t = strings();
+        primingRecentSelect.innerHTML = `<option value="">${escapeHtml(t.loading)}</option>`;
+      } else {
+        renderPrimingRecentOptions();
+      }
+    };
+
+    const setPrimingSearchLoading = (loading: boolean): void => {
+      primingSearchLoading = loading;
+      renderPrimingSearchResults();
+    };
+    const seenPrimingWarningSignatures = new Set<string>();
+
+    const emitPrimingWarningToast = (summary: PrimingScriptWarningSummary | undefined): void => {
+      if (!summary || summary.skippedCount <= 0) return;
+      const signature = JSON.stringify(summary);
+      if (seenPrimingWarningSignatures.has(signature)) return;
+      seenPrimingWarningSignatures.add(signature);
+
+      const t = strings();
+      const sampleTexts = summary.samples
+        .slice(0, 2)
+        .map((item) => `${item.path}: ${item.error.replace(/\s+/g, ' ').trim()}`)
+        .join(' | ');
+      const extraCount = Math.max(0, summary.skippedCount - summary.samples.length);
+      const extraText = extraCount > 0 ? ` (+${String(extraCount)})` : '';
+      const message = `${t.primingInvalidScriptsSkippedToastPrefix}${String(
+        summary.skippedCount,
+      )}${t.primingInvalidScriptsSkippedToastMiddle}${sampleTexts}${extraText}`;
+      this.deps.onToast(message, 'error');
+    };
+
+    const setSelectedPrimingScript = (
+      scriptRef: string | null,
+      dropdownValueOverride?: string,
+    ): void => {
+      selectedPrimingRef = scriptRef;
+      selectedPrimingDropdownValue =
+        typeof dropdownValueOverride === 'string'
+          ? dropdownValueOverride
+          : scriptRef !== null
+            ? scriptRef
+            : '__none__';
+      renderPrimingRecentOptions();
+      renderPrimingSearchResults();
+      syncPrimingShowInUiDisabled();
+    };
+
+    const loadPrimingScriptsForSelectedAgent = async (): Promise<void> => {
+      const selectedAgentId = resolveSelectedAgentId().trim();
+      const requestSeq = primingLoadSeq + 1;
+      primingLoadSeq = requestSeq;
+      if (primingBoundAgentId !== selectedAgentId) {
+        primingBoundAgentId = selectedAgentId;
+        const savedPreference = readPrimingPreference(selectedAgentId);
+        selectedPrimingRef =
+          savedPreference && savedPreference.scriptRefs.length > 0
+            ? savedPreference.scriptRefs[0]
+            : null;
+        selectedPrimingDropdownValue =
+          selectedPrimingRef !== null ? selectedPrimingRef : '__none__';
+        primingShowInUi.checked = savedPreference ? savedPreference.showInUi : true;
+        knownPrimingScriptsByRef = new Map<string, PrimingScriptSummary>();
+      }
+      primingSearchSeq += 1;
+      setPrimingSearchLoading(false);
+      primingSearchMatches = [];
+      setPrimingMoreVisible(false);
+      renderPrimingSearchResults();
+
+      if (selectedAgentId === '') {
+        primingCatalog = { recent: [] };
+        setSelectedPrimingScript(null);
+        renderPrimingRecentOptions();
+        renderPrimingSearchResults();
+        return;
+      }
+
+      setPrimingLoading(true);
+      try {
+        const listed = await this.deps.listPrimingScripts(selectedAgentId);
+        if (requestSeq !== primingLoadSeq) return;
+        primingCatalog = listed;
+        emitPrimingWarningToast(listed.warningSummary);
+        for (const script of primingCatalog.recent) {
+          knownPrimingScriptsByRef.set(script.ref, script);
+        }
+        if (selectedPrimingRef !== null && !knownPrimingScriptsByRef.has(selectedPrimingRef)) {
+          setSelectedPrimingScript(null);
+        }
+        renderPrimingRecentOptions();
+        renderPrimingSearchResults();
+      } catch (error: unknown) {
+        if (requestSeq !== primingLoadSeq) return;
+        primingCatalog = { recent: [] };
+        selectedPrimingRef = null;
+        selectedPrimingDropdownValue = '__none__';
+        knownPrimingScriptsByRef = new Map<string, PrimingScriptSummary>();
+        renderPrimingRecentOptions();
+        renderPrimingSearchResults();
+        const t = strings();
+        const reason = error instanceof Error ? error.message : t.unknownError;
+        this.deps.onToast(`${t.primingLoadFailedToastPrefix}${reason}`, 'warning');
+      } finally {
+        if (requestSeq === primingLoadSeq) {
+          setPrimingLoading(false);
+        }
+      }
+    };
+
+    const searchPrimingScriptsForSelectedAgent = async (queryText: string): Promise<void> => {
+      const selectedAgentId = resolveSelectedAgentId().trim();
+      primingSearchTerm = queryText;
+      const normalizedQuery = queryText.trim();
+      const requestSeq = primingSearchSeq + 1;
+      primingSearchSeq = requestSeq;
+
+      if (selectedAgentId === '' || normalizedQuery === '') {
+        setPrimingSearchLoading(false);
+        primingSearchMatches = [];
+        renderPrimingSearchResults();
+        return;
+      }
+
+      setPrimingSearchLoading(true);
+      try {
+        const matched = await this.deps.searchPrimingScripts(selectedAgentId, normalizedQuery);
+        if (requestSeq !== primingSearchSeq) return;
+        primingSearchMatches = matched.scripts;
+        emitPrimingWarningToast(matched.warningSummary);
+        for (const script of primingSearchMatches) {
+          knownPrimingScriptsByRef.set(script.ref, script);
+        }
+        renderPrimingSearchResults();
+      } catch (error: unknown) {
+        if (requestSeq !== primingSearchSeq) return;
+        primingSearchMatches = [];
+        renderPrimingSearchResults();
+        const t = strings();
+        const reason = error instanceof Error ? error.message : t.unknownError;
+        this.deps.onToast(`${t.primingLoadFailedToastPrefix}${reason}`, 'warning');
+      } finally {
+        if (requestSeq === primingSearchSeq) {
+          setPrimingSearchLoading(false);
+        }
+      }
     };
 
     const hideSuggestions = (): void => {
@@ -385,6 +827,12 @@ export class CreateDialogFlowController {
         hideSuggestions();
         return;
       }
+      if (primingMoreSection.style.display !== 'none') {
+        e.preventDefault();
+        setPrimingMoreVisible(false);
+        renderPrimingSearchResults();
+        return;
+      }
       e.preventDefault();
       closeModal();
     };
@@ -397,6 +845,15 @@ export class CreateDialogFlowController {
         return '';
       }
       return select.value;
+    };
+
+    const persistPrimingPreference = (): void => {
+      const selectedAgentId = resolveSelectedAgentId().trim();
+      if (selectedAgentId === '') return;
+      writePrimingPreference(selectedAgentId, {
+        scriptRefs: selectedPrimingRef !== null ? [selectedPrimingRef] : [],
+        showInUi: primingShowInUi.checked,
+      });
     };
 
     const showTeammateInfo = (selectedAgentId: string): void => {
@@ -437,13 +894,55 @@ export class CreateDialogFlowController {
         shadowGroup.style.display = isShadow ? 'block' : 'none';
       }
       showTeammateInfo(select.value);
+      void loadPrimingScriptsForSelectedAgent();
     });
     if (shadowSelect instanceof HTMLSelectElement) {
       shadowSelect.addEventListener('change', () => {
         showTeammateInfo('__shadow__');
+        void loadPrimingScriptsForSelectedAgent();
       });
     }
     showTeammateInfo(select.value);
+    void loadPrimingScriptsForSelectedAgent();
+
+    primingRecentSelect.addEventListener('change', () => {
+      const value = primingRecentSelect.value;
+      if (value === '__more__') {
+        setPrimingMoreVisible(true);
+        void searchPrimingScriptsForSelectedAgent(primingSearchInput.value);
+        primingSearchInput.focus();
+        renderPrimingRecentOptions();
+        return;
+      }
+      if (value === '__none__') {
+        setSelectedPrimingScript(null, '__none__');
+        setPrimingMoreVisible(false);
+        return;
+      }
+      if (value === '') {
+        setSelectedPrimingScript(null, '__none__');
+        return;
+      }
+      setSelectedPrimingScript(value);
+      setPrimingMoreVisible(false);
+    });
+
+    primingSearchInput.addEventListener('input', (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      void searchPrimingScriptsForSelectedAgent(target.value);
+    });
+
+    primingSearchResults.addEventListener('click', (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      const selectBtn = target.closest('button.priming-script-select');
+      if (!(selectBtn instanceof HTMLButtonElement)) return;
+      const scriptRef = selectBtn.dataset.scriptRef;
+      if (typeof scriptRef !== 'string' || scriptRef.trim() === '') return;
+      setSelectedPrimingScript(scriptRef);
+      setPrimingMoreVisible(false);
+    });
 
     const updateSuggestions = (query: string): void => {
       const normalized = query.trim().toLowerCase();
@@ -476,6 +975,7 @@ export class CreateDialogFlowController {
         .slice(0, 50)
         .map(({ _score, ...doc }) => doc);
       if (currentSuggestions.length === 0) {
+        const t = strings();
         suggestions.innerHTML = `<div class="no-suggestions">${escapeHtml(t.taskDocumentNoMatches)}</div>`;
         suggestions.style.display = 'block';
         selectedSuggestionIndex = -1;
@@ -591,6 +1091,7 @@ export class CreateDialogFlowController {
 
       const selectedAgentId = resolveSelectedAgentId();
       if (!selectedAgentId) {
+        const t = strings();
         const error: CreateDialogError = {
           code: 'TEAM_MEMBER_INVALID',
           message: t.shadowMembersSelectRequired,
@@ -608,6 +1109,12 @@ export class CreateDialogFlowController {
         agentId: selectedAgentId,
         taskDocPath: normalizedTaskDocPath.taskDocPath,
       };
+      if (selectedPrimingRef !== null) {
+        request.priming = {
+          scriptRefs: [selectedPrimingRef],
+          showInUi: primingShowInUi.checked,
+        };
+      }
       try {
         const result = await this.deps.submitCreateDialog(request);
         if (result.kind === 'failure') {
@@ -619,6 +1126,7 @@ export class CreateDialogFlowController {
           return;
         }
         this.state = { kind: 'succeeded', intent, result };
+        persistPrimingPreference();
         await this.deps.onCreated(result);
         this.close();
       } catch (error: unknown) {

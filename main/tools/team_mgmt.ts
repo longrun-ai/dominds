@@ -19,6 +19,7 @@ import type { LlmStreamReceiver } from '../llm/gen';
 import { getLlmGenerator } from '../llm/gen/registry';
 import { parseMcpYaml } from '../mcp/config';
 import { requestMcpConfigReload } from '../mcp/supervisor';
+import { validateAllPrimingScriptsInRtws } from '../priming';
 import { getProblemsSnapshot, reconcileProblemsByPrefix } from '../problems';
 import type { TeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
 import { getTeamMgmtManualTopicTitle, isTeamMgmtManualTopicKey } from '../shared/team_mgmt-manual';
@@ -3455,6 +3456,102 @@ function renderMindsManual(language: LanguageCode): string {
   );
 }
 
+function renderPrimingManual(language: LanguageCode): string {
+  if (language === 'zh') {
+    return (
+      fmtHeader('.minds/priming/*（启动脚本）') +
+      fmtList([
+        '目录约定：个人脚本放在 `.minds/priming/individual/<member-id>/<slug>.md`；团队共享脚本放在 `.minds/priming/team_shared/<slug>.md`。',
+        '脚本语义：启动脚本会映射成“对话历史”并在创建对话时注入；它不是只读日志，而是可编辑的行为引导层。',
+        '推荐格式：`frontmatter + record 块`。每个 `### record <type>` 对应一个持久化事件（去掉 `ts`），可忠实复原 tool 记录与 call-id 等技术细节。',
+        '严格约束：不支持 `### user` / `### assistant` 旧写法。',
+        '`func_call_record` 使用三反引号 `json`；其余 record 建议使用 6 重反引号 markdown block（避免与正文三反引号冲突）。',
+        '建议在 frontmatter 里维护 `title`、`applicableMemberIds` 等元数据；`team_shared` 脚本可用 `applicableMemberIds` 控制适用成员。',
+        '维护原则：允许任意编辑/重写脚本内容，包括新增或改写 assistant 消息，以引导期望行为（而不是拘泥于历史实录）。',
+        '每次修改 `.minds/priming/**` 后，建议运行 `team_mgmt_validate_priming_scripts({})` 做格式/路径校验。',
+        'WebUI 支持把“当前 course 历史”直接导出为个人启动脚本；导出后应由团队管理者审阅并按团队规范再编辑。',
+        'slug 规范：使用 `[A-Za-z0-9._-]` 路径段，可多级；严禁 `..`、绝对路径或非法字符。',
+      ]) +
+      fmtCodeBlock('markdown', [
+        '---',
+        'kind: agent_priming_script',
+        'version: 3',
+        'title: 代码评审启动',
+        'applicableMemberIds:',
+        '  - coder',
+        '---',
+        '',
+        '### record human_text_record',
+        '``````markdown',
+        '---',
+        'genseq: 1',
+        'msgId: priming-1',
+        'grammar: markdown',
+        '---',
+        '先梳理变更面，再给出最小验证计划。',
+        '``````',
+        '',
+        '### record func_call_record',
+        '```json',
+        '{',
+        '  "type": "func_call_record",',
+        '  "genseq": 1,',
+        '  "id": "call-1",',
+        '  "name": "exec_command",',
+        '  "arguments": { "cmd": "git status --short" }',
+        '}',
+        '```',
+      ])
+    );
+  }
+
+  return (
+    fmtHeader('.minds/priming/* (startup scripts)') +
+    fmtList([
+      'Directory convention: individual scripts live at `.minds/priming/individual/<member-id>/<slug>.md`; team-shared scripts live at `.minds/priming/team_shared/<slug>.md`.',
+      'Script semantics: startup scripts are mapped into dialog history at creation time. They are not read-only logs; they are editable behavior-guidance assets.',
+      'Recommended format: `frontmatter + record blocks`. Each `### record <type>` maps to one persisted event (without `ts`) for faithful replay, including tool records and call-id links.',
+      'Strict rule: legacy `### user` / `### assistant` sections are not supported.',
+      '`func_call_record` uses triple-backtick `json`; other records should use six-backtick markdown blocks to avoid nested-fence collisions.',
+      'Use frontmatter for metadata like `title` and `applicableMemberIds`; for `team_shared`, `applicableMemberIds` narrows applicability.',
+      'Maintenance principle: freely edit or fully rewrite scripts, including assistant messages, to shape expected behavior.',
+      'After each edit under `.minds/priming/**`, run `team_mgmt_validate_priming_scripts({})` for format/path validation.',
+      'WebUI can export current-course history into an individual startup script; team managers should review and refine exported scripts.',
+      'Slug rule: use `[A-Za-z0-9._-]` path segments (nested allowed); reject `..`, absolute paths, and illegal characters.',
+    ]) +
+    fmtCodeBlock('markdown', [
+      '---',
+      'kind: agent_priming_script',
+      'version: 3',
+      'title: Code Review Startup',
+      'applicableMemberIds:',
+      '  - coder',
+      '---',
+      '',
+      '### record human_text_record',
+      '``````markdown',
+      '---',
+      'genseq: 1',
+      'msgId: priming-1',
+      'grammar: markdown',
+      '---',
+      'First map the change surface, then provide a minimum validation plan.',
+      '``````',
+      '',
+      '### record func_call_record',
+      '```json',
+      '{',
+      '  "type": "func_call_record",',
+      '  "genseq": 1,',
+      '  "id": "call-1",',
+      '  "name": "exec_command",',
+      '  "arguments": { "cmd": "git status --short" }',
+      '}',
+      '```',
+    ])
+  );
+}
+
 function renderEnvManual(language: LanguageCode): string {
   if (language === 'zh') {
     return (
@@ -4468,6 +4565,96 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
   return header + explain + '\n' + body + '\n';
 }
 
+export const teamMgmtValidatePrimingScriptsTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_validate_priming_scripts',
+  description: `Validate startup scripts under ${MINDS_DIR}/priming/.`,
+  descriptionI18n: {
+    en: `Validate startup scripts under ${MINDS_DIR}/priming/.`,
+    zh: `校验 ${MINDS_DIR}/priming/ 下的启动脚本格式与路径约束。`,
+  },
+  parameters: { type: 'object', additionalProperties: false, properties: {} },
+  argsValidation: 'dominds',
+  async call(dlg, _caller, _args: ToolArguments): Promise<string> {
+    const language = getUserLang(dlg);
+    try {
+      const minds = await getMindsDirState();
+      if (minds.kind === 'missing') {
+        const msg =
+          formatMindsMissingNotice(language) +
+          (language === 'zh'
+            ? `\n\n当前无法校验 \`${MINDS_DIR}/priming/\`。`
+            : `\n\nCannot validate \`${MINDS_DIR}/priming/\` yet.`);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+      if (minds.kind === 'not_directory') {
+        const msg =
+          language === 'zh'
+            ? `错误：\`${MINDS_DIR}/\` 存在但不是目录：\`${minds.abs}\``
+            : `Error: \`${MINDS_DIR}/\` exists but is not a directory: \`${minds.abs}\``;
+        return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const result = await validateAllPrimingScriptsInRtws();
+      if (result.checked === 0) {
+        const msg =
+          language === 'zh'
+            ? fmtHeader('启动脚本校验') +
+              fmtList([`\`${MINDS_DIR}/priming/\` 下未发现脚本文件，无需校验。`])
+            : fmtHeader('Startup Script Validation') +
+              fmtList([
+                `No script files found under \`${MINDS_DIR}/priming/\`; nothing to validate.`,
+              ]);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      if (result.failed === 0) {
+        const msg =
+          language === 'zh'
+            ? fmtHeader('启动脚本校验通过') +
+              fmtList([
+                `已检查 ${result.checked} 个脚本：✅ 全部通过`,
+                `建议：每次修改 \`${MINDS_DIR}/priming/**\` 后运行本工具。`,
+              ])
+            : fmtHeader('Startup Script Validation Passed') +
+              fmtList([
+                `Checked ${result.checked} script(s): ✅ all passed`,
+                `Recommendation: run this tool after each change under \`${MINDS_DIR}/priming/**\`.`,
+              ]);
+        return ok(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+      }
+
+      const lines: string[] = [];
+      for (const issue of result.issues) {
+        lines.push(`- ${issue.path}: ${issue.error}`);
+      }
+      const msg =
+        language === 'zh'
+          ? fmtHeader('启动脚本校验失败') +
+            fmtList([
+              `已检查 ${result.checked} 个脚本：❌ ${result.failed} 个失败`,
+              '请逐项修复以下错误后再继续。',
+            ]) +
+            '\n' +
+            lines.join('\n')
+          : fmtHeader('Startup Script Validation Failed') +
+            fmtList([
+              `Checked ${result.checked} script(s): ❌ ${result.failed} failed`,
+              'Fix the following issues before proceeding.',
+            ]) +
+            '\n' +
+            lines.join('\n');
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `校验失败：${err instanceof Error ? err.message : String(err)}`
+          : `Validation failed: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
 export const teamMgmtValidateTeamCfgTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_validate_team_cfg',
@@ -4857,6 +5044,8 @@ export const teamMgmtManualTool: FuncTool = {
             '',
             `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
             `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
+            `\`team_mgmt_manual({ topics: ["priming"] })\`：${topicTitle('priming')} — .minds/priming/*（启动脚本如何编写、维护与复用）`,
+            '`启动脚本修改后建议立即运行：`team_mgmt_validate_priming_scripts({})`',
             `\`team_mgmt_manual({ topics: ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,
             `\`team_mgmt_manual({ topics: ["permissions"] })\`：${topicTitle('permissions')} — 目录+扩展名权限（*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names 语义与冲突规则）`,
             `\`team_mgmt_manual({ topics: ["toolsets"] })\`：${topicTitle('toolsets')} — toolsets 列表（当前已注册 toolsets；常见三种授权模式）`,
@@ -4879,6 +5068,8 @@ export const teamMgmtManualTool: FuncTool = {
           '',
           `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
           `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,
+          `\`team_mgmt_manual({ topics: ["priming"] })\`: ${topicTitle('priming')} — .minds/priming/* (how to author, maintain, and reuse startup scripts)`,
+          'After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.',
           `\`team_mgmt_manual({ topics: ["env"] })\`: ${topicTitle('env')} — .minds/env.*.md (runtime intro injected before Team Directory)`,
           `\`team_mgmt_manual({ topics: ["permissions"] })\`: ${topicTitle('permissions')} — directory + extension permissions (semantics + conflict rules)`,
           `\`team_mgmt_manual({ topics: ["toolsets"] })\`: ${topicTitle('toolsets')} — toolsets list (registered toolsets + common patterns)`,
@@ -4957,6 +5148,10 @@ export const teamMgmtManualTool: FuncTool = {
         const content = renderMindsManual(language);
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
+      if (want('priming')) {
+        const content = renderPrimingManual(language);
+        return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
+      }
       if (want('env')) {
         const content = renderEnvManual(language);
         return ok(content, [{ type: 'environment_msg', role: 'user', content }]);
@@ -4991,6 +5186,7 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtCheckProviderTool,
   teamMgmtListProvidersTool,
   teamMgmtListModelsTool,
+  teamMgmtValidatePrimingScriptsTool,
   teamMgmtValidateTeamCfgTool,
   teamMgmtValidateMcpCfgTool,
   teamMgmtListDirTool,

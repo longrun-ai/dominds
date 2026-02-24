@@ -55,6 +55,31 @@ export type UiStrings = {
   shadowMembersLabel: string;
   shadowMembersSelectRequired: string;
   defaultMarker: string;
+  primingScriptsLabel: string;
+  primingRecentSelectPlaceholder: string;
+  primingNoneOption: string;
+  primingMoreOption: string;
+  primingSearchPlaceholder: string;
+  primingNoMatches: string;
+  primingNoScripts: string;
+  primingShowInUiLabel: string;
+  primingHelpText: string;
+  primingSelectedScriptsLabel: string;
+  primingAddScriptAction: string;
+  primingRemoveScriptLabel: string;
+  primingScopeTeamShared: string;
+  primingScopeIndividual: string;
+  primingLoadFailedToastPrefix: string;
+  primingInvalidScriptsSkippedToastPrefix: string;
+  primingInvalidScriptsSkippedToastMiddle: string;
+  primingSaveButtonLabel: string;
+  primingSaveButtonTitle: string;
+  primingSavePrompt: string;
+  primingSaveNoDialogToast: string;
+  primingSaveSlugRequiredToast: string;
+  primingSaveOverwriteConfirm: string;
+  primingSaveSuccessToastPrefix: string;
+  primingSaveFailedToastPrefix: string;
 
   newDialogLoadingTeam: string;
   newDialogNoTeamMembers: string;
@@ -364,6 +389,31 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       shadowMembersLabel: '影子成员：',
       shadowMembersSelectRequired: '请选择影子成员。',
       defaultMarker: ' • 默认',
+      primingScriptsLabel: '启动脚本：',
+      primingRecentSelectPlaceholder: '选择最近脚本…',
+      primingNoneOption: '<无>',
+      primingMoreOption: '更多……',
+      primingSearchPlaceholder: '搜索全部适用启动脚本（slug / title / ref）',
+      primingNoMatches: '没有匹配的启动脚本',
+      primingNoScripts: '没有可用启动脚本',
+      primingShowInUiLabel: 'UI 展示',
+      primingHelpText: '所选启动脚本会在创建时映射成历史对话并注入上下文。',
+      primingSelectedScriptsLabel: '已选启动脚本',
+      primingAddScriptAction: '选中',
+      primingRemoveScriptLabel: '移除启动脚本',
+      primingScopeTeamShared: '团队共享',
+      primingScopeIndividual: '个人',
+      primingLoadFailedToastPrefix: '加载启动脚本失败：',
+      primingInvalidScriptsSkippedToastPrefix: '已跳过不可解析启动脚本（',
+      primingInvalidScriptsSkippedToastMiddle: '个）：',
+      primingSaveButtonLabel: '保存启动脚本',
+      primingSaveButtonTitle: '将当前 course 历史保存为启动脚本',
+      primingSavePrompt: '输入 slug（将保存到 .minds/priming/individual/<agent-id>/<slug>.md）：',
+      primingSaveNoDialogToast: '当前没有可保存的对话。',
+      primingSaveSlugRequiredToast: 'slug 不能为空。',
+      primingSaveOverwriteConfirm: '启动脚本已存在（slug: <slug>）。是否覆盖？',
+      primingSaveSuccessToastPrefix: '已保存启动脚本：',
+      primingSaveFailedToastPrefix: '保存启动脚本失败：',
 
       newDialogLoadingTeam: '加载团队成员中…',
       newDialogNoTeamMembers: '没有可用的团队成员（请检查 team.yaml）',
@@ -678,6 +728,32 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     shadowMembersLabel: 'Shadow Members:',
     shadowMembersSelectRequired: 'Please select a shadow member.',
     defaultMarker: ' • Default',
+    primingScriptsLabel: 'Startup scripts:',
+    primingRecentSelectPlaceholder: 'Pick from recent scripts…',
+    primingNoneOption: '<None>',
+    primingMoreOption: 'More…',
+    primingSearchPlaceholder: 'Search all applicable startup scripts (slug / title / ref)',
+    primingNoMatches: 'No matching startup scripts',
+    primingNoScripts: 'No startup scripts available',
+    primingShowInUiLabel: 'UI display',
+    primingHelpText: 'Selected startup scripts are replayed as dialog history at creation time.',
+    primingSelectedScriptsLabel: 'Selected startup scripts',
+    primingAddScriptAction: 'Choose',
+    primingRemoveScriptLabel: 'Remove startup script',
+    primingScopeTeamShared: 'team shared',
+    primingScopeIndividual: 'individual',
+    primingLoadFailedToastPrefix: 'Failed to load startup scripts: ',
+    primingInvalidScriptsSkippedToastPrefix: 'Skipped invalid startup scripts (',
+    primingInvalidScriptsSkippedToastMiddle: '): ',
+    primingSaveButtonLabel: 'Save startup script',
+    primingSaveButtonTitle: 'Save current course history as a startup script',
+    primingSavePrompt:
+      'Enter slug (it will be saved to .minds/priming/individual/<agent-id>/<slug>.md):',
+    primingSaveNoDialogToast: 'No active dialog to save.',
+    primingSaveSlugRequiredToast: 'Slug is required.',
+    primingSaveOverwriteConfirm: 'Startup script already exists (slug: <slug>). Overwrite it?',
+    primingSaveSuccessToastPrefix: 'Startup script saved: ',
+    primingSaveFailedToastPrefix: 'Failed to save startup script: ',
 
     newDialogLoadingTeam: 'Loading team members…',
     newDialogNoTeamMembers: 'No team members available (check team.yaml)',

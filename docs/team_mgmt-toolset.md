@@ -109,6 +109,7 @@ Recommended tools (names are suggestions; use `snake_case` to match existing too
 | `team_mgmt_move_dir`                   | `fs`     | Move/rename directories under `.minds/`                                           | `.minds/**`             |
 | `team_mgmt_rm_file`                    | `fs`     | Delete files under `.minds/`                                                      | `.minds/**`             |
 | `team_mgmt_rm_dir`                     | `fs`     | Delete directories under `.minds/`                                                | `.minds/**`             |
+| `team_mgmt_validate_priming_scripts`   | new      | Validate path constraints and script format under `.minds/priming/**.md`          | `.minds/**`             |
 | `team_mgmt_validate_team_cfg`          | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel              | `.minds/**`             |
 | `team_mgmt_manual`                     | new      | Built-in “how-to” manual (see below)                                              | N/A                     |
 
@@ -117,6 +118,8 @@ Notes:
 - Include the full `.minds/` lifecycle (create, update, rename/move, delete). The team manager must
   be able to correct mistakes and recover from accidental corruptions (including ones introduced by
   other tools).
+- After any change under `.minds/priming/**`, the team manager should run
+  `team_mgmt_validate_priming_scripts({})` to ensure startup script paths/formats are parseable.
 - After any change to `.minds/team.yaml`, the team manager should run `team_mgmt_validate_team_cfg({})`
   to ensure all errors are detected and surfaced (and to avoid silently omitting broken member configs).
 - Path handling should be strict:
@@ -157,6 +160,7 @@ reading source code.
 - `team_mgmt_manual({ "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
 - `team_mgmt_manual({ "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
 - `team_mgmt_manual({ "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowledge/lessons).
+- `team_mgmt_manual({ "topics": ["priming"] })` → how to manage startup scripts under `.minds/priming/*`.
 - `team_mgmt_manual({ "topics": ["permissions"] })` → how `read_dirs`/`write_dirs` and deny-lists work.
 - `team_mgmt_manual({ "topics": ["troubleshooting"] })` → common failure modes and how to recover.
 
@@ -219,6 +223,29 @@ Keep these as **static/manual text** (not dynamically loaded):
 - High-level explanations, best practices, and “why” sections.
 - Schema summaries (e.g. the member field table). These can be authored as a stable contract and
   validated in code reviews; runtime introspection of TypeScript types is not reliable post-build.
+
+## Managing `.minds/priming/*` (startup scripts)
+
+Startup script directories:
+
+- Individual: `.minds/priming/individual/<member-id>/<slug>.md`
+- Team shared: `.minds/priming/team_shared/<slug>.md`
+
+Core principles:
+
+- Startup scripts are mapped into real dialog history; they are not read-only logs.
+- Team managers should treat them as editable startup playbooks.
+- Freely add/edit assistant or user messages, and fully rewrite scripts when workflows evolve.
+
+Recommended format:
+
+- Frontmatter (optional, recommended): metadata such as `title` and `applicableMemberIds`.
+- Message blocks (required): `### user` / `### assistant`, optionally fenced markdown blocks.
+
+Maintenance guidance:
+
+- Organize scripts with meaningful hierarchical slugs (for example `release/webui/smoke-v1`).
+- WebUI “save current course as script” exports are starting points; managers should review and rewrite into stable playbooks.
 
 ## Managing `.minds/llm.yaml`
 

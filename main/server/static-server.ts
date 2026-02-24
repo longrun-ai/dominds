@@ -52,7 +52,9 @@ Available API endpoints:
 WebSocket: ws://localhost:5556/ws
 
 Frontend URL: http://localhost:5555/
-Backend API: http://localhost:5556/api/
+Frontend API: http://localhost:5555/api/ (same-origin; proxied to backend)
+Frontend WS:  ws://localhost:5555/ws (same-origin; proxied to backend)
+Backend API (internal): http://localhost:5556/api/
 `);
         return true;
       }

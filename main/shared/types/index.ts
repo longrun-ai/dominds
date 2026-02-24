@@ -1,6 +1,7 @@
 // Shared types for frontend and backend
 
 export * from './language';
+export * from './priming';
 export * from './problems';
 export * from './setup';
 export * from './snippets';

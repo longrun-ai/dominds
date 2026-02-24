@@ -24,6 +24,11 @@ import { driveDialogStream, supplyResponseToSupdialog } from '../llm/driver-entr
 import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/driver-v2/runtime-utils';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
+import {
+  applyPrimingScriptsToDialog,
+  buildRootDialogPrimingMetadata,
+  getRootDialogPrimingConfig,
+} from '../priming';
 import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
@@ -689,7 +694,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
   }
 
   try {
-    const { requestId, agentId, taskDocPath } = parsed;
+    const { requestId, agentId, taskDocPath, priming } = parsed;
 
     const generatedId = generateDialogID();
     // For root dialogs, self and root are the same
@@ -712,6 +717,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
+      priming: buildRootDialogPrimingMetadata(priming),
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
@@ -738,6 +744,15 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
       },
     }));
+
+    if (priming && priming.scriptRefs.length > 0) {
+      await applyPrimingScriptsToDialog({
+        dialog,
+        agentId,
+        status: 'running',
+        priming,
+      });
+    }
 
     // Send dialog_ready with full info so frontend can track the active dialog
     const response: DialogReadyMessage = {
@@ -845,6 +860,9 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
         `Dialog ${dialogIdObj.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
       );
     }
+    const rootPrimingConfig =
+      dialogIdObj.selfId === dialogIdObj.rootId ? getRootDialogPrimingConfig(metadata) : undefined;
+    const showPrimingEventsInUi = rootPrimingConfig?.showInUi !== false;
 
     const decidedCourse =
       (await DialogPersistence.getCurrentCourseNumber(dialogIdObj, requestedStatus)) ||
@@ -888,6 +906,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           decidedCourse,
           decidedCourse,
           requestedStatus,
+          { showPrimingEventsInUi },
         );
       } else {
         throw new Error('Unexpected dialog store type for sendDialogEventsDirectly');

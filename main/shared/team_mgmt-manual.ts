@@ -19,6 +19,7 @@ export const TEAM_MGMT_MANUAL_TOPIC_KEYS = [
   'team',
   'member-properties',
   'minds',
+  'priming',
   'env',
   'permissions',
   'toolsets',
@@ -51,6 +52,12 @@ export const TEAM_MGMT_MANUAL_TOPIC_META: Readonly<
   mcp: { titleI18n: { zh: 'MCP（mcp.yaml）', en: 'MCP (mcp.yaml)' } },
   minds: {
     titleI18n: { zh: '角色资产（.minds/team/<id>/*）', en: 'Minds Assets (.minds/team/<id>/*)' },
+  },
+  priming: {
+    titleI18n: {
+      zh: '启动脚本（.minds/priming/*）',
+      en: 'Startup Scripts (.minds/priming/*)',
+    },
   },
   env: { titleI18n: { zh: '环境提示（env.*.md）', en: 'Environment Intro (env.*.md)' } },
   troubleshooting: { titleI18n: { zh: '排障（troubleshooting）', en: 'Troubleshooting' } },
@@ -85,6 +92,7 @@ export const TEAM_MGMT_MANUAL_UI_TOPIC_ORDER: readonly TeamMgmtManualTopicKey[] 
   'builtin-defaults',
   'mcp',
   'minds',
+  'priming',
   'env',
   'troubleshooting',
 ];
@@ -107,6 +115,7 @@ export const TEAM_MGMT_MANUAL_UI_TOOL_TOPICS_BY_KEY: Readonly<
   // Other
   mcp: ['mcp'],
   minds: ['minds'],
+  priming: ['priming'],
   env: ['env'],
   troubleshooting: ['troubleshooting'],
 };

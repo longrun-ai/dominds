@@ -28,6 +28,8 @@ import type {
   ApiRootDialogResponse,
   DialogInfo,
   DialogStatusKind,
+  PrimingScriptSummary,
+  PrimingScriptWarningSummary,
   ToolsetInfo,
   WorkspaceProblem,
 } from '../shared/types';
@@ -200,6 +202,49 @@ export class DomindsApp extends HTMLElement {
     getTeamMembers: () => this.teamMembers,
     getDefaultResponder: () => this.defaultResponder,
     getTaskDocuments: () => this.taskDocuments,
+    listPrimingScripts: async (
+      agentId: string,
+    ): Promise<{
+      recent: PrimingScriptSummary[];
+      warningSummary?: PrimingScriptWarningSummary;
+    }> => {
+      const api = getApiClient();
+      const resp = await api.listPrimingScripts(agentId);
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          throw new Error('Authentication required');
+        }
+        throw new Error(resp.error || 'Failed to load priming scripts');
+      }
+      const payload = resp.data;
+      if (!payload || !payload.success) {
+        throw new Error(payload && !payload.success ? payload.error : 'Invalid priming payload');
+      }
+      return { recent: payload.recent, warningSummary: payload.warningSummary };
+    },
+    searchPrimingScripts: async (
+      agentId: string,
+      query: string,
+    ): Promise<{
+      scripts: PrimingScriptSummary[];
+      warningSummary?: PrimingScriptWarningSummary;
+    }> => {
+      const api = getApiClient();
+      const resp = await api.searchPrimingScripts(agentId, query);
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          throw new Error('Authentication required');
+        }
+        throw new Error(resp.error || 'Failed to search priming scripts');
+      }
+      const payload = resp.data;
+      if (!payload || !payload.success) {
+        throw new Error(payload && !payload.success ? payload.error : 'Invalid priming payload');
+      }
+      return { scripts: payload.scripts, warningSummary: payload.warningSummary };
+    },
     ensureTeamMembersReady: () => this.ensureCreateDialogPrerequisites(),
     submitCreateDialog: async (request: CreateDialogRequest): Promise<CreateDialogResult> => {
       const api = getApiClient();
@@ -352,6 +397,117 @@ export class DomindsApp extends HTMLElement {
       this.updateActivityView();
     }
     this.showToast(opened.error.message, kind);
+  }
+
+  private async saveCurrentCourseAsPrimingScript(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
+    if (!this.currentDialog) {
+      this.showToast(t.primingSaveNoDialogToast, 'warning');
+      return;
+    }
+    const dialogStatus =
+      this.currentDialogStatus ?? this.resolveDialogStatus(this.currentDialog) ?? 'running';
+    const currentAgentId =
+      typeof this.currentDialog.agentId === 'string' && this.currentDialog.agentId.trim() !== ''
+        ? this.currentDialog.agentId.trim()
+        : 'agent-id';
+    const defaultSlug = `course-${String(this.toolbarCurrentCourse)}`;
+    const promptText = t.primingSavePrompt.includes('<agent-id>')
+      ? t.primingSavePrompt.replace('<agent-id>', currentAgentId)
+      : t.primingSavePrompt;
+    const enteredSlug = window.prompt(promptText, defaultSlug);
+    if (enteredSlug === null) return;
+    const slug = enteredSlug.trim();
+    if (slug === '') {
+      this.showToast(t.primingSaveSlugRequiredToast, 'warning');
+      return;
+    }
+
+    const asFailurePayload = (
+      value: unknown,
+    ): {
+      error: string;
+      errorCode?: 'ALREADY_EXISTS' | 'INVALID_REQUEST' | 'INTERNAL_ERROR';
+    } | null => {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+      const rec = value as Record<string, unknown>;
+      if (rec['success'] !== false) return null;
+      const error = typeof rec['error'] === 'string' ? rec['error'] : '';
+      if (error.trim() === '') return null;
+      const rawCode = rec['errorCode'];
+      const errorCode =
+        rawCode === 'ALREADY_EXISTS' ||
+        rawCode === 'INVALID_REQUEST' ||
+        rawCode === 'INTERNAL_ERROR'
+          ? rawCode
+          : undefined;
+      return { error, errorCode };
+    };
+
+    const confirmOverwrite = (): boolean => {
+      const text = t.primingSaveOverwriteConfirm.includes('<slug>')
+        ? t.primingSaveOverwriteConfirm.replace('<slug>', slug)
+        : t.primingSaveOverwriteConfirm;
+      return window.confirm(text);
+    };
+
+    let overwrite = false;
+    while (true) {
+      const resp = await this.apiClient.saveCurrentCourseAsPrimingScript({
+        dialog: {
+          rootId: this.currentDialog.rootId,
+          selfId: this.currentDialog.selfId,
+          status: dialogStatus,
+        },
+        course: this.toolbarCurrentCourse,
+        slug,
+        overwrite,
+      });
+
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        const failure = asFailurePayload(resp.data);
+        const shouldConfirmOverwrite =
+          !overwrite &&
+          (resp.status === 409 || (failure !== null && failure.errorCode === 'ALREADY_EXISTS'));
+        if (shouldConfirmOverwrite) {
+          if (!confirmOverwrite()) return;
+          overwrite = true;
+          continue;
+        }
+        const reason =
+          failure !== null
+            ? failure.error
+            : resp.error && resp.error.trim() !== ''
+              ? resp.error
+              : t.unknownError;
+        this.showToast(`${t.primingSaveFailedToastPrefix}${reason}`, 'error');
+        return;
+      }
+
+      const payload = resp.data;
+      if (!payload || !payload.success) {
+        const failure = asFailurePayload(payload);
+        const shouldConfirmOverwrite =
+          !overwrite && failure !== null && failure.errorCode === 'ALREADY_EXISTS';
+        if (shouldConfirmOverwrite) {
+          if (!confirmOverwrite()) return;
+          overwrite = true;
+          continue;
+        }
+        const reason = failure !== null ? failure.error : t.unknownError;
+        this.showToast(`${t.primingSaveFailedToastPrefix}${reason}`, 'error');
+        return;
+      }
+
+      this.showSuccess(
+        `${t.primingSaveSuccessToastPrefix}${payload.script.ref} (${String(payload.messageCount)})`,
+      );
+      return;
+    }
   }
 
   private teamMembersLoadState:
@@ -749,6 +905,13 @@ export class DomindsApp extends HTMLElement {
     if (prev) prev.setAttribute('aria-label', t.previousCourse);
     const next = this.shadowRoot.querySelector('#toolbar-next') as HTMLButtonElement | null;
     if (next) next.setAttribute('aria-label', t.nextCourse);
+    const savePriming = this.shadowRoot.querySelector(
+      '#toolbar-save-priming',
+    ) as HTMLButtonElement | null;
+    if (savePriming) {
+      savePriming.title = t.primingSaveButtonTitle;
+      savePriming.setAttribute('aria-label', t.primingSaveButtonTitle);
+    }
 
     const remToggle = this.shadowRoot.querySelector(
       '#toolbar-reminders-toggle',
@@ -1462,6 +1625,9 @@ export class DomindsApp extends HTMLElement {
   private updateToolbarDisplay(): void {
     const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement | null;
     const nextBtn = this.shadowRoot?.querySelector('#toolbar-next') as HTMLButtonElement | null;
+    const savePrimingBtn = this.shadowRoot?.querySelector(
+      '#toolbar-save-priming',
+    ) as HTMLButtonElement | null;
     const remBtnCount = this.shadowRoot?.querySelector(
       '#toolbar-reminders-toggle span',
     ) as HTMLElement | null;
@@ -1508,6 +1674,7 @@ export class DomindsApp extends HTMLElement {
 
     if (prevBtn) prevBtn.disabled = this.toolbarCurrentCourse <= 1;
     if (nextBtn) nextBtn.disabled = this.toolbarCurrentCourse >= this.toolbarTotalCourses;
+    if (savePrimingBtn) savePrimingBtn.disabled = this.currentDialog === null;
     if (remBtnCount) remBtnCount.textContent = String(this.toolbarReminders.length);
     if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
     if (stopCount) stopCount.textContent = String(this.proceedingDialogsCount);
@@ -3624,6 +3791,23 @@ export class DomindsApp extends HTMLElement {
         margin: 12px;
       }
 
+      .form-inline-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .form-inline-row > label {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 0;
+        font-weight: 500;
+        color: var(--dominds-fg, #333333);
+        font-size: var(--dominds-font-size-base, 14px);
+        white-space: nowrap;
+      }
+
       .teammate-dropdown {
         width: 100%;
         box-sizing: border-box;
@@ -3659,6 +3843,18 @@ export class DomindsApp extends HTMLElement {
         box-sizing: border-box;
       }
 
+      .form-inline-row .task-doc-container {
+        flex: 1 1 280px;
+        width: auto;
+        min-width: 180px;
+      }
+
+      .form-inline-row .teammate-dropdown {
+        flex: 1 1 220px;
+        width: auto;
+        min-width: 180px;
+      }
+
       .task-doc-input {
         width: 100%;
         box-sizing: border-box;
@@ -3691,6 +3887,152 @@ export class DomindsApp extends HTMLElement {
         overflow-y: auto;
         z-index: var(--dominds-z-overlay-popover);
         display: none;
+      }
+
+      .priming-header-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .priming-group {
+        margin-top: 12px;
+      }
+
+      .priming-inline-select {
+        flex: 1 1 220px;
+        min-width: 160px;
+      }
+
+      .priming-ui-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--dominds-fg, #333333);
+        font-size: var(--dominds-font-size-sm, 12px);
+        margin-left: auto;
+        white-space: nowrap;
+      }
+
+      .priming-ui-toggle.disabled {
+        opacity: 0.5;
+      }
+
+      .priming-more-section {
+        margin-top: 8px;
+      }
+
+      .priming-search-results {
+        margin-top: 6px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        border-radius: 6px;
+        max-height: 180px;
+        overflow-y: auto;
+        background: var(--dominds-bg, #ffffff);
+      }
+
+      .priming-search-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
+      }
+
+      .priming-search-item:last-child {
+        border-bottom: none;
+      }
+
+      .priming-search-meta {
+        min-width: 0;
+      }
+
+      .priming-search-name {
+        font-size: var(--dominds-font-size-base, 14px);
+        color: var(--dominds-fg, #333333);
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .priming-search-ref {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-muted, #666666);
+        overflow-wrap: anywhere;
+      }
+
+      .priming-script-add {
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-bg, #ffffff);
+        color: var(--dominds-fg, #333333);
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: var(--dominds-font-size-sm, 12px);
+        cursor: pointer;
+      }
+
+      .priming-script-add:hover:not(:disabled) {
+        border-color: var(--dominds-primary, #007acc);
+      }
+
+      .priming-search-empty {
+        padding: 10px 12px;
+        color: var(--dominds-muted, #666666);
+        font-size: var(--dominds-font-size-sm, 12px);
+      }
+
+      .priming-selected-list {
+        margin-top: 8px;
+      }
+
+      .priming-selected-title {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-muted, #666666);
+        margin-bottom: 6px;
+      }
+
+      .priming-selected-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .priming-script-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-hover, #f8f9fa);
+        border-radius: 999px;
+        padding: 3px 8px;
+        max-width: 100%;
+      }
+
+      .priming-script-chip span {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg, #333333);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 190px;
+      }
+
+      .priming-script-chip small {
+        font-size: var(--dominds-font-size-micro, 10px);
+        color: var(--dominds-muted, #666666);
+      }
+
+      .priming-script-remove {
+        border: none;
+        background: transparent;
+        color: var(--dominds-muted, #666666);
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0 2px;
       }
 
       .suggestion {
@@ -4163,6 +4505,9 @@ export class DomindsApp extends HTMLElement {
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div style="flex: 1;"></div>
+              <button class="icon-button" id="toolbar-save-priming" title="${t.primingSaveButtonTitle}" aria-label="${t.primingSaveButtonTitle}" ${this.currentDialog ? '' : 'disabled'}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              </button>
 	              <div id="course-nav">
 	                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentCourse > 1 ? '' : 'disabled'} aria-label="${t.previousCourse}">
 	                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -4679,6 +5024,12 @@ export class DomindsApp extends HTMLElement {
       // New dialog button
       if (target.id === 'new-dialog-btn' || target.closest('#new-dialog-btn')) {
         void this.openCreateDialogFlow({ source: 'toolbar' });
+        return;
+      }
+
+      const savePrimingBtn = target.closest('#toolbar-save-priming') as HTMLButtonElement | null;
+      if (savePrimingBtn) {
+        await this.saveCurrentCourseAsPrimingScript();
         return;
       }
 

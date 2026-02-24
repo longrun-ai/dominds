@@ -92,12 +92,14 @@
 | `team_mgmt_move_dir`                   | `fs`  | 移动/重命名 `.minds/` 下的目录                              | `.minds/**`      |
 | `team_mgmt_rm_file`                    | `fs`  | 删除 `.minds/` 下的文件                                     | `.minds/**`      |
 | `team_mgmt_rm_dir`                     | `fs`  | 删除 `.minds/` 下的目录                                     | `.minds/**`      |
+| `team_mgmt_validate_priming_scripts`   | 新建  | 校验 `.minds/priming/**.md` 的路径约束与脚本格式            | `.minds/**`      |
 | `team_mgmt_validate_team_cfg`          | 新建  | 验证 `.minds/team.yaml` 并将问题发布到问题面板              | `.minds/**`      |
 | `team_mgmt_manual`                     | 新建  | 内置"操作指南"手册（见下文）                                | N/A              |
 
 注意：
 
 - 包括完整的 `.minds/` 生命周期（创建、更新、重命名/移动、删除）。团队管理者必须能够纠正错误并从意外损坏中恢复（包括其他工具引入的损坏）
+- 对 `.minds/priming/**` 进行任何更改后，团队管理者应运行 `team_mgmt_validate_priming_scripts({})`，确保启动脚本路径和格式都可被系统解析
 - 对 `.minds/team.yaml` 进行任何更改后，团队管理者应运行 `team_mgmt_validate_team_cfg({})` 以确保检测并暴露所有错误（并避免静默忽略损坏的成员配置）
 - 路径处理应该严格：
   - 拒绝绝对路径
@@ -131,6 +133,7 @@
 - `team_mgmt_manual({ "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
 - `team_mgmt_manual({ "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
 - `team_mgmt_manual({ "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowledge/lessons）
+- `team_mgmt_manual({ "topics": ["priming"] })` → 如何管理 `.minds/priming/*` 启动脚本（格式、维护、复用）
 - `team_mgmt_manual({ "topics": ["permissions"] })` → `read_dirs`/`write_dirs` 和拒绝列表如何工作
 - `team_mgmt_manual({ "topics": ["troubleshooting"] })` → 常见故障模式及如何恢复
 
@@ -179,6 +182,29 @@
 
 - 高级解释、最佳实践和"为什么"部分
 - 模式摘要（例如成员字段表）。这些可以作为稳定的契约创作并在代码审查中验证；TypeScript 类型的运行时自省在构建后不可靠
+
+## 管理 `.minds/priming/*`（启动脚本）
+
+启动脚本目录：
+
+- 个人：`.minds/priming/individual/<member-id>/<slug>.md`
+- 团队共享：`.minds/priming/team_shared/<slug>.md`
+
+核心原则：
+
+- 启动脚本会映射为真实对话历史；它不是只读日志，而是可编辑的启动引导剧本。
+- 团队管理者应鼓励按业务场景维护脚本，并可直接增删改 assistant/user 消息内容。
+- 允许完全重写脚本以匹配新的协作模式、质量标准和语言风格。
+
+推荐格式：
+
+- frontmatter（可选但推荐）：`title`、`applicableMemberIds` 等元数据。
+- 消息块（必填）：使用 `### user` / `### assistant`，支持 fenced markdown 块。
+
+维护建议：
+
+- 用 slug 分层组织脚本（如 `release/webui/smoke-v1`），避免平铺和无语义命名。
+- WebUI 导出的“当前 course 历史脚本”只作为起点，后续应由团队管理者审阅并重写成稳定剧本。
 
 ## 管理 `.minds/llm.yaml`
 

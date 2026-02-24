@@ -84,6 +84,12 @@ function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFi
   if (value.supdialogId !== undefined) return false;
   if (value.sessionSlug !== undefined) return false;
   if (value.assignmentFromSup !== undefined) return false;
+  if (value.priming !== undefined) {
+    if (!isRecord(value.priming)) return false;
+    if (!Array.isArray(value.priming.scriptRefs)) return false;
+    if (!value.priming.scriptRefs.every((item) => typeof item === 'string')) return false;
+    if (typeof value.priming.showInUi !== 'boolean') return false;
+  }
   return true;
 }
 
@@ -94,6 +100,7 @@ function isSubdialogMetadataFile(value: unknown): value is SubdialogMetadataFile
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
   if (typeof value.supdialogId !== 'string') return false;
+  if (value.priming !== undefined) return false;
   if (value.sessionSlug !== undefined && typeof value.sessionSlug !== 'string') return false;
   const assignment = value.assignmentFromSup;
   if (!isRecord(assignment)) return false;
@@ -1643,6 +1650,9 @@ export class DiskFileDialogStore extends DialogStore {
     course?: number,
     totalCourses?: number,
     status: 'running' | 'completed' | 'archived' = 'running',
+    options?: {
+      showPrimingEventsInUi?: boolean;
+    },
   ): Promise<void> {
     try {
       // Use provided course or fallback to dialog.currentCourse (which may be stale for new Dialog objects)
@@ -1671,7 +1681,7 @@ export class DiskFileDialogStore extends DialogStore {
 
       // Send each persistence event directly to the requesting WebSocket
       for (const event of persistenceEvents) {
-        await this.sendEventDirectlyToWebSocket(ws, dialog, currentCourse, event, status);
+        await this.sendEventDirectlyToWebSocket(ws, dialog, currentCourse, event, status, options);
       }
 
       // Rehydrate reminders from dialog state
@@ -1697,7 +1707,19 @@ export class DiskFileDialogStore extends DialogStore {
     course: number,
     event: PersistedDialogRecord,
     status: 'running' | 'completed' | 'archived',
+    options?: {
+      showPrimingEventsInUi?: boolean;
+    },
   ): Promise<void> {
+    const showPrimingEventsInUi = options?.showPrimingEventsInUi !== false;
+    const sourceTag =
+      typeof (event as { sourceTag?: unknown }).sourceTag === 'string'
+        ? (event as { sourceTag: string }).sourceTag
+        : undefined;
+    if (!showPrimingEventsInUi && sourceTag === 'priming_script') {
+      return;
+    }
+
     switch (event.type) {
       case 'human_text_record': {
         const genseq = event.genseq;

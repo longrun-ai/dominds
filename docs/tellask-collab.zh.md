@@ -25,7 +25,7 @@
 ## 2. 当前机制现状（已实现）
 
 以下内容是**当前代码与文档已实现**的行为约束（见 `dialog-system.zh.md`、`fbr.zh.md`、`diligence-push.zh.md`）。
-`dominds-agent-priming.zh.md` 仅保留对旧 priming 实现的移除说明和后续“启动脚本回放”重构方案。
+`agent-priming.zh.md` 说明当前启动脚本 priming 方案与维护方式。
 
 ### 2.1 Tellask 三形态
 

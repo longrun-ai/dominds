@@ -25,7 +25,7 @@ This document has three goals:
 ## 2. Current runtime contract (already implemented)
 
 These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `diligence-push.md`.
-`dominds-agent-priming.md` now documents the deprecated priming implementation and upcoming startup-script replay plan.
+`agent-priming.md` now documents the startup-script priming design and maintenance workflow.
 
 ### 2.1 Three Tellask modes
 

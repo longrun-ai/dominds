@@ -62,6 +62,12 @@ export interface RootDialogMetadataFile {
 
   /** Root dialogs have no assignment */
   assignmentFromSup?: undefined;
+
+  /** Startup priming scripts selected when creating this dialog. */
+  priming?: {
+    scriptRefs: string[];
+    showInUi: boolean;
+  };
 }
 
 export interface SubdialogMetadataFile {
@@ -202,6 +208,7 @@ export interface AgentThoughtRecord {
   genseq: number;
   content: string;
   provider_data?: ProviderData;
+  sourceTag?: 'priming_script';
 }
 
 export interface AgentWordsRecord {
@@ -209,6 +216,7 @@ export interface AgentWordsRecord {
   type: 'agent_words_record';
   genseq: number;
   content: string;
+  sourceTag?: 'priming_script';
 }
 
 /**
@@ -223,6 +231,7 @@ export interface UiOnlyMarkdownRecord {
   type: 'ui_only_markdown_record';
   genseq: number;
   content: string;
+  sourceTag?: 'priming_script';
 }
 
 export interface FuncCallRecord {
@@ -232,6 +241,7 @@ export interface FuncCallRecord {
   id: string;
   name: string;
   arguments: ToolArguments;
+  sourceTag?: 'priming_script';
 }
 
 export type WebSearchCallActionRecord =
@@ -247,6 +257,7 @@ export interface WebSearchCallRecord {
   itemId?: string;
   status?: string;
   action?: WebSearchCallActionRecord;
+  sourceTag?: 'priming_script';
 }
 
 export interface HumanTextRecord {
@@ -257,6 +268,7 @@ export interface HumanTextRecord {
   content: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
+  sourceTag?: 'priming_script';
   /**
    * Optional callIds when this user message is an answer to one merged Q4H prompt.
    * Includes the primary askHuman callId and any merged remaining callIds.
@@ -272,6 +284,7 @@ export interface FuncResultRecord {
   name: string;
   content: string;
   contentItems?: FuncResultContentItem[];
+  sourceTag?: 'priming_script';
 }
 
 export interface QuestForSupRecord {
@@ -281,6 +294,7 @@ export interface QuestForSupRecord {
   mentionList: string[];
   tellaskContent: string;
   subDialogId: string; // this is selfId, rootId always be the same as selfId of the supdialog
+  sourceTag?: 'priming_script';
 }
 
 export interface TeammateCallResultRecord {
@@ -294,6 +308,7 @@ export interface TeammateCallResultRecord {
   status: 'completed' | 'failed';
   result: string;
   callId: string;
+  sourceTag?: 'priming_script';
 }
 
 // Anchor record in callee dialog for locating assignment/response bubbles by tellask callId.
@@ -307,6 +322,7 @@ export interface TeammateCallAnchorRecord {
   assignmentGenseq?: number;
   callerDialogId?: string;
   callerCourse?: number;
+  sourceTag?: 'priming_script';
 }
 
 // Teammate response record - separate bubble for @teammate tellasks
@@ -327,12 +343,14 @@ export interface TeammateResponseRecord {
   agentId: string;
   callId: string; // For navigation from response back to call site
   originMemberId: string;
+  sourceTag?: 'priming_script';
 }
 
 export interface GenStartRecord {
   ts: string;
   type: 'gen_start_record';
   genseq: number;
+  sourceTag?: 'priming_script';
 }
 
 export interface GenFinishRecord {
@@ -341,6 +359,7 @@ export interface GenFinishRecord {
   genseq: number;
   contextHealth?: ContextHealthSnapshot;
   llmGenModel?: string;
+  sourceTag?: 'priming_script';
 }
 
 // === REMINDER AND QUESTIONS STORAGE ===
