@@ -2864,12 +2864,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // Create thinking section (inside generation bubble)
   private createThinkingSection(): HTMLElement {
+    const t = getUiStrings(this.uiLanguage);
     const el = document.createElement('div');
     el.className = 'thinking-section';
     el.innerHTML = `
       <div class="section-header">
         <span class="section-icon">🧠</span>
-        <span class="section-title">Thinking</span>
+        <span class="section-title">${this.escapeHtml(t.thinkingSectionTitle)}</span>
       </div>
       <div class="thinking-content"></div>
     `;
@@ -3435,16 +3436,17 @@ export class DomindsDialogContainer extends HTMLElement {
       
       .bubble-header { 
         display: flex; 
-        align-items: baseline; 
+        align-items: center; 
         justify-content: space-between; 
         margin-bottom: 8px; 
       }
 
       .bubble-header-right {
         display: inline-flex;
-        align-items: baseline;
+        align-items: center;
         gap: 6px;
         flex-shrink: 0;
+        padding-right: 6px;
       }
 
       .bubble-anchor-actions {
@@ -4227,7 +4229,14 @@ export class DomindsDialogContainer extends HTMLElement {
       
       /* Content area styles */
       .content-area { flex: 1; min-width: 0; }
-      .content-area .bubble-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+      .content-area .bubble-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        padding-right: 6px;
+      }
+      .bubble-header .timestamp { margin-top: 0; }
       .content-area .author {
         font-weight: 600;
         font-size: var(--dominds-font-size-md, 13px);

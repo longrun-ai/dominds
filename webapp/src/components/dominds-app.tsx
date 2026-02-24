@@ -1998,6 +1998,18 @@ export class DomindsApp extends HTMLElement {
         transition: all 0.2s ease;
       }
 
+      #toast-history-btn {
+        width: 28px;
+        justify-content: center;
+        padding: 2px 0;
+        color: color-mix(in srgb, var(--dominds-fg, #333333) 86%, var(--dominds-muted, #666666));
+      }
+
+      #toast-history-btn svg {
+        width: 14px;
+        height: 14px;
+      }
+
       .header-pill-button:hover:not(:disabled) {
         border-color: var(--dominds-primary, #007acc);
         background: var(--dominds-hover, #f0f0f0);
@@ -4035,8 +4047,10 @@ export class DomindsApp extends HTMLElement {
 		              <span>${String(this.problems.length)}</span>
 		            </button>
 		            <button class="header-pill-button" id="toast-history-btn" title="${t.toastHistoryButtonTitle}" aria-label="${t.toastHistoryButtonTitle}">
-		              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-		                <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2 5h6v2H9V8zm0 4h6v2H9v-2zm0 4h6v2H9v-2z"></path>
+		              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		                <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+		                <polyline points="3 3 3 9 9 9"></polyline>
+		                <path d="M12 7v5l3 2"></path>
 		              </svg>
 		            </button>
 		            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>

@@ -149,6 +149,7 @@ export type UiStrings = {
   toastHistoryTitle: string;
   toastHistoryClearTitle: string;
   toastHistoryEmpty: string;
+  thinkingSectionTitle: string;
   teamMgmtManualTabTitle: string;
   promptTemplatesTabTitle: string;
   domindsDocsTabTitle: string;
@@ -460,6 +461,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toastHistoryTitle: '通知历史',
       toastHistoryClearTitle: '清空通知历史',
       toastHistoryEmpty: '暂无通知。',
+      thinkingSectionTitle: '思考中',
       teamMgmtManualTabTitle: '团队管理手册',
       promptTemplatesTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
@@ -779,6 +781,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toastHistoryTitle: 'Notification history',
     toastHistoryClearTitle: 'Clear notification history',
     toastHistoryEmpty: 'No notifications yet.',
+    thinkingSectionTitle: 'Thinking',
     teamMgmtManualTabTitle: 'Team Manual',
     promptTemplatesTabTitle: 'Prompt Templates',
     domindsDocsTabTitle: 'Dominds Docs',
