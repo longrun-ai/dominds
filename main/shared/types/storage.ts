@@ -62,14 +62,6 @@ export interface RootDialogMetadataFile {
 
   /** Root dialogs have no assignment */
   assignmentFromSup?: undefined;
-
-  /**
-   * Inherited Agent Priming mode for newly created subdialogs under this root.
-   * - `do`: always run fresh priming on subdialogs
-   * - `reuse`: reuse cache when available, otherwise run priming
-   * - `skip`: skip subdialog priming
-   */
-  subdialogAgentPrimingMode?: 'do' | 'reuse' | 'skip';
 }
 
 export interface SubdialogMetadataFile {

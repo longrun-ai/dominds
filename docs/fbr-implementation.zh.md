@@ -67,7 +67,6 @@
 
 - `main/llm/driver.ts`：策略、上下文装配、违规判定
 - `main/minds/system-prompt-parts.ts`：无工具提示生成
-- `main/agent-priming.ts`：FBR 引导文案去工具化（不在 FBR 提示词内讲工具清单）
 
 ## 验收清单
 

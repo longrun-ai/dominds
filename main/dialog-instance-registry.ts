@@ -69,13 +69,6 @@ export async function getOrRestoreRootDialog(
       contextHealth: rootState.contextHealth,
     },
   );
-  const persistedSubdialogAgentPrimingMode =
-    rootMetadata.subdialogAgentPrimingMode === 'do' ||
-    rootMetadata.subdialogAgentPrimingMode === 'reuse' ||
-    rootMetadata.subdialogAgentPrimingMode === 'skip'
-      ? rootMetadata.subdialogAgentPrimingMode
-      : 'reuse';
-  rootDialog.setSubdialogAgentPrimingMode(persistedSubdialogAgentPrimingMode);
   const persistedDisableDiligencePush =
     latest && typeof latest.disableDiligencePush === 'boolean'
       ? latest.disableDiligencePush

@@ -156,8 +156,6 @@ export interface AssignmentFromSup {
   collectiveTargets?: string[];
 }
 
-export type SubdialogAgentPrimingMode = 'do' | 'reuse' | 'skip';
-
 /**
  * Abstract base class for all dialog types.
  * Contains common properties and methods shared between RootDialog and SubDialog.
@@ -1223,8 +1221,6 @@ export class SubDialog extends Dialog {
  */
 export class RootDialog extends Dialog {
   private _status: 'running' | 'completed' | 'archived' = 'running';
-  // Root-level inheritance policy for newly created subdialogs.
-  private _subdialogAgentPrimingMode: SubdialogAgentPrimingMode = 'reuse';
 
   // Tracks all dialogs in this dialog tree for O(1) lookup
   private _localRegistry: Map<string, Dialog> = new Map();
@@ -1248,14 +1244,6 @@ export class RootDialog extends Dialog {
 
   public setPersistenceStatus(status: 'running' | 'completed' | 'archived'): void {
     this._status = status;
-  }
-
-  public get subdialogAgentPrimingMode(): SubdialogAgentPrimingMode {
-    return this._subdialogAgentPrimingMode;
-  }
-
-  public setSubdialogAgentPrimingMode(mode: SubdialogAgentPrimingMode): void {
-    this._subdialogAgentPrimingMode = mode;
   }
 
   /**

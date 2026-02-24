@@ -67,7 +67,6 @@ If any check fails, runtime throws `FBR policy isolation violation`, preventing 
 
 - `main/llm/driver.ts`: policy, context assembly, violation enforcement
 - `main/minds/system-prompt-parts.ts`: no-tools notice generator
-- `main/agent-priming.ts`: FBR prompt text cleanup (no tool-list guidance inside FBR prompts)
 
 ## Acceptance checklist
 

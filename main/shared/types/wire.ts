@@ -113,8 +113,6 @@ export interface TeamConfigUpdatedMessage {
 
 // Team and Dialog Management Messages
 
-export type AgentPrimingMode = 'do' | 'reuse' | 'skip';
-
 export type CreateDialogErrorCode =
   | 'TEAM_NOT_READY'
   | 'TEAM_MEMBER_INVALID'
@@ -126,7 +124,6 @@ export interface CreateDialogInput {
   requestId: string;
   agentId: string;
   taskDocPath: string;
-  agentPrimingMode: AgentPrimingMode;
 }
 
 export interface CreateDialogRequest extends CreateDialogInput {

@@ -59,16 +59,16 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
       ? '- Before every FBR, the system will automatically alert on context health status: if there are no yellow/red alerts, you can safely proceed with FBR. If there are yellow/red alerts, handle them first (distill + clear_mind). Then call \\`change_mind\\` based on currently observable facts to update the Taskdoc with the latest task progress; do not redundantly include information already present in the Taskdoc in the FBR FBR body.'
       : '- Before every FBR, the system will automatically alert on context health status: if there are no yellow/red alerts, you can safely proceed with FBR. If there are yellow/red alerts, handle them first. Then analyze whether currently observable facts differ from the Taskdoc, and include the findings in the FBR FBR body.';
   const fbrPhaseContractZh = [
-    '- FBR 必须按“发起 → 等待回贴 → 综合决策”三段执行：发起 `freshBootsReasoning` 只代表发起，不代表你已完成这轮推理。',
-    '- 发出 `freshBootsReasoning` 后必须进入等待态：在该次 FBR 支线回贴返回前，不得给出“最终下一步行动决策”。',
-    '- 若 \\`fbr-effort = N\\`，必须等待全部 N 条回贴后再综合；不得基于部分回贴提前定稿。',
-    '- 综合阶段必须显式区分“证据（FBR 回贴事实）”与“决策（下一步行动）”；若关键事实仍缺失，先补事实再迭代 FBR。',
+    '- FBR 必须按“发起 → 逐轮推理 → 上游回帖”三段执行：发起 `freshBootsReasoning` 只代表发起，不代表你已完成推理。',
+    '- 发出 `freshBootsReasoning` 后，必须在该 FBR 子对话内按序走完整个 N 轮流程；只有最后一轮才会回帖给上游。',
+    '- 若 \\`fbr-effort = N\\`，等待该 FBR 子对话一次性完整回帖；收到全量回帖后完成提炼并据此做下游决策；不得基于未完成中间轮次提前定稿。',
+    '- 每一轮都应给出与此前不同的增量观点；每轮均不得复述前文结论。程序会把该 FBR 全量支线正文在最后一轮合并后回贴到上游。',
   ].join('\n');
   const fbrPhaseContractEn = [
-    '- FBR MUST follow three phases: “initiate -> wait for feedback -> synthesize and decide”. Calling `freshBootsReasoning` means initiation only, not completed reasoning.',
-    '- After calling `freshBootsReasoning`, enter wait state: do not output a final next-action decision before feedback from that FBR sideline returns.',
-    '- If \\`fbr-effort = N\\`, wait for all N feedback drafts before synthesis; do not finalize based on partial drafts.',
-    '- During synthesis, explicitly separate “evidence (FBR feedback facts)” from “decision (next action)”; if key facts are still missing, collect facts first and iterate FBR.',
+    '- FBR MUST follow three phases: “initiate -> serial reasoning rounds -> upstream update”. Calling `freshBootsReasoning` means initiation only, not completed reasoning.',
+    '- After calling `freshBootsReasoning`, run all required rounds in that single FBR sideline window; only the final round may post upstream.',
+    '- If \\`fbr-effort = N\\`, wait for the complete sideline response from the final round; after receiving the full reply, distill it before downstream action. Do not finalize based on partial rounds.',
+    '- Every round must add a distinct incremental view. Every round, including the final one, must not repeat conclusions from earlier rounds. Runtime will relay the full accumulated FBR sideline output upstream in a single upstream-visible message.',
   ].join('\n');
   const teammatePhaseContractZh = [
     '- 队友诉请必须遵循“发起 → 等待 → 判定 → 续推”四段协议：若目标未达成，立即发出下一轮诉请推进。',
@@ -129,6 +129,10 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须发起 \\`freshBootsReasoning\\`。',
     fbrScopeRuleZh,
     '- FBR 的标准入口是 \\`freshBootsReasoning({ tellaskContent })\\`；禁止用 \\`tellask\\` / \\`tellaskSessionless\\` 对自己发起 self-target 诉请来替代。',
+    '- 发起 FBR 时，\\`tellaskContent\\` 只写目标、事实、约束与证据，不要预设分析方向（例如固定问题清单/指定分析框架）。推理方向必须交由 FBR 支线自主拓展。',
+    '- 发起前自检（强制）：若正文出现“请从以下维度/按以下方面/按步骤 1..N 分析”等预设提纲语句，必须先改写再调用 \\`freshBootsReasoning\\`；否则视为违规调用。',
+    '- 发起正文推荐模板（强制遵循语义）：\\`目标\\` / \\`事实\\` / \\`约束\\` / \\`证据\\`（可选 \\`未知项\\`）。正文应是事实陈述，不是对 FBR 支线下达“按维度/按步骤分析”的命令。',
+    '- 典型反例（禁止）：\\`请从以下维度分析\\`、\\`按步骤 1..N 推理\\`、\\`每个维度至少 N 轮\\`。出现这些句式时，必须先改写为中性事实描述。',
     '- 即使用户未明确要求，在诉诸 \\`askHuman\\`（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况作为 FBR 正文；在收到该次 FBR 回贴前，不要提前下最终行动决策。',
     '- FBR 阶段协议（强制）：',
     fbrPhaseContractZh,
@@ -141,6 +145,10 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must call `freshBootsReasoning`.',
     fbrScopeRuleEn,
     '- The standard FBR entry is \\`freshBootsReasoning({ tellaskContent })\\`; do not emulate FBR via self-targeted \\`tellask\\` / \\`tellaskSessionless\\`.',
+    '- When initiating FBR, keep \\`tellaskContent\\` to goals, facts, constraints, and evidence only; do not predefine analysis directions (for example fixed question checklists or prescribed frameworks). Reasoning directions must be expanded autonomously by the FBR sideline.',
+    '- Pre-call self-check (mandatory): if the body contains scaffolded directives such as “from the following dimensions/aspects” or stepwise templates (“analyze in steps 1..N”), rewrite first, then call \\`freshBootsReasoning\\`; otherwise the call is a protocol violation.',
+    '- Recommended body template (semantic MUST): \\`Goal\\` / \\`Facts\\` / \\`Constraints\\` / \\`Evidence\\` (optional \\`Unknowns\\`). The body should present neutral facts, not command the FBR sideline to analyze by fixed dimensions or steps.',
+    '- Forbidden patterns: “from the following dimensions”, “analyze in steps 1..N”, “at least N rounds per dimension”. Rewrite these into neutral factual context before calling FBR.',
     '- Even without an explicit request, before resorting to \\`askHuman\\` (Q4H), if the goal is unclear or deciding the next action is difficult, you should first initiate FBR and summarize current dialog facts as the FBR body; do not finalize the next action before that FBR feedback returns.',
     '- FBR phase contract (mandatory):',
     fbrPhaseContractEn,

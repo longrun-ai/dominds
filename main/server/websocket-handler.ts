@@ -5,10 +5,6 @@
  */
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
-import {
-  resolveInheritedSubdialogAgentPrimingMode,
-  scheduleAgentPrimingForNewDialog,
-} from '../agent-priming';
 import { Dialog, DialogID, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
@@ -693,7 +689,7 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
   }
 
   try {
-    const { requestId, agentId, taskDocPath, agentPrimingMode } = parsed;
+    const { requestId, agentId, taskDocPath } = parsed;
 
     const generatedId = generateDialogID();
     // For root dialogs, self and root are the same
@@ -706,11 +702,6 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
 
     // Create RootDialog instance with the new store
     const dialog = new RootDialog(dialogUI, taskDocPath, dialogId, agentId);
-    const subdialogAgentPrimingMode = resolveInheritedSubdialogAgentPrimingMode(
-      agentPrimingMode,
-      agentId,
-    );
-    dialog.setSubdialogAgentPrimingMode(subdialogAgentPrimingMode);
     globalDialogRegistry.register(dialog);
     // Setup WebSocket subscription for real-time events
     await setupWebSocketSubscription(ws, dialog);
@@ -721,7 +712,6 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       agentId,
       taskDocPath: taskDocPath,
       createdAt: formatUnifiedTimestamp(new Date()),
-      subdialogAgentPrimingMode,
     };
     await DialogPersistence.saveDialogMetadata(new DialogID(dialogId.selfId), metadata);
 
@@ -780,8 +770,6 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
       createdRootIds: [dialogId.selfId],
       timestamp: formatUnifiedTimestamp(new Date()),
     });
-
-    void scheduleAgentPrimingForNewDialog(dialog, { mode: agentPrimingMode });
   } catch (error) {
     log.warn('Failed to create dialog', undefined, error);
     const message = error instanceof Error ? error.message : 'Unknown error creating dialog';

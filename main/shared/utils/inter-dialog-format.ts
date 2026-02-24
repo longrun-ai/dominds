@@ -32,6 +32,10 @@ export type SubdialogAssignmentFormatInput = InterDialogParticipants &
     language?: LanguageCode;
     collectiveTargets?: string[];
     sessionSlug?: string;
+    fbrRound?: {
+      iteration: number;
+      total: number;
+    };
   };
 
 export type SupdialogCallPromptInput = {
@@ -67,12 +71,10 @@ type SubdialogRoleHeaderInput = {
 };
 
 function buildSubdialogRoleHeader(input: SubdialogRoleHeaderInput): string {
-  const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
   if (input.callName === 'freshBootsReasoning') {
-    return input.language === 'zh'
-      ? `这是一次 FBR 支线对话；诉请者对话（tellasker dialog）为 @${requesterId}（可能与当前对话同一 agent）。`
-      : `This is an FBR sideline dialog; the tellasker dialog is @${requesterId} (may be the same agent).`;
+    return '';
   }
+  const requesterId = requireNonEmpty(input.fromAgentId, 'fromAgentId');
   return input.language === 'zh'
     ? `你是当前被诉请者对话（tellaskee dialog）的主理人；诉请者对话（tellasker dialog）为 @${requesterId}（当前发起本次诉请）。`
     : `You are the responder (tellaskee dialog) for this dialog; the tellasker dialog is @${requesterId} (the current caller).`;
@@ -109,28 +111,37 @@ export function formatAssignmentFromSupdialog(input: SubdialogAssignmentFormatIn
 
   const isFbr = input.callName === 'freshBootsReasoning';
   if (isFbr) {
+    const roundIteration =
+      typeof input.fbrRound?.iteration === 'number' && Number.isFinite(input.fbrRound.iteration)
+        ? Math.max(1, Math.floor(input.fbrRound.iteration))
+        : 1;
+    if (roundIteration > 1) {
+      return `${tellaskContent}\n`;
+    }
     const intro =
       language === 'zh'
         ? [
             '# 扪心自问（FBR）自诉请',
             '',
-            '- 约束：这是一个 FBR 支线对话；请以“初心视角”独立推理与总结。',
-            '- 回问：若当前回合函数工具可用，且你需要澄清关键上下文，可使用 `tellaskBack` 回问上游；否则不要发起任何诉请。',
-            '- 重要：不要依赖诉请者对话历史；仅基于诉请正文（以及本支线对话自身的会话历史，如有）。',
+            '- 约束：这是一个扪心自问（self tellask）支线对话；请独立推理与总结。',
+            '- 系统规则：本支线对话为函数禁用模式，不允许任何函数调用（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`）。',
+            '- 系统提示：不要受诉请正文中的定调、分析方向或维度清单约束；请聚焦总体目标，自由发挥并开辟新的分析切入角度。',
             '',
             '---',
           ].join('\n')
         : [
             '# Fresh Boots Reasoning (FBR) request',
             '',
-            '- Constraint: this is an FBR sideline dialog; reason independently from a “fresh boots” perspective.',
-            '- TellaskBack: if function tools are enabled for this turn and you must clarify critical missing context, use `tellaskBack`; otherwise do not emit tellasks.',
-            '- Important: do not rely on the tellasker dialog history; use only the tellask body (and this sideline dialog’s own history, if any).',
+            '- Constraint: this is a self-tellask FBR sideline dialog; reason independently and produce conclusions.',
+            '- System rule: this sideline runs with function-calls disabled; do not emit any function call (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
+            '- System prompt: do not be constrained by framing, analysis directions, or dimension checklists embedded in the tellask body; stay focused on the overall objective and open new analytical entry points freely.',
             '',
             '---',
           ].join('\n');
 
-    return `${roleHeader}\n\n${intro}\n\n${tellaskContent}\n`;
+    return roleHeader.trim() === ''
+      ? `${intro}\n\n${tellaskContent}\n`
+      : `${roleHeader}\n\n${intro}\n\n${tellaskContent}\n`;
   }
 
   if (input.callName !== 'tellask' && input.callName !== 'tellaskSessionless') {

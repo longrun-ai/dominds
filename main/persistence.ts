@@ -81,14 +81,6 @@ function isRootDialogMetadataFile(value: unknown): value is RootDialogMetadataFi
   if (typeof value.agentId !== 'string') return false;
   if (typeof value.taskDocPath !== 'string') return false;
   if (typeof value.createdAt !== 'string') return false;
-  if (
-    value.subdialogAgentPrimingMode !== undefined &&
-    value.subdialogAgentPrimingMode !== 'do' &&
-    value.subdialogAgentPrimingMode !== 'reuse' &&
-    value.subdialogAgentPrimingMode !== 'skip'
-  ) {
-    return false;
-  }
   if (value.supdialogId !== undefined) return false;
   if (value.sessionSlug !== undefined) return false;
   if (value.assignmentFromSup !== undefined) return false;

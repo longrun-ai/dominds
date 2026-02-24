@@ -26,7 +26,6 @@ export type ScheduleDriveFn = (
       q4hAnswerCallIds?: string[];
       origin?: 'user' | 'diligence_push';
       skipTaskdoc?: boolean;
-      persistMode?: 'persist' | 'internal';
       subdialogReplyTarget?: SubdialogReplyTarget;
     };
     waitInQue: boolean;
@@ -47,6 +46,41 @@ async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string):
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+function buildFbrRelayPayload(subdialog: SubDialog, finalResponseText: string): string {
+  const language = subdialog.getLastUserLanguageCode();
+  const isZh = language === 'zh';
+  const roundSayingMsgs = subdialog.msgs
+    .filter((msg): msg is Extract<ChatMessage, { type: 'saying_msg' }> => msg.type === 'saying_msg')
+    .map((msg) => msg.content)
+    .filter((content) => content.trim() !== '')
+    .map((content, idx) => ({
+      idx,
+      content,
+    }));
+
+  if (roundSayingMsgs.length <= 1) {
+    return `${finalResponseText}\n\n${buildFbrDistillPrompt(language)}`;
+  }
+
+  const roundsText = roundSayingMsgs
+    .map(
+      (entry) =>
+        `### ${isZh ? `FBR 第 ${entry.idx + 1} 轮` : `FBR Round ${entry.idx + 1}`}\n${entry.content}`,
+    )
+    .join('\n\n');
+  const allRoundPayload = isZh
+    ? `## FBR 全量回帖（按轮次）\n\n${roundsText}`
+    : `## FBR Full Conclusions (by round)\n\n${roundsText}`;
+  return `${allRoundPayload}\n\n${buildFbrDistillPrompt(language)}`;
+}
+
+function buildFbrDistillPrompt(language: 'en' | 'zh'): string {
+  if (language === 'zh') {
+    return `## 提示上游：收到全量回帖后请提炼\n\n以上为该次 FBR 的全量结论，包含全部轮次。上游请在收到这条全量回帖后进行综合提炼（distill），形成可执行项与决策后立即执行；若需要人类澄清/授权/决策，立即发起 \`askHuman\`。`;
+  }
+  return `## Upstream Distill Note\n\nThe text above is the full FBR output for this run, containing all rounds. After receiving this full reply, distill the full set and execute immediately once actionable decisions are formed; if human clarification/authorization/decision is required, issue \`askHuman\` immediately.`;
 }
 
 async function resolveOwnerDialogBySelfId(
@@ -161,6 +195,7 @@ export async function supplyResponseToSupdialogV2(args: {
   status?: 'completed' | 'failed';
   calleeResponseRef?: { course: number; genseq: number };
   scheduleDrive: ScheduleDriveFn;
+  subdialog?: SubDialog;
 }): Promise<void> {
   const {
     parentDialog,
@@ -171,6 +206,7 @@ export async function supplyResponseToSupdialogV2(args: {
     status = 'completed',
     calleeResponseRef,
     scheduleDrive,
+    subdialog: maybeSubdialog,
   } = args;
   try {
     const result = await withSubdialogTxnLock(parentDialog.id, async () => {
@@ -288,6 +324,21 @@ export async function supplyResponseToSupdialogV2(args: {
     const normalizedCallId = typeof callId === 'string' ? callId.trim() : '';
     const fallbackCallId = typeof result.callId === 'string' ? result.callId.trim() : '';
     const resolvedCallId = normalizedCallId !== '' ? normalizedCallId : fallbackCallId;
+    const rootForLookup =
+      parentDialog instanceof RootDialog
+        ? parentDialog
+        : parentDialog instanceof SubDialog
+          ? parentDialog.rootDialog
+          : undefined;
+    const resolvedSubdialog =
+      maybeSubdialog ?? (rootForLookup?.lookupDialog(subdialogId.selfId) as SubDialog | undefined);
+    const shouldReportFbrUpstream =
+      callType === 'C' &&
+      result.callName === 'freshBootsReasoning' &&
+      resolvedSubdialog !== undefined;
+    const upstreamResponseText = shouldReportFbrUpstream
+      ? buildFbrRelayPayload(resolvedSubdialog, responseText)
+      : responseText;
     if (resolvedCallId !== '' && calleeResponseRef) {
       const assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: subdialogId,
@@ -332,7 +383,7 @@ export async function supplyResponseToSupdialogV2(args: {
       status,
       subdialogId,
       {
-        response: responseText,
+        response: upstreamResponseText,
         agentId: result.responderAgentId ?? result.responderId,
         callId: resolvedCallId,
         originMemberId: result.originMemberId ?? parentDialog.agentId,
@@ -351,7 +402,7 @@ export async function supplyResponseToSupdialogV2(args: {
       tellaskContent: result.tellaskContent,
       status,
       callId: resolvedCallId,
-      content: responseText,
+      content: upstreamResponseText,
     };
     await parentDialog.addChatMessages(immediateMirror);
 
@@ -449,6 +500,7 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
     parentDialog: ownerDialog,
     subdialogId: subdialog.id,
     responseText,
+    subdialog,
     callType: pendingRecord.callType,
     callId: target.callId,
     status: 'completed',
@@ -501,6 +553,7 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
     parentDialog: callerDialog,
     subdialogId: subdialog.id,
     responseText,
+    subdialog,
     callType: pendingRecord.callType,
     callId: assignment.callId,
     status: 'completed',

@@ -953,7 +953,7 @@ interface RegistryMethods {
 - ZH：`这是一次 FBR 支线对话；诉请者对话为 @xxx（可能与当前对话同一 agent）。`
 - EN：`This is an FBR sideline dialog; the tellasker dialog is @xxx (may be the same agent).`
 
-**插入点**：优先通过 `formatAssignmentFromSupdialog()` 单点注入（覆盖 `dialog.ts` / `tellask-bridge` / `agent-priming`），前端 twin 同步：`dominds/webapp/src/shared/utils/inter-dialog-format.ts`。
+**插入点**：优先通过 `formatAssignmentFromSupdialog()` 单点注入（覆盖 `dialog.ts` / `tellask-bridge`），前端 twin 同步：`dominds/webapp/src/shared/utils/inter-dialog-format.ts`。
 
 ### 生命周期管理
 

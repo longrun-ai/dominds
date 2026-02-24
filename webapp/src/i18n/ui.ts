@@ -55,11 +55,6 @@ export type UiStrings = {
   shadowMembersLabel: string;
   shadowMembersSelectRequired: string;
   defaultMarker: string;
-  agentPrimingLabel: string;
-  agentPrimingDo: string;
-  agentPrimingReuseAgeSuffix: string;
-  agentPrimingRerun: string;
-  agentPrimingSkip: string;
 
   newDialogLoadingTeam: string;
   newDialogNoTeamMembers: string;
@@ -368,11 +363,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       shadowMembersLabel: '影子成员：',
       shadowMembersSelectRequired: '请选择影子成员。',
       defaultMarker: ' • 默认',
-      agentPrimingLabel: '智能体启动（Priming）：',
-      agentPrimingDo: '做给祂看',
-      agentPrimingReuseAgeSuffix: ' 前',
-      agentPrimingRerun: '再做一遍',
-      agentPrimingSkip: '无感',
 
       newDialogLoadingTeam: '加载团队成员中…',
       newDialogNoTeamMembers: '没有可用的团队成员（请检查 team.yaml）',
@@ -686,11 +676,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     shadowMembersLabel: 'Shadow Members:',
     shadowMembersSelectRequired: 'Please select a shadow member.',
     defaultMarker: ' • Default',
-    agentPrimingLabel: 'Agent Priming:',
-    agentPrimingDo: 'Do it now',
-    agentPrimingReuseAgeSuffix: ' ago',
-    agentPrimingRerun: 'Do it again',
-    agentPrimingSkip: 'Feelingless',
 
     newDialogLoadingTeam: 'Loading team members…',
     newDialogNoTeamMembers: 'No team members available (check team.yaml)',

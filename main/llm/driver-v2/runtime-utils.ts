@@ -133,7 +133,6 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
       msgId: generateShortId(),
       grammar: 'markdown',
       origin: 'diligence_push',
-      persistMode: 'persist',
     };
     return {
       kind: 'prompt',
@@ -153,7 +152,6 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     msgId: generateShortId(),
     grammar: 'markdown',
     origin: 'diligence_push',
-    persistMode: 'persist',
   };
   return {
     kind: 'prompt',

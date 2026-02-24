@@ -53,21 +53,10 @@ export function parseCreateDialogInput(
     };
   }
 
-  const primingModeRaw = parsed['agentPrimingMode'];
-  if (primingModeRaw !== 'do' && primingModeRaw !== 'reuse' && primingModeRaw !== 'skip') {
-    return {
-      requestId,
-      status: 400,
-      errorCode: 'CREATE_FAILED',
-      error: "agentPrimingMode must be one of 'do' | 'reuse' | 'skip'",
-    };
-  }
-
   return {
     requestId,
     agentId,
     taskDocPath,
-    agentPrimingMode: primingModeRaw,
   };
 }
 

@@ -201,19 +201,6 @@ export class DomindsApp extends HTMLElement {
     getDefaultResponder: () => this.defaultResponder,
     getTaskDocuments: () => this.taskDocuments,
     ensureTeamMembersReady: () => this.ensureCreateDialogPrerequisites(),
-    getAgentPrimingStatus: async (agentId: string) => {
-      const api = getApiClient();
-      const resp = await api.getAgentPrimingStatus(agentId);
-      if (!resp.success || !resp.data) {
-        return { hasCache: false };
-      }
-      const data = resp.data;
-      return {
-        hasCache: data.hasCache === true,
-        createdAt: typeof data.createdAt === 'string' ? data.createdAt : undefined,
-        ageSeconds: typeof data.ageSeconds === 'number' ? data.ageSeconds : undefined,
-      };
-    },
     submitCreateDialog: async (request: CreateDialogRequest): Promise<CreateDialogResult> => {
       const api = getApiClient();
       const resp = await api.createDialog(request);

@@ -30,7 +30,6 @@ export type CreateDialogIntent = {
 export type CreateDialogRequest = {
   agentId: string;
   taskDocPath: string;
-  agentPrimingMode: AgentPrimingMode;
   requestId: string;
 };
 
@@ -51,9 +50,6 @@ export type CreateDialogFailure = {
 
 export type CreateDialogResult = CreateDialogSuccess | CreateDialogFailure;
 
-export type AgentPrimingMode = 'do' | 'reuse' | 'skip';
-type DomindsFeelScope = 'visible' | 'shadow';
-
 type CreateDialogUiState =
   | { kind: 'idle' }
   | { kind: 'opening'; intent: CreateDialogIntent }
@@ -69,9 +65,6 @@ type CreateDialogControllerDeps = {
   getDefaultResponder: () => string | null;
   getTaskDocuments: () => Array<{ path: string; relativePath: string; name: string }>;
   ensureTeamMembersReady: () => Promise<{ ok: true } | { ok: false; error: CreateDialogError }>;
-  getAgentPrimingStatus: (
-    agentId: string,
-  ) => Promise<{ hasCache: boolean; createdAt?: string; ageSeconds?: number }>;
   submitCreateDialog: (request: CreateDialogRequest) => Promise<CreateDialogResult>;
   onCreated: (result: CreateDialogSuccess) => Promise<void>;
   onAuthRequired: () => void;
@@ -85,9 +78,6 @@ export class CreateDialogFlowController {
   private state: CreateDialogUiState = { kind: 'idle' };
   private modal: HTMLElement | null = null;
   private activeKeydownListener: ((e: KeyboardEvent) => void) | null = null;
-
-  private static readonly AGENT_PRIMING_MODE_STORAGE_KEY = 'agent-priming-mode-v1';
-  private static readonly AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY = 'agent-priming-mode-shadow-v1';
 
   constructor(deps: CreateDialogControllerDeps) {
     this.deps = deps;
@@ -287,14 +277,6 @@ export class CreateDialogFlowController {
             </select>
           </div>
           <div class="teammate-info" id="teammate-info"></div>
-          <div class="form-group form-group-horizontal">
-            <div class="dominds-feel-row">
-              <span class="dominds-feel-label">${escapeHtml(t.agentPrimingLabel)}</span>
-              <div class="dominds-feel-options" id="dominds-feel-options">
-                <span class="dominds-feel-loading">${escapeHtml(t.loading)}</span>
-              </div>
-            </div>
-          </div>
           <div class="modal-error" id="create-dialog-error" aria-live="polite"></div>
         </div>
         <div class="modal-footer">
@@ -322,7 +304,6 @@ export class CreateDialogFlowController {
     const suggestions = modal.querySelector('#task-doc-suggestions');
     const createBtn = modal.querySelector('#create-dialog-btn');
     const teammateInfo = modal.querySelector('#teammate-info');
-    const feelOptions = modal.querySelector('#dominds-feel-options');
     const errorEl = modal.querySelector('#create-dialog-error');
     const closeBtn = modal.querySelector('.modal-close');
     const cancelBtn = modal.querySelector('#modal-cancel-btn');
@@ -344,10 +325,8 @@ export class CreateDialogFlowController {
 
     const t = getUiStrings(this.deps.getLanguage());
     let createInFlight = false;
-    let currentAgentPrimingMode: AgentPrimingMode = 'skip';
     let selectedSuggestionIndex = -1;
     let currentSuggestions: SuggestionDoc[] = [];
-    let agentPrimingRenderSeq = 0;
 
     suggestions.style.display = 'none';
 
@@ -452,137 +431,19 @@ export class CreateDialogFlowController {
       teammateInfo.style.display = 'block';
     };
 
-    const formatCompactAge = (ageSeconds: number): string => {
-      const totalSeconds = Number.isFinite(ageSeconds) ? Math.max(0, Math.floor(ageSeconds)) : 0;
-      const days = Math.floor(totalSeconds / 86400);
-      const hours = Math.floor((totalSeconds % 86400) / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      let out = '';
-      if (days > 0) out += `${days}d`;
-      if (hours > 0 || days > 0) out += `${hours}h`;
-      out += `${minutes}m`;
-      return out;
-    };
-
-    const readStoredAgentPrimingMode = (scope: DomindsFeelScope): AgentPrimingMode | null => {
-      try {
-        const key =
-          scope === 'shadow'
-            ? CreateDialogFlowController.AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY
-            : CreateDialogFlowController.AGENT_PRIMING_MODE_STORAGE_KEY;
-        const raw = localStorage.getItem(key);
-        if (raw === 'do' || raw === 'reuse' || raw === 'skip') return raw;
-        return null;
-      } catch (error: unknown) {
-        console.warn('Failed to read agent-priming mode from localStorage', error);
-        return null;
-      }
-    };
-
-    const persistAgentPrimingMode = (mode: AgentPrimingMode, scope: DomindsFeelScope): void => {
-      try {
-        const key =
-          scope === 'shadow'
-            ? CreateDialogFlowController.AGENT_PRIMING_MODE_SHADOW_STORAGE_KEY
-            : CreateDialogFlowController.AGENT_PRIMING_MODE_STORAGE_KEY;
-        localStorage.setItem(key, mode);
-      } catch (error: unknown) {
-        console.warn('Failed to persist agent-priming mode to localStorage', error);
-      }
-    };
-
-    const renderPrimingChoices = (args: {
-      hasCache: boolean;
-      ageSeconds: number;
-      scope: DomindsFeelScope;
-    }): void => {
-      if (!(feelOptions instanceof HTMLElement)) return;
-      const stored = readStoredAgentPrimingMode(args.scope);
-      const allowed: AgentPrimingMode[] = args.hasCache ? ['reuse', 'do', 'skip'] : ['do', 'skip'];
-      const selected: AgentPrimingMode = (() => {
-        if (stored && allowed.includes(stored)) return stored;
-        return 'skip';
-      })();
-      currentAgentPrimingMode = selected;
-      const reuseLabel = `${formatCompactAge(args.ageSeconds)}${t.agentPrimingReuseAgeSuffix}`;
-      const optionRows: Array<{ mode: AgentPrimingMode; label: string }> = args.hasCache
-        ? [
-            { mode: 'reuse', label: reuseLabel },
-            { mode: 'do', label: t.agentPrimingRerun },
-            { mode: 'skip', label: t.agentPrimingSkip },
-          ]
-        : [
-            { mode: 'do', label: t.agentPrimingDo },
-            { mode: 'skip', label: t.agentPrimingSkip },
-          ];
-      feelOptions.innerHTML = optionRows
-        .map((row) => {
-          const checked = row.mode === selected ? 'checked' : '';
-          return `<label class="dominds-feel-option"><input type="radio" name="dominds-feel" value="${row.mode}" ${checked}><span>${escapeHtml(
-            row.label,
-          )}</span></label>`;
-        })
-        .join('');
-    };
-
-    const refreshPrimingChoices = async (): Promise<void> => {
-      if (!(feelOptions instanceof HTMLElement)) return;
-      const selectedAgent = resolveSelectedAgentId();
-      const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
-      if (!selectedAgent) {
-        renderPrimingChoices({ hasCache: false, ageSeconds: 0, scope });
-        return;
-      }
-      const seq = (agentPrimingRenderSeq += 1);
-      feelOptions.innerHTML = `<span class="dominds-feel-loading">${escapeHtml(t.loading)}</span>`;
-      try {
-        const status = await this.deps.getAgentPrimingStatus(selectedAgent);
-        if (seq !== agentPrimingRenderSeq) return;
-        let ageSeconds = 0;
-        if (typeof status.ageSeconds === 'number' && Number.isFinite(status.ageSeconds)) {
-          ageSeconds = status.ageSeconds;
-        } else if (typeof status.createdAt === 'string') {
-          const createdAtMs = Date.parse(status.createdAt);
-          if (Number.isFinite(createdAtMs)) {
-            ageSeconds = Math.max(0, Math.floor((Date.now() - createdAtMs) / 1000));
-          }
-        }
-        renderPrimingChoices({ hasCache: status.hasCache, ageSeconds, scope });
-      } catch (error: unknown) {
-        if (seq !== agentPrimingRenderSeq) return;
-        console.warn('Failed to fetch agent priming status', error);
-        renderPrimingChoices({ hasCache: false, ageSeconds: 0, scope });
-      }
-    };
-
-    if (feelOptions instanceof HTMLElement) {
-      feelOptions.addEventListener('change', (e) => {
-        const target = e.target;
-        if (!(target instanceof HTMLInputElement)) return;
-        const v = target.value;
-        if (v !== 'do' && v !== 'reuse' && v !== 'skip') return;
-        currentAgentPrimingMode = v;
-        const scope: DomindsFeelScope = select.value === '__shadow__' ? 'shadow' : 'visible';
-        persistAgentPrimingMode(v, scope);
-      });
-    }
-
     select.addEventListener('change', () => {
       const isShadow = select.value === '__shadow__';
       if (shadowGroup instanceof HTMLElement) {
         shadowGroup.style.display = isShadow ? 'block' : 'none';
       }
       showTeammateInfo(select.value);
-      void refreshPrimingChoices();
     });
     if (shadowSelect instanceof HTMLSelectElement) {
       shadowSelect.addEventListener('change', () => {
         showTeammateInfo('__shadow__');
-        void refreshPrimingChoices();
       });
     }
     showTeammateInfo(select.value);
-    void refreshPrimingChoices();
 
     const updateSuggestions = (query: string): void => {
       const normalized = query.trim().toLowerCase();
@@ -746,7 +607,6 @@ export class CreateDialogFlowController {
         requestId,
         agentId: selectedAgentId,
         taskDocPath: normalizedTaskDocPath.taskDocPath,
-        agentPrimingMode: currentAgentPrimingMode,
       };
       try {
         const result = await this.deps.submitCreateDialog(request);

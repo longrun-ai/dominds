@@ -962,7 +962,7 @@ At the start of every subdialog course, the runtime must prepend a role header t
 - EN (example): `This is an FBR sideline dialog; the tellasker dialog is @xxx (may be the same agent).`
 - ZH（示例）: `这是一次 FBR 支线对话；诉请者对话为 @xxx（可能与当前对话同一 agent）。`
 
-**Insertion point**: prefer a single insertion point by updating `formatAssignmentFromSupdialog()` (covers `dialog.ts`, `tellask-bridge`, and `agent-priming`).
+**Insertion point**: prefer a single insertion point by updating `formatAssignmentFromSupdialog()` (covers `dialog.ts`, `tellask-bridge`).
 Frontend twin must stay in sync: `dominds/webapp/src/shared/utils/inter-dialog-format.ts`.
 
 **Storage**: All subdialogs are stored flat under the main dialog's (root dialog's) `subdialogs/` directory, regardless of nesting depth.

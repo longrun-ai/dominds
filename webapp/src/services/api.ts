@@ -400,14 +400,6 @@ export class ApiClient {
     });
   }
 
-  async getAgentPrimingStatus(
-    agentId: string,
-  ): Promise<ApiResponse<{ hasCache: boolean; createdAt?: string; ageSeconds?: number }>> {
-    const params = new URLSearchParams();
-    params.set('agentId', agentId);
-    return this.request(`/api/agent-priming?${params.toString()}`);
-  }
-
   /**
    * Move dialogs between status directories (running/completed/archived).
    */

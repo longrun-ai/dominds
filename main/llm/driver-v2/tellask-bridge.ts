@@ -15,6 +15,7 @@ import {
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { NewQ4HAskedEvent } from '../../shared/types/dialog';
 import type { HumanQuestion } from '../../shared/types/storage';
+import { appendDistinctPerspectiveFbrBody } from '../../shared/utils/fbr';
 import { generateShortId } from '../../shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
@@ -388,28 +389,6 @@ function resolveFbrEffort(member: Team.Member | null | undefined): number {
   return raw;
 }
 
-let agentPrimingModulePromise: Promise<typeof import('../../agent-priming')> | null = null;
-
-async function scheduleInheritedAgentPrimingForSubdialog(
-  callerDialog: Dialog,
-  subdialog: SubDialog,
-): Promise<void> {
-  const rootDialog =
-    callerDialog instanceof RootDialog
-      ? callerDialog
-      : callerDialog instanceof SubDialog
-        ? callerDialog.rootDialog
-        : undefined;
-  if (!rootDialog) return;
-  const inheritedMode = rootDialog.subdialogAgentPrimingMode;
-  if (inheritedMode === 'skip') return;
-  if (!agentPrimingModulePromise) {
-    agentPrimingModulePromise = import('../../agent-priming');
-  }
-  const agentPrimingModule = await agentPrimingModulePromise;
-  await agentPrimingModule.scheduleAgentPrimingForNewDialog(subdialog, { mode: inheritedMode });
-}
-
 type SubdialogCreateOptions = {
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
   originMemberId: string;
@@ -419,21 +398,14 @@ type SubdialogCreateOptions = {
   collectiveTargets?: string[];
 };
 
-async function createSubDialogWithInheritedPriming(
+async function createSubDialog(
   callerDialog: Dialog,
   targetAgentId: string,
   mentionList: string[] | undefined,
   tellaskContent: string,
   options: SubdialogCreateOptions,
 ): Promise<SubDialog> {
-  const subdialog = await callerDialog.createSubDialog(
-    targetAgentId,
-    mentionList,
-    tellaskContent,
-    options,
-  );
-  await scheduleInheritedAgentPrimingForSubdialog(callerDialog, subdialog);
-  return subdialog;
+  return await callerDialog.createSubDialog(targetAgentId, mentionList, tellaskContent, options);
 }
 
 async function updateSubdialogAssignment(
@@ -708,26 +680,64 @@ async function executeTellaskCall(
 
       const callerDialog = dlg;
       const originMemberId = dlg.agentId;
+      const workLanguage = getWorkLanguage();
+      const collectiveTargets = options?.collectiveTargets ?? [parseResult.agentId];
 
-      if (parseResult.type === 'C') {
-        const createdSubs: SubDialog[] = [];
-        const pendingRecords: PendingSubdialogRecordType[] = [];
-        for (let i = 1; i <= fbrEffort; i++) {
-          const sub = await createSubDialogWithInheritedPriming(
-            dlg,
-            parseResult.agentId,
-            mentionList,
-            body,
-            {
-              callName: subdialogCallName,
-              originMemberId,
-              callerDialogId: callerDialog.id.selfId,
-              callId,
-              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-            },
-          );
-          createdSubs.push(sub);
-          pendingRecords.push({
+      if (parseResult.type !== 'C') {
+        const msg = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
+          kind: 'internal_error',
+        });
+        toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+        toolOutputs.push({
+          type: 'tellask_result_msg',
+          role: 'tool',
+          responderId: 'dominds',
+          mentionList: normalizedMentionList,
+          tellaskContent: body,
+          status: 'failed',
+          callId,
+          content: msg,
+        });
+        await dlg.receiveTeammateCallResult(
+          'dominds',
+          callName,
+          mentionList,
+          body,
+          msg,
+          'failed',
+          callId,
+        );
+        dlg.clearCurrentCallId();
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
+
+      const buildRoundBody = (iteration: number, total: number): string =>
+        appendDistinctPerspectiveFbrBody({
+          body,
+          iteration,
+          total,
+          language: workLanguage,
+          isFinalRound: iteration === total,
+        });
+
+      const firstInstanceBody = buildRoundBody(1, fbrEffort);
+      const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, firstInstanceBody, {
+        callName: subdialogCallName,
+        originMemberId,
+        callerDialogId: callerDialog.id.selfId,
+        callId,
+        collectiveTargets,
+      });
+      subdialogsCreated.push(sub.id);
+
+      for (let i = 1; i <= fbrEffort; i++) {
+        const instanceBody = buildRoundBody(i, fbrEffort);
+
+        const isFinalRound = i === fbrEffort;
+        const shouldReplyToCaller = isFinalRound;
+
+        if (shouldReplyToCaller) {
+          const pendingRecord: PendingSubdialogRecordType = {
             subdialogId: sub.id.selfId,
             createdAt: formatUnifiedTimestamp(new Date()),
             callName: subdialogCallName,
@@ -737,225 +747,61 @@ async function executeTellaskCall(
             callId,
             callingCourse,
             callType: 'C',
-          });
-        }
-
-        await withSubdialogTxnLock(dlg.id, async () => {
-          await DialogPersistence.mutatePendingSubdialogs(dlg.id, (previous) => ({
-            kind: 'replace',
-            records: [...previous, ...pendingRecords],
-          }));
-        });
-        await syncPendingTellaskReminderBestEffort(
-          dlg,
-          'driver-v2:executeTellaskCall:FBR-TypeC:replacePending',
-        );
-
-        for (const sub of createdSubs) {
-          const initPrompt: DriverV2HumanPrompt = {
-            content: formatAssignmentFromSupdialog({
-              callName: subdialogCallName,
-              fromAgentId: dlg.agentId,
-              toAgentId: sub.agentId,
-              mentionList,
-              tellaskContent: body,
-              language: getWorkLanguage(),
-              collectiveTargets: options?.collectiveTargets ?? [sub.agentId],
-            }),
-            msgId: generateShortId(),
-            grammar: 'markdown',
-            subdialogReplyTarget: {
-              ownerDialogId: callerDialog.id.selfId,
-              callType: 'C',
-              callId,
-            },
           };
-          callbacks.scheduleDrive(sub, { humanPrompt: initPrompt, waitInQue: true });
-          subdialogsCreated.push(sub.id);
-        }
-
-        return { toolOutputs, suspend: true, subdialogsCreated };
-      }
-
-      if (parseResult.type === 'B') {
-        let rootDialog: RootDialog | undefined;
-        if (dlg instanceof RootDialog) {
-          rootDialog = dlg;
-        } else if (dlg instanceof SubDialog) {
-          rootDialog = dlg.rootDialog;
-        }
-
-        if (!rootDialog) {
-          const msg = formatDomindsNoteFbrToollessViolation(getWorkLanguage(), {
-            kind: 'internal_error',
+          await withSubdialogTxnLock(dlg.id, async () => {
+            await DialogPersistence.appendPendingSubdialog(dlg.id, pendingRecord);
           });
-          toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
-          toolOutputs.push({
-            type: 'tellask_result_msg',
-            role: 'tool',
-            responderId: 'dominds',
-            mentionList: normalizedMentionList,
-            tellaskContent: body,
-            status: 'failed',
-            callId,
-            content: msg,
-          });
-          await dlg.receiveTeammateCallResult(
-            'dominds',
-            callName,
-            mentionList,
-            body,
-            msg,
-            'failed',
-            callId,
+          await syncPendingTellaskReminderBestEffort(
+            dlg,
+            'driver-v2:executeTellaskCall:FBR-TypeC:appendPending:lastRound',
           );
-          dlg.clearCurrentCallId();
-          return { toolOutputs, suspend: false, subdialogsCreated: [] };
         }
 
-        const pendingOwner = callerDialog;
-        const baseSession = parseResult.sessionSlug;
-        const derivedPrefix = `${baseSession}.fbr-`;
-
-        const createdOrExisting = await withSubdialogTxnLock(rootDialog.id, async () => {
-          const results: Array<{
-            kind: 'existing' | 'created';
-            subdialog: SubDialog;
-            sessionSlug: string;
-          }> = [];
-
-          const ensurePoolSessions = (desired: number): string[] => {
-            if (desired <= 1) return [baseSession];
-            const set = new Set<string>();
-            for (const sub of rootDialog.getRegisteredSubdialogs()) {
-              const sessionSlug = sub.sessionSlug;
-              if (typeof sessionSlug !== 'string') continue;
-              if (sub.agentId !== parseResult.agentId) continue;
-              if (!sessionSlug.startsWith(derivedPrefix)) continue;
-              set.add(sessionSlug);
-            }
-            while (set.size < desired) {
-              const candidate = `${derivedPrefix}${generateShortId()}`;
-              set.add(candidate);
-            }
-            const pool = Array.from(set);
-            for (let i = pool.length - 1; i >= 1; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              const tmp = pool[i];
-              pool[i] = pool[j] ?? '';
-              pool[j] = tmp ?? '';
-            }
-            return pool.slice(0, desired);
-          };
-
-          const sessions = ensurePoolSessions(fbrEffort);
-          for (const derivedSession of sessions) {
-            const assignment: AssignmentFromSup = {
-              callName: subdialogCallName,
-              mentionList,
-              tellaskContent: body,
-              originMemberId,
-              callerDialogId: callerDialog.id.selfId,
-              callId,
-              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-            };
-
-            const existing = await lookupLiveRegisteredSubdialog(
-              rootDialog,
-              parseResult.agentId,
-              derivedSession,
-            );
-            if (existing) {
-              try {
-                await updateSubdialogAssignment(existing, assignment);
-              } catch (err) {
-                log.warn('Failed to update registered FBR subdialog assignment', err);
-              }
-              results.push({
-                kind: 'existing',
-                subdialog: existing,
-                sessionSlug: derivedSession,
-              });
-              continue;
-            }
-
-            const created = await createSubDialogWithInheritedPriming(
-              rootDialog,
-              parseResult.agentId,
-              mentionList,
-              body,
-              {
-                callName: subdialogCallName,
-                originMemberId,
-                callerDialogId: callerDialog.id.selfId,
-                callId,
-                sessionSlug: derivedSession,
-                collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-              },
-            );
-            rootDialog.registerSubdialog(created);
-            results.push({
-              kind: 'created',
-              subdialog: created,
-              sessionSlug: derivedSession,
-            });
-          }
-
-          await rootDialog.saveSubdialogRegistry();
-          return results;
-        });
-
-        const pendingRecords: PendingSubdialogRecordType[] = createdOrExisting.map((r) => ({
-          subdialogId: r.subdialog.id.selfId,
-          createdAt: formatUnifiedTimestamp(new Date()),
-          callName: subdialogCallName,
-          mentionList,
-          tellaskContent: body,
-          targetAgentId: parseResult.agentId,
-          callId,
-          callingCourse,
-          callType: 'B',
-          sessionSlug: r.sessionSlug,
-        }));
-        await withSubdialogTxnLock(pendingOwner.id, async () => {
-          const toRemove = new Set(pendingRecords.map((p) => p.subdialogId));
-          await DialogPersistence.mutatePendingSubdialogs(pendingOwner.id, (previous) => {
-            const next = previous.filter((p) => !toRemove.has(p.subdialogId));
-            next.push(...pendingRecords);
-            return { kind: 'replace', records: next };
-          });
-        });
-        await syncPendingTellaskReminderBestEffort(
-          pendingOwner,
-          'driver-v2:executeTellaskCall:FBR-TypeB:replacePending',
-        );
-
-        for (const r of createdOrExisting) {
-          const prompt: DriverV2HumanPrompt = {
-            content: formatAssignmentFromSupdialog({
-              callName: subdialogCallName,
-              fromAgentId: dlg.agentId,
-              toAgentId: r.subdialog.agentId,
-              mentionList,
-              sessionSlug: r.sessionSlug,
-              tellaskContent: body,
-              language: getWorkLanguage(),
-              collectiveTargets: options?.collectiveTargets ?? [r.subdialog.agentId],
-            }),
-            msgId: generateShortId(),
-            grammar: 'markdown',
-            subdialogReplyTarget: {
-              ownerDialogId: pendingOwner.id.selfId,
-              callType: 'B',
-              callId,
+        const initPrompt: DriverV2HumanPrompt = {
+          content: formatAssignmentFromSupdialog({
+            callName: subdialogCallName,
+            fromAgentId: dlg.agentId,
+            toAgentId: sub.agentId,
+            mentionList,
+            tellaskContent: instanceBody,
+            language: workLanguage,
+            collectiveTargets: [sub.agentId],
+            fbrRound: {
+              iteration: i,
+              total: fbrEffort,
             },
-          };
-          callbacks.scheduleDrive(r.subdialog, { humanPrompt: prompt, waitInQue: true });
-          subdialogsCreated.push(r.subdialog.id);
+          }),
+          msgId: generateShortId(),
+          grammar: 'markdown',
+          ...(shouldReplyToCaller
+            ? {
+                subdialogReplyTarget: {
+                  ownerDialogId: callerDialog.id.selfId,
+                  callType: 'C',
+                  callId,
+                },
+              }
+            : {}),
+        };
+        try {
+          await callbacks.driveDialog(sub, { humanPrompt: initPrompt, waitInQue: true });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          log.error('FBR Type C serial drive failed', error, {
+            rootId: dlg.id.rootId,
+            ownerDialogId: callerDialog.id.selfId,
+            subdialogId: sub.id.selfId,
+            iteration: i,
+            total: fbrEffort,
+            callName: subdialogCallName,
+            callId,
+            detail,
+          });
+          throw new Error(`FBR serial round ${i}/${fbrEffort} failed: ${detail}`);
         }
-
-        return { toolOutputs, suspend: true, subdialogsCreated };
       }
+
+      return { toolOutputs, suspend: true, subdialogsCreated };
     }
 
     const isDirectSelfCall = !isFreshBootsCall && parseResult.agentId === dlg.agentId;
@@ -1090,20 +936,14 @@ async function executeTellaskCall(
           dialogId: dlg.id.selfId,
         });
         try {
-          const sub = await createSubDialogWithInheritedPriming(
-            dlg,
-            parseResult.agentId,
-            mentionList,
-            body,
-            {
-              callName: subdialogCallName,
-              originMemberId: dlg.agentId,
-              callerDialogId: callerDialog.id.selfId,
-              callId,
-              sessionSlug: parseResult.sessionSlug,
-              collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-            },
-          );
+          const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, body, {
+            callName: subdialogCallName,
+            originMemberId: dlg.agentId,
+            callerDialogId: callerDialog.id.selfId,
+            callId,
+            sessionSlug: parseResult.sessionSlug,
+            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+          });
 
           const pendingRecord: PendingSubdialogRecordType = {
             subdialogId: sub.id.selfId,
@@ -1177,7 +1017,7 @@ async function executeTellaskCall(
             return { kind: 'existing' as const, subdialog: existing };
           }
 
-          const created = await createSubDialogWithInheritedPriming(
+          const created = await createSubDialog(
             rootDialog,
             parseResult.agentId,
             mentionList,
@@ -1271,19 +1111,13 @@ async function executeTellaskCall(
 
     if (parseResult.type === 'C') {
       try {
-        const sub = await createSubDialogWithInheritedPriming(
-          dlg,
-          parseResult.agentId,
-          mentionList,
-          body,
-          {
-            callName: subdialogCallName,
-            originMemberId: dlg.agentId,
-            callerDialogId: dlg.id.selfId,
-            callId,
-            collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
-          },
-        );
+        const sub = await createSubDialog(dlg, parseResult.agentId, mentionList, body, {
+          callName: subdialogCallName,
+          originMemberId: dlg.agentId,
+          callerDialogId: dlg.id.selfId,
+          callId,
+          collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
+        });
         const pendingRecord: PendingSubdialogRecordType = {
           subdialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),

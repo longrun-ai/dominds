@@ -24,7 +24,8 @@
 
 ## 2. 当前机制现状（已实现）
 
-以下内容是**当前代码与文档已实现**的行为约束（见 `dialog-system.zh.md`、`fbr.zh.md`、`dominds-agent-priming.zh.md`、`diligence-push.zh.md`）。
+以下内容是**当前代码与文档已实现**的行为约束（见 `dialog-system.zh.md`、`fbr.zh.md`、`diligence-push.zh.md`）。
+`dominds-agent-priming.zh.md` 仅保留对旧 priming 实现的移除说明和后续“启动脚本回放”重构方案。
 
 ### 2.1 Tellask 三形态
 
@@ -235,7 +236,7 @@ tellask({
 2. FBR 使用与 shell 专员路径同结构的信息（不缩水，不伪造队友回贴）。
 3. priming note 语义要求完全一致：回贴收束 + 续推再诉请。
 
-#### 数据结构（`agent-priming.ts`）
+#### 数据结构（旧实现）
 
 1. `shell` 使用判别联合：
    - `specialist_tellask`（含诉请正文、回贴、`uname` 快照）

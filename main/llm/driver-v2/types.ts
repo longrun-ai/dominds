@@ -21,7 +21,6 @@ export interface DriverV2HumanPrompt {
   q4hAnswerCallIds?: string[];
   origin?: 'user' | 'diligence_push';
   skipTaskdoc?: boolean;
-  persistMode?: 'persist' | 'internal';
   subdialogReplyTarget?: DriverV2SubdialogReplyTarget;
 }
 

@@ -24,7 +24,8 @@ This document has three goals:
 
 ## 2. Current runtime contract (already implemented)
 
-These points reflect current behavior in `dialog-system.md`, `fbr.md`, `dominds-agent-priming.md`, and `diligence-push.md`.
+These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `diligence-push.md`.
+`dominds-agent-priming.md` now documents the deprecated priming implementation and upcoming startup-script replay plan.
 
 ### 2.1 Three Tellask modes
 
@@ -233,7 +234,7 @@ Operating rules:
 2. FBR receives the same structured evidence shape as the specialist path.
 3. Priming note requirements stay identical: close-on-response and explicit re-Tellask for continuation.
 
-#### Data shape (`agent-priming.ts`)
+#### Data shape (legacy priming plan)
 
 1. `shell` is a discriminated union:
    - `specialist_tellask` (tellask body, response, `uname` snapshot)

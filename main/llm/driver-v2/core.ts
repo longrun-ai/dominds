@@ -301,11 +301,16 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'freshBootsReasoning',
-    description: 'Start an FBR sideline dialog for tool-less fresh-boots reasoning.',
+    description:
+      'Start an FBR sideline dialog for tool-less fresh-boots reasoning. tellaskContent MUST stay neutral and fact-oriented (Goal/Facts/Constraints/Evidence[/Unknowns]); do not issue analysis directives (for example “from the following dimensions”, “analyze in steps 1..N”, or “N rounds per dimension”).',
     parameters: {
       type: 'object',
       properties: {
-        tellaskContent: { type: 'string' },
+        tellaskContent: {
+          type: 'string',
+          description:
+            'Use a neutral factual body: Goal/Facts/Constraints/Evidence (optional Unknowns). Avoid dimension checklists and stepwise directives (e.g. “from the following dimensions/aspects”, “analyze in steps 1..N”, “N rounds per dimension”).',
+        },
       },
       required: ['tellaskContent'],
       additionalProperties: false,
@@ -1026,7 +1031,6 @@ export async function driveDialogStreamCoreV2(
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
-  let internalDrivePromptMsg: ChatMessage | undefined;
 
   let genIterNo = 0;
   let pendingPrompt: DriverV2HumanPrompt | undefined = humanPrompt;
@@ -1188,83 +1192,65 @@ export async function driveDialogStreamCoreV2(
             currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
           const q4hAnswerCallIds = normalizeQ4HAnswerCallIds(currentPrompt.q4hAnswerCallIds);
 
-          const requestedPersistMode = currentPrompt.persistMode ?? 'persist';
-          const persistMode = isDiligencePrompt ? 'persist' : requestedPersistMode;
+          await dlg.addChatMessages({
+            type: 'prompting_msg',
+            role: 'user',
+            genseq: dlg.activeGenSeq,
+            content: promptContent,
+            msgId,
+            grammar: promptGrammar,
+          });
+          await dlg.persistUserMessage(
+            promptContent,
+            msgId,
+            promptGrammar,
+            persistedUserLanguageCode,
+            q4hAnswerCallIds,
+          );
+          if (currentPrompt.subdialogReplyTarget) {
+            const normalizedCallId = currentPrompt.subdialogReplyTarget.callId.trim();
+            if (normalizedCallId === '') {
+              throw new Error(
+                `driver-v2 assignment anchor invariant violation: empty callId for subdialogReplyTarget (dialog=${dlg.id.valueOf()})`,
+              );
+            }
+            const rawCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+            if (!Number.isFinite(rawCourse) || rawCourse <= 0) {
+              throw new Error(
+                `driver-v2 assignment anchor invariant violation: invalid course=${String(rawCourse)} (dialog=${dlg.id.valueOf()})`,
+              );
+            }
+            const rawGenseq = dlg.activeGenSeq;
+            if (!Number.isFinite(rawGenseq) || rawGenseq <= 0) {
+              throw new Error(
+                `driver-v2 assignment anchor invariant violation: invalid genseq=${String(rawGenseq)} (dialog=${dlg.id.valueOf()})`,
+              );
+            }
+            const assignmentAnchor: TeammateCallAnchorRecord = {
+              ts: formatUnifiedTimestamp(new Date()),
+              type: 'teammate_call_anchor_record',
+              anchorRole: 'assignment',
+              callId: normalizedCallId,
+              genseq: Math.floor(rawGenseq),
+            };
+            await DialogPersistence.appendEvent(dlg.id, Math.floor(rawCourse), assignmentAnchor);
+          }
 
-          if (persistMode === 'internal') {
-            const injected = currentPrompt.content.trim();
-            internalDrivePromptMsg = injected
-              ? {
-                  type: 'environment_msg',
-                  role: 'user',
-                  content: injected,
-                }
-              : undefined;
-          } else {
-            await dlg.addChatMessages({
-              type: 'prompting_msg',
-              role: 'user',
+          await emitUserMarkdown(dlg, promptContent);
+
+          try {
+            postDialogEvent(dlg, {
+              type: 'end_of_user_saying_evt',
+              course: dlg.currentCourse,
               genseq: dlg.activeGenSeq,
+              msgId,
               content: promptContent,
-              msgId,
               grammar: promptGrammar,
-            });
-            await dlg.persistUserMessage(
-              promptContent,
-              msgId,
-              promptGrammar,
-              persistedUserLanguageCode,
+              userLanguageCode: persistedUserLanguageCode,
               q4hAnswerCallIds,
-            );
-            if (currentPrompt.subdialogReplyTarget) {
-              const normalizedCallId = currentPrompt.subdialogReplyTarget.callId.trim();
-              if (normalizedCallId === '') {
-                throw new Error(
-                  `driver-v2 assignment anchor invariant violation: empty callId for subdialogReplyTarget (dialog=${dlg.id.valueOf()})`,
-                );
-              }
-              const rawCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
-              if (!Number.isFinite(rawCourse) || rawCourse <= 0) {
-                throw new Error(
-                  `driver-v2 assignment anchor invariant violation: invalid course=${String(rawCourse)} (dialog=${dlg.id.valueOf()})`,
-                );
-              }
-              const rawGenseq = dlg.activeGenSeq;
-              if (!Number.isFinite(rawGenseq) || rawGenseq <= 0) {
-                throw new Error(
-                  `driver-v2 assignment anchor invariant violation: invalid genseq=${String(rawGenseq)} (dialog=${dlg.id.valueOf()})`,
-                );
-              }
-              const assignmentAnchor: TeammateCallAnchorRecord = {
-                ts: formatUnifiedTimestamp(new Date()),
-                type: 'teammate_call_anchor_record',
-                anchorRole: 'assignment',
-                callId: normalizedCallId,
-                genseq: Math.floor(rawGenseq),
-              };
-              await DialogPersistence.appendEvent(dlg.id, Math.floor(rawCourse), assignmentAnchor);
-            }
-          }
-
-          if (persistMode !== 'internal') {
-            await emitUserMarkdown(dlg, promptContent);
-          }
-
-          if (persistMode !== 'internal') {
-            try {
-              postDialogEvent(dlg, {
-                type: 'end_of_user_saying_evt',
-                course: dlg.currentCourse,
-                genseq: dlg.activeGenSeq,
-                msgId,
-                content: promptContent,
-                grammar: promptGrammar,
-                userLanguageCode: persistedUserLanguageCode,
-                q4hAnswerCallIds,
-              });
-            } catch (err) {
-              log.warn('driver-v2 failed to emit end_of_user_saying_evt', err);
-            }
+            });
+          } catch (err) {
+            log.warn('driver-v2 failed to emit end_of_user_saying_evt', err);
           }
         }
 
@@ -1331,9 +1317,7 @@ export async function driveDialogStreamCoreV2(
             coursePrefixMsgs,
             dialogMsgsForContext,
           },
-          ephemeral: {
-            internalDrivePromptMsg,
-          },
+          ephemeral: {},
           tail: {
             renderedReminders,
             languageGuideMsg: guideMsg,
