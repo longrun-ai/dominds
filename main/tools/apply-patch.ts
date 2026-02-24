@@ -644,6 +644,10 @@ export const applyPatchTool: FuncTool = {
   name: 'apply_patch',
   description:
     'Apply a Codex-style apply_patch formatted patch to the rtws (runtime workspace). Enforces Dominds directory allow/deny lists.',
+  descriptionI18n: {
+    en: 'Apply a Codex-style apply_patch formatted patch to the rtws (runtime workspace). Enforces Dominds directory allow/deny lists.',
+    zh: '使用 Codex 风格 apply_patch 格式补丁修改 rtws（运行时工作区）内文件。该操作会遵循 Dominds 的目录白名单与黑名单约束。',
+  },
   parameters: {
     type: 'object',
     additionalProperties: false,

@@ -241,12 +241,12 @@ setToolsetMeta('ws_mod', {
 
 // Codex-focused toolsets (function tools only; suitable for Codex provider)
 if (process.platform !== 'win32') {
-  registerToolset('codex_style_tools', [applyPatchTool, readonlyShellTool, updatePlanTool]);
+  registerToolset('codex_style_tools', [readonlyShellTool, applyPatchTool, updatePlanTool]);
   setToolsetMeta('codex_style_tools', {
     source: 'dominds',
     descriptionI18n: {
-      en: 'Codex-style tools (apply_patch + readonly_shell + update_plan)',
-      zh: 'Codex 风格工具（apply_patch + readonly_shell + update_plan）',
+      en: 'Codex-style tools (readonly_shell + apply_patch + update_plan)',
+      zh: 'Codex 风格工具（readonly_shell + apply_patch + update_plan）',
     },
     promptI18n: {
       en: 'Use `apply_patch` (Codex-style patch format) to modify files. Use `readonly_shell` for simple rtws (runtime workspace) inspection via its small allowlist; commands outside the allowlist are rejected. For node/python, only exact version probes are allowed (no scripts). Chains via |/&&/|| are validated segment-by-segment. Use `update_plan` to record/update the task plan (stored as a reminder). You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the rtws (runtime workspace). Hard denies: `readonly_shell` refuses rtws-root `.minds/` and `.dialogs/`; `apply_patch` is subject to the same access-control (including hard denies for `*.tsk/`, `.minds/`, and rtws-root `.dialogs/`).',
