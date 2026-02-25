@@ -92,10 +92,23 @@ function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
 }
 
 type CodexWebSearchMode = 'disabled' | 'cached' | 'live';
+const CODEX_JSON_RESPONSE_FORMAT_NAME = 'dominds_json_response';
+const CODEX_JSON_RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+} as const;
 
 function resolveCodexWebSearchMode(agent: Team.Member): CodexWebSearchMode {
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   return codexParams?.web_search ?? 'live';
+}
+
+function resolveCodexJsonResponseEnabled(agent: Team.Member): boolean {
+  const providerSpecific = agent.model_params?.codex?.json_response;
+  if (providerSpecific !== undefined) return providerSpecific;
+  const openAiSpecific = agent.model_params?.openai?.json_response;
+  if (openAiSpecific !== undefined) return openAiSpecific;
+  return agent.model_params?.json_response === true;
 }
 
 function buildCodexNativeTools(agent: Team.Member): ChatGptTool[] {
@@ -107,6 +120,23 @@ function buildCodexNativeTools(agent: Team.Member): ChatGptTool[] {
     external_web_access: webSearchMode === 'live',
   };
   return [webSearchTool];
+}
+
+function buildCodexTextControls(agent: Team.Member): ChatGptTextControls | undefined {
+  const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
+  const text: ChatGptTextControls = {};
+  if (codexParams && codexParams.verbosity) {
+    text.verbosity = codexParams.verbosity;
+  }
+  if (resolveCodexJsonResponseEnabled(agent)) {
+    text.format = {
+      type: 'json_schema',
+      name: CODEX_JSON_RESPONSE_FORMAT_NAME,
+      strict: true,
+      schema: CODEX_JSON_RESPONSE_SCHEMA,
+    };
+  }
+  return Object.keys(text).length > 0 ? text : undefined;
 }
 
 function assertNoCodexNativeToolCollisions(
@@ -366,9 +396,9 @@ async function buildCodexRequest(
 
   const codexParams = agent.model_params?.codex ?? agent.model_params?.openai;
   let reasoning: ChatGptReasoning | null = null;
-  let text: ChatGptTextControls | undefined;
   const parallelToolCalls = codexParams?.parallel_tool_calls ?? true;
   let include: ChatGptResponsesRequest['include'] = [];
+  const text = buildCodexTextControls(agent);
 
   if (codexParams && codexParams.reasoning_effort) {
     reasoning = {
@@ -377,12 +407,6 @@ async function buildCodexRequest(
     };
     include = ['reasoning.encrypted_content'];
   }
-  if (codexParams && codexParams.verbosity) {
-    text = {
-      verbosity: codexParams.verbosity,
-    };
-  }
-
   const nativeTools = buildCodexNativeTools(agent);
   assertNoCodexNativeToolCollisions(funcTools, nativeTools);
   const tools: ChatGptTool[] = [...funcTools.map(funcToolToCodex), ...nativeTools];

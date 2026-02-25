@@ -9,6 +9,7 @@
 import fs from 'fs/promises';
 import YAML from 'yaml';
 
+import { loadEnabledAppTeammates } from './apps/teammates';
 import { LlmConfig } from './llm/client';
 import { log } from './log';
 import { parseMcpYaml } from './mcp/config';
@@ -79,11 +80,13 @@ export namespace Team {
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
     web_search?: 'disabled' | 'cached' | 'live'; // Native web_search mode (Responses API).
+    json_response?: boolean; // Force JSON response mode (provider-dependent behavior).
   };
 
   export interface ModelParams {
     // General parameters that can be used by any provider
     max_tokens?: number; // Maximum tokens to generate (provider-agnostic)
+    json_response?: boolean; // Force JSON response mode (provider-agnostic, provider-specific overrides when set).
 
     // Codex provider (apiType: codex) parameters.
     // Codex provider (apiType: codex) parameters.
@@ -101,6 +104,7 @@ export namespace Team {
       top_k?: number; // Top-k sampling
       stop_sequences?: string[]; // Stop sequences
       reasoning_split?: boolean; // Enable separated reasoning stream if supported
+      json_response?: boolean; // Force JSON response mode (provider-dependent behavior).
     };
   }
 
@@ -928,6 +932,50 @@ export namespace Team {
         return team;
       }
 
+      // Apps: merge enabled app teammate definitions (additive).
+      try {
+        const appTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: process.cwd() });
+        if (appTeammates.length > 0) {
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            addIssue(
+              'apps/teammates/invalid_base',
+              'Failed to merge app teammates into .minds/team.yaml: base YAML is not an object.',
+              `Expected .minds/team.yaml to parse into an object before applying app teammate merges.`,
+            );
+          } else {
+            const rec = parsed as Record<string, unknown>;
+            const membersRaw = rec['members'];
+            const members =
+              typeof membersRaw === 'object' && membersRaw !== null && !Array.isArray(membersRaw)
+                ? (membersRaw as Record<string, unknown>)
+                : {};
+            if (rec['members'] === undefined) {
+              rec['members'] = members;
+            }
+
+            for (const snip of appTeammates) {
+              for (const [id, member] of Object.entries(snip.members)) {
+                if (Object.prototype.hasOwnProperty.call(members, id)) {
+                  addIssue(
+                    `apps/teammates/duplicate_member/${sanitizeProblemIdSegment(id)}`,
+                    'App teammate id collision while loading .minds/team.yaml.',
+                    `Enabled app '${snip.appId}' contributes member id '${id}', but it already exists in team.yaml (or another app). Disable/uninstall the conflicting app or rename the member id.`,
+                  );
+                  continue;
+                }
+                members[id] = member;
+              }
+            }
+          }
+        }
+      } catch (err: unknown) {
+        addIssue(
+          'apps/teammates/load',
+          'Failed to load enabled app teammates.',
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+
       const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu });
       for (const issue of parsedTeam.issues) {
         addIssue(issue.id, issue.message, issue.errorText);
@@ -1109,6 +1157,7 @@ export namespace Team {
 
   export const TEAM_YAML_MODEL_PARAMS_ROOT_KEYS = [
     'max_tokens',
+    'json_response',
     'general',
     'codex',
     'openai',
@@ -1131,6 +1180,7 @@ export namespace Team {
     'verbosity',
     'parallel_tool_calls',
     'web_search',
+    'json_response',
   ] as const;
   export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS;
   export const TEAM_YAML_MODEL_PARAMS_ANTHROPIC_KEYS = [
@@ -1140,6 +1190,7 @@ export namespace Team {
     'top_k',
     'stop_sequences',
     'reasoning_split',
+    'json_response',
   ] as const;
 
   function listUnknownKeys(obj: Record<string, unknown>, allowedKeys: readonly string[]): string[] {
@@ -1176,6 +1227,7 @@ export namespace Team {
       verbosity: `Did you mean \`${atPrefix}.model_params.codex.verbosity\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.verbosity\`? (not supported at ${atPrefix} root)`,
       parallel_tool_calls: `Did you mean \`${atPrefix}.model_params.codex.parallel_tool_calls\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.parallel_tool_calls\`? (not supported at ${atPrefix} root)`,
       web_search: `Did you mean \`${atPrefix}.model_params.codex.web_search\` (preferred for provider: codex) or \`${atPrefix}.model_params.openai.web_search\`? (not supported at ${atPrefix} root)`,
+      json_response: `Did you mean \`${atPrefix}.model_params.json_response\` (provider-agnostic), or provider-specific \`${atPrefix}.model_params.codex.json_response\` / \`${atPrefix}.model_params.openai.json_response\` / \`${atPrefix}.model_params.anthropic.json_response\`?`,
     };
 
     const unknownAtMember = listUnknownKeys(memberObj, TEAM_YAML_MEMBER_KEYS);
@@ -1969,6 +2021,7 @@ export namespace Team {
       asOptionalLogitBias(params.logit_bias, `${at2}.logit_bias`);
       asOptionalString(params.user, `${at2}.user`);
       asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);
+      asOptionalBoolean(params.json_response, `${at2}.json_response`);
 
       const reasoningEffort = params.reasoning_effort;
       if (
@@ -2037,9 +2090,11 @@ export namespace Team {
       asOptionalNumber(anthropic.top_k, `${at}.anthropic.top_k`);
       asOptionalStringArray(anthropic.stop_sequences, `${at}.anthropic.stop_sequences`);
       asOptionalBoolean(anthropic.reasoning_split, `${at}.anthropic.reasoning_split`);
+      asOptionalBoolean(anthropic.json_response, `${at}.anthropic.json_response`);
     }
 
     asOptionalNumber(obj.max_tokens, `${at}.max_tokens`);
+    asOptionalBoolean(obj.json_response, `${at}.json_response`);
     if (general) {
       asOptionalNumber(general.max_tokens, `${at}.general.max_tokens`);
     }
@@ -2055,6 +2110,7 @@ export namespace Team {
     const out: ModelParams = {};
     const effectiveMaxTokens = (topLevelMaxTokens ?? generalMaxTokens) as number | undefined;
     if (effectiveMaxTokens !== undefined) out.max_tokens = effectiveMaxTokens;
+    if (obj.json_response !== undefined) out.json_response = obj.json_response as boolean;
     if (codex) out.codex = codex as OpenAiStyleModelParams;
     if (openai) out.openai = openai as OpenAiStyleModelParams;
     if (anthropic) out.anthropic = anthropic as ModelParams['anthropic'];

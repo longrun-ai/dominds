@@ -5,6 +5,8 @@
  */
 import type { Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
+import { applyAppDialogRunControl } from '../apps/run-control';
+import { shutdownAppsRuntime } from '../apps/runtime';
 import { Dialog, DialogID, RootDialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreRootDialog } from '../dialog-instance-registry';
@@ -95,6 +97,99 @@ function parseDialogStatusKind(raw: unknown): DialogStatusKind | null {
     return null;
   }
   return raw;
+}
+
+type RunControlPrompt = Readonly<{
+  content: string;
+  msgId: string;
+  grammar: 'markdown';
+  userLanguageCode: LanguageCode;
+}>;
+
+function resolveRunControlInput(
+  raw: unknown,
+): { ok: true; input: Record<string, unknown> } | { ok: false; errorText: string } {
+  if (raw === undefined) return { ok: true, input: {} };
+  if (!isRecord(raw) || Array.isArray(raw)) {
+    return { ok: false, errorText: 'runControlInput must be a JSON object' };
+  }
+  return { ok: true, input: raw };
+}
+
+function applyRunControlPromptPatch(
+  base: RunControlPrompt,
+  patch:
+    | Readonly<{
+        content?: string;
+        msgId?: string;
+        grammar?: 'markdown';
+        userLanguageCode?: LanguageCode;
+      }>
+    | undefined,
+): RunControlPrompt {
+  if (!patch) return base;
+  const nextContent = patch.content !== undefined ? patch.content : base.content;
+  const nextMsgId = patch.msgId !== undefined ? patch.msgId : base.msgId;
+  const nextGrammar = patch.grammar !== undefined ? patch.grammar : base.grammar;
+  const nextLanguageCode =
+    patch.userLanguageCode !== undefined ? patch.userLanguageCode : base.userLanguageCode;
+  return {
+    content: nextContent,
+    msgId: nextMsgId,
+    grammar: nextGrammar,
+    userLanguageCode: nextLanguageCode,
+  };
+}
+
+async function maybeApplyDialogRunControl(params: {
+  dialog: Readonly<{ selfId: string; rootId: string }>;
+  prompt: RunControlPrompt;
+  runControlId?: unknown;
+  runControlInput?: unknown;
+  source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
+  q4h?: Readonly<{
+    questionId: string;
+    continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
+  }>;
+}): Promise<
+  { kind: 'continue'; prompt: RunControlPrompt } | { kind: 'reject'; errorText: string }
+> {
+  const rawRunControlId = typeof params.runControlId === 'string' ? params.runControlId.trim() : '';
+  if (rawRunControlId === '') {
+    if (params.runControlInput !== undefined) {
+      return {
+        kind: 'reject',
+        errorText: 'runControlInput provided but runControlId is missing',
+      };
+    }
+    return { kind: 'continue', prompt: params.prompt };
+  }
+  const inputResolved = resolveRunControlInput(params.runControlInput);
+  if (!inputResolved.ok) {
+    return { kind: 'reject', errorText: inputResolved.errorText };
+  }
+  try {
+    const result = await applyAppDialogRunControl({
+      controlId: rawRunControlId,
+      payload: {
+        dialog: params.dialog,
+        prompt: params.prompt,
+        source: params.source,
+        input: inputResolved.input,
+        q4h: params.q4h,
+      },
+    });
+    if (result.kind === 'reject') {
+      return { kind: 'reject', errorText: result.errorText };
+    }
+    const prompt = applyRunControlPromptPatch(params.prompt, result.prompt);
+    return { kind: 'continue', prompt };
+  } catch (error) {
+    return {
+      kind: 'reject',
+      errorText: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 const log = createLogger('websocket-handler');
@@ -1208,6 +1303,29 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
+    const runControlApplied = await maybeApplyDialogRunControl({
+      dialog: { selfId: dialogId, rootId: rootDialogId },
+      prompt: {
+        content,
+        msgId,
+        grammar: 'markdown',
+        userLanguageCode,
+      },
+      runControlId: (packet as unknown as { runControlId?: unknown }).runControlId,
+      runControlInput: (packet as unknown as { runControlInput?: unknown }).runControlInput,
+      source: 'drive_dlg_by_user_msg',
+    });
+    if (runControlApplied.kind === 'reject') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: `Dialog run-control rejected drive: ${runControlApplied.errorText}`,
+        }),
+      );
+      return;
+    }
+    const effectivePrompt = runControlApplied.prompt;
+
     // If the dialog is already active for this WebSocket, runnable (status === 'running'),
     // and has an event forwarder (subChan),
     // drive it directly to preserve in-memory state (pending subdialogs, teammate tellask tracking, etc).
@@ -1229,7 +1347,13 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
     ) {
       await driveDialogStream(
         existingDialog,
-        { content, msgId, grammar: 'markdown', userLanguageCode, origin: 'user' },
+        {
+          content: effectivePrompt.content,
+          msgId: effectivePrompt.msgId,
+          grammar: effectivePrompt.grammar,
+          userLanguageCode: effectivePrompt.userLanguageCode,
+          origin: 'user',
+        },
         true,
       );
       return;
@@ -1257,7 +1381,13 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       await setupWebSocketSubscription(ws, dialog);
       await driveDialogStream(
         dialog,
-        { content, msgId, grammar: 'markdown', userLanguageCode, origin: 'user' },
+        {
+          content: effectivePrompt.content,
+          msgId: effectivePrompt.msgId,
+          grammar: effectivePrompt.grammar,
+          userLanguageCode: effectivePrompt.userLanguageCode,
+          origin: 'user',
+        },
         true,
       );
       return;
@@ -1387,7 +1517,7 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
  */
 async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnswer): Promise<void> {
   try {
-    const { dialog: dialogIdent, content, msgId, questionId } = packet;
+    const { dialog: dialogIdent, content, msgId, questionId, continuationType } = packet;
     const userLanguageCode = resolveUserLanguageCode(
       ws,
       (packet as unknown as { userLanguageCode?: unknown }).userLanguageCode,
@@ -1431,6 +1561,33 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
       );
       return;
     }
+
+    const runControlApplied = await maybeApplyDialogRunControl({
+      dialog: { selfId: dialogId, rootId: rootDialogId },
+      prompt: {
+        content,
+        msgId,
+        grammar: 'markdown',
+        userLanguageCode,
+      },
+      runControlId: (packet as unknown as { runControlId?: unknown }).runControlId,
+      runControlInput: (packet as unknown as { runControlInput?: unknown }).runControlInput,
+      source: 'drive_dialog_by_user_answer',
+      q4h: {
+        questionId,
+        continuationType,
+      },
+    });
+    if (runControlApplied.kind === 'reject') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: `Dialog run-control rejected Q4H answer drive: ${runControlApplied.errorText}`,
+        }),
+      );
+      return;
+    }
+    const effectivePrompt = runControlApplied.prompt;
 
     const removed = await DialogPersistence.removeQuestion4HumanState(dialogIdObj, questionId);
     if (!removed.found) {
@@ -1483,7 +1640,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         'askHuman',
         undefined,
         removedQuestion.tellaskContent,
-        content,
+        effectivePrompt.content,
         'completed',
         callId,
       );
@@ -1500,17 +1657,17 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     const hasPendingSubdialogs = await dialog.hasPendingSubdialogs();
     if (hasPendingSubdialogs) {
       dialog.queueUpNextPrompt({
-        prompt: content,
-        msgId,
-        grammar: 'markdown',
-        userLanguageCode,
+        prompt: effectivePrompt.content,
+        msgId: effectivePrompt.msgId,
+        grammar: effectivePrompt.grammar,
+        userLanguageCode: effectivePrompt.userLanguageCode,
         q4hAnswerCallIds: askHumanCallIds,
       });
       log.debug('Deferred Q4H answer until pending subdialogs resolve', undefined, {
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
         questionId,
-        msgId,
+        msgId: effectivePrompt.msgId,
       });
       return;
     }
@@ -1519,10 +1676,10 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
     await driveDialogStream(
       dialog,
       {
-        content,
-        msgId,
-        grammar: 'markdown',
-        userLanguageCode,
+        content: effectivePrompt.content,
+        msgId: effectivePrompt.msgId,
+        grammar: effectivePrompt.grammar,
+        userLanguageCode: effectivePrompt.userLanguageCode,
         q4hAnswerCallIds: askHumanCallIds,
         origin: 'user',
       },
@@ -1707,10 +1864,10 @@ export function cleanupEventSystems(): void {
 // Register cleanup on process exit
 process.on('SIGINT', () => {
   cleanupEventSystems();
-  process.exit(0);
+  void shutdownAppsRuntime().finally(() => process.exit(0));
 });
 
 process.on('SIGTERM', () => {
   cleanupEventSystems();
-  process.exit(0);
+  void shutdownAppsRuntime().finally(() => process.exit(0));
 });

@@ -4384,9 +4384,13 @@ function renderToolsetCapabilitySummary(
         ? language === 'zh'
           ? 'MCP server 映射工具集（能力取决于 server 实际暴露）'
           : 'MCP server-mapped toolset (capabilities depend on exposed server tools)'
-        : language === 'zh'
-          ? '内建工具集（暂无描述）'
-          : 'Built-in toolset (no description)';
+        : source === 'app'
+          ? language === 'zh'
+            ? 'App 工具集（由已安装的 Dominds App 提供）'
+            : 'App toolset (provided by an installed Dominds App)'
+          : language === 'zh'
+            ? '内建工具集（暂无描述）'
+            : 'Built-in toolset (no description)';
     const descText = desc && desc.trim() !== '' ? desc : fallbackDesc;
     const previewNames = tools.slice(0, 6).map((t) => `\`${t.name}\``);
     const preview =
@@ -4397,13 +4401,11 @@ function renderToolsetCapabilitySummary(
           : 'no tools';
 
     if (language === 'zh') {
-      lines.push(
-        `\`${id}\`（${source === 'mcp' ? 'MCP' : '内建'}）：${descText}；tools=${tools.length}（${preview}）`,
-      );
+      const label = source === 'mcp' ? 'MCP' : source === 'app' ? 'App' : '内建';
+      lines.push(`\`${id}\`（${label}）：${descText}；tools=${tools.length}（${preview}）`);
     } else {
-      lines.push(
-        `\`${id}\` (${source === 'mcp' ? 'MCP' : 'built-in'}): ${descText}; tools=${tools.length} (${preview})`,
-      );
+      const label = source === 'mcp' ? 'MCP' : source === 'app' ? 'App' : 'built-in';
+      lines.push(`\`${id}\` (${label}): ${descText}; tools=${tools.length} (${preview})`);
     }
   }
 

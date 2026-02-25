@@ -55,6 +55,9 @@ providers:
           type: enum
           values: [disabled, cached, live]
           description: Enable native web search tool mode (disabled/cached/live).
+        json_response:
+          type: boolean
+          description: Force JSON object output mode.
         max_tokens:
           type: integer
           min: 1
@@ -135,6 +138,9 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
     models:
       MiniMax-M2.5:
         name: MiniMax M2.5
@@ -179,6 +185,9 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
     models:
       MiniMax-M2.5:
         name: MiniMax M2.5
@@ -223,6 +232,9 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
     models:
       MiniMax-M2.5:
         name: MiniMax M2.5
@@ -267,6 +279,9 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
     models:
       MiniMax-M2.5:
         name: MiniMax M2.5
@@ -439,6 +454,9 @@ providers:
           min: 0
           max: 1
           description: Nucleus sampling probability (0–1).
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
         top_k:
           type: integer
           min: 0
@@ -505,6 +523,9 @@ providers:
           min: 0
           max: 1
           description: Nucleus sampling probability (0–1).
+        json_response:
+          type: boolean
+          description: Force JSON object output mode.
         max_tokens:
           type: integer
           min: 1

@@ -31,6 +31,7 @@
     "team_mgmt-create-new-file": "tsx team_mgmt-create-new-file.ts",
     "func-call": "tsx provider/func-call.ts",
     "stream-func-call": "tsx provider/stream-func-call.ts",
+    "minimax-json-response": "tsx provider/minimax-json-response.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "anthropic-whitespace": "tsx provider/anthropic-whitespace.ts",
     "openai-streaming": "tsx provider/openai-streaming.ts",

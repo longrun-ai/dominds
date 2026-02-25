@@ -26,6 +26,13 @@ import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult }
 import { isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/anthropic');
+const ANTHROPIC_JSON_RESPONSE_TOOL_NAME = 'dominds_json_response';
+const ANTHROPIC_JSON_RESPONSE_TOOL_DESCRIPTION =
+  'Return the final answer as a JSON object. Do not include any non-JSON text.';
+const ANTHROPIC_JSON_RESPONSE_TOOL_INPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+} satisfies Tool['input_schema'];
 
 type AnthropicMessageContent = Exclude<MessageParam['content'], string>;
 
@@ -45,6 +52,10 @@ export type AnthropicStreamConsumeResult = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isNonArrayRecord(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value);
 }
 
 function tryExtractApiReturnedModel(value: unknown): string | undefined {
@@ -79,6 +90,90 @@ function funcToolToAnthropic(funcTool: FuncTool): Tool {
     description,
     input_schema,
   };
+}
+
+function resolveAnthropicJsonResponseEnabled(agent: Team.Member): boolean {
+  const providerSpecific = agent.model_params?.anthropic?.json_response;
+  if (providerSpecific !== undefined) return providerSpecific;
+  return agent.model_params?.json_response === true;
+}
+
+function buildAnthropicForcedJsonTool(): Tool {
+  return {
+    name: ANTHROPIC_JSON_RESPONSE_TOOL_NAME,
+    description: ANTHROPIC_JSON_RESPONSE_TOOL_DESCRIPTION,
+    input_schema: ANTHROPIC_JSON_RESPONSE_TOOL_INPUT_SCHEMA,
+  };
+}
+
+function buildAnthropicToolList(funcTools: FuncTool[], forceJsonResponse: boolean): Tool[] {
+  const tools = funcTools.map(funcToolToAnthropic);
+  if (!forceJsonResponse) return tools;
+  if (tools.some((tool) => tool.name === ANTHROPIC_JSON_RESPONSE_TOOL_NAME)) {
+    throw new Error(
+      `Anthropic tool name collision: '${ANTHROPIC_JSON_RESPONSE_TOOL_NAME}' is reserved for json_response mode.`,
+    );
+  }
+  tools.push(buildAnthropicForcedJsonTool());
+  return tools;
+}
+
+function serializeAnthropicForcedJsonObject(input: unknown, at: string): string {
+  if (!isNonArrayRecord(input)) {
+    throw new Error(`Invalid ${at}: expected JSON object output in json_response mode.`);
+  }
+  return JSON.stringify(input);
+}
+
+function extractJsonObjectCandidate(text: string): string | null {
+  const markdownMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (markdownMatch && typeof markdownMatch[1] === 'string' && markdownMatch[1].trim().length > 0) {
+    return markdownMatch[1].trim();
+  }
+  const firstObject = text.indexOf('{');
+  const lastObject = text.lastIndexOf('}');
+  if (firstObject !== -1 && lastObject !== -1 && lastObject > firstObject) {
+    return text.slice(firstObject, lastObject + 1).trim();
+  }
+  return null;
+}
+
+function parseForcedJsonToolInput(rawJson: string, fallbackInput: unknown, at: string): unknown {
+  const trimmed = rawJson.trim();
+  if (trimmed.length === 0) return fallbackInput;
+
+  const candidates: string[] = [trimmed];
+  const extracted = extractJsonObjectCandidate(trimmed);
+  if (extracted && extracted !== trimmed) {
+    candidates.push(extracted);
+  }
+  if (trimmed.startsWith('{{') && trimmed.endsWith('}}') && trimmed.length > 4) {
+    candidates.push(trimmed.slice(1, -1).trim());
+  }
+
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as unknown;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const errorText = lastError instanceof Error ? lastError.message : String(lastError);
+  const preview = trimmed.length > 200 ? `${trimmed.slice(0, 200)}...` : trimmed;
+  if (isNonArrayRecord(fallbackInput)) {
+    log.warn(
+      'ANTH malformed forced-json tool input; using initialInput fallback',
+      new Error(errorText),
+      {
+        at,
+        rawPreview: preview,
+      },
+    );
+    return fallbackInput;
+  }
+  throw new Error(`Invalid ${at}: ${errorText}; raw=${JSON.stringify(preview)}`);
 }
 
 /**
@@ -431,7 +526,11 @@ function chatMessageToAnthropic(chatMsg: ChatMessage): MessageParam {
   };
 }
 
-function anthropicToChatMessages(message: unknown, genseq: number): ChatMessage[] {
+function anthropicToChatMessages(
+  message: unknown,
+  genseq: number,
+  forcedJsonToolName?: string,
+): ChatMessage[] {
   const results: ChatMessage[] = [];
 
   if (!isRecord(message)) {
@@ -472,6 +571,19 @@ function anthropicToChatMessages(message: unknown, genseq: number): ChatMessage[
   if (role === 'assistant') {
     const toolBlocks = blocks.filter(isToolUseBlock);
     toolBlocks.forEach((block) => {
+      if (forcedJsonToolName && block.name === forcedJsonToolName) {
+        const jsonText = serializeAnthropicForcedJsonObject(
+          block.input,
+          `tool_use:${block.id}:${block.name}`,
+        );
+        results.push({
+          type: 'saying_msg',
+          role: 'assistant',
+          content: jsonText,
+          genseq: genseq,
+        });
+        return;
+      }
       results.push({
         type: 'func_call_msg',
         id: block.id,
@@ -553,6 +665,7 @@ export async function consumeAnthropicStream(
   stream: AsyncIterable<MessageStreamEvent>,
   receiver: LlmStreamReceiver,
   abortSignal?: AbortSignal,
+  forcedJsonToolName?: string,
 ): Promise<AnthropicStreamConsumeResult> {
   // Stream lifecycle management using SDK start/stop events
   let currentContentBlock: AnthropicMessageContent[number] | null = null;
@@ -684,15 +797,34 @@ export async function consumeAnthropicStream(
               new Error('Tool_use block stopped without active tool tracking'),
             );
           } else {
-            let argsJson = '';
-            if (currentToolUse.inputJson.trim().length > 0) {
-              argsJson = currentToolUse.inputJson;
+            if (forcedJsonToolName && currentToolUse.name === forcedJsonToolName) {
+              const forcedInput = parseForcedJsonToolInput(
+                currentToolUse.inputJson,
+                currentToolUse.initialInput,
+                `tool_use:${currentToolUse.id}:${currentToolUse.name}`,
+              );
+              const jsonText = serializeAnthropicForcedJsonObject(
+                forcedInput,
+                `tool_use:${currentToolUse.id}:${currentToolUse.name}`,
+              );
+              if (!sayingStarted) {
+                sayingStarted = true;
+                await receiver.sayingStart();
+              }
+              await receiver.sayingChunk(jsonText);
+              await receiver.sayingFinish();
+              sayingStarted = false;
             } else {
-              const stringified = JSON.stringify(currentToolUse.initialInput);
-              argsJson =
-                typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
+              let argsJson = '';
+              if (currentToolUse.inputJson.trim().length > 0) {
+                argsJson = currentToolUse.inputJson;
+              } else {
+                const stringified = JSON.stringify(currentToolUse.initialInput);
+                argsJson =
+                  typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
+              }
+              await receiver.funcCall(currentToolUse.id, currentToolUse.name, argsJson);
             }
-            await receiver.funcCall(currentToolUse.id, currentToolUse.name, argsJson);
           }
           currentToolUse = null;
         }
@@ -863,6 +995,7 @@ export class AnthropicGen implements LlmGenerator {
     const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(context);
 
     const anthropicParams = agent.model_params?.anthropic || {};
+    const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
     const maxTokens = agent.model_params?.max_tokens;
 
     // Safety check: model should never be undefined at this point due to validation in driver
@@ -876,12 +1009,20 @@ export class AnthropicGen implements LlmGenerator {
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
 
+    const anthropicTools = buildAnthropicToolList(funcTools, forceJsonResponse);
     const baseParams = {
       model: agent.model,
       messages: requestMessages,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
       max_tokens: maxTokens ?? anthropicParams.max_tokens ?? outputLength ?? 1024,
-      ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToAnthropic) }),
+      ...(anthropicTools.length > 0 && { tools: anthropicTools }),
+      ...(forceJsonResponse && {
+        tool_choice: {
+          type: 'tool' as const,
+          name: ANTHROPIC_JSON_RESPONSE_TOOL_NAME,
+          disable_parallel_tool_use: true,
+        },
+      }),
       ...(anthropicParams.temperature !== undefined && {
         temperature: anthropicParams.temperature,
       }),
@@ -904,7 +1045,12 @@ export class AnthropicGen implements LlmGenerator {
     const stream: AsyncIterable<MessageStreamEvent> = client.messages.stream(
       streamParams as unknown as MessageCreateParamsStreaming,
     );
-    return consumeAnthropicStream(stream, receiver, abortSignal);
+    return consumeAnthropicStream(
+      stream,
+      receiver,
+      abortSignal,
+      forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
+    );
   }
 
   async genMoreMessages(
@@ -924,6 +1070,7 @@ export class AnthropicGen implements LlmGenerator {
     const requestMessages: MessageParam[] = await buildAnthropicRequestMessages(context);
 
     const anthropicParams = agent.model_params?.anthropic || {};
+    const forceJsonResponse = resolveAnthropicJsonResponseEnabled(agent);
     const maxTokens = agent.model_params?.max_tokens;
 
     // Safety check: model should never be undefined at this point due to validation in driver
@@ -937,12 +1084,20 @@ export class AnthropicGen implements LlmGenerator {
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
 
+    const anthropicTools = buildAnthropicToolList(funcTools, forceJsonResponse);
     const baseParams = {
       model: agent.model,
       messages: requestMessages,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
       max_tokens: maxTokens ?? anthropicParams.max_tokens ?? outputLength ?? 1024,
-      ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToAnthropic) }),
+      ...(anthropicTools.length > 0 && { tools: anthropicTools }),
+      ...(forceJsonResponse && {
+        tool_choice: {
+          type: 'tool' as const,
+          name: ANTHROPIC_JSON_RESPONSE_TOOL_NAME,
+          disable_parallel_tool_use: true,
+        },
+      }),
       ...(anthropicParams.temperature !== undefined && {
         temperature: anthropicParams.temperature,
       }),
@@ -986,7 +1141,11 @@ export class AnthropicGen implements LlmGenerator {
     };
 
     return {
-      messages: anthropicToChatMessages(response, genseq),
+      messages: anthropicToChatMessages(
+        response,
+        genseq,
+        forceJsonResponse ? ANTHROPIC_JSON_RESPONSE_TOOL_NAME : undefined,
+      ),
       usage,
       llmGenModel: returnedModel,
     };

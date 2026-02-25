@@ -10,6 +10,7 @@
  */
 import * as path from 'path';
 import { WebSocket } from 'ws';
+import { initAppsRuntime } from './apps/runtime';
 import { reconcileRunStatesAfterRestart } from './dialog-run-state';
 import { runBackendDriver } from './llm/driver-entry';
 import { createLogger } from './log';
@@ -130,6 +131,9 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
 
   // MCP is best-effort: startup must not be blocked by MCP config/server issues.
   startMcpSupervisor();
+
+  // Apps host: optional. Any errors must be loud and should fail fast because toolsets/teammates may depend on apps.
+  await initAppsRuntime({ rtwsRootAbs: process.cwd(), kernel: { host, port } });
 
   // Crash recovery: any dialogs left in "proceeding" state are surfaced as interrupted/resumable.
   await reconcileRunStatesAfterRestart();

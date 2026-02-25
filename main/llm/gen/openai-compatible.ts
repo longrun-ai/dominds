@@ -52,6 +52,22 @@ function tryExtractChatUsage(usage: unknown): LlmUsageStats {
   };
 }
 
+function buildChatCompletionResponseFormat(
+  openAiParams: NonNullable<Team.ModelParams['openai']>,
+  jsonResponseEnabled: boolean,
+): ChatCompletionCreateParamsStreaming['response_format'] | undefined {
+  if (!jsonResponseEnabled) return undefined;
+  return { type: 'json_object' };
+}
+
+function resolveOpenAiCompatibleJsonResponseEnabled(
+  agent: Team.Member,
+  openAiParams: NonNullable<Team.ModelParams['openai']>,
+): boolean {
+  if (openAiParams.json_response !== undefined) return openAiParams.json_response;
+  return agent.model_params?.json_response === true;
+}
+
 function funcToolToChatCompletionTool(funcTool: FuncTool): ChatCompletionTool {
   // MCP schemas are passed through to providers. Chat Completions expects a narrower JSON schema
   // shape; runtime compatibility is handled by provider validation + the driver stop policy.
@@ -516,11 +532,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
+    const jsonResponseEnabled = resolveOpenAiCompatibleJsonResponseEnabled(agent, openAiParams);
 
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
+    const responseFormat = buildChatCompletionResponseFormat(openAiParams, jsonResponseEnabled);
 
     const payload: ChatCompletionCreateParamsStreaming = {
       model: agent.model,
@@ -541,6 +559,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_logprobs !== undefined && { top_logprobs: openAiParams.top_logprobs }),
       ...(openAiParams.logit_bias !== undefined && { logit_bias: openAiParams.logit_bias }),
       ...(openAiParams.user !== undefined && { user: openAiParams.user }),
+      ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(funcTools.length > 0
         ? { tools: funcTools.map(funcToolToChatCompletionTool), tool_choice: 'auto' as const }
         : { tool_choice: 'none' as const }),
@@ -665,11 +684,13 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
+    const jsonResponseEnabled = resolveOpenAiCompatibleJsonResponseEnabled(agent, openAiParams);
 
     const modelInfo = providerConfig.models[agent.model];
     const outputLength = modelInfo?.output_length;
     const maxOutputTokens = maxTokens ?? openAiParams.max_tokens ?? outputLength ?? 1024;
     const parallelToolCalls = openAiParams.parallel_tool_calls ?? true;
+    const responseFormat = buildChatCompletionResponseFormat(openAiParams, jsonResponseEnabled);
 
     const payload: ChatCompletionCreateParamsNonStreaming = {
       model: agent.model,
@@ -688,6 +709,7 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       ...(openAiParams.top_logprobs !== undefined && { top_logprobs: openAiParams.top_logprobs }),
       ...(openAiParams.logit_bias !== undefined && { logit_bias: openAiParams.logit_bias }),
       ...(openAiParams.user !== undefined && { user: openAiParams.user }),
+      ...(responseFormat !== undefined && { response_format: responseFormat }),
       ...(funcTools.length > 0 && { tools: funcTools.map(funcToolToChatCompletionTool) }),
       tool_choice: 'auto',
       parallel_tool_calls: parallelToolCalls,

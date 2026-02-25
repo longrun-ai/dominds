@@ -183,6 +183,8 @@ export interface DriveDialogRequest {
   content: string;
   msgId: string; // Message ID for tracking and error recovery (mandatory)
   userLanguageCode: LanguageCode;
+  runControlId?: string;
+  runControlInput?: Record<string, unknown>;
 }
 
 export interface DriveDialogByUserAnswer {
@@ -193,6 +195,8 @@ export interface DriveDialogByUserAnswer {
   questionId: string;
   continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
   userLanguageCode: LanguageCode;
+  runControlId?: string;
+  runControlInput?: Record<string, unknown>;
 }
 
 export interface InterruptDialogRequest {

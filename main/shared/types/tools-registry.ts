@@ -2,7 +2,7 @@ import type { I18nText } from './i18n';
 
 export type ToolKind = 'func';
 
-export type ToolsetSource = 'dominds' | 'mcp';
+export type ToolsetSource = 'dominds' | 'mcp' | 'app';
 
 export type ToolInfo = {
   name: string;

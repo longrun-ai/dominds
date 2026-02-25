@@ -202,6 +202,42 @@ async function main(): Promise<void> {
       'no team yaml errors expected for valid fbr_model_params.codex.web_search',
     );
 
+    // model_params.json_response should be accepted at root as provider-agnostic config.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.2',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      json_response: true',
+        '      codex:',
+        '        json_response: false',
+        '',
+      ].join('\n'),
+    );
+
+    const teamJsonResponse = await Team.load();
+    assert.equal(
+      teamJsonResponse.getMember('alice')?.model_params?.json_response,
+      true,
+      'model_params.json_response root flag should be parsed',
+    );
+    assert.equal(
+      teamJsonResponse.getMember('alice')?.model_params?.codex?.json_response,
+      false,
+      'provider-specific json_response should still be parsed',
+    );
+    assert.ok(
+      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
+      'no team yaml errors expected for valid model_params.json_response root usage',
+    );
+
     // shell_specialists policy:
     // - must list the only members allowed to have shell tools
     // - should surface misconfig as Problems (fail-open runtime)
@@ -264,8 +300,12 @@ async function main(): Promise<void> {
         !toolNames.includes('get_daemon_output'),
         'alice should not receive get_daemon_output',
       );
+      const hasShellSpecialistLine =
+        systemPrompt.includes('Shell specialists in this team: @cmdr') ||
+        systemPrompt.includes('Shell specialists you can tellask: @cmdr') ||
+        systemPrompt.includes('Shell specialist teammates: @cmdr');
       assert.ok(
-        systemPrompt.includes('Shell specialist teammates: @cmdr'),
+        hasShellSpecialistLine,
         'system prompt should point to the configured shell specialist',
       );
       assert.ok(
