@@ -8,7 +8,7 @@
 
 **扪心自问（FBR, Fresh Boots Reasoning）** 是 Dominds 的一种工作机制：在诉请者对话推进过程中，智能体可以把一个边界清晰的子问题“拆出去”，以 **更干净的上下文** 重新推理一次，然后把结论回贴到诉请者对话中。
 
-在 Dominds 里，FBR 通过专用函数工具 `freshBootsReasoning({ tellaskContent: "..." })` 触发；FBR 的核心是运行时对该支线对话施加的一组强制约束与串行语义。
+在 Dominds 里，FBR 通过专用函数工具 `freshBootsReasoning({ tellaskContent: "...", effort?: N })` 触发；FBR 的核心是运行时对该支线对话施加的一组强制约束与串行语义。
 
 ## 2. 设计原则与取舍（为什么这样做）
 
@@ -27,7 +27,7 @@ FBR 的价值来自“把推理拉回文本”：让被诉请者只围绕诉请�
 
 ### 2.3 串行多轮推理，而不是“多代理协作”
 
-`fbr-effort` 表示一条 FBR 请求在同一次触发内会在**单一子对话窗口**内执行**串行多轮**推理，由诉请者对话负责综合提炼。不同轮次不协作，仅做不同视角的顺序补充。
+`fbr-effort` 是 FBR 的力度设置。运行时会把力度 `N` 解释为在**单一子对话窗口**内执行 `N` 次串行推理，由诉请者对话负责综合提炼。不同轮次不协作，仅做不同视角的顺序补充。
 
 ## 3. 用户语法
 
@@ -35,16 +35,18 @@ FBR 的价值来自“把推理拉回文本”：让被诉请者只围绕诉请�
 
 触发 FBR 的语法只有一种：
 
-- `freshBootsReasoning({ tellaskContent: "..." })`
+- `freshBootsReasoning({ tellaskContent: "...", effort?: N })`
 
 说明：
 
 - FBR 不使用 `targetAgentId`、`sessionSlug`、`mentionList`。
 - `tellaskContent` 是 FBR 支线的权威任务上下文。
+- `effort` 为可选，用于设置本次调用的 FBR 力度；未传时运行时回退到当前成员 `fbr-effort`。
+- 力度 `N` 会映射为同一 FBR 支线窗口内的 `N` 次串行推理。
 
 ### 3.2 作用域
 
-本文档只定义 **FBR 机制**，并说明其通过 `freshBootsReasoning({ tellaskContent: "..." })` 触发的行为契约。一般的队友诉请（`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`）仍按 [`dialog-system.zh.md`](./dialog-system.zh.md) 的 Tellask 分类与能力模型执行。
+本文档只定义 **FBR 机制**，并说明其通过 `freshBootsReasoning({ tellaskContent: "...", effort?: N })` 触发的行为契约。一般的队友诉请（`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`）仍按 [`dialog-system.zh.md`](./dialog-system.zh.md) 的 Tellask 分类与能力模型执行。
 
 如果你需要“同人设但可用工具”的支线对话，请使用一般队友诉请路径，并显式指定队友身份。
 
@@ -139,8 +141,8 @@ FBR 支线对话应产出一份便于诉请者整合的简明推理结果。单�
 
 - 类型：整数
 - 默认：`3`
-- `0`：禁用该成员的 `freshBootsReasoning({ tellaskContent: "..." })` FBR（必须明确报错拒绝）
-- `1..100`：每次 `freshBootsReasoning({ tellaskContent: "..." })` 在单一 FBR 子对话内执行 N 轮顺序推理
+- `0`：该成员默认禁用 FBR（当有效力度为 `0` 时必须明确报错拒绝）
+- `1..100`：力度取值范围（有效力度来自显式 `effort`，未传时回退 `fbr-effort`）
 - `> 100` / 非整数 / 负数：配置错误（直接报错，不做 clamp）
 
 当 `fbr-effort = N`：

@@ -61,13 +61,13 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   const fbrPhaseContractZh = [
     '- FBR 必须按“发起 → 逐轮推理 → 上游回帖”三段执行：发起 `freshBootsReasoning` 只代表发起，不代表你已完成推理。',
     '- 发出 `freshBootsReasoning` 后，必须在该 FBR 子对话内按序走完整个 N 轮流程；只有最后一轮才会回帖给上游。',
-    '- 若 \\`fbr-effort = N\\`，等待该 FBR 子对话一次性完整回帖；收到全量回帖后完成提炼并据此做下游决策；不得基于未完成中间轮次提前定稿。',
+    '- 若 \\`fbr-effort = N\\`（力度 N，内部映射为 N 次串行推理），等待该 FBR 子对话一次性完整回帖；收到全量回帖后完成提炼并据此做下游决策；不得基于未完成中间轮次提前定稿。',
     '- 每一轮都应给出与此前不同的增量观点；每轮均不得复述前文结论。程序会把该 FBR 全量支线正文在最后一轮合并后回贴到上游。',
   ].join('\n');
   const fbrPhaseContractEn = [
     '- FBR MUST follow three phases: “initiate -> serial reasoning rounds -> upstream update”. Calling `freshBootsReasoning` means initiation only, not completed reasoning.',
     '- After calling `freshBootsReasoning`, run all required rounds in that single FBR sideline window; only the final round may post upstream.',
-    '- If \\`fbr-effort = N\\`, wait for the complete sideline response from the final round; after receiving the full reply, distill it before downstream action. Do not finalize based on partial rounds.',
+    '- If \\`fbr-effort = N\\` (intensity N, internally mapped to N serial passes), wait for the complete sideline response from the final pass; after receiving the full reply, distill it before downstream action. Do not finalize based on partial passes.',
     '- Every round must add a distinct incremental view. Every round, including the final one, must not repeat conclusions from earlier rounds. Runtime will relay the full accumulated FBR sideline output upstream in a single upstream-visible message.',
   ].join('\n');
   const teammatePhaseContractZh = [
@@ -128,7 +128,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- FBR 禁止一切 tellask（包括 \`tellaskBack\` / \`tellask\` / \`tellaskSessionless\` / \`askHuman\`）。',
     '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须发起 \\`freshBootsReasoning\\`。',
     fbrScopeRuleZh,
-    '- FBR 的标准入口是 \\`freshBootsReasoning({ tellaskContent })\\`；禁止用 \\`tellask\\` / \\`tellaskSessionless\\` 对自己发起 self-target 诉请来替代。',
+    '- FBR 的标准入口是 \\`freshBootsReasoning({ tellaskContent, effort? })\\`；禁止用 \\`tellask\\` / \\`tellaskSessionless\\` 对自己发起 self-target 诉请来替代。',
+    '- 当用户自然语言里明确给了 FBR 力度（例如“做 fbr x6”/“做一次 6x fbr”），应把该力度映射到 \\`effort\\`（例如 \\`effort: 6\\`）；若未指定力度，按工具说明中的动态默认值传参。',
     '- 发起 FBR 时，\\`tellaskContent\\` 只写目标、事实、约束与证据，不要预设分析方向（例如固定问题清单/指定分析框架）。推理方向必须交由 FBR 支线自主拓展。',
     '- 发起前自检（强制）：若正文出现“请从以下维度/按以下方面/按步骤 1..N 分析”等预设提纲语句，必须先改写再调用 \\`freshBootsReasoning\\`；否则视为违规调用。',
     '- 发起正文推荐模板（强制遵循语义）：\\`目标\\` / \\`事实\\` / \\`约束\\` / \\`证据\\`（可选 \\`未知项\\`）。正文应是事实陈述，不是对 FBR 支线下达“按维度/按步骤分析”的命令。',
@@ -144,7 +145,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- FBR forbids all tellask calls (including \`tellaskBack\` / \`tellask\` / \`tellaskSessionless\` / \`askHuman\`).',
     '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must call `freshBootsReasoning`.',
     fbrScopeRuleEn,
-    '- The standard FBR entry is \\`freshBootsReasoning({ tellaskContent })\\`; do not emulate FBR via self-targeted \\`tellask\\` / \\`tellaskSessionless\\`.',
+    '- The standard FBR entry is \\`freshBootsReasoning({ tellaskContent, effort? })\\`; do not emulate FBR via self-targeted \\`tellask\\` / \\`tellaskSessionless\\`.',
+    '- When the user gives an explicit FBR intensity in natural language (for example “do fbr x6” / “run one 6x fbr”), map it to \\`effort\\` (for example \\`effort: 6\\`); when the user does not specify intensity, pass the dynamic default described in the tool documentation.',
     '- When initiating FBR, keep \\`tellaskContent\\` to goals, facts, constraints, and evidence only; do not predefine analysis directions (for example fixed question checklists or prescribed frameworks). Reasoning directions must be expanded autonomously by the FBR sideline.',
     '- Pre-call self-check (mandatory): if the body contains scaffolded directives such as “from the following dimensions/aspects” or stepwise templates (“analyze in steps 1..N”), rewrite first, then call \\`freshBootsReasoning\\`; otherwise the call is a protocol violation.',
     '- Recommended body template (semantic MUST): \\`Goal\\` / \\`Facts\\` / \\`Constraints\\` / \\`Evidence\\` (optional \\`Unknowns\\`). The body should present neutral facts, not command the FBR sideline to analyze by fixed dimensions or steps.',
@@ -159,14 +161,14 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     '- \\`tellask\\`：用于可恢复的长线诉请（必须提供 \\`targetAgentId\\` / \\`sessionSlug\\` / \\`tellaskContent\\`）。',
     '- \\`tellaskSessionless\\`：用于一次性诉请（必须提供 \\`targetAgentId\\` / \\`tellaskContent\\`）。',
     '- \\`askHuman\\`：用于 Q4H（向人类请求必要澄清/决策/授权/缺失输入）。',
-    '- \\`freshBootsReasoning\\`：用于发起扪心自问（FBR）支线（仅需 \\`tellaskContent\\`）。',
+    '- \\`freshBootsReasoning\\`：用于发起扪心自问（FBR）支线（\\`tellaskContent\\` 必填，\\`effort\\` 可选）。',
   ].join('\n');
   const tellaskInteractionRulesEn = [
     '- \\`tellaskBack\\`: ask back upstream from a sideline dialog only.',
     '- \\`tellask\\`: resumable tellask (requires \\`targetAgentId\\` / \\`sessionSlug\\` / \\`tellaskContent\\`).',
     '- \\`tellaskSessionless\\`: one-shot tellask (requires \\`targetAgentId\\` / \\`tellaskContent\\`).',
     '- \\`askHuman\\`: Q4H for necessary clarification/decision/authorization/missing input.',
-    '- \\`freshBootsReasoning\\`: starts an FBR sideline dialog (requires \\`tellaskContent\\`).',
+    '- \\`freshBootsReasoning\\`: starts an FBR sideline dialog (requires \\`tellaskContent\\`, optional \\`effort\\`).',
   ].join('\n');
   const functionToolRulesZh = [
     '- 回答必须基于可观测事实；为获取事实优先使用可用工具，缺乏观测事实时明确说明并请求/补充获取，不得臆测。',

@@ -230,6 +230,57 @@ function resolveEffectiveOptimalMaxTokens(args: {
   };
 }
 
+function resolveFbrEffortDefaultForTool(member: Team.Member): number {
+  const raw = member.fbr_effort;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+  if (!Number.isInteger(raw)) return 0;
+  if (raw < 0) return 0;
+  if (raw > 100) return 0;
+  return raw;
+}
+
+function createFreshBootsReasoningTool(args: {
+  fbrEffortDefault: number;
+  providerApiType: ProviderConfig['apiType'];
+}): FuncTool {
+  const fbrDefault = args.fbrEffortDefault;
+  const fbrDefaultHint =
+    fbrDefault > 0
+      ? `Runtime default for \`effort\` is current member \`fbr_effort=${fbrDefault}\` when omitted.`
+      : 'Runtime default for `effort` is current member `fbr_effort=0` (FBR disabled unless reconfigured).';
+  const codexAuthHint =
+    args.providerApiType === 'codex'
+      ? ` Codex-auth note: function arguments are often emitted with all fields present; if user did not specify intensity, pass \`effort: ${fbrDefault}\` explicitly.`
+      : '';
+  return {
+    type: 'func',
+    name: 'freshBootsReasoning',
+    description:
+      'Start an FBR sideline dialog for tool-less fresh-boots reasoning. tellaskContent MUST stay neutral and fact-oriented (Goal/Facts/Constraints/Evidence[/Unknowns]); do not issue analysis directives (for example “from the following dimensions”, “analyze in steps 1..N”, or “N rounds per dimension”). ' +
+      fbrDefaultHint +
+      codexAuthHint,
+    parameters: {
+      type: 'object',
+      properties: {
+        tellaskContent: {
+          type: 'string',
+          description:
+            'Use a neutral factual body: Goal/Facts/Constraints/Evidence (optional Unknowns). Avoid dimension checklists and stepwise directives (e.g. “from the following dimensions/aspects”, “analyze in steps 1..N”, “N rounds per dimension”).',
+        },
+        effort: {
+          type: 'integer',
+          description: `Optional FBR intensity override (0..100 integer). Runtime maps intensity N to N serial FBR passes in one sideline window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
+        },
+      },
+      required: ['tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('freshBootsReasoning is handled by driver-v2 tellask-special channel');
+    },
+  };
+}
+
 const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
@@ -298,38 +349,28 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
       throw new Error('askHuman is handled by driver-v2 tellask-special channel');
     },
   },
-  {
-    type: 'func',
-    name: 'freshBootsReasoning',
-    description:
-      'Start an FBR sideline dialog for tool-less fresh-boots reasoning. tellaskContent MUST stay neutral and fact-oriented (Goal/Facts/Constraints/Evidence[/Unknowns]); do not issue analysis directives (for example “from the following dimensions”, “analyze in steps 1..N”, or “N rounds per dimension”).',
-    parameters: {
-      type: 'object',
-      properties: {
-        tellaskContent: {
-          type: 'string',
-          description:
-            'Use a neutral factual body: Goal/Facts/Constraints/Evidence (optional Unknowns). Avoid dimension checklists and stepwise directives (e.g. “from the following dimensions/aspects”, “analyze in steps 1..N”, “N rounds per dimension”).',
-        },
-      },
-      required: ['tellaskContent'],
-      additionalProperties: false,
-    },
-    call: async (): Promise<ToolCallOutput> => {
-      throw new Error('freshBootsReasoning is handled by driver-v2 tellask-special channel');
-    },
-  },
 ];
 
 function mergeTellaskSpecialVirtualTools(
   baseTools: readonly FuncTool[],
-  options: { includeTellaskBack: boolean },
+  options: {
+    includeTellaskBack: boolean;
+    fbrEffortDefault: number;
+    providerApiType: ProviderConfig['apiType'];
+  },
 ): FuncTool[] {
   const merged: FuncTool[] = [...baseTools];
   const seen = new Set(merged.map((tool) => tool.name));
+  const freshBootsReasoning = createFreshBootsReasoningTool({
+    fbrEffortDefault: options.fbrEffortDefault,
+    providerApiType: options.providerApiType,
+  });
   const specialTools = options.includeTellaskBack
-    ? TELLASK_SPECIAL_VIRTUAL_TOOLS
-    : TELLASK_SPECIAL_VIRTUAL_TOOLS.filter((tool) => tool.name !== 'tellaskBack');
+    ? [...TELLASK_SPECIAL_VIRTUAL_TOOLS, freshBootsReasoning]
+    : [
+        ...TELLASK_SPECIAL_VIRTUAL_TOOLS.filter((tool) => tool.name !== 'tellaskBack'),
+        freshBootsReasoning,
+      ];
   for (const virtualTool of specialTools) {
     if (seen.has(virtualTool.name)) {
       throw new Error(
@@ -634,7 +675,10 @@ async function executeRoutedFunctionCalls(args: {
       case 'askHuman':
         return { tellaskContent: call.tellaskContent };
       case 'freshBootsReasoning':
-        return { tellaskContent: call.tellaskContent };
+        return {
+          tellaskContent: call.tellaskContent,
+          ...(call.effort !== undefined ? { effort: call.effort } : {}),
+        };
       case 'tellask':
         return {
           targetAgentId: call.targetAgentId,
@@ -1077,8 +1121,13 @@ export async function driveDialogStreamCoreV2(
         (t): t is FuncTool => t.type === 'func',
       );
       const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
+      const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
       const effectiveFuncTools: FuncTool[] = policy.allowFunctionCalls
-        ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, { includeTellaskBack: isSubdialog })
+        ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, {
+            includeTellaskBack: isSubdialog,
+            fbrEffortDefault,
+            providerApiType: providerCfg.apiType,
+          })
         : canonicalFuncTools;
       const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
       const funcTools = projected.tools;

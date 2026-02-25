@@ -101,6 +101,7 @@ export type TellaskSpecialCall =
       callId: string;
       callName: 'freshBootsReasoning';
       tellaskContent: string;
+      effort?: number;
     }>;
 
 export type TellaskSpecialCallParseIssue = Readonly<{
@@ -161,6 +162,29 @@ function readOptionalStringField(obj: Record<string, unknown>, field: string): s
   }
   const trimmed = value.trim();
   return trimmed === '' ? null : trimmed;
+}
+
+function readOptionalEffortField(
+  obj: Record<string, unknown>,
+  field: string,
+): { ok: true; value: number | undefined } | { ok: false; error: string } {
+  const value = obj[field];
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
+    return {
+      ok: false,
+      error: `field '${field}' must be an integer in [0, 100] when provided`,
+    };
+  }
+  if (value < 0 || value > 100) {
+    return {
+      ok: false,
+      error: `field '${field}' must be an integer in [0, 100] when provided`,
+    };
+  }
+  return { ok: true, value };
 }
 
 function readTargetAgentId(obj: Record<string, unknown>):
@@ -239,12 +263,17 @@ function parseTellaskSpecialCall(
       };
     }
     case 'freshBootsReasoning': {
+      const effort = readOptionalEffortField(args, 'effort');
+      if (!effort.ok) {
+        return effort;
+      }
       return {
         ok: true,
         value: {
           callId: call.id,
           callName: 'freshBootsReasoning',
           tellaskContent: tellaskContent.value,
+          effort: effort.value,
         },
       };
     }
@@ -500,6 +529,7 @@ async function executeTellaskCall(
     targetForError?: string;
     collectiveTargets?: string[];
     q4hRemainingCallIds?: string[];
+    fbrEffortOverride?: number;
   },
 ): Promise<{
   toolOutputs: ChatMessage[];
@@ -651,7 +681,45 @@ async function executeTellaskCall(
     }
 
     if (isFreshBootsCall) {
-      const fbrEffort = resolveFbrEffort(member);
+      const memberFbrEffort = resolveFbrEffort(member);
+      if (memberFbrEffort < 1) {
+        const msg = formatDomindsNoteFbrDisabled(getWorkLanguage());
+        toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
+        toolOutputs.push({
+          type: 'tellask_result_msg',
+          role: 'tool',
+          responderId: 'dominds',
+          mentionList: normalizedMentionList,
+          tellaskContent: body,
+          status: 'failed',
+          callId,
+          content: msg,
+        });
+        await dlg.receiveTeammateCallResult(
+          'dominds',
+          callName,
+          mentionList,
+          body,
+          msg,
+          'failed',
+          callId,
+        );
+        dlg.clearCurrentCallId();
+        return { toolOutputs, suspend: false, subdialogsCreated: [] };
+      }
+      const override = options.fbrEffortOverride;
+      if (
+        override !== undefined &&
+        (!Number.isFinite(override) ||
+          !Number.isInteger(override) ||
+          override < 0 ||
+          override > 100)
+      ) {
+        throw new Error(
+          `freshBootsReasoning invariant violation: effort override out of range [0,100] (got=${override})`,
+        );
+      }
+      const fbrEffort = override ?? memberFbrEffort;
       if (fbrEffort < 1) {
         const msg = formatDomindsNoteFbrDisabled(getWorkLanguage());
         toolOutputs.push({ type: 'environment_msg', role: 'user', content: msg });
@@ -1243,6 +1311,7 @@ type ExecutableValidTellaskCall =
       callName: 'freshBootsReasoning';
       tellaskContent: string;
       callId: string;
+      effort?: number;
       q4hRemainingCallIds?: string[];
     }>;
 
@@ -1282,6 +1351,7 @@ function toExecutableValidTellaskCall(call: TellaskSpecialCall): ExecutableValid
         callName: call.callName,
         tellaskContent: call.tellaskContent,
         callId: call.callId,
+        effort: call.effort,
       };
   }
 }
@@ -1443,6 +1513,7 @@ async function executeValidTellaskCalls(args: {
         parseResult,
         targetForError,
         q4hRemainingCallIds: call.q4hRemainingCallIds,
+        fbrEffortOverride: call.callName === 'freshBootsReasoning' ? call.effort : undefined,
       },
     );
     results.push(result);

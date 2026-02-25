@@ -260,13 +260,13 @@ export function formatDomindsNoteDirectSelfCall(language: LanguageCode): string 
   if (language === 'zh') {
     return (
       '错误：不允许通过 `tellask` / `tellaskSessionless` 对当前 agent 发起自诉请。\n' +
-      '- 若你要发起扪心自问（FBR），请使用 `freshBootsReasoning({ tellaskContent })`。\n' +
+      '- 若你要发起扪心自问（FBR），请使用 `freshBootsReasoning({ tellaskContent, effort? })`。\n' +
       '- `tellask` / `tellaskSessionless` 仅用于队友诉请（targetAgentId 必须是队友 id）。'
     );
   }
   return (
     'Error: self-targeted calls via `tellask` / `tellaskSessionless` are not allowed.\n' +
-    '- For FBR, use `freshBootsReasoning({ tellaskContent })`.\n' +
+    '- For FBR, use `freshBootsReasoning({ tellaskContent, effort? })`.\n' +
     '- `tellask` / `tellaskSessionless` are teammate-only (targetAgentId must be a teammate id).'
   );
 }

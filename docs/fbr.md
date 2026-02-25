@@ -9,7 +9,7 @@ Chinese version: [中文版](./fbr.zh.md)
 **Fresh Boots Reasoning (FBR)** is a Dominds mechanism for “reasoning again from a clean slate” on a bounded sub-problem,
 then reporting back to the tellasker dialog.
 
-In Dominds, FBR is triggered by the dedicated function tool `freshBootsReasoning({ tellaskContent: "..." })`.
+In Dominds, FBR is triggered by the dedicated function tool `freshBootsReasoning({ tellaskContent: "...", effort?: N })`.
 The mechanism is the runtime-enforced contract applied to the spawned sideline dialog.
 
 ## 2. Design principles and tradeoffs
@@ -29,7 +29,7 @@ silent ignore is worse than an error.
 
 ### 2.3 Serial multi-pass reasoning, not “multi-agent collaboration”
 
-`fbr-effort` is for producing multiple rounds in sequence inside a **single FBR sideline conversation window**. The tellasker dialog is responsible for distilling the results; rounds do not coordinate with each other.
+`fbr-effort` is an FBR intensity setting. Runtime interprets intensity `N` as `N` serial passes inside a **single FBR sideline conversation window**. The tellasker dialog is responsible for distilling the results; passes do not coordinate with each other.
 
 ## 3. User syntax
 
@@ -37,16 +37,18 @@ silent ignore is worse than an error.
 
 Use the dedicated FBR form:
 
-- `freshBootsReasoning({ tellaskContent: "..." })`
+- `freshBootsReasoning({ tellaskContent: "...", effort?: N })`
 
 Notes:
 
 - FBR does not use `targetAgentId`, `sessionSlug`, or `mentionList`.
 - `tellaskContent` is the authoritative task context for the FBR sideline.
+- `effort` is optional and sets per-call FBR intensity; when omitted, runtime uses the current member’s `fbr-effort`.
+- Intensity `N` maps to `N` serial FBR passes inside one sideline window.
 
 ### 3.2 Scope
 
-This document specifies the FBR mechanism and its `freshBootsReasoning({ tellaskContent: "..." })` contract. General teammate Tellasks (`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`) follow
+This document specifies the FBR mechanism and its `freshBootsReasoning({ tellaskContent: "...", effort?: N })` contract. General teammate Tellasks (`tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." })`) follow
 the taxonomy and capability model in [`dialog-system.md`](./dialog-system.md).
 
 If you want a “fresh” sideline dialog that still has tools, use an explicit teammate identity via the general teammate Tellask flow.
@@ -144,8 +146,8 @@ An FBR sideline dialog should produce per-round conclusions that are easy to dis
 
 - Type: integer
 - Default: `3`
-- `0`: disable `freshBootsReasoning({ tellaskContent: "..." })` FBR for that member (runtime MUST reject `freshBootsReasoning({ tellaskContent: "..." })` clearly)
-- `1..100`: run N FBR rounds sequentially inside one sideline dialog per `freshBootsReasoning({ tellaskContent: "..." })`
+- `0`: disable FBR by default for that member (runtime MUST reject when effective effort is `0`)
+- `1..100`: valid intensity range (effective effort comes from explicit `effort` or fallback `fbr-effort`)
 - `> 100` / non-integer / negative: validation error (reject; no clamping)
 
 When `fbr-effort = N`:
