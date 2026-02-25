@@ -3,3 +3,6 @@ packages:
   - "webapp"
   - "codex-auth"
   - "tests"
+
+allowBuilds:
+  esbuild: true

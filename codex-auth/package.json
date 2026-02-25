@@ -15,9 +15,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "codex-auth": "dist/bin/auth-doctor.js"
+    "codex-auth": "bin/codex-auth.js"
   },
   "files": [
+    "bin",
     "dist",
     "prompts"
   ],
