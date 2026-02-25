@@ -3292,7 +3292,10 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: var(--dominds-font-size-base, 14px);
         line-height: var(--dominds-line-height-base, 1.5);
       }
-      .container { height: 100%; background: var(--dominds-bg, var(--color-bg-primary, #ffffff)); }
+      .container {
+        height: 100%;
+        background: var(--dominds-sidebar-bg, var(--dominds-bg, var(--color-bg-primary, #ffffff)));
+      }
       .messages { box-sizing: border-box; padding: 12px; }
 
       .scroll-to-bottom-wrap {
@@ -3317,16 +3320,17 @@ export class DomindsDialogContainer extends HTMLElement {
         height: 34px;
         border-radius: 999px;
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        background: var(--dominds-bg, var(--color-bg-secondary, #ffffff));
+        background: var(
+          --dominds-sidebar-bg,
+          var(--dominds-bg, var(--color-bg-secondary, #ffffff))
+        );
         color: var(--dominds-fg, var(--color-fg-primary, #0f172a));
         box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
-        opacity: 0.72;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        transition: opacity 0.15s ease, transform 0.08s ease, background 0.15s ease,
-          border-color 0.15s ease;
+        transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
       }
 
       .scroll-to-bottom-btn:hover {
@@ -3335,8 +3339,11 @@ export class DomindsDialogContainer extends HTMLElement {
           var(--dominds-border, var(--color-border-primary, #e2e8f0)) 75%,
           black
         );
-        background: color-mix(in srgb, var(--dominds-bg, #ffffff) 92%, black);
-        opacity: 0.92;
+        background: color-mix(
+          in srgb,
+          var(--dominds-sidebar-bg, var(--dominds-bg, #ffffff)) 92%,
+          black
+        );
       }
 
       .scroll-to-bottom-btn:active {
@@ -3354,7 +3361,10 @@ export class DomindsDialogContainer extends HTMLElement {
         padding: 9px 10px;
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         border-radius: 8px;
-        background: var(--dominds-bg, var(--color-bg-secondary, #ffffff));
+        background: var(
+          --dominds-sidebar-bg,
+          var(--dominds-bg, var(--color-bg-secondary, #ffffff))
+        );
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -3407,7 +3417,7 @@ export class DomindsDialogContainer extends HTMLElement {
         gap: 8px;
         margin-bottom: 12px;
         padding: 2px 3px;
-        background: var(--dominds-bg, var(--color-bg-secondary, white));
+        background: var(--dominds-sidebar-bg, var(--dominds-bg, var(--color-bg-secondary, white)));
         border-radius: 8px;
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         transition: all 0.2s ease;
@@ -3425,7 +3435,7 @@ export class DomindsDialogContainer extends HTMLElement {
         gap: 8px; 
         margin-bottom: 12px; 
         padding: 2px 3px; 
-        background: var(--dominds-bg, var(--color-bg-secondary, white)); 
+        background: var(--dominds-sidebar-bg, var(--dominds-bg, var(--color-bg-secondary, white)));
         border-radius: 10px;
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
         box-shadow: var(--shadow-sm);
@@ -3527,7 +3537,6 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: 0.8em;
         font-weight: 500;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        opacity: 0.85;
       }
 
       .bubble-title {
@@ -3600,8 +3609,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       
       .generation-bubble.completed {
-        color: var(--dominds-success, var(--color-success, #10b981));
-        font-weight: 500;
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
       }
 
       /* Breathing glow animation for generation bubble */
@@ -3697,7 +3705,7 @@ export class DomindsDialogContainer extends HTMLElement {
         margin-bottom: 0; /* bubble-body gap provides spacing */
         padding: 2px 3px 2px 6px;
         border-radius: 6px; 
-        background: var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9)); 
+        background: var(--dominds-thinking-bg, var(--dominds-hover, var(--color-bg-tertiary, #f1f5f9)));
         border-left: 3px solid var(--dominds-primary, var(--color-accent-primary, #007acc)); 
         display: block;
         width: 100%;
@@ -3812,13 +3820,55 @@ export class DomindsDialogContainer extends HTMLElement {
         word-wrap: break-word;
         margin-bottom: 3px;
       }
+
+      .thinking-content,
+      .markdown-text-block,
+      .markdown-content,
+      .markdown-content h1,
+      .markdown-content h2,
+      .markdown-content h3,
+      .markdown-content h4,
+      .markdown-content h5,
+      .markdown-content h6 {
+        transition: text-shadow 0.22s ease;
+      }
+
+      .generation-bubble.generating .section-title,
+      .generation-bubble.generating .thinking-content,
+      .generation-bubble.generating .markdown-text-block,
+      .generation-bubble.generating .markdown-content,
+      .generation-bubble.generating .markdown-content h1,
+      .generation-bubble.generating .markdown-content h2,
+      .generation-bubble.generating .markdown-content h3,
+      .generation-bubble.generating .markdown-content h4,
+      .generation-bubble.generating .markdown-content h5,
+      .generation-bubble.generating .markdown-content h6 {
+        text-shadow: 0 0 8px
+          color-mix(
+            in srgb,
+            var(--dominds-fg, #ffffff) 35%,
+            transparent
+          );
+      }
+
+      .generation-bubble.completed .section-title,
+      .generation-bubble.completed .thinking-content,
+      .generation-bubble.completed .markdown-text-block,
+      .generation-bubble.completed .markdown-content {
+        text-shadow: none;
+      }
+
+      .generation-bubble.completed .markdown-content h1,
+      .generation-bubble.completed .markdown-content h2,
+      .generation-bubble.completed .markdown-content h3,
+      .generation-bubble.completed .markdown-content h4,
+      .generation-bubble.completed .markdown-content h5,
+      .generation-bubble.completed .markdown-content h6 {
+        text-shadow: none;
+      }
       
       .markdown-text-block:last-child {
         margin-bottom: 0;
-      }
-      
-      .thinking-section.completed, .markdown-section.completed {
-        opacity: 0.8;
       }
       
       /* Calling section styles (nested inside markdown) */
@@ -3834,7 +3884,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
         .calling-section.fbr {
           border-left-color: var(--dominds-primary, var(--color-accent-primary, #007acc));
-          background: color-mix(in srgb, var(--dominds-primary, #007acc) 8%, var(--color-bg-tertiary, #f1f5f9));
+          background: var(
+            --dominds-calling-fbr-bg,
+            color-mix(in srgb, var(--dominds-primary, #007acc) 8%, var(--color-bg-tertiary, #f1f5f9))
+          );
         }
       
       .calling-header {
@@ -3921,6 +3974,10 @@ export class DomindsDialogContainer extends HTMLElement {
         line-height: 1.35;
       }
 
+      .calling-section.fbr .calling-body {
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+      }
+
       .progressive-expand-footer {
         margin-top: 2px;
         padding-top: 2px;
@@ -3960,7 +4017,6 @@ export class DomindsDialogContainer extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        opacity: 0.72;
         animation: progressive-expand-flash 2.2s ease-in-out infinite;
       }
 
@@ -3970,7 +4026,6 @@ export class DomindsDialogContainer extends HTMLElement {
 
       .progressive-expand-btn:hover .progressive-expand-icon,
       .progressive-expand-btn:focus-visible .progressive-expand-icon {
-        opacity: 0.96;
         animation-play-state: paused;
       }
 
@@ -3978,11 +4033,9 @@ export class DomindsDialogContainer extends HTMLElement {
         0%,
         72%,
         100% {
-          opacity: 0.68;
           transform: translateY(0);
         }
         82% {
-          opacity: 0.98;
           transform: translateY(0.5px);
         }
       }
@@ -4000,14 +4053,6 @@ export class DomindsDialogContainer extends HTMLElement {
       .calling-section.failed {
         border-left-color: var(--color-danger, #ef4444);
         background: rgba(239, 68, 68, 0.08);
-      }
-
-      .calling-section.pending {
-        opacity: 1;
-      }
-      
-      .calling-section.completed {
-        opacity: 0.9;
       }
 
       /* Function call section styles (nested inside markdown) - non-streaming mode */
@@ -4084,10 +4129,6 @@ export class DomindsDialogContainer extends HTMLElement {
         background: rgba(239, 68, 68, 0.08);
       }
 
-      .func-call-section.completed {
-        opacity: 0.9;
-      }
-
       .web-search-section {
         margin: 4px 0;
         padding: 2px 3px 2px 6px;
@@ -4155,10 +4196,6 @@ export class DomindsDialogContainer extends HTMLElement {
         word-break: break-word;
       }
 
-      .web-search-section.completed {
-        opacity: 0.9;
-      }
-
       /* Code block section styles (nested inside markdown) */
       .codeblock-section { 
         margin: 0; 
@@ -4223,10 +4260,6 @@ export class DomindsDialogContainer extends HTMLElement {
         background: transparent;
       }
 
-      .codeblock-section.completed {
-        opacity: 0.9;
-      }
-      
       /* Content area styles */
       .content-area { flex: 1; min-width: 0; }
       .content-area .bubble-header {

@@ -2089,7 +2089,6 @@ export class DomindsApp extends HTMLElement {
 	        font-size: 0.55em;
 	        font-weight: 550;
 	        color: var(--dominds-muted, #666666);
-	        opacity: 0.85;
 	        line-height: 1;
           align-self: flex-end;
 	      }
@@ -2353,25 +2352,21 @@ export class DomindsApp extends HTMLElement {
           }
 
           #toolbar-context-health[data-level='unknown'] .ctx-usage-ring {
-            stroke: var(--dominds-muted, #666666);
-            opacity: 0.6;
+            stroke: color-mix(in srgb, var(--dominds-muted, #666666) 70%, var(--dominds-bg, #ffffff));
           }
 
       .ctx-usage-wedge {
-        fill: currentColor;
-        opacity: 0.6;
+        fill: color-mix(in srgb, currentColor 60%, var(--dominds-bg, #ffffff));
       }
 
           .ctx-usage-mark-optimal {
-            stroke: color-mix(in srgb, #f59e0b 85%, var(--dominds-fg, #333333));
+            stroke: color-mix(in srgb, #f59e0b 68%, var(--dominds-fg, #333333));
             stroke-width: 1.2;
-            opacity: 0.8;
           }
 
           .ctx-usage-mark-critical {
-            stroke: var(--dominds-danger, #721c24);
+            stroke: color-mix(in srgb, var(--dominds-danger, #721c24) 80%, var(--dominds-bg, #ffffff));
             stroke-width: 1.2;
-            opacity: 0.8;
           }
       #toolbar-context-health-wrap {
         display: inline-flex;
@@ -2644,7 +2639,6 @@ export class DomindsApp extends HTMLElement {
 
       .ui-language-menu-button-caret {
         font-size: var(--dominds-font-size-micro, 10px);
-        opacity: 0.7;
       }
 
       .theme-toggle {
@@ -3187,6 +3181,7 @@ export class DomindsApp extends HTMLElement {
 	        min-height: 0;
 	        overflow: hidden;
 	        position: relative;
+          background: var(--dominds-sidebar-bg, #f8f9fa);
 	      }
 
       /* Conversation area scrolls independently */
@@ -3195,6 +3190,7 @@ export class DomindsApp extends HTMLElement {
 	        min-height: 0;
 	        overflow-y: auto;
 	        contain: content;
+          background: var(--dominds-sidebar-bg, #f8f9fa);
 	      }
 
 	      .q4h-input-wrap {
@@ -3210,7 +3206,7 @@ export class DomindsApp extends HTMLElement {
 	        border-left: 1px solid var(--color-border-primary, #e2e8f0);
 	        border-right: 1px solid var(--color-border-primary, #e2e8f0);
 	        border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
-	        background: var(--dominds-bg, #ffffff);
+	        background: var(--dominds-sidebar-bg, #f8f9fa);
 	      }
 
 	      .bottom-panel-resize-handle {
@@ -3307,7 +3303,7 @@ export class DomindsApp extends HTMLElement {
 	        align-items: center;
 	        padding: 2px 8px;
 	        border-top: 1px solid var(--color-border-primary, #e2e8f0);
-	        background: var(--color-bg-secondary, #f8fafc);
+	        background: var(--dominds-sidebar-bg, #f8f9fa);
 	      }
 
 	      .bp-tabs-right {
@@ -3320,7 +3316,7 @@ export class DomindsApp extends HTMLElement {
       .bp-tab {
         appearance: none;
         border: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--dominds-bg, #ffffff);
+        background: var(--dominds-sidebar-bg, #f8f9fa);
         color: var(--color-fg-secondary, #475569);
         border-radius: 999px;
         padding: 2px 8px;

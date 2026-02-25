@@ -1037,7 +1037,7 @@ export class DomindsQ4HInput extends HTMLElement {
         border-left: 1px solid var(--color-border-primary, #e2e8f0);
         border-right: 1px solid var(--color-border-primary, #e2e8f0);
         border-bottom: 1px solid var(--color-border-primary, #e2e8f0);
-        background: var(--dominds-bg, #ffffff);
+        background: var(--dominds-sidebar-bg, #f8f9fa);
         box-sizing: border-box;
       }
 
@@ -1080,7 +1080,7 @@ export class DomindsQ4HInput extends HTMLElement {
         flex-direction: column;
         border-top: 1px solid var(--color-border-primary, #e2e8f0);
         padding: 10px;
-        background: inherit;
+        background: var(--dominds-sidebar-bg, #f8f9fa);
         position: relative;
         z-index: 1;
       }

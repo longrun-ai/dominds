@@ -33,12 +33,19 @@
   --dominds-bg-secondary: var(--color-bg-secondary);
   --dominds-fg: var(--color-fg-primary);
   --dominds-fg-primary: var(--color-fg-primary);
+  --dominds-fg-secondary: var(--color-fg-secondary);
   --dominds-fg-muted: var(--color-fg-tertiary);
   --dominds-text-secondary: var(--color-fg-tertiary);
   --dominds-input-bg: var(--color-bg-secondary);
   --dominds-header-bg: var(--color-bg-primary);
   --dominds-sidebar-bg: var(--color-bg-primary);
   --dominds-toolbar-bg: var(--color-bg-primary);
+  --dominds-thinking-bg: var(--dominds-hover);
+  --dominds-calling-fbr-bg: color-mix(
+    in srgb,
+    var(--dominds-primary) 8%,
+    var(--color-bg-tertiary) 92%
+  );
   --dominds-border: var(--color-border-primary);
   --dominds-border-light: var(--color-border-secondary);
   --dominds-primary: var(--color-accent-primary);
@@ -117,7 +124,7 @@
     --color-bg-secondary: #181818;
     --color-bg-tertiary: #2b2b2b;
     --color-fg-primary: #cccccc;
-    --color-fg-secondary: #b7b7b7;
+    --color-fg-secondary: #cccccc;
     --color-fg-tertiary: #9d9d9d;
     --color-accent-primary: #0078d4;
     --color-accent-secondary: #026ec1;
@@ -134,12 +141,19 @@
     --dominds-bg-secondary: var(--color-bg-secondary);
     --dominds-fg: var(--color-fg-primary);
     --dominds-fg-primary: var(--color-fg-primary);
+    --dominds-fg-secondary: var(--color-fg-secondary);
     --dominds-fg-muted: var(--color-fg-tertiary);
     --dominds-text-secondary: var(--color-fg-tertiary);
     --dominds-input-bg: var(--color-bg-secondary);
-    --dominds-header-bg: #1f1f1f;
-    --dominds-sidebar-bg: #1f1f1f;
-    --dominds-toolbar-bg: #1f1f1f;
+    --dominds-header-bg: #181818;
+    --dominds-sidebar-bg: #181818;
+    --dominds-toolbar-bg: #181818;
+    --dominds-thinking-bg: #222222;
+    --dominds-calling-fbr-bg: color-mix(
+      in srgb,
+      var(--dominds-primary) 6%,
+      var(--dominds-thinking-bg) 94%
+    );
     --dominds-border: var(--color-border-primary);
     --dominds-border-light: var(--color-border-secondary);
     --dominds-primary: var(--color-accent-primary);
@@ -205,12 +219,19 @@
   --dominds-bg-secondary: #ffffff;
   --dominds-fg: #3b3b3b;
   --dominds-fg-primary: #3b3b3b;
+  --dominds-fg-secondary: #3b3b3b;
   --dominds-fg-muted: #616161;
   --dominds-text-secondary: #616161;
   --dominds-input-bg: #ffffff;
   --dominds-header-bg: #f8f8f8;
   --dominds-sidebar-bg: #f8f8f8;
   --dominds-toolbar-bg: #f8f8f8;
+  --dominds-thinking-bg: #f2f2f2;
+  --dominds-calling-fbr-bg: color-mix(
+    in srgb,
+    var(--dominds-primary) 8%,
+    var(--color-bg-tertiary) 92%
+  );
   --dominds-border: #e5e5e5;
   --dominds-border-light: #cecece;
   --dominds-primary: #005fb8;
@@ -257,7 +278,7 @@
   --color-bg-secondary: #181818;
   --color-bg-tertiary: #2b2b2b;
   --color-fg-primary: #cccccc;
-  --color-fg-secondary: #b7b7b7;
+  --color-fg-secondary: #cccccc;
   --color-fg-tertiary: #9d9d9d;
   --color-accent-primary: #0078d4;
   --color-accent-secondary: #026ec1;
@@ -274,12 +295,19 @@
   --dominds-bg-secondary: #181818;
   --dominds-fg: #cccccc;
   --dominds-fg-primary: #cccccc;
+  --dominds-fg-secondary: #cccccc;
   --dominds-fg-muted: #9d9d9d;
   --dominds-text-secondary: #9d9d9d;
   --dominds-input-bg: #313131;
   --dominds-header-bg: #181818;
   --dominds-sidebar-bg: #181818;
   --dominds-toolbar-bg: #181818;
+  --dominds-thinking-bg: #222222;
+  --dominds-calling-fbr-bg: color-mix(
+    in srgb,
+    var(--dominds-primary) 6%,
+    var(--dominds-thinking-bg) 94%
+  );
   --dominds-border: #2b2b2b;
   --dominds-border-light: #3c3c3c;
   --dominds-primary: #0078d4;
