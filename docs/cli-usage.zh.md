@@ -81,7 +81,7 @@ dominds webui [options]
 
 **选项：**
 
-- `-p, --port <port>` - 监听的端口（默认：5555）
+- `-p, --port <port>` - 监听的端口（默认：5666）
 - `-h, --host <host>` - 绑定的主机（默认：localhost）
 - `-C, --cwd <dir>` - 启动前更改 rtws 目录
 - `--help` - 显示帮助消息

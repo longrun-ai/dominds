@@ -316,7 +316,7 @@ export class WebSocketManager {
 
 // Default WebSocket configuration
 export const DEFAULT_WEBSOCKET_CONFIG: WebSocketConfig = {
-  url: 'ws://localhost:5556',
+  url: getWebSocketUrl(),
   reconnectInterval: 5000,
   maxReconnectAttempts: 5,
   heartbeatInterval: 30000, // 30秒心跳间隔

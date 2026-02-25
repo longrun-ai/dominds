@@ -5,7 +5,7 @@
  * - Serves static files with MIME detection and SPA fallback (production)
  * - Provides `/api/*` endpoints and `/ws` WebSocket communication
  * - CLI bootstrap with optional cwd/port/host/mode parameters
- * - Development mode: `tsx --watch src/server.ts -p 5556 --mode dev`
+ * - Development mode: `tsx --watch src/server.ts -p <port> --mode dev`
  * - Production mode: `node dist/server.js` (default port 5666)
  */
 import * as path from 'path';
@@ -92,9 +92,9 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   setWorkLanguage(resolvedLanguage);
 
   // Get port and host from options
-  const port = opts.port || (opts.mode === 'dev' ? 5556 : 5666);
-  const host = opts.host || '127.0.0.1';
   const mode = opts.mode || 'prod';
+  const port = opts.port ?? 5666;
+  const host = opts.host || '127.0.0.1';
 
   log.info(
     `Starting server in ${mode} mode on ${host}:${port} (working language: ${getWorkLanguage()} from ${source})`,

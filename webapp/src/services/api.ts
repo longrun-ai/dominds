@@ -108,7 +108,7 @@ export class ApiClient {
   private defaultHeaders: Record<string, string>;
   private timeout: number;
 
-  constructor(baseURL: string = 'http://localhost:5556', timeout: number = 30000) {
+  constructor(baseURL: string, timeout: number = 30000) {
     this.baseURL = baseURL;
     this.timeout = timeout;
     this.defaultHeaders = {

@@ -33,11 +33,15 @@ export async function serveStatic(
     if (options.mode === 'development') {
       // Provide helpful message for root endpoint in dev mode
       if (pathname === '/') {
+        const frontendOrigin = process.env.DOMINDS_DEV_FRONTEND_ORIGIN?.trim();
+        const frontendUrlLine = frontendOrigin
+          ? `Frontend URL: ${frontendOrigin}/\n`
+          : 'Frontend URL: set by your outer dev-server.sh\n';
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(`Dominds Backend Server (Development Mode)
 
-API Server running on port 5556
-Frontend (Vite dev server) should be on port 5555
+API Server is running in development mode
+Frontend (Vite dev server) should be started by your outer dev-server.sh
 
 Available API endpoints:
 • GET /api/health - Server health check
@@ -49,12 +53,11 @@ Available API endpoints:
 • GET /api/dialogs/:root/:self/hierarchy - Get dialog hierarchy
 • GET /api/task-documents - Taskdoc listing
 
-WebSocket: ws://localhost:5556/ws
+WebSocket endpoint: /ws
+Backend API endpoint: /api
 
-Frontend URL: http://localhost:5555/
-Frontend API: http://localhost:5555/api/ (same-origin; proxied to backend)
-Frontend WS:  ws://localhost:5555/ws (same-origin; proxied to backend)
-Backend API (internal): http://localhost:5556/api/
+${frontendUrlLine}Frontend API: /api (same-origin; proxied to backend by Vite)
+Frontend WS:  /ws (same-origin; proxied to backend by Vite)
 `);
         return true;
       }

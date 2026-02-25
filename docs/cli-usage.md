@@ -81,7 +81,7 @@ Start the web-based user interface for the current rtws. This provides a graphic
 
 **Options:**
 
-- `-p, --port <port>` - Port to listen on (default: 5555)
+- `-p, --port <port>` - Port to listen on (default: 5666)
 - `-h, --host <host>` - Host to bind to (default: localhost)
 - `-C, --cwd <dir>` - Change to rtws directory before starting
 - `--help` - Show help message
