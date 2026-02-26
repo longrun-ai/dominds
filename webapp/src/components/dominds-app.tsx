@@ -8467,6 +8467,53 @@ export class DomindsApp extends HTMLElement {
         }
 
         case 'dlg_run_state_marker_evt': {
+          const selfId = dialog.selfId;
+          const rootId = dialog.rootId;
+          const key = this.dialogKey(rootId, selfId);
+          const markerRunState: DialogRunState =
+            message.kind === 'interrupted'
+              ? {
+                  kind: 'interrupted',
+                  reason: message.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
+                }
+              : { kind: 'proceeding' };
+          this.dialogRunStatesByKey.set(key, markerRunState);
+
+          if (selfId === rootId) {
+            const rootDialog = this.getRootDialog(rootId);
+            if (rootDialog) {
+              this.upsertRootDialogSnapshot({ ...rootDialog, runState: markerRunState });
+            }
+          } else if (this.visibleSubdialogsByRoot.has(rootId)) {
+            const subs = this.getVisibleSubdialogsForRoot(rootId);
+            const updated = subs.map((d) =>
+              d.selfId === selfId ? { ...d, runState: markerRunState } : d,
+            );
+            this.setVisibleSubdialogsForRoot(rootId, updated);
+          }
+
+          if (
+            this.currentDialog &&
+            this.currentDialog.rootId === rootId &&
+            this.currentDialog.selfId === selfId
+          ) {
+            const input = this.q4hInput as HTMLElement & {
+              setRunState?: (state: DialogRunState | null) => void;
+            };
+            if (input && typeof input.setRunState === 'function') {
+              input.setRunState(markerRunState);
+            }
+            this.updateInputPanelVisibility();
+          }
+
+          const status = this.resolveDialogStatusByIds(rootId, selfId);
+          if (status === 'running') {
+            const runningList = this.shadowRoot?.querySelector('#running-dialog-list');
+            if (runningList instanceof RunningDialogList) {
+              runningList.updateDialogEntry(rootId, selfId, { runState: markerRunState });
+            }
+          }
+
           const dialogContainer = this.getDialogContainerForEvent(message);
           if (dialogContainer) {
             await dialogContainer.handleDialogEvent(message as TypedDialogEvent);

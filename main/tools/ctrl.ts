@@ -116,7 +116,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       taskDocSectionMissing: (relativePath) =>
         `未找到：${relativePath}。\n\n用 change_mind 创建或更新：\n- change_mind({"category":string,"selector":string,"content":string})`,
       clearedCoursePrompt: (nextCourse) =>
-        `你刚清理头脑，开启了第 ${nextCourse + 1} 程对话，请继续推进任务。`,
+        `你刚清理头脑，开启了第 ${nextCourse} 程对话，请继续推进任务。`,
     };
   }
 
@@ -165,7 +165,7 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     taskDocSectionMissing: (relativePath) =>
       `Not found: \`${relativePath}\`.\n\nUse \`change_mind\` to create/update it (whole-section replace):\n- \`change_mind({\"category\":\"<category>\",\"selector\":\"<selector>\",\"content\":\"...\"})\``,
     clearedCoursePrompt: (nextCourse) =>
-      `This is course #${nextCourse + 1} of the dialog. You just cleared your mind; please proceed with the task.`,
+      `This is course #${nextCourse} of the dialog. You just cleared your mind; please proceed with the task.`,
   };
 }
 

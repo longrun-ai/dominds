@@ -81,6 +81,22 @@ export interface StreamErrorEvent {
   genseq?: number;
 }
 
+export type LlmRetryEvent = LlmGenDlgEvent & {
+  type: 'llm_retry_evt';
+  phase: 'retrying' | 'exhausted';
+  provider: string;
+  attempt: number;
+  totalAttempts: number;
+  maxRetries: number;
+  retriesRemaining: number;
+  backoffMs?: number;
+  failureKind: 'retriable' | 'rejected' | 'fatal';
+  status?: number;
+  code?: string;
+  error: string;
+  suggestion?: string;
+};
+
 export type GeneratingStartEvent = LlmGenDlgEvent & {
   type: 'generating_start_evt';
 };
@@ -389,7 +405,8 @@ export type DialogEvent =
   | NewQ4HAskedEvent
   | Q4HAnsweredEvent
   // Errors
-  | StreamErrorEvent;
+  | StreamErrorEvent
+  | LlmRetryEvent;
 
 // Modern TypeScript patterns encourage direct discriminated union usage
 // Instead of type guards and helpers, use pattern matching in switch statements

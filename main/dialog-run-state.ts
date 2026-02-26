@@ -196,7 +196,12 @@ export async function setDialogRunState(
       patch: { runState },
     }));
   } catch (err) {
-    log.warn('Failed to persist dialog runState', err, { dialogId: dialogId.valueOf() });
+    log.warn('Failed to persist dialog runState', err, {
+      dialogId: dialogId.valueOf(),
+      rootId: dialogId.rootId,
+      selfId: dialogId.selfId,
+      intendedRunState: runState,
+    });
   }
 
   const typed = dialogEventRegistry.createTypedEvent(dialogId, {

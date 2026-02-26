@@ -869,7 +869,22 @@ async function executeTellaskCall(
         }
       }
 
-      return { toolOutputs, suspend: true, subdialogsCreated };
+      // FBR Type-C rounds are driven inline via callbacks.driveDialog(...), and the final round
+      // may already have supplied a teammate response back to the caller before we return here.
+      // Suspending unconditionally in that case would stop the caller turn and can race with
+      // backend-loop queue cleanup (needsDrive gets cleared as "idle"), dropping continuation.
+      // Only suspend when there is still a pending response record for this call.
+      const hasPendingFbrResponse = await withSubdialogTxnLock(dlg.id, async () => {
+        const pending = await DialogPersistence.loadPendingSubdialogs(dlg.id, dlg.status);
+        return pending.some(
+          (record) =>
+            record.callId === callId &&
+            record.callType === 'C' &&
+            record.subdialogId === sub.id.selfId,
+        );
+      });
+
+      return { toolOutputs, suspend: hasPendingFbrResponse, subdialogsCreated };
     }
 
     const isDirectSelfCall = !isFreshBootsCall && parseResult.agentId === dlg.agentId;

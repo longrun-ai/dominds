@@ -98,7 +98,6 @@ export class DomindsDialogContainer extends HTMLElement {
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
   private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
-  private pendingUserPlainTextBySeq = new Set<number>();
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -702,7 +701,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
     this.pendingTeammateCallAnchorByGenseq.clear();
-    this.pendingUserPlainTextBySeq.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -728,7 +726,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
     this.pendingTeammateCallAnchorByGenseq.clear();
-    this.pendingUserPlainTextBySeq.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -833,11 +830,34 @@ export class DomindsDialogContainer extends HTMLElement {
 
     switch (event.type) {
       case 'dlg_run_state_evt':
+        if (
+          !this.currentDialog ||
+          event.dialog.selfId !== this.currentDialog.selfId ||
+          event.dialog.rootId !== this.currentDialog.rootId
+        ) {
+          break;
+        }
         this.runState = event.runState;
         this.updateResumePanel();
         break;
 
       case 'dlg_run_state_marker_evt': {
+        if (
+          !this.currentDialog ||
+          event.dialog.selfId !== this.currentDialog.selfId ||
+          event.dialog.rootId !== this.currentDialog.rootId
+        ) {
+          break;
+        }
+        if (event.kind === 'interrupted') {
+          this.runState = {
+            kind: 'interrupted',
+            reason: event.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
+          };
+        } else if (this.runState !== null && this.runState.kind === 'interrupted') {
+          this.runState = { kind: 'proceeding' };
+        }
+        this.updateResumePanel();
         let reasonText: string | undefined;
         const reason = event.reason;
         if (reason) {
@@ -849,7 +869,9 @@ export class DomindsDialogContainer extends HTMLElement {
 
       case 'end_of_user_saying_evt':
         {
-          // Render <hr/> separator between user content and AI response
+          // Render optional user divider/content for this generation.
+          // IMPORTANT: this event is NOT guaranteed for every generation (tool-only turns often skip it).
+          // Never gate assistant substreams (thinking/markdown/calling/web-search) on its presence.
           const ev: EndOfUserSayingEvent = event;
           if (typeof ev.course !== 'number' || typeof ev.genseq !== 'number') {
             this.handleProtocolError('end_of_user_saying_evt missing required fields');
@@ -896,6 +918,9 @@ export class DomindsDialogContainer extends HTMLElement {
       case 'genseq_discard_evt':
         this.handleGenerationDiscard(event.genseq);
         break;
+      case 'llm_retry_evt':
+        this.handleLlmRetry(event);
+        break;
       case 'context_health_evt':
         // Handled at the app toolbar layer; ignore in dialog timeline.
         break;
@@ -918,6 +943,8 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
 
       // Markdown stream
+      // IMPORTANT: these events must render independently from end_of_user_saying_evt.
+      // Reintroducing a "wait for user divider" gate here will recreate empty/air bubbles.
       case 'markdown_start_evt':
         this.handleMarkdownStart(event.genseq, event.timestamp);
         break;
@@ -1036,7 +1063,6 @@ export class DomindsDialogContainer extends HTMLElement {
         existingBubble.classList.add('generating');
         existingBubble.setAttribute('data-finalized', 'false');
         this.setBubbleTimestamp(existingBubble, timestamp);
-        this.pendingUserPlainTextBySeq.add(seq);
         this.activeGenSeq = seq;
         applyPendingCallAnchor(existingBubble);
         this.startAutoScrollObservation(existingBubble);
@@ -1056,7 +1082,6 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     this.activeGenSeq = seq;
-    this.pendingUserPlainTextBySeq.add(seq);
 
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
 
@@ -1144,7 +1169,6 @@ export class DomindsDialogContainer extends HTMLElement {
     bubble.classList.remove('generating');
     bubble.classList.add('completed');
     bubble.setAttribute('data-finalized', 'true');
-    this.pendingUserPlainTextBySeq.delete(seq);
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
@@ -1179,7 +1203,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.teammateCallingSectionBySeq.delete(seq);
     this.webSearchSectionBySeq.delete(seq);
     this.pendingTeammateCallAnchorByGenseq.delete(seq);
-    this.pendingUserPlainTextBySeq.delete(seq);
 
     for (const [itemId, section] of this.webSearchSectionByItemId.entries()) {
       const sectionSeq = section.getAttribute('data-genseq');
@@ -1262,22 +1285,8 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === MARKDOWN EVENTS (Inside Generation Bubble) ===
   private handleMarkdownStart(genseq: number, timestamp: string): void {
-    if (this.pendingUserPlainTextBySeq.has(genseq)) {
-      const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
-      const body = bubble?.querySelector('.bubble-body') as HTMLElement | null | undefined;
-      const hasUserDivider = Boolean(
-        body &&
-        Array.from(body.children).some(
-          (child) =>
-            child instanceof HTMLElement && child.classList.contains('user-response-divider'),
-        ),
-      );
-      if (!hasUserDivider) {
-        return;
-      }
-      this.pendingUserPlainTextBySeq.delete(genseq);
-    }
-
+    // NOTE: Do not add end_of_user_saying_evt-based gating here.
+    // This handler must render assistant output even when the turn has no user-side prompt payload.
     const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
     if (!bubble) {
       console.warn('markdown_start_evt received without generation bubble, skipping');
@@ -1296,9 +1305,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
   private handleMarkdownChunk(genseq: number, chunk: string, timestamp: string): void {
-    if (this.pendingUserPlainTextBySeq.has(genseq)) {
-      return;
-    }
     if (!this.markdownSection) {
       // Attempt to recover by creating a markdown section (and bubble if needed).
       this.handleMarkdownStart(genseq, timestamp);
@@ -1313,9 +1319,6 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
   private handleMarkdownFinish(_genseq: number): void {
-    if (this.pendingUserPlainTextBySeq.has(_genseq)) {
-      return;
-    }
     if (!this.markdownSection) {
       // Gracefully handle orphan finish - no active markdown section to complete
       console.warn('markdown_finish_evt received without active markdown section, skipping');
@@ -2889,7 +2892,6 @@ export class DomindsDialogContainer extends HTMLElement {
     // Idempotency: end_of_user_saying_evt can be replayed during course navigation.
     if (body.querySelector('.user-response-divider')) {
       this.upsertUserPlainTextMessage(body, event.content);
-      this.pendingUserPlainTextBySeq.delete(event.genseq);
       bubble.setAttribute('data-user-msg-id', event.msgId);
       bubble.setAttribute('data-raw-user-msg', event.content);
       const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
@@ -2904,11 +2906,11 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     // Protocol note:
-    // - The backend should guarantee that `end_of_user_saying_evt` arrives before any assistant-only
-    //   stream sections (e.g. thinking / function-call) for the same genseq.
+    // - `end_of_user_saying_evt` is optional and only emitted when this generation has a user-side
+    //   prompt payload to render in-bubble. Tool-only turns typically do not emit it.
     // - The UI must render sections in arrival order; do not reorder the DOM to "fix" ordering.
-    // So if assistant-only nodes already exist, report it loudly and still append the divider
-    // at the current position (arrival order), making the ordering issue visible.
+    // If assistant-only nodes already exist when this optional event arrives, report it loudly and
+    // still append the divider at the current position (arrival order).
     const assistantOnlyAlreadyStarted = body.querySelector(
       '.thinking-section, .func-call-section, .web-search-section',
     );
@@ -2925,7 +2927,6 @@ export class DomindsDialogContainer extends HTMLElement {
     divider.className = 'user-response-divider';
     body.appendChild(divider);
     this.upsertUserPlainTextMessage(body, event.content);
-    this.pendingUserPlainTextBySeq.delete(event.genseq);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
     const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
@@ -3094,6 +3095,97 @@ export class DomindsDialogContainer extends HTMLElement {
     `;
     const body = this.generationBubble.querySelector('.bubble-body');
     (body || this.generationBubble).appendChild(el);
+    this.scrollToBottom();
+  }
+
+  private summarizeRetryError(raw: string): string {
+    const trimmed = raw.trim();
+    if (trimmed.length <= 240) return trimmed;
+    return `${trimmed.slice(0, 240)}...`;
+  }
+
+  private buildRetryToastMessage(
+    event: Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>,
+  ): string {
+    const isZh = this.uiLanguage === 'zh';
+    if (event.phase === 'retrying') {
+      const waitText =
+        typeof event.backoffMs === 'number'
+          ? isZh
+            ? `，${event.backoffMs}ms 后重试`
+            : `, retrying in ${event.backoffMs}ms`
+          : '';
+      return isZh
+        ? `LLM 重试 ${event.attempt}/${event.totalAttempts}${waitText}`
+        : `LLM retry ${event.attempt}/${event.totalAttempts}${waitText}`;
+    }
+    return isZh
+      ? `LLM 重试已耗尽（${event.attempt}/${event.totalAttempts}）`
+      : `LLM retries exhausted (${event.attempt}/${event.totalAttempts})`;
+  }
+
+  private handleLlmRetry(event: Extract<TypedDialogEvent, { type: 'llm_retry_evt' }>): void {
+    const toastKind = event.phase === 'retrying' ? 'info' : 'warning';
+    this.emitToast(this.buildRetryToastMessage(event), toastKind);
+
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    const activeBubble = this.generationBubble;
+    const targetBubble =
+      activeBubble && activeBubble.getAttribute('data-seq') === String(event.genseq)
+        ? activeBubble
+        : container
+          ? (container.querySelector(
+              `.generation-bubble[data-seq="${String(event.genseq)}"]`,
+            ) as HTMLElement | null)
+          : null;
+    if (!targetBubble) return;
+
+    let section = targetBubble.querySelector('.retry-section') as HTMLElement | null;
+    if (!section) {
+      section = document.createElement('div');
+      section.className = 'retry-section';
+      section.innerHTML = `
+        <div class="section-header">
+          <span class="section-icon">⟳</span>
+          <span class="section-title">${this.uiLanguage === 'zh' ? '重试中' : 'Retrying'}</span>
+        </div>
+        <div class="retry-items"></div>
+      `;
+      const body = targetBubble.querySelector('.bubble-body');
+      (body || targetBubble).appendChild(section);
+    }
+
+    const items = section.querySelector('.retry-items') as HTMLElement | null;
+    if (!items) return;
+    const item = document.createElement('div');
+    item.className = `retry-item ${event.phase === 'exhausted' ? 'retry-item-final' : ''}`;
+    const statusText =
+      typeof event.status === 'number'
+        ? `HTTP ${event.status}`
+        : typeof event.code === 'string' && event.code !== ''
+          ? event.code
+          : event.failureKind;
+    const metaText =
+      event.phase === 'retrying'
+        ? this.uiLanguage === 'zh'
+          ? `第 ${event.attempt}/${event.totalAttempts} 次，等待 ${event.backoffMs ?? 0}ms，${statusText}`
+          : `Attempt ${event.attempt}/${event.totalAttempts}, wait ${event.backoffMs ?? 0}ms, ${statusText}`
+        : this.uiLanguage === 'zh'
+          ? `已耗尽重试 ${event.attempt}/${event.totalAttempts}，${statusText}`
+          : `Retries exhausted ${event.attempt}/${event.totalAttempts}, ${statusText}`;
+    const errorText = this.summarizeRetryError(event.error);
+    const suggestionText =
+      event.phase === 'exhausted' &&
+      typeof event.suggestion === 'string' &&
+      event.suggestion.trim() !== ''
+        ? `<div class="retry-suggestion">${this.escapeHtml(event.suggestion)}</div>`
+        : '';
+    item.innerHTML = `
+      <div class="retry-meta">${this.escapeHtml(metaText)}</div>
+      <div class="retry-error">${this.escapeHtml(errorText)}</div>
+      ${suggestionText}
+    `;
+    items.appendChild(item);
     this.scrollToBottom();
   }
 
@@ -3953,6 +4045,58 @@ export class DomindsDialogContainer extends HTMLElement {
       
       .markdown-text-block:last-child {
         margin-bottom: 0;
+      }
+
+      .retry-section {
+        margin: 4px 0;
+        padding: 4px 6px;
+        border-radius: 6px;
+        border-left: 3px solid var(--dominds-warning, var(--color-warning, #f59e0b));
+        background: color-mix(
+          in srgb,
+          var(--dominds-warning, #f59e0b) 10%,
+          var(--dominds-bg, var(--color-bg-primary, #ffffff))
+        );
+      }
+
+      .retry-items {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .retry-item {
+        padding: 2px 0;
+      }
+
+      .retry-item-final {
+        border-top: 1px dashed
+          color-mix(
+            in srgb,
+            var(--dominds-warning, #f59e0b) 45%,
+            transparent
+          );
+        margin-top: 2px;
+        padding-top: 6px;
+      }
+
+      .retry-meta {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        opacity: 0.92;
+      }
+
+      .retry-error {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .retry-suggestion {
+        margin-top: 2px;
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-fg-muted, var(--color-fg-muted, #64748b));
       }
       
       /* Calling section styles (nested inside markdown) */
