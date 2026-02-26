@@ -2019,7 +2019,7 @@ export class DomindsApp extends HTMLElement {
         --dominds-font-size-xs: 9px;
         --dominds-font-size-sm: 10px;
         --dominds-font-size-md: 11px;
-        --dominds-font-size-base: 11.5px;
+        --dominds-font-size-base: 12px;
         --dominds-line-height-tight: 1.18;
         --dominds-line-height-dense: 1.24;
         --dominds-line-height-base: 1.38;
@@ -2086,7 +2086,7 @@ export class DomindsApp extends HTMLElement {
 	      }
 
 	      .dominds-version {
-	        font-size: 0.55em;
+	        font-size: 8px;
 	        font-weight: 550;
 	        color: var(--dominds-muted, #666666);
 	        line-height: 1;
@@ -2985,7 +2985,7 @@ export class DomindsApp extends HTMLElement {
         cursor: pointer;
         font-weight: 600;
         color: var(--dominds-fg, #333333);
-        font-size: 12.5px;
+        font-size: 13px;
         list-style: none;
       }
 
