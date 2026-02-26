@@ -3534,7 +3534,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .bubble-author-model {
-        font-size: 0.8em;
+        font-size: 10px;
         font-weight: 500;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
       }
@@ -4323,7 +4323,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .response-indicator {
-        font-size: 0.75em;
+        font-size: 10px;
         color: var(--dominds-text-secondary, #64748b);
         margin-left: 0.5em;
       }
