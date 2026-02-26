@@ -98,6 +98,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
   private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
+  private pendingUserPlainTextBySeq = new Set<number>();
 
   // Call-site navigation can be requested before course replay content is rendered.
   // Store the intent and apply when the DOM is ready.
@@ -701,6 +702,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
     this.pendingTeammateCallAnchorByGenseq.clear();
+    this.pendingUserPlainTextBySeq.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     if (messages) {
@@ -726,6 +728,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
     this.pendingTeammateCallAnchorByGenseq.clear();
+    this.pendingUserPlainTextBySeq.clear();
 
     // Clear all DOM messages when switching dialogs
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -1033,6 +1036,7 @@ export class DomindsDialogContainer extends HTMLElement {
         existingBubble.classList.add('generating');
         existingBubble.setAttribute('data-finalized', 'false');
         this.setBubbleTimestamp(existingBubble, timestamp);
+        this.pendingUserPlainTextBySeq.add(seq);
         this.activeGenSeq = seq;
         applyPendingCallAnchor(existingBubble);
         this.startAutoScrollObservation(existingBubble);
@@ -1052,6 +1056,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     this.activeGenSeq = seq;
+    this.pendingUserPlainTextBySeq.add(seq);
 
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
 
@@ -1139,6 +1144,7 @@ export class DomindsDialogContainer extends HTMLElement {
     bubble.classList.remove('generating');
     bubble.classList.add('completed');
     bubble.setAttribute('data-finalized', 'true');
+    this.pendingUserPlainTextBySeq.delete(seq);
     this.thinkingSection = undefined;
     this.markdownSection = undefined;
     this.callingSection = undefined;
@@ -1173,6 +1179,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.teammateCallingSectionBySeq.delete(seq);
     this.webSearchSectionBySeq.delete(seq);
     this.pendingTeammateCallAnchorByGenseq.delete(seq);
+    this.pendingUserPlainTextBySeq.delete(seq);
 
     for (const [itemId, section] of this.webSearchSectionByItemId.entries()) {
       const sectionSeq = section.getAttribute('data-genseq');
@@ -1214,7 +1221,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const thinkingSection = this.createThinkingSection();
-    const body = bubble.querySelector('.bubble-body');
+    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     (body || bubble).appendChild(thinkingSection);
     this.thinkingSection = thinkingSection;
     this.scrollToBottom();
@@ -1255,6 +1262,22 @@ export class DomindsDialogContainer extends HTMLElement {
 
   // === MARKDOWN EVENTS (Inside Generation Bubble) ===
   private handleMarkdownStart(genseq: number, timestamp: string): void {
+    if (this.pendingUserPlainTextBySeq.has(genseq)) {
+      const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
+      const body = bubble?.querySelector('.bubble-body') as HTMLElement | null | undefined;
+      const hasUserDivider = Boolean(
+        body &&
+        Array.from(body.children).some(
+          (child) =>
+            child instanceof HTMLElement && child.classList.contains('user-response-divider'),
+        ),
+      );
+      if (!hasUserDivider) {
+        return;
+      }
+      this.pendingUserPlainTextBySeq.delete(genseq);
+    }
+
     const bubble = this.ensureGenerationBubbleForSeq(genseq, timestamp);
     if (!bubble) {
       console.warn('markdown_start_evt received without generation bubble, skipping');
@@ -1267,12 +1290,15 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     // Create and append markdown section directly
     const markdownSection = this.createMarkdownSection();
-    const body = bubble.querySelector('.bubble-body');
+    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     (body || bubble).appendChild(markdownSection);
     this.markdownSection = markdownSection;
     this.scrollToBottom();
   }
   private handleMarkdownChunk(genseq: number, chunk: string, timestamp: string): void {
+    if (this.pendingUserPlainTextBySeq.has(genseq)) {
+      return;
+    }
     if (!this.markdownSection) {
       // Attempt to recover by creating a markdown section (and bubble if needed).
       this.handleMarkdownStart(genseq, timestamp);
@@ -1287,6 +1313,9 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
   private handleMarkdownFinish(_genseq: number): void {
+    if (this.pendingUserPlainTextBySeq.has(_genseq)) {
+      return;
+    }
     if (!this.markdownSection) {
       // Gracefully handle orphan finish - no active markdown section to complete
       console.warn('markdown_finish_evt received without active markdown section, skipping');
@@ -2303,7 +2332,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     const callsign = isFbr ? 'FBR' : agentId ? `@${agentId}` : 'Teammate';
     const responseIndicator = isFbr
-      ? ' · FBR'
+      ? ''
       : this.getTeammateResponseIndicator(agentId, originMemberId);
     el.innerHTML = `
       <div class="bubble-content">
@@ -2311,7 +2340,7 @@ export class DomindsDialogContainer extends HTMLElement {
           <div class="bubble-title">
             <div class="title-row">
               <div class="title-left">
-                <span class="author-name">${callsign}</span><span class="response-indicator">${responseIndicator}</span>
+                <span class="author-name">${callsign}</span>${responseIndicator ? `<span class="response-indicator">${responseIndicator}</span>` : ''}
               </div>
               ${
                 callId
@@ -2788,6 +2817,49 @@ export class DomindsDialogContainer extends HTMLElement {
     actions.appendChild(linksEl);
   }
 
+  private upsertUserPlainTextMessage(body: HTMLElement, rawContent: string): void {
+    let divider: HTMLElement | null = null;
+    for (const child of Array.from(body.children)) {
+      if (child instanceof HTMLElement && child.classList.contains('user-response-divider')) {
+        divider = child;
+        break;
+      }
+    }
+
+    for (const child of Array.from(body.children)) {
+      if (divider && child === divider) break;
+      if (child instanceof HTMLElement && child.classList.contains('markdown-section')) {
+        child.remove();
+      }
+    }
+
+    let userMessageEl: HTMLElement | null = null;
+    for (const child of Array.from(body.children)) {
+      if (divider && child === divider) break;
+      if (child instanceof HTMLElement && child.classList.contains('user-message')) {
+        userMessageEl = child;
+        break;
+      }
+    }
+
+    if (!userMessageEl) {
+      userMessageEl = document.createElement('div');
+      userMessageEl.className = 'user-message';
+    }
+    userMessageEl.textContent = rawContent;
+
+    if (divider) {
+      if (userMessageEl.parentElement !== body || userMessageEl.nextSibling !== divider) {
+        body.insertBefore(userMessageEl, divider);
+      }
+      return;
+    }
+
+    if (userMessageEl.parentElement !== body || userMessageEl !== body.firstElementChild) {
+      body.insertBefore(userMessageEl, body.firstChild);
+    }
+  }
+
   // Render <hr/> separator between user content and AI response
   // Called when end_of_user_saying_evt is received
   private handleEndOfUserSaying(event: EndOfUserSayingEvent): void {
@@ -2808,7 +2880,7 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
 
-    const body = bubble.querySelector('.bubble-body');
+    const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
     if (!body) {
       console.warn('handleEndOfUserSaying: no bubble-body found');
       return;
@@ -2816,6 +2888,8 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Idempotency: end_of_user_saying_evt can be replayed during course navigation.
     if (body.querySelector('.user-response-divider')) {
+      this.upsertUserPlainTextMessage(body, event.content);
+      this.pendingUserPlainTextBySeq.delete(event.genseq);
       bubble.setAttribute('data-user-msg-id', event.msgId);
       bubble.setAttribute('data-raw-user-msg', event.content);
       const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
@@ -2850,6 +2924,8 @@ export class DomindsDialogContainer extends HTMLElement {
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
     body.appendChild(divider);
+    this.upsertUserPlainTextMessage(body, event.content);
+    this.pendingUserPlainTextBySeq.delete(event.genseq);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
     const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
@@ -3090,11 +3166,18 @@ export class DomindsDialogContainer extends HTMLElement {
         <div class="status"></div>
       </div>
     `;
-    const md = this.createMarkdownSection();
-    md.setRawMarkdown(content);
     const contentHost = el.querySelector('.content');
     if (contentHost) {
-      contentHost.appendChild(md);
+      if (role === 'user') {
+        const userMessageEl = document.createElement('div');
+        userMessageEl.className = 'user-message';
+        userMessageEl.textContent = content;
+        contentHost.appendChild(userMessageEl);
+      } else {
+        const md = this.createMarkdownSection();
+        md.setRawMarkdown(content);
+        contentHost.appendChild(md);
+      }
     }
     return el;
   }
@@ -3647,12 +3730,12 @@ export class DomindsDialogContainer extends HTMLElement {
       /* User message and divider styles */
       .user-message {
         font-family: inherit;
-        font-weight: 500;
-        font-size: var(--dominds-font-size-base, 14px);
+        font-weight: 400;
+        font-size: 12px;
         line-height: 1.35;
         color: var(--dominds-fg, var(--color-fg-primary, #333));
         margin: 0;
-        padding: 0;
+        padding: 2px 3px 2px 6px;
         width: 100%;
         height: auto;
         resize: none;
@@ -3701,7 +3784,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       /* Section styles (thinking, markdown) */
-  .thinking-section, .markdown-section {
+      .thinking-section, .markdown-section {
         margin-bottom: 0; /* bubble-body gap provides spacing */
         padding: 2px 3px 2px 6px;
         border-radius: 6px; 
@@ -3712,6 +3795,7 @@ export class DomindsDialogContainer extends HTMLElement {
         max-width: 100%;
         box-sizing: border-box;
         overflow: hidden;
+        font-size: var(--dominds-font-size-md, 11px);
       }
       
       .markdown-section {
@@ -3720,7 +3804,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .markdown-content {
-        font-size: var(--dominds-font-size-base, 14px);
+        font-size: var(--dominds-font-size-md, 11px);
         color: var(--dominds-fg, var(--color-fg-secondary, #475569));
         word-wrap: break-word;
         line-height: var(--dominds-line-height-dense, 1.4);
@@ -4337,6 +4421,7 @@ export class DomindsDialogContainer extends HTMLElement {
       .message.teammate.fbr .teammate-content,
       .message.teammate.fbr .markdown-content {
         color: var(--dominds-fg-secondary, var(--color-fg-secondary, #475569));
+        font-size: var(--dominds-font-size-md, 11px);
       }
 
       .message.teammate.fbr .markdown-content h1,
@@ -4346,6 +4431,11 @@ export class DomindsDialogContainer extends HTMLElement {
       .message.teammate.fbr .markdown-content h5,
       .message.teammate.fbr .markdown-content h6 {
         color: var(--dominds-fg-secondary, var(--color-fg-secondary, #475569));
+        font-size: var(--dominds-font-size-md, 11px);
+      }
+
+      .message.teammate.fbr .teammate-headline {
+        font-size: var(--dominds-font-size-md, 11px);
       }
 
       .teammate-headline {
