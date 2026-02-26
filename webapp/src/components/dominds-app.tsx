@@ -986,7 +986,7 @@ export class DomindsApp extends HTMLElement {
     const snippetsTab = this.shadowRoot.querySelector(
       'button.bp-tab[data-bp-tab="snippets"]',
     ) as HTMLElement | null;
-    if (snippetsTab) snippetsTab.textContent = t.promptTemplatesTabTitle;
+    if (snippetsTab) snippetsTab.textContent = t.snippetsTabTitle;
 
     const teamManualTab = this.shadowRoot.querySelector(
       'button.bp-tab[data-bp-tab="team-manual"]',
@@ -3508,13 +3508,13 @@ export class DomindsApp extends HTMLElement {
 	        border: none;
 	        outline: none;
 	        resize: none;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-        font-size: var(--dominds-font-size-sm, 12px);
-        line-height: 1.35;
-        color: var(--color-fg-primary, #0f172a);
-        background: var(--dominds-bg, #ffffff);
-      }
+	        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+	          'Courier New', monospace;
+	        font-size: 12px;
+	        line-height: 1.35;
+	        color: var(--color-fg-primary, #0f172a);
+	        background: var(--dominds-bg, #ffffff);
+	      }
 
 	      .q4h-readonly-banner {
 	        padding: 2px 8px;
@@ -4628,7 +4628,7 @@ export class DomindsApp extends HTMLElement {
 		                    <span class="bp-badge" data-has-remaining="${this.getDiligenceBudgetBadgeText().hasRemaining ? 'true' : 'false'}">${this.getDiligenceBudgetBadgeText().text}</span>
 		                  </button>
 	                  <div class="bp-tabs-right">
-	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'snippets' ? 'active' : ''}" type="button" data-bp-tab="snippets">${t.promptTemplatesTabTitle}</button>
+	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'snippets' ? 'active' : ''}" type="button" data-bp-tab="snippets">${t.snippetsTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'team-manual' ? 'active' : ''}" type="button" data-bp-tab="team-manual">${t.teamMgmtManualTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'docs' ? 'active' : ''}" type="button" data-bp-tab="docs">${t.domindsDocsTabTitle}</button>
 	                  </div>
@@ -8467,6 +8467,53 @@ export class DomindsApp extends HTMLElement {
         }
 
         case 'dlg_run_state_marker_evt': {
+          const selfId = dialog.selfId;
+          const rootId = dialog.rootId;
+          const key = this.dialogKey(rootId, selfId);
+          const markerRunState: DialogRunState =
+            message.kind === 'interrupted'
+              ? {
+                  kind: 'interrupted',
+                  reason: message.reason ?? { kind: 'system_stop', detail: 'Interrupted.' },
+                }
+              : { kind: 'proceeding' };
+          this.dialogRunStatesByKey.set(key, markerRunState);
+
+          if (selfId === rootId) {
+            const rootDialog = this.getRootDialog(rootId);
+            if (rootDialog) {
+              this.upsertRootDialogSnapshot({ ...rootDialog, runState: markerRunState });
+            }
+          } else if (this.visibleSubdialogsByRoot.has(rootId)) {
+            const subs = this.getVisibleSubdialogsForRoot(rootId);
+            const updated = subs.map((d) =>
+              d.selfId === selfId ? { ...d, runState: markerRunState } : d,
+            );
+            this.setVisibleSubdialogsForRoot(rootId, updated);
+          }
+
+          if (
+            this.currentDialog &&
+            this.currentDialog.rootId === rootId &&
+            this.currentDialog.selfId === selfId
+          ) {
+            const input = this.q4hInput as HTMLElement & {
+              setRunState?: (state: DialogRunState | null) => void;
+            };
+            if (input && typeof input.setRunState === 'function') {
+              input.setRunState(markerRunState);
+            }
+            this.updateInputPanelVisibility();
+          }
+
+          const status = this.resolveDialogStatusByIds(rootId, selfId);
+          if (status === 'running') {
+            const runningList = this.shadowRoot?.querySelector('#running-dialog-list');
+            if (runningList instanceof RunningDialogList) {
+              runningList.updateDialogEntry(rootId, selfId, { runState: markerRunState });
+            }
+          }
+
           const dialogContainer = this.getDialogContainerForEvent(message);
           if (dialogContainer) {
             await dialogContainer.handleDialogEvent(message as TypedDialogEvent);

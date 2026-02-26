@@ -167,6 +167,91 @@ function resolveModelInfo(providerCfg: ProviderConfig, model: string): ModelInfo
   return providerCfg.models[model];
 }
 
+type DriverV2RetryPolicy = Readonly<{
+  maxRetries: number;
+  initialDelayMs: number;
+  backoffMultiplier: number;
+  maxDelayMs: number;
+}>;
+
+const DRIVER_V2_DEFAULT_RETRY_POLICY: DriverV2RetryPolicy = {
+  maxRetries: 5,
+  initialDelayMs: 1000,
+  backoffMultiplier: 2,
+  maxDelayMs: 30_000,
+};
+
+const DRIVER_V2_EMPTY_LLM_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
+
+function resolveRetryMaxRetries(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.maxRetries;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.maxRetries;
+  }
+  return normalized;
+}
+
+function resolveRetryInitialDelayMs(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.initialDelayMs;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.initialDelayMs;
+  }
+  return normalized;
+}
+
+function resolveRetryBackoffMultiplier(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.backoffMultiplier;
+  }
+  if (raw < 1) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.backoffMultiplier;
+  }
+  return raw;
+}
+
+function resolveRetryMaxDelayMs(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.maxDelayMs;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return DRIVER_V2_DEFAULT_RETRY_POLICY.maxDelayMs;
+  }
+  return normalized;
+}
+
+function resolveDriverV2RetryPolicy(providerCfg: ProviderConfig): DriverV2RetryPolicy {
+  const maxRetries = resolveRetryMaxRetries(providerCfg.llm_retry_max_retries);
+  const initialDelayMs = resolveRetryInitialDelayMs(providerCfg.llm_retry_initial_delay_ms);
+  const backoffMultiplier = resolveRetryBackoffMultiplier(providerCfg.llm_retry_backoff_multiplier);
+  const maxDelayMs = resolveRetryMaxDelayMs(providerCfg.llm_retry_max_delay_ms);
+
+  return {
+    maxRetries,
+    initialDelayMs,
+    backoffMultiplier,
+    maxDelayMs: Math.max(initialDelayMs, maxDelayMs),
+  };
+}
+
+function hasMeaningfulBatchOutput(messages: readonly ChatMessage[]): boolean {
+  for (const msg of messages) {
+    if (msg.type === 'func_call_msg') {
+      return true;
+    }
+    if ((msg.type === 'saying_msg' || msg.type === 'thinking_msg') && msg.content.trim() !== '') {
+      return true;
+    }
+  }
+  return false;
+}
+
 function resolveModelContextLimitTokens(modelInfo: ModelInfo | undefined): number | null {
   if (
     modelInfo &&
@@ -568,17 +653,8 @@ async function executeFunctionCalls(args: {
     if (argsValidation.ok) {
       const argsObj: ToolArguments = argsValidation.args;
 
-      try {
-        await dialog.funcCallRequested(func.id, func.name, argsStr);
-      } catch (err) {
-        log.warn('driver-v2 failed to emit func_call_requested event', err);
-      }
-
-      try {
-        await dialog.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
-      } catch (err) {
-        log.warn('driver-v2 failed to persist function call', err);
-      }
+      await dialog.funcCallRequested(func.id, func.name, argsStr);
+      await dialog.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
 
       try {
         throwIfAborted(abortSignal, dialog);
@@ -699,20 +775,12 @@ async function executeRoutedFunctionCalls(args: {
     if (!special) {
       continue;
     }
-    try {
-      await dialog.persistFunctionCall(
-        callMsg.id,
-        callMsg.name,
-        toPersistedSpecialCallArgs(special),
-        callMsg.genseq,
-      );
-    } catch (err) {
-      log.warn('driver-v2 failed to persist special function call', err, {
-        dialogId: dialog.id.valueOf(),
-        callId: callMsg.id,
-        callName: callMsg.name,
-      });
-    }
+    await dialog.persistFunctionCall(
+      callMsg.id,
+      callMsg.name,
+      toPersistedSpecialCallArgs(special),
+      callMsg.genseq,
+    );
   }
 
   const issueResults: FuncResultMsg[] = [];
@@ -973,9 +1041,10 @@ async function resetDiligenceBudgetAfterQ4H(dlg: Dialog, team: Team): Promise<vo
       patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
     }));
   } catch (err) {
-    log.warn('driver-v2 failed to reset Diligence Push budget after Q4H', err, {
+    log.error('driver-v2 failed to reset Diligence Push budget after Q4H', err, {
       dialogId: dlg.id.valueOf(),
     });
+    throw err;
   }
 }
 
@@ -1033,6 +1102,88 @@ async function maybeContinueWithDiligencePrompt(args: {
   }
 
   return { kind: 'break' };
+}
+
+async function maybeContinueWithHealthPromptBeforeDiligence(args: {
+  dlg: Dialog;
+  providerCfg: ProviderConfig;
+  model: string;
+}): Promise<
+  | { kind: 'no_health_prompt' }
+  | { kind: 'health_suspend' }
+  | { kind: 'health_continue'; prompt: DriverV2HumanPrompt; resetTaskdoc: boolean }
+> {
+  const { dlg, providerCfg, model } = args;
+
+  // This path is only used as a higher-priority alternative to Diligence Push.
+  if (!(dlg instanceof RootDialog)) {
+    return { kind: 'no_health_prompt' };
+  }
+
+  const snapshot = dlg.getLastContextHealth();
+  const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
+  const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+    modelInfoForRemediation?.caution_remediation_cadence_generations,
+  );
+  const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dlg.id.key(), snapshot);
+  const healthDecision = decideDriverV2ContextHealth({
+    dialogKey: dlg.id.key(),
+    snapshot,
+    hadUserPromptThisGen: false,
+    canInjectPromptThisGen: true,
+    cautionRemediationCadenceGenerations,
+    criticalCountdownRemaining,
+  });
+
+  if (healthDecision.kind === 'suspend') {
+    return { kind: 'health_suspend' };
+  }
+  if (healthDecision.kind !== 'continue') {
+    return { kind: 'no_health_prompt' };
+  }
+
+  if (healthDecision.reason === 'critical_force_new_course') {
+    const language = getWorkLanguage();
+    const newCoursePrompt =
+      language === 'zh'
+        ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+        : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+    await dlg.startNewCourse(newCoursePrompt);
+    dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+    resetContextHealthRoundState(dlg.id.key());
+
+    const nextPrompt = resolveUpNextPrompt(dlg);
+    if (!nextPrompt) {
+      throw new Error(
+        `driver-v2 critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
+      );
+    }
+    return { kind: 'health_continue', prompt: nextPrompt, resetTaskdoc: true };
+  }
+
+  const language = getWorkLanguage();
+  const guideText =
+    healthDecision.reason === 'caution_soft_remediation'
+      ? formatAgentFacingContextHealthV3RemediationGuide(language, {
+          kind: 'caution',
+          mode: 'soft',
+        })
+      : formatAgentFacingContextHealthV3RemediationGuide(language, {
+          kind: 'critical',
+          mode: 'countdown',
+          promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
+          promptsTotal: DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+        });
+  return {
+    kind: 'health_continue',
+    prompt: {
+      content: guideText,
+      msgId: generateShortId(),
+      grammar: 'markdown',
+      userLanguageCode: language,
+    },
+    resetTaskdoc: false,
+  };
 }
 
 export async function driveDialogStreamCoreV2(
@@ -1109,6 +1260,7 @@ export async function driveDialogStreamCoreV2(
         team,
         agent,
       });
+      const retryPolicy = resolveDriverV2RetryPolicy(providerCfg);
 
       const llmGen = getLlmGenerator(providerCfg.apiType);
       if (!llmGen) {
@@ -1287,20 +1439,16 @@ export async function driveDialogStreamCoreV2(
 
           await emitUserMarkdown(dlg, promptContent);
 
-          try {
-            postDialogEvent(dlg, {
-              type: 'end_of_user_saying_evt',
-              course: dlg.currentCourse,
-              genseq: dlg.activeGenSeq,
-              msgId,
-              content: promptContent,
-              grammar: promptGrammar,
-              userLanguageCode: persistedUserLanguageCode,
-              q4hAnswerCallIds,
-            });
-          } catch (err) {
-            log.warn('driver-v2 failed to emit end_of_user_saying_evt', err);
-          }
+          postDialogEvent(dlg, {
+            type: 'end_of_user_saying_evt',
+            course: dlg.currentCourse,
+            genseq: dlg.activeGenSeq,
+            msgId,
+            content: promptContent,
+            grammar: promptGrammar,
+            userLanguageCode: persistedUserLanguageCode,
+            q4hAnswerCallIds,
+          });
         }
 
         if (suspendForHuman) {
@@ -1378,10 +1526,13 @@ export async function driveDialogStreamCoreV2(
             dlg,
             provider,
             abortSignal,
-            maxRetries: 5,
+            maxRetries: retryPolicy.maxRetries,
+            retryInitialDelayMs: retryPolicy.initialDelayMs,
+            retryBackoffMultiplier: retryPolicy.backoffMultiplier,
+            retryMaxDelayMs: retryPolicy.maxDelayMs,
             canRetry: () => true,
             doRequest: async () => {
-              return await llmGen.genMoreMessages(
+              const batchResult = await llmGen.genMoreMessages(
                 providerCfg,
                 agent,
                 systemPrompt,
@@ -1390,6 +1541,14 @@ export async function driveDialogStreamCoreV2(
                 dlg.activeGenSeq,
                 abortSignal,
               );
+              if (!hasMeaningfulBatchOutput(batchResult.messages)) {
+                throw {
+                  status: 503,
+                  code: DRIVER_V2_EMPTY_LLM_RESPONSE_ERROR_CODE,
+                  message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=false).`,
+                };
+              }
+              return batchResult;
             },
           });
 
@@ -1509,6 +1668,21 @@ export async function driveDialogStreamCoreV2(
             routedFunctionResult.pairedMessages.length > 0 ||
             routedFunctionResult.tellaskToolOutputs.length > 0;
           if (!shouldContinue) {
+            const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
+              dlg,
+              providerCfg,
+              model,
+            });
+            if (healthFirst.kind === 'health_continue') {
+              pendingPrompt = healthFirst.prompt;
+              if (healthFirst.resetTaskdoc) {
+                skipTaskdocForThisDrive = false;
+              }
+              continue;
+            }
+            if (healthFirst.kind === 'health_suspend') {
+              break;
+            }
             const next = await maybeContinueWithDiligencePrompt({
               dlg,
               team,
@@ -1534,6 +1708,7 @@ export async function driveDialogStreamCoreV2(
         let streamAttemptCheckpointOffset: number | undefined;
         let streamAttemptSayingContent: string | undefined;
         let streamAttemptSayingGenseq: number | undefined;
+        let streamSawWebSearchCall = false;
 
         type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
         let streamActive: StreamActiveState = { kind: 'idle' };
@@ -1562,6 +1737,7 @@ export async function driveDialogStreamCoreV2(
           currentSayingContent = '';
           streamAttemptSayingContent = undefined;
           streamAttemptSayingGenseq = undefined;
+          streamSawWebSearchCall = false;
           streamedFuncCalls.length = 0;
           newMsgs.length = 0;
         };
@@ -1570,7 +1746,10 @@ export async function driveDialogStreamCoreV2(
           dlg,
           provider,
           abortSignal,
-          maxRetries: 5,
+          maxRetries: retryPolicy.maxRetries,
+          retryInitialDelayMs: retryPolicy.initialDelayMs,
+          retryBackoffMultiplier: retryPolicy.backoffMultiplier,
+          retryMaxDelayMs: retryPolicy.maxDelayMs,
           canRetry: () => true,
           onRetry: rollbackStreamAttempt,
           onGiveUp: rollbackStreamAttempt,
@@ -1587,9 +1766,10 @@ export async function driveDialogStreamCoreV2(
             currentSayingContent = '';
             streamAttemptSayingContent = undefined;
             streamAttemptSayingGenseq = undefined;
+            streamSawWebSearchCall = false;
             streamedFuncCalls.length = 0;
             newMsgs.length = 0;
-            return await llmGen.genToReceiver(
+            const streamResult = await llmGen.genToReceiver(
               providerCfg,
               agent,
               systemPrompt,
@@ -1699,12 +1879,29 @@ export async function driveDialogStreamCoreV2(
                 },
                 webSearchCall: async (call) => {
                   throwIfAborted(abortSignal, dlg);
+                  streamSawWebSearchCall = true;
                   await dlg.webSearchCall(call);
                 },
               },
               dlg.activeGenSeq,
               abortSignal,
             );
+            const hasThinkingContent = currentThinkingContent.trim() !== '';
+            const hasSayingContent = (streamAttemptSayingContent ?? '').trim() !== '';
+            const hasFunctionCall = streamedFuncCalls.length > 0;
+            if (
+              !hasThinkingContent &&
+              !hasSayingContent &&
+              !hasFunctionCall &&
+              !streamSawWebSearchCall
+            ) {
+              throw {
+                status: 503,
+                code: DRIVER_V2_EMPTY_LLM_RESPONSE_ERROR_CODE,
+                message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=true).`,
+              };
+            }
+            return streamResult;
           },
         });
 
@@ -1791,12 +1988,8 @@ export async function driveDialogStreamCoreV2(
         }
 
         if (dlg.remindersVer > pubRemindersVer) {
-          try {
-            await dlg.processReminderUpdates();
-            pubRemindersVer = dlg.remindersVer;
-          } catch (err) {
-            log.warn('driver-v2 failed to propagate reminder text after tools', err);
-          }
+          await dlg.processReminderUpdates();
+          pubRemindersVer = dlg.remindersVer;
         }
 
         if (suspendForHuman) {
@@ -1809,6 +2002,21 @@ export async function driveDialogStreamCoreV2(
           routedFunctionResult.pairedMessages.length > 0 ||
           routedFunctionResult.tellaskToolOutputs.length > 0;
         if (!shouldContinue) {
+          const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
+            dlg,
+            providerCfg,
+            model,
+          });
+          if (healthFirst.kind === 'health_continue') {
+            pendingPrompt = healthFirst.prompt;
+            if (healthFirst.resetTaskdoc) {
+              skipTaskdocForThisDrive = false;
+            }
+            continue;
+          }
+          if (healthFirst.kind === 'health_suspend') {
+            break;
+          }
           const next = await maybeContinueWithDiligencePrompt({
             dlg,
             team,

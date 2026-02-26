@@ -1188,7 +1188,7 @@ export class DomindsQ4HInput extends HTMLElement {
         border: none;
         outline: none;
         padding: 9px 12px;
-        font-size: var(--dominds-font-size-md, 13px);
+        font-size: 13px;
         line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--dominds-fg, #333333);
         resize: none;

@@ -603,7 +603,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-tellask-body {
         white-space: normal;
         word-break: break-word;
-        font-size: var(--dominds-font-size-sm, 12px);
+        font-size: 13px;
         line-height: var(--dominds-line-height-dense, 1.4);
       }
 

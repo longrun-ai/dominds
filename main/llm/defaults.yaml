@@ -1,3 +1,8 @@
+# Optional provider-level retry controls for driver-v2:
+# - llm_retry_max_retries: extra retries after the initial attempt (default 5).
+# - llm_retry_initial_delay_ms: delay before the 1st retry (default 1000).
+# - llm_retry_backoff_multiplier: exponential factor between retries (default 2; e.g. 1.5).
+# - llm_retry_max_delay_ms: upper bound for retry delay (default 30000).
 providers:
   codex:
     name: Codex (ChatGPT)
