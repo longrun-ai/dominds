@@ -986,7 +986,7 @@ export class DomindsApp extends HTMLElement {
     const snippetsTab = this.shadowRoot.querySelector(
       'button.bp-tab[data-bp-tab="snippets"]',
     ) as HTMLElement | null;
-    if (snippetsTab) snippetsTab.textContent = t.promptTemplatesTabTitle;
+    if (snippetsTab) snippetsTab.textContent = t.snippetsTabTitle;
 
     const teamManualTab = this.shadowRoot.querySelector(
       'button.bp-tab[data-bp-tab="team-manual"]',
@@ -3508,13 +3508,13 @@ export class DomindsApp extends HTMLElement {
 	        border: none;
 	        outline: none;
 	        resize: none;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-          'Courier New', monospace;
-        font-size: var(--dominds-font-size-sm, 12px);
-        line-height: 1.35;
-        color: var(--color-fg-primary, #0f172a);
-        background: var(--dominds-bg, #ffffff);
-      }
+	        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+	          'Courier New', monospace;
+	        font-size: 12px;
+	        line-height: 1.35;
+	        color: var(--color-fg-primary, #0f172a);
+	        background: var(--dominds-bg, #ffffff);
+	      }
 
 	      .q4h-readonly-banner {
 	        padding: 2px 8px;
@@ -4628,7 +4628,7 @@ export class DomindsApp extends HTMLElement {
 		                    <span class="bp-badge" data-has-remaining="${this.getDiligenceBudgetBadgeText().hasRemaining ? 'true' : 'false'}">${this.getDiligenceBudgetBadgeText().text}</span>
 		                  </button>
 	                  <div class="bp-tabs-right">
-	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'snippets' ? 'active' : ''}" type="button" data-bp-tab="snippets">${t.promptTemplatesTabTitle}</button>
+	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'snippets' ? 'active' : ''}" type="button" data-bp-tab="snippets">${t.snippetsTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'team-manual' ? 'active' : ''}" type="button" data-bp-tab="team-manual">${t.teamMgmtManualTabTitle}</button>
 	                    <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'docs' ? 'active' : ''}" type="button" data-bp-tab="docs">${t.domindsDocsTabTitle}</button>
 	                  </div>

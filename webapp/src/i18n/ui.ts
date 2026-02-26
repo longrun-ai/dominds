@@ -176,23 +176,23 @@ export type UiStrings = {
   toastHistoryEmpty: string;
   thinkingSectionTitle: string;
   teamMgmtManualTabTitle: string;
-  promptTemplatesTabTitle: string;
+  snippetsTabTitle: string;
   domindsDocsTabTitle: string;
   teamMgmtTopicsTitle: string;
   teamMgmtLoadFailed: string;
 
-  promptTemplatesBuiltinTitle: string;
-  promptTemplatesWorkspaceTitle: string;
-  promptTemplatesInsert: string;
-  promptTemplatesNewTitle: string;
-  promptTemplatesEditorTitle: string;
-  promptTemplatesFileNameLabel: string;
-  promptTemplatesNameLabel: string;
-  promptTemplatesDescriptionLabel: string;
-  promptTemplatesContentLabel: string;
-  promptTemplatesSave: string;
-  promptTemplatesSaveFailed: string;
-  promptTemplatesLoadFailed: string;
+  snippetsBuiltinTitle: string;
+  snippetsWorkspaceTitle: string;
+  snippetsInsert: string;
+  snippetsNewTitle: string;
+  snippetsEditorTitle: string;
+  snippetsFileNameLabel: string;
+  snippetsNameLabel: string;
+  snippetsDescriptionLabel: string;
+  snippetsContentLabel: string;
+  snippetsSave: string;
+  snippetsSaveFailed: string;
+  snippetsLoadFailed: string;
   unauthorized: string;
   save: string;
   send: string;
@@ -513,24 +513,24 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       toastHistoryEmpty: '暂无通知。',
       thinkingSectionTitle: '思考中',
       teamMgmtManualTabTitle: '团队管理手册',
-      promptTemplatesTabTitle: '提示词模板',
+      snippetsTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
 
       teamMgmtTopicsTitle: '主题',
       teamMgmtLoadFailed: '加载团队管理手册失败',
 
-      promptTemplatesBuiltinTitle: '内置模板',
-      promptTemplatesWorkspaceTitle: '运行时工作区模板（.minds/snippets/）',
-      promptTemplatesInsert: '插入',
-      promptTemplatesNewTitle: '新增模板',
-      promptTemplatesEditorTitle: '预览/编辑',
-      promptTemplatesFileNameLabel: '文件名（可选）',
-      promptTemplatesNameLabel: '名称',
-      promptTemplatesDescriptionLabel: '描述（可选）',
-      promptTemplatesContentLabel: '内容',
-      promptTemplatesSave: '保存',
-      promptTemplatesSaveFailed: '保存提示词模板失败',
-      promptTemplatesLoadFailed: '加载提示词模板失败',
+      snippetsBuiltinTitle: '内置模板',
+      snippetsWorkspaceTitle: '运行时工作区模板（.minds/snippets/）',
+      snippetsInsert: '插入',
+      snippetsNewTitle: '新增模板',
+      snippetsEditorTitle: '预览/编辑',
+      snippetsFileNameLabel: '文件名（可选）',
+      snippetsNameLabel: '名称',
+      snippetsDescriptionLabel: '描述（可选）',
+      snippetsContentLabel: '内容',
+      snippetsSave: '保存',
+      snippetsSaveFailed: '保存提示词模板失败',
+      snippetsLoadFailed: '加载提示词模板失败',
       unauthorized: '未认证',
       save: '保存',
       send: '发送',
@@ -859,24 +859,24 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toastHistoryEmpty: 'No notifications yet.',
     thinkingSectionTitle: 'Thinking',
     teamMgmtManualTabTitle: 'Team Manual',
-    promptTemplatesTabTitle: 'Prompt Templates',
+    snippetsTabTitle: 'Snippets',
     domindsDocsTabTitle: 'Dominds Docs',
 
     teamMgmtTopicsTitle: 'Topics',
     teamMgmtLoadFailed: 'Failed to load team manual',
 
-    promptTemplatesBuiltinTitle: 'Built-in Templates',
-    promptTemplatesWorkspaceTitle: 'rtws Templates (.minds/snippets/)',
-    promptTemplatesInsert: 'Insert',
-    promptTemplatesNewTitle: 'New Template',
-    promptTemplatesEditorTitle: 'Preview/Edit',
-    promptTemplatesFileNameLabel: 'File name (optional)',
-    promptTemplatesNameLabel: 'Name',
-    promptTemplatesDescriptionLabel: 'Description (optional)',
-    promptTemplatesContentLabel: 'Content',
-    promptTemplatesSave: 'Save',
-    promptTemplatesSaveFailed: 'Failed to save prompt template',
-    promptTemplatesLoadFailed: 'Failed to load prompt templates',
+    snippetsBuiltinTitle: 'Built-in snippets',
+    snippetsWorkspaceTitle: 'rtws snippets (.minds/snippets/)',
+    snippetsInsert: 'Insert',
+    snippetsNewTitle: 'New snippet',
+    snippetsEditorTitle: 'Preview/Edit',
+    snippetsFileNameLabel: 'File name (optional)',
+    snippetsNameLabel: 'Name',
+    snippetsDescriptionLabel: 'Description (optional)',
+    snippetsContentLabel: 'Content',
+    snippetsSave: 'Save',
+    snippetsSaveFailed: 'Failed to save snippet',
+    snippetsLoadFailed: 'Failed to load snippets',
     unauthorized: 'Unauthorized',
     save: 'Save',
     send: 'Send',
