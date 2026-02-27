@@ -3040,7 +3040,7 @@ function renderTeamManual(language: LanguageCode): string {
         '`default_responder` 虽然不是技术必填项，但实践上强烈建议显式设置：否则会退回到实现内置的响应者选择逻辑（例如按可见成员/内置成员兜底），容易造成跨环境或跨轮次行为漂移。',
         '每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`，并在继续之前先清空 Problems 面板里的 team.yaml 相关错误，避免潜在错误进入运行期（例如字段类型错误/字段缺失/路径绑定错误）。',
         '强烈建议为每个成员配置 `.minds/team/<id>/{persona,knowledge,lessons}.*.md` 三类资产，用来明确角色职责、工作边界与可复用经验；同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。',
-        '典型内容示例（可直接作为起点，按团队语境改写）：\n```markdown\n# .minds/team/coder/persona.zh.md\n# @coder 角色设定\n## 核心身份\n- 专业程序员，负责按规格完成代码开发。\n## 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n## 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n```markdown\n# .minds/team/coder/lessons.zh.md\n# @coder 经验教训\n- 修改前先定位调用链与数据流，避免“只改表面”。\n- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。\n- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。\n```',
+        '典型内容示例（可直接作为起点，按团队语境改写）：\n- `.minds/team/coder/persona.zh.md`\n```markdown\n### 核心身份\n- 专业程序员，负责按规格完成代码开发。\n### 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n### 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n- `.minds/team/coder/lessons.zh.md`\n```markdown\n- 修改前先定位调用链与数据流，避免“只改表面”。\n- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。\n- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。\n```\n写法约束：`persona/knowledge/lessons` 文件里不要再写与系统提示模板重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 知识` / `## 经验`（英文模板对应 `## Persona` / `## Knowledge` / `## Lessons`）。',
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 用于写该长期 agent 的“职责速记卡/工作边界/交付物摘要”（建议 5 行内）：用于快速路由与提醒；更完整的规范请写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md` 等 Markdown 资产。\n示例（gofor）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain script-style smoke tests and how to run them\n      - Reject changes that break lint/types/tests (or request fixes)\n      - Track high-risk areas and required manual verification\n```\n示例（gofor, object；按 YAML key 顺序渲染）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         '`members.<id>.gofor` 推荐用 YAML list（3–6 条）而不是长字符串；string 仅适合单句。建议用下面 5 行模板维度（每条尽量短）：\n```yaml\ngofor:\n  - Scope: ...\n  - Interfaces: ...\n  - Deliverables: ...\n  - Non-goals: ...\n  - Regression: ...\n```',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
@@ -3117,7 +3117,7 @@ function renderTeamManual(language: LanguageCode): string {
         'The team definition entrypoint is `.minds/team.yaml` (no `.minds/team.yml` alias today).',
         '`default_responder` is not technically required, but strongly recommended in practice: without it, runtime falls back to implementation-defined responder selection (for example visible-member/built-in fallback), which can drift across environments/runs.',
         'Strongly recommended: for each member, configure `.minds/team/<id>/{persona,knowledge,lessons}.*.md` assets to define role ownership, work boundaries, and reusable lessons. The same `<id>` must exist in `members.<id>` in `team.yaml`.',
-        'Typical content examples (use as a starting point, then adapt to your team context):\n```markdown\n# .minds/team/coder/persona.en.md\n# @coder Persona\n## Core Identity\n- Professional programmer responsible for implementing approved development specs.\n## Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n## Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n```markdown\n# .minds/team/coder/lessons.en.md\n# @coder Lessons\n- Trace call chain and data flow before editing; avoid patching only symptoms.\n- After changing permissions/config, run corresponding validators and clear Problems.\n- For high-risk changes, start with a minimal reviewable plan before expansion.\n```',
+        'Typical content examples (use as a starting point, then adapt to your team context):\n- `.minds/team/coder/persona.en.md`\n```markdown\n### Core Identity\n- Professional programmer responsible for implementing approved development specs.\n### Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n### Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n- `.minds/team/coder/lessons.en.md`\n```markdown\n- Trace call chain and data flow before editing; avoid patching only symptoms.\n- After changing permissions/config, run corresponding validators and clear Problems.\n- For high-risk changes, start with a minimal reviewable plan before expansion.\n```\nAuthoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons` (zh template: `## 角色设定` / `## 知识` / `## 经验`).',
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a responsibility flashcard / scope / deliverables summary (≤ 5 lines). Use it for fast routing/reminders; put detailed specs in Markdown assets like `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nExample (`gofor`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Own release regression checklist and pass/fail gate\n      - Maintain runnable smoke tests and docs\n      - Flag high-risk changes and required manual checks\n```\nExample (`gofor`, object; rendered in YAML key order):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      Scope: release regression gate\n      Deliverables: checklist + runnable scripts\n      Non-goals: feature dev\n      Interfaces: coordinates with server/webui owners\n```',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
@@ -3387,6 +3387,7 @@ function renderMindsManual(language: LanguageCode): string {
         'persona.*.md：角色设定（稳定的工作方式与职责）。',
         'knowledge.*.md：领域知识（可维护）。',
         'lessons.*.md：经验教训（可维护）。',
+        '写法约束：`persona/knowledge/lessons` 文件里不要再写重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 知识` / `## 经验`（英文模板对应 `## Persona` / `## Knowledge` / `## Lessons`）。',
         '语言文件命名：优先按工作语言提供 `persona.zh.md` / `persona.en.md` 等；是否回退到 `persona.md`/其他语言版本，以当前实现为准。',
       ]) +
       fmtCodeBlock('text', [
@@ -3398,19 +3399,15 @@ function renderMindsManual(language: LanguageCode): string {
         '      lessons.zh.md',
       ]) +
       fmtCodeBlock('markdown', [
-        '# .minds/team/coder/persona.zh.md（示例）',
-        '# @coder 角色设定',
-        '## 核心身份',
+        '### 核心身份',
         '- 专业程序员，负责按规格完成代码开发。',
-        '## 工作边界',
+        '### 工作边界',
         '- 不负责需求分析或产品策略决策。',
         '- 只根据已确认的开发规格进行实现与重构。',
-        '## 交付标准',
+        '### 交付标准',
         '- 输出可运行代码，并附关键验证步骤。',
       ]) +
       fmtCodeBlock('markdown', [
-        '# .minds/team/coder/lessons.zh.md（示例）',
-        '# @coder 经验教训',
         '- 修改前先定位调用链与数据流，避免“只改表面”。',
         '- 涉及权限/配置时，改完立即运行对应校验工具并清空 Problems。',
         '- 涉及高风险改动时，先给最小可审查方案，再逐步扩展。',
@@ -3425,6 +3422,7 @@ function renderMindsManual(language: LanguageCode): string {
       'persona.*.md: persona and operating style.',
       'knowledge.*.md: domain knowledge (maintainable).',
       'lessons.*.md: lessons learned (maintainable).',
+      'Authoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Knowledge` / `## Lessons` (zh template: `## 角色设定` / `## 知识` / `## 经验`).',
       'Language variants: prefer working-language files like `persona.en.md` / `persona.zh.md`; whether it falls back to `persona.md` or other languages follows current implementation.',
     ]) +
     fmtCodeBlock('text', [
@@ -3436,19 +3434,15 @@ function renderMindsManual(language: LanguageCode): string {
       '      lessons.en.md',
     ]) +
     fmtCodeBlock('markdown', [
-      '# .minds/team/coder/persona.en.md (example)',
-      '# @coder Persona',
-      '## Core Identity',
+      '### Core Identity',
       '- Professional programmer responsible for implementing approved development specs.',
-      '## Work Boundaries',
+      '### Work Boundaries',
       '- Not responsible for requirement discovery or product strategy.',
       '- Implements/refactors only against confirmed specs.',
-      '## Delivery Standard',
+      '### Delivery Standard',
       '- Deliver runnable code plus key verification steps.',
     ]) +
     fmtCodeBlock('markdown', [
-      '# .minds/team/coder/lessons.en.md (example)',
-      '# @coder Lessons',
       '- Trace call chain and data flow before editing; avoid patching only symptoms.',
       '- After changing permissions/config, run corresponding validators and clear Problems.',
       '- For high-risk changes, start with a minimal reviewable plan before expansion.',
