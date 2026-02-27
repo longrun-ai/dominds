@@ -3837,6 +3837,9 @@ export class DomindsDialogContainer extends HTMLElement {
         overflow: hidden;
         white-space: pre-wrap;
         word-wrap: break-word;
+        overflow-wrap: anywhere;
+        box-sizing: border-box;
+        min-width: 0;
         display: block;
       }
 
