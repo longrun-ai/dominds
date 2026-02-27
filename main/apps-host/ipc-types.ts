@@ -35,11 +35,13 @@ export type AppsHostKernelRunControlApplyMessage = Readonly<{
       selfId: string;
       rootId: string;
     }>;
-    prompt: Readonly<{
+    genIterNo: number;
+    prompt?: Readonly<{
       content: string;
       msgId: string;
       grammar: 'markdown';
       userLanguageCode: LanguageCode;
+      origin?: 'user' | 'diligence_push';
     }>;
     source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
     input: Readonly<Record<string, unknown>>;
@@ -95,12 +97,6 @@ export type AppsHostRunControlResultMessage = Readonly<
         result:
           | Readonly<{
               kind: 'continue';
-              prompt?: Readonly<{
-                content?: string;
-                msgId?: string;
-                grammar?: 'markdown';
-                userLanguageCode?: LanguageCode;
-              }>;
             }>
           | Readonly<{ kind: 'reject'; errorText: string }>;
       }>
@@ -213,10 +209,17 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       throw new Error('Invalid run_control_apply message: payload must be object');
     const dialog = payload['dialog'];
     const prompt = payload['prompt'];
+    const genIterNoRaw = payload['genIterNo'];
     const source = asString(payload['source']);
     const input = payload['input'];
     if (!isRecord(dialog)) throw new Error('Invalid run_control_apply payload: dialog required');
-    if (!isRecord(prompt)) throw new Error('Invalid run_control_apply payload: prompt required');
+    const genIterNo =
+      typeof genIterNoRaw === 'number' && Number.isFinite(genIterNoRaw)
+        ? Math.max(0, Math.floor(genIterNoRaw))
+        : null;
+    if (genIterNo === null) {
+      throw new Error('Invalid run_control_apply payload: genIterNo required');
+    }
     if (source !== 'drive_dlg_by_user_msg' && source !== 'drive_dialog_by_user_answer') {
       throw new Error('Invalid run_control_apply payload: source invalid');
     }
@@ -229,18 +232,34 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       throw new Error('Invalid run_control_apply payload: dialog.selfId/rootId required');
     }
 
-    const content = asString(prompt['content']);
-    const msgId = asString(prompt['msgId']);
-    const grammar = asString(prompt['grammar']);
-    const userLanguageCode = asLanguageCode(prompt['userLanguageCode']);
-    if (!content) throw new Error('Invalid run_control_apply payload: prompt.content required');
-    if (!msgId) throw new Error('Invalid run_control_apply payload: prompt.msgId required');
-    if (grammar !== 'markdown') {
-      throw new Error("Invalid run_control_apply payload: prompt.grammar must be 'markdown'");
-    }
-    if (!userLanguageCode) {
-      throw new Error('Invalid run_control_apply payload: prompt.userLanguageCode must be zh|en');
-    }
+    const promptParsed = (() => {
+      if (prompt === undefined) return undefined;
+      if (!isRecord(prompt)) {
+        throw new Error('Invalid run_control_apply payload: prompt must be object');
+      }
+      const content = asString(prompt['content']);
+      const msgId = asString(prompt['msgId']);
+      const grammar = asString(prompt['grammar']);
+      const userLanguageCode = asLanguageCode(prompt['userLanguageCode']);
+      const originRaw = asString(prompt['origin']);
+      const origin: 'user' | 'diligence_push' | undefined =
+        originRaw === 'user' || originRaw === 'diligence_push' ? originRaw : undefined;
+      if (!content) throw new Error('Invalid run_control_apply payload: prompt.content required');
+      if (!msgId) throw new Error('Invalid run_control_apply payload: prompt.msgId required');
+      if (grammar !== 'markdown') {
+        throw new Error("Invalid run_control_apply payload: prompt.grammar must be 'markdown'");
+      }
+      if (!userLanguageCode) {
+        throw new Error('Invalid run_control_apply payload: prompt.userLanguageCode must be zh|en');
+      }
+      return {
+        content,
+        msgId,
+        grammar: 'markdown' as const,
+        userLanguageCode,
+        origin,
+      };
+    })();
 
     const q4hRaw = payload['q4h'];
     const q4h = (() => {
@@ -273,12 +292,8 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
           selfId: dialogSelfId,
           rootId: dialogRootId,
         },
-        prompt: {
-          content,
-          msgId,
-          grammar: 'markdown',
-          userLanguageCode,
-        },
+        genIterNo,
+        prompt: promptParsed,
         source,
         input: input as Readonly<Record<string, unknown>>,
         q4h,

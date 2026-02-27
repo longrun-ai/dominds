@@ -8,30 +8,11 @@ import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';
+import type { DriverV2DriveCallOptions, DriverV2SubdialogReplyTarget } from './types';
 
-export type SubdialogReplyTarget = {
-  ownerDialogId: string;
-  callType: 'A' | 'B' | 'C';
-  callId: string;
-};
+export type SubdialogReplyTarget = DriverV2SubdialogReplyTarget;
 
-export type ScheduleDriveFn = (
-  dialog: Dialog,
-  options: {
-    humanPrompt?: {
-      content: string;
-      msgId: string;
-      grammar: 'markdown';
-      userLanguageCode?: 'zh' | 'en';
-      q4hAnswerCallIds?: string[];
-      origin?: 'user' | 'diligence_push';
-      skipTaskdoc?: boolean;
-      subdialogReplyTarget?: SubdialogReplyTarget;
-    };
-    waitInQue: boolean;
-    driveOptions?: { suppressDiligencePush?: boolean };
-  },
-) => void;
+export type ScheduleDriveFn = (dialog: Dialog, options: DriverV2DriveCallOptions) => void;
 
 async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string): Promise<void> {
   try {
@@ -130,7 +111,7 @@ async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promis
       const other = await DialogPersistence.loadDialogMetadata(dialog.id, status);
       if (other) {
         log.warn(
-          'driver-v2 discarding stale dialog object due to persisted status mismatch',
+          'kernel-driver discarding stale dialog object due to persisted status mismatch',
           undefined,
           {
             where,
@@ -159,7 +140,7 @@ async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promis
         },
         'running',
       );
-      log.warn('driver-v2 auto-persisted missing root dialog metadata', undefined, {
+      log.warn('kernel-driver auto-persisted missing root dialog metadata', undefined, {
         where,
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
@@ -167,16 +148,20 @@ async function ensureDialogFreshOrDiscard(dialog: Dialog, where: string): Promis
       return true;
     }
   } catch (err) {
-    log.warn('driver-v2 failed to verify dialog freshness against persisted status', undefined, {
-      where,
-      rootId: dialog.id.rootId,
-      selfId: dialog.id.selfId,
-      status: dialog.status,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log.warn(
+      'kernel-driver failed to verify dialog freshness against persisted status',
+      undefined,
+      {
+        where,
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+        status: dialog.status,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
   }
 
-  log.warn('driver-v2 discarding stale dialog object due to status/path mismatch', undefined, {
+  log.warn('kernel-driver discarding stale dialog object due to status/path mismatch', undefined, {
     where,
     rootId: dialog.id.rootId,
     selfId: dialog.id.selfId,
@@ -231,7 +216,7 @@ async function resolveLatestAssignmentAnchorRef(args: {
   return undefined;
 }
 
-export async function supplyResponseToSupdialogV2(args: {
+export async function supplyResponseToSupdialog(args: {
   parentDialog: Dialog;
   subdialogId: DialogID;
   responseText: string;
@@ -418,7 +403,10 @@ export async function supplyResponseToSupdialogV2(args: {
       );
     }
 
-    await syncPendingTellaskReminderBestEffort(parentDialog, 'driver-v2:supplyResponseToSupdialog');
+    await syncPendingTellaskReminderBestEffort(
+      parentDialog,
+      'kernel-driver:supplyResponseToSupdialog',
+    );
 
     await parentDialog.receiveTeammateResponse(
       result.responderId,
@@ -437,8 +425,6 @@ export async function supplyResponseToSupdialogV2(args: {
       },
     );
 
-    // Keep in-memory dialog context in sync with live teammate-response events immediately.
-    // v2 context assembly now relies on dialog msgs + persisted teammate_response_record only.
     const immediateMirror: ChatMessage = {
       type: 'tellask_result_msg',
       role: 'tool',
@@ -471,14 +457,11 @@ export async function supplyResponseToSupdialogV2(args: {
 
       if (isRoot) {
         globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId, {
-          source: 'driver_v2_supply_response',
+          source: 'kernel_driver_supply_response',
           reason: `all_pending_subdialogs_resolved:type_${callType}`,
         });
       }
 
-      // Root dialogs should normally be resumed by backend loop drive-trigger.
-      // Direct schedule is kept only as fallback for non-root callers or when registry
-      // entry is not available yet (e.g., transient bootstrap windows).
       if (!isRoot || !hasRegistryEntry) {
         scheduleDrive(parentDialog, {
           waitInQue: true,
@@ -487,7 +470,7 @@ export async function supplyResponseToSupdialogV2(args: {
       }
     }
   } catch (error) {
-    log.error('driver-v2 failed to supply subdialog response', error, {
+    log.error('kernel-driver failed to supply subdialog response', error, {
       parentId: parentDialog.id.selfId,
       subdialogId: subdialogId.selfId,
     });
@@ -541,7 +524,7 @@ export async function supplySubdialogResponseToSpecificCallerIfPendingV2(args: {
     return false;
   }
 
-  await supplyResponseToSupdialogV2({
+  await supplyResponseToSupdialog({
     parentDialog: ownerDialog,
     subdialogId: subdialog.id,
     responseText,
@@ -594,7 +577,7 @@ export async function supplySubdialogResponseToAssignedCallerIfPendingV2(args: {
     return false;
   }
 
-  await supplyResponseToSupdialogV2({
+  await supplyResponseToSupdialog({
     parentDialog: callerDialog,
     subdialogId: subdialog.id,
     responseText,

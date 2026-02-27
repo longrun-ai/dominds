@@ -4,7 +4,7 @@ import {
   restoreDialogHierarchy as restoreDialogHierarchyV2,
   runBackendDriver as runBackendDriverV2,
   supplyResponseToSupdialog as supplyResponseToSupdialogV2,
-} from './driver-v2';
+} from './kernel-driver';
 
 export type DriverEngineVersion = 'v2';
 const ACTIVE_DRIVER_ENGINE: DriverEngineVersion = 'v2';

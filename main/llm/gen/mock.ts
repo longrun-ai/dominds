@@ -21,9 +21,12 @@
  *
  * === ROLE-BASED MATCHING (EXACT ONLY) ===
  *
- * The mock looks at the EXACT last message in context (no fallback):
+ * The mock looks at the last *input-like* message in context (no fallback):
  * - role='user' from prompting_msg → matches entries with role='user'
- * - role='tool' from func_result_msg → matches entries with role='tool'
+ * - role='tool' from func_result_msg / tellask_result_msg → matches entries with role='tool'
+ *
+ * Notes:
+ * - Context tails may include reminders / transient guides; these are ignored for matching.
  *
  * Matching rules (strict exact matching, NO fallback):
  * 1. Exact: "tool:error text" matches response with message="error text" AND role="tool"
@@ -176,6 +179,60 @@ export class MockGen implements LlmGenerator {
   }
 
   private databaseCache = new Map<string, CachedDatabase>();
+
+  private resolveInputForMatching(context: ReadonlyArray<ChatMessage>): {
+    content: string;
+    role: string;
+  } {
+    for (let i = context.length - 1; i >= 0; i--) {
+      const msg = context[i];
+      if (!msg) continue;
+      switch (msg.type) {
+        case 'prompting_msg':
+        case 'func_result_msg':
+        case 'tellask_result_msg':
+          return { content: msg.content, role: msg.role };
+        case 'environment_msg':
+        case 'transient_guide_msg':
+        case 'saying_msg':
+        case 'ui_only_markdown_msg':
+        case 'thinking_msg':
+        case 'func_call_msg':
+          break;
+        default: {
+          const _exhaustive: never = msg;
+          throw new Error(`Unsupported chat message while selecting mock input: ${_exhaustive}`);
+        }
+      }
+    }
+
+    const lastMsg = context[context.length - 1];
+    if (!lastMsg) {
+      return { content: '', role: '' };
+    }
+
+    const content = (() => {
+      switch (lastMsg.type) {
+        case 'environment_msg':
+        case 'transient_guide_msg':
+        case 'prompting_msg':
+        case 'saying_msg':
+        case 'ui_only_markdown_msg':
+        case 'thinking_msg':
+        case 'func_result_msg':
+        case 'tellask_result_msg':
+          return lastMsg.content;
+        case 'func_call_msg':
+          return '';
+        default: {
+          const _exhaustive: never = lastMsg;
+          throw new Error(`Unsupported chat message while selecting mock input: ${_exhaustive}`);
+        }
+      }
+    })();
+
+    return { content, role: lastMsg.role };
+  }
 
   private async loadResponseDatabase(dbPath: string, modelName: string): Promise<CachedDatabase> {
     const cacheKey = `${dbPath}:${modelName}`;
@@ -351,9 +408,7 @@ responses:
     }
 
     const modelName = agent.model;
-    const lastMsg = context[context.length - 1];
-    const content = lastMsg && 'content' in lastMsg ? (lastMsg as { content: string }).content : '';
-    const role = lastMsg?.role ?? '';
+    const { content, role } = this.resolveInputForMatching(context);
 
     if (abortSignal?.aborted) {
       throw new Error('AbortError');
@@ -472,9 +527,7 @@ responses:
     }
 
     const modelName = agent.model;
-    const lastMsg = context[context.length - 1];
-    const content = lastMsg && 'content' in lastMsg ? (lastMsg as { content: string }).content : '';
-    const role = lastMsg?.role ?? '';
+    const { content, role } = this.resolveInputForMatching(context);
 
     try {
       const db = await this.loadResponseDatabase(dbPath, modelName);

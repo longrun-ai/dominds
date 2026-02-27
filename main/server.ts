@@ -12,7 +12,7 @@ import * as path from 'path';
 import { WebSocket } from 'ws';
 import { initAppsRuntime } from './apps/runtime';
 import { reconcileRunStatesAfterRestart } from './dialog-run-state';
-import { runBackendDriver } from './llm/driver-entry';
+import { runBackendDriver } from './llm/kernel-driver';
 import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
 import { AuthConfig, computeAuthConfig } from './server/auth';

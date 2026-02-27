@@ -26,6 +26,7 @@ import type {
   TeammateResponseEvent,
   WebSearchCallAction,
 } from './shared/types/dialog';
+import type { DialogPrompt, DialogRunControlSpec, DriveIntent } from './shared/types/drive-intent';
 import type { LanguageCode } from './shared/types/language';
 import type {
   DialogMetadataFile,
@@ -39,6 +40,16 @@ import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
 import { Reminder, ReminderOwner } from './tool';
 import { generateDialogID } from './utils/id';
+
+type NewCourseHookResult =
+  | { kind: 'continue'; prompt: DialogPrompt }
+  | { kind: 'reject'; errorText: string };
+
+type NewCourseHook = (args: {
+  dialog: Dialog;
+  prompt: DialogPrompt;
+  runControl?: DialogRunControlSpec;
+}) => Promise<NewCourseHookResult>;
 
 export class DialogID {
   public readonly selfId: string;
@@ -190,7 +201,12 @@ export abstract class Dialog {
     grammar?: 'markdown';
     userLanguageCode?: LanguageCode;
     q4hAnswerCallIds?: string[];
+    runControl?: DialogRunControlSpec;
   };
+  protected _driveIntents: DriveIntent[] = [];
+  protected _activeRunControlSpec?: DialogRunControlSpec;
+  protected _newCourseHook?: NewCourseHook;
+  protected _driveIntentMode: 'legacy' | 'kernel' = 'legacy';
   // Course prefix messages injected into LLM context on every course.
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
   // like Agent Priming transcripts.
@@ -715,17 +731,36 @@ export abstract class Dialog {
     return this._updatedAt;
   }
 
-  private setUpNextPrompt(prompt: string): void {
-    const trimmed = prompt.trim();
+  private setUpNextPrompt(prompt: string | DialogPrompt): DialogPrompt {
+    const prepared: DialogPrompt =
+      typeof prompt === 'string'
+        ? {
+            content: prompt,
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            userLanguageCode: this._lastUserLanguageCode,
+          }
+        : prompt;
+    const trimmed = prepared.content.trim();
     if (!trimmed) {
       throw new Error('Prompt is required to start a new course');
     }
-    this._upNext = {
-      prompt: trimmed,
-      msgId: generateShortId(),
+    const normalized: DialogPrompt = {
+      ...prepared,
+      content: trimmed,
+      msgId: prepared.msgId.trim() || generateShortId(),
       grammar: 'markdown',
-      userLanguageCode: this._lastUserLanguageCode,
+      userLanguageCode: prepared.userLanguageCode ?? this._lastUserLanguageCode,
     };
+    this._upNext = {
+      prompt: normalized.content,
+      msgId: normalized.msgId,
+      grammar: normalized.grammar,
+      userLanguageCode: normalized.userLanguageCode,
+      q4hAnswerCallIds: normalized.q4hAnswerCallIds,
+      runControl: undefined,
+    };
+    return normalized;
   }
 
   public queueUpNextPrompt(options: {
@@ -734,6 +769,7 @@ export abstract class Dialog {
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
     q4hAnswerCallIds?: string[];
+    runControl?: DialogRunControlSpec;
   }): void {
     if (this._upNext !== undefined) {
       throw new Error(
@@ -750,7 +786,19 @@ export abstract class Dialog {
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
       q4hAnswerCallIds: options.q4hAnswerCallIds,
+      runControl: options.runControl,
     };
+    this._driveIntents.push({
+      kind: 'prompt',
+      prompt: {
+        content: trimmed,
+        msgId: options.msgId,
+        grammar: options.grammar,
+        userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+        q4hAnswerCallIds: options.q4hAnswerCallIds,
+      },
+      runControl: options.runControl,
+    });
     this._updatedAt = formatUnifiedTimestamp(new Date());
   }
 
@@ -765,6 +813,7 @@ export abstract class Dialog {
         grammar?: 'markdown';
         userLanguageCode?: LanguageCode;
         q4hAnswerCallIds?: string[];
+        runControl?: DialogRunControlSpec;
       }
     | undefined {
     const next = this._upNext;
@@ -772,36 +821,54 @@ export abstract class Dialog {
     return next;
   }
 
+  public setActiveRunControlSpec(spec?: DialogRunControlSpec): void {
+    this._activeRunControlSpec = spec;
+  }
+
+  public getActiveRunControlSpec(): DialogRunControlSpec | undefined {
+    return this._activeRunControlSpec;
+  }
+
+  public setNewCourseHook(hook?: NewCourseHook): void {
+    this._newCourseHook = hook;
+  }
+
+  public enqueueDriveIntent(intent: DriveIntent): void {
+    this._driveIntents.push(intent);
+    this._updatedAt = formatUnifiedTimestamp(new Date());
+  }
+
+  public takeDriveIntent(): DriveIntent | undefined {
+    return this._driveIntents.shift();
+  }
+
+  public hasDriveIntents(): boolean {
+    return this._driveIntents.length > 0;
+  }
+
+  public clearDriveIntents(): void {
+    this._driveIntents.length = 0;
+  }
+
   /**
    * Start a new course - clears conversational noise, Q4H, and increments course counter.
    * Queues a new-course prompt for the driver to consume on the next drive cycle.
    * This is the single entry point for mental clarity operations (clear_mind, change_mind).
    */
-  public async startNewCourse(newCoursePrompt: string): Promise<void> {
+  public async startNewCourse(
+    newCoursePrompt: string,
+    options?: {
+      runControl?: DialogRunControlSpec;
+      reason?: string;
+      skipRunControlHook?: boolean;
+      skipEnqueueIntent?: boolean;
+    },
+  ): Promise<void> {
     const trimmedPrompt = newCoursePrompt.trim();
     if (!trimmedPrompt) {
       throw new Error('newCoursePrompt is required to start a new course');
     }
 
-    // Clear all messages and Q4H questions for mental clarity
-    this.msgs.length = 0;
-
-    await this.dlgStore.clearQuestions4Human(this);
-
-    // Delegate to DialogStore for course start persistence
-    if (this.dlgStore) {
-      await this.dlgStore.startNewCourse(this, trimmedPrompt);
-    }
-
-    const storeCourse = this.dlgStore
-      ? await this.dlgStore.loadCurrentCourse(this.id)
-      : this._currentCourse + 1;
-    this._currentCourse = storeCourse;
-    this._updatedAt = formatUnifiedTimestamp(new Date());
-
-    // Principle: user should see what the model sees.
-    // For subdialogs, include the original supdialog assignment together with the new-course prompt
-    // as the first user message in the new course (persisted by the driver).
     const combinedPrompt =
       this instanceof SubDialog
         ? `${formatAssignmentFromSupdialog({
@@ -814,7 +881,54 @@ export abstract class Dialog {
             collectiveTargets: this.assignmentFromSup.collectiveTargets ?? [this.agentId],
           })}\n---\n${trimmedPrompt}`
         : trimmedPrompt;
-    this.setUpNextPrompt(combinedPrompt);
+
+    const basePrompt: DialogPrompt = {
+      content: combinedPrompt,
+      msgId: generateShortId(),
+      grammar: 'markdown',
+      userLanguageCode: this._lastUserLanguageCode,
+    };
+
+    const runControlSpec = options?.runControl ?? this._activeRunControlSpec;
+    let nextPrompt = basePrompt;
+    if (this._newCourseHook && options?.skipRunControlHook !== true) {
+      const hookResult = await this._newCourseHook({
+        dialog: this,
+        prompt: basePrompt,
+        runControl: runControlSpec,
+      });
+      if (hookResult.kind === 'reject') {
+        throw new Error(hookResult.errorText);
+      }
+      nextPrompt = hookResult.prompt;
+    }
+
+    // Clear all messages and Q4H questions for mental clarity
+    this.msgs.length = 0;
+
+    await this.dlgStore.clearQuestions4Human(this);
+
+    // Delegate to DialogStore for course start persistence
+    if (this.dlgStore) {
+      await this.dlgStore.startNewCourse(this, nextPrompt.content);
+    }
+
+    const storeCourse = this.dlgStore
+      ? await this.dlgStore.loadCurrentCourse(this.id)
+      : this._currentCourse + 1;
+    this._currentCourse = storeCourse;
+    this._updatedAt = formatUnifiedTimestamp(new Date());
+
+    const normalized = this.setUpNextPrompt(nextPrompt);
+    if (options?.skipEnqueueIntent !== true) {
+      this._driveIntents.length = 0;
+      this._driveIntents.push({
+        kind: 'new_course',
+        prompt: normalized,
+        reason: options?.reason,
+        runControl: runControlSpec,
+      });
+    }
   }
 
   // Proxy methods for DialogStore - route calls through dialog object instead of direct dlgStore access

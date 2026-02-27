@@ -121,7 +121,7 @@ export async function startAppsHost(params: {
 
   const child: ChildProcess = fork(entry.scriptAbs, [], {
     execArgv: entry.execArgv,
-    stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
   });
   if (!child.send) {
     throw new Error('Failed to start apps-host: child process has no IPC channel');

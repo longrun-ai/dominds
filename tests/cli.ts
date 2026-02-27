@@ -21,11 +21,11 @@ Notes:
   - -C is parsed for parity with dominds CLI, but only tests/script-rtws is accepted.
   - Set DOMINDS_TEST_RTWS_KEEP_TMP=1 to keep isolated temp rtws after run.
 
-Examples:
-  pnpm -C tests run rtws -- driver-v2/internal-drive-priming-not-persisted.ts
-  pnpm -C tests run rtws -- -C script-rtws driver-v2/subdialog-queue-commit-mirror.ts
-  pnpm -C tests run rtws -- --shared-rtws driver-v2/subdialog-queue-commit-mirror.ts
-`);
+	Examples:
+	  pnpm -C tests run rtws -- kernel-driver/context-assembly-order.ts
+	  pnpm -C tests run rtws -- -C script-rtws kernel-driver/subdialog-queue-commit-mirror.ts
+	  pnpm -C tests run rtws -- --shared-rtws kernel-driver/subdialog-queue-commit-mirror.ts
+	`);
 }
 
 type RtwsMode = 'isolated' | 'shared';

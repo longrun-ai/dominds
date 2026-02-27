@@ -6,11 +6,13 @@ export type DomindsAppRunControlContext = Readonly<{
     selfId: string;
     rootId: string;
   }>;
-  prompt: Readonly<{
+  genIterNo: number;
+  prompt?: Readonly<{
     content: string;
     msgId: string;
     grammar: 'markdown';
     userLanguageCode: LanguageCode;
+    origin?: 'user' | 'diligence_push';
   }>;
   source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
   input: Readonly<Record<string, unknown>>;
@@ -23,12 +25,6 @@ export type DomindsAppRunControlContext = Readonly<{
 export type DomindsAppRunControlResult = Readonly<
   | {
       kind: 'continue';
-      prompt?: Readonly<{
-        content?: string;
-        msgId?: string;
-        grammar?: 'markdown';
-        userLanguageCode?: LanguageCode;
-      }>;
     }
   | { kind: 'reject'; errorText: string }
 >;

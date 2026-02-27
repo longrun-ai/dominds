@@ -115,19 +115,6 @@ function isValidRunControlResult(result: unknown): result is DomindsAppRunContro
     return typeof result['errorText'] === 'string' && result['errorText'].trim() !== '';
   }
   if (result['kind'] !== 'continue') return false;
-  const prompt = result['prompt'];
-  if (prompt === undefined) return true;
-  if (!isRecord(prompt)) return false;
-  const content = prompt['content'];
-  if (content !== undefined && typeof content !== 'string') return false;
-  const msgId = prompt['msgId'];
-  if (msgId !== undefined && typeof msgId !== 'string') return false;
-  const grammar = prompt['grammar'];
-  if (grammar !== undefined && grammar !== 'markdown') return false;
-  const userLanguageCode = prompt['userLanguageCode'];
-  if (userLanguageCode !== undefined && userLanguageCode !== 'zh' && userLanguageCode !== 'en') {
-    return false;
-  }
   return true;
 }
 
