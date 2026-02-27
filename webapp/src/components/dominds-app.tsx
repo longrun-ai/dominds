@@ -778,6 +778,15 @@ export class DomindsApp extends HTMLElement {
     btn.click();
   }
 
+  private collapseBottomPanelQ4HTabIfExpanded(): void {
+    if (!this.bottomPanelExpanded || this.bottomPanelTab !== 'q4h') return;
+    const btn = this.shadowRoot?.querySelector(
+      'button.bp-tab[data-bp-tab="q4h"]',
+    ) as HTMLButtonElement | null;
+    if (!btn) return;
+    btn.click();
+  }
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -8890,6 +8899,7 @@ export class DomindsApp extends HTMLElement {
    * Removes a question from the global Q4H state
    */
   private handleQ4HAnswered(event: Q4HAnsweredEvent): void {
+    const wasVisibleQ4HCount = this.q4hQuestionCount;
     const removeIndex = this.q4hQuestions.findIndex((q) => q.id === event.questionId);
     if (removeIndex >= 0) {
       this.q4hQuestions.splice(removeIndex, 1);
@@ -8897,6 +8907,9 @@ export class DomindsApp extends HTMLElement {
 
     // Build dialog contexts and update component
     this.updateQ4HComponent();
+    if (removeIndex >= 0 && wasVisibleQ4HCount > 0 && this.q4hQuestionCount === 0) {
+      this.collapseBottomPanelQ4HTabIfExpanded();
+    }
   }
 
   /**
