@@ -117,7 +117,10 @@ export class DomindsSetup extends HTMLElement {
       }
 
       const data = resp.data;
-      this.backendRtws = data && typeof data.rtws === 'string' ? data.rtws : '';
+
+      const workspace = data && typeof data.workspace === 'string' ? data.workspace.trim() : '';
+      const rtws = data && typeof data.rtws === 'string' ? data.rtws.trim() : '';
+      this.backendRtws = workspace !== '' ? workspace : rtws;
 
       this.backendVersion = data && typeof data.version === 'string' ? data.version : '';
       this.render();

@@ -343,24 +343,61 @@ export interface TeammateCallAnchorRecord {
 
 // Teammate response record - separate bubble for @teammate tellasks
 // calleeDialogId: ID of the callee dialog (subdialog or supdialog being called)
-export interface TeammateResponseRecord {
-  ts: string;
-  type: 'teammate_response_record';
-  calling_genseq?: number;
-  responderId: string;
-  calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
-  calleeCourse?: number;
-  calleeGenseq?: number;
-  callName: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
-  mentionList?: string[];
-  tellaskContent: string;
-  status: 'completed' | 'failed';
-  response: string; // raw full response text for UI-only formatting
-  agentId: string;
-  callId: string; // For navigation from response back to call site
-  originMemberId: string;
-  sourceTag?: 'priming_script';
-}
+export type TeammateResponseRecord =
+  | {
+      ts: string;
+      type: 'teammate_response_record';
+      calling_genseq?: number;
+      responderId: string;
+      calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+      calleeCourse?: number;
+      calleeGenseq?: number;
+      callName: 'tellask';
+      sessionSlug: string;
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string; // canonical teammate transfer payload (shared by target-agent context and UI)
+      agentId: string;
+      callId: string; // For navigation from response back to call site
+      originMemberId: string;
+      sourceTag?: 'priming_script';
+    }
+  | {
+      ts: string;
+      type: 'teammate_response_record';
+      calling_genseq?: number;
+      responderId: string;
+      calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+      calleeCourse?: number;
+      calleeGenseq?: number;
+      callName: 'tellaskSessionless';
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string; // canonical teammate transfer payload (shared by target-agent context and UI)
+      agentId: string;
+      callId: string; // For navigation from response back to call site
+      originMemberId: string;
+      sourceTag?: 'priming_script';
+    }
+  | {
+      ts: string;
+      type: 'teammate_response_record';
+      calling_genseq?: number;
+      responderId: string;
+      calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+      calleeCourse?: number;
+      calleeGenseq?: number;
+      callName: 'tellaskBack' | 'freshBootsReasoning';
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string; // canonical teammate transfer payload (shared by target-agent context and UI)
+      agentId: string;
+      callId: string; // For navigation from response back to call site
+      originMemberId: string;
+      sourceTag?: 'priming_script';
+    };
 
 export interface GenStartRecord {
   ts: string;

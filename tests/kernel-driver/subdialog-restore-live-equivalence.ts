@@ -4,7 +4,10 @@ import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { driveDialogStream, restoreDialogHierarchy } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
-import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
+import {
+  formatAssignmentFromSupdialog,
+  formatTeammateResponseContent,
+} from '../../main/shared/utils/inter-dialog-format';
 
 import {
   createRootDialog,
@@ -37,6 +40,16 @@ async function main(): Promise<void> {
       collectiveTargets: ['pangu'],
     });
     const subdialogResponseText = '2';
+    const mirroredSubdialogResponse = formatTeammateResponseContent({
+      callName: 'tellaskSessionless',
+      responderId: 'pangu',
+      requesterId: 'tester',
+      mentionList,
+      tellaskContent: tellaskBody,
+      responseBody: subdialogResponseText,
+      status: 'completed',
+      language,
+    });
     const resumeResponse = 'Ack: restore/live comparison ready.';
 
     await writeMockDb(tmpRoot, [
@@ -56,7 +69,7 @@ async function main(): Promise<void> {
         ],
       },
       { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
-      { message: subdialogResponseText, role: 'tool', response: resumeResponse },
+      { message: mirroredSubdialogResponse, role: 'tool', response: resumeResponse },
     ]);
 
     const dlg = await createRootDialog('tester');
@@ -76,8 +89,8 @@ async function main(): Promise<void> {
 
     const liveContents = listTellaskResultContents(dlg.msgs);
     assert.ok(
-      liveContents.includes(subdialogResponseText),
-      'live dialog should contain mirrored tellask_result_msg content with raw response text',
+      liveContents.includes(mirroredSubdialogResponse),
+      'live dialog should contain mirrored tellask_result_msg content with canonical transfer payload',
     );
 
     await DialogPersistence.moveDialogStatus(dlg.id, 'running', 'completed');
@@ -86,8 +99,8 @@ async function main(): Promise<void> {
     const restored = await restoreDialogHierarchy(dlg.id.rootId, 'completed');
     const restoredContents = listTellaskResultContents(restored.rootDialog.msgs);
     assert.ok(
-      restoredContents.includes(subdialogResponseText),
-      'restored dialog should contain teammate-response tellask_result_msg content with raw response text',
+      restoredContents.includes(mirroredSubdialogResponse),
+      'restored dialog should contain teammate-response tellask_result_msg content with canonical transfer payload',
     );
 
     const uniqSorted = (items: string[]): string[] => Array.from(new Set(items)).sort();

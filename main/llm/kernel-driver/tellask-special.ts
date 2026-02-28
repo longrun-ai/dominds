@@ -20,6 +20,7 @@ import { generateShortId } from '../../shared/utils/id';
 import {
   formatAssignmentFromSupdialog,
   formatSupdialogCallPrompt,
+  formatTeammateResponseContent,
 } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { Team } from '../../team';
@@ -947,7 +948,16 @@ async function executeTellaskCall(
           await callbacks.driveDialog(supdialog, { humanPrompt: supPrompt, waitInQue: true });
 
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
-          const responseContent = responseText;
+          const responseContent = formatTeammateResponseContent({
+            callName,
+            responderId: parseResult.agentId,
+            requesterId: dlg.agentId,
+            mentionList,
+            tellaskContent: body,
+            responseBody: responseText,
+            status: 'completed',
+            language: getWorkLanguage(),
+          });
 
           dlg.setSuspensionState('resumed');
 
@@ -969,7 +979,7 @@ async function executeTellaskCall(
             'completed',
             supdialog.id,
             {
-              response: responseText,
+              response: responseContent,
               agentId: parseResult.agentId,
               callId,
               originMemberId: dlg.agentId,
@@ -979,6 +989,16 @@ async function executeTellaskCall(
           log.warn('Type A supdialog processing error:', err);
           dlg.setSuspensionState('resumed');
           const errorText = `❌ **Error processing request to @${parseResult.agentId}:**\n\n${showErrorToAi(err)}`;
+          const errorContent = formatTeammateResponseContent({
+            callName,
+            responderId: parseResult.agentId,
+            requesterId: dlg.agentId,
+            mentionList,
+            tellaskContent: body,
+            responseBody: errorText,
+            status: 'failed',
+            language: getWorkLanguage(),
+          });
           toolOutputs.push({
             type: 'tellask_result_msg',
             role: 'tool',
@@ -987,7 +1007,7 @@ async function executeTellaskCall(
             tellaskContent: body,
             status: 'failed',
             callId,
-            content: errorText,
+            content: errorContent,
           });
           await dlg.receiveTeammateResponse(
             parseResult.agentId,
@@ -997,7 +1017,7 @@ async function executeTellaskCall(
             'failed',
             supdialog.id,
             {
-              response: errorText,
+              response: errorContent,
               agentId: parseResult.agentId,
               callId,
               originMemberId: dlg.agentId,

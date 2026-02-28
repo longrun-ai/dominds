@@ -3,7 +3,9 @@ import { globalDialogRegistry } from '../../dialog-global-registry';
 import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
+import { getWorkLanguage } from '../../shared/runtime-language';
 import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
+import { formatTeammateResponseContent } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
@@ -274,6 +276,7 @@ export async function supplyResponseToSupdialog(args: {
       let mentionList: string[] | undefined;
       let tellaskContent = responseText;
       let originMemberId: string | undefined;
+      let sessionSlug: string | undefined;
 
       try {
         const metadata = await DialogPersistence.loadDialogMetadata(
@@ -312,6 +315,7 @@ export async function supplyResponseToSupdialog(args: {
         responderAgentId = pendingRecord.targetAgentId;
         mentionList = pendingRecord.mentionList;
         tellaskContent = pendingRecord.tellaskContent;
+        sessionSlug = pendingRecord.sessionSlug;
       }
 
       if (
@@ -339,6 +343,7 @@ export async function supplyResponseToSupdialog(args: {
         mentionList,
         tellaskContent,
         originMemberId,
+        sessionSlug,
         callId: pendingRecord?.callId,
         callingCourse:
           pendingRecord &&
@@ -366,9 +371,21 @@ export async function supplyResponseToSupdialog(args: {
       callType === 'C' &&
       result.callName === 'freshBootsReasoning' &&
       resolvedSubdialog !== undefined;
-    const upstreamResponseText = shouldReportFbrUpstream
+    const upstreamResponseBody = shouldReportFbrUpstream
       ? buildFbrRelayPayload(resolvedSubdialog, responseText)
       : responseText;
+    const requesterId = result.originMemberId ?? parentDialog.agentId;
+    const upstreamResponseText = formatTeammateResponseContent({
+      callName: result.callName,
+      responderId: result.responderId,
+      requesterId,
+      mentionList: result.mentionList,
+      sessionSlug: result.sessionSlug,
+      tellaskContent: result.tellaskContent,
+      responseBody: upstreamResponseBody,
+      status,
+      language: getWorkLanguage(),
+    });
     if (resolvedCallId !== '' && calleeResponseRef) {
       const assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: subdialogId,
@@ -419,7 +436,8 @@ export async function supplyResponseToSupdialog(args: {
         response: upstreamResponseText,
         agentId: result.responderAgentId ?? result.responderId,
         callId: resolvedCallId,
-        originMemberId: result.originMemberId ?? parentDialog.agentId,
+        originMemberId: requesterId,
+        sessionSlug: result.sessionSlug,
         calleeCourse: calleeResponseRef?.course,
         calleeGenseq: calleeResponseRef?.genseq,
       },

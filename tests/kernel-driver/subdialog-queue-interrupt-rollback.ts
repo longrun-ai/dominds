@@ -62,9 +62,20 @@ async function main(): Promise<void> {
       mentionList: panguMentionList,
       tellaskContent: panguTellaskBody,
       responseBody: coderReply,
+      status: 'completed',
       language,
     });
     const panguFinalResponse = 'Verified. Final answer remains 2.';
+    const expectedPanguInjected = formatTeammateResponseContent({
+      callName: 'tellaskSessionless',
+      responderId: 'pangu',
+      requesterId: 'tester',
+      mentionList: rootMentionList,
+      tellaskContent: rootTellaskBody,
+      responseBody: panguFinalResponse,
+      status: 'completed',
+      language,
+    });
 
     const rootFinalResponse = 'Ack: received final verified result from subdialog.';
 
@@ -103,7 +114,7 @@ async function main(): Promise<void> {
       { message: coderReply, role: 'tool', response: panguFinalResponse },
       { message: expectedCoderInjected, role: 'tool', response: panguFinalResponse },
       { message: expectedCoderInjected, role: 'user', response: panguFinalResponse },
-      { message: panguFinalResponse, role: 'tool', response: rootFinalResponse },
+      { message: expectedPanguInjected, role: 'tool', response: rootFinalResponse },
     ]);
 
     const dlg = await createRootDialog('tester');
@@ -143,7 +154,7 @@ async function main(): Promise<void> {
             msg.role === 'tool' &&
             msg.responderId === 'pangu' &&
             msg.tellaskContent === rootTellaskBody &&
-            msg.content === panguFinalResponse,
+            msg.content === expectedPanguInjected,
         );
         if (finalMirrorIndex < 0) return false;
         for (let i = finalMirrorIndex + 1; i < dlg.msgs.length; i += 1) {
@@ -166,7 +177,7 @@ async function main(): Promise<void> {
         msg.role === 'tool' &&
         msg.responderId === 'pangu' &&
         msg.tellaskContent === rootTellaskBody &&
-        msg.content === panguFinalResponse,
+        msg.content === expectedPanguInjected,
     );
     const sayingIndex = dlg.msgs.findIndex(
       (msg: ChatMessage, index: number) =>

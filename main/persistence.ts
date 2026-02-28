@@ -745,6 +745,7 @@ export class DiskFileDialogStore extends DialogStore {
       agentId: string;
       callId: string;
       originMemberId: string;
+      sessionSlug?: string;
       calleeCourse?: number;
       calleeGenseq?: number;
     },
@@ -756,12 +757,40 @@ export class DiskFileDialogStore extends DialogStore {
     const agentId = options.agentId;
     const callId = options.callId;
     const originMemberId = options.originMemberId;
+    const sessionSlug =
+      typeof options.sessionSlug === 'string' && options.sessionSlug.trim() !== ''
+        ? options.sessionSlug.trim()
+        : undefined;
     const calleeCourse = options.calleeCourse;
     const calleeGenseq = options.calleeGenseq;
     const normalizedMentionList = mentionList ?? [];
     const ev: TeammateResponseRecord = (() => {
       switch (callName) {
         case 'tellask':
+          if (!sessionSlug) {
+            throw new Error(
+              `receiveTeammateResponse invariant violation: missing sessionSlug for tellask ` +
+                `(dialogId=${dialog.id.selfId}, callId=${callId})`,
+            );
+          }
+          return {
+            ts: formatUnifiedTimestamp(new Date()),
+            type: 'teammate_response_record',
+            responderId,
+            callName,
+            sessionSlug,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+            mentionList: normalizedMentionList,
+            tellaskContent,
+            status,
+            calling_genseq,
+            response,
+            agentId,
+            callId,
+            originMemberId,
+          };
         case 'tellaskSessionless':
           return {
             ts: formatUnifiedTimestamp(new Date()),
@@ -805,6 +834,30 @@ export class DiskFileDialogStore extends DialogStore {
     const teammateResponseEvt: TeammateResponseEvent = (() => {
       switch (callName) {
         case 'tellask':
+          if (!sessionSlug) {
+            throw new Error(
+              `receiveTeammateResponse invariant violation: missing sessionSlug for tellask ` +
+                `(dialogId=${dialog.id.selfId}, callId=${callId})`,
+            );
+          }
+          return {
+            type: 'teammate_response_evt',
+            responderId,
+            callName,
+            sessionSlug,
+            calleeDialogId: calleeDialogSelfId,
+            calleeCourse,
+            calleeGenseq,
+            mentionList: normalizedMentionList,
+            tellaskContent,
+            status,
+            course,
+            calling_genseq,
+            response,
+            agentId,
+            callId,
+            originMemberId,
+          };
         case 'tellaskSessionless':
           return {
             type: 'teammate_response_evt',
@@ -2255,7 +2308,41 @@ export class DiskFileDialogStore extends DialogStore {
         })();
         const teammateResponseEvent = (() => {
           switch (event.callName) {
-            case 'tellask':
+            case 'tellask': {
+              const sessionSlug =
+                typeof event.sessionSlug === 'string' && event.sessionSlug.trim() !== ''
+                  ? event.sessionSlug.trim()
+                  : undefined;
+              if (!sessionSlug) {
+                throw new Error(
+                  `Replay teammate_response_record invariant violation: missing sessionSlug for tellask ` +
+                    `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, course=${course}, callId=${event.callId})`,
+                );
+              }
+              return {
+                type: 'teammate_response_evt',
+                responderId: event.responderId,
+                callName: event.callName,
+                sessionSlug,
+                calleeDialogId: event.calleeDialogId,
+                calleeCourse: event.calleeCourse,
+                calleeGenseq: event.calleeGenseq,
+                mentionList,
+                tellaskContent: event.tellaskContent,
+                status: event.status,
+                response: event.response,
+                agentId: event.agentId,
+                callId: event.callId,
+                originMemberId: event.originMemberId,
+                course,
+                calling_genseq: event.calling_genseq,
+                dialog: {
+                  selfId: dialog.id.selfId,
+                  rootId: dialog.id.rootId,
+                },
+                timestamp: event.ts,
+              };
+            }
             case 'tellaskSessionless':
               return {
                 type: 'teammate_response_evt',

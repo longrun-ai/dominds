@@ -6,6 +6,7 @@ import type {
   SnippetTemplateGroup as SnippetGroup,
   SnippetTemplate as SnippetItem,
 } from '../shared/types/snippets';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 type LoadState =
   | { kind: 'idle' }
@@ -291,11 +292,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
         </span>`
       : '';
     const addBtn = `<button type="button" class="group-add" id="add-group" title="Add group" aria-label="Add group">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="16"></line>
-          <line x1="8" y1="12" x2="16" y2="12"></line>
-        </svg>
+        <span class="icon-mask snippets-icon-add-group" aria-hidden="true"></span>
       </button>`;
     return `<div class="groups"><div class="groups-title">${this.escapeHtml(
       t.snippetsTabTitle,
@@ -363,19 +360,12 @@ export class DomindsSnippetsPanel extends HTMLElement {
 	                <div class="actions-left">
 	                  <span class="section-title section-title-inline">${this.escapeHtml(editorTitle)}</span>
 	                  <button type="button" class="btn btn-icon" id="save" title="${this.escapeHtml(t.snippetsSave)}" aria-label="${this.escapeHtml(t.snippetsSave)}">
-	                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-	                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-	                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
-	                      <polyline points="7 3 7 8 15 8"></polyline>
-	                    </svg>
+	                    <span class="icon-mask snippets-icon-save" aria-hidden="true"></span>
 	                  </button>
 	                </div>
 	                <div class="actions-right">
 	                  <button type="button" class="btn btn-icon" id="insert" title="${this.escapeHtml(t.snippetsInsert)}" aria-label="${this.escapeHtml(t.snippetsInsert)}">
-	                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-	                      <line x1="12" y1="4" x2="12" y2="14"></line>
-	                      <polyline points="6.5 12.5 12 18 17.5 12.5"></polyline>
-	                    </svg>
+	                    <span class="icon-mask snippets-icon-insert" aria-hidden="true"></span>
 	                  </button>
 	                </div>
 	              </div>
@@ -539,6 +529,7 @@ export class DomindsSnippetsPanel extends HTMLElement {
 
   private getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host{display:flex;flex-direction:column;min-height:0;width:100%;height:100%;}
       .wrap{display:flex;flex-direction:column;flex:1;min-height:0;height:100%;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;padding:0;background:var(--dominds-bg,#fff);}
       .groups{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;padding:2px 8px;border:none;border-bottom:1px solid var(--color-border-primary,#e2e8f0);border-radius:0;background:var(--color-bg-secondary,#f8fafc);}
@@ -585,7 +576,11 @@ export class DomindsSnippetsPanel extends HTMLElement {
       .actions-left,.actions-right{display:flex;align-items:center;gap:6px;}
       .btn{appearance:none;border:1px solid var(--color-border-primary,#e2e8f0);background:var(--dominds-bg,#fff);color:var(--color-fg-secondary,#475569);border-radius:999px;padding:2px 8px;font-size: var(--dominds-font-size-sm, 12px);cursor:pointer;}
       .btn.btn-icon{width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;}
-      .btn.btn-icon svg{display:block;}
+      .group-add .icon-mask{width:16px;height:16px;}
+      .btn.btn-icon .icon-mask{width:14px;height:14px;}
+      .snippets-icon-add-group{--icon-mask:${ICON_MASK_URLS.plusCircle};}
+      .snippets-icon-save{--icon-mask:${ICON_MASK_URLS.save};}
+      .snippets-icon-insert{--icon-mask:${ICON_MASK_URLS.insertDown};}
       .btn.disabled{opacity:0.45;cursor:not-allowed;box-shadow:none !important;border-color:var(--color-border-primary,#e2e8f0);color:var(--color-fg-tertiary,#64748b);}
       .btn.soft{border-color:color-mix(in srgb, var(--dominds-primary,#007acc) 22%, var(--color-border-primary,#e2e8f0));color:color-mix(in srgb, var(--dominds-primary,#007acc) 55%, var(--color-fg-secondary,#475569));background:color-mix(in srgb, var(--dominds-primary,#007acc) 6%, var(--dominds-bg,#fff));box-shadow:none;}
       .btn.preferred{border-color:var(--dominds-primary,#007acc);color:var(--dominds-primary,#007acc);box-shadow:0 0 0 2px color-mix(in srgb, var(--dominds-primary,#007acc) 15%, transparent);}

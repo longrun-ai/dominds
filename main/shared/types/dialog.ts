@@ -269,7 +269,25 @@ export type TeammateResponseEvent =
       calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
       calleeCourse?: number;
       calleeGenseq?: number;
-      callName: 'tellask' | 'tellaskSessionless';
+      callName: 'tellask';
+      sessionSlug: string;
+      mentionList: string[];
+      tellaskContent: string;
+      status: 'completed' | 'failed';
+      response: string; // raw full response text for UI-only formatting
+      agentId: string;
+      callId: string; // For navigation from response back to call site
+      originMemberId: string;
+    }
+  | {
+      type: 'teammate_response_evt';
+      course: number;
+      calling_genseq?: number;
+      responderId: string;
+      calleeDialogId?: string; // ID of the callee dialog (subdialog OR supdialog)
+      calleeCourse?: number;
+      calleeGenseq?: number;
+      callName: 'tellaskSessionless';
       mentionList: string[];
       tellaskContent: string;
       status: 'completed' | 'failed';

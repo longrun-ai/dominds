@@ -4,7 +4,10 @@ import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
-import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
+import {
+  formatAssignmentFromSupdialog,
+  formatTeammateResponseContent,
+} from '../../main/shared/utils/inter-dialog-format';
 
 import {
   createRootDialog,
@@ -52,6 +55,16 @@ async function main(): Promise<void> {
       collectiveTargets: ['pangu'],
     });
     const subdialogResponseText = '2';
+    const mirroredSubdialogResponse = formatTeammateResponseContent({
+      callName: 'tellaskSessionless',
+      responderId: 'pangu',
+      requesterId: 'tester',
+      mentionList,
+      tellaskContent: tellaskBody,
+      responseBody: subdialogResponseText,
+      status: 'completed',
+      language,
+    });
     const resumeResponse = 'Ack: subdialog response was visible before follow-up generation.';
 
     await writeMockDb(tmpRoot, [
@@ -71,7 +84,7 @@ async function main(): Promise<void> {
         ],
       },
       { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
-      { message: subdialogResponseText, role: 'tool', response: resumeResponse },
+      { message: mirroredSubdialogResponse, role: 'tool', response: resumeResponse },
     ]);
 
     const dlg = await createRootDialog('tester');
@@ -103,7 +116,7 @@ async function main(): Promise<void> {
         msg.role === 'tool' &&
         msg.responderId === 'pangu' &&
         msg.tellaskContent === tellaskBody &&
-        msg.content === subdialogResponseText,
+        msg.content === mirroredSubdialogResponse,
     );
     assert.ok(mirrorIndex >= 0, 'expected mirrored teammate-response bubble before generation');
 

@@ -1092,6 +1092,7 @@ export abstract class Dialog {
       agentId: string;
       callId: string;
       originMemberId: string;
+      sessionSlug?: string;
       calleeCourse?: number;
       calleeGenseq?: number;
     },
@@ -1172,6 +1173,7 @@ export abstract class Dialog {
       let tellaskContent = response;
       let originMemberId = responderId;
       let callId = '';
+      let sessionSlug: string | undefined;
       try {
         const metadata = await this.dlgStore.loadDialogMetadata(subdialogId, 'running');
         if (metadata) {
@@ -1186,6 +1188,9 @@ export abstract class Dialog {
             tellaskContent = metadata.assignmentFromSup.tellaskContent;
             originMemberId = metadata.assignmentFromSup.originMemberId;
             callId = metadata.assignmentFromSup.callId;
+          }
+          if (typeof metadata.sessionSlug === 'string' && metadata.sessionSlug.trim() !== '') {
+            sessionSlug = metadata.sessionSlug.trim();
           }
         }
       } catch (err) {
@@ -1219,6 +1224,27 @@ export abstract class Dialog {
       const evt: TeammateResponseEvent = (() => {
         switch (callName) {
           case 'tellask':
+            if (!sessionSlug) {
+              throw new Error(
+                `postSubdialogResponse invariant violation: missing sessionSlug for tellask ` +
+                  `(dialogId=${this.id.selfId}, subdialogId=${subdialogId.selfId}, callId=${callId})`,
+              );
+            }
+            return {
+              type: 'teammate_response_evt',
+              responderId,
+              calleeDialogId: subdialogId.selfId,
+              callName,
+              sessionSlug,
+              mentionList: mentionList ?? [],
+              tellaskContent,
+              status: 'completed',
+              course: this.currentCourse,
+              response: rawResponse,
+              agentId: responderAgentId ?? responderId,
+              callId,
+              originMemberId,
+            };
           case 'tellaskSessionless':
             return {
               type: 'teammate_response_evt',
@@ -1609,6 +1635,7 @@ export abstract class DialogStore {
       agentId: string;
       callId: string;
       originMemberId: string;
+      sessionSlug?: string;
       calleeCourse?: number;
       calleeGenseq?: number;
     },

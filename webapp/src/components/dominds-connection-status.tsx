@@ -7,6 +7,7 @@ import type { ConnectionStatus } from '@/services/store';
 import { getUiStrings } from '../i18n/ui';
 import { getWebSocketManager } from '../services/websocket.js';
 import { normalizeLanguageCode, type LanguageCode } from '../shared/types/language';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export class DomindsConnectionStatus extends HTMLElement {
   private static readonly INITIAL_DISCONNECTED_GRACE_MS = 1200;
@@ -87,6 +88,7 @@ export class DomindsConnectionStatus extends HTMLElement {
 
   public getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host {
         display: inline-flex;
         align-items: center;
@@ -191,16 +193,25 @@ export class DomindsConnectionStatus extends HTMLElement {
 
       .reconnect-btn {
         margin-left: 5px;
-        padding: 1px 4px;
+        width: 16px;
+        height: 16px;
+        padding: 0;
         border: 1px solid currentColor;
         border-radius: 8px;
         background: transparent;
         color: inherit;
         cursor: pointer;
-        font-size: 5px;
-        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         transition: all 0.2s ease;
         opacity: 0.7;
+      }
+
+      .reconnect-btn .icon-mask {
+        width: 10px;
+        height: 10px;
+        --icon-mask: ${ICON_MASK_URLS.refresh};
       }
 
       .reconnect-btn:hover {
@@ -260,8 +271,8 @@ export class DomindsConnectionStatus extends HTMLElement {
         <div class="status-indicator" id="status-indicator"></div>
         <div class="status-text" id="status-text"></div>
         <div class="status-details" id="status-details"></div>
-        <button class="reconnect-btn" id="reconnect-btn" title="Reconnect to server">
-          🔄
+        <button class="reconnect-btn" id="reconnect-btn" title="Reconnect to server" aria-label="Reconnect to server">
+          <span class="icon-mask" aria-hidden="true"></span>
         </button>
         <div class="error-tooltip" id="error-tooltip"></div>
       </div>
@@ -308,6 +319,7 @@ export class DomindsConnectionStatus extends HTMLElement {
     if (this.reconnectButton) {
       const t = getUiStrings(this.uiLanguage);
       this.reconnectButton.title = t.connectionReconnectToServerTitle;
+      this.reconnectButton.setAttribute('aria-label', t.connectionReconnectToServerTitle);
       this.reconnectButton.style.display =
         status === 'error' || status === 'disconnected' ? 'inline-flex' : 'none';
       this.reconnectButton.disabled = status === 'connecting' || status === 'reconnecting';

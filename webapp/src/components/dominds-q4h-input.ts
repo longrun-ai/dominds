@@ -13,6 +13,7 @@ import type { Q4HDialogContext } from '../shared/types/q4h.js';
 import type { DialogRunState } from '../shared/types/run-state.js';
 import type { DialogIdent } from '../shared/types/wire.js';
 import { generateShortId } from '../shared/utils/id.js';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export interface Q4HQuestion {
   id: string;
@@ -46,6 +47,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private isComposing = false;
   private inputUiRafId: number | null = null;
   private escPrimedAtMs: number | null = null;
+  private lastQ4HRefreshRequestedAtMs: number | null = null;
   private props: Q4HInputProps = {
     disabled: false,
     placeholder: 'Type your answer...',
@@ -290,20 +292,10 @@ export class DomindsQ4HInput extends HTMLElement {
     this.primaryActionMode = nextMode;
     this.sendButton.classList.toggle('stop', nextMode !== 'send');
     if (nextMode === 'send') {
-      this.sendButton.innerHTML = `
-        <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
-          <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
-          <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
-        </svg>
-      `;
+      this.sendButton.innerHTML = '<span class="send-icon icon-mask" aria-hidden="true"></span>';
       return;
     }
-    this.sendButton.innerHTML = `
-      <svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-      </svg>
-    `;
+    this.sendButton.innerHTML = '<span class="stop-icon icon-mask" aria-hidden="true"></span>';
   }
 
   private restoreInputHistory(): void {
@@ -828,6 +820,7 @@ export class DomindsQ4HInput extends HTMLElement {
           continuationType: 'answer',
           userLanguageCode: this.uiLanguage,
         });
+        this.scheduleQ4HStateRefresh();
       } else {
         this.wsManager.sendRaw({
           type: 'drive_dlg_by_user_msg',
@@ -883,6 +876,23 @@ export class DomindsQ4HInput extends HTMLElement {
       const errorMessage = error instanceof Error ? error.message : t.q4hSendFailedToast;
       this.showError(errorMessage);
       throw error;
+    }
+  }
+
+  private scheduleQ4HStateRefresh(): void {
+    const now = Date.now();
+    const last = this.lastQ4HRefreshRequestedAtMs;
+    if (typeof last === 'number' && now - last < 200) return;
+    this.lastQ4HRefreshRequestedAtMs = now;
+
+    // Q4H answered is primarily driven by real-time `q4h_answered` events.
+    // This snapshot refresh is a recovery path for rare race/miss windows,
+    // ensuring the pending count converges to persisted state without manual reload.
+    const delaysMs = [250, 900];
+    for (const delay of delaysMs) {
+      setTimeout(() => {
+        this.wsManager.sendRaw({ type: 'get_q4h_state' });
+      }, delay);
     }
   }
 
@@ -989,14 +999,8 @@ export class DomindsQ4HInput extends HTMLElement {
               <button class="${primaryClass}" type="button" disabled title="${primaryTitle}" aria-label="${primaryTitle}">
                 ${
                   mode === 'send'
-                    ? `<svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M12 2 L2 22" fill="none" stroke="currentColor" stroke-width="2"/>
-                        <path d="M12 2 L22 22" fill="none" stroke="currentColor" stroke-width="2"/>
-                        <line x1="12" y1="2" x2="12" y2="16.8" stroke="currentColor" stroke-width="2"/>
-                      </svg>`
-                    : `<svg class="stop-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      </svg>`
+                    ? '<span class="send-icon icon-mask" aria-hidden="true"></span>'
+                    : '<span class="stop-icon icon-mask" aria-hidden="true"></span>'
                 }
               </button>
               <button
@@ -1015,6 +1019,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host {
         display: flex;
         flex-direction: column;
@@ -1250,11 +1255,13 @@ export class DomindsQ4HInput extends HTMLElement {
       .send-icon {
         width: 11px;
         height: 11px;
+        --icon-mask: ${ICON_MASK_URLS.send};
       }
 
       .stop-icon {
         width: 11px;
         height: 11px;
+        --icon-mask: ${ICON_MASK_URLS.stop};
       }
 
     `;

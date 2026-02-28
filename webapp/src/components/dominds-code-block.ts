@@ -1,4 +1,5 @@
 import hljs from 'highlight.js';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 /**
  * Custom Web Component for Syntax Highlighted Code Blocks
@@ -62,6 +63,7 @@ export class DomindsCodeBlock extends HTMLElement {
 
       this.innerHTML = `
         <style>
+          ${ICON_MASK_BASE_CSS}
           dominds-code-block {
             margin: 0.75em 0;
             border-radius: 6px;
@@ -92,9 +94,18 @@ export class DomindsCodeBlock extends HTMLElement {
             border-radius: 4px;
             color: var(--dominds-fg, var(--color-fg-primary, #3b3b3b));
             cursor: pointer;
-            padding: 1px 3px;
-            font-size: var(--dominds-font-size-xs, 11px);
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             transition: all 0.2s;
+          }
+          .copy-btn .icon-mask {
+            width: 11px;
+            height: 11px;
+            --icon-mask: ${ICON_MASK_URLS.copy};
           }
           .copy-btn:hover {
             background: var(--dominds-hover, var(--color-bg-tertiary, #f2f2f2));
@@ -117,7 +128,7 @@ export class DomindsCodeBlock extends HTMLElement {
         <div class="code-block-wrapper">
           <div class="code-header">
             <span class="language">${language}</span>
-            <button class="copy-btn" title="Copy code" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.querySelector('code').textContent)">📋</button>
+            <button class="copy-btn" title="Copy code" aria-label="Copy code" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.querySelector('code').textContent)"><span class="icon-mask" aria-hidden="true"></span></button>
           </div>
           <pre><code class="hljs language-${language}">${highlighted}</code></pre>
         </div>

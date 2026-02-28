@@ -9,6 +9,7 @@ import {
   runControlVisualStateFromRunState,
   runStateClassSuffixFromRunState,
 } from '../utils/run-control-visual';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 export interface RunningDialogListProps {
   onSelect?: (dialog: DialogInfo) => void;
@@ -571,7 +572,7 @@ export class RunningDialogList extends HTMLElement {
               : `
                 <div class="dialog-item root-dialog missing" data-root-id="${rootGroup.rootId}" data-self-id="">
                   <div class="dialog-row">
-                    <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button">${rootToggle}</button>
+                    <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${rootGroup.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(rootCollapsed)}">${rootToggle}</button>
                     <span class="dialog-title">${t.missingRoot}</span>
                     <span class="dialog-meta-right">
                       <span class="dialog-count">${rootGroup.subdialogs.length}</span>
@@ -623,7 +624,7 @@ export class RunningDialogList extends HTMLElement {
           <div class="task-group task-node">
             <div class="task-title" data-task-path="${group.taskDocPath}">
               <div class="task-title-left">
-                <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button">${taskToggle}</button>
+                <button class="toggle task-toggle" data-action="toggle-task" data-task-path="${group.taskDocPath}" type="button" aria-label="${this.formatToggleAriaLabel(taskCollapsed)}">${taskToggle}</button>
                 <span>${group.taskDocPath}</span>
               </div>
               <div class="task-title-right">
@@ -860,69 +861,40 @@ export class RunningDialogList extends HTMLElement {
     this.applyIntensityDim(undefined);
   }
 
+  private formatToggleAriaLabel(collapsed: boolean): string {
+    if (this.props.uiLanguage === 'zh') {
+      return collapsed ? '展开' : '收起';
+    }
+    return collapsed ? 'Expand' : 'Collapse';
+  }
+
   private renderToggleIcon(collapsed: boolean): string {
     const rotation = collapsed ? '0deg' : '90deg';
-    return `
-      <svg class="q4h-toggle-arrow" style="transform: rotate(${rotation})" viewBox="0 0 8 10" aria-hidden="true" focusable="false">
-        <path d="M1 1 L7 5 L1 9 Z" fill="currentColor"></path>
-      </svg>
-    `;
+    return `<span class="q4h-toggle-arrow icon-mask" style="transform: rotate(${rotation})" aria-hidden="true"></span>`;
   }
 
   private renderDoneIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-        <polyline points="22 4 12 14 9 11"></polyline>
-      </svg>
-    `;
+    return '<span class="icon-mask dlg-icon-done" aria-hidden="true"></span>';
   }
 
   private renderCreateIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-      </svg>
-    `;
+    return '<span class="icon-mask dlg-icon-create" aria-hidden="true"></span>';
   }
 
   private renderArchiveIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <polyline points="21 8 21 21 3 21 3 8"></polyline>
-        <rect x="1" y="3" width="22" height="5"></rect>
-        <line x1="10" y1="12" x2="14" y2="12"></line>
-      </svg>
-    `;
+    return '<span class="icon-mask dlg-icon-archive" aria-hidden="true"></span>';
   }
 
   private renderOpenExternalIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-        <polyline points="15 3 21 3 21 9"></polyline>
-        <line x1="10" y1="14" x2="21" y2="3"></line>
-      </svg>
-    `;
+    return '<span class="icon-mask dlg-icon-external" aria-hidden="true"></span>';
   }
 
   private renderCopyLinkIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-      </svg>
-    `;
+    return '<span class="icon-mask dlg-icon-copy" aria-hidden="true"></span>';
   }
 
   private renderShowMoreIcon(): string {
-    return `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-        <polyline points="6 8 12 14 18 8"></polyline>
-        <polyline points="6 13 12 19 18 13"></polyline>
-      </svg>
-    `;
+    return '<span class="icon-mask dlg-icon-show-more" aria-hidden="true"></span>';
   }
 
   private renderShowMoreButton(args: {
@@ -975,7 +947,7 @@ export class RunningDialogList extends HTMLElement {
         data-dialog-json="${dialogJson}"
       >
         <div class="dialog-row">
-          <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button">${toggleIcon}</button>
+          <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(this.collapsedRoots.has(dialog.rootId))}">${toggleIcon}</button>
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
             ${badges}
@@ -1475,6 +1447,7 @@ export class RunningDialogList extends HTMLElement {
 
   private getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host {
         display: block;
         height: 100%;
@@ -1849,6 +1822,7 @@ export class RunningDialogList extends HTMLElement {
         transition: transform 0.2s ease;
         transform-origin: center;
         display: block;
+        --icon-mask: ${ICON_MASK_URLS.toggleTriangle};
       }
 
       .icon-button {
@@ -1863,9 +1837,33 @@ export class RunningDialogList extends HTMLElement {
         color: var(--dominds-muted, #666666);
       }
 
-      .icon-button svg {
+      .icon-button .icon-mask {
         width: 11px;
         height: 11px;
+      }
+
+      .dlg-icon-done {
+        --icon-mask: ${ICON_MASK_URLS.done};
+      }
+
+      .dlg-icon-create {
+        --icon-mask: ${ICON_MASK_URLS.plus};
+      }
+
+      .dlg-icon-archive {
+        --icon-mask: ${ICON_MASK_URLS.archive};
+      }
+
+      .dlg-icon-external {
+        --icon-mask: ${ICON_MASK_URLS.external};
+      }
+
+      .dlg-icon-copy {
+        --icon-mask: ${ICON_MASK_URLS.copy};
+      }
+
+      .dlg-icon-show-more {
+        --icon-mask: ${ICON_MASK_URLS.chevronsDown};
       }
 
       .icon-button:hover {

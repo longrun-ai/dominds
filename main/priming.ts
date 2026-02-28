@@ -749,6 +749,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
         throw new Error(`${context}.status must be completed | failed`);
       }
       const mentionList = parseOptionalStringArray(raw, 'mentionList', context);
+      const sessionSlug = raw['sessionSlug'];
       const callingGenseq = parseOptionalIntegerField(raw, 'calling_genseq', context);
       const calleeCourse = parseOptionalIntegerField(raw, 'calleeCourse', context);
       const calleeGenseq = parseOptionalIntegerField(raw, 'calleeGenseq', context);
@@ -756,19 +757,65 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (calleeDialogId !== undefined && typeof calleeDialogId !== 'string') {
         throw new Error(`${context}.calleeDialogId must be a string when provided`);
       }
-      const record: TeammateResponseRecord = {
+      const base = {
         ts: '',
         type,
         responderId: expectStringField(raw, 'responderId', context),
-        callName,
         tellaskContent: expectStringField(raw, 'tellaskContent', context, true),
         status,
         response: expectStringField(raw, 'response', context, true),
         agentId: expectStringField(raw, 'agentId', context),
         callId: expectStringField(raw, 'callId', context),
         originMemberId: expectStringField(raw, 'originMemberId', context),
-      };
-      if (mentionList) record.mentionList = mentionList;
+      } as const;
+      const record: TeammateResponseRecord = (() => {
+        switch (callName) {
+          case 'tellask': {
+            if (!Array.isArray(mentionList) || mentionList.length < 1) {
+              throw new Error(`${context}.mentionList is required for tellask teammate response`);
+            }
+            if (typeof sessionSlug !== 'string' || sessionSlug.trim() === '') {
+              throw new Error(`${context}.sessionSlug is required for tellask teammate response`);
+            }
+            return {
+              ...base,
+              callName,
+              sessionSlug: sessionSlug.trim(),
+              mentionList,
+            };
+          }
+          case 'tellaskSessionless': {
+            if (!Array.isArray(mentionList) || mentionList.length < 1) {
+              throw new Error(
+                `${context}.mentionList is required for tellaskSessionless teammate response`,
+              );
+            }
+            if (sessionSlug !== undefined) {
+              throw new Error(
+                `${context}.sessionSlug must be undefined for tellaskSessionless teammate response`,
+              );
+            }
+            return {
+              ...base,
+              callName,
+              mentionList,
+            };
+          }
+          case 'tellaskBack':
+          case 'freshBootsReasoning': {
+            if (mentionList !== undefined) {
+              throw new Error(`${context}.mentionList must be undefined for ${callName}`);
+            }
+            if (sessionSlug !== undefined) {
+              throw new Error(`${context}.sessionSlug must be undefined for ${callName}`);
+            }
+            return {
+              ...base,
+              callName,
+            };
+          }
+        }
+      })();
       if (callingGenseq !== undefined) record.calling_genseq = callingGenseq;
       if (calleeDialogId !== undefined) record.calleeDialogId = calleeDialogId;
       if (calleeCourse !== undefined) record.calleeCourse = calleeCourse;
@@ -1697,7 +1744,18 @@ function formatScriptMarkdown(args: {
       case 'teammate_response_record': {
         blockMeta['responderId'] = record.responderId;
         blockMeta['callName'] = record.callName;
-        if (record.mentionList !== undefined) blockMeta['mentionList'] = record.mentionList;
+        switch (record.callName) {
+          case 'tellask':
+            blockMeta['sessionSlug'] = record.sessionSlug;
+            blockMeta['mentionList'] = record.mentionList;
+            break;
+          case 'tellaskSessionless':
+            blockMeta['mentionList'] = record.mentionList;
+            break;
+          case 'tellaskBack':
+          case 'freshBootsReasoning':
+            break;
+        }
         blockMeta['tellaskContent'] = record.tellaskContent;
         blockMeta['status'] = record.status;
         blockMeta['agentId'] = record.agentId;

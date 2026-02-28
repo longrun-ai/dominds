@@ -92,18 +92,23 @@ That is a workflow break. The model should send the Tellask directly.
 
 ## 4. Best-practice execution protocol
 
-### 4.0 Delivery markers and sideline rule (mandatory)
+### 4.0 Inter-dialog transfer and sideline rule (mandatory)
 
-**First-line markers (required)**:
+**Transfer and markers (required)**:
 
-- `【tellaskBack】` — required when asking the tellasker dialog for clarification / next-step confirmation.
-- `【最终完成】` — required for final delivery after all assigned goals are complete.
-- FBR-only: `【FBR-直接回复】` or `【FBR-仅推理】`.
+- Runtime builds a canonical inter-dialog transfer payload; this payload is delivered to target-agent context, and UI must display the same payload verbatim.
+- First-line markers are runtime-injected into that payload by semantics; agents must not hand-write them:
+  - Ask-back reply: `【tellaskBack】`
+  - Regular completed sideline reply: `【最终完成】`
+  - FBR reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+- If the requester defines a “reply format” in tellask body, it must explicitly say “no hand-written markers; Dominds auto-injects markers”; do not require responder-side hand-written markers.
+- Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
+- Template-wrapped transfer is allowed: model output from one dialog can be embedded into a runtime template and sent as another dialog body.
 
 **Sideline delivery rule**:
 
 - A sideline dialog may reply directly to the tellasker dialog **only when all goals are complete**.
-- If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding.
+- If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` before proceeding; do not post plain-text intermediate status updates.
 - **FBR exception**: FBR forbids all tellasks (including `tellaskBack` / `askHuman`); list missing context + reasoning and return.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.

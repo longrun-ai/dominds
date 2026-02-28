@@ -143,6 +143,9 @@ export class ApiClient {
       headers: {
         ...mergedHeaders,
       },
+      // The WebUI relies on backend-pushed events and fresh API reads for multi-tab convergence.
+      // Avoid browser caching (can break run-control count freshness and other UX gates).
+      cache: 'no-store',
       signal: AbortSignal.timeout(timeout),
     };
 
@@ -216,6 +219,7 @@ export class ApiClient {
     const config: RequestInit = {
       method: 'GET',
       headers: mergedHeaders,
+      cache: 'no-store',
       signal: AbortSignal.timeout(timeout),
     };
 
@@ -270,6 +274,7 @@ export class ApiClient {
       timestamp: string;
       server: string;
       version: string;
+      workspace?: string;
       rtws: string;
       mode: string;
     }>
@@ -674,6 +679,7 @@ export class ApiClient {
     const response = await fetch(`${this.baseURL}/api/files/${encodeURIComponent(fileId)}`, {
       signal: AbortSignal.timeout(this.timeout),
       headers: { ...this.defaultHeaders },
+      cache: 'no-store',
     });
 
     if (!response.ok) {
@@ -748,6 +754,7 @@ export class ApiClient {
     const response = await fetch(`${this.baseURL}/api/export?${params.toString()}`, {
       signal: AbortSignal.timeout(this.timeout),
       headers: { ...this.defaultHeaders },
+      cache: 'no-store',
     });
 
     if (!response.ok) {

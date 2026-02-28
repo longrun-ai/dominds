@@ -188,11 +188,19 @@ flowchart TD
 - If any goal is incomplete or critical context is missing, it MUST issue `tellaskBack({ tellaskContent: "..." })` to request clarification or next-step confirmation before proceeding.
 - **FBR exception**: FBR sideline dialogs are tellask-free (no `tellaskBack`); they must list missing context and return.
 
-**Content markers (first line required)**:
+**Inter-dialog transfer and markers (normative)**:
 
-- `【tellaskBack】` — required when asking the tellasker dialog for clarification / next-step confirmation.
-- `【最终完成】` — required for final delivery when all goals are complete.
-- FBR-only: `【FBR-直接回复】` or `【FBR-仅推理】` for FBR sideline responses.
+- Runtime builds a canonical inter-dialog transfer payload for teammate replies; this payload is delivered to target-agent context, and UI must show the same payload verbatim.
+- First-line markers are runtime-injected into that transfer payload by semantics; agents must not hand-write them:
+  - Ask-back reply: `【tellaskBack】`
+  - Regular completed sideline reply: `【最终完成】`
+  - FBR sideline reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+- Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
+- Template-wrapped transfer is allowed: a model output from one dialog may be embedded into a runtime template and sent as the body to another dialog.
+
+**Protocol clarification**:
+
+- Ask-back must be emitted via `tellaskBack({ tellaskContent: "..." })`; do not post plain-text intermediate status updates.
 
 Note: no extra "Status: ..." line is required; the first-line marker is the stage reminder.
 

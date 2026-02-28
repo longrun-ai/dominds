@@ -902,12 +902,16 @@ async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
 async function handleHealthCheck(res: ServerResponse, context: ApiRouteContext): Promise<boolean> {
   try {
     const version = (await readDomindsPackageVersion()) ?? 'unknown';
+    const workspace = process.cwd();
     const healthData = {
       ok: true,
       timestamp: formatUnifiedTimestamp(new Date()),
       server: 'dominds',
       version,
-      rtws: process.cwd(),
+      // `workspace` is the canonical name used by WebUI indicators.
+      // Keep `rtws` for backward compatibility.
+      workspace,
+      rtws: workspace,
       mode: context.mode,
     };
 
@@ -1782,7 +1786,13 @@ function readRequestBody(req: IncomingMessage): Promise<string> {
  * Helper function to send JSON response
  */
 function respondJson(res: ServerResponse, statusCode: number, data: unknown): void {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  // API responses are dynamic and must not be cached.
+  // This is critical for multi-tab convergence (e.g. run-control counts) where stale cached GETs
+  // can violate the “5s consistency” UX gates.
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+  });
   res.end(JSON.stringify(data));
 }
 

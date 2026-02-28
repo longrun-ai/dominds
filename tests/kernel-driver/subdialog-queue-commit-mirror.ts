@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import type { ChatMessage } from '../../main/llm/client';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
-import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
+import {
+  formatAssignmentFromSupdialog,
+  formatTeammateResponseContent,
+} from '../../main/shared/utils/inter-dialog-format';
 
 import {
   createRootDialog,
@@ -36,6 +39,16 @@ async function main(): Promise<void> {
     });
 
     const subdialogResponseText = '2';
+    const mirroredSubdialogResponse = formatTeammateResponseContent({
+      callName: 'tellaskSessionless',
+      responderId: 'pangu',
+      requesterId: 'tester',
+      mentionList,
+      tellaskContent: tellaskBody,
+      responseBody: subdialogResponseText,
+      status: 'completed',
+      language,
+    });
     const rootResumeResponse =
       'Ack: mirrored subdialog response is live before follow-up generation.';
 
@@ -56,7 +69,7 @@ async function main(): Promise<void> {
         ],
       },
       { message: expectedSubdialogPrompt, role: 'user', response: subdialogResponseText },
-      { message: subdialogResponseText, role: 'tool', response: rootResumeResponse },
+      { message: mirroredSubdialogResponse, role: 'tool', response: rootResumeResponse },
     ]);
 
     const dlg = await createRootDialog('tester');
@@ -87,9 +100,9 @@ async function main(): Promise<void> {
           msg.role === 'tool' &&
           msg.responderId === 'pangu' &&
           msg.tellaskContent === tellaskBody &&
-          msg.content === subdialogResponseText,
+          msg.content === mirroredSubdialogResponse,
       ),
-      'expected mirrored tellask_result_msg with raw response content and structured tellask fields',
+      'expected mirrored tellask_result_msg with canonical transfer payload and structured tellask fields',
     );
 
     const mirrorIndex = dlg.msgs.findIndex(
@@ -98,7 +111,7 @@ async function main(): Promise<void> {
         msg.role === 'tool' &&
         msg.responderId === 'pangu' &&
         msg.tellaskContent === tellaskBody &&
-        msg.content === subdialogResponseText,
+        msg.content === mirroredSubdialogResponse,
     );
     const sayingIndex = dlg.msgs.findIndex(
       (msg) =>

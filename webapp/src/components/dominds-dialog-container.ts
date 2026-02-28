@@ -18,9 +18,9 @@ import type { LanguageCode } from '../shared/types/language';
 import { normalizeLanguageCode } from '../shared/types/language';
 import type { DialogInterruptionReason, DialogRunState } from '../shared/types/run-state';
 import type { AssignmentFromSup, DialogIdent, DialogStatusKind } from '../shared/types/wire';
-import { formatTeammateResponseContent } from '../shared/utils/inter-dialog-format';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 type DialogContext = DialogIdent & {
   status?: DialogStatusKind;
@@ -1565,14 +1565,6 @@ export class DomindsDialogContainer extends HTMLElement {
     return out;
   }
 
-  private extractSessionSlugFromHeadline(headline: string): string | undefined {
-    const sessionSlugMatch = headline.match(/sessionSlug:\s*([^\u00b7]+)/u);
-    if (!sessionSlugMatch) return undefined;
-    const raw = sessionSlugMatch[1]?.trim();
-    if (!raw) return undefined;
-    return raw;
-  }
-
   private renderMentionList(
     section: HTMLElement,
     mentions: readonly string[],
@@ -1697,12 +1689,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const { target, footer, button } = options;
     const label = this.getProgressiveExpandLabel();
     button.innerHTML = `
-      <span class="progressive-expand-icon" aria-hidden="true">
-        <svg class="progressive-expand-icon-svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3.5 4.5L8 9l4.5-4.5"></path>
-          <path d="M3.5 8.5L8 13l4.5-4.5"></path>
-        </svg>
-      </span>
+      <span class="progressive-expand-icon icon-mask" aria-hidden="true"></span>
     `;
     button.setAttribute('aria-label', label.text);
     button.title = label.title;
@@ -2232,29 +2219,17 @@ export class DomindsDialogContainer extends HTMLElement {
       throw new Error('handleTeammateResponse: Missing response payload');
     }
 
-    const responseMentionList =
-      event.callName === 'tellask' || event.callName === 'tellaskSessionless'
-        ? event.mentionList
-        : undefined;
-    const sessionSlugForNarrative = (() => {
-      if (event.callName !== 'tellask') return undefined;
-      if (normalizedCallId === '') return undefined;
-      const callSection = this.callingSectionByCallId.get(normalizedCallId);
-      if (!callSection) return undefined;
-      const headlineEl = callSection.querySelector('.calling-headline') as HTMLElement | null;
-      if (!headlineEl) return undefined;
-      return this.extractSessionSlugFromHeadline(headlineEl.textContent ?? '');
+    const responseNarr = event.response;
+    const sessionSlug = (() => {
+      switch (event.callName) {
+        case 'tellask':
+          return event.sessionSlug;
+        case 'tellaskSessionless':
+        case 'tellaskBack':
+        case 'freshBootsReasoning':
+          return undefined;
+      }
     })();
-    const responseNarr = formatTeammateResponseContent({
-      callName: event.callName,
-      responderId: event.responderId,
-      requesterId,
-      mentionList: responseMentionList,
-      sessionSlug: sessionSlugForNarrative,
-      tellaskContent: event.tellaskContent,
-      responseBody: event.response,
-      language: this.serverWorkLanguage,
-    });
 
     // callId is used for navigation between call site ↔ response bubble.
 
@@ -2267,6 +2242,8 @@ export class DomindsDialogContainer extends HTMLElement {
       event.callId,
       event.originMemberId,
       event.callName,
+      event.timestamp,
+      sessionSlug,
       typeof event.calleeCourse === 'number' && Number.isFinite(event.calleeCourse)
         ? Math.floor(event.calleeCourse)
         : undefined,
@@ -2322,6 +2299,8 @@ export class DomindsDialogContainer extends HTMLElement {
     callId?: string,
     originMemberId?: string,
     callName?: 'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning',
+    timestamp?: string,
+    sessionSlug?: string,
     calleeCourse?: number,
   ): HTMLElement {
     const t = getUiStrings(this.uiLanguage);
@@ -2338,46 +2317,57 @@ export class DomindsDialogContainer extends HTMLElement {
     if (isFbr) {
       el.classList.add('fbr');
     }
-    const callsign = isFbr ? 'FBR' : agentId ? `@${agentId}` : 'Teammate';
-    const responseIndicator = isFbr
-      ? ''
-      : this.getTeammateResponseIndicator(agentId, originMemberId);
+    const responderLabel = (() => {
+      if (isFbr) return 'FBR';
+      if (agentId && agentId.trim() !== '') return this.formatAgentLabel(agentId);
+      return 'Teammate';
+    })();
+    const requesterLabel = (() => {
+      if (originMemberId && originMemberId.trim() !== '')
+        return this.formatAgentLabel(originMemberId);
+      if (this.currentDialog?.agentId && this.currentDialog.agentId.trim() !== '') {
+        return this.formatAgentLabel(this.currentDialog.agentId);
+      }
+      return 'Assistant';
+    })();
+    const safeRequesterLabel = this.escapeHtml(requesterLabel);
+    const safeResponderLabel = this.escapeHtml(responderLabel);
+    const safeTimestamp = this.escapeHtml(timestamp ?? '');
+    const normalizedSessionSlug =
+      typeof sessionSlug === 'string' && sessionSlug.trim() !== '' ? sessionSlug.trim() : '';
+    const sessionSlugHtml =
+      normalizedSessionSlug === ''
+        ? ''
+        : `<span class="teammate-session-slug">· ${this.escapeHtml(normalizedSessionSlug)}</span>`;
     el.innerHTML = `
       <div class="bubble-content">
         <div class="bubble-header">
           <div class="bubble-title">
             <div class="title-row">
               <div class="title-left">
-                <span class="author-name">${callsign}</span>${responseIndicator ? `<span class="response-indicator">${responseIndicator}</span>` : ''}
+                <span class="requester-name">${safeRequesterLabel}</span>
+                <span class="response-arrow" aria-hidden="true">←</span>
+                <span class="author-name">${safeResponderLabel}</span>
+                ${sessionSlugHtml}
               </div>
-              ${
-                callId
-                  ? `<div class="bubble-title-actions" data-call-id="${callId}">
+              <div class="title-right">
+                ${
+                  callId
+                    ? `<div class="bubble-title-actions" data-call-id="${callId}">
                       <button type="button" class="callsite-icon-btn internal" aria-label="${this.escapeHtml(t.q4hGoToCallSiteTitle)}" title="${this.escapeHtml(t.q4hGoToCallSiteTitle)}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <circle cx="12" cy="12" r="3"></circle>
-                          <path d="M12 2v3"></path>
-                          <path d="M12 19v3"></path>
-                          <path d="M2 12h3"></path>
-                          <path d="M19 12h3"></path>
-                        </svg>
+                        <span class="icon-mask dc-icon-crosshair" aria-hidden="true"></span>
                       </button>
                       <button type="button" class="callsite-icon-btn external" aria-label="${this.escapeHtml(t.q4hOpenInNewTabTitle)}" title="${this.escapeHtml(t.q4hOpenInNewTabTitle)}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <path d="M14 3h7v7"></path>
-                          <path d="M10 14L21 3"></path>
-                          <path d="M21 14v7H3V3h7"></path>
-                        </svg>
+                        <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
                       </button>
                       <button type="button" class="callsite-icon-btn share" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
-                          <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1"></path>
-                        </svg>
+                        <span class="icon-mask dc-icon-link" aria-hidden="true"></span>
                       </button>
                     </div>`
-                  : ''
-              }
+                    : ''
+                }
+                <div class="timestamp">${safeTimestamp}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -2629,18 +2619,6 @@ export class DomindsDialogContainer extends HTMLElement {
     return 'Assistant';
   }
 
-  private getTeammateResponseIndicator(responderId?: string, originMemberId?: string): string {
-    const dialog = this.currentDialog;
-    if (!dialog || !dialog.agentId || !responderId) {
-      return 'Response';
-    }
-    let caller = this.formatAgentLabel(dialog.agentId);
-    if (originMemberId && originMemberId.trim() !== '') {
-      caller = this.formatAgentLabel(originMemberId);
-    }
-    return ` → ${caller}`;
-  }
-
   private upsertGenerationBubbleAnchorActions(bubble: HTMLElement): void {
     const headerRight = bubble.querySelector('.bubble-header-right') as HTMLElement | null;
     if (!headerRight) {
@@ -2695,20 +2673,10 @@ export class DomindsDialogContainer extends HTMLElement {
     actions.className = 'bubble-anchor-actions';
     actions.innerHTML = `
       <button type="button" class="bubble-anchor-assignment-btn" aria-label="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}" title="${this.escapeHtml(t.teammateAssignmentBubbleTitle)}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M12 2v3"></path>
-          <path d="M12 19v3"></path>
-          <path d="M2 12h3"></path>
-          <path d="M19 12h3"></path>
-        </svg>
+        <span class="icon-mask dc-icon-crosshair" aria-hidden="true"></span>
       </button>
       <button type="button" class="bubble-anchor-caller-callsite-btn" aria-label="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}" title="${this.escapeHtml(t.teammateRequesterCallSiteTitle)}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 3h7v7"></path>
-          <path d="M10 14L21 3"></path>
-          <path d="M21 14v7H3V3h7"></path>
-        </svg>
+        <span class="icon-mask dc-icon-external" aria-hidden="true"></span>
       </button>
     `;
 
@@ -2736,10 +2704,7 @@ export class DomindsDialogContainer extends HTMLElement {
         <div class="bubble-header-right">
           <div class="bubble-anchor-actions"></div>
           <button type="button" class="bubble-share-link-btn" aria-label="${this.escapeHtml(t.q4hCopyLinkTitle)}" title="${this.escapeHtml(t.q4hCopyLinkTitle)}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
-              <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1"></path>
-            </svg>
+            <span class="icon-mask dc-icon-link" aria-hidden="true"></span>
           </button>
           <div class="timestamp">${safeTimestamp}</div>
         </div>
@@ -3347,10 +3312,7 @@ export class DomindsDialogContainer extends HTMLElement {
             title="${t.scrollToBottom}"
             aria-label="${t.scrollToBottom}"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 5v14"></path>
-              <path d="m19 12-7 7-7-7"></path>
-            </svg>
+            <span class="icon-mask dc-icon-scroll-down" aria-hidden="true"></span>
           </button>
         </div>
       </div>
@@ -3466,6 +3428,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host {
         display: block;
         height: 100%;
@@ -3534,6 +3497,11 @@ export class DomindsDialogContainer extends HTMLElement {
         outline: 2px solid
           color-mix(in srgb, var(--dominds-border, var(--color-border-primary, #e2e8f0)) 65%, black);
         outline-offset: 2px;
+      }
+
+      .scroll-to-bottom-btn .icon-mask {
+        width: 18px;
+        height: 18px;
       }
 
       .resume-panel {
@@ -3748,10 +3716,17 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .bubble-title-actions {
-        margin-left: auto;
         display: inline-flex;
         align-items: center;
         gap: 5px;
+        flex-shrink: 0;
+      }
+
+      .title-right {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         flex-shrink: 0;
       }
 
@@ -3779,6 +3754,14 @@ export class DomindsDialogContainer extends HTMLElement {
       .callsite-icon-btn:focus-visible {
         outline: 2px solid color-mix(in srgb, var(--dominds-primary, #007acc) 55%, transparent);
         outline-offset: 2px;
+      }
+
+      .bubble-share-link-btn .icon-mask,
+      .bubble-anchor-assignment-btn .icon-mask,
+      .bubble-anchor-caller-callsite-btn .icon-mask,
+      .callsite-icon-btn .icon-mask {
+        width: 14px;
+        height: 14px;
       }
 
       .call-context {
@@ -4258,15 +4241,30 @@ export class DomindsDialogContainer extends HTMLElement {
         align-items: center;
         justify-content: center;
         animation: progressive-expand-flash 2.2s ease-in-out infinite;
-      }
-
-      .progressive-expand-icon-svg {
-        display: block;
+        width: 14px;
+        height: 14px;
+        --icon-mask: ${ICON_MASK_URLS.chevronsDown};
       }
 
       .progressive-expand-btn:hover .progressive-expand-icon,
       .progressive-expand-btn:focus-visible .progressive-expand-icon {
         animation-play-state: paused;
+      }
+
+      .dc-icon-crosshair {
+        --icon-mask: ${ICON_MASK_URLS.crosshair};
+      }
+
+      .dc-icon-external {
+        --icon-mask: ${ICON_MASK_URLS.external};
+      }
+
+      .dc-icon-link {
+        --icon-mask: ${ICON_MASK_URLS.link};
+      }
+
+      .dc-icon-scroll-down {
+        --icon-mask: ${ICON_MASK_URLS.scrollDown};
       }
 
       @keyframes progressive-expand-flash {
@@ -4573,10 +4571,17 @@ export class DomindsDialogContainer extends HTMLElement {
         color: var(--dominds-primary, #007acc);
       }
 
-      .response-indicator {
-        font-size: 10px;
+      .requester-name {
+        color: var(--dominds-fg-secondary, var(--color-fg-secondary, #475569));
+      }
+
+      .response-arrow {
         color: var(--dominds-text-secondary, #64748b);
-        margin-left: 0.5em;
+      }
+
+      .teammate-session-slug {
+        color: var(--dominds-text-secondary, #64748b);
+        font-size: var(--dominds-font-size-sm, 12px);
       }
 
       .teammate-content {

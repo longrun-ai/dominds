@@ -87,6 +87,7 @@ import './dominds-team-members.js';
 import { DomindsTeamMembers, type TeamMembersMentionEventDetail } from './dominds-team-members.js';
 import './done-dialog-list.js';
 import { DoneDialogList } from './done-dialog-list.js';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 import './running-dialog-list.js';
 import { RunningDialogList } from './running-dialog-list.js';
 
@@ -1696,11 +1697,11 @@ export class DomindsApp extends HTMLElement {
     const resumeDisabled = this.resumableDialogsCount === 0;
     const t = getUiStrings(this.uiLanguage);
     if (stopBtn) {
-      stopBtn.disabled = stopDisabled;
+      stopBtn.setAttribute('aria-disabled', stopDisabled ? 'true' : 'false');
       stopBtn.setAttribute('aria-label', `${t.emergencyStop} (${this.proceedingDialogsCount})`);
     }
     if (resumeBtn) {
-      resumeBtn.disabled = resumeDisabled;
+      resumeBtn.setAttribute('aria-disabled', resumeDisabled ? 'true' : 'false');
       resumeBtn.setAttribute('aria-label', `${t.resumeAll} (${this.resumableDialogsCount})`);
     }
     if (stopPill) {
@@ -2013,6 +2014,7 @@ export class DomindsApp extends HTMLElement {
 
   public getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host {
         display: block;
         width: 100%;
@@ -2181,11 +2183,6 @@ export class DomindsApp extends HTMLElement {
         color: color-mix(in srgb, var(--dominds-fg, #333333) 86%, var(--dominds-muted, #666666));
       }
 
-      #toast-history-btn svg {
-        width: 14px;
-        height: 14px;
-      }
-
       .header-pill-button:hover:not(:disabled) {
         border-color: var(--dominds-primary, #007acc);
         background: var(--dominds-hover, #f0f0f0);
@@ -2230,15 +2227,16 @@ export class DomindsApp extends HTMLElement {
         cursor: pointer;
       }
 
-      .header-run-pill-icon:focus-visible {
-        outline: 2px solid var(--dominds-primary, #007acc);
-        outline-offset: 2px;
-        border-radius: 6px;
-      }
+	      .header-run-pill-icon:focus-visible {
+	        outline: 2px solid var(--dominds-primary, #007acc);
+	        outline-offset: 2px;
+	        border-radius: 6px;
+	      }
 
-      .header-run-pill-icon:disabled {
-        cursor: not-allowed;
-      }
+	      .header-run-pill-icon[aria-disabled='true'] {
+	        cursor: not-allowed;
+	        opacity: 0.8;
+	      }
 
       .header-run-pill-count {
         color: var(--dominds-fg, #333333);
@@ -2299,24 +2297,32 @@ export class DomindsApp extends HTMLElement {
         border-color: color-mix(in srgb, #ef4444 80%, var(--dominds-border, #e0e0e0));
       }
 
-	      .header-pill-button.problems[data-severity='info'] {
-	        background: var(--dominds-bg, #ffffff);
-	        color: var(--dominds-fg, #333333);
+	      .header-pill-button.problems[data-has-problems='false'] {
+	        background: color-mix(in srgb, var(--dominds-fg, #333333) 3%, var(--dominds-bg, #ffffff));
+	        border-color: color-mix(in srgb, var(--dominds-border, #e0e0e0) 78%, transparent);
+	        color: color-mix(in srgb, var(--dominds-muted, #666666) 88%, var(--dominds-fg, #333333));
+          opacity: 0.62;
 	      }
 
-	      .header-pill-button.problems[data-has-problems='true'][data-severity='info'] {
-	        background: color-mix(in srgb, var(--dominds-primary, #007acc) 18%, var(--dominds-bg, #ffffff));
-	        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 45%, var(--dominds-border, #e0e0e0));
-	        color: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, var(--dominds-fg, #333333));
+	      .header-pill-button.problems[data-has-problems='false']:hover:not(:disabled) {
+	        background: color-mix(in srgb, var(--dominds-fg, #333333) 4%, var(--dominds-bg, #ffffff));
+	        border-color: color-mix(in srgb, var(--dominds-border, #e0e0e0) 82%, transparent);
+	        color: color-mix(in srgb, var(--dominds-muted, #666666) 90%, var(--dominds-fg, #333333));
 	      }
 
-      .header-pill-button.problems[data-severity='warning'] {
+      .header-pill-button.problems[data-has-problems='true'][data-severity='info'] {
+        background: color-mix(in srgb, var(--dominds-primary, #007acc) 18%, var(--dominds-bg, #ffffff));
+        border-color: color-mix(in srgb, var(--dominds-primary, #007acc) 45%, var(--dominds-border, #e0e0e0));
+        color: color-mix(in srgb, var(--dominds-primary, #007acc) 85%, var(--dominds-fg, #333333));
+      }
+
+      .header-pill-button.problems[data-has-problems='true'][data-severity='warning'] {
         background: color-mix(in srgb, #f59e0b 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #f59e0b 35%, var(--dominds-border, #e0e0e0));
         color: color-mix(in srgb, #b45309 85%, var(--dominds-fg, #333333));
       }
 
-      .header-pill-button.problems[data-severity='error'] {
+      .header-pill-button.problems[data-has-problems='true'][data-severity='error'] {
         background: var(--dominds-danger-bg, #f8d7da);
         border-color: var(--dominds-danger-border, #f5c6cb);
         color: var(--dominds-danger, #721c24);
@@ -3153,6 +3159,113 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-hover, #f0f0f0);
       }
 
+      .header-run-pill-icon .icon-mask,
+      .header-pill-button .icon-mask,
+      #toast-history-btn .icon-mask,
+      .badge-button .icon-mask,
+      .tools-registry-actions .icon-mask,
+      .problems-panel-actions .icon-mask,
+      .toast-history-actions .icon-mask,
+      .icon-button .icon-mask {
+        width: 14px;
+        height: 14px;
+      }
+
+      .activity-button .icon-mask {
+        width: 18px;
+        height: 18px;
+      }
+
+      .app-icon-16 {
+        width: 16px !important;
+        height: 16px !important;
+      }
+
+      .bp-collapse-btn .icon-mask {
+        width: 56px;
+        height: 8px;
+      }
+
+      .app-icon-stop {
+        --icon-mask: ${ICON_MASK_URLS.stop};
+      }
+
+      .app-icon-play {
+        --icon-mask: ${ICON_MASK_URLS.play};
+      }
+
+      .app-icon-warning {
+        --icon-mask: ${ICON_MASK_URLS.warning};
+      }
+
+      .app-icon-history {
+        --icon-mask: ${ICON_MASK_URLS.history};
+      }
+
+      .app-icon-refresh {
+        --icon-mask: ${ICON_MASK_URLS.refresh};
+      }
+
+      .app-icon-close {
+        --icon-mask: ${ICON_MASK_URLS.close};
+      }
+
+      .app-icon-trash {
+        --icon-mask: ${ICON_MASK_URLS.trash};
+      }
+
+      .app-icon-running {
+        --icon-mask: ${ICON_MASK_URLS.activityRunning};
+      }
+
+      .app-icon-done {
+        --icon-mask: ${ICON_MASK_URLS.done};
+      }
+
+      .app-icon-archive {
+        --icon-mask: ${ICON_MASK_URLS.archive};
+      }
+
+      .app-icon-search {
+        --icon-mask: ${ICON_MASK_URLS.search};
+      }
+
+      .app-icon-users {
+        --icon-mask: ${ICON_MASK_URLS.users};
+      }
+
+      .app-icon-tools {
+        --icon-mask: ${ICON_MASK_URLS.tools};
+      }
+
+      .app-icon-plus {
+        --icon-mask: ${ICON_MASK_URLS.plus};
+      }
+
+      .app-icon-save {
+        --icon-mask: ${ICON_MASK_URLS.save};
+      }
+
+      .app-icon-prev {
+        --icon-mask: ${ICON_MASK_URLS.chevronLeft};
+      }
+
+      .app-icon-next {
+        --icon-mask: ${ICON_MASK_URLS.chevronRight};
+      }
+
+      .app-icon-bookmark {
+        --icon-mask: ${ICON_MASK_URLS.bookmark};
+      }
+
+      .app-icon-upload {
+        --icon-mask: ${ICON_MASK_URLS.uploadCloud};
+      }
+
+      .app-icon-collapse-strip {
+        --icon-mask: ${ICON_MASK_URLS.collapseStrip};
+      }
+
       .badge-button {
         display: inline-flex;
         align-items: center;
@@ -3300,11 +3413,6 @@ export class DomindsApp extends HTMLElement {
 	      .bp-collapse-btn:focus-visible {
 	        outline: 2px solid var(--dominds-primary, #007acc);
 	        outline-offset: 1px;
-	      }
-
-	      .bp-collapse-btn svg {
-	        display: block;
-	        pointer-events: none;
 	      }
 
 	      .bottom-panel-footer {
@@ -4378,28 +4486,24 @@ export class DomindsApp extends HTMLElement {
 	          <div class="header-actions">
               <div class="header-run-controls">
                 <div class="header-run-pill danger" id="toolbar-emergency-stop-pill" data-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}" title="${t.emergencyStop}">
-                  <button type="button" class="header-run-pill-icon" id="toolbar-emergency-stop" aria-label="${t.emergencyStop} (${String(this.proceedingDialogsCount)})" ${this.proceedingDialogsCount > 0 ? '' : 'disabled'}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-                  </button>
+	                  <button type="button" class="header-run-pill-icon" id="toolbar-emergency-stop" aria-label="${t.emergencyStop} (${String(this.proceedingDialogsCount)})" aria-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}">
+	                    <span class="icon-mask app-icon-stop" aria-hidden="true"></span>
+	                  </button>
                   <span class="header-run-pill-count" id="toolbar-emergency-stop-count" data-testid="toolbar.proceeding_count" aria-hidden="true">${String(this.proceedingDialogsCount)}</span>
                 </div>
                 <div class="header-run-pill success" id="toolbar-resume-all-pill" data-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}" title="${t.resumeAll}">
-                  <button type="button" class="header-run-pill-icon" id="toolbar-resume-all" aria-label="${t.resumeAll} (${String(this.resumableDialogsCount)})" ${this.resumableDialogsCount > 0 ? '' : 'disabled'}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 3v18l17-9z"></path></svg>
-                  </button>
+	                  <button type="button" class="header-run-pill-icon" id="toolbar-resume-all" aria-label="${t.resumeAll} (${String(this.resumableDialogsCount)})" aria-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}">
+	                    <span class="icon-mask app-icon-play" aria-hidden="true"></span>
+	                  </button>
                   <span class="header-run-pill-count" id="toolbar-resume-all-count" data-testid="toolbar.resumable_count" aria-hidden="true">${String(this.resumableDialogsCount)}</span>
                 </div>
               </div>
 		            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
-		              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm0 6a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0V9a1 1 0 0 1 1-1zm0 12a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 20z"></path></svg>
-		              <span>${String(this.problems.length)}</span>
+		              <span class="icon-mask app-icon-warning" aria-hidden="true"></span>
+		              <span class="problems-count">${String(this.problems.length)}</span>
 		            </button>
 		            <button class="header-pill-button" id="toast-history-btn" title="${t.toastHistoryButtonTitle}" aria-label="${t.toastHistoryButtonTitle}">
-		              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		                <path d="M3 12a9 9 0 1 0 3-6.7"></path>
-		                <polyline points="3 3 3 9 9 9"></polyline>
-		                <path d="M12 7v5l3 2"></path>
-		              </svg>
+		              <span class="icon-mask app-icon-history" aria-hidden="true"></span>
 		            </button>
 		            <dominds-connection-status ui-language="${this.uiLanguage}" status="${this.connectionState.status}" ${this.connectionState.error ? `error="${this.connectionState.error}"` : ''}></dominds-connection-status>
 	            <div class="ui-language-menu">
@@ -4411,7 +4515,7 @@ export class DomindsApp extends HTMLElement {
 	                ${uiLanguageMenuItems}
 	              </div>
 	            </div>
-	            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}">
+	            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}" aria-label="${t.themeToggleTitle}">
 	              ${this.currentTheme === 'light' ? '🌙' : '☀️'}
 	            </button>
 	          </div>
@@ -4421,8 +4525,8 @@ export class DomindsApp extends HTMLElement {
 	          <div class="problems-panel-header">
 	            <div class="problems-panel-title">${t.problemsTitle}</div>
 	            <div class="problems-panel-actions">
-	              <button type="button" id="problems-refresh" title="Refresh">↻</button>
-	              <button type="button" id="problems-close" title="${t.close}">✕</button>
+	              <button type="button" id="problems-refresh" title="Refresh" aria-label="Refresh"><span class="icon-mask app-icon-refresh" aria-hidden="true"></span></button>
+	              <button type="button" id="problems-close" title="${t.close}" aria-label="${t.close}"><span class="icon-mask app-icon-close" aria-hidden="true"></span></button>
 	            </div>
 	          </div>
 	          <div id="problems-list" class="problems-list">
@@ -4435,8 +4539,8 @@ export class DomindsApp extends HTMLElement {
 	            <div class="toast-history-header">
 	              <div id="toast-history-title" class="toast-history-title">${t.toastHistoryTitle}</div>
 	              <div class="toast-history-actions">
-	                <button type="button" id="toast-history-clear" title="${t.toastHistoryClearTitle}" aria-label="${t.toastHistoryClearTitle}">🗑️</button>
-	                <button type="button" id="toast-history-close" title="${t.close}" aria-label="${t.close}">✕</button>
+	                <button type="button" id="toast-history-clear" title="${t.toastHistoryClearTitle}" aria-label="${t.toastHistoryClearTitle}"><span class="icon-mask app-icon-trash" aria-hidden="true"></span></button>
+	                <button type="button" id="toast-history-close" title="${t.close}" aria-label="${t.close}"><span class="icon-mask app-icon-close" aria-hidden="true"></span></button>
 	              </div>
 	            </div>
 	            <div id="toast-history-list" class="toast-history-list">
@@ -4449,23 +4553,23 @@ export class DomindsApp extends HTMLElement {
 	          <aside class="sidebar">
 	            <div class="activity-bar" role="toolbar" aria-label="${t.activityBarAriaLabel}">
               <button class="activity-button icon-button" data-activity="running" aria-label="${t.activityRunning}" aria-pressed="true" title="${t.activityRunning}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                <span class="icon-mask app-icon-running" aria-hidden="true"></span>
               </button>
               <button class="activity-button icon-button" data-activity="done" aria-label="${t.activityDone}" aria-pressed="false" title="${t.activityDone}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14 9 11"></polyline></svg>
+                <span class="icon-mask app-icon-done" aria-hidden="true"></span>
               </button>
               <button class="activity-button icon-button" data-activity="archived" aria-label="${t.activityArchived}" aria-pressed="false" title="${t.activityArchived}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                <span class="icon-mask app-icon-archive" aria-hidden="true"></span>
               </button>
               <div class="activity-spacer" aria-hidden="true"></div>
               <button class="activity-button icon-button" data-activity="search" aria-label="${t.activitySearch}" aria-pressed="false" title="${t.activitySearch}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <span class="icon-mask app-icon-search" aria-hidden="true"></span>
               </button>
               <button class="activity-button icon-button" data-activity="team-members" aria-label="${t.activityTeamMembers}" aria-pressed="false" title="${t.activityTeamMembers}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-3-3.87"></path><path d="M7 21v-2a4 4 0 0 1 3-3.87"></path><circle cx="12" cy="7" r="4"></circle><path d="M18 8a3 3 0 1 0 0-6"></path><path d="M6 8a3 3 0 1 1 0-6"></path></svg>
+                <span class="icon-mask app-icon-users" aria-hidden="true"></span>
               </button>
               <button class="activity-button icon-button" data-activity="tools" aria-label="${t.activityTools}" aria-pressed="false" title="${t.activityTools}">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4.5 4.5 0 0 0 5.4-5.4l-2.2 2.2-2.2-2.2 2.4-2.4z"></path></svg>
+                <span class="icon-mask app-icon-tools" aria-hidden="true"></span>
               </button>
             </div>
             <div class="sidebar-content">
@@ -4493,7 +4597,7 @@ export class DomindsApp extends HTMLElement {
                     <div class="tools-registry-title">${t.toolsTitle}</div>
                     <span id="tools-registry-timestamp" class="tools-registry-timestamp"></span>
                     <div class="tools-registry-actions">
-                      <button type="button" id="tools-registry-refresh" title="${t.toolsRefresh}">↻</button>
+                      <button type="button" id="tools-registry-refresh" title="${t.toolsRefresh}" aria-label="${t.toolsRefresh}"><span class="icon-mask app-icon-refresh" aria-hidden="true"></span></button>
                     </div>
                   </div>
                   <div id="tools-registry-list" class="tools-registry-list"></div>
@@ -4505,22 +4609,22 @@ export class DomindsApp extends HTMLElement {
           <main class="content-area">
             <div class="toolbar">
               <div class="toolbar-left">
-                <button class="icon-button" id="new-dialog-btn" title="${t.newDialogTitle}">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <button class="icon-button" id="new-dialog-btn" title="${t.newDialogTitle}" aria-label="${t.newDialogTitle}">
+                  <span class="icon-mask app-icon-plus" aria-hidden="true"></span>
                 </button>
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div style="flex: 1;"></div>
               <button class="icon-button" id="toolbar-save-priming" title="${t.primingSaveButtonTitle}" aria-label="${t.primingSaveButtonTitle}" ${this.currentDialog ? '' : 'disabled'}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span class="icon-mask app-icon-save" aria-hidden="true"></span>
               </button>
 	              <div id="course-nav">
 	                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentCourse > 1 ? '' : 'disabled'} aria-label="${t.previousCourse}">
-	                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+	                  <span class="icon-mask app-icon-prev" aria-hidden="true"></span>
 	                </button>
 	              <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">C ${this.toolbarCurrentCourse}</span>
 	              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentCourse < this.toolbarTotalCourses ? '' : 'disabled'} aria-label="${t.nextCourse}">
-	                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+	                <span class="icon-mask app-icon-next" aria-hidden="true"></span>
 	              </button>
 		            </div>
                 <div id="toolbar-context-health-wrap" style="position: relative; margin-left: 12px;">
@@ -4529,11 +4633,11 @@ export class DomindsApp extends HTMLElement {
                 </div>
 		          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
 		            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
-		              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+		              <span class="icon-mask app-icon-bookmark" aria-hidden="true"></span>
 		              <span>${String(this.toolbarReminders.length)}</span>
 		            </button>
 	            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
+              <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
             </button>
           </div>
             </div>
@@ -4543,11 +4647,11 @@ export class DomindsApp extends HTMLElement {
             <div id="reminders-widget" style="position: fixed; left: ${this.remindersWidgetX}px; top: ${this.remindersWidgetY}px; width: ${this.remindersWidgetWidthPx}px; height: ${this.remindersWidgetHeightPx}px; min-width: 260px; min-height: 160px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--dominds-border); background: var(--dominds-bg); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: var(--dominds-z-overlay-reminders);">
               <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                  <span class="icon-mask app-icon-bookmark app-icon-16" aria-hidden="true"></span>
                   <span>${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
                 </div>
                 <button id="reminders-widget-close" class="icon-button" aria-label="${t.close}">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  <span class="icon-mask app-icon-close" aria-hidden="true"></span>
                 </button>
               </div>
               <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;">
@@ -4582,11 +4686,7 @@ export class DomindsApp extends HTMLElement {
 		                    aria-label="${t.close}"
 		                    title="${t.close}"
 		                  >
-		                    <svg width="56" height="8" viewBox="0 0 56 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-		                      <path d="M2 2.2L8 5.8L14 2.2"></path>
-		                      <path d="M21 2.2L27 5.8L33 2.2"></path>
-		                      <path d="M40 2.2L46 5.8L52 2.2"></path>
-		                    </svg>
+		                    <span class="icon-mask app-icon-collapse-strip" aria-hidden="true"></span>
 		                  </button>
 		                  <div class="bp-resize-grip right" data-role="resize" aria-hidden="true"></div>
 		                </div>
@@ -4599,13 +4699,13 @@ export class DomindsApp extends HTMLElement {
 	                    <div class="bp-diligence-row">
 	                      <div class="bp-diligence-help">${t.keepGoingWorkspaceNote}</div>
 	                      <button class="icon-button" id="diligence-reload" type="button" title="${t.keepGoingReloadTitle}" aria-label="${t.keepGoingReloadTitle}">
-	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 16.5a4.5 4.5 0 0 0-1.9-8.7 6 6 0 0 0-11.7 1.7A4 4 0 0 0 4 16.5"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg>
+	                        <span class="icon-mask app-icon-upload" aria-hidden="true"></span>
 	                      </button>
 	                      <button class="icon-button" id="diligence-save" type="button" ${this.diligenceRtwsDirty ? '' : 'disabled'} title="${t.keepGoingSaveTitle}" aria-label="${t.keepGoingSaveTitle}">
-	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+	                        <span class="icon-mask app-icon-save" aria-hidden="true"></span>
 	                      </button>
 	                      <button class="icon-button" id="diligence-reset" type="button" title="${t.keepGoingResetTitle}" aria-label="${t.keepGoingResetTitle}">
-	                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.13 3.36L1 14"></path></svg>
+	                        <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
 	                      </button>
 	                    </div>
 	                    <textarea id="diligence-textarea" class="bp-textarea" spellcheck="false"></textarea>
@@ -4662,6 +4762,25 @@ export class DomindsApp extends HTMLElement {
       console.warn('setupEventListeners: shadowRoot is null');
       return;
     }
+
+    const captureKeyboardCountSnapshot = (button: HTMLButtonElement, count: number): void => {
+      button.dataset.kbdActivatedAtMs = String(Date.now());
+      button.dataset.kbdCountSnapshot = String(count);
+    };
+
+    const readKeyboardCountSnapshot = (button: HTMLButtonElement): number | null => {
+      const atRaw = button.dataset.kbdActivatedAtMs;
+      const countRaw = button.dataset.kbdCountSnapshot;
+      delete button.dataset.kbdActivatedAtMs;
+      delete button.dataset.kbdCountSnapshot;
+      if (typeof atRaw !== 'string' || typeof countRaw !== 'string') return null;
+      const atMs = Number(atRaw);
+      const count = Number(countRaw);
+      if (!Number.isFinite(atMs) || !Number.isFinite(count)) return null;
+      // Only trust snapshots from the immediate keyboard activation to avoid stale reuse.
+      if (Date.now() - atMs > 1500) return null;
+      return count;
+    };
 
     // Set up WebSocket event handlers using (Pub/Sub)Chan pattern
     this.setupWebSocketEventHandlers();
@@ -5022,6 +5141,24 @@ export class DomindsApp extends HTMLElement {
       void this.applyPendingDeepLink();
     });
 
+    // ========== Delegated Keyboard Handlers ==========
+    // Note: <button> Space activates on keyup, while our run-control counts can update rapidly.
+    // Capturing the count at keydown makes the subsequent click deterministic.
+    this.shadowRoot.addEventListener('keydown', (evt: Event) => {
+      if (!(evt instanceof KeyboardEvent)) return;
+      if (evt.key !== 'Enter' && evt.key !== ' ' && evt.key !== 'Spacebar') return;
+      const target = evt.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('button');
+      if (!(button instanceof HTMLButtonElement)) return;
+
+      if (button.id === 'toolbar-emergency-stop') {
+        captureKeyboardCountSnapshot(button, this.proceedingDialogsCount);
+      } else if (button.id === 'toolbar-resume-all') {
+        captureKeyboardCountSnapshot(button, this.resumableDialogsCount);
+      }
+    });
+
     // ========== Delegated Click Handlers ==========
     this.shadowRoot.addEventListener('click', async (evt: Event) => {
       const target = evt.target as HTMLElement | null;
@@ -5166,12 +5303,14 @@ export class DomindsApp extends HTMLElement {
       ) as HTMLButtonElement | null;
       if (emergencyStopBtn) {
         const t = getUiStrings(this.uiLanguage);
-        if (this.proceedingDialogsCount <= 0) {
+        const proceedingCountSnapshot = readKeyboardCountSnapshot(emergencyStopBtn);
+        const proceedingCount = proceedingCountSnapshot ?? this.proceedingDialogsCount;
+        if (proceedingCount <= 0) {
           this.showToast(t.emergencyStopNoProceedingToast, 'warning');
           return;
         }
 
-        const ok = window.confirm(`${t.emergencyStop} (${this.proceedingDialogsCount})?`);
+        const ok = window.confirm(`${t.emergencyStop} (${proceedingCount})?`);
         if (ok) {
           this.wsManager.sendRaw({ type: 'emergency_stop' });
         }
@@ -5181,7 +5320,9 @@ export class DomindsApp extends HTMLElement {
       const resumeAllBtn = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
       if (resumeAllBtn) {
         const t = getUiStrings(this.uiLanguage);
-        if (this.resumableDialogsCount <= 0) {
+        const resumableCountSnapshot = readKeyboardCountSnapshot(resumeAllBtn);
+        const resumableCount = resumableCountSnapshot ?? this.resumableDialogsCount;
+        if (resumableCount <= 0) {
           this.showToast(t.resumeAllNoResumableToast, 'warning');
           return;
         }
@@ -6966,8 +7107,13 @@ export class DomindsApp extends HTMLElement {
         throw new Error(resp.error || 'Failed to load rtws info');
       }
       const data = resp.data;
-      if (data && typeof data.rtws === 'string' && data.rtws !== '') {
-        this.backendRtws = data.rtws;
+      if (data) {
+        const workspace = typeof data.workspace === 'string' ? data.workspace.trim() : '';
+        const rtws = typeof data.rtws === 'string' ? data.rtws.trim() : '';
+        const resolved = workspace !== '' ? workspace : rtws;
+        if (resolved !== '') {
+          this.backendRtws = resolved;
+        }
       }
       if (data && typeof data.version === 'string') {
         this.backendVersion = data.version;
@@ -7884,7 +8030,7 @@ export class DomindsApp extends HTMLElement {
     if (btn) {
       btn.setAttribute('data-severity', this.getProblemsTopSeverity());
       btn.setAttribute('data-has-problems', this.problems.length > 0 ? 'true' : 'false');
-      const count = btn.querySelector('span');
+      const count = btn.querySelector('.problems-count');
       if (count) {
         count.textContent = String(this.problems.length);
       }
@@ -8787,11 +8933,11 @@ export class DomindsApp extends HTMLElement {
         widget.innerHTML = `
           <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+              <span class="icon-mask app-icon-bookmark app-icon-16" aria-hidden="true"></span>
               <span>${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
             </div>
             <button id="reminders-widget-close" class="icon-button" aria-label="${t.close}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              <span class="icon-mask app-icon-close" aria-hidden="true"></span>
             </button>
           </div>
           <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;"></div>
@@ -8940,6 +9086,10 @@ export class DomindsApp extends HTMLElement {
     const removeIndex = this.q4hQuestions.findIndex((q) => q.id === event.questionId);
     if (removeIndex >= 0) {
       this.q4hQuestions.splice(removeIndex, 1);
+    } else {
+      // Recovery path: if we received `q4h_answered` but our cache doesn't contain the id,
+      // request an authoritative snapshot so pending count converges without manual reload.
+      this.wsManager.sendRaw({ type: 'get_q4h_state' });
     }
 
     // Build dialog contexts and update component

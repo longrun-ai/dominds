@@ -8,6 +8,7 @@ import { getUiStrings } from '../i18n/ui';
 import type { LanguageCode } from '../shared/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
 import { renderDomindsMarkdown } from './dominds-markdown-render';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 interface Q4HPanelProps {
   /** Total question count */
@@ -195,6 +196,48 @@ export class DomindsQ4HPanel extends HTMLElement {
     );
   }
 
+  private handleSelectFromCard(card: Element): void {
+    const questionId = card.getAttribute('data-question-id');
+    const dialogId = card.getAttribute('data-dialog-id');
+    const rootId = card.getAttribute('data-root-id');
+
+    if (!questionId || !dialogId || !rootId) {
+      console.error('Q4H select: missing card identifiers', { questionId, dialogId, rootId });
+      return;
+    }
+
+    const dialogContexts = this.props.dialogContexts;
+    let dialogContext: Q4HDialogContext | undefined;
+    for (const ctx of dialogContexts) {
+      if (ctx.selfId === dialogId && ctx.rootId === rootId) {
+        dialogContext = ctx;
+        break;
+      }
+    }
+    if (!dialogContext) {
+      console.error('Q4H select: dialogContext not found', { questionId, dialogId, rootId });
+      return;
+    }
+
+    let question: HumanQuestion | undefined;
+    for (const q of dialogContext.questions) {
+      if (q.id === questionId) {
+        question = q;
+        break;
+      }
+    }
+    if (!question) {
+      console.error('Q4H select: question not found in dialogContext', {
+        questionId,
+        dialogId,
+        rootId,
+      });
+      return;
+    }
+
+    this.selectQuestion(question, dialogContext);
+  }
+
   private setupEventListeners(): void {
     if (!this.shadowRoot) return;
 
@@ -217,6 +260,27 @@ export class DomindsQ4HPanel extends HTMLElement {
       });
     });
 
+    // Whole header row is clickable for selection (not just checkbox/title).
+    // This prevents “looks selected but not routable” flakes when users click the header whitespace.
+    this.shadowRoot.querySelectorAll('.q4h-question-header').forEach((header) => {
+      header.addEventListener('pointerdown', (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+
+        // Do not steal interactions from action buttons or expand toggle.
+        if (target.closest('button')) return;
+        if (target.closest('.q4h-expand-icon')) return;
+        if (target.closest('.q4h-question-actions-top')) return;
+
+        const card = header.closest('.q4h-question-card');
+        if (!card) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleSelectFromCard(card);
+      });
+    });
+
     // Checkbox and title - toggle selection (use pointerdown to avoid losing the event if the panel re-renders).
     this.shadowRoot.querySelectorAll('.q4h-checkbox, .q4h-question-title').forEach((el) => {
       el.addEventListener('pointerdown', (e) => {
@@ -225,45 +289,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         const card = el.closest('.q4h-question-card');
         if (!card) return;
 
-        const questionId = card.getAttribute('data-question-id');
-        const dialogId = card.getAttribute('data-dialog-id');
-        const rootId = card.getAttribute('data-root-id');
-
-        if (!questionId || !dialogId || !rootId) {
-          console.error('Q4H select: missing card identifiers', { questionId, dialogId, rootId });
-          return;
-        }
-
-        const dialogContexts = this.props.dialogContexts;
-        let dialogContext: Q4HDialogContext | undefined;
-        for (const ctx of dialogContexts) {
-          if (ctx.selfId === dialogId && ctx.rootId === rootId) {
-            dialogContext = ctx;
-            break;
-          }
-        }
-        if (!dialogContext) {
-          console.error('Q4H select: dialogContext not found', { questionId, dialogId, rootId });
-          return;
-        }
-
-        let question: HumanQuestion | undefined;
-        for (const q of dialogContext.questions) {
-          if (q.id === questionId) {
-            question = q;
-            break;
-          }
-        }
-        if (!question) {
-          console.error('Q4H select: question not found in dialogContext', {
-            questionId,
-            dialogId,
-            rootId,
-          });
-          return;
-        }
-
-        this.selectQuestion(question, dialogContext);
+        this.handleSelectFromCard(card);
       });
     });
 
@@ -386,6 +412,7 @@ export class DomindsQ4HPanel extends HTMLElement {
 
   getStyles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
       :host {
         display: flex;
         position: relative;
@@ -493,6 +520,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         line-height: 1;
         transform-origin: 50% 50%;
         flex-shrink: 0;
+        --icon-mask: ${ICON_MASK_URLS.toggleTriangle};
       }
 
       .q4h-question-card.expanded .q4h-expand-icon {
@@ -737,6 +765,26 @@ export class DomindsQ4HPanel extends HTMLElement {
         outline-offset: 2px;
       }
 
+      .q4h-expand-icon.icon-mask,
+      .q4h-goto-site-btn .icon-mask,
+      .q4h-open-external-btn .icon-mask,
+      .q4h-share-link-btn .icon-mask {
+        width: 14px;
+        height: 14px;
+      }
+
+      .q4h-icon-goto {
+        --icon-mask: ${ICON_MASK_URLS.arrowUp};
+      }
+
+      .q4h-icon-external {
+        --icon-mask: ${ICON_MASK_URLS.external};
+      }
+
+      .q4h-icon-share {
+        --icon-mask: ${ICON_MASK_URLS.link};
+      }
+
     `;
   }
 
@@ -789,11 +837,7 @@ export class DomindsQ4HPanel extends HTMLElement {
           <span class="q4h-checkbox">
             <span class="q4h-checkbox-check">✓</span>
           </span>
-          <span class="q4h-expand-icon" aria-hidden="true">
-            <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor" focusable="false">
-              <polygon points="3,2 3,10 10,6"></polygon>
-            </svg>
-          </span>
+          <span class="q4h-expand-icon icon-mask" aria-hidden="true"></span>
           <span class="q4h-question-title">
             <span class="q4h-question-origin">@${this.escapeHtml(dialogContext.agentId)}</span>
             <span class="q4h-question-origin-sep">•</span>
@@ -814,10 +858,7 @@ export class DomindsQ4HPanel extends HTMLElement {
               data-message-index="${question.callSiteRef.messageIndex}"
               data-call-id="${this.escapeHtml(question.callId ?? '')}"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 19V5"></path>
-                <path d="m5 12 7-7 7 7"></path>
-              </svg>
+              <span class="icon-mask q4h-icon-goto" aria-hidden="true"></span>
             </button>
             <button
               class="q4h-open-external-btn"
@@ -831,11 +872,7 @@ export class DomindsQ4HPanel extends HTMLElement {
               data-message-index="${question.callSiteRef.messageIndex}"
               data-call-id="${this.escapeHtml(question.callId ?? '')}"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M14 3h7v7"></path>
-                <path d="M10 14L21 3"></path>
-                <path d="M21 14v7H3V3h7"></path>
-              </svg>
+              <span class="icon-mask q4h-icon-external" aria-hidden="true"></span>
             </button>
             <button
               class="q4h-share-link-btn"
@@ -849,10 +886,7 @@ export class DomindsQ4HPanel extends HTMLElement {
               data-message-index="${question.callSiteRef.messageIndex}"
               data-call-id="${this.escapeHtml(question.callId ?? '')}"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M10 13a5 5 0 0 1 0-7l1-1a5 5 0 0 1 7 7l-1 1"></path>
-                <path d="M14 11a5 5 0 0 1 0 7l-1 1a5 5 0 0 1-7-7l1-1"></path>
-              </svg>
+              <span class="icon-mask q4h-icon-share" aria-hidden="true"></span>
             </button>
           </span>
         </div>
