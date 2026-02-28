@@ -1142,6 +1142,20 @@ export async function driveDialogStreamCore(
             q4hAnswerCallIds,
           );
 
+          // Emit the live user-side boundary event for UI generation bubbles.
+          // Without this, realtime turns can miss user content + divider (<hr/>),
+          // while replay (from persisted human_text_record) still looks correct.
+          postDialogEvent(dlg, {
+            type: 'end_of_user_saying_evt',
+            course: dlg.currentCourse,
+            genseq: dlg.activeGenSeq,
+            msgId: currentPrompt.msgId,
+            content: currentPrompt.content,
+            grammar: 'markdown',
+            userLanguageCode: persistedUserLanguageCode,
+            q4hAnswerCallIds,
+          });
+
           // Ideal: provider SDKs should support a dedicated role='environment' for runtime
           // metadata. Today, most providers only accept user/assistant (and tool as a special
           // case), so Dominds must project environment/system-like content as role='user'.
