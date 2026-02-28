@@ -6013,6 +6013,29 @@ export class DomindsApp extends HTMLElement {
     return url;
   }
 
+  private stripUrlAuthParamAfterSuccessfulOpen(): void {
+    if (!(this.authState.kind === 'active' && this.authState.source === 'url')) return;
+    removeAuthKeyFromUrl();
+    this.urlAuthPresent = false;
+  }
+
+  private syncAddressBarToDialogDeepLink(dialog: DialogInfo): void {
+    const rootId = dialog.rootId.trim();
+    const selfId = dialog.selfId.trim();
+    if (!rootId || !selfId) return;
+
+    const target = this.buildDialogDeepLinkUrl(rootId, selfId);
+    const current = new URL(window.location.href);
+    if (
+      current.pathname === target.pathname &&
+      current.search === target.search &&
+      current.hash === target.hash
+    ) {
+      return;
+    }
+    window.history.replaceState({}, '', target.toString());
+  }
+
   private async copyTextToClipboard(text: string): Promise<boolean> {
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -6287,6 +6310,7 @@ export class DomindsApp extends HTMLElement {
       const gate = await this.gateBySetup();
       if (gate.kind !== 'proceed') return;
       await this.loadInitialData();
+      this.stripUrlAuthParamAfterSuccessfulOpen();
     } finally {
       this.bootInFlight = false;
     }
@@ -7283,6 +7307,8 @@ export class DomindsApp extends HTMLElement {
         this.renderRemindersWidget();
         this.setupRemindersWidgetDrag();
       }
+
+      this.syncAddressBarToDialogDeepLink(normalizedDialog);
 
       const t = getUiStrings(this.uiLanguage);
       this.showSuccess(t.dialogLoadedToast);
