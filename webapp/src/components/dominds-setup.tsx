@@ -401,22 +401,23 @@ export class DomindsSetup extends HTMLElement {
           <div class="rtws-indicator" title="${escapeHtmlAttr(t.backendWorkspaceTitle)}">
             📁 ${escapeHtml(this.backendRtws || t.backendWorkspaceLoading)}
           </div>
-          <div class="spacer"></div>
-          <select id="setup-lang-select" class="select select-compact" title="${escapeHtmlAttr(
-            t.uiLanguageSelectTitle,
-          )}">
-            ${supportedLanguageCodes
-              .map((code) => {
-                const sel = code === this.uiLanguage ? 'selected' : '';
-                const label = formatLanguageName(code, this.uiLanguage);
-                return `<option value="${escapeHtmlAttr(code)}" ${sel}>${escapeHtml(label)}</option>`;
-              })
-              .join('')}
-          </select>
-          <button class="btn" id="refresh-btn">${escapeHtml(t.setupRefresh)}</button>
-          <button class="btn primary" id="go-btn" ${this.isSetupOk ? '' : 'disabled'}>${escapeHtml(
-            t.setupGoToApp,
-          )}</button>
+          <div class="header-actions">
+            <select id="setup-lang-select" class="select select-compact" title="${escapeHtmlAttr(
+              t.uiLanguageSelectTitle,
+            )}">
+              ${supportedLanguageCodes
+                .map((code) => {
+                  const sel = code === this.uiLanguage ? 'selected' : '';
+                  const label = formatLanguageName(code, this.uiLanguage);
+                  return `<option value="${escapeHtmlAttr(code)}" ${sel}>${escapeHtml(label)}</option>`;
+                })
+                .join('')}
+            </select>
+            <button class="btn" id="refresh-btn">${escapeHtml(t.setupRefresh)}</button>
+            <button class="btn primary" id="go-btn" ${this.isSetupOk ? '' : 'disabled'}>${escapeHtml(
+              t.setupGoToApp,
+            )}</button>
+          </div>
         </header>
         <main class="body">${this.renderBody()}</main>
       </div>
@@ -1426,8 +1427,8 @@ export class DomindsSetup extends HTMLElement {
         padding:5px 8px;
         border-radius:4px;
         border:1px solid var(--dominds-border,#e0e0e0);
-        flex:1;
-        max-width:50%;
+        flex:1 1 auto;
+        max-width:none;
         min-width:0;
         height:calc(1em * 1.4 * 0.85);
         display:flex;
@@ -1464,6 +1465,13 @@ export class DomindsSetup extends HTMLElement {
         border:1px solid color-mix(in srgb, var(--dominds-primary,#007acc) 35%, var(--dominds-border,#e0e0e0));
         background:var(--dominds-primary-bg,color-mix(in srgb, var(--dominds-primary,#007acc) 12%, transparent));
         color:var(--dominds-primary,#007acc);
+      }
+
+      .header-actions{
+        display:flex;
+        align-items:flex-end;
+        gap:8px;
+        flex-shrink:0;
       }
 
       .spacer{flex:1;}

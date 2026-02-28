@@ -2110,8 +2110,8 @@ export class DomindsApp extends HTMLElement {
 	        padding: 3px 6px;
 	        border-radius: 4px;
 	        border: 1px solid var(--dominds-border, #e0e0e0);
-	        flex: 1;
-	        max-width: 50%;
+	        flex: 1 1 auto;
+	        max-width: none;
 	        min-width: 0;
 	        display: flex;
 	        align-items: center;
@@ -2148,7 +2148,8 @@ export class DomindsApp extends HTMLElement {
 		        display: flex;
 		        align-items: center;
 		        gap: 6px;
-		        margin-left: auto;
+		        margin-left: 0;
+		        flex-shrink: 0;
 		      }
 
       .header-run-controls {
