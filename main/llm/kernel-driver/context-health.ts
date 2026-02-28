@@ -67,6 +67,20 @@ export function resolveCriticalCountdownRemaining(
   return remaining > 0 ? remaining : 0;
 }
 
+export function consumeCriticalCountdown(dialogKey: string): number {
+  const state = getOrCreateState(dialogKey);
+  const currentRaw =
+    typeof state.criticalCountdownRemaining === 'number' &&
+    Number.isFinite(state.criticalCountdownRemaining)
+      ? Math.floor(state.criticalCountdownRemaining)
+      : KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS;
+  const current = currentRaw > 0 ? currentRaw : 0;
+  const next = Math.max(0, current - 1);
+  state.lastSeenLevel = 'critical';
+  state.criticalCountdownRemaining = next;
+  return next;
+}
+
 export function resolveCautionRemediationCadenceGenerations(
   configured: number | undefined,
 ): number {

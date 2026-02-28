@@ -9,7 +9,18 @@ import {
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
+import { formatAgentFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import { generateShortId } from '../../shared/utils/id';
+import { LlmConfig } from '../client';
+import {
+  consumeCriticalCountdown,
+  decideKernelDriverContextHealth,
+  KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+  resetContextHealthRoundState,
+  resolveCautionRemediationCadenceGenerations,
+  resolveCriticalCountdownRemaining,
+} from './context-health';
 import { driveDialogStreamCore } from './drive';
 import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from './guardrails';
 import type { ScheduleDriveFn, SubdialogReplyTarget } from './subdialog';
@@ -242,11 +253,75 @@ export async function executeDriveRound(args: {
       throw new Error(`kernel-driver policy invariant violation: ${policyResult.detail}`);
     }
 
+    const snapshot = dialog.getLastContextHealth();
+    const hasQueuedUpNext = dialog.hasUpNext();
+    const provider = policy.effectiveAgent.provider ?? minds.team.memberDefaults.provider;
+    const model = policy.effectiveAgent.model ?? minds.team.memberDefaults.model;
+    let cautionRemediationCadenceGenerations =
+      resolveCautionRemediationCadenceGenerations(undefined);
+    if (provider && model) {
+      const llmCfg = await LlmConfig.load();
+      const providerCfg = llmCfg.getProvider(provider);
+      cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+        providerCfg?.models[model]?.caution_remediation_cadence_generations,
+      );
+    }
+    const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dialog.id.key(), snapshot);
+    const healthDecision = decideKernelDriverContextHealth({
+      dialogKey: dialog.id.key(),
+      snapshot,
+      hadUserPromptThisGen: humanPrompt !== undefined,
+      canInjectPromptThisGen: !hasQueuedUpNext,
+      cautionRemediationCadenceGenerations,
+      criticalCountdownRemaining,
+    });
+    if (healthDecision.kind === 'suspend') {
+      return;
+    }
+
+    let healthPrompt: KernelDriverHumanPrompt | undefined;
+    if (healthDecision.kind === 'continue') {
+      if (healthDecision.reason === 'critical_force_new_course') {
+        const language = getWorkLanguage();
+        const newCoursePrompt =
+          language === 'zh'
+            ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+            : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+        await dialog.startNewCourse(newCoursePrompt);
+        dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+        resetContextHealthRoundState(dialog.id.key());
+      } else if (!hasQueuedUpNext) {
+        const language = getWorkLanguage();
+        const guideText =
+          healthDecision.reason === 'caution_soft_remediation'
+            ? formatAgentFacingContextHealthV3RemediationGuide(language, {
+                kind: 'caution',
+                mode: 'soft',
+              })
+            : formatAgentFacingContextHealthV3RemediationGuide(language, {
+                kind: 'critical',
+                mode: 'countdown',
+                promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
+                promptsTotal: KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+              });
+        healthPrompt = {
+          content: guideText,
+          msgId: generateShortId(),
+          grammar: 'markdown',
+          userLanguageCode: language,
+        };
+      }
+    }
+
     args.runtime.driveCount += 1;
     args.runtime.totalGenIterations += 1;
     args.runtime.usedLegacyDriveCore = false;
 
-    const effectivePrompt = resolveEffectivePrompt(dialog, humanPrompt);
+    const promptForCore =
+      healthDecision.kind === 'continue' && healthDecision.reason === 'critical_force_new_course'
+        ? undefined
+        : (healthPrompt ?? humanPrompt);
+    const effectivePrompt = resolveEffectivePrompt(dialog, promptForCore);
     subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
@@ -272,8 +347,6 @@ export async function executeDriveRound(args: {
     !interruptedBySignal &&
     driveResult.lastAssistantSayingContent !== null
   ) {
-    const hasFollowUp = followUp !== undefined;
-    const suspension = await dialog.getSuspensionStatus();
     const hasInProgressFunctionCall =
       typeof driveResult.lastFunctionCallGenseq === 'number' &&
       Number.isFinite(driveResult.lastFunctionCallGenseq) &&
@@ -281,44 +354,7 @@ export async function executeDriveRound(args: {
       (typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
         !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
         driveResult.lastAssistantSayingGenseq <= driveResult.lastFunctionCallGenseq);
-
-    let allowEarlySupplyForNestedTellask = false;
-    if (hasInProgressFunctionCall && suspension.subdialogs && !suspension.q4h && !hasFollowUp) {
-      const lastFuncCallMsg = (() => {
-        for (let i = dialog.msgs.length - 1; i >= 0; i -= 1) {
-          const msg = dialog.msgs[i];
-          if (msg && msg.type === 'func_call_msg') {
-            return msg;
-          }
-        }
-        return undefined;
-      })();
-      if (
-        lastFuncCallMsg &&
-        typeof driveResult.lastFunctionCallGenseq === 'number' &&
-        Number.isFinite(driveResult.lastFunctionCallGenseq) &&
-        lastFuncCallMsg.genseq === Math.floor(driveResult.lastFunctionCallGenseq) &&
-        (lastFuncCallMsg.name === 'tellask' ||
-          lastFuncCallMsg.name === 'tellaskSessionless' ||
-          lastFuncCallMsg.name === 'tellaskBack')
-      ) {
-        allowEarlySupplyForNestedTellask = true;
-      }
-    }
-
-    if (hasFollowUp || suspension.q4h) {
-      log.debug(
-        'kernel-driver skip subdialog response supply while callee is not finalized',
-        undefined,
-        {
-          rootId: dialog.id.rootId,
-          selfId: dialog.id.selfId,
-          waitingQ4H: suspension.q4h,
-          waitingSubdialogs: suspension.subdialogs,
-          hasFollowUp,
-        },
-      );
-    } else if (hasInProgressFunctionCall && !allowEarlySupplyForNestedTellask) {
+    if (hasInProgressFunctionCall) {
       // Any function call means execution is still in-progress. Only supply when the callee
       // has produced a newer assistant saying after the latest function call.
       log.debug(
@@ -332,26 +368,50 @@ export async function executeDriveRound(args: {
         },
       );
     } else {
-      if (
-        typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
-        !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
-        driveResult.lastAssistantSayingGenseq <= 0
-      ) {
-        throw new Error(
-          `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+      const hasFollowUp = followUp !== undefined;
+      const suspension = await dialog.getSuspensionStatus();
+      if (!suspension.canDrive || hasFollowUp) {
+        log.debug(
+          'kernel-driver skip subdialog response supply while callee is not finalized',
+          undefined,
+          {
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            waitingQ4H: suspension.q4h,
+            waitingSubdialogs: suspension.subdialogs,
+            hasFollowUp,
+          },
         );
       }
-      const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
-      let supplied = false;
-      if (subdialogReplyTarget) {
-        supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
-          subdialog: dialog,
-          responseText: driveResult.lastAssistantSayingContent,
-          responseGenseq,
-          target: subdialogReplyTarget,
-          scheduleDrive: args.scheduleDrive,
-        });
-        if (!supplied) {
+      if (suspension.canDrive && !hasFollowUp) {
+        if (
+          typeof driveResult.lastAssistantSayingGenseq !== 'number' ||
+          !Number.isFinite(driveResult.lastAssistantSayingGenseq) ||
+          driveResult.lastAssistantSayingGenseq <= 0
+        ) {
+          throw new Error(
+            `Subdialog response supply invariant violation: missing lastAssistantSayingGenseq for dialog=${dialog.id.valueOf()}`,
+          );
+        }
+        const responseGenseq = Math.floor(driveResult.lastAssistantSayingGenseq);
+        let supplied = false;
+        if (subdialogReplyTarget) {
+          supplied = await supplySubdialogResponseToSpecificCallerIfPendingV2({
+            subdialog: dialog,
+            responseText: driveResult.lastAssistantSayingContent,
+            responseGenseq,
+            target: subdialogReplyTarget,
+            scheduleDrive: args.scheduleDrive,
+          });
+          if (!supplied) {
+            supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
+              subdialog: dialog,
+              responseText: driveResult.lastAssistantSayingContent,
+              responseGenseq,
+              scheduleDrive: args.scheduleDrive,
+            });
+          }
+        } else {
           supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
             subdialog: dialog,
             responseText: driveResult.lastAssistantSayingContent,
@@ -359,35 +419,45 @@ export async function executeDriveRound(args: {
             scheduleDrive: args.scheduleDrive,
           });
         }
-      } else {
-        supplied = await supplySubdialogResponseToAssignedCallerIfPendingV2({
-          subdialog: dialog,
-          responseText: driveResult.lastAssistantSayingContent,
-          responseGenseq,
-          scheduleDrive: args.scheduleDrive,
-        });
-      }
 
-      if (!supplied && subdialogReplyTarget) {
-        const diagnostics = await loadPendingDiagnosticsSnapshot({
-          rootId: dialog.id.rootId,
-          ownerDialogId: subdialogReplyTarget.ownerDialogId,
-          expectedSubdialogId: dialog.id.selfId,
-          status: dialog.status,
-        });
-        log.debug(
-          'kernel-driver failed to supply subdialog response to specific caller',
-          undefined,
-          {
-            calleeId: dialog.id.valueOf(),
-            targetOwner: subdialogReplyTarget.ownerDialogId,
-            targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-            targetCallType: subdialogReplyTarget.callType,
-            targetCallId: subdialogReplyTarget.callId,
-            diagnostics,
-          },
-        );
+        if (!supplied && subdialogReplyTarget) {
+          const diagnostics = await loadPendingDiagnosticsSnapshot({
+            rootId: dialog.id.rootId,
+            ownerDialogId: subdialogReplyTarget.ownerDialogId,
+            expectedSubdialogId: dialog.id.selfId,
+            status: dialog.status,
+          });
+          log.debug(
+            'kernel-driver failed to supply subdialog response to specific caller',
+            undefined,
+            {
+              calleeId: dialog.id.valueOf(),
+              targetOwner: subdialogReplyTarget.ownerDialogId,
+              targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+              targetCallType: subdialogReplyTarget.callType,
+              targetCallId: subdialogReplyTarget.callId,
+              diagnostics,
+            },
+          );
+        }
       }
     }
+  }
+
+  if (followUp) {
+    args.scheduleDrive(dialog, {
+      waitInQue: true,
+      humanPrompt: {
+        content: followUp.prompt,
+        msgId: followUp.msgId,
+        grammar: followUp.grammar ?? 'markdown',
+        userLanguageCode:
+          followUp.userLanguageCode === 'zh' || followUp.userLanguageCode === 'en'
+            ? followUp.userLanguageCode
+            : undefined,
+        q4hAnswerCallIds: followUp.q4hAnswerCallIds,
+        runControl: followUp.runControl,
+      },
+    });
   }
 }

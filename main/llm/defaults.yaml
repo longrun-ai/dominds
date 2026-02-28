@@ -539,6 +539,80 @@ providers:
         input_length: 128000
         output_length: 65536
         context_window: '128K'
+  aliyun-bailian:
+    name: Aliyun Bailian Coding Plan
+    apiType: anthropic
+    baseUrl: https://coding.dashscope.aliyuncs.com/apps/anthropic
+    apiKeyEnvVar: ALIYUN_BAILIAN_API_KEY
+    tech_spec_url: https://help.aliyun.com/zh/model-studio/other-tools-coding-plan
+    api_mgmt_url: https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan
+    model_param_options:
+      general:
+        max_tokens:
+          type: integer
+          min: 1
+          description: Maximum tokens to generate (provider-agnostic override).
+      anthropic:
+        temperature:
+          type: number
+          min: 0
+          max: 1
+          description: Anthropic-compatible sampling temperature (0-1).
+        top_p:
+          type: number
+          min: 0
+          max: 1
+          description: Anthropic-compatible nucleus sampling probability (0-1).
+        json_response:
+          type: boolean
+          description: Force JSON object output via Anthropic tool_choice mode.
+        max_tokens:
+          type: integer
+          min: 1
+          description: Provider-specific max tokens override.
+    models:
+      qwen3.5-plus:
+        name: Qwen3.5 Plus
+        context_length: 1000000
+        input_length: 983616
+        output_length: 65536
+        context_window: '1M'
+      kimi-k2.5:
+        name: Kimi K2.5
+        context_length: 262144
+        input_length: 258048
+        output_length: 32768
+        context_window: '262K'
+      glm-5:
+        name: GLM-5
+        context_length: 202752
+        input_length: 202752
+        output_length: 16384
+        context_window: '202K'
+      MiniMax-M2.5:
+        name: MiniMax M2.5
+        context_length: 204800
+        input_length: 196608
+        output_length: 131072
+        context_window: '204K'
+      qwen3-coder-next:
+        name: Qwen3 Coder Next
+        context_length: 262144
+        input_length: 204800
+        output_length: 65536
+        context_window: '262K'
+      qwen3-coder-plus:
+        name: Qwen3 Coder Plus
+        context_length: 1000000
+        input_length: 997952
+        output_length: 65536
+        context_window: '1M'
+      glm-4.7:
+        name: GLM-4.7
+        context_length: 202752
+        input_length: 169984
+        output_length: 16384
+        context_window: '202K'
   openai:
     name: OpenAI
     apiType: openai

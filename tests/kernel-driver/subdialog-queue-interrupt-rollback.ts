@@ -10,7 +10,6 @@ import {
 
 import {
   createRootDialog,
-  lastAssistantSaying,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -26,7 +25,7 @@ async function main(): Promise<void> {
     });
 
     const trigger =
-      'Trigger subdialog and ensure response is supplied before nested suspension resolves.';
+      'Trigger subdialog and ensure response is NOT supplied before nested suspension resolves.';
     const rootFirstResponse = 'Start.';
     const rootMentionList = ['@pangu'];
     const rootTellaskBody =
@@ -67,7 +66,7 @@ async function main(): Promise<void> {
     });
     const panguFinalResponse = 'Verified. Final answer remains 2.';
 
-    const rootResumeResponse = 'Ack: got subdialog result before nested verification completed.';
+    const rootFinalResponse = 'Ack: received final verified result from subdialog.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -100,10 +99,11 @@ async function main(): Promise<void> {
           },
         ],
       },
-      { message: panguFirstResponse, role: 'tool', response: rootResumeResponse },
       { message: expectedCoderPrompt, role: 'user', response: coderReply, delayMs: 1800 },
+      { message: coderReply, role: 'tool', response: panguFinalResponse },
       { message: expectedCoderInjected, role: 'tool', response: panguFinalResponse },
       { message: expectedCoderInjected, role: 'user', response: panguFinalResponse },
+      { message: panguFinalResponse, role: 'tool', response: rootFinalResponse },
     ]);
 
     const dlg = await createRootDialog('tester');
@@ -120,10 +120,42 @@ async function main(): Promise<void> {
       { suppressDiligencePush: true },
     );
 
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const interimMirrorIndex = dlg.msgs.findIndex(
+      (msg) =>
+        msg.type === 'tellask_result_msg' &&
+        msg.role === 'tool' &&
+        msg.responderId === 'pangu' &&
+        msg.tellaskContent === rootTellaskBody &&
+        msg.content === panguFirstResponse,
+    );
+    assert.equal(
+      interimMirrorIndex,
+      -1,
+      'intermediate subdialog result must not be mirrored to root before nested tellask settles',
+    );
+
     await waitFor(
-      async () => lastAssistantSaying(dlg) === rootResumeResponse,
-      4_000,
-      'root dialog to resume after nested subdialog response is mirrored',
+      async () => {
+        const finalMirrorIndex = dlg.msgs.findIndex(
+          (msg) =>
+            msg.type === 'tellask_result_msg' &&
+            msg.role === 'tool' &&
+            msg.responderId === 'pangu' &&
+            msg.tellaskContent === rootTellaskBody &&
+            msg.content === panguFinalResponse,
+        );
+        if (finalMirrorIndex < 0) return false;
+        for (let i = finalMirrorIndex + 1; i < dlg.msgs.length; i += 1) {
+          const msg = dlg.msgs[i];
+          if (msg && msg.type === 'saying_msg' && msg.role === 'assistant') {
+            return true;
+          }
+        }
+        return false;
+      },
+      8_000,
+      'root dialog to resume only after nested subdialog chain is finalized',
     );
 
     await waitForAllDialogsUnlocked(dlg, 6_000);
@@ -134,11 +166,11 @@ async function main(): Promise<void> {
         msg.role === 'tool' &&
         msg.responderId === 'pangu' &&
         msg.tellaskContent === rootTellaskBody &&
-        msg.content === panguFirstResponse,
+        msg.content === panguFinalResponse,
     );
     const sayingIndex = dlg.msgs.findIndex(
-      (msg: ChatMessage) =>
-        msg.type === 'saying_msg' && msg.role === 'assistant' && msg.content === rootResumeResponse,
+      (msg: ChatMessage, index: number) =>
+        index > mirrorIndex && msg.type === 'saying_msg' && msg.role === 'assistant',
     );
     assert.ok(mirrorIndex >= 0, 'expected mirrored subdialog response in root messages');
     assert.ok(sayingIndex >= 0, 'expected root follow-up response');
@@ -148,11 +180,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver subdialog-supply-before-suspension: PASS');
+  console.log('kernel-driver subdialog-no-early-supply-before-nested-completion: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver subdialog-supply-before-suspension: FAIL\n${message}`);
+  console.error(
+    `kernel-driver subdialog-no-early-supply-before-nested-completion: FAIL\n${message}`,
+  );
   process.exit(1);
 });

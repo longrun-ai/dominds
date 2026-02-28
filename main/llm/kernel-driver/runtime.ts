@@ -297,6 +297,7 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
 
     if (typeof code === 'string') {
       const retriableCodes = new Set<string>([
+        'DOMINDS_LLM_EMPTY_RESPONSE',
         'ETIMEDOUT',
         'ECONNRESET',
         'ECONNREFUSED',
@@ -339,17 +340,79 @@ async function sleepWithAbort(ms: number, abortSignal?: AbortSignal): Promise<vo
   }
 }
 
+function normalizeRetryInitialDelayMs(value: number): number {
+  if (!Number.isFinite(value)) return 1000;
+  const normalized = Math.floor(value);
+  return normalized >= 0 ? normalized : 1000;
+}
+
+function normalizeRetryBackoffMultiplier(value: number): number {
+  if (!Number.isFinite(value)) return 2;
+  return value >= 1 ? value : 2;
+}
+
+function normalizeRetryMaxDelayMs(value: number, fallbackMin: number): number {
+  if (!Number.isFinite(value)) return Math.max(30_000, fallbackMin);
+  const normalized = Math.floor(value);
+  if (normalized < 0) return Math.max(30_000, fallbackMin);
+  return Math.max(fallbackMin, normalized);
+}
+
+function emitLlmRetryEventBestEffort(args: {
+  dlg: Dialog;
+  phase: 'retrying' | 'exhausted';
+  provider: string;
+  attempt: number;
+  totalAttempts: number;
+  maxRetries: number;
+  retriesRemaining: number;
+  backoffMs?: number;
+  failure: ClassifiedLlmFailure;
+  errorText: string;
+  suggestion?: string;
+}): void {
+  const rawCourse = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
+  const rawGenseq = args.dlg.activeGenSeq;
+  if (!Number.isFinite(rawCourse) || rawCourse <= 0) return;
+  if (!Number.isFinite(rawGenseq) || rawGenseq <= 0) return;
+
+  postDialogEvent(args.dlg, {
+    type: 'llm_retry_evt',
+    course: Math.floor(rawCourse),
+    genseq: Math.floor(rawGenseq),
+    phase: args.phase,
+    provider: args.provider,
+    attempt: args.attempt,
+    totalAttempts: args.totalAttempts,
+    maxRetries: args.maxRetries,
+    retriesRemaining: args.retriesRemaining,
+    backoffMs: args.backoffMs,
+    failureKind: args.failure.kind,
+    status: args.failure.status,
+    code: args.failure.code,
+    error: args.errorText,
+    suggestion: args.suggestion,
+  });
+}
+
 export async function runLlmRequestWithRetry<T>(params: {
   dlg: Dialog;
   provider: string;
   abortSignal?: AbortSignal;
   maxRetries: number;
+  retryInitialDelayMs: number;
+  retryBackoffMultiplier: number;
+  retryMaxDelayMs: number;
   canRetry: () => boolean;
   onRetry?: () => Promise<void> | void;
   onGiveUp?: () => Promise<void> | void;
   doRequest: () => Promise<T>;
 }): Promise<T> {
   const providerProblemId = `llm/provider_rejected/${params.dlg.id.valueOf()}`;
+  const totalAttempts = params.maxRetries + 1;
+  const retryInitialDelayMs = normalizeRetryInitialDelayMs(params.retryInitialDelayMs);
+  const retryBackoffMultiplier = normalizeRetryBackoffMultiplier(params.retryBackoffMultiplier);
+  const retryMaxDelayMs = normalizeRetryMaxDelayMs(params.retryMaxDelayMs, retryInitialDelayMs);
 
   for (let attempt = 0; attempt <= params.maxRetries; attempt++) {
     try {
@@ -363,6 +426,22 @@ export async function runLlmRequestWithRetry<T>(params: {
 
       const failure = classifyLlmFailure(err);
       const detail = extractErrorDetails(err).message;
+      const attemptNo = attempt + 1;
+      const retriesRemaining = Math.max(0, params.maxRetries - attempt);
+
+      log.warn('LLM request attempt failed', err, {
+        provider: params.provider,
+        dialogId: params.dlg.id.valueOf(),
+        rootId: params.dlg.id.rootId,
+        selfId: params.dlg.id.selfId,
+        attempt: attemptNo,
+        totalAttempts,
+        retriesRemaining,
+        failureKind: failure.kind,
+        status: failure.status,
+        code: failure.code,
+        errorText: detail,
+      });
 
       if (failure.kind === 'rejected') {
         upsertProblem({
@@ -392,6 +471,35 @@ export async function runLlmRequestWithRetry<T>(params: {
         if (params.onGiveUp) {
           await params.onGiveUp();
         }
+        if (failure.kind === 'retriable') {
+          const suggestion = `Consider increasing providers.${params.provider}.llm_retry_max_retries / llm_retry_initial_delay_ms / llm_retry_backoff_multiplier / llm_retry_max_delay_ms in .minds/llm.yaml, and verify provider/network stability.`;
+          emitLlmRetryEventBestEffort({
+            dlg: params.dlg,
+            phase: 'exhausted',
+            provider: params.provider,
+            attempt: attemptNo,
+            totalAttempts,
+            maxRetries: params.maxRetries,
+            retriesRemaining,
+            failure,
+            errorText: detail,
+            suggestion,
+          });
+          log.warn('LLM retriable failure exhausted retries', undefined, {
+            provider: params.provider,
+            dialogId: params.dlg.id.valueOf(),
+            rootId: params.dlg.id.rootId,
+            selfId: params.dlg.id.selfId,
+            attempt: attemptNo,
+            totalAttempts,
+            maxRetries: params.maxRetries,
+            retryInitialDelayMs,
+            retryBackoffMultiplier,
+            retryMaxDelayMs,
+            errorText: detail,
+            suggestion,
+          });
+        }
         try {
           await params.dlg.streamError(detail);
         } catch {
@@ -404,11 +512,29 @@ export async function runLlmRequestWithRetry<T>(params: {
         );
       }
 
-      const backoffMs = Math.min(30_000, 1000 * 2 ** attempt);
+      const backoffMs = Math.min(
+        retryMaxDelayMs,
+        Math.max(0, Math.floor(retryInitialDelayMs * retryBackoffMultiplier ** attempt)),
+      );
+      emitLlmRetryEventBestEffort({
+        dlg: params.dlg,
+        phase: 'retrying',
+        provider: params.provider,
+        attempt: attemptNo,
+        totalAttempts,
+        maxRetries: params.maxRetries,
+        retriesRemaining,
+        backoffMs,
+        failure,
+        errorText: detail,
+      });
       log.warn(`Retrying LLM request after retriable error`, undefined, {
         provider: params.provider,
-        attempt: attempt + 1,
+        attempt: attemptNo,
         backoffMs,
+        retryInitialDelayMs,
+        retryBackoffMultiplier,
+        retryMaxDelayMs,
         failure,
       });
       if (params.onRetry) {

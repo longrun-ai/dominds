@@ -41,8 +41,20 @@ import type { LlmStreamReceiver } from '../gen';
 import { getLlmGenerator } from '../gen/registry';
 import { projectFuncToolsForProvider } from '../tools-projection';
 import { assembleDriveContextMessages } from './context';
+import {
+  consumeCriticalCountdown,
+  decideKernelDriverContextHealth,
+  KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+  resetContextHealthRoundState,
+  resolveCautionRemediationCadenceGenerations,
+  resolveCriticalCountdownRemaining,
+} from './context-health';
 import { emitThinkingEvents } from './events';
-import { buildKernelDriverPolicy, resolveKernelDriverPolicyViolationKind } from './guardrails';
+import {
+  buildKernelDriverPolicy,
+  resolveKernelDriverPolicyViolationKind,
+  validateKernelDriverPolicyInvariants,
+} from './guardrails';
 import {
   maybePrepareDiligenceAutoContinuePrompt,
   runLlmRequestWithRetry,
@@ -60,6 +72,22 @@ import type {
   KernelDriverDriveArgs,
   KernelDriverHumanPrompt,
 } from './types';
+
+type KernelDriverRetryPolicy = Readonly<{
+  maxRetries: number;
+  initialDelayMs: number;
+  backoffMultiplier: number;
+  maxDelayMs: number;
+}>;
+
+const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
+  maxRetries: 5,
+  initialDelayMs: 1000,
+  backoffMultiplier: 2,
+  maxDelayMs: 30_000,
+};
+
+const KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
 
 class KernelDriverInterruptedError extends Error {
   public readonly reason: DialogInterruptionReason;
@@ -93,6 +121,84 @@ function normalizeQ4HAnswerCallIds(raw: readonly string[] | undefined): string[]
     normalized.push(callId);
   }
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function isUserOriginPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
+  if (!prompt) return false;
+  return (prompt.origin ?? 'user') === 'user';
+}
+
+function resolveModelInfo(providerCfg: ProviderConfig, model: string): ModelInfo | undefined {
+  return providerCfg.models[model];
+}
+
+function resolveRetryMaxRetries(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxRetries;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxRetries;
+  }
+  return normalized;
+}
+
+function resolveRetryInitialDelayMs(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.initialDelayMs;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.initialDelayMs;
+  }
+  return normalized;
+}
+
+function resolveRetryBackoffMultiplier(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.backoffMultiplier;
+  }
+  if (raw < 1) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.backoffMultiplier;
+  }
+  return raw;
+}
+
+function resolveRetryMaxDelayMs(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxDelayMs;
+  }
+  const normalized = Math.floor(raw);
+  if (normalized < 0) {
+    return KERNEL_DRIVER_DEFAULT_RETRY_POLICY.maxDelayMs;
+  }
+  return normalized;
+}
+
+function resolveKernelDriverRetryPolicy(providerCfg: ProviderConfig): KernelDriverRetryPolicy {
+  const maxRetries = resolveRetryMaxRetries(providerCfg.llm_retry_max_retries);
+  const initialDelayMs = resolveRetryInitialDelayMs(providerCfg.llm_retry_initial_delay_ms);
+  const backoffMultiplier = resolveRetryBackoffMultiplier(providerCfg.llm_retry_backoff_multiplier);
+  const maxDelayMs = resolveRetryMaxDelayMs(providerCfg.llm_retry_max_delay_ms);
+
+  return {
+    maxRetries,
+    initialDelayMs,
+    backoffMultiplier,
+    maxDelayMs: Math.max(initialDelayMs, maxDelayMs),
+  };
+}
+
+function hasMeaningfulBatchOutput(messages: readonly ChatMessage[]): boolean {
+  for (const msg of messages) {
+    if (msg.type === 'func_call_msg') {
+      return true;
+    }
+    if ((msg.type === 'saying_msg' || msg.type === 'thinking_msg') && msg.content.trim() !== '') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveModelContextLimitTokens(modelInfo: ModelInfo | undefined): number | null {
@@ -906,6 +1012,31 @@ async function executeFunctionRound(args: {
   };
 }
 
+async function resetDiligenceBudgetAfterQ4H(dlg: Dialog, team: Team): Promise<void> {
+  try {
+    if (!(await dlg.hasPendingQ4H())) {
+      return;
+    }
+    const configuredMax = resolveMemberDiligencePushMax(team, dlg.agentId);
+    if (typeof configuredMax === 'number' && Number.isFinite(configuredMax)) {
+      const next = Math.floor(configuredMax);
+      dlg.diligencePushRemainingBudget =
+        next > 0 ? next : Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
+    } else {
+      dlg.diligencePushRemainingBudget = Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
+    }
+    void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
+      kind: 'patch',
+      patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+    }));
+  } catch (err) {
+    log.error('kernel-driver failed to reset Diligence Push budget after Q4H', err, {
+      dialogId: dlg.id.valueOf(),
+    });
+    throw err;
+  }
+}
+
 async function maybeContinueWithDiligencePrompt(args: {
   dlg: Dialog;
   team: Team;
@@ -919,6 +1050,9 @@ async function maybeContinueWithDiligencePrompt(args: {
 
   const suspension = await dlg.getSuspensionStatus();
   if (!suspension.canDrive) {
+    if (suspension.q4h) {
+      await resetDiligenceBudgetAfterQ4H(dlg, team);
+    }
     return { kind: 'break' };
   }
 
@@ -959,6 +1093,88 @@ async function maybeContinueWithDiligencePrompt(args: {
   return { kind: 'break' };
 }
 
+async function maybeContinueWithHealthPromptBeforeDiligence(args: {
+  dlg: Dialog;
+  providerCfg: ProviderConfig;
+  model: string;
+}): Promise<
+  | { kind: 'no_health_prompt' }
+  | { kind: 'health_suspend' }
+  | { kind: 'health_continue'; prompt: KernelDriverHumanPrompt; resetTaskdoc: boolean }
+> {
+  const { dlg, providerCfg, model } = args;
+
+  // This path is only used as a higher-priority alternative to Diligence Push.
+  if (!(dlg instanceof RootDialog)) {
+    return { kind: 'no_health_prompt' };
+  }
+
+  const snapshot = dlg.getLastContextHealth();
+  const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
+  const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+    modelInfoForRemediation?.caution_remediation_cadence_generations,
+  );
+  const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dlg.id.key(), snapshot);
+  const healthDecision = decideKernelDriverContextHealth({
+    dialogKey: dlg.id.key(),
+    snapshot,
+    hadUserPromptThisGen: false,
+    canInjectPromptThisGen: true,
+    cautionRemediationCadenceGenerations,
+    criticalCountdownRemaining,
+  });
+
+  if (healthDecision.kind === 'suspend') {
+    return { kind: 'health_suspend' };
+  }
+  if (healthDecision.kind !== 'continue') {
+    return { kind: 'no_health_prompt' };
+  }
+
+  if (healthDecision.reason === 'critical_force_new_course') {
+    const language = getWorkLanguage();
+    const newCoursePrompt =
+      language === 'zh'
+        ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+        : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+    await dlg.startNewCourse(newCoursePrompt);
+    dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+    resetContextHealthRoundState(dlg.id.key());
+
+    const nextPrompt = resolveUpNextPrompt(dlg);
+    if (!nextPrompt) {
+      throw new Error(
+        `kernel-driver critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
+      );
+    }
+    return { kind: 'health_continue', prompt: nextPrompt, resetTaskdoc: true };
+  }
+
+  const language = getWorkLanguage();
+  const guideText =
+    healthDecision.reason === 'caution_soft_remediation'
+      ? formatAgentFacingContextHealthV3RemediationGuide(language, {
+          kind: 'caution',
+          mode: 'soft',
+        })
+      : formatAgentFacingContextHealthV3RemediationGuide(language, {
+          kind: 'critical',
+          mode: 'countdown',
+          promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
+          promptsTotal: KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+        });
+  return {
+    kind: 'health_continue',
+    prompt: {
+      content: guideText,
+      msgId: generateShortId(),
+      grammar: 'markdown',
+      userLanguageCode: language,
+    },
+    resetTaskdoc: false,
+  };
+}
+
 export async function driveDialogStreamCore(
   dlg: Dialog,
   humanPrompt?: KernelDriverDriveArgs[1],
@@ -989,12 +1205,11 @@ export async function driveDialogStreamCore(
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
+  let pubRemindersVer = dlg.remindersVer;
 
   let pendingPrompt: KernelDriverHumanPrompt | undefined = humanPrompt;
   let skipTaskdocForThisDrive = humanPrompt?.skipTaskdoc === true;
   let genIterNo = 0;
-  let injectedCautionRemediation = false;
-  let previousRoundHadToolCalls = false;
 
   if (!humanPrompt) {
     try {
@@ -1016,23 +1231,6 @@ export async function driveDialogStreamCore(
       genIterNo += 1;
       throwIfAborted(abortSignal, dlg);
 
-      if (!pendingPrompt && previousRoundHadToolCalls && !injectedCautionRemediation) {
-        const snapshot = dlg.getLastContextHealth();
-        if (snapshot && snapshot.kind === 'available' && snapshot.level === 'caution') {
-          const language = getWorkLanguage();
-          pendingPrompt = {
-            content: formatAgentFacingContextHealthV3RemediationGuide(language, {
-              kind: 'caution',
-              mode: 'soft',
-            }),
-            msgId: generateShortId(),
-            grammar: 'markdown',
-            userLanguageCode: language,
-          };
-          injectedCautionRemediation = true;
-        }
-      }
-
       const minds = await loadAgentMinds(dlg.agentId, dlg);
       const team = minds.team;
       const policy = buildKernelDriverPolicy({
@@ -1042,6 +1240,10 @@ export async function driveDialogStreamCore(
         agentTools: minds.agentTools,
         language: getWorkLanguage(),
       });
+      const policyValidation = validateKernelDriverPolicyInvariants(policy, getWorkLanguage());
+      if (!policyValidation.ok) {
+        throw new Error(`kernel-driver policy invariant violation: ${policyValidation.detail}`);
+      }
 
       const agent = policy.effectiveAgent;
       const systemPrompt = policy.effectiveSystemPrompt;
@@ -1079,6 +1281,7 @@ export async function driveDialogStreamCore(
           `LLM generator not found: API type '${providerCfg.apiType}' for provider '${provider}' in agent '${dlg.agentId}'. Please check .minds/llm.yaml configuration.`,
         );
       }
+      const retryPolicy = resolveKernelDriverRetryPolicy(providerCfg);
 
       const canonicalFuncTools: FuncTool[] = agentTools.filter(
         (t): t is FuncTool => t.type === 'func',
@@ -1095,10 +1298,87 @@ export async function driveDialogStreamCore(
       const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
       const funcTools = projected.tools;
 
+      if (genIterNo > 1) {
+        const snapshot = dlg.getLastContextHealth();
+        const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
+        const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
+        const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
+          modelInfoForRemediation?.caution_remediation_cadence_generations,
+        );
+        const criticalCountdownRemaining = resolveCriticalCountdownRemaining(
+          dlg.id.key(),
+          snapshot,
+        );
+        const healthDecision = decideKernelDriverContextHealth({
+          dialogKey: dlg.id.key(),
+          snapshot,
+          hadUserPromptThisGen: isUserOriginPrompt(pendingPrompt),
+          canInjectPromptThisGen: !hasQueuedUpNext,
+          cautionRemediationCadenceGenerations,
+          criticalCountdownRemaining,
+        });
+
+        if (healthDecision.kind === 'suspend') {
+          log.debug(
+            'kernel-driver suspend iterative generation due to critical context while waiting for human prompt',
+            undefined,
+            {
+              dialogId: dlg.id.valueOf(),
+              rootId: dlg.id.rootId,
+              selfId: dlg.id.selfId,
+              genIterNo,
+              pendingPromptOrigin: pendingPrompt?.origin ?? null,
+            },
+          );
+          break;
+        }
+
+        if (healthDecision.kind === 'continue') {
+          if (healthDecision.reason === 'critical_force_new_course') {
+            const language = getWorkLanguage();
+            const newCoursePrompt =
+              language === 'zh'
+                ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
+                : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
+            await dlg.startNewCourse(newCoursePrompt);
+            dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
+            resetContextHealthRoundState(dlg.id.key());
+
+            const nextPrompt = resolveUpNextPrompt(dlg);
+            if (!nextPrompt) {
+              throw new Error(
+                `kernel-driver critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
+              );
+            }
+            pendingPrompt = nextPrompt;
+            skipTaskdocForThisDrive = false;
+          } else if (!hasQueuedUpNext) {
+            const language = getWorkLanguage();
+            const guideText =
+              healthDecision.reason === 'caution_soft_remediation'
+                ? formatAgentFacingContextHealthV3RemediationGuide(language, {
+                    kind: 'caution',
+                    mode: 'soft',
+                  })
+                : formatAgentFacingContextHealthV3RemediationGuide(language, {
+                    kind: 'critical',
+                    mode: 'countdown',
+                    promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
+                    promptsTotal: KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
+                  });
+            pendingPrompt = {
+              content: guideText,
+              msgId: generateShortId(),
+              grammar: 'markdown',
+              userLanguageCode: language,
+            };
+          }
+        }
+      }
+
       let contextHealthForGen: ContextHealthSnapshot | undefined;
       let llmGenModelForGen: string = model;
       let suspendForHuman = false;
-      previousRoundHadToolCalls = false;
 
       await dlg.notifyGeneratingStart();
       try {
@@ -1179,6 +1459,9 @@ export async function driveDialogStreamCore(
           }
         }
 
+        await dlg.processReminderUpdates();
+        pubRemindersVer = dlg.remindersVer;
+
         const taskDocMsg =
           dlg.taskDocPath && !skipTaskdocForThisDrive ? await formatTaskDocContent(dlg) : undefined;
 
@@ -1216,10 +1499,13 @@ export async function driveDialogStreamCore(
               dlg,
               provider,
               abortSignal,
-              maxRetries: 0,
-              canRetry: () => false,
+              maxRetries: retryPolicy.maxRetries,
+              retryInitialDelayMs: retryPolicy.initialDelayMs,
+              retryBackoffMultiplier: retryPolicy.backoffMultiplier,
+              retryMaxDelayMs: retryPolicy.maxDelayMs,
+              canRetry: () => true,
               doRequest: async () => {
-                return await llmGen.genMoreMessages(
+                const batchResult = await llmGen.genMoreMessages(
                   providerCfg,
                   agent,
                   systemPrompt,
@@ -1228,6 +1514,14 @@ export async function driveDialogStreamCore(
                   dlg.activeGenSeq,
                   abortSignal,
                 );
+                if (!hasMeaningfulBatchOutput(batchResult.messages)) {
+                  throw {
+                    status: 503,
+                    code: KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE,
+                    message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=false).`,
+                  };
+                }
+                return batchResult;
               },
             });
             return {
@@ -1240,12 +1534,55 @@ export async function driveDialogStreamCore(
           let currentSayingContent = '';
           let currentThinkingContent = '';
           let currentThinkingReasoning: ThinkingMsg['reasoning'] = undefined;
+          let streamAttemptCourse: number | undefined;
+          let streamAttemptCheckpointOffset: number | undefined;
+          let streamAttemptSayingContent: string | undefined;
+          let streamAttemptSayingGenseq: number | undefined;
+          let streamSawWebSearchCall = false;
+          type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
+          let streamActive: StreamActiveState = { kind: 'idle' };
+          const rollbackStreamAttempt = async (): Promise<void> => {
+            if (streamAttemptCourse === undefined || streamAttemptCheckpointOffset === undefined) {
+              throw new Error(
+                `kernel-driver stream retry invariant violation: missing checkpoint (dialog=${dlg.id.valueOf()})`,
+              );
+            }
+            await DialogPersistence.rollbackCourseFileToOffset(
+              dlg.id,
+              streamAttemptCourse,
+              streamAttemptCheckpointOffset,
+              dlg.status,
+            );
+            postDialogEvent(dlg, {
+              type: 'genseq_discard_evt',
+              course: streamAttemptCourse,
+              genseq: dlg.activeGenSeq,
+              reason: 'retry',
+            });
+
+            streamActive = { kind: 'idle' };
+            currentThinkingContent = '';
+            currentThinkingReasoning = undefined;
+            currentSayingContent = '';
+            streamAttemptSayingContent = undefined;
+            streamAttemptSayingGenseq = undefined;
+            streamSawWebSearchCall = false;
+            streamedFuncCalls.length = 0;
+            newMsgs.length = 0;
+          };
+
           const receiver: LlmStreamReceiver = {
             streamError: async (detail: string) => {
               await dlg.streamError(detail);
             },
             thinkingStart: async () => {
               throwIfAborted(abortSignal, dlg);
+              if (streamActive.kind !== 'idle') {
+                const detail = `Protocol violation: thinkingStart while ${streamActive.kind} is active`;
+                await dlg.streamError(detail);
+                throw new Error(detail);
+              }
+              streamActive = { kind: 'thinking' };
               currentThinkingContent = '';
               currentThinkingReasoning = undefined;
               await dlg.thinkingStart();
@@ -1257,6 +1594,12 @@ export async function driveDialogStreamCore(
             },
             thinkingFinish: async (reasoning) => {
               throwIfAborted(abortSignal, dlg);
+              if (streamActive.kind !== 'thinking') {
+                const detail = `Protocol violation: thinkingFinish while ${streamActive.kind} is active`;
+                await dlg.streamError(detail);
+                throw new Error(detail);
+              }
+              streamActive = { kind: 'idle' };
               if (reasoning) currentThinkingReasoning = reasoning;
               await dlg.thinkingFinish(reasoning);
               if (currentThinkingContent.length > 0 || currentThinkingReasoning !== undefined) {
@@ -1273,6 +1616,12 @@ export async function driveDialogStreamCore(
             },
             sayingStart: async () => {
               throwIfAborted(abortSignal, dlg);
+              if (streamActive.kind !== 'idle') {
+                const detail = `Protocol violation: sayingStart while ${streamActive.kind} is active`;
+                await dlg.streamError(detail);
+                throw new Error(detail);
+              }
+              streamActive = { kind: 'saying' };
               currentSayingContent = '';
               await dlg.sayingStart();
             },
@@ -1283,6 +1632,12 @@ export async function driveDialogStreamCore(
             },
             sayingFinish: async () => {
               throwIfAborted(abortSignal, dlg);
+              if (streamActive.kind !== 'saying') {
+                const detail = `Protocol violation: sayingFinish while ${streamActive.kind} is active`;
+                await dlg.streamError(detail);
+                throw new Error(detail);
+              }
+              streamActive = { kind: 'idle' };
               await dlg.sayingFinish();
               const sayingMessage: SayingMsg = {
                 type: 'saying_msg',
@@ -1291,8 +1646,8 @@ export async function driveDialogStreamCore(
                 content: currentSayingContent,
               };
               newMsgs.push(sayingMessage);
-              lastAssistantSayingContent = currentSayingContent;
-              lastAssistantSayingGenseq = sayingMessage.genseq;
+              streamAttemptSayingContent = currentSayingContent;
+              streamAttemptSayingGenseq = sayingMessage.genseq;
             },
             funcCall: async (callId: string, name: string, argsStr: string) => {
               throwIfAborted(abortSignal, dlg);
@@ -1305,16 +1660,41 @@ export async function driveDialogStreamCore(
                 arguments: argsStr,
               });
             },
+            webSearchCall: async (call) => {
+              throwIfAborted(abortSignal, dlg);
+              streamSawWebSearchCall = true;
+              await dlg.webSearchCall(call);
+            },
           };
 
           const res = await runLlmRequestWithRetry({
             dlg,
             provider,
             abortSignal,
-            maxRetries: 0,
-            canRetry: () => false,
+            maxRetries: retryPolicy.maxRetries,
+            retryInitialDelayMs: retryPolicy.initialDelayMs,
+            retryBackoffMultiplier: retryPolicy.backoffMultiplier,
+            retryMaxDelayMs: retryPolicy.maxDelayMs,
+            canRetry: () => true,
+            onRetry: rollbackStreamAttempt,
+            onGiveUp: rollbackStreamAttempt,
             doRequest: async () => {
-              return await llmGen.genToReceiver(
+              streamAttemptCourse = dlg.activeGenCourseOrUndefined ?? dlg.currentCourse;
+              streamAttemptCheckpointOffset = await DialogPersistence.captureCourseFileOffset(
+                dlg.id,
+                streamAttemptCourse,
+                dlg.status,
+              );
+              streamActive = { kind: 'idle' };
+              currentThinkingContent = '';
+              currentThinkingReasoning = undefined;
+              currentSayingContent = '';
+              streamAttemptSayingContent = undefined;
+              streamAttemptSayingGenseq = undefined;
+              streamSawWebSearchCall = false;
+              streamedFuncCalls.length = 0;
+              newMsgs.length = 0;
+              const streamResult = await llmGen.genToReceiver(
                 providerCfg,
                 agent,
                 systemPrompt,
@@ -1324,8 +1704,29 @@ export async function driveDialogStreamCore(
                 dlg.activeGenSeq,
                 abortSignal,
               );
+              const hasThinkingContent = currentThinkingContent.trim() !== '';
+              const hasSayingContent = (streamAttemptSayingContent ?? '').trim() !== '';
+              const hasFunctionCall = streamedFuncCalls.length > 0;
+              if (
+                !hasThinkingContent &&
+                !hasSayingContent &&
+                !hasFunctionCall &&
+                !streamSawWebSearchCall
+              ) {
+                throw {
+                  status: 503,
+                  code: KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE,
+                  message: `LLM returned empty response (provider=${provider}, model=${model}, streaming=true).`,
+                };
+              }
+              return streamResult;
             },
           });
+          if (streamAttemptSayingContent !== undefined) {
+            lastAssistantSayingContent = streamAttemptSayingContent;
+            lastAssistantSayingGenseq =
+              streamAttemptSayingGenseq === undefined ? null : streamAttemptSayingGenseq;
+          }
           return { usage: res.usage, llmGenModel: res.llmGenModel };
         };
 
@@ -1428,13 +1829,16 @@ export async function driveDialogStreamCore(
 
         if (dlg.hasUpNext()) {
           pendingPrompt = resolveUpNextPrompt(dlg);
-          previousRoundHadToolCalls =
-            routed.pairedMessages.some((m) => m.type === 'func_result_msg') ||
-            routed.tellaskToolOutputs.length > 0;
           continue;
         }
 
+        if (dlg.remindersVer > pubRemindersVer) {
+          await dlg.processReminderUpdates();
+          pubRemindersVer = dlg.remindersVer;
+        }
+
         if (suspendForHuman) {
+          await resetDiligenceBudgetAfterQ4H(dlg, team);
           break;
         }
 
@@ -1442,22 +1846,36 @@ export async function driveDialogStreamCore(
           streamedFuncCalls.length > 0 ||
           routed.pairedMessages.length > 0 ||
           routed.tellaskToolOutputs.length > 0;
+        if (!shouldContinue) {
+          const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
+            dlg,
+            providerCfg,
+            model,
+          });
+          if (healthFirst.kind === 'health_continue') {
+            pendingPrompt = healthFirst.prompt;
+            if (healthFirst.resetTaskdoc) {
+              skipTaskdocForThisDrive = false;
+            }
+            continue;
+          }
+          if (healthFirst.kind === 'health_suspend') {
+            break;
+          }
+          const next = await maybeContinueWithDiligencePrompt({
+            dlg,
+            team,
+            suppressDiligencePushForDrive: suppressDiligencePushForDrive,
+          });
+          if (next.kind === 'continue') {
+            pendingPrompt = next.prompt;
+            continue;
+          }
+          break;
+        }
         if (shouldContinue) {
-          previousRoundHadToolCalls =
-            streamedFuncCalls.length > 0 || routed.tellaskToolOutputs.length > 0;
           continue;
         }
-
-        const next = await maybeContinueWithDiligencePrompt({
-          dlg,
-          team,
-          suppressDiligencePushForDrive: suppressDiligencePushForDrive,
-        });
-        if (next.kind === 'continue') {
-          pendingPrompt = next.prompt;
-          continue;
-        }
-        break;
       } finally {
         await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
       }

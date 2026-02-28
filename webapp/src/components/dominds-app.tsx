@@ -6544,11 +6544,17 @@ export class DomindsApp extends HTMLElement {
       }
       this.markDialogListBootstrapReady();
       if (this.currentDialog) {
-        const status = this.resolveDialogStatus(this.currentDialog);
-        if (status === null) {
-          this.clearCurrentDialogSelection();
-        } else {
-          this.currentDialogStatus = status;
+        const resolvedStatus = this.resolveDialogStatus(this.currentDialog);
+        const effectiveStatus: DialogStatusKind =
+          resolvedStatus ?? this.currentDialog.status ?? this.currentDialogStatus ?? 'running';
+        this.currentDialogStatus = effectiveStatus;
+
+        // Keep selection + routing context stable even if list refresh is briefly stale.
+        // Without this, textarea can remain editable while the primary send action has no
+        // routable target (`currentDialog === null` inside q4h-input), causing a stuck disabled button.
+        this.currentDialog = { ...this.currentDialog, status: effectiveStatus };
+        if (this.q4hInput) {
+          this.q4hInput.setDialog(this.currentDialog);
         }
       } else {
         this.currentDialogStatus = null;
@@ -8170,6 +8176,10 @@ export class DomindsApp extends HTMLElement {
       }
       case 'dialogs_deleted': {
         // Another client deleted dialogs - refresh lists and clear selection if needed.
+        const current = this.currentDialog;
+        if (current && message.deletedRootIds.includes(current.rootId)) {
+          this.clearCurrentDialogSelection();
+        }
         void this.loadDialogs();
         return true;
       }
