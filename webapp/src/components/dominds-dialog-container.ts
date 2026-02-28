@@ -1390,6 +1390,37 @@ export class DomindsDialogContainer extends HTMLElement {
     this.scrollToBottom();
   }
 
+  private extractWebSearchFocusText(event: WebSearchCallEvent): string | undefined {
+    const action = event.action;
+    if (!action) return undefined;
+    switch (action.type) {
+      case 'search': {
+        const query = typeof action.query === 'string' ? action.query.trim() : '';
+        return query === '' ? undefined : query;
+      }
+      case 'open_page': {
+        const url = typeof action.url === 'string' ? action.url.trim() : '';
+        return url === '' ? undefined : url;
+      }
+      case 'find_in_page': {
+        const pattern = typeof action.pattern === 'string' ? action.pattern.trim() : '';
+        if (pattern !== '') return pattern;
+        const url = typeof action.url === 'string' ? action.url.trim() : '';
+        return url === '' ? undefined : url;
+      }
+      default: {
+        const _exhaustive: never = action;
+        throw new Error(`Unhandled web search action: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
+  private compactWebSearchItemId(itemId: string): string {
+    const raw = itemId.trim();
+    if (raw.length <= 28) return raw;
+    return `${raw.slice(0, 16)}...${raw.slice(-8)}`;
+  }
+
   private renderWebSearchSection(section: HTMLElement, event: WebSearchCallEvent): void {
     const t = getUiStrings(this.uiLanguage);
     const stateEl = section.querySelector('.web-search-state') as HTMLElement | null;
@@ -1411,52 +1442,26 @@ export class DomindsDialogContainer extends HTMLElement {
     stateEl.classList.toggle('is-failed', status === 'failed');
     section.classList.toggle('completed', phase === 'done');
 
-    const summaryParts: string[] = [];
-    if (event.action) {
-      summaryParts.push(`action=${event.action.type}`);
+    const focusText = this.extractWebSearchFocusText(event);
+    if (focusText) {
+      summaryEl.textContent = focusText;
+      summaryEl.classList.remove('is-empty');
+    } else {
+      summaryEl.textContent = event.action ? event.action.type : t.webSearchTitle;
+      summaryEl.classList.add('is-empty');
     }
-    if (itemId !== '') {
-      summaryParts.push(`item=${itemId}`);
-    }
-    summaryParts.push(`genseq=${String(event.genseq)}`);
-    summaryEl.textContent = summaryParts.join(' · ');
 
-    const lines: string[] = [];
+    const metaParts: string[] = [];
     if (event.action) {
-      lines.push(`type: ${event.action.type}`);
-      switch (event.action.type) {
-        case 'search':
-          if (typeof event.action.query === 'string' && event.action.query.trim() !== '') {
-            lines.push(`query: ${event.action.query}`);
-          }
-          break;
-        case 'open_page':
-          if (typeof event.action.url === 'string' && event.action.url.trim() !== '') {
-            lines.push(`url: ${event.action.url}`);
-          }
-          break;
-        case 'find_in_page':
-          if (typeof event.action.url === 'string' && event.action.url.trim() !== '') {
-            lines.push(`url: ${event.action.url}`);
-          }
-          if (typeof event.action.pattern === 'string' && event.action.pattern.trim() !== '') {
-            lines.push(`pattern: ${event.action.pattern}`);
-          }
-          break;
-        default: {
-          const _exhaustive: never = event.action;
-          throw new Error(`Unhandled web search action: ${String(_exhaustive)}`);
-        }
-      }
-    }
-    lines.push(`${t.webSearchProgressPrefix}${phaseLabel}`);
-    if (status !== '') {
-      lines.push(`${t.webSearchStatusPrefix}${status}`);
+      metaParts.push(`type: ${event.action.type}`);
     }
     if (itemId !== '') {
-      lines.push(`itemId: ${itemId}`);
+      metaParts.push(`item: ${this.compactWebSearchItemId(itemId)}`);
+      detailsEl.title = `itemId: ${itemId}`;
+    } else {
+      detailsEl.removeAttribute('title');
     }
-    detailsEl.textContent = lines.join('\n');
+    detailsEl.textContent = metaParts.join(' · ');
   }
 
   // === TELLASK CALL EVENTS (function-call mode) ===
@@ -3077,7 +3082,7 @@ export class DomindsDialogContainer extends HTMLElement {
         )}</span>
       </div>
       <div class="web-search-summary"></div>
-      <pre class="web-search-details"></pre>
+      <div class="web-search-details"></div>
     `;
     return el;
   }
@@ -3708,8 +3713,12 @@ export class DomindsDialogContainer extends HTMLElement {
         flex-wrap: wrap;
       }
 
-      .bubble-author-model {
+      .bubble-author-name {
         font-size: 10px;
+      }
+
+      .bubble-author-model {
+        font-size: 8px;
         font-weight: 500;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
       }
@@ -3837,6 +3846,9 @@ export class DomindsDialogContainer extends HTMLElement {
         overflow: hidden;
         white-space: pre-wrap;
         word-wrap: break-word;
+        overflow-wrap: anywhere;
+        box-sizing: border-box;
+        min-width: 0;
         display: block;
       }
 
@@ -4404,24 +4416,35 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .web-search-summary {
-        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
-        font-size: var(--dominds-font-size-sm, 12px);
-        margin-bottom: 3px;
-        white-space: normal;
-        word-break: break-word;
-      }
-
-      .web-search-details {
-        margin: 0;
         padding: 2px 3px;
         border-radius: 6px;
         background: var(--color-bg-secondary, #ffffff);
         border: 1px solid var(--dominds-border, var(--color-border-primary, #e2e8f0));
-        color: var(--dominds-fg, var(--color-fg-secondary, #475569));
-        font-size: var(--dominds-font-size-xs, 11px);
+        color: var(--dominds-fg, var(--color-fg-primary, #333));
+        font-size: var(--dominds-font-size-sm, 12px);
+        font-weight: 600;
         line-height: 1.45;
+        margin-bottom: 3px;
         white-space: pre-wrap;
         word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      .web-search-summary.is-empty {
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-weight: 500;
+        font-style: italic;
+      }
+
+      .web-search-details {
+        margin: 0;
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-size: var(--dominds-font-size-xs, 11px);
+        line-height: 1.35;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        font-family: inherit;
       }
 
       /* Code block section styles (nested inside markdown) */

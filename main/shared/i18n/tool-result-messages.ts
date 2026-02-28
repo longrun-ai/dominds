@@ -30,7 +30,7 @@ export function formatToolActionResult(language: LanguageCode, action: ToolActio
       case 'mindCleared':
         return '已清理头脑';
       case 'mindChanged':
-        return '已更新思路';
+        return '已更新想法';
       default: {
         const _exhaustive: never = action;
         return _exhaustive;
