@@ -1050,6 +1050,15 @@ Dominds 将 LLM 输出拆分为多个“子流”（thinking、saying，以及�
 - **UI 仅按事件顺序渲染**：前端不应通过重排 DOM 来“修复”乱序；应按事件抵达顺序追加 section，以体现真实的生成轨迹。
 - **乱序必须大声报错**：一旦检测到重叠/乱序（例如 thinking 与 saying 同时活跃），后端应发出 `stream_error_evt` 并中断该次生成，以便尽快暴露 provider/解析链路的协议问题并定位。
 
+### LLM Provider 消息投影（role/turn）
+
+Dominds 内部持久化的消息粒度较细（thinking/saying/tool call/tool result 等会以独立条目出现），而当前主流 LLM Provider 的对话协议一般仅支持 `role=user|assistant`（以及少量实现把工具结果视作特殊的 tool/user 变体）。
+
+- **理想目标**：Provider 协议能够原生支持 `role='environment'`（或等价机制）来承载运行时注入的环境/系统信息（例如 reminders、transient guide 等），从而避免把“环境信息”伪装成用户发言。
+- **当前现实**：大多数 Provider 不支持 `role='environment'`。因此 Dominds 在投影到 Provider 请求 payload 时，必须把 `environment_msg` / `transient_guide_msg` / reminders 等内容暂时投影为 `role='user'` 的文本块，以保证请求结构可被接受。
+
+另外，一些 Provider（尤其是 Anthropic-compatible endpoint）对 **role 交替** 与 **tool_use/tool_result 的边界** 有更严格的结构校验。Dominds 的投影层需要把内部细粒度条目组装为更“turn 化”的 Provider 消息序列（turn assembly），而不是把内部条目逐条 1:1 发送。
+
 ### CLI 集成
 
 **对话创建**：新对话通过带有适当上下文的 CLI 命令创建。

@@ -342,6 +342,7 @@ async function chatMessageToAnthropicAsync(chatMsg: ChatMessage): Promise<Messag
 }
 
 async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<MessageParam[]> {
+  // We keep the async path for func_result_msg because it may contain image artifacts.
   const normalized = normalizeToolCallPairs(context);
   const messages: MessageParam[] = [];
 
@@ -354,9 +355,6 @@ async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<Me
     }
 
     if (msg.type === 'func_result_msg') {
-      // Many Anthropic-compatible providers require the tool result to directly follow the
-      // matching tool_use. If it doesn't, downgrade to a plain text message so the request
-      // remains valid (and still conveys the tool output to the model).
       if (lastToolUseId === msg.id) {
         messages.push(await chatMessageToAnthropicAsync(msg));
       } else {
@@ -375,7 +373,7 @@ async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<Me
     lastToolUseId = null;
   }
 
-  return mergeAdjacentMessagesByRole(messages);
+  return assembleAnthropicTurns(messages);
 }
 
 /**
@@ -383,11 +381,7 @@ async function buildAnthropicRequestMessages(context: ChatMessage[]): Promise<Me
  * Relies on natural storage order - func_result always follows func_call.
  */
 function reconstructAnthropicContext(persistedMessages: ChatMessage[]): MessageParam[] {
-  const messages: MessageParam[] = [];
-  for (const msg of normalizeToolCallPairs(persistedMessages)) {
-    messages.push(chatMessageToAnthropic(msg));
-  }
-  return mergeAdjacentMessagesByRole(messages);
+  return assembleAnthropicTurnsFromChatMessages(persistedMessages);
 }
 
 function contentToBlocks(content: MessageParam['content']): AnthropicContentBlock[] {
@@ -397,28 +391,68 @@ function contentToBlocks(content: MessageParam['content']): AnthropicContentBloc
   return content as unknown as AnthropicContentBlock[];
 }
 
-function mergeAdjacentMessagesByRole(messages: MessageParam[]): MessageParam[] {
-  // Many Anthropic-compatible endpoints are strict about role alternation. Dominds stores messages
-  // at a finer granularity (thinking/saying/tool-use as separate entries), which can produce
-  // consecutive messages with the same role. Merge adjacent same-role messages into a single
-  // message with concatenated content blocks to improve compatibility.
-  const merged: MessageParam[] = [];
+function assembleAnthropicTurns(messages: MessageParam[]): MessageParam[] {
+  // Provider payload projection (turn assembly)
+  //
+  // Dominds persists fine-grained events (thinking/saying/tool-use/tool-result as separate
+  // ChatMessage entries). Many Anthropic-compatible endpoints are strict about role alternation and
+  // reject consecutive messages with the same role.
+  //
+  // Instead of treating persisted entries as 1:1 provider messages, we assemble them into provider
+  // turns by coalescing consecutive messages with the same role.
+  //
+  // Ideal future: provider SDKs should support a dedicated role='environment' for environment/system
+  // messages. Today most providers accept only user/assistant (and tool via special-casing), so those
+  // messages must be projected as role='user'.
+  const turns: MessageParam[] = [];
 
   for (const msg of messages) {
     const contentBlocks = contentToBlocks(msg.content);
     if (contentBlocks.length === 0) continue;
 
-    const prev = merged.length > 0 ? merged[merged.length - 1] : null;
+    const prev = turns.length > 0 ? turns[turns.length - 1] : null;
     if (prev && prev.role === msg.role) {
       const prevBlocks = contentToBlocks(prev.content);
       prev.content = [...prevBlocks, ...contentBlocks];
       continue;
     }
 
-    merged.push({ role: msg.role, content: contentBlocks });
+    turns.push({ role: msg.role, content: contentBlocks });
   }
 
-  return merged;
+  return turns;
+}
+
+function assembleAnthropicTurnsFromChatMessages(persistedMessages: ChatMessage[]): MessageParam[] {
+  // Turn builder (ChatMessage -> provider MessageParam[])
+  //
+  // Goals:
+  // - Preserve chronological order.
+  // - Enforce role alternation as required by strict Anthropic-compatible endpoints.
+  // - Preserve tool_use/tool_result adjacency (normalizeToolCallPairs already interleaves obvious
+  //   call/result runs by id).
+  // - Coalesce same-role messages into a single provider turn (including tool_use blocks).
+  //
+  // Ideal future: role='environment' (not supported by most providers today).
+  const normalized = normalizeToolCallPairs(persistedMessages);
+  const turns: MessageParam[] = [];
+
+  for (const msg of normalized) {
+    const contentBlocks = chatMessageToContentBlocks(msg);
+    if (contentBlocks.length === 0) continue;
+
+    const role: 'user' | 'assistant' = msg.role === 'tool' ? 'user' : msg.role;
+
+    const prev = turns.length > 0 ? turns[turns.length - 1] : null;
+    if (prev && prev.role === role) {
+      const prevBlocks = contentToBlocks(prev.content);
+      prev.content = [...prevBlocks, ...contentBlocks];
+      continue;
+    }
+
+    turns.push({ role, content: contentBlocks });
+  }
+  return turns;
 }
 
 function applyInputJsonDelta(state: ActiveToolUse, partialJson: string): void {

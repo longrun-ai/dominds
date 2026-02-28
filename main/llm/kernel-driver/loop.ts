@@ -2,7 +2,7 @@ import { globalDialogRegistry, type DriveTriggerEvent } from '../../dialog-globa
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { driveDialogStream } from './engine';
-import type { DriverV2RunBackendResult } from './types';
+import type { KernelDriverRunBackendResult } from './types';
 
 function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, unknown> {
   return {
@@ -104,7 +104,7 @@ async function driveQueuedDialogsOnce(): Promise<void> {
   }
 }
 
-export function runBackendDriver(): DriverV2RunBackendResult {
+export function runBackendDriver(): KernelDriverRunBackendResult {
   return (async () => {
     while (true) {
       try {

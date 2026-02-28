@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import type { ChatMessage } from '../../main/llm/client';
-import { driveDialogStream } from '../../main/llm/driver-entry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
 import { formatAssignmentFromSupdialog } from '../../main/shared/utils/inter-dialog-format';
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       { message: subdialogResponseText, role: 'tool', response: resumeResponse },
     ]);
 
-    const dlg = createRootDialog('tester');
+    const dlg = await createRootDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

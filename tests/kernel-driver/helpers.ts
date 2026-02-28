@@ -119,20 +119,41 @@ export async function writeMockDb(tmpRoot: string, entries: MockEntry[]): Promis
   );
 }
 
-export function createRootDialog(agentId: string = 'tester'): RootDialog {
+export async function createRootDialog(agentId: string = 'tester'): Promise<RootDialog> {
   const rootId = generateDialogID();
   const dialogId = new DialogID(rootId);
   const store = new DiskFileDialogStore(dialogId);
-  return new RootDialog(store, 'task.md', dialogId, agentId);
+  const dialog = new RootDialog(store, 'task.md', dialogId, agentId);
+
+  // Tests construct dialogs directly (bypassing server routes), so we must persist the same
+  // metadata/latest.yaml that the production create-dialog path writes.
+  const createdAt = formatUnifiedTimestamp(new Date());
+  await DialogPersistence.saveDialogMetadata(dialog.id, {
+    id: dialog.id.selfId,
+    agentId: dialog.agentId,
+    taskDocPath: dialog.taskDocPath,
+    createdAt,
+  });
+  await DialogPersistence.mutateDialogLatest(dialog.id, () => ({
+    kind: 'replace',
+    next: {
+      currentCourse: 1,
+      lastModified: createdAt,
+      status: 'active',
+      messageCount: 0,
+      functionCallCount: 0,
+      subdialogCount: 0,
+      runState: { kind: 'idle_waiting_user' },
+      disableDiligencePush: false,
+      diligencePushRemainingBudget: 0,
+    },
+  }));
+
+  return dialog;
 }
 
-export async function persistRootDialogMetadata(rootDialog: RootDialog): Promise<void> {
-  await DialogPersistence.saveDialogMetadata(rootDialog.id, {
-    id: rootDialog.id.selfId,
-    agentId: rootDialog.agentId,
-    taskDocPath: rootDialog.taskDocPath,
-    createdAt: formatUnifiedTimestamp(new Date()),
-  });
+export async function persistRootDialogMetadata(_rootDialog: RootDialog): Promise<void> {
+  // Deprecated: createRootDialog() now persists metadata/latest.yaml as part of dialog creation.
 }
 
 export function lastAssistantSaying(dlg: RootDialog): string | null {

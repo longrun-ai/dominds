@@ -7,7 +7,7 @@ import yaml from 'yaml';
 import { DialogID, RootDialog } from '../../main/dialog';
 import { setDialogRunState } from '../../main/dialog-run-state';
 import { setGlobalDialogEventBroadcaster } from '../../main/evt-registry';
-import { driveDialogStream } from '../../main/llm/driver-entry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
 

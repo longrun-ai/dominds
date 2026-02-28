@@ -9,7 +9,7 @@ import * as path from 'path';
 import { DialogID, RootDialog } from 'dominds/dialog';
 import { globalDialogRegistry } from 'dominds/dialog-global-registry';
 import { dialogEventRegistry, setGlobalDialogEventBroadcaster } from 'dominds/evt-registry';
-import { driveDialogStream } from 'dominds/llm/driver-entry';
+import { driveDialogStream } from 'dominds/llm/kernel-driver';
 import { DiskFileDialogStore } from 'dominds/persistence';
 import { EndOfStream } from 'dominds/shared/evt';
 import type { TypedDialogEvent } from 'dominds/shared/types/dialog';

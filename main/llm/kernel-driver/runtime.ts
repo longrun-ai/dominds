@@ -16,7 +16,7 @@ import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { FuncTool, ToolArguments } from '../../tool';
 import { validateArgs } from '../../tool';
 import { generateDialogID } from '../../utils/id';
-import type { DriverV2HumanPrompt } from './types';
+import type { KernelDriverHumanPrompt } from './types';
 
 function isNodeErrorWithCode(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
@@ -93,7 +93,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   | { kind: 'budget_exhausted'; maxInjectCount: number; nextRemainingBudget: number }
   | {
       kind: 'prompt';
-      prompt: DriverV2HumanPrompt;
+      prompt: KernelDriverHumanPrompt;
       maxInjectCount: number;
       nextRemainingBudget: number;
     }
@@ -128,7 +128,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     if (normalizedRemaining < 1) {
       return { kind: 'disabled', nextRemainingBudget: 0 };
     }
-    const prompt: DriverV2HumanPrompt = {
+    const prompt: KernelDriverHumanPrompt = {
       content: resolved.diligenceText,
       msgId: generateShortId(),
       grammar: 'markdown',
@@ -147,7 +147,7 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
     return { kind: 'budget_exhausted', maxInjectCount, nextRemainingBudget: 0 };
   }
 
-  const prompt: DriverV2HumanPrompt = {
+  const prompt: KernelDriverHumanPrompt = {
     content: resolved.diligenceText,
     msgId: generateShortId(),
     grammar: 'markdown',

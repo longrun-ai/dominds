@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 
 import {
-  decideDriverV2ContextHealth,
-  DRIVER_V2_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
+  decideKernelDriverContextHealth,
+  KERNEL_DRIVER_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
   resetContextHealthRoundState,
   resolveCautionRemediationCadenceGenerations,
   resolveCriticalCountdownRemaining,
-} from '../../main/llm/driver-v2/context-health';
+} from '../../main/llm/kernel-driver/context-health';
 import type { ContextHealthSnapshot } from '../../main/shared/types/context-health';
 
 const CAUTION_SNAPSHOT: ContextHealthSnapshot = {
@@ -46,7 +46,7 @@ function decideForRound(args: {
     args.dialogKey,
     args.snapshot,
   );
-  return decideDriverV2ContextHealth({
+  return decideKernelDriverContextHealth({
     dialogKey: args.dialogKey,
     snapshot: args.snapshot,
     hadUserPromptThisGen: args.hadUserPromptThisGen ?? false,
@@ -59,12 +59,12 @@ function decideForRound(args: {
 async function main(): Promise<void> {
   assert.equal(
     resolveCautionRemediationCadenceGenerations(undefined),
-    DRIVER_V2_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
+    KERNEL_DRIVER_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
     'undefined cadence should fallback to default',
   );
   assert.equal(
     resolveCautionRemediationCadenceGenerations(0),
-    DRIVER_V2_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
+    KERNEL_DRIVER_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS,
     'non-positive cadence should fallback to default',
   );
   assert.equal(

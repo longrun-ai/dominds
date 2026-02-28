@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import type { ChatMessage } from '../../main/llm/client';
-import { driveDialogStream } from '../../main/llm/driver-entry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { getWorkLanguage } from '../../main/shared/runtime-language';
 import {
   formatAssignmentFromSupdialog,
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
       { message: expectedCoderInjected, role: 'user', response: panguFinalResponse },
     ]);
 
-    const dlg = createRootDialog('tester');
+    const dlg = await createRootDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

@@ -7,10 +7,9 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { DialogID, RootDialog } from 'dominds/dialog';
-import { dialogEventRegistry, setQ4HBroadcaster } from 'dominds/evt-registry';
-import { driveDialogStream } from 'dominds/llm/driver-entry';
+import { setQ4HBroadcaster } from 'dominds/evt-registry';
+import { driveDialogStream } from 'dominds/llm/kernel-driver';
 import { DiskFileDialogStore } from 'dominds/persistence';
-import { EndOfStream } from 'dominds/shared/evt';
 import type { TypedDialogEvent } from 'dominds/shared/types/dialog';
 
 async function writeFileEnsuringDir(filePath: string, content: string): Promise<void> {
@@ -18,23 +17,13 @@ async function writeFileEnsuringDir(filePath: string, content: string): Promise<
   await fs.promises.writeFile(filePath, content, 'utf-8');
 }
 
-async function readNextEventWithTimeout(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
-  timeoutMs: number,
-): Promise<TypedDialogEvent | null> {
-  const timer = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
-  const ev = await Promise.race([ch.read(), timer]);
-  if (ev === null) return null;
-  if (ev === EndOfStream) return null;
-  return ev;
-}
-
 async function driveToDiligencePushBudgetExhaustedQ4H(options: {
   baseDir: string;
   dialogId: string;
   userLanguageCode: 'zh' | 'en';
+  received: TypedDialogEvent[];
 }): Promise<string> {
-  const { baseDir, dialogId, userLanguageCode } = options;
+  const { baseDir, dialogId, userLanguageCode, received } = options;
 
   await writeFileEnsuringDir(
     path.join(baseDir, '.minds', 'team.yaml'),
@@ -80,8 +69,6 @@ async function driveToDiligencePushBudgetExhaustedQ4H(options: {
   const store = new DiskFileDialogStore(dlgId);
   const dlg = new RootDialog(store, 'task.md', dlgId, 'tester');
 
-  const ch = dialogEventRegistry.createSubChan(dlgId);
-
   await driveDialogStream(dlg, {
     content: 'hello',
     msgId: 'm-1',
@@ -91,10 +78,17 @@ async function driveToDiligencePushBudgetExhaustedQ4H(options: {
 
   const deadlineAt = Date.now() + 5000;
   while (Date.now() < deadlineAt) {
-    const ev = await readNextEventWithTimeout(ch, 50);
-    if (!ev) continue;
-    if (ev.type !== 'new_q4h_asked') continue;
-    return ev.question.tellaskContent;
+    const ev = received.find((entry) => {
+      return (
+        entry.type === 'new_q4h_asked' &&
+        entry.dialog.rootId === dlgId.rootId &&
+        entry.dialog.selfId === dlgId.selfId
+      );
+    });
+    if (ev && ev.type === 'new_q4h_asked') {
+      return ev.question.tellaskContent;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 
   throw new Error('Timed out waiting for diligence_push_budget_exhausted new_q4h_asked');
@@ -104,13 +98,17 @@ async function main(): Promise<void> {
   const originalCwd = process.cwd();
   const tmpBase = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'dominds-q4h-i18n-'));
   process.chdir(tmpBase);
-  setQ4HBroadcaster(() => {});
+  const received: TypedDialogEvent[] = [];
+  setQ4HBroadcaster((evt) => {
+    received.push(evt);
+  });
 
   try {
     const zhBody = await driveToDiligencePushBudgetExhaustedQ4H({
       baseDir: tmpBase,
       dialogId: 'dlg-q4h-i18n-zh',
       userLanguageCode: 'zh',
+      received,
     });
     if (!zhBody.includes('已经鞭策了') || !zhBody.includes('智能体仍不听劝')) {
       throw new Error(
@@ -122,6 +120,7 @@ async function main(): Promise<void> {
       baseDir: tmpBase,
       dialogId: 'dlg-q4h-i18n-en',
       userLanguageCode: 'en',
+      received,
     });
     if (!enBody.includes('Diligence Push attempts') || !enBody.includes('still not moved')) {
       throw new Error(

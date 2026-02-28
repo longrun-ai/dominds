@@ -1067,6 +1067,15 @@ To make the UI **faithfully reflect the original generation order**, and to ensu
 - **UI renders by event arrival order**: The frontend should not reorder DOM nodes to “fix” ordering; it should append sections in event order to represent the true generation trace.
 - **Ordering violations must be loud**: On overlap/out-of-order detection (e.g., thinking and saying both active), the backend SHOULD emit `stream_error_evt` and abort the generation so provider / parsing-chain protocol issues surface quickly.
 
+### LLM Provider Message Projection (Role / Turn)
+
+Dominds persists fine-grained message entries (thinking/saying/tool call/tool result, etc.). In contrast, most mainstream LLM provider chat protocols only support `role=user|assistant` (plus limited tool-specific variants).
+
+- **Ideal target**: Provider SDKs/protocols should natively support `role='environment'` (or an equivalent mechanism) for runtime-injected environment/system content (e.g. reminders, transient guides), so we don't have to disguise environment content as user messages.
+- **Current reality**: Most providers do not support `role='environment'`. Therefore, when projecting Dominds messages into provider request payloads, Dominds must temporarily project `environment_msg` / `transient_guide_msg` / reminders as `role='user'` text blocks to keep requests valid.
+
+Additionally, some providers (especially Anthropic-compatible endpoints) enforce stricter validation around **role alternation** and **tool_use/tool_result boundaries**. Dominds' projection layer must assemble internal fine-grained entries into provider-friendly turns (turn assembly), rather than sending a 1:1 mapping of persisted entries.
+
 ### CLI Integration
 
 **Dialog Creation**: New dialogs are created through CLI commands with appropriate context.

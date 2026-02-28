@@ -6,11 +6,11 @@ export {
 export { runBackendDriver } from './loop';
 export { restoreDialogHierarchy } from './restore';
 export type {
-  DriverV2DriveArgs,
-  DriverV2DriveResult,
-  DriverV2EmitSayingArgs,
-  DriverV2EmitSayingResult,
-  DriverV2RunBackendResult,
-  DriverV2SupplyResponseArgs,
-  DriverV2SupplyResponseResult,
+  KernelDriverDriveArgs,
+  KernelDriverDriveResult,
+  KernelDriverEmitSayingArgs,
+  KernelDriverEmitSayingResult,
+  KernelDriverRunBackendResult,
+  KernelDriverSupplyResponseArgs,
+  KernelDriverSupplyResponseResult,
 } from './types';

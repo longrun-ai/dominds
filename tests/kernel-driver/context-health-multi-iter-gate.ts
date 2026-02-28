@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { driveDialogStream } from '../../main/llm/driver-entry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { formatAgentFacingContextHealthV3RemediationGuide } from '../../main/shared/i18n/driver-messages';
 import { setWorkLanguage } from '../../main/shared/runtime-language';
 
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const dlg = createRootDialog('tester');
+    const dlg = await createRootDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

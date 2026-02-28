@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { driveDialogStream } from '../../main/llm/driver-entry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
 
 import { createRootDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
       },
     ]);
 
-    const dlg = createRootDialog('tester');
+    const dlg = await createRootDialog('tester');
     dlg.disableDiligencePush = true;
 
     await driveDialogStream(

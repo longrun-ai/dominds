@@ -9,43 +9,32 @@ import {
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
-import { formatAgentFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
-import { generateShortId } from '../../shared/utils/id';
-import { LlmConfig } from '../client';
-import { driveDialogStreamCore } from './engine';
-import { buildDriverV2Policy, validateDriverV2PolicyInvariants } from './guardrails';
-import {
-  consumeCriticalCountdown,
-  decideDriverV2ContextHealth,
-  DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
-  resetContextHealthRoundState,
-  resolveCautionRemediationCadenceGenerations,
-  resolveCriticalCountdownRemaining,
-} from './health';
+import { driveDialogStreamCore } from './drive';
+import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from './guardrails';
 import type { ScheduleDriveFn, SubdialogReplyTarget } from './subdialog';
 import {
   supplySubdialogResponseToAssignedCallerIfPendingV2,
   supplySubdialogResponseToSpecificCallerIfPendingV2,
 } from './subdialog';
 import type {
-  DriverV2CoreResult,
-  DriverV2DriveArgs,
-  DriverV2DriveInvoker,
-  DriverV2DriveResult,
-  DriverV2DriveScheduler,
-  DriverV2HumanPrompt,
-  DriverV2RunControl,
-  DriverV2RuntimeState,
+  KernelDriverCoreResult,
+  KernelDriverDriveArgs,
+  KernelDriverDriveInvoker,
+  KernelDriverDriveResult,
+  KernelDriverDriveScheduler,
+  KernelDriverHumanPrompt,
+  KernelDriverRunControl,
+  KernelDriverRuntimeState,
 } from './types';
 
 type UpNextPrompt = {
   prompt: string;
   msgId: string;
-  grammar?: DriverV2HumanPrompt['grammar'];
+  grammar?: KernelDriverHumanPrompt['grammar'];
   userLanguageCode?: string;
   q4hAnswerCallIds?: string[];
-  runControl?: DriverV2RunControl;
+  runControl?: KernelDriverRunControl;
 };
 
 type PendingDiagnosticsSnapshot =
@@ -111,9 +100,9 @@ async function loadPendingDiagnosticsSnapshot(args: {
 }
 
 function resolveEffectivePrompt(
-  dialog: DriverV2DriveArgs[0],
-  humanPrompt?: DriverV2HumanPrompt,
-): DriverV2HumanPrompt | undefined {
+  dialog: KernelDriverDriveArgs[0],
+  humanPrompt?: KernelDriverHumanPrompt,
+): KernelDriverHumanPrompt | undefined {
   if (humanPrompt) {
     return humanPrompt;
   }
@@ -135,11 +124,11 @@ function resolveEffectivePrompt(
 }
 
 export async function executeDriveRound(args: {
-  runtime: DriverV2RuntimeState;
-  driveArgs: DriverV2DriveArgs;
-  scheduleDrive: DriverV2DriveScheduler & ScheduleDriveFn;
-  driveDialog: DriverV2DriveInvoker;
-}): DriverV2DriveResult {
+  runtime: KernelDriverRuntimeState;
+  driveArgs: KernelDriverDriveArgs;
+  scheduleDrive: KernelDriverDriveScheduler & ScheduleDriveFn;
+  driveDialog: KernelDriverDriveInvoker;
+}): KernelDriverDriveResult {
   const [dialog, humanPrompt, waitInQue, driveOptions] = args.driveArgs;
   if (!waitInQue && dialog.isLocked()) {
     throw new Error('Dialog busy driven, see how it proceeded and try again.');
@@ -150,7 +139,7 @@ export async function executeDriveRound(args: {
   let ownsActiveRun = false;
   let interruptedBySignal = false;
   let followUp: UpNextPrompt | undefined;
-  let driveResult: DriverV2CoreResult | undefined;
+  let driveResult: KernelDriverCoreResult | undefined;
   let subdialogReplyTarget: SubdialogReplyTarget | undefined;
   const allowResumeFromInterrupted =
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
@@ -174,10 +163,14 @@ export async function executeDriveRound(args: {
         return;
       }
       if (latest && latest.runState && latest.runState.kind === 'proceeding_stop_requested') {
-        log.debug('driver-v2 skip drive while stop request is still being processed', undefined, {
-          dialogId: dialog.id.valueOf(),
-          reason: latest.runState.reason,
-        });
+        log.debug(
+          'kernel-driver skip drive while stop request is still being processed',
+          undefined,
+          {
+            dialogId: dialog.id.valueOf(),
+            reason: latest.runState.reason,
+          },
+        );
         return;
       }
       if (
@@ -187,7 +180,7 @@ export async function executeDriveRound(args: {
         !allowResumeFromInterrupted
       ) {
         log.debug(
-          'driver-v2 skip drive for interrupted dialog without explicit resume/user prompt',
+          'kernel-driver skip drive for interrupted dialog without explicit resume/user prompt',
           undefined,
           {
             dialogId: dialog.id.valueOf(),
@@ -197,7 +190,7 @@ export async function executeDriveRound(args: {
         return;
       }
     } catch (err) {
-      log.warn('driver-v2 failed to check runState before drive; proceeding best-effort', err, {
+      log.warn('kernel-driver failed to check runState before drive; proceeding best-effort', err, {
         dialogId: dialog.id.valueOf(),
       });
     }
@@ -211,7 +204,7 @@ export async function executeDriveRound(args: {
         const lastTrigger = globalDialogRegistry.getLastDriveTrigger(dialog.id.rootId);
         const lastTriggerAgeMs =
           lastTrigger !== undefined ? Math.max(0, Date.now() - lastTrigger.emittedAtMs) : undefined;
-        log.debug('driver-v2 skip queued auto-drive while dialog is suspended', undefined, {
+        log.debug('kernel-driver skip queued auto-drive while dialog is suspended', undefined, {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
@@ -237,90 +230,23 @@ export async function executeDriveRound(args: {
     }
 
     const minds = await loadAgentMinds(dialog.agentId, dialog);
-    const policy = buildDriverV2Policy({
+    const policy = buildKernelDriverPolicy({
       dlg: dialog,
       agent: minds.agent,
       systemPrompt: minds.systemPrompt,
       agentTools: minds.agentTools,
       language: getWorkLanguage(),
     });
-    const policyResult = validateDriverV2PolicyInvariants(policy, getWorkLanguage());
+    const policyResult = validateKernelDriverPolicyInvariants(policy, getWorkLanguage());
     if (!policyResult.ok) {
-      throw new Error(`driver-v2 policy invariant violation: ${policyResult.detail}`);
-    }
-
-    const contextHealth = dialog.getLastContextHealth();
-    const hasQueuedUpNext = dialog.hasUpNext();
-    const provider = policy.effectiveAgent.provider ?? minds.team.memberDefaults.provider;
-    const model = policy.effectiveAgent.model ?? minds.team.memberDefaults.model;
-    let cautionRemediationCadenceGenerations =
-      resolveCautionRemediationCadenceGenerations(undefined);
-    if (provider && model) {
-      const llmCfg = await LlmConfig.load();
-      const providerCfg = llmCfg.getProvider(provider);
-      cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
-        providerCfg?.models[model]?.caution_remediation_cadence_generations,
-      );
-    }
-    const criticalCountdownRemaining = resolveCriticalCountdownRemaining(
-      dialog.id.key(),
-      contextHealth,
-    );
-    const healthDecision = decideDriverV2ContextHealth({
-      dialogKey: dialog.id.key(),
-      snapshot: contextHealth,
-      hadUserPromptThisGen: humanPrompt !== undefined,
-      canInjectPromptThisGen: !hasQueuedUpNext,
-      cautionRemediationCadenceGenerations,
-      criticalCountdownRemaining,
-    });
-    if (healthDecision.kind === 'suspend') {
-      return;
-    }
-
-    let healthPrompt: DriverV2HumanPrompt | undefined;
-    if (healthDecision.kind === 'continue') {
-      if (healthDecision.reason === 'critical_force_new_course') {
-        const language = getWorkLanguage();
-        const newCoursePrompt =
-          language === 'zh'
-            ? '系统因上下文已告急（critical）而自动开启新一程对话，请继续推进任务。'
-            : 'System auto-started a new dialog course because context health is critical. Please continue the task.';
-        await dialog.startNewCourse(newCoursePrompt);
-        dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
-        resetContextHealthRoundState(dialog.id.key());
-      } else if (!hasQueuedUpNext) {
-        const language = getWorkLanguage();
-        const guideText =
-          healthDecision.reason === 'caution_soft_remediation'
-            ? formatAgentFacingContextHealthV3RemediationGuide(language, {
-                kind: 'caution',
-                mode: 'soft',
-              })
-            : formatAgentFacingContextHealthV3RemediationGuide(language, {
-                kind: 'critical',
-                mode: 'countdown',
-                promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
-                promptsTotal: DRIVER_V2_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
-              });
-        healthPrompt = {
-          content: guideText,
-          msgId: generateShortId(),
-          grammar: 'markdown',
-          userLanguageCode: language,
-        };
-      }
+      throw new Error(`kernel-driver policy invariant violation: ${policyResult.detail}`);
     }
 
     args.runtime.driveCount += 1;
     args.runtime.totalGenIterations += 1;
     args.runtime.usedLegacyDriveCore = false;
 
-    const promptForCore =
-      healthDecision.kind === 'continue' && healthDecision.reason === 'critical_force_new_course'
-        ? undefined
-        : (healthPrompt ?? humanPrompt);
-    const effectivePrompt = resolveEffectivePrompt(dialog, promptForCore);
+    const effectivePrompt = resolveEffectivePrompt(dialog, humanPrompt);
     subdialogReplyTarget = effectivePrompt?.subdialogReplyTarget;
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
@@ -382,7 +308,7 @@ export async function executeDriveRound(args: {
 
     if (hasFollowUp || suspension.q4h) {
       log.debug(
-        'driver-v2 skip subdialog response supply while callee is not finalized',
+        'kernel-driver skip subdialog response supply while callee is not finalized',
         undefined,
         {
           rootId: dialog.id.rootId,
@@ -396,7 +322,7 @@ export async function executeDriveRound(args: {
       // Any function call means execution is still in-progress. Only supply when the callee
       // has produced a newer assistant saying after the latest function call.
       log.debug(
-        'driver-v2 skip subdialog response supply because latest saying is not after function calls',
+        'kernel-driver skip subdialog response supply because latest saying is not after function calls',
         undefined,
         {
           rootId: dialog.id.rootId,
@@ -449,14 +375,18 @@ export async function executeDriveRound(args: {
           expectedSubdialogId: dialog.id.selfId,
           status: dialog.status,
         });
-        log.debug('driver-v2 failed to supply subdialog response to specific caller', undefined, {
-          calleeId: dialog.id.valueOf(),
-          targetOwner: subdialogReplyTarget.ownerDialogId,
-          targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
-          targetCallType: subdialogReplyTarget.callType,
-          targetCallId: subdialogReplyTarget.callId,
-          diagnostics,
-        });
+        log.debug(
+          'kernel-driver failed to supply subdialog response to specific caller',
+          undefined,
+          {
+            calleeId: dialog.id.valueOf(),
+            targetOwner: subdialogReplyTarget.ownerDialogId,
+            targetOwnerDialogId: subdialogReplyTarget.ownerDialogId,
+            targetCallType: subdialogReplyTarget.callType,
+            targetCallId: subdialogReplyTarget.callId,
+            diagnostics,
+          },
+        );
       }
     }
   }

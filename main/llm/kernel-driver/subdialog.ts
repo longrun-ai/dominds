@@ -8,11 +8,11 @@ import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
 import { withSubdialogTxnLock } from './subdialog-txn';
-import type { DriverV2DriveCallOptions, DriverV2SubdialogReplyTarget } from './types';
+import type { KernelDriverDriveCallOptions, KernelDriverSubdialogReplyTarget } from './types';
 
-export type SubdialogReplyTarget = DriverV2SubdialogReplyTarget;
+export type SubdialogReplyTarget = KernelDriverSubdialogReplyTarget;
 
-export type ScheduleDriveFn = (dialog: Dialog, options: DriverV2DriveCallOptions) => void;
+export type ScheduleDriveFn = (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
 
 async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string): Promise<void> {
   try {

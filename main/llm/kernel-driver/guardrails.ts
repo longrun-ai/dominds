@@ -5,21 +5,21 @@ import type { Team } from '../../team';
 import type { Tool } from '../../tool';
 import type { ChatMessage } from '../client';
 
-export type DriverV2TellaskPolicy = 'allow_any' | 'deny_all';
+export type KernelDriverTellaskPolicy = 'allow_any' | 'deny_all';
 
-export type DriverV2PolicyMode = 'default' | 'fbr_toolless';
+export type KernelDriverPolicyMode = 'default' | 'fbr_toolless';
 
-export type DriverV2PolicyState = Readonly<{
-  mode: DriverV2PolicyMode;
+export type KernelDriverPolicyState = Readonly<{
+  mode: KernelDriverPolicyMode;
   effectiveAgent: Team.Member;
   effectiveSystemPrompt: string;
   effectiveAgentTools: readonly Tool[];
   prependedContextMessages: readonly ChatMessage[];
-  tellaskPolicy: DriverV2TellaskPolicy;
+  tellaskPolicy: KernelDriverTellaskPolicy;
   allowFunctionCalls: boolean;
 }>;
 
-export type DriverV2PolicyViolationKind = 'tellask' | 'tool' | 'tellask_and_tool';
+export type KernelDriverPolicyViolationKind = 'tellask' | 'tool' | 'tellask_and_tool';
 
 function isToollessFbrSelfSubdialog(dlg: Dialog): dlg is SubDialog {
   if (!(dlg instanceof SubDialog)) return false;
@@ -65,13 +65,13 @@ function buildFbrSystemPrompt(language: LanguageCode): string {
   return prefix.trim();
 }
 
-export function buildDriverV2Policy(args: {
+export function buildKernelDriverPolicy(args: {
   dlg: Dialog;
   agent: Team.Member;
   systemPrompt: string;
   agentTools: readonly Tool[];
   language: LanguageCode;
-}): DriverV2PolicyState {
+}): KernelDriverPolicyState {
   const { dlg, agent, systemPrompt, agentTools, language } = args;
   if (!isToollessFbrSelfSubdialog(dlg)) {
     return {
@@ -106,8 +106,8 @@ export function buildDriverV2Policy(args: {
   };
 }
 
-export function validateDriverV2PolicyInvariants(
-  policy: DriverV2PolicyState,
+export function validateKernelDriverPolicyInvariants(
+  policy: KernelDriverPolicyState,
   language: LanguageCode,
 ): { ok: true } | { ok: false; detail: string } {
   if (policy.mode !== 'fbr_toolless') {
@@ -141,18 +141,21 @@ export function validateDriverV2PolicyInvariants(
   return { ok: true };
 }
 
-function hasTellaskPolicyViolation(policy: DriverV2PolicyState, tellaskCallCount: number): boolean {
+function hasTellaskPolicyViolation(
+  policy: KernelDriverPolicyState,
+  tellaskCallCount: number,
+): boolean {
   if (policy.tellaskPolicy === 'allow_any') {
     return false;
   }
   return tellaskCallCount > 0;
 }
 
-export function resolveDriverV2PolicyViolationKind(args: {
-  policy: DriverV2PolicyState;
+export function resolveKernelDriverPolicyViolationKind(args: {
+  policy: KernelDriverPolicyState;
   tellaskCallCount: number;
   functionCallCount: number;
-}): DriverV2PolicyViolationKind | null {
+}): KernelDriverPolicyViolationKind | null {
   const tellaskViolation = hasTellaskPolicyViolation(args.policy, args.tellaskCallCount);
   const toolViolation = !args.policy.allowFunctionCalls && args.functionCallCount > 0;
   if (tellaskViolation && toolViolation) {

@@ -63,7 +63,7 @@ async function main() {
     assert(messages[i - 1].role !== messages[i].role, 'Found consecutive messages with same role');
   }
 
-  assert(messages.length === 3, `Expected 3 merged messages, got ${messages.length}`);
+  assert(messages.length === 3, `Expected 3 projected turns, got ${messages.length}`);
   assert(messages[0].role === 'user', 'Expected first message to be user');
   assert(messages[1].role === 'assistant', 'Expected second message to be assistant');
   assert(messages[2].role === 'user', 'Expected third message to be user (tool_result)');

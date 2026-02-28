@@ -21,8 +21,8 @@ import {
   postDialogEvent,
   setGlobalDialogEventBroadcaster,
 } from '../evt-registry';
-import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/driver-v2/runtime-utils';
 import { driveDialogStream, supplyResponseToSupdialog } from '../llm/kernel-driver';
+import { maybePrepareDiligenceAutoContinuePrompt } from '../llm/kernel-driver/runtime';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import {

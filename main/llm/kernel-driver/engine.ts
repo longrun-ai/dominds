@@ -1,21 +1,23 @@
 import type { Dialog, DialogID } from '../../dialog';
-import { driveDialogStreamCoreV2 } from '../driver-v2/core';
+import { driveDialogStreamCore as driveDialogStreamCoreInternal } from './drive';
 import { emitSayingEvents } from './events';
 import { executeDriveRound } from './flow';
 import { supplyResponseToSupdialog as supplyResponseToSupdialogInternal } from './subdialog';
 import type {
-  DriverV2CoreResult,
-  DriverV2DriveArgs,
-  DriverV2DriveResult,
-  DriverV2EmitSayingArgs,
-  DriverV2EmitSayingResult,
-  DriverV2SupplyResponseArgs,
-  DriverV2SupplyResponseResult,
+  KernelDriverCoreResult,
+  KernelDriverDriveArgs,
+  KernelDriverDriveResult,
+  KernelDriverEmitSayingArgs,
+  KernelDriverEmitSayingResult,
+  KernelDriverSupplyResponseArgs,
+  KernelDriverSupplyResponseResult,
 } from './types';
-import { createDriverV2RuntimeState } from './types';
+import { createKernelDriverRuntimeState } from './types';
 
-export async function driveDialogStream(...driveArgs: DriverV2DriveArgs): DriverV2DriveResult {
-  const runtime = createDriverV2RuntimeState();
+export async function driveDialogStream(
+  ...driveArgs: KernelDriverDriveArgs
+): KernelDriverDriveResult {
+  const runtime = createKernelDriverRuntimeState();
   return await executeDriveRound({
     runtime,
     driveArgs,
@@ -29,15 +31,15 @@ export async function driveDialogStream(...driveArgs: DriverV2DriveArgs): Driver
 }
 
 export async function emitSayingEventsBridge(
-  ...args: DriverV2EmitSayingArgs
-): DriverV2EmitSayingResult {
+  ...args: KernelDriverEmitSayingArgs
+): KernelDriverEmitSayingResult {
   const [dlg, content] = args;
   return await emitSayingEvents(dlg, content);
 }
 
 export async function supplyResponseToSupdialog(
-  ...args: DriverV2SupplyResponseArgs
-): DriverV2SupplyResponseResult {
+  ...args: KernelDriverSupplyResponseArgs
+): KernelDriverSupplyResponseResult {
   const [parentDialog, subdialogId, responseText, callType, callId, status, calleeResponseRef] =
     args;
   return await supplyResponseToSupdialogInternal({
@@ -56,28 +58,28 @@ export async function supplyResponseToSupdialog(
 
 export async function driveDialogStreamCore(
   dlg: Dialog,
-  humanPrompt?: DriverV2DriveArgs[1],
-  driveOptions?: DriverV2DriveArgs[3],
+  humanPrompt?: KernelDriverDriveArgs[1],
+  driveOptions?: KernelDriverDriveArgs[3],
   callbacks?: {
     scheduleDrive: (
       dialog: Dialog,
       options: {
-        humanPrompt?: DriverV2DriveArgs[1];
+        humanPrompt?: KernelDriverDriveArgs[1];
         waitInQue: boolean;
-        driveOptions?: DriverV2DriveArgs[3];
+        driveOptions?: KernelDriverDriveArgs[3];
       },
     ) => void;
     driveDialog: (
       dialog: Dialog,
       options: {
-        humanPrompt?: DriverV2DriveArgs[1];
+        humanPrompt?: KernelDriverDriveArgs[1];
         waitInQue: boolean;
-        driveOptions?: DriverV2DriveArgs[3];
+        driveOptions?: KernelDriverDriveArgs[3];
       },
     ) => Promise<void>;
   },
-): Promise<DriverV2CoreResult> {
-  return await driveDialogStreamCoreV2(dlg, humanPrompt, driveOptions, callbacks);
+): Promise<KernelDriverCoreResult> {
+  return await driveDialogStreamCoreInternal(dlg, humanPrompt, driveOptions, callbacks);
 }
 
 export async function supplyResponseToSubdialogBridge(
