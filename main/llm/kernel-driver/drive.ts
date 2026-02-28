@@ -23,7 +23,6 @@ import type { ContextHealthSnapshot, LlmUsageStats } from '../../shared/types/co
 import type { DialogInterruptionReason, DialogRunState } from '../../shared/types/run-state';
 import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
-import { formatAssignmentFromSupdialog } from '../../shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { Team } from '../../team';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../../tool';
@@ -50,7 +49,12 @@ import {
   suspendForKeepGoingBudgetExhausted,
   validateFuncToolArguments,
 } from './runtime';
-import { withSubdialogTxnLock } from './subdialog-txn';
+import {
+  classifyTellaskSpecialFunctionCalls,
+  executeTellaskSpecialCalls,
+  isTellaskSpecialFunctionName,
+  type TellaskSpecialFunctionName,
+} from './tellask-special';
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
@@ -76,10 +80,6 @@ function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void
     throw new KernelDriverInterruptedError({ kind: 'user_stop' });
   }
   throw new KernelDriverInterruptedError({ kind: 'system_stop', detail: 'Aborted.' });
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function normalizeQ4HAnswerCallIds(raw: readonly string[] | undefined): string[] | undefined {
@@ -156,6 +156,159 @@ function resolveEffectiveTokenThresholds(args: {
     effectiveCriticalMaxTokens,
     criticalMaxTokensConfigured,
   };
+}
+
+function resolveFbrEffortDefaultForTool(member: Team.Member): number {
+  const raw = member.fbr_effort;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+  if (!Number.isInteger(raw)) return 0;
+  if (raw < 0) return 0;
+  if (raw > 100) return 0;
+  return raw;
+}
+
+function createFreshBootsReasoningTool(args: {
+  fbrEffortDefault: number;
+  providerApiType: ProviderConfig['apiType'];
+}): FuncTool {
+  const fbrDefault = args.fbrEffortDefault;
+  const fbrDefaultHint =
+    fbrDefault > 0
+      ? `Runtime default for \`effort\` is current member \`fbr_effort=${fbrDefault}\` when omitted.`
+      : 'Runtime default for `effort` is current member `fbr_effort=0` (FBR disabled unless reconfigured).';
+  const codexAuthHint =
+    args.providerApiType === 'codex'
+      ? ` Codex-auth note: function arguments are often emitted with all fields present; if user did not specify intensity, pass \`effort: ${fbrDefault}\` explicitly.`
+      : '';
+  return {
+    type: 'func',
+    name: 'freshBootsReasoning',
+    description:
+      'Start an FBR sideline dialog for tool-less fresh-boots reasoning. tellaskContent MUST stay neutral and fact-oriented (Goal/Facts/Constraints/Evidence[/Unknowns]); do not issue analysis directives (for example “from the following dimensions”, “analyze in steps 1..N”, or “N rounds per dimension”). ' +
+      fbrDefaultHint +
+      codexAuthHint,
+    parameters: {
+      type: 'object',
+      properties: {
+        tellaskContent: {
+          type: 'string',
+          description:
+            'Use a neutral factual body: Goal/Facts/Constraints/Evidence (optional Unknowns). Avoid dimension checklists and stepwise directives (e.g. “from the following dimensions/aspects”, “analyze in steps 1..N”, “N rounds per dimension”).',
+        },
+        effort: {
+          type: 'integer',
+          description: `Optional FBR intensity override (0..100 integer). Runtime maps intensity N to N serial FBR passes in one sideline window. When omitted, runtime defaults to current member fbr_effort=${fbrDefault}.`,
+        },
+      },
+      required: ['tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('freshBootsReasoning is handled by kernel-driver tellask-special channel');
+    },
+  };
+}
+
+const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
+  {
+    type: 'func',
+    name: 'tellaskBack',
+    description: 'Ask back to the requester dialog in sideline context.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tellaskContent: { type: 'string' },
+      },
+      required: ['tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('tellaskBack is handled by kernel-driver tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
+    name: 'tellask',
+    description: 'Create or resume a teammate sideline dialog with sessionSlug.',
+    parameters: {
+      type: 'object',
+      properties: {
+        targetAgentId: { type: 'string' },
+        sessionSlug: { type: 'string' },
+        tellaskContent: { type: 'string' },
+      },
+      required: ['targetAgentId', 'sessionSlug', 'tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('tellask is handled by kernel-driver tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
+    name: 'tellaskSessionless',
+    description: 'Create a one-shot teammate sideline dialog.',
+    parameters: {
+      type: 'object',
+      properties: {
+        targetAgentId: { type: 'string' },
+        tellaskContent: { type: 'string' },
+      },
+      required: ['targetAgentId', 'tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('tellaskSessionless is handled by kernel-driver tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
+    name: 'askHuman',
+    description: 'Ask for required clarification/decision from human.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tellaskContent: { type: 'string' },
+      },
+      required: ['tellaskContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('askHuman is handled by kernel-driver tellask-special channel');
+    },
+  },
+];
+
+function mergeTellaskSpecialVirtualTools(
+  baseTools: readonly FuncTool[],
+  options: {
+    includeTellaskBack: boolean;
+    fbrEffortDefault: number;
+    providerApiType: ProviderConfig['apiType'];
+  },
+): FuncTool[] {
+  const merged: FuncTool[] = [...baseTools];
+  const seen = new Set(merged.map((tool) => tool.name));
+  const freshBootsReasoning = createFreshBootsReasoningTool({
+    fbrEffortDefault: options.fbrEffortDefault,
+    providerApiType: options.providerApiType,
+  });
+  const specialTools = options.includeTellaskBack
+    ? [...TELLASK_SPECIAL_VIRTUAL_TOOLS, freshBootsReasoning]
+    : [
+        ...TELLASK_SPECIAL_VIRTUAL_TOOLS.filter((tool) => tool.name !== 'tellaskBack'),
+        freshBootsReasoning,
+      ];
+  for (const virtualTool of specialTools) {
+    if (seen.has(virtualTool.name)) {
+      throw new Error(
+        `kernel-driver tool invariant violation: function tool name '${virtualTool.name}' collides with tellask-special virtual tool`,
+      );
+    }
+    merged.push(virtualTool);
+    seen.add(virtualTool.name);
+  }
+  return merged;
 }
 
 function computeContextHealthSnapshot(args: {
@@ -293,68 +446,182 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
   );
 }
 
-function isTeammateToolCallName(name: string): boolean {
-  // Teammate tellasks are executed out-of-band via subdialogs.
-  return name === 'tellask' || name === 'tellaskSessionless' || name === 'tellaskBack';
+function parseUnifiedTimestampMs(ts: string): number | null {
+  const normalized = ts.trim();
+  if (normalized === '') {
+    return null;
+  }
+  const parsed = Date.parse(normalized.replace(' ', 'T'));
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
 }
 
-function buildDialogMsgsForContext(dlg: Dialog): ChatMessage[] {
-  // Some providers require strict tool_use/tool_result adjacency.
-  // For teammate tellasks, the "real" completion payload is stored as tellask_result_msg (separate
-  // bubble), but providers still need an in-band tool_result right after tool_use to keep history valid.
-  //
-  // Strategy:
-  // - Keep all non-UI messages.
-  // - For teammate tellask tool_use (func_call_msg), immediately emit a paired func_result_msg:
-  //   - If we can find a tellask_result_msg with matching callId, use its content.
-  //   - Otherwise, emit a stable pending placeholder.
-  // - Skip tellask_result_msg from provider context entirely to avoid duplicating it as free text.
-  // - Skip any existing func_result_msg for teammate tellasks, because we synthesize an adjacent one.
+function formatElapsedSecondsText(startedAtMs: number | null): string {
   const language = getWorkLanguage();
-  const pendingPlaceholder =
-    language === 'zh'
-      ? 'PENDING：队友回复尚未到达。'
-      : 'PENDING: teammate response not yet available.';
+  if (startedAtMs === null) {
+    return language === 'zh' ? '未知时长' : 'unknown elapsed time';
+  }
+  const elapsedMs = Math.max(0, Date.now() - startedAtMs);
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  return language === 'zh' ? `${elapsedSec} 秒` : `${elapsedSec}s`;
+}
 
-  const tellaskResultByCallId = new Map<string, { content: string }>();
-  for (const msg of dlg.msgs) {
-    if (msg.type !== 'tellask_result_msg') continue;
-    const callId = typeof msg.callId === 'string' ? msg.callId.trim() : '';
-    if (callId === '') continue;
-    tellaskResultByCallId.set(callId, { content: msg.content });
+function formatPendingSpecialFuncResult(name: string, startedAtMs: number | null): string {
+  const language = getWorkLanguage();
+  const elapsed = formatElapsedSecondsText(startedAtMs);
+  if (name === 'askHuman') {
+    return language === 'zh'
+      ? `Q4H 仍在等待人类回复，已持续 ${elapsed}。`
+      : `Q4H is still waiting for human reply (elapsed ${elapsed}).`;
+  }
+  return language === 'zh'
+    ? `支线对话仍在进行中，已持续 ${elapsed}。`
+    : `Sideline dialog is still running (elapsed ${elapsed}).`;
+}
+
+function formatResolvedAskHumanResult(): string {
+  return getWorkLanguage() === 'zh'
+    ? 'Q4H 已结束等待状态，请参考后续用户消息。'
+    : 'Q4H wait is resolved; refer to subsequent user messages.';
+}
+
+async function projectTellaskSpecialFuncResultsForContext(args: {
+  dialog: Dialog;
+  dialogMsgsForContext: readonly ChatMessage[];
+}): Promise<ChatMessage[]> {
+  const hasSpecialFuncCall = args.dialogMsgsForContext.some(
+    (msg) => msg.type === 'func_call_msg' && isTellaskSpecialFunctionName(msg.name),
+  );
+  if (!hasSpecialFuncCall) {
+    return [...args.dialogMsgsForContext];
   }
 
-  const out: ChatMessage[] = [];
-  for (const msg of dlg.msgs) {
-    if (msg.type === 'ui_only_markdown_msg') continue;
+  const pendingSubdialogs = await DialogPersistence.loadPendingSubdialogs(
+    args.dialog.id,
+    args.dialog.status,
+  );
+  const pendingSubByCallId = new Map<string, { createdAt: string }>();
+  for (const pending of pendingSubdialogs) {
+    const callId = pending.callId.trim();
+    if (callId === '') {
+      continue;
+    }
+    pendingSubByCallId.set(callId, { createdAt: pending.createdAt });
+  }
 
+  const pendingQ4H = await DialogPersistence.loadQuestions4HumanState(
+    args.dialog.id,
+    args.dialog.status,
+  );
+  const pendingQ4HByCallId = new Map<string, { askedAt: string }>();
+  for (const question of pendingQ4H) {
+    if (typeof question.callId !== 'string') {
+      continue;
+    }
+    const callId = question.callId.trim();
+    if (callId === '') {
+      continue;
+    }
+    pendingQ4HByCallId.set(callId, { askedAt: question.askedAt });
+  }
+
+  const settledByCallId = new Map<string, string>();
+  const existingSpecialFuncResults = new Map<string, FuncResultMsg>();
+  for (const msg of args.dialogMsgsForContext) {
     if (msg.type === 'tellask_result_msg') {
-      // Never include separate tellask bubbles in provider context: they are not LLM-native tool
-      // events and would duplicate the synthesized tool_result blocks.
+      const callId = typeof msg.callId === 'string' ? msg.callId.trim() : '';
+      if (callId !== '') {
+        settledByCallId.set(callId, msg.content);
+      }
+      continue;
+    }
+    if (msg.type === 'func_result_msg' && isTellaskSpecialFunctionName(msg.name)) {
+      existingSpecialFuncResults.set(msg.id, msg);
+    }
+  }
+
+  const projected: ChatMessage[] = [];
+  const specialCallIds = new Set<string>();
+  for (const msg of args.dialogMsgsForContext) {
+    if (msg.type === 'func_result_msg' && specialCallIds.has(msg.id)) {
       continue;
     }
 
-    if (msg.type === 'func_result_msg' && isTeammateToolCallName(msg.name)) {
-      // We synthesize a strict-adjacent tool_result for teammate tellasks.
+    projected.push(msg);
+
+    if (msg.type !== 'func_call_msg') {
+      continue;
+    }
+    if (!isTellaskSpecialFunctionName(msg.name)) {
       continue;
     }
 
-    out.push(msg);
-
-    if (msg.type === 'func_call_msg' && isTeammateToolCallName(msg.name)) {
-      const resolved = tellaskResultByCallId.get(msg.id);
-      const synthetic: FuncResultMsg = {
+    specialCallIds.add(msg.id);
+    const settled = settledByCallId.get(msg.id);
+    if (settled !== undefined) {
+      projected.push({
         type: 'func_result_msg',
         role: 'tool',
         genseq: msg.genseq,
         id: msg.id,
         name: msg.name,
-        content: resolved ? resolved.content : pendingPlaceholder,
-      };
-      out.push(synthetic);
+        content: settled,
+      });
+      continue;
     }
+
+    const existingResult = existingSpecialFuncResults.get(msg.id);
+    if (existingResult) {
+      projected.push(existingResult);
+      continue;
+    }
+
+    if (msg.name === 'askHuman') {
+      const pendingQ4HState = pendingQ4HByCallId.get(msg.id);
+      const content = pendingQ4HState
+        ? formatPendingSpecialFuncResult(msg.name, parseUnifiedTimestampMs(pendingQ4HState.askedAt))
+        : formatResolvedAskHumanResult();
+      projected.push({
+        type: 'func_result_msg',
+        role: 'tool',
+        genseq: msg.genseq,
+        id: msg.id,
+        name: msg.name,
+        content,
+      });
+      continue;
+    }
+
+    const pendingSubState = pendingSubByCallId.get(msg.id);
+    projected.push({
+      type: 'func_result_msg',
+      role: 'tool',
+      genseq: msg.genseq,
+      id: msg.id,
+      name: msg.name,
+      content: formatPendingSpecialFuncResult(
+        msg.name,
+        pendingSubState ? parseUnifiedTimestampMs(pendingSubState.createdAt) : null,
+      ),
+    });
   }
-  return out;
+
+  return projected;
+}
+
+async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
+  const rawDialogMsgsForContext: ChatMessage[] = dlg.msgs.filter((m) => {
+    if (!m) return false;
+    if (m.type === 'ui_only_markdown_msg') return false;
+    return true;
+  });
+  const projected = await projectTellaskSpecialFuncResultsForContext({
+    dialog: dlg,
+    dialogMsgsForContext: rawDialogMsgsForContext,
+  });
+  return projected.filter((msg) => msg.type !== 'tellask_result_msg');
 }
 
 async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> {
@@ -367,7 +634,112 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
 type RoutedFunctionResult = {
   suspendForHuman: boolean;
   pairedMessages: ChatMessage[];
+  tellaskToolOutputs: ChatMessage[];
 };
+
+async function executeFunctionCalls(args: {
+  dlg: Dialog;
+  agent: Team.Member;
+  agentTools: readonly Tool[];
+  funcCalls: readonly FuncCallMsg[];
+  abortSignal: AbortSignal | undefined;
+}): Promise<FuncResultMsg[]> {
+  const functionPromises = args.funcCalls.map(async (func): Promise<FuncResultMsg> => {
+    throwIfAborted(args.abortSignal, args.dlg);
+
+    const callGenseq = func.genseq;
+    const argsStr =
+      typeof func.arguments === 'string' ? func.arguments : JSON.stringify(func.arguments ?? {});
+
+    const tool = args.agentTools.find(
+      (t): t is FuncTool => t.type === 'func' && t.name === func.name,
+    );
+    if (!tool) {
+      const errorResult: FuncResultMsg = {
+        type: 'func_result_msg',
+        id: func.id,
+        name: func.name,
+        content: `Tool '${func.name}' not found`,
+        role: 'tool',
+        genseq: callGenseq,
+      };
+      await args.dlg.receiveFuncResult(errorResult);
+      return errorResult;
+    }
+
+    let rawArgs: unknown = {};
+    if (typeof func.arguments === 'string' && func.arguments.trim()) {
+      try {
+        rawArgs = JSON.parse(func.arguments);
+      } catch (parseErr) {
+        rawArgs = null;
+        log.warn('kernel-driver failed to parse function arguments as JSON', undefined, {
+          funcName: func.name,
+          arguments: func.arguments,
+          error: parseErr,
+        });
+      }
+    }
+
+    let result: FuncResultMsg;
+    const argsValidation = validateFuncToolArguments(tool, rawArgs);
+    if (argsValidation.ok) {
+      const argsObj: ToolArguments = argsValidation.args;
+
+      await args.dlg.funcCallRequested(func.id, func.name, argsStr);
+      await args.dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
+
+      try {
+        throwIfAborted(args.abortSignal, args.dlg);
+        const output: ToolCallOutput = await tool.call(args.dlg, args.agent, argsObj);
+        throwIfAborted(args.abortSignal, args.dlg);
+        const normalized =
+          typeof output === 'string'
+            ? { content: output, contentItems: undefined }
+            : {
+                content: typeof output.content === 'string' ? output.content : String(output),
+                contentItems: Array.isArray(output.contentItems) ? output.contentItems : undefined,
+              };
+        result = {
+          type: 'func_result_msg',
+          id: func.id,
+          name: func.name,
+          content: String(normalized.content),
+          contentItems: normalized.contentItems,
+          role: 'tool',
+          genseq: callGenseq,
+        };
+      } catch (err) {
+        const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        result = {
+          type: 'func_result_msg',
+          id: func.id,
+          name: func.name,
+          content: `Function '${func.name}' execution failed: ${errText}`,
+          role: 'tool',
+          genseq: callGenseq,
+        };
+        if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
+          throw err;
+        }
+      }
+    } else {
+      result = {
+        type: 'func_result_msg',
+        id: func.id,
+        name: func.name,
+        content: `Invalid arguments: ${argsValidation.error}`,
+        role: 'tool',
+        genseq: callGenseq,
+      };
+    }
+
+    await args.dlg.receiveFuncResult(result);
+    return result;
+  });
+
+  return await Promise.all(functionPromises);
+}
 
 async function executeFunctionRound(args: {
   dlg: Dialog;
@@ -395,194 +767,143 @@ async function executeFunctionRound(args: {
   abortSignal: AbortSignal | undefined;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
-    return { suspendForHuman: false, pairedMessages: [] };
+    return { suspendForHuman: false, pairedMessages: [], tellaskToolOutputs: [] };
+  }
+  throwIfAborted(args.abortSignal, args.dlg);
+
+  const allowTellaskBack = args.dlg.id.rootId !== args.dlg.id.selfId;
+  const allowedSpecials = new Set<TellaskSpecialFunctionName>([
+    'tellask',
+    'tellaskSessionless',
+    'askHuman',
+    'freshBootsReasoning',
+    ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
+  ]);
+  const classified = classifyTellaskSpecialFunctionCalls(args.funcCalls, { allowedSpecials });
+  const specialCallById = new Map(
+    classified.specialCalls.map((call) => [call.callId, call] as const),
+  );
+
+  const toPersistedSpecialCallArgs = (
+    call: ReturnType<typeof classifyTellaskSpecialFunctionCalls>['specialCalls'][number],
+  ): ToolArguments => {
+    switch (call.callName) {
+      case 'tellaskBack':
+        return { tellaskContent: call.tellaskContent };
+      case 'askHuman':
+        return { tellaskContent: call.tellaskContent };
+      case 'freshBootsReasoning':
+        return {
+          tellaskContent: call.tellaskContent,
+          ...(call.effort !== undefined ? { effort: call.effort } : {}),
+        };
+      case 'tellask':
+        return {
+          targetAgentId: call.targetAgentId,
+          sessionSlug: call.sessionSlug,
+          tellaskContent: call.tellaskContent,
+        };
+      case 'tellaskSessionless':
+        return {
+          targetAgentId: call.targetAgentId,
+          tellaskContent: call.tellaskContent,
+        };
+    }
+  };
+
+  for (const callMsg of args.funcCalls) {
+    throwIfAborted(args.abortSignal, args.dlg);
+    const special = specialCallById.get(callMsg.id);
+    if (!special) {
+      continue;
+    }
+    await args.dlg.persistFunctionCall(
+      callMsg.id,
+      callMsg.name,
+      toPersistedSpecialCallArgs(special),
+      callMsg.genseq,
+    );
+  }
+
+  const issueResults: FuncResultMsg[] = [];
+  for (const issue of classified.parseIssues) {
+    const result: FuncResultMsg = {
+      type: 'func_result_msg',
+      id: issue.call.id,
+      name: issue.call.name,
+      content: `Invalid arguments for tellask special function '${issue.call.name}': ${issue.error}`,
+      role: 'tool',
+      genseq: issue.call.genseq,
+    };
+    await args.dlg.receiveFuncResult(result);
+    issueResults.push(result);
+  }
+
+  throwIfAborted(args.abortSignal, args.dlg);
+  const specialResult = await executeTellaskSpecialCalls({
+    dlg: args.dlg,
+    agent: args.agent,
+    calls: classified.specialCalls,
+    callbacks: args.callbacks,
+  });
+  throwIfAborted(args.abortSignal, args.dlg);
+  const specialCallIds = new Set(classified.specialCalls.map((call) => call.callId));
+
+  const genericResults = await executeFunctionCalls({
+    dlg: args.dlg,
+    agent: args.agent,
+    agentTools: args.agentTools,
+    funcCalls: classified.normalCalls,
+    abortSignal: args.abortSignal,
+  });
+
+  const resultByCallId = new Map<string, FuncResultMsg>();
+  const register = (result: FuncResultMsg): void => {
+    const existing = resultByCallId.get(result.id);
+    if (existing) {
+      throw new Error(
+        `kernel-driver function result invariant violation: duplicate call id '${result.id}'`,
+      );
+    }
+    resultByCallId.set(result.id, result);
+  };
+  for (const result of issueResults) {
+    register(result);
+  }
+  for (const result of genericResults) {
+    register(result);
   }
 
   const pairedMessages: ChatMessage[] = [];
-  for (const func of args.funcCalls) {
-    throwIfAborted(args.abortSignal, args.dlg);
-
-    const callGenseq = func.genseq;
-    const argsStr = typeof func.arguments === 'string' ? func.arguments : '{}';
-
+  for (const call of args.funcCalls) {
+    const argsStr =
+      typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments ?? {});
     pairedMessages.push({
       type: 'func_call_msg',
       role: 'assistant',
-      genseq: callGenseq,
-      id: func.id,
-      name: func.name,
+      genseq: call.genseq,
+      id: call.id,
+      name: call.name,
       arguments: argsStr,
     });
-
-    if (func.name === 'tellaskSessionless') {
-      let rawArgs: unknown = {};
-      if (argsStr.trim() !== '') {
-        try {
-          rawArgs = JSON.parse(argsStr);
-        } catch {
-          rawArgs = null;
-        }
-      }
-      if (!isPlainObject(rawArgs)) {
-        throw new Error('tellaskSessionless invalid arguments: expected object');
-      }
-      const targetAgentId =
-        typeof rawArgs.targetAgentId === 'string' ? rawArgs.targetAgentId.trim() : '';
-      const tellaskContent =
-        typeof rawArgs.tellaskContent === 'string' ? rawArgs.tellaskContent.trim() : '';
-      if (targetAgentId === '' || tellaskContent === '') {
-        throw new Error(
-          'tellaskSessionless invalid arguments: missing targetAgentId/tellaskContent',
-        );
-      }
-
-      // Persist the call record so replay can emit teammate_call_start_evt.
-      // This mirrors the normal tool path, but tellaskSessionless is intercepted here.
-      const persistedArgs: ToolArguments = {
-        targetAgentId,
-        tellaskContent,
-      };
-      await args.dlg.persistFunctionCall(func.id, func.name, persistedArgs, callGenseq);
-
-      const mentionList = [`@${targetAgentId}`];
-      await args.dlg.callingStart({
-        callName: 'tellaskSessionless',
-        callId: func.id,
-        mentionList,
-        tellaskContent,
-      });
-
-      const sub = await args.dlg.createSubDialog(targetAgentId, mentionList, tellaskContent, {
-        callName: 'tellaskSessionless',
-        originMemberId: args.dlg.agentId,
-        callerDialogId: args.dlg.id.selfId,
-        callId: func.id,
-        collectiveTargets: [targetAgentId],
-      });
-      const pendingRecord = {
-        subdialogId: sub.id.selfId,
-        createdAt: formatUnifiedTimestamp(new Date()),
-        callName: 'tellaskSessionless' as const,
-        mentionList,
-        tellaskContent,
-        targetAgentId,
-        callId: func.id,
-        callingCourse: args.dlg.currentCourse,
-        callType: 'C' as const,
-      };
-      await withSubdialogTxnLock(args.dlg.id, async () => {
-        await DialogPersistence.appendPendingSubdialog(args.dlg.id, pendingRecord, args.dlg.status);
-      });
-
-      if (args.callbacks) {
-        const assignmentPrompt = formatAssignmentFromSupdialog({
-          callName: 'tellaskSessionless',
-          fromAgentId: args.dlg.agentId,
-          toAgentId: targetAgentId,
-          mentionList,
-          tellaskContent,
-          language: getWorkLanguage(),
-          collectiveTargets: [targetAgentId],
-        });
-        args.callbacks.scheduleDrive(sub, {
-          humanPrompt: {
-            content: assignmentPrompt,
-            msgId: generateShortId(),
-            grammar: 'markdown',
-            subdialogReplyTarget: {
-              ownerDialogId: args.dlg.id.selfId,
-              callType: 'C',
-              callId: func.id,
-            },
-          },
-          waitInQue: true,
-          driveOptions: { suppressDiligencePush: true },
-        });
-      }
-
-      return { suspendForHuman: true, pairedMessages };
+    const result = resultByCallId.get(call.id);
+    if (result) {
+      pairedMessages.push(result);
+      continue;
     }
-
-    const tool = args.agentTools.find(
-      (t): t is FuncTool => t.type === 'func' && typeof t.name === 'string' && t.name === func.name,
+    if (specialCallIds.has(call.id)) {
+      continue;
+    }
+    throw new Error(
+      `kernel-driver function result invariant violation: missing result for call id '${call.id}' (${call.name})`,
     );
-    if (!tool) {
-      const errorResult: FuncResultMsg = {
-        type: 'func_result_msg',
-        role: 'tool',
-        genseq: callGenseq,
-        id: func.id,
-        name: func.name,
-        content: `Tool '${func.name}' not found`,
-      };
-      await args.dlg.receiveFuncResult(errorResult);
-      pairedMessages.push(errorResult);
-      continue;
-    }
-
-    let rawArgs: unknown = {};
-    if (argsStr.trim() !== '') {
-      try {
-        rawArgs = JSON.parse(argsStr);
-      } catch {
-        rawArgs = null;
-      }
-    }
-
-    const argsValidation = validateFuncToolArguments(tool, rawArgs);
-    if (!argsValidation.ok) {
-      const invalid: FuncResultMsg = {
-        type: 'func_result_msg',
-        role: 'tool',
-        genseq: callGenseq,
-        id: func.id,
-        name: func.name,
-        content: `Invalid arguments: ${argsValidation.error}`,
-      };
-      await args.dlg.receiveFuncResult(invalid);
-      pairedMessages.push(invalid);
-      continue;
-    }
-
-    const argsObj: ToolArguments = argsValidation.args;
-
-    await args.dlg.funcCallRequested(func.id, func.name, argsStr);
-    await args.dlg.persistFunctionCall(func.id, func.name, argsObj, callGenseq);
-
-    let normalized: { content: string; contentItems?: FuncResultMsg['contentItems'] };
-    try {
-      throwIfAborted(args.abortSignal, args.dlg);
-      const output: ToolCallOutput = await tool.call(args.dlg, args.agent, argsObj);
-      throwIfAborted(args.abortSignal, args.dlg);
-      normalized =
-        typeof output === 'string'
-          ? { content: output, contentItems: undefined }
-          : {
-              content: typeof output.content === 'string' ? output.content : String(output),
-              contentItems: Array.isArray(output.contentItems) ? output.contentItems : undefined,
-            };
-    } catch (err) {
-      const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      normalized = { content: `Function '${func.name}' execution failed: ${errText}` };
-      if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
-        throw err;
-      }
-    }
-
-    const result: FuncResultMsg = {
-      type: 'func_result_msg',
-      role: 'tool',
-      genseq: callGenseq,
-      id: func.id,
-      name: func.name,
-      content: String(normalized.content),
-      contentItems: normalized.contentItems,
-    };
-    await args.dlg.receiveFuncResult(result);
-    pairedMessages.push(result);
   }
 
-  return { suspendForHuman: false, pairedMessages };
+  return {
+    suspendForHuman: specialResult.suspend,
+    pairedMessages,
+    tellaskToolOutputs: specialResult.toolOutputs,
+  };
 }
 
 async function maybeContinueWithDiligencePrompt(args: {
@@ -762,7 +1083,16 @@ export async function driveDialogStreamCore(
       const canonicalFuncTools: FuncTool[] = agentTools.filter(
         (t): t is FuncTool => t.type === 'func',
       );
-      const projected = projectFuncToolsForProvider(providerCfg.apiType, canonicalFuncTools);
+      const isSubdialog = dlg.id.rootId !== dlg.id.selfId;
+      const fbrEffortDefault = resolveFbrEffortDefaultForTool(agent);
+      const effectiveFuncTools: FuncTool[] = policy.allowFunctionCalls
+        ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, {
+            includeTellaskBack: isSubdialog,
+            fbrEffortDefault,
+            providerApiType: providerCfg.apiType,
+          })
+        : canonicalFuncTools;
+      const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);
       const funcTools = projected.tools;
 
       let contextHealthForGen: ContextHealthSnapshot | undefined;
@@ -853,7 +1183,7 @@ export async function driveDialogStreamCore(
             memories: minds.memories,
             taskDocMsg,
             coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
-            dialogMsgsForContext: buildDialogMsgsForContext(dlg),
+            dialogMsgsForContext: await buildDialogMsgsForContext(dlg),
           },
           ephemeral: {},
           tail: { renderedReminders, languageGuideMsg: guideMsg },
@@ -1070,6 +1400,9 @@ export async function driveDialogStreamCore(
           callbacks,
           abortSignal,
         });
+        if (routed.tellaskToolOutputs.length > 0) {
+          newMsgs.push(...routed.tellaskToolOutputs);
+        }
         if (routed.pairedMessages.length > 0) {
           newMsgs.push(...routed.pairedMessages);
         }
@@ -1081,9 +1414,9 @@ export async function driveDialogStreamCore(
 
         if (dlg.hasUpNext()) {
           pendingPrompt = resolveUpNextPrompt(dlg);
-          previousRoundHadToolCalls = routed.pairedMessages.some(
-            (m) => m.type === 'func_result_msg',
-          );
+          previousRoundHadToolCalls =
+            routed.pairedMessages.some((m) => m.type === 'func_result_msg') ||
+            routed.tellaskToolOutputs.length > 0;
           continue;
         }
 
@@ -1091,9 +1424,13 @@ export async function driveDialogStreamCore(
           break;
         }
 
-        const shouldContinue = streamedFuncCalls.length > 0 || routed.pairedMessages.length > 0;
+        const shouldContinue =
+          streamedFuncCalls.length > 0 ||
+          routed.pairedMessages.length > 0 ||
+          routed.tellaskToolOutputs.length > 0;
         if (shouldContinue) {
-          previousRoundHadToolCalls = streamedFuncCalls.length > 0;
+          previousRoundHadToolCalls =
+            streamedFuncCalls.length > 0 || routed.tellaskToolOutputs.length > 0;
           continue;
         }
 
