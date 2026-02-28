@@ -3,7 +3,11 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { log } from '../log';
-import type { FuncResultContentItem, ProviderData } from '../shared/types/storage';
+import type {
+  FuncResultContentItem,
+  ProviderData,
+  ReasoningPayload,
+} from '../shared/types/storage';
 
 export type EnvironmentMsg = {
   type: 'environment_msg';
@@ -46,6 +50,7 @@ export type ThinkingMsg = {
   role: 'assistant';
   genseq: number;
   content: string;
+  reasoning?: ReasoningPayload;
   provider_data?: ProviderData;
 };
 

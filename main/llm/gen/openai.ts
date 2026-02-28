@@ -13,6 +13,7 @@ import type {
   ResponseFunctionCallOutputItemList,
   ResponseInputItem,
   ResponseOutputItem,
+  ResponseReasoningItem,
   ResponseStreamEvent,
   Tool,
 } from 'openai/resources/responses/responses';
@@ -21,6 +22,7 @@ import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { LlmUsageStats } from '../../shared/types/context-health';
+import type { ReasoningPayload } from '../../shared/types/storage';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
@@ -84,12 +86,13 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
     case 'transient_guide_msg':
     case 'saying_msg':
     case 'ui_only_markdown_msg':
-    case 'thinking_msg':
       return {
         type: 'message',
         role: 'assistant',
         content: msg.content,
       };
+    case 'thinking_msg':
+      return thinkingMessageToOpenAiReasoningItem(msg);
     case 'tellask_result_msg':
       return {
         type: 'message',
@@ -114,6 +117,46 @@ function chatMessageToOpenAiInputItem(msg: ChatMessage): ResponseInputItem {
       return _exhaustive;
     }
   }
+}
+
+function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefined {
+  if (text.trim().length === 0) return undefined;
+  return {
+    summary: [{ type: 'summary_text', text }],
+  };
+}
+
+function buildReasoningItemId(genseq: number, text: string): string {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return `dominds_reasoning_${genseq}_${hash.toString(16)}`;
+}
+
+function thinkingMessageToOpenAiReasoningItem(
+  msg: Extract<ChatMessage, { type: 'thinking_msg' }>,
+): ResponseReasoningItem {
+  const reasoning = msg.reasoning ?? buildReasoningPayloadFromText(msg.content);
+  if (!reasoning) {
+    return {
+      id: buildReasoningItemId(msg.genseq, msg.content),
+      type: 'reasoning',
+      summary: [],
+    };
+  }
+  const out: ResponseReasoningItem = {
+    id: buildReasoningItemId(msg.genseq, `${msg.content}\n${reasoning.encrypted_content ?? ''}`),
+    type: 'reasoning',
+    summary: reasoning.summary.map((part) => ({ type: 'summary_text', text: part.text })),
+  };
+  if (reasoning.content && reasoning.content.length > 0) {
+    out.content = reasoning.content.map((part) => ({ type: 'reasoning_text', text: part.text }));
+  }
+  if (typeof reasoning.encrypted_content === 'string' && reasoning.encrypted_content.length > 0) {
+    out.encrypted_content = reasoning.encrypted_content;
+  }
+  return out;
 }
 
 async function funcResultToOpenAiInputItem(msg: FuncResultMsg): Promise<ResponseInputItem> {
@@ -386,27 +429,49 @@ function extractOutputMessageText(item: ResponseOutputItem): string {
 }
 
 function extractReasoningText(item: ResponseOutputItem): string {
-  if (!isRecord(item) || item.type !== 'reasoning') return '';
+  const payload = extractReasoningPayload(item);
+  if (!payload) return '';
   let text = '';
-  const summary = item.summary;
-  if (Array.isArray(summary)) {
-    for (const part of summary) {
-      if (!isRecord(part) || part.type !== 'summary_text') continue;
-      if (typeof part.text === 'string' && part.text.length > 0) {
-        text += part.text;
-      }
-    }
+  for (const part of payload.summary) {
+    text += part.text;
   }
-  const content = item.content;
-  if (Array.isArray(content)) {
-    for (const part of content) {
-      if (!isRecord(part) || part.type !== 'reasoning_text') continue;
-      if (typeof part.text === 'string' && part.text.length > 0) {
-        text += part.text;
-      }
+  if (Array.isArray(payload.content)) {
+    for (const part of payload.content) {
+      text += part.text;
     }
   }
   return text;
+}
+
+function extractReasoningPayload(item: ResponseOutputItem): ReasoningPayload | null {
+  if (!isRecord(item) || item.type !== 'reasoning') return null;
+  const summary: ReasoningPayload['summary'] = [];
+  if (Array.isArray(item.summary)) {
+    for (const part of item.summary) {
+      if (!isRecord(part) || part.type !== 'summary_text') continue;
+      if (typeof part.text !== 'string') continue;
+      summary.push({ type: 'summary_text', text: part.text });
+    }
+  }
+
+  const content: NonNullable<ReasoningPayload['content']> = [];
+  if (Array.isArray(item.content)) {
+    for (const part of item.content) {
+      if (!isRecord(part) || typeof part.text !== 'string') continue;
+      if (part.type !== 'reasoning_text' && part.type !== 'text') continue;
+      content.push({ type: part.type, text: part.text });
+    }
+  }
+
+  const encrypted =
+    typeof item.encrypted_content === 'string' && item.encrypted_content.length > 0
+      ? item.encrypted_content
+      : undefined;
+
+  const out: ReasoningPayload = { summary };
+  if (content.length > 0) out.content = content;
+  if (encrypted) out.encrypted_content = encrypted;
+  return out;
 }
 
 function openAiResponseToChatMessages(response: Response, genseq: number): ChatMessage[] {
@@ -418,13 +483,15 @@ function openAiResponseToChatMessages(response: Response, genseq: number): ChatM
     if (!isRecord(item) || typeof item.type !== 'string') continue;
 
     if (item.type === 'reasoning') {
+      const reasoning = extractReasoningPayload(item as unknown as ResponseOutputItem);
       const content = extractReasoningText(item as unknown as ResponseOutputItem);
-      if (content.length > 0) {
+      if (content.length > 0 || reasoning !== null) {
         messages.push({
           type: 'thinking_msg',
           role: 'assistant',
           genseq,
           content,
+          reasoning: reasoning ?? undefined,
         });
       }
       continue;
@@ -521,6 +588,8 @@ export class OpenAiGen implements LlmGenerator {
 
     let sayingStarted = false;
     let thinkingStarted = false;
+    let currentThinkingContent = '';
+    let finishedThinkingFromDelta = false;
     let sawOutputText = false;
     type ActiveStream = 'idle' | 'thinking' | 'saying';
     let activeStream: ActiveStream = 'idle';
@@ -586,8 +655,11 @@ export class OpenAiGen implements LlmGenerator {
             }
             if (event.type === 'response.completed') {
               if (thinkingStarted) {
-                await receiver.thinkingFinish();
+                await receiver.thinkingFinish(
+                  buildReasoningPayloadFromText(currentThinkingContent),
+                );
                 thinkingStarted = false;
+                currentThinkingContent = '';
               }
               if (sayingStarted) {
                 await receiver.sayingFinish();
@@ -604,8 +676,9 @@ export class OpenAiGen implements LlmGenerator {
               returnedModel = tryExtractApiReturnedModel(event.response);
             }
             if (thinkingStarted) {
-              await receiver.thinkingFinish();
+              await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
               thinkingStarted = false;
+              currentThinkingContent = '';
             }
             if (sayingStarted) {
               await receiver.sayingFinish();
@@ -641,8 +714,11 @@ export class OpenAiGen implements LlmGenerator {
                   await receiver.streamError(detail);
                 }
                 if (thinkingStarted) {
-                  await receiver.thinkingFinish();
+                  await receiver.thinkingFinish(
+                    buildReasoningPayloadFromText(currentThinkingContent),
+                  );
                   thinkingStarted = false;
+                  currentThinkingContent = '';
                 }
                 activeStream = 'idle';
               }
@@ -667,8 +743,11 @@ export class OpenAiGen implements LlmGenerator {
                   await receiver.streamError(detail);
                 }
                 if (thinkingStarted) {
-                  await receiver.thinkingFinish();
+                  await receiver.thinkingFinish(
+                    buildReasoningPayloadFromText(currentThinkingContent),
+                  );
                   thinkingStarted = false;
+                  currentThinkingContent = '';
                 }
                 activeStream = 'idle';
               }
@@ -707,9 +786,11 @@ export class OpenAiGen implements LlmGenerator {
               }
               if (!thinkingStarted) {
                 thinkingStarted = true;
+                currentThinkingContent = '';
                 await receiver.thinkingStart();
                 activeStream = 'thinking';
               }
+              currentThinkingContent += delta;
               await receiver.thinkingChunk(delta);
             }
             break;
@@ -731,6 +812,7 @@ export class OpenAiGen implements LlmGenerator {
             }
             if (!thinkingStarted) {
               thinkingStarted = true;
+              currentThinkingContent = '';
               await receiver.thinkingStart();
               activeStream = 'thinking';
             }
@@ -740,8 +822,10 @@ export class OpenAiGen implements LlmGenerator {
           case 'response.reasoning_text.done':
           case 'response.reasoning_summary_part.done': {
             if (thinkingStarted) {
-              await receiver.thinkingFinish();
+              await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
               thinkingStarted = false;
+              currentThinkingContent = '';
+              finishedThinkingFromDelta = true;
               if (activeStream === 'thinking') activeStream = 'idle';
             }
             break;
@@ -792,8 +876,11 @@ export class OpenAiGen implements LlmGenerator {
                     await receiver.streamError(detail);
                   }
                   if (thinkingStarted) {
-                    await receiver.thinkingFinish();
+                    await receiver.thinkingFinish(
+                      buildReasoningPayloadFromText(currentThinkingContent),
+                    );
                     thinkingStarted = false;
+                    currentThinkingContent = '';
                   }
                   activeStream = 'idle';
                 }
@@ -807,6 +894,43 @@ export class OpenAiGen implements LlmGenerator {
                 sayingStarted = false;
                 if (activeStream === 'saying') activeStream = 'idle';
                 sawOutputText = true;
+              }
+              break;
+            }
+
+            if (isRecord(item) && item.type === 'reasoning') {
+              if (finishedThinkingFromDelta) {
+                finishedThinkingFromDelta = false;
+                break;
+              }
+              const payload = extractReasoningPayload(item as unknown as ResponseOutputItem);
+              const text = extractReasoningText(item as unknown as ResponseOutputItem);
+              if (thinkingStarted) {
+                if (currentThinkingContent.length === 0 && text.length > 0) {
+                  currentThinkingContent = text;
+                  await receiver.thinkingChunk(text);
+                }
+                await receiver.thinkingFinish(
+                  payload ?? buildReasoningPayloadFromText(currentThinkingContent),
+                );
+                thinkingStarted = false;
+                currentThinkingContent = '';
+                if (activeStream === 'thinking') activeStream = 'idle';
+                break;
+              }
+              if (text.length > 0 || payload !== null) {
+                if (activeStream === 'saying') {
+                  if (sayingStarted) {
+                    await receiver.sayingFinish();
+                    sayingStarted = false;
+                  }
+                  activeStream = 'idle';
+                }
+                await receiver.thinkingStart();
+                if (text.length > 0) {
+                  await receiver.thinkingChunk(text);
+                }
+                await receiver.thinkingFinish(payload ?? buildReasoningPayloadFromText(text));
               }
               break;
             }
@@ -912,7 +1036,7 @@ export class OpenAiGen implements LlmGenerator {
       throw error;
     } finally {
       if (thinkingStarted) {
-        await receiver.thinkingFinish();
+        await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
       }
       if (sayingStarted) {
         await receiver.sayingFinish();

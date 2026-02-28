@@ -23,6 +23,21 @@ export type ProviderData = JsonObject;
 
 export type ToolArguments = JsonObject;
 
+export type ReasoningSummaryItem = {
+  type: 'summary_text';
+  text: string;
+};
+
+export type ReasoningContentItem =
+  | { type: 'reasoning_text'; text: string }
+  | { type: 'text'; text: string };
+
+export interface ReasoningPayload {
+  summary: ReasoningSummaryItem[];
+  content?: ReasoningContentItem[];
+  encrypted_content?: string;
+}
+
 // === TOOL RESULT CONTENT ITEMS (MULTIMODAL) ===
 
 export type FuncResultContentItem =
@@ -207,6 +222,7 @@ export interface AgentThoughtRecord {
   type: 'agent_thought_record';
   genseq: number;
   content: string;
+  reasoning?: ReasoningPayload;
   provider_data?: ProviderData;
   sourceTag?: 'priming_script';
 }

@@ -10,6 +10,7 @@ import type {
   ChatGptMessageItem,
   ChatGptMessageRole,
   ChatGptReasoning,
+  ChatGptReasoningItem,
   ChatGptResponseItem,
   ChatGptResponsesRequest,
   ChatGptResponsesStreamEvent,
@@ -22,6 +23,7 @@ import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { LlmUsageStats } from '../../shared/types/context-health';
+import type { ReasoningPayload } from '../../shared/types/storage';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
@@ -173,6 +175,56 @@ function toLlmWebSearchCall(
   };
 }
 
+function extractReasoningText(item: ChatGptReasoningItem): string {
+  const reasoning = extractReasoningPayload(item);
+  let text = '';
+  for (const part of reasoning.summary) {
+    text += part.text;
+  }
+  for (const part of reasoning.content ?? []) {
+    text += part.text;
+  }
+  return text;
+}
+
+function extractReasoningPayload(item: ChatGptReasoningItem): ReasoningPayload {
+  const summary: ReasoningPayload['summary'] = [];
+  for (const part of item.summary) {
+    summary.push({ type: 'summary_text', text: part.text });
+  }
+  const content = item.content?.map((part) => ({ type: part.type, text: part.text }));
+  const encrypted =
+    typeof item.encrypted_content === 'string' && item.encrypted_content.length > 0
+      ? item.encrypted_content
+      : undefined;
+  const reasoning: ReasoningPayload = { summary };
+  if (content && content.length > 0) reasoning.content = content;
+  if (encrypted) reasoning.encrypted_content = encrypted;
+  return reasoning;
+}
+
+function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefined {
+  if (text.trim().length === 0) return undefined;
+  return {
+    summary: [{ type: 'summary_text', text }],
+  };
+}
+
+function thinkingMessageToCodexReasoningItem(
+  msg: Extract<ChatMessage, { type: 'thinking_msg' }>,
+): ChatGptReasoningItem {
+  const reasoning = msg.reasoning ?? buildReasoningPayloadFromText(msg.content);
+  if (!reasoning) {
+    return { type: 'reasoning', summary: [] };
+  }
+  return {
+    type: 'reasoning',
+    summary: reasoning.summary.map((part) => ({ type: 'summary_text', text: part.text })),
+    ...(reasoning.content ? { content: reasoning.content.map((part) => ({ ...part })) } : {}),
+    ...(reasoning.encrypted_content ? { encrypted_content: reasoning.encrypted_content } : {}),
+  };
+}
+
 function messageItem(role: ChatGptMessageRole, text: string): ChatGptMessageItem {
   const contentType = role === 'assistant' ? 'output_text' : 'input_text';
   return {
@@ -195,8 +247,9 @@ function chatMessageToCodexItems(msg: ChatMessage): ChatGptResponseItem[] {
     case 'transient_guide_msg':
     case 'saying_msg':
     case 'ui_only_markdown_msg':
-    case 'thinking_msg':
       return [messageItem('assistant', msg.content)];
+    case 'thinking_msg':
+      return [thinkingMessageToCodexReasoningItem(msg)];
     case 'tellask_result_msg':
       return [messageItem('user', msg.content)];
     case 'func_call_msg':
@@ -477,6 +530,9 @@ export class CodexGen implements LlmGenerator {
     let activeStream: ActiveStream = 'idle';
     let usage: LlmUsageStats = { kind: 'unavailable' };
     let returnedModel: string | undefined;
+    const streamedReasoningItemIds = new Set<string>();
+    let sawReasoningDeltaWithoutItemId = false;
+    let currentThinkingContent = '';
 
     const eventReceiver: ChatGptEventReceiver = {
       onEvent: async (event: ChatGptResponsesStreamEvent) => {
@@ -499,13 +555,18 @@ export class CodexGen implements LlmGenerator {
             const delta = event.delta;
             if (delta.length > 0) {
               if (activeStream === 'thinking') {
-                log.error(
-                  'CODEX stream overlap violation: received output_text while thinking stream still active',
-                  new Error('codex_stream_overlap_violation'),
-                );
+                const detail =
+                  'CODEX stream overlap violation: received output_text while thinking stream still active';
+                log.error(detail, new Error('codex_stream_overlap_violation'));
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
                 if (thinkingStarted) {
-                  await receiver.thinkingFinish();
+                  await receiver.thinkingFinish(
+                    buildReasoningPayloadFromText(currentThinkingContent),
+                  );
                   thinkingStarted = false;
+                  currentThinkingContent = '';
                 }
                 activeStream = 'idle';
               }
@@ -522,13 +583,18 @@ export class CodexGen implements LlmGenerator {
           case 'response.output_text.done': {
             if (!sawOutputText && event.text.length > 0) {
               if (activeStream === 'thinking') {
-                log.error(
-                  'CODEX stream overlap violation: received output_text while thinking stream still active',
-                  new Error('codex_stream_overlap_violation'),
-                );
+                const detail =
+                  'CODEX stream overlap violation: received output_text while thinking stream still active';
+                log.error(detail, new Error('codex_stream_overlap_violation'));
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
                 if (thinkingStarted) {
-                  await receiver.thinkingFinish();
+                  await receiver.thinkingFinish(
+                    buildReasoningPayloadFromText(currentThinkingContent),
+                  );
                   thinkingStarted = false;
+                  currentThinkingContent = '';
                 }
                 activeStream = 'idle';
               }
@@ -554,6 +620,11 @@ export class CodexGen implements LlmGenerator {
           case 'response.reasoning_text.delta': {
             const delta = event.delta;
             if (delta.length > 0) {
+              if (typeof event.item_id === 'string' && event.item_id.length > 0) {
+                streamedReasoningItemIds.add(event.item_id);
+              } else {
+                sawReasoningDeltaWithoutItemId = true;
+              }
               if (activeStream === 'saying') {
                 const detail =
                   'CODEX stream overlap violation: received reasoning while saying stream still active';
@@ -569,9 +640,11 @@ export class CodexGen implements LlmGenerator {
               }
               if (!thinkingStarted) {
                 thinkingStarted = true;
+                currentThinkingContent = '';
                 await receiver.thinkingStart();
                 activeStream = 'thinking';
               }
+              currentThinkingContent += delta;
               await receiver.thinkingChunk(delta);
             }
             return;
@@ -592,6 +665,7 @@ export class CodexGen implements LlmGenerator {
             }
             if (!thinkingStarted) {
               thinkingStarted = true;
+              currentThinkingContent = '';
               await receiver.thinkingStart();
               activeStream = 'thinking';
             }
@@ -601,8 +675,9 @@ export class CodexGen implements LlmGenerator {
           case 'response.reasoning_text.done':
           case 'response.reasoning_summary_part.done': {
             if (thinkingStarted) {
-              await receiver.thinkingFinish();
+              await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
               thinkingStarted = false;
+              currentThinkingContent = '';
               if (activeStream === 'thinking') activeStream = 'idle';
             }
             return;
@@ -643,8 +718,11 @@ export class CodexGen implements LlmGenerator {
                         await receiver.streamError(detail);
                       }
                       if (thinkingStarted) {
-                        await receiver.thinkingFinish();
+                        await receiver.thinkingFinish(
+                          buildReasoningPayloadFromText(currentThinkingContent),
+                        );
                         thinkingStarted = false;
+                        currentThinkingContent = '';
                       }
                       activeStream = 'idle';
                     }
@@ -662,7 +740,57 @@ export class CodexGen implements LlmGenerator {
                 }
                 return;
               }
-              case 'reasoning':
+              case 'reasoning': {
+                const payloadFromItem = extractReasoningPayload(event.item);
+                const itemId =
+                  typeof event.item.id === 'string' && event.item.id.length > 0
+                    ? event.item.id
+                    : null;
+                const sawReasoningDelta =
+                  itemId !== null
+                    ? streamedReasoningItemIds.has(itemId)
+                    : sawReasoningDeltaWithoutItemId;
+                if (!sawReasoningDelta) {
+                  const text = extractReasoningText(event.item);
+                  if (text.length > 0) {
+                    if (activeStream === 'saying') {
+                      const detail =
+                        'CODEX stream overlap violation: received reasoning while saying stream still active';
+                      log.error(detail, new Error('codex_stream_overlap_violation'));
+                      if (receiver.streamError) {
+                        await receiver.streamError(detail);
+                      }
+                      if (sayingStarted) {
+                        await receiver.sayingFinish();
+                        sayingStarted = false;
+                      }
+                      activeStream = 'idle';
+                    }
+                    if (!thinkingStarted) {
+                      thinkingStarted = true;
+                      currentThinkingContent = '';
+                      await receiver.thinkingStart();
+                      activeStream = 'thinking';
+                    }
+                    currentThinkingContent += text;
+                    await receiver.thinkingChunk(text);
+                    await receiver.thinkingFinish(
+                      payloadFromItem ?? buildReasoningPayloadFromText(currentThinkingContent),
+                    );
+                    thinkingStarted = false;
+                    currentThinkingContent = '';
+                    if (activeStream === 'thinking') activeStream = 'idle';
+                  }
+                } else if (thinkingStarted) {
+                  await receiver.thinkingFinish(
+                    payloadFromItem ?? buildReasoningPayloadFromText(currentThinkingContent),
+                  );
+                  thinkingStarted = false;
+                  currentThinkingContent = '';
+                  if (activeStream === 'thinking') activeStream = 'idle';
+                }
+                return;
+              }
               case 'local_shell_call':
               case 'function_call_output':
               case 'custom_tool_call':
@@ -684,8 +812,9 @@ export class CodexGen implements LlmGenerator {
           }
           case 'response.completed': {
             if (thinkingStarted) {
-              await receiver.thinkingFinish();
+              await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
               thinkingStarted = false;
+              currentThinkingContent = '';
             }
             if (sayingStarted) {
               await receiver.sayingFinish();
@@ -728,7 +857,7 @@ export class CodexGen implements LlmGenerator {
       throw error;
     } finally {
       if (thinkingStarted) {
-        await receiver.thinkingFinish();
+        await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
       }
       if (sayingStarted) {
         await receiver.sayingFinish();

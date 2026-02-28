@@ -32,6 +32,7 @@ import type {
   DialogMetadataFile,
   HumanQuestion,
   ProviderData,
+  ReasoningPayload,
   ToolArguments as StoredToolArguments,
 } from './shared/types/storage';
 import { generateShortId } from './shared/utils/id';
@@ -1000,8 +1001,8 @@ export abstract class Dialog {
     await this.dlgStore.markdownChunk(this, chunk);
   }
 
-  public async thinkingFinish(): Promise<void> {
-    await this.dlgStore.thinkingFinish(this);
+  public async thinkingFinish(reasoning?: ReasoningPayload): Promise<void> {
+    await this.dlgStore.thinkingFinish(this, reasoning);
   }
 
   public async markdownFinish(): Promise<void> {
@@ -1133,8 +1134,16 @@ export abstract class Dialog {
     genseq: number,
     type: 'thinking_msg' | 'saying_msg',
     provider_data?: ProviderData,
+    reasoning?: ReasoningPayload,
   ): Promise<void> {
-    return await this.dlgStore.persistAgentMessage(this, content, genseq, type, provider_data);
+    return await this.dlgStore.persistAgentMessage(
+      this,
+      content,
+      genseq,
+      type,
+      provider_data,
+      reasoning,
+    );
   }
 
   public async persistUiOnlyMarkdown(content: string, genseq: number): Promise<void> {
@@ -1553,7 +1562,7 @@ export abstract class DialogStore {
   // Explicit phase notifications (driver-driven)
   public thinkingStart(_dialog: Dialog): void {}
   public thinkingChunk(_dialog: Dialog, _chunk: string): void {}
-  public thinkingFinish(_dialog: Dialog): void {}
+  public thinkingFinish(_dialog: Dialog, _reasoning?: ReasoningPayload): void {}
   public markdownStart(_dialog: Dialog): void {}
   public markdownChunk(_dialog: Dialog, _chunk: string): void {}
   public markdownFinish(_dialog: Dialog): void {}
@@ -1731,6 +1740,7 @@ export abstract class DialogStore {
     _genseq: number,
     _type: 'thinking_msg' | 'saying_msg',
     _provider_data?: ProviderData,
+    _reasoning?: ReasoningPayload,
   ): Promise<void> {}
 
   /**

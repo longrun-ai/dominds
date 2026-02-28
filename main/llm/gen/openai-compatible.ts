@@ -25,6 +25,7 @@ import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../shared/i18n/text';
 import { getWorkLanguage } from '../../shared/runtime-language';
 import type { LlmUsageStats } from '../../shared/types/context-health';
+import type { ReasoningPayload } from '../../shared/types/storage';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
 import type { ChatMessage, FuncCallMsg, FuncResultMsg, ProviderConfig } from '../client';
@@ -32,6 +33,10 @@ import type { LlmBatchResult, LlmGenerator, LlmStreamReceiver, LlmStreamResult }
 import { bytesToDataUrl, isVisionImageMimeType, readDialogArtifactBytes } from './artifacts';
 
 const log = createLogger('llm/openai-compatible');
+
+type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
+  reasoning_content?: string;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -66,6 +71,49 @@ function resolveOpenAiCompatibleJsonResponseEnabled(
 ): boolean {
   if (openAiParams.json_response !== undefined) return openAiParams.json_response;
   return agent.model_params?.json_response === true;
+}
+
+function buildReasoningPayloadFromText(text: string): ReasoningPayload | undefined {
+  if (text.trim().length === 0) return undefined;
+  return {
+    summary: [{ type: 'summary_text', text }],
+  };
+}
+
+function extractThinkingReasoningText(msg: Extract<ChatMessage, { type: 'thinking_msg' }>): string {
+  const fromSummary = msg.reasoning?.summary.map((part) => part.text).join('') ?? '';
+  const fromContent = msg.reasoning?.content?.map((part) => part.text).join('') ?? '';
+  const combined = `${fromSummary}${fromContent}`;
+  return combined.length > 0 ? combined : msg.content;
+}
+
+function extractReasoningContentField(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const content = value.reasoning_content;
+  if (typeof content !== 'string') return undefined;
+  return content.length > 0 ? content : undefined;
+}
+
+function attachReasoningContent(
+  message: ChatCompletionMessageParam,
+  reasoningContent: string | undefined,
+): ChatCompletionMessageParam {
+  if (!reasoningContent) return message;
+  if (!isRecord(message) || message.role !== 'assistant') return message;
+  return {
+    ...message,
+    reasoning_content: reasoningContent,
+  } as ChatCompletionMessageWithReasoning;
+}
+
+function resolveOpenAiCompatibleReasoningContentMode(
+  providerConfig: ProviderConfig,
+  agent: Team.Member,
+): boolean {
+  const model = (agent.model ?? '').toLowerCase();
+  if (model.includes('deepseek-reasoner')) return true;
+  const baseUrl = providerConfig.baseUrl.toLowerCase();
+  return baseUrl.includes('deepseek.com') && model.includes('reasoner');
 }
 
 function funcToolToChatCompletionTool(funcTool: FuncTool): ChatCompletionTool {
@@ -352,10 +400,13 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
     const role = item.role;
     const content = item.content;
     const hasToolCalls = 'tool_calls' in item && Array.isArray(item.tool_calls);
+    const hasReasoningContent =
+      'reasoning_content' in item && typeof item.reasoning_content === 'string';
     if (
       (role !== 'user' && role !== 'assistant' && role !== 'system') ||
       typeof content !== 'string' ||
-      hasToolCalls
+      hasToolCalls ||
+      hasReasoningContent
     ) {
       merged.push(item);
       continue;
@@ -367,7 +418,8 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
       isRecord(prev) &&
       prev.role === role &&
       typeof prev.content === 'string' &&
-      !('tool_calls' in prev && Array.isArray(prev.tool_calls))
+      !('tool_calls' in prev && Array.isArray(prev.tool_calls)) &&
+      !('reasoning_content' in prev && typeof prev.reasoning_content === 'string')
     ) {
       prev.content = `${prev.content}\n${content}`;
       continue;
@@ -382,9 +434,40 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
 async function buildChatCompletionMessages(
   systemPrompt: string,
   context: ChatMessage[],
+  options?: { reasoningContentMode?: boolean },
 ): Promise<ChatCompletionMessageParam[]> {
   const normalized = normalizeToolCallPairs(context);
   const input: ChatCompletionMessageParam[] = [];
+  const reasoningContentMode = options?.reasoningContentMode === true;
+  let pendingReasoningContent: string | undefined;
+
+  const takePendingReasoningContent = (): string | undefined => {
+    const current = pendingReasoningContent;
+    pendingReasoningContent = undefined;
+    return current;
+  };
+
+  const appendReasoningContent = (value: string): void => {
+    if (value.length === 0) return;
+    pendingReasoningContent =
+      pendingReasoningContent && pendingReasoningContent.length > 0
+        ? `${pendingReasoningContent}\n${value}`
+        : value;
+  };
+
+  const flushPendingReasoningAsAssistantMessage = (): void => {
+    const reasoningContent = takePendingReasoningContent();
+    if (!reasoningContent) return;
+    input.push(
+      attachReasoningContent(
+        {
+          role: 'assistant',
+          content: '',
+        },
+        reasoningContent,
+      ),
+    );
+  };
 
   if (systemPrompt.trim().length > 0) {
     input.push({ role: 'system', content: systemPrompt.trim() });
@@ -392,8 +475,15 @@ async function buildChatCompletionMessages(
 
   let lastFuncCallId: string | null = null;
   for (const msg of normalized) {
+    if (msg.type === 'thinking_msg' && reasoningContentMode) {
+      appendReasoningContent(extractThinkingReasoningText(msg));
+      lastFuncCallId = null;
+      continue;
+    }
+
     if (msg.type === 'func_call_msg') {
-      input.push(chatMessageToChatCompletionMessage(msg));
+      const mapped = chatMessageToChatCompletionMessage(msg);
+      input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
       lastFuncCallId = msg.id;
       continue;
     }
@@ -402,17 +492,22 @@ async function buildChatCompletionMessages(
       // Many OpenAI-compatible providers require the tool result to directly follow the matching
       // tool call. If it doesn't, downgrade to a plain text message so the request remains valid.
       if (lastFuncCallId === msg.id) {
+        flushPendingReasoningAsAssistantMessage();
         input.push(...(await funcResultToChatCompletionMessages(msg)));
       } else {
+        flushPendingReasoningAsAssistantMessage();
         input.push(...(await orphanedFuncResultToChatCompletionMessages(msg)));
       }
       lastFuncCallId = null;
       continue;
     }
 
-    input.push(chatMessageToChatCompletionMessage(msg));
+    const mapped = chatMessageToChatCompletionMessage(msg);
+    input.push(attachReasoningContent(mapped, takePendingReasoningContent()));
     lastFuncCallId = null;
   }
+
+  flushPendingReasoningAsAssistantMessage();
 
   return mergeAdjacentMessages(input);
 }
@@ -420,8 +515,9 @@ async function buildChatCompletionMessages(
 export async function buildOpenAiCompatibleRequestMessagesWrapper(
   systemPrompt: string,
   context: ChatMessage[],
+  options?: { reasoningContentMode?: boolean },
 ): Promise<ChatCompletionMessageParam[]> {
-  return await buildChatCompletionMessages(systemPrompt, context);
+  return await buildChatCompletionMessages(systemPrompt, context, options);
 }
 
 function applyArgsDelta(state: { argsJson: string }, chunk: string): void {
@@ -476,6 +572,17 @@ function chatCompletionToChatMessages(response: ChatCompletion, genseq: number):
   const msg = choice ? choice.message : undefined;
   if (!msg) return out;
 
+  const reasoningContent = extractReasoningContentField(msg as unknown);
+  if (reasoningContent && reasoningContent.length > 0) {
+    out.push({
+      type: 'thinking_msg',
+      role: 'assistant',
+      genseq,
+      content: reasoningContent,
+      reasoning: buildReasoningPayloadFromText(reasoningContent),
+    });
+  }
+
   const content = typeof msg.content === 'string' ? msg.content : null;
   if (content && content.length > 0) {
     out.push({ type: 'saying_msg', role: 'assistant', genseq, content });
@@ -528,7 +635,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
 
-    const messages = await buildChatCompletionMessages(systemPrompt, context);
+    const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
+    const messages = await buildChatCompletionMessages(systemPrompt, context, {
+      reasoningContentMode,
+    });
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;
@@ -568,6 +678,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     };
 
     let sayingStarted = false;
+    let thinkingStarted = false;
+    let currentThinkingContent = '';
+    type ActiveStream = 'idle' | 'thinking' | 'saying';
+    let activeStream: ActiveStream = 'idle';
     let usage: LlmUsageStats = { kind: 'unavailable' };
     let returnedModel: string | undefined;
 
@@ -600,11 +714,51 @@ export class OpenAiCompatibleGen implements LlmGenerator {
         if (!choice) continue;
 
         const delta = choice.delta;
+        const reasoningDelta = extractReasoningContentField(delta as unknown);
+        if (typeof reasoningDelta === 'string' && reasoningDelta.length > 0) {
+          if (activeStream === 'saying') {
+            const detail =
+              'OPENAI-COMPATIBLE stream overlap violation: received reasoning while saying stream still active';
+            log.error(detail, new Error('openai_compatible_stream_overlap_violation'));
+            if (receiver.streamError) {
+              await receiver.streamError(detail);
+            }
+            if (sayingStarted) {
+              await receiver.sayingFinish();
+              sayingStarted = false;
+            }
+            activeStream = 'idle';
+          }
+          if (!thinkingStarted) {
+            thinkingStarted = true;
+            currentThinkingContent = '';
+            await receiver.thinkingStart();
+            activeStream = 'thinking';
+          }
+          currentThinkingContent += reasoningDelta;
+          await receiver.thinkingChunk(reasoningDelta);
+        }
+
         const content = delta.content;
         if (typeof content === 'string' && content.length > 0) {
+          if (activeStream === 'thinking') {
+            const detail =
+              'OPENAI-COMPATIBLE stream overlap violation: received output text while thinking stream still active';
+            log.error(detail, new Error('openai_compatible_stream_overlap_violation'));
+            if (receiver.streamError) {
+              await receiver.streamError(detail);
+            }
+            if (thinkingStarted) {
+              await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+              thinkingStarted = false;
+              currentThinkingContent = '';
+            }
+            activeStream = 'idle';
+          }
           if (!sayingStarted) {
             sayingStarted = true;
             await receiver.sayingStart();
+            activeStream = 'saying';
           }
           await receiver.sayingChunk(content);
         }
@@ -642,9 +796,36 @@ export class OpenAiCompatibleGen implements LlmGenerator {
         }
 
         if (choice.finish_reason === 'tool_calls') {
+          if (thinkingStarted) {
+            await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+            thinkingStarted = false;
+            currentThinkingContent = '';
+          }
+          if (sayingStarted) {
+            await receiver.sayingFinish();
+            sayingStarted = false;
+          }
+          activeStream = 'idle';
           for (const state of activeCallsByIndex.values()) {
             await maybeEmitFuncCall(state, receiver, genseq);
           }
+        }
+
+        if (
+          choice.finish_reason === 'stop' ||
+          choice.finish_reason === 'length' ||
+          choice.finish_reason === 'content_filter'
+        ) {
+          if (thinkingStarted) {
+            await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+            thinkingStarted = false;
+            currentThinkingContent = '';
+          }
+          if (sayingStarted) {
+            await receiver.sayingFinish();
+            sayingStarted = false;
+          }
+          activeStream = 'idle';
         }
       }
 
@@ -657,6 +838,9 @@ export class OpenAiCompatibleGen implements LlmGenerator {
       log.warn('OPENAI-COMPATIBLE streaming error', error);
       throw error;
     } finally {
+      if (thinkingStarted) {
+        await receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+      }
       if (sayingStarted) await receiver.sayingFinish();
     }
 
@@ -680,7 +864,10 @@ export class OpenAiCompatibleGen implements LlmGenerator {
     }
 
     const client = new OpenAI({ apiKey, baseURL: providerConfig.baseUrl });
-    const messages = await buildChatCompletionMessages(systemPrompt, context);
+    const reasoningContentMode = resolveOpenAiCompatibleReasoningContentMode(providerConfig, agent);
+    const messages = await buildChatCompletionMessages(systemPrompt, context, {
+      reasoningContentMode,
+    });
 
     const openAiParams = agent.model_params?.openai || {};
     const maxTokens = agent.model_params?.max_tokens;

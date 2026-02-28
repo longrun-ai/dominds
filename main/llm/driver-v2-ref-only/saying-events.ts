@@ -1,17 +1,16 @@
 import { Dialog } from '../../dialog';
+import type { ReasoningPayload } from '../../shared/types/storage';
 
 export async function emitThinkingEvents(
   dlg: Dialog,
   content: string,
-): Promise<string | undefined> {
+  reasoning?: ReasoningPayload,
+): Promise<void> {
   if (!content.trim()) return undefined;
 
   await dlg.thinkingStart();
   await dlg.thinkingChunk(content);
-  await dlg.thinkingFinish();
-
-  const signatureMatch = content.match(/<thinking[^>]*>(.*?)<\/thinking>/s);
-  return signatureMatch?.[1]?.trim();
+  await dlg.thinkingFinish(reasoning);
 }
 
 export async function emitSayingEvents(dlg: Dialog, content: string): Promise<void> {

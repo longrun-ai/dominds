@@ -894,21 +894,38 @@ export async function driveDialogStreamCore(
           }
 
           let currentSayingContent = '';
+          let currentThinkingContent = '';
+          let currentThinkingReasoning: ThinkingMsg['reasoning'] = undefined;
           const receiver: LlmStreamReceiver = {
             streamError: async (detail: string) => {
               await dlg.streamError(detail);
             },
             thinkingStart: async () => {
               throwIfAborted(abortSignal, dlg);
+              currentThinkingContent = '';
+              currentThinkingReasoning = undefined;
               await dlg.thinkingStart();
             },
             thinkingChunk: async (chunk: string) => {
               throwIfAborted(abortSignal, dlg);
+              currentThinkingContent += chunk;
               await dlg.thinkingChunk(chunk);
             },
-            thinkingFinish: async () => {
+            thinkingFinish: async (reasoning) => {
               throwIfAborted(abortSignal, dlg);
-              await dlg.thinkingFinish();
+              if (reasoning) currentThinkingReasoning = reasoning;
+              await dlg.thinkingFinish(reasoning);
+              if (currentThinkingContent.length > 0 || currentThinkingReasoning !== undefined) {
+                newMsgs.push({
+                  type: 'thinking_msg',
+                  role: 'assistant',
+                  genseq: dlg.activeGenSeq,
+                  content: currentThinkingContent,
+                  reasoning: currentThinkingReasoning,
+                });
+              }
+              currentThinkingContent = '';
+              currentThinkingReasoning = undefined;
             },
             sayingStart: async () => {
               throwIfAborted(abortSignal, dlg);
@@ -988,7 +1005,7 @@ export async function driveDialogStreamCore(
           for (const msg of assistantMsgs) {
             newMsgs.push(msg);
             if (msg.type === 'thinking_msg') {
-              await emitThinkingEvents(dlg, msg.content);
+              await emitThinkingEvents(dlg, msg.content, msg.reasoning);
             } else if (msg.type === 'saying_msg') {
               lastAssistantSayingContent = msg.content;
               lastAssistantSayingGenseq = msg.genseq;

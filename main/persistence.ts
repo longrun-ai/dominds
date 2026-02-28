@@ -52,6 +52,7 @@ import type {
   PersistedDialogRecord,
   ProviderData,
   Questions4HumanFile,
+  ReasoningPayload,
   ReminderStateFile,
   RootDialogMetadataFile,
   SubdialogMetadataFile,
@@ -952,6 +953,7 @@ export class DiskFileDialogStore extends DialogStore {
 
   private sayingContent: string = '';
   private thinkingContent: string = '';
+  private thinkingReasoning: ReasoningPayload | undefined = undefined;
 
   public async sayingStart(dialog: Dialog): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
@@ -1001,6 +1003,7 @@ export class DiskFileDialogStore extends DialogStore {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Reset thinking content tracker
     this.thinkingContent = '';
+    this.thinkingReasoning = undefined;
     const thinkingStartEvt: ThinkingStartEvent = {
       type: 'thinking_start_evt',
       course,
@@ -1020,16 +1023,18 @@ export class DiskFileDialogStore extends DialogStore {
     };
     postDialogEvent(dialog, thinkingChunkEvt);
   }
-  public async thinkingFinish(dialog: Dialog): Promise<void> {
+  public async thinkingFinish(dialog: Dialog, reasoning?: ReasoningPayload): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Persist thinking content as a message event
+    if (reasoning) this.thinkingReasoning = reasoning;
     const thinkingContent = this.thinkingContent;
-    if (thinkingContent) {
+    if (thinkingContent || this.thinkingReasoning) {
       const thinkingMessageEvent: AgentThoughtRecord = {
         ts: formatUnifiedTimestamp(new Date()),
         type: 'agent_thought_record',
         genseq: dialog.activeGenSeq,
         content: thinkingContent,
+        reasoning: this.thinkingReasoning,
       };
       await this.appendEvent(course, thinkingMessageEvent);
     }
@@ -1293,6 +1298,7 @@ export class DiskFileDialogStore extends DialogStore {
     genseq: number,
     type: 'thinking_msg' | 'saying_msg',
     provider_data?: ProviderData,
+    reasoning?: ReasoningPayload,
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
 
@@ -1303,6 +1309,7 @@ export class DiskFileDialogStore extends DialogStore {
             type: 'agent_thought_record',
             genseq,
             content: content || '',
+            reasoning,
             provider_data,
           }
         : {
@@ -5034,6 +5041,7 @@ export class DialogPersistence {
             role: 'assistant',
             genseq: event.genseq,
             content: event.content,
+            reasoning: event.reasoning,
             provider_data: event.provider_data,
           });
           break;

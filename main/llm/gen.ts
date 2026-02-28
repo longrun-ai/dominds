@@ -1,4 +1,5 @@
 import type { LlmUsageStats } from '../shared/types/context-health';
+import type { ReasoningPayload } from '../shared/types/storage';
 import { Team } from '../team';
 import { FuncTool } from '../tool';
 import { ChatMessage, ProviderConfig } from './client';
@@ -29,7 +30,7 @@ export type LlmWebSearchCall = {
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;
   thinkingChunk: (chunk: string) => Promise<void>;
-  thinkingFinish: () => Promise<void>;
+  thinkingFinish: (reasoning?: ReasoningPayload) => Promise<void>;
   sayingStart: () => Promise<void>;
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;

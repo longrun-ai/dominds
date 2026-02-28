@@ -55,7 +55,9 @@ async function main() {
     },
   ];
 
-  const messages = await buildOpenAiCompatibleRequestMessagesWrapper('', context);
+  const messages = await buildOpenAiCompatibleRequestMessagesWrapper('', context, {
+    reasoningContentMode: true,
+  });
   const roles = messages.map(getRole);
 
   assert(
@@ -68,9 +70,13 @@ async function main() {
   assert(assistantMsg.role === 'assistant', 'Expected assistant message role to be assistant');
   assert(typeof assistantMsg.content === 'string', 'Expected assistant content to be string');
   assert(
-    assistantMsg.content.includes('I should use a tool.') &&
-      assistantMsg.content.includes('Calling tool now.'),
-    'Expected adjacent assistant messages to be merged',
+    assistantMsg.content === 'Calling tool now.',
+    'Expected saying content to remain standalone',
+  );
+  assert(
+    typeof assistantMsg.reasoning_content === 'string' &&
+      assistantMsg.reasoning_content === 'I should use a tool.',
+    'Expected thinking content to map to assistant.reasoning_content',
   );
 
   const toolCallMsg = messages[2];

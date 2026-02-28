@@ -19,6 +19,9 @@ import type {
   HumanTextRecord,
   PersistedDialogRecord,
   QuestForSupRecord,
+  ReasoningContentItem,
+  ReasoningPayload,
+  ReasoningSummaryItem,
   TeammateCallAnchorRecord,
   TeammateCallResultRecord,
   TeammateResponseRecord,
@@ -345,6 +348,63 @@ function parseOptionalSourceTag(
   throw new Error(`${context}.sourceTag must be 'priming_script' when provided`);
 }
 
+function parseOptionalReasoningPayload(
+  value: unknown,
+  context: string,
+): ReasoningPayload | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    throw new Error(`${context}.reasoning must be an object when provided`);
+  }
+
+  const summaryRaw = value['summary'];
+  if (!Array.isArray(summaryRaw)) {
+    throw new Error(`${context}.reasoning.summary must be an array`);
+  }
+  const summary: ReasoningSummaryItem[] = [];
+  for (const part of summaryRaw) {
+    if (!isRecord(part)) {
+      throw new Error(`${context}.reasoning.summary item must be an object`);
+    }
+    if (part['type'] !== 'summary_text' || typeof part['text'] !== 'string') {
+      throw new Error(
+        `${context}.reasoning.summary item must be {type:'summary_text',text:string}`,
+      );
+    }
+    summary.push({ type: 'summary_text', text: part['text'] });
+  }
+
+  const contentRaw = value['content'];
+  let content: ReasoningContentItem[] | undefined;
+  if (contentRaw !== undefined) {
+    if (!Array.isArray(contentRaw)) {
+      throw new Error(`${context}.reasoning.content must be an array when provided`);
+    }
+    const parsed: ReasoningContentItem[] = [];
+    for (const part of contentRaw) {
+      if (!isRecord(part) || typeof part['type'] !== 'string' || typeof part['text'] !== 'string') {
+        throw new Error(`${context}.reasoning.content item must include type/text strings`);
+      }
+      if (part['type'] === 'reasoning_text' || part['type'] === 'text') {
+        parsed.push({ type: part['type'], text: part['text'] });
+        continue;
+      }
+      throw new Error(`${context}.reasoning.content item.type must be reasoning_text | text`);
+    }
+    content = parsed;
+  }
+
+  const encryptedContentRaw = value['encrypted_content'];
+  if (encryptedContentRaw !== undefined && typeof encryptedContentRaw !== 'string') {
+    throw new Error(`${context}.reasoning.encrypted_content must be a string when provided`);
+  }
+
+  const reasoning: ReasoningPayload = { summary };
+  if (content !== undefined) reasoning.content = content;
+  if (typeof encryptedContentRaw === 'string') reasoning.encrypted_content = encryptedContentRaw;
+  return reasoning;
+}
+
 function parseOptionalStringArray(
   record: Record<string, unknown>,
   key: string,
@@ -481,12 +541,16 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (providerData !== undefined && !isRecord(providerData)) {
         throw new Error(`${context}.provider_data must be an object when provided`);
       }
+      const reasoning = parseOptionalReasoningPayload(raw['reasoning'], context);
       const record: AgentThoughtRecord = {
         ts: '',
         type,
         genseq: expectIntegerField(raw, 'genseq', context),
         content: expectStringField(raw, 'content', context, true),
       };
+      if (reasoning !== undefined) {
+        record.reasoning = reasoning;
+      }
       if (providerData !== undefined) {
         record.provider_data = providerData as AgentThoughtRecord['provider_data'];
       }
@@ -1367,6 +1431,7 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
         role: 'assistant',
         genseq: record.genseq,
         content: record.content,
+        reasoning: record.reasoning,
         provider_data: record.provider_data,
       };
     case 'agent_words_record':
@@ -1546,6 +1611,7 @@ function formatScriptMarkdown(args: {
     switch (record.type) {
       case 'agent_thought_record': {
         blockMeta['genseq'] = record.genseq;
+        if (record.reasoning !== undefined) blockMeta['reasoning'] = record.reasoning;
         if (record.provider_data !== undefined) blockMeta['provider_data'] = record.provider_data;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         blockBody = record.content;
