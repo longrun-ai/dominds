@@ -3713,8 +3713,12 @@ export class DomindsDialogContainer extends HTMLElement {
         flex-wrap: wrap;
       }
 
-      .bubble-author-model {
+      .bubble-author-name {
         font-size: 10px;
+      }
+
+      .bubble-author-model {
+        font-size: 8px;
         font-weight: 500;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
       }
