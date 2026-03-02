@@ -55,7 +55,7 @@ export class DomindsQ4HInput extends HTMLElement {
   };
   private currentDialog: DialogIdent | null = null;
   private runState: DialogRunState | null = null;
-  private primaryActionMode: 'send' | 'stop' | 'stopping' = 'send';
+  private primaryActionMode: 'send' | 'append_now' | 'stop' | 'stopping' = 'send';
 
   private inputHistory: string[] = [];
   private inputHistoryCursor: number | null = null; // 0..len, where len means draft/current
@@ -262,7 +262,7 @@ export class DomindsQ4HInput extends HTMLElement {
     );
   }
 
-  private resolvePrimaryActionMode(): 'send' | 'stop' | 'stopping' {
+  private resolvePrimaryActionMode(): 'send' | 'append_now' | 'stop' | 'stopping' {
     // Design choice: when a Q4H item is selected, primary action is always "send answer".
     // The selected Q4H target is treated as the active routing context and intentionally
     // takes precedence over stop semantics for the currently selected dialog.
@@ -270,10 +270,11 @@ export class DomindsQ4HInput extends HTMLElement {
     if (this.hasSelectedQ4HTarget()) return 'send';
     if (this.currentDialog === null) return 'send';
 
+    const hasContent = (this.textInput?.value ?? '').trim().length > 0;
     const state = this.runState;
     if (state === null) return 'send';
     if (state.kind === 'proceeding_stop_requested') return 'stopping';
-    if (state.kind === 'proceeding') return 'stop';
+    if (state.kind === 'proceeding') return hasContent ? 'append_now' : 'stop';
     return 'send';
   }
 
@@ -281,7 +282,14 @@ export class DomindsQ4HInput extends HTMLElement {
     if (!this.sendButton) return;
     const t = getUiStrings(this.uiLanguage);
     const nextMode = this.resolvePrimaryActionMode();
-    const title = nextMode === 'send' ? t.send : nextMode === 'stop' ? t.stop : t.stopping;
+    const title =
+      nextMode === 'send'
+        ? t.send
+        : nextMode === 'append_now'
+          ? t.appendNow
+          : nextMode === 'stop'
+            ? t.stop
+            : t.stopping;
     this.sendButton.title = title;
     this.sendButton.setAttribute('aria-label', title);
 
@@ -290,9 +298,14 @@ export class DomindsQ4HInput extends HTMLElement {
     }
 
     this.primaryActionMode = nextMode;
-    this.sendButton.classList.toggle('stop', nextMode !== 'send');
+    this.sendButton.classList.toggle('append', nextMode === 'append_now');
+    this.sendButton.classList.toggle('stop', nextMode === 'stop' || nextMode === 'stopping');
     if (nextMode === 'send') {
       this.sendButton.innerHTML = '<span class="send-icon icon-mask" aria-hidden="true"></span>';
+      return;
+    }
+    if (nextMode === 'append_now') {
+      this.sendButton.innerHTML = '<span class="append-icon icon-mask" aria-hidden="true"></span>';
       return;
     }
     this.sendButton.innerHTML = '<span class="stop-icon icon-mask" aria-hidden="true"></span>';
@@ -901,7 +914,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
     this.applyPrimaryActionMode();
     const mode = this.resolvePrimaryActionMode();
-    if (mode !== 'send') {
+    if (mode === 'stop' || mode === 'stopping') {
       const canStop = !this.props.disabled && this.currentDialog !== null;
       this.sendButton.disabled = mode === 'stopping' || !canStop;
       return;
@@ -967,8 +980,20 @@ export class DomindsQ4HInput extends HTMLElement {
   private getComponentHTML(): string {
     const t = getUiStrings(this.uiLanguage);
     const mode = this.resolvePrimaryActionMode();
-    const primaryTitle = mode === 'send' ? t.send : mode === 'stop' ? t.stop : t.stopping;
-    const primaryClass = mode === 'send' ? 'send-button' : 'send-button stop';
+    const primaryTitle =
+      mode === 'send'
+        ? t.send
+        : mode === 'append_now'
+          ? t.appendNow
+          : mode === 'stop'
+            ? t.stop
+            : t.stopping;
+    const primaryClass =
+      mode === 'append_now'
+        ? 'send-button append'
+        : mode === 'send'
+          ? 'send-button'
+          : 'send-button stop';
     const dialog = this.currentDialog;
     const isSubdialog = dialog !== null && dialog.selfId !== dialog.rootId;
     const state = this.runState;
@@ -1000,7 +1025,9 @@ export class DomindsQ4HInput extends HTMLElement {
                 ${
                   mode === 'send'
                     ? '<span class="send-icon icon-mask" aria-hidden="true"></span>'
-                    : '<span class="stop-icon icon-mask" aria-hidden="true"></span>'
+                    : mode === 'append_now'
+                      ? '<span class="append-icon icon-mask" aria-hidden="true"></span>'
+                      : '<span class="stop-icon icon-mask" aria-hidden="true"></span>'
                 }
               </button>
               <button
@@ -1231,6 +1258,10 @@ export class DomindsQ4HInput extends HTMLElement {
         background: var(--dominds-danger, #dc3545);
       }
 
+      .send-button.append {
+        background: var(--dominds-warning, #d97706);
+      }
+
       .send-button:hover:not(:disabled) {
         background: var(--dominds-primary-hover, #005ea6);
         transform: scale(1.05);
@@ -1238,6 +1269,10 @@ export class DomindsQ4HInput extends HTMLElement {
 
       .send-button.stop:hover:not(:disabled) {
         background: color-mix(in srgb, var(--dominds-danger, #dc3545) 85%, black);
+      }
+
+      .send-button.append:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--dominds-warning, #d97706) 88%, black);
       }
 
       .send-button:active:not(:disabled) {
@@ -1262,6 +1297,12 @@ export class DomindsQ4HInput extends HTMLElement {
         width: 11px;
         height: 11px;
         --icon-mask: ${ICON_MASK_URLS.stop};
+      }
+
+      .append-icon {
+        width: 11px;
+        height: 11px;
+        --icon-mask: ${ICON_MASK_URLS.appendNow};
       }
 
     `;

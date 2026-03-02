@@ -196,6 +196,7 @@ export type UiStrings = {
   unauthorized: string;
   save: string;
   send: string;
+  appendNow: string;
   stop: string;
   stopping: string;
   emergencyStop: string;
@@ -534,6 +535,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       unauthorized: '未认证',
       save: '保存',
       send: '发送',
+      appendNow: '立即补充',
       stop: '停止',
       stopping: '停止中…',
       emergencyStop: '紧急停止',
@@ -880,6 +882,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     unauthorized: 'Unauthorized',
     save: 'Save',
     send: 'Send',
+    appendNow: 'Append now',
     stop: 'Stop',
     stopping: 'Stopping…',
     emergencyStop: 'Emergency stop',

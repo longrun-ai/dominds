@@ -143,6 +143,44 @@ function resolveUserLanguageCode(
   return getWorkLanguage();
 }
 
+async function queueUserSupplementAtGenerationBoundary(
+  dialog: Dialog,
+  prompt: {
+    content: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+  },
+): Promise<boolean> {
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, 'running');
+  const runStateKind = latest?.runState?.kind;
+  if (runStateKind !== 'proceeding') {
+    return false;
+  }
+  if (!dialog.isLocked()) {
+    return false;
+  }
+  if (dialog.hasUpNext()) {
+    throw new Error(
+      `Dialog already has pending upNext prompt; cannot queue supplement now (dialog=${dialog.id.valueOf()} incomingMsgId=${prompt.msgId})`,
+    );
+  }
+
+  dialog.queueUpNextPrompt({
+    prompt: prompt.content,
+    msgId: prompt.msgId,
+    grammar: prompt.grammar,
+    userLanguageCode: prompt.userLanguageCode,
+  });
+
+  log.debug('Queued user supplement for next generation boundary', undefined, {
+    rootId: dialog.id.rootId,
+    selfId: dialog.id.selfId,
+    msgId: prompt.msgId,
+  });
+  return true;
+}
+
 /**
  * Get error code from unknown error
  */
@@ -1235,6 +1273,13 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       existingSub &&
       existingSub.dialogKey === existingDialog.id.valueOf()
     ) {
+      const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(
+        existingDialog,
+        effectivePrompt,
+      );
+      if (queuedAtBoundary) {
+        return;
+      }
       await driveDialogStream(
         existingDialog,
         {
@@ -1270,6 +1315,13 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       }
 
       await setupWebSocketSubscription(ws, dialog);
+      const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(
+        dialog,
+        effectivePrompt,
+      );
+      if (queuedAtBoundary) {
+        return;
+      }
       await driveDialogStream(
         dialog,
         {

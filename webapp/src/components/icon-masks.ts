@@ -82,6 +82,9 @@ export const ICON_MASK_URLS = {
   send: asMaskUrl(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2L2 22' fill='none' stroke='black' stroke-width='2'/><path d='M12 2L22 22' fill='none' stroke='black' stroke-width='2'/><line x1='12' y1='2' x2='12' y2='16.8' stroke='black' stroke-width='2'/></svg>",
   ),
+  appendNow: asMaskUrl(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M4 12h11' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round'/><path d='m11 7 5 5-5 5' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/><path d='M19 4v6' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round'/><path d='M16 7h6' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round'/></svg>",
+  ),
   insertDown: asMaskUrl(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><line x1='12' y1='4' x2='12' y2='14' stroke='black' stroke-width='2.8' stroke-linecap='round'/><polyline points='6.5 12.5 12 18 17.5 12.5' fill='none' stroke='black' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/></svg>",
   ),
