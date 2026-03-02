@@ -1639,7 +1639,7 @@ export class DomindsApp extends HTMLElement {
       '#toolbar-save-priming',
     ) as HTMLButtonElement | null;
     const remBtnCount = this.shadowRoot?.querySelector(
-      '#toolbar-reminders-toggle span',
+      '#toolbar-reminders-toggle .reminders-count',
     ) as HTMLElement | null;
     const courseLabel = this.shadowRoot?.querySelector('#course-nav span') as HTMLElement | null;
     const stopCount = this.shadowRoot?.querySelector(
@@ -4634,7 +4634,7 @@ export class DomindsApp extends HTMLElement {
 		          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
 		            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
 		              <span class="icon-mask app-icon-bookmark" aria-hidden="true"></span>
-		              <span>${String(this.toolbarReminders.length)}</span>
+		              <span class="reminders-count">${String(this.toolbarReminders.length)}</span>
 		            </button>
 	            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
               <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
@@ -8839,7 +8839,7 @@ export class DomindsApp extends HTMLElement {
   private updateReminderCountBadge(): void {
     // Update count badge in toolbar to show actual reminder count
     const remBtnCount = this.shadowRoot?.querySelector(
-      '#toolbar-reminders-toggle span',
+      '#toolbar-reminders-toggle .reminders-count',
     ) as HTMLElement;
     if (remBtnCount) {
       remBtnCount.textContent = String(this.toolbarReminders.length);
