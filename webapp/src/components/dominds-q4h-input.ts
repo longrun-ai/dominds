@@ -172,10 +172,7 @@ export class DomindsQ4HInput extends HTMLElement {
     const root = this.shadowRoot;
     if (!root) return;
 
-    const toggle = root.querySelector('.send-on-enter-toggle') as HTMLButtonElement | null;
-    if (toggle) {
-      toggle.title = this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle;
-    }
+    this.updateEnterToggleTitle(this.resolvePrimaryActionMode());
 
     this.applyPrimaryActionMode();
 
@@ -276,6 +273,27 @@ export class DomindsQ4HInput extends HTMLElement {
     if (state.kind === 'proceeding_stop_requested') return 'stopping';
     if (state.kind === 'proceeding') return hasContent ? 'queue_now' : 'stop';
     return 'send';
+  }
+
+  private getEnterToggleTitle(mode: 'send' | 'queue_now' | 'stop' | 'stopping'): string {
+    const t = getUiStrings(this.uiLanguage);
+    if (mode === 'queue_now') {
+      return this.sendOnEnter ? t.q4hEnterToQueueNowTitle : t.q4hCtrlEnterToQueueNowTitle;
+    }
+    if (mode === 'stop' || mode === 'stopping') {
+      return this.sendOnEnter ? t.q4hEnterToStopTitle : t.q4hCtrlEnterToStopTitle;
+    }
+    return this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle;
+  }
+
+  private updateEnterToggleTitle(mode: 'send' | 'queue_now' | 'stop' | 'stopping'): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const toggle = root.querySelector('.send-on-enter-toggle') as HTMLButtonElement | null;
+    if (!toggle) return;
+    const title = this.getEnterToggleTitle(mode);
+    toggle.title = title;
+    toggle.setAttribute('aria-label', title);
   }
 
   private applyPrimaryActionMode(): void {
@@ -630,19 +648,29 @@ export class DomindsQ4HInput extends HTMLElement {
           return;
         }
 
-        if (this.sendOnEnter) {
-          if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            void this.handlePrimaryAction();
-          } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            document.execCommand('insertText', false, '\n');
-          }
-        } else {
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            void this.handlePrimaryAction();
-          }
+        if (e.key !== 'Enter') {
+          return;
+        }
+
+        const hasCtrlOrMeta = e.ctrlKey || e.metaKey;
+        const hasNoModifier = !e.shiftKey && !hasCtrlOrMeta && !e.altKey;
+
+        // Cmd/Ctrl+Enter always triggers the same primary action as the send button.
+        if (hasCtrlOrMeta) {
+          e.preventDefault();
+          void this.handlePrimaryAction();
+          return;
+        }
+
+        // Shift+Enter is always newline (keep native textarea behavior).
+        if (e.shiftKey) {
+          return;
+        }
+
+        // Only plain Enter respects the "send on Enter" preference.
+        if (hasNoModifier && this.sendOnEnter) {
+          e.preventDefault();
+          void this.handlePrimaryAction();
         }
       });
     }
@@ -914,6 +942,7 @@ export class DomindsQ4HInput extends HTMLElement {
 
     this.applyPrimaryActionMode();
     const mode = this.resolvePrimaryActionMode();
+    this.updateEnterToggleTitle(mode);
     if (mode === 'stop' || mode === 'stopping') {
       const canStop = !this.props.disabled && this.currentDialog !== null;
       this.sendButton.disabled = mode === 'stopping' || !canStop;
@@ -1017,9 +1046,9 @@ export class DomindsQ4HInput extends HTMLElement {
               <button
                 class="send-on-enter-toggle ${this.sendOnEnter ? 'active' : ''}"
                 type="button"
-                title="${this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle}"
+                title="${this.getEnterToggleTitle(mode)}"
               >
-                ${this.sendOnEnter ? '⏎' : '⌘'}
+                ${this.sendOnEnter ? '⏎' : '⌘⏎'}
               </button>
               <button class="${primaryClass}" type="button" disabled title="${primaryTitle}" aria-label="${primaryTitle}">
                 ${
@@ -1175,7 +1204,7 @@ export class DomindsQ4HInput extends HTMLElement {
         background: transparent;
         color: var(--color-fg-tertiary, #64748b);
         cursor: pointer;
-        font-size: var(--dominds-font-size-sm, 12px);
+        font-size: 12px;
         transition: all 0.2s ease;
         padding: 0;
       }

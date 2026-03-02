@@ -122,6 +122,10 @@ export type UiStrings = {
   q4hInputPlaceholder: string;
   q4hEnterToSendTitle: string;
   q4hCtrlEnterToSendTitle: string;
+  q4hEnterToQueueNowTitle: string;
+  q4hCtrlEnterToQueueNowTitle: string;
+  q4hEnterToStopTitle: string;
+  q4hCtrlEnterToStopTitle: string;
   q4hGoToCallSiteTitle: string;
   q4hAnswerCallSitesLabel: string;
   q4hOpenInNewTabTitle: string;
@@ -458,8 +462,12 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hNoPending: '暂无待处理问题',
       q4hPendingQuestions: '待处理问题',
       q4hInputPlaceholder: '输入你的回答…',
-      q4hEnterToSendTitle: '按 Enter 发送（Cmd/Ctrl+Enter 换行）',
-      q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送（Enter 换行）',
+      q4hEnterToSendTitle: '按 Enter 发送\n- Shift+Enter 换行\n- Cmd/Ctrl+Enter 发送',
+      q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送\n- Enter 换行\n- Shift+Enter 换行',
+      q4hEnterToQueueNowTitle: '按 Enter 立即插队\n- Shift+Enter 换行\n- Cmd/Ctrl+Enter 立即插队',
+      q4hCtrlEnterToQueueNowTitle: '按 Cmd/Ctrl+Enter 立即插队\n- Enter 换行\n- Shift+Enter 换行',
+      q4hEnterToStopTitle: '按 Enter 停止',
+      q4hCtrlEnterToStopTitle: '按 Cmd/Ctrl+Enter 停止',
       q4hGoToCallSiteTitle: '定位到提问点',
       q4hAnswerCallSitesLabel: '本次回答对应提问点：',
       q4hOpenInNewTabTitle: '新标签打开',
@@ -802,8 +810,14 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hNoPending: 'No pending questions',
     q4hPendingQuestions: 'Pending Questions',
     q4hInputPlaceholder: 'Type your answer...',
-    q4hEnterToSendTitle: 'Enter to send (Cmd/Ctrl+Enter for newline)',
-    q4hCtrlEnterToSendTitle: 'Cmd/Ctrl+Enter to send (Enter for newline)',
+    q4hEnterToSendTitle: 'Press Enter to send\n- Shift+Enter newline\n- Cmd/Ctrl+Enter send',
+    q4hCtrlEnterToSendTitle: 'Press Cmd/Ctrl+Enter to send\n- Enter newline\n- Shift+Enter newline',
+    q4hEnterToQueueNowTitle:
+      'Press Enter to queue now\n- Shift+Enter newline\n- Cmd/Ctrl+Enter queue now',
+    q4hCtrlEnterToQueueNowTitle:
+      'Press Cmd/Ctrl+Enter to queue now\n- Enter newline\n- Shift+Enter newline',
+    q4hEnterToStopTitle: 'Press Enter to stop',
+    q4hCtrlEnterToStopTitle: 'Press Cmd/Ctrl+Enter to stop',
     q4hGoToCallSiteTitle: 'Go to call site',
     q4hAnswerCallSitesLabel: 'Answer applies to call sites:',
     q4hOpenInNewTabTitle: 'Open in new tab',
