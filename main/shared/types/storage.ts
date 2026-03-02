@@ -283,6 +283,7 @@ export interface HumanTextRecord {
   msgId: string;
   content: string;
   grammar: 'markdown';
+  origin?: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
   sourceTag?: 'priming_script';
   /**

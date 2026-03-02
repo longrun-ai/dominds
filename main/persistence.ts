@@ -1307,6 +1307,7 @@ export class DiskFileDialogStore extends DialogStore {
     content: string,
     msgId: string,
     grammar: 'markdown',
+    origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     userLanguageCode?: LanguageCode,
     q4hAnswerCallIds?: string[],
   ): Promise<void> {
@@ -1335,6 +1336,7 @@ export class DiskFileDialogStore extends DialogStore {
       content: String(content || ''),
       msgId: msgId,
       grammar,
+      origin,
       userLanguageCode,
       q4hAnswerCallIds: normalizedQ4HAnswerCallIds,
     };
@@ -1791,6 +1793,8 @@ export class DiskFileDialogStore extends DialogStore {
         const genseq = event.genseq;
         const content = event.content || '';
         const grammar: 'markdown' = 'markdown';
+        const origin: 'user' | 'diligence_push' | 'runtime' =
+          event.origin === 'diligence_push' || event.origin === 'runtime' ? event.origin : 'user';
         const userLanguageCode = event.userLanguageCode;
 
         if (content) {
@@ -1836,6 +1840,7 @@ export class DiskFileDialogStore extends DialogStore {
               msgId: event.msgId,
               content,
               grammar,
+              origin,
               userLanguageCode,
               q4hAnswerCallIds: event.q4hAnswerCallIds,
               dialog: { selfId: dialog.id.selfId, rootId: dialog.id.rootId },

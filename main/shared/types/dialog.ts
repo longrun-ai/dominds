@@ -325,6 +325,7 @@ export interface EndOfUserSayingEvent {
   msgId: string;
   content: string;
   grammar: 'markdown';
+  origin: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
   /**
    * Optional callIds for Q4H answers that settle one or more askHuman call sites.
@@ -339,6 +340,7 @@ export interface QueueUserMsgEvent {
   msgId: string;
   content: string;
   grammar: 'markdown';
+  origin?: 'user' | 'diligence_push' | 'runtime';
   userLanguageCode?: LanguageCode;
 }
 

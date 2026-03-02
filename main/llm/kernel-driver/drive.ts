@@ -1434,6 +1434,7 @@ export async function driveDialogStreamCore(
             currentPrompt.content,
             currentPrompt.msgId,
             'markdown',
+            origin,
             persistedUserLanguageCode,
             q4hAnswerCallIds,
           );
@@ -1448,6 +1449,7 @@ export async function driveDialogStreamCore(
             msgId: currentPrompt.msgId,
             content: currentPrompt.content,
             grammar: 'markdown',
+            origin,
             userLanguageCode: persistedUserLanguageCode,
             q4hAnswerCallIds,
           });

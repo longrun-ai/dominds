@@ -41,7 +41,7 @@ export type AppsHostKernelRunControlApplyMessage = Readonly<{
       msgId: string;
       grammar: 'markdown';
       userLanguageCode: LanguageCode;
-      origin?: 'user' | 'diligence_push';
+      origin?: 'user' | 'diligence_push' | 'runtime';
     }>;
     source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
     input: Readonly<Record<string, unknown>>;
@@ -242,8 +242,10 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       const grammar = asString(prompt['grammar']);
       const userLanguageCode = asLanguageCode(prompt['userLanguageCode']);
       const originRaw = asString(prompt['origin']);
-      const origin: 'user' | 'diligence_push' | undefined =
-        originRaw === 'user' || originRaw === 'diligence_push' ? originRaw : undefined;
+      const origin: 'user' | 'diligence_push' | 'runtime' | undefined =
+        originRaw === 'user' || originRaw === 'diligence_push' || originRaw === 'runtime'
+          ? originRaw
+          : undefined;
       if (!content) throw new Error('Invalid run_control_apply payload: prompt.content required');
       if (!msgId) throw new Error('Invalid run_control_apply payload: prompt.msgId required');
       if (grammar !== 'markdown') {

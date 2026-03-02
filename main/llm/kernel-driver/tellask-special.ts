@@ -846,6 +846,7 @@ async function executeTellaskCall(
           }),
           msgId: generateShortId(),
           grammar: 'markdown',
+          origin: 'runtime',
           ...(shouldReplyToCaller
             ? {
                 subdialogReplyTarget: {
@@ -944,6 +945,7 @@ async function executeTellaskCall(
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
+            origin: 'runtime',
           };
           await callbacks.driveDialog(supdialog, { humanPrompt: supPrompt, waitInQue: true });
 
@@ -1084,6 +1086,7 @@ async function executeTellaskCall(
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
+            origin: 'runtime',
             subdialogReplyTarget: {
               ownerDialogId: callerDialog.id.selfId,
               callType: 'C',
@@ -1181,6 +1184,7 @@ async function executeTellaskCall(
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
+            origin: 'runtime',
             subdialogReplyTarget: {
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
@@ -1202,6 +1206,7 @@ async function executeTellaskCall(
             }),
             msgId: generateShortId(),
             grammar: 'markdown',
+            origin: 'runtime',
             subdialogReplyTarget: {
               ownerDialogId: pendingOwner.id.selfId,
               callType: 'B',
@@ -1256,6 +1261,7 @@ async function executeTellaskCall(
           }),
           msgId: generateShortId(),
           grammar: 'markdown',
+          origin: 'runtime',
           subdialogReplyTarget: {
             ownerDialogId: dlg.id.selfId,
             callType: 'C',

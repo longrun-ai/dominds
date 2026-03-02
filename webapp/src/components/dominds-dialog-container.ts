@@ -888,6 +888,10 @@ export class DomindsDialogContainer extends HTMLElement {
             this.handleProtocolError('end_of_user_saying_evt missing required fields');
             break;
           }
+          if (ev.origin !== 'user' && ev.origin !== 'diligence_push' && ev.origin !== 'runtime') {
+            this.handleProtocolError('end_of_user_saying_evt missing/invalid origin');
+            break;
+          }
           this.handleEndOfUserSaying(ev);
         }
         break;
@@ -2957,6 +2961,15 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private upsertUserPlainTextMessage(body: HTMLElement, rawContent: string): void {
+    this.upsertUserMessageByOrigin(body, rawContent, 'user');
+  }
+
+  private upsertUserMessageByOrigin(
+    body: HTMLElement,
+    rawContent: string,
+    origin: EndOfUserSayingEvent['origin'] | undefined,
+  ): void {
+    const renderAsPlainText = origin === 'user' || origin === undefined;
     let divider: HTMLElement | null = null;
     for (const child of Array.from(body.children)) {
       if (child instanceof HTMLElement && child.classList.contains('user-response-divider')) {
@@ -2965,37 +2978,79 @@ export class DomindsDialogContainer extends HTMLElement {
       }
     }
 
-    for (const child of Array.from(body.children)) {
-      if (divider && child === divider) break;
-      if (child instanceof HTMLElement && child.classList.contains('markdown-section')) {
-        child.remove();
+    if (renderAsPlainText) {
+      for (const child of Array.from(body.children)) {
+        if (divider && child === divider) break;
+        if (child instanceof HTMLElement && child.classList.contains('markdown-section')) {
+          child.remove();
+        }
       }
-    }
 
-    let userMessageEl: HTMLElement | null = null;
-    for (const child of Array.from(body.children)) {
-      if (divider && child === divider) break;
-      if (child instanceof HTMLElement && child.classList.contains('user-message')) {
-        userMessageEl = child;
-        break;
+      let userMessageEl: HTMLElement | null = null;
+      for (const child of Array.from(body.children)) {
+        if (divider && child === divider) break;
+        if (child instanceof HTMLElement && child.classList.contains('user-message')) {
+          userMessageEl = child;
+          break;
+        }
       }
-    }
 
-    if (!userMessageEl) {
-      userMessageEl = document.createElement('div');
-      userMessageEl.className = 'user-message';
-    }
-    userMessageEl.textContent = rawContent;
+      if (!userMessageEl) {
+        userMessageEl = document.createElement('div');
+        userMessageEl.className = 'user-message';
+      }
+      userMessageEl.textContent = rawContent;
 
-    if (divider) {
-      if (userMessageEl.parentElement !== body || userMessageEl.nextSibling !== divider) {
-        body.insertBefore(userMessageEl, divider);
+      if (divider) {
+        if (userMessageEl.parentElement !== body || userMessageEl.nextSibling !== divider) {
+          body.insertBefore(userMessageEl, divider);
+        }
+        return;
+      }
+
+      if (userMessageEl.parentElement !== body || userMessageEl !== body.firstElementChild) {
+        body.insertBefore(userMessageEl, body.firstChild);
       }
       return;
     }
 
-    if (userMessageEl.parentElement !== body || userMessageEl !== body.firstElementChild) {
-      body.insertBefore(userMessageEl, body.firstChild);
+    let markdownSection: DomindsMarkdownSection | null = null;
+    for (const child of Array.from(body.children)) {
+      if (divider && child === divider) break;
+      if (!(child instanceof HTMLElement)) continue;
+      if (child.classList.contains('user-message')) {
+        child.remove();
+        continue;
+      }
+      if (child.classList.contains('markdown-section')) {
+        if (!markdownSection) {
+          if (child instanceof DomindsMarkdownSection) {
+            markdownSection = child;
+          } else {
+            const replacement = this.createMarkdownSection();
+            child.replaceWith(replacement);
+            markdownSection = replacement;
+          }
+        } else {
+          child.remove();
+        }
+      }
+    }
+
+    if (!markdownSection) {
+      markdownSection = this.createMarkdownSection();
+    }
+    markdownSection.setRawMarkdown(rawContent);
+
+    if (divider) {
+      if (markdownSection.parentElement !== body || markdownSection.nextSibling !== divider) {
+        body.insertBefore(markdownSection, divider);
+      }
+      return;
+    }
+
+    if (markdownSection.parentElement !== body || markdownSection !== body.firstElementChild) {
+      body.insertBefore(markdownSection, body.firstChild);
     }
   }
 
@@ -3027,9 +3082,10 @@ export class DomindsDialogContainer extends HTMLElement {
 
     // Idempotency: end_of_user_saying_evt can be replayed during course navigation.
     if (body.querySelector('.user-response-divider')) {
-      this.upsertUserPlainTextMessage(body, event.content);
+      this.upsertUserMessageByOrigin(body, event.content, event.origin);
       bubble.setAttribute('data-user-msg-id', event.msgId);
       bubble.setAttribute('data-raw-user-msg', event.content);
+      bubble.setAttribute('data-user-msg-origin', event.origin);
       const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
       this.upsertUserAnswerCallSiteLinks(bubble, q4hAnswerCallIds);
       if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {
@@ -3063,9 +3119,10 @@ export class DomindsDialogContainer extends HTMLElement {
     const divider = document.createElement('hr');
     divider.className = 'user-response-divider';
     body.appendChild(divider);
-    this.upsertUserPlainTextMessage(body, event.content);
+    this.upsertUserMessageByOrigin(body, event.content, event.origin);
     bubble.setAttribute('data-user-msg-id', event.msgId);
     bubble.setAttribute('data-raw-user-msg', event.content);
+    bubble.setAttribute('data-user-msg-origin', event.origin);
     const q4hAnswerCallIds = this.normalizeQ4HAnswerCallIds(event.q4hAnswerCallIds);
     this.upsertUserAnswerCallSiteLinks(bubble, q4hAnswerCallIds);
     if (typeof event.userLanguageCode === 'string' && event.userLanguageCode.trim() !== '') {

@@ -12,7 +12,7 @@ export type DomindsAppRunControlContext = Readonly<{
     msgId: string;
     grammar: 'markdown';
     userLanguageCode: LanguageCode;
-    origin?: 'user' | 'diligence_push';
+    origin?: 'user' | 'diligence_push' | 'runtime';
   }>;
   source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
   input: Readonly<Record<string, unknown>>;

@@ -178,6 +178,7 @@ async function queueUserSupplementAtGenerationBoundary(
     msgId: prompt.msgId,
     content: prompt.content,
     grammar: prompt.grammar,
+    origin: 'user',
     userLanguageCode: prompt.userLanguageCode,
   });
 

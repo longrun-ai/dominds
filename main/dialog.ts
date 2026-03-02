@@ -1139,6 +1139,7 @@ export abstract class Dialog {
     content: string,
     msgId: string,
     grammar: 'markdown',
+    origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     userLanguageCode?: LanguageCode,
     q4hAnswerCallIds?: string[],
   ): Promise<void> {
@@ -1147,6 +1148,7 @@ export abstract class Dialog {
       content,
       msgId,
       grammar,
+      origin,
       userLanguageCode,
       q4hAnswerCallIds,
     );
@@ -1776,6 +1778,7 @@ export abstract class DialogStore {
     _content: string,
     _msgId: string,
     _grammar: 'markdown',
+    _origin: 'user' | 'diligence_push' | 'runtime' | undefined,
     _userLanguageCode?: LanguageCode,
     _q4hAnswerCallIds?: string[],
   ): Promise<void> {}
