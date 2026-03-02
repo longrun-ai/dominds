@@ -83,12 +83,51 @@ function listNumberedReminderIndices(reminders: readonly Reminder[]): number[] {
   return indices;
 }
 
+function listNumberedReminders(reminders: readonly Reminder[]): Reminder[] {
+  const numbered: Reminder[] = [];
+  for (const reminder of reminders) {
+    if (!reminder || !reminderIsNumbered(reminder)) {
+      continue;
+    }
+    numbered.push(reminder);
+  }
+  return numbered;
+}
+
+type ReminderRoundSnapshot = Readonly<{
+  genseq: number;
+  numberedReminders: readonly Reminder[];
+}>;
+
+const reminderRoundSnapshots = new WeakMap<Dialog, ReminderRoundSnapshot>();
+
+function getNumberedRemindersForLookup(dlg: Dialog): readonly Reminder[] {
+  const genseq = dlg.activeGenSeqOrUndefined;
+  if (typeof genseq !== 'number') {
+    return listNumberedReminders(dlg.reminders);
+  }
+
+  const existing = reminderRoundSnapshots.get(dlg);
+  if (existing && existing.genseq === genseq) {
+    return existing.numberedReminders;
+  }
+
+  const snapshot: ReminderRoundSnapshot = {
+    genseq,
+    numberedReminders: listNumberedReminders(dlg.reminders),
+  };
+  reminderRoundSnapshots.set(dlg, snapshot);
+  return snapshot.numberedReminders;
+}
+
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
   if (language === 'zh') {
     return {
       invalidFormatDelete: '参数格式不对。用法：delete_reminder({ reminder_no: number })',
       reminderDoesNotExist: (reminderNoHuman, total) =>
-        `提醒 #${reminderNoHuman} 不存在。现有提醒：1-${total}`,
+        total > 0
+          ? `提醒 #${reminderNoHuman} 不存在。现有提醒：1-${total}`
+          : `提醒 #${reminderNoHuman} 不存在。当前没有提醒。`,
       invalidFormatAdd:
         '参数格式不对。用法：add_reminder({ content: string, position: number })（position=0 表示追加）',
       reminderContentEmpty: '提醒内容不能为空',
@@ -136,7 +175,9 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
   return {
     invalidFormatDelete: 'Error: Invalid args. Use: delete_reminder({ reminder_no: number })',
     reminderDoesNotExist: (reminderNoHuman, total) =>
-      `Error: Reminder number ${reminderNoHuman} does not exist. Available reminders: 1-${total}`,
+      total > 0
+        ? `Error: Reminder number ${reminderNoHuman} does not exist. Available reminders: 1-${total}`
+        : `Error: Reminder number ${reminderNoHuman} does not exist. There are no reminders.`,
     invalidFormatAdd:
       'Error: Invalid args. Use: add_reminder({ content: string, position: number }) (position=0 means append).',
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
@@ -206,14 +247,18 @@ export const deleteReminderTool: FuncTool = {
     if (typeof reminderNoValue !== 'number' || !Number.isInteger(reminderNoValue)) {
       return t.invalidFormatDelete;
     }
-    const numberedIndices = listNumberedReminderIndices(dlg.reminders);
+    const numberedReminders = getNumberedRemindersForLookup(dlg);
     const reminderNo = reminderNoValue - 1; // Convert to 0-based index
-    if (reminderNo < 0 || reminderNo >= numberedIndices.length) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
+    if (reminderNo < 0 || reminderNo >= numberedReminders.length) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
     }
-    const targetIndex = numberedIndices[reminderNo];
-    if (targetIndex === undefined) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
+    const targetReminder = numberedReminders[reminderNo];
+    if (!targetReminder) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
+    }
+    const targetIndex = dlg.reminders.indexOf(targetReminder);
+    if (targetIndex < 0) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
     }
     dlg.deleteReminder(targetIndex);
     return formatToolActionResult(language, 'deleted');
@@ -296,14 +341,18 @@ export const updateReminderTool: FuncTool = {
     if (typeof reminderNoValue !== 'number' || !Number.isInteger(reminderNoValue)) {
       return t.invalidFormatUpdate;
     }
-    const numberedIndices = listNumberedReminderIndices(dlg.reminders);
+    const numberedReminders = getNumberedRemindersForLookup(dlg);
     const reminderNo = reminderNoValue - 1;
-    if (reminderNo < 0 || reminderNo >= numberedIndices.length) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
+    if (reminderNo < 0 || reminderNo >= numberedReminders.length) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
     }
-    const targetIndex = numberedIndices[reminderNo];
-    if (targetIndex === undefined) {
-      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
+    const targetReminder = numberedReminders[reminderNo];
+    if (!targetReminder) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
+    }
+    const targetIndex = dlg.reminders.indexOf(targetReminder);
+    if (targetIndex < 0) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedReminders.length);
     }
 
     const reminder = dlg.reminders[targetIndex];

@@ -32,12 +32,15 @@
     "stream-func-call": "tsx provider/stream-func-call.ts",
     "minimax-json-response": "tsx provider/minimax-json-response.ts",
     "minimax-m25-turn-assembly": "tsx provider/minimax-m25-turn-assembly.ts",
+    "minimax-m25-multi-tool-probe": "tsx provider/minimax-m25-multi-tool-probe.ts",
     "anthropic-streaming": "tsx provider/anthropic-streaming.ts",
     "anthropic-whitespace": "tsx provider/anthropic-whitespace.ts",
+    "anthropic-multi-tool-use-stream": "tsx provider/anthropic-multi-tool-use-stream.ts",
     "openai-streaming": "tsx provider/openai-streaming.ts",
     "codex-streaming": "tsx provider/codex-streaming.ts",
     "anthropic-context-normalization": "tsx provider/anthropic-context-normalization.ts",
     "openai-whitespace": "tsx provider/openai-whitespace.ts",
+    "openai-multi-tool-probe": "tsx provider/openai-multi-tool-probe.ts",
     "openai-context-normalization": "tsx provider/openai-context-normalization.ts",
     "openai-compatible-context-normalization": "tsx provider/openai-compatible-context-normalization.ts",
     "openai-compatible-image-fallback": "tsx provider/openai-compatible-image-fallback.ts",
@@ -47,6 +50,8 @@
     "readonly-shell": "tsx toolsets/readonly-shell.ts",
     "memory-access": "tsx toolsets/memory-access.ts",
     "reminder-format": "tsx reminders/reminder-format.ts",
+    "reminder-delete-empty-state": "tsx reminders/delete-reminder-empty-state.ts",
+    "reminder-delete-round-snapshot": "tsx reminders/delete-reminder-round-snapshot.ts",
     "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
     "context-health-critical-countdown": "tsx context-health/critical-countdown.ts",
@@ -64,7 +69,7 @@
     "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts"
   },
   "devDependencies": {
-    "tsx": "^4.20.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

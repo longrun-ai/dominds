@@ -702,8 +702,8 @@ export async function consumeAnthropicStream(
   forcedJsonToolName?: string,
 ): Promise<AnthropicStreamConsumeResult> {
   // Stream lifecycle management using SDK start/stop events
-  let currentContentBlock: AnthropicMessageContent[number] | null = null;
-  let currentToolUse: ActiveToolUse | null = null;
+  const activeContentBlocks = new Map<number, AnthropicMessageContent[number]>();
+  const activeToolUses = new Map<number, ActiveToolUse>();
   let sayingStarted = false;
   let thinkingStarted = false;
   let usage: LlmUsageStats = { kind: 'unavailable' };
@@ -715,29 +715,45 @@ export async function consumeAnthropicStream(
     }
     switch (event.type) {
       case 'content_block_start': {
+        const blockIndex = event.index;
         const contentBlock = event.content_block;
+        const existingBlock = activeContentBlocks.get(blockIndex);
+        if (existingBlock) {
+          log.warn(
+            'ANTH content_block_start replacing active content block at index',
+            new Error('content_block_start_without_stop'),
+            {
+              index: blockIndex,
+              prevType: existingBlock.type,
+              nextType: contentBlock.type,
+            },
+          );
+        }
+        activeContentBlocks.set(blockIndex, contentBlock);
 
         // Track tool use so we can emit function calls once JSON is complete
         if (contentBlock.type === 'tool_use') {
-          currentToolUse = {
+          activeToolUses.set(blockIndex, {
             id: contentBlock.id,
             name: contentBlock.name,
             inputJson: '',
             initialInput: contentBlock.input,
-          };
+          });
         }
 
-        currentContentBlock = contentBlock;
         break;
       }
 
       case 'content_block_delta': {
+        const blockIndex = event.index;
+        const activeContentBlock = activeContentBlocks.get(blockIndex);
         // Only process deltas for known content blocks
-        if (!currentContentBlock) {
+        if (!activeContentBlock) {
           log.warn(
             'ANTH unexpected content_block_delta without active content block',
             new Error('Delta received before content_block_start'),
             {
+              index: blockIndex,
               deltaType: event.delta.type,
             },
           );
@@ -795,15 +811,17 @@ export async function consumeAnthropicStream(
           // Handle SignatureDelta - typically just logging for now
         } else if (delta.type === 'input_json_delta') {
           const partialJson = delta.partial_json;
-          if (currentToolUse) {
-            applyInputJsonDelta(currentToolUse, partialJson);
+          const activeToolUse = activeToolUses.get(blockIndex);
+          if (activeToolUse) {
+            applyInputJsonDelta(activeToolUse, partialJson);
           } else if (partialJson.length > 0) {
             log.warn(
               'ANTH input_json_delta without active tool_use',
               new Error('Input JSON delta received without active tool_use block'),
               {
-                hasCurrentBlock: currentContentBlock !== null,
-                blockType: currentContentBlock ? currentContentBlock.type : 'none',
+                hasCurrentBlock: true,
+                blockIndex,
+                blockType: activeContentBlock.type,
               },
             );
           }
@@ -812,34 +830,40 @@ export async function consumeAnthropicStream(
       }
 
       case 'content_block_stop': {
-        if (!currentContentBlock) {
+        const blockIndex = event.index;
+        const activeContentBlock = activeContentBlocks.get(blockIndex);
+        if (!activeContentBlock) {
           break;
         }
 
         // Close thinking as soon as the thinking block ends so downstream UI/persistence reflects
         // strict generation order (thinking first, then saying). This also avoids emitting
         // thinking_finish after the main message has already completed.
-        if (currentContentBlock.type === 'thinking' && thinkingStarted) {
+        if (activeContentBlock.type === 'thinking' && thinkingStarted) {
           await receiver.thinkingFinish();
           thinkingStarted = false;
         }
 
-        if (currentContentBlock.type === 'tool_use') {
-          if (!currentToolUse) {
+        if (activeContentBlock.type === 'tool_use') {
+          const activeToolUse = activeToolUses.get(blockIndex);
+          if (!activeToolUse) {
             log.warn(
               'ANTH tool_use stop without active tool_use',
               new Error('Tool_use block stopped without active tool tracking'),
+              {
+                blockIndex,
+              },
             );
           } else {
-            if (forcedJsonToolName && currentToolUse.name === forcedJsonToolName) {
+            if (forcedJsonToolName && activeToolUse.name === forcedJsonToolName) {
               const forcedInput = parseForcedJsonToolInput(
-                currentToolUse.inputJson,
-                currentToolUse.initialInput,
-                `tool_use:${currentToolUse.id}:${currentToolUse.name}`,
+                activeToolUse.inputJson,
+                activeToolUse.initialInput,
+                `tool_use:${activeToolUse.id}:${activeToolUse.name}`,
               );
               const jsonText = serializeAnthropicForcedJsonObject(
                 forcedInput,
-                `tool_use:${currentToolUse.id}:${currentToolUse.name}`,
+                `tool_use:${activeToolUse.id}:${activeToolUse.name}`,
               );
               if (!sayingStarted) {
                 sayingStarted = true;
@@ -850,20 +874,20 @@ export async function consumeAnthropicStream(
               sayingStarted = false;
             } else {
               let argsJson = '';
-              if (currentToolUse.inputJson.trim().length > 0) {
-                argsJson = currentToolUse.inputJson;
+              if (activeToolUse.inputJson.trim().length > 0) {
+                argsJson = activeToolUse.inputJson;
               } else {
-                const stringified = JSON.stringify(currentToolUse.initialInput);
+                const stringified = JSON.stringify(activeToolUse.initialInput);
                 argsJson =
                   typeof stringified === 'string' && stringified.length > 0 ? stringified : '{}';
               }
-              await receiver.funcCall(currentToolUse.id, currentToolUse.name, argsJson);
+              await receiver.funcCall(activeToolUse.id, activeToolUse.name, argsJson);
             }
           }
-          currentToolUse = null;
+          activeToolUses.delete(blockIndex);
         }
 
-        currentContentBlock = null;
+        activeContentBlocks.delete(blockIndex);
         break;
       }
 
@@ -927,8 +951,8 @@ export async function consumeAnthropicStream(
       }
 
       case 'message_stop': {
-        currentContentBlock = null;
-        currentToolUse = null;
+        activeContentBlocks.clear();
+        activeToolUses.clear();
 
         if (thinkingStarted) {
           await receiver.thinkingFinish();

@@ -392,8 +392,8 @@ export const rmDirTool: FuncTool = {
         }
       }
 
-      // Remove the directory
-      await fs.rmdir(targetPath, { recursive });
+      // Node.js >=22+ types deprecate recursive rmdir in favor of rm.
+      await fs.rm(targetPath, { recursive, force: false });
 
       return labels.removed(rel);
     } catch (error: unknown) {

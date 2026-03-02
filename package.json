@@ -1,6 +1,6 @@
 {
   "name": "dominds",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "DevOps Mindsets — Sustainable Agentic Product Lifecycle",
   "type": "commonjs",
   "private": false,
@@ -51,22 +51,22 @@
     "pnpm": ">=10.30.2 <11"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.67.0",
-    "@longrun-ai/codex-auth": "^0.2.0",
-    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@longrun-ai/codex-auth": "^0.6.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "async-mutex": "^0.5.0",
-    "openai": "^6.4.0",
-    "ws": "^8.18.3",
+    "openai": "^6.25.0",
+    "ws": "^8.19.0",
     "yaml": "^2.8.2",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^25.3.3",
     "@types/ws": "^8.18.1",
-    "esbuild": "^0.25.11",
-    "prettier": "^3.6.2",
+    "esbuild": "^0.27.3",
+    "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "tsx": "^4.20.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

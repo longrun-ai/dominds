@@ -766,7 +766,16 @@ export class OpenAiCompatibleGen implements LlmGenerator {
         const toolCalls = delta.tool_calls;
         if (Array.isArray(toolCalls)) {
           for (const call of toolCalls) {
-            const index = call.index;
+            const rawIndex: unknown = call.index;
+            if (typeof rawIndex !== 'number' || !Number.isInteger(rawIndex) || rawIndex < 0) {
+              const detail = `OPENAI-COMPATIBLE invalid tool call index: ${JSON.stringify(rawIndex)}`;
+              log.error(detail, new Error('openai_compatible_invalid_tool_call_index'));
+              if (receiver.streamError) {
+                await receiver.streamError(detail);
+              }
+              throw new Error(detail);
+            }
+            const index = rawIndex;
             const existing = activeCallsByIndex.get(index);
             const state: ActiveFuncCall =
               existing ??
