@@ -165,5 +165,7 @@ export async function initAppsRuntime(params: {
     if (!a.frontend) continue;
     nextFile = setAppRuntimePort({ existing: nextFile, appId: a.appId, port: a.frontend.port });
   }
-  await writeInstalledAppsFile({ rtwsRootAbs: params.rtwsRootAbs, file: nextFile });
+  if (nextFile !== loaded.file) {
+    await writeInstalledAppsFile({ rtwsRootAbs: params.rtwsRootAbs, file: nextFile });
+  }
 }

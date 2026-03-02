@@ -15,7 +15,7 @@ export async function readPackageInfo(params: { packageRootAbs: string }): Promi
   const fallback: PackageInfo = {
     packageName: null,
     packageVersion: null,
-    manifestRelPath: 'dominds.app.yaml',
+    manifestRelPath: '.minds/app.yaml',
   };
   const pkgJsonAbs = path.resolve(params.packageRootAbs, 'package.json');
   let raw: string;
@@ -41,7 +41,7 @@ export async function readPackageInfo(params: { packageRootAbs: string }): Promi
   const name = typeof parsed['name'] === 'string' ? parsed['name'].trim() : '';
   const version = typeof parsed['version'] === 'string' ? parsed['version'].trim() : '';
 
-  let manifestRelPath = 'dominds.app.yaml';
+  let manifestRelPath = '.minds/app.yaml';
   const dominds = parsed['dominds'];
   if (isRecord(dominds)) {
     const mr = typeof dominds['appManifest'] === 'string' ? dominds['appManifest'].trim() : '';

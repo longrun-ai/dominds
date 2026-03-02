@@ -3,6 +3,7 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { loadEnabledAppsSnapshot } from './enabled-apps';
+import { resolveAppOverrideFileAbs } from './override-paths';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -21,7 +22,17 @@ export async function loadEnabledAppTeammates(params: {
   for (const app of snap.enabledApps) {
     const rel = app.installJson.contributes?.teammatesYamlRelPath;
     if (!rel) continue;
-    const filePathAbs = path.resolve(app.installJson.package.rootAbs, rel);
+
+    // Workspace overrides (new root + legacy root).
+    const override = await resolveAppOverrideFileAbs({
+      rtwsRootAbs: params.rtwsRootAbs,
+      appId: app.id,
+      appRelPath: rel,
+    });
+    const filePathAbs =
+      override.kind === 'found'
+        ? override.filePathAbs
+        : path.resolve(app.installJson.package.rootAbs, rel);
     const raw = await fs.readFile(filePathAbs, 'utf-8');
     const parsed = YAML.parse(raw) as unknown;
     if (!isRecord(parsed)) {

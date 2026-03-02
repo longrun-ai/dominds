@@ -251,6 +251,9 @@ export function setAppRuntimePort(params: {
   appId: string;
   port: number | null;
 }): InstalledAppsFile {
+  const existingApp = findInstalledApp(params.existing, params.appId);
+  if (!existingApp) return params.existing;
+  if (existingApp.runtime.port === params.port) return params.existing;
   const now = formatUnifiedTimestamp(new Date());
   const apps = params.existing.apps.map((a) =>
     a.id === params.appId
