@@ -51,20 +51,28 @@ The memory toolset uses a **path key-value storage** model:
 ### 1. Path Naming Conventions
 
 - Use descriptive paths: `project/architecture`, `user/preferences/language`
-- Avoid special characters: Do not include `/`, `\`, `*`, etc. in paths
-- Use hierarchical structure: Organize memory by topic, e.g., `project/todo`, `project/done`
+- Use `/` to organize hierarchy (this is the recommended usage), with guardrails:
+  - Absolute paths are forbidden (must not start with `/`)
+  - Path traversal is forbidden (`..` is not allowed)
+  - Avoid `\\` (cross-platform readability; prefer `/`)
+- Keep paths _flat_: prefer a small number of topic files rather than a deep directory tree.
 
 ### 2. Content Format
 
-- Keep content concise: Each memory should cover only one topic
-- Use structured format: Can use Markdown format to organize content
-- Regular cleanup: Periodically check and delete outdated memories
+- Treat personal memory as a **carry-along stable-facts memo**: enable **0 ripgrep** startup within your scope.
+- Store stable facts only: **anchor points (file/symbol) + 1-line meaning + key contracts/priorities (≤3)**.
+- Fewer memory files is better: group facts that will be updated together into one file; avoid adding extra “directory-of-directory” layers.
+- Do not store task progress or daily state here:
+  - Team-visible progress belongs in Taskdoc `progress`
+  - Short-term working set belongs in reminders
 
 ### 3. Usage Scenarios
 
 - **Task persistence**: Save long-term task progress
 - **Context memory**: Save important information from conversation context
 - **Preference settings**: Save user preferences and configuration information
+
+> Note: If you find yourself using personal memory to store “current progress of this run”, it likely belongs in Taskdoc `progress` or reminders instead.
 
 ## Relationship with Other Tools
 

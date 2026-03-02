@@ -33,19 +33,19 @@ The team_memory toolset uses a **path key-value storage** model, similar to memo
 
 ## Tool Overview
 
-| Tool                  | Function                                            |
-| --------------------- | --------------------------------------------------- |
-| add_shared_memory     | Create new shared memory (when path does not exist) |
-| replace_shared_memory | Update existing shared memory (when path exists)    |
-| drop_shared_memory    | Delete shared memory                                |
-| clear_shared_memory   | Clear all shared memory (irrecoverable)             |
+| Tool                | Function                                            |
+| ------------------- | --------------------------------------------------- |
+| add_team_memory     | Create new shared memory (when path does not exist) |
+| replace_team_memory | Update existing shared memory (when path exists)    |
+| drop_team_memory    | Delete shared memory                                |
+| clear_team_memory   | Clear all shared memory (irrecoverable)             |
 
 ## Memory Lifecycle
 
-1. **Create (add)**: Use `add_shared_memory` to create new shared memory
+1. **Create (add)**: Use `add_team_memory` to create new shared memory
 2. **Read**: All team members can read shared memory
-3. **Update (replace)**: Use `replace_shared_memory` to update memory content
-4. **Delete (drop)**: Use `drop_shared_memory` to delete specific memory
+3. **Update (replace)**: Use `replace_team_memory` to update memory content
+4. **Delete (drop)**: Use `drop_team_memory` to delete specific memory
 
 ## Best Practices
 
@@ -75,7 +75,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to memo
 
 ## Limitations and Notes
 
-1. Memory content has size limit (max 1MB per memory)
-2. Memory path cannot exceed 255 characters
-3. `clear_shared_memory` will delete all shared memory, **irrecoverable**
-4. All team members can modify shared memory, please operate with caution
+1. Path guardrails: absolute paths are forbidden; `..` is forbidden.
+2. Content guardrail: `content` must be a non-empty string.
+3. `clear_team_memory` will delete all shared memory, **irrecoverable**.
+4. Shared memory should be maintained by governance roles; keep it small and stable.

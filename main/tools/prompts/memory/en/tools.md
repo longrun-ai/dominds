@@ -30,12 +30,8 @@ Create new memory (when path does not exist).
 
 **Returns:**
 
-```yaml
-status: ok|error
-path: <memory path>
-content_size: <content size in bytes>
-created_at: <creation timestamp>
-```
+- Success: a short plain-text message in the work language (e.g. `Added`).
+- Failure: a plain-text error message (often starts with `Error:`) with an actionable next step (e.g. use `replace_memory`).
 
 **Errors:**
 
@@ -52,12 +48,8 @@ Update existing memory (when path exists).
 
 **Returns:**
 
-```yaml
-status: ok|error
-path: <memory path>
-content_size: <content size in bytes>
-updated_at: <update timestamp>
-```
+- Success: a short plain-text message in the work language (e.g. `Updated`).
+- Failure: a plain-text error message (often starts with `Error:`) with an actionable next step (e.g. use `add_memory`).
 
 **Errors:**
 
@@ -73,11 +65,8 @@ Delete specified memory.
 
 **Returns:**
 
-```yaml
-status: ok|error
-path: <memory path>
-deleted_at: <deletion timestamp>
-```
+- Success: a short plain-text message in the work language (e.g. `Deleted`).
+- Failure: a plain-text error message (often starts with `Error:`).
 
 **Errors:**
 
@@ -93,11 +82,8 @@ Clear all personal memory.
 
 **Returns:**
 
-```yaml
-status: ok|error
-cleared_count: <number of memories deleted>
-cleared_at: <deletion timestamp>
-```
+- Success: a short plain-text message in the work language (e.g. `Cleared`). If there is nothing to clear, returns a message like `No personal memory to clear.`
+- Failure: a plain-text error message.
 
 **Errors:**
 
@@ -137,18 +123,7 @@ drop_memory({
 clear_memory({});
 ```
 
-## YAML Output Contract
+## Output and Language
 
-All tool outputs use YAML format for programmatic processing:
-
-- `status`: Operation status, `ok` for success, `error` for failure
-- `path`: Memory path
-- Other fields: Additional information for specific operations
-
-On error, returns:
-
-```yaml
-status: error
-error_code: <error code>
-message: <error message>
-```
+- Output is **plain text**, not structured JSON/YAML.
+- The message language follows the current **work language**.

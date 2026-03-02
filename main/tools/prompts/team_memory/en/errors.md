@@ -14,7 +14,7 @@
 
 ### SHARED_MEMORY_ALREADY_EXISTS
 
-**Description:** Path already exists, cannot use `add_shared_memory` to create new memory.
+**Description:** Path already exists, cannot use `add_team_memory` to create new memory.
 
 **Cause:**
 
@@ -22,7 +22,7 @@
 
 **Solution:**
 
-- Use `replace_shared_memory` to update existing memory
+- Use `replace_team_memory` to update existing memory
 - Or use a different path to create new memory
 
 ### SHARED_MEMORY_NOT_FOUND
@@ -36,7 +36,7 @@
 
 **Solution:**
 
-- For update/delete operations, first use `add_shared_memory` to create
+- For update/delete operations, first use `add_team_memory` to create
 - Check if the path is correct
 
 ### SHARED_MEMORY_PATH_INVALID
@@ -97,9 +97,9 @@ A: All team members can read and modify shared memory. Please operate with cauti
 
 A: It's recommended to read existing content first before modifying, confirm there are no conflicts, then update. You can also include version numbers or dates in the path to distinguish.
 
-### Q: Will clear_shared_memory affect other members?
+### Q: Will clear_team_memory affect other members?
 
-A: Yes, `clear_shared_memory` will delete all shared memory, affecting all team members. This operation is irreversible, please use with caution.
+A: Yes, `clear_team_memory` will delete all shared memory, affecting all team members. This operation is irreversible, please use with caution.
 
 ### Q: Is there a limit on the number of shared memories?
 

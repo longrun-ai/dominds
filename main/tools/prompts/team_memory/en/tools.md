@@ -19,7 +19,7 @@
 
 ## Tool List
 
-### 1. add_shared_memory
+### 1. add_team_memory
 
 Create new shared memory (when path does not exist).
 
@@ -39,9 +39,9 @@ created_at: <creation timestamp>
 
 **Errors:**
 
-- `SHARED_MEMORY_ALREADY_EXISTS`: Path already exists, use `replace_shared_memory` to update
+- Target path already exists: use `replace_team_memory` to update
 
-### 2. replace_shared_memory
+### 2. replace_team_memory
 
 Update existing shared memory (when path exists).
 
@@ -61,9 +61,9 @@ updated_at: <update timestamp>
 
 **Errors:**
 
-- `SHARED_MEMORY_NOT_FOUND`: Path does not exist, use `add_shared_memory` to create
+- Target path does not exist: use `add_team_memory` to create
 
-### 3. drop_shared_memory
+### 3. drop_team_memory
 
 Delete specified shared memory.
 
@@ -83,7 +83,7 @@ deleted_at: <deletion timestamp>
 
 - `SHARED_MEMORY_NOT_FOUND`: Path does not exist
 
-### 4. clear_shared_memory
+### 4. clear_team_memory
 
 Clear all shared memory.
 
@@ -108,7 +108,7 @@ cleared_at: <deletion timestamp>
 ### Add Team Convention
 
 ```typescript
-add_shared_memory({
+add_team_memory({
   path: 'team/conventions/commit-message',
   content:
     '## Commit Message Format\n\nFormat: <type>(<scope>): <description>\n\n### Type\n- feat: New feature\n- fix: Bug fix\n- docs: Documentation\n- style: Formatting\n- refactor: Refactoring\n- test: Testing\n- chore: Maintenance\n\n### Examples\nfeat(auth): Add login verification\nfix(ui): Fix button style',
@@ -118,7 +118,7 @@ add_shared_memory({
 ### Update Project Status
 
 ```typescript
-replace_shared_memory({
+replace_team_memory({
   path: 'team/project/status',
   content:
     '## Project Status\n\n- Current Sprint: Sprint 15\n- Release Target: 2024-02-01\n- Blocking Issues: None\n- Pending Review: 3 PRs',
@@ -128,23 +128,12 @@ replace_shared_memory({
 ### Delete Deprecated Information
 
 ```typescript
-drop_shared_memory({
+drop_team_memory({
   path: 'team/deprecated/api-v1',
 });
 ```
 
-## YAML Output Contract
+## Output and Language
 
-All tool outputs use YAML format for programmatic processing:
-
-- `status`: Operation status, `ok` for success, `error` for failure
-- `path`: Memory path
-- Other fields: Additional information for specific operations
-
-On error, returns:
-
-```yaml
-status: error
-error_code: <error code>
-message: <error message>
-```
+- Output is **plain text**, not structured JSON/YAML.
+- The message language follows the current **work language**.
