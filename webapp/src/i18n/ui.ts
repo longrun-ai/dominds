@@ -40,6 +40,8 @@ export type UiStrings = {
   reminders: string;
   refreshReminders: string;
   noReminders: string;
+  numberedReminders: string;
+  virtualReminders: string;
   close: string;
 
   createNewDialogTitle: string;
@@ -374,6 +376,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       reminders: '提醒',
       refreshReminders: '刷新提醒',
       noReminders: '没有提醒',
+      numberedReminders: '编号提醒',
+      virtualReminders: '虚拟提醒',
       close: '关闭',
 
       createNewDialogTitle: '创建新对话',
@@ -714,6 +718,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     reminders: 'Reminders',
     refreshReminders: 'Refresh Reminders',
     noReminders: 'No reminders',
+    numberedReminders: 'Numbered reminders',
+    virtualReminders: 'Virtual reminders',
     close: 'Close',
 
     createNewDialogTitle: 'Create New Dialog',

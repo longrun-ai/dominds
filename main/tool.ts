@@ -51,11 +51,41 @@ export type ToolCallOutput =
       contentItems?: FuncResultContentItem[];
     };
 
+export interface ReminderOptions {
+  readonly echoback?: boolean;
+}
+
 // Reminder-related interfaces
-export interface Reminder {
+export interface Reminder extends ReminderOptions {
   readonly content: string;
   readonly owner?: ReminderOwner;
   readonly meta?: JsonValue;
+}
+
+export function reminderEchoBackEnabled(reminder: Reminder): boolean {
+  return reminder.echoback !== false;
+}
+
+export function reminderIsVirtual(reminder: Reminder): boolean {
+  return !reminderEchoBackEnabled(reminder);
+}
+
+export function reminderIsNumbered(reminder: Reminder): boolean {
+  return reminderEchoBackEnabled(reminder);
+}
+
+export function computeReminderNoByIndex(reminders: readonly Reminder[]): Map<number, number> {
+  const reminderNoByIndex = new Map<number, number>();
+  let reminderNo = 0;
+  for (let index = 0; index < reminders.length; index += 1) {
+    const reminder = reminders[index];
+    if (!reminder || !reminderIsNumbered(reminder)) {
+      continue;
+    }
+    reminderNo += 1;
+    reminderNoByIndex.set(index, reminderNo);
+  }
+  return reminderNoByIndex;
 }
 
 export type ReminderTreatment = 'drop' | 'keep' | 'update';

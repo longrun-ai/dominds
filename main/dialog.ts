@@ -39,7 +39,13 @@ import { generateShortId } from './shared/utils/id';
 import { formatAssignmentFromSupdialog } from './shared/utils/inter-dialog-format';
 import { formatUnifiedTimestamp } from './shared/utils/time';
 import type { JsonValue } from './tool';
-import { Reminder, ReminderOwner } from './tool';
+import {
+  computeReminderNoByIndex,
+  Reminder,
+  reminderEchoBackEnabled,
+  ReminderOptions,
+  ReminderOwner,
+} from './tool';
 import { generateDialogID } from './utils/id';
 
 type NewCourseHookResult =
@@ -503,8 +509,14 @@ export abstract class Dialog {
     owner?: ReminderOwner,
     meta?: JsonValue,
     position?: number,
+    options?: ReminderOptions,
   ): void {
-    const reminder: Reminder = { content, owner, meta };
+    const reminder: Reminder = {
+      content,
+      owner,
+      meta,
+      echoback: options?.echoback,
+    };
     const insertIndex = position !== undefined ? position : this.reminders.length;
     if (insertIndex < 0 || insertIndex > this.reminders.length) {
       throw new Error(
@@ -533,7 +545,12 @@ export abstract class Dialog {
     return deleted;
   }
 
-  public updateReminder(index: number, content: string, meta?: JsonValue): Reminder {
+  public updateReminder(
+    index: number,
+    content: string,
+    meta?: JsonValue,
+    options?: ReminderOptions,
+  ): Reminder {
     if (index < 0 || index >= this.reminders.length) {
       throw new Error(
         `Reminder index ${index} does not exist. Available reminders: 0-${this.reminders.length - 1}`,
@@ -544,6 +561,7 @@ export abstract class Dialog {
       content,
       owner: oldReminder.owner,
       meta: meta !== undefined ? meta : oldReminder.meta,
+      echoback: options?.echoback ?? oldReminder.echoback,
     };
     this.reminders[index] = updatedReminder;
     this._updatedAt = formatUnifiedTimestamp(new Date());
@@ -591,6 +609,7 @@ export abstract class Dialog {
                 content: result.updatedContent,
                 owner: reminder.owner,
                 meta: result.updatedMeta !== undefined ? result.updatedMeta : reminder.meta,
+                echoback: reminder.echoback,
               };
               this.reminders[i] = updatedReminder;
             }
@@ -622,9 +641,12 @@ export abstract class Dialog {
       log.warn('Failed to persist reminders', err, { dialogId: this.id.valueOf() });
     }
 
-    const reminders: ReminderContent[] = this.reminders.map((r: Reminder) => ({
+    const reminderNoByIndex = computeReminderNoByIndex(this.reminders);
+    const reminders: ReminderContent[] = this.reminders.map((r: Reminder, index) => ({
       content: r.content,
       meta: r.meta as Record<string, unknown> | undefined,
+      reminder_no: reminderNoByIndex.get(index),
+      echoback: reminderEchoBackEnabled(r),
     }));
 
     // Emit full_reminders_update event with complete reminder list including metadata

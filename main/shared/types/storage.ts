@@ -431,6 +431,7 @@ export interface ReminderStateFile {
      * Must be JSON-serializable.
      */
     meta?: JsonValue;
+    echoback?: boolean;
     createdAt: string;
     priority: 'high' | 'medium' | 'low';
   }>;

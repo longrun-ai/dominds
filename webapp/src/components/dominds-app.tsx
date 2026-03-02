@@ -4403,6 +4403,111 @@ export class DomindsApp extends HTMLElement {
         white-space: pre-wrap;
         word-break: break-word;
       }
+
+      .rem-section {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .rem-section + .rem-section {
+        margin-top: 10px;
+      }
+
+      .rem-divider {
+        border: 0;
+        border-top: 1px solid var(--dominds-border, #e0e0e0);
+        margin: 8px 0;
+      }
+
+      .rem-divider-section {
+        margin: 10px 0;
+      }
+
+      .rem-item-virtual {
+        border-style: dashed;
+        background: color-mix(in srgb, var(--dominds-hover) 65%, var(--dominds-bg) 35%);
+      }
+
+      .rem-plan-reminder {
+        --rem-plan-spinner-track: #b9c9da;
+        --rem-plan-spinner-head: #3f78af;
+        --rem-plan-done: #2f8a56;
+        --rem-plan-pending: #6f7a8a;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+        padding: 6px 8px;
+      }
+
+      :host-context(html[data-theme='dark']) .rem-plan-reminder {
+        --rem-plan-spinner-track: #4f647a;
+        --rem-plan-spinner-head: #8fb6de;
+        --rem-plan-done: #78c79b;
+        --rem-plan-pending: #9ca9bd;
+      }
+
+      .rem-plan-explanation {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .rem-plan-list-wrap {
+        width: 100%;
+      }
+
+      .rem-plan-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .rem-plan-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .rem-plan-icon {
+        width: 12px;
+        height: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 12px;
+        line-height: 12px;
+      }
+
+      .rem-plan-icon-spinner {
+        width: 12px;
+        height: 12px;
+        border: 1.5px solid var(--rem-plan-spinner-track);
+        border-top-color: var(--rem-plan-spinner-head);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+        box-sizing: border-box;
+      }
+
+      .rem-plan-icon-done {
+        color: var(--rem-plan-done);
+        font-weight: 700;
+      }
+
+      .rem-plan-icon-pending {
+        color: var(--rem-plan-pending);
+        font-weight: 700;
+      }
+
+      .rem-plan-text {
+        flex: 1;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
     `;
   }
 
@@ -8985,52 +9090,158 @@ export class DomindsApp extends HTMLElement {
       });
     }
 
+    const numberedReminders = this.toolbarReminders.filter((r) => r && r.echoback !== false);
+    const virtualReminders = this.toolbarReminders.filter((r) => r && r.echoback === false);
+
     // Generate content HTML once
     let contentHTML = '';
-    if (this.toolbarReminders.length === 0) {
+    if (numberedReminders.length === 0 && virtualReminders.length === 0) {
       const t = getUiStrings(this.uiLanguage);
       contentHTML = `<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">${t.noReminders}</div>`;
     } else {
       const t = getUiStrings(this.uiLanguage);
-      const items = this.toolbarReminders
+      const numberedItems = numberedReminders
         .map((r, i) => {
           if (!r || !r.content) {
             return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content" style="color: var(--dominds-muted); font-style: italic;">${t.loading}</div></div>`;
           }
-
-          // Format reminder content with metadata display if available
-          let displayContent = r.content;
-
-          // If this is a daemon reminder with metadata, display PID prominently
-          if (r.meta && typeof r.meta === 'object') {
-            const meta = r.meta as Record<string, unknown>;
-            const metaPid = typeof meta.pid === 'number' ? meta.pid : undefined;
-            const metaType = typeof meta.type === 'string' ? meta.type : undefined;
-            const metaCommand = typeof meta.command === 'string' ? meta.command : undefined;
-
-            // If this is a daemon type reminder with PID, show enhanced display
-            if (metaType === 'daemon' && metaPid) {
-              const pidStr = String(metaPid);
-              const commandStr = metaCommand || t.unknownCommand;
-              displayContent = `🔄 ${t.daemonLabel} (PID: ${pidStr})\n${t.commandLabel}: ${commandStr}`;
-            }
-          }
-
-          // Format the content: escape HTML and preserve line breaks
-          const formattedContent = displayContent
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\n/g, '<br>');
-          return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content">${formattedContent}</div></div>`;
+          const reminderNo =
+            typeof r.reminder_no === 'number' &&
+            Number.isInteger(r.reminder_no) &&
+            r.reminder_no > 0
+              ? r.reminder_no
+              : i + 1;
+          const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
+          return `<div class="rem-item"><div class="rem-item-number">${reminderNo}.</div><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
         })
         .join('');
-      contentHTML = items;
+      const virtualItemsArray = virtualReminders.map((r) => {
+        if (!r || !r.content) {
+          return `<div class="rem-item rem-item-virtual"><div class="rem-item-content" style="color: var(--dominds-muted); font-style: italic;">${t.loading}</div></div>`;
+        }
+        const meta =
+          r.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : undefined;
+        const kind = typeof meta?.kind === 'string' ? meta.kind : '';
+        if (kind === 'plan') {
+          return this.renderPlanVirtualReminderItem(r.content);
+        }
+        const displayContent = this.formatReminderDisplayContent(r.content, r.meta);
+        return `<div class="rem-item rem-item-virtual"><div class="rem-item-content">${this.renderReminderPlainHtml(displayContent)}</div></div>`;
+      });
+      const virtualItems = virtualItemsArray.join('<hr class="rem-divider">');
+
+      const sections: string[] = [];
+      if (virtualItems.length > 0) {
+        sections.push(`<div class="rem-section">${virtualItems}</div>`);
+      }
+      if (numberedItems.length > 0) {
+        if (virtualItems.length > 0) {
+          sections.push('<hr class="rem-divider rem-divider-section">');
+        }
+        sections.push(`<div class="rem-section">${numberedItems}</div>`);
+      }
+      contentHTML = sections.join('');
     }
 
     // Apply content to ALL widget containers
     widgetContents.forEach((widgetContent, index) => {
       widgetContent.innerHTML = contentHTML;
     });
+  }
+
+  private formatReminderDisplayContent(
+    content: string,
+    meta: Record<string, unknown> | undefined,
+  ): string {
+    if (!meta) {
+      return content;
+    }
+    const metaPid = typeof meta.pid === 'number' ? meta.pid : undefined;
+    const metaType = typeof meta.type === 'string' ? meta.type : undefined;
+    const metaCommand = typeof meta.command === 'string' ? meta.command : undefined;
+    if (metaType === 'daemon' && metaPid) {
+      const t = getUiStrings(this.uiLanguage);
+      const pidStr = String(metaPid);
+      const commandStr = metaCommand || t.unknownCommand;
+      return `🔄 ${t.daemonLabel} (PID: ${pidStr})\n${t.commandLabel}: ${commandStr}`;
+    }
+    return content;
+  }
+
+  private renderReminderPlainHtml(content: string): string {
+    return escapeHtml(content).replace(/\n/g, '<br>');
+  }
+
+  private renderPlanVirtualReminderItem(content: string): string {
+    const parsed = this.parsePlanReminderContent(content);
+    if (parsed.items.length === 0) {
+      return `<div class="rem-item rem-item-virtual rem-plan-reminder"><div class="rem-item-content">${this.renderReminderPlainHtml(content)}</div></div>`;
+    }
+    const listItems = parsed.items
+      .map((item) => {
+        if (item.status === 'in_progress') {
+          return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-spinner" aria-hidden="true"></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
+        }
+        if (item.status === 'completed') {
+          return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-done" aria-hidden="true">✓</span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
+        }
+        return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-pending" aria-hidden="true">○</span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
+      })
+      .join('');
+
+    // Design decision:
+    // - Keep Codex VSCode parity for empty todo lists (not shown; backend deletes reminder).
+    // - Preserve optional explanation in Dominds when todo items exist for added context.
+    const explanationHtml =
+      parsed.explanation && parsed.explanation.trim().length > 0
+        ? `<div class="rem-plan-explanation">${this.renderReminderPlainHtml(parsed.explanation)}</div>`
+        : '';
+
+    return `<div class="rem-item rem-item-virtual rem-plan-reminder">${explanationHtml}<div class="rem-plan-list-wrap"><ul class="rem-plan-list">${listItems}</ul></div></div>`;
+  }
+
+  private parsePlanReminderContent(content: string): {
+    explanation?: string;
+    items: Array<{ status: 'pending' | 'in_progress' | 'completed'; text: string }>;
+  } {
+    const items: Array<{ status: 'pending' | 'in_progress' | 'completed'; text: string }> = [];
+    let explanation: string | undefined;
+    const lines = content.split('\n');
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (line === '') {
+        continue;
+      }
+      if (explanation === undefined) {
+        const explanationMatch = line.match(/^(?:Explanation|说明)\s*[:：]\s*(.+)$/i);
+        if (explanationMatch?.[1]) {
+          const parsedExplanation = explanationMatch[1].trim();
+          if (parsedExplanation.length > 0) {
+            explanation = parsedExplanation;
+          }
+          continue;
+        }
+      }
+      const m = line.match(/^\d+\)\s*\[([^\]]+)\]\s*(.+)$/);
+      if (!m) {
+        continue;
+      }
+      const statusRaw = m[1]?.trim().toLowerCase();
+      const text = m[2]?.trim() ?? '';
+      if (text === '') {
+        continue;
+      }
+      let status: 'pending' | 'in_progress' | 'completed';
+      if (statusRaw === 'in_progress' || statusRaw === '进行中') {
+        status = 'in_progress';
+      } else if (statusRaw === 'completed' || statusRaw === '已完成') {
+        status = 'completed';
+      } else {
+        status = 'pending';
+      }
+      items.push({ status, text });
+    }
+    return { explanation, items };
   }
 
   /**

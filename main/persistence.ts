@@ -1746,11 +1746,16 @@ export class DiskFileDialogStore extends DialogStore {
 
       // Rehydrate reminders from dialog state
       const dialogState = await DialogPersistence.restoreDialog(dialog.id, status);
-      const rehydrated: Reminder[] = (dialogState?.reminders ?? []).map((r) => {
-        return { content: r.content, owner: r.owner, meta: r.meta };
-      });
+      if (!dialogState) {
+        throw new Error(
+          `Dialog state missing during direct event replay: ${dialog.id.valueOf()} (${status})`,
+        );
+      }
+      // Keep typed reminder objects as-is instead of field-picking rehydrate.
+      // This prevents accidental field loss (e.g. echoback) when Reminder shape evolves.
+      const restoredReminders: Reminder[] = dialogState.reminders;
       dialog.reminders.length = 0;
-      dialog.reminders.push(...rehydrated);
+      dialog.reminders.push(...restoredReminders);
     } catch (error) {
       log.error(`Failed to send dialog events directly for ${dialog.id.selfId}:`, error);
       throw error;
@@ -3249,6 +3254,7 @@ export class DialogPersistence {
           content: r.content,
           ownerName: r.owner ? r.owner.name : undefined,
           meta: r.meta,
+          echoback: r.echoback,
           createdAt: formatUnifiedTimestamp(new Date()),
           priority: 'medium',
         })),
@@ -3292,6 +3298,7 @@ export class DialogPersistence {
             content: r.content,
             owner,
             meta: r.meta,
+            echoback: r.echoback,
             createdAt: r.createdAt,
             priority: r.priority,
           };

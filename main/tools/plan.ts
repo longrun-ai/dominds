@@ -63,10 +63,10 @@ export const updatePlanTool: FuncTool = {
   type: 'func',
   name: 'update_plan',
   description:
-    'Updates the task plan by recording it into reminders. Provide an optional explanation and a list of plan items, each with a step and status. At most one step can be in_progress at a time.',
+    'Updates the task plan. Provide an optional explanation and a list of plan items, each with a step and status. At most one step can be in_progress at a time.',
   descriptionI18n: {
-    en: 'Updates the task plan by recording it into reminders. Provide an optional explanation and a list of plan items, each with a step and status. At most one step can be in_progress at a time.',
-    zh: '更新任务计划（写入 reminders）。可选 explanation + plan 列表（每项包含 step + status）。同一时间最多允许一个 in_progress。',
+    en: 'Updates the task plan. Provide an optional explanation and a list of plan items, each with a step and status. At most one step can be in_progress at a time.',
+    zh: '更新任务计划。可选 explanation + plan 列表（每项包含 step + status）。同一时间最多允许一个 in_progress。',
   },
   parameters: {
     type: 'object',
@@ -174,11 +174,23 @@ export const updatePlanTool: FuncTool = {
       }
     }
 
+    if (plan.length === 0) {
+      // Align with Codex VSCode behavior: an empty todo list should not render
+      // a visible plan block. We delete the plan reminder so UI has nothing to show.
+      if (existingIndex !== undefined) {
+        dlg.deleteReminder(existingIndex);
+      }
+      return formatToolActionResult(language, 'updated');
+    }
+
+    const reminderOptions = {
+      echoback: false,
+    } as const;
     if (existingIndex === undefined) {
       // Insert at the top so Plan stays prominent in reminder list UI.
-      dlg.addReminder(reminderContent, undefined, reminderMeta, 0);
+      dlg.addReminder(reminderContent, undefined, reminderMeta, 0, reminderOptions);
     } else {
-      dlg.updateReminder(existingIndex, reminderContent, reminderMeta);
+      dlg.updateReminder(existingIndex, reminderContent, reminderMeta, reminderOptions);
     }
 
     return formatToolActionResult(language, 'updated');

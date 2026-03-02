@@ -25,7 +25,14 @@ import type { TeammateCallAnchorRecord } from '../../shared/types/storage';
 import { generateShortId } from '../../shared/utils/id';
 import { formatUnifiedTimestamp } from '../../shared/utils/time';
 import type { Team } from '../../team';
-import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../../tool';
+import {
+  computeReminderNoByIndex,
+  reminderEchoBackEnabled,
+  type FuncTool,
+  type Tool,
+  type ToolArguments,
+  type ToolCallOutput,
+} from '../../tool';
 import { formatTaskDocContent } from '../../utils/taskdoc';
 import type {
   ChatMessage,
@@ -536,20 +543,30 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
 async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
   if (dlg.reminders.length === 0) return [];
   const language = getWorkLanguage();
-  return await Promise.all(
-    dlg.reminders.map(async (reminder, index): Promise<ChatMessage> => {
-      if (reminder.owner) {
-        return await reminder.owner.renderReminder(dlg, reminder, index);
-      }
-      return {
-        type: 'environment_msg',
-        role: 'user',
-        content: formatReminderItemGuide(language, index + 1, reminder.content, {
-          meta: reminder.meta,
-        }),
-      };
-    }),
-  );
+  const reminderNoByIndex = computeReminderNoByIndex(dlg.reminders);
+  const rendered: ChatMessage[] = [];
+  for (let index = 0; index < dlg.reminders.length; index += 1) {
+    const reminder = dlg.reminders[index];
+    if (!reminder || !reminderEchoBackEnabled(reminder)) {
+      continue;
+    }
+    const reminderNo = reminderNoByIndex.get(index);
+    if (reminderNo === undefined) {
+      continue;
+    }
+    if (reminder.owner) {
+      rendered.push(await reminder.owner.renderReminder(dlg, reminder, reminderNo - 1));
+      continue;
+    }
+    rendered.push({
+      type: 'environment_msg',
+      role: 'user',
+      content: formatReminderItemGuide(language, reminderNo, reminder.content, {
+        meta: reminder.meta,
+      }),
+    });
+  }
+  return rendered;
 }
 
 function parseUnifiedTimestampMs(ts: string): number | null {

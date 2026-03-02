@@ -20,7 +20,8 @@
  * Can both be triggered by an agent autonomously, or by human with role='user' msg,
  * both ways treated the same
  *
- * agents always see reminders in llm input, humans should have some sticky UI component to see the reminders
+ * reminder items with `echoback !== false` are injected into llm input;
+ * virtual reminders are UI-only and do not consume reminder_no numbering
  * agents should see hints of reminder manip syntax
  * humans should better have clickable UI widgets to draft reminder manips
  */
@@ -33,7 +34,7 @@ import { formatToolActionResult } from '../shared/i18n/tool-result-messages';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type { LanguageCode } from '../shared/types/language';
 import type { Team } from '../team';
-import type { FuncTool, ToolArguments } from '../tool';
+import { reminderIsNumbered, type FuncTool, type Reminder, type ToolArguments } from '../tool';
 import {
   bearInMindFilenameForSection,
   isTaskPackagePath,
@@ -68,6 +69,18 @@ type CtrlMessages = Readonly<{
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function listNumberedReminderIndices(reminders: readonly Reminder[]): number[] {
+  const indices: number[] = [];
+  for (let index = 0; index < reminders.length; index += 1) {
+    const reminder = reminders[index];
+    if (!reminder || !reminderIsNumbered(reminder)) {
+      continue;
+    }
+    indices.push(index);
+  }
+  return indices;
 }
 
 function getCtrlMessages(language: LanguageCode): CtrlMessages {
@@ -193,11 +206,16 @@ export const deleteReminderTool: FuncTool = {
     if (typeof reminderNoValue !== 'number' || !Number.isInteger(reminderNoValue)) {
       return t.invalidFormatDelete;
     }
+    const numberedIndices = listNumberedReminderIndices(dlg.reminders);
     const reminderNo = reminderNoValue - 1; // Convert to 0-based index
-    if (reminderNo < 0 || reminderNo >= dlg.reminders.length) {
-      return t.reminderDoesNotExist(String(reminderNoValue), dlg.reminders.length);
+    if (reminderNo < 0 || reminderNo >= numberedIndices.length) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
     }
-    dlg.deleteReminder(reminderNo);
+    const targetIndex = numberedIndices[reminderNo];
+    if (targetIndex === undefined) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
+    }
+    dlg.deleteReminder(targetIndex);
     return formatToolActionResult(language, 'deleted');
   },
 };
@@ -227,6 +245,7 @@ export const addReminderTool: FuncTool = {
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!reminderContent) return t.reminderContentEmpty;
 
+    const numberedIndices = listNumberedReminderIndices(dlg.reminders);
     const positionValue = args['position'];
     let insertIndex = dlg.reminders.length;
     // Codex provider requires all func args to be schema-required; we use position=0 as sentinel for "append".
@@ -234,9 +253,16 @@ export const addReminderTool: FuncTool = {
       if (typeof positionValue !== 'number' || !Number.isInteger(positionValue)) {
         return t.invalidFormatAdd;
       }
-      insertIndex = positionValue - 1;
-      if (insertIndex < 0 || insertIndex > dlg.reminders.length) {
-        return t.invalidReminderPosition(String(positionValue), dlg.reminders.length + 1);
+      const position = positionValue - 1;
+      if (position < 0 || position > numberedIndices.length) {
+        return t.invalidReminderPosition(String(positionValue), numberedIndices.length + 1);
+      }
+      if (position < numberedIndices.length) {
+        const targetIndex = numberedIndices[position];
+        if (targetIndex === undefined) {
+          return t.invalidReminderPosition(String(positionValue), numberedIndices.length + 1);
+        }
+        insertIndex = targetIndex;
       }
     }
 
@@ -270,12 +296,17 @@ export const updateReminderTool: FuncTool = {
     if (typeof reminderNoValue !== 'number' || !Number.isInteger(reminderNoValue)) {
       return t.invalidFormatUpdate;
     }
+    const numberedIndices = listNumberedReminderIndices(dlg.reminders);
     const reminderNo = reminderNoValue - 1;
-    if (reminderNo < 0 || reminderNo >= dlg.reminders.length) {
-      return t.reminderDoesNotExist(String(reminderNoValue), dlg.reminders.length);
+    if (reminderNo < 0 || reminderNo >= numberedIndices.length) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
+    }
+    const targetIndex = numberedIndices[reminderNo];
+    if (targetIndex === undefined) {
+      return t.reminderDoesNotExist(String(reminderNoValue), numberedIndices.length);
     }
 
-    const reminder = dlg.reminders[reminderNo];
+    const reminder = dlg.reminders[targetIndex];
     // `reminder.meta` is persisted JSON. Runtime shape checks are unavoidable here because tools
     // may attach arbitrary metadata for reminder ownership/management.
     const meta = reminder?.meta;
@@ -295,7 +326,7 @@ export const updateReminderTool: FuncTool = {
     const reminderContent = typeof contentValue === 'string' ? contentValue.trim() : '';
     if (!reminderContent) return t.reminderContentEmpty;
 
-    dlg.updateReminder(reminderNo, reminderContent);
+    dlg.updateReminder(targetIndex, reminderContent);
     return formatToolActionResult(language, 'updated');
   },
 };

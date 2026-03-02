@@ -248,7 +248,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       constraintsLine:
         '- 约定：`constraints` 只写任务特有的硬要求，不得写入系统提示/工具文档里已明确且由系统强制执行的通用规则（例如 `*.tsk/` 封装禁止通用文件工具）。一经发现重复，必须删除并告知用户。',
       remindersLine:
-        '- 提醒项（工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。',
+        '- 提醒项（即编号提醒，工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。',
       teamMemoryLine: '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。',
       personalMemoryLine:
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；可维护你职责范围内的“rtws 索引”（关键文档/代码的准确路径 + 必要要点），以减少重复读文件；不要记录具体任务状态。',
@@ -286,7 +286,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     constraintsLine:
       '- Convention: Taskdoc `constraints` must contain task-specific requirements only; do not include global, system-enforced rules already stated in system prompt/tool docs (e.g. `.tsk/` encapsulation bans general file tools). If duplication is found, you MUST remove it and notify the user.',
     remindersLine:
-      '- Reminders (working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small (often 1–3 items), prefer `update_reminder` to compress/merge; delete when obsolete.',
+      '- Reminders (i.e. numbered reminders, working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small (often 1–3 items), prefer `update_reminder` to compress/merge; delete when obsolete.',
     teamMemoryLine: '- Team memory: stable shared conventions (cross-task).',
     personalMemoryLine:
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Maintain a compact responsibility-area rtws index (exact key doc/code paths + minimal key facts) to reduce repeat file reads; do not store per-task state.',

@@ -251,6 +251,8 @@ export interface TeammateCallAnchorEvent {
 export interface ReminderContent {
   content: string;
   meta?: Record<string, unknown>;
+  reminder_no?: number;
+  echoback?: boolean;
 }
 
 export interface FullRemindersEvent {
