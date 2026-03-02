@@ -82,7 +82,7 @@ export const ICON_MASK_URLS = {
   send: asMaskUrl(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 2L2 22' fill='none' stroke='black' stroke-width='2'/><path d='M12 2L22 22' fill='none' stroke='black' stroke-width='2'/><line x1='12' y1='2' x2='12' y2='16.8' stroke='black' stroke-width='2'/></svg>",
   ),
-  appendNow: asMaskUrl(
+  queueNow: asMaskUrl(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><line x1='7' y1='3' x2='17' y2='3' stroke='black' stroke-width='1.4' stroke-linecap='round'/><path d='M12 7L2.2 22' fill='none' stroke='black' stroke-width='2'/><path d='M12 7L21.8 22' fill='none' stroke='black' stroke-width='2'/><line x1='12' y1='7' x2='12' y2='18.8' stroke='black' stroke-width='2'/></svg>",
   ),
   insertDown: asMaskUrl(

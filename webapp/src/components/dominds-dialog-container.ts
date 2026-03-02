@@ -96,6 +96,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private callTimingTicker: number | null = null;
   private webSearchSectionByItemId = new Map<string, HTMLElement>();
   private webSearchSectionBySeq = new Map<number, HTMLElement>();
+  private queuedUserBubbleByMsgId = new Map<string, HTMLElement>();
   private pendingTeammateCallAnchorByGenseq = new Map<number, TeammateCallAnchorMeta>();
   private progressiveExpandObserverByTarget = new WeakMap<HTMLElement, ResizeObserver>();
 
@@ -700,6 +701,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopCallTimingTicker();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
+    this.queuedUserBubbleByMsgId.clear();
     this.pendingTeammateCallAnchorByGenseq.clear();
 
     const messages = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
@@ -725,6 +727,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.stopCallTimingTicker();
     this.webSearchSectionByItemId.clear();
     this.webSearchSectionBySeq.clear();
+    this.queuedUserBubbleByMsgId.clear();
     this.pendingTeammateCallAnchorByGenseq.clear();
 
     // Clear all DOM messages when switching dialogs
@@ -867,6 +870,10 @@ export class DomindsDialogContainer extends HTMLElement {
         break;
       }
 
+      case 'queue_user_msg_evt':
+        this.handleQueuedUserMsg(event);
+        break;
+
       case 'end_of_user_saying_evt':
         {
           // Render optional user divider/content for this generation.
@@ -897,7 +904,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.activeGenSeq = event.genseq;
         this.setGenerationGlowActive(true);
         // Mark generation as started - this ensures substreams arrive in correct order
-        this.handleGeneratingStart(event.genseq, event.timestamp);
+        this.handleGeneratingStart(event.genseq, event.timestamp, event.msgId);
         break;
       case 'generating_finish_evt':
         {
@@ -1046,7 +1053,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   // === GENERATING EVENTS (Frontend Bubble Management) ===
-  private handleGeneratingStart(seq: number, timestamp: string): void {
+  private handleGeneratingStart(seq: number, timestamp: string, msgId?: string): void {
     const applyPendingCallAnchor = (bubble: HTMLElement): void => {
       const pendingAnchor = this.pendingTeammateCallAnchorByGenseq.get(seq);
       if (!pendingAnchor) return;
@@ -1054,7 +1061,38 @@ export class DomindsDialogContainer extends HTMLElement {
       this.pendingTeammateCallAnchorByGenseq.delete(seq);
     };
 
+    const finalizeExistingBubble = (existingBubble: HTMLElement): void => {
+      existingBubble.classList.remove('generating');
+      existingBubble.classList.add('completed');
+      existingBubble.setAttribute('data-finalized', 'true');
+      this.thinkingSection = undefined;
+      this.markdownSection = undefined;
+      this.callingSection = undefined;
+      this.generationBubble = undefined;
+    };
+
+    const queuedMsgId = typeof msgId === 'string' ? msgId.trim() : '';
+    const queuedBubble = queuedMsgId === '' ? undefined : this.takeQueuedUserBubble(queuedMsgId);
+
     const existingBubble = this.generationBubble;
+    if (queuedBubble) {
+      if (existingBubble && existingBubble !== queuedBubble) {
+        finalizeExistingBubble(existingBubble);
+      }
+      this.activeGenSeq = seq;
+      const bubble = this.reuseQueuedUserBubbleForGeneration(
+        queuedBubble,
+        seq,
+        timestamp,
+        queuedMsgId,
+      );
+      applyPendingCallAnchor(bubble);
+      this.generationBubble = bubble;
+      this.startAutoScrollObservation(bubble);
+      this.scrollToBottom();
+      return;
+    }
+
     if (existingBubble) {
       const existingSeq = existingBubble.getAttribute('data-seq');
       if (existingSeq === String(seq)) {
@@ -1072,13 +1110,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
       // If a new generation starts before we saw finish for the prior bubble,
       // finalize the old bubble to avoid mixing streams across seq values.
-      existingBubble.classList.remove('generating');
-      existingBubble.classList.add('completed');
-      existingBubble.setAttribute('data-finalized', 'true');
-      this.thinkingSection = undefined;
-      this.markdownSection = undefined;
-      this.callingSection = undefined;
-      this.generationBubble = undefined;
+      finalizeExistingBubble(existingBubble);
     }
 
     this.activeGenSeq = seq;
@@ -1126,6 +1158,140 @@ export class DomindsDialogContainer extends HTMLElement {
 
     this.handleGeneratingStart(seq, timestamp);
     return this.generationBubble ?? null;
+  }
+
+  private handleQueuedUserMsg(
+    event: Extract<TypedDialogEvent, { type: 'queue_user_msg_evt' }>,
+  ): void {
+    const msgId = typeof event.msgId === 'string' ? event.msgId.trim() : '';
+    const rawContent = typeof event.content === 'string' ? event.content : '';
+    const content = rawContent.trim();
+    if (msgId === '' || content === '') {
+      this.handleProtocolError('queue_user_msg_evt missing required fields: msgId/content');
+      return;
+    }
+
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (!container) return;
+
+    let bubble = this.queuedUserBubbleByMsgId.get(msgId);
+    if (bubble && !bubble.isConnected) {
+      this.queuedUserBubbleByMsgId.delete(msgId);
+      bubble = undefined;
+    }
+    if (!bubble) {
+      for (const node of Array.from(
+        container.querySelectorAll<HTMLElement>('.message.user[data-queued-user-msg="true"]'),
+      )) {
+        if (node.getAttribute('data-user-msg-id') === msgId) {
+          bubble = node;
+          break;
+        }
+      }
+    }
+    if (!bubble) {
+      bubble = this.createMessageElement(content, 'user', event.timestamp, msgId);
+      bubble.setAttribute('data-queued-user-msg', 'true');
+    } else {
+      const contentEl = bubble.querySelector('.user-message') as HTMLElement | null;
+      if (contentEl) {
+        contentEl.textContent = content;
+      }
+      this.setBubbleTimestamp(bubble, event.timestamp);
+    }
+    this.queuedUserBubbleByMsgId.set(msgId, bubble);
+
+    const anchor = this.resolveQueuedUserInsertionAnchor(container);
+    if (anchor && anchor.parentElement === container) {
+      if (bubble.parentElement !== container || bubble.previousElementSibling !== anchor) {
+        if (anchor.nextSibling) {
+          container.insertBefore(bubble, anchor.nextSibling);
+        } else {
+          container.appendChild(bubble);
+        }
+      }
+    } else if (bubble.parentElement !== container) {
+      container.appendChild(bubble);
+    }
+    this.scrollToBottom();
+  }
+
+  private resolveQueuedUserInsertionAnchor(container: HTMLElement): HTMLElement | undefined {
+    const activeBubble = this.generationBubble;
+    if (activeBubble && activeBubble.isConnected && activeBubble.parentElement === container) {
+      return activeBubble;
+    }
+    const generationBubbles = container.querySelectorAll<HTMLElement>('.generation-bubble');
+    if (generationBubbles.length < 1) return undefined;
+    const last = generationBubbles.item(generationBubbles.length - 1);
+    return last instanceof HTMLElement ? last : undefined;
+  }
+
+  private takeQueuedUserBubble(msgId: string): HTMLElement | undefined {
+    const tracked = this.queuedUserBubbleByMsgId.get(msgId);
+    if (tracked) {
+      this.queuedUserBubbleByMsgId.delete(msgId);
+      if (tracked.isConnected) return tracked;
+    }
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (!container) return undefined;
+    for (const node of Array.from(
+      container.querySelectorAll<HTMLElement>('.message.user[data-queued-user-msg="true"]'),
+    )) {
+      if (node.getAttribute('data-user-msg-id') !== msgId) continue;
+      return node;
+    }
+    return undefined;
+  }
+
+  private reuseQueuedUserBubbleForGeneration(
+    queuedBubble: HTMLElement,
+    seq: number,
+    timestamp: string,
+    msgId: string,
+  ): HTMLElement {
+    const queuedContentEl = queuedBubble.querySelector('.user-message') as HTMLElement | null;
+    const queuedRawContent = queuedContentEl?.textContent ?? '';
+
+    const bubble = this.createGenerationBubble(timestamp);
+    bubble.setAttribute('data-seq', String(seq));
+    bubble.classList.add('generating');
+    bubble.setAttribute('data-finalized', 'false');
+    if (msgId !== '') {
+      bubble.setAttribute('data-user-msg-id', msgId);
+    }
+    if (queuedRawContent.trim() !== '') {
+      const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
+      if (body) {
+        const divider = document.createElement('hr');
+        divider.className = 'user-response-divider';
+        body.appendChild(divider);
+        this.upsertUserPlainTextMessage(body, queuedRawContent);
+        bubble.setAttribute('data-raw-user-msg', queuedRawContent);
+      }
+    }
+
+    queuedBubble.replaceWith(bubble);
+    return bubble;
+  }
+
+  private removeQueuedUserBubbleIfPresent(msgIdRaw: string): void {
+    const msgId = msgIdRaw.trim();
+    if (msgId === '') return;
+    const tracked = this.queuedUserBubbleByMsgId.get(msgId);
+    if (tracked) {
+      this.queuedUserBubbleByMsgId.delete(msgId);
+      if (tracked.isConnected) tracked.remove();
+    }
+
+    const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
+    if (!container) return;
+    for (const node of Array.from(
+      container.querySelectorAll<HTMLElement>('.message.user[data-queued-user-msg="true"]'),
+    )) {
+      if (node.getAttribute('data-user-msg-id') !== msgId) continue;
+      node.remove();
+    }
   }
 
   private handleGeneratingFinish(seq: number, llmGenModel?: string): void {
@@ -2871,6 +3037,7 @@ export class DomindsDialogContainer extends HTMLElement {
       } else {
         bubble.removeAttribute('data-user-language-code');
       }
+      this.removeQueuedUserBubbleIfPresent(event.msgId);
       this.scrollToBottom();
       return;
     }
@@ -2906,6 +3073,7 @@ export class DomindsDialogContainer extends HTMLElement {
     } else {
       bubble.removeAttribute('data-user-language-code');
     }
+    this.removeQueuedUserBubbleIfPresent(event.msgId);
     this.scrollToBottom();
   }
 

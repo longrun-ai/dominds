@@ -172,6 +172,14 @@ async function queueUserSupplementAtGenerationBoundary(
     grammar: prompt.grammar,
     userLanguageCode: prompt.userLanguageCode,
   });
+  postDialogEvent(dialog, {
+    type: 'queue_user_msg_evt',
+    course: dialog.currentCourse,
+    msgId: prompt.msgId,
+    content: prompt.content,
+    grammar: prompt.grammar,
+    userLanguageCode: prompt.userLanguageCode,
+  });
 
   log.debug('Queued user supplement for next generation boundary', undefined, {
     rootId: dialog.id.rootId,

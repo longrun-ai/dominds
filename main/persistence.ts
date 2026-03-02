@@ -918,7 +918,7 @@ export class DiskFileDialogStore extends DialogStore {
    * CRITICAL: This must be called BEFORE any substream events (thinking_start, markdown_start, etc.)
    * to ensure proper event ordering on the frontend.
    */
-  public async notifyGeneratingStart(dialog: Dialog): Promise<void> {
+  public async notifyGeneratingStart(dialog: Dialog, msgId?: string): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
     try {
@@ -937,6 +937,7 @@ export class DiskFileDialogStore extends DialogStore {
         type: 'generating_start_evt',
         course,
         genseq: genseq,
+        msgId: typeof msgId === 'string' && msgId.trim() !== '' ? msgId : undefined,
       };
       postDialogEvent(dialog, genStartEvt);
 

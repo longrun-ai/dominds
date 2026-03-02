@@ -1396,12 +1396,11 @@ export async function driveDialogStreamCore(
       let contextHealthForGen: ContextHealthSnapshot | undefined;
       let llmGenModelForGen: string = model;
       let suspendForHuman = false;
+      const currentPrompt = pendingPrompt;
+      pendingPrompt = undefined;
 
-      await dlg.notifyGeneratingStart();
+      await dlg.notifyGeneratingStart(currentPrompt?.msgId);
       try {
-        const currentPrompt = pendingPrompt;
-        pendingPrompt = undefined;
-
         if (currentPrompt) {
           const origin = currentPrompt.origin ?? 'user';
           if (

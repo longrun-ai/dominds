@@ -99,6 +99,7 @@ export type LlmRetryEvent = LlmGenDlgEvent & {
 
 export type GeneratingStartEvent = LlmGenDlgEvent & {
   type: 'generating_start_evt';
+  msgId?: string;
 };
 
 export type GeneratingFinishEvent = LlmGenDlgEvent & {
@@ -332,6 +333,15 @@ export interface EndOfUserSayingEvent {
   q4hAnswerCallIds?: string[];
 }
 
+export interface QueueUserMsgEvent {
+  type: 'queue_user_msg_evt';
+  course: number;
+  msgId: string;
+  content: string;
+  grammar: 'markdown';
+  userLanguageCode?: LanguageCode;
+}
+
 export interface CourseEvent {
   type: 'course_update';
   course: number;
@@ -419,6 +429,7 @@ export type DialogEvent =
   // Subdialog events
   | SubdialogEvent
   // User events
+  | QueueUserMsgEvent
   | EndOfUserSayingEvent
   | FullRemindersEvent
   | CourseEvent

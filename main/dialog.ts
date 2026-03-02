@@ -959,7 +959,7 @@ export abstract class Dialog {
     return await this.dlgStore.receiveFuncResult(this, result);
   }
 
-  public async notifyGeneratingStart(): Promise<void> {
+  public async notifyGeneratingStart(msgId?: string): Promise<void> {
     // Capture the generation's starting course so any events emitted during this generation
     // remain attributed to the correct course even if a tool mutates dialog.currentCourse
     // mid-generation (e.g., clear_mind).
@@ -976,7 +976,7 @@ export abstract class Dialog {
     // This ensures subdialog_final_response_evt waits for both user_text and generating_start_evt
     this.markGenerationStarted();
 
-    await this.dlgStore.notifyGeneratingStart(this);
+    await this.dlgStore.notifyGeneratingStart(this, msgId);
   }
 
   public async notifyGeneratingFinish(
@@ -1596,7 +1596,7 @@ export abstract class DialogStore {
   /**
    * Notify start of LLM generation lifecycle (generating_start_evt)
    */
-  public async notifyGeneratingStart(_dialog: Dialog): Promise<void> {}
+  public async notifyGeneratingStart(_dialog: Dialog, _msgId?: string): Promise<void> {}
 
   /**
    * Notify end of LLM generation lifecycle (generating_finish_evt)
