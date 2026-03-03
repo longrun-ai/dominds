@@ -34,8 +34,8 @@
 - 修改完 `.minds/team.yaml`：务必运行 `team_mgmt_validate_team_cfg({})`，并清空 Problems 面板里的 team.yaml 错误后再继续。
 - 修改完 `.minds/mcp.yaml`：务必运行 `team_mgmt_validate_mcp_cfg({})`，并清空 Problems 面板里的 MCP 相关错误后再继续。
 
-> 注意：有些 provider（例如 Codex）会要求函数工具参数字段都“必填”（schema 全 required）。  
-> 如果你用的是这类 provider，但语义上想表达“未指定/使用默认”，再用哨兵值；否则（大多数 provider）省略可选字段即可：
+> 可选字段默认可省略。  
+> 若你想显式传入“未指定/默认”，支持以下哨兵值写法：
 >
 > - `existing_hunk_id: ""`：不覆写旧规划（生成新 hunk）。
 > - `occurrence: ""` 或 `0`：不指定 occurrence。

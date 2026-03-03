@@ -595,19 +595,10 @@ export const teamMgmtCheckProviderTool: FuncTool = {
       }
 
       const maxModelsValue = args['max_models'];
-      // Codex provider requires all func args to be schema-required; use max_models=0 as sentinel for default.
-      const maxModels =
-        typeof maxModelsValue === 'number' && Number.isInteger(maxModelsValue) && maxModelsValue > 0
-          ? maxModelsValue
-          : 10;
-      if (
-        maxModelsValue !== undefined &&
-        (typeof maxModelsValue !== 'number' ||
-          !Number.isInteger(maxModelsValue) ||
-          maxModelsValue < 0)
-      ) {
-        throw new Error('Invalid max_models (expected positive integer or 0 for default)');
+      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue <= 0)) {
+        throw new Error('Invalid max_models (expected positive integer)');
       }
+      const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 10;
 
       if (model !== undefined && allModels) {
         throw new Error('Use either `model` or `all_models` (not both)');
@@ -777,8 +768,8 @@ export const teamMgmtCheckProviderTool: FuncTool = {
       } else if (!live) {
         const hint =
           language === 'zh'
-            ? `提示：如需做真实连通性测试，设置 \`live: true\`。例如：\`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true, max_models: 0 })\``
-            : `Tip: to perform a real connectivity test, set \`live: true\`. Example: \`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true, max_models: 0 })\``;
+            ? `提示：如需做真实连通性测试，设置 \`live: true\`。例如：\`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true })\``
+            : `Tip: to perform a real connectivity test, set \`live: true\`. Example: \`team_mgmt_check_provider({ provider_key: \"${providerKey}\", model: \"<modelKey>\", all_models: false, live: true })\``;
         lines.push(hint + '\n');
       }
 
@@ -845,8 +836,8 @@ export const teamMgmtListProvidersTool: FuncTool = {
 
       const maxModelsValue = args['max_models'];
       const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 30;
-      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue < 0)) {
-        throw new Error('Invalid max_models (expected integer >= 0)');
+      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue <= 0)) {
+        throw new Error('Invalid max_models (expected positive integer)');
       }
 
       const builtinProviders = includeBuiltin ? await loadBuiltinLlmProviders() : {};
@@ -1026,8 +1017,8 @@ export const teamMgmtListModelsTool: FuncTool = {
 
       const maxModelsValue = args['max_models'];
       const maxModels = isInteger(maxModelsValue) && maxModelsValue > 0 ? maxModelsValue : 200;
-      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue < 0)) {
-        throw new Error('Invalid max_models (expected integer >= 0)');
+      if (maxModelsValue !== undefined && (!isInteger(maxModelsValue) || maxModelsValue <= 0)) {
+        throw new Error('Invalid max_models (expected positive integer)');
       }
 
       const maxModelsPerProviderValue = args['max_models_per_provider'];
@@ -1037,15 +1028,15 @@ export const teamMgmtListModelsTool: FuncTool = {
           : 50;
       if (
         maxModelsPerProviderValue !== undefined &&
-        (!isInteger(maxModelsPerProviderValue) || maxModelsPerProviderValue < 0)
+        (!isInteger(maxModelsPerProviderValue) || maxModelsPerProviderValue <= 0)
       ) {
-        throw new Error('Invalid max_models_per_provider (expected integer >= 0)');
+        throw new Error('Invalid max_models_per_provider (expected positive integer)');
       }
 
       const maxParamsValue = args['max_params'];
       const maxParams = isInteger(maxParamsValue) && maxParamsValue > 0 ? maxParamsValue : 80;
-      if (maxParamsValue !== undefined && (!isInteger(maxParamsValue) || maxParamsValue < 0)) {
-        throw new Error('Invalid max_params (expected integer >= 0)');
+      if (maxParamsValue !== undefined && (!isInteger(maxParamsValue) || maxParamsValue <= 0)) {
+        throw new Error('Invalid max_params (expected positive integer)');
       }
 
       let providers: Record<string, ProviderConfig> = {};
@@ -3024,7 +3015,7 @@ function renderTeamManual(language: LanguageCode): string {
     'default_responder: not a hard requirement, but strongly recommended to set explicitly to avoid implicit fallback responder selection and cross-run drift',
     'members: per-agent overrides inherit from member_defaults via prototype fallback',
     'after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})` and resolve any Problems panel errors before proceeding to avoid runtime issues (e.g., wrong field types, missing fields, or broken path bindings)',
-    'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`)',
+    'when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`)',
     'to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })`',
     'streaming: Codex providers (apiType=codex) are streaming-only. Setting members.<id>.streaming=false with a Codex provider is a config error and will abort requests.',
     'do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only rtws members)',
@@ -3059,7 +3050,7 @@ function renderTeamManual(language: LanguageCode): string {
             '2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标是 `provider: codex` 时，在基线上追加 `codex_style_tools`（而不是替代），除非用户明确要求其他组合。',
 
         '成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。',
-        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 做检查，避免把系统刷成板砖。',
+        '修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 做检查，避免把系统刷成板砖。',
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以通过 tellask-special 函数诉请。',
@@ -3183,7 +3174,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
         '可选手册字段：你可以在 `servers.<serverId>.manual` 放手册内容。支持 `content`（总说明）+ `sections`（章节列表），用于告诉智能体该 toolset 该怎么用。',
         '重要：`manual` 缺失并不代表 MCP toolset 不可用；这只是团队管理工作不足。智能体应继续依据每个工具 description/参数自行判断并使用。',
         '团队管理者建议：配置并验证 MCP 后，应先精读该 server 暴露的每个工具 description/参数，再与人类用户讨论本 rtws 中这些工具的使用意图，最后把“典型用法 + 主要意图方向”沉淀到 `servers.<serverId>.manual`（`content + sections`）。',
-        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
+        '最小诊断流程（建议顺序）：1) 先用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 确认 LLM provider 可用；2) 再检查该成员的目录权限（`team_mgmt_manual({ topics: [\"permissions\"] })`）；3) 运行 `team_mgmt_validate_mcp_cfg({})` 汇总 `.minds/mcp.yaml` 与 MCP 问题；4) 必要时 `mcp_restart`，用完记得 `mcp_release`。',
       ]) +
       fmtCodeBlock('yaml', [
         '# 最小模板（stdio）',
@@ -3257,7 +3248,7 @@ async function renderMcpManual(language: LanguageCode): Promise<string> {
       'Optional manual field: place guide text at `servers.<serverId>.manual`. Supported shapes: `content` (overview) + `sections` (chapter list) to explain practical usage for this toolset.',
       'Important: missing `manual` does not mean the MCP toolset is unavailable. It only indicates team-management coverage is incomplete; continue by reading each tool description/argument schema.',
       'Team-manager recommendation: after MCP config is validated, carefully read descriptions/arguments of each exposed tool, discuss intended usage for this rtws with the human user, then write `servers.<serverId>.manual` (`content + sections`) capturing typical usage patterns and primary intent directions.',
-      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false, max_models: 0 })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
+      'Minimal diagnostic flow: 1) run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` to confirm the LLM provider works; 2) review member directory permissions (`team_mgmt_manual({ topics: [\"permissions\"] })`); 3) run `team_mgmt_validate_mcp_cfg({})` to summarize `.minds/mcp.yaml` + MCP issues; 4) use `mcp_restart` if needed, and `mcp_release` when done.',
     ]) +
     fmtCodeBlock('yaml', [
       '# Minimal template (stdio)',
@@ -3594,7 +3585,7 @@ function renderTroubleshooting(language: LanguageCode): string {
     return (
       fmtHeader('排障（症状 → 原因 → 解决步骤）') +
       fmtList([
-        '改 provider/model 前总是先做：先用 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` 确认 key 是否存在，再运行 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` 做可用性检查（env + 可选 live）。',
+        '改 provider/model 前总是先做：先用 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` 确认 key 是否存在，再运行 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true })` 做可用性检查（env + 可选 live）。',
         '症状：提示“缺少 provider/model” → 原因：`member_defaults` 或成员覆盖缺失 → 步骤：检查 `.minds/team.yaml` 的 `member_defaults.provider/model`（以及 `members.<id>.provider/model` 是否写错）。',
         '症状：提示“Provider not found” → 原因：provider key 未定义/拼写错误/未按预期合并 defaults → 步骤：检查 `.minds/llm.yaml` 的 provider keys，并确认 `.minds/team.yaml` 引用的 key 存在。',
         '症状：提示“Model not found” → 原因：model key 未定义/拼写错误/不在该 provider 下 → 步骤：用 `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` 查已有模型 key，再修正 `.minds/team.yaml` 引用或补全 `.minds/llm.yaml`。',
@@ -3606,7 +3597,7 @@ function renderTroubleshooting(language: LanguageCode): string {
   return (
     fmtHeader('Troubleshooting (symptom → cause → steps)') +
     fmtList([
-      'Before changing provider/model: use `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm keys exist, then run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` for a readiness check (env + optional live).',
+      'Before changing provider/model: use `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm keys exist, then run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true })` for a readiness check (env + optional live).',
       'Symptom: "Missing provider/model" → Cause: missing `member_defaults` or member overrides → Steps: check `.minds/team.yaml` `member_defaults.provider/model` (and `members.<id>.provider/model`).',
       'Symptom: "Provider not found" → Cause: provider key not defined / typo / unexpected merge with defaults → Steps: check `.minds/llm.yaml` provider keys and ensure `.minds/team.yaml` references an existing key.',
       'Symptom: "Model not found" → Cause: model key not defined / typo / not under that provider → Steps: run `team_mgmt_list_models({ provider_pattern: \"<providerKey>\", model_pattern: \"*\" })` and fix `.minds/team.yaml` references or update `.minds/llm.yaml`.',
@@ -4551,11 +4542,11 @@ async function renderBuiltinDefaults(language: LanguageCode): Promise<string> {
     language === 'zh'
       ? fmtList([
           '这份列表来自 Dominds 内置的 LLM defaults（实现内置）。当你没有在 `.minds/llm.yaml` 里显式覆盖某些 provider/model key 时，这些 defaults 可能会生效（以当前实现的合并规则为准）。',
-          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` 验证配置。',
+          '在 `.minds/llm.yaml` 里新增/覆盖 provider key，通常只会影响同名 key 的解析，不表示“禁用其他内置 provider”。建议用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true })` 验证配置。',
         ])
       : fmtList([
           'This list comes from Dominds built-in LLM defaults (implementation-provided). If you do not explicitly override certain provider/model keys in `.minds/llm.yaml`, these defaults may be used (per current merge rules).',
-          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true, max_models: 0 })` to verify.',
+          'Adding/overriding a provider key in `.minds/llm.yaml` typically affects that key only; it does not imply disabling other built-in providers. Use `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: true })` to verify.',
         ]);
 
   return header + explain + '\n' + body + '\n';
@@ -5036,7 +5027,7 @@ export const teamMgmtManualTool: FuncTool = {
           msgPrefix +
           fmtList([
             `\`team_mgmt_manual({ topics: ["topics"] })\`：${topicTitle('topics')}（你在这里）`,
-            '新手最常见流程：先 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })` 确认 provider/model keys → 再写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`。',
+            '新手最常见流程：先 `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: "*", model_pattern: "*" })` 确认 provider/model keys → 再写 `.minds/team.yaml` → 再写 `.minds/team/<id>/persona.*.md` → 再跑 `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`。',
             '',
             `\`team_mgmt_manual({ topics: ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
             `\`team_mgmt_manual({ topics: ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowledge/lessons 资产怎么写）`,
@@ -5060,7 +5051,7 @@ export const teamMgmtManualTool: FuncTool = {
         msgPrefix +
         fmtList([
           `\`team_mgmt_manual({ topics: ["topics"] })\`: ${topicTitle('topics')} (you are here)`,
-          'Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false, max_models: 0 })`. ',
+          'Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: "<providerKey>", model: "", all_models: false, live: false })`. ',
           '',
           `\`team_mgmt_manual({ topics: ["team"] })\`: ${topicTitle('team')} — .minds/team.yaml (roster/toolsets/permissions entrypoint)`,
           `\`team_mgmt_manual({ topics: ["minds"] })\`: ${topicTitle('minds')} — .minds/team/<id>/* (persona/knowledge/lessons assets)`,

@@ -52,8 +52,8 @@
 
 ## 哨兵值用法
 
-> 注意：有些 provider（例如 Codex）会要求函数工具参数字段都"必填"（schema 全 required）。  
-> 如果你用的是这类 provider，但语义上想表达"未指定/使用默认"，再用哨兵值；否则（大多数 provider）省略可选字段即可：
+> 可选字段默认可省略。  
+> 若你想显式传入"未指定/使用默认"，可使用哨兵值：
 
 - `existing_hunk_id: ""`：不覆写旧规划（生成新 hunk）
 - `occurrence: ""` 或 `0`：不指定 occurrence

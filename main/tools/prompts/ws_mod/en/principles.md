@@ -85,8 +85,8 @@ Tools supporting "re-plan with `existing_hunk_id` to overwrite" and their rules:
 - `prepare_file_block_replace`: supports `existing_hunk_id` to overwrite same-mode preview (same owner / same kind; cross-mode rejected)
 - All plan tools **do not allow custom new ids**: can only generate new plan by "omitting/clearing `existing_hunk_id`"; only pass `existing_hunk_id` when you want to overwrite an existing plan
 
-> Note: some providers (e.g. Codex) require all function tool parameter fields to be "required" (schema all required).
-> If you use such a provider but semantically want to express "unspecified/use default", use sentinel values; otherwise (most providers) **omit optional fields naturally**:
+> Optional fields can be omitted naturally.
+> If you want to express explicit "unspecified/use default", use these sentinel forms:
 >
 > - `existing_hunk_id: ""`: do not overwrite old plan (generate new hunk)
 > - `occurrence: ""` or `0`: do not specify occurrence

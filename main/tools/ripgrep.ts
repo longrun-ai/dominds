@@ -53,8 +53,7 @@ function optionalPositiveIntegerArg(args: ToolArguments, key: string): number | 
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw new Error(`Invalid arguments: \`${key}\` must be an integer`);
   }
-  if (value < 0) throw new Error(`Invalid arguments: \`${key}\` must be >= 0`);
-  if (value === 0) return undefined; // 0 is a sentinel for "default" under Codex required-all.
+  if (value <= 0) throw new Error(`Invalid arguments: \`${key}\` must be a positive integer`);
   return value;
 }
 

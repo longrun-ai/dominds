@@ -280,26 +280,18 @@ function resolveFbrEffortDefaultForTool(member: Team.Member): number {
   return raw;
 }
 
-function createFreshBootsReasoningTool(args: {
-  fbrEffortDefault: number;
-  providerApiType: ProviderConfig['apiType'];
-}): FuncTool {
+function createFreshBootsReasoningTool(args: { fbrEffortDefault: number }): FuncTool {
   const fbrDefault = args.fbrEffortDefault;
   const fbrDefaultHint =
     fbrDefault > 0
       ? `Runtime default for \`effort\` is current member \`fbr_effort=${fbrDefault}\` when omitted.`
       : 'Runtime default for `effort` is current member `fbr_effort=0` (FBR disabled unless reconfigured).';
-  const codexAuthHint =
-    args.providerApiType === 'codex'
-      ? ` Codex-auth note: function arguments are often emitted with all fields present; if user did not specify intensity, pass \`effort: ${fbrDefault}\` explicitly.`
-      : '';
   return {
     type: 'func',
     name: 'freshBootsReasoning',
     description:
       'Start an FBR sideline dialog for tool-less fresh-boots reasoning. tellaskContent MUST stay neutral and fact-oriented (Goal/Facts/Constraints/Evidence[/Unknowns]); do not issue analysis directives (for example “from the following dimensions”, “analyze in steps 1..N”, or “N rounds per dimension”). ' +
-      fbrDefaultHint +
-      codexAuthHint,
+      fbrDefaultHint,
     parameters: {
       type: 'object',
       properties: {
@@ -397,14 +389,12 @@ function mergeTellaskSpecialVirtualTools(
   options: {
     includeTellaskBack: boolean;
     fbrEffortDefault: number;
-    providerApiType: ProviderConfig['apiType'];
   },
 ): FuncTool[] {
   const merged: FuncTool[] = [...baseTools];
   const seen = new Set(merged.map((tool) => tool.name));
   const freshBootsReasoning = createFreshBootsReasoningTool({
     fbrEffortDefault: options.fbrEffortDefault,
-    providerApiType: options.providerApiType,
   });
   const specialTools = options.includeTellaskBack
     ? [...TELLASK_SPECIAL_VIRTUAL_TOOLS, freshBootsReasoning]
@@ -1309,7 +1299,6 @@ export async function driveDialogStreamCore(
         ? mergeTellaskSpecialVirtualTools(canonicalFuncTools, {
             includeTellaskBack: isSubdialog,
             fbrEffortDefault,
-            providerApiType: providerCfg.apiType,
           })
         : canonicalFuncTools;
       const projected = projectFuncToolsForProvider(providerCfg.apiType, effectiveFuncTools);

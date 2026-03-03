@@ -202,6 +202,32 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const FUNC_TOOL_ARG_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  readonly_shell: {
+    timeout: 'timeout_ms',
+  },
+};
+
+function normalizeFuncToolArguments(
+  toolName: string,
+  args: Record<string, unknown>,
+): ToolArguments {
+  const aliases = FUNC_TOOL_ARG_ALIASES[toolName];
+  if (!aliases) return args as ToolArguments;
+  let normalized: Record<string, unknown> | undefined;
+
+  for (const [aliasKey, canonicalKey] of Object.entries(aliases)) {
+    if (!(aliasKey in args)) continue;
+    if (!normalized) normalized = { ...args };
+    if (!(canonicalKey in normalized)) {
+      normalized[canonicalKey] = normalized[aliasKey];
+    }
+    delete normalized[aliasKey];
+  }
+
+  return (normalized ?? args) as ToolArguments;
+}
+
 export function validateFuncToolArguments(
   tool: FuncTool,
   rawArgs: unknown,
@@ -209,12 +235,13 @@ export function validateFuncToolArguments(
   if (!isPlainObject(rawArgs)) {
     return { ok: false, error: 'Arguments must be an object' };
   }
+  const normalizedArgs = normalizeFuncToolArguments(tool.name, rawArgs);
   if (tool.argsValidation === 'passthrough') {
-    return { ok: true, args: rawArgs as ToolArguments };
+    return { ok: true, args: normalizedArgs };
   }
-  const validation = validateArgs(tool.parameters, rawArgs);
+  const validation = validateArgs(tool.parameters, normalizedArgs);
   return validation.ok
-    ? { ok: true, args: rawArgs as ToolArguments }
+    ? { ok: true, args: normalizedArgs }
     : { ok: false, error: validation.error };
 }
 

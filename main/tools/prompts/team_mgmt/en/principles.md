@@ -52,8 +52,8 @@ The YAML header from `team_mgmt_read_file` includes:
 
 ## Sentinel Value Usage
 
-> Note: some providers (e.g. Codex) require all function-tool parameter fields to be present (schema all required).
-> If you use such a provider but semantically want "unset / default", use sentinel values; otherwise most providers can omit optional fields:
+> Optional fields can be omitted.
+> If you want to pass explicit "unset / default" values, use sentinel values:
 
 - `existing_hunk_id: ""` means generate a new hunk
 - `occurrence: ""` or `0` means occurrence is not specified

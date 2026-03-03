@@ -204,7 +204,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '操作：',
         '- update_reminder({ "reminder_no": 1, "content": "..." })（推荐）',
-        '- add_reminder({ "content": "...", "position": 0 })',
+        '- add_reminder({ "content": "..." })',
       ].join('\n');
     }
 
@@ -217,7 +217,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       '操作：',
       '- update_reminder({ "reminder_no": 1, "content": "..." })',
-      '- add_reminder({ "content": "...", "position": 0 })',
+      '- add_reminder({ "content": "..." })',
       '- clear_mind({})',
       '',
       '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式。',
@@ -236,7 +236,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Operations:',
       '- update_reminder({ "reminder_no": 1, "content": "..." })',
-      '- add_reminder({ "content": "...", "position": 0 })',
+      '- add_reminder({ "content": "..." })',
     ].join('\n');
   }
 
@@ -249,7 +249,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '',
     'Operations:',
     '- update_reminder({ "reminder_no": 1, "content": "..." })',
-    '- add_reminder({ "content": "...", "position": 0 })',
+    '- add_reminder({ "content": "..." })',
     '- clear_mind({})',
     '',
     'Continuation package: next step + key pointers + run/verify info.',

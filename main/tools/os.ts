@@ -485,10 +485,6 @@ const readonlyShellSchema: JsonSchema = {
       type: 'number',
       description: 'Maximum time in milliseconds the command is allowed to run (default: 10000)',
     },
-    timeout: {
-      type: 'number',
-      description: 'Alias for timeout_ms',
-    },
   },
   required: ['command'],
   additionalProperties: false,

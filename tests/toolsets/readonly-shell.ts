@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import type { Dialog } from 'dominds/dialog';
+import { validateFuncToolArguments } from 'dominds/llm/kernel-driver/runtime';
 import { setWorkLanguage } from 'dominds/shared/runtime-language';
 import { Team } from 'dominds/team';
 import { readonlyShellTool } from 'dominds/tools/os';
@@ -97,6 +98,35 @@ async function main(): Promise<void> {
         timeout_ms: 2_000,
       });
       assertIncludes(out, 'ACCESS_DENIED', 'Expected ../.minds to be hard-denied');
+    });
+
+    await runTest('accepts timeout alias via argument normalization', async () => {
+      const validated = validateFuncToolArguments(readonlyShellTool, {
+        command: 'echo alias-ok',
+        timeout: 2_000,
+      });
+      assertTrue(validated.ok, 'Expected timeout alias to be accepted');
+      if (!validated.ok) return;
+      assertTrue(!('timeout' in validated.args), 'Expected timeout alias to be normalized away');
+      assertTrue(
+        validated.args.timeout_ms === 2_000,
+        'Expected timeout alias to map into timeout_ms',
+      );
+
+      const out = await readonlyShellTool.call(dlg, caller, validated.args);
+      assertNotIncludes(out, '❌ readonly_shell', 'Expected normalized timeout alias to execute');
+    });
+
+    await runTest('prefers timeout_ms over timeout alias when both are provided', async () => {
+      const validated = validateFuncToolArguments(readonlyShellTool, {
+        command: 'echo precedence-ok',
+        timeout_ms: 1_000,
+        timeout: 2_000,
+      });
+      assertTrue(validated.ok, 'Expected arguments with both timeout fields to be accepted');
+      if (!validated.ok) return;
+      assertTrue(validated.args.timeout_ms === 1_000, 'Expected timeout_ms to take precedence');
+      assertTrue(!('timeout' in validated.args), 'Expected timeout alias key to be dropped');
     });
 
     await runTest('allows find for simple inspection', async () => {

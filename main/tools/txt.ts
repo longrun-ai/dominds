@@ -784,17 +784,13 @@ export const readFileTool = {
         formatError:
           '请使用正确的函数工具参数调用 `read_file`。\n\n' +
           '**期望格式：** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          '注意：大多数 provider 可省略可选字段；但如果你的 provider 要求函数工具参数字段都“必填”（例如 Codex），可用哨兵值表达“未指定/默认”。\n' +
-          '- `range: \"\"` 表示不指定范围\n' +
-          '- `max_lines: 0` 表示使用默认值（500）\n\n' +
+          '注意：可选字段可直接省略。若你显式传入“未指定/默认”，可使用：`range: \"\"`（不指定范围）、`max_lines: 0`（默认 500）。\n\n' +
           '**示例：**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **错误：** ${msg}\n\n` +
           '请使用正确的函数工具参数调用 `read_file`。\n\n' +
           '**期望格式：** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          '注意：大多数 provider 可省略可选字段；但如果你的 provider 要求函数工具参数字段都“必填”（例如 Codex），可用哨兵值表达“未指定/默认”。\n' +
-          '- `range: \"\"` 表示不指定范围\n' +
-          '- `max_lines: 0` 表示使用默认值（500）\n\n' +
+          '注意：可选字段可直接省略。若你显式传入“未指定/默认”，可使用：`range: \"\"`（不指定范围）、`max_lines: 0`（默认 500）。\n\n' +
           '**示例：**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         fileLabel: '文件',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
@@ -820,17 +816,13 @@ export const readFileTool = {
         formatError:
           'Please call the function tool `read_file` with valid arguments.\n\n' +
           '**Expected:** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          'Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex), use sentinel values for “unset/default”.\n' +
-          '- use `range: \"\"` for unset\n' +
-          '- use `max_lines: 0` for default (500)\n\n' +
+          'Note: optional fields can be omitted. If you explicitly pass “unset/default”, use `range: \"\"` (unset range) and `max_lines: 0` (default 500).\n\n' +
           '**Examples:**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         formatErrorWithReason: (msg: string) =>
           `❌ **Error:** ${msg}\n\n` +
           'Please call the function tool `read_file` with valid arguments.\n\n' +
           '**Expected:** `read_file({ path, range, max_lines, show_linenos })`\n\n' +
-          'Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex), use sentinel values for “unset/default”.\n' +
-          '- use `range: \"\"` for unset\n' +
-          '- use `max_lines: 0` for default (500)\n\n' +
+          'Note: optional fields can be omitted. If you explicitly pass “unset/default”, use `range: \"\"` (unset range) and `max_lines: 0` (default 500).\n\n' +
           '**Examples:**\n```text\n{ \"path\": \"src/main.ts\" }\n{ \"path\": \"src/main.ts\", \"range\": \"10~50\" }\n{ \"path\": \"src/main.ts\", \"range\": \"\", \"max_lines\": 0, \"show_linenos\": true }\n```',
         fileLabel: 'File',
         warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
@@ -1603,7 +1595,7 @@ async function runPrepareFileRangeEdit(
     language === 'zh'
       ? {
           invalidFormat:
-            '错误：参数不正确。\n\n期望：调用函数工具 `prepare_file_range_edit({ path, range, existing_hunk_id, content })`。\n（注意：大多数 provider 可省略可选字段；但如果你的 provider 要求“字段全必填”（例如 Codex），则：`existing_hunk_id: ""` 表示生成新 hunk；`content: ""` 可用于删除范围内内容。）',
+            '错误：参数不正确。\n\n期望：调用函数工具 `prepare_file_range_edit({ path, range, existing_hunk_id, content })`。\n（可选字段可省略；若显式传入“未指定/默认”，`existing_hunk_id: ""` 表示生成新 hunk；`content: ""` 可用于删除范围内内容。）',
           filePathRequired: '错误：需要提供文件路径。',
           rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
           fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
@@ -1618,7 +1610,7 @@ async function runPrepareFileRangeEdit(
         }
       : {
           invalidFormat:
-            'Error: Invalid args.\n\nExpected: call the function tool `prepare_file_range_edit({ path, range, existing_hunk_id, content })`.\n(Note: most providers can omit optional fields; but if your provider requires “all fields present” (e.g. Codex): `existing_hunk_id: ""` means generate a new hunk; `content: ""` can be used to delete the range.)',
+            'Error: Invalid args.\n\nExpected: call the function tool `prepare_file_range_edit({ path, range, existing_hunk_id, content })`.\n(Optional fields can be omitted; for explicit unset/default values: `existing_hunk_id: ""` means generate a new hunk, and `content: ""` can delete the range.)',
           filePathRequired: 'Error: File path is required.',
           rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
           fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,

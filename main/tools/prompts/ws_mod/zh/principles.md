@@ -85,8 +85,8 @@
 - `prepare_file_block_replace`：支持 `existing_hunk_id` 覆写同模式预览（同 owner / 同 kind；跨模式拒绝）
 - 所有 plan 工具都**不允许自定义新 id**：只能通过"省略/清空 `existing_hunk_id`"来生成新规划；只有当你想覆写既有规划时才传入 `existing_hunk_id`
 
-> 注意：有些 provider（例如 Codex）会要求函数工具的参数字段都"必填"（schema 全 required）。  
-> 如果你用的是这类 provider，但语义上想表达"未指定/使用默认"，再用哨兵值表达"未指定"；否则（大多数 provider）**省略可选字段即可**：
+> 可选字段默认可省略。  
+> 若你想显式表达"未指定/使用默认"，可用以下哨兵值：
 >
 > - `existing_hunk_id: ""`：不覆写旧规划（生成新 hunk）
 > - `occurrence: ""` 或 `0`：不指定 occurrence

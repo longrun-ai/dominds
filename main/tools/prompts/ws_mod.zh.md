@@ -24,8 +24,8 @@
   - `include_anchors: false`：替换范围**包含** start/end anchor 行（会删除并以新内容替换）。
 - 创建新文件（允许空内容）：`create_new_file({ path, content })`
 
-> 注意：有些 provider（例如 Codex）会要求所有函数工具参数字段都"必填"（schema 全 required）。
-> 如果你用的是这类 provider，但语义上想表达"未指定/使用默认"，需用特定值表达"未指定"；否则（大多数 provider）省略可选字段即可：
+> 可选字段默认可省略。
+> 若你想显式传入“未指定/默认”，支持以下哨兵值写法：
 >
 > - `existing_hunk_id: ""` 表示不覆写旧规划（生成新 hunk）。
 > - `occurrence: ""` 或 `0` 表示不指定 occurrence（当候选不唯一时会被要求显式指定）。

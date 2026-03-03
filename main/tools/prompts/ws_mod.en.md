@@ -23,8 +23,8 @@ You have read/write access to the rtws (runtime workspace), but **all incrementa
   - `include_anchors: false`: replacement range includes the anchor lines (start/end lines are deleted and replaced).
 - Create a new file (empty allowed): `create_new_file({ path, content })`
 
-> Note: some providers (e.g. Codex) require all function-tool parameters to be present (schema all required).
-> If you use such a provider but semantically want “unset / default”, use sentinel values; otherwise most providers can omit optional fields:
+> Optional fields can be omitted.
+> If you want to pass explicit “unset / default” values, the following sentinel forms are supported:
 >
 > - `existing_hunk_id: ""` means generate a new hunk (do not overwrite an existing plan).
 > - `occurrence: ""` or `0` means occurrence is not specified.

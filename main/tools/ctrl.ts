@@ -293,8 +293,7 @@ export const addReminderTool: FuncTool = {
     const numberedIndices = listNumberedReminderIndices(dlg.reminders);
     const positionValue = args['position'];
     let insertIndex = dlg.reminders.length;
-    // Codex provider requires all func args to be schema-required; we use position=0 as sentinel for "append".
-    if (positionValue !== undefined && positionValue !== 0) {
+    if (positionValue !== undefined) {
       if (typeof positionValue !== 'number' || !Number.isInteger(positionValue)) {
         return t.invalidFormatAdd;
       }
