@@ -175,7 +175,7 @@ export type WebSearchCallAction =
 export type WebSearchCallEvent = LlmGenDlgEvent & {
   type: 'web_search_call_evt';
   phase: 'added' | 'done';
-  itemId?: string;
+  itemId: string;
   status?: string;
   action?: WebSearchCallAction;
 };

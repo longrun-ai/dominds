@@ -1527,13 +1527,17 @@ export class DomindsDialogContainer extends HTMLElement {
     }
 
     const itemId = typeof event.itemId === 'string' ? event.itemId.trim() : '';
+    if (itemId === '') {
+      // Should never happen (backend drops invalid web_search_call events), but guard anyway.
+      console.warn('web_search_call_evt missing itemId, ignoring');
+      return;
+    }
+
     let section: HTMLElement | undefined;
 
-    if (itemId !== '') {
-      const fromItemId = this.webSearchSectionByItemId.get(itemId);
-      if (fromItemId && fromItemId.isConnected) {
-        section = fromItemId;
-      }
+    const fromItemId = this.webSearchSectionByItemId.get(itemId);
+    if (fromItemId && fromItemId.isConnected) {
+      section = fromItemId;
     }
 
     if (!section) {
@@ -1550,10 +1554,8 @@ export class DomindsDialogContainer extends HTMLElement {
       (body || bubble).appendChild(section);
     }
 
-    if (itemId !== '') {
-      section.setAttribute('data-web-search-item-id', itemId);
-      this.webSearchSectionByItemId.set(itemId, section);
-    }
+    section.setAttribute('data-web-search-item-id', itemId);
+    this.webSearchSectionByItemId.set(itemId, section);
     this.webSearchSectionBySeq.set(event.genseq, section);
 
     this.renderWebSearchSection(section, event);
@@ -1600,7 +1602,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
     const phase = event.phase;
     const status = typeof event.status === 'string' ? event.status.trim() : '';
-    const itemId = typeof event.itemId === 'string' ? event.itemId.trim() : '';
+    const itemId = event.itemId.trim();
 
     const phaseLabel = phase === 'added' ? t.webSearchPhaseStarted : t.webSearchPhaseDone;
     const stateLabel =
@@ -1617,7 +1619,7 @@ export class DomindsDialogContainer extends HTMLElement {
       summaryEl.textContent = focusText;
       summaryEl.classList.remove('is-empty');
     } else {
-      summaryEl.textContent = event.action ? event.action.type : t.webSearchTitle;
+      summaryEl.textContent = event.action ? event.action.type : t.webSearchNoDetails;
       summaryEl.classList.add('is-empty');
     }
 
@@ -1625,12 +1627,8 @@ export class DomindsDialogContainer extends HTMLElement {
     if (event.action) {
       metaParts.push(`type: ${event.action.type}`);
     }
-    if (itemId !== '') {
-      metaParts.push(`item: ${this.compactWebSearchItemId(itemId)}`);
-      detailsEl.title = `itemId: ${itemId}`;
-    } else {
-      detailsEl.removeAttribute('title');
-    }
+    metaParts.push(`item: ${this.compactWebSearchItemId(itemId)}`);
+    detailsEl.title = `itemId: ${itemId}`;
     detailsEl.textContent = metaParts.join(' · ');
   }
 

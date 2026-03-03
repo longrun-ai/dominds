@@ -22,7 +22,7 @@ export type LlmWebSearchAction =
 
 export type LlmWebSearchCall = {
   phase: 'added' | 'done';
-  itemId?: string;
+  itemId: string;
   status?: string;
   action?: LlmWebSearchAction;
 };

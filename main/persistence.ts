@@ -1213,19 +1213,28 @@ export class DiskFileDialogStore extends DialogStore {
     dialog: Dialog,
     payload: {
       phase: 'added' | 'done';
-      itemId?: string;
+      itemId: string;
       status?: string;
       action?: WebSearchCallAction;
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
+    const itemId = payload.itemId.trim();
+    if (itemId === '') {
+      log.error(
+        'Protocol violation: webSearchCall called with empty itemId; dropping event',
+        new Error('web_search_call_empty_item_id'),
+        { dialog, phase: payload.phase, status: payload.status, action: payload.action },
+      );
+      return;
+    }
 
     const record: WebSearchCallRecord = {
       ts: formatUnifiedTimestamp(new Date()),
       type: 'web_search_call_record',
       genseq: dialog.activeGenSeq,
       phase: payload.phase,
-      itemId: payload.itemId,
+      itemId,
       status: payload.status,
       action: payload.action,
     };
@@ -1236,7 +1245,7 @@ export class DiskFileDialogStore extends DialogStore {
       course,
       genseq: dialog.activeGenSeq,
       phase: payload.phase,
-      itemId: payload.itemId,
+      itemId,
       status: payload.status,
       action: payload.action,
     };
@@ -2126,10 +2135,19 @@ export class DiskFileDialogStore extends DialogStore {
       }
 
       case 'web_search_call_record': {
+        const itemId = typeof event.itemId === 'string' ? event.itemId.trim() : '';
+        if (itemId === '') {
+          log.error(
+            'Protocol violation: persisted web_search_call_record missing itemId; skipping WS event',
+            new Error('persisted_web_search_call_record_missing_item_id'),
+            { dialog, course, genseq: event.genseq, phase: event.phase },
+          );
+          break;
+        }
         const webSearchCall = {
           type: 'web_search_call_evt',
           phase: event.phase,
-          itemId: event.itemId,
+          itemId,
           status: event.status,
           action: event.action,
           course,

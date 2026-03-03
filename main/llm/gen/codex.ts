@@ -165,14 +165,20 @@ function assertNoCodexNativeToolCollisions(
 
 function toLlmWebSearchCall(
   item: ChatGptWebSearchCallItem,
+  itemId: string,
   phase: 'added' | 'done',
 ): LlmWebSearchCall {
   return {
     phase,
-    itemId: item.id,
+    itemId,
     status: item.status,
     action: item.action,
   };
+}
+
+function tryGetWebSearchCallItemId(item: ChatGptWebSearchCallItem): string | null {
+  const raw = typeof item.id === 'string' ? item.id.trim() : '';
+  return raw.length > 0 ? raw : null;
 }
 
 function extractReasoningText(item: ChatGptReasoningItem): string {
@@ -684,7 +690,20 @@ export class CodexGen implements LlmGenerator {
           }
           case 'response.output_item.added':
             if (event.item.type === 'web_search_call' && receiver.webSearchCall) {
-              await receiver.webSearchCall(toLlmWebSearchCall(event.item, 'added'));
+              const itemId = tryGetWebSearchCallItemId(event.item);
+              if (!itemId) {
+                const detail =
+                  'Non-fatal LLM error: invalid web_search_call (missing itemId); dropping event';
+                log.error(detail, new Error('codex_web_search_call_missing_item_id'), {
+                  status: event.item.status,
+                  action: event.item.action,
+                });
+                if (receiver.streamError) {
+                  await receiver.streamError(detail);
+                }
+                return;
+              }
+              await receiver.webSearchCall(toLlmWebSearchCall(event.item, itemId, 'added'));
             }
             return;
           case 'response.output_item.done': {
@@ -801,7 +820,20 @@ export class CodexGen implements LlmGenerator {
                 return;
               case 'web_search_call':
                 if (receiver.webSearchCall) {
-                  await receiver.webSearchCall(toLlmWebSearchCall(event.item, 'done'));
+                  const itemId = tryGetWebSearchCallItemId(event.item);
+                  if (!itemId) {
+                    const detail =
+                      'Non-fatal LLM error: invalid web_search_call (missing itemId); dropping event';
+                    log.error(detail, new Error('codex_web_search_call_missing_item_id'), {
+                      status: event.item.status,
+                      action: event.item.action,
+                    });
+                    if (receiver.streamError) {
+                      await receiver.streamError(detail);
+                    }
+                    return;
+                  }
+                  await receiver.webSearchCall(toLlmWebSearchCall(event.item, itemId, 'done'));
                 }
                 return;
               default: {

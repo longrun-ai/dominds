@@ -336,6 +336,7 @@ export type UiStrings = {
   webSearchStatusPrefix: string;
   webSearchPhaseStarted: string;
   webSearchPhaseDone: string;
+  webSearchNoDetails: string;
 };
 
 export function getUiStrings(language: LanguageCode): UiStrings {
@@ -666,6 +667,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       webSearchStatusPrefix: '状态：',
       webSearchPhaseStarted: '开始',
       webSearchPhaseDone: '完成',
+      webSearchNoDetails: '无搜索细节',
 
       setupWorkspaceLlmTitle: '运行时工作区自定义 LLM 提供商',
       setupWorkspaceLlmHelp:
@@ -1023,6 +1025,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     webSearchStatusPrefix: 'Status: ',
     webSearchPhaseStarted: 'started',
     webSearchPhaseDone: 'done',
+    webSearchNoDetails: 'No search details',
 
     setupWorkspaceLlmTitle: 'rtws custom LLM providers',
     setupWorkspaceLlmHelp:

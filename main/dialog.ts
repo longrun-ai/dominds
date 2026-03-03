@@ -1055,7 +1055,7 @@ export abstract class Dialog {
 
   public async webSearchCall(payload: {
     phase: 'added' | 'done';
-    itemId?: string;
+    itemId: string;
     status?: string;
     action?: WebSearchCallAction;
   }): Promise<void> {
@@ -1741,7 +1741,7 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _payload: {
       phase: 'added' | 'done';
-      itemId?: string;
+      itemId: string;
       status?: string;
       action?: WebSearchCallAction;
     },
