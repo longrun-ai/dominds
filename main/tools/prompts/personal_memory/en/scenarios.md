@@ -1,4 +1,4 @@
-# memory Usage Scenarios
+# personal_memory Usage Scenarios
 
 ## Template (Scenarios)
 
@@ -22,20 +22,20 @@ In long-running tasks, you need to persist task progress to continue after resta
 **Add Task List**
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'project/i18n-tasks',
   content:
-    '## TODO\n\n- [ ] Create ws_mod manual\n- [ ] Create team_mgmt manual\n- [ ] Create memory manual\n- [ ] Create control manual\n\n## In Progress\n- [ ] Create ws_mod manual [100%]',
+    '## TODO\n\n- [ ] Create ws_mod manual\n- [ ] Create team_mgmt manual\n- [ ] Create personal_memory manual\n- [ ] Create control manual\n\n## In Progress\n- [ ] Create ws_mod manual [100%]',
 });
 ```
 
 **Update Task Progress**
 
 ```typescript
-replace_memory({
+replace_personal_memory({
   path: 'project/i18n-tasks',
   content:
-    '## TODO\n\n- [ ] Create team_mgmt manual\n- [ ] Create memory manual\n- [ ] Create control manual\n\n## Completed\n- [x] Create ws_mod manual\n\n## In Progress\n- [ ] Create team_mgmt manual [50%]',
+    '## TODO\n\n- [ ] Create team_mgmt manual\n- [ ] Create personal_memory manual\n- [ ] Create control manual\n\n## Completed\n- [x] Create ws_mod manual\n\n## In Progress\n- [ ] Create team_mgmt manual [50%]',
 });
 ```
 
@@ -50,7 +50,7 @@ Save user preferences, such as programming language, theme, etc.
 **Save User Preferences**
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'user/preferences',
   content:
     '## User Preferences\n\n- Programming Language: TypeScript\n- Code Style: strict\n- Theme: dark\n- Auto Save: true',
@@ -60,7 +60,7 @@ add_memory({
 **Update Preferences**
 
 ```typescript
-replace_memory({
+replace_personal_memory({
   path: 'user/preferences',
   content:
     '## User Preferences\n\n- Programming Language: TypeScript\n- Code Style: strict\n- Theme: light\n- Auto Save: true',
@@ -78,7 +78,7 @@ In complex tasks, save important context information to avoid repeated queries.
 **Save API Information**
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'context/api-endpoints',
   content:
     '## API Endpoints\n\n- User Login: POST /api/auth/login\n- Get User Info: GET /api/user/info\n- Update User Settings: PUT /api/user/settings\n\n## Authentication\n- Use Bearer Token\n- Validity: 24 hours',
@@ -88,7 +88,7 @@ add_memory({
 **Save Tech Stack**
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'context/tech-stack',
   content:
     '## Tech Stack\n\n- Frontend: React + TypeScript\n- Backend: Node.js + Express\n- Database: PostgreSQL\n- Cache: Redis',
@@ -104,10 +104,10 @@ Save meeting highlights and decisions.
 ### Example
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'meeting/2024-01-15',
   content:
-    '## Meeting Notes: 2024-01-15\n\n### Participants\n- @fullstack\n- @i18n\n- @ux\n\n### Agenda\n1. i18n manual creation plan\n2. man function UX improvements\n\n### Decisions\n- Prioritize creating ws_mod and team_mgmt manuals\n- man function supports fuzzy matching\n\n### TODO\n- @i18n: Create memory manual\n- @fullstack: Optimize man function',
+    '## Meeting Notes: 2024-01-15\n\n### Participants\n- @fullstack\n- @i18n\n- @ux\n\n### Agenda\n1. i18n manual creation plan\n2. man function UX improvements\n\n### Decisions\n- Prioritize creating ws_mod and team_mgmt manuals\n- man function supports fuzzy matching\n\n### TODO\n- @i18n: Create personal_memory manual\n- @fullstack: Optimize man function',
 });
 ```
 
@@ -120,7 +120,7 @@ Build a personal knowledge base and save learning notes.
 ### Example
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'knowledge/typescript-tips',
   content:
     '## TypeScript Tips\n\n### 1. Type Inference\nconst x = 1; // Type inferred as number\n\n### 2. Interface vs Type\n- Interface: Extensible, suitable for object types\n- Type: Supports union types, intersection types\n\n### 3. Strict Mode\nEnabling strict mode provides better type safety',
@@ -136,7 +136,7 @@ Temporarily save information to process later.
 ### Example
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'scratchpad/temp-notes',
   content:
     '## Temporary Notes\n\n- TODO: Check team.yaml configuration\n- TODO: Verify man function types\n- TODO: Update taskdoc progress',
@@ -146,7 +146,7 @@ add_memory({
 **Delete after processing**
 
 ```typescript
-drop_memory({
+drop_personal_memory({
   path: 'scratchpad/temp-notes',
 });
 ```
@@ -162,13 +162,13 @@ Regularly clean up memories that are no longer needed.
 ```typescript
 // View all current memories (agent can read)
 // Delete unnecessary memories one by one
-drop_memory({
+drop_personal_memory({
   path: 'project/old-feature',
 });
 ```
 
-Or use `clear_memory` to clear all memories (use with caution):
+Or use `clear_personal_memory` to clear all memories (use with caution):
 
 ```typescript
-clear_memory({});
+clear_personal_memory({});
 ```

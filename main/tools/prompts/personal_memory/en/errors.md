@@ -1,4 +1,4 @@
-# memory Error Handling
+# personal_memory Error Handling
 
 ## Template (Errors)
 
@@ -14,7 +14,7 @@
 
 ### MEMORY_ALREADY_EXISTS
 
-**Description:** Path already exists, cannot use `add_memory` to create new memory.
+**Description:** Path already exists, cannot use `add_personal_memory` to create new memory.
 
 **Cause:**
 
@@ -22,7 +22,7 @@
 
 **Solution:**
 
-- Use `replace_memory` to update existing memory
+- Use `replace_personal_memory` to update existing memory
 - Or use a different path to create new memory
 
 **Example:**
@@ -31,7 +31,7 @@
 Error:
 status: error
 error_code: MEMORY_ALREADY_EXISTS
-message: Path "project/todo" already exists, please use replace_memory to update
+message: Path "project/todo" already exists, please use replace_personal_memory to update
 ```
 
 ### MEMORY_NOT_FOUND
@@ -45,7 +45,7 @@ message: Path "project/todo" already exists, please use replace_memory to update
 
 **Solution:**
 
-- For update/delete operations, first use `add_memory` to create
+- For update/delete operations, first use `add_personal_memory` to create
 - Check if the path is correct
 
 **Example:**
@@ -54,7 +54,7 @@ message: Path "project/todo" already exists, please use replace_memory to update
 Error:
 status: error
 error_code: MEMORY_NOT_FOUND
-message: Path "project/todo" does not exist, please use add_memory to create first
+message: Path "project/todo" does not exist, please use add_personal_memory to create first
 ```
 
 ### MEMORY_PATH_INVALID
@@ -140,11 +140,11 @@ A: There's no strict limit, but it's recommended to keep the number of memories 
 
 ### Q: Can other members see my memories?
 
-A: No, memory is a personal memory tool, only the current agent can access it. If you need to share with team members, please use team_memory.
+A: No. Personal memory is private to the current agent. If you need to share with team members, please use team_memory.
 
-### Q: Will clear_memory delete all memories?
+### Q: Will clear_personal_memory delete all memories?
 
-A: Yes, `clear_memory` will delete all personal memories, this operation is irreversible. Please use with caution.
+A: Yes, `clear_personal_memory` will delete all personal memories; this operation is irreversible. Please use with caution.
 
 ### Q: Do memories expire?
 

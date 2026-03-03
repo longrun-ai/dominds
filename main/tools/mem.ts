@@ -45,6 +45,22 @@ function getMemoryPath(params: {
 
   const mindsDir = '.minds/memory';
   const isShared = params.isShared === true;
+
+  // Personal memory is automatically namespaced by caller.id on disk.
+  // Reject patterns like "<your-id>/..." to prevent confusing nested directories.
+  if (
+    !isShared &&
+    (params.filePath === params.caller.id || params.filePath.startsWith(`${params.caller.id}/`))
+  ) {
+    return {
+      kind: 'invalid_path',
+      message:
+        params.language === 'zh'
+          ? `❌ **错误**\n\n个人记忆路径（path）不应包含你的成员 id（\`${params.caller.id}\`）。系统会自动按当前智能体隔离个人记忆，请直接写 \`project/todo\` 这类路径。`
+          : `❌ **Error**\n\nPersonal memory path (path) must not include your member id (\`${params.caller.id}\`). Dominds already isolates personal memory by agent; use a path like \`project/todo\`.`,
+    };
+  }
+
   const rel = isShared
     ? path.join(mindsDir, 'team_shared', params.filePath)
     : path.join(mindsDir, 'individual', params.caller.id, params.filePath);
@@ -52,13 +68,13 @@ function getMemoryPath(params: {
   return { kind: 'ok', rel };
 }
 
-export const addMemoryTool: FuncTool = {
+export const addPersonalMemoryTool: FuncTool = {
   type: 'func',
-  name: 'add_memory',
-  description: 'Add a new memory file to the personal memory store.',
+  name: 'add_personal_memory',
+  description: 'Add a new memory file to the personal memory store (private to the current agent).',
   descriptionI18n: {
-    en: 'Add a new memory file to the personal memory store.',
-    zh: '向个人记忆库新增一个记忆文件。',
+    en: 'Add a new memory file to the personal memory store (private to the current agent).',
+    zh: '向个人记忆库新增一个记忆文件（仅当前智能体可见）。',
   },
   parameters: {
     type: 'object',
@@ -94,8 +110,8 @@ export const addMemoryTool: FuncTool = {
 
     if (fs.existsSync(fullPath)) {
       return language === 'zh'
-        ? `错误：记忆文件 '${filePath}' 已存在。请使用 replace_memory 更新它。`
-        : `Error: Memory file '${filePath}' already exists. Use replace_memory to update it.`;
+        ? `错误：记忆文件 '${filePath}' 已存在。请使用 replace_personal_memory 更新它。`
+        : `Error: Memory file '${filePath}' already exists. Use replace_personal_memory to update it.`;
     }
 
     const dir = path.dirname(fullPath);
@@ -106,13 +122,14 @@ export const addMemoryTool: FuncTool = {
   },
 };
 
-export const dropMemoryTool: FuncTool = {
+export const dropPersonalMemoryTool: FuncTool = {
   type: 'func',
-  name: 'drop_memory',
-  description: 'Remove a memory file from the personal memory store.',
+  name: 'drop_personal_memory',
+  description:
+    'Remove a memory file from the personal memory store (private to the current agent).',
   descriptionI18n: {
-    en: 'Remove a memory file from the personal memory store.',
-    zh: '从个人记忆库删除一个记忆文件。',
+    en: 'Remove a memory file from the personal memory store (private to the current agent).',
+    zh: '从个人记忆库删除一个记忆文件（仅当前智能体可见）。',
   },
   parameters: {
     type: 'object',
@@ -150,13 +167,14 @@ export const dropMemoryTool: FuncTool = {
   },
 };
 
-export const replaceMemoryTool: FuncTool = {
+export const replacePersonalMemoryTool: FuncTool = {
   type: 'func',
-  name: 'replace_memory',
-  description: 'Replace the content of an existing memory file in the personal memory store.',
+  name: 'replace_personal_memory',
+  description:
+    'Replace the content of an existing memory file in the personal memory store (private to the current agent).',
   descriptionI18n: {
-    en: 'Replace the content of an existing memory file in the personal memory store.',
-    zh: '替换个人记忆库中已存在记忆文件的内容。',
+    en: 'Replace the content of an existing memory file in the personal memory store (private to the current agent).',
+    zh: '替换个人记忆库中已存在记忆文件的内容（仅当前智能体可见）。',
   },
   parameters: {
     type: 'object',
@@ -192,8 +210,8 @@ export const replaceMemoryTool: FuncTool = {
 
     if (!fs.existsSync(fullPath)) {
       return language === 'zh'
-        ? `错误：记忆文件 '${filePath}' 不存在。请使用 add_memory 创建它。`
-        : `Error: Memory file '${filePath}' does not exist. Use add_memory to create it.`;
+        ? `错误：记忆文件 '${filePath}' 不存在。请使用 add_personal_memory 创建它。`
+        : `Error: Memory file '${filePath}' does not exist. Use add_personal_memory to create it.`;
     }
 
     fs.writeFileSync(fullPath, content, 'utf8');
@@ -202,13 +220,14 @@ export const replaceMemoryTool: FuncTool = {
   },
 };
 
-export const clearMemoryTool: FuncTool = {
+export const clearPersonalMemoryTool: FuncTool = {
   type: 'func',
-  name: 'clear_memory',
-  description: 'Clear all memory files from the personal memory store.',
+  name: 'clear_personal_memory',
+  description:
+    'Clear all memory files from the personal memory store (private to the current agent).',
   descriptionI18n: {
-    en: 'Clear all memory files from the personal memory store.',
-    zh: '清空个人记忆库中的所有记忆文件。',
+    en: 'Clear all memory files from the personal memory store (private to the current agent).',
+    zh: '清空个人记忆库中的所有记忆文件（仅当前智能体可见）。',
   },
   parameters: { type: 'object', additionalProperties: false, properties: {} },
   argsValidation: 'dominds',

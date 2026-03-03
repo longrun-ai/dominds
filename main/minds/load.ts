@@ -263,10 +263,10 @@ export async function loadAgentMinds(
   ] as const;
   type TeamMemoryToolName = (typeof TEAM_MEMORY_TOOL_NAMES)[number];
   const PERSONAL_MEMORY_TOOL_NAMES = [
-    'add_memory',
-    'replace_memory',
-    'drop_memory',
-    'clear_memory',
+    'add_personal_memory',
+    'replace_personal_memory',
+    'drop_personal_memory',
+    'clear_personal_memory',
   ] as const;
   type PersonalMemoryToolName = (typeof PERSONAL_MEMORY_TOOL_NAMES)[number];
 
@@ -441,8 +441,8 @@ export async function loadAgentMinds(
       'drop_team_memory',
     ]);
     await readMemFiles(personalFiles, 'personal', personalScopeLabelText, [
-      'replace_memory',
-      'drop_memory',
+      'replace_personal_memory',
+      'drop_personal_memory',
     ]);
   } catch (err) {
     log.warn('Failed to load agent memories:', err);

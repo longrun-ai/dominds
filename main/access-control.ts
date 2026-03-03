@@ -402,11 +402,23 @@ export function getAccessDeniedMessage(
         `- 说明：\`.minds/\` 是 rtws（运行时工作区）的“团队配置/记忆/资产”目录，通用文件工具无法读写（硬编码无条件拒绝）。`,
       );
       lines.push(
+        `- 提示：如果你是在管理“个人记忆”，请不要尝试直接读/写/列目录 \`.minds/memory/**\`（会被拒绝）。请使用个人记忆工具：\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`。首次创建时直接 \`add_personal_memory\` 即可，目录会自动创建；\`path\` 不应包含你的成员 id。`,
+      );
+      lines.push(
+        `- 提示：如果你是在管理“团队共享记忆”，请使用团队共享记忆工具：\`add_team_memory\` / \`replace_team_memory\` / \`drop_team_memory\` / \`clear_team_memory\`。`,
+      );
+      lines.push(
         `- 提示：若团队配置了 \`team_mgmt\` 工具集，请使用其中工具（\`team_mgmt_*\`）代管；若未配置或你不具备权限，请诉请具备 \`team_mgmt\` 权限的成员/团队管理员成员代管。`,
       );
     } else {
       lines.push(
         `- Note: \`.minds/\` stores rtws (runtime workspace) team config/memory/assets and is hard-denied for general file tools.`,
+      );
+      lines.push(
+        `- Hint: If you're trying to manage **personal memory**, do not read/write/list \`.minds/memory/**\` directly (it will be denied). Use personal-memory tools: \`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`. For first-time setup, just call \`add_personal_memory\`—the directory is created automatically; \`path\` must not include your member id.`,
+      );
+      lines.push(
+        `- Hint: If you're trying to manage **team shared memory**, use: \`add_team_memory\` / \`replace_team_memory\` / \`drop_team_memory\` / \`clear_team_memory\`.`,
       );
       lines.push(
         `- Hint: If your team configured the \`team_mgmt\` toolset, use its tools (\`team_mgmt_*\`); otherwise (or if you lack access), tellask a team-admin / a member with \`team_mgmt\` access to manage it for you.`,

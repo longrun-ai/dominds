@@ -32,7 +32,7 @@ The same information can be categorized by “who needs to see it / who maintain
 
 - **Individual-scope (per-agent / per-dialog)**:
   - `persona` / `knowledge` / `lessons` (role definitions assigned per member)
-  - individual memory (`memory`)
+  - individual memory (`personal_memory`)
   - dialog history (including tool calls and outputs)
   - reminders (working set / worklog)
 - **Collective-scope (shared by team/task)**:
@@ -102,11 +102,17 @@ Individual memory is your long-lived “how I work” asset, especially a compac
 - exact paths of key docs/code you own
 - minimal key facts (entrypoints, key symbols, local contracts)
 
-This lets you start work within your scope with “0 ripgrep”. The hard constraint is accuracy: if you change related files or detect staleness/conflicts, immediately `replace_memory` to keep it true.
+This lets you start work within your scope with “0 ripgrep”. The hard constraint is accuracy: if you change related files or detect staleness/conflicts, immediately `replace_personal_memory` to keep it true.
 
 Tools:
 
-- `add_memory` / `replace_memory` / `drop_memory` / `clear_memory`
+- `add_personal_memory` / `replace_personal_memory` / `drop_personal_memory` / `clear_personal_memory`
+
+Key notes:
+
+- Do not read/write/list `.minds/memory/**` via general file tools (it will be hard-denied). Manage personal memory via the tools above.
+- Personal memory is automatically isolated on disk under `.minds/memory/individual/<member-id>/...`, so your `path` must NOT include your member id (do not write `<member-id>/...`).
+- If you have zero personal memory entries, just call `add_personal_memory` — the directory will be created automatically.
 
 ### B) Task-term memory: Taskdoc is the single source of truth
 
@@ -202,7 +208,7 @@ The goal for agents’ day-to-day work is not “write more docs”. It’s a lo
 - **Taskdoc `constraints`**: hard rules/safety/compliance/style (must be visible to all mainlines)
 - **Team memory `team_memory`**: stable team conventions and invariants (worth reusing)
 - **Env notes `.minds/env*.md`**: rtws baseline facts, runtime constraints, gotchas (align humans + all agents to the same environment)
-- **Individual memory `memory`**: personal preferences + responsibility-area rtws index (keep accurate)
+- **Individual memory `personal_memory`**: personal preferences + responsibility-area rtws index (keep accurate)
 - **Reminders**: short-term, high-frequency details (working set / worklog; delete freely)
 - **Dialog history / tool output**: disposable by default; only keep distilled excerpts, not raw dumps
 

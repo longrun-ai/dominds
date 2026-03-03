@@ -69,7 +69,7 @@ Update task progress to taskdoc.
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Completed\n- [x] Create ws_mod manual\n- [x] Create team_mgmt manual\n- [x] Create memory manual\n\n### In Progress\n- [ ] Create control manual [50%]\n\n### Pending Improvements\n- [ ] Write tool descriptions',
+    '## Progress\n\n### Completed\n- [x] Create ws_mod manual\n- [x] Create team_mgmt manual\n- [x] Create personal_memory manual\n\n### In Progress\n- [ ] Create control manual [50%]\n\n### Pending Improvements\n- [ ] Write tool descriptions',
 });
 ```
 
@@ -85,7 +85,7 @@ Update task objectives.
 change_mind({
   selector: 'goals',
   content:
-    '## Goals\n\n- [ ] Create all toolset manuals\n  - [x] ws_mod\n  - [x] team_mgmt\n  - [x] memory\n  - [ ] control (In Progress)\n- [ ] Write tool descriptions',
+    '## Goals\n\n- [ ] Create all toolset manuals\n  - [x] ws_mod\n  - [x] team_mgmt\n  - [x] personal_memory\n  - [ ] control (In Progress)\n- [ ] Write tool descriptions',
 });
 ```
 
@@ -140,6 +140,6 @@ Maintain taskdoc integrity and consistency.
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Completed\n- [x] Create ws_mod manual [100%]\n- [x] Create team_mgmt manual [100%]\n- [x] Create memory manual [100%]\n\n### In Progress\n- [ ] Create control manual [60%]\n\n### Next Steps\n- Complete control manual\n- Create os manual',
+    '## Progress\n\n### Completed\n- [x] Create ws_mod manual [100%]\n- [x] Create team_mgmt manual [100%]\n- [x] Create personal_memory manual [100%]\n\n### In Progress\n- [ ] Create control manual [60%]\n\n### Next Steps\n- Complete control manual\n- Create os manual',
 });
 ```

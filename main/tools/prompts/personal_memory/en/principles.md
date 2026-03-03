@@ -1,4 +1,4 @@
-# memory Principles and Core Concepts
+# personal_memory Principles and Core Concepts
 
 ## Template (Principles)
 
@@ -25,26 +25,33 @@
 
 ## Memory Model
 
-The memory toolset uses a **path key-value storage** model:
+The `personal_memory` toolset uses a **path key-value storage** model:
 
 - **Path**: Unique identifier for the memory, similar to a file system path, e.g., `project/todo` or `user/preferences/theme`
 - **Content**: Actual content of the memory, can be arbitrary text
 
+**Isolation & first-time setup:**
+
+- Personal memory is private to the current agent.
+- On disk, it is automatically isolated under `.minds/memory/individual/<member-id>/...`.
+- Your `path` must NOT include your member id (do not write `<member-id>/...`).
+- If you have zero memory files yet, just call `add_personal_memory` — the directory will be created automatically.
+
 ## Tool Overview
 
-| Tool           | Function                                     |
-| -------------- | -------------------------------------------- |
-| add_memory     | Create new memory (when path does not exist) |
-| replace_memory | Update existing memory (when path exists)    |
-| drop_memory    | Delete memory                                |
-| clear_memory   | Clear all personal memory (irrecoverable)    |
+| Tool                    | Function                                              |
+| ----------------------- | ----------------------------------------------------- |
+| add_personal_memory     | Create new personal memory (when path does not exist) |
+| replace_personal_memory | Update existing personal memory (when path exists)    |
+| drop_personal_memory    | Delete personal memory                                |
+| clear_personal_memory   | Clear all personal memory (irrecoverable)             |
 
 ## Memory Lifecycle
 
-1. **Create (add)**: Use `add_memory` to create new memory
+1. **Create (add)**: Use `add_personal_memory` to create new memory
 2. **Read**: Agent can read existing memory during response generation
-3. **Update (replace)**: Use `replace_memory` to update memory content
-4. **Delete (drop)**: Use `drop_memory` to delete specific memory
+3. **Update (replace)**: Use `replace_personal_memory` to update memory content
+4. **Delete (drop)**: Use `drop_personal_memory` to delete specific memory
 
 ## Best Practices
 
@@ -84,4 +91,4 @@ The memory toolset uses a **path key-value storage** model:
 
 1. Memory content has size limit (max 1MB per memory)
 2. Memory path cannot exceed 255 characters
-3. `clear_memory` will delete all memory, **irrecoverable**
+3. `clear_personal_memory` will delete all memory, **irrecoverable**

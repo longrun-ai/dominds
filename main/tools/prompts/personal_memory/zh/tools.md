@@ -1,4 +1,4 @@
-# memory 工具参考
+# personal_memory 工具参考
 
 ## 模板（工具）
 
@@ -19,9 +19,9 @@
 
 ## 工具列表
 
-### 1. add_memory
+### 1. add_personal_memory
 
-创建新记忆（路径不存在时）。
+创建新的**个人记忆**（路径不存在时）。
 
 **参数：**
 
@@ -31,13 +31,13 @@
 **返回：**
 
 - 成功：返回简短文本（按工作语言），例如 `已添加`。
-- 失败：返回错误文本（通常以 `错误：` 开头），并包含可执行的下一步（例如提示改用 `replace_memory`）。
+- 失败：返回错误文本（通常以 `错误：` 开头），并包含可执行的下一步（例如提示改用 `replace_personal_memory`）。
 
 **错误：**
 
-- `MEMORY_ALREADY_EXISTS`：路径已存在，使用 `replace_memory` 更新
+- `MEMORY_ALREADY_EXISTS`：路径已存在，使用 `replace_personal_memory` 更新
 
-### 2. replace_memory
+### 2. replace_personal_memory
 
 更新已有记忆（路径存在时）。
 
@@ -49,13 +49,13 @@
 **返回：**
 
 - 成功：返回简短文本（按工作语言），例如 `已更新`。
-- 失败：返回错误文本（通常以 `错误：` 开头），并包含可执行的下一步（例如提示改用 `add_memory`）。
+- 失败：返回错误文本（通常以 `错误：` 开头），并包含可执行的下一步（例如提示改用 `add_personal_memory`）。
 
 **错误：**
 
-- `MEMORY_NOT_FOUND`：路径不存在，使用 `add_memory` 创建
+- `MEMORY_NOT_FOUND`：路径不存在，使用 `add_personal_memory` 创建
 
-### 3. drop_memory
+### 3. drop_personal_memory
 
 删除指定记忆。
 
@@ -72,7 +72,7 @@
 
 - `MEMORY_NOT_FOUND`：路径不存在
 
-### 4. clear_memory
+### 4. clear_personal_memory
 
 清空所有个人记忆。
 
@@ -94,7 +94,7 @@
 ### 添加新记忆
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'project/todo',
   content: '- 完成 i18n 文档\n- 编写测试用例\n- 更新 README',
 });
@@ -103,7 +103,7 @@ add_memory({
 ### 更新已有记忆
 
 ```typescript
-replace_memory({
+replace_personal_memory({
   path: 'project/todo',
   content: '- 完成 i18n 文档 [DONE]\n- 编写测试用例 [IN PROGRESS]\n- 更新 README',
 });
@@ -112,7 +112,7 @@ replace_memory({
 ### 删除记忆
 
 ```typescript
-drop_memory({
+drop_personal_memory({
   path: 'project/todo',
 });
 ```
@@ -120,7 +120,7 @@ drop_memory({
 ### 清空所有记忆
 
 ```typescript
-clear_memory({});
+clear_personal_memory({});
 ```
 
 ## 输出与语言

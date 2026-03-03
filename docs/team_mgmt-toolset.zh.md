@@ -106,7 +106,7 @@
   - 拒绝包含 `..` 的路径
   - 拒绝规范化后解析到 `.minds/` 之外的任何路径
 - 优先使用显式白名单而非" rtws 中的任何内容"
-  - 对于 `team_mgmt`，该显式白名单是 `.minds/**`（包括 `.minds/memory/**`），以便团队管理者可以修复其他工具造成的意外损坏（即使 `.minds/memory/**` 已有专用的 `memory` / `team_memory` 工具供正常使用）
+- 对于 `team_mgmt`，该显式白名单是 `.minds/**`（包括 `.minds/memory/**`），以便团队管理者可以修复其他工具造成的意外损坏（即使 `.minds/memory/**` 已有专用的 `personal_memory` / `team_memory` 工具供正常使用）
 - 需要显式的 `.minds/...` 路径并验证它们；不支持像 `team.yaml` 这样的"隐式作用域"路径
 
 ### 为什么需要专用工具集（而不是仅 `read_dirs` / `write_dirs`）？
@@ -373,7 +373,7 @@ member_defaults:
   model: gpt-5.2
   toolsets:
     - ws_read
-    - memory
+    - personal_memory
   # 默认姿态：拒绝普通成员的 `.minds/` 编辑
   #（团队管理应通过 `team_mgmt` 工具完成，而非通用文件工具）
   no_read_dirs:

@@ -157,7 +157,7 @@ update_reminder({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册\n- [x] 创建 team_mgmt 手册\n\n### 进行中\n- [ ] 创建 memory 手册 [80%]\n\n### 待开始\n- [ ] 创建 control 手册',
+    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册\n- [x] 创建 team_mgmt 手册\n\n### 进行中\n- [ ] 创建 personal_memory 手册 [80%]\n\n### 待开始\n- [ ] 创建 control 手册',
 });
 ```
 

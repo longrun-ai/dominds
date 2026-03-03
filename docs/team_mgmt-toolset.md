@@ -129,7 +129,7 @@ Notes:
 - Prefer an explicit allowlist over “anything in the rtws”.
   - For `team_mgmt`, that explicit allowlist is `.minds/**` (including `.minds/memory/**`) so the
     team manager can repair accidental corruptions made by other tools (even though `.minds/memory/**`
-    already has dedicated `memory` / `team_memory` tools for normal use).
+    already has dedicated `personal_memory` / `team_memory` tools for normal use).
 - Require explicit `.minds/...` paths and validate them; do not support “implicitly scoped” paths
   like `team.yaml`.
 
@@ -429,7 +429,7 @@ member_defaults:
   model: gpt-5.2
   toolsets:
     - ws_read
-    - memory
+    - personal_memory
   # Default posture: deny `.minds/` edits for normal members.
   # (Team management should be done via `team_mgmt` tools, not general file tools.)
   no_read_dirs:

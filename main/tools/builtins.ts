@@ -19,13 +19,13 @@ import { listDirTool, mkDirTool, moveDirTool, moveFileTool, rmDirTool, rmFileToo
 import { buildStandardManualSpec } from './manual/spec';
 import { mcpLeaseReminderOwner, mcpReleaseTool, mcpRestartTool } from './mcp';
 import {
-  addMemoryTool,
+  addPersonalMemoryTool,
   addSharedMemoryTool,
-  clearMemoryTool,
+  clearPersonalMemoryTool,
   clearSharedMemoryTool,
-  dropMemoryTool,
+  dropPersonalMemoryTool,
   dropSharedMemoryTool,
-  replaceMemoryTool,
+  replacePersonalMemoryTool,
   replaceSharedMemoryTool,
 } from './mem';
 import {
@@ -112,10 +112,10 @@ registerTool(mcpRestartTool);
 registerTool(mcpReleaseTool);
 
 // Memory tools
-registerTool(addMemoryTool);
-registerTool(dropMemoryTool);
-registerTool(replaceMemoryTool);
-registerTool(clearMemoryTool);
+registerTool(addPersonalMemoryTool);
+registerTool(dropPersonalMemoryTool);
+registerTool(replacePersonalMemoryTool);
+registerTool(clearPersonalMemoryTool);
 registerTool(addSharedMemoryTool);
 registerTool(dropSharedMemoryTool);
 registerTool(replaceSharedMemoryTool);
@@ -135,12 +135,17 @@ for (const tool of teamMgmtTools) {
 }
 
 // Register well-known toolsets
-registerToolset('memory', [addMemoryTool, dropMemoryTool, replaceMemoryTool, clearMemoryTool]);
-setToolsetMeta('memory', {
+registerToolset('personal_memory', [
+  addPersonalMemoryTool,
+  dropPersonalMemoryTool,
+  replacePersonalMemoryTool,
+  clearPersonalMemoryTool,
+]);
+setToolsetMeta('personal_memory', {
   source: 'dominds',
   descriptionI18n: { en: 'Personal memory tools', zh: '个人记忆工具' },
-  promptFilesI18n: promptFilesFor('memory'),
-  manualSpec: manualSpecFor('memory'),
+  promptFilesI18n: promptFilesFor('personal_memory'),
+  manualSpec: manualSpecFor('personal_memory'),
 });
 registerToolset('team_memory', [
   addSharedMemoryTool,

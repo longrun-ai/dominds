@@ -32,7 +32,7 @@ TL;DR：
 
 - **个体记忆（个人/对话局部）**：
   - `persona` / `knowledge` / `lessons`（按成员分配的角色定义）
-  - 个人记忆（`memory`）
+  - 个人记忆（`personal_memory`）
   - 对话历史（含工具调用与反馈）
   - 提醒项（工作集/工作日志）
 - **集体记忆（团队/任务共享）**：
@@ -101,11 +101,17 @@ TL;DR：
 - 你负责的关键文档/代码的**精确路径**
 - 对应的最小关键事实（入口点、关键符号、局部契约）
 
-这样你在职责范围内可以尽量做到“0 次 ripgrep 就能开工”。同时有一个硬约束：**必须保持准确**——一旦你改了相关文件或发现记忆过期/冲突，立刻用 `replace_memory` 更新。
+这样你在职责范围内可以尽量做到“0 次 ripgrep 就能开工”。同时有一个硬约束：**必须保持准确**——一旦你改了相关文件或发现记忆过期/冲突，立刻用 `replace_personal_memory` 更新。
 
 工具：
 
-- `add_memory` / `replace_memory` / `drop_memory` / `clear_memory`
+- `add_personal_memory` / `replace_personal_memory` / `drop_personal_memory` / `clear_personal_memory`
+
+关键提示：
+
+- 不要用通用文件工具去读/写/列目录 `.minds/memory/**`（会被硬拒绝）；个人记忆应通过上述个人记忆工具管理。
+- 个人记忆会自动隔离到 `.minds/memory/individual/<member-id>/...`，因此 `path` 不应包含你的成员 id（不要写 `<member-id>/...`）。
+- 若你当前没有任何个人记忆条目，直接 `add_personal_memory` 即可：目录会由系统自动创建。
 
 ### B) 中期（任务）记忆：差遣牒（Taskdoc）是单一真源
 
@@ -201,7 +207,7 @@ TL;DR：
 - **差遣牒 `constraints`**：硬规则/安全/合规/风格（必须被所有主线及时看到）
 - **团队记忆 `team_memory`**：稳定的团队约定与不变量（值得长期复用）
 - **环境提示 `.minds/env*.md`**：rtws 的基本事实、运行约束、注意事项（让人类与所有智能体对齐同一环境）
-- **个人记忆 `memory`**：个人偏好 + 职责域 rtws 索引（保持准确）
+- **个人记忆 `personal_memory`**：个人偏好 + 职责域 rtws 索引（保持准确）
 - **提醒项**：短期高频细节（工作集/工作日志，随时可删）
 - **对话历史/工具输出**：默认可丢弃；需要留的只留“精炼摘录”，不要长期背着原始转储
 

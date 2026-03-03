@@ -49,12 +49,12 @@ runTest('Registry functions availability', () => {
 // Test 2: Toolset lookup returns Tool objects
 runTest('Toolset lookup returns Tool objects', () => {
   const wsReadToolset = getToolset('ws_read');
-  const memoryToolset = getToolset('memory');
+  const personalMemoryToolset = getToolset('personal_memory');
   const sharedMemoryToolset = getToolset('team_memory');
   const nonexistentToolset = getToolset('nonexistent');
 
   assertTrue(Array.isArray(wsReadToolset), 'ws_read toolset should be an array');
-  assertTrue(Array.isArray(memoryToolset), 'memory toolset should be an array');
+  assertTrue(Array.isArray(personalMemoryToolset), 'personal_memory toolset should be an array');
   assertTrue(Array.isArray(sharedMemoryToolset), 'team_memory toolset should be an array');
   assertEqual(nonexistentToolset, undefined, 'nonexistent toolset should be undefined');
 
@@ -71,13 +71,13 @@ runTest('Toolset lookup returns Tool objects', () => {
 runTest('Individual tool lookup', () => {
   const listDirTool = getTool('list_dir');
   const readFileTool = getTool('read_file');
-  const addMemoryTool = getTool('add_memory');
+  const addPersonalMemoryTool = getTool('add_personal_memory');
   const updatePlanTool = getTool('update_plan');
   const nonexistentTool = getTool('nonexistent');
 
   assertTrue(!!listDirTool, 'list_dir tool should exist');
   assertTrue(!!readFileTool, 'read_file tool should exist');
-  assertTrue(!!addMemoryTool, 'add_memory tool should exist');
+  assertTrue(!!addPersonalMemoryTool, 'add_personal_memory tool should exist');
   assertTrue(!!updatePlanTool, 'update_plan tool should exist');
   assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
 
@@ -103,7 +103,7 @@ runTest('Member with toolsets', () => {
     name: 'Test Member',
     provider: 'openai',
     model: 'gpt-4',
-    toolsets: ['ws_read', 'memory'],
+    toolsets: ['ws_read', 'personal_memory'],
     tools: ['apply_file_modification', 'list_dir'], // list_dir should be duplicate from ws_read toolset
   });
 

@@ -1,4 +1,4 @@
-# memory Tool Reference
+# personal_memory Tool Reference
 
 ## Template (Tools)
 
@@ -19,9 +19,9 @@
 
 ## Tool List
 
-### 1. add_memory
+### 1. add_personal_memory
 
-Create new memory (when path does not exist).
+Create new **personal** memory (when path does not exist).
 
 **Parameters:**
 
@@ -31,13 +31,13 @@ Create new memory (when path does not exist).
 **Returns:**
 
 - Success: a short plain-text message in the work language (e.g. `Added`).
-- Failure: a plain-text error message (often starts with `Error:`) with an actionable next step (e.g. use `replace_memory`).
+- Failure: a plain-text error message (often starts with `Error:`) with an actionable next step (e.g. use `replace_personal_memory`).
 
 **Errors:**
 
-- `MEMORY_ALREADY_EXISTS`: Path already exists, use `replace_memory` to update
+- `MEMORY_ALREADY_EXISTS`: Path already exists, use `replace_personal_memory` to update
 
-### 2. replace_memory
+### 2. replace_personal_memory
 
 Update existing memory (when path exists).
 
@@ -49,13 +49,13 @@ Update existing memory (when path exists).
 **Returns:**
 
 - Success: a short plain-text message in the work language (e.g. `Updated`).
-- Failure: a plain-text error message (often starts with `Error:`) with an actionable next step (e.g. use `add_memory`).
+- Failure: a plain-text error message (often starts with `Error:`) with an actionable next step (e.g. use `add_personal_memory`).
 
 **Errors:**
 
-- `MEMORY_NOT_FOUND`: Path does not exist, use `add_memory` to create
+- `MEMORY_NOT_FOUND`: Path does not exist, use `add_personal_memory` to create
 
-### 3. drop_memory
+### 3. drop_personal_memory
 
 Delete specified memory.
 
@@ -72,7 +72,7 @@ Delete specified memory.
 
 - `MEMORY_NOT_FOUND`: Path does not exist
 
-### 4. clear_memory
+### 4. clear_personal_memory
 
 Clear all personal memory.
 
@@ -91,10 +91,10 @@ Clear all personal memory.
 
 ## Usage Examples
 
-### Add New Memory
+### Add New Personal Memory
 
 ```typescript
-add_memory({
+add_personal_memory({
   path: 'project/todo',
   content: '- Complete i18n docs\n- Write test cases\n- Update README',
 });
@@ -103,7 +103,7 @@ add_memory({
 ### Update Existing Memory
 
 ```typescript
-replace_memory({
+replace_personal_memory({
   path: 'project/todo',
   content: '- Complete i18n docs [DONE]\n- Write test cases [IN PROGRESS]\n- Update README',
 });
@@ -112,7 +112,7 @@ replace_memory({
 ### Delete Memory
 
 ```typescript
-drop_memory({
+drop_personal_memory({
   path: 'project/todo',
 });
 ```
@@ -120,7 +120,7 @@ drop_memory({
 ### Clear All Memory
 
 ```typescript
-clear_memory({});
+clear_personal_memory({});
 ```
 
 ## Output and Language

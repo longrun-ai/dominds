@@ -69,7 +69,7 @@ update_reminder({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册\n- [x] 创建 team_mgmt 手册\n- [x] 创建 memory 手册\n\n### 进行中\n- [ ] 创建 control 手册 [50%]\n\n### 待改进\n- [ ] 编写工具描述',
+    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册\n- [x] 创建 team_mgmt 手册\n- [x] 创建 personal_memory 手册\n\n### 进行中\n- [ ] 创建 control 手册 [50%]\n\n### 待改进\n- [ ] 编写工具描述',
 });
 ```
 
@@ -85,7 +85,7 @@ change_mind({
 change_mind({
   selector: 'goals',
   content:
-    '## Goals\n\n- [ ] 创建所有工具集手册\n  - [x] ws_mod\n  - [x] team_mgmt\n  - [x] memory\n  - [ ] control (进行中)\n- [ ] 编写工具描述',
+    '## Goals\n\n- [ ] 创建所有工具集手册\n  - [x] ws_mod\n  - [x] team_mgmt\n  - [x] personal_memory\n  - [ ] control (进行中)\n- [ ] 编写工具描述',
 });
 ```
 
@@ -140,6 +140,6 @@ recall_taskdoc({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册 [100%]\n- [x] 创建 team_mgmt 手册 [100%]\n- [x] 创建 memory 手册 [100%]\n\n### 进行中\n- [ ] 创建 control 手册 [60%]\n\n### 下一步\n- 完成 control 手册\n- 创建 os 手册',
+    '## Progress\n\n### 已完成\n- [x] 创建 ws_mod 手册 [100%]\n- [x] 创建 team_mgmt 手册 [100%]\n- [x] 创建 personal_memory 手册 [100%]\n\n### 进行中\n- [ ] 创建 control 手册 [60%]\n\n### 下一步\n- 完成 control 手册\n- 创建 os 手册',
 });
 ```

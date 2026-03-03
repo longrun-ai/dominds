@@ -25,7 +25,7 @@
 
 ## Memory Model
 
-The team_memory toolset uses a **path key-value storage** model, similar to memory but with shared properties:
+The team_memory toolset uses a **path key-value storage** model, similar to personal_memory but with shared properties:
 
 - **Path**: Unique identifier for the memory, similar to a file system path
 - **Content**: Actual content of the memory, can be arbitrary text
@@ -69,7 +69,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to memo
 
 ## Relationship with Other Tools
 
-- **memory**: Personal memory, only current agent visible
+- **personal_memory**: Personal memory, only current agent visible
 - **reminder**: Temporary reminder, session-level
 - **change_mind**: Update taskdoc (goals/constraints/progress)
 

@@ -69,7 +69,7 @@
 ## 常见 toolset 能力速览
 
 - `os`：shell 与进程管理（`shell_cmd` / `stop_daemon` / `get_daemon_output`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）
-- `memory`：个人记忆维护（添加/替换/删除/清空个人 memory）
+- `personal_memory`：个人记忆维护（添加/替换/删除/清空个人 memory）
 - `team_memory`：团队共享记忆维护（添加/替换/删除/清空 shared memory）
 - `codex_style_tools`：Codex 风格工具（`apply_patch` / `readonly_shell` / `update_plan`）；**Windows 环境下不要配置该 toolset**
 - `mcp_admin`：MCP 运维（`mcp_restart` / `mcp_release`），并包含环境变量工具（`env_get` / `env_set` / `env_unset`）

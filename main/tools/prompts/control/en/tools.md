@@ -157,7 +157,7 @@ update_reminder({
 change_mind({
   selector: 'progress',
   content:
-    '## Progress\n\n### Completed\n- [x] Create ws_mod manual\n- [x] Create team_mgmt manual\n\n### In Progress\n- [ ] Create memory manual [80%]\n\n### Not Started\n- [ ] Create control manual',
+    '## Progress\n\n### Completed\n- [x] Create ws_mod manual\n- [x] Create team_mgmt manual\n\n### In Progress\n- [ ] Create personal_memory manual [80%]\n\n### Not Started\n- [ ] Create control manual',
 });
 ```
 

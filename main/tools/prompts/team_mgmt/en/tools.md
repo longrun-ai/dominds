@@ -69,7 +69,7 @@
 ## Common Toolset Capability Quick Map
 
 - `os`: shell/process operations (`shell_cmd` / `stop_daemon` / `get_daemon_output`), plus env tools (`env_get` / `env_set` / `env_unset`)
-- `memory`: personal memory maintenance (add/replace/drop/clear member memory)
+- `personal_memory`: personal memory maintenance (add/replace/drop/clear personal memory)
 - `team_memory`: shared team memory maintenance (add/replace/drop/clear shared memory)
 - `codex_style_tools`: Codex-style tools (`apply_patch` / `readonly_shell` / `update_plan`); **do not configure this toolset on Windows**
 - `mcp_admin`: MCP operations (`mcp_restart` / `mcp_release`), plus env tools (`env_get` / `env_set` / `env_unset`)

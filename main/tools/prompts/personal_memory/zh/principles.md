@@ -1,4 +1,4 @@
-# memory 原则与核心概念
+# personal_memory 原则与核心概念
 
 ## 模板（原则）
 
@@ -25,26 +25,33 @@
 
 ## 记忆模型
 
-memory 工具集采用**路径键值存储**模型：
+personal_memory 工具集采用**路径键值存储**模型：
 
 - **路径（path）**：记忆的唯一标识符，类似于文件系统路径，例如 `project/todo` 或 `user/preferences/theme`
 - **内容（content）**：记忆的实际内容，可以是任意文本
 
+**隔离性与首次创建：**
+
+- 个人记忆仅对当前智能体可见。
+- 磁盘上会自动隔离到：`.minds/memory/individual/<member-id>/...`。
+- 因此 `path` 不应包含你的成员 id（不要写 `<member-id>/...`）。
+- 若你当前还没有任何个人记忆条目，直接调用 `add_personal_memory` 即可：目录会由系统自动创建。
+
 ## 工具概览
 
-| 工具           | 功能                         |
-| -------------- | ---------------------------- |
-| add_memory     | 创建新记忆（路径不存在时）   |
-| replace_memory | 更新已有记忆（路径存在时）   |
-| drop_memory    | 删除记忆                     |
-| clear_memory   | 清空所有个人记忆（不可恢复） |
+| 工具                    | 功能                           |
+| ----------------------- | ------------------------------ |
+| add_personal_memory     | 创建新个人记忆（路径不存在时） |
+| replace_personal_memory | 更新已有个人记忆（路径存在时） |
+| drop_personal_memory    | 删除个人记忆                   |
+| clear_personal_memory   | 清空所有个人记忆（不可恢复）   |
 
 ## 记忆生命周期
 
-1. **创建（add）**：使用 `add_memory` 创建新记忆
+1. **创建（add）**：使用 `add_personal_memory` 创建新记忆
 2. **读取（read）**：智能体在生成回复时可读取已有记忆
-3. **更新（replace）**：使用 `replace_memory` 更新记忆内容
-4. **删除（drop）**：使用 `drop_memory` 删除特定记忆
+3. **更新（replace）**：使用 `replace_personal_memory` 更新记忆内容
+4. **删除（drop）**：使用 `drop_personal_memory` 删除特定记忆
 
 ## 最佳实践
 
@@ -84,6 +91,6 @@ memory 工具集采用**路径键值存储**模型：
 
 1. 路径护栏：不允许绝对路径；不允许包含 `..`。
 2. 内容护栏：`content` 不能为空字符串。
-3. `clear_memory` 会删除当前智能体的全部个人记忆，**不可恢复**。
+3. `clear_personal_memory` 会删除当前智能体的全部个人记忆，**不可恢复**。
 
 > 建议：即使当前实现没有硬性 size 限制，也应保持记忆内容精炼，否则会显著增加上下文成本与过期风险。

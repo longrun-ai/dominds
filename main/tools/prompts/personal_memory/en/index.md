@@ -1,4 +1,4 @@
-# memory Personal Memory Tools Manual
+# personal_memory Personal Memory Tools Manual
 
 ## Template (Index)
 
@@ -24,11 +24,21 @@
 
 - <When to use this vs a sibling toolset>
 
-memory is Dominds' **personal memory toolset** for managing an agent's private memory:
+personal_memory is Dominds' **personal memory toolset** for managing an agent's private memory:
 
 - **Privacy**: Memory is only visible to the current agent, not shared with other members
 - **Persistence**: Memory is persisted to disk and retained after conversation restarts
 - **Structured**: Supports organizing memory by path for easy categorization and retrieval
+
+Key notes:
+
+- Personal memory is automatically isolated on disk under `.minds/memory/individual/<member-id>/...`.
+- Your `path` must NOT include your member id (do not write `<member-id>/...`).
+- If you have zero memory files yet, just call `add_personal_memory` — the directory will be created automatically.
+
+Tool list:
+
+- `add_personal_memory` / `replace_personal_memory` / `drop_personal_memory` / `clear_personal_memory`
 
 ## Quick Navigation
 

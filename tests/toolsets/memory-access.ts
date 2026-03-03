@@ -7,7 +7,7 @@ import path from 'path';
 import type { Dialog } from 'dominds/dialog';
 import { setWorkLanguage } from 'dominds/shared/runtime-language';
 import { Team } from 'dominds/team';
-import { addMemoryTool, addSharedMemoryTool } from 'dominds/tools/mem';
+import { addPersonalMemoryTool, addSharedMemoryTool } from 'dominds/tools/mem';
 
 function assertTrue(condition: boolean, message?: string): void {
   if (!condition) {
@@ -60,9 +60,12 @@ async function main(): Promise<void> {
       });
 
       const dlg = {} as unknown as Dialog;
-      const res = await addMemoryTool.call(dlg, caller, '@add_memory onboarding.md', '# Hello\n');
+      const res = await addPersonalMemoryTool.call(dlg, caller, {
+        path: 'onboarding.md',
+        content: '# Hello\n',
+      });
 
-      assertEqual(res.status, 'completed');
+      assertEqual(res, 'Added');
 
       const writtenPath = path.resolve('.minds/memory/individual/pm/onboarding.md');
       assertTrue(fs.existsSync(writtenPath), `Expected file to be written: ${writtenPath}`);
@@ -80,14 +83,12 @@ async function main(): Promise<void> {
       });
 
       const dlg = {} as unknown as Dialog;
-      const res = await addSharedMemoryTool.call(
-        dlg,
-        caller,
-        '@add_team_memory decisions.md',
-        'ok',
-      );
+      const res = await addSharedMemoryTool.call(dlg, caller, {
+        path: 'decisions.md',
+        content: 'ok',
+      });
 
-      assertEqual(res.status, 'completed');
+      assertEqual(res, 'Added');
 
       const writtenPath = path.resolve('.minds/memory/team_shared/decisions.md');
       assertTrue(fs.existsSync(writtenPath), `Expected file to be written: ${writtenPath}`);
@@ -99,12 +100,14 @@ async function main(): Promise<void> {
     await withTempCwd(async () => {
       const caller = new Team.Member({ id: 'pm', name: 'Product Manager' });
       const dlg = {} as unknown as Dialog;
-      const res = await addMemoryTool.call(dlg, caller, '@add_memory /etc/passwd', 'nope');
+      const res = await addPersonalMemoryTool.call(dlg, caller, {
+        path: '/etc/passwd',
+        content: 'nope',
+      });
 
-      assertEqual(res.status, 'failed');
       assertTrue(
-        typeof res.result === 'string' && res.result.includes('relative'),
-        `Expected a relative-path error, got: ${res.result}`,
+        typeof res === 'string' && res.includes('relative'),
+        `Expected a relative-path error, got: ${res}`,
       );
     });
   });
