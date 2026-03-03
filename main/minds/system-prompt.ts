@@ -96,7 +96,7 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
     zh: [
       '- 队友诉请必须遵循“发起 → 等待 → 判定 → 续推”四段协议：若目标未达成，立即发出下一轮诉请推进。',
       '- 对队友诉请而言，收到回贴即表示该轮调用已结束；不存在“对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请函数（通常 \\`tellask\\` 复用同一 \\`sessionSlug\\`）。',
-      '- 只有在存在明确 pending tellask 时，才可声明“等待回贴/等待结果”；否则必须执行下一动作（直接诉请或本地执行）。',
+      '- 只有在存在明确进行中诉请时，才可声明“等待回贴/等待结果”（通常应可在“⏳ 进行中诉请（自动添加，手动删除）”提醒项中观测到）；若该提醒项不存在，或提醒项已明确“当前没有执行中的诉请”，则“等待”是错误动作，必须执行下一动作（直接诉请或本地执行）。',
       '- 能由队友诉请完成的执行性工作，禁止转交 \\`askHuman\\` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 \\`tellask\\` 或 \\`tellaskSessionless\\`。',
       '- 当你在诉请正文里定义“回贴格式/交付格式”时，必须明确写入：`Dominds 会自动注入回贴标记，禁止手写标记`；不得要求被诉请者手写 `【最终完成】` / `【tellaskBack】` / FBR 标记。',
       '- 当你处于队友诉请触发的支线且需要澄清时，必须使用 \\`tellaskBack\\` 回问上游诉请者；\\`tellaskBack\\` 不携带 \\`sessionSlug\\`。',
@@ -105,7 +105,7 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
     en: [
       '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
       '- For teammate Tellasks, a delivered response closes that call round; there is no default “still running in background” state for the same Tellask. To continue, emit a new Tellask function call explicitly (usually \\`tellask\\` with the same \\`sessionSlug\\`).',
-      '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists; otherwise execute the next action now (direct Tellask or local action).',
+      '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists (normally observable in the “⏳ In-flight Tellasks (auto-added, manually deleted)” reminder). If that reminder is absent, or it explicitly states there are no in-flight Tellasks, waiting is a wrong action; execute the next action now (direct Tellask or local action).',
       '- Do not use \\`askHuman\\` as a relay for executable teammate work. If you write “ask @X to do Y”, emit \\`tellask\\` or \\`tellaskSessionless\\` in the same response.',
       '- When you define a “reply/delivery format” inside tellask body, you must explicitly include: `Dominds auto-injects reply markers; do not hand-write markers`; do not require the responder to hand-write `【最终完成】` / `【tellaskBack】` / FBR markers.',
       '- When you are in a teammate-triggered sideline and need clarification, you MUST issue \\`tellaskBack\\` to ask back upstream; \\`tellaskBack\\` must not carry \\`sessionSlug\\`.',

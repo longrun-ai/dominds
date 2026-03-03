@@ -83,11 +83,22 @@ function buildReminderContent(
   pending: ReadonlyArray<PendingSubdialogView>,
 ): string {
   const heading =
-    language === 'zh' ? '⏳ 进行中诉请（自动维护）' : '⏳ In-flight Tellasks (auto-managed)';
+    language === 'zh'
+      ? '⏳ 进行中诉请（自动添加，手动删除）'
+      : '⏳ In-flight Tellasks (auto-added, manually deleted)';
+
+  if (pending.length === 0) {
+    const noneRunningText =
+      language === 'zh'
+        ? '当前没有任何执行中的诉请，没有其祂智能体仍在后台工作，任何 “等待” 想法和行为都是错误的；若你删除后该提醒项未再次出现，也同样表示当前无可等待事项。若已明确知晓，可删除此提醒项以免碍眼。'
+        : 'There are no in-flight Tellasks, and no other agents are still working in the background. Any “wait” thought or behavior is wrong. If this reminder does not reappear after deletion, it likewise means there is nothing to wait for. If you clearly know this, delete this reminder to reduce noise.';
+    return [heading, '', noneRunningText].join('\n');
+  }
+
   const summary =
     language === 'zh'
-      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。'
-      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing.';
+      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。此提醒会自动添加与刷新，但不会自动删除。'
+      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is auto-added/refreshed and not auto-deleted.';
 
   const lines = pending.map((p, idx) => {
     const base =
@@ -148,17 +159,13 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
   return await withDialogLockIfNeeded(dlg, async () => {
     const reminderIndex = assertSingleOwnedReminder(dlg);
     const language = getWorkLanguage();
-
-    if (pending.length === 0) {
-      if (reminderIndex === null) return false;
-      dlg.deleteReminder(reminderIndex);
-      return true;
-    }
-
     const content = buildReminderContent(language, pending);
     const nextMeta = buildReminderMeta(pending);
 
     if (reminderIndex === null) {
+      if (pending.length === 0) {
+        return false;
+      }
       dlg.addReminder(content, pendingTellaskReminderOwner, nextMeta, 0);
       return true;
     }
@@ -186,9 +193,6 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
     }
 
     const pending = await loadPendingSubdialogView(dlg);
-    if (pending.length === 0) {
-      return { treatment: 'drop' };
-    }
 
     const language = getWorkLanguage();
     const updatedContent = buildReminderContent(language, pending);

@@ -10,13 +10,15 @@
  *   --no-hints           Don't show hints
  *   --only-prompt        Show only system prompt
  *   --only-mem           Show only memories
- *   --audit              Run built-in prompt audit checks
+ *   --audit              Run prompt audit via hidden teammate @fuxi (skip when default LLM unavailable)
  *   --fail-on-audit-warning  Exit non-zero when audit emits warnings
  *   --find <pattern>     Find case-insensitive text in rendered output
  *   --help               Show help
  */
 
 import { readFile } from 'fs/promises';
+import type { ChatMessage, ProviderConfig } from '../llm/client';
+import type { LlmGenerator, LlmStreamReceiver } from '../llm/gen';
 import { parseMcpYaml } from '../mcp/config';
 import { loadAgentMinds } from '../minds/load';
 import { Team } from '../team';
@@ -31,21 +33,29 @@ type ReadArgs = Readonly<{
   findPatterns: string[];
 }>;
 
-type PromptAuditCheck = Readonly<{
-  id: string;
-  label: string;
-  pass: boolean;
-}>;
-
-type PromptAuditDuplicate = Readonly<{
-  line: string;
-  count: number;
-}>;
+type PromptAuditRuntime =
+  | Readonly<{
+      kind: 'ready';
+      auditorId: 'fuxi';
+      providerKey: string;
+      modelKey: string;
+      providerCfg: ProviderConfig;
+      llmGen: LlmGenerator;
+      auditAgent: Team.Member;
+      auditorSystemPrompt: string;
+    }>
+  | Readonly<{ kind: 'skip'; reason: string }>;
 
 type PromptAuditReport = Readonly<{
-  checks: PromptAuditCheck[];
-  duplicates: PromptAuditDuplicate[];
+  mode: 'fuxi_llm' | 'skipped';
+  targetMemberId: string;
+  auditorId: 'fuxi';
+  providerKey?: string;
+  modelKey?: string;
+  verdict?: 'PASS' | 'WARN';
   warnings: string[];
+  rewriteSuggestion?: string;
+  skipReason?: string;
 }>;
 
 type McpDeclaredToolsets =
@@ -81,7 +91,7 @@ function printUsage(): void {
   console.log('');
   console.log('Print agent system prompt and memories with filtering flags.');
   console.log(
-    '`--audit` also includes static toolset checks (registry vs `.minds/mcp.yaml` declarations).',
+    '`--audit` runs prompt audit via hidden teammate @fuxi using default LLM config (skips when unavailable), and also includes static toolset checks (registry vs `.minds/mcp.yaml` declarations).',
   );
   console.log('When <member-id> is omitted, reads all visible team members.');
   console.log('');
@@ -99,128 +109,293 @@ function printUsage(): void {
   console.log('  dominds read --only-prompt --audit --fail-on-audit-warning');
 }
 
-function normalizeForDuplicateScan(line: string): string {
-  return line
-    .trim()
-    .replace(/^[-*]\s+/, '')
-    .replace(/[`*_]/g, '')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function buildPromptAudit(systemPrompt: string): PromptAuditReport {
-  const checks: PromptAuditCheck[] = [
-    {
-      id: 'collaboration_protocol',
-      label: 'Has collaboration protocol section',
-      pass: /## (Collaboration Protocol|协作协议)/.test(systemPrompt),
-    },
-    {
-      id: 'response_closes_round',
-      label: 'Has "response closes call round" rule',
-      pass:
-        /response closes that call round/.test(systemPrompt) ||
-        /收到回贴即表示该轮调用已结束/.test(systemPrompt),
-    },
-    {
-      id: 'pending_wait_guard',
-      label: 'Has pending tellask wait guard',
-      pass:
-        /pending Tellask|pending tellask/.test(systemPrompt) ||
-        /存在明确 pending tellask/.test(systemPrompt),
-    },
-    {
-      id: 'relay_ban',
-      label: 'Has no-human-relay rule',
-      pass: /relay for executable teammate work/.test(systemPrompt) || /转发员/.test(systemPrompt),
-    },
-    {
-      id: 'tellask_function_boundary',
-      label: 'Has tellask vs function-calling boundary',
-      pass:
-        /native function-calling/.test(systemPrompt) &&
-        (/is only for tellasking teammates\/freshBootsReasoning\/askHuman/.test(systemPrompt) ||
-          /仅用于诉请队友\/freshBootsReasoning\/askHuman/.test(systemPrompt)),
-    },
-    {
-      id: 'fbr_phase_contract',
-      label: 'Has FBR phase contract',
-      pass: /FBR phase contract|FBR 阶段协议/.test(systemPrompt),
-    },
-    {
-      id: 'taskdoc_encapsulation',
-      label: 'Has Taskdoc encapsulation section',
-      pass:
-        /Taskdoc encapsulation & access restrictions/.test(systemPrompt) ||
-        /差遣牒.*封装/.test(systemPrompt),
-    },
-  ];
+function truncateForAuditInput(
+  text: string,
+  maxChars: number,
+): Readonly<{ text: string; truncated: boolean }> {
+  if (text.length <= maxChars) return { text, truncated: false };
+  return { text: text.slice(0, maxChars), truncated: true };
+}
 
-  const hasDomindsRuntime = /Dominds runtime|genuine Codex CLI/.test(systemPrompt);
-  const hasCodexHostIdentity =
-    /You are GPT-5\.2 running in the Codex CLI/.test(systemPrompt) ||
-    /^You are Codex CLI\.$/m.test(systemPrompt);
+async function runFuxiAuditCall(
+  runtime: Extract<PromptAuditRuntime, { kind: 'ready' }>,
+  userContent: string,
+): Promise<string> {
+  let output = '';
+  let sawFuncCall = false;
+  const receiver: LlmStreamReceiver = {
+    thinkingStart: async () => {},
+    thinkingChunk: async () => {},
+    thinkingFinish: async () => {},
+    sayingStart: async () => {},
+    sayingChunk: async (chunk) => {
+      output += chunk;
+    },
+    sayingFinish: async () => {},
+    funcCall: async () => {
+      sawFuncCall = true;
+    },
+  };
+  const context: ChatMessage[] = [{ type: 'environment_msg', role: 'user', content: userContent }];
+  await runtime.llmGen.genToReceiver(
+    runtime.providerCfg,
+    runtime.auditAgent,
+    runtime.auditorSystemPrompt,
+    [],
+    context,
+    receiver,
+    0,
+  );
+  const trimmed = output.trim();
+  if (trimmed.length > 0) return trimmed;
+  if (sawFuncCall)
+    return '{"verdict":"WARN","warnings":["LLM emitted tool call during prompt audit"],"rewrite":""}';
+  return '';
+}
 
-  const toolSectionMarkers = ['\n## Intrinsic Tools\n', '\n## 内置工具\n'];
-  let duplicateScope = systemPrompt;
-  for (const marker of toolSectionMarkers) {
-    const idx = duplicateScope.indexOf(marker);
-    if (idx >= 0) {
-      duplicateScope = duplicateScope.slice(0, idx);
-      break;
+function parseFuxiAuditJson(raw: string): Readonly<{
+  verdict: 'PASS' | 'WARN';
+  warnings: string[];
+  rewriteSuggestion?: string;
+}> | null {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end < start) return null;
+  const candidate = raw.slice(start, end + 1);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  const verdictRaw = parsed['verdict'];
+  if (verdictRaw !== 'PASS' && verdictRaw !== 'WARN') return null;
+  const warningsRaw = parsed['warnings'];
+  if (!Array.isArray(warningsRaw)) return null;
+  const warnings: string[] = [];
+  for (const item of warningsRaw) {
+    if (typeof item !== 'string') return null;
+    const trimmed = item.trim();
+    if (trimmed.length === 0) continue;
+    warnings.push(trimmed);
+  }
+  const rewriteRaw = parsed['rewrite'];
+  const rewriteSuggestion =
+    typeof rewriteRaw === 'string' && rewriteRaw.trim().length > 0 ? rewriteRaw.trim() : undefined;
+  return { verdict: verdictRaw, warnings, rewriteSuggestion };
+}
+
+async function preparePromptAuditRuntime(team: Team): Promise<PromptAuditRuntime> {
+  const fuxi = team.getMember('fuxi');
+  if (!fuxi) {
+    return { kind: 'skip', reason: 'Hidden teammate @fuxi is not available in current team.' };
+  }
+
+  const providerKey = fuxi.provider ?? team.memberDefaults.provider;
+  const modelKey = fuxi.model ?? team.memberDefaults.model;
+  if (!providerKey || !modelKey) {
+    return {
+      kind: 'skip',
+      reason:
+        'Default LLM provider/model is not configured for @fuxi (resolved from member + member_defaults).',
+    };
+  }
+
+  let providerCfg: ProviderConfig;
+  try {
+    const { LlmConfig } = await import('../llm/client');
+    const llmCfg = await LlmConfig.load();
+    const resolved = llmCfg.getProvider(providerKey);
+    if (!resolved) {
+      return {
+        kind: 'skip',
+        reason: `Provider '${providerKey}' is missing in effective LLM config.`,
+      };
+    }
+    if (!resolved.models || !Object.prototype.hasOwnProperty.call(resolved.models, modelKey)) {
+      return {
+        kind: 'skip',
+        reason: `Model '${modelKey}' is not configured under provider '${providerKey}'.`,
+      };
+    }
+    providerCfg = resolved;
+  } catch (err: unknown) {
+    return {
+      kind: 'skip',
+      reason: `Failed to load effective LLM config: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  if (providerCfg.apiType !== 'codex') {
+    const envVar = providerCfg.apiKeyEnvVar;
+    const envValue = process.env[envVar];
+    const envConfigured = typeof envValue === 'string' && envValue.trim().length > 0;
+    if (!envConfigured) {
+      return {
+        kind: 'skip',
+        reason: `Provider env var '${envVar}' is not configured (required for non-codex providers).`,
+      };
     }
   }
 
-  const lineCounts = new Map<string, number>();
-  const representative = new Map<string, string>();
-  for (const rawLine of duplicateScope.split('\n')) {
-    const line = rawLine.trim();
-    if (line === '' || line.startsWith('#')) continue;
-    const normalized = normalizeForDuplicateScan(line);
-    if (normalized.length < 24) continue;
-    lineCounts.set(normalized, (lineCounts.get(normalized) ?? 0) + 1);
-    if (!representative.has(normalized)) representative.set(normalized, line);
+  const { getLlmGenerator } = await import('../llm/gen/registry');
+  const llmGen = getLlmGenerator(providerCfg.apiType);
+  if (!llmGen) {
+    return {
+      kind: 'skip',
+      reason: `LLM generator not found for apiType='${providerCfg.apiType}'.`,
+    };
   }
 
-  const duplicates: PromptAuditDuplicate[] = Array.from(lineCounts.entries())
-    .filter(([, count]) => count > 1)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .map(([normalized, count]) => ({
-      line: representative.get(normalized) ?? normalized,
-      count,
-    }));
-
-  const warnings: string[] = [];
-  for (const check of checks) {
-    if (!check.pass) warnings.push(`Missing: ${check.label}`);
+  let auditorSystemPrompt: string;
+  try {
+    const minds = await loadAgentMinds('fuxi', undefined, { missingToolsetPolicy: 'silent' });
+    auditorSystemPrompt = minds.systemPrompt;
+  } catch (err: unknown) {
+    return {
+      kind: 'skip',
+      reason: `Failed to load @fuxi minds: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
-  if (hasDomindsRuntime && hasCodexHostIdentity) {
-    warnings.push(
-      'Potential host identity conflict: both Dominds runtime and Codex host identity text found.',
+
+  const auditAgent = new Team.Member({
+    id: fuxi.id,
+    name: fuxi.name,
+    provider: providerKey,
+    model: modelKey,
+    model_params: fuxi.model_params,
+    streaming: fuxi.streaming,
+    hidden: true,
+    internal_allow_minds: true,
+  });
+
+  try {
+    const probe = await runFuxiAuditCall(
+      {
+        kind: 'ready',
+        auditorId: 'fuxi',
+        providerKey,
+        modelKey,
+        providerCfg,
+        llmGen,
+        auditAgent,
+        auditorSystemPrompt,
+      },
+      'Connectivity check for prompt audit. Reply with a short JSON: {"verdict":"PASS","warnings":[],"rewrite":""}',
     );
-  }
-  if (duplicates.length > 0) {
-    warnings.push(`Detected ${duplicates.length} repeated prompt lines (top duplicates shown).`);
+    if (probe.trim().length === 0) {
+      return { kind: 'skip', reason: 'Connectivity probe returned empty response.' };
+    }
+  } catch (err: unknown) {
+    return {
+      kind: 'skip',
+      reason: `Connectivity probe failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 
-  return { checks, duplicates, warnings };
+  return {
+    kind: 'ready',
+    auditorId: 'fuxi',
+    providerKey,
+    modelKey,
+    providerCfg,
+    llmGen,
+    auditAgent,
+    auditorSystemPrompt,
+  };
+}
+
+async function buildPromptAudit(
+  targetMemberId: string,
+  systemPrompt: string,
+  runtime: PromptAuditRuntime,
+): Promise<PromptAuditReport> {
+  if (runtime.kind === 'skip') {
+    return {
+      mode: 'skipped',
+      targetMemberId,
+      auditorId: 'fuxi',
+      warnings: [],
+      skipReason: runtime.reason,
+    };
+  }
+
+  const clipped = truncateForAuditInput(systemPrompt, 28000);
+  const userPrompt = [
+    '你是隐藏队友 @fuxi。请审计下面候选系统提示词，只关注会导致真实执行偏差/协作风险的问题，忽略纯措辞润色。',
+    '只输出 JSON，不要 markdown，不要额外解释。',
+    'JSON schema: {"verdict":"PASS|WARN","warnings":["..."],"rewrite":"..."}',
+    '- 若没有实质问题：verdict=PASS 且 warnings=[]。',
+    '- 若有问题：verdict=WARN，warnings 只列实质问题（最多 5 条）。',
+    '- rewrite 提供一段可直接替换的合并改写建议（最多 8 行）。',
+    `target_member_id: ${targetMemberId}`,
+    `prompt_truncated: ${clipped.truncated ? 'true' : 'false'}`,
+    'candidate_system_prompt:',
+    clipped.text,
+  ].join('\n\n');
+
+  let raw = '';
+  try {
+    raw = await runFuxiAuditCall(runtime, userPrompt);
+  } catch (err: unknown) {
+    return {
+      mode: 'skipped',
+      targetMemberId,
+      auditorId: 'fuxi',
+      warnings: [],
+      skipReason: `@fuxi audit call failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const parsed = parseFuxiAuditJson(raw);
+  if (!parsed) {
+    return {
+      mode: 'fuxi_llm',
+      targetMemberId,
+      auditorId: 'fuxi',
+      providerKey: runtime.providerKey,
+      modelKey: runtime.modelKey,
+      verdict: 'WARN',
+      warnings: ['@fuxi audit output is not valid JSON as requested'],
+      rewriteSuggestion: raw.trim().length > 0 ? raw.trim() : undefined,
+    };
+  }
+
+  const warnings = parsed.warnings;
+  const verdict: 'PASS' | 'WARN' = warnings.length === 0 ? 'PASS' : parsed.verdict;
+  return {
+    mode: 'fuxi_llm',
+    targetMemberId,
+    auditorId: 'fuxi',
+    providerKey: runtime.providerKey,
+    modelKey: runtime.modelKey,
+    verdict,
+    warnings,
+    rewriteSuggestion: parsed.rewriteSuggestion,
+  };
 }
 
 function printPromptAudit(report: PromptAuditReport): void {
   process.stdout.write('\n## Prompt Audit\n');
-  for (const check of report.checks) {
-    const tag = check.pass ? 'OK' : 'MISS';
-    process.stdout.write(`- [${tag}] ${check.label}\n`);
+  process.stdout.write(`- Target: @${report.targetMemberId}\n`);
+  if (report.mode === 'skipped') {
+    process.stdout.write('- Mode: skipped (@fuxi audit disabled due to unavailable default LLM)\n');
+    process.stdout.write(`- Reason: ${report.skipReason ?? 'unknown'}\n`);
+    process.stdout.write('- Warnings: none (audit step skipped)\n');
+    return;
   }
-  if (report.duplicates.length > 0) {
-    process.stdout.write('- Duplicate Lines (top):\n');
-    for (const d of report.duplicates) {
-      process.stdout.write(`  - x${d.count}: ${d.line}\n`);
-    }
-  } else {
-    process.stdout.write('- Duplicate Lines: none\n');
+  process.stdout.write('- Mode: @fuxi (LLM)\n');
+  if (report.providerKey && report.modelKey) {
+    process.stdout.write(
+      `- Runtime: provider='${report.providerKey}', model='${report.modelKey}'\n`,
+    );
   }
+  process.stdout.write(`- Verdict: ${report.verdict ?? 'WARN'}\n`);
   if (report.warnings.length > 0) {
     process.stdout.write('- Warnings:\n');
     for (const warning of report.warnings) {
@@ -228,6 +403,10 @@ function printPromptAudit(report: PromptAuditReport): void {
     }
   } else {
     process.stdout.write('- Warnings: none\n');
+  }
+  if (report.rewriteSuggestion && report.rewriteSuggestion.trim().length > 0) {
+    process.stdout.write('- Suggested Rewrite:\n');
+    process.stdout.write(`${report.rewriteSuggestion.trim()}\n`);
   }
 }
 
@@ -490,6 +669,7 @@ async function main(): Promise<void> {
     const team = await Team.load();
     const targetMemberIds = resolveTargetMemberIds(team, parsed.memberId);
     const isMultiMemberRun = targetMemberIds.length > 1;
+    const promptAuditRuntime = parsed.audit ? await preparePromptAuditRuntime(team) : undefined;
     const toolsetAudit = parsed.audit
       ? buildToolsetAuditReport({
           team,
@@ -528,7 +708,14 @@ async function main(): Promise<void> {
       }
 
       if (parsed.audit) {
-        const report = buildPromptAudit(systemPrompt);
+        const report = await buildPromptAudit(
+          agent.id,
+          systemPrompt,
+          promptAuditRuntime ?? {
+            kind: 'skip',
+            reason: 'Prompt audit runtime was not initialized.',
+          },
+        );
         printPromptAudit(report);
         auditWarningCount += report.warnings.length;
       }
