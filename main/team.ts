@@ -1850,28 +1850,15 @@ export namespace Team {
         const useRaw = hasUse ? memberObj['use'] : undefined;
         const importRaw = hasImport ? memberObj['import'] : undefined;
 
-        const fromAppId = typeof fromRaw === 'string' ? fromRaw.trim() : '';
-        const fromMemberId = (() => {
-          const importMember = typeof importRaw === 'string' ? importRaw.trim() : '';
-          if (importMember !== '') return importMember;
-          const useMember = typeof useRaw === 'string' ? useRaw.trim() : '';
-          if (useMember !== '') return useMember;
-          // If the user attempted a cross-app declaration but the referenced member id is invalid,
-          // keep the Problem id stable while making it explicit that the from-member is unknown.
-          if (hasFrom && (hasUse || hasImport)) return '_unknown_from_member_';
-          // from-only: default to using the local member id.
-          if (hasFrom) return id;
-          return id;
-        })();
-        const fromAppSeg =
-          fromAppId !== '' ? sanitizeProblemIdSegment(fromAppId) : '_unknown_from_app_';
-        const fromMemberSeg =
-          fromMemberId !== '' ? sanitizeProblemIdSegment(fromMemberId) : '_unknown_from_member_';
-        const fromPrefix = `members/${idSeg}/from_app/${fromAppSeg}/${fromMemberSeg}`;
+        // Problem id should stay short and stable: it is a UI address, not a stack trace.
+        // During the transition, team definitions can come from multiple scopes (rtws/kernel/apps).
+        // This validator currently runs on the effective rtws `.minds/team.yaml` object.
+        const definingScopeSeg = 'rtws';
+        const memberPrefix = `members/${definingScopeSeg}/${idSeg}`;
 
         if (hasUse && hasImport) {
           pushIssue(
-            `${fromPrefix}/use_and_import_conflict`,
+            `${memberPrefix}/use_and_import_conflict`,
             `Invalid .minds/team.yaml: ${memberAt} cannot specify both 'use' and 'import'.`,
             `Both ${memberAt}.use and ${memberAt}.import are present; remove one.`,
           );
@@ -1879,7 +1866,7 @@ export namespace Team {
 
         if ((hasUse || hasImport) && !hasFrom) {
           pushIssue(
-            `${fromPrefix}/missing`,
+            `${memberPrefix}/from/missing`,
             `Invalid .minds/team.yaml: ${memberAt} uses cross-app member reference but is missing 'from'.`,
             `Either remove ${memberAt}.use/${memberAt}.import, or add ${memberAt}.from: <dep-app-id>.`,
           );
@@ -1888,7 +1875,7 @@ export namespace Team {
         if (hasFrom) {
           if (typeof fromRaw !== 'string' || fromRaw.trim() === '') {
             pushIssue(
-              `${fromPrefix}/invalid`,
+              `${memberPrefix}/from/invalid`,
               `Invalid .minds/team.yaml: ${memberAt}.from must be a non-empty string.`,
               `Invalid ${memberAt}.from: expected non-empty string (got ${describeValueType(fromRaw)})`,
             );
@@ -1897,7 +1884,7 @@ export namespace Team {
         if (hasUse) {
           if (typeof useRaw !== 'string' || useRaw.trim() === '') {
             pushIssue(
-              `${fromPrefix}/use_invalid`,
+              `${memberPrefix}/use/invalid`,
               `Invalid .minds/team.yaml: ${memberAt}.use must be a non-empty string.`,
               `Invalid ${memberAt}.use: expected non-empty string (got ${describeValueType(useRaw)})`,
             );
@@ -1906,7 +1893,7 @@ export namespace Team {
         if (hasImport) {
           if (typeof importRaw !== 'string' || importRaw.trim() === '') {
             pushIssue(
-              `${fromPrefix}/import_invalid`,
+              `${memberPrefix}/import/invalid`,
               `Invalid .minds/team.yaml: ${memberAt}.import must be a non-empty string.`,
               `Invalid ${memberAt}.import: expected non-empty string (got ${describeValueType(importRaw)})`,
             );

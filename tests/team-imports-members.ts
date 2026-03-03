@@ -66,9 +66,7 @@ async function main(): Promise<void> {
     );
     const team1 = await Team.load();
     assert.ok(team1.getMember('builder'), 'team should remain usable');
-    mustHaveProblemPrefix(
-      'team/team_yaml_error/members/scribe/from_app/common_agents/scribe/use_and_import_conflict',
-    );
+    mustHaveProblemPrefix('team/team_yaml_error/members/rtws/scribe/use_and_import_conflict');
 
     // Case 2: use without from should be surfaced.
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -90,9 +88,7 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
     await Team.load();
-    mustHaveProblemPrefix(
-      'team/team_yaml_error/members/librarian/from_app/_unknown_from_app_/librarian/missing',
-    );
+    mustHaveProblemPrefix('team/team_yaml_error/members/rtws/librarian/from/missing');
 
     // Case 3: invalid types for from/use/import should be surfaced.
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -122,15 +118,9 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
     await Team.load();
-    mustHaveProblemPrefix(
-      'team/team_yaml_error/members/bad_from/from_app/_unknown_from_app_/bad_from/invalid',
-    );
-    mustHaveProblemPrefix(
-      'team/team_yaml_error/members/bad_use/from_app/knowledge_base/_unknown_from_member_/use_invalid',
-    );
-    mustHaveProblemPrefix(
-      'team/team_yaml_error/members/bad_import/from_app/common_agents/_unknown_from_member_/import_invalid',
-    );
+    mustHaveProblemPrefix('team/team_yaml_error/members/rtws/bad_from/from/invalid');
+    mustHaveProblemPrefix('team/team_yaml_error/members/rtws/bad_use/use/invalid');
+    mustHaveProblemPrefix('team/team_yaml_error/members/rtws/bad_import/import/invalid');
 
     // Case 4: from-only should be accepted as a default (no from_app Problems in v0).
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -152,7 +142,7 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
     await Team.load();
-    mustNotHaveProblemPrefix('team/team_yaml_error/members/librarian/from_app/');
+    mustNotHaveProblemPrefix('team/team_yaml_error/members/rtws/librarian/');
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

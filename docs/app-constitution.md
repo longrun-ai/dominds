@@ -65,9 +65,9 @@ rtws is the runtime workspace root (`process.cwd()`). The kernel reads/writes:
 
 ## App packages and manifests
 
-### App manifest (YAML)
+### App manifest (`.minds/app.yaml`) (YAML)
 
-(Current: implemented) The kernel can read an app manifest and validate it:
+(Current: implemented) The kernel can read an app manifest (`.minds/app.yaml`) and validate it:
 
 - Types + validation: `dominds/main/apps/manifest.ts` (`DomindsAppManifest`).
 - Default file name: `.minds/app.yaml` (overridable via `package.json` field `dominds.appManifest`, see `dominds/main/apps/package-info.ts`).
@@ -79,11 +79,32 @@ The manifest currently supports (key fields only; not exhaustive):
 - `contributes.web.staticDir`: optional static resources.
 - `contributes.rtwsSeed.taskdocs[]`: seed taskdocs under `<rtws>/.apps/<app-id>/...*.tsk/` (see `dominds/main/apps/rtws-seed.ts`).
 
+#### Dependency declaration / lock / workspace resolution (v0 draft)
+
+(Target: planned) Split “dependency declaration”, “version freezing”, and “workspace resolution” into separate layers. Avoid mixing _declaration_, _locking_, and _runtime state_ into a single file.
+
+Analogy (intuition only):
+
+- `.minds/app.yaml`: like `package.json` (declares the dependency graph + app default config such as `frontend.defaultPort`).
+- `.minds/app-lock.yaml`: like `pnpm-lock.yaml` (freezes dependency versions; should not jitter due to enable/disable).
+- `<rtws>/.apps/resolution.yaml`: like `pnpm-workspace.yaml` (for a given rtws: “where each app actually comes from / whether it’s enabled / whether its port is already pinned”).
+
+Key semantics:
+
+- enable/disable operations must only affect `<rtws>/.apps/resolution.yaml`.
+- dependencies can be declared as `required` vs `optional`:
+  - disabling a `required` dependency must transitively make dependents _effectively disabled_ (at minimum observable via UI/Problems).
+  - disabling an `optional` dependency must not disable dependents.
+- ports:
+  - apps declare `frontend.defaultPort` in the manifest (`.minds/app.yaml`) (may be `0` to allow runtime decision).
+  - `<rtws>/.apps/resolution.yaml` can pin an `assignedPort` as a stable resolved config; **if present it must be non-zero** (anti-jitter).
+  - `assignedPort` is not the runtime “bound port”; it is the resolver’s stable config output.
+
 ### Install JSON (`npx <pkg> --json`)
 
-(Target: planned) Install JSON should avoid overlapping with the manifest.
+(Target: planned) Install JSON should avoid overlapping with the manifest (`.minds/app.yaml`).
 
-Its responsibility is: provide **minimum “cache / location pointers”** (e.g. cache directory, manifest path, and necessary verification data). The kernel must then read the manifest file from that location to obtain full app information.
+Its responsibility is: provide **minimum “cache / location pointers”** (e.g. cache directory, manifest path, and necessary verification data). The kernel must then read the manifest (`.minds/app.yaml`) from that location to obtain full app information.
 
 Recommended principles:
 
@@ -151,6 +172,8 @@ Key semantics:
 
 This file is a source of truth for enabled apps snapshot.
 
+(Target: planned) Replace the mixed responsibilities of `.apps/installed.yaml` with `.minds/app-lock.yaml` + `<rtws>/.apps/resolution.yaml`.
+
 ### Override root
 
 (Target: planned) The workspace override directory for an app is:
@@ -195,6 +218,21 @@ To allow an app to fully ship a reusable “team + knowledge/persona” bundle, 
 - `.minds/env.md`
 - `.minds/team/<memberId>/{persona,knowledge,lessons}.md` and work-language variants (e.g. `persona.zh.md`)
 - `.minds/memory/**` (shared + personal memory; see `dominds/main/tools/mem.ts` and `dominds/main/minds/load.ts`)
+
+#### Override example: pinning a dependency app port (v0 draft)
+
+(Target: planned) Treat ports as **publishable integration config**, not runtime state.
+
+- an app declares `frontend.defaultPort` in its manifest (`.minds/app.yaml`).
+- a workspace (or an integrating app) can pin a dependency app port via an override file:
+  - `<rtws>/.apps/override/<target-app-id>/frontend.yaml`
+
+Conventions:
+
+- keep the file minimal (e.g. only `port: <number>`).
+- the override file can be used in local rtws development, and can also be **shipped by an app package** (an app may include `.apps/override/<target-app-id>/frontend.yaml` as its “default override”).
+- when a dependency app is integrated again by an outer app, the outer app override can override the inner app’s default override (overrides propagate along the integration chain).
+- after the resolver computes a final port for a given rtws, it may write `<rtws>/.apps/resolution.yaml.assignedPort` to pin it (and `assignedPort` must be non-zero).
 
 ## Enhanced `.minds/team.yaml`: `use` / `import`
 
@@ -273,15 +311,22 @@ Conflict handling (suggested):
 
 #### Problems / issue id prefix (v0 draft)
 
-Recommended aggregation prefix (stable and greppable):
+Recommend a short, stable problem id scheme that reflects the defining scope hierarchy.
 
-- `team/team_yaml_error/members/<local-id>/from_app/<from-app-id>/<from-member-id>/`
+- Shape: `team/team_yaml_error/members/<defining-app-id>/<local-id>/...`
 
-Notes:
+Where:
 
-- `<local-id>` is only unique within the current team; it is not globally unique.
-- The globally unique source identifier is `<from-app-id>/<from-member-id>`.
-- If `from` / `use` / `import` are invalid, implementations may use placeholder segments (e.g. `_unknown_from_app_` / `_unknown_from_member_`) to keep the problem id stable and greppable.
+- `<defining-app-id>` treats both rtws and kernel as “virtual apps”:
+  - rtws may not have a manifest (`.minds/app.yaml`), but its virtual app-id is `rtws`
+  - kernel virtual app-id is `kernel`
+- `<local-id>` is the `members` key inside that scope.
+
+Examples (illustrative):
+
+- `team/team_yaml_error/members/rtws/scribe/use_and_import_conflict`
+- `team/team_yaml_error/members/rtws/librarian/from/missing`
+- `team/team_yaml_error/members/rtws/bad_from/from/invalid`
 
 ## “Dev app” mode: let an rtws run as an app
 
@@ -291,7 +336,7 @@ Analogy: in Node.js development, a repo is both source tree and working director
 
 ### Expected behavior
 
-- When the current working directory can be recognized as a Dominds App (has a manifest; cfg-only is allowed and may not have `package.json`), the kernel can enter dev app mode.
+- When the current working directory can be recognized as a Dominds App (has a manifest (`.minds/app.yaml`); cfg-only is allowed and may not have `package.json`), the kernel can enter dev app mode.
 - In dev app mode:
   - the directory’s `.minds/**` acts as the app defaults;
   - `<rtws>/.apps/override/<dep-app-id>/...` remains available to override dependency apps;
