@@ -998,9 +998,9 @@ export class DomindsSetup extends HTMLElement {
         <div class="section-title">${escapeHtml(t.setupTeamTitle)}</div>
         ${parseError ? `<div class="error">${escapeHtml(parseError)}</div>` : ''}
 
-        <div class="subcard" style="margin-top:12px;">
+        <div class="subcard mt-12">
           <div class="subcard-title">${escapeHtml(t.setupMemberDefaultsTitle)}</div>
-          <div class="fields" style="margin-top:8px;">
+          <div class="fields mt-8">
             <div class="field">
               <div class="field-title">${escapeHtml(t.teamMembersProviderLabel)}</div>
               <select id="provider-select" class="select">${providerSelectOptions}</select>
@@ -1013,9 +1013,9 @@ export class DomindsSetup extends HTMLElement {
           ${prominentForm}
         </div>
 
-        <pre class="code" style="margin-top:12px;">${snippet}</pre>
+        <pre class="code mt-12">${snippet}</pre>
 
-        <div class="row" style="margin-top:10px;">
+        <div class="row mt-10">
           <div class="muted">${this.renderTeamAfterWriteHint(teamPath, t)}</div>
           <div class="spacer"></div>
           <button id="copy-team-snippet" class="${writeButtonClass}" ${writeDisabled}>${escapeHtml(
@@ -1131,7 +1131,7 @@ export class DomindsSetup extends HTMLElement {
           .join('');
 
         return `
-          <div class="subcard nested" style="margin-top:10px;">
+          <div class="subcard nested mt-10">
             <div class="subcard-title">${escapeHtml(this.formatModelParamNamespaceTitle(ns))}</div>
             ${rows}
           </div>
@@ -1140,10 +1140,9 @@ export class DomindsSetup extends HTMLElement {
       .join('');
 
     const hint = t.setupTeamModelParamsHint.trim();
-    const hintHtml =
-      hint === '' ? '' : `<div class="muted" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+    const hintHtml = hint === '' ? '' : `<div class="muted mt-4">${escapeHtml(hint)}</div>`;
     return `
-      <div class="subcard" style="margin-top:10px;">
+      <div class="subcard mt-10">
         <div class="subcard-title">${escapeHtml(t.setupModelParamsTitle)}</div>
         ${hintHtml}
         ${sections}
@@ -1537,6 +1536,10 @@ export class DomindsSetup extends HTMLElement {
       code{background:var(--color-bg-tertiary,#f1f5f9);border:1px solid var(--dominds-border-light,#e5e7eb);padding:1px 6px;border-radius:8px;}
 
       .code{background:var(--color-bg-tertiary,#f1f5f9);border:1px solid var(--dominds-border-light,#e5e7eb);border-radius:12px;padding:12px;overflow:auto;margin-top:10px;color:var(--dominds-fg,#333333);}
+      .mt-4{margin-top:4px;}
+      .mt-8{margin-top:8px;}
+      .mt-10{margin-top:10px;}
+      .mt-12{margin-top:12px;}
 
       .providers{display:flex;flex-direction:column;gap:10px;margin-top:10px;}
       .provider-card{background:var(--dominds-bg-secondary,#ffffff);border:1px solid var(--dominds-border,#e0e0e0);border-radius:12px;padding:10px;}

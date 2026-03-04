@@ -296,9 +296,7 @@ export class CreateDialogFlowController {
               </select>
             </div>
           </div>
-          <div class="form-group form-group-vertical shadow-members-group" id="shadow-members-group" style="${
-            initialPickShadow ? '' : 'display:none;'
-          }">
+          <div class="form-group form-group-vertical shadow-members-group${initialPickShadow ? '' : ' hidden'}" id="shadow-members-group">
             <label for="shadow-teammate-select">${escapeHtml(t.shadowMembersLabel)}</label>
             <select id="shadow-teammate-select" class="teammate-dropdown">
               ${shadowMembers
@@ -329,7 +327,7 @@ export class CreateDialogFlowController {
                 <span id="priming-show-in-ui-label">${escapeHtml(t.primingShowInUiLabel)}</span>
               </label>
             </div>
-            <div id="priming-more-section" class="priming-more-section" style="display:none;">
+            <div id="priming-more-section" class="priming-more-section hidden">
               <input type="text" id="priming-search-input" class="task-doc-input" placeholder="${escapeHtml(
                 t.primingSearchPlaceholder,
               )}" autocomplete="off">
@@ -536,7 +534,7 @@ export class CreateDialogFlowController {
     };
 
     const setPrimingMoreVisible = (visible: boolean): void => {
-      primingMoreSection.style.display = visible ? 'block' : 'none';
+      primingMoreSection.classList.toggle('hidden', !visible);
       if (!visible) {
         primingSearchSeq += 1;
         primingSearchTerm = '';
@@ -590,7 +588,7 @@ export class CreateDialogFlowController {
 
     const renderPrimingSearchResults = (): void => {
       const t = strings();
-      if (primingMoreSection.style.display === 'none') {
+      if (primingMoreSection.classList.contains('hidden')) {
         primingSearchResults.innerHTML = '';
         return;
       }
@@ -827,7 +825,7 @@ export class CreateDialogFlowController {
         hideSuggestions();
         return;
       }
-      if (primingMoreSection.style.display !== 'none') {
+      if (!primingMoreSection.classList.contains('hidden')) {
         e.preventDefault();
         setPrimingMoreVisible(false);
         renderPrimingSearchResults();
@@ -891,7 +889,7 @@ export class CreateDialogFlowController {
     select.addEventListener('change', () => {
       const isShadow = select.value === '__shadow__';
       if (shadowGroup instanceof HTMLElement) {
-        shadowGroup.style.display = isShadow ? 'block' : 'none';
+        shadowGroup.classList.toggle('hidden', !isShadow);
       }
       showTeammateInfo(select.value);
       void loadPrimingScriptsForSelectedAgent();

@@ -1329,6 +1329,13 @@ export class DomindsApp extends HTMLElement {
     return this.shadowRoot?.querySelector('#dialog-container') as DomindsDialogContainer | null;
   }
 
+  private applyRemindersWidgetGeometryStyle(widget: HTMLElement): void {
+    widget.style.setProperty('--reminders-widget-left', `${this.remindersWidgetX}px`);
+    widget.style.setProperty('--reminders-widget-top', `${this.remindersWidgetY}px`);
+    widget.style.setProperty('--reminders-widget-width', `${this.remindersWidgetWidthPx}px`);
+    widget.style.setProperty('--reminders-widget-height', `${this.remindersWidgetHeightPx}px`);
+  }
+
   private setupRemindersWidgetDrag(): void {
     const widget = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
     const header = this.shadowRoot?.querySelector('#reminders-widget-header') as HTMLElement | null;
@@ -1354,10 +1361,7 @@ export class DomindsApp extends HTMLElement {
       const maxY = Math.max(margin, window.innerHeight - this.remindersWidgetHeightPx - margin);
       this.remindersWidgetX = clamp(this.remindersWidgetX, margin, maxX);
       this.remindersWidgetY = clamp(this.remindersWidgetY, margin, maxY);
-      widget.style.left = `${this.remindersWidgetX}px`;
-      widget.style.top = `${this.remindersWidgetY}px`;
-      widget.style.width = `${this.remindersWidgetWidthPx}px`;
-      widget.style.height = `${this.remindersWidgetHeightPx}px`;
+      this.applyRemindersWidgetGeometryStyle(widget);
     };
     const initialRect = widget.getBoundingClientRect();
     if (Number.isFinite(initialRect.width) && initialRect.width > 0) {
@@ -1643,7 +1647,7 @@ export class DomindsApp extends HTMLElement {
     const remBtnCount = this.shadowRoot?.querySelector(
       '#navibar-reminders-toggle .reminders-count',
     ) as HTMLElement | null;
-    const courseLabel = this.shadowRoot?.querySelector('#course-navi span') as HTMLElement | null;
+    const courseLabel = this.shadowRoot?.querySelector('#course-navi-label') as HTMLElement | null;
     const stopCount = this.shadowRoot?.querySelector(
       '#header-emergency-stop-count',
     ) as HTMLElement | null;
@@ -2395,6 +2399,7 @@ export class DomindsApp extends HTMLElement {
       #navibar-context-health-wrap {
         display: inline-flex;
         align-items: center;
+        position: relative;
       }
 
       #navibar-context-health-wrap .navibar-tooltip {
@@ -3156,6 +3161,14 @@ export class DomindsApp extends HTMLElement {
         min-width: 0;
       }
 
+      .navibar-spacer {
+        flex: 1;
+      }
+
+      .navibar-gap-left {
+        margin-left: 12px;
+      }
+
       #course-navi {
         display: flex;
         align-items: center;
@@ -3163,10 +3176,22 @@ export class DomindsApp extends HTMLElement {
         gap: 3px;
       }
 
+      .course-navi-label {
+        margin: 0 8px;
+        min-width: 28px;
+        display: inline-block;
+        text-align: center;
+      }
+
       #reminders-callout {
         display: flex;
         align-items: center;
         flex-shrink: 0;
+        position: relative;
+      }
+
+      .reminders-refresh-button {
+        margin-left: 6px;
       }
 
       .icon-button {
@@ -3893,6 +3918,12 @@ export class DomindsApp extends HTMLElement {
         line-height: 1.4;
       }
 
+      #auth-modal-error {
+        display: none;
+        color: var(--dominds-danger, #dc3545);
+        font-size: var(--dominds-font-size-md, 13px);
+      }
+
       .modal-backdrop {
         position: absolute;
         top: 0;
@@ -4470,7 +4501,68 @@ export class DomindsApp extends HTMLElement {
       }
 
       #reminders-widget {
+        position: fixed;
+        left: var(--reminders-widget-left, 12px);
+        top: var(--reminders-widget-top, 56px);
+        width: var(--reminders-widget-width, 360px);
+        height: var(--reminders-widget-height, 240px);
+        min-width: 260px;
+        min-height: 160px;
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: var(--dominds-bg, #ffffff);
+        border-radius: 10px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        z-index: var(--dominds-z-overlay-reminders);
         opacity: 0.92;
+      }
+
+      .reminders-widget-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--dominds-border, #e0e0e0);
+        cursor: grab;
+      }
+
+      .reminders-widget-header-main {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      #reminders-widget-content {
+        padding: 8px 10px;
+        overflow: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
+      .reminders-widget-empty {
+        color: var(--dominds-muted, #666666);
+        font-style: italic;
+        text-align: center;
+        padding: 12px;
+      }
+
+      #reminders-widget-resize-handle {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        width: 14px;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: nesw-resize;
+        color: var(--dominds-muted, #64748b);
+        opacity: 0.72;
       }
 
       /* Reminder widget items */
@@ -4506,6 +4598,11 @@ export class DomindsApp extends HTMLElement {
         flex: 1;
         white-space: pre-wrap;
         word-break: break-word;
+      }
+
+      .rem-item-content-loading {
+        color: var(--dominds-muted, #666666);
+        font-style: italic;
       }
 
       .rem-section {
@@ -4825,7 +4922,7 @@ export class DomindsApp extends HTMLElement {
                 </button>
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
-              <div style="flex: 1;"></div>
+              <div class="navibar-spacer"></div>
               <button class="icon-button" id="navibar-save-priming" title="${t.primingSaveButtonTitle}" aria-label="${t.primingSaveButtonTitle}" ${this.currentDialog ? '' : 'disabled'}>
                 <span class="icon-mask app-icon-save" aria-hidden="true"></span>
               </button>
@@ -4833,21 +4930,21 @@ export class DomindsApp extends HTMLElement {
 	                <button class="icon-button" id="course-navi-prev" ${this.toolbarCurrentCourse > 1 ? '' : 'disabled'} aria-label="${t.previousCourse}">
 	                  <span class="icon-mask app-icon-prev" aria-hidden="true"></span>
 	                </button>
-                  <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">C ${this.toolbarCurrentCourse}</span>
+                  <span id="course-navi-label" class="course-navi-label">C ${this.toolbarCurrentCourse}</span>
                   <button class="icon-button" id="course-navi-next" ${this.toolbarCurrentCourse < this.toolbarTotalCourses ? '' : 'disabled'} aria-label="${t.nextCourse}">
                     <span class="icon-mask app-icon-next" aria-hidden="true"></span>
                   </button>
 		            </div>
-                <div id="navibar-context-health-wrap" style="position: relative; margin-left: 12px;">
-	              <div class="badge-button" id="navibar-context-health" data-level="unknown" aria-label="${contextUsageTitle}" style="">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
+                <div id="navibar-context-health-wrap" class="navibar-gap-left">
+	              <div class="badge-button" id="navibar-context-health" data-level="unknown" aria-label="${contextUsageTitle}">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
                   <div class="navibar-tooltip" id="navibar-context-health-tooltip">${contextUsageTooltipText}</div>
                 </div>
-		          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
+		          <div id="reminders-callout" class="navibar-gap-left">
 		            <button class="badge-button" id="navibar-reminders-toggle" aria-label="${t.reminders}">
 		              <span class="icon-mask app-icon-bookmark" aria-hidden="true"></span>
 		              <span class="reminders-count">${String(this.toolbarReminders.length)}</span>
 		            </button>
-	            <button class="icon-button" id="navibar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
+	            <button class="icon-button reminders-refresh-button" id="navibar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}">
               <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
             </button>
           </div>
@@ -4855,26 +4952,26 @@ export class DomindsApp extends HTMLElement {
             ${
               this.remindersWidgetVisible
                 ? `
-            <div id="reminders-widget" style="position: fixed; left: ${this.remindersWidgetX}px; top: ${this.remindersWidgetY}px; width: ${this.remindersWidgetWidthPx}px; height: ${this.remindersWidgetHeightPx}px; min-width: 260px; min-height: 160px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--dominds-border); background: var(--dominds-bg); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: var(--dominds-z-overlay-reminders);">
-              <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
-                <div style="display:flex; align-items:center; gap:8px;">
+            <div id="reminders-widget" style="--reminders-widget-left: ${this.remindersWidgetX}px; --reminders-widget-top: ${this.remindersWidgetY}px; --reminders-widget-width: ${this.remindersWidgetWidthPx}px; --reminders-widget-height: ${this.remindersWidgetHeightPx}px;">
+              <div id="reminders-widget-header" class="reminders-widget-header">
+                <div class="reminders-widget-header-main">
                   <span class="icon-mask app-icon-bookmark app-icon-16" aria-hidden="true"></span>
-                  <span>${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
+                  <span id="reminders-widget-title">${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
                 </div>
                 <button id="reminders-widget-close" class="icon-button" aria-label="${t.close}">
                   <span class="icon-mask app-icon-close" aria-hidden="true"></span>
                 </button>
               </div>
-              <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;">
+              <div id="reminders-widget-content">
                 ${
                   this.toolbarReminders.length === 0
-                    ? `<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">${t.noReminders}</div>`
-                    : '<div class="reminders-widget-content"></div>'
+                    ? `<div class="reminders-widget-empty">${t.noReminders}</div>`
+                    : ''
                 }
               </div>
-	              <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
-	                <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
-	              </div>
+	              <div id="reminders-widget-resize-handle" aria-hidden="true">
+		                <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
+		              </div>
             </div>
             `
                 : ''
@@ -5597,7 +5694,7 @@ export class DomindsApp extends HTMLElement {
     const next = this.shadowRoot.querySelector('#course-navi-next') as HTMLButtonElement;
     if (prev) prev.disabled = !(this.toolbarCurrentCourse > 1);
     if (next) next.disabled = !(this.toolbarCurrentCourse < this.toolbarTotalCourses);
-    const label = this.shadowRoot.querySelector('#course-navi span') as HTMLElement;
+    const label = this.shadowRoot.querySelector('#course-navi-label') as HTMLElement;
     if (label) label.textContent = `C ${this.toolbarCurrentCourse}`;
   }
 
@@ -6773,7 +6870,7 @@ export class DomindsApp extends HTMLElement {
             <label for="auth-key-input">${t.authKeyLabel}</label>
             <input type="password" id="auth-key-input" class="task-doc-input" placeholder="${t.authKeyPlaceholder}" autocomplete="off">
           </div>
-          <div class="form-group" id="auth-modal-error" style="display:none;color:var(--dominds-danger,#dc3545);font-size: var(--dominds-font-size-md, 13px);"></div>
+          <div class="form-group" id="auth-modal-error"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-primary" id="auth-submit-btn">${t.connect}</button>
@@ -7847,64 +7944,7 @@ export class DomindsApp extends HTMLElement {
 
   private showError(message: string, type: 'error' | 'warning' | 'info' = 'error'): void {
     console.error(`[${type.toUpperCase()}] ${message}`);
-
-    if (this.shadowRoot) {
-      // Show error in dialog content area
-      const contentEl = this.shadowRoot.querySelector('#dialog-content');
-      if (contentEl) {
-        const iconClass = this.getToastIconClass(type);
-        const color =
-          type === 'error'
-            ? 'var(--dominds-danger, #dc3545)'
-            : type === 'warning'
-              ? 'var(--dominds-warning, #ffc107)'
-              : 'var(--dominds-info, #007bff)';
-
-        contentEl.innerHTML = `
-          <div style="
-            padding: 20px; 
-            margin: 20px; 
-            border-radius: 8px; 
-            background: ${
-              type === 'error'
-                ? 'var(--dominds-danger-bg, #f8d7da)'
-                : type === 'warning'
-                  ? 'var(--dominds-warning-bg, #fff3cd)'
-                  : 'var(--dominds-info-bg, #cce7ff)'
-            };
-            border: 1px solid ${
-              type === 'error'
-                ? 'var(--dominds-danger-border, #f5c6cb)'
-                : type === 'warning'
-                  ? 'var(--dominds-warning-border, #ffeaa7)'
-                  : 'var(--dominds-info-border, #99d1ff)'
-            };
-            color: ${color};
-          ">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <span class="icon-mask ${iconClass}" aria-hidden="true" style="width: 14px; height: 14px;"></span>
-              <strong>${type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Info'}</strong>
-            </div>
-            <div>${message}</div>
-            ${
-              type !== 'info'
-                ? `<div style="margin-top: 12px;">
-              <button onclick="this.parentElement.parentElement.remove()" style="
-                padding: 6px 12px;
-                border: none;
-                border-radius: 4px;
-                background: ${color};
-                color: white;
-                cursor: pointer;
-                font-size: var(--dominds-font-size-sm, 12px);
-              ">Dismiss</button>
-            </div>`
-                : ''
-            }
-          </div>
-        `;
-      }
-    }
+    this.showToast(message, type);
   }
 
   private showSuccess(message: string): void {
@@ -8617,7 +8657,7 @@ export class DomindsApp extends HTMLElement {
           const nextBtn = this.shadowRoot?.querySelector('#course-navi-next') as HTMLButtonElement;
           if (prevBtn) prevBtn.disabled = !(this.toolbarCurrentCourse > 1);
           if (nextBtn) nextBtn.disabled = !(this.toolbarCurrentCourse < this.toolbarTotalCourses);
-          const courseLabel = this.shadowRoot?.querySelector('#course-navi span') as HTMLElement;
+          const courseLabel = this.shadowRoot?.querySelector('#course-navi-label') as HTMLElement;
           if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
           const latest = message.totalCourses;
           const input = this.q4hInput as HTMLElement & {
@@ -9067,17 +9107,7 @@ export class DomindsApp extends HTMLElement {
 
     // If widget is visible, update the header count and re-render content
     if (this.remindersWidgetVisible) {
-      // Update ALL widget header counts (both inline and dynamically created)
-      const widgetHeaders = this.shadowRoot?.querySelectorAll(
-        '#reminders-widget-header span, .reminders-widget-header span',
-      );
-      if (widgetHeaders && widgetHeaders.length > 0) {
-        widgetHeaders.forEach((header) => {
-          header.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
-        });
-      }
-
-      // Re-render the widget content to ensure synchronization
+      // Re-render the widget content to ensure synchronization.
       this.renderRemindersWidget();
     }
   }
@@ -9130,42 +9160,30 @@ export class DomindsApp extends HTMLElement {
         Math.min(maxX, Math.floor(rect.right - this.remindersWidgetWidthPx - 8)),
       );
       this.remindersWidgetY = Math.max(margin, Math.min(maxY, Math.floor(rect.bottom + 8)));
-      if (!existing) {
-        const widget = document.createElement('div');
-        widget.id = 'reminders-widget';
-        widget.style.position = 'fixed';
-        widget.style.left = `${this.remindersWidgetX}px`;
-        widget.style.top = `${this.remindersWidgetY}px`;
-        widget.style.width = `${this.remindersWidgetWidthPx}px`;
-        widget.style.height = `${this.remindersWidgetHeightPx}px`;
-        widget.style.minWidth = '260px';
-        widget.style.minHeight = '160px';
-        widget.style.maxWidth = 'calc(100vw - 24px)';
-        widget.style.maxHeight = 'calc(100vh - 24px)';
-        widget.style.overflow = 'hidden';
-        widget.style.display = 'flex';
-        widget.style.flexDirection = 'column';
-        widget.style.border = '1px solid var(--dominds-border)';
-        widget.style.background = 'var(--dominds-bg)';
-        widget.style.borderRadius = '10px';
-        widget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.2)';
-        widget.style.zIndex = '2000';
-        widget.innerHTML = `
-          <div id="reminders-widget-header" style="display:flex; align-items:center; justify-content: space-between; gap:8px; padding:8px 10px; border-bottom: 1px solid var(--dominds-border); cursor: grab;">
-            <div style="display:flex; align-items:center; gap:8px;">
+      let widget = existing;
+      if (!widget) {
+        const created = document.createElement('div');
+        created.id = 'reminders-widget';
+        created.innerHTML = `
+          <div id="reminders-widget-header" class="reminders-widget-header">
+            <div class="reminders-widget-header-main">
               <span class="icon-mask app-icon-bookmark app-icon-16" aria-hidden="true"></span>
-              <span>${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
+              <span id="reminders-widget-title">${formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length)}</span>
             </div>
             <button id="reminders-widget-close" class="icon-button" aria-label="${t.close}">
               <span class="icon-mask app-icon-close" aria-hidden="true"></span>
             </button>
           </div>
-          <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;"></div>
-	          <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
-	            <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
-	          </div>
+          <div id="reminders-widget-content"></div>
+	          <div id="reminders-widget-resize-handle" aria-hidden="true">
+		            <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
+			          </div>
         `;
-        this.shadowRoot?.appendChild(widget);
+        this.shadowRoot?.appendChild(created);
+        widget = created;
+      }
+      if (widget) {
+        this.applyRemindersWidgetGeometryStyle(widget);
       }
       // Render reminder content after widget is visible
       this.renderRemindersWidget();
@@ -9182,24 +9200,20 @@ export class DomindsApp extends HTMLElement {
   private renderRemindersWidget(): void {
     if (!this.remindersWidgetVisible) return;
 
-    // Find ALL widget content containers (both inline and dynamically created)
-    const widgetContents = this.shadowRoot?.querySelectorAll(
-      '#reminders-widget-content, .reminders-widget-content',
-    );
-    const widgetHeaders = this.shadowRoot?.querySelectorAll(
-      '#reminders-widget-header span, .reminders-widget-header span',
-    );
+    const widgetContent = this.shadowRoot?.querySelector(
+      '#reminders-widget-content',
+    ) as HTMLElement | null;
+    const widgetTitle = this.shadowRoot?.querySelector(
+      '#reminders-widget-title',
+    ) as HTMLElement | null;
 
-    if (!widgetContents || widgetContents.length === 0) {
-      console.warn('No reminders widget content containers found');
+    if (!widgetContent) {
+      console.warn('No reminders widget content container found');
       return;
     }
 
-    // Always update ALL widget header counts first to ensure synchronization
-    if (widgetHeaders && widgetHeaders.length > 0) {
-      widgetHeaders.forEach((header) => {
-        header.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
-      });
+    if (widgetTitle) {
+      widgetTitle.textContent = formatRemindersTitle(this.uiLanguage, this.toolbarReminders.length);
     }
 
     const numberedReminders = this.toolbarReminders.filter((r) => r && r.echoback !== false);
@@ -9209,13 +9223,13 @@ export class DomindsApp extends HTMLElement {
     let contentHTML = '';
     if (numberedReminders.length === 0 && virtualReminders.length === 0) {
       const t = getUiStrings(this.uiLanguage);
-      contentHTML = `<div style="color: var(--dominds-muted); font-style: italic; text-align: center; padding: 12px;">${t.noReminders}</div>`;
+      contentHTML = `<div class="reminders-widget-empty">${t.noReminders}</div>`;
     } else {
       const t = getUiStrings(this.uiLanguage);
       const numberedItems = numberedReminders
         .map((r, i) => {
           if (!r || !r.content) {
-            return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content" style="color: var(--dominds-muted); font-style: italic;">${t.loading}</div></div>`;
+            return `<div class="rem-item"><div class="rem-item-number">${i + 1}.</div><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
           }
           const reminderNo =
             typeof r.reminder_no === 'number' &&
@@ -9229,7 +9243,7 @@ export class DomindsApp extends HTMLElement {
         .join('');
       const virtualItemsArray = virtualReminders.map((r) => {
         if (!r || !r.content) {
-          return `<div class="rem-item rem-item-virtual"><div class="rem-item-content" style="color: var(--dominds-muted); font-style: italic;">${t.loading}</div></div>`;
+          return `<div class="rem-item rem-item-virtual"><div class="rem-item-content rem-item-content-loading">${t.loading}</div></div>`;
         }
         const meta =
           r.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : undefined;
@@ -9255,10 +9269,7 @@ export class DomindsApp extends HTMLElement {
       contentHTML = sections.join('');
     }
 
-    // Apply content to ALL widget containers
-    widgetContents.forEach((widgetContent, index) => {
-      widgetContent.innerHTML = contentHTML;
-    });
+    widgetContent.innerHTML = contentHTML;
   }
 
   private formatReminderDisplayContent(
