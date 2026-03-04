@@ -254,6 +254,50 @@ type ClassifiedLlmFailure = {
   code?: string;
 };
 
+const RETRIABLE_LLM_ERROR_CODES = new Set<string>([
+  'DOMINDS_LLM_EMPTY_RESPONSE',
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+function readErrorCause(error: unknown): unknown {
+  if (error instanceof Error) {
+    const withCause = error as Error & { cause?: unknown };
+    return withCause.cause;
+  }
+  if (isPlainObject(error) && 'cause' in error) {
+    return error.cause;
+  }
+  return undefined;
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (!isPlainObject(error)) {
+    return undefined;
+  }
+  if ('code' in error && typeof error.code === 'string') {
+    return error.code;
+  }
+  if ('errno' in error && typeof error.errno === 'string') {
+    return error.errno;
+  }
+  return undefined;
+}
+
+function isRetriableLlmErrorCode(code: string | undefined): boolean {
+  if (!code) return false;
+  return RETRIABLE_LLM_ERROR_CODES.has(code);
+}
+
 function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
   const fallbackMessage =
     err instanceof Error
@@ -261,9 +305,19 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
       : typeof err === 'string'
         ? err
         : JSON.stringify(err);
+  const errCode = readErrorCode(err);
+  const cause = readErrorCause(err);
+  const causeCode = readErrorCode(cause);
 
   if (err instanceof Error && err.message === 'AbortError') {
     return { kind: 'fatal', message: 'Aborted.' };
+  }
+
+  if (isRetriableLlmErrorCode(errCode)) {
+    return { kind: 'retriable', code: errCode, message: fallbackMessage };
+  }
+  if (isRetriableLlmErrorCode(causeCode)) {
+    return { kind: 'retriable', code: causeCode, message: fallbackMessage };
   }
 
   {
@@ -278,17 +332,17 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
     if (typeof msg === 'string' && msg.length > 0) {
       const lower = msg.toLowerCase();
       if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
-        return { kind: 'retriable', message: msg };
+        return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
       }
       if (lower.includes('terminated')) {
-        return { kind: 'retriable', message: msg };
+        return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
       }
       if (
         lower.includes('timeout') ||
         lower.includes('timed out') ||
         lower.includes('rate limit')
       ) {
-        return { kind: 'retriable', message: msg };
+        return { kind: 'retriable', code: errCode ?? causeCode, message: msg };
       }
     }
   }
@@ -301,12 +355,7 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
           ? err.statusCode
           : undefined;
 
-    const code =
-      'code' in err && typeof err.code === 'string'
-        ? err.code
-        : 'errno' in err && typeof err.errno === 'string'
-          ? err.errno
-          : undefined;
+    const code = readErrorCode(err);
 
     const msg =
       'message' in err && typeof err.message === 'string' && err.message.length > 0
@@ -322,35 +371,19 @@ function classifyLlmFailure(err: unknown): ClassifiedLlmFailure {
       }
     }
 
-    if (typeof code === 'string') {
-      const retriableCodes = new Set<string>([
-        'DOMINDS_LLM_EMPTY_RESPONSE',
-        'ETIMEDOUT',
-        'ECONNRESET',
-        'ECONNREFUSED',
-        'EAI_AGAIN',
-        'ENOTFOUND',
-        'ENETUNREACH',
-        'EHOSTUNREACH',
-        'UND_ERR_CONNECT_TIMEOUT',
-        'UND_ERR_HEADERS_TIMEOUT',
-        'UND_ERR_BODY_TIMEOUT',
-        'UND_ERR_SOCKET',
-      ]);
-      if (retriableCodes.has(code)) {
-        return { kind: 'retriable', code, message: msg };
-      }
+    if (isRetriableLlmErrorCode(code)) {
+      return { kind: 'retriable', code, message: msg };
     }
 
     const lower = msg.toLowerCase();
     if (lower.includes('fetch failed') || lower.includes('socket hang up')) {
-      return { kind: 'retriable', message: msg };
+      return { kind: 'retriable', code: code ?? causeCode, message: msg };
     }
     if (lower.includes('terminated')) {
-      return { kind: 'retriable', message: msg };
+      return { kind: 'retriable', code: code ?? causeCode, message: msg };
     }
     if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('rate limit')) {
-      return { kind: 'retriable', message: msg };
+      return { kind: 'retriable', code: code ?? causeCode, message: msg };
     }
   }
 
@@ -453,6 +486,11 @@ export async function runLlmRequestWithRetry<T>(params: {
 
       const failure = classifyLlmFailure(err);
       const detail = extractErrorDetails(err).message;
+      const errorCode = readErrorCode(err);
+      const cause = readErrorCause(err);
+      const causeCode = readErrorCode(cause);
+      const causeMessage =
+        cause === undefined || cause === null ? undefined : extractErrorDetails(cause).message;
       const attemptNo = attempt + 1;
       const retriesRemaining = Math.max(0, params.maxRetries - attempt);
 
@@ -467,6 +505,9 @@ export async function runLlmRequestWithRetry<T>(params: {
         failureKind: failure.kind,
         status: failure.status,
         code: failure.code,
+        errorCode,
+        causeCode,
+        causeMessage,
         errorText: detail,
       });
 

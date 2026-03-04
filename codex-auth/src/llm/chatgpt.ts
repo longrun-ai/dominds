@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import type { Dispatcher, RequestInit, Response as UndiciResponse } from 'undici';
-import { Headers, ProxyAgent, fetch } from 'undici';
+import type { Dispatcher, RequestInit } from 'undici';
+import { Agent, Headers, ProxyAgent, request } from 'undici';
 
 import { AuthManager } from '../auth/manager.js';
 import {
@@ -91,6 +91,28 @@ export function resolveChatGptResponsesUrl(baseUrl: string): string {
 export interface ChatGptRequestInit extends RequestInit {
   json?: unknown;
 }
+
+const SHARED_DIRECT_DISPATCHER = new Agent({
+  autoSelectFamily: true,
+  keepAliveTimeout: 10_000,
+  keepAliveMaxTimeout: 60_000,
+});
+
+const SHARED_PROXY_DISPATCHERS = new Map<string, ProxyAgent>();
+const RETRIABLE_NETWORK_CODES = new Set<string>([
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+const UTF8_ENCODER = new TextEncoder();
 
 export type ChatGptJsonValue =
   | null
@@ -596,17 +618,26 @@ export class ChatGptTriggerError extends Error {
   }
 }
 
-export type ChatGptResponsesStreamResponse = UndiciResponse;
+export interface ChatGptHttpResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Headers;
+  readonly body: Dispatcher.ResponseData['body'] | null;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+
+export type ChatGptResponsesStreamResponse = ChatGptHttpResponse;
 
 async function emitChatGptEvents(
-  response: UndiciResponse,
+  response: ChatGptHttpResponse,
   receiver: ChatGptEventReceiver,
 ): Promise<void> {
   if (!response.body) {
     return;
   }
 
-  const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let dataLines: string[] = [];
@@ -629,9 +660,9 @@ async function emitChatGptEvents(
     await receiver.onEvent(event);
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+  for await (const chunk of response.body) {
+    const bytes = typeof chunk === 'string' ? UTF8_ENCODER.encode(chunk) : chunk;
+    buffer += decoder.decode(bytes, { stream: true });
     const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? '';
 
@@ -645,11 +676,9 @@ async function emitChatGptEvents(
       }
     }
 
-    if (done) {
-      break;
-    }
   }
 
+  buffer += decoder.decode();
   if (buffer.length > 0) {
     dataLines.push(buffer.trim());
   }
@@ -660,7 +689,7 @@ export class ChatGptClient {
   private readonly baseUrl: string;
   private readonly codexBaseUrl: string;
   private readonly headers: Record<string, string>;
-  private readonly dispatcher?: Dispatcher;
+  private readonly dispatcher: Dispatcher;
 
   constructor(credentials: ChatGptCredentials, options: ChatGptClientOptions = {}) {
     const normalizedBaseUrl = normalizeChatgptBaseUrl(options.baseUrl ?? DEFAULT_CHATGPT_BASE_URL);
@@ -680,10 +709,10 @@ export class ChatGptClient {
       'User-Agent': userAgent,
     };
 
-    this.dispatcher = resolveProxyAgent(this.baseUrl, options);
+    this.dispatcher = resolveDispatcher(this.baseUrl, options);
   }
 
-  async request(path: string, init: ChatGptRequestInit = {}): Promise<UndiciResponse> {
+  async request(path: string, init: ChatGptRequestInit = {}): Promise<ChatGptHttpResponse> {
     return this.requestAtBase(this.baseUrl, path, init);
   }
 
@@ -725,7 +754,7 @@ export class ChatGptClient {
     try {
       return await this.responses(payload, init);
     } catch (err: unknown) {
-      if (!isRetriableFetchError(err)) {
+      if (!isRetriableRequestError(err)) {
         throw err;
       }
       await delay(250);
@@ -737,7 +766,7 @@ export class ChatGptClient {
     baseUrl: string,
     path: string,
     init: ChatGptRequestInit,
-  ): Promise<UndiciResponse> {
+  ): Promise<ChatGptHttpResponse> {
     const url = new URL(path, baseUrl);
     const headers = new Headers(init.headers ?? {});
 
@@ -753,19 +782,93 @@ export class ChatGptClient {
       }
     }
 
-    const { json, ...rest } = init;
-    return fetch(url.toString(), {
-      ...rest,
+    const response = await request(url.toString(), {
+      method: init.method,
       headers,
-      body,
+      body: toDispatcherBody(body),
+      signal: init.signal,
       dispatcher: this.dispatcher,
     });
+    const normalizedHeaders = toHeaders(response.headers);
+    return {
+      ok: response.statusCode >= 200 && response.statusCode <= 299,
+      status: response.statusCode,
+      statusText: response.statusText,
+      headers: normalizedHeaders,
+      body: response.body ?? null,
+      text: async () => response.body.text(),
+      json: async () => response.body.json(),
+    };
   }
 }
 
-function isRetriableFetchError(err: unknown): err is TypeError {
-  if (!(err instanceof TypeError)) return false;
-  return err.message.toLowerCase().includes('fetch failed');
+function toDispatcherBody(body: unknown): Dispatcher.DispatchOptions['body'] {
+  if (body === undefined) {
+    return null;
+  }
+  return body as Dispatcher.DispatchOptions['body'];
+}
+
+function toHeaders(headers: Dispatcher.ResponseData['headers']): Headers {
+  const normalized = new Headers();
+  for (const [key, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        normalized.append(key, entry);
+      }
+      continue;
+    }
+    normalized.set(key, value);
+  }
+  return normalized;
+}
+
+function readErrorCause(err: unknown): unknown {
+  if (err instanceof Error) {
+    const withCause = err as Error & { cause?: unknown };
+    return withCause.cause;
+  }
+  if (typeof err === 'object' && err !== null && 'cause' in err) {
+    return (err as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+function readErrorCode(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null) {
+    return undefined;
+  }
+  const maybeCode = err as { code?: unknown; errno?: unknown };
+  if (typeof maybeCode.code === 'string') {
+    return maybeCode.code;
+  }
+  if (typeof maybeCode.errno === 'string') {
+    return maybeCode.errno;
+  }
+  return undefined;
+}
+
+function isRetriableNetworkCode(code: string | undefined): boolean {
+  if (!code) {
+    return false;
+  }
+  return RETRIABLE_NETWORK_CODES.has(code);
+}
+
+function isRetriableRequestError(err: unknown): boolean {
+  if (isRetriableNetworkCode(readErrorCode(err))) {
+    return true;
+  }
+  const cause = readErrorCause(err);
+  if (isRetriableNetworkCode(readErrorCode(cause))) {
+    return true;
+  }
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  const lower = err.message.toLowerCase();
+  return lower.includes('fetch failed') || lower.includes('socket hang up') || lower.includes('terminated');
 }
 
 function delay(ms: number): Promise<void> {
@@ -959,11 +1062,11 @@ function shouldBypassProxy(host: string, noProxy: string | undefined): boolean {
   });
 }
 
-function resolveProxyAgent(baseUrl: string, options: ChatGptClientOptions): ProxyAgent | undefined {
+function resolveDispatcher(baseUrl: string, options: ChatGptClientOptions): Dispatcher {
   const resolved = resolveProxyForBaseUrl(baseUrl, options);
   switch (resolved.kind) {
     case 'proxy':
-      return new ProxyAgent(resolved.proxyUrl);
+      return getOrCreateProxyDispatcher(resolved.proxyUrl);
     case 'invalid':
       throw new Error(
         `Invalid proxy URL from ${resolved.source}: ${resolved.error}. ` +
@@ -972,10 +1075,20 @@ function resolveProxyAgent(baseUrl: string, options: ChatGptClientOptions): Prox
     case 'disabled':
     case 'bypassed':
     case 'unset':
-      return undefined;
+      return SHARED_DIRECT_DISPATCHER;
     default: {
       const _exhaustive: never = resolved;
       throw new Error(`Unhandled resolved proxy config: ${JSON.stringify(_exhaustive)}`);
     }
   }
+}
+
+function getOrCreateProxyDispatcher(proxyUrl: string): ProxyAgent {
+  const existing = SHARED_PROXY_DISPATCHERS.get(proxyUrl);
+  if (existing) {
+    return existing;
+  }
+  const created = new ProxyAgent(proxyUrl);
+  SHARED_PROXY_DISPATCHERS.set(proxyUrl, created);
+  return created;
 }

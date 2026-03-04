@@ -3,7 +3,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Response as UndiciResponse } from 'undici';
 import {
   AuthDotJson,
   DEFAULT_CHATGPT_BASE_URL,
@@ -23,6 +22,7 @@ import {
   createChatGptStartRequest,
   resolveChatGptResponsesUrl,
   resolveProxyForBaseUrl,
+  type ChatGptHttpResponse,
   type ChatGptFunctionCallItem,
   type ChatGptFunctionCallOutputItem,
   type ChatGptMessageItem,
@@ -49,6 +49,8 @@ interface DoctorOptions {
   chatgptBaseUrl?: string;
   chatgptModel?: string;
 }
+
+const UTF8_ENCODER = new TextEncoder();
 
 function parseArgs(argv: string[]): DoctorOptions {
   const options: DoctorOptions = {
@@ -651,14 +653,13 @@ function parseTruthyHeader(value: string | null): boolean | null {
 }
 
 async function emitChatGptEvents(
-  response: UndiciResponse,
+  response: ChatGptHttpResponse,
   receiver: ChatGptEventReceiver,
 ): Promise<void> {
   if (!response.body) {
     return;
   }
 
-  const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let dataLines: string[] = [];
@@ -681,9 +682,9 @@ async function emitChatGptEvents(
     await receiver.onEvent(event);
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+  for await (const chunk of response.body) {
+    const bytes = typeof chunk === 'string' ? UTF8_ENCODER.encode(chunk) : chunk;
+    buffer += decoder.decode(bytes, { stream: true });
     const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? '';
 
@@ -697,11 +698,9 @@ async function emitChatGptEvents(
       }
     }
 
-    if (done) {
-      break;
-    }
   }
 
+  buffer += decoder.decode();
   if (buffer.length > 0) {
     dataLines.push(buffer.trim());
   }
