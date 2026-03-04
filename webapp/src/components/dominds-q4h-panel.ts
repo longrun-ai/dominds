@@ -452,7 +452,15 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .q4h-dialog-icon {
-        font-size: var(--dominds-font-size-base, 14px);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+      }
+
+      .q4h-icon-pin {
+        --icon-mask: ${ICON_MASK_URLS.pin};
       }
 
       .q4h-dialog-name {
@@ -548,8 +556,17 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-checkbox-check {
         display: none;
         color: white;
-        font-size: var(--dominds-font-size-sm, 12px);
-        line-height: 1;
+        width: 10px;
+        height: 10px;
+      }
+
+      .q4h-checkbox-check .icon-mask {
+        width: 10px;
+        height: 10px;
+      }
+
+      .q4h-icon-check {
+        --icon-mask: ${ICON_MASK_URLS.check};
       }
 
       .q4h-question-card.selected .q4h-checkbox-check {
@@ -811,7 +828,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         return `
           <div class="q4h-dialog-group">
             <div class="q4h-dialog-header">
-              <span class="q4h-dialog-icon">📍</span>
+              <span class="q4h-dialog-icon icon-mask q4h-icon-pin" aria-hidden="true"></span>
               <span class="q4h-dialog-name" title="${this.escapeHtml(ctx.taskDocPath)}">
                 ${this.escapeHtml(this.truncatePath(ctx.taskDocPath, 30))}
               </span>
@@ -835,7 +852,7 @@ export class DomindsQ4HPanel extends HTMLElement {
       <div class="q4h-question-card ${expandedClass} ${selectedClass}" data-question-id="${question.id}" data-dialog-id="${dialogContext.selfId}" data-root-id="${dialogContext.rootId}" data-agent-id="${dialogContext.agentId}" data-asked-at="${question.askedAt}">
         <div class="q4h-question-header" data-question-id="${question.id}">
           <span class="q4h-checkbox">
-            <span class="q4h-checkbox-check">✓</span>
+            <span class="q4h-checkbox-check"><span class="icon-mask q4h-icon-check" aria-hidden="true"></span></span>
           </span>
           <span class="q4h-expand-icon icon-mask" aria-hidden="true"></span>
           <span class="q4h-question-title">

@@ -317,11 +317,14 @@ export class DomindsDialogContainer extends HTMLElement {
           const section = btn.closest('.codeblock-section') as HTMLElement | null;
           const contentEl = section?.querySelector('.codeblock-content') as HTMLElement | null;
           const text = contentEl?.textContent || '';
+          const doneIconHtml =
+            '<span class="icon-mask dc-icon-check-circle" aria-hidden="true"></span>';
+          const copyIconHtml = '<span class="icon-mask dc-icon-copy" aria-hidden="true"></span>';
           try {
             await navigator.clipboard.writeText(text);
-            const prev = btn.textContent || '';
-            btn.textContent = '✅';
-            setTimeout(() => (btn.textContent = prev || '📋'), 1200);
+            const prev = btn.innerHTML || '';
+            btn.innerHTML = doneIconHtml;
+            setTimeout(() => (btn.innerHTML = prev || copyIconHtml), 1200);
           } catch (err) {
             try {
               const ta = document.createElement('textarea');
@@ -333,9 +336,9 @@ export class DomindsDialogContainer extends HTMLElement {
               ta.select();
               document.execCommand('copy');
               ta.remove();
-              const prev = btn.textContent || '';
-              btn.textContent = '✅';
-              setTimeout(() => (btn.textContent = prev || '📋'), 1200);
+              const prev = btn.innerHTML || '';
+              btn.innerHTML = doneIconHtml;
+              setTimeout(() => (btn.innerHTML = prev || copyIconHtml), 1200);
             } catch (err2) {
               console.warn('Clipboard write failed', err2);
             }
@@ -3139,7 +3142,7 @@ export class DomindsDialogContainer extends HTMLElement {
     el.className = 'thinking-section';
     el.innerHTML = `
       <div class="section-header">
-        <span class="section-icon">🧠</span>
+        <span class="section-icon icon-mask dc-icon-brain" aria-hidden="true"></span>
         <span class="section-title">${this.escapeHtml(t.thinkingSectionTitle)}</span>
       </div>
       <div class="thinking-content"></div>
@@ -3166,7 +3169,7 @@ export class DomindsDialogContainer extends HTMLElement {
       <div class="calling-header">
         ${
           isFbr
-            ? `<span class="calling-icon fbr-icon" aria-hidden="true">✨</span>`
+            ? `<span class="calling-icon fbr-icon icon-mask dc-icon-sparkles" aria-hidden="true"></span>`
             : `<span class="calling-icon tool-icon">
                  <img src="${mannedToolIcon}" class="calling-img" alt="calling">
                </span>`
@@ -3209,8 +3212,8 @@ export class DomindsDialogContainer extends HTMLElement {
     headerEl.className = 'func-call-header';
 
     const iconEl = document.createElement('span');
-    iconEl.className = 'func-call-icon';
-    iconEl.textContent = '⚡';
+    iconEl.className = 'func-call-icon icon-mask dc-icon-bolt';
+    iconEl.setAttribute('aria-hidden', 'true');
 
     const titleEl = document.createElement('span');
     titleEl.className = 'func-call-title';
@@ -3263,7 +3266,7 @@ export class DomindsDialogContainer extends HTMLElement {
     el.className = 'web-search-section';
     el.innerHTML = `
       <div class="web-search-header">
-        <span class="web-search-icon">🌐</span>
+        <span class="web-search-icon icon-mask dc-icon-globe" aria-hidden="true"></span>
         <span class="web-search-title">${this.escapeHtml(t.webSearchTitle)}</span>
         <span class="web-search-state">${this.escapeHtml(
           `${t.webSearchProgressPrefix}${t.webSearchPhaseStarted}`,
@@ -3281,7 +3284,7 @@ export class DomindsDialogContainer extends HTMLElement {
     el.className = 'error-section';
     el.innerHTML = `
       <div class="section-header">
-        <span class="section-icon">⚠️</span>
+        <span class="section-icon icon-mask dc-icon-warning" aria-hidden="true"></span>
         <span class="section-title">Stream Error</span>
       </div>
       <div class="error-content">${err}</div>
@@ -3339,7 +3342,7 @@ export class DomindsDialogContainer extends HTMLElement {
       section.className = 'retry-section';
       section.innerHTML = `
         <div class="section-header">
-          <span class="section-icon">⟳</span>
+          <span class="section-icon icon-mask dc-icon-refresh" aria-hidden="true"></span>
           <span class="section-title">${this.uiLanguage === 'zh' ? '重试中' : 'Retrying'}</span>
         </div>
         <div class="retry-items"></div>
@@ -3408,12 +3411,12 @@ export class DomindsDialogContainer extends HTMLElement {
       errorMessage = String(err);
     }
 
-    console.error('🚨 Protocol Error', errorMessage, errorDetails);
+    console.error('Protocol Error', errorMessage, errorDetails);
     const el = document.createElement('div');
     el.className = 'error-section';
     el.innerHTML = `
       <div class="section-header">
-        <span class="section-icon">🚨</span>
+        <span class="section-icon icon-mask dc-icon-error" aria-hidden="true"></span>
         <span class="section-title">Protocol Error</span>
       </div>
       <div class="error-content">${errorMessage}</div>
@@ -4199,7 +4202,11 @@ export class DomindsDialogContainer extends HTMLElement {
       }
       
       .section-icon { 
-        font-size: 13px; 
+        width: 13px;
+        height: 13px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
       
       .section-title { 
@@ -4361,7 +4368,6 @@ export class DomindsDialogContainer extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 14px;
       }
 
       .calling-img {
@@ -4478,6 +4484,42 @@ export class DomindsDialogContainer extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.crosshair};
       }
 
+      .dc-icon-brain {
+        --icon-mask: ${ICON_MASK_URLS.brain};
+      }
+
+      .dc-icon-sparkles {
+        --icon-mask: ${ICON_MASK_URLS.sparkles};
+      }
+
+      .dc-icon-bolt {
+        --icon-mask: ${ICON_MASK_URLS.bolt};
+      }
+
+      .dc-icon-globe {
+        --icon-mask: ${ICON_MASK_URLS.globe};
+      }
+
+      .dc-icon-warning {
+        --icon-mask: ${ICON_MASK_URLS.warning};
+      }
+
+      .dc-icon-refresh {
+        --icon-mask: ${ICON_MASK_URLS.refresh};
+      }
+
+      .dc-icon-error {
+        --icon-mask: ${ICON_MASK_URLS.error};
+      }
+
+      .dc-icon-copy {
+        --icon-mask: ${ICON_MASK_URLS.copy};
+      }
+
+      .dc-icon-check-circle {
+        --icon-mask: ${ICON_MASK_URLS.checkCircle};
+      }
+
       .dc-icon-external {
         --icon-mask: ${ICON_MASK_URLS.external};
       }
@@ -4533,7 +4575,8 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .func-call-icon {
-        font-size: var(--dominds-font-size-base, 14px);
+        width: 14px;
+        height: 14px;
       }
 
       .func-call-title {
@@ -4606,7 +4649,8 @@ export class DomindsDialogContainer extends HTMLElement {
       }
 
       .web-search-icon {
-        font-size: var(--dominds-font-size-base, 14px);
+        width: 14px;
+        height: 14px;
       }
 
       .web-search-title {
@@ -4715,6 +4759,11 @@ export class DomindsDialogContainer extends HTMLElement {
       .codeblock-action:hover {
         background: var(--dominds-hover, var(--color-bg-tertiary, #e2e8f0));
         color: var(--dominds-fg, var(--color-fg-primary, #333));
+      }
+
+      .codeblock-action .icon-mask {
+        width: 12px;
+        height: 12px;
       }
       
       .codeblock-wrapper { background: transparent; }

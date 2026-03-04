@@ -23,6 +23,7 @@ import {
 } from '../shared/types/language';
 import { escapeHtmlAttr } from '../shared/utils/html.js';
 import './dominds-code-block';
+import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
 type AuthState =
   | { kind: 'uninitialized' }
@@ -402,7 +403,8 @@ export class DomindsSetup extends HTMLElement {
             </a>
           <span class="setup-badge">${escapeHtml(t.setupTitle)}</span>
           <div class="rtws-indicator" title="${escapeHtmlAttr(t.backendWorkspaceTitle)}">
-            📁 ${escapeHtml(this.backendRtws || t.backendWorkspaceLoading)}
+            <span class="icon-mask setup-icon-folder" aria-hidden="true"></span>
+            ${escapeHtml(this.backendRtws || t.backendWorkspaceLoading)}
           </div>
           <div class="header-actions">
             <select id="setup-lang-select" class="select select-compact" title="${escapeHtmlAttr(
@@ -1265,7 +1267,7 @@ export class DomindsSetup extends HTMLElement {
             t.setupProviderEnvVar,
           )}">
             <code>${escapeHtml(envVar)}</code>
-            <span class="env-state">${p.envVar.isSet ? '✅' : '⚠️'}</span>
+            <span class="env-state"><span class="icon-mask ${p.envVar.isSet ? 'setup-icon-check-circle' : 'setup-icon-warning'}" aria-hidden="true"></span></span>
           </div>
           <input
             class="input"
@@ -1393,6 +1395,8 @@ export class DomindsSetup extends HTMLElement {
 
   private styles(): string {
     return `
+      ${ICON_MASK_BASE_CSS}
+
       :host{
         display:block;
         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
@@ -1443,6 +1447,16 @@ export class DomindsSetup extends HTMLElement {
         scrollbar-width:thin;
         scrollbar-color:var(--dominds-muted,#666666) var(--dominds-hover,#f8f9fa);
       }
+
+      .rtws-indicator .icon-mask{
+        width:13px;
+        height:13px;
+        margin-right:6px;
+      }
+
+      .setup-icon-folder{--icon-mask:${ICON_MASK_URLS.folder};}
+      .setup-icon-check-circle{--icon-mask:${ICON_MASK_URLS.checkCircle};}
+      .setup-icon-warning{--icon-mask:${ICON_MASK_URLS.warning};}
 
       .rtws-indicator::-webkit-scrollbar{height:4px;}
       .rtws-indicator::-webkit-scrollbar-track{background:var(--dominds-hover,#f8f9fa);}
@@ -1545,7 +1559,8 @@ export class DomindsSetup extends HTMLElement {
       .env-pill code{background:transparent;border:0;padding:0;border-radius:0;}
       .env-pill.set{border-color:color-mix(in srgb, var(--dominds-success,#28a745) 45%, var(--dominds-border,#e0e0e0));color:var(--dominds-success,#28a745);}
       .env-pill.missing{border-color:var(--dominds-border-light,#e5e7eb);color:var(--dominds-muted,#666666);}
-      .env-state{display:inline-flex;align-items:center;justify-content:center;width:1.25em;}
+      .env-state{display:inline-flex;align-items:center;justify-content:center;width:1.25em;height:1.25em;}
+      .env-state .icon-mask{width:1em;height:1em;}
 
       .provider-actions .input{min-width:220px;padding:6px 8px;font-size:13px;}
       .provider-actions .btn{padding:6px 8px;font-size:12px;border-radius:9px;}

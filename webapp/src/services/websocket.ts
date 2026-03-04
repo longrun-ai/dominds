@@ -79,7 +79,7 @@ export class WebSocketManager {
         }
       }, 5000);
     } catch (error) {
-      console.error('❌ Failed to create WebSocket connection:', error);
+      console.error('Failed to create WebSocket connection:', error);
       this.updateConnectionState({
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',

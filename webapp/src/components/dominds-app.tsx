@@ -1614,7 +1614,9 @@ export class DomindsApp extends HTMLElement {
   private updateRtwsInfo(): void {
     const rtwsIndicator = this.shadowRoot?.querySelector('.rtws-indicator');
     if (rtwsIndicator) {
-      rtwsIndicator.textContent = `📁 ${this.backendRtws || 'Unknown rtws'}`;
+      rtwsIndicator.innerHTML = `<span class="icon-mask app-icon-folder" aria-hidden="true"></span> ${escapeHtml(
+        this.backendRtws || 'Unknown rtws',
+      )}`;
     }
 
     const versionIndicator = this.shadowRoot?.querySelector('#dominds-version');
@@ -2654,7 +2656,11 @@ export class DomindsApp extends HTMLElement {
       }
 
       .ui-language-menu-button-caret {
-        font-size: var(--dominds-font-size-micro, 10px);
+        width: 12px;
+        height: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
 
       .theme-toggle {
@@ -2668,8 +2674,12 @@ export class DomindsApp extends HTMLElement {
         background: var(--dominds-sidebar-bg, #f8f9fa);
         color: var(--dominds-fg, #333333);
         cursor: pointer;
-        font-size: 15px;
         transition: all 0.2s ease;
+      }
+
+      .theme-toggle .icon-mask {
+        width: 16px;
+        height: 16px;
       }
 
       .theme-toggle:hover {
@@ -2769,10 +2779,18 @@ export class DomindsApp extends HTMLElement {
 	
       .toast-history-icon {
         width: 16px;
+        height: 16px;
         flex-shrink: 0;
-	        text-align: center;
-	        margin-top: 2px;
-	      }
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 2px;
+      }
+
+      .toast-history-icon .icon-mask {
+        width: 14px;
+        height: 14px;
+      }
 	
 	      .toast-history-body {
 	        min-width: 0;
@@ -2970,15 +2988,19 @@ export class DomindsApp extends HTMLElement {
       }
 
       details.tools-section > summary.tools-section-title::before {
-        content: "▾";
+        content: "";
         display: inline-block;
         width: 14px;
+        height: 14px;
         margin-right: 6px;
-        color: var(--dominds-muted, #666666);
+        background-color: var(--dominds-muted, #666666);
+        -webkit-mask: ${ICON_MASK_URLS.scrollDown} no-repeat center / contain;
+        mask: ${ICON_MASK_URLS.scrollDown} no-repeat center / contain;
       }
 
       details.tools-section:not([open]) > summary.tools-section-title::before {
-        content: "▸";
+        -webkit-mask: ${ICON_MASK_URLS.chevronRight} no-repeat center / contain;
+        mask: ${ICON_MASK_URLS.chevronRight} no-repeat center / contain;
       }
 
       .tools-section-toolsets {
@@ -3010,15 +3032,19 @@ export class DomindsApp extends HTMLElement {
       }
 
       details.toolset > summary.toolset-title::before {
-        content: "▸";
+        content: "";
         display: inline-block;
         width: 14px;
+        height: 14px;
         margin-right: 6px;
-        color: var(--dominds-muted, #666666);
+        background-color: var(--dominds-muted, #666666);
+        -webkit-mask: ${ICON_MASK_URLS.chevronRight} no-repeat center / contain;
+        mask: ${ICON_MASK_URLS.chevronRight} no-repeat center / contain;
       }
 
       details.toolset[open] > summary.toolset-title::before {
-        content: "▾";
+        -webkit-mask: ${ICON_MASK_URLS.scrollDown} no-repeat center / contain;
+        mask: ${ICON_MASK_URLS.scrollDown} no-repeat center / contain;
       }
 
       summary.toolset-title[data-desc]::after {
@@ -3210,6 +3236,18 @@ export class DomindsApp extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.close};
       }
 
+      .app-icon-error {
+        --icon-mask: ${ICON_MASK_URLS.error};
+      }
+
+      .app-icon-info {
+        --icon-mask: ${ICON_MASK_URLS.info};
+      }
+
+      .app-icon-folder {
+        --icon-mask: ${ICON_MASK_URLS.folder};
+      }
+
       .app-icon-trash {
         --icon-mask: ${ICON_MASK_URLS.trash};
       }
@@ -3264,6 +3302,30 @@ export class DomindsApp extends HTMLElement {
 
       .app-icon-collapse-strip {
         --icon-mask: ${ICON_MASK_URLS.collapseStrip};
+      }
+
+      .app-icon-theme-dark {
+        --icon-mask: ${ICON_MASK_URLS.themeDark};
+      }
+
+      .app-icon-theme-light {
+        --icon-mask: ${ICON_MASK_URLS.themeLight};
+      }
+
+      .app-icon-caret-down {
+        --icon-mask: ${ICON_MASK_URLS.scrollDown};
+      }
+
+      .app-icon-resize-diagonal {
+        --icon-mask: ${ICON_MASK_URLS.resizeDiagonal};
+      }
+
+      .app-icon-check {
+        --icon-mask: ${ICON_MASK_URLS.check};
+      }
+
+      .app-icon-circle {
+        --icon-mask: ${ICON_MASK_URLS.circle};
       }
 
       .badge-button {
@@ -3852,12 +3914,19 @@ export class DomindsApp extends HTMLElement {
 	      .modal-close {
 	        background: none;
 	        border: none;
-	        font-size: 14px;
 	        cursor: pointer;
 	        color: var(--dominds-muted, #666666);
         padding: 4px;
         border-radius: 4px;
         transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+	      }
+
+      .modal-close .icon-mask {
+        width: 14px;
+        height: 14px;
       }
 
       .modal-close:hover {
@@ -4479,8 +4548,11 @@ export class DomindsApp extends HTMLElement {
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        font-size: 12px;
-        line-height: 12px;
+      }
+
+      .rem-plan-icon .icon-mask {
+        width: 12px;
+        height: 12px;
       }
 
       .rem-plan-icon-spinner {
@@ -4495,12 +4567,10 @@ export class DomindsApp extends HTMLElement {
 
       .rem-plan-icon-done {
         color: var(--rem-plan-done);
-        font-weight: 700;
       }
 
       .rem-plan-icon-pending {
         color: var(--rem-plan-pending);
-        font-weight: 700;
       }
 
       .rem-plan-text {
@@ -4585,9 +4655,10 @@ export class DomindsApp extends HTMLElement {
                 )}</span>
 	            </span>
 	          </a>
-	          <div class="rtws-indicator" title="${t.backendWorkspaceTitle}">
-	            📁 ${this.backendRtws || t.backendWorkspaceLoading}
-	          </div>
+		          <div class="rtws-indicator" title="${t.backendWorkspaceTitle}">
+		            <span class="icon-mask app-icon-folder" aria-hidden="true"></span>
+		            ${this.backendRtws || t.backendWorkspaceLoading}
+		          </div>
 	          <div class="header-actions">
               <div class="header-run-controls">
                 <div class="header-run-pill danger" id="toolbar-emergency-stop-pill" data-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}" title="${t.emergencyStop}">
@@ -4614,15 +4685,15 @@ export class DomindsApp extends HTMLElement {
 	            <div class="ui-language-menu">
 	              <button id="ui-language-menu-button" class="lang-select" type="button" aria-haspopup="menu" aria-expanded="false" data-lang-match="${uiLanguageMatch.kind}" data-ui-language="${this.uiLanguage}" title="${t.uiLanguageSelectTitle}\n${uiLanguageButtonTooltip}">
 	                <span id="ui-language-menu-button-label">${uiLanguageButtonLabel}</span>
-	                <span class="ui-language-menu-button-caret">▾</span>
+		                <span class="ui-language-menu-button-caret icon-mask app-icon-caret-down" aria-hidden="true"></span>
 	              </button>
 	              <div id="ui-language-menu" class="ui-language-menu-popover" role="menu" hidden>
 	                ${uiLanguageMenuItems}
 	              </div>
 	            </div>
-	            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}" aria-label="${t.themeToggleTitle}">
-	              ${this.currentTheme === 'light' ? '🌙' : '☀️'}
-	            </button>
+		            <button id="theme-toggle-btn" class="theme-toggle" title="${t.themeToggleTitle}" aria-label="${t.themeToggleTitle}">
+		              ${this.renderThemeToggleIcon()}
+		            </button>
 	          </div>
 	        </header>
 
@@ -4766,12 +4837,9 @@ export class DomindsApp extends HTMLElement {
                     : '<div class="reminders-widget-content"></div>'
                 }
               </div>
-              <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                  <path d="M1.5 1.5L10.5 10.5"></path>
-                  <path d="M1.5 4.5L7.5 10.5"></path>
-                </svg>
-              </div>
+	              <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
+	                <span class="icon-mask app-icon-resize-diagonal" aria-hidden="true"></span>
+	              </div>
             </div>
             `
                 : ''
@@ -7236,7 +7304,7 @@ export class DomindsApp extends HTMLElement {
     dialogs.forEach((dialog, index) => {
       if (!dialog.taskDocPath || dialog.taskDocPath.trim() === '') {
         throw new Error(
-          `❌ CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid Taskdoc path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Taskdoc is mandatory for all dialogs.`,
+          `CRITICAL ERROR: Dialog at index ${index} (ID: ${dialog.rootId}) has invalid Taskdoc path: '${dialog.taskDocPath || 'undefined/null'}' - this indicates a serious data integrity issue. Taskdoc is mandatory for all dialogs.`,
         );
       }
     });
@@ -7527,7 +7595,7 @@ export class DomindsApp extends HTMLElement {
           this.q4hInput.setDisabled(true);
         }
       } else {
-        console.warn('❌ Auto-focus: No q4h-input component found after dialog selection');
+        console.warn('Auto-focus: No q4h-input component found after dialog selection');
       }
 
       // Update the dialog list to show current selection
@@ -7751,7 +7819,7 @@ export class DomindsApp extends HTMLElement {
       // Show error in dialog content area
       const contentEl = this.shadowRoot.querySelector('#dialog-content');
       if (contentEl) {
-        const icon = type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+        const iconClass = this.getToastIconClass(type);
         const color =
           type === 'error'
             ? 'var(--dominds-danger, #dc3545)'
@@ -7781,7 +7849,7 @@ export class DomindsApp extends HTMLElement {
             color: ${color};
           ">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <span style="font-size: 14px;">${icon}</span>
+              <span class="icon-mask ${iconClass}" aria-hidden="true" style="width: 14px; height: 14px;"></span>
               <strong>${type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Info'}</strong>
             </div>
             <div>${message}</div>
@@ -7846,7 +7914,8 @@ export class DomindsApp extends HTMLElement {
     const box = document.createElement('div');
     box.style.cssText = `position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: var(--dominds-z-overlay-toast); font-size: var(--dominds-font-size-sm, 12px); display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;`;
     const iconSpan = document.createElement('span');
-    iconSpan.textContent = kind === 'error' ? '❌' : kind === 'warning' ? '⚠️' : 'ℹ️';
+    iconSpan.className = `icon-mask ${this.getToastIconClass(kind)}`;
+    iconSpan.setAttribute('aria-hidden', 'true');
     const msgSpan = document.createElement('span');
     msgSpan.textContent = message;
     box.appendChild(iconSpan);
@@ -7971,10 +8040,10 @@ export class DomindsApp extends HTMLElement {
       .slice()
       .reverse()
       .map((entry) => {
-        const icon = entry.kind === 'error' ? '❌' : entry.kind === 'warning' ? '⚠️' : 'ℹ️';
+        const iconClass = this.getToastIconClass(entry.kind);
         return `
           <div class="toast-history-item" data-kind="${entry.kind}">
-            <div class="toast-history-icon">${icon}</div>
+            <div class="toast-history-icon"><span class="icon-mask ${iconClass}" aria-hidden="true"></span></div>
             <div class="toast-history-body">
               <div class="toast-history-message">${this.escapeHtml(entry.message)}</div>
               <div class="toast-history-meta">${this.escapeHtml(entry.timestamp)}</div>
@@ -8069,16 +8138,29 @@ export class DomindsApp extends HTMLElement {
     this.applyTheme(newTheme);
   }
 
+  private renderThemeToggleIcon(): string {
+    const iconClass =
+      this.currentTheme === 'light' ? 'app-icon-theme-dark' : 'app-icon-theme-light';
+    return `<span class="icon-mask ${iconClass}" aria-hidden="true"></span>`;
+  }
+
+  private getToastIconClass(
+    kind: ToastKind,
+  ): 'app-icon-error' | 'app-icon-warning' | 'app-icon-info' {
+    if (kind === 'error') return 'app-icon-error';
+    if (kind === 'warning') return 'app-icon-warning';
+    return 'app-icon-info';
+  }
+
   private updateThemeToggle(): void {
     if (!this.shadowRoot) return;
 
     const themeToggle = this.shadowRoot.querySelector('#theme-toggle-btn') as HTMLElement;
     if (themeToggle) {
-      themeToggle.textContent = this.currentTheme === 'light' ? '🌙' : '☀️';
-      themeToggle.setAttribute(
-        'title',
-        this.currentTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme',
-      );
+      const t = getUiStrings(this.uiLanguage);
+      themeToggle.innerHTML = this.renderThemeToggleIcon();
+      themeToggle.setAttribute('title', t.themeToggleTitle);
+      themeToggle.setAttribute('aria-label', t.themeToggleTitle);
     }
   }
 
@@ -9046,12 +9128,9 @@ export class DomindsApp extends HTMLElement {
             </button>
           </div>
           <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;"></div>
-          <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-              <path d="M1.5 1.5L10.5 10.5"></path>
-              <path d="M1.5 4.5L7.5 10.5"></path>
-            </svg>
-          </div>
+	          <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
+	            <span class="icon-mask app-icon-resize-diagonal" aria-hidden="true"></span>
+	          </div>
         `;
         this.shadowRoot?.appendChild(widget);
       }
@@ -9183,9 +9262,9 @@ export class DomindsApp extends HTMLElement {
           return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-spinner" aria-hidden="true"></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
         }
         if (item.status === 'completed') {
-          return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-done" aria-hidden="true">✓</span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
+          return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-done" aria-hidden="true"><span class="icon-mask app-icon-check"></span></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
         }
-        return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-pending" aria-hidden="true">○</span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
+        return `<li class="rem-plan-item"><span class="rem-plan-icon rem-plan-icon-pending" aria-hidden="true"><span class="icon-mask app-icon-circle"></span></span><span class="rem-plan-text">${escapeHtml(item.text)}</span></li>`;
       })
       .join('');
 

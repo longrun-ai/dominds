@@ -254,7 +254,7 @@ export class CreateDialogFlowController {
       <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
         <div class="modal-header">
           <h3 id="modal-title">${escapeHtml(t.createNewDialogTitle)}</h3>
-          <button class="modal-close" aria-label="${escapeHtml(t.close)}">✕</button>
+          <button class="modal-close" aria-label="${escapeHtml(t.close)}"><span class="icon-mask app-icon-close" aria-hidden="true"></span></button>
         </div>
         <div class="modal-body">
           <div class="form-group form-group-vertical">
