@@ -615,8 +615,16 @@ export class ArchivedDialogList extends HTMLElement {
   }
 
   private renderToggleIcon(collapsed: boolean): string {
-    const rotation = collapsed ? '0deg' : '90deg';
-    return `<span class="q4h-toggle-arrow icon-mask" style="transform: rotate(${rotation})" aria-hidden="true"></span>`;
+    const stateClass = collapsed ? 'is-collapsed' : 'is-expanded';
+    return `<span class="q4h-toggle-arrow icon-mask ${stateClass}" aria-hidden="true"></span>`;
+  }
+
+  private updateToggleButtonUi(button: HTMLButtonElement, collapsed: boolean): void {
+    button.setAttribute('aria-label', this.formatToggleAriaLabel(collapsed));
+    const arrow = button.querySelector('.q4h-toggle-arrow');
+    if (!(arrow instanceof HTMLElement)) return;
+    arrow.classList.toggle('is-collapsed', collapsed);
+    arrow.classList.toggle('is-expanded', !collapsed);
   }
 
   private renderReviveIcon(): string {
@@ -984,6 +992,7 @@ export class ArchivedDialogList extends HTMLElement {
     } else {
       this.collapsedTasks.add(taskPath);
     }
+    const collapsed = this.collapsedTasks.has(taskPath);
     if (!this.listEl) return;
     const title = this.listEl.querySelector(
       `.task-title[data-task-path="${this.escapeSelector(taskPath)}"]`,
@@ -991,14 +1000,19 @@ export class ArchivedDialogList extends HTMLElement {
     const taskGroup = title?.closest('.task-group');
     const taskRows = taskGroup?.querySelector('.task-rows');
     if (taskRows instanceof HTMLElement) {
-      taskRows.classList.toggle('collapsed', this.collapsedTasks.has(taskPath));
+      taskRows.classList.toggle('collapsed', collapsed);
+    }
+    const taskToggle = taskGroup?.querySelector('.toggle.task-toggle');
+    if (taskToggle instanceof HTMLButtonElement) {
+      this.updateToggleButtonUi(taskToggle, collapsed);
     }
   }
 
   private toggleRoot(rootId: string): void {
+    const hasLoadedSubdialogs = this.hasSubdialogsLoaded(rootId);
     if (this.collapsedRoots.has(rootId)) {
       this.collapsedRoots.delete(rootId);
-      if (!this.requestedSubdialogRoots.has(rootId) && !this.hasSubdialogsLoaded(rootId)) {
+      if (!this.requestedSubdialogRoots.has(rootId) && !hasLoadedSubdialogs) {
         this.requestedSubdialogRoots.add(rootId);
         this.dispatchEvent(
           new CustomEvent('dialog-expand', {
@@ -1010,21 +1024,30 @@ export class ArchivedDialogList extends HTMLElement {
       }
     } else {
       this.collapsedRoots.add(rootId);
-      this.requestedSubdialogRoots.delete(rootId);
-      this.dispatchEvent(
-        new CustomEvent('dialog-collapse', {
-          detail: { rootId, status: 'archived' },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      if (hasLoadedSubdialogs) {
+        this.requestedSubdialogRoots.delete(rootId);
+        this.dispatchEvent(
+          new CustomEvent('dialog-collapse', {
+            detail: { rootId, status: 'archived' },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
     }
+    const collapsed = this.collapsedRoots.has(rootId);
     if (this.listEl) {
       const rootChildren = this.listEl.querySelector(
         `.rdlg-node[data-rdlg-root-id="${this.escapeSelector(rootId)}"] > .sdlg-children`,
       );
       if (rootChildren instanceof HTMLElement) {
-        rootChildren.classList.toggle('collapsed', this.collapsedRoots.has(rootId));
+        rootChildren.classList.toggle('collapsed', collapsed);
+      }
+      const rootToggle = this.listEl.querySelector(
+        `.toggle.root-toggle[data-root-id="${this.escapeSelector(rootId)}"]`,
+      );
+      if (rootToggle instanceof HTMLButtonElement) {
+        this.updateToggleButtonUi(rootToggle, collapsed);
       }
     }
   }
@@ -1285,6 +1308,14 @@ export class ArchivedDialogList extends HTMLElement {
         transform-origin: center;
         display: block;
         --icon-mask: ${ICON_MASK_URLS.toggleTriangle};
+      }
+
+      .toggle .q4h-toggle-arrow.is-collapsed {
+        transform: rotate(0deg);
+      }
+
+      .toggle .q4h-toggle-arrow.is-expanded {
+        transform: rotate(90deg);
       }
 
       .icon-button {
