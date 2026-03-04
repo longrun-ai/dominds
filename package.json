@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@longrun-ai/codex-auth": "^0.6.0",
+    "@longrun-ai/codex-auth": "^0.7.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "async-mutex": "^0.5.0",
     "openai": "^6.25.0",
