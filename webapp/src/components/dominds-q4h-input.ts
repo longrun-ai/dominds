@@ -1335,8 +1335,8 @@ export class DomindsQ4HInput extends HTMLElement {
 
       .stop-icon {
         --icon-mask: ${ICON_MASK_URLS.stop};
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
       }
 
       .queue-icon {
