@@ -1035,7 +1035,7 @@ export class DomindsQ4HInput extends HTMLElement {
         <div class="input-section">
           <div class="input-resize-handle" role="separator" aria-orientation="horizontal" aria-label="${RESIZE_HANDLE_ARIA_LABEL_I18N[this.uiLanguage]}"></div>
           <div class="input-wrapper ${this.selectedQuestionId !== null ? 'q4h-active' : ''} ${this.props.disabled ? 'disabled' : ''}">
-            <textarea
+            <textarea id="human-input"
               class="message-input"
               placeholder="${this.props.placeholder}"
               maxlength="${this.props.maxLength}"
@@ -1271,6 +1271,7 @@ export class DomindsQ4HInput extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
+        position: relative;
         width: 27px;
         height: 27px;
         border: none;
@@ -1316,21 +1317,29 @@ export class DomindsQ4HInput extends HTMLElement {
         opacity: 0.6;
       }
 
+      .send-icon,
+      .stop-icon,
+      .queue-icon {
+        display: block;
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        transform: translate(-50%, -50%);
+      }
+
       .send-icon {
-        width: 11px;
-        height: 11px;
         --icon-mask: ${ICON_MASK_URLS.send};
       }
 
       .stop-icon {
-        width: 11px;
-        height: 11px;
         --icon-mask: ${ICON_MASK_URLS.stop};
+        width: 16px;
+        height: 16px;
       }
 
       .queue-icon {
-        width: 11px;
-        height: 11px;
         --icon-mask: ${ICON_MASK_URLS.queueNow};
       }
 

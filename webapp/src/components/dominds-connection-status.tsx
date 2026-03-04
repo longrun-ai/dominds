@@ -93,15 +93,19 @@ export class DomindsConnectionStatus extends HTMLElement {
         display: inline-flex;
         align-items: center;
         gap: 4px;
+        --status-text-optical-offset-y: -1px;
       }
 
       .status-container {
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 2px 8px;
-        border-radius: 12px;
+        height: 20px;
+        box-sizing: border-box;
+        padding: 0 9px;
+        border-radius: 10px;
         font-size: 9px;
+        line-height: 1;
         font-weight: 500;
         cursor: default;
         user-select: none;
@@ -181,7 +185,12 @@ export class DomindsConnectionStatus extends HTMLElement {
       }
 
       .status-text {
+        display: inline-flex;
+        align-items: center;
+        height: 100%;
         font-weight: 500;
+        line-height: 1;
+        transform: translateY(var(--status-text-optical-offset-y));
         white-space: nowrap;
       }
 

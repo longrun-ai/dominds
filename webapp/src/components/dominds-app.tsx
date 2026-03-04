@@ -911,12 +911,12 @@ export class DomindsApp extends HTMLElement {
       dialogTitle.textContent = t.currentDialogPlaceholder;
     }
 
-    const prev = this.shadowRoot.querySelector('#toolbar-prev') as HTMLButtonElement | null;
+    const prev = this.shadowRoot.querySelector('#course-navi-prev') as HTMLButtonElement | null;
     if (prev) prev.setAttribute('aria-label', t.previousCourse);
-    const next = this.shadowRoot.querySelector('#toolbar-next') as HTMLButtonElement | null;
+    const next = this.shadowRoot.querySelector('#course-navi-next') as HTMLButtonElement | null;
     if (next) next.setAttribute('aria-label', t.nextCourse);
     const savePriming = this.shadowRoot.querySelector(
-      '#toolbar-save-priming',
+      '#navibar-save-priming',
     ) as HTMLButtonElement | null;
     if (savePriming) {
       savePriming.title = t.primingSaveButtonTitle;
@@ -924,11 +924,11 @@ export class DomindsApp extends HTMLElement {
     }
 
     const remToggle = this.shadowRoot.querySelector(
-      '#toolbar-reminders-toggle',
+      '#navibar-reminders-toggle',
     ) as HTMLButtonElement | null;
     if (remToggle) remToggle.setAttribute('aria-label', t.reminders);
     const remRefresh = this.shadowRoot.querySelector(
-      '#toolbar-reminders-refresh',
+      '#navibar-reminders-refresh',
     ) as HTMLButtonElement | null;
     if (remRefresh) {
       remRefresh.setAttribute('aria-label', t.refreshReminders);
@@ -1635,32 +1635,32 @@ export class DomindsApp extends HTMLElement {
    * Use this when dialog is loaded or course changes.
    */
   private updateToolbarDisplay(): void {
-    const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement | null;
-    const nextBtn = this.shadowRoot?.querySelector('#toolbar-next') as HTMLButtonElement | null;
+    const prevBtn = this.shadowRoot?.querySelector('#course-navi-prev') as HTMLButtonElement | null;
+    const nextBtn = this.shadowRoot?.querySelector('#course-navi-next') as HTMLButtonElement | null;
     const savePrimingBtn = this.shadowRoot?.querySelector(
-      '#toolbar-save-priming',
+      '#navibar-save-priming',
     ) as HTMLButtonElement | null;
     const remBtnCount = this.shadowRoot?.querySelector(
-      '#toolbar-reminders-toggle .reminders-count',
+      '#navibar-reminders-toggle .reminders-count',
     ) as HTMLElement | null;
-    const courseLabel = this.shadowRoot?.querySelector('#course-nav span') as HTMLElement | null;
+    const courseLabel = this.shadowRoot?.querySelector('#course-navi span') as HTMLElement | null;
     const stopCount = this.shadowRoot?.querySelector(
-      '#toolbar-emergency-stop-count',
+      '#header-emergency-stop-count',
     ) as HTMLElement | null;
     const resumeCount = this.shadowRoot?.querySelector(
-      '#toolbar-resume-all-count',
+      '#header-resume-all-count',
     ) as HTMLElement | null;
     const stopPill = this.shadowRoot?.querySelector(
-      '#toolbar-emergency-stop-pill',
+      '#header-emergency-stop-pill',
     ) as HTMLElement | null;
     const resumePill = this.shadowRoot?.querySelector(
-      '#toolbar-resume-all-pill',
+      '#header-resume-all-pill',
     ) as HTMLElement | null;
     const stopBtn = this.shadowRoot?.querySelector(
-      '#toolbar-emergency-stop',
+      '#header-emergency-stop',
     ) as HTMLButtonElement | null;
     const resumeBtn = this.shadowRoot?.querySelector(
-      '#toolbar-resume-all',
+      '#header-resume-all',
     ) as HTMLButtonElement | null;
 
     const applyRunControlRefreshAttrs = (pill: HTMLElement) => {
@@ -1793,10 +1793,10 @@ export class DomindsApp extends HTMLElement {
   }
 
   private updateContextHealthUi(): void {
-    const el = this.shadowRoot?.querySelector('#toolbar-context-health');
+    const el = this.shadowRoot?.querySelector('#navibar-context-health');
     if (!(el instanceof HTMLElement)) return;
 
-    const tooltip = this.shadowRoot?.querySelector('#toolbar-context-health-tooltip');
+    const tooltip = this.shadowRoot?.querySelector('#navibar-context-health-tooltip');
 
     const snapshot = this.toolbarContextHealth;
     if (!snapshot) {
@@ -2166,9 +2166,12 @@ export class DomindsApp extends HTMLElement {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        padding: 2px 9px;
-        border-radius: 12px;
+        height: 20px;
+        box-sizing: border-box;
+        padding: 0 9px;
+        border-radius: 10px;
         font-size: var(--dominds-font-size-sm, 12px);
+        line-height: 1;
         font-weight: 500;
         user-select: none;
         border: 1px solid var(--dominds-border, #e0e0e0);
@@ -2181,7 +2184,7 @@ export class DomindsApp extends HTMLElement {
       #toast-history-btn {
         width: 28px;
         justify-content: center;
-        padding: 2px 0;
+        padding: 0;
         color: color-mix(in srgb, var(--dominds-fg, #333333) 86%, var(--dominds-muted, #666666));
       }
 
@@ -2199,9 +2202,12 @@ export class DomindsApp extends HTMLElement {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        padding: 2px 9px;
-        border-radius: 12px;
+        height: 20px;
+        box-sizing: border-box;
+        padding: 0 9px;
+        border-radius: 10px;
         font-size: var(--dominds-font-size-sm, 12px);
+        line-height: 1;
         font-weight: 500;
         user-select: none;
         border: 1px solid var(--dominds-border, #e0e0e0);
@@ -2265,37 +2271,37 @@ export class DomindsApp extends HTMLElement {
         border-color: var(--dominds-success, #28a745);
       }
 
-      #toolbar-emergency-stop-pill[data-disabled='true'] {
+      #header-emergency-stop-pill[data-disabled='true'] {
         background: color-mix(in srgb, #22c55e 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 22%, var(--dominds-border, #e0e0e0));
         opacity: 0.6;
         cursor: not-allowed;
       }
 
-      #toolbar-emergency-stop-pill:not([data-disabled='true']) {
+      #header-emergency-stop-pill:not([data-disabled='true']) {
         background: color-mix(in srgb, #22c55e 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #22c55e 65%, var(--dominds-border, #e0e0e0));
         cursor: pointer;
       }
 
-      #toolbar-emergency-stop-pill:hover:not([data-disabled='true']) {
+      #header-emergency-stop-pill:hover:not([data-disabled='true']) {
         border-color: color-mix(in srgb, #22c55e 80%, var(--dominds-border, #e0e0e0));
       }
 
-      #toolbar-resume-all-pill[data-disabled='true'] {
+      #header-resume-all-pill[data-disabled='true'] {
         background: color-mix(in srgb, #ef4444 14%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 22%, var(--dominds-border, #e0e0e0));
         opacity: 0.6;
         cursor: not-allowed;
       }
 
-      #toolbar-resume-all-pill:not([data-disabled='true']) {
+      #header-resume-all-pill:not([data-disabled='true']) {
         background: color-mix(in srgb, #ef4444 55%, var(--dominds-bg, #ffffff));
         border-color: color-mix(in srgb, #ef4444 65%, var(--dominds-border, #e0e0e0));
         cursor: pointer;
       }
 
-      #toolbar-resume-all-pill:hover:not([data-disabled='true']) {
+      #header-resume-all-pill:hover:not([data-disabled='true']) {
         border-color: color-mix(in srgb, #ef4444 80%, var(--dominds-border, #e0e0e0));
       }
 
@@ -2330,7 +2336,7 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-danger, #721c24);
       }
 
-      #toolbar-context-health {
+      #navibar-context-health {
         cursor: default;
         font-variant-numeric: tabular-nums;
         width: 20px;
@@ -2344,19 +2350,19 @@ export class DomindsApp extends HTMLElement {
         justify-content: center;
       }
 
-      #toolbar-context-health[data-level='healthy'] {
+      #navibar-context-health[data-level='healthy'] {
         color: var(--dominds-success, #155724);
       }
 
-      #toolbar-context-health[data-level='caution'] {
+      #navibar-context-health[data-level='caution'] {
         color: color-mix(in srgb, #b45309 85%, var(--dominds-fg, #333333));
       }
 
-      #toolbar-context-health[data-level='critical'] {
+      #navibar-context-health[data-level='critical'] {
         color: var(--dominds-danger, #721c24);
       }
 
-      #toolbar-context-health[data-level='unknown'] {
+      #navibar-context-health[data-level='unknown'] {
         color: var(--dominds-muted, #666666);
       }
 
@@ -2369,7 +2375,7 @@ export class DomindsApp extends HTMLElement {
             stroke-width: 1.5;
           }
 
-          #toolbar-context-health[data-level='unknown'] .ctx-usage-ring {
+          #navibar-context-health[data-level='unknown'] .ctx-usage-ring {
             stroke: color-mix(in srgb, var(--dominds-muted, #666666) 70%, var(--dominds-bg, #ffffff));
           }
 
@@ -2386,12 +2392,12 @@ export class DomindsApp extends HTMLElement {
             stroke: color-mix(in srgb, var(--dominds-danger, #721c24) 80%, var(--dominds-bg, #ffffff));
             stroke-width: 1.2;
           }
-      #toolbar-context-health-wrap {
+      #navibar-context-health-wrap {
         display: inline-flex;
         align-items: center;
       }
 
-      #toolbar-context-health-wrap .toolbar-tooltip {
+      #navibar-context-health-wrap .navibar-tooltip {
         position: absolute;
         top: calc(100% + 6px);
         right: 0;
@@ -2415,7 +2421,7 @@ export class DomindsApp extends HTMLElement {
         box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
       }
 
-      #toolbar-context-health-wrap .toolbar-tooltip::after {
+      #navibar-context-health-wrap .navibar-tooltip::after {
         content: '';
         position: absolute;
         bottom: 100%;
@@ -2426,7 +2432,7 @@ export class DomindsApp extends HTMLElement {
         border-bottom-color: var(--dominds-fg, #333333);
       }
 
-      #toolbar-context-health-wrap:hover .toolbar-tooltip {
+      #navibar-context-health-wrap:hover .navibar-tooltip {
         opacity: 1;
       }
 
@@ -3131,7 +3137,7 @@ export class DomindsApp extends HTMLElement {
         overflow: hidden;
       }
 
-      .toolbar {
+      .navibar {
         display: flex;
         align-items: center;
         gap: 5px;
@@ -3143,14 +3149,14 @@ export class DomindsApp extends HTMLElement {
         position: relative;
       }
 
-      .toolbar-left {
+      .navibar-left {
         display: flex;
         align-items: center;
         gap: 6px;
         min-width: 0;
       }
 
-      #course-nav {
+      #course-navi {
         display: flex;
         align-items: center;
         flex-shrink: 0;
@@ -3187,7 +3193,31 @@ export class DomindsApp extends HTMLElement {
 
       .header-run-pill-icon .icon-mask,
       .header-pill-button .icon-mask,
-      #toast-history-btn .icon-mask,
+      #toast-history-btn .icon-mask {
+        width: 20px;
+        height: 20px;
+      }
+
+      .header-run-pill-icon .icon-mask.app-icon-stop {
+        width: 16px;
+        height: 16px;
+      }
+
+      .header-run-pill-icon .icon-mask.app-icon-play {
+        width: 18px;
+        height: 18px;
+      }
+
+      .header-pill-button .icon-mask.app-icon-warning {
+        width: 16px;
+        height: 16px;
+      }
+
+      #toast-history-btn .icon-mask.app-icon-history {
+        width: 16px;
+        height: 16px;
+      }
+
       .badge-button .icon-mask,
       .tools-registry-actions .icon-mask,
       .problems-panel-actions .icon-mask,
@@ -3195,6 +3225,11 @@ export class DomindsApp extends HTMLElement {
       .icon-button .icon-mask {
         width: 14px;
         height: 14px;
+      }
+
+      .navibar .icon-button .icon-mask {
+        width: 18px;
+        height: 18px;
       }
 
       .activity-button .icon-mask {
@@ -3316,8 +3351,8 @@ export class DomindsApp extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.scrollDown};
       }
 
-      .app-icon-resize-diagonal {
-        --icon-mask: ${ICON_MASK_URLS.resizeDiagonal};
+      .app-icon-resize-corner-bottom-left {
+        --icon-mask: ${ICON_MASK_URLS.resizeCornerBottomLeft};
       }
 
       .app-icon-check {
@@ -3808,7 +3843,7 @@ export class DomindsApp extends HTMLElement {
           padding: 4px 6px;
         }
 
-        .toolbar {
+        .navibar {
           padding: 1px 6px;
         }
       }
@@ -4661,20 +4696,20 @@ export class DomindsApp extends HTMLElement {
 		          </div>
 	          <div class="header-actions">
               <div class="header-run-controls">
-                <div class="header-run-pill danger" id="toolbar-emergency-stop-pill" data-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}" title="${t.emergencyStop}">
-	                  <button type="button" class="header-run-pill-icon" id="toolbar-emergency-stop" aria-label="${t.emergencyStop} (${String(this.proceedingDialogsCount)})" aria-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}">
+                <div class="header-run-pill danger" id="header-emergency-stop-pill" data-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}" title="${t.emergencyStop}">
+	                  <button type="button" class="header-run-pill-icon" id="header-emergency-stop" aria-label="${t.emergencyStop} (${String(this.proceedingDialogsCount)})" aria-disabled="${this.proceedingDialogsCount > 0 ? 'false' : 'true'}">
 	                    <span class="icon-mask app-icon-stop" aria-hidden="true"></span>
 	                  </button>
-                  <span class="header-run-pill-count" id="toolbar-emergency-stop-count" data-testid="toolbar.proceeding_count" aria-hidden="true">${String(this.proceedingDialogsCount)}</span>
+                  <span class="header-run-pill-count" id="header-emergency-stop-count" data-testid="toolbar.proceeding_count" aria-hidden="true">${String(this.proceedingDialogsCount)}</span>
                 </div>
-                <div class="header-run-pill success" id="toolbar-resume-all-pill" data-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}" title="${t.resumeAll}">
-	                  <button type="button" class="header-run-pill-icon" id="toolbar-resume-all" aria-label="${t.resumeAll} (${String(this.resumableDialogsCount)})" aria-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}">
+                <div class="header-run-pill success" id="header-resume-all-pill" data-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}" title="${t.resumeAll}">
+	                  <button type="button" class="header-run-pill-icon" id="header-resume-all" aria-label="${t.resumeAll} (${String(this.resumableDialogsCount)})" aria-disabled="${this.resumableDialogsCount > 0 ? 'false' : 'true'}">
 	                    <span class="icon-mask app-icon-play" aria-hidden="true"></span>
 	                  </button>
-                  <span class="header-run-pill-count" id="toolbar-resume-all-count" data-testid="toolbar.resumable_count" aria-hidden="true">${String(this.resumableDialogsCount)}</span>
+                  <span class="header-run-pill-count" id="header-resume-all-count" data-testid="toolbar.resumable_count" aria-hidden="true">${String(this.resumableDialogsCount)}</span>
                 </div>
               </div>
-		            <button class="header-pill-button problems" id="toolbar-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
+		            <button class="header-pill-button problems" id="header-problems-toggle" title="${t.problemsButtonTitle}" aria-label="${t.problemsButtonTitle}" data-severity="${this.getProblemsTopSeverity()}" data-has-problems="${this.problems.length > 0 ? 'true' : 'false'}">
 		              <span class="icon-mask app-icon-warning" aria-hidden="true"></span>
 		              <span class="problems-count">${String(this.problems.length)}</span>
 		            </button>
@@ -4783,36 +4818,36 @@ export class DomindsApp extends HTMLElement {
           </aside>
 
           <main class="content-area">
-            <div class="toolbar">
-              <div class="toolbar-left">
+            <div class="navibar">
+              <div class="navibar-left">
                 <button class="icon-button" id="new-dialog-btn" title="${t.newDialogTitle}" aria-label="${t.newDialogTitle}">
                   <span class="icon-mask app-icon-plus" aria-hidden="true"></span>
                 </button>
                 <div id="current-dialog-title">${t.currentDialogPlaceholder}</div>
               </div>
               <div style="flex: 1;"></div>
-              <button class="icon-button" id="toolbar-save-priming" title="${t.primingSaveButtonTitle}" aria-label="${t.primingSaveButtonTitle}" ${this.currentDialog ? '' : 'disabled'}>
+              <button class="icon-button" id="navibar-save-priming" title="${t.primingSaveButtonTitle}" aria-label="${t.primingSaveButtonTitle}" ${this.currentDialog ? '' : 'disabled'}>
                 <span class="icon-mask app-icon-save" aria-hidden="true"></span>
               </button>
-	              <div id="course-nav">
-	                <button class="icon-button" id="toolbar-prev" ${this.toolbarCurrentCourse > 1 ? '' : 'disabled'} aria-label="${t.previousCourse}">
+	              <div id="course-navi">
+	                <button class="icon-button" id="course-navi-prev" ${this.toolbarCurrentCourse > 1 ? '' : 'disabled'} aria-label="${t.previousCourse}">
 	                  <span class="icon-mask app-icon-prev" aria-hidden="true"></span>
 	                </button>
-	              <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">C ${this.toolbarCurrentCourse}</span>
-	              <button class="icon-button" id="toolbar-next" ${this.toolbarCurrentCourse < this.toolbarTotalCourses ? '' : 'disabled'} aria-label="${t.nextCourse}">
-	                <span class="icon-mask app-icon-next" aria-hidden="true"></span>
-	              </button>
+                  <span style="margin: 0 8px; min-width: 28px; display:inline-block; text-align:center;">C ${this.toolbarCurrentCourse}</span>
+                  <button class="icon-button" id="course-navi-next" ${this.toolbarCurrentCourse < this.toolbarTotalCourses ? '' : 'disabled'} aria-label="${t.nextCourse}">
+                    <span class="icon-mask app-icon-next" aria-hidden="true"></span>
+                  </button>
 		            </div>
-                <div id="toolbar-context-health-wrap" style="position: relative; margin-left: 12px;">
-	              <div class="badge-button" id="toolbar-context-health" data-level="unknown" aria-label="${contextUsageTitle}" style="">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
-                  <div class="toolbar-tooltip" id="toolbar-context-health-tooltip">${contextUsageTooltipText}</div>
+                <div id="navibar-context-health-wrap" style="position: relative; margin-left: 12px;">
+	              <div class="badge-button" id="navibar-context-health" data-level="unknown" aria-label="${contextUsageTitle}" style="">${this.renderContextUsageIcon(this.toolbarContextHealth)}</div>
+                  <div class="navibar-tooltip" id="navibar-context-health-tooltip">${contextUsageTooltipText}</div>
                 </div>
 		          <div id="reminders-callout" style="position: relative; margin-left: 12px;">
-		            <button class="badge-button" id="toolbar-reminders-toggle" aria-label="${t.reminders}">
+		            <button class="badge-button" id="navibar-reminders-toggle" aria-label="${t.reminders}">
 		              <span class="icon-mask app-icon-bookmark" aria-hidden="true"></span>
 		              <span class="reminders-count">${String(this.toolbarReminders.length)}</span>
 		            </button>
-	            <button class="icon-button" id="toolbar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
+	            <button class="icon-button" id="navibar-reminders-refresh" title="${t.refreshReminders}" aria-label="${t.refreshReminders}" style="margin-left:6px;">
               <span class="icon-mask app-icon-refresh" aria-hidden="true"></span>
             </button>
           </div>
@@ -4838,7 +4873,7 @@ export class DomindsApp extends HTMLElement {
                 }
               </div>
 	              <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
-	                <span class="icon-mask app-icon-resize-diagonal" aria-hidden="true"></span>
+	                <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
 	              </div>
             </div>
             `
@@ -5325,9 +5360,9 @@ export class DomindsApp extends HTMLElement {
       const button = target.closest('button');
       if (!(button instanceof HTMLButtonElement)) return;
 
-      if (button.id === 'toolbar-emergency-stop') {
+      if (button.id === 'header-emergency-stop') {
         captureKeyboardCountSnapshot(button, this.proceedingDialogsCount);
-      } else if (button.id === 'toolbar-resume-all') {
+      } else if (button.id === 'header-resume-all') {
         captureKeyboardCountSnapshot(button, this.resumableDialogsCount);
       }
     });
@@ -5343,7 +5378,7 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const savePrimingBtn = target.closest('#toolbar-save-priming') as HTMLButtonElement | null;
+      const savePrimingBtn = target.closest('#navibar-save-priming') as HTMLButtonElement | null;
       if (savePrimingBtn) {
         await this.saveCurrentCourseAsPrimingScript();
         return;
@@ -5395,7 +5430,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       // Toolbar navigation
-      const prevBtn = target.closest('#toolbar-prev') as HTMLButtonElement | null;
+      const prevBtn = target.closest('#course-navi-prev') as HTMLButtonElement | null;
       if (prevBtn) {
         if (this.toolbarCurrentCourse > 1) {
           const dc = this.shadowRoot?.querySelector(
@@ -5410,7 +5445,7 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const nextBtn = target.closest('#toolbar-next') as HTMLButtonElement | null;
+      const nextBtn = target.closest('#course-navi-next') as HTMLButtonElement | null;
       if (nextBtn) {
         if (this.toolbarCurrentCourse < this.toolbarTotalCourses) {
           const dc = this.shadowRoot?.querySelector(
@@ -5428,7 +5463,7 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const problemsToggle = target.closest('#toolbar-problems-toggle') as HTMLButtonElement | null;
+      const problemsToggle = target.closest('#header-problems-toggle') as HTMLButtonElement | null;
       if (problemsToggle) {
         this.problemsPanelOpen = !this.problemsPanelOpen;
         if (this.problemsPanelOpen) {
@@ -5452,14 +5487,14 @@ export class DomindsApp extends HTMLElement {
       }
 
       // Reminders toggle
-      const remToggle = target.closest('#toolbar-reminders-toggle') as HTMLButtonElement | null;
+      const remToggle = target.closest('#navibar-reminders-toggle') as HTMLButtonElement | null;
       if (remToggle) {
         this.toggleRemindersWidget();
         return;
       }
 
       // Reminders refresh
-      const remRefresh = target.closest('#toolbar-reminders-refresh') as HTMLButtonElement | null;
+      const remRefresh = target.closest('#navibar-reminders-refresh') as HTMLButtonElement | null;
       if (remRefresh) {
         if (this.currentDialog && this.currentDialog.selfId && this.currentDialog.rootId) {
           this.wsManager.sendRaw({
@@ -5471,9 +5506,7 @@ export class DomindsApp extends HTMLElement {
       }
 
       // Global run controls
-      const emergencyStopBtn = target.closest(
-        '#toolbar-emergency-stop',
-      ) as HTMLButtonElement | null;
+      const emergencyStopBtn = target.closest('#header-emergency-stop') as HTMLButtonElement | null;
       if (emergencyStopBtn) {
         const t = getUiStrings(this.uiLanguage);
         const proceedingCountSnapshot = readKeyboardCountSnapshot(emergencyStopBtn);
@@ -5490,7 +5523,7 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      const resumeAllBtn = target.closest('#toolbar-resume-all') as HTMLButtonElement | null;
+      const resumeAllBtn = target.closest('#header-resume-all') as HTMLButtonElement | null;
       if (resumeAllBtn) {
         const t = getUiStrings(this.uiLanguage);
         const resumableCountSnapshot = readKeyboardCountSnapshot(resumeAllBtn);
@@ -5560,11 +5593,11 @@ export class DomindsApp extends HTMLElement {
    */
   private updateToolbarCourseDisplay(): void {
     if (!this.shadowRoot) return;
-    const prev = this.shadowRoot.querySelector('#toolbar-prev') as HTMLButtonElement;
-    const next = this.shadowRoot.querySelector('#toolbar-next') as HTMLButtonElement;
+    const prev = this.shadowRoot.querySelector('#course-navi-prev') as HTMLButtonElement;
+    const next = this.shadowRoot.querySelector('#course-navi-next') as HTMLButtonElement;
     if (prev) prev.disabled = !(this.toolbarCurrentCourse > 1);
     if (next) next.disabled = !(this.toolbarCurrentCourse < this.toolbarTotalCourses);
-    const label = this.shadowRoot.querySelector('#course-nav span') as HTMLElement;
+    const label = this.shadowRoot.querySelector('#course-navi span') as HTMLElement;
     if (label) label.textContent = `C ${this.toolbarCurrentCourse}`;
   }
 
@@ -8213,7 +8246,7 @@ export class DomindsApp extends HTMLElement {
   private updateProblemsUi(): void {
     const sr = this.shadowRoot;
     if (!sr) return;
-    const btn = sr.querySelector('#toolbar-problems-toggle') as HTMLButtonElement | null;
+    const btn = sr.querySelector('#header-problems-toggle') as HTMLButtonElement | null;
     if (btn) {
       btn.setAttribute('data-severity', this.getProblemsTopSeverity());
       btn.setAttribute('data-has-problems', this.problems.length > 0 ? 'true' : 'false');
@@ -8580,11 +8613,11 @@ export class DomindsApp extends HTMLElement {
           // Update toolbar course information
           this.toolbarCurrentCourse = message.course;
           this.toolbarTotalCourses = message.totalCourses;
-          const prevBtn = this.shadowRoot?.querySelector('#toolbar-prev') as HTMLButtonElement;
-          const nextBtn = this.shadowRoot?.querySelector('#toolbar-next') as HTMLButtonElement;
+          const prevBtn = this.shadowRoot?.querySelector('#course-navi-prev') as HTMLButtonElement;
+          const nextBtn = this.shadowRoot?.querySelector('#course-navi-next') as HTMLButtonElement;
           if (prevBtn) prevBtn.disabled = !(this.toolbarCurrentCourse > 1);
           if (nextBtn) nextBtn.disabled = !(this.toolbarCurrentCourse < this.toolbarTotalCourses);
-          const courseLabel = this.shadowRoot?.querySelector('#course-nav span') as HTMLElement;
+          const courseLabel = this.shadowRoot?.querySelector('#course-navi span') as HTMLElement;
           if (courseLabel) courseLabel.textContent = `C ${this.toolbarCurrentCourse}`;
           const latest = message.totalCourses;
           const input = this.q4hInput as HTMLElement & {
@@ -9026,7 +9059,7 @@ export class DomindsApp extends HTMLElement {
   private updateReminderCountBadge(): void {
     // Update count badge in toolbar to show actual reminder count
     const remBtnCount = this.shadowRoot?.querySelector(
-      '#toolbar-reminders-toggle .reminders-count',
+      '#navibar-reminders-toggle .reminders-count',
     ) as HTMLElement;
     if (remBtnCount) {
       remBtnCount.textContent = String(this.toolbarReminders.length);
@@ -9087,7 +9120,7 @@ export class DomindsApp extends HTMLElement {
     this.remindersWidgetVisible = !this.remindersWidgetVisible;
     const existing = this.shadowRoot?.querySelector('#reminders-widget') as HTMLElement | null;
     if (this.remindersWidgetVisible) {
-      const tb = this.shadowRoot?.querySelector('.toolbar') as HTMLElement;
+      const tb = this.shadowRoot?.querySelector('.navibar') as HTMLElement;
       const rect = tb ? tb.getBoundingClientRect() : ({ right: 340, bottom: 80 } as DOMRect);
       const margin = 12;
       const maxX = Math.max(margin, window.innerWidth - this.remindersWidgetWidthPx - margin);
@@ -9129,7 +9162,7 @@ export class DomindsApp extends HTMLElement {
           </div>
           <div id="reminders-widget-content" style="padding:8px 10px; overflow:auto; flex: 1 1 auto; min-height: 0;"></div>
 	          <div id="reminders-widget-resize-handle" aria-hidden="true" style="position:absolute; left:8px; bottom:8px; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:nesw-resize; color: var(--dominds-muted, #64748b); opacity:0.72;">
-	            <span class="icon-mask app-icon-resize-diagonal" aria-hidden="true"></span>
+	            <span class="icon-mask app-icon-resize-corner-bottom-left" aria-hidden="true"></span>
 	          </div>
         `;
         this.shadowRoot?.appendChild(widget);
