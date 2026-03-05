@@ -7522,6 +7522,19 @@ export class DomindsApp extends HTMLElement {
         const resolved = workspace !== '' ? workspace : rtws;
         if (resolved !== '') {
           this.backendRtws = resolved;
+          document.documentElement.setAttribute('data-dominds-rtws', resolved);
+          try {
+            window.localStorage.setItem('dominds.rtws', resolved);
+          } catch {
+            // ignore storage errors
+          }
+        } else {
+          document.documentElement.removeAttribute('data-dominds-rtws');
+          try {
+            window.localStorage.removeItem('dominds.rtws');
+          } catch {
+            // ignore storage errors
+          }
         }
       }
       if (data && typeof data.version === 'string') {
@@ -7532,6 +7545,12 @@ export class DomindsApp extends HTMLElement {
       console.error('Failed to load rtws info:', error);
       this.backendRtws = 'Unknown rtws';
       this.backendVersion = '';
+      document.documentElement.removeAttribute('data-dominds-rtws');
+      try {
+        window.localStorage.removeItem('dominds.rtws');
+      } catch {
+        // ignore storage errors
+      }
       this.updateRtwsInfo();
     }
   }

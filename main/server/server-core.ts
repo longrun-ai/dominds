@@ -10,7 +10,7 @@ import type { ParsedUrlQuery } from 'querystring';
 import * as url from 'url';
 import type { WebSocket } from 'ws';
 import { createLogger } from '../log';
-import { ApiRouteContext, handleApiRoute } from './api-routes';
+import { ApiRouteContext, handleApiRoute, handleWorkspaceFilePreviewPage } from './api-routes';
 import type { AuthConfig } from './auth';
 import { getHttpAuthCheck } from './auth';
 import { serveStatic } from './static-server';
@@ -82,6 +82,11 @@ export class HttpServerCore {
         if (await handler(req, res, pathname, query)) {
           return;
         }
+      }
+
+      // Backend-direct workspace file preview page.
+      if (await handleWorkspaceFilePreviewPage(req, res, pathname)) {
+        return;
       }
 
       // Handle API routes

@@ -337,6 +337,258 @@ export interface ApiRouteContext {
   mode: 'development' | 'production';
 }
 
+export async function handleWorkspaceFilePreviewPage(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+): Promise<boolean> {
+  if (!(pathname === '/f' || pathname === '/f/' || pathname.startsWith('/f/'))) {
+    return false;
+  }
+  if (req.method !== 'GET') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET' });
+    res.end('Method Not Allowed');
+    return true;
+  }
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dominds File Preview</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+      .panel {
+        border: 1px solid #334155;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #111827;
+      }
+      .head {
+        padding: 10px 12px;
+        border-bottom: 1px solid #334155;
+        background: #1f2937;
+      }
+      .path {
+        font-size: 13px;
+        font-weight: 600;
+        word-break: break-all;
+      }
+      .meta {
+        margin-top: 4px;
+        color: #94a3b8;
+        font-size: 12px;
+      }
+      .body { padding: 8px; }
+      .status {
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 13px;
+        color: #cbd5e1;
+        background: #0f172a;
+      }
+      .status.err {
+        border-color: #7f1d1d;
+        background: #1f1010;
+        color: #fecaca;
+      }
+      pre {
+        margin: 0;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        background: #0b1220;
+        overflow: auto;
+        max-height: calc(100vh - 190px);
+      }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="head">
+          <div id="file-path" class="path">Loading...</div>
+          <div id="file-meta" class="meta"></div>
+        </div>
+        <div class="body">
+          <div id="status" class="status">Loading file...</div>
+          <pre id="code-wrap" style="display:none;"><code id="code"></code></pre>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script>
+      (function () {
+        var filePathEl = document.getElementById('file-path');
+        var fileMetaEl = document.getElementById('file-meta');
+        var statusEl = document.getElementById('status');
+        var codeWrapEl = document.getElementById('code-wrap');
+        var codeEl = document.getElementById('code');
+        if (!filePathEl || !fileMetaEl || !statusEl || !codeWrapEl || !codeEl) return;
+
+        function setError(message) {
+          statusEl.classList.add('err');
+          statusEl.textContent = message;
+          codeWrapEl.style.display = 'none';
+        }
+
+        function normalizeRelativePath(input) {
+          if (typeof input !== 'string') return null;
+          if (input.length < 1) return null;
+          if (input.indexOf('\\\\') >= 0) return null;
+          if (/[\\u0000]/.test(input)) return null;
+          if (input.charAt(0) === '/') return null;
+          var parts = input.split('/').filter(function (s) { return s.length > 0; });
+          if (parts.length < 1) return null;
+          for (var i = 0; i < parts.length; i += 1) {
+            var seg = parts[i];
+            if (seg === '.' || seg === '..') return null;
+          }
+          return parts.join('/');
+        }
+
+        function parseRelativePathFromLocation() {
+          var pathname = window.location.pathname || '';
+          if (!pathname.startsWith('/f/')) return null;
+          var tail = pathname.slice('/f/'.length);
+          if (tail.length < 1) return null;
+          var rawParts = tail.split('/');
+          if (rawParts.some(function (s) { return s.length < 1; })) return null;
+          var decodedParts = [];
+          for (var i = 0; i < rawParts.length; i += 1) {
+            var decoded;
+            try { decoded = decodeURIComponent(rawParts[i]); } catch { return null; }
+            if (decoded.length < 1) return null;
+            if (decoded.indexOf('/') >= 0 || decoded.indexOf('\\\\') >= 0 || /[\\u0000]/.test(decoded)) return null;
+            if (decoded === '.' || decoded === '..') return null;
+            decodedParts.push(decoded);
+          }
+          return normalizeRelativePath(decodedParts.join('/'));
+        }
+
+        function parsePositiveInt(raw) {
+          if (typeof raw !== 'string' || raw.trim() === '') return null;
+          var parsed = Number.parseInt(raw, 10);
+          return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        }
+
+        function detectLang(filePath) {
+          var idx = filePath.lastIndexOf('.');
+          var ext = idx >= 0 ? filePath.slice(idx + 1).toLowerCase() : '';
+          var map = {
+            c: 'c', cc: 'cpp', cpp: 'cpp', cs: 'csharp', css: 'css',
+            go: 'go', h: 'c', hpp: 'cpp', html: 'xml', java: 'java',
+            js: 'javascript', json: 'json', jsx: 'jsx', kt: 'kotlin', md: 'markdown',
+            mjs: 'javascript', mts: 'typescript', py: 'python', rb: 'ruby', rs: 'rust',
+            sh: 'bash', sql: 'sql', toml: 'toml', ts: 'typescript', tsx: 'tsx',
+            txt: 'plaintext', vue: 'xml', xml: 'xml', yaml: 'yaml', yml: 'yaml'
+          };
+          return Object.prototype.hasOwnProperty.call(map, ext) ? map[ext] : 'plaintext';
+        }
+
+        function formatBytes(size) {
+          if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return null;
+          if (size < 1024) return String(size) + ' B';
+          if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KiB';
+          return (size / (1024 * 1024)).toFixed(1) + ' MiB';
+        }
+
+        var fileRelPath = parseRelativePathFromLocation();
+        if (!fileRelPath) {
+          filePathEl.textContent = 'Invalid file path';
+          setError('Invalid preview path. Expected /f/<rtws-relative-path> and no ..');
+          return;
+        }
+
+        var search = new URLSearchParams(window.location.search);
+        var line = parsePositiveInt(search.get('line'));
+        var column = parsePositiveInt(search.get('column'));
+        var authFromUrl = search.get('auth');
+        var authFromStorage = null;
+        try { authFromStorage = window.localStorage.getItem('dominds.authKey'); } catch {}
+        var token =
+          (typeof authFromUrl === 'string' && authFromUrl.trim() !== '' ? authFromUrl.trim() : null) ||
+          (typeof authFromStorage === 'string' && authFromStorage.trim() !== '' ? authFromStorage.trim() : null);
+
+        filePathEl.textContent = fileRelPath;
+        var meta = [];
+        if (line !== null) {
+          meta.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
+        }
+        if (meta.length > 0) {
+          fileMetaEl.textContent = meta.join(' | ');
+        }
+
+        var headers = { Accept: 'application/json' };
+        if (token !== null) {
+          headers['Authorization'] = 'Bearer ' + token;
+        }
+
+        fetch('/api/workspace/file?file=' + encodeURIComponent(fileRelPath), {
+          method: 'GET',
+          headers: headers,
+          cache: 'no-store'
+        })
+          .then(function (resp) {
+            return resp.json().catch(function () { return {}; }).then(function (payload) {
+              return { ok: resp.ok, status: resp.status, payload: payload };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok || !result.payload || result.payload.success !== true || typeof result.payload.raw !== 'string') {
+              var msg = result.payload && typeof result.payload.error === 'string' && result.payload.error !== ''
+                ? result.payload.error
+                : ('Request failed: HTTP ' + String(result.status));
+              setError(msg);
+              return;
+            }
+
+            statusEl.style.display = 'none';
+            codeWrapEl.style.display = 'block';
+            var lang = detectLang(fileRelPath);
+            var sizeText = formatBytes(result.payload.size);
+            var metaItems = [];
+            if (line !== null) metaItems.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
+            metaItems.push(lang);
+            if (sizeText !== null) metaItems.push(sizeText);
+            fileMetaEl.textContent = metaItems.join(' | ');
+
+            codeEl.className = 'language-' + lang;
+            codeEl.textContent = result.payload.raw;
+            if (window.hljs && typeof window.hljs.highlightElement === 'function') {
+              window.hljs.highlightElement(codeEl);
+            }
+          })
+          .catch(function (err) {
+            var msg = err && typeof err.message === 'string' ? err.message : 'Failed to load file';
+            setError(msg);
+          });
+      })();
+    </script>
+  </body>
+</html>`;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  res.end(html);
+  return true;
+}
+
 /**
  * Handle API routes
  */
@@ -597,6 +849,11 @@ export async function handleApiRoute(
     // Read Dominds docs markdown (from dominds install root, NOT rtws).
     if (pathname === '/api/docs/read' && req.method === 'GET') {
       return await handleReadDocsMarkdown(req, res);
+    }
+
+    // Read workspace file content for markdown file-link preview.
+    if (pathname === '/api/workspace/file' && req.method === 'GET') {
+      return await handleReadWorkspaceFile(req, res);
     }
 
     if (pathname === '/api/snippets/builtin' && req.method === 'GET') {
@@ -868,6 +1125,90 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
 
   respondJson(res, 404, { success: false, error: 'Doc not found' });
   return true;
+}
+
+const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+
+function ensurePathSuffixSeparator(input: string): string {
+  if (input.endsWith(path.sep)) return input;
+  return `${input}${path.sep}`;
+}
+
+function isWithinResolvedRoot(targetAbsPath: string, rootAbsPath: string): boolean {
+  if (targetAbsPath === rootAbsPath) return true;
+  return targetAbsPath.startsWith(ensurePathSuffixSeparator(rootAbsPath));
+}
+
+function normalizeRtwsRelativeFilePath(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed.length < 1) return null;
+  if (trimmed.includes('\0')) return null;
+  if (trimmed.includes('\\')) return null;
+  if (path.posix.isAbsolute(trimmed)) return null;
+  const normalized = path.posix.normalize(trimmed);
+  if (normalized.length < 1 || normalized === '.' || normalized === '..') return null;
+  if (normalized.startsWith('../')) return null;
+  if (normalized.includes('/../')) return null;
+  if (normalized.startsWith('/')) return null;
+  const segments = normalized.split('/');
+  if (segments.some((segment) => segment.length < 1 || segment === '.' || segment === '..')) {
+    return null;
+  }
+  return normalized;
+}
+
+async function handleReadWorkspaceFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+  const fileRaw = urlObj.searchParams.get('file');
+  const fileRelPath = typeof fileRaw === 'string' ? normalizeRtwsRelativeFilePath(fileRaw) : null;
+
+  if (fileRelPath === null) {
+    respondJson(res, 400, { success: false, error: 'Invalid file path' });
+    return true;
+  }
+
+  const workspaceRootAbs = path.resolve(process.cwd());
+  const candidateAbsPath = path.resolve(workspaceRootAbs, fileRelPath);
+
+  if (!isWithinResolvedRoot(candidateAbsPath, workspaceRootAbs)) {
+    respondJson(res, 403, {
+      success: false,
+      error: 'File path is outside rtws',
+      path: fileRelPath,
+    });
+    return true;
+  }
+
+  try {
+    const stat = await fsPromises.stat(candidateAbsPath);
+    if (!stat.isFile()) {
+      respondJson(res, 400, { success: false, error: 'Path must be a file', path: fileRelPath });
+      return true;
+    }
+    if (stat.size > WORKSPACE_FILE_PREVIEW_MAX_BYTES) {
+      respondJson(res, 413, {
+        success: false,
+        error: `File too large for preview (max ${WORKSPACE_FILE_PREVIEW_MAX_BYTES} bytes)`,
+        path: fileRelPath,
+        size: stat.size,
+      });
+      return true;
+    }
+    const raw = await fsPromises.readFile(candidateAbsPath, 'utf-8');
+    respondJson(res, 200, { success: true, path: fileRelPath, raw, size: stat.size });
+    return true;
+  } catch (error: unknown) {
+    if (getErrorCode(error) === 'ENOENT') {
+      respondJson(res, 404, { success: false, error: 'File not found', path: fileRelPath });
+      return true;
+    }
+    log.error('Failed to read workspace file', error, { path: fileRelPath });
+    respondJson(res, 500, { success: false, error: 'Failed to read workspace file' });
+    return true;
+  }
 }
 
 async function handleGetToolsRegistry(res: ServerResponse): Promise<boolean> {
