@@ -30,7 +30,11 @@ import {
   buildRootDialogPrimingMetadata,
   getRootDialogPrimingConfig,
 } from '../priming';
-import { createProblemsSnapshotMessage, setProblemsBroadcaster } from '../problems';
+import {
+  clearResolvedProblems,
+  createProblemsSnapshotMessage,
+  setProblemsBroadcaster,
+} from '../problems';
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
@@ -48,6 +52,7 @@ import type {
   DriveDialogByUserAnswer,
   DriveDialogRequest,
   EmergencyStopRequest,
+  ClearResolvedProblemsRequest,
   GetProblemsRequest,
   GetQ4HStateRequest,
   InterruptDialogRequest,
@@ -283,6 +288,10 @@ export async function handleWebSocketMessage(
 
       case 'get_problems':
         await handleGetProblems(ws, packet);
+        break;
+
+      case 'clear_resolved_problems':
+        await handleClearResolvedProblems(ws, packet);
         break;
 
       case 'create_dialog':
@@ -703,6 +712,23 @@ async function handleGetProblems(ws: WebSocket, packet: WebSocketMessage): Promi
   }
   const _req: GetProblemsRequest = packet;
   ws.send(JSON.stringify(createProblemsSnapshotMessage()));
+}
+
+async function handleClearResolvedProblems(ws: WebSocket, packet: WebSocketMessage): Promise<void> {
+  if (packet.type !== 'clear_resolved_problems') {
+    throw new Error(
+      'Internal error: handleClearResolvedProblems called with non clear_resolved_problems packet',
+    );
+  }
+  const _req: ClearResolvedProblemsRequest = packet;
+  const removedCount = clearResolvedProblems();
+  ws.send(
+    JSON.stringify({
+      type: 'clear_resolved_problems_result',
+      removedCount,
+      timestamp: formatUnifiedTimestamp(new Date()),
+    }),
+  );
 }
 
 async function handleSetUiLanguage(ws: WebSocket, packet: WebSocketMessage): Promise<void> {

@@ -31,7 +31,7 @@ import type {
   PrimingScriptSummary,
   PrimingScriptWarningSummary,
   ToolsetInfo,
-  WorkspaceProblem,
+  WorkspaceProblemRecord,
 } from '../shared/types';
 import type { ContextHealthSnapshot } from '../shared/types/context-health';
 import type {
@@ -52,6 +52,7 @@ import {
 import type { HumanQuestion, Q4HDialogContext } from '../shared/types/q4h';
 import type { DialogRunState } from '../shared/types/run-state';
 import type {
+  ClearResolvedProblemsResultMessage,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
   ErrorMessage,
@@ -527,7 +528,7 @@ export class DomindsApp extends HTMLElement {
 
   // rtws Problems
   private problemsVersion: number = 0;
-  private problems: WorkspaceProblem[] = [];
+  private problems: WorkspaceProblemRecord[] = [];
   private problemsPanelOpen: boolean = false;
 
   // Toast history (persisted in localStorage)
@@ -2534,6 +2535,11 @@ export class DomindsApp extends HTMLElement {
         background: color-mix(in srgb, var(--dominds-danger-bg, #f8d7da) 35%, var(--dominds-bg, #ffffff));
       }
 
+      .problem-item[data-resolved='true'] {
+        opacity: 0.86;
+        background: color-mix(in srgb, var(--dominds-sidebar-bg, #f8f9fa) 88%, var(--dominds-bg, #ffffff));
+      }
+
       .problem-head {
         display: flex;
         align-items: baseline;
@@ -2573,6 +2579,16 @@ export class DomindsApp extends HTMLElement {
         color: var(--dominds-muted, #666666);
         white-space: pre-wrap;
         word-break: break-word;
+      }
+
+      .problem-lifecycle {
+        margin-top: 4px;
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 6px;
+        border-radius: 999px;
+        border: 1px solid var(--dominds-border, #e0e0e0);
+        background: color-mix(in srgb, var(--dominds-sidebar-bg, #f8f9fa) 65%, var(--dominds-bg, #ffffff));
       }
 
       .lang-select {
@@ -4939,6 +4955,7 @@ export class DomindsApp extends HTMLElement {
 	          <div class="problems-panel-header">
 	            <div class="problems-panel-title">${t.problemsTitle}</div>
 	            <div class="problems-panel-actions">
+	              <button type="button" id="problems-clear-resolved" title="${t.problemsClearResolvedTitle}" aria-label="${t.problemsClearResolvedTitle}"><span class="icon-mask app-icon-trash" aria-hidden="true"></span></button>
 	              <button type="button" id="problems-refresh" title="Refresh" aria-label="Refresh"><span class="icon-mask app-icon-refresh" aria-hidden="true"></span></button>
 	              <button type="button" id="problems-close" title="${t.close}" aria-label="${t.close}"><span class="icon-mask app-icon-close" aria-hidden="true"></span></button>
 	            </div>
@@ -5701,6 +5718,14 @@ export class DomindsApp extends HTMLElement {
       const problemsRefresh = target.closest('#problems-refresh') as HTMLButtonElement | null;
       if (problemsRefresh) {
         this.wsManager.sendRaw({ type: 'get_problems' });
+        return;
+      }
+
+      const problemsClearResolved = target.closest(
+        '#problems-clear-resolved',
+      ) as HTMLButtonElement | null;
+      if (problemsClearResolved) {
+        this.wsManager.sendRaw({ type: 'clear_resolved_problems' });
         return;
       }
 
@@ -8548,6 +8573,9 @@ export class DomindsApp extends HTMLElement {
     const items = this.problems
       .slice()
       .sort((a, b) => {
+        const activeA = a.resolved === true ? 0 : 1;
+        const activeB = b.resolved === true ? 0 : 1;
+        if (activeA !== activeB) return activeB - activeA;
         const sa = a.severity === 'error' ? 3 : a.severity === 'warning' ? 2 : 1;
         const sb = b.severity === 'error' ? 3 : b.severity === 'warning' ? 2 : 1;
         if (sa !== sb) return sb - sa;
@@ -8555,12 +8583,24 @@ export class DomindsApp extends HTMLElement {
       })
       .map((p) => {
         const detailText = JSON.stringify(p.detail, null, 2);
+        const lifecycleLabel = p.resolved === true ? t.problemsResolvedBadge : t.problemsActiveBadge;
+        const occurredAt =
+          typeof p.occurredAt === 'string' && p.occurredAt.trim() !== '' ? p.occurredAt : p.timestamp;
+        const resolvedAt =
+          p.resolved === true && typeof p.resolvedAt === 'string' && p.resolvedAt.trim() !== ''
+            ? p.resolvedAt
+            : null;
+        const lifecycleMeta =
+          p.resolved === true && resolvedAt
+            ? `${occurredAt} → ${resolvedAt}`
+            : occurredAt;
         return `
-          <div class="problem-item" data-severity="${p.severity}">
+          <div class="problem-item" data-severity="${p.severity}" data-resolved="${p.resolved === true ? 'true' : 'false'}">
             <div class="problem-head">
               <div class="problem-message">${this.escapeHtml(p.message)}</div>
-              <div class="problem-meta problem-timestamp">${this.escapeHtml(p.timestamp)}</div>
+              <div class="problem-meta problem-timestamp">${this.escapeHtml(lifecycleMeta)}</div>
             </div>
+            <div class="problem-meta problem-lifecycle">${this.escapeHtml(lifecycleLabel)}</div>
             <div class="problem-detail">${this.escapeHtml(detailText)}</div>
           </div>
         `;
@@ -8736,6 +8776,13 @@ export class DomindsApp extends HTMLElement {
         this.problemsVersion = snap.version;
         this.problems = snap.problems;
         this.updateProblemsUi();
+        return true;
+      }
+      case 'clear_resolved_problems_result': {
+        const result = message as ClearResolvedProblemsResultMessage;
+        const t = getUiStrings(this.uiLanguage);
+        this.showToast(`${t.problemsClearResolvedDonePrefix}${String(result.removedCount)}`, 'info');
+        this.wsManager.sendRaw({ type: 'get_problems' });
         return true;
       }
       case 'team_config_updated': {

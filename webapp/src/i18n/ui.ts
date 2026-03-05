@@ -10,6 +10,10 @@ export type UiStrings = {
   problemsButtonTitle: string;
   problemsTitle: string;
   problemsEmpty: string;
+  problemsClearResolvedTitle: string;
+  problemsClearResolvedDonePrefix: string;
+  problemsResolvedBadge: string;
+  problemsActiveBadge: string;
 
   activityBarAriaLabel: string;
   activityRunning: string;
@@ -351,6 +355,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       problemsButtonTitle: '问题（Problems）',
       problemsTitle: '问题',
       problemsEmpty: '暂无问题',
+      problemsClearResolvedTitle: '清理已解决问题',
+      problemsClearResolvedDonePrefix: '已清理已解决问题数量：',
+      problemsResolvedBadge: '已解决',
+      problemsActiveBadge: '进行中',
 
       activityBarAriaLabel: '活动栏',
       activityRunning: '运行中',
@@ -698,6 +706,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     problemsButtonTitle: 'Problems',
     problemsTitle: 'Problems',
     problemsEmpty: 'No problems',
+    problemsClearResolvedTitle: 'Clear resolved problems',
+    problemsClearResolvedDonePrefix: 'Cleared resolved problems: ',
+    problemsResolvedBadge: 'Resolved',
+    problemsActiveBadge: 'Active',
 
     activityBarAriaLabel: 'Activity Bar',
     activityRunning: 'Running',

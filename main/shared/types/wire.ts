@@ -3,9 +3,19 @@
 
 import type { TypedDialogEvent } from './dialog';
 import type { LanguageCode } from './language';
-import type { GetProblemsRequest, ProblemsSnapshotMessage } from './problems';
+import type {
+  ClearResolvedProblemsRequest,
+  ClearResolvedProblemsResultMessage,
+  GetProblemsRequest,
+  ProblemsSnapshotMessage,
+} from './problems';
 
-export type { GetProblemsRequest, ProblemsSnapshotMessage } from './problems';
+export type {
+  ClearResolvedProblemsRequest,
+  ClearResolvedProblemsResultMessage,
+  GetProblemsRequest,
+  ProblemsSnapshotMessage,
+} from './problems';
 
 export type DialogStatusKind = 'running' | 'completed' | 'archived';
 
@@ -54,7 +64,9 @@ export type WebSocketMessage =
   | UiLanguageSetMessage
   | TeamConfigUpdatedMessage
   | GetProblemsRequest
+  | ClearResolvedProblemsRequest
   | ProblemsSnapshotMessage
+  | ClearResolvedProblemsResultMessage
   | CreateDialogRequest
   | DisplayDialogRequest
   | SetDiligencePushRequest

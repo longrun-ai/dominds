@@ -1,5 +1,14 @@
 export type ProblemSeverity = 'info' | 'warning' | 'error';
 
+export type WorkspaceProblemLifecycle = Readonly<{
+  // First seen timestamp of the current active lifecycle.
+  occurredAt?: string;
+  // Whether this problem is currently resolved.
+  resolved?: boolean;
+  // Timestamp when it transitioned to resolved.
+  resolvedAt?: string | null;
+}>;
+
 export type WorkspaceProblem =
   | {
       kind: 'mcp_workspace_config_error';
@@ -114,13 +123,25 @@ export type WorkspaceProblem =
       };
     };
 
+export type WorkspaceProblemRecord = WorkspaceProblem & WorkspaceProblemLifecycle;
+
 export interface GetProblemsRequest {
   type: 'get_problems';
+}
+
+export interface ClearResolvedProblemsRequest {
+  type: 'clear_resolved_problems';
+}
+
+export interface ClearResolvedProblemsResultMessage {
+  type: 'clear_resolved_problems_result';
+  removedCount: number;
+  timestamp: string;
 }
 
 export interface ProblemsSnapshotMessage {
   type: 'problems_snapshot';
   version: number;
-  problems: WorkspaceProblem[];
+  problems: WorkspaceProblemRecord[];
   timestamp: string;
 }

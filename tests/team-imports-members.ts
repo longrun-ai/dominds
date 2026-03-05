@@ -186,6 +186,15 @@ async function main(): Promise<void> {
       ].join('\n'),
     );
     await writeText(
+      path.join(tmpRoot, 'app-common-agents', '.minds', 'app.yaml'),
+      [
+        'apiVersion: dominds.io/v1alpha1',
+        'kind: DomindsApp',
+        'id: common_agents',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),
       [
         'member_defaults:',
