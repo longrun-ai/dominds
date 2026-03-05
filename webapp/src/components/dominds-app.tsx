@@ -115,7 +115,7 @@ type DeepLinkIntent =
       messageIndex?: number;
       callId?: string;
     }
-  | { kind: 'dialog'; rootId: string; selfId: string }
+  | { kind: 'dialog'; rootId: string; selfId: string; course?: number }
   | { kind: 'callsite'; rootId: string; selfId: string; course: number; callId: string }
   | { kind: 'genseq'; rootId: string; selfId: string; course: number; genseq: number };
 
@@ -5636,14 +5636,23 @@ export class DomindsApp extends HTMLElement {
       const prevBtn = target.closest('#course-navi-prev') as HTMLButtonElement | null;
       if (prevBtn) {
         if (this.toolbarCurrentCourse > 1) {
+          const targetCourse = this.toolbarCurrentCourse - 1;
           const dc = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
           if (dc && typeof dc.setCurrentCourse === 'function') {
-            await dc.setCurrentCourse(this.toolbarCurrentCourse - 1);
+            await dc.setCurrentCourse(targetCourse);
           }
-          this.toolbarCurrentCourse = Math.max(1, this.toolbarCurrentCourse - 1);
+          this.toolbarCurrentCourse = Math.max(1, targetCourse);
           this.updateToolbarCourseDisplay();
+          if (this.currentDialog) {
+            this.syncAddressBarToDeepLink({
+              kind: 'dialog',
+              rootId: this.currentDialog.rootId,
+              selfId: this.currentDialog.selfId,
+              course: this.toolbarCurrentCourse,
+            });
+          }
         }
         return;
       }
@@ -5651,17 +5660,23 @@ export class DomindsApp extends HTMLElement {
       const nextBtn = target.closest('#course-navi-next') as HTMLButtonElement | null;
       if (nextBtn) {
         if (this.toolbarCurrentCourse < this.toolbarTotalCourses) {
+          const targetCourse = this.toolbarCurrentCourse + 1;
           const dc = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
           if (dc && typeof dc.setCurrentCourse === 'function') {
-            await dc.setCurrentCourse(this.toolbarCurrentCourse + 1);
+            await dc.setCurrentCourse(targetCourse);
           }
-          this.toolbarCurrentCourse = Math.min(
-            this.toolbarTotalCourses,
-            this.toolbarCurrentCourse + 1,
-          );
+          this.toolbarCurrentCourse = Math.min(this.toolbarTotalCourses, targetCourse);
           this.updateToolbarCourseDisplay();
+          if (this.currentDialog) {
+            this.syncAddressBarToDeepLink({
+              kind: 'dialog',
+              rootId: this.currentDialog.rootId,
+              selfId: this.currentDialog.selfId,
+              course: this.toolbarCurrentCourse,
+            });
+          }
         }
         return;
       }
@@ -6433,13 +6448,14 @@ export class DomindsApp extends HTMLElement {
     if (!kind) return null;
 
     if (kind === 'dialog') {
-      // /dl/dialog?rootId=...&selfId=...
+      // /dl/dialog?rootId=...&selfId=...&course=...
       const params = new URLSearchParams(window.location.search);
       const rootId = (params.get('rootId') ?? '').trim();
       const selfRaw = (params.get('selfId') ?? '').trim();
+      const course = parseOptionalInt(params.get('course'));
       if (rootId === '') return null;
       const selfId = selfRaw === '' ? rootId : selfRaw;
-      return { kind: 'dialog', rootId, selfId };
+      return { kind: 'dialog', rootId, selfId, course };
     }
 
     if (kind === 'callsite') {
@@ -6548,7 +6564,7 @@ export class DomindsApp extends HTMLElement {
     };
   }
 
-  private buildDialogDeepLinkUrl(rootId: string, selfId: string): URL {
+  private buildDialogDeepLinkUrl(rootId: string, selfId: string, course?: number): URL {
     const url = new URL(window.location.href);
     url.searchParams.delete('rootId');
     url.searchParams.delete('selfId');
@@ -6561,6 +6577,58 @@ export class DomindsApp extends HTMLElement {
     url.pathname = '/dl/dialog';
     url.searchParams.set('rootId', rootId);
     url.searchParams.set('selfId', selfId);
+    if (typeof course === 'number') {
+      url.searchParams.set('course', String(Math.floor(course)));
+    }
+    return url;
+  }
+
+  private buildCallsiteDeepLinkUrl(
+    rootId: string,
+    selfId: string,
+    course: number,
+    callId: string,
+  ): URL {
+    const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+    url.pathname = '/dl/callsite';
+    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('callId', callId);
+    return url;
+  }
+
+  private buildGenseqDeepLinkUrl(
+    rootId: string,
+    selfId: string,
+    course: number,
+    genseq: number,
+  ): URL {
+    const url = this.buildDialogDeepLinkUrl(rootId, selfId);
+    url.pathname = '/dl/genseq';
+    url.searchParams.set('course', String(Math.floor(course)));
+    url.searchParams.set('genseq', String(Math.floor(genseq)));
+    return url;
+  }
+
+  private buildQ4HDeepLinkUrl(params: {
+    questionId: string;
+    rootId: string;
+    selfId: string;
+    course?: number;
+    messageIndex?: number;
+    callId?: string;
+  }): URL {
+    const url = this.buildDialogDeepLinkUrl(params.rootId, params.selfId);
+    url.pathname = '/dl/q4h';
+    url.searchParams.set('qid', params.questionId);
+    if (typeof params.course === 'number') {
+      url.searchParams.set('course', String(Math.floor(params.course)));
+    }
+    if (typeof params.messageIndex === 'number') {
+      url.searchParams.set('msg', String(Math.floor(params.messageIndex)));
+    }
+    if (typeof params.callId === 'string' && params.callId.trim() !== '') {
+      url.searchParams.set('callId', params.callId.trim());
+    }
     return url;
   }
 
@@ -6576,6 +6644,53 @@ export class DomindsApp extends HTMLElement {
     if (!rootId || !selfId) return;
 
     const target = this.buildDialogDeepLinkUrl(rootId, selfId);
+    const current = new URL(window.location.href);
+    if (
+      current.pathname === target.pathname &&
+      current.search === target.search &&
+      current.hash === target.hash
+    ) {
+      return;
+    }
+    window.history.replaceState({}, '', target.toString());
+  }
+
+  private syncAddressBarToDeepLink(intent: DeepLinkIntent): void {
+    let target: URL | null = null;
+    if (intent.kind === 'dialog') {
+      target = this.buildDialogDeepLinkUrl(intent.rootId, intent.selfId, intent.course);
+    } else if (intent.kind === 'callsite') {
+      target = this.buildCallsiteDeepLinkUrl(
+        intent.rootId,
+        intent.selfId,
+        intent.course,
+        intent.callId,
+      );
+    } else if (intent.kind === 'genseq') {
+      target = this.buildGenseqDeepLinkUrl(
+        intent.rootId,
+        intent.selfId,
+        intent.course,
+        intent.genseq,
+      );
+    } else if (intent.kind === 'q4h') {
+      const rootId = intent.rootId?.trim() ?? '';
+      const selfId = intent.selfId?.trim() ?? '';
+      if (rootId !== '' && selfId !== '') {
+        target = this.buildQ4HDeepLinkUrl({
+          questionId: intent.questionId,
+          rootId,
+          selfId,
+          course: intent.course,
+          messageIndex: intent.messageIndex,
+          callId: intent.callId,
+        });
+      }
+    } else {
+      const _exhaustive: never = intent;
+      return _exhaustive;
+    }
+    if (!target) return;
     const current = new URL(window.location.href);
     if (
       current.pathname === target.pathname &&
@@ -6711,6 +6826,9 @@ export class DomindsApp extends HTMLElement {
           status: resolvedStatus,
         };
       };
+      const ensureDialogSelectedWithoutAddressSync = async (dialogInfo: DialogInfo): Promise<void> => {
+        await this.restoreDialogFromDeepLink(dialogInfo);
+      };
 
       if (intent.kind === 'dialog') {
         const dialogInfo = await resolveDialogInfoForDeepLink(intent.rootId, intent.selfId);
@@ -6720,8 +6838,17 @@ export class DomindsApp extends HTMLElement {
           return;
         }
 
-        await this.selectDialog(dialogInfo);
+        await ensureDialogSelectedWithoutAddressSync(dialogInfo);
+        if (typeof intent.course === 'number') {
+          const dialogContainer = this.shadowRoot?.querySelector(
+            '#dialog-container',
+          ) as DomindsDialogContainer | null;
+          if (dialogContainer) {
+            await dialogContainer.setCurrentCourse(intent.course);
+          }
+        }
         this.q4hInput?.focusInput();
+        this.syncAddressBarToDeepLink(intent);
         this.pendingDeepLink = null;
         return;
       }
@@ -6734,7 +6861,7 @@ export class DomindsApp extends HTMLElement {
           return;
         }
 
-        await this.selectDialog(dialogInfo);
+        await ensureDialogSelectedWithoutAddressSync(dialogInfo);
         const dialogContainer = this.shadowRoot?.querySelector(
           '#dialog-container',
         ) as DomindsDialogContainer | null;
@@ -6749,6 +6876,7 @@ export class DomindsApp extends HTMLElement {
           );
         }
 
+        this.syncAddressBarToDeepLink(intent);
         this.q4hInput?.focusInput();
         this.pendingDeepLink = null;
         return;
@@ -6762,7 +6890,7 @@ export class DomindsApp extends HTMLElement {
           return;
         }
 
-        await this.selectDialog(dialogInfo);
+        await ensureDialogSelectedWithoutAddressSync(dialogInfo);
         const dialogContainer = this.shadowRoot?.querySelector(
           '#dialog-container',
         ) as DomindsDialogContainer | null;
@@ -6777,6 +6905,7 @@ export class DomindsApp extends HTMLElement {
           );
         }
 
+        this.syncAddressBarToDeepLink(intent);
         this.q4hInput?.focusInput();
         this.pendingDeepLink = null;
         return;
@@ -6802,7 +6931,7 @@ export class DomindsApp extends HTMLElement {
         return;
       }
 
-      await this.selectDialog(dialogInfo);
+      await ensureDialogSelectedWithoutAddressSync(dialogInfo);
       const dialogContainer = this.shadowRoot?.querySelector(
         '#dialog-container',
       ) as DomindsDialogContainer | null;
@@ -6848,6 +6977,15 @@ export class DomindsApp extends HTMLElement {
         this.q4hInput?.focusInput();
       }
 
+      this.syncAddressBarToDeepLink({
+        kind: 'q4h',
+        questionId: intent.questionId,
+        rootId,
+        selfId,
+        course,
+        messageIndex,
+        callId,
+      });
       this.pendingDeepLink = null;
     } finally {
       this.deepLinkInFlight = false;
@@ -7711,7 +7849,10 @@ export class DomindsApp extends HTMLElement {
     }
   }
 
-  async selectDialog(dialog: DialogInfo): Promise<void> {
+  private async applyDialogSelection(
+    dialog: DialogInfo,
+    options: { syncAddressBar: boolean; showLoadedToast: boolean },
+  ): Promise<void> {
     // Ensure selfId and rootId are valid strings
     const selfId = dialog.selfId || dialog.rootId;
     const rootId = dialog.rootId || dialog.selfId;
@@ -7889,14 +8030,32 @@ export class DomindsApp extends HTMLElement {
         this.setupRemindersWidgetDrag();
       }
 
-      this.syncAddressBarToDialogDeepLink(normalizedDialog);
+      if (options.syncAddressBar) {
+        this.syncAddressBarToDialogDeepLink(normalizedDialog);
+      }
 
-      const t = getUiStrings(this.uiLanguage);
-      this.showSuccess(t.dialogLoadedToast);
+      if (options.showLoadedToast) {
+        const t = getUiStrings(this.uiLanguage);
+        this.showSuccess(t.dialogLoadedToast);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.showError(`Failed to load dialog: ${message}`, 'error');
     }
+  }
+
+  async selectDialog(dialog: DialogInfo): Promise<void> {
+    await this.applyDialogSelection(dialog, { syncAddressBar: true, showLoadedToast: true });
+  }
+
+  private async restoreDialogFromDeepLink(dialog: DialogInfo): Promise<void> {
+    const selfId = dialog.selfId || dialog.rootId;
+    const rootId = dialog.rootId || dialog.selfId;
+    const current = this.currentDialog;
+    if (current && current.rootId === rootId && current.selfId === selfId) {
+      return;
+    }
+    await this.applyDialogSelection(dialog, { syncAddressBar: false, showLoadedToast: false });
   }
 
   /**
