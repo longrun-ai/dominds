@@ -6,7 +6,11 @@ import path from 'node:path';
 import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
 import { reconcileAppsResolutionIssuesToProblems } from 'dominds/apps/problems';
 
-import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
+import {
+  clearResolvedProblems,
+  getProblemsSnapshot,
+  removeProblemsByPrefix,
+} from '../main/problems';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
@@ -19,6 +23,13 @@ function listAppsProblems(): string[] {
     .filter((p) => p.id.startsWith('apps/apps_resolution/'))
     .map((p) => p.id)
     .sort();
+}
+
+function listAppsProblemRecords(): ReadonlyArray<
+  ReturnType<typeof getProblemsSnapshot>['problems'][number]
+> {
+  const snapshot = getProblemsSnapshot();
+  return snapshot.problems.filter((p) => p.id.startsWith('apps/apps_resolution/'));
 }
 
 async function main(): Promise<void> {
@@ -54,6 +65,21 @@ async function main(): Promise<void> {
     );
 
     reconcileAppsResolutionIssuesToProblems({ issues: [] });
+    const resolvedRecords = listAppsProblemRecords();
+    assert.ok(resolvedRecords.length > 0, 'expected resolved records after reconcile([])');
+    assert.ok(
+      resolvedRecords.every((p) => p.resolved === true),
+      `expected all apps problems resolved=true, got: ${JSON.stringify(resolvedRecords)}`,
+    );
+    assert.ok(
+      resolvedRecords.every((p) => typeof p.resolvedAt === 'string' && p.resolvedAt.trim() !== ''),
+      `expected all resolved apps problems to have resolvedAt, got: ${JSON.stringify(resolvedRecords)}`,
+    );
+    const removedResolved = clearResolvedProblems();
+    assert.ok(
+      removedResolved > 0,
+      `expected clearResolvedProblems to remove records, got ${removedResolved}`,
+    );
     assert.deepEqual(listAppsProblems(), []);
 
     // Case 2: required dependency disabled in resolution overlay => issues => Problems.
