@@ -207,6 +207,7 @@ export abstract class Dialog {
     msgId: string;
     grammar?: 'markdown';
     userLanguageCode?: LanguageCode;
+    origin: 'user' | 'diligence_push' | 'runtime';
     q4hAnswerCallIds?: string[];
     runControl?: DialogRunControlSpec;
   };
@@ -762,6 +763,7 @@ export abstract class Dialog {
             msgId: generateShortId(),
             grammar: 'markdown',
             userLanguageCode: this._lastUserLanguageCode,
+            origin: 'runtime',
           }
         : prompt;
     const trimmed = prepared.content.trim();
@@ -780,6 +782,7 @@ export abstract class Dialog {
       msgId: normalized.msgId,
       grammar: normalized.grammar,
       userLanguageCode: normalized.userLanguageCode,
+      origin: normalized.origin,
       q4hAnswerCallIds: normalized.q4hAnswerCallIds,
       runControl: undefined,
     };
@@ -791,6 +794,7 @@ export abstract class Dialog {
     msgId: string;
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
+    origin: 'user' | 'diligence_push' | 'runtime';
     q4hAnswerCallIds?: string[];
     runControl?: DialogRunControlSpec;
   }): void {
@@ -808,6 +812,7 @@ export abstract class Dialog {
       msgId: options.msgId,
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+      origin: options.origin,
       q4hAnswerCallIds: options.q4hAnswerCallIds,
       runControl: options.runControl,
     };
@@ -818,6 +823,7 @@ export abstract class Dialog {
         msgId: options.msgId,
         grammar: options.grammar,
         userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
+        origin: options.origin,
         q4hAnswerCallIds: options.q4hAnswerCallIds,
       },
       runControl: options.runControl,
@@ -835,6 +841,7 @@ export abstract class Dialog {
         msgId: string;
         grammar?: 'markdown';
         userLanguageCode?: LanguageCode;
+        origin: 'user' | 'diligence_push' | 'runtime';
         q4hAnswerCallIds?: string[];
         runControl?: DialogRunControlSpec;
       }
@@ -910,6 +917,7 @@ export abstract class Dialog {
       msgId: generateShortId(),
       grammar: 'markdown',
       userLanguageCode: this._lastUserLanguageCode,
+      origin: 'runtime',
     };
 
     const runControlSpec = options?.runControl ?? this._activeRunControlSpec;

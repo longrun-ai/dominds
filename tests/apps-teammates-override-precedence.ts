@@ -11,7 +11,9 @@ async function writeText(filePath: string, content: string): Promise<void> {
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
-  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : null;
 }
 
 function getScribeName(members: Record<string, unknown>): string | null {
@@ -67,21 +69,11 @@ async function main(): Promise<void> {
 
     await writeText(
       path.join(commonRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: common_agents',
-        '',
-      ].join('\n'),
+      ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', 'id: common_agents', ''].join('\n'),
     );
     await writeText(
       path.join(commonRoot, 'team.yaml'),
-      [
-        'members:',
-        '  scribe:',
-        '    name: ScribeFromDefault',
-        '',
-      ].join('\n'),
+      ['members:', '  scribe:', '    name: ScribeFromDefault', ''].join('\n'),
     );
 
     await writeText(
@@ -98,12 +90,7 @@ async function main(): Promise<void> {
     );
     await writeText(
       path.join(midRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
-      [
-        'members:',
-        '  scribe:',
-        '    name: ScribeFromMidOverride',
-        '',
-      ].join('\n'),
+      ['members:', '  scribe:', '    name: ScribeFromMidOverride', ''].join('\n'),
     );
 
     await writeText(
@@ -119,12 +106,7 @@ async function main(): Promise<void> {
     );
     await writeText(
       path.join(outerRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
-      [
-        'members:',
-        '  scribe:',
-        '    name: ScribeFromOuterOverride',
-        '',
-      ].join('\n'),
+      ['members:', '  scribe:', '    name: ScribeFromOuterOverride', ''].join('\n'),
     );
 
     await writeText(
@@ -165,12 +147,7 @@ async function main(): Promise<void> {
     // rtws override has highest priority.
     await writeText(
       path.join(tmpRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
-      [
-        'members:',
-        '  scribe:',
-        '    name: ScribeFromRtwsOverride',
-        '',
-      ].join('\n'),
+      ['members:', '  scribe:', '    name: ScribeFromRtwsOverride', ''].join('\n'),
     );
 
     const loadedWithRtws = await loadEnabledAppTeammates({ rtwsRootAbs: tmpRoot });
@@ -191,4 +168,3 @@ main().catch((err: unknown) => {
   console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
   process.exit(1);
 });
-

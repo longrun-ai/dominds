@@ -8583,17 +8583,18 @@ export class DomindsApp extends HTMLElement {
       })
       .map((p) => {
         const detailText = JSON.stringify(p.detail, null, 2);
-        const lifecycleLabel = p.resolved === true ? t.problemsResolvedBadge : t.problemsActiveBadge;
+        const lifecycleLabel =
+          p.resolved === true ? t.problemsResolvedBadge : t.problemsActiveBadge;
         const occurredAt =
-          typeof p.occurredAt === 'string' && p.occurredAt.trim() !== '' ? p.occurredAt : p.timestamp;
+          typeof p.occurredAt === 'string' && p.occurredAt.trim() !== ''
+            ? p.occurredAt
+            : p.timestamp;
         const resolvedAt =
           p.resolved === true && typeof p.resolvedAt === 'string' && p.resolvedAt.trim() !== ''
             ? p.resolvedAt
             : null;
         const lifecycleMeta =
-          p.resolved === true && resolvedAt
-            ? `${occurredAt} → ${resolvedAt}`
-            : occurredAt;
+          p.resolved === true && resolvedAt ? `${occurredAt} → ${resolvedAt}` : occurredAt;
         return `
           <div class="problem-item" data-severity="${p.severity}" data-resolved="${p.resolved === true ? 'true' : 'false'}">
             <div class="problem-head">
@@ -8781,7 +8782,10 @@ export class DomindsApp extends HTMLElement {
       case 'clear_resolved_problems_result': {
         const result = message as ClearResolvedProblemsResultMessage;
         const t = getUiStrings(this.uiLanguage);
-        this.showToast(`${t.problemsClearResolvedDonePrefix}${String(result.removedCount)}`, 'info');
+        this.showToast(
+          `${t.problemsClearResolvedDonePrefix}${String(result.removedCount)}`,
+          'info',
+        );
         this.wsManager.sendRaw({ type: 'get_problems' });
         return true;
       }

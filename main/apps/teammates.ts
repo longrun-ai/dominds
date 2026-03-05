@@ -2,10 +2,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
 
-import { loadDomindsAppManifest } from './manifest';
-import { readPackageInfo } from './package-info';
 import { loadEnabledAppsSnapshot } from './enabled-apps';
+import { loadDomindsAppManifest } from './manifest';
 import { resolveAppOverrideFileAbs } from './override-paths';
+import { readPackageInfo } from './package-info';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);

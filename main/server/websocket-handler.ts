@@ -39,6 +39,7 @@ import { DEFAULT_DILIGENCE_PUSH_MAX } from '../shared/diligence';
 import { EndOfStream, type SubChan } from '../shared/evt';
 import { getWorkLanguage } from '../shared/runtime-language';
 import type {
+  ClearResolvedProblemsRequest,
   CreateDialogErrorCode,
   CreateDialogRequest,
   CreateDialogResult,
@@ -52,7 +53,6 @@ import type {
   DriveDialogByUserAnswer,
   DriveDialogRequest,
   EmergencyStopRequest,
-  ClearResolvedProblemsRequest,
   GetProblemsRequest,
   GetQ4HStateRequest,
   InterruptDialogRequest,
@@ -176,6 +176,7 @@ async function queueUserSupplementAtGenerationBoundary(
     msgId: prompt.msgId,
     grammar: prompt.grammar,
     userLanguageCode: prompt.userLanguageCode,
+    origin: 'user',
   });
   postDialogEvent(dialog, {
     type: 'queue_user_msg_evt',
@@ -1620,6 +1621,7 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         msgId: effectivePrompt.msgId,
         grammar: effectivePrompt.grammar,
         userLanguageCode: effectivePrompt.userLanguageCode,
+        origin: 'user',
         q4hAnswerCallIds: askHumanCallIds,
         runControl: undefined,
       });

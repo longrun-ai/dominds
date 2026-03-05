@@ -20,7 +20,7 @@ export type DialogPrompt = Readonly<{
   msgId: string;
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
-  origin?: 'user' | 'diligence_push' | 'runtime';
+  origin: 'user' | 'diligence_push' | 'runtime';
   q4hAnswerCallIds?: string[];
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: DialogSubdialogReplyTarget;

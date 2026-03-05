@@ -44,6 +44,7 @@ type UpNextPrompt = {
   msgId: string;
   grammar?: KernelDriverHumanPrompt['grammar'];
   userLanguageCode?: string;
+  origin: KernelDriverHumanPrompt['origin'];
   q4hAnswerCallIds?: string[];
   runControl?: KernelDriverRunControl;
 };
@@ -125,6 +126,7 @@ function resolveEffectivePrompt(
     content: upNext.prompt,
     msgId: upNext.msgId,
     grammar: upNext.grammar ?? 'markdown',
+    origin: upNext.origin,
     userLanguageCode:
       upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
         ? upNext.userLanguageCode
@@ -308,6 +310,7 @@ export async function executeDriveRound(args: {
           content: guideText,
           msgId: generateShortId(),
           grammar: 'markdown',
+          origin: 'runtime',
           userLanguageCode: language,
         };
       }
@@ -451,6 +454,7 @@ export async function executeDriveRound(args: {
         content: followUp.prompt,
         msgId: followUp.msgId,
         grammar: followUp.grammar ?? 'markdown',
+        origin: followUp.origin,
         userLanguageCode:
           followUp.userLanguageCode === 'zh' || followUp.userLanguageCode === 'en'
             ? followUp.userLanguageCode

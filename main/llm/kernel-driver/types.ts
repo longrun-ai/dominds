@@ -30,7 +30,7 @@ export interface KernelDriverHumanPrompt {
   grammar: 'markdown';
   userLanguageCode?: LanguageCode;
   q4hAnswerCallIds?: string[];
-  origin?: 'user' | 'diligence_push' | 'runtime';
+  origin: 'user' | 'diligence_push' | 'runtime';
   skipTaskdoc?: boolean;
   subdialogReplyTarget?: KernelDriverSubdialogReplyTarget;
   runControl?: KernelDriverRunControl;

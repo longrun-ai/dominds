@@ -132,7 +132,7 @@ function normalizeQ4HAnswerCallIds(raw: readonly string[] | undefined): string[]
 
 function isUserOriginPrompt(prompt: KernelDriverHumanPrompt | undefined): boolean {
   if (!prompt) return false;
-  return (prompt.origin ?? 'user') === 'user';
+  return prompt.origin === 'user';
 }
 
 function resolveModelInfo(providerCfg: ProviderConfig, model: string): ModelInfo | undefined {
@@ -524,6 +524,7 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverHumanPrompt | undefined {
     content: upNext.prompt,
     msgId: upNext.msgId,
     grammar: upNext.grammar ?? 'markdown',
+    origin: upNext.origin,
     userLanguageCode: upNext.userLanguageCode,
     q4hAnswerCallIds: upNext.q4hAnswerCallIds,
     runControl: normalizedRunControl,
@@ -1176,6 +1177,7 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
       content: guideText,
       msgId: generateShortId(),
       grammar: 'markdown',
+      origin: 'runtime',
       userLanguageCode: language,
     },
     resetTaskdoc: false,
@@ -1376,6 +1378,7 @@ export async function driveDialogStreamCore(
               content: guideText,
               msgId: generateShortId(),
               grammar: 'markdown',
+              origin: 'runtime',
               userLanguageCode: language,
             };
           }
@@ -1391,7 +1394,7 @@ export async function driveDialogStreamCore(
       await dlg.notifyGeneratingStart(currentPrompt?.msgId);
       try {
         if (currentPrompt) {
-          const origin = currentPrompt.origin ?? 'user';
+          const origin = currentPrompt.origin;
           if (
             origin === 'diligence_push' &&
             (dlg.disableDiligencePush || suppressDiligencePushForDrive)
