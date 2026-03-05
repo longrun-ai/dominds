@@ -6826,7 +6826,9 @@ export class DomindsApp extends HTMLElement {
           status: resolvedStatus,
         };
       };
-      const ensureDialogSelectedWithoutAddressSync = async (dialogInfo: DialogInfo): Promise<void> => {
+      const ensureDialogSelectedWithoutAddressSync = async (
+        dialogInfo: DialogInfo,
+      ): Promise<void> => {
         await this.restoreDialogFromDeepLink(dialogInfo);
       };
 

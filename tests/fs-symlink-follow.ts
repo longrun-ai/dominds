@@ -76,7 +76,10 @@ async function main(): Promise<void> {
       from: 'move-file-link.txt',
       to: 'move-file-dst-link/moved-link.txt',
     });
-    assert.ok(moveFileOut.includes('status: ok'), 'move_file should succeed with symlink from/parent');
+    assert.ok(
+      moveFileOut.includes('status: ok'),
+      'move_file should succeed with symlink from/parent',
+    );
     assert.ok(moveFileOut.includes('from_path_kind: symlink'));
     assert.ok(moveFileOut.includes('to_parent_path_kind: symlink'));
     assert.equal(await exists(path.join(moveFileDstParentReal, 'moved-link.txt')), true);
@@ -96,7 +99,10 @@ async function main(): Promise<void> {
       from: 'move-dir-link',
       to: 'move-dir-dst-link/moved-dir-link',
     });
-    assert.ok(moveDirOut.includes('status: ok'), 'move_dir should succeed with symlink from/parent');
+    assert.ok(
+      moveDirOut.includes('status: ok'),
+      'move_dir should succeed with symlink from/parent',
+    );
     assert.ok(moveDirOut.includes('from_path_kind: symlink'));
     assert.ok(moveDirOut.includes('to_parent_path_kind: symlink'));
     assert.ok(moveDirOut.includes('moved_entry_count: 1'));

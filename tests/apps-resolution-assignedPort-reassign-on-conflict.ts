@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
 import {
   APPS_RESOLUTION_REL_PATH,
   loadAppsResolutionFile,
@@ -10,7 +11,6 @@ import {
   type AppsResolutionEntry,
   type AppsResolutionFile,
 } from 'dominds/apps/resolution-file';
-import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
@@ -78,12 +78,20 @@ async function main(): Promise<void> {
     await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: resolutionFile });
 
     const snap = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });
-    assert.equal(snap.enabledApps.length, 2, `expected 2 enabled apps, got ${snap.enabledApps.length}`);
+    assert.equal(
+      snap.enabledApps.length,
+      2,
+      `expected 2 enabled apps, got ${snap.enabledApps.length}`,
+    );
 
     const runtimePorts = snap.enabledApps.map((e) => e.runtimePort);
     assert.ok(runtimePorts.every((p) => typeof p === 'number' && p > 0));
     const uniquePorts = new Set<number>(runtimePorts.filter((p): p is number => p !== null));
-    assert.equal(uniquePorts.size, 2, `expected unique runtime ports, got: ${JSON.stringify(runtimePorts)}`);
+    assert.equal(
+      uniquePorts.size,
+      2,
+      `expected unique runtime ports, got: ${JSON.stringify(runtimePorts)}`,
+    );
 
     assert.ok(
       snap.issues.some((i) => i.kind === 'assigned_port_reassigned'),
@@ -109,4 +117,3 @@ main().catch((err: unknown) => {
   console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
   process.exit(1);
 });
-

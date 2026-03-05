@@ -723,10 +723,9 @@ export const mkDirTool: FuncTool = {
         throw err;
       });
       if (pathInfo) {
-        const symlinkSummary =
-          pathInfo.isSymlink
-            ? ` ${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}`
-            : '';
+        const symlinkSummary = pathInfo.isSymlink
+          ? ` ${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}`
+          : '';
         if (!pathInfo.followStat.isDirectory()) {
           const yamlLines = [
             `status: error`,

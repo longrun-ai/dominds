@@ -581,7 +581,10 @@ async function loadEffectiveAppsResolution(params: {
       assignedPortById: resolved.assignedPortById,
     });
     if (nextResolutionFile !== loaded.resolutionFile) {
-      await writeAppsResolutionFileIfChanged({ rtwsRootAbs: params.rtwsRootAbs, file: nextResolutionFile });
+      await writeAppsResolutionFileIfChanged({
+        rtwsRootAbs: params.rtwsRootAbs,
+        file: nextResolutionFile,
+      });
     }
   }
 

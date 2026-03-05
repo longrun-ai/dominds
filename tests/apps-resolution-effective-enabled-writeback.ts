@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
 import {
   APPS_RESOLUTION_REL_PATH,
   loadAppsResolutionFile,
@@ -10,14 +11,16 @@ import {
   type AppsResolutionEntry,
   type AppsResolutionFile,
 } from 'dominds/apps/resolution-file';
-import { loadEnabledAppsSnapshot } from 'dominds/apps/enabled-apps';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
   await fs.writeFile(filePathAbs, content, 'utf-8');
 }
 
-async function writeManifest(packageRootAbs: string, contentLines: ReadonlyArray<string>): Promise<void> {
+async function writeManifest(
+  packageRootAbs: string,
+  contentLines: ReadonlyArray<string>,
+): Promise<void> {
   await writeText(path.join(packageRootAbs, '.minds', 'app.yaml'), `${contentLines.join('\n')}\n`);
 }
 
@@ -63,7 +66,9 @@ async function readResolutionOrThrow(rtwsRootAbs: string): Promise<AppsResolutio
 }
 
 async function main(): Promise<void> {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-effective-enabled-writeback-'));
+  const tmpRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'dominds-apps-effective-enabled-writeback-'),
+  );
 
   const appA = 'app_a';
   const appB = 'app_b';
@@ -106,10 +111,7 @@ async function main(): Promise<void> {
     await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: initialFile });
 
     const snap1 = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });
-    assert.deepEqual(
-      snap1.enabledApps.map((e) => e.id).sort(),
-      [appA, appB],
-    );
+    assert.deepEqual(snap1.enabledApps.map((e) => e.id).sort(), [appA, appB]);
     assert.equal(snap1.issues.length, 0, `unexpected issues: ${JSON.stringify(snap1.issues)}`);
 
     const disableBFile: AppsResolutionFile = {
@@ -157,11 +159,12 @@ async function main(): Promise<void> {
     await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: recoverBFile });
 
     const snap3 = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });
-    assert.deepEqual(
-      snap3.enabledApps.map((e) => e.id).sort(),
-      [appA, appB],
+    assert.deepEqual(snap3.enabledApps.map((e) => e.id).sort(), [appA, appB]);
+    assert.equal(
+      snap3.issues.length,
+      0,
+      `unexpected issues after recovery: ${JSON.stringify(snap3.issues)}`,
     );
-    assert.equal(snap3.issues.length, 0, `unexpected issues after recovery: ${JSON.stringify(snap3.issues)}`);
 
     const fileAfterRecover = await readResolutionOrThrow(tmpRoot);
     const appAAfterRecover = fileAfterRecover.apps.find((a) => a.id === appA) ?? null;
@@ -181,4 +184,3 @@ main().catch((err: unknown) => {
   console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
   process.exit(1);
 });
-
