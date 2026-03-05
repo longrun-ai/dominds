@@ -2545,6 +2545,20 @@ export class DomindsApp extends HTMLElement {
         white-space: nowrap;
       }
 
+      .problem-timestamp {
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
+      }
+
       .problem-detail {
         margin-top: 4px;
         font-size: var(--dominds-font-size-sm, 12px);
@@ -2817,6 +2831,17 @@ export class DomindsApp extends HTMLElement {
 	        margin-top: 2px;
 	        color: var(--dominds-muted, #666666);
 	        font-size: var(--dominds-font-size-xs, 11px);
+          font-family: var(
+            --font-mono,
+            ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Monaco,
+            Consolas,
+            "Liberation Mono",
+            "Courier New",
+            monospace
+          );
 	      }
 
 	      .main-content {
@@ -2933,6 +2958,17 @@ export class DomindsApp extends HTMLElement {
         text-align: center;
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -4210,6 +4246,17 @@ export class DomindsApp extends HTMLElement {
       .priming-search-ref {
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
         overflow-wrap: anywhere;
       }
 
@@ -4303,6 +4350,17 @@ export class DomindsApp extends HTMLElement {
       .suggestion-path {
         font-size: var(--dominds-font-size-sm, 12px);
         color: var(--dominds-muted, #666666);
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
         margin-bottom: 2px;
         word-break: break-all;
       }
@@ -8273,7 +8331,7 @@ export class DomindsApp extends HTMLElement {
           <div class="problem-item" data-severity="${p.severity}">
             <div class="problem-head">
               <div class="problem-message">${this.escapeHtml(p.message)}</div>
-              <div class="problem-meta">${this.escapeHtml(p.timestamp)}</div>
+              <div class="problem-meta problem-timestamp">${this.escapeHtml(p.timestamp)}</div>
             </div>
             <div class="problem-detail">${this.escapeHtml(detailText)}</div>
           </div>

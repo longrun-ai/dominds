@@ -4796,7 +4796,21 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: var(--dominds-font-size-md, 13px);
         color: var(--dominds-fg, var(--color-fg-primary, #333));
       }
-      .content-area .timestamp { font-size: var(--dominds-font-size-sm, 12px); color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); }
+      .content-area .timestamp {
+        font-size: var(--dominds-font-size-sm, 12px);
+        color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
+      }
       .content { 
         font-size: var(--dominds-font-size-base, 14px);
         line-height: var(--dominds-line-height-dense, 1.4); 
@@ -4809,6 +4823,17 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: var(--dominds-font-size-sm, 12px); 
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b)); 
         margin-top: 4px; 
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
       }
       /* Removed welcome placeholder to avoid initial blank height issues */
       

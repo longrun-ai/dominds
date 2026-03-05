@@ -460,7 +460,7 @@ export class ArchivedDialogList extends HTMLElement {
                     <span class="dialog-title">${t.missingRoot}</span>
                     <span class="dialog-meta-right">
                       <span class="dialog-count">${rootGroup.subdialogs.length}</span>
-                      <span class="dialog-status">${rootGroup.rootId}</span>
+                      <span class="dialog-id">${rootGroup.rootId}</span>
                     </span>
                   </div>
                 </div>
@@ -721,7 +721,7 @@ export class ArchivedDialogList extends HTMLElement {
         </div>
         <div class="dialog-row dialog-submeta">
           <span class="dialog-meta-right">
-            <span class="dialog-status">${dialogId}</span>
+            <span class="dialog-id">${dialogId}</span>
             <span class="dialog-time">${updatedAt}</span>
           </span>
         </div>
@@ -1413,15 +1413,30 @@ export class ArchivedDialogList extends HTMLElement {
         font-size: var(--dominds-font-size-md, 13px);
       }
 
-      .dialog-status {
+      .dialog-id {
         font-size: var(--dominds-font-size-xs, 11px);
-        color: var(--dominds-muted, #666666);
+        color: var(--dominds-dialog-id-color, var(--dominds-muted, #666666));
         letter-spacing: 0.02em;
+        font-family: var(
+          --dominds-dialog-id-font-family,
+          var(
+            --font-mono,
+            ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Monaco,
+            Consolas,
+            "Liberation Mono",
+            "Courier New",
+            monospace
+          )
+        );
       }
 
       .dialog-time {
         font-size: var(--dominds-font-size-xs, 11px);
         color: var(--dominds-muted, #888888);
+        font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
       }
 
       .dialog-topic {

@@ -599,12 +599,34 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       .q4h-question-origin-id {
         white-space: nowrap;
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
       }
 
       .q4h-question-origin-asked-at {
         color: var(--color-fg-tertiary, #64748b);
         font-weight: 500;
         white-space: nowrap;
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace
+        );
       }
 
       .q4h-question-origin-sep {
