@@ -113,6 +113,34 @@
   --transition-fast: 0.15s ease-in-out;
   --transition-normal: 0.25s ease-in-out;
   --transition-slow: 0.35s ease-in-out;
+
+  /* Transparency (semantic alpha, use on background colors, not container opacity) */
+  --dominds-alpha-toast-bg: 80%;
+  --dominds-alpha-surface-tooltip: 94%;
+  --dominds-alpha-surface-popover: 92%;
+  --dominds-alpha-surface-panel: 96%;
+  --dominds-alpha-surface-reminders: 92%;
+  --dominds-alpha-overlay-backdrop: 35%;
+  --dominds-alpha-overlay-backdrop-strong: 50%;
+
+  /* Z-Layers (Business Priority)
+   1) Local composition (0-99): visual effects/handles/sticky controls in component scope.
+   2) Non-blocking overlays (>=900): floating tools, popovers, tooltips, panels, toasts.
+   3) Blocking overlays (>=2000): modals that must sit above all regular interactions.
+  */
+  --dominds-z-local-base: 0;
+  --dominds-z-local-raised: 1;
+  --dominds-z-local-handle: 2;
+  --dominds-z-local-overlay: 10;
+  --dominds-z-sticky: 50;
+  --dominds-z-sidebar-mobile: 120;
+  --dominds-z-overlay-reminders: 900;
+  --dominds-z-overlay-popover: 1000;
+  --dominds-z-overlay-tooltip: 1100;
+  --dominds-z-overlay-problems: 1200;
+  --dominds-z-overlay-toast: 1300;
+  --dominds-z-overlay-modal: 2000;
+  --dominds-z-overlay-toast-history: 2100;
 }
 
 /* System preference dark scheme: provides defaults when no explicit data-theme is set. */
@@ -182,6 +210,14 @@
     --dominds-scrollbar-thumb: #616161;
     --dominds-scrollbar-thumb-hover: #808080;
     --dominds-focus: #0078d4;
+
+    --dominds-alpha-toast-bg: 88%;
+    --dominds-alpha-surface-tooltip: 96%;
+    --dominds-alpha-surface-popover: 95%;
+    --dominds-alpha-surface-panel: 97%;
+    --dominds-alpha-surface-reminders: 95%;
+    --dominds-alpha-overlay-backdrop: 45%;
+    --dominds-alpha-overlay-backdrop-strong: 58%;
 
     --success-bg: var(--dominds-success-bg);
     --success-text: var(--dominds-success);
@@ -261,6 +297,14 @@
   --dominds-scrollbar-thumb-hover: #b1b1b1;
   --dominds-focus: #005fb8;
 
+  --dominds-alpha-toast-bg: 80%;
+  --dominds-alpha-surface-tooltip: 94%;
+  --dominds-alpha-surface-popover: 92%;
+  --dominds-alpha-surface-panel: 96%;
+  --dominds-alpha-surface-reminders: 92%;
+  --dominds-alpha-overlay-backdrop: 35%;
+  --dominds-alpha-overlay-backdrop-strong: 50%;
+
   --success-bg: var(--dominds-success-bg);
   --success-text: var(--dominds-success);
   --warning-bg: var(--dominds-warning-bg);
@@ -336,6 +380,14 @@
   --dominds-scrollbar-thumb: #616161;
   --dominds-scrollbar-thumb-hover: #808080;
   --dominds-focus: #0078d4;
+
+  --dominds-alpha-toast-bg: 88%;
+  --dominds-alpha-surface-tooltip: 96%;
+  --dominds-alpha-surface-popover: 95%;
+  --dominds-alpha-surface-panel: 97%;
+  --dominds-alpha-surface-reminders: 95%;
+  --dominds-alpha-overlay-backdrop: 45%;
+  --dominds-alpha-overlay-backdrop-strong: 58%;
 
   --success-bg: var(--dominds-success-bg);
   --success-text: var(--dominds-success);

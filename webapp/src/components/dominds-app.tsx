@@ -2040,13 +2040,6 @@ export class DomindsApp extends HTMLElement {
         --dominds-line-height-tight: 1.18;
         --dominds-line-height-dense: 1.24;
         --dominds-line-height-base: 1.38;
-        --dominds-z-sidebar-mobile: 10;
-        --dominds-z-overlay-modal: 1000;
-        --dominds-z-overlay-popover: 1002;
-        --dominds-z-overlay-reminders: 2000;
-        --dominds-z-overlay-toast: 3000;
-        --dominds-z-overlay-toast-history: 4100;
-        --dominds-z-overlay-problems: 4200;
       }
 
       .app-container {
@@ -2409,6 +2402,11 @@ export class DomindsApp extends HTMLElement {
         left: auto;
         transform: none;
         background: var(--dominds-fg, #333333);
+        background: color-mix(
+          in srgb,
+          var(--dominds-fg, #333333) var(--dominds-alpha-surface-tooltip, 94%),
+          transparent
+        );
         color: var(--dominds-bg, #ffffff);
         padding: 6px 8px;
         border-radius: 6px;
@@ -2422,7 +2420,7 @@ export class DomindsApp extends HTMLElement {
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.15s ease;
-        z-index: var(--dominds-z-overlay-popover);
+        z-index: var(--dominds-z-overlay-tooltip, 1100);
         box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2);
       }
 
@@ -2435,6 +2433,11 @@ export class DomindsApp extends HTMLElement {
         transform: none;
         border: 6px solid transparent;
         border-bottom-color: var(--dominds-fg, #333333);
+        border-bottom-color: color-mix(
+          in srgb,
+          var(--dominds-fg, #333333) var(--dominds-alpha-surface-tooltip, 94%),
+          transparent
+        );
       }
 
       #navibar-context-health-wrap:hover .navibar-tooltip {
@@ -2450,9 +2453,14 @@ export class DomindsApp extends HTMLElement {
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 8px;
         background: var(--dominds-bg, #ffffff);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-panel, 96%),
+          transparent
+        );
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
         overflow: hidden;
-        z-index: var(--dominds-z-overlay-problems);
+        z-index: var(--dominds-z-overlay-problems, 1200);
         display: flex;
         flex-direction: column;
       }
@@ -2608,11 +2616,16 @@ export class DomindsApp extends HTMLElement {
         min-width: 300px;
         max-width: 380px;
         background: var(--dominds-sidebar-bg, #f8f9fa);
+        background: color-mix(
+          in srgb,
+          var(--dominds-sidebar-bg, #f8f9fa) var(--dominds-alpha-surface-popover, 92%),
+          transparent
+        );
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 8px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
         padding: 4px;
-        z-index: var(--dominds-z-overlay-popover);
+        z-index: var(--dominds-z-overlay-popover, 1000);
       }
 
       .ui-language-menu-item {
@@ -2719,12 +2732,13 @@ export class DomindsApp extends HTMLElement {
       .toast-history-modal {
 		        position: fixed;
 		        inset: 0;
-		        z-index: var(--dominds-z-overlay-toast-history);
-		        display: flex;
+		        z-index: var(--dominds-z-overlay-toast-history, 2100);
+        display: flex;
 		        align-items: flex-start;
 		        justify-content: center;
         padding: 48px 10px 10px;
         background: rgba(0, 0, 0, 0.35);
+        background: color-mix(in srgb, #000000 var(--dominds-alpha-overlay-backdrop, 35%), transparent);
       }
 	
 	      .toast-history-modal.hidden {
@@ -2735,6 +2749,11 @@ export class DomindsApp extends HTMLElement {
         width: min(860px, calc(100vw - 32px));
         max-height: calc(100vh - 72px);
         background: var(--dominds-bg, #ffffff);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-panel, 96%),
+          transparent
+        );
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 10px;
 	        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
@@ -3914,7 +3933,7 @@ export class DomindsApp extends HTMLElement {
           position: absolute;
           left: -280px;
           transition: left 0.3s ease;
-          z-index: var(--dominds-z-sidebar-mobile);
+          z-index: var(--dominds-z-sidebar-mobile, 120);
           resize: none;
         }
 
@@ -3935,7 +3954,7 @@ export class DomindsApp extends HTMLElement {
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: var(--dominds-z-overlay-modal);
+        z-index: var(--dominds-z-overlay-modal, 2000);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -3967,12 +3986,22 @@ export class DomindsApp extends HTMLElement {
         right: 0;
         bottom: 0;
         background: rgba(0, 0, 0, 0.5);
+        background: color-mix(
+          in srgb,
+          #000000 var(--dominds-alpha-overlay-backdrop-strong, 50%),
+          transparent
+        );
         backdrop-filter: blur(2px);
       }
 
       .modal-content {
         position: relative;
         background: var(--dominds-bg, #ffffff);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-panel, 96%),
+          transparent
+        );
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 10px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
@@ -4164,13 +4193,18 @@ export class DomindsApp extends HTMLElement {
         left: 0;
         right: 0;
         background: var(--dominds-bg, #ffffff);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-popover, 92%),
+          transparent
+        );
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-top: none;
         border-radius: 0 0 6px 6px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         max-height: 400px;
         overflow-y: auto;
-        z-index: var(--dominds-z-overlay-popover);
+        z-index: var(--dominds-z-overlay-popover, 1000);
         display: none;
       }
 
@@ -4504,6 +4538,11 @@ export class DomindsApp extends HTMLElement {
       /* Simple modal theming */
       .modal-content {
         background: var(--dominds-bg);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-panel, 96%),
+          transparent
+        );
         border-color: var(--dominds-border);
       }
 
@@ -4538,6 +4577,11 @@ export class DomindsApp extends HTMLElement {
 
       .task-doc-suggestions {
         background: var(--dominds-bg);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-popover, 92%),
+          transparent
+        );
         border-color: var(--dominds-border);
       }
 
@@ -4573,10 +4617,14 @@ export class DomindsApp extends HTMLElement {
         flex-direction: column;
         border: 1px solid var(--dominds-border, #e0e0e0);
         background: var(--dominds-bg, #ffffff);
+        background: color-mix(
+          in srgb,
+          var(--dominds-bg, #ffffff) var(--dominds-alpha-surface-reminders, 92%),
+          transparent
+        );
         border-radius: 10px;
         box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-        z-index: var(--dominds-z-overlay-reminders);
-        opacity: 0.92;
+        z-index: var(--dominds-z-overlay-reminders, 900);
       }
 
       .reminders-widget-header {
@@ -8043,7 +8091,7 @@ export class DomindsApp extends HTMLElement {
           ? 'var(--dominds-warning-border, #ffeaa7)'
           : 'var(--dominds-border, #e0e0e0)';
     const box = document.createElement('div');
-    box.style.cssText = `position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: var(--dominds-z-overlay-toast); font-size: var(--dominds-font-size-sm, 12px); display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;`;
+    box.style.cssText = `position: fixed; top: 18px; right: 18px; padding: 8px 12px; border-radius: 8px; background: ${bg}; background: color-mix(in srgb, ${bg} var(--dominds-alpha-toast-bg, 80%), transparent); color: ${color}; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid ${border}; z-index: var(--dominds-z-overlay-toast, 1300); font-size: var(--dominds-font-size-sm, 12px); display:flex; align-items:center; gap:8px; animation: slideDown 0.2s ease-out;`;
     const iconSpan = document.createElement('span');
     iconSpan.className = `icon-mask ${this.getToastIconClass(kind)}`;
     iconSpan.setAttribute('aria-hidden', 'true');

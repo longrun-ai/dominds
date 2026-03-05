@@ -101,6 +101,7 @@ export class DomindsConnectionStatus extends HTMLElement {
         align-items: center;
         gap: 5px;
         height: 20px;
+        position: relative;
         box-sizing: border-box;
         padding: 0 9px;
         border-radius: 10px;
@@ -245,7 +246,7 @@ export class DomindsConnectionStatus extends HTMLElement {
         border-radius: 4px;
         font-size: 5px;
         white-space: nowrap;
-        z-index: 1000;
+        z-index: var(--dominds-z-overlay-tooltip, 1100);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s ease;

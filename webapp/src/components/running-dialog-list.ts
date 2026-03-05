@@ -1631,7 +1631,7 @@ export class RunningDialogList extends HTMLElement {
         content: '';
         position: absolute;
         inset: -28px;
-        z-index: 0;
+        z-index: var(--dominds-z-local-base, 0);
         pointer-events: none;
         background:
           radial-gradient(
@@ -1655,7 +1655,7 @@ export class RunningDialogList extends HTMLElement {
         bottom: 0;
         left: -120%;
         width: 240%;
-        z-index: 0;
+        z-index: var(--dominds-z-local-base, 0);
         transform: translateX(0);
         pointer-events: none;
         opacity: 0.5;
@@ -1686,7 +1686,7 @@ export class RunningDialogList extends HTMLElement {
         content: '';
         position: absolute;
         inset: 0;
-        z-index: 0;
+        z-index: var(--dominds-z-local-base, 0);
         pointer-events: none;
         border-radius: 8px;
         background:
@@ -1707,7 +1707,7 @@ export class RunningDialogList extends HTMLElement {
       .dialog-item.state-proceeding > .dialog-row,
       .dialog-item.gen-active > .dialog-row {
         position: relative;
-        z-index: 1;
+        z-index: var(--dominds-z-local-raised, 1);
       }
 
       @keyframes dialogScanlineSweep {

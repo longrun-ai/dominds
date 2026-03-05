@@ -1113,7 +1113,7 @@ export class DomindsQ4HInput extends HTMLElement {
         align-items: center;
         justify-content: center;
         background: transparent;
-        z-index: 2;
+        z-index: var(--dominds-z-local-handle, 2);
       }
 
       .input-resize-handle::after {
@@ -1143,7 +1143,7 @@ export class DomindsQ4HInput extends HTMLElement {
         padding: 10px;
         background: var(--dominds-sidebar-bg, #f8f9fa);
         position: relative;
-        z-index: 1;
+        z-index: var(--dominds-z-local-raised, 1);
       }
 
       .input-wrapper {

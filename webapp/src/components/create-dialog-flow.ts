@@ -398,6 +398,9 @@ export class CreateDialogFlowController {
     }
 
     const strings = () => getUiStrings(this.deps.getLanguage());
+    const stripTaskdocSuffixForMatch = (value: string): string => {
+      return value.endsWith('.tsk') ? value.slice(0, -4) : value;
+    };
     let createInFlight = false;
     let selectedSuggestionIndex = -1;
     let currentSuggestions: SuggestionDoc[] = [];
@@ -943,27 +946,36 @@ export class CreateDialogFlowController {
     });
 
     const updateSuggestions = (query: string): void => {
-      const normalized = query.trim().toLowerCase();
+      const normalizedRaw = query.trim().toLowerCase();
+      if (!normalizedRaw) {
+        hideSuggestions();
+        return;
+      }
+      const normalized = stripTaskdocSuffixForMatch(normalizedRaw);
       if (!normalized) {
         hideSuggestions();
         return;
       }
       currentSuggestions = this.deps
         .getTaskDocuments()
-        .filter(
-          (doc) =>
-            doc.relativePath.toLowerCase().includes(normalized) ||
-            doc.name.toLowerCase().includes(normalized),
-        )
+        .filter((doc) => {
+          const relativePathForMatch = stripTaskdocSuffixForMatch(doc.relativePath.toLowerCase());
+          const nameForMatch = stripTaskdocSuffixForMatch(doc.name.toLowerCase());
+          return relativePathForMatch.includes(normalized) || nameForMatch.includes(normalized);
+        })
         .map((doc) => ({
           ...doc,
-          _score: this.calculateSortScore(
-            doc.name.toLowerCase().includes(normalized),
-            doc.relativePath.toLowerCase().includes(normalized),
-            doc.name.toLowerCase().startsWith(normalized),
-            doc.relativePath.toLowerCase().startsWith(normalized),
-            doc.name.toLowerCase() === normalized,
-          ),
+          _score: (() => {
+            const relativePathForMatch = stripTaskdocSuffixForMatch(doc.relativePath.toLowerCase());
+            const nameForMatch = stripTaskdocSuffixForMatch(doc.name.toLowerCase());
+            return this.calculateSortScore(
+              nameForMatch.includes(normalized),
+              relativePathForMatch.includes(normalized),
+              nameForMatch.startsWith(normalized),
+              relativePathForMatch.startsWith(normalized),
+              nameForMatch === normalized,
+            );
+          })(),
         }))
         .sort((a, b) => {
           if (a._score !== b._score) return b._score - a._score;
@@ -980,12 +992,15 @@ export class CreateDialogFlowController {
         return;
       }
       suggestions.innerHTML = currentSuggestions
-        .map(
-          (doc, index) =>
-            `<div class="suggestion ${index === selectedSuggestionIndex ? 'selected' : ''}" data-index="${String(index)}"><div class="suggestion-path">${escapeHtml(
-              doc.relativePath,
-            )}</div><div class="suggestion-name">${escapeHtml(doc.name)}</div></div>`,
-        )
+        .map((doc, index) => {
+          const showName = doc.name.trim() !== '' && doc.name !== doc.relativePath;
+          const nameHtml = showName
+            ? `<div class="suggestion-name">${escapeHtml(doc.name)}</div>`
+            : '';
+          return `<div class="suggestion ${index === selectedSuggestionIndex ? 'selected' : ''}" data-index="${String(index)}"><div class="suggestion-path">${escapeHtml(
+            doc.relativePath,
+          )}</div>${nameHtml}</div>`;
+        })
         .join('');
       suggestions.style.display = 'block';
       selectedSuggestionIndex = -1;

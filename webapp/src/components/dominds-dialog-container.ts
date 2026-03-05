@@ -3676,7 +3676,7 @@ export class DomindsDialogContainer extends HTMLElement {
         box-sizing: border-box;
         padding: 0 12px 10px 12px;
         pointer-events: none;
-        z-index: 50;
+        z-index: var(--dominds-z-sticky, 50);
       }
 
       .scroll-to-bottom-wrap.hidden {

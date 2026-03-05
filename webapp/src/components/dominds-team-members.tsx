@@ -933,7 +933,7 @@ export class DomindsTeamMembers extends HTMLElement {
         align-items: center;
         justify-content: center;
         font-size: var(--dominds-font-size-sm, 12px);
-        z-index: 10;
+        z-index: var(--dominds-z-local-overlay, 10);
         border-radius: 10px;
       }
 

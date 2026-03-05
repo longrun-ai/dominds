@@ -1583,9 +1583,9 @@ export class DomindsSetup extends HTMLElement {
       .chip.ok{border-color:color-mix(in srgb, var(--dominds-success,#28a745) 45%, var(--dominds-border,#e0e0e0));color:var(--dominds-success,#28a745);}
       .chip.warn{border-color:color-mix(in srgb, var(--dominds-warning,#ffc107) 45%, var(--dominds-border,#e0e0e0));color:var(--dominds-warning,#ffc107);}
 
-      .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10000;}
-      .modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);}
-      .modal-content{position:relative;max-width:1100px;width:min(1100px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;background:var(--dominds-bg-secondary,#ffffff);border:1px solid var(--dominds-border,#e0e0e0);border-radius:12px;box-shadow:var(--shadow-lg,0 10px 15px -3px rgb(0 0 0 / 0.1),0 4px 6px -4px rgb(0 0 0 / 0.1));}
+      .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:var(--dominds-z-overlay-modal,2000);}
+      .modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);background:color-mix(in srgb,#000000 var(--dominds-alpha-overlay-backdrop-strong,50%),transparent);}
+      .modal-content{position:relative;max-width:1100px;width:min(1100px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;background:var(--dominds-bg-secondary,#ffffff);background:color-mix(in srgb,var(--dominds-bg-secondary,#ffffff) var(--dominds-alpha-surface-panel,96%),transparent);border:1px solid var(--dominds-border,#e0e0e0);border-radius:12px;box-shadow:var(--shadow-lg,0 10px 15px -3px rgb(0 0 0 / 0.1),0 4px 6px -4px rgb(0 0 0 / 0.1));}
       .modal-header{position:sticky;top:0;display:flex;align-items:center;gap:10px;padding:12px 12px;background:var(--dominds-bg-secondary,#ffffff);border-bottom:1px solid var(--dominds-border,#e0e0e0);}
       .modal-title{font-weight:650;color:var(--dominds-fg,#333333);}
       .modal-body{padding:12px;}
