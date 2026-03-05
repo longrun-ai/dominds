@@ -2,14 +2,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type { DomindsAppInstallJsonV1 } from './app-json';
+import { resolveStableAssignedPortWithReason } from './assigned-port';
 import type { DomindsAppDependency } from './manifest';
 import { loadDomindsAppManifest } from './manifest';
 import { readPackageInfo } from './package-info';
 import {
   APPS_RESOLUTION_REL_PATH,
   DEFAULT_APPS_RESOLUTION_STRATEGY,
+  applyAssignedPortToResolvedApps,
+  applyEffectiveEnabledToResolvedApps,
   loadAppsResolutionFile,
+  writeAppsResolutionFileIfChanged,
   type AppsResolutionEntry,
+  type AppsResolutionFile,
   type AppsResolutionSource,
   type AppsResolutionStrategy,
   type AppsResolutionStrategyOrderItem,
@@ -33,7 +38,8 @@ export type AppsResolutionIssue = Readonly<{
     | 'required_dependency_missing'
     | 'required_dependency_disabled'
     | 'app_manifest_load_failed'
-    | 'app_effectively_disabled_due_to_required_dependency';
+    | 'app_effectively_disabled_due_to_required_dependency'
+    | 'assigned_port_reassigned';
   severity: 'error' | 'warning' | 'info';
   message: string;
   detail: Readonly<Record<string, unknown>>;
@@ -197,6 +203,7 @@ async function resolveAppsFromRtwsHierarchy(params: {
     apps: ReadonlyArray<AppsResolutionEntry>;
     issues: ReadonlyArray<AppsResolutionIssue>;
     effectiveEnabledById: ReadonlyMap<string, boolean>;
+    assignedPortById: ReadonlyMap<string, number | null>;
   }>
 > {
   type DepEdge = Readonly<{ depId: string; required: boolean }>;
@@ -468,18 +475,59 @@ async function resolveAppsFromRtwsHierarchy(params: {
     }
   }
 
+  const assignedPortById = new Map<string, number | null>();
+  const resolvedEntriesForPort = [...resolvedById.values()];
+  for (const [appId, entry] of resolvedById.entries()) {
+    if (!effectiveEnabledById.get(appId)) continue;
+    const assigned = await resolveStableAssignedPortWithReason({
+      appId,
+      installJson: entry.installJson,
+      existingApps: resolvedEntriesForPort,
+      existingAssignedPort: entry.assignedPort,
+    });
+    assignedPortById.set(appId, assigned.assignedPort);
+
+    if (assigned.assignedPort !== entry.assignedPort) {
+      const nextEntry: AppsResolutionEntry = { ...entry, assignedPort: assigned.assignedPort };
+      resolvedById.set(appId, nextEntry);
+      const idx = resolvedEntriesForPort.findIndex((a) => a.id === appId);
+      if (idx >= 0) {
+        resolvedEntriesForPort[idx] = nextEntry;
+      }
+    }
+
+    if (
+      assigned.reason === 'reassigned_from_existing_conflict' ||
+      assigned.reason === 'reassigned_from_existing_unbindable'
+    ) {
+      pushIssue({
+        kind: 'assigned_port_reassigned',
+        severity: 'warning',
+        message: `App '${appId}' assignedPort was reassigned due to runtime port conflict.`,
+        detail: {
+          appId,
+          previousAssignedPort: entry.assignedPort,
+          reassignedToPort: assigned.assignedPort,
+          reason: assigned.reason,
+          resolutionFileRelPath: APPS_RESOLUTION_REL_PATH,
+        },
+      });
+    }
+  }
+
   const out: AppsResolutionEntry[] = [];
   for (const [appId, entry] of resolvedById.entries()) {
     if (!effectiveEnabledById.get(appId)) continue;
     out.push(entry.enabled ? entry : { ...entry, enabled: true });
   }
 
-  return { apps: out, issues, effectiveEnabledById };
+  return { apps: out, issues, effectiveEnabledById, assignedPortById };
 }
 
 async function loadAppsResolutionOverlay(params: { rtwsRootAbs: string }): Promise<
   Readonly<{
     overlay: AppsResolutionOverlayIndex;
+    resolutionFile: AppsResolutionFile;
     strategy: NormalizedAppsResolutionStrategy;
     hasResolutionFile: boolean;
   }>
@@ -487,8 +535,10 @@ async function loadAppsResolutionOverlay(params: { rtwsRootAbs: string }): Promi
   const filePathAbs = path.resolve(params.rtwsRootAbs, APPS_RESOLUTION_REL_PATH);
   const hasResolutionFile = await fileExists(filePathAbs);
   if (!hasResolutionFile) {
+    const emptyFile: AppsResolutionFile = { schemaVersion: 1, apps: [] };
     return {
       overlay: indexOverlayApps({ overlayApps: [] }),
+      resolutionFile: emptyFile,
       strategy: normalizeStrategy(undefined),
       hasResolutionFile,
     };
@@ -502,6 +552,7 @@ async function loadAppsResolutionOverlay(params: { rtwsRootAbs: string }): Promi
 
   return {
     overlay: indexOverlayApps({ overlayApps: loaded.file.apps }),
+    resolutionFile: loaded.file,
     strategy: normalizeStrategy(loaded.file.resolutionStrategy),
     hasResolutionFile,
   };
@@ -513,12 +564,28 @@ async function loadEffectiveAppsResolution(params: {
   Readonly<{ apps: ReadonlyArray<AppsResolutionEntry>; issues: ReadonlyArray<AppsResolutionIssue> }>
 > {
   const loaded = await loadAppsResolutionOverlay({ rtwsRootAbs: params.rtwsRootAbs });
-  return await resolveAppsFromRtwsHierarchy({
+  const resolved = await resolveAppsFromRtwsHierarchy({
     rtwsRootAbs: params.rtwsRootAbs,
     overlay: loaded.overlay,
     strategy: loaded.strategy,
     hasResolutionFile: loaded.hasResolutionFile,
   });
+
+  if (loaded.hasResolutionFile) {
+    const withEffectiveEnabled = applyEffectiveEnabledToResolvedApps({
+      existing: loaded.resolutionFile,
+      effectiveEnabledById: resolved.effectiveEnabledById,
+    });
+    const nextResolutionFile = applyAssignedPortToResolvedApps({
+      existing: withEffectiveEnabled,
+      assignedPortById: resolved.assignedPortById,
+    });
+    if (nextResolutionFile !== loaded.resolutionFile) {
+      await writeAppsResolutionFileIfChanged({ rtwsRootAbs: params.rtwsRootAbs, file: nextResolutionFile });
+    }
+  }
+
+  return { apps: resolved.apps, issues: resolved.issues };
 }
 
 export async function loadEnabledAppsSnapshot(params: {

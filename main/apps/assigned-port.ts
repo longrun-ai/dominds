@@ -7,6 +7,19 @@ const STABLE_PORT_RANGE_START = 43000;
 const STABLE_PORT_RANGE_END = 49999;
 const PORT_MAX = 65535;
 
+export type AssignedPortResolutionReason =
+  | 'no_frontend'
+  | 'kept_existing'
+  | 'selected_default'
+  | 'allocated_stable_range'
+  | 'reassigned_from_existing_conflict'
+  | 'reassigned_from_existing_unbindable';
+
+export type AssignedPortResolution = Readonly<{
+  assignedPort: number | null;
+  reason: AssignedPortResolutionReason;
+}>;
+
 function isPositivePort(value: number | null | undefined): value is number {
   return (
     typeof value === 'number' &&
@@ -88,7 +101,8 @@ async function pickDeterministicAvailablePort(params: {
  * Resolve a stable non-zero assignedPort for an app frontend.
  *
  * - If the app has no frontend, returns null.
- * - If an existing assignedPort exists, validates no collisions and returns it.
+ * - If an existing assignedPort exists, keeps it when still valid/bindable.
+ * - If existing assignedPort collides or is not bindable, reassigns deterministically.
  * - Otherwise, tries installJson.frontend.defaultPort when it is bindable.
  * - Falls back to a deterministic stable-range allocator.
  */
@@ -98,17 +112,42 @@ export async function resolveStableAssignedPort(params: {
   existingApps: ReadonlyArray<AppsResolutionEntry>;
   existingAssignedPort: number | null;
 }): Promise<number | null> {
-  if (!params.installJson.frontend) return null;
+  const resolved = await resolveStableAssignedPortWithReason(params);
+  return resolved.assignedPort;
+}
+
+export async function resolveStableAssignedPortWithReason(params: {
+  appId: string;
+  installJson: DomindsAppInstallJsonV1;
+  existingApps: ReadonlyArray<AppsResolutionEntry>;
+  existingAssignedPort: number | null;
+}): Promise<AssignedPortResolution> {
+  if (!params.installJson.frontend) {
+    return { assignedPort: null, reason: 'no_frontend' };
+  }
 
   const reservedPorts = collectReservedPorts(params.existingApps, params.appId);
 
   if (isPositivePort(params.existingAssignedPort)) {
     if (reservedPorts.has(params.existingAssignedPort)) {
-      throw new Error(
-        `Invalid apps resolution state: assignedPort ${params.existingAssignedPort} for '${params.appId}' collides with another resolved app`,
-      );
+      return {
+        assignedPort: await pickDeterministicAvailablePort({
+          appId: params.appId,
+          reservedPorts,
+        }),
+        reason: 'reassigned_from_existing_conflict',
+      };
     }
-    return params.existingAssignedPort;
+    if (!(await canBindPort(params.existingAssignedPort))) {
+      return {
+        assignedPort: await pickDeterministicAvailablePort({
+          appId: params.appId,
+          reservedPorts,
+        }),
+        reason: 'reassigned_from_existing_unbindable',
+      };
+    }
+    return { assignedPort: params.existingAssignedPort, reason: 'kept_existing' };
   }
 
   const defaultPort = params.installJson.frontend.defaultPort;
@@ -117,11 +156,14 @@ export async function resolveStableAssignedPort(params: {
     !reservedPorts.has(defaultPort) &&
     (await canBindPort(defaultPort))
   ) {
-    return defaultPort;
+    return { assignedPort: defaultPort, reason: 'selected_default' };
   }
 
-  return await pickDeterministicAvailablePort({
-    appId: params.appId,
-    reservedPorts,
-  });
+  return {
+    assignedPort: await pickDeterministicAvailablePort({
+      appId: params.appId,
+      reservedPorts,
+    }),
+    reason: 'allocated_stable_range',
+  };
 }

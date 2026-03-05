@@ -423,3 +423,46 @@ export function setResolvedAppAssignedPort(params: {
     ? { schemaVersion: 1, resolutionStrategy, apps }
     : { schemaVersion: 1, apps };
 }
+
+export function applyEffectiveEnabledToResolvedApps(params: {
+  existing: AppsResolutionFile;
+  effectiveEnabledById: ReadonlyMap<string, boolean>;
+}): AppsResolutionFile {
+  let changed = false;
+  const apps = params.existing.apps.map((a) => {
+    const effectiveEnabled = params.effectiveEnabledById.get(a.id);
+    if (effectiveEnabled === undefined || effectiveEnabled === a.enabled) return a;
+    changed = true;
+    return { ...a, enabled: effectiveEnabled };
+  });
+  if (!changed) return params.existing;
+
+  const resolutionStrategy = params.existing.resolutionStrategy;
+  return resolutionStrategy !== undefined
+    ? { schemaVersion: 1, resolutionStrategy, apps }
+    : { schemaVersion: 1, apps };
+}
+
+export function applyAssignedPortToResolvedApps(params: {
+  existing: AppsResolutionFile;
+  assignedPortById: ReadonlyMap<string, number | null>;
+}): AppsResolutionFile {
+  let changed = false;
+  const apps = params.existing.apps.map((a) => {
+    const assignedPort = params.assignedPortById.get(a.id);
+    if (assignedPort === undefined || assignedPort === a.assignedPort) return a;
+    if (assignedPort !== null) {
+      if (!Number.isInteger(assignedPort) || assignedPort <= 0) {
+        throw new Error(`Invalid assignedPort writeback for '${a.id}': ${String(assignedPort)}`);
+      }
+    }
+    changed = true;
+    return { ...a, assignedPort };
+  });
+  if (!changed) return params.existing;
+
+  const resolutionStrategy = params.existing.resolutionStrategy;
+  return resolutionStrategy !== undefined
+    ? { schemaVersion: 1, resolutionStrategy, apps }
+    : { schemaVersion: 1, apps };
+}
