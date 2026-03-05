@@ -1,7 +1,7 @@
 import net from 'node:net';
 
 import type { DomindsAppInstallJsonV1 } from './app-json';
-import type { InstalledAppEntry } from './installed-file';
+import type { AppsResolutionEntry } from './resolution-file';
 
 const STABLE_PORT_RANGE_START = 43000;
 const STABLE_PORT_RANGE_END = 49999;
@@ -28,14 +28,14 @@ function hashAppId(appId: string): number {
 }
 
 function collectReservedPorts(
-  existingApps: ReadonlyArray<InstalledAppEntry>,
+  existingApps: ReadonlyArray<AppsResolutionEntry>,
   appId: string,
 ): Set<number> {
   const reserved = new Set<number>();
   for (const app of existingApps) {
     if (app.id === appId) continue;
-    if (isPositivePort(app.runtime.port)) {
-      reserved.add(app.runtime.port);
+    if (isPositivePort(app.assignedPort)) {
+      reserved.add(app.assignedPort);
     }
   }
   return reserved;
@@ -70,7 +70,7 @@ async function pickDeterministicAvailablePort(params: {
 }): Promise<number> {
   const rangeSize = STABLE_PORT_RANGE_END - STABLE_PORT_RANGE_START + 1;
   if (rangeSize <= 0) {
-    throw new Error('Invalid stable app runtime port range configuration');
+    throw new Error('Invalid stable app port range configuration');
   }
   const baseHash = hashAppId(params.appId);
 
@@ -80,27 +80,35 @@ async function pickDeterministicAvailablePort(params: {
     if (await canBindPort(candidate)) return candidate;
   }
   throw new Error(
-    `Failed to allocate stable runtime port for app '${params.appId}': no bindable port in ${STABLE_PORT_RANGE_START}-${STABLE_PORT_RANGE_END}`,
+    `Failed to allocate stable assignedPort for app '${params.appId}': no bindable port in ${STABLE_PORT_RANGE_START}-${STABLE_PORT_RANGE_END}`,
   );
 }
 
-export async function resolveStableAppRuntimePort(params: {
+/**
+ * Resolve a stable non-zero assignedPort for an app frontend.
+ *
+ * - If the app has no frontend, returns null.
+ * - If an existing assignedPort exists, validates no collisions and returns it.
+ * - Otherwise, tries installJson.frontend.defaultPort when it is bindable.
+ * - Falls back to a deterministic stable-range allocator.
+ */
+export async function resolveStableAssignedPort(params: {
   appId: string;
   installJson: DomindsAppInstallJsonV1;
-  existingApps: ReadonlyArray<InstalledAppEntry>;
-  existingRuntimePort: number | null;
+  existingApps: ReadonlyArray<AppsResolutionEntry>;
+  existingAssignedPort: number | null;
 }): Promise<number | null> {
   if (!params.installJson.frontend) return null;
 
   const reservedPorts = collectReservedPorts(params.existingApps, params.appId);
 
-  if (isPositivePort(params.existingRuntimePort)) {
-    if (reservedPorts.has(params.existingRuntimePort)) {
+  if (isPositivePort(params.existingAssignedPort)) {
+    if (reservedPorts.has(params.existingAssignedPort)) {
       throw new Error(
-        `Invalid installed apps state: runtime port ${params.existingRuntimePort} for '${params.appId}' collides with another installed app`,
+        `Invalid apps resolution state: assignedPort ${params.existingAssignedPort} for '${params.appId}' collides with another resolved app`,
       );
     }
-    return params.existingRuntimePort;
+    return params.existingAssignedPort;
   }
 
   const defaultPort = params.installJson.frontend.defaultPort;

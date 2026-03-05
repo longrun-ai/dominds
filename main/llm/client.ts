@@ -166,7 +166,7 @@ export type ProviderConfig = {
   apiType: ProviderApiType;
   baseUrl: string;
   apiKeyEnvVar: string;
-  // LLM retry policy knobs for driver-v2.
+  // LLM retry policy knobs for kernel dialog driving.
   // maxRetries means "extra retries after initial attempt". For example, 5 => up to 6 attempts total.
   llm_retry_max_retries?: number;
   llm_retry_initial_delay_ms?: number;

@@ -7,15 +7,15 @@
  *   dominds enable <appId> [--port <port>]
  */
 
+import { resolveStableAssignedPort } from '../apps/assigned-port';
 import {
-  INSTALLED_APPS_REL_PATH,
-  findInstalledApp,
-  loadInstalledAppsFile,
-  setAppEnabled,
-  setAppRuntimePort,
-  writeInstalledAppsFile,
-} from '../apps/installed-file';
-import { resolveStableAppRuntimePort } from '../apps/runtime-port';
+  APPS_RESOLUTION_REL_PATH,
+  findResolvedApp,
+  loadAppsResolutionFile,
+  setResolvedAppAssignedPort,
+  setResolvedAppUserEnabled,
+  writeAppsResolutionFile,
+} from '../apps/resolution-file';
 
 type EnableArgs = Readonly<{
   appId: string;
@@ -27,7 +27,7 @@ function printHelp(): void {
   dominds enable <appId> [--port <port>]
 
 Options:
-  --port <port>        Set frontend port (stored in ${INSTALLED_APPS_REL_PATH})
+  --port <port>        Set frontend port (stored in ${APPS_RESOLUTION_REL_PATH}); use 0 to clear
 `);
 }
 
@@ -72,40 +72,42 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadInstalledAppsFile({ rtwsRootAbs });
+  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
   if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${INSTALLED_APPS_REL_PATH}: ${loaded.errorText}`);
+    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
     process.exit(1);
     return;
   }
 
-  const found = findInstalledApp(loaded.file, args.appId);
+  const found = findResolvedApp(loaded.file, args.appId);
   if (!found) {
     console.error(`Error: app '${args.appId}' not installed`);
     process.exit(1);
     return;
   }
 
-  let next = setAppEnabled({ existing: loaded.file, appId: args.appId, enabled: true });
+  let next = setResolvedAppUserEnabled({
+    existing: loaded.file,
+    appId: args.appId,
+    userEnabled: true,
+  });
   if (args.port !== null) {
-    next = setAppRuntimePort({ existing: next, appId: args.appId, port: args.port });
+    next = setResolvedAppAssignedPort({
+      existing: next,
+      appId: args.appId,
+      assignedPort: args.port === 0 ? null : args.port,
+    });
   } else {
-    const resolvedPort = await resolveStableAppRuntimePort({
+    const assignedPort = await resolveStableAssignedPort({
       appId: found.id,
       installJson: found.installJson,
-      existingApps: loaded.file.apps,
-      existingRuntimePort: found.runtime.port,
+      existingApps: next.apps,
+      existingAssignedPort: found.assignedPort,
     });
-    if (resolvedPort !== found.runtime.port) {
-      next = setAppRuntimePort({
-        existing: next,
-        appId: args.appId,
-        port: resolvedPort,
-      });
-    }
+    next = setResolvedAppAssignedPort({ existing: next, appId: args.appId, assignedPort });
   }
 
-  await writeInstalledAppsFile({ rtwsRootAbs, file: next });
+  await writeAppsResolutionFile({ rtwsRootAbs, file: next });
   console.log(`Enabled app '${args.appId}'`);
 }
 

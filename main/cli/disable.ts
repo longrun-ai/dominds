@@ -8,12 +8,12 @@
  */
 
 import {
-  INSTALLED_APPS_REL_PATH,
-  findInstalledApp,
-  loadInstalledAppsFile,
-  setAppEnabled,
-  writeInstalledAppsFile,
-} from '../apps/installed-file';
+  APPS_RESOLUTION_REL_PATH,
+  findResolvedApp,
+  loadAppsResolutionFile,
+  setResolvedAppUserEnabled,
+  writeAppsResolutionFile,
+} from '../apps/resolution-file';
 
 type DisableArgs = Readonly<{ appId: string }>;
 
@@ -49,22 +49,26 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadInstalledAppsFile({ rtwsRootAbs });
+  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
   if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${INSTALLED_APPS_REL_PATH}: ${loaded.errorText}`);
+    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
     process.exit(1);
     return;
   }
 
-  const found = findInstalledApp(loaded.file, args.appId);
+  const found = findResolvedApp(loaded.file, args.appId);
   if (!found) {
     console.error(`Error: app '${args.appId}' not installed`);
     process.exit(1);
     return;
   }
 
-  const next = setAppEnabled({ existing: loaded.file, appId: args.appId, enabled: false });
-  await writeInstalledAppsFile({ rtwsRootAbs, file: next });
+  const next = setResolvedAppUserEnabled({
+    existing: loaded.file,
+    appId: args.appId,
+    userEnabled: false,
+  });
+  await writeAppsResolutionFile({ rtwsRootAbs, file: next });
   console.log(`Disabled app '${args.appId}'`);
 }
 

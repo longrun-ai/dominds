@@ -3,7 +3,7 @@ import path from 'path';
 
 type OverrideFileResolution =
   | Readonly<{ kind: 'none' }>
-  | Readonly<{ kind: 'found'; filePathAbs: string; source: 'override' | 'legacy_override' }>;
+  | Readonly<{ kind: 'found'; filePathAbs: string; source: 'override' }>;
 
 function normalizeRelNoTraversal(rel: string): string | null {
   if (path.isAbsolute(rel)) return null;
@@ -26,7 +26,6 @@ async function isRegularFile(filePathAbs: string): Promise<boolean> {
  *
  * Priority order (read-time):
  * 1) `<rtws>/.apps/override/<app-id>/<rel>`
- * 2) `<rtws>/.apps/<app-id>/<rel>` (legacy)
  */
 export async function resolveAppOverrideFileAbs(params: {
   rtwsRootAbs: string;
@@ -45,11 +44,6 @@ export async function resolveAppOverrideFileAbs(params: {
   );
   if (await isRegularFile(preferredAbs)) {
     return { kind: 'found', filePathAbs: preferredAbs, source: 'override' };
-  }
-
-  const legacyAbs = path.resolve(params.rtwsRootAbs, '.apps', params.appId, normalized);
-  if (await isRegularFile(legacyAbs)) {
-    return { kind: 'found', filePathAbs: legacyAbs, source: 'legacy_override' };
   }
 
   return { kind: 'none' };

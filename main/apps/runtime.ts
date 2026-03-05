@@ -12,7 +12,7 @@ import {
 import { startAppsHost, type AppsHostClient, type EnabledAppForHost } from '../apps-host/client';
 import { registerAppDialogRunControl } from './dialog-run-controls';
 import { loadEnabledAppsSnapshot } from './enabled-apps';
-import { loadInstalledAppsFile, setAppRuntimePort, writeInstalledAppsFile } from './installed-file';
+import { reconcileAppsResolutionIssuesToProblems } from './problems';
 
 const log = createLogger('apps-runtime');
 
@@ -111,6 +111,7 @@ export async function registerEnabledAppsToolProxies(params: {
   rtwsRootAbs: string;
 }): Promise<void> {
   const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: params.rtwsRootAbs });
+  reconcileAppsResolutionIssuesToProblems({ issues: snapshot.issues });
   const enabledApps: EnabledAppForHost[] = snapshot.enabledApps.map((a) => ({
     appId: a.id,
     runtimePort: a.runtimePort,
@@ -129,6 +130,7 @@ export async function initAppsRuntime(params: {
   }
 
   const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: params.rtwsRootAbs });
+  reconcileAppsResolutionIssuesToProblems({ issues: snapshot.issues });
   const enabledApps: EnabledAppForHost[] = snapshot.enabledApps.map((a) => ({
     appId: a.id,
     runtimePort: a.runtimePort,
@@ -146,26 +148,10 @@ export async function initAppsRuntime(params: {
   registerAppDialogRunControlsForEnabledApps({ enabledApps });
 
   log.info(`Starting apps-host (${enabledApps.length} enabled apps)`);
-  const started = await startAppsHost({
+  const { client } = await startAppsHost({
     rtwsRootAbs: params.rtwsRootAbs,
     kernel: params.kernel,
     apps: enabledApps,
   });
-  appsHostClient = started.client;
-
-  // Persist actual bound ports for enabled apps (especially when runtimePort=0 for ephemeral ports).
-  const loaded = await loadInstalledAppsFile({ rtwsRootAbs: params.rtwsRootAbs });
-  if (loaded.kind === 'error') {
-    throw new Error(
-      `Failed to update installed apps runtime ports: ${loaded.errorText} (${loaded.filePathAbs})`,
-    );
-  }
-  let nextFile = loaded.file;
-  for (const a of started.ready.apps) {
-    if (!a.frontend) continue;
-    nextFile = setAppRuntimePort({ existing: nextFile, appId: a.appId, port: a.frontend.port });
-  }
-  if (nextFile !== loaded.file) {
-    await writeInstalledAppsFile({ rtwsRootAbs: params.rtwsRootAbs, file: nextFile });
-  }
+  appsHostClient = client;
 }

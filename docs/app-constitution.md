@@ -18,16 +18,82 @@ This document covers:
 - “Dev app” mode: allow an rtws to run _as_ a Dominds app during development, reusing the same directory structure/mechanisms.
 - Enhanced `.minds/team.yaml`: `use` / `import` to reference teammates provided by other apps, with clear execution context semantics.
 
-Relationship to `dominds/docs/kernel-app-architecture.md`:
+This document is the unified entry point for app-related semantics and mechanisms.
 
-- `kernel-app-architecture` focuses on runtime skeleton: registry, resolution, defunc semantics, IPC.
-- This doc focuses on: the app package + `.minds/**` asset contract, override mechanisms, and team composition semantics.
+## Roadmap: Phases A/B/C/D (MVP = phase)
+
+This document uses **A/B/C/D** to describe the evolution phases of this feature.
+
+- What “**MVP=C**” means: the acceptance gate for this stage is the **Phase C** checklist (i.e. only Phase C capabilities are required for this milestone; anything outside Phase C is not part of the gate even if implemented).
+- Phases are not a compatibility/stability promise: Dominds is still in a prototype/alpha iteration mode; phases are used to define **scope + acceptance focus** for this feature.
+
+> Note: This roadmap is an RFC-ish “scope definition”; it does not automatically imply everything is implemented today. The rest of this doc still marks items as “Current (implemented)” vs “Target (planned)”.
+
+### Phase A: Concepts and minimal skeleton (Foundations)
+
+Goal: make the kernel/app boundary and the minimal data flow runnable, so the install/resolve/boot path can be validated.
+
+- Key capabilities (at minimum):
+  - App install handshake (`<app> --json`) can be consumed by the kernel/CLI.
+  - App manifest (`.minds/app.yaml`) schema/loader is available.
+  - Basic local resolution strategy (`local`) works: discover local apps under `<rtws>/dominds-apps/<appId>/`.
+
+### Phase B: Team composition and cross-app references (Team Composition)
+
+Goal: allow app-provided teammates to participate in team composition, with explicit execution-context semantics for cross-app references.
+
+- Key capabilities (at minimum):
+  - Load enabled apps’ teammates YAML (with workspace overrides).
+  - Workspace `.minds/team.yaml` supports explicit cross-app referencing via `members.<id>.from + (use|import)`.
+  - Name collisions / reference failures are diagnosed and routed through Problems/defunc (retryable).
+
+### Phase C: MVP gate (deps/lock/override contract/port pinning/Problems)
+
+Goal: close the loop for “dependency resolution + observability + regressability”, so dogfooding is diagnosable and recoverable.
+
+- Key capabilities (must-pass):
+  - required/optional dependencies:
+    - optional missing/disabled: silently skipped (must not block startup; Problems not required; debug logs allowed).
+    - required missing/disabled: must not block startup; must be observable in WebUI Problems; related capability enters defunc/unavailable.
+  - required disable propagation:
+    - `<rtws>/.apps/resolution.yaml` must represent both user intent (explicit user disable) and the propagated effective state.
+    - when dependencies recover, propagated disables must auto-recover (without overriding explicit user disables).
+  - Override precedence (documented contract): `rtws override > app override > app defaults`.
+  - Lock semantics (design contract): `.minds/app-lock.yaml` freezes dependency versions only; enable/disable must not jitter the lock.
+  - assignedPort: once pinned, `assignedPort` must be non-zero; conflicts must be surfaced and re-assigned; uninstall naturally frees ports.
+  - Problems: Problems ids use a stable prefix (currently `apps/apps_resolution/`); after a fix, issues must reconcile/clear (no permanent residue).
+
+### Phase D: Integrator packaging and UX (Integration & UX)
+
+Goal: let an integrator app ship publishable default overrides for dependency apps, and polish the observability/Problems experience.
+
+- Key capabilities (target):
+  - app override: app packages may ship default overrides for dependency apps (publishable integration config), while rtws overrides still take precedence.
+  - Override surface expands to more `.minds/**` assets (persona/knowledge/lessons, memory, mcp, etc.).
+  - Problems mechanism enhancements: record and display “occurred at / resolved at / resolved state”, and allow “clear resolved” in UI.
+  - More complete error-path contracts (corrupt YAML, partial availability, recovery strategy) with regression coverage.
 
 ## Non-goals
 
 - No protocol/schema versioning or long-lived compatibility strategy in this draft.
 - No sandbox/isolation definition (permissions/resource isolation is out of scope).
 - Not a full implementation plan; we keep implementation details as “anchors”.
+
+## Kernel-App Runtime Skeleton
+
+The following rules define the key runtime boundaries between kernel and apps:
+
+- Resolution order inside an app is fixed: `local(app) -> kernel`.
+- Override semantics: overrides happen at the **configuration layer**, not by “registering and overwriting” runtime objects:
+  - For a given app asset path `p`: `<rtws>/.apps/override/<app-id>/.minds/<p>` (rtws override) wins over the app package default.
+  - (Target: planned) an app integrator may ship _app overrides_ for its dependency apps (e.g. default overrides packaged with the app), but rtws overrides still take precedence.
+  - Shadowing kernel registry names is not a goal: name collisions should be diagnosed explicitly (and handled via defunc / Problems), not silently overwritten by last-writer-wins.
+- Conflict semantics: import name conflicts or unsatisfied dependencies put the app into defunc.
+- Registry boundary: app objects do not register into kernel registry; defunc does not require “removing app objects from kernel”.
+- Observability: defunc reasons should surface in Problems (at minimum with `appId`, reason kind, and suggested action).
+- Retry semantics: defunc is retryable by default (reload on a later refresh cycle once dependency/config issues are fixed).
+- Fixed tool contract: `app_integration_manual({ appId, language? })` failures should be observable but must not trigger defunc.
+- Typical load sequence: register toolsets first, then team/imports, apply overrides, validate, and finally register members; failures result in defunc.
 
 ## Core concepts
 
@@ -114,7 +180,14 @@ Recommended principles:
 (Current: implemented) existing anchors:
 
 - JSON schema: `dominds/main/apps/app-json.ts` (`DomindsAppInstallJsonV1`).
-- Installed apps file: `dominds/main/apps/installed-file.ts`.
+- Apps resolution file: `dominds/main/apps/resolution-file.ts`.
+
+(Current: implemented) the kernel treats `<rtws>/.apps/resolution.yaml` as **overlay + strategy**:
+
+- If the file exists: `apps[]` is the overlay (stores `enabled` / `assignedPort` / `source` / `installJson`), and `resolutionStrategy?` (if present) overrides the default strategy.
+- If the file is missing: the overlay is empty, and the strategy falls back to defaults (`order=['local']`, `localRoots=['dominds-apps']`).
+
+So even without `<rtws>/.apps/resolution.yaml`, as long as `.minds/app.yaml` declares dependencies, the kernel still resolves local apps via the default strategy; if the root manifest has no dependencies, the effective enabled apps set is empty.
 
 ## App-provided `.minds/**` assets
 
@@ -145,8 +218,9 @@ It describes:
 - how those members see each other and collaborate within the app.
 
 > Current prototype behavior: the kernel loads enabled app teammates YAML and **additively merges `members` into workspace `.minds/team.yaml`**.
-> The merge happens in `dominds/main/team.ts` and the loader is `dominds/main/apps/teammates.ts`.
-> This is not yet equivalent to “per-app team + `use/import` semantics”.
+> Current (v0): the kernel loads enabled app teammates YAML but does **not** flatten-merge their `members` into workspace `.minds/team.yaml`.
+> You must explicitly reference a dependency app teammate via `members.<id>.from + (use|import)` in workspace `.minds/team.yaml`.
+> Loader: `dominds/main/apps/teammates.ts`; resolver/execution: `dominds/main/team.ts`.
 
 ### `.minds/mcp.yaml`
 
@@ -165,14 +239,6 @@ Key semantics:
 - If the kernel offers “write managed rc block” (e.g. setup flow), it must be explicit and user-confirmed.
 
 ## `<rtws>/.apps/override/<app-id>/`: override layer
-
-### `.apps/installed.yaml`
-
-(Current: implemented) The kernel stores the installed/enabled apps list in `<rtws>/.apps/installed.yaml`.
-
-This file is a source of truth for enabled apps snapshot.
-
-(Target: planned) Replace the mixed responsibilities of `.apps/installed.yaml` with `.minds/app-lock.yaml` + `<rtws>/.apps/resolution.yaml`.
 
 ### Override root
 
@@ -206,8 +272,7 @@ Suggested override resolution for any app asset path `p`:
 
 This naturally supports “override dependency apps”: once a dependency app is enabled in the same rtws, it can be overridden via its own `.apps/<dep-id>/...` directory.
 
-> Alignment note: `kernel-app-architecture` already sketches a `<rtws>/.apps/<app-id>/team.yaml` override DSL.
-> This document generalizes the idea to the broader `.minds/**` asset set (not only team).
+> This document also covers the `<rtws>/.apps/<app-id>/team.yaml` override DSL concept, and generalizes it to broader `.minds/**` assets (not only team).
 
 #### Override scope (recommended)
 
@@ -265,7 +330,9 @@ Constraints:
 
 ### Suggested YAML shape
 
-> Note: syntax below is a target design; the current `.minds/team.yaml` parser does not support it yet.
+> Current (v0): the `.minds/team.yaml` parser supports this syntax.
+> However, since app-context isolation/bridging is not implemented yet, `use` and `import` are runtime-equivalent for now.
+> Also: `from`-only is accepted but has no effect in v0 (it is treated as a local member definition).
 
 Example snippet:
 
@@ -359,7 +426,7 @@ This makes it possible that:
 ## Implementation anchors (current code)
 
 - install json schema: `dominds/main/apps/app-json.ts`
-- installed apps file: `dominds/main/apps/installed-file.ts`
+- apps resolution file: `dominds/main/apps/resolution-file.ts`
 - apps runtime (proxy tools): `dominds/main/apps/runtime.ts`
 - app teammates loader (prototype flat merge): `dominds/main/apps/teammates.ts`, `dominds/main/team.ts`
 - manifest parser: `dominds/main/apps/manifest.ts`

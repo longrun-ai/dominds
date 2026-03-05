@@ -454,7 +454,7 @@ sequenceDiagram
 Q4H is raised when the `askHuman({ tellaskContent: "..." })` tellask function is invoked by ANY dialog (root or subdialog) on its own right:
 
 ```typescript
-// From main/llm/driver-v2/tellask-bridge.ts
+// From main/llm/kernel-driver/tellask-special.ts
 const isQ4H = callName === 'askHuman';
 ```
 

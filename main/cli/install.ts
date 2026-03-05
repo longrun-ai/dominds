@@ -10,16 +10,16 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+import { loadAppLockFile, upsertLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
+import { resolveStableAssignedPort } from '../apps/assigned-port';
 import {
-  INSTALLED_APPS_REL_PATH,
-  loadInstalledAppsFile,
-  upsertInstalledApp,
-  writeInstalledAppsFile,
-  type InstalledAppEntry,
-} from '../apps/installed-file';
+  APPS_RESOLUTION_REL_PATH,
+  loadAppsResolutionFile,
+  upsertResolvedApp,
+  writeAppsResolutionFile,
+  type AppsResolutionEntry,
+} from '../apps/resolution-file';
 import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from '../apps/run-app-json';
-import { resolveStableAppRuntimePort } from '../apps/runtime-port';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 type InstallArgs = Readonly<{
   specOrPath: string;
@@ -40,7 +40,7 @@ Options:
   --force              Replace existing installed entry with the same id
 
 Notes:
-  - State is stored in ${INSTALLED_APPS_REL_PATH} under the current rtws (process.cwd()).
+  - State is stored in ${APPS_RESOLUTION_REL_PATH} under the current rtws (process.cwd()).
   - dominds installs apps by running '<app> --json' via npx or local package bin.
 `);
 }
@@ -121,9 +121,11 @@ async function main(): Promise<void> {
   const localAbs = path.resolve(rtwsRootAbs, specOrPath);
   const shouldUseLocal = args.local || (await pathIsDirectory(localAbs));
 
-  const loadedInstalled = await loadInstalledAppsFile({ rtwsRootAbs });
-  if (loadedInstalled.kind === 'error') {
-    console.error(`Error: failed to read ${INSTALLED_APPS_REL_PATH}: ${loadedInstalled.errorText}`);
+  const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs });
+  if (loadedResolution.kind === 'error') {
+    console.error(
+      `Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loadedResolution.errorText}`,
+    );
     process.exit(1);
     return;
   }
@@ -138,7 +140,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const prev = loadedInstalled.file.apps.find((a) => a.id === installJson.appId) ?? null;
+  const prev = loadedResolution.file.apps.find((a) => a.id === installJson.appId) ?? null;
   if (prev && !args.force) {
     console.error(
       `Error: app '${installJson.appId}' already installed. Use 'dominds update ${installJson.appId}' or 'dominds install ... --force'.`,
@@ -147,30 +149,53 @@ async function main(): Promise<void> {
     return;
   }
 
-  const now = formatUnifiedTimestamp(new Date());
-  const enabled = args.enable || (prev ? prev.enabled : false);
+  const userEnabled = args.enable || (prev ? prev.userEnabled : false);
+  const enabled = userEnabled;
 
-  const runtimePort = await resolveStableAppRuntimePort({
+  const assignedPort = await resolveStableAssignedPort({
     appId: installJson.appId,
     installJson,
-    existingApps: loadedInstalled.file.apps,
-    existingRuntimePort: prev?.runtime.port ?? null,
+    existingApps: loadedResolution.file.apps,
+    existingAssignedPort: prev?.assignedPort ?? null,
   });
 
-  const entry: InstalledAppEntry = {
+  const entry: AppsResolutionEntry = {
     id: installJson.appId,
     enabled,
+    userEnabled,
     source: shouldUseLocal
       ? { kind: 'local', pathAbs: localAbs }
       : { kind: 'npx', spec: specOrPath },
-    runtime: { port: runtimePort },
+    assignedPort,
     installJson,
-    installedAt: prev ? prev.installedAt : now,
-    updatedAt: now,
   };
 
-  const nextFile = upsertInstalledApp({ existing: loadedInstalled.file, next: entry });
-  await writeInstalledAppsFile({ rtwsRootAbs, file: nextFile });
+  const nextFile = upsertResolvedApp({ existing: loadedResolution.file, next: entry });
+  await writeAppsResolutionFile({ rtwsRootAbs, file: nextFile });
+
+  try {
+    const loadedLock = await loadAppLockFile({ rtwsRootAbs });
+    if (loadedLock.kind === 'error') {
+      console.error(`Warning: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
+    } else {
+      const nextLock = upsertLockedApp({
+        existing: loadedLock.file,
+        next: {
+          id: entry.id,
+          source: entry.source,
+          package: {
+            name: entry.installJson.package.name,
+            version: entry.installJson.package.version,
+          },
+        },
+      });
+      await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
+    }
+  } catch (err: unknown) {
+    console.error(
+      `Warning: failed to update .minds/app-lock.yaml: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   console.log(
     shouldUseLocal

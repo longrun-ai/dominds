@@ -11,12 +11,12 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import {
-  INSTALLED_APPS_REL_PATH,
-  findInstalledApp,
-  loadInstalledAppsFile,
-  removeInstalledApp,
-  writeInstalledAppsFile,
-} from '../apps/installed-file';
+  APPS_RESOLUTION_REL_PATH,
+  findResolvedApp,
+  loadAppsResolutionFile,
+  removeResolvedApp,
+  writeAppsResolutionFile,
+} from '../apps/resolution-file';
 
 type UninstallArgs = Readonly<{
   appId: string;
@@ -63,22 +63,22 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadInstalledAppsFile({ rtwsRootAbs });
+  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
   if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${INSTALLED_APPS_REL_PATH}: ${loaded.errorText}`);
+    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
     process.exit(1);
     return;
   }
 
-  const found = findInstalledApp(loaded.file, args.appId);
+  const found = findResolvedApp(loaded.file, args.appId);
   if (!found) {
     console.error(`Error: app '${args.appId}' not installed`);
     process.exit(1);
     return;
   }
 
-  const next = removeInstalledApp({ existing: loaded.file, appId: args.appId });
-  await writeInstalledAppsFile({ rtwsRootAbs, file: next });
+  const next = removeResolvedApp({ existing: loaded.file, appId: args.appId });
+  await writeAppsResolutionFile({ rtwsRootAbs, file: next });
 
   if (args.purge) {
     const rtwsAppDirAbs = path.resolve(rtwsRootAbs, '.apps', args.appId);

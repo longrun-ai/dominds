@@ -6,6 +6,7 @@ export type DomindsAppManifest = Readonly<{
   apiVersion: 'dominds.io/v1alpha1';
   kind: 'DomindsApp';
   id: string;
+  dependencies?: ReadonlyArray<DomindsAppDependency>;
   name?: Readonly<{ zh?: string; en?: string }>;
   description?: Readonly<{ zh?: string; en?: string }>;
   contributes?: Readonly<{
@@ -32,6 +33,11 @@ export type DomindsAppManifest = Readonly<{
   }>;
 }>;
 
+export type DomindsAppDependency = Readonly<{
+  id: string;
+  optional?: boolean;
+}>;
+
 export type AppManifestLoadResult =
   | Readonly<{ kind: 'ok'; manifest: DomindsAppManifest; raw: string; filePathAbs: string }>
   | Readonly<{ kind: 'error'; errorText: string; filePathAbs: string }>;
@@ -42,6 +48,35 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function asOptionalString(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
+}
+
+function asOptionalBool(v: unknown): boolean | undefined {
+  return typeof v === 'boolean' ? v : undefined;
+}
+
+function parseDependencies(
+  raw: unknown,
+  at: string,
+  filePathAbs: string,
+): { ok: true; value: ReadonlyArray<DomindsAppDependency> } | { ok: false; errorText: string } {
+  if (!Array.isArray(raw)) {
+    return { ok: false, errorText: `Invalid ${at}: expected array (${filePathAbs})` };
+  }
+  const deps: DomindsAppDependency[] = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    const item = raw[i];
+    const itemAt = `${at}[${i}]`;
+    if (!isRecord(item)) {
+      return { ok: false, errorText: `Invalid ${itemAt}: expected object (${filePathAbs})` };
+    }
+    const id = typeof item['id'] === 'string' ? item['id'].trim() : '';
+    if (id === '') {
+      return { ok: false, errorText: `Invalid ${itemAt}.id: required (${filePathAbs})` };
+    }
+    const optional = asOptionalBool(item['optional']);
+    deps.push({ id, optional });
+  }
+  return { ok: true, value: deps };
 }
 
 function normalizeMountPath(raw: string): string {
@@ -82,6 +117,18 @@ export function parseDomindsAppManifest(
       ok: false,
       errorText: `Invalid manifest id: non-empty string required (${filePathAbs})`,
     };
+  }
+
+  // dependencies
+  const depsRaw = parsed['dependencies'];
+  const dependencies = (() => {
+    if (depsRaw === undefined) return undefined;
+    const parsedDeps = parseDependencies(depsRaw, 'dependencies', filePathAbs);
+    if (!parsedDeps.ok) return parsedDeps;
+    return { ok: true as const, value: parsedDeps.value };
+  })();
+  if (dependencies && !dependencies.ok) {
+    return { ok: false, errorText: dependencies.errorText };
   }
 
   const contributesRaw = parsed['contributes'];
@@ -242,6 +289,7 @@ export function parseDomindsAppManifest(
     apiVersion,
     kind,
     id,
+    dependencies: dependencies ? dependencies.value : undefined,
     name,
     description,
     contributes: contributes ? contributes.value : undefined,

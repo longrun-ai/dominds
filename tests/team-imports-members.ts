@@ -143,6 +143,72 @@ async function main(): Promise<void> {
     );
     await Team.load();
     mustNotHaveProblemPrefix('team/team_yaml_error/members/rtws/librarian/');
+
+    // Case 5: from+use should import config from enabled app teammates YAML (with local overrides winning).
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.apps', 'resolution.yaml'),
+      [
+        'schemaVersion: 1',
+        'apps:',
+        '  - id: common_agents',
+        '    enabled: true',
+        '    source:',
+        '      kind: local',
+        `      pathAbs: ${JSON.stringify(path.join(tmpRoot, 'app-common-agents'))}`,
+        '    assignedPort: null',
+        '    installJson:',
+        '      schemaVersion: 1',
+        '      appId: common_agents',
+        '      package:',
+        '        name: app-common-agents',
+        '        version: null',
+        `        rootAbs: ${JSON.stringify(path.join(tmpRoot, 'app-common-agents'))}`,
+        '      host:',
+        '        kind: node_module',
+        '        moduleRelPath: index.js',
+        '        exportName: main',
+        '      contributes:',
+        '        teammatesYamlRelPath: team.yaml',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
+      [
+        'members:',
+        '  scribe:',
+        '    name: ScribeFromApp',
+        '    gofor:',
+        '      - from app',
+        '    toolsets: [repo_tools]',
+        '',
+      ].join('\n'),
+    );
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: openai',
+        '  model: gpt-4',
+        'default_responder: builder',
+        'members:',
+        '  builder:',
+        '    name: Builder',
+        '    toolsets: []',
+        '  local_scribe:',
+        '    from: common_agents',
+        '    use: scribe',
+        '    name: LocalNameOverride',
+        '',
+      ].join('\n'),
+    );
+    const team5 = await Team.load();
+    const localScribe = team5.getMember('local_scribe');
+    assert.ok(localScribe, 'expected local_scribe to be present');
+    assert.equal(localScribe.name, 'LocalNameOverride', 'local overrides should win');
+    assert.deepEqual(localScribe.gofor, ['from app']);
+    assert.deepEqual(localScribe.toolsets, ['repo_tools']);
   } finally {
     process.chdir(oldCwd);
     await fs.rm(tmpRoot, { recursive: true, force: true });

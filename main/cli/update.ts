@@ -9,17 +9,17 @@
 
 import path from 'path';
 
+import { loadAppLockFile, upsertLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
+import { resolveStableAssignedPort } from '../apps/assigned-port';
 import {
-  INSTALLED_APPS_REL_PATH,
-  findInstalledApp,
-  loadInstalledAppsFile,
-  upsertInstalledApp,
-  writeInstalledAppsFile,
-  type InstalledAppEntry,
-} from '../apps/installed-file';
+  APPS_RESOLUTION_REL_PATH,
+  findResolvedApp,
+  loadAppsResolutionFile,
+  upsertResolvedApp,
+  writeAppsResolutionFile,
+  type AppsResolutionEntry,
+} from '../apps/resolution-file';
 import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from '../apps/run-app-json';
-import { resolveStableAppRuntimePort } from '../apps/runtime-port';
-import { formatUnifiedTimestamp } from '../shared/utils/time';
 
 type UpdateArgs = Readonly<{
   appId: string | null;
@@ -61,18 +61,25 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadInstalledAppsFile({ rtwsRootAbs });
+  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
   if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${INSTALLED_APPS_REL_PATH}: ${loaded.errorText}`);
+    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
     process.exit(1);
     return;
   }
 
-  const targets: InstalledAppEntry[] =
+  const loadedLock = await loadAppLockFile({ rtwsRootAbs });
+  const shouldUpdateLock = loadedLock.kind === 'ok';
+  if (loadedLock.kind === 'error') {
+    console.error(`Warning: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
+  }
+  let nextLock = loadedLock.kind === 'ok' ? loadedLock.file : null;
+
+  const targets: AppsResolutionEntry[] =
     args.appId === null
       ? [...loaded.file.apps]
       : (() => {
-          const found = findInstalledApp(loaded.file, args.appId);
+          const found = findResolvedApp(loaded.file, args.appId);
           if (!found) {
             console.error(`Error: app '${args.appId}' not installed`);
             process.exit(1);
@@ -82,7 +89,6 @@ async function main(): Promise<void> {
         })();
 
   let nextFile = loaded.file;
-  const now = formatUnifiedTimestamp(new Date());
 
   for (const entry of targets) {
     const installJson =
@@ -98,24 +104,47 @@ async function main(): Promise<void> {
       );
     }
 
-    const runtimePort = await resolveStableAppRuntimePort({
+    const assignedPort = await resolveStableAssignedPort({
       appId: entry.id,
       installJson,
       existingApps: nextFile.apps,
-      existingRuntimePort: entry.runtime.port,
+      existingAssignedPort: entry.assignedPort,
     });
 
-    const updated: InstalledAppEntry = {
+    const updated: AppsResolutionEntry = {
       ...entry,
-      runtime: { port: runtimePort },
+      assignedPort,
       installJson,
-      updatedAt: now,
     };
-    nextFile = upsertInstalledApp({ existing: nextFile, next: updated });
+    nextFile = upsertResolvedApp({ existing: nextFile, next: updated });
+
+    if (shouldUpdateLock && nextLock) {
+      nextLock = upsertLockedApp({
+        existing: nextLock,
+        next: {
+          id: updated.id,
+          source: updated.source,
+          package: {
+            name: updated.installJson.package.name,
+            version: updated.installJson.package.version,
+          },
+        },
+      });
+    }
     console.log(`Updated app '${entry.id}'`);
   }
 
-  await writeInstalledAppsFile({ rtwsRootAbs, file: nextFile });
+  await writeAppsResolutionFile({ rtwsRootAbs, file: nextFile });
+
+  if (shouldUpdateLock && nextLock) {
+    try {
+      await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
+    } catch (err: unknown) {
+      console.error(
+        `Warning: failed to update .minds/app-lock.yaml: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 }
 
 export { main };

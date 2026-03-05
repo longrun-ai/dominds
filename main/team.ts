@@ -9,7 +9,7 @@
 import fs from 'fs/promises';
 import YAML from 'yaml';
 
-import { loadEnabledAppTeammates } from './apps/teammates';
+import { loadEnabledAppTeammates, type AppTeammatesSnippet } from './apps/teammates';
 import { LlmConfig } from './llm/client';
 import { log } from './log';
 import { parseMcpYaml } from './mcp/config';
@@ -932,42 +932,9 @@ export namespace Team {
         return team;
       }
 
-      // Apps: merge enabled app teammate definitions (additive).
+      let appTeammates: ReadonlyArray<AppTeammatesSnippet> = [];
       try {
-        const appTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: process.cwd() });
-        if (appTeammates.length > 0) {
-          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-            addIssue(
-              'apps/teammates/invalid_base',
-              'Failed to merge app teammates into .minds/team.yaml: base YAML is not an object.',
-              `Expected .minds/team.yaml to parse into an object before applying app teammate merges.`,
-            );
-          } else {
-            const rec = parsed as Record<string, unknown>;
-            const membersRaw = rec['members'];
-            const members =
-              typeof membersRaw === 'object' && membersRaw !== null && !Array.isArray(membersRaw)
-                ? (membersRaw as Record<string, unknown>)
-                : {};
-            if (rec['members'] === undefined) {
-              rec['members'] = members;
-            }
-
-            for (const snip of appTeammates) {
-              for (const [id, member] of Object.entries(snip.members)) {
-                if (Object.prototype.hasOwnProperty.call(members, id)) {
-                  addIssue(
-                    `apps/teammates/duplicate_member/${sanitizeProblemIdSegment(id)}`,
-                    'App teammate id collision while loading .minds/team.yaml.',
-                    `Enabled app '${snip.appId}' contributes member id '${id}', but it already exists in team.yaml (or another app). Disable/uninstall the conflicting app or rename the member id.`,
-                  );
-                  continue;
-                }
-                members[id] = member;
-              }
-            }
-          }
-        }
+        appTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: process.cwd() });
       } catch (err: unknown) {
         addIssue(
           'apps/teammates/load',
@@ -976,7 +943,7 @@ export namespace Team {
         );
       }
 
-      const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu });
+      const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu }, { appTeammates });
       for (const issue of parsedTeam.issues) {
         addIssue(issue.id, issue.message, issue.errorText);
       }
@@ -1709,11 +1676,17 @@ export namespace Team {
     obj: unknown,
     md: Team.Member,
     shadow: { fuxi: Team.Member; pangu: Team.Member },
+    deps: { appTeammates: ReadonlyArray<AppTeammatesSnippet> },
   ): { team: Team; issues: TeamYamlIssue[] } {
     const issues: TeamYamlIssue[] = [];
     const pushIssue = (id: string, message: string, errorText: string): void => {
       issues.push({ id, message, errorText });
     };
+
+    const appMembersByAppId = new Map<string, Record<string, unknown>>();
+    for (const snip of deps.appTeammates) {
+      appMembersByAppId.set(snip.appId, snip.members);
+    }
 
     const teamObj: Record<string, unknown> = (() => {
       if (isRecordValue(obj)) return obj;
@@ -1839,9 +1812,9 @@ export namespace Team {
         continue;
       }
 
-      // Cross-app teammate reference (draft): members.<id>.from + (use|import).
-      // v0 behavior: fail-open, only surface Problems; runtime still treats the member as local.
-      {
+      // Cross-app teammate reference (v0): members.<id>.from + (use|import).
+      // Fail-open: surface Problems, but keep Team usable.
+      const effectiveRaw: Record<string, unknown> = (() => {
         const memberObj = raw;
         const hasFrom = hasOwnKey(memberObj, 'from');
         const hasUse = hasOwnKey(memberObj, 'use');
@@ -1851,8 +1824,7 @@ export namespace Team {
         const importRaw = hasImport ? memberObj['import'] : undefined;
 
         // Problem id should stay short and stable: it is a UI address, not a stack trace.
-        // During the transition, team definitions can come from multiple scopes (rtws/kernel/apps).
-        // This validator currently runs on the effective rtws `.minds/team.yaml` object.
+        // This validator runs on the effective rtws `.minds/team.yaml` object.
         const definingScopeSeg = 'rtws';
         const memberPrefix = `members/${definingScopeSeg}/${idSeg}`;
 
@@ -1862,6 +1834,7 @@ export namespace Team {
             `Invalid .minds/team.yaml: ${memberAt} cannot specify both 'use' and 'import'.`,
             `Both ${memberAt}.use and ${memberAt}.import are present; remove one.`,
           );
+          return memberObj;
         }
 
         if ((hasUse || hasImport) && !hasFrom) {
@@ -1870,40 +1843,75 @@ export namespace Team {
             `Invalid .minds/team.yaml: ${memberAt} uses cross-app member reference but is missing 'from'.`,
             `Either remove ${memberAt}.use/${memberAt}.import, or add ${memberAt}.from: <dep-app-id>.`,
           );
+          return memberObj;
         }
 
-        if (hasFrom) {
-          if (typeof fromRaw !== 'string' || fromRaw.trim() === '') {
-            pushIssue(
-              `${memberPrefix}/from/invalid`,
-              `Invalid .minds/team.yaml: ${memberAt}.from must be a non-empty string.`,
-              `Invalid ${memberAt}.from: expected non-empty string (got ${describeValueType(fromRaw)})`,
-            );
-          }
-        }
-        if (hasUse) {
-          if (typeof useRaw !== 'string' || useRaw.trim() === '') {
-            pushIssue(
-              `${memberPrefix}/use/invalid`,
-              `Invalid .minds/team.yaml: ${memberAt}.use must be a non-empty string.`,
-              `Invalid ${memberAt}.use: expected non-empty string (got ${describeValueType(useRaw)})`,
-            );
-          }
-        }
-        if (hasImport) {
-          if (typeof importRaw !== 'string' || importRaw.trim() === '') {
-            pushIssue(
-              `${memberPrefix}/import/invalid`,
-              `Invalid .minds/team.yaml: ${memberAt}.import must be a non-empty string.`,
-              `Invalid ${memberAt}.import: expected non-empty string (got ${describeValueType(importRaw)})`,
-            );
-          }
-        }
-      }
+        if (!hasFrom) return memberObj;
 
-      validateCommonModelParamMisplacements(pushIssue, `members/${idSeg}`, memberAt, raw);
+        if (typeof fromRaw !== 'string' || fromRaw.trim() === '') {
+          pushIssue(
+            `${memberPrefix}/from/invalid`,
+            `Invalid .minds/team.yaml: ${memberAt}.from must be a non-empty string.`,
+            `Invalid ${memberAt}.from: expected non-empty string (got ${describeValueType(fromRaw)})`,
+          );
+          return memberObj;
+        }
 
-      const parsedMember = parseMemberOverrides(raw, memberAt);
+        // `from`-only is accepted (v0 no-op): treat it as a local member definition.
+        if (!hasUse && !hasImport) return memberObj;
+
+        const refKind: 'use' | 'import' = hasUse ? 'use' : 'import';
+        const refRaw = hasUse ? useRaw : importRaw;
+        if (typeof refRaw !== 'string' || refRaw.trim() === '') {
+          pushIssue(
+            `${memberPrefix}/${refKind}/invalid`,
+            `Invalid .minds/team.yaml: ${memberAt}.${refKind} must be a non-empty string.`,
+            `Invalid ${memberAt}.${refKind}: expected non-empty string (got ${describeValueType(refRaw)})`,
+          );
+          return memberObj;
+        }
+
+        const fromAppId = fromRaw.trim();
+        const refMemberId = refRaw.trim();
+        const appMembers = appMembersByAppId.get(fromAppId);
+        if (!appMembers) {
+          pushIssue(
+            `${memberPrefix}/from/unresolved_app`,
+            `Invalid .minds/team.yaml: ${memberAt}.from refers to an app that is not enabled.`,
+            `App '${fromAppId}' is not enabled (or does not export teammates YAML).`,
+          );
+          return memberObj;
+        }
+
+        const sourceRaw = appMembers[refMemberId];
+        if (sourceRaw === undefined) {
+          pushIssue(
+            `${memberPrefix}/${refKind}/unresolved_member`,
+            `Invalid .minds/team.yaml: ${memberAt}.${refKind} refers to a missing member in app '${fromAppId}'.`,
+            `App '${fromAppId}' does not export member id '${refMemberId}'.`,
+          );
+          return memberObj;
+        }
+        if (!isRecordValue(sourceRaw)) {
+          pushIssue(
+            `${memberPrefix}/${refKind}/invalid_member`,
+            `Invalid app teammates YAML: member '${refMemberId}' must be an object (app '${fromAppId}').`,
+            `Expected app member '${fromAppId}.${refMemberId}' to be an object (got ${describeValueType(sourceRaw)}).`,
+          );
+          return memberObj;
+        }
+
+        const merged: Record<string, unknown> = { ...sourceRaw };
+        for (const [k, v] of Object.entries(memberObj)) {
+          if (k === 'from' || k === 'use' || k === 'import') continue;
+          merged[k] = v;
+        }
+        return merged;
+      })();
+
+      validateCommonModelParamMisplacements(pushIssue, `members/${idSeg}`, memberAt, effectiveRaw);
+
+      const parsedMember = parseMemberOverrides(effectiveRaw, memberAt);
       if (parsedMember.kind === 'error') {
         pushIssue(
           `members/${idSeg}`,

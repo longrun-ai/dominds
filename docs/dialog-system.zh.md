@@ -445,7 +445,7 @@ sequenceDiagram
 当 `askHuman({ tellaskContent: "..." })` tellask 函数被任何对话（根或子对话）自行调用时，会提出 Q4H：
 
 ```typescript
-// 来自 main/llm/driver-v2/tellask-bridge.ts
+// 来自 main/llm/kernel-driver/tellask-special.ts
 const isQ4H = callName === 'askHuman';
 ```
 
