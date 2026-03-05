@@ -4,7 +4,7 @@
  * Filesystem tools: list directories, remove directories/files, create/move paths.
  * Includes helpers for text-file detection and line counting.
  */
-import { createReadStream } from 'fs';
+import { createReadStream, type Stats } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { createInterface } from 'readline';
@@ -19,6 +19,83 @@ interface DirectoryEntry {
   size?: number;
   lines?: number;
   target?: string;
+  symlinkResolvedType?: 'dir' | 'file' | 'other' | 'broken';
+}
+
+type PathStatInfo = {
+  lstat: Stats;
+  followStat: Stats;
+  isSymlink: boolean;
+  symlinkTarget?: string;
+};
+
+async function statWithSymlinkInfo(absPath: string): Promise<PathStatInfo> {
+  const lstat = await fs.lstat(absPath);
+  if (!lstat.isSymbolicLink()) {
+    return {
+      lstat,
+      followStat: lstat,
+      isSymlink: false,
+    };
+  }
+
+  let symlinkTarget: string | undefined;
+  try {
+    symlinkTarget = await fs.readlink(absPath);
+  } catch (err: unknown) {
+    log.warn(`Failed to read symlink ${absPath}:`, err);
+  }
+
+  const followStat = await fs.stat(absPath);
+  return {
+    lstat,
+    followStat,
+    isSymlink: true,
+    symlinkTarget,
+  };
+}
+
+function symlinkTargetText(target?: string): string {
+  return target ?? '<unreadable>';
+}
+
+function symlinkFollowNotice(
+  workLanguage: string,
+  relPath: string,
+  target: string | undefined,
+  asKind: 'dir' | 'file',
+): string {
+  const kindLabel =
+    asKind === 'dir'
+      ? workLanguage === 'zh'
+        ? '目录'
+        : 'directory'
+      : workLanguage === 'zh'
+        ? '文件'
+        : 'file';
+  const targetText = symlinkTargetText(target);
+  if (workLanguage === 'zh') {
+    return `🔗 说明：\`${relPath}\` 是符号链接（→ \`${targetText}\`），已按${kindLabel}跟随处理。`;
+  }
+  return `🔗 Note: \`${relPath}\` is a symlink (→ \`${targetText}\`) and was followed as a ${kindLabel}.`;
+}
+
+function symlinkRemovalNotice(workLanguage: string, relPath: string, target?: string): string {
+  const targetText = symlinkTargetText(target);
+  if (workLanguage === 'zh') {
+    return `🔗 说明：删除的是符号链接路径 \`${relPath}\` 本身（→ \`${targetText}\`），不会直接删除其目标。`;
+  }
+  return `🔗 Note: removed symlink path \`${relPath}\` itself (→ \`${targetText}\`), not the target directly.`;
+}
+
+function appendSymlinkYamlFields(
+  lines: string[],
+  keyPrefix: string,
+  info: PathStatInfo | undefined,
+): void {
+  if (!info || !info.isSymlink) return;
+  lines.push(`${keyPrefix}_kind: symlink`);
+  lines.push(`${keyPrefix}_symlink_target: ${yamlQuote(symlinkTargetText(info.symlinkTarget))}`);
 }
 
 function formatSize(bytes: number): string {
@@ -112,6 +189,10 @@ export const listDirTool: FuncTool = {
             notDir: (p: string) => `❌ **错误**\n\n路径 \`${p}\` 不是目录。`,
             readDirFailed: (msg: string) => `❌ **错误**\n\n读取目录失败：${msg}`,
             dirHeader: '📁 **目录：**',
+            symlinkPathNotice: (p: string, target?: string) =>
+              target
+                ? `🔗 **说明：** \`${p}\` 是符号链接（→ \`${target}\`），已按目录跟随读取。`
+                : `🔗 **说明：** \`${p}\` 是符号链接，已按目录跟随读取。`,
             emptyDir: '_此目录为空。_',
             table: {
               name: '名称',
@@ -127,6 +208,10 @@ export const listDirTool: FuncTool = {
             notDir: (p: string) => `❌ **Error**\n\nPath \`${p}\` is not a directory.`,
             readDirFailed: (msg: string) => `❌ **Error**\n\nFailed to read directory: ${msg}`,
             dirHeader: '📁 **Directory:**',
+            symlinkPathNotice: (p: string, target?: string) =>
+              target
+                ? `🔗 **Note:** \`${p}\` is a symlink (→ \`${target}\`), and was followed as a directory.`
+                : `🔗 **Note:** \`${p}\` is a symlink and was followed as a directory.`,
             emptyDir: '_This directory is empty._',
             table: {
               name: 'Name',
@@ -158,9 +243,13 @@ export const listDirTool: FuncTool = {
     }
 
     try {
+      let inputPathIsSymlink = false;
+      let inputPathSymlinkTarget: string | undefined;
       try {
-        const stats = await fs.lstat(dir);
-        if (!stats.isDirectory()) {
+        const statsInfo = await statWithSymlinkInfo(dir);
+        inputPathIsSymlink = statsInfo.isSymlink;
+        inputPathSymlinkTarget = statsInfo.symlinkTarget;
+        if (!statsInfo.followStat.isDirectory()) {
           const content = labels.notDir(rel);
           return content;
         }
@@ -212,19 +301,28 @@ export const listDirTool: FuncTool = {
               const target = await fs.readlink(entryPath);
               dirEntry.target = target;
 
-              // If symlink points to a text file, count lines from the target
               try {
                 const targetStats = await fs.stat(entryPath); // Follow the symlink
-                if (targetStats.isFile() && isTextFile(entry.name)) {
+                if (targetStats.isDirectory()) {
+                  dirEntry.symlinkResolvedType = 'dir';
+                } else if (targetStats.isFile()) {
+                  dirEntry.symlinkResolvedType = 'file';
+                } else {
+                  dirEntry.symlinkResolvedType = 'other';
+                }
+
+                // If symlink points to a text file, count lines from the target
+                if (targetStats.isFile() && (isTextFile(entry.name) || isTextFile(target))) {
                   dirEntry.lines = await countLines(entryPath);
                 }
               } catch (err) {
                 log.warn(`Failed to stat symlink target ${entryPath}:`, err);
-                // Target doesn't exist or can't be accessed
+                dirEntry.symlinkResolvedType = 'broken';
               }
             } catch (err) {
               log.warn(`Failed to read symlink ${entryPath}:`, err);
               dirEntry.target = '<unreadable>';
+              dirEntry.symlinkResolvedType = 'other';
             }
           } else {
             dirEntry.type = 'other';
@@ -249,6 +347,9 @@ export const listDirTool: FuncTool = {
 
       // Create markdown table for directory entries
       let markdown = `${labels.dirHeader} \`${relativeDir}\`\n\n`;
+      if (inputPathIsSymlink) {
+        markdown += `${labels.symlinkPathNotice(rel, inputPathSymlinkTarget)}\n\n`;
+      }
 
       if (data.length === 0) {
         markdown += labels.emptyDir;
@@ -268,7 +369,11 @@ export const listDirTool: FuncTool = {
 
           const sizeStr = entry.size ? formatSize(entry.size) : '-';
           const linesStr = entry.lines ? entry.lines.toString() : '-';
-          const targetStr = entry.target ? `→ ${entry.target}` : '-';
+          const targetTypeStr =
+            entry.type === 'symlink' && entry.symlinkResolvedType
+              ? ` (${entry.symlinkResolvedType})`
+              : '';
+          const targetStr = entry.target ? `→ ${entry.target}${targetTypeStr}` : '-';
 
           markdown += `| ${typeIcon} \`${entry.name}\` | ${entry.type} | ${sizeStr} | ${linesStr} | ${targetStr} |\n`;
         }
@@ -378,23 +483,30 @@ export const rmDirTool: FuncTool = {
     }
 
     try {
+      let pathInfo: PathStatInfo | undefined;
       // Check if path exists and is a directory
-      const stats = await fs.lstat(targetPath);
-      if (!stats.isDirectory()) {
-        return labels.notDir(rel);
+      pathInfo = await statWithSymlinkInfo(targetPath);
+      const followNotice = pathInfo.isSymlink
+        ? `\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}`
+        : '';
+      if (!pathInfo.followStat.isDirectory()) {
+        return `${labels.notDir(rel)}${followNotice}`;
       }
 
       // Check if directory is empty when not using recursive
       if (!recursive) {
         const entries = await fs.readdir(targetPath);
         if (entries.length > 0) {
-          return labels.notEmpty(rel);
+          return `${labels.notEmpty(rel)}${followNotice}`;
         }
       }
 
       // Node.js >=22+ types deprecate recursive rmdir in favor of rm.
       await fs.rm(targetPath, { recursive, force: false });
 
+      if (pathInfo.isSymlink) {
+        return `${labels.removed(rel)}\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}\n\n${symlinkRemovalNotice(workLanguage, rel, pathInfo.symlinkTarget)}`;
+      }
       return labels.removed(rel);
     } catch (error: unknown) {
       if (
@@ -473,15 +585,22 @@ export const rmFileTool: FuncTool = {
     }
 
     try {
+      let pathInfo: PathStatInfo | undefined;
       // Check if path exists and is a file
-      const stats = await fs.lstat(targetPath);
-      if (!stats.isFile()) {
-        return labels.notFile(rel);
+      pathInfo = await statWithSymlinkInfo(targetPath);
+      const followNotice = pathInfo.isSymlink
+        ? `\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'file')}`
+        : '';
+      if (!pathInfo.followStat.isFile()) {
+        return `${labels.notFile(rel)}${followNotice}`;
       }
 
       // Remove the file
       await fs.unlink(targetPath);
 
+      if (pathInfo.isSymlink) {
+        return `${labels.removed(rel)}\n\n${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'file')}\n\n${symlinkRemovalNotice(workLanguage, rel, pathInfo.symlinkTarget)}`;
+      }
       return labels.removed(rel);
     } catch (error: unknown) {
       if (
@@ -592,7 +711,7 @@ export const mkDirTool: FuncTool = {
     }
 
     try {
-      const st = await fs.lstat(targetPath).catch((err: unknown) => {
+      const pathInfo = await statWithSymlinkInfo(targetPath).catch((err: unknown) => {
         if (
           typeof err === 'object' &&
           err !== null &&
@@ -603,27 +722,33 @@ export const mkDirTool: FuncTool = {
         }
         throw err;
       });
-      if (st) {
-        if (!st.isDirectory()) {
-          const yaml = [
+      if (pathInfo) {
+        const symlinkSummary =
+          pathInfo.isSymlink
+            ? ` ${symlinkFollowNotice(workLanguage, rel, pathInfo.symlinkTarget, 'dir')}`
+            : '';
+        if (!pathInfo.followStat.isDirectory()) {
+          const yamlLines = [
             `status: error`,
             `path: ${yamlQuote(rel)}`,
             `error: PATH_EXISTS_NOT_DIR`,
             `summary: ${yamlQuote(
               workLanguage === 'zh'
-                ? 'Mk-dir failed: path exists and is not a directory.'
-                : 'Mk-dir failed: path exists and is not a directory.',
+                ? `Mk-dir failed: path exists and is not a directory.${symlinkSummary}`
+                : `Mk-dir failed: path exists and is not a directory.${symlinkSummary}`,
             )}`,
-          ].join('\n');
-          return formatYamlCodeBlock(yaml);
+          ];
+          appendSymlinkYamlFields(yamlLines, 'path', pathInfo);
+          return formatYamlCodeBlock(yamlLines.join('\n'));
         }
-        const yaml = [
+        const yamlLines = [
           `status: ok`,
           `path: ${yamlQuote(rel)}`,
           `created: false`,
-          `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).`)}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+          `summary: ${yamlQuote(`Mk-dir: ${rel} (parents=${parents}).${symlinkSummary}`)}`,
+        ];
+        appendSymlinkYamlFields(yamlLines, 'path', pathInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
       await fs.mkdir(targetPath, { recursive: parents });
@@ -706,37 +831,46 @@ export const moveFileTool: FuncTool = {
     }
 
     try {
-      const st = await fs.lstat(absFrom);
-      if (!st.isFile()) {
-        const yaml = [
+      const fromInfo = await statWithSymlinkInfo(absFrom);
+      const fromSymlinkSummary = fromInfo.isSymlink
+        ? ` ${symlinkFollowNotice(workLanguage, from, fromInfo.symlinkTarget, 'file')}`
+        : '';
+      if (!fromInfo.followStat.isFile()) {
+        const yamlLines = [
           `status: error`,
           `from: ${yamlQuote(from)}`,
           `to: ${yamlQuote(to)}`,
           `error: FROM_NOT_FILE`,
           `summary: ${yamlQuote(
             workLanguage === 'zh'
-              ? 'Move-file failed: from is not a file.'
-              : 'Move-file failed: from is not a file.',
+              ? `Move-file failed: from is not a file.${fromSymlinkSummary}`
+              : `Move-file failed: from is not a file.${fromSymlinkSummary}`,
           )}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+        ];
+        appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
       const toParent = path.dirname(absTo);
-      const toParentSt = await fs.lstat(toParent).catch(() => undefined);
-      if (!toParentSt || !toParentSt.isDirectory()) {
-        const yaml = [
+      const toParentInfo = await statWithSymlinkInfo(toParent).catch(() => undefined);
+      const toParentSymlinkSummary =
+        toParentInfo && toParentInfo.isSymlink
+          ? ` ${symlinkFollowNotice(workLanguage, path.relative(cwd, toParent) || '.', toParentInfo.symlinkTarget, 'dir')}`
+          : '';
+      if (!toParentInfo || !toParentInfo.followStat.isDirectory()) {
+        const yamlLines = [
           `status: error`,
           `from: ${yamlQuote(from)}`,
           `to: ${yamlQuote(to)}`,
           `error: TO_PARENT_NOT_DIR`,
           `summary: ${yamlQuote(
             workLanguage === 'zh'
-              ? 'Move-file failed: destination parent directory does not exist. Use mk_dir first.'
-              : 'Move-file failed: destination parent directory does not exist. Use mk_dir first.',
+              ? `Move-file failed: destination parent directory does not exist. Use mk_dir first.${toParentSymlinkSummary}`
+              : `Move-file failed: destination parent directory does not exist. Use mk_dir first.${toParentSymlinkSummary}`,
           )}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+        ];
+        appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
       const toExists = await fs
@@ -754,7 +888,7 @@ export const moveFileTool: FuncTool = {
           throw err;
         });
       if (toExists) {
-        const yaml = [
+        const yamlLines = [
           `status: error`,
           `from: ${yamlQuote(from)}`,
           `to: ${yamlQuote(to)}`,
@@ -764,18 +898,22 @@ export const moveFileTool: FuncTool = {
               ? 'Move-file failed: destination already exists.'
               : 'Move-file failed: destination already exists.',
           )}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+        ];
+        appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
+        appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
       await fs.rename(absFrom, absTo);
-      const yaml = [
+      const yamlLines = [
         `status: ok`,
         `from: ${yamlQuote(from)}`,
         `to: ${yamlQuote(to)}`,
-        `summary: ${yamlQuote(`Move-file: ${from} \u2192 ${to}.`)}`,
-      ].join('\n');
-      return formatYamlCodeBlock(yaml);
+        `summary: ${yamlQuote(`Move-file: ${from} \u2192 ${to}.${fromSymlinkSummary}${toParentSymlinkSummary}`)}`,
+      ];
+      appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
+      appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
+      return formatYamlCodeBlock(yamlLines.join('\n'));
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
@@ -849,37 +987,46 @@ export const moveDirTool: FuncTool = {
     }
 
     try {
-      const st = await fs.lstat(absFrom);
-      if (!st.isDirectory()) {
-        const yaml = [
+      const fromInfo = await statWithSymlinkInfo(absFrom);
+      const fromSymlinkSummary = fromInfo.isSymlink
+        ? ` ${symlinkFollowNotice(workLanguage, from, fromInfo.symlinkTarget, 'dir')}`
+        : '';
+      if (!fromInfo.followStat.isDirectory()) {
+        const yamlLines = [
           `status: error`,
           `from: ${yamlQuote(from)}`,
           `to: ${yamlQuote(to)}`,
           `error: FROM_NOT_DIR`,
           `summary: ${yamlQuote(
             workLanguage === 'zh'
-              ? 'Move-dir failed: from is not a directory.'
-              : 'Move-dir failed: from is not a directory.',
+              ? `Move-dir failed: from is not a directory.${fromSymlinkSummary}`
+              : `Move-dir failed: from is not a directory.${fromSymlinkSummary}`,
           )}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+        ];
+        appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
       const toParent = path.dirname(absTo);
-      const toParentSt = await fs.lstat(toParent).catch(() => undefined);
-      if (!toParentSt || !toParentSt.isDirectory()) {
-        const yaml = [
+      const toParentInfo = await statWithSymlinkInfo(toParent).catch(() => undefined);
+      const toParentSymlinkSummary =
+        toParentInfo && toParentInfo.isSymlink
+          ? ` ${symlinkFollowNotice(workLanguage, path.relative(cwd, toParent) || '.', toParentInfo.symlinkTarget, 'dir')}`
+          : '';
+      if (!toParentInfo || !toParentInfo.followStat.isDirectory()) {
+        const yamlLines = [
           `status: error`,
           `from: ${yamlQuote(from)}`,
           `to: ${yamlQuote(to)}`,
           `error: TO_PARENT_NOT_DIR`,
           `summary: ${yamlQuote(
             workLanguage === 'zh'
-              ? 'Move-dir failed: destination parent directory does not exist. Use mk_dir first.'
-              : 'Move-dir failed: destination parent directory does not exist. Use mk_dir first.',
+              ? `Move-dir failed: destination parent directory does not exist. Use mk_dir first.${toParentSymlinkSummary}`
+              : `Move-dir failed: destination parent directory does not exist. Use mk_dir first.${toParentSymlinkSummary}`,
           )}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+        ];
+        appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
       const toExists = await fs
@@ -897,7 +1044,7 @@ export const moveDirTool: FuncTool = {
           throw err;
         });
       if (toExists) {
-        const yaml = [
+        const yamlLines = [
           `status: error`,
           `from: ${yamlQuote(from)}`,
           `to: ${yamlQuote(to)}`,
@@ -907,20 +1054,27 @@ export const moveDirTool: FuncTool = {
               ? 'Move-dir failed: destination already exists.'
               : 'Move-dir failed: destination already exists.',
           )}`,
-        ].join('\n');
-        return formatYamlCodeBlock(yaml);
+        ];
+        appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
+        appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
+        return formatYamlCodeBlock(yamlLines.join('\n'));
       }
 
-      const movedEntryCount = await countDirEntries(absFrom);
+      const movedEntryCount = fromInfo.isSymlink ? 1 : await countDirEntries(absFrom);
       await fs.rename(absFrom, absTo);
-      const yaml = [
+      const symlinkMoveNotice = fromInfo.isSymlink
+        ? ` ${symlinkRemovalNotice(workLanguage, from, fromInfo.symlinkTarget)}`
+        : '';
+      const yamlLines = [
         `status: ok`,
         `from: ${yamlQuote(from)}`,
         `to: ${yamlQuote(to)}`,
         `moved_entry_count: ${movedEntryCount}`,
-        `summary: ${yamlQuote(`Move-dir: ${from} \u2192 ${to} (${movedEntryCount} entries).`)}`,
-      ].join('\n');
-      return formatYamlCodeBlock(yaml);
+        `summary: ${yamlQuote(`Move-dir: ${from} \u2192 ${to} (${movedEntryCount} entries).${fromSymlinkSummary}${toParentSymlinkSummary}${symlinkMoveNotice}`)}`,
+      ];
+      appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
+      appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
+      return formatYamlCodeBlock(yamlLines.join('\n'));
     } catch (error: unknown) {
       const yaml = [
         `status: error`,
