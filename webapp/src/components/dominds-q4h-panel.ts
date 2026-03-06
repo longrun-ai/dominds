@@ -931,7 +931,10 @@ export class DomindsQ4HPanel extends HTMLElement {
         </div>
         <div class="q4h-question-body">
           <div class="q4h-tellask">
-            <div class="q4h-tellask-body">${renderDomindsMarkdown(question.tellaskContent, { kind: 'chat' })}</div>
+            <div class="q4h-tellask-body">${renderDomindsMarkdown(question.tellaskContent, {
+              kind: 'chat',
+              allowRelativeWorkspaceLinks: true,
+            })}</div>
           </div>
         </div>
       </div>

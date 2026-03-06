@@ -356,7 +356,7 @@ export async function handleWorkspaceFilePreviewPage(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dominds File Preview</title>
+    <title>Dominds Workspace Preview</title>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
@@ -369,7 +369,9 @@ export async function handleWorkspaceFilePreviewPage(
         background: #0f172a;
         color: #e2e8f0;
       }
-      .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+      a { color: #93c5fd; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
       .panel {
         border: 1px solid #334155;
         border-radius: 10px;
@@ -405,78 +407,238 @@ export async function handleWorkspaceFilePreviewPage(
         background: #1f1010;
         color: #fecaca;
       }
-      pre {
-        margin: 0;
+      .code-wrap, .dir-wrap {
         border-radius: 8px;
         border: 1px solid #334155;
         background: #0b1220;
         overflow: auto;
         max-height: calc(100vh - 190px);
       }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+      .code-view {
+        min-width: max-content;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .code-line {
+        display: grid;
+        grid-template-columns: auto 1fr;
+      }
+      .code-line:hover {
+        background: rgba(148, 163, 184, 0.08);
+      }
+      .code-line.target-line {
+        background: rgba(245, 158, 11, 0.14);
+      }
+      .line-no {
+        position: sticky;
+        left: 0;
+        padding: 0 12px;
+        min-width: 56px;
+        box-sizing: border-box;
+        text-align: right;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        color: #64748b;
+        background: #0f172a;
+        border-right: 1px solid #1e293b;
+      }
+      .code-line.target-line .line-no {
+        color: #fbbf24;
+        background: #1c1917;
+      }
+      .line-content {
+        display: block;
+        margin: 0;
+        padding: 0 12px;
+        white-space: pre;
+        tab-size: 2;
+      }
+      .line-content:empty::after {
+        content: ' ';
+      }
+      .target-col {
+        background: #f59e0b;
+        color: #111827;
+        border-radius: 3px;
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.45);
+      }
+      .target-col-caret {
+        display: inline-block;
+        width: 2px;
+        min-height: 1.2em;
+        vertical-align: text-bottom;
+        background: #f59e0b;
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+      }
+      .dir-list {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .dir-list thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #111827;
+        color: #94a3b8;
+        font-weight: 600;
+        text-align: left;
+        border-bottom: 1px solid #334155;
+      }
+      .dir-list th, .dir-list td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #1e293b;
+        vertical-align: top;
+      }
+      .dir-list tbody tr:hover {
+        background: rgba(148, 163, 184, 0.08);
+      }
+      .entry-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .entry-icon {
+        width: 1.2em;
+        text-align: center;
+        color: #cbd5e1;
+      }
+      .entry-label {
+        word-break: break-word;
+      }
+      .entry-type, .entry-size {
+        white-space: nowrap;
+        color: #94a3b8;
+      }
+      .entry-note {
+        color: #94a3b8;
+        font-size: 12px;
+        word-break: break-word;
+      }
+      .entry-note.warn {
+        color: #fca5a5;
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
       <div class="panel">
         <div class="head">
-          <div id="file-path" class="path">Loading...</div>
-          <div id="file-meta" class="meta"></div>
+          <div id="preview-path" class="path">Loading...</div>
+          <div id="preview-meta" class="meta"></div>
         </div>
         <div class="body">
-          <div id="status" class="status">Loading file...</div>
-          <pre id="code-wrap" style="display:none;"><code id="code"></code></pre>
+          <div id="status" class="status">Loading workspace entry...</div>
+          <div id="code-wrap" class="code-wrap" style="display:none;">
+            <div id="code-view" class="code-view"></div>
+          </div>
+          <div id="dir-wrap" class="dir-wrap" style="display:none;">
+            <table class="dir-list">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="dir-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
     <script>
       (function () {
-        var filePathEl = document.getElementById('file-path');
-        var fileMetaEl = document.getElementById('file-meta');
+        var pathEl = document.getElementById('preview-path');
+        var metaEl = document.getElementById('preview-meta');
         var statusEl = document.getElementById('status');
         var codeWrapEl = document.getElementById('code-wrap');
-        var codeEl = document.getElementById('code');
-        if (!filePathEl || !fileMetaEl || !statusEl || !codeWrapEl || !codeEl) return;
+        var codeViewEl = document.getElementById('code-view');
+        var dirWrapEl = document.getElementById('dir-wrap');
+        var dirBodyEl = document.getElementById('dir-body');
+        if (
+          !pathEl ||
+          !metaEl ||
+          !statusEl ||
+          !codeWrapEl ||
+          !codeViewEl ||
+          !dirWrapEl ||
+          !dirBodyEl
+        ) return;
 
         function setError(message) {
           statusEl.classList.add('err');
           statusEl.textContent = message;
+          statusEl.style.display = 'block';
           codeWrapEl.style.display = 'none';
+          dirWrapEl.style.display = 'none';
         }
 
-        function normalizeRelativePath(input) {
+        function resetViews() {
+          statusEl.classList.remove('err');
+          codeWrapEl.style.display = 'none';
+          dirWrapEl.style.display = 'none';
+          codeViewEl.innerHTML = '';
+          dirBodyEl.innerHTML = '';
+        }
+
+        function showReady() {
+          statusEl.style.display = 'none';
+        }
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
+        function normalizeRelativePath(input, allowRoot) {
           if (typeof input !== 'string') return null;
-          if (input.length < 1) return null;
           if (input.indexOf('\\\\') >= 0) return null;
           if (/[\\u0000]/.test(input)) return null;
           if (input.charAt(0) === '/') return null;
-          var parts = input.split('/').filter(function (s) { return s.length > 0; });
-          if (parts.length < 1) return null;
+          var parts = input.split('/');
+          var normalized = [];
           for (var i = 0; i < parts.length; i += 1) {
             var seg = parts[i];
-            if (seg === '.' || seg === '..') return null;
+            if (!seg || seg === '.') continue;
+            if (seg === '..') {
+              if (normalized.length < 1) return null;
+              normalized.pop();
+              continue;
+            }
+            normalized.push(seg);
           }
-          return parts.join('/');
+          if (normalized.length < 1) return allowRoot ? '' : null;
+          return normalized.join('/');
         }
 
         function parseRelativePathFromLocation() {
           var pathname = window.location.pathname || '';
+          if (pathname === '/f' || pathname === '/f/') return '';
           if (!pathname.startsWith('/f/')) return null;
           var tail = pathname.slice('/f/'.length);
-          if (tail.length < 1) return null;
+          if (tail.length < 1) return '';
           var rawParts = tail.split('/');
-          if (rawParts.some(function (s) { return s.length < 1; })) return null;
           var decodedParts = [];
           for (var i = 0; i < rawParts.length; i += 1) {
+            var rawPart = rawParts[i];
+            if (rawPart.length < 1) continue;
             var decoded;
-            try { decoded = decodeURIComponent(rawParts[i]); } catch { return null; }
-            if (decoded.length < 1) return null;
+            try { decoded = decodeURIComponent(rawPart); } catch { return null; }
+            if (decoded.length < 1) continue;
             if (decoded.indexOf('/') >= 0 || decoded.indexOf('\\\\') >= 0 || /[\\u0000]/.test(decoded)) return null;
-            if (decoded === '.' || decoded === '..') return null;
             decodedParts.push(decoded);
           }
-          return normalizeRelativePath(decodedParts.join('/'));
+          return normalizeRelativePath(decodedParts.join('/'), true);
         }
 
         function parsePositiveInt(raw) {
@@ -500,15 +662,206 @@ export async function handleWorkspaceFilePreviewPage(
         }
 
         function formatBytes(size) {
-          if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return null;
+          if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return '';
           if (size < 1024) return String(size) + ' B';
           if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KiB';
           return (size / (1024 * 1024)).toFixed(1) + ' MiB';
         }
 
-        var fileRelPath = parseRelativePathFromLocation();
-        if (!fileRelPath) {
-          filePathEl.textContent = 'Invalid file path';
+        function buildPreviewHref(relativePath) {
+          if (typeof relativePath !== 'string') return '/f';
+          var normalized = normalizeRelativePath(relativePath, true);
+          if (normalized === null || normalized.length < 1) return '/f';
+          return '/f/' + normalized.split('/').map(function (segment) {
+            return encodeURIComponent(segment);
+          }).join('/');
+        }
+
+        function parentPathOf(relativePath) {
+          if (relativePath.length < 1) return null;
+          var parts = relativePath.split('/');
+          parts.pop();
+          return parts.join('/');
+        }
+
+        function renderHighlightedSegment(raw, lang) {
+          if (typeof raw !== 'string' || raw.length < 1) return '';
+          if (
+            window.hljs &&
+            typeof window.hljs.highlight === 'function' &&
+            typeof window.hljs.getLanguage === 'function' &&
+            lang !== 'plaintext' &&
+            window.hljs.getLanguage(lang)
+          ) {
+            return window.hljs.highlight(raw, { language: lang, ignoreIllegals: true }).value;
+          }
+          return escapeHtml(raw);
+        }
+
+        function buildLineHtml(rawLine, lang, isTargetLine, targetColumn) {
+          if (!isTargetLine || targetColumn === null) {
+            return rawLine.length > 0 ? renderHighlightedSegment(rawLine, lang) : '';
+          }
+          var clampedColumn = targetColumn;
+          if (clampedColumn < 1) clampedColumn = 1;
+          if (clampedColumn > rawLine.length + 1) clampedColumn = rawLine.length + 1;
+          var splitIndex = clampedColumn - 1;
+          var before = rawLine.slice(0, splitIndex);
+          var after = rawLine.slice(splitIndex + 1);
+          if (splitIndex >= rawLine.length) {
+            return renderHighlightedSegment(rawLine, lang) + '<span class="target-col-caret" aria-hidden="true"></span>';
+          }
+          var targetChar = rawLine.charAt(splitIndex);
+          return (
+            renderHighlightedSegment(before, lang) +
+            '<span class="target-col">' + renderHighlightedSegment(targetChar, lang) + '</span>' +
+            renderHighlightedSegment(after, lang)
+          );
+        }
+
+        function renderFile(raw, lang, targetLine, targetColumn) {
+          codeViewEl.innerHTML = '';
+          var lines = raw.split('\\n');
+          var fragment = document.createDocumentFragment();
+          var selectedLineEl = null;
+          for (var i = 0; i < lines.length; i += 1) {
+            var lineNumber = i + 1;
+            var rawLine = lines[i];
+            var rowEl = document.createElement('div');
+            rowEl.className = 'code-line' + (lineNumber === targetLine ? ' target-line' : '');
+            rowEl.setAttribute('data-line', String(lineNumber));
+
+            var lineNoEl = document.createElement('span');
+            lineNoEl.className = 'line-no';
+            lineNoEl.textContent = String(lineNumber);
+            lineNoEl.setAttribute('aria-hidden', 'true');
+
+            var lineContentEl = document.createElement('span');
+            lineContentEl.className = 'line-content hljs';
+            lineContentEl.innerHTML = buildLineHtml(rawLine, lang, lineNumber === targetLine, targetColumn);
+
+            rowEl.appendChild(lineNoEl);
+            rowEl.appendChild(lineContentEl);
+            fragment.appendChild(rowEl);
+            if (lineNumber === targetLine) {
+              selectedLineEl = rowEl;
+            }
+          }
+          codeViewEl.appendChild(fragment);
+          codeWrapEl.style.display = 'block';
+          if (selectedLineEl && typeof selectedLineEl.scrollIntoView === 'function') {
+            selectedLineEl.scrollIntoView({ block: 'center' });
+          }
+        }
+
+        function createEntryLink(relativePath, label, icon) {
+          var link = document.createElement('a');
+          link.href = buildPreviewHref(relativePath);
+          link.className = 'entry-name';
+
+          var iconEl = document.createElement('span');
+          iconEl.className = 'entry-icon';
+          iconEl.textContent = icon;
+
+          var labelEl = document.createElement('span');
+          labelEl.className = 'entry-label';
+          labelEl.textContent = label;
+
+          link.appendChild(iconEl);
+          link.appendChild(labelEl);
+          return link;
+        }
+
+        function describeEntryNote(entry) {
+          if (!entry || entry.isSymlink !== true) return '';
+          if (typeof entry.symlinkTarget !== 'string' || entry.symlinkTarget.length < 1) return 'symlink';
+          return 'symlink → ' + entry.symlinkTarget;
+        }
+
+        function createDirRow(entry) {
+          var row = document.createElement('tr');
+
+          var nameCell = document.createElement('td');
+          var label = entry.name + (entry.kind === 'directory' ? '/' : '');
+          var icon = entry.kind === 'directory' ? '📁' : entry.kind === 'file' ? '📄' : '⛔';
+          if (entry.kind === 'directory' || entry.kind === 'file') {
+            nameCell.appendChild(createEntryLink(entry.path, label, icon));
+          } else {
+            var nameWrap = document.createElement('span');
+            nameWrap.className = 'entry-name';
+            var iconEl = document.createElement('span');
+            iconEl.className = 'entry-icon';
+            iconEl.textContent = icon;
+            var labelEl = document.createElement('span');
+            labelEl.className = 'entry-label';
+            labelEl.textContent = label;
+            nameWrap.appendChild(iconEl);
+            nameWrap.appendChild(labelEl);
+            nameCell.appendChild(nameWrap);
+          }
+
+          var typeCell = document.createElement('td');
+          typeCell.className = 'entry-type';
+          typeCell.textContent = entry.kind;
+
+          var sizeCell = document.createElement('td');
+          sizeCell.className = 'entry-size';
+          sizeCell.textContent = typeof entry.size === 'number' ? formatBytes(entry.size) : '';
+
+          var noteCell = document.createElement('td');
+          var note = describeEntryNote(entry);
+          if (typeof entry.resolvedKind === 'string' && entry.resolvedKind !== entry.kind) {
+            note = note
+              ? note + ' | ' + entry.resolvedKind
+              : entry.resolvedKind;
+          }
+          if (note) {
+            var noteEl = document.createElement('div');
+            noteEl.className = 'entry-note' + (entry.kind === 'other' ? ' warn' : '');
+            noteEl.textContent = note;
+            noteCell.appendChild(noteEl);
+          }
+
+          row.appendChild(nameCell);
+          row.appendChild(typeCell);
+          row.appendChild(sizeCell);
+          row.appendChild(noteCell);
+          return row;
+        }
+
+        function renderDirectory(currentPath, entries) {
+          dirBodyEl.innerHTML = '';
+          var fragment = document.createDocumentFragment();
+
+          var parentPath = parentPathOf(currentPath);
+          if (parentPath !== null) {
+            var parentRow = document.createElement('tr');
+            var nameCell = document.createElement('td');
+            nameCell.appendChild(createEntryLink(parentPath, '../', '↩'));
+            var typeCell = document.createElement('td');
+            typeCell.className = 'entry-type';
+            typeCell.textContent = 'directory';
+            var sizeCell = document.createElement('td');
+            sizeCell.className = 'entry-size';
+            var noteCell = document.createElement('td');
+            parentRow.appendChild(nameCell);
+            parentRow.appendChild(typeCell);
+            parentRow.appendChild(sizeCell);
+            parentRow.appendChild(noteCell);
+            fragment.appendChild(parentRow);
+          }
+
+          for (var i = 0; i < entries.length; i += 1) {
+            fragment.appendChild(createDirRow(entries[i]));
+          }
+
+          dirBodyEl.appendChild(fragment);
+          dirWrapEl.style.display = 'block';
+        }
+
+        var previewPath = parseRelativePathFromLocation();
+        if (previewPath === null) {
+          pathEl.textContent = 'Invalid preview path';
           setError('Invalid preview path. Expected /f/<rtws-relative-path> and no ..');
           return;
         }
@@ -523,13 +876,11 @@ export async function handleWorkspaceFilePreviewPage(
           (typeof authFromUrl === 'string' && authFromUrl.trim() !== '' ? authFromUrl.trim() : null) ||
           (typeof authFromStorage === 'string' && authFromStorage.trim() !== '' ? authFromStorage.trim() : null);
 
-        filePathEl.textContent = fileRelPath;
-        var meta = [];
+        pathEl.textContent = previewPath.length > 0 ? previewPath : '.';
         if (line !== null) {
-          meta.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
-        }
-        if (meta.length > 0) {
-          fileMetaEl.textContent = meta.join(' | ');
+          metaEl.textContent = 'Line ' + String(line) + (column !== null ? ':' + String(column) : '');
+        } else {
+          metaEl.textContent = '';
         }
 
         var headers = { Accept: 'application/json' };
@@ -537,7 +888,8 @@ export async function handleWorkspaceFilePreviewPage(
           headers['Authorization'] = 'Bearer ' + token;
         }
 
-        fetch('/api/workspace/file?file=' + encodeURIComponent(fileRelPath), {
+        resetViews();
+        fetch('/api/workspace/entry?path=' + encodeURIComponent(previewPath), {
           method: 'GET',
           headers: headers,
           cache: 'no-store'
@@ -548,7 +900,7 @@ export async function handleWorkspaceFilePreviewPage(
             });
           })
           .then(function (result) {
-            if (!result.ok || !result.payload || result.payload.success !== true || typeof result.payload.raw !== 'string') {
+            if (!result.ok || !result.payload || result.payload.success !== true || typeof result.payload.kind !== 'string') {
               var msg = result.payload && typeof result.payload.error === 'string' && result.payload.error !== ''
                 ? result.payload.error
                 : ('Request failed: HTTP ' + String(result.status));
@@ -556,24 +908,37 @@ export async function handleWorkspaceFilePreviewPage(
               return;
             }
 
-            statusEl.style.display = 'none';
-            codeWrapEl.style.display = 'block';
-            var lang = detectLang(fileRelPath);
-            var sizeText = formatBytes(result.payload.size);
-            var metaItems = [];
-            if (line !== null) metaItems.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
-            metaItems.push(lang);
-            if (sizeText !== null) metaItems.push(sizeText);
-            fileMetaEl.textContent = metaItems.join(' | ');
+            showReady();
+            pathEl.textContent =
+              typeof result.payload.path === 'string' && result.payload.path.length > 0
+                ? result.payload.path
+                : '.';
 
-            codeEl.className = 'language-' + lang;
-            codeEl.textContent = result.payload.raw;
-            if (window.hljs && typeof window.hljs.highlightElement === 'function') {
-              window.hljs.highlightElement(codeEl);
+            if (result.payload.kind === 'file' && typeof result.payload.raw === 'string') {
+              var lang = detectLang(typeof result.payload.path === 'string' ? result.payload.path : previewPath);
+              var sizeText = formatBytes(result.payload.size);
+              var metaItems = [];
+              if (line !== null) metaItems.push('Line ' + String(line) + (column !== null ? ':' + String(column) : ''));
+              metaItems.push(lang);
+              if (sizeText) metaItems.push(sizeText);
+              metaEl.textContent = metaItems.join(' | ');
+              renderFile(result.payload.raw, lang, line, column);
+              return;
             }
+
+            if (result.payload.kind === 'directory' && Array.isArray(result.payload.entries)) {
+              metaEl.textContent = 'directory | ' + String(result.payload.entries.length) + ' entries';
+              renderDirectory(
+                typeof result.payload.path === 'string' ? result.payload.path : previewPath,
+                result.payload.entries,
+              );
+              return;
+            }
+
+            setError('Invalid preview payload');
           })
           .catch(function (err) {
-            var msg = err && typeof err.message === 'string' ? err.message : 'Failed to load file';
+            var msg = err && typeof err.message === 'string' ? err.message : 'Failed to load workspace entry';
             setError(msg);
           });
       })();
@@ -851,9 +1216,9 @@ export async function handleApiRoute(
       return await handleReadDocsMarkdown(req, res);
     }
 
-    // Read workspace file content for markdown file-link preview.
-    if (pathname === '/api/workspace/file' && req.method === 'GET') {
-      return await handleReadWorkspaceFile(req, res);
+    // Read workspace file or directory content for markdown preview links.
+    if (pathname === '/api/workspace/entry' && req.method === 'GET') {
+      return await handleReadWorkspaceEntry(req, res);
     }
 
     if (pathname === '/api/snippets/builtin' && req.method === 'GET') {
@@ -1128,6 +1493,8 @@ async function handleReadDocsMarkdown(req: IncomingMessage, res: ServerResponse)
 }
 
 const WORKSPACE_FILE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+type WorkspacePreviewEntryKind = 'directory' | 'file' | 'other';
+type WorkspacePreviewResolvedKind = WorkspacePreviewEntryKind | 'broken' | 'outside_rtws';
 
 function ensurePathSuffixSeparator(input: string): string {
   if (input.endsWith(path.sep)) return input;
@@ -1139,14 +1506,19 @@ function isWithinResolvedRoot(targetAbsPath: string, rootAbsPath: string): boole
   return targetAbsPath.startsWith(ensurePathSuffixSeparator(rootAbsPath));
 }
 
-function normalizeRtwsRelativeFilePath(input: string): string | null {
+function normalizeRtwsRelativePath(
+  input: string,
+  options: Readonly<{ allowRoot: boolean }>,
+): string | null {
   const trimmed = input.trim();
-  if (trimmed.length < 1) return null;
   if (trimmed.includes('\0')) return null;
   if (trimmed.includes('\\')) return null;
   if (path.posix.isAbsolute(trimmed)) return null;
   const normalized = path.posix.normalize(trimmed);
-  if (normalized.length < 1 || normalized === '.' || normalized === '..') return null;
+  if (normalized === '..') return null;
+  if (normalized === '.' || normalized.length < 1) {
+    return options.allowRoot ? '' : null;
+  }
   if (normalized.startsWith('../')) return null;
   if (normalized.includes('/../')) return null;
   if (normalized.startsWith('/')) return null;
@@ -1157,56 +1529,218 @@ function normalizeRtwsRelativeFilePath(input: string): string | null {
   return normalized;
 }
 
-async function handleReadWorkspaceFile(
+async function getWorkspaceRootRealAbs(): Promise<string> {
+  const workspaceRootAbs = path.resolve(process.cwd());
+  try {
+    return await fsPromises.realpath(workspaceRootAbs);
+  } catch {
+    return workspaceRootAbs;
+  }
+}
+
+function classifyWorkspaceEntryKind(followStat: {
+  isDirectory: () => boolean;
+  isFile: () => boolean;
+}): WorkspacePreviewEntryKind {
+  if (followStat.isDirectory()) return 'directory';
+  if (followStat.isFile()) return 'file';
+  return 'other';
+}
+
+async function resolveWorkspacePreviewPath(pathRel: string): Promise<{
+  workspaceRootAbs: string;
+  workspaceRootRealAbs: string;
+  candidateAbsPath: string;
+  resolvedAbsPath: string;
+}> {
+  const workspaceRootAbs = path.resolve(process.cwd());
+  const workspaceRootRealAbs = await getWorkspaceRootRealAbs();
+  const candidateAbsPath =
+    pathRel.length < 1 ? workspaceRootAbs : path.resolve(workspaceRootAbs, pathRel);
+
+  if (!isWithinResolvedRoot(candidateAbsPath, workspaceRootAbs)) {
+    const error = new Error(`Workspace preview path escaped rtws: ${pathRel}`);
+    (error as Error & { code?: string }).code = 'OUTSIDE_RTWS';
+    throw error;
+  }
+
+  const resolvedAbsPath = await fsPromises.realpath(candidateAbsPath);
+  if (!isWithinResolvedRoot(resolvedAbsPath, workspaceRootRealAbs)) {
+    const error = new Error(`Workspace preview path resolved outside rtws: ${pathRel}`);
+    (error as Error & { code?: string }).code = 'OUTSIDE_RTWS';
+    throw error;
+  }
+
+  return {
+    workspaceRootAbs,
+    workspaceRootRealAbs,
+    candidateAbsPath,
+    resolvedAbsPath,
+  };
+}
+
+async function listWorkspaceDirectoryEntries(params: {
+  pathRel: string;
+  dirAbsPath: string;
+  workspaceRootRealAbs: string;
+}): Promise<
+  Array<{
+    name: string;
+    path: string;
+    kind: WorkspacePreviewEntryKind;
+    resolvedKind: WorkspacePreviewResolvedKind;
+    size?: number;
+    isSymlink: boolean;
+    symlinkTarget?: string;
+  }>
+> {
+  const entryNames = await fsPromises.readdir(params.dirAbsPath);
+  const entries = await Promise.all(
+    entryNames.map(async (name) => {
+      const childRelPath = params.pathRel.length < 1 ? name : `${params.pathRel}/${name}`;
+      const childAbsPath = path.resolve(process.cwd(), childRelPath);
+      const lstat = await fsPromises.lstat(childAbsPath);
+      const isSymlink = lstat.isSymbolicLink();
+      let symlinkTarget: string | undefined;
+      if (isSymlink) {
+        try {
+          symlinkTarget = await fsPromises.readlink(childAbsPath);
+        } catch {
+          symlinkTarget = undefined;
+        }
+      }
+
+      let resolvedKind: WorkspacePreviewResolvedKind;
+      let kind: WorkspacePreviewEntryKind;
+      let size: number | undefined;
+
+      try {
+        const resolvedChildAbsPath = await fsPromises.realpath(childAbsPath);
+        if (!isWithinResolvedRoot(resolvedChildAbsPath, params.workspaceRootRealAbs)) {
+          resolvedKind = 'outside_rtws';
+          kind = 'other';
+        } else {
+          const followStat = await fsPromises.stat(childAbsPath);
+          resolvedKind = classifyWorkspaceEntryKind(followStat);
+          kind = resolvedKind;
+          size = followStat.isFile() ? followStat.size : undefined;
+        }
+      } catch (error: unknown) {
+        if (getErrorCode(error) === 'ENOENT') {
+          resolvedKind = 'broken';
+          kind = 'other';
+        } else {
+          throw error;
+        }
+      }
+
+      return {
+        name,
+        path: childRelPath,
+        kind,
+        resolvedKind,
+        size,
+        isSymlink,
+        symlinkTarget,
+      };
+    }),
+  );
+
+  entries.sort((a, b) => {
+    const rank = (kind: WorkspacePreviewEntryKind): number => {
+      switch (kind) {
+        case 'directory':
+          return 0;
+        case 'file':
+          return 1;
+        case 'other':
+          return 2;
+      }
+    };
+    const rankDiff = rank(a.kind) - rank(b.kind);
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+
+  return entries;
+}
+
+async function handleReadWorkspaceEntry(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<boolean> {
   const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
-  const fileRaw = urlObj.searchParams.get('file');
-  const fileRelPath = typeof fileRaw === 'string' ? normalizeRtwsRelativeFilePath(fileRaw) : null;
+  const pathRaw = urlObj.searchParams.get('path');
+  const pathRel =
+    typeof pathRaw === 'string' ? normalizeRtwsRelativePath(pathRaw, { allowRoot: true }) : '';
 
-  if (fileRelPath === null) {
-    respondJson(res, 400, { success: false, error: 'Invalid file path' });
-    return true;
-  }
-
-  const workspaceRootAbs = path.resolve(process.cwd());
-  const candidateAbsPath = path.resolve(workspaceRootAbs, fileRelPath);
-
-  if (!isWithinResolvedRoot(candidateAbsPath, workspaceRootAbs)) {
-    respondJson(res, 403, {
-      success: false,
-      error: 'File path is outside rtws',
-      path: fileRelPath,
-    });
+  if (pathRel === null) {
+    respondJson(res, 400, { success: false, error: 'Invalid workspace path' });
     return true;
   }
 
   try {
-    const stat = await fsPromises.stat(candidateAbsPath);
+    const resolved = await resolveWorkspacePreviewPath(pathRel);
+    const stat = await fsPromises.stat(resolved.candidateAbsPath);
+
+    if (stat.isDirectory()) {
+      const entries = await listWorkspaceDirectoryEntries({
+        pathRel,
+        dirAbsPath: resolved.resolvedAbsPath,
+        workspaceRootRealAbs: resolved.workspaceRootRealAbs,
+      });
+      respondJson(res, 200, {
+        success: true,
+        kind: 'directory',
+        path: pathRel,
+        entries,
+      });
+      return true;
+    }
+
     if (!stat.isFile()) {
-      respondJson(res, 400, { success: false, error: 'Path must be a file', path: fileRelPath });
+      respondJson(res, 400, {
+        success: false,
+        error: 'Path must resolve to a file or directory',
+        path: pathRel,
+      });
       return true;
     }
     if (stat.size > WORKSPACE_FILE_PREVIEW_MAX_BYTES) {
       respondJson(res, 413, {
         success: false,
         error: `File too large for preview (max ${WORKSPACE_FILE_PREVIEW_MAX_BYTES} bytes)`,
-        path: fileRelPath,
+        path: pathRel,
         size: stat.size,
       });
       return true;
     }
-    const raw = await fsPromises.readFile(candidateAbsPath, 'utf-8');
-    respondJson(res, 200, { success: true, path: fileRelPath, raw, size: stat.size });
+
+    const raw = await fsPromises.readFile(resolved.candidateAbsPath, 'utf-8');
+    respondJson(res, 200, {
+      success: true,
+      kind: 'file',
+      path: pathRel,
+      raw,
+      size: stat.size,
+    });
     return true;
   } catch (error: unknown) {
-    if (getErrorCode(error) === 'ENOENT') {
-      respondJson(res, 404, { success: false, error: 'File not found', path: fileRelPath });
+    const code = getErrorCode(error);
+    if (code === 'ENOENT') {
+      respondJson(res, 404, { success: false, error: 'Path not found', path: pathRel });
       return true;
     }
-    log.error('Failed to read workspace file', error, { path: fileRelPath });
-    respondJson(res, 500, { success: false, error: 'Failed to read workspace file' });
+    if (code === 'OUTSIDE_RTWS') {
+      respondJson(res, 403, {
+        success: false,
+        error: 'Path resolves outside rtws',
+        path: pathRel,
+      });
+      return true;
+    }
+    log.error('Failed to read workspace entry', error, { path: pathRel });
+    respondJson(res, 500, { success: false, error: 'Failed to read workspace entry' });
     return true;
   }
 }

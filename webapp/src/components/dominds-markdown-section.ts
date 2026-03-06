@@ -44,7 +44,10 @@ export class DomindsMarkdownSection extends HTMLElement {
   private render(): void {
     const contentEl = this.querySelector('.markdown-content') as HTMLElement | null;
     if (contentEl) {
-      contentEl.innerHTML = renderDomindsMarkdown(this.accumulatedRawMarkdown);
+      contentEl.innerHTML = renderDomindsMarkdown(this.accumulatedRawMarkdown, {
+        kind: 'chat',
+        allowRelativeWorkspaceLinks: true,
+      });
       // Store raw content in data attribute for persistence/reconstruction
       contentEl.setAttribute('data-raw-md', this.accumulatedRawMarkdown);
     }

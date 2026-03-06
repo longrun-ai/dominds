@@ -4,7 +4,11 @@ import './dominds-code-block';
 import './dominds-math-block';
 import './dominds-mermaid-block';
 
-type MarkdownRenderKind = { kind: 'chat' } | { kind: 'tooltip' };
+type MarkdownRenderOptions = Readonly<{
+  kind: 'chat' | 'tooltip';
+  allowRelativeWorkspaceLinks?: boolean;
+  workspaceLinkBaseDir?: string;
+}>;
 type WorkspaceFileLinkTarget = {
   absolutePath: string;
   line?: number;
@@ -19,7 +23,10 @@ type MarkdownLinkToken = {
   attrGet: (name: string) => string | null;
   attrSet: (name: string, value: string) => void;
 };
-const WORKSPACE_FILE_LINK_PREFIX = '/ws/';
+type MarkdownRenderEnv = Readonly<{
+  allowRelativeWorkspaceLinks: boolean;
+  workspaceLinkBaseDir?: string;
+}>;
 const WORKSPACE_FILE_PREVIEW_ROUTE = '/f';
 const DOMINDS_RTWS_DATA_ATTR = 'data-dominds-rtws';
 
@@ -56,29 +63,25 @@ function parseFenceLanguage(info: string): string {
   return trimmed.slice(0, spaceIndex);
 }
 
-function parseWorkspaceFileLinkTarget(rawHref: string): WorkspaceFileLinkTarget | null {
+function parseWorkspaceHrefPath(rawHref: string): {
+  rawPath: string;
+  line?: number;
+  column?: number;
+} | null {
   const trimmed = rawHref.trim();
-  if (!trimmed.startsWith(WORKSPACE_FILE_LINK_PREFIX)) return null;
-
   const queryIdx = trimmed.indexOf('?');
   const hashIdx = trimmed.indexOf('#');
   const cutIdxCandidates = [queryIdx, hashIdx].filter((idx) => idx >= 0);
   const endIdx = cutIdxCandidates.length > 0 ? Math.min(...cutIdxCandidates) : trimmed.length;
-  const hrefWithoutQueryOrHash = trimmed.slice(0, endIdx);
+  const hrefWithoutQueryOrHash = trimmed.slice(0, endIdx).trim();
   if (hrefWithoutQueryOrHash.length < 1) return null;
 
   const lineColMatch = hrefWithoutQueryOrHash.match(/^(.*):([1-9]\d*)(?::([1-9]\d*))?$/);
-  const rawPath = lineColMatch ? lineColMatch[1] : hrefWithoutQueryOrHash;
-  if (!rawPath.startsWith(WORKSPACE_FILE_LINK_PREFIX)) return null;
-  if (rawPath.endsWith('/')) return null;
-
-  let absolutePath = rawPath;
-  try {
-    absolutePath = decodeURIComponent(rawPath);
-  } catch {
-    absolutePath = rawPath;
+  let rawPath = lineColMatch ? lineColMatch[1] : hrefWithoutQueryOrHash;
+  if (rawPath.length > 1 && rawPath.endsWith('/')) {
+    rawPath = rawPath.replace(/\/+$/g, '');
   }
-  if (!absolutePath.startsWith(WORKSPACE_FILE_LINK_PREFIX)) return null;
+  if (rawPath.length < 1) return null;
 
   const lineRaw = lineColMatch?.[2];
   const columnRaw = lineColMatch?.[3];
@@ -86,9 +89,29 @@ function parseWorkspaceFileLinkTarget(rawHref: string): WorkspaceFileLinkTarget 
   const column = typeof columnRaw === 'string' ? Number.parseInt(columnRaw, 10) : undefined;
 
   return {
-    absolutePath,
+    rawPath,
     line: typeof line === 'number' ? line : undefined,
     column: typeof column === 'number' ? column : undefined,
+  };
+}
+
+function parseWorkspaceFileLinkTarget(rawHref: string): WorkspaceFileLinkTarget | null {
+  const parsed = parseWorkspaceHrefPath(rawHref);
+  if (parsed === null) return null;
+  if (!parsed.rawPath.startsWith('/')) return null;
+
+  let absolutePath = parsed.rawPath;
+  try {
+    absolutePath = decodeURIComponent(parsed.rawPath);
+  } catch {
+    absolutePath = parsed.rawPath;
+  }
+  if (!absolutePath.startsWith('/')) return null;
+
+  return {
+    absolutePath,
+    line: parsed.line,
+    column: parsed.column,
   };
 }
 
@@ -127,13 +150,13 @@ function getCurrentRtwsAbsPath(): string | null {
 function toRtwsRelativePath(absolutePath: string, rtwsAbsPath: string): string | null {
   const normalizedAbs = normalizeRtwsAbsPath(absolutePath);
   const normalizedRtws = normalizeRtwsAbsPath(rtwsAbsPath);
-  if (normalizedAbs === normalizedRtws) return null;
+  if (normalizedAbs === normalizedRtws) return '';
 
   const prefix = normalizedRtws === '/' ? '/' : `${normalizedRtws}/`;
   if (!normalizedAbs.startsWith(prefix)) return null;
   const relativePath = normalizedAbs.slice(prefix.length);
-  if (relativePath.length < 1) return null;
   if (relativePath.includes('\0')) return null;
+  if (relativePath.length < 1) return '';
 
   const segments = relativePath.split('/');
   if (segments.some((segment) => segment.length < 1 || segment === '.' || segment === '..')) {
@@ -169,12 +192,72 @@ function getAuthFromCurrentUrl(): string | null {
   }
 }
 
+function normalizeRtwsRelativePath(
+  rawPath: string,
+  options: Readonly<{ allowRoot: boolean }>,
+): string | null {
+  if (rawPath.includes('\0')) return null;
+  if (rawPath.includes('\\')) return null;
+  if (rawPath.startsWith('/')) return null;
+
+  const normalized: string[] = [];
+  for (const part of rawPath.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (normalized.length < 1) return null;
+      normalized.pop();
+      continue;
+    }
+    normalized.push(part);
+  }
+
+  const out = normalized.join('/');
+  if (out.length < 1) {
+    return options.allowRoot ? '' : null;
+  }
+  return out;
+}
+
+function resolveRelativeWorkspaceFilePreviewTarget(
+  rawHref: string,
+  env: MarkdownRenderEnv,
+): WorkspaceFilePreviewTarget | null {
+  if (!env.allowRelativeWorkspaceLinks) return null;
+  const trimmed = rawHref.trim();
+  if (trimmed.length < 1) return null;
+  if (trimmed.startsWith('#')) return null;
+  if (trimmed.startsWith('//')) return null;
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) return null;
+
+  const parsed = parseWorkspaceHrefPath(trimmed);
+  if (parsed === null) return null;
+  if (parsed.rawPath.startsWith('/')) return null;
+
+  const baseDir =
+    typeof env.workspaceLinkBaseDir === 'string'
+      ? normalizeRtwsRelativePath(env.workspaceLinkBaseDir, { allowRoot: true })
+      : '';
+  if (baseDir === null) return null;
+
+  const combinedPath = baseDir.length > 0 ? `${baseDir}/${parsed.rawPath}` : parsed.rawPath;
+  const relativePath = normalizeRtwsRelativePath(combinedPath, { allowRoot: true });
+  if (relativePath === null) return null;
+
+  return {
+    relativePath,
+    line: parsed.line,
+    column: parsed.column,
+  };
+}
+
 function buildWorkspaceFilePreviewHref(target: WorkspaceFilePreviewTarget): string {
-  const encodedPath = target.relativePath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  const routePath = `${WORKSPACE_FILE_PREVIEW_ROUTE}/${encodedPath}`;
+  const routePath =
+    target.relativePath.length < 1
+      ? WORKSPACE_FILE_PREVIEW_ROUTE
+      : `${WORKSPACE_FILE_PREVIEW_ROUTE}/${target.relativePath
+          .split('/')
+          .map((segment) => encodeURIComponent(segment))
+          .join('/')}`;
   const params = new URLSearchParams();
   if (typeof target.line === 'number') {
     params.set('line', String(target.line));
@@ -319,13 +402,33 @@ md.core.ruler.push('dominds_heading_ids', (state) => {
 
 installDomindsMathBlockRule(md);
 
+function getMarkdownRenderEnv(env: unknown): MarkdownRenderEnv {
+  if (typeof env !== 'object' || env === null) {
+    return { allowRelativeWorkspaceLinks: false };
+  }
+  const candidate = env as {
+    allowRelativeWorkspaceLinks?: unknown;
+    workspaceLinkBaseDir?: unknown;
+  };
+  return {
+    allowRelativeWorkspaceLinks: candidate.allowRelativeWorkspaceLinks === true,
+    workspaceLinkBaseDir:
+      typeof candidate.workspaceLinkBaseDir === 'string'
+        ? candidate.workspaceLinkBaseDir
+        : undefined,
+  };
+}
+
 md.renderer.rules.link_open = (tokens, idx, options, _env, self): string => {
   const token = tokens[idx];
   const href = token.attrGet('href');
+  const env = getMarkdownRenderEnv(_env);
   if (typeof href === 'string') {
     const workspaceFileLink = parseWorkspaceFileLinkTarget(href);
     const previewTarget =
-      workspaceFileLink === null ? null : resolveWorkspaceFilePreviewTarget(workspaceFileLink);
+      workspaceFileLink !== null
+        ? resolveWorkspaceFilePreviewTarget(workspaceFileLink)
+        : resolveRelativeWorkspaceFilePreviewTarget(href, env);
     if (previewTarget) {
       token.attrSet('href', buildWorkspaceFilePreviewHref(previewTarget));
       applyOpenInNewTabAttrs(token);
@@ -353,10 +456,13 @@ md.renderer.rules.fence = (tokens, idx): string => {
 
 export function renderDomindsMarkdown(
   input: string,
-  _opts: MarkdownRenderKind = { kind: 'chat' },
+  opts: MarkdownRenderOptions = { kind: 'chat' },
 ): string {
   try {
-    const rendered = md.render(input);
+    const rendered = md.render(input, {
+      allowRelativeWorkspaceLinks: opts.allowRelativeWorkspaceLinks === true,
+      workspaceLinkBaseDir: opts.workspaceLinkBaseDir,
+    } satisfies MarkdownRenderEnv);
     return DOMPurify.sanitize(rendered, domPurifyConfig);
   } catch (error) {
     console.error('Markdown rendering error:', error);

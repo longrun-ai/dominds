@@ -2015,7 +2015,10 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     const bodyEl = callingSection.querySelector('.calling-body') as HTMLElement | null;
     if (bodyEl) {
-      bodyEl.innerHTML = renderDomindsMarkdown(event.tellaskContent, { kind: 'chat' });
+      bodyEl.innerHTML = renderDomindsMarkdown(event.tellaskContent, {
+        kind: 'chat',
+        allowRelativeWorkspaceLinks: true,
+      });
       bodyEl.classList.add('markdown-content');
       bodyEl.setAttribute('data-raw-md', event.tellaskContent);
       bodyEl.classList.add('completed');
@@ -2051,7 +2054,10 @@ export class DomindsDialogContainer extends HTMLElement {
               if (item.type === 'input_text') {
                 const raw = String(item.text || '');
                 const block = document.createElement('div');
-                block.innerHTML = renderDomindsMarkdown(raw);
+                block.innerHTML = renderDomindsMarkdown(raw, {
+                  kind: 'chat',
+                  allowRelativeWorkspaceLinks: true,
+                });
                 block.classList.add('markdown-content');
                 block.setAttribute('data-raw-md', raw);
                 resultEl.appendChild(block);
@@ -2123,7 +2129,10 @@ export class DomindsDialogContainer extends HTMLElement {
             resultEl.style.display = 'block';
           } else {
             const raw = String(event.content || '');
-            resultEl.innerHTML = renderDomindsMarkdown(raw);
+            resultEl.innerHTML = renderDomindsMarkdown(raw, {
+              kind: 'chat',
+              allowRelativeWorkspaceLinks: true,
+            });
             resultEl.setAttribute('data-raw-md', raw);
             resultEl.classList.add('markdown-content');
             resultEl.classList.add('completed');
