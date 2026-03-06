@@ -46,6 +46,12 @@ type TeammateCallAnchorMeta = {
 
 const CALLING_CONTENT_INITIAL_MAX_HEIGHT_PX = 120;
 const CALLING_EXPAND_STEP_VIEWPORT_RATIO = 1 / 3;
+const AUTO_SCROLL_FOLLOW_THRESHOLD_PX = 32;
+const AUTO_SCROLL_WHEEL_RESISTANCE_PX = 56;
+const AUTO_SCROLL_WHEEL_DECAY_MS = 520;
+const AUTO_SCROLL_WHEEL_SETTLE_POLL_MS = 96;
+const AUTO_SCROLL_WHEEL_MAX_RESISTANCE = 1.8;
+const AUTO_SCROLL_WHEEL_IDLE_EPSILON = 0.03;
 
 export class DomindsDialogContainer extends HTMLElement {
   private wsManager = getWebSocketManager();
@@ -80,11 +86,18 @@ export class DomindsDialogContainer extends HTMLElement {
   // - Auto-scroll only when user is already at (or near) the bottom.
   // - If user scrolls up to read history, stop auto-scrolling until they return to bottom.
   private autoScrollEnabled = true;
+  private autoScrollPinnedToBottom = true;
+  private autoScrollLastUserRemainingPx = 0;
   private scrollContainer: HTMLElement | null = null;
   private boundOnScrollContainerScroll: (() => void) | null = null;
+  private boundOnScrollContainerWheel: ((event: WheelEvent) => void) | null = null;
   private autoScrollResizeObserver: ResizeObserver | null = null;
   private autoScrollResizeScrollRaf: number | null = null;
   private autoScrollResizeObservedEl: HTMLElement | null = null;
+  private autoScrollWheelResistance = 0;
+  private autoScrollWheelLastDecayAtMs = 0;
+  private autoScrollWheelLastUpEventAtMs = 0;
+  private autoScrollWheelSettleTimer: number | null = null;
 
   // Best-effort cache to recover teammate-call streaming sections by genseq.
   // Chunk events don't carry callId, so this is scoped to per-genseq recovery only.
@@ -514,8 +527,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.pendingScrollRequest = null;
     // This navigation is explicit (deeplink / internal jump). Disable auto-scroll so we don't
     // immediately snap back to the bottom while the dialog continues streaming/replaying.
-    this.autoScrollEnabled = false;
-    this.updateScrollToBottomButton();
+    this.resetAutoScrollState(false);
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     // Persist highlight intent for a short period. External deeplinks can trigger DOM replacement
@@ -547,12 +559,18 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private detachScrollContainerListener(): void {
     const container = this.scrollContainer;
-    const listener = this.boundOnScrollContainerScroll;
-    if (container && listener) {
-      container.removeEventListener('scroll', listener);
+    const scrollListener = this.boundOnScrollContainerScroll;
+    if (container && scrollListener) {
+      container.removeEventListener('scroll', scrollListener);
+    }
+    const wheelListener = this.boundOnScrollContainerWheel;
+    if (container && wheelListener) {
+      container.removeEventListener('wheel', wheelListener);
     }
     this.scrollContainer = null;
     this.boundOnScrollContainerScroll = null;
+    this.boundOnScrollContainerWheel = null;
+    this.stopAutoScrollWheelSettleTimer();
   }
 
   private ensureScrollContainerListener(): void {
@@ -565,22 +583,114 @@ export class DomindsDialogContainer extends HTMLElement {
     this.boundOnScrollContainerScroll = () => {
       const current = this.scrollContainer;
       if (!current) return;
-      this.autoScrollEnabled = this.isScrollContainerAtBottom(current);
-      this.updateScrollToBottomButton();
+      this.refreshAutoScrollStateFromScroll(current);
+    };
+    this.boundOnScrollContainerWheel = (event: WheelEvent) => {
+      this.handleAutoScrollWheel(event);
     };
     container.addEventListener('scroll', this.boundOnScrollContainerScroll, { passive: true });
+    container.addEventListener('wheel', this.boundOnScrollContainerWheel, { passive: true });
 
     // Initialize based on current scroll position.
-    this.autoScrollEnabled = this.isScrollContainerAtBottom(container);
-    this.updateScrollToBottomButton();
+    this.refreshAutoScrollStateFromScroll(container);
+  }
+
+  private getScrollContainerRemainingPx(container: HTMLElement): number {
+    return Math.max(0, container.scrollHeight - container.scrollTop - container.clientHeight);
   }
 
   private isScrollContainerAtBottom(container: HTMLElement): boolean {
-    // Use a small threshold to avoid flicker around exact bottom due to sub-pixel layout and
-    // incremental streaming DOM updates.
-    const thresholdPx = 32;
-    const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
-    return remaining <= thresholdPx;
+    return this.getScrollContainerRemainingPx(container) <= AUTO_SCROLL_FOLLOW_THRESHOLD_PX;
+  }
+
+  private stopAutoScrollWheelSettleTimer(): void {
+    if (this.autoScrollWheelSettleTimer === null) return;
+    window.clearTimeout(this.autoScrollWheelSettleTimer);
+    this.autoScrollWheelSettleTimer = null;
+  }
+
+  private decayAutoScrollWheelResistance(nowMs: number): number {
+    if (this.autoScrollWheelLastDecayAtMs === 0) {
+      this.autoScrollWheelLastDecayAtMs = nowMs;
+      return this.autoScrollWheelResistance;
+    }
+    const elapsedMs = Math.max(0, nowMs - this.autoScrollWheelLastDecayAtMs);
+    if (elapsedMs > 0 && this.autoScrollWheelResistance > 0) {
+      this.autoScrollWheelResistance *= Math.exp(-elapsedMs / AUTO_SCROLL_WHEEL_DECAY_MS);
+      if (this.autoScrollWheelResistance < AUTO_SCROLL_WHEEL_IDLE_EPSILON / 2) {
+        this.autoScrollWheelResistance = 0;
+      }
+    }
+    this.autoScrollWheelLastDecayAtMs = nowMs;
+    return this.autoScrollWheelResistance;
+  }
+
+  private getAutoScrollWheelResistancePx(nowMs: number): number {
+    return this.decayAutoScrollWheelResistance(nowMs) * AUTO_SCROLL_WHEEL_RESISTANCE_PX;
+  }
+
+  private recomputeAutoScrollEnabled(nowMs: number): void {
+    const effectiveRemainingPx =
+      this.autoScrollLastUserRemainingPx +
+      (this.autoScrollPinnedToBottom ? this.getAutoScrollWheelResistancePx(nowMs) : 0);
+    this.autoScrollEnabled = effectiveRemainingPx <= AUTO_SCROLL_FOLLOW_THRESHOLD_PX;
+    this.updateScrollToBottomButton();
+  }
+
+  private refreshAutoScrollStateFromScroll(container: HTMLElement): void {
+    const remainingPx = this.getScrollContainerRemainingPx(container);
+    this.autoScrollPinnedToBottom = this.isScrollContainerAtBottom(container);
+    this.autoScrollLastUserRemainingPx = remainingPx;
+    this.recomputeAutoScrollEnabled(performance.now());
+  }
+
+  private resetAutoScrollState(enabled: boolean): void {
+    this.autoScrollPinnedToBottom = enabled;
+    this.autoScrollLastUserRemainingPx = enabled ? 0 : AUTO_SCROLL_FOLLOW_THRESHOLD_PX + 1;
+    this.autoScrollEnabled = enabled;
+    this.autoScrollWheelResistance = 0;
+    this.autoScrollWheelLastDecayAtMs = 0;
+    this.autoScrollWheelLastUpEventAtMs = 0;
+    this.stopAutoScrollWheelSettleTimer();
+    this.updateScrollToBottomButton();
+  }
+
+  private scheduleAutoScrollWheelSettle(): void {
+    if (!this.autoScrollPinnedToBottom) return;
+    if (this.autoScrollWheelSettleTimer !== null) return;
+    this.autoScrollWheelSettleTimer = window.setTimeout(() => {
+      this.autoScrollWheelSettleTimer = null;
+      this.recomputeAutoScrollEnabled(performance.now());
+      if (this.autoScrollWheelResistance >= AUTO_SCROLL_WHEEL_IDLE_EPSILON) {
+        this.scheduleAutoScrollWheelSettle();
+      }
+    }, AUTO_SCROLL_WHEEL_SETTLE_POLL_MS);
+  }
+
+  private handleAutoScrollWheel(event: WheelEvent): void {
+    if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+    const nowMs = performance.now();
+    const currentResistance = this.decayAutoScrollWheelResistance(nowMs);
+    const intensity = Math.min(1.25, Math.abs(event.deltaY) / 90);
+
+    if (event.deltaY < 0) {
+      const gapMs =
+        this.autoScrollWheelLastUpEventAtMs === 0
+          ? Number.POSITIVE_INFINITY
+          : nowMs - this.autoScrollWheelLastUpEventAtMs;
+      const continuityBoost = gapMs < 140 ? 0.38 : gapMs < 260 ? 0.22 : gapMs < 420 ? 0.1 : 0;
+      this.autoScrollWheelResistance = Math.min(
+        AUTO_SCROLL_WHEEL_MAX_RESISTANCE,
+        currentResistance + 0.18 + intensity * 0.32 + continuityBoost,
+      );
+      this.autoScrollWheelLastUpEventAtMs = nowMs;
+    } else {
+      this.autoScrollWheelResistance = Math.max(0, currentResistance - (0.1 + intensity * 0.2));
+    }
+
+    this.autoScrollWheelLastDecayAtMs = nowMs;
+    this.recomputeAutoScrollEnabled(nowMs);
+    this.scheduleAutoScrollWheelSettle();
   }
 
   private async loadTeamConfiguration(): Promise<void> {
@@ -615,8 +725,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.suppressEvents = true;
     // Dialog navigation is a user-initiated context switch; reset auto-scroll so the freshly
     // loaded dialog can follow streaming output until the user scrolls up.
-    this.autoScrollEnabled = true;
-    this.updateScrollToBottomButton();
+    this.resetAutoScrollState(true);
     // Save current dialog as previous before cleanup
     // This allows events for the "old" dialog to be processed during navigation race conditions
     if (this.currentDialog) {
@@ -637,8 +746,7 @@ export class DomindsDialogContainer extends HTMLElement {
 
   public clearDialog(): void {
     this.suppressEvents = true;
-    this.autoScrollEnabled = true;
-    this.updateScrollToBottomButton();
+    this.resetAutoScrollState(true);
     this.cleanup();
     this.currentDialog = undefined;
     this.render();
@@ -669,8 +777,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (!this.currentDialog) return;
     this.suppressEvents = true;
     // Course navigation replays content; default to following the newest output unless user scrolls up.
-    this.autoScrollEnabled = true;
-    this.updateScrollToBottomButton();
+    this.resetAutoScrollState(true);
     this.cleanup();
     this.currentCourse = course;
     this.wsManager.sendRaw({
@@ -692,6 +799,7 @@ export class DomindsDialogContainer extends HTMLElement {
   public resetForCourse(course: number): void {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
+    this.stopAutoScrollWheelSettleTimer();
     // Reset per-course rendering state, but keep currentDialog/previousDialog intact.
     this.generationBubble = undefined;
     this.thinkingSection = undefined;
@@ -717,6 +825,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private cleanup(): void {
     this.clearGenerationGlow();
     this.stopAutoScrollObservation();
+    this.stopAutoScrollWheelSettleTimer();
     this.previousDialog = undefined;
     this.runState = null;
     this.generationBubble = undefined;
@@ -3566,8 +3675,7 @@ export class DomindsDialogContainer extends HTMLElement {
     ) as HTMLButtonElement | null;
     if (scrollBtn) {
       scrollBtn.onclick = () => {
-        this.autoScrollEnabled = true;
-        this.updateScrollToBottomButton();
+        this.resetAutoScrollState(true);
         this.scrollToBottom({ force: true });
       };
     }
@@ -4982,7 +5090,10 @@ export class DomindsDialogContainer extends HTMLElement {
     // Default behavior: do not "steal" scroll unless the user is already at the bottom.
     // When the user explicitly clicks the jump button, we force the scroll.
     const forceScroll = options !== undefined && options.force === true;
-    if (!forceScroll && !this.autoScrollEnabled) return;
+    if (!forceScroll) {
+      this.recomputeAutoScrollEnabled(performance.now());
+      if (!this.autoScrollEnabled) return;
+    }
 
     const doScroll = () => {
       const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
