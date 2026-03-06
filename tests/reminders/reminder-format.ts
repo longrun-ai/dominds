@@ -9,6 +9,10 @@ async function main() {
   assert(zh.includes('提醒项 #2'), 'Expected zh reminder guide to include index');
   assert(zh.includes('保持缩进'), 'Expected zh reminder guide to include content');
   assert(zh.includes('\n  - A\n'), 'Expected zh reminder guide to preserve whitespace');
+  assert(
+    zh.includes('多条粗略提醒项'),
+    'Expected zh reminder guide to mention rough multi-reminder bridge usage',
+  );
 
   const zhToolManaged = formatReminderItemGuide('zh', 1, 'Managed content\n', {
     meta: { managedByTool: 'some_tool' },
@@ -41,6 +45,10 @@ async function main() {
   const en = formatReminderItemGuide('en', 2, 'Keep indentation:\n  - A\n  - B\n');
   assert(en.includes('REMINDER ITEM #2'), 'Expected en reminder guide to include index');
   assert(en.includes('Keep indentation'), 'Expected en reminder guide to include content');
+  assert(
+    en.includes('multiple rough reminders'),
+    'Expected en reminder guide to mention rough multi-reminder bridge usage',
+  );
 
   const enToolManaged = formatReminderItemGuide('en', 3, 'Managed content\n', {
     meta: { managedByTool: 'some_tool' },

@@ -71,7 +71,7 @@ export function formatReminderItemGuide(
       return [
         `提醒项 #${index}（高优先级工作集）`,
         '',
-        '原则：提醒项要短、要新、要能直接指导下一步行动。及时维护；不需要就删。',
+        '原则：提醒项要短、要新、要能直接指导下一步行动。默认保持精简；若这是换程前的接续包，能清楚整理时优先结构化压缩；若上下文已吃紧到头脑发乱，先保留多条粗略提醒项也可以，但新一程要尽快收敛。',
         '',
         `提示：该提醒项由工具 ${managementTool} 管理；请使用 ${managementTool} 更新（不要用 update_reminder）。`,
         '',
@@ -86,7 +86,7 @@ export function formatReminderItemGuide(
     return [
       `提醒项 #${index}（高优先级工作集）`,
       '',
-      '原则：提醒项要短、要新、要能直接指导下一步行动。及时维护；不需要就删。',
+      '原则：提醒项要短、要新、要能直接指导下一步行动。默认保持精简；若这是换程前的接续包，能清楚整理时优先结构化压缩；若上下文已吃紧到头脑发乱，先保留多条粗略提醒项也可以，但新一程要尽快收敛。',
       '',
       '快捷操作：',
       `- 更新：update_reminder({ "reminder_no": ${index}, "content": "..." })`,
@@ -101,7 +101,7 @@ export function formatReminderItemGuide(
     const updateExampleSafe = updateExample ?? `${managementTool}({ ... })`;
     return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
 
-Principle: reminders should be high-value and not stale; keep them updated and delete when not needed.
+Principle: reminders should be concise, fresh, and directly actionable. Keep the working set compact; if this is a pre-clear continuation package, prefer a structured reminder when you are still clear-headed. If context is already degraded, multiple rough reminders are acceptable as a bridge, but reconcile them quickly in the new course.
 
 Note: this reminder is managed by tool ${managementTool}; update it via ${managementTool} (not update_reminder).
 
@@ -113,7 +113,9 @@ ${content}`;
   }
   return `REMINDER ITEM #${index} (HIGH-PRIORITY WORKING SET)
 
-Principle: reminders should be high-value and not stale; prefer update_reminder (curate) over creating many items.
+Principle: reminders should be concise, fresh, and directly actionable; prefer update_reminder (curate) over creating many items.
+- If this is a pre-clear continuation package, prefer one structured reminder when you are clear-headed.
+- If context is already degraded, multiple rough reminders are acceptable as a bridge; reconcile them quickly in the new course.
 - Still needed: compress and update_reminder (do not grow without bound).
 - Not needed: delete_reminder.
 
@@ -198,9 +200,9 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
-        '行动：尽快准备接续包（下一步行动 + 关键定位信息），维护进提醒项。',
+        '行动：先尽量保住易丢信息；如头脑还清楚，优先整理成结构化接续包提醒项（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）。',
         '',
-        '然后主动 clear_mind，开启新一程对话继续工作。',
+        '若你已经发乱，允许先记成多条粗略提醒项带到新一程；求稳比求整洁更重要。进入新一程后，第一步就是复核提醒项、收敛冗余、再继续工作。接续包只保留差遣牒未覆盖、但恢复工作会丢的信息。然后主动 clear_mind，开启新一程对话继续工作。',
         '',
         '操作：',
         '- update_reminder({ "reminder_no": 1, "content": "..." })（推荐）',
@@ -213,14 +215,14 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
-      '行动：尽快把接续包维护进提醒项，然后 clear_mind。',
+      '行动：尽快保住易丢信息，然后 clear_mind。能整理就整理成结构化接续包提醒项；若已经发乱，先保留多条粗略提醒项也可以。',
       '',
       '操作：',
       '- update_reminder({ "reminder_no": 1, "content": "..." })',
       '- add_reminder({ "content": "..." })',
       '- clear_mind({})',
       '',
-      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式。',
+      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容。若先带多条粗略提醒项过桥，新一程第一步就要重新审视并收敛。',
     ].join('\n');
   }
 
@@ -230,9 +232,9 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
-      'Action: prepare a continuation package (next step + key pointers) and maintain it in reminders.',
+      'Action: first preserve easy-to-lose information; if you are still clear-headed, prefer a structured continuation-package reminder (next step + key pointers + run/verify info + easy-to-lose volatile details).',
       '',
-      'Then proactively clear_mind to start a new dialog course.',
+      'If you are already muddled, multiple rough reminders are acceptable as a bridge; survival matters more than neatness. In the new course, your first step is to review reminders, remove redundancy, and then continue. Keep only details not already covered by Taskdoc. Then proactively clear_mind to start a new dialog course.',
       '',
       'Operations:',
       '- update_reminder({ "reminder_no": 1, "content": "..." })',
@@ -245,14 +247,14 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '',
     `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
-    'Action: maintain a continuation package in reminders, then clear_mind.',
+    'Action: preserve easy-to-lose information, then clear_mind. Prefer a structured continuation-package reminder if you can still think clearly; otherwise multiple rough reminders are acceptable as a bridge.',
     '',
     'Operations:',
     '- update_reminder({ "reminder_no": 1, "content": "..." })',
     '- add_reminder({ "content": "..." })',
     '- clear_mind({})',
     '',
-    'Continuation package: next step + key pointers + run/verify info.',
+    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content. If you bridge with multiple rough reminders first, reconcile them at the start of the new course.',
   ].join('\n');
 }
 

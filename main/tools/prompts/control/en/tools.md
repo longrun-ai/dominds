@@ -23,6 +23,11 @@
 
 Add reminder.
 
+Use when:
+
+- Adding a new temporary working-set item
+- Creating continuation-package notes before `clear_mind`; rough bridge notes are acceptable when context is already degraded
+
 **Parameters:**
 
 - `content` (required): Reminder content
@@ -61,6 +66,12 @@ deleted_at: <deletion timestamp>
 ### 3. update_reminder
 
 Update reminder content.
+
+Use when:
+
+- Compressing / merging existing reminders
+- Rewriting pre-clear resume info into continuation-package notes
+- Removing details that have already been promoted into Taskdoc
 
 **Parameters:**
 
@@ -184,3 +195,11 @@ status: error
 error_code: <error code>
 message: <error message>
 ```
+
+## Reminder Content Guidance
+
+- Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
+- For a continuation package, prefer structured notes when clear-headed: next step, key pointers, run/verify, easy-to-lose volatile details
+- If already in caution/critical and muddled, rough multi-reminder bridge notes are acceptable; reconcile them first in the new course
+- Keep only details not already covered by Taskdoc; do not repeat team-shared status
+- Do not paste long logs, large tool outputs, or raw material into reminders

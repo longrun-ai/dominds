@@ -26,9 +26,9 @@
 
 control is Dominds' **dialog control toolset** for managing dialog state, reminders, and taskdocs:
 
-- **Reminder management**: Temporary reminders, valid in current dialog
+- **Reminder management**: Dialog-local working set; usually keep it small, prefer continuation-package cleanup before `clear_mind`, but rough multi-reminder carry-over is allowed when context is already degraded
 - **Taskdoc operations**: Update task contracts (goals/constraints/progress)
-- **Context maintenance**: Manage temporary state during dialog
+- **Context maintenance**: Reduce cognitive load without losing key resume state
 
 ## Quick Navigation
 
@@ -50,11 +50,12 @@ control is Dominds' **dialog control toolset** for managing dialog state, remind
 
 ### Reminder
 
-Reminders are **session-level** temporary information for:
+Reminders are **session-level** temporary working-set information for:
 
 - Marking pending tasks
-- Tracking current task progress
+- Tracking current next steps / blockers
 - Recording blocking issues
+- Holding continuation-package bridge notes before `clear_mind`
 
 ### Taskdoc
 

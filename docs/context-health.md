@@ -116,14 +116,26 @@ Levels are derived from the two thresholds:
 ### Continuation package (“接续包”)
 
 The remediation workflow centers around a _continuation package_ (a scannable, actionable bundle of
-context that survives a new course).
+context that survives a new course). When the agent is still clear-headed, this should preferably be
+kept as **one structured reminder**. But when the agent is already muddled in caution/critical,
+multiple rough reminders are acceptable as a bridge.
 
-Recommended structure (multi-line; scale by task size; focus on details not covered in Taskdoc):
+Recommended structure (multi-line but compact; focus on details not covered in Taskdoc):
 
 - First actionable step
 - Key pointers (files/symbols/search terms)
 - Run/verify (commands, ports, env vars)
 - Easy-to-lose ephemeral details (paths/ids/urls/sample inputs)
+
+Rules:
+
+- Keep normal reminders concise and few.
+- When preparing a new course, prefer compressing into one continuation-package reminder if the
+  agent is still clear-headed.
+- If the agent is already muddled, prioritize preserving volatile information even via multiple rough
+  reminders; in the next course, the first action should be to review, merge, and delete redundancy.
+- Do not duplicate Taskdoc content except for a short bridge when strictly needed.
+- Do not paste long raw logs/tool outputs into the continuation package.
 
 ### Caution (yellow)
 
@@ -138,7 +150,7 @@ Current behavior:
   generations; configurable per model).
 - Each inserted prompt requires the agent to **curate reminders** (at least one call):
   - `update_reminder` (preferred) / `add_reminder`
-  - Maintain a continuation-package draft inside reminders
+  - Prefer a structured continuation-package reminder; if already muddled, rough multi-reminder carry-over is acceptable
   - Then `clear_mind` when it becomes scannable/actionable
 
 ### Critical (red)
@@ -147,7 +159,7 @@ When `level === 'critical'`, the driver enters a **countdown remediation** (max 
 
 - On each turn, the driver records a **role=user prompt** (persisted as a user message) that is
   visible in the UI as a user prompt. This prompt tells the agent to:
-  - curate reminders via `update_reminder` / `add_reminder` (best-effort continuation package), and
+  - curate reminders via `update_reminder` / `add_reminder`, preferably into a continuation-package reminder but allowing rough multi-reminder carry-over when already muddled, and
   - then call `clear_mind` to start a new course.
 - The prompt includes a countdown: after **N** turns the system will automatically clear.
 - When the countdown reaches 0, the driver **automatically calls** `clear_mind` (with empty args; no
@@ -198,7 +210,7 @@ Note (zh UI copy):
   - `caution`: driver inserts a persisted role=user prompt (UI-visible user instruction).
     On entering `caution` it inserts once; while still `caution` it reinserts on a cadence (default: every
     10 generations; configurable per model). Each time, the agent must call at least one of
-    `update_reminder` / `add_reminder` and maintain a continuation-package draft, then `clear_mind` when ready.
+    `update_reminder` / `add_reminder` and preserve a continuation package. A single structured reminder is preferred, but multiple rough reminders are acceptable when already muddled; in the new course the agent should reconcile them first, then `clear_mind` when ready.
   - `critical`: driver runs a countdown remediation (max 5 turns) using **recorded role=user prompts**.
     Each prompt includes a countdown and instructs reminder curation + `clear_mind`. When the countdown
     reaches 0, the driver auto-executes `clear_mind` and starts a new course (no Q4H, no suspension).

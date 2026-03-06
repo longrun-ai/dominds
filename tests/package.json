@@ -9,6 +9,7 @@
     "auth": "tsx auth.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "mindset-collab-marker-scope": "tsx minds/system-prompt-collab-marker-scope.ts",
+    "minds-memory-system-reminder-contract": "tsx minds/memory-system-reminder-contract.ts",
     "persistence-latest-writeback": "tsx persistence/latest-writeback.ts",
     "persistence-reminders-owner-meta": "tsx persistence/reminders-owner-meta.ts",
     "persistence-jsonl-tail-truncation": "tsx persistence/jsonl-tail-truncation.ts",

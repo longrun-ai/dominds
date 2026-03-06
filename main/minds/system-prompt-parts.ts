@@ -249,7 +249,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       constraintsLine:
         '- 约定：`constraints` 只写任务特有的硬要求，不得写入系统提示/工具文档里已明确且由系统强制执行的通用规则（例如 `*.tsk/` 封装禁止通用文件工具）。一经发现重复，必须删除并告知用户。',
       remindersLine:
-        '- 提醒项（即编号提醒，工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。',
+        '- 提醒项（即编号提醒，工作集）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；默认保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。准备 `clear_mind` 开启新一程对话时，最好整理成“结构化接续包提醒项”；其中只保留差遣牒未覆盖、但恢复工作容易丢的细节（如第一步、关键定位、运行/验证信息、临时 ids/路径）。但若你已进入吃紧/告急、头脑不够清楚，允许先保留多条粗略提醒项把信息带过桥，新一程开始后第一时间复核、合并、删除冗余。',
       teamMemoryLine: '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。',
       personalMemoryLine:
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；记忆会在每次生成时自动注入上下文，应保持少量且准确（关键文档/代码的精确路径 + 最小必要事实）。不要记录具体任务状态。',
@@ -268,7 +268,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       contextHealthLine:
         '系统会自动监控并提示上下文健康度：进入"吃紧"或"告急"状态时会插入用户可见提示。当收到此类提示时，立刻停止继续大实现/大阅读；先提炼，再 clear。',
       taskdocLogLine:
-        '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；细节只保留必要摘录放提醒项。',
+        '不要把长日志/大段 tool output 直接塞进差遣牒；差遣牒只写结论+下一步；提醒项也只留可扫读摘录。若头脑清楚，接续包提醒项应尽量结构化、便于快速恢复；若已吃紧/告急，允许先保留多条粗略提醒项求稳，但进入新一程后必须尽快收敛。',
     };
   }
 
@@ -288,7 +288,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     constraintsLine:
       '- Convention: Taskdoc `constraints` must contain task-specific requirements only; do not include global, system-enforced rules already stated in system prompt/tool docs (e.g. `.tsk/` encapsulation bans general file tools). If duplication is found, you MUST remove it and notify the user.',
     remindersLine:
-      '- Reminders (i.e. numbered reminders, working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small (often 1–3 items), prefer `update_reminder` to compress/merge; delete when obsolete.',
+      '- Reminders (i.e. numbered reminders, working set): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. When preparing `clear_mind` to start a new course, prefer a structured continuation-package reminder that keeps only details not already covered by Taskdoc but easy to lose during resume (first step, key pointers, run/verify info, volatile ids/paths). But if you are already in caution/critical and not clear-headed enough, you may carry multiple rough reminders across the course boundary first, then review/merge/delete them at the start of the new course.',
     teamMemoryLine: '- Team memory: stable shared conventions (cross-task).',
     personalMemoryLine:
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Memory is automatically injected into context on each generation: keep it small and accurate (exact key doc/code paths + minimal key facts); do not store per-task state.',
@@ -307,7 +307,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     contextHealthLine:
       'System will automatically monitor and alert on context health: yellow (caution/"Caution") or red (critical/"Critical") will insert a user-visible prompt. When you receive such alerts, immediately stop large implementations/reads; distill first, then clear.',
     taskdocLogLine:
-      'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; keep only essential excerpts in reminders.',
+      'Do not paste long logs/tool outputs into Taskdoc; Taskdoc should record decisions + next steps; reminders should also keep only scannable excerpts. When clear-headed, keep continuation-package reminders structured and fast to resume from; when already in caution/critical, multiple rough reminders are acceptable as a bridge, but you must quickly reconcile them in the new course.',
   };
 }
 

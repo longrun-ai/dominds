@@ -17,6 +17,10 @@ async function main(): Promise<void> {
   assert.ok(zhSoft.includes('上下文状态：🟡 吃紧'), 'zh guide should include caution headline');
   assert.ok(zhSoft.includes('clear_mind'), 'zh guide should mention clear_mind');
   assert.ok(zhSoft.includes('update_reminder'), 'zh guide should mention update_reminder');
+  assert.ok(
+    zhSoft.includes('多条粗略提醒项'),
+    'zh guide should allow rough multi-reminder bridge when muddled',
+  );
 
   const enSoft = formatAgentFacingContextHealthV3RemediationGuide('en', {
     kind: 'caution',
@@ -25,6 +29,10 @@ async function main(): Promise<void> {
   assert.ok(enSoft.includes('Context state: 🟡 caution'), 'en guide should include caution');
   assert.ok(enSoft.includes('update_reminder'), 'en guide should mention update_reminder');
   assert.ok(enSoft.includes('clear_mind'), 'en guide should mention clear_mind');
+  assert.ok(
+    enSoft.includes('multiple rough reminders'),
+    'en guide should allow rough multi-reminder bridge when muddled',
+  );
 
   console.log('OK');
 }
