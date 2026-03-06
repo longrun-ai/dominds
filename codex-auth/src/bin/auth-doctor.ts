@@ -221,6 +221,7 @@ interface ModelsProbeResult {
   error?: string;
   models_count?: number;
   model_slugs?: string[];
+  gpt_54_model?: ModelsProbeModel | null;
   codex_53_family?: ModelsProbeModel[];
   spark_model?: ModelsProbeModel | null;
   preflight?: FetchPreflight;
@@ -808,7 +809,7 @@ function selectChatGptModel(
     };
   }
 
-  const fallbackModels = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2'];
+  const fallbackModels = ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2'];
   for (const model of fallbackModels) {
     const instructions = resolveLocalInstructions(model);
     if (instructions) {
@@ -817,7 +818,7 @@ function selectChatGptModel(
   }
 
   return {
-    model: 'gpt-5.3-codex',
+    model: 'gpt-5.4',
     instructions: 'You are Codex CLI.',
   };
 }
@@ -1007,6 +1008,7 @@ async function probeChatGptModels(
     }
 
     const modelSlugs = parsed.models.map((model) => model.slug);
+    const gpt54Model = parsed.models.find((model) => model.slug === 'gpt-5.4') ?? null;
     const codex53Family = parsed.models.filter((model) => model.slug.startsWith('gpt-5.3-codex'));
     const sparkModel = parsed.models.find((model) => model.slug === 'gpt-5.3-codex-spark') ?? null;
 
@@ -1015,6 +1017,7 @@ async function probeChatGptModels(
       status: response.status,
       models_count: parsed.models.length,
       model_slugs: modelSlugs,
+      gpt_54_model: gpt54Model,
       codex_53_family: codex53Family,
       spark_model: sparkModel,
       preflight,
@@ -1725,6 +1728,23 @@ async function main(): Promise<void> {
       }
       if (typeof chatgptModelsProbe.models_count === 'number') {
         console.log(`- chatgpt /models count: ${chatgptModelsProbe.models_count}`);
+      }
+      if (chatgptModelsProbe.gpt_54_model) {
+        const frontier = chatgptModelsProbe.gpt_54_model;
+        console.log(`- gpt-5.4 found: ${frontier.slug}`);
+        if (typeof frontier.context_window === 'number') {
+          console.log(`- gpt-5.4 context_window: ${frontier.context_window}`);
+        }
+        if (typeof frontier.auto_compact_token_limit === 'number') {
+          console.log(`- gpt-5.4 auto_compact_token_limit: ${frontier.auto_compact_token_limit}`);
+        }
+        if (typeof frontier.effective_context_window_percent === 'number') {
+          console.log(
+            `- gpt-5.4 effective_context_window_percent: ${frontier.effective_context_window_percent}`,
+          );
+        }
+      } else {
+        console.log('- gpt-5.4 found: no');
       }
       if (chatgptModelsProbe.codex_53_family && chatgptModelsProbe.codex_53_family.length > 0) {
         const family = chatgptModelsProbe.codex_53_family.map((model) => model.slug).join(', ');
