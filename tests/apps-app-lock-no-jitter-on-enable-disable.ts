@@ -129,15 +129,6 @@ async function main(): Promise<void> {
     if (!lockParsed1.ok) throw new Error(lockParsed1.errorText);
     assert.equal(lockParsed1.file.apps.length, 1);
     assert.equal(lockParsed1.file.apps[0]?.id, appId);
-    const source1 = lockParsed1.file.apps[0]?.source;
-    assert.ok(source1, 'missing lock entry source');
-    assert.equal(source1.kind, 'local');
-    if (source1.kind !== 'local') {
-      throw new Error('expected local app source');
-    }
-    const expectedPathAbsReal = await fs.realpath(path.resolve(tmpRoot, localAppRel));
-    const actualPathAbsReal = await fs.realpath(source1.pathAbs);
-    assert.equal(actualPathAbsReal, expectedPathAbsReal);
     assert.deepEqual(lockParsed1.file.apps[0]?.package, { name: appId, version: '0.0.0' });
 
     // Ensure file-system timestamp granularity does not hide accidental rewrites.
@@ -158,7 +149,7 @@ async function main(): Promise<void> {
     const enableRes = await runTsCli({
       tsconfigAbs: mainTsconfigAbs,
       scriptAbs: enableCliAbs,
-      args: [appId, '--port', '43055'],
+      args: [appId],
       cwdAbs: tmpRoot,
     });
     assert.equal(

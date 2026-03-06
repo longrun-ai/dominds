@@ -7,19 +7,24 @@
  *   dominds install <spec|path> [--local] [--id <appId>] [--enable] [--force]
  */
 
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import { loadAppLockFile, upsertLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
-import { resolveStableAssignedPort } from '../apps/assigned-port';
 import {
-  APPS_RESOLUTION_REL_PATH,
-  loadAppsResolutionFile,
-  upsertResolvedApp,
-  writeAppsResolutionFile,
-  type AppsResolutionEntry,
-} from '../apps/resolution-file';
+  loadAppsConfigurationFile,
+  setAppDisabledInConfiguration,
+  writeAppsConfigurationFileIfChanged,
+} from '../apps/configuration-file';
+import {
+  DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  loadDomindsAppManifest,
+  makeDefaultRtwsAppManifest,
+  upsertManifestDependency,
+  writeDomindsAppManifestIfChanged,
+} from '../apps/manifest';
 import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from '../apps/run-app-json';
+import { refreshAppsDerivedState } from '../apps/workspace-app-state';
 
 type InstallArgs = Readonly<{
   specOrPath: string;
@@ -36,12 +41,12 @@ function printHelp(): void {
 Options:
   --local              Treat <spec|path> as a local package directory (dev package)
   --id <appId>         Require app id (must match app --json appId)
-  --enable             Enable immediately after install
-  --force              Replace existing installed entry with the same id
+  --enable             Remove the app from disabledApps after install
+  --force              Reserved for future use; currently ignored
 
 Notes:
-  - State is stored in ${APPS_RESOLUTION_REL_PATH} under the current rtws (process.cwd()).
-  - dominds installs apps by running '<app> --json' via npx or local package bin.
+  - install adds the app to .minds/app.yaml dependencies.
+  - app resolution source is determined dynamically via .apps/configuration.yaml resolutionStrategy.
 `);
 }
 
@@ -53,47 +58,42 @@ function parseArgs(argv: readonly string[]): InstallArgs {
   let idOverride: string | null = null;
 
   for (let i = 0; i < argv.length; i += 1) {
-    const a = argv[i];
-    if (a === '--help' || a === '-h') {
+    const arg = argv[i];
+    if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
     }
-    if (a === '--force') {
+    if (arg === '--force') {
       force = true;
       continue;
     }
-    if (a === '--enable') {
+    if (arg === '--enable') {
       enable = true;
       continue;
     }
-    if (a === '--local') {
+    if (arg === '--local') {
       local = true;
       continue;
     }
-    if (a === '--id') {
-      const v = argv[i + 1];
-      if (!v) throw new Error('Missing value for --id');
-      idOverride = v.trim() || null;
+    if (arg === '--id') {
+      const value = argv[i + 1];
+      if (!value) throw new Error('Missing value for --id');
+      idOverride = value.trim() || null;
       i += 1;
       continue;
     }
-    if (a.startsWith('-')) {
-      throw new Error(`Unknown option: ${a}`);
-    }
-    positional.push(a);
+    if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
+    positional.push(arg);
   }
 
-  if (positional.length !== 1) {
-    throw new Error('install requires exactly one <spec|path>');
-  }
-
+  if (positional.length !== 1) throw new Error('install requires exactly one <spec|path>');
   return { specOrPath: positional[0], force, enable, local, idOverride };
 }
 
-async function pathIsDirectory(p: string): Promise<boolean> {
+async function pathIsDirectory(pathAbs: string): Promise<boolean> {
   try {
-    const st = await fs.stat(p);
-    return st.isDirectory();
+    const stat = await fs.stat(pathAbs);
+    return stat.isDirectory();
   } catch {
     return false;
   }
@@ -101,6 +101,7 @@ async function pathIsDirectory(p: string): Promise<boolean> {
 
 async function main(): Promise<void> {
   const rtwsRootAbs = process.cwd();
+
   let args: InstallArgs;
   try {
     args = parseArgs(process.argv.slice(2));
@@ -120,16 +121,6 @@ async function main(): Promise<void> {
 
   const localAbs = path.resolve(rtwsRootAbs, specOrPath);
   const shouldUseLocal = args.local || (await pathIsDirectory(localAbs));
-
-  const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs });
-  if (loadedResolution.kind === 'error') {
-    console.error(
-      `Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loadedResolution.errorText}`,
-    );
-    process.exit(1);
-    return;
-  }
-
   const installJson = shouldUseLocal
     ? await runDomindsAppJsonViaLocalPackage({ packageRootAbs: localAbs })
     : await runDomindsAppJsonViaNpx({ spec: specOrPath, cwdAbs: rtwsRootAbs });
@@ -140,77 +131,80 @@ async function main(): Promise<void> {
     return;
   }
 
-  const prev = loadedResolution.file.apps.find((a) => a.id === installJson.appId) ?? null;
-  if (prev && !args.force) {
-    console.error(
-      `Error: app '${installJson.appId}' already installed. Use 'dominds update ${installJson.appId}' or 'dominds install ... --force'.`,
-    );
+  const loadedManifest = await loadDomindsAppManifest({
+    packageRootAbs: rtwsRootAbs,
+    manifestRelPath: DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  });
+  const manifest =
+    loadedManifest.kind === 'ok' ? loadedManifest.manifest : makeDefaultRtwsAppManifest();
+  const nextManifest = upsertManifestDependency({
+    manifest,
+    dependency: { id: installJson.appId },
+  });
+  await writeDomindsAppManifestIfChanged({
+    packageRootAbs: rtwsRootAbs,
+    manifestRelPath: DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+    manifest: nextManifest,
+  });
+
+  const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
+  if (loadedConfig.kind === 'error') {
+    console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
     process.exit(1);
     return;
   }
 
-  const userEnabled = args.enable || (prev ? prev.userEnabled : false);
-  const enabled = userEnabled;
-
-  const assignedPort = await resolveStableAssignedPort({
+  const nextConfig = setAppDisabledInConfiguration({
+    existing: loadedConfig.file,
     appId: installJson.appId,
-    installJson,
-    existingApps: loadedResolution.file.apps,
-    existingAssignedPort: prev?.assignedPort ?? null,
+    disabled: args.enable
+      ? false
+      : isAppCurrentlyDisabled(loadedConfig.file.disabledApps, installJson.appId),
   });
+  await writeAppsConfigurationFileIfChanged({ rtwsRootAbs, file: nextConfig });
 
-  const entry: AppsResolutionEntry = {
-    id: installJson.appId,
-    enabled,
-    userEnabled,
-    source: shouldUseLocal
-      ? { kind: 'local', pathAbs: localAbs }
-      : { kind: 'npx', spec: specOrPath },
-    assignedPort,
-    installJson,
-  };
-
-  const nextFile = upsertResolvedApp({ existing: loadedResolution.file, next: entry });
-  await writeAppsResolutionFile({ rtwsRootAbs, file: nextFile });
-
-  try {
-    const loadedLock = await loadAppLockFile({ rtwsRootAbs });
-    if (loadedLock.kind === 'error') {
-      console.error(`Warning: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
-    } else {
-      const nextLock = upsertLockedApp({
-        existing: loadedLock.file,
-        next: {
-          id: entry.id,
-          source: entry.source,
-          package: {
-            name: entry.installJson.package.name,
-            version: entry.installJson.package.version,
-          },
-        },
-      });
-      await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
-    }
-  } catch (err: unknown) {
-    console.error(
-      `Warning: failed to update .minds/app-lock.yaml: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  const loadedLock = await loadAppLockFile({ rtwsRootAbs });
+  if (loadedLock.kind === 'error') {
+    console.error(`Error: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
+    process.exit(1);
+    return;
   }
+  const nextLock = upsertLockedApp({
+    existing: loadedLock.file,
+    next: {
+      id: installJson.appId,
+      package: {
+        name: installJson.package.name,
+        version: installJson.package.version,
+      },
+    },
+  });
+  await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
 
+  await refreshAppsDerivedState({ rtwsRootAbs });
+
+  void args.force;
   console.log(
     shouldUseLocal
-      ? `Installed app '${entry.id}' from local package: ${localAbs}`
-      : `Installed app '${entry.id}' via npx spec: ${specOrPath}`,
+      ? `Installed app '${installJson.appId}' from local package: ${localAbs}`
+      : `Installed app '${installJson.appId}' via resolver strategy seed: ${specOrPath}`,
   );
-  if (enabled) {
-    console.log(`Enabled app '${entry.id}'`);
+  if (args.enable) {
+    console.log(`Enabled app '${installJson.appId}'`);
   }
+}
+
+function isAppCurrentlyDisabled(
+  disabledApps: ReadonlyArray<string> | undefined,
+  appId: string,
+): boolean {
+  return (disabledApps ?? []).includes(appId);
 }
 
 export { main };
 
 if (require.main === module) {
-  main().catch((err) => {
+  main().catch((err: unknown) => {
     console.error('Unhandled error:', err);
     process.exit(1);
   });

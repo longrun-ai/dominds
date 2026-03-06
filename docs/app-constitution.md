@@ -56,7 +56,8 @@ Goal: close the loop for “dependency resolution + observability + regressabili
     - optional missing/disabled: silently skipped (must not block startup; Problems not required; debug logs allowed).
     - required missing/disabled: must not block startup; must be observable in WebUI Problems; related capability enters defunc/unavailable.
   - required disable propagation:
-    - `<rtws>/.apps/resolution.yaml` must represent both user intent (explicit user disable) and the propagated effective state.
+    - `<rtws>/.apps/configuration.yaml` must represent explicit user disables (`disabledApps`).
+    - `<rtws>/.apps/resolution.yaml` must only record the resolved effective enabled state.
     - when dependencies recover, propagated disables must auto-recover (without overriding explicit user disables).
   - Override precedence (documented contract): `rtws override > app override > app defaults`.
   - Lock semantics (design contract): `.minds/app-lock.yaml` freezes dependency versions only; enable/disable must not jitter the lock.
@@ -153,11 +154,12 @@ Analogy (intuition only):
 
 - `.minds/app.yaml`: like `package.json` (declares the dependency graph + app default config such as `frontend.defaultPort`).
 - `.minds/app-lock.yaml`: like `pnpm-lock.yaml` (freezes dependency versions; should not jitter due to enable/disable).
-- `<rtws>/.apps/resolution.yaml`: like `pnpm-workspace.yaml` (for a given rtws: “where each app actually comes from / whether it’s enabled / whether its port is already pinned”).
+- `<rtws>/.apps/configuration.yaml`: workspace user config (resolution strategy + explicit `disabledApps`).
+- `<rtws>/.apps/resolution.yaml`: per-rtws resolution snapshot (“where each app resolved from / whether it is effectively enabled / whether its port is already pinned”).
 
 Key semantics:
 
-- enable/disable operations must only affect `<rtws>/.apps/resolution.yaml`.
+- enable/disable operations must only affect `<rtws>/.apps/configuration.yaml.disabledApps`.
 - dependencies can be declared as `required` vs `optional`:
   - disabling a `required` dependency must transitively make dependents _effectively disabled_ (at minimum observable via UI/Problems).
   - disabling an `optional` dependency must not disable dependents.
@@ -180,14 +182,17 @@ Recommended principles:
 (Current: implemented) existing anchors:
 
 - JSON schema: `dominds/main/apps/app-json.ts` (`DomindsAppInstallJsonV1`).
+- Apps configuration file: `dominds/main/apps/configuration-file.ts`.
 - Apps resolution file: `dominds/main/apps/resolution-file.ts`.
 
-(Current: implemented) the kernel treats `<rtws>/.apps/resolution.yaml` as **overlay + strategy**:
+(Current: implemented) the kernel now splits `<rtws>/.apps/configuration.yaml` from `<rtws>/.apps/resolution.yaml`:
 
-- If the file exists: `apps[]` is the overlay (stores `enabled` / `assignedPort` / `source` / `installJson`), and `resolutionStrategy?` (if present) overrides the default strategy.
-- If the file is missing: the overlay is empty, and the strategy falls back to defaults (`order=['local']`, `localRoots=['dominds-apps']`).
+- `configuration.yaml` carries user config: `resolutionStrategy?` (if present) overrides the default strategy, and `disabledApps` records explicit disables.
+- `resolution.yaml` carries derived state only: `apps[]` stores `enabled` / `assignedPort` / `source` / `installJson`.
+- If `configuration.yaml` is missing, strategy falls back to defaults (`order=['local']`, `localRoots=['dominds-apps']`) and no explicit disables apply.
+- If `resolution.yaml` is missing, the snapshot starts empty and the kernel re-materializes it from the declared dependency graph.
 
-So even without `<rtws>/.apps/resolution.yaml`, as long as `.minds/app.yaml` declares dependencies, the kernel still resolves local apps via the default strategy; if the root manifest has no dependencies, the effective enabled apps set is empty.
+So even without `<rtws>/.apps/configuration.yaml` or `<rtws>/.apps/resolution.yaml`, as long as `.minds/app.yaml` declares dependencies, the kernel still resolves local apps via the default strategy; if the root manifest has no dependencies, the effective enabled apps set is empty.
 
 ## App-provided `.minds/**` assets
 

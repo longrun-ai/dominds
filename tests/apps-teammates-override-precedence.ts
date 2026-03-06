@@ -24,36 +24,50 @@ function getScribeName(members: Record<string, unknown>): string | null {
   return typeof name === 'string' ? name : null;
 }
 
-function buildResolutionEntryYaml(params: {
+async function writeLocalAppPackage(params: {
   appId: string;
   packageName: string;
-  rootAbs: string;
+  packageRootAbs: string;
   teammatesYamlRelPath?: string;
-}): string[] {
-  const lines = [
-    `  - id: ${params.appId}`,
-    '    enabled: true',
-    '    source:',
-    '      kind: local',
-    `      pathAbs: ${JSON.stringify(params.rootAbs)}`,
-    '    assignedPort: null',
-    '    installJson:',
-    '      schemaVersion: 1',
-    `      appId: ${params.appId}`,
-    '      package:',
-    `        name: ${params.packageName}`,
-    '        version: null',
-    `        rootAbs: ${JSON.stringify(params.rootAbs)}`,
-    '      host:',
-    '        kind: node_module',
-    '        moduleRelPath: index.js',
-    '        exportName: main',
-  ];
-  if (params.teammatesYamlRelPath) {
-    lines.push('      contributes:');
-    lines.push(`        teammatesYamlRelPath: ${params.teammatesYamlRelPath}`);
-  }
-  return lines;
+}): Promise<void> {
+  await writeText(
+    path.join(params.packageRootAbs, 'package.json'),
+    JSON.stringify(
+      {
+        name: params.packageName,
+        version: '0.0.0',
+        bin: 'bin.js',
+      },
+      null,
+      2,
+    ),
+  );
+  const contributesLines =
+    params.teammatesYamlRelPath === undefined
+      ? []
+      : [
+          `  contributes: { teammatesYamlRelPath: ${JSON.stringify(params.teammatesYamlRelPath)} },`,
+        ];
+  await writeText(
+    path.join(params.packageRootAbs, 'bin.js'),
+    [
+      "'use strict';",
+      "if (!process.argv.includes('--json')) throw new Error('expected --json');",
+      'const json = {',
+      '  schemaVersion: 1,',
+      `  appId: ${JSON.stringify(params.appId)},`,
+      '  package: {',
+      `    name: ${JSON.stringify(params.packageName)},`,
+      "    version: '0.0.0',",
+      '    rootAbs: process.cwd(),',
+      '  },',
+      "  host: { kind: 'node_module', moduleRelPath: 'index.js', exportName: 'main' },",
+      ...contributesLines,
+      '};',
+      'process.stdout.write(JSON.stringify(json));',
+      '',
+    ].join('\n'),
+  );
 }
 
 async function main(): Promise<void> {
@@ -63,9 +77,28 @@ async function main(): Promise<void> {
   try {
     process.chdir(tmpRoot);
 
-    const commonRoot = path.join(tmpRoot, 'app-common-agents');
-    const midRoot = path.join(tmpRoot, 'app-mid-agents');
-    const outerRoot = path.join(tmpRoot, 'app-outer-agents');
+    const commonRoot = path.join(tmpRoot, 'dominds-apps', 'common_agents');
+    const midRoot = path.join(tmpRoot, 'dominds-apps', 'mid_agents');
+    const outerRoot = path.join(tmpRoot, 'dominds-apps', 'outer_agents');
+
+    await writeText(
+      path.join(tmpRoot, '.minds', 'app.yaml'),
+      [
+        'apiVersion: dominds.io/v1alpha1',
+        'kind: DomindsApp',
+        'id: rtws_root',
+        'dependencies:',
+        '  - id: outer_agents',
+        '',
+      ].join('\n'),
+    );
+
+    await writeLocalAppPackage({
+      appId: 'common_agents',
+      packageName: 'app-common-agents',
+      packageRootAbs: commonRoot,
+      teammatesYamlRelPath: 'team.yaml',
+    });
 
     await writeText(
       path.join(commonRoot, '.minds', 'app.yaml'),
@@ -75,6 +108,12 @@ async function main(): Promise<void> {
       path.join(commonRoot, 'team.yaml'),
       ['members:', '  scribe:', '    name: ScribeFromDefault', ''].join('\n'),
     );
+
+    await writeLocalAppPackage({
+      appId: 'mid_agents',
+      packageName: 'app-mid-agents',
+      packageRootAbs: midRoot,
+    });
 
     await writeText(
       path.join(midRoot, '.minds', 'app.yaml'),
@@ -93,6 +132,12 @@ async function main(): Promise<void> {
       ['members:', '  scribe:', '    name: ScribeFromMidOverride', ''].join('\n'),
     );
 
+    await writeLocalAppPackage({
+      appId: 'outer_agents',
+      packageName: 'app-outer-agents',
+      packageRootAbs: outerRoot,
+    });
+
     await writeText(
       path.join(outerRoot, '.minds', 'app.yaml'),
       [
@@ -107,31 +152,6 @@ async function main(): Promise<void> {
     await writeText(
       path.join(outerRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
       ['members:', '  scribe:', '    name: ScribeFromOuterOverride', ''].join('\n'),
-    );
-
-    await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      [
-        'schemaVersion: 1',
-        'apps:',
-        ...buildResolutionEntryYaml({
-          appId: 'common_agents',
-          packageName: 'app-common-agents',
-          rootAbs: commonRoot,
-          teammatesYamlRelPath: 'team.yaml',
-        }),
-        ...buildResolutionEntryYaml({
-          appId: 'mid_agents',
-          packageName: 'app-mid-agents',
-          rootAbs: midRoot,
-        }),
-        ...buildResolutionEntryYaml({
-          appId: 'outer_agents',
-          packageName: 'app-outer-agents',
-          rootAbs: outerRoot,
-        }),
-        '',
-      ].join('\n'),
     );
 
     // No rtws override: outer app override should beat mid app override, and cycle must not hang.

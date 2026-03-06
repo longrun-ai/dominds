@@ -32,7 +32,6 @@ function makeEntry(params: {
   return {
     id: params.id,
     enabled: true,
-    userEnabled: true,
     source: { kind: 'npx', spec: `${params.id}@0.0.0` },
     assignedPort: params.assignedPort,
     installJson: {

@@ -1,63 +1,33 @@
 #!/usr/bin/env node
 
-/**
- * enable subcommand for dominds CLI (Apps)
- *
- * Usage:
- *   dominds enable <appId> [--port <port>]
- */
-
-import { resolveStableAssignedPort } from '../apps/assigned-port';
 import {
-  APPS_RESOLUTION_REL_PATH,
-  findResolvedApp,
-  loadAppsResolutionFile,
-  setResolvedAppAssignedPort,
-  setResolvedAppUserEnabled,
-  writeAppsResolutionFile,
-} from '../apps/resolution-file';
+  loadAppsConfigurationFile,
+  setAppDisabledInConfiguration,
+  writeAppsConfigurationFileIfChanged,
+} from '../apps/configuration-file';
+import { hasRtwsDeclaredAppDependency } from '../apps/manifest';
+import { refreshAppsDerivedState } from '../apps/workspace-app-state';
 
-type EnableArgs = Readonly<{
-  appId: string;
-  port: number | null;
-}>;
+type EnableArgs = Readonly<{ appId: string }>;
 
 function printHelp(): void {
   console.log(`Usage:
-  dominds enable <appId> [--port <port>]
-
-Options:
-  --port <port>        Set frontend port (stored in ${APPS_RESOLUTION_REL_PATH}); use 0 to clear
+  dominds enable <appId>
 `);
 }
 
 function parseArgs(argv: readonly string[]): EnableArgs {
   const positional: string[] = [];
-  let port: number | null = null;
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const a = argv[i];
-    if (a === '--help' || a === '-h') {
+  for (const arg of argv) {
+    if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
     }
-    if (a === '--port') {
-      const v = argv[i + 1];
-      if (!v) throw new Error('Missing value for --port');
-      const n = Number(v);
-      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
-        throw new Error(`Invalid --port value: ${v}`);
-      }
-      port = n;
-      i += 1;
-      continue;
-    }
-    if (a.startsWith('-')) throw new Error(`Unknown option: ${a}`);
-    positional.push(a);
+    if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
+    positional.push(arg);
   }
-
   if (positional.length !== 1) throw new Error('enable requires exactly one <appId>');
-  return { appId: positional[0], port };
+  return { appId: positional[0] };
 }
 
 async function main(): Promise<void> {
@@ -72,49 +42,33 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
-  if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
+  if (!(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))) {
+    console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
     process.exit(1);
     return;
   }
 
-  const found = findResolvedApp(loaded.file, args.appId);
-  if (!found) {
-    console.error(`Error: app '${args.appId}' not installed`);
+  const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
+  if (loadedConfig.kind === 'error') {
+    console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
     process.exit(1);
     return;
   }
 
-  let next = setResolvedAppUserEnabled({
-    existing: loaded.file,
+  const nextConfig = setAppDisabledInConfiguration({
+    existing: loadedConfig.file,
     appId: args.appId,
-    userEnabled: true,
+    disabled: false,
   });
-  if (args.port !== null) {
-    next = setResolvedAppAssignedPort({
-      existing: next,
-      appId: args.appId,
-      assignedPort: args.port === 0 ? null : args.port,
-    });
-  } else {
-    const assignedPort = await resolveStableAssignedPort({
-      appId: found.id,
-      installJson: found.installJson,
-      existingApps: next.apps,
-      existingAssignedPort: found.assignedPort,
-    });
-    next = setResolvedAppAssignedPort({ existing: next, appId: args.appId, assignedPort });
-  }
-
-  await writeAppsResolutionFile({ rtwsRootAbs, file: next });
+  await writeAppsConfigurationFileIfChanged({ rtwsRootAbs, file: nextConfig });
+  await refreshAppsDerivedState({ rtwsRootAbs });
   console.log(`Enabled app '${args.appId}'`);
 }
 
 export { main };
 
 if (require.main === module) {
-  main().catch((err) => {
+  main().catch((err: unknown) => {
     console.error('Unhandled error:', err);
     process.exit(1);
   });

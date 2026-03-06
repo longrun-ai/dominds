@@ -17,6 +17,44 @@ async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.writeFile(filePathAbs, content, 'utf-8');
 }
 
+async function writeLocalPackage(params: { packageRootAbs: string; appId: string }): Promise<void> {
+  await writeText(
+    path.join(params.packageRootAbs, 'package.json'),
+    JSON.stringify(
+      {
+        name: params.appId,
+        version: '0.0.0',
+        bin: 'bin.js',
+      },
+      null,
+      2,
+    ),
+  );
+  await writeText(
+    path.join(params.packageRootAbs, 'bin.js'),
+    [
+      "'use strict';",
+      "if (!process.argv.includes('--json')) throw new Error('expected --json');",
+      'const json = {',
+      '  schemaVersion: 1,',
+      `  appId: ${JSON.stringify(params.appId)},`,
+      '  package: {',
+      `    name: ${JSON.stringify(params.appId)},`,
+      "    version: '0.0.0',",
+      '    rootAbs: process.cwd(),',
+      '  },',
+      "  host: { kind: 'node_module', moduleRelPath: 'dist/app.js', exportName: 'domindsApp' },",
+      '};',
+      'process.stdout.write(JSON.stringify(json));',
+      '',
+    ].join('\n'),
+  );
+  await writeText(
+    path.join(params.packageRootAbs, '.minds', 'app.yaml'),
+    ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', `id: ${params.appId}`, ''].join('\n'),
+  );
+}
+
 function listAppsProblems(): string[] {
   const snapshot = getProblemsSnapshot();
   return snapshot.problems
@@ -82,32 +120,15 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(listAppsProblems(), []);
 
-    // Case 2: required dependency disabled in resolution overlay => issues => Problems.
+    // Case 2: required dependency disabled in configuration => issues => Problems.
     removeProblemsByPrefix('apps/apps_resolution/');
+    await writeLocalPackage({
+      packageRootAbs: path.join(tmpRoot, 'dominds-apps', missingRequiredId),
+      appId: missingRequiredId,
+    });
     await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      [
-        'schemaVersion: 1',
-        'apps:',
-        `  - id: ${missingRequiredId}`,
-        '    enabled: false',
-        '    source:',
-        '      kind: npx',
-        '      spec: example@0.0.0',
-        '    assignedPort: null',
-        '    installJson:',
-        '      schemaVersion: 1',
-        `      appId: ${missingRequiredId}`,
-        '      package:',
-        '        name: example',
-        '        version: null',
-        '        rootAbs: /tmp/example',
-        '      host:',
-        '        kind: node_module',
-        '        moduleRelPath: dist/app.js',
-        '        exportName: domindsApp',
-        '',
-      ].join('\n'),
+      path.join(tmpRoot, '.apps', 'configuration.yaml'),
+      ['schemaVersion: 1', 'disabledApps:', `  - ${missingRequiredId}`, ''].join('\n'),
     );
 
     const snap2 = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });

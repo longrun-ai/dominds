@@ -1,36 +1,36 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import type { DomindsAppInstallJsonV1 } from './app-json';
+import { loadAppLockFile, type AppLockEntry } from './app-lock-file';
 import { resolveStableAssignedPortWithReason } from './assigned-port';
-import type { DomindsAppDependency } from './manifest';
-import { loadDomindsAppManifest } from './manifest';
+import {
+  APPS_CONFIGURATION_REL_PATH,
+  DEFAULT_APPS_RESOLUTION_STRATEGY,
+  loadAppsConfigurationFile,
+  type AppsResolutionStrategy,
+  type AppsResolutionStrategyOrderItem,
+} from './configuration-file';
+import {
+  loadDomindsAppManifest,
+  loadRtwsDeclaredAppDependencies,
+  type DomindsAppDependency,
+} from './manifest';
 import { readPackageInfo } from './package-info';
 import {
   APPS_RESOLUTION_REL_PATH,
-  DEFAULT_APPS_RESOLUTION_STRATEGY,
-  applyAssignedPortToResolvedApps,
-  applyEffectiveEnabledToResolvedApps,
   loadAppsResolutionFile,
   writeAppsResolutionFileIfChanged,
   type AppsResolutionEntry,
   type AppsResolutionFile,
   type AppsResolutionSource,
-  type AppsResolutionStrategy,
-  type AppsResolutionStrategyOrderItem,
 } from './resolution-file';
-import { runDomindsAppJsonViaLocalPackage } from './run-app-json';
+import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from './run-app-json';
 
 export type EnabledAppSnapshotEntry = Readonly<{
   id: string;
   runtimePort: number | null;
-  installJson: DomindsAppInstallJsonV1;
+  installJson: AppsResolutionEntry['installJson'];
   source: AppsResolutionEntry['source'];
-}>;
-
-export type EnabledAppsSnapshot = Readonly<{
-  enabledApps: ReadonlyArray<EnabledAppSnapshotEntry>;
-  issues: ReadonlyArray<AppsResolutionIssue>;
 }>;
 
 export type AppsResolutionIssue = Readonly<{
@@ -45,35 +45,41 @@ export type AppsResolutionIssue = Readonly<{
   detail: Readonly<Record<string, unknown>>;
 }>;
 
-type AppsResolutionOverlayIndex = Readonly<{
-  byId: ReadonlyMap<string, AppsResolutionEntry>;
-  extras: ReadonlyArray<AppsResolutionEntry>;
+export type EnabledAppsSnapshot = Readonly<{
+  enabledApps: ReadonlyArray<EnabledAppSnapshotEntry>;
+  issues: ReadonlyArray<AppsResolutionIssue>;
 }>;
+
+function getRuntimePort(entry: AppsResolutionEntry): number | null {
+  if (entry.assignedPort !== null) return entry.assignedPort;
+  const defaultPort = entry.installJson.frontend?.defaultPort;
+  return typeof defaultPort === 'number' && defaultPort > 0 ? defaultPort : null;
+}
 
 type NormalizedAppsResolutionStrategy = Readonly<{
   order: ReadonlyArray<AppsResolutionStrategyOrderItem>;
   localRoots: ReadonlyArray<string>;
 }>;
 
-async function fileExists(filePathAbs: string): Promise<boolean> {
-  try {
-    await fs.access(filePathAbs);
-    return true;
-  } catch (err: unknown) {
-    const isEnoent =
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code?: unknown }).code === 'ENOENT';
-    if (isEnoent) return false;
-    throw err;
-  }
-}
+type ResolvedAppProbe = Readonly<{
+  source: AppsResolutionSource;
+  installJson: AppsResolutionEntry['installJson'];
+}>;
+
+type ResolvedGraphState = Readonly<{
+  resolutionFile: AppsResolutionFile;
+  issues: ReadonlyArray<AppsResolutionIssue>;
+}>;
+
+type LockedAppHint = Readonly<{
+  packageName: string;
+  version: string | null;
+}>;
 
 async function dirExists(dirPathAbs: string): Promise<boolean> {
   try {
-    const st = await fs.stat(dirPathAbs);
-    return st.isDirectory();
+    const stat = await fs.stat(dirPathAbs);
+    return stat.isDirectory();
   } catch (err: unknown) {
     const isEnoent =
       typeof err === 'object' &&
@@ -83,40 +89,6 @@ async function dirExists(dirPathAbs: string): Promise<boolean> {
     if (isEnoent) return false;
     throw err;
   }
-}
-
-async function tryLoadRtwsAppManifestDeps(params: {
-  rtwsRootAbs: string;
-}): Promise<ReadonlyArray<DomindsAppDependency>> {
-  const filePathAbs = path.resolve(params.rtwsRootAbs, '.minds', 'app.yaml');
-  if (!(await fileExists(filePathAbs))) return [];
-
-  const loaded = await loadDomindsAppManifest({
-    packageRootAbs: params.rtwsRootAbs,
-    manifestRelPath: '.minds/app.yaml',
-  });
-  if (loaded.kind === 'error') {
-    throw new Error(
-      `Failed to load rtws app manifest: ${loaded.errorText} (${loaded.filePathAbs})`,
-    );
-  }
-  return loaded.manifest.dependencies ?? [];
-}
-
-function indexOverlayApps(params: {
-  overlayApps: ReadonlyArray<AppsResolutionEntry>;
-}): AppsResolutionOverlayIndex {
-  const byId = new Map<string, AppsResolutionEntry>();
-  const extras: AppsResolutionEntry[] = [];
-  for (const e of params.overlayApps) {
-    if (byId.has(e.id)) {
-      // Loud: duplicate IDs means non-deterministic overrides.
-      throw new Error(`Invalid apps resolution overlay: duplicate app id '${e.id}'`);
-    }
-    byId.set(e.id, e);
-    extras.push(e);
-  }
-  return { byId, extras };
 }
 
 function normalizeStrategy(
@@ -131,32 +103,31 @@ function normalizeStrategy(
 
   if (order.length === 0) {
     throw new Error(
-      `Invalid ${APPS_RESOLUTION_REL_PATH}: resolutionStrategy.order must not be empty`,
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.order must not be empty`,
     );
   }
   if (localRoots.length === 0) {
     throw new Error(
-      `Invalid ${APPS_RESOLUTION_REL_PATH}: resolutionStrategy.localRoots must not be empty`,
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.localRoots must not be empty`,
     );
   }
-
-  const orderSet = new Set(order);
-  if (orderSet.size !== order.length) {
-    throw new Error(`Invalid ${APPS_RESOLUTION_REL_PATH}: resolutionStrategy.order has duplicates`);
-  }
-  const localRootsSet = new Set(localRoots);
-  if (localRootsSet.size !== localRoots.length) {
+  if (new Set(order).size !== order.length) {
     throw new Error(
-      `Invalid ${APPS_RESOLUTION_REL_PATH}: resolutionStrategy.localRoots has duplicates`,
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.order has duplicates`,
+    );
+  }
+  if (new Set(localRoots).size !== localRoots.length) {
+    throw new Error(
+      `Invalid ${APPS_CONFIGURATION_REL_PATH}: resolutionStrategy.localRoots has duplicates`,
     );
   }
 
   return { order, localRoots };
 }
 
-function getResolutionHint(params: { rtwsRootAbs: string; hasResolutionFile: boolean }): string {
-  const filePathAbs = path.resolve(params.rtwsRootAbs, APPS_RESOLUTION_REL_PATH);
-  const action = params.hasResolutionFile ? 'Edit' : 'Create';
+function getResolutionHint(params: { rtwsRootAbs: string; hasConfigurationFile: boolean }): string {
+  const filePathAbs = path.resolve(params.rtwsRootAbs, APPS_CONFIGURATION_REL_PATH);
+  const action = params.hasConfigurationFile ? 'Edit' : 'Create';
   return (
     `${action} ${filePathAbs} to configure 'resolutionStrategy'. ` +
     `Default local root is 'dominds-apps' (rtws-relative) and expects local apps at '<root>/<appId>/'.`
@@ -176,7 +147,7 @@ async function resolveLocalAppPackageRootAbs(params: {
   return null;
 }
 
-async function resolveAppManifestDepsFromInstalledApp(params: {
+async function loadManifestDepsFromResolvedApp(params: {
   appId: string;
   packageRootAbs: string;
 }): Promise<ReadonlyArray<DomindsAppDependency>> {
@@ -193,32 +164,110 @@ async function resolveAppManifestDepsFromInstalledApp(params: {
   return loaded.manifest.dependencies ?? [];
 }
 
-async function resolveAppsFromRtwsHierarchy(params: {
+function makeLockedAppHint(entry: AppLockEntry): LockedAppHint {
+  return {
+    packageName: entry.package.name,
+    version: entry.package.version,
+  };
+}
+
+function buildNpxSpec(params: {
+  appId: string;
+  lockedHint: LockedAppHint | null;
+  previousResolutionEntry: AppsResolutionEntry | null;
+}): string {
+  const packageName =
+    params.lockedHint?.packageName ??
+    params.previousResolutionEntry?.installJson.package.name ??
+    params.appId;
+  const version = params.lockedHint?.version ?? null;
+  return version && version.trim() !== '' ? `${packageName}@${version}` : packageName;
+}
+
+async function probeAppByStrategy(params: {
   rtwsRootAbs: string;
-  overlay: AppsResolutionOverlayIndex;
+  appId: string;
   strategy: NormalizedAppsResolutionStrategy;
-  hasResolutionFile: boolean;
-}): Promise<
-  Readonly<{
-    apps: ReadonlyArray<AppsResolutionEntry>;
-    issues: ReadonlyArray<AppsResolutionIssue>;
-    effectiveEnabledById: ReadonlyMap<string, boolean>;
-    assignedPortById: ReadonlyMap<string, number | null>;
-  }>
-> {
+  lockedHint: LockedAppHint | null;
+  previousResolutionEntry: AppsResolutionEntry | null;
+}): Promise<ResolvedAppProbe | null> {
+  for (const item of params.strategy.order) {
+    if (item === 'local') {
+      const packageRootAbs = await resolveLocalAppPackageRootAbs({
+        rtwsRootAbs: params.rtwsRootAbs,
+        appId: params.appId,
+        localRoots: params.strategy.localRoots,
+      });
+      if (!packageRootAbs) continue;
+
+      const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs });
+      if (installJson.appId !== params.appId) {
+        throw new Error(
+          `App id mismatch for local package '${packageRootAbs}': expected '${params.appId}', got '${installJson.appId}'`,
+        );
+      }
+      return { source: { kind: 'local', pathAbs: packageRootAbs }, installJson };
+    }
+
+    if (item === 'npx') {
+      const spec = buildNpxSpec({
+        appId: params.appId,
+        lockedHint: params.lockedHint,
+        previousResolutionEntry: params.previousResolutionEntry,
+      });
+      const installJson = await runDomindsAppJsonViaNpx({
+        spec,
+        cwdAbs: params.rtwsRootAbs,
+      });
+      if (installJson.appId !== params.appId) {
+        throw new Error(
+          `App id mismatch for npx '${spec}': expected '${params.appId}', got '${installJson.appId}'`,
+        );
+      }
+      return { source: { kind: 'npx', spec }, installJson };
+    }
+
+    const exhaustive: never = item;
+    throw new Error(`Unreachable resolution strategy item: ${String(exhaustive)}`);
+  }
+  return null;
+}
+
+function makeResolutionEntry(params: {
+  appId: string;
+  probe: ResolvedAppProbe;
+  cachedAssignedPort: number | null;
+}): AppsResolutionEntry {
+  return {
+    id: params.appId,
+    enabled: true,
+    source: params.probe.source,
+    assignedPort: params.cachedAssignedPort,
+    installJson: params.probe.installJson,
+  };
+}
+
+async function resolveGraph(params: {
+  rtwsRootAbs: string;
+  strategy: NormalizedAppsResolutionStrategy;
+  configurationDisabledApps: ReadonlySet<string>;
+  previousResolutionById: ReadonlyMap<string, AppsResolutionEntry>;
+  lockedHintsById: ReadonlyMap<string, LockedAppHint>;
+  hasConfigurationFile: boolean;
+}): Promise<ResolvedGraphState> {
   type DepEdge = Readonly<{ depId: string; required: boolean }>;
 
   const issues: AppsResolutionIssue[] = [];
+  const resolvedById = new Map<string, AppsResolutionEntry>();
+  const depsByAppId = new Map<string, ReadonlyArray<DepEdge>>();
+  const fatalApps = new Set<string>();
+  const requiredById = new Map<string, boolean>();
+  const requiredByParents = new Map<string, Set<string>>();
+  const queue: string[] = [];
+
   const pushIssue = (issue: AppsResolutionIssue): void => {
     issues.push(issue);
   };
-
-  const resolvedById = new Map<string, AppsResolutionEntry>();
-  const depsByAppId = new Map<string, ReadonlyArray<DepEdge>>();
-  const requiredById = new Map<string, boolean>();
-  const requiredByParents = new Map<string, Set<string>>();
-  const missingRequired = new Set<string>();
-  const fatalApps = new Set<string>();
 
   const addRequiredByParent = (depId: string, parentId: string): void => {
     const existing = requiredByParents.get(depId);
@@ -235,23 +284,19 @@ async function resolveAppsFromRtwsHierarchy(params: {
       requiredById.set(id, required);
       return true;
     }
-    if (prev === true) return false;
-    if (required === true) {
-      requiredById.set(id, true);
-      return true;
-    }
-    return false;
+    if (prev === true || required === false) return false;
+    requiredById.set(id, true);
+    return true;
   };
 
-  const queue: string[] = [];
   const enqueue = (id: string, required: boolean, parentId: string | null): void => {
     const changed = mergeRequiredFlag(id, required);
-    if (parentId && required) addRequiredByParent(id, parentId);
+    if (required && parentId) addRequiredByParent(id, parentId);
     if (changed) queue.push(id);
   };
 
   try {
-    const rootDeps = await tryLoadRtwsAppManifestDeps({ rtwsRootAbs: params.rtwsRootAbs });
+    const rootDeps = await loadRtwsDeclaredAppDependencies({ rtwsRootAbs: params.rtwsRootAbs });
     for (const dep of rootDeps) {
       enqueue(dep.id, dep.optional !== true, 'rtws');
     }
@@ -268,120 +313,84 @@ async function resolveAppsFromRtwsHierarchy(params: {
       },
     });
   }
-  // Also treat explicitly enabled overlay apps as roots so their own transitive dependencies
-  // are resolved and missing-required issues can be surfaced.
-  for (const e of params.overlay.extras) {
-    if (!e.userEnabled) continue;
-    enqueue(e.id, true, 'resolution_overlay');
-  }
-
-  const resolveMissingApp = async (appId: string): Promise<AppsResolutionEntry | null> => {
-    for (const item of params.strategy.order) {
-      if (item === 'local') {
-        const packageRootAbs = await resolveLocalAppPackageRootAbs({
-          rtwsRootAbs: params.rtwsRootAbs,
-          appId,
-          localRoots: params.strategy.localRoots,
-        });
-        if (!packageRootAbs) {
-          continue;
-        }
-        const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs });
-        if (installJson.appId !== appId) {
-          throw new Error(
-            `App id mismatch for local package '${packageRootAbs}': expected '${appId}', got '${installJson.appId}'`,
-          );
-        }
-        const source: AppsResolutionSource = { kind: 'local', pathAbs: packageRootAbs };
-        return {
-          id: appId,
-          enabled: true,
-          userEnabled: true,
-          source,
-          assignedPort: null,
-          installJson,
-        };
-      }
-      if (item === 'npx') {
-        throw new Error(
-          `Apps resolution strategy 'npx' is not supported yet for missing app '${appId}'. ` +
-            `Install it explicitly so it appears in ${APPS_RESOLUTION_REL_PATH}.`,
-        );
-      }
-      const _exhaustive: never = item;
-      throw new Error(`Unreachable: unknown resolution strategy item: ${String(_exhaustive)}`);
-    }
-    return null;
-  };
 
   while (queue.length > 0) {
     const appId = queue.shift();
     if (!appId) break;
-
-    if (resolvedById.has(appId) || missingRequired.has(appId) || fatalApps.has(appId)) {
-      continue;
-    }
+    if (resolvedById.has(appId) || fatalApps.has(appId)) continue;
 
     const required = requiredById.get(appId) ?? true;
+    const explicitlyDisabled = params.configurationDisabledApps.has(appId);
+    const previousResolutionEntry = params.previousResolutionById.get(appId) ?? null;
 
-    const overlayEntry = params.overlay.byId.get(appId) ?? null;
-    let entry: AppsResolutionEntry | null = overlayEntry;
-    if (!entry) {
-      try {
-        entry = await resolveMissingApp(appId);
-      } catch (err: unknown) {
-        if (required) {
-          const roots = params.strategy.localRoots
-            .map((r) => (path.isAbsolute(r) ? r : path.resolve(params.rtwsRootAbs, r)))
-            .join(', ');
-          pushIssue({
-            kind: 'required_dependency_missing',
-            severity: 'error',
-            message: `Required app dependency '${appId}' failed to resolve.`,
-            detail: {
-              appId,
-              searchedLocalRootsAbs: roots,
-              hint: getResolutionHint({
-                rtwsRootAbs: params.rtwsRootAbs,
-                hasResolutionFile: params.hasResolutionFile,
-              }),
-              errorText: err instanceof Error ? err.message : String(err),
-              requiredBy: [...(requiredByParents.get(appId) ?? new Set<string>())].sort(),
-            },
-          });
-          missingRequired.add(appId);
-        }
-        continue;
-      }
-    }
-
-    if (!entry) {
+    let probe: ResolvedAppProbe | null = null;
+    try {
+      probe = await probeAppByStrategy({
+        rtwsRootAbs: params.rtwsRootAbs,
+        appId,
+        strategy: params.strategy,
+        lockedHint: params.lockedHintsById.get(appId) ?? null,
+        previousResolutionEntry,
+      });
+    } catch (err: unknown) {
       if (required) {
         const roots = params.strategy.localRoots
-          .map((r) => (path.isAbsolute(r) ? r : path.resolve(params.rtwsRootAbs, r)))
+          .map((root) => (path.isAbsolute(root) ? root : path.resolve(params.rtwsRootAbs, root)))
           .join(', ');
         pushIssue({
-          kind: 'required_dependency_missing',
+          kind: explicitlyDisabled ? 'required_dependency_disabled' : 'required_dependency_missing',
           severity: 'error',
-          message: `Required app dependency '${appId}' is missing.`,
+          message: explicitlyDisabled
+            ? `Required app dependency '${appId}' is disabled.`
+            : `Required app dependency '${appId}' failed to resolve.`,
           detail: {
             appId,
             searchedLocalRootsAbs: roots,
             hint: getResolutionHint({
               rtwsRootAbs: params.rtwsRootAbs,
-              hasResolutionFile: params.hasResolutionFile,
+              hasConfigurationFile: params.hasConfigurationFile,
             }),
+            errorText: err instanceof Error ? err.message : String(err),
             requiredBy: [...(requiredByParents.get(appId) ?? new Set<string>())].sort(),
           },
         });
-        missingRequired.add(appId);
       }
       continue;
     }
 
+    if (!probe) {
+      if (required) {
+        const roots = params.strategy.localRoots
+          .map((root) => (path.isAbsolute(root) ? root : path.resolve(params.rtwsRootAbs, root)))
+          .join(', ');
+        pushIssue({
+          kind: explicitlyDisabled ? 'required_dependency_disabled' : 'required_dependency_missing',
+          severity: 'error',
+          message: explicitlyDisabled
+            ? `Required app dependency '${appId}' is disabled.`
+            : `Required app dependency '${appId}' is missing.`,
+          detail: {
+            appId,
+            searchedLocalRootsAbs: roots,
+            hint: getResolutionHint({
+              rtwsRootAbs: params.rtwsRootAbs,
+              hasConfigurationFile: params.hasConfigurationFile,
+            }),
+            requiredBy: [...(requiredByParents.get(appId) ?? new Set<string>())].sort(),
+          },
+        });
+      }
+      continue;
+    }
+
+    const entry = makeResolutionEntry({
+      appId,
+      probe,
+      cachedAssignedPort: previousResolutionEntry?.assignedPort ?? null,
+    });
     resolvedById.set(appId, entry);
 
-    if (!entry.userEnabled) {
+    if (explicitlyDisabled) {
       if (required) {
         pushIssue({
           kind: 'required_dependency_disabled',
@@ -389,12 +398,8 @@ async function resolveAppsFromRtwsHierarchy(params: {
           message: `Required app dependency '${appId}' is disabled.`,
           detail: {
             appId,
-            resolutionFileRelPath: APPS_RESOLUTION_REL_PATH,
+            configurationFileRelPath: APPS_CONFIGURATION_REL_PATH,
             requiredBy: [...(requiredByParents.get(appId) ?? new Set<string>())].sort(),
-            hint: getResolutionHint({
-              rtwsRootAbs: params.rtwsRootAbs,
-              hasResolutionFile: params.hasResolutionFile,
-            }),
           },
         });
       }
@@ -403,7 +408,7 @@ async function resolveAppsFromRtwsHierarchy(params: {
 
     let manifestDeps: ReadonlyArray<DomindsAppDependency>;
     try {
-      manifestDeps = await resolveAppManifestDepsFromInstalledApp({
+      manifestDeps = await loadManifestDepsFromResolvedApp({
         appId,
         packageRootAbs: entry.installJson.package.rootAbs,
       });
@@ -422,50 +427,52 @@ async function resolveAppsFromRtwsHierarchy(params: {
       continue;
     }
 
-    const edges: DepEdge[] = manifestDeps.map((d) => ({
-      depId: d.id,
-      required: d.optional !== true,
+    const edges: DepEdge[] = manifestDeps.map((dep) => ({
+      depId: dep.id,
+      required: dep.optional !== true,
     }));
     depsByAppId.set(appId, edges);
-    for (const e of edges) {
-      enqueue(e.depId, e.required, appId);
+    for (const edge of edges) {
+      enqueue(edge.depId, edge.required, appId);
     }
   }
 
   const effectiveEnabledById = new Map<string, boolean>();
-  for (const [id, entry] of resolvedById.entries()) {
-    effectiveEnabledById.set(id, entry.userEnabled && !fatalApps.has(id));
+  for (const [appId] of resolvedById.entries()) {
+    effectiveEnabledById.set(
+      appId,
+      !params.configurationDisabledApps.has(appId) && !fatalApps.has(appId),
+    );
   }
 
-  // Fixed-point disable propagation: if an enabled app has a required dependency that is missing
-  // or effectively disabled, the app becomes effectively disabled.
   let changed = true;
   while (changed) {
     changed = false;
-    for (const [appId, entry] of resolvedById.entries()) {
-      if (!effectiveEnabledById.get(appId)) continue;
-      if (!entry.userEnabled) continue;
+    for (const [appId] of resolvedById.entries()) {
+      if (!(effectiveEnabledById.get(appId) ?? false)) continue;
       const edges = depsByAppId.get(appId) ?? [];
       for (const edge of edges) {
         if (!edge.required) continue;
-        const depId = edge.depId;
-        const depResolved = resolvedById.get(depId) ?? null;
-        const depEnabled = depResolved ? (effectiveEnabledById.get(depId) ?? false) : false;
-        const depMissing = !depResolved && missingRequired.has(depId);
-        if (depMissing || !depEnabled) {
+
+        const depResolved = resolvedById.get(edge.depId) ?? null;
+        const depExplicitlyDisabled = params.configurationDisabledApps.has(edge.depId);
+        const depEffectiveEnabled = depResolved
+          ? (effectiveEnabledById.get(edge.depId) ?? false)
+          : false;
+        if (depExplicitlyDisabled || !depResolved || !depEffectiveEnabled) {
           effectiveEnabledById.set(appId, false);
           pushIssue({
             kind: 'app_effectively_disabled_due_to_required_dependency',
             severity: 'error',
-            message: `App '${appId}' is effectively disabled due to missing/disabled required dependency '${depId}'.`,
+            message: `App '${appId}' is effectively disabled due to missing/disabled required dependency '${edge.depId}'.`,
             detail: {
               appId,
-              dependencyId: depId,
-              dependencyState: depMissing
-                ? 'missing'
-                : depResolved && depResolved.userEnabled === false
-                  ? 'disabled'
-                  : 'effectively_disabled',
+              dependencyId: edge.depId,
+              dependencyState: depExplicitlyDisabled
+                ? 'disabled'
+                : depResolved
+                  ? 'effectively_disabled'
+                  : 'missing',
             },
           });
           changed = true;
@@ -475,25 +482,22 @@ async function resolveAppsFromRtwsHierarchy(params: {
     }
   }
 
-  const assignedPortById = new Map<string, number | null>();
-  const resolvedEntriesForPort = [...resolvedById.values()];
+  const resolvedEntriesForPorts = [...resolvedById.values()];
   for (const [appId, entry] of resolvedById.entries()) {
-    if (!effectiveEnabledById.get(appId)) continue;
+    if (!(effectiveEnabledById.get(appId) ?? false)) continue;
+
     const assigned = await resolveStableAssignedPortWithReason({
       appId,
       installJson: entry.installJson,
-      existingApps: resolvedEntriesForPort,
+      existingApps: resolvedEntriesForPorts,
       existingAssignedPort: entry.assignedPort,
     });
-    assignedPortById.set(appId, assigned.assignedPort);
 
     if (assigned.assignedPort !== entry.assignedPort) {
       const nextEntry: AppsResolutionEntry = { ...entry, assignedPort: assigned.assignedPort };
       resolvedById.set(appId, nextEntry);
-      const idx = resolvedEntriesForPort.findIndex((a) => a.id === appId);
-      if (idx >= 0) {
-        resolvedEntriesForPort[idx] = nextEntry;
-      }
+      const idx = resolvedEntriesForPorts.findIndex((item) => item.id === appId);
+      if (idx >= 0) resolvedEntriesForPorts[idx] = nextEntry;
     }
 
     if (
@@ -515,100 +519,81 @@ async function resolveAppsFromRtwsHierarchy(params: {
     }
   }
 
-  const out: AppsResolutionEntry[] = [];
+  const apps: AppsResolutionEntry[] = [];
   for (const [appId, entry] of resolvedById.entries()) {
-    if (!effectiveEnabledById.get(appId)) continue;
-    out.push(entry.enabled ? entry : { ...entry, enabled: true });
-  }
-
-  return { apps: out, issues, effectiveEnabledById, assignedPortById };
-}
-
-async function loadAppsResolutionOverlay(params: { rtwsRootAbs: string }): Promise<
-  Readonly<{
-    overlay: AppsResolutionOverlayIndex;
-    resolutionFile: AppsResolutionFile;
-    strategy: NormalizedAppsResolutionStrategy;
-    hasResolutionFile: boolean;
-  }>
-> {
-  const filePathAbs = path.resolve(params.rtwsRootAbs, APPS_RESOLUTION_REL_PATH);
-  const hasResolutionFile = await fileExists(filePathAbs);
-  if (!hasResolutionFile) {
-    const emptyFile: AppsResolutionFile = { schemaVersion: 1, apps: [] };
-    return {
-      overlay: indexOverlayApps({ overlayApps: [] }),
-      resolutionFile: emptyFile,
-      strategy: normalizeStrategy(undefined),
-      hasResolutionFile,
-    };
-  }
-  const loaded = await loadAppsResolutionFile({ rtwsRootAbs: params.rtwsRootAbs });
-  if (loaded.kind === 'error') {
-    throw new Error(
-      `Failed to load apps resolution file overlay: ${loaded.errorText} (${loaded.filePathAbs})`,
-    );
+    apps.push({ ...entry, enabled: effectiveEnabledById.get(appId) ?? false });
   }
 
   return {
-    overlay: indexOverlayApps({ overlayApps: loaded.file.apps }),
-    resolutionFile: loaded.file,
-    strategy: normalizeStrategy(loaded.file.resolutionStrategy),
-    hasResolutionFile,
+    resolutionFile: { schemaVersion: 1, apps },
+    issues,
   };
 }
 
-async function loadEffectiveAppsResolution(params: {
+export async function materializeAppsResolution(params: {
   rtwsRootAbs: string;
-}): Promise<
-  Readonly<{ apps: ReadonlyArray<AppsResolutionEntry>; issues: ReadonlyArray<AppsResolutionIssue> }>
-> {
-  const loaded = await loadAppsResolutionOverlay({ rtwsRootAbs: params.rtwsRootAbs });
-  const resolved = await resolveAppsFromRtwsHierarchy({
-    rtwsRootAbs: params.rtwsRootAbs,
-    overlay: loaded.overlay,
-    strategy: loaded.strategy,
-    hasResolutionFile: loaded.hasResolutionFile,
-  });
-
-  if (loaded.hasResolutionFile) {
-    const withEffectiveEnabled = applyEffectiveEnabledToResolvedApps({
-      existing: loaded.resolutionFile,
-      effectiveEnabledById: resolved.effectiveEnabledById,
-    });
-    const nextResolutionFile = applyAssignedPortToResolvedApps({
-      existing: withEffectiveEnabled,
-      assignedPortById: resolved.assignedPortById,
-    });
-    if (nextResolutionFile !== loaded.resolutionFile) {
-      await writeAppsResolutionFileIfChanged({
-        rtwsRootAbs: params.rtwsRootAbs,
-        file: nextResolutionFile,
-      });
-    }
+}): Promise<ResolvedGraphState> {
+  const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs: params.rtwsRootAbs });
+  if (loadedConfig.kind === 'error') {
+    throw new Error(
+      `Failed to load apps configuration: ${loadedConfig.errorText} (${loadedConfig.filePathAbs})`,
+    );
   }
 
-  return { apps: resolved.apps, issues: resolved.issues };
+  const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs: params.rtwsRootAbs });
+  if (loadedResolution.kind === 'error') {
+    throw new Error(
+      `Failed to load apps resolution snapshot: ${loadedResolution.errorText} (${loadedResolution.filePathAbs})`,
+    );
+  }
+
+  const loadedLock = await loadAppLockFile({ rtwsRootAbs: params.rtwsRootAbs });
+  if (loadedLock.kind === 'error') {
+    throw new Error(`Failed to load app lock: ${loadedLock.errorText} (${loadedLock.filePathAbs})`);
+  }
+
+  const previousResolutionById = new Map<string, AppsResolutionEntry>();
+  for (const entry of loadedResolution.file.apps) {
+    previousResolutionById.set(entry.id, entry);
+  }
+
+  const lockedHintsById = new Map<string, LockedAppHint>();
+  for (const entry of loadedLock.file.apps) {
+    lockedHintsById.set(entry.id, makeLockedAppHint(entry));
+  }
+
+  const resolved = await resolveGraph({
+    rtwsRootAbs: params.rtwsRootAbs,
+    strategy: normalizeStrategy(loadedConfig.file.resolutionStrategy),
+    configurationDisabledApps: new Set(loadedConfig.file.disabledApps ?? []),
+    previousResolutionById,
+    lockedHintsById,
+    hasConfigurationFile: loadedConfig.exists,
+  });
+
+  if (JSON.stringify(loadedResolution.file) !== JSON.stringify(resolved.resolutionFile)) {
+    await writeAppsResolutionFileIfChanged({
+      rtwsRootAbs: params.rtwsRootAbs,
+      file: resolved.resolutionFile,
+    });
+  }
+
+  return resolved;
 }
 
 export async function loadEnabledAppsSnapshot(params: {
   rtwsRootAbs: string;
 }): Promise<EnabledAppsSnapshot> {
-  const loaded = await loadEffectiveAppsResolution({ rtwsRootAbs: params.rtwsRootAbs });
-  const enabledApps: EnabledAppSnapshotEntry[] = loaded.apps
-    .filter((a) => a.enabled)
-    .map((a) => ({
-      // Note: installJson.frontend.defaultPort may be 0 (meaning "runtime decides"); do not pass 0 as runtimePort.
-      id: a.id,
-      runtimePort:
-        a.assignedPort ??
-        (a.installJson.frontend &&
-        a.installJson.frontend.defaultPort &&
-        a.installJson.frontend.defaultPort > 0
-          ? a.installJson.frontend.defaultPort
-          : null),
-      installJson: a.installJson,
-      source: a.source,
-    }));
-  return { enabledApps, issues: loaded.issues };
+  const resolved = await materializeAppsResolution({ rtwsRootAbs: params.rtwsRootAbs });
+  return {
+    enabledApps: resolved.resolutionFile.apps
+      .filter((app) => app.enabled)
+      .map((app) => ({
+        id: app.id,
+        runtimePort: getRuntimePort(app),
+        installJson: app.installJson,
+        source: app.source,
+      })),
+    issues: resolved.issues,
+  };
 }

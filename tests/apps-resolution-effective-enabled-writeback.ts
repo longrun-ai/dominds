@@ -24,24 +24,74 @@ async function writeManifest(
   await writeText(path.join(packageRootAbs, '.minds', 'app.yaml'), `${contentLines.join('\n')}\n`);
 }
 
+async function writeLocalPackage(params: {
+  packageRootAbs: string;
+  appId: string;
+  dependencies?: ReadonlyArray<string>;
+}): Promise<void> {
+  await writeText(
+    path.join(params.packageRootAbs, 'package.json'),
+    JSON.stringify(
+      {
+        name: params.appId,
+        version: '0.0.0',
+        bin: 'bin.js',
+      },
+      null,
+      2,
+    ),
+  );
+  await writeText(
+    path.join(params.packageRootAbs, 'bin.js'),
+    [
+      "'use strict';",
+      "if (!process.argv.includes('--json')) throw new Error('expected --json');",
+      'const json = {',
+      '  schemaVersion: 1,',
+      `  appId: ${JSON.stringify(params.appId)},`,
+      '  package: {',
+      `    name: ${JSON.stringify(params.appId)},`,
+      "    version: '0.0.0',",
+      '    rootAbs: process.cwd(),',
+      '  },',
+      "  host: { kind: 'node_module', moduleRelPath: 'dist/app.js', exportName: 'domindsApp' },",
+      "  frontend: { kind: 'http', defaultPort: 43123 },",
+      '};',
+      'process.stdout.write(JSON.stringify(json));',
+      '',
+    ].join('\n'),
+  );
+  const manifestLines = [
+    'apiVersion: dominds.io/v1alpha1',
+    'kind: DomindsApp',
+    `id: ${params.appId}`,
+  ];
+  if ((params.dependencies ?? []).length > 0) {
+    manifestLines.push('dependencies:');
+    for (const depId of params.dependencies ?? []) {
+      manifestLines.push(`  - id: ${depId}`);
+    }
+  }
+  manifestLines.push('');
+  await writeManifest(params.packageRootAbs, manifestLines);
+}
+
 function makeEntry(params: {
   id: string;
   enabled: boolean;
-  userEnabled: boolean;
   packageRootAbs: string;
 }): AppsResolutionEntry {
   return {
     id: params.id,
     enabled: params.enabled,
-    userEnabled: params.userEnabled,
-    source: { kind: 'npx', spec: `${params.id}@0.0.0` },
+    source: { kind: 'local', pathAbs: params.packageRootAbs },
     assignedPort: null,
     installJson: {
       schemaVersion: 1,
       appId: params.id,
       package: {
         name: params.id,
-        version: null,
+        version: '0.0.0',
         rootAbs: params.packageRootAbs,
       },
       host: {
@@ -65,6 +115,26 @@ async function readResolutionOrThrow(rtwsRootAbs: string): Promise<AppsResolutio
   return loaded.file;
 }
 
+async function writeDefaultLocalConfiguration(
+  rtwsRootAbs: string,
+  disabledApps?: ReadonlyArray<string>,
+): Promise<void> {
+  const lines = [
+    'schemaVersion: 1',
+    'resolutionStrategy:',
+    '  order: [local]',
+    '  localRoots: [dominds-apps]',
+  ];
+  if ((disabledApps ?? []).length > 0) {
+    lines.push('disabledApps:');
+    for (const appId of disabledApps ?? []) {
+      lines.push(`  - ${appId}`);
+    }
+  }
+  lines.push('');
+  await writeText(path.join(rtwsRootAbs, '.apps', 'configuration.yaml'), lines.join('\n'));
+}
+
 async function main(): Promise<void> {
   const tmpRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), 'dominds-apps-effective-enabled-writeback-'),
@@ -72,22 +142,16 @@ async function main(): Promise<void> {
 
   const appA = 'app_a';
   const appB = 'app_b';
-  const appARootAbs = path.join(tmpRoot, 'pkgs', appA);
-  const appBRootAbs = path.join(tmpRoot, 'pkgs', appB);
+  const appARootAbs = path.join(tmpRoot, 'dominds-apps', appA);
+  const appBRootAbs = path.join(tmpRoot, 'dominds-apps', appB);
 
   try {
-    await writeManifest(appARootAbs, [
-      'apiVersion: dominds.io/v1alpha1',
-      'kind: DomindsApp',
-      `id: ${appA}`,
-      'dependencies:',
-      `  - id: ${appB}`,
-    ]);
-    await writeManifest(appBRootAbs, [
-      'apiVersion: dominds.io/v1alpha1',
-      'kind: DomindsApp',
-      `id: ${appB}`,
-    ]);
+    await writeLocalPackage({
+      packageRootAbs: appARootAbs,
+      appId: appA,
+      dependencies: [appB],
+    });
+    await writeLocalPackage({ packageRootAbs: appBRootAbs, appId: appB });
 
     await writeText(
       path.join(tmpRoot, '.minds', 'app.yaml'),
@@ -100,12 +164,13 @@ async function main(): Promise<void> {
         '',
       ].join('\n'),
     );
+    await writeDefaultLocalConfiguration(tmpRoot);
 
     const initialFile: AppsResolutionFile = {
       schemaVersion: 1,
       apps: [
-        makeEntry({ id: appA, enabled: true, userEnabled: true, packageRootAbs: appARootAbs }),
-        makeEntry({ id: appB, enabled: true, userEnabled: true, packageRootAbs: appBRootAbs }),
+        makeEntry({ id: appA, enabled: true, packageRootAbs: appARootAbs }),
+        makeEntry({ id: appB, enabled: true, packageRootAbs: appBRootAbs }),
       ],
     };
     await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: initialFile });
@@ -114,14 +179,7 @@ async function main(): Promise<void> {
     assert.deepEqual(snap1.enabledApps.map((e) => e.id).sort(), [appA, appB]);
     assert.equal(snap1.issues.length, 0, `unexpected issues: ${JSON.stringify(snap1.issues)}`);
 
-    const disableBFile: AppsResolutionFile = {
-      schemaVersion: 1,
-      apps: [
-        makeEntry({ id: appA, enabled: true, userEnabled: true, packageRootAbs: appARootAbs }),
-        makeEntry({ id: appB, enabled: true, userEnabled: false, packageRootAbs: appBRootAbs }),
-      ],
-    };
-    await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: disableBFile });
+    await writeDefaultLocalConfiguration(tmpRoot, [appB]);
 
     const snap2 = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });
     assert.deepEqual(snap2.enabledApps, []);
@@ -144,19 +202,10 @@ async function main(): Promise<void> {
     const appBAfterDisable = fileAfterDisable.apps.find((a) => a.id === appB) ?? null;
     assert.ok(appAAfterDisable);
     assert.ok(appBAfterDisable);
-    assert.equal(appAAfterDisable?.userEnabled, true);
-    assert.equal(appBAfterDisable?.userEnabled, false);
     assert.equal(appAAfterDisable?.enabled, false);
     assert.equal(appBAfterDisable?.enabled, false);
 
-    const recoverBFile: AppsResolutionFile = {
-      schemaVersion: 1,
-      apps: [
-        makeEntry({ id: appA, enabled: false, userEnabled: true, packageRootAbs: appARootAbs }),
-        makeEntry({ id: appB, enabled: false, userEnabled: true, packageRootAbs: appBRootAbs }),
-      ],
-    };
-    await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: recoverBFile });
+    await writeDefaultLocalConfiguration(tmpRoot);
 
     const snap3 = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });
     assert.deepEqual(snap3.enabledApps.map((e) => e.id).sort(), [appA, appB]);
@@ -171,8 +220,6 @@ async function main(): Promise<void> {
     const appBAfterRecover = fileAfterRecover.apps.find((a) => a.id === appB) ?? null;
     assert.ok(appAAfterRecover);
     assert.ok(appBAfterRecover);
-    assert.equal(appAAfterRecover?.userEnabled, true);
-    assert.equal(appBAfterRecover?.userEnabled, true);
     assert.equal(appAAfterRecover?.enabled, true);
     assert.equal(appBAfterRecover?.enabled, true);
   } finally {

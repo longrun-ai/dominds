@@ -42,6 +42,31 @@ export type AppManifestLoadResult =
   | Readonly<{ kind: 'ok'; manifest: DomindsAppManifest; raw: string; filePathAbs: string }>
   | Readonly<{ kind: 'error'; errorText: string; filePathAbs: string }>;
 
+export const DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH = '.minds/app.yaml';
+
+export function makeDefaultRtwsAppManifest(id = 'rtws_root'): DomindsAppManifest {
+  return {
+    apiVersion: 'dominds.io/v1alpha1',
+    kind: 'DomindsApp',
+    id,
+  };
+}
+
+async function fileExists(filePathAbs: string): Promise<boolean> {
+  try {
+    await fs.access(filePathAbs);
+    return true;
+  } catch (err: unknown) {
+    const isEnoent =
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT';
+    if (isEnoent) return false;
+    throw err;
+  }
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -331,6 +356,127 @@ export async function loadDomindsAppManifest(params: {
   }
 
   return { kind: 'ok', manifest: normalized.manifest, raw, filePathAbs };
+}
+
+function canonicalizeManifest(manifest: DomindsAppManifest): DomindsAppManifest {
+  const dependencies = (() => {
+    if (!manifest.dependencies) return undefined;
+    const byId = new Map<string, DomindsAppDependency>();
+    for (const dep of manifest.dependencies) {
+      const id = dep.id.trim();
+      if (id === '') continue;
+      byId.set(id, { id, optional: dep.optional === true ? true : undefined });
+    }
+    const normalized = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+    return normalized.length > 0 ? normalized : undefined;
+  })();
+
+  return {
+    apiVersion: manifest.apiVersion,
+    kind: manifest.kind,
+    id: manifest.id,
+    dependencies: dependencies && dependencies.length > 0 ? dependencies : undefined,
+    name: manifest.name,
+    description: manifest.description,
+    contributes: manifest.contributes,
+  };
+}
+
+export async function writeDomindsAppManifest(params: {
+  packageRootAbs: string;
+  manifestRelPath: string;
+  manifest: DomindsAppManifest;
+}): Promise<void> {
+  const filePathAbs = path.resolve(params.packageRootAbs, params.manifestRelPath);
+  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
+  const yamlText = YAML.stringify(canonicalizeManifest(params.manifest));
+  await fs.writeFile(filePathAbs, yamlText, 'utf-8');
+}
+
+export async function writeDomindsAppManifestIfChanged(params: {
+  packageRootAbs: string;
+  manifestRelPath: string;
+  manifest: DomindsAppManifest;
+}): Promise<void> {
+  const filePathAbs = path.resolve(params.packageRootAbs, params.manifestRelPath);
+  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
+  const yamlText = YAML.stringify(canonicalizeManifest(params.manifest));
+  try {
+    const prev = await fs.readFile(filePathAbs, 'utf-8');
+    if (prev === yamlText) return;
+  } catch (err: unknown) {
+    const isEnoent =
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: unknown }).code === 'ENOENT';
+    if (!isEnoent) throw err;
+  }
+  await fs.writeFile(filePathAbs, yamlText, 'utf-8');
+}
+
+export async function loadRtwsDeclaredAppDependencies(params: {
+  rtwsRootAbs: string;
+}): Promise<ReadonlyArray<DomindsAppDependency>> {
+  const filePathAbs = path.resolve(params.rtwsRootAbs, DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH);
+  if (!(await fileExists(filePathAbs))) return [];
+
+  const loaded = await loadDomindsAppManifest({
+    packageRootAbs: params.rtwsRootAbs,
+    manifestRelPath: DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  });
+  if (loaded.kind === 'error') {
+    throw new Error(
+      `Failed to load rtws app manifest: ${loaded.errorText} (${loaded.filePathAbs})`,
+    );
+  }
+  return loaded.manifest.dependencies ?? [];
+}
+
+export async function hasRtwsDeclaredAppDependency(params: {
+  rtwsRootAbs: string;
+  appId: string;
+}): Promise<boolean> {
+  const appId = params.appId.trim();
+  if (appId === '') return false;
+  const deps = await loadRtwsDeclaredAppDependencies({ rtwsRootAbs: params.rtwsRootAbs });
+  return deps.some((dep) => dep.id === appId);
+}
+
+export function upsertManifestDependency(params: {
+  manifest: DomindsAppManifest;
+  dependency: DomindsAppDependency;
+}): DomindsAppManifest {
+  const nextDep: DomindsAppDependency = {
+    id: params.dependency.id.trim(),
+    optional: params.dependency.optional === true ? true : undefined,
+  };
+  if (nextDep.id === '') return params.manifest;
+
+  const deps = [...(params.manifest.dependencies ?? [])];
+  const idx = deps.findIndex((dep) => dep.id === nextDep.id);
+  if (idx >= 0) {
+    const prev = deps[idx];
+    if (prev && prev.optional === nextDep.optional) return params.manifest;
+    deps[idx] = nextDep;
+  } else {
+    deps.push(nextDep);
+  }
+  return canonicalizeManifest({ ...params.manifest, dependencies: deps });
+}
+
+export function removeManifestDependency(params: {
+  manifest: DomindsAppManifest;
+  dependencyId: string;
+}): DomindsAppManifest {
+  const dependencyId = params.dependencyId.trim();
+  if (dependencyId === '') return params.manifest;
+  const prevDeps = params.manifest.dependencies ?? [];
+  if (!prevDeps.some((dep) => dep.id === dependencyId)) return params.manifest;
+  return canonicalizeManifest({
+    ...params.manifest,
+    dependencies: prevDeps.filter((dep) => dep.id !== dependencyId),
+  });
 }
 
 export function resolveAppContribPaths(params: {

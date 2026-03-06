@@ -1,27 +1,24 @@
 #!/usr/bin/env node
 
-/**
- * uninstall subcommand for dominds CLI (Apps)
- *
- * Usage:
- *   dominds uninstall <appId> [--purge]
- */
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
-import fs from 'fs/promises';
-import path from 'path';
-
+import { loadAppLockFile, removeLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
 import {
-  APPS_RESOLUTION_REL_PATH,
-  findResolvedApp,
-  loadAppsResolutionFile,
-  removeResolvedApp,
-  writeAppsResolutionFile,
-} from '../apps/resolution-file';
+  loadAppsConfigurationFile,
+  setAppDisabledInConfiguration,
+  writeAppsConfigurationFileIfChanged,
+} from '../apps/configuration-file';
+import {
+  DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  loadDomindsAppManifest,
+  makeDefaultRtwsAppManifest,
+  removeManifestDependency,
+  writeDomindsAppManifestIfChanged,
+} from '../apps/manifest';
+import { refreshAppsDerivedState } from '../apps/workspace-app-state';
 
-type UninstallArgs = Readonly<{
-  appId: string;
-  purge: boolean;
-}>;
+type UninstallArgs = Readonly<{ appId: string; purge: boolean }>;
 
 function printHelp(): void {
   console.log(`Usage:
@@ -35,17 +32,17 @@ Options:
 function parseArgs(argv: readonly string[]): UninstallArgs {
   const positional: string[] = [];
   let purge = false;
-  for (const a of argv) {
-    if (a === '--help' || a === '-h') {
+  for (const arg of argv) {
+    if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
     }
-    if (a === '--purge') {
+    if (arg === '--purge') {
       purge = true;
       continue;
     }
-    if (a.startsWith('-')) throw new Error(`Unknown option: ${a}`);
-    positional.push(a);
+    if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
+    positional.push(arg);
   }
   if (positional.length !== 1) throw new Error('uninstall requires exactly one <appId>');
   return { appId: positional[0], purge };
@@ -63,26 +60,55 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
-  if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
+  const loadedManifest = await loadDomindsAppManifest({
+    packageRootAbs: rtwsRootAbs,
+    manifestRelPath: DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+  });
+  const manifest =
+    loadedManifest.kind === 'ok' ? loadedManifest.manifest : makeDefaultRtwsAppManifest();
+  const nextManifest = removeManifestDependency({
+    manifest,
+    dependencyId: args.appId,
+  });
+  if (nextManifest === manifest) {
+    console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
     process.exit(1);
     return;
   }
 
-  const found = findResolvedApp(loaded.file, args.appId);
-  if (!found) {
-    console.error(`Error: app '${args.appId}' not installed`);
+  await writeDomindsAppManifestIfChanged({
+    packageRootAbs: rtwsRootAbs,
+    manifestRelPath: DEFAULT_DOMINDS_APP_MANIFEST_REL_PATH,
+    manifest: nextManifest,
+  });
+
+  const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
+  if (loadedConfig.kind === 'error') {
+    console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
     process.exit(1);
     return;
   }
+  const nextConfig = setAppDisabledInConfiguration({
+    existing: loadedConfig.file,
+    appId: args.appId,
+    disabled: false,
+  });
+  await writeAppsConfigurationFileIfChanged({ rtwsRootAbs, file: nextConfig });
 
-  const next = removeResolvedApp({ existing: loaded.file, appId: args.appId });
-  await writeAppsResolutionFile({ rtwsRootAbs, file: next });
+  const loadedLock = await loadAppLockFile({ rtwsRootAbs });
+  if (loadedLock.kind === 'error') {
+    console.error(`Error: failed to read .minds/app-lock.yaml: ${loadedLock.errorText}`);
+    process.exit(1);
+    return;
+  }
+  const nextLock = removeLockedApp({ existing: loadedLock.file, appId: args.appId });
+  await writeAppLockFileIfChanged({ rtwsRootAbs, file: nextLock });
+
+  await refreshAppsDerivedState({ rtwsRootAbs });
 
   if (args.purge) {
-    const rtwsAppDirAbs = path.resolve(rtwsRootAbs, '.apps', args.appId);
-    await fs.rm(rtwsAppDirAbs, { recursive: true, force: true });
+    const appDirAbs = path.resolve(rtwsRootAbs, '.apps', args.appId);
+    await fs.rm(appDirAbs, { recursive: true, force: true });
     console.log(`Uninstalled app '${args.appId}' (purged rtws state: .apps/${args.appId}/)`);
   } else {
     console.log(`Uninstalled app '${args.appId}' (rtws data preserved under .apps/${args.appId}/)`);
@@ -92,7 +118,7 @@ async function main(): Promise<void> {
 export { main };
 
 if (require.main === module) {
-  main().catch((err) => {
+  main().catch((err: unknown) => {
     console.error('Unhandled error:', err);
     process.exit(1);
   });

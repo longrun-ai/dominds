@@ -1,19 +1,12 @@
 #!/usr/bin/env node
 
-/**
- * disable subcommand for dominds CLI (Apps)
- *
- * Usage:
- *   dominds disable <appId>
- */
-
 import {
-  APPS_RESOLUTION_REL_PATH,
-  findResolvedApp,
-  loadAppsResolutionFile,
-  setResolvedAppUserEnabled,
-  writeAppsResolutionFile,
-} from '../apps/resolution-file';
+  loadAppsConfigurationFile,
+  setAppDisabledInConfiguration,
+  writeAppsConfigurationFileIfChanged,
+} from '../apps/configuration-file';
+import { hasRtwsDeclaredAppDependency } from '../apps/manifest';
+import { refreshAppsDerivedState } from '../apps/workspace-app-state';
 
 type DisableArgs = Readonly<{ appId: string }>;
 
@@ -25,13 +18,13 @@ function printHelp(): void {
 
 function parseArgs(argv: readonly string[]): DisableArgs {
   const positional: string[] = [];
-  for (const a of argv) {
-    if (a === '--help' || a === '-h') {
+  for (const arg of argv) {
+    if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
     }
-    if (a.startsWith('-')) throw new Error(`Unknown option: ${a}`);
-    positional.push(a);
+    if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
+    positional.push(arg);
   }
   if (positional.length !== 1) throw new Error('disable requires exactly one <appId>');
   return { appId: positional[0] };
@@ -49,33 +42,33 @@ async function main(): Promise<void> {
   }
 
   const rtwsRootAbs = process.cwd();
-  const loaded = await loadAppsResolutionFile({ rtwsRootAbs });
-  if (loaded.kind === 'error') {
-    console.error(`Error: failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
+  if (!(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))) {
+    console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
     process.exit(1);
     return;
   }
 
-  const found = findResolvedApp(loaded.file, args.appId);
-  if (!found) {
-    console.error(`Error: app '${args.appId}' not installed`);
+  const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs });
+  if (loadedConfig.kind === 'error') {
+    console.error(`Error: failed to read .apps/configuration.yaml: ${loadedConfig.errorText}`);
     process.exit(1);
     return;
   }
 
-  const next = setResolvedAppUserEnabled({
-    existing: loaded.file,
+  const nextConfig = setAppDisabledInConfiguration({
+    existing: loadedConfig.file,
     appId: args.appId,
-    userEnabled: false,
+    disabled: true,
   });
-  await writeAppsResolutionFile({ rtwsRootAbs, file: next });
+  await writeAppsConfigurationFileIfChanged({ rtwsRootAbs, file: nextConfig });
+  await refreshAppsDerivedState({ rtwsRootAbs });
   console.log(`Disabled app '${args.appId}'`);
 }
 
 export { main };
 
 if (require.main === module) {
-  main().catch((err) => {
+  main().catch((err: unknown) => {
     console.error('Unhandled error:', err);
     process.exit(1);
   });

@@ -4,13 +4,10 @@ import { isDeepStrictEqual } from 'node:util';
 
 import YAML from 'yaml';
 
-import type { AppsResolutionSource } from './resolution-file';
-
 export type AppLockSchemaVersion = 1;
 
 export type AppLockEntry = Readonly<{
   id: string;
-  source: AppsResolutionSource;
   package: Readonly<{
     name: string;
     version: string | null;
@@ -37,43 +34,6 @@ function asNullableString(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
-function parseSource(
-  v: unknown,
-  at: string,
-): { ok: true; source: AppsResolutionSource } | { ok: false; errorText: string } {
-  if (!isRecord(v)) return { ok: false, errorText: `Invalid ${at}: expected object` };
-  const kind = asString(v['kind']);
-  if (kind !== 'npx' && kind !== 'local') {
-    return { ok: false, errorText: `Invalid ${at}.kind: expected 'npx'|'local'` };
-  }
-
-  if (kind === 'npx') {
-    const keys = Object.keys(v);
-    for (const k of keys) {
-      if (k !== 'kind' && k !== 'spec') {
-        return { ok: false, errorText: `Invalid ${at}: unknown key '${k}'` };
-      }
-    }
-    const spec = asString(v['spec']);
-    if (!spec || spec.trim() === '') {
-      return { ok: false, errorText: `Invalid ${at}.spec: required` };
-    }
-    return { ok: true, source: { kind, spec } };
-  }
-
-  const keys = Object.keys(v);
-  for (const k of keys) {
-    if (k !== 'kind' && k !== 'pathAbs') {
-      return { ok: false, errorText: `Invalid ${at}: unknown key '${k}'` };
-    }
-  }
-  const pathAbs = asString(v['pathAbs']);
-  if (!pathAbs || pathAbs.trim() === '') {
-    return { ok: false, errorText: `Invalid ${at}.pathAbs: required` };
-  }
-  return { ok: true, source: { kind, pathAbs } };
-}
-
 function parseEntry(
   v: unknown,
   at: string,
@@ -82,7 +42,7 @@ function parseEntry(
 
   const keys = Object.keys(v);
   for (const k of keys) {
-    if (k !== 'id' && k !== 'source' && k !== 'package') {
+    if (k !== 'id' && k !== 'package') {
       return { ok: false, errorText: `Invalid ${at}: unknown key '${k}'` };
     }
   }
@@ -90,23 +50,23 @@ function parseEntry(
   const id = asString(v['id']);
   if (!id || id.trim() === '') return { ok: false, errorText: `Invalid ${at}.id: required` };
 
-  const sourceParsed = parseSource(v['source'], `${at}.source`);
-  if (!sourceParsed.ok) return sourceParsed;
-
   const pkg = v['package'];
   if (!isRecord(pkg)) {
     return { ok: false, errorText: `Invalid ${at}.package: expected object` };
   }
+
   const pkgKeys = Object.keys(pkg);
   for (const k of pkgKeys) {
     if (k !== 'name' && k !== 'version') {
       return { ok: false, errorText: `Invalid ${at}.package: unknown key '${k}'` };
     }
   }
+
   const name = asString(pkg['name']);
   if (!name || name.trim() === '') {
     return { ok: false, errorText: `Invalid ${at}.package.name: required` };
   }
+
   const versionRaw = pkg['version'] ?? null;
   const version = asNullableString(versionRaw);
   if (version === null) {
@@ -120,23 +80,24 @@ function parseEntry(
   return {
     ok: true,
     entry: {
-      id,
-      source: sourceParsed.source,
-      package: { name, version },
+      id: id.trim(),
+      package: { name: name.trim(), version },
     },
   };
 }
 
 function canonicalizeLockFile(file: AppLockFile): AppLockFile {
   const byId = new Map<string, AppLockEntry>();
-  for (const e of file.apps) {
-    if (byId.has(e.id)) {
-      throw new Error(`Invalid ${APP_LOCK_REL_PATH}: duplicate app id '${e.id}'`);
+  for (const entry of file.apps) {
+    if (byId.has(entry.id)) {
+      throw new Error(`Invalid ${APP_LOCK_REL_PATH}: duplicate app id '${entry.id}'`);
     }
-    byId.set(e.id, e);
+    byId.set(entry.id, entry);
   }
-  const apps = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
-  return { schemaVersion: 1, apps };
+  return {
+    schemaVersion: 1,
+    apps: [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)),
+  };
 }
 
 export function parseAppLockFile(
@@ -172,9 +133,10 @@ export function parseAppLockFile(
 
   const apps: AppLockEntry[] = [];
   for (let i = 0; i < appsRaw.length; i += 1) {
-    const e = parseEntry(appsRaw[i], `apps[${i}]`);
-    if (!e.ok) return { ok: false, errorText: `${e.errorText} (${filePathAbs})` };
-    apps.push(e.entry);
+    const parsedEntry = parseEntry(appsRaw[i], `apps[${i}]`);
+    if (!parsedEntry.ok)
+      return { ok: false, errorText: `${parsedEntry.errorText} (${filePathAbs})` };
+    apps.push(parsedEntry.entry);
   }
 
   try {
@@ -229,18 +191,30 @@ export async function loadAppLockFile(params: {
   return { kind: 'ok', filePathAbs, exists: true, file: lockParsed.file };
 }
 
+export function findLockedApp(file: AppLockFile, appId: string): AppLockEntry | null {
+  return file.apps.find((entry) => entry.id === appId) ?? null;
+}
+
 export function upsertLockedApp(params: {
   existing: AppLockFile;
   next: AppLockEntry;
 }): AppLockFile {
-  const existingEntry = params.existing.apps.find((a) => a.id === params.next.id) ?? null;
+  const existingEntry = findLockedApp(params.existing, params.next.id);
   if (existingEntry && isDeepStrictEqual(existingEntry, params.next)) return params.existing;
 
   const apps = [...params.existing.apps];
-  const idx = apps.findIndex((a) => a.id === params.next.id);
+  const idx = apps.findIndex((entry) => entry.id === params.next.id);
   if (idx >= 0) apps[idx] = params.next;
   else apps.push(params.next);
   return canonicalizeLockFile({ schemaVersion: 1, apps });
+}
+
+export function removeLockedApp(params: { existing: AppLockFile; appId: string }): AppLockFile {
+  if (!params.existing.apps.some((entry) => entry.id === params.appId)) return params.existing;
+  return canonicalizeLockFile({
+    schemaVersion: 1,
+    apps: params.existing.apps.filter((entry) => entry.id !== params.appId),
+  });
 }
 
 export async function writeAppLockFileIfChanged(params: {
@@ -250,14 +224,12 @@ export async function writeAppLockFileIfChanged(params: {
   const canonical = canonicalizeLockFile(params.file);
   const loaded = await loadAppLockFile({ rtwsRootAbs: params.rtwsRootAbs });
   if (loaded.kind === 'error') {
-    // Avoid overwriting user edits if the existing file is corrupt.
     throw new Error(`Failed to read ${APP_LOCK_REL_PATH}: ${loaded.errorText}`);
   }
   if (loaded.exists) {
-    const prevCanonical = canonicalizeLockFile(loaded.file);
-    if (isDeepStrictEqual(prevCanonical, canonical)) return;
-  } else {
-    if (canonical.apps.length === 0) return;
+    if (isDeepStrictEqual(canonicalizeLockFile(loaded.file), canonical)) return;
+  } else if (canonical.apps.length === 0) {
+    return;
   }
 
   const mindsDirAbs = path.resolve(params.rtwsRootAbs, '.minds');

@@ -12,6 +12,55 @@ async function writeText(p: string, content: string): Promise<void> {
   await fs.writeFile(p, content, 'utf-8');
 }
 
+async function writeLocalAppPackage(params: {
+  packageRootAbs: string;
+  appId: string;
+  teammatesYamlRelPath?: string;
+}): Promise<void> {
+  await writeText(
+    path.join(params.packageRootAbs, 'package.json'),
+    JSON.stringify(
+      {
+        name: params.appId,
+        version: '0.0.0',
+        bin: 'bin.js',
+      },
+      null,
+      2,
+    ),
+  );
+  const contributesLines =
+    params.teammatesYamlRelPath === undefined
+      ? []
+      : [
+          `  contributes: { teammatesYamlRelPath: ${JSON.stringify(params.teammatesYamlRelPath)} },`,
+        ];
+  await writeText(
+    path.join(params.packageRootAbs, 'bin.js'),
+    [
+      "'use strict';",
+      "if (!process.argv.includes('--json')) throw new Error('expected --json');",
+      'const json = {',
+      '  schemaVersion: 1,',
+      `  appId: ${JSON.stringify(params.appId)},`,
+      '  package: {',
+      `    name: ${JSON.stringify(params.appId)},`,
+      "    version: '0.0.0',",
+      '    rootAbs: process.cwd(),',
+      '  },',
+      "  host: { kind: 'node_module', moduleRelPath: 'index.js', exportName: 'main' },",
+      ...contributesLines,
+      '};',
+      'process.stdout.write(JSON.stringify(json));',
+      '',
+    ].join('\n'),
+  );
+  await writeText(
+    path.join(params.packageRootAbs, '.minds', 'app.yaml'),
+    ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', `id: ${params.appId}`, ''].join('\n'),
+  );
+}
+
 function listTeamProblems(): string[] {
   const snapshot = getProblemsSnapshot();
   return snapshot.problems
@@ -147,32 +196,22 @@ async function main(): Promise<void> {
     // Case 5: from+use should import config from enabled app teammates YAML (with local overrides winning).
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
+      path.join(tmpRoot, '.minds', 'app.yaml'),
       [
-        'schemaVersion: 1',
-        'apps:',
+        'apiVersion: dominds.io/v1alpha1',
+        'kind: DomindsApp',
+        'id: rtws_root',
+        'dependencies:',
         '  - id: common_agents',
-        '    enabled: true',
-        '    source:',
-        '      kind: local',
-        `      pathAbs: ${JSON.stringify(path.join(tmpRoot, 'app-common-agents'))}`,
-        '    assignedPort: null',
-        '    installJson:',
-        '      schemaVersion: 1',
-        '      appId: common_agents',
-        '      package:',
-        '        name: app-common-agents',
-        '        version: null',
-        `        rootAbs: ${JSON.stringify(path.join(tmpRoot, 'app-common-agents'))}`,
-        '      host:',
-        '        kind: node_module',
-        '        moduleRelPath: index.js',
-        '        exportName: main',
-        '      contributes:',
-        '        teammatesYamlRelPath: team.yaml',
         '',
       ].join('\n'),
     );
+    const commonAgentsRoot = path.join(tmpRoot, 'dominds-apps', 'common_agents');
+    await writeLocalAppPackage({
+      packageRootAbs: commonAgentsRoot,
+      appId: 'common_agents',
+      teammatesYamlRelPath: 'team.yaml',
+    });
     await writeText(
       path.join(tmpRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
       [
@@ -184,10 +223,6 @@ async function main(): Promise<void> {
         '    toolsets: [repo_tools]',
         '',
       ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, 'app-common-agents', '.minds', 'app.yaml'),
-      ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', 'id: common_agents', ''].join('\n'),
     );
     await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),
