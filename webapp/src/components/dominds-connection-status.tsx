@@ -93,7 +93,6 @@ export class DomindsConnectionStatus extends HTMLElement {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        --status-text-optical-offset-y: -1px;
       }
 
       .status-container {
@@ -191,7 +190,6 @@ export class DomindsConnectionStatus extends HTMLElement {
         height: 100%;
         font-weight: 500;
         line-height: 1;
-        transform: translateY(var(--status-text-optical-offset-y));
         white-space: nowrap;
       }
 
