@@ -23,9 +23,16 @@ Dominds 是一款面向开发运作（DevOps）场景的智能体框架，它将
 
 ### 环境要求
 
-- **Node.js（含 npm）**：版本 22.x 及以上
+- **Node.js（含 npm）**：版本 24.x LTS
+- **npm（如直接使用）**：使用当前安装的 Node.js 24 LTS 自带 npm；本仓库当前最低要求为 `11.9.0`，更高版本也允许。
 - **至少一个可用的 LLM 服务提供商**：Dominds 内置提供商目录（路径：[main/llm/defaults.yaml](./main/llm/defaults.yaml)），需为其中至少一个提供商配置有效凭证（通过环境变量设置）。
-- **pnpm（可选）**：仅在开发 Dominds 本体时推荐安装。
+- **pnpm（可选）**：仅在开发 Dominds 本体时推荐使用。优先执行一次 `npm run setup:pm` 启用并缓存仓库固定的 pnpm；若你的环境无法启用 Corepack shim，再手动安装 `pnpm@10`。
+
+开发本仓库时，建议在 `nvm use --lts` 之后先执行一次：
+
+```bash
+npm run setup:pm
+```
 
 ### 安装 Dominds
 

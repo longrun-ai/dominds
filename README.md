@@ -69,9 +69,16 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 
 ### Prerequisites
 
-- **Node.js (with npm bundled)**: Version 22.x or later
+- **Node.js (with npm bundled)**: Version 24.x LTS
+- **npm (if used directly)**: Use the npm bundled with your installed Node.js 24 LTS; current minimum in this repo is `11.9.0`, and newer versions are allowed.
 - **LLM provider configured for your team**: Dominds ships with a built-in provider catalog [main/llm/defaults.yaml](./main/llm/defaults.yaml) including Codex (ChatGPT) and Anthropic, plus several Anthropic-compatible endpoints (e.g. MiniMax, Z.ai, BigModel). You’ll need valid credentials for at least one provider.
-- **pnpm (optional)**: Recommended only if you’re developing Dominds itself.
+- **pnpm (optional)**: Recommended only if you’re developing Dominds itself. Prefer enabling the pinned CLI once via `npm run setup:pm`. If Corepack shims cannot be enabled in your environment, install `pnpm@10` manually.
+
+For repo development, initialize the package manager once after `nvm use --lts`:
+
+```bash
+npm run setup:pm
+```
 
 ### Install Dominds
 

@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "ChatGPT OAuth helpers compatible with Codex auth.json",
   "license": "LGPL-3.0-or-later",
   "repository": {
@@ -29,7 +29,8 @@
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24 <25",
+    "npm": ">=11.9.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -41,7 +42,7 @@
     "undici": "^7.22.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.3",
+    "@types/node": "^25.3.5",
     "prettier": "^3.8.1",
     "prettier-plugin-organize-imports": "^4.3.0",
     "typescript": "^5.9.3"

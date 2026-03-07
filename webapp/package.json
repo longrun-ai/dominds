@@ -16,9 +16,9 @@
     "lint:types": "tsc -p src/tsconfig.json --noEmit"
   },
   "dependencies": {
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.3.2",
     "highlight.js": "^11.11.1",
-    "katex": "^0.16.33",
+    "katex": "^0.16.37",
     "markdown-it": "^14.1.1",
     "mermaid": "^11.12.3"
   },

@@ -501,7 +501,7 @@ export const rmDirTool: FuncTool = {
         }
       }
 
-      // Node.js >=22+ types deprecate recursive rmdir in favor of rm.
+      // Modern Node.js types deprecate recursive rmdir in favor of rm.
       await fs.rm(targetPath, { recursive, force: false });
 
       if (pathInfo.isSymlink) {
