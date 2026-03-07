@@ -623,7 +623,10 @@ async function maybeTriggerImmediateDiligencePrompt(rootDialog: RootDialog): Pro
     }
 
     if (prepared.kind === 'prompt') {
-      await driveDialogStream(rootDialog, prepared.prompt, true);
+      await driveDialogStream(rootDialog, prepared.prompt, true, {
+        source: 'ws_diligence_push',
+        reason: 'enable_keep_going_immediate_prompt',
+      });
     }
   } catch (error) {
     log.warn('Failed to trigger immediate diligence prompt after enabling keep-going', error, {
@@ -1326,7 +1329,10 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
           origin: 'user',
         },
         true,
-        undefined,
+        {
+          source: 'ws_user_message',
+          reason: 'drive_dlg_by_user_msg',
+        },
       );
       return;
     }
@@ -1368,7 +1374,10 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
           origin: 'user',
         },
         true,
-        undefined,
+        {
+          source: 'ws_user_message',
+          reason: 'drive_dlg_by_user_msg',
+        },
       );
       return;
     } catch (restoreError) {
@@ -1467,7 +1476,11 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
   }
 
   const restored = await restoreDialogForDrive(dialogIdObj, 'running');
-  await driveDialogStream(restored, undefined, true, { allowResumeFromInterrupted: true });
+  await driveDialogStream(restored, undefined, true, {
+    allowResumeFromInterrupted: true,
+    source: 'ws_resume_dialog',
+    reason: 'resume_dialog',
+  });
 }
 
 async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise<void> {
@@ -1482,7 +1495,11 @@ async function handleResumeAll(ws: WebSocket, packet: ResumeAllRequest): Promise
     void (async () => {
       try {
         const dlg = await restoreDialogForDrive(id, 'running');
-        await driveDialogStream(dlg, undefined, true, { allowResumeFromInterrupted: true });
+        await driveDialogStream(dlg, undefined, true, {
+          allowResumeFromInterrupted: true,
+          source: 'ws_resume_all',
+          reason: 'resume_all',
+        });
       } catch (err) {
         log.warn('resume_all: failed to resume dialog', err, { dialogId: id.valueOf() });
       }
@@ -1646,7 +1663,10 @@ async function handleUserAnswer2Q4H(ws: WebSocket, packet: DriveDialogByUserAnsw
         origin: 'user',
       },
       true,
-      undefined,
+      {
+        source: 'ws_user_answer',
+        reason: 'drive_dialog_by_user_answer',
+      },
     );
   } catch (error) {
     log.error('Error processing Q4H user answer:', error);

@@ -12,10 +12,27 @@ export type KernelDriverRunControl = Readonly<{
   }>;
 }>;
 
+export type KernelDriverDriveSource =
+  | 'unspecified'
+  | 'ws_user_message'
+  | 'ws_user_answer'
+  | 'ws_diligence_push'
+  | 'ws_resume_dialog'
+  | 'ws_resume_all'
+  | 'kernel_driver_backend_loop'
+  | 'kernel_driver_follow_up'
+  | 'kernel_driver_subdialog_init'
+  | 'kernel_driver_subdialog_resume'
+  | 'kernel_driver_fbr_subdialog_round'
+  | 'kernel_driver_type_a_supdialog_call'
+  | 'kernel_driver_supply_response_parent_revive';
+
 export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
   allowResumeFromInterrupted?: boolean;
   runControl?: KernelDriverRunControl;
+  source: KernelDriverDriveSource;
+  reason: string;
 }>;
 
 export type KernelDriverSubdialogReplyTarget = {
@@ -36,11 +53,17 @@ export interface KernelDriverHumanPrompt {
   runControl?: KernelDriverRunControl;
 }
 
-export type KernelDriverDriveCallOptions = {
-  humanPrompt?: KernelDriverHumanPrompt;
-  waitInQue: boolean;
-  driveOptions?: KernelDriverDriveOptions;
-};
+export type KernelDriverDriveCallOptions =
+  | Readonly<{
+      humanPrompt: KernelDriverHumanPrompt;
+      waitInQue: boolean;
+      driveOptions?: KernelDriverDriveOptions;
+    }>
+  | Readonly<{
+      humanPrompt?: undefined;
+      waitInQue: boolean;
+      driveOptions: KernelDriverDriveOptions;
+    }>;
 
 export type KernelDriverDriveScheduler = (
   dialog: Dialog,
@@ -51,12 +74,19 @@ export type KernelDriverDriveInvoker = (
   options: KernelDriverDriveCallOptions,
 ) => Promise<void>;
 
-export type KernelDriverDriveArgs = [
-  dlg: Dialog,
-  humanPrompt?: KernelDriverHumanPrompt,
-  waitInQue?: boolean,
-  driveOptions?: KernelDriverDriveOptions,
-];
+export type KernelDriverDriveArgs =
+  | readonly [
+      dlg: Dialog,
+      humanPrompt: KernelDriverHumanPrompt,
+      waitInQue: boolean,
+      driveOptions?: KernelDriverDriveOptions,
+    ]
+  | readonly [
+      dlg: Dialog,
+      humanPrompt: undefined,
+      waitInQue: boolean,
+      driveOptions: KernelDriverDriveOptions,
+    ];
 
 export type KernelDriverDriveResult = Promise<void>;
 

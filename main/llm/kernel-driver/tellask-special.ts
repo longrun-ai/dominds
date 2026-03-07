@@ -858,7 +858,14 @@ async function executeTellaskCall(
             : {}),
         };
         try {
-          await callbacks.driveDialog(sub, { humanPrompt: initPrompt, waitInQue: true });
+          await callbacks.driveDialog(sub, {
+            humanPrompt: initPrompt,
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_fbr_subdialog_round',
+              reason: `fbr_round_${i}_of_${fbrEffort}`,
+            },
+          });
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           log.error('FBR Type C serial drive failed', error, {
@@ -947,7 +954,14 @@ async function executeTellaskCall(
             grammar: 'markdown',
             origin: 'runtime',
           };
-          await callbacks.driveDialog(supdialog, { humanPrompt: supPrompt, waitInQue: true });
+          await callbacks.driveDialog(supdialog, {
+            humanPrompt: supPrompt,
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_type_a_supdialog_call',
+              reason: 'type_a_supdialog_roundtrip',
+            },
+          });
 
           const responseText = await extractSupdialogResponseForTypeA(supdialog);
           const responseContent = formatTeammateResponseContent({
@@ -1093,7 +1107,14 @@ async function executeTellaskCall(
               callId,
             },
           };
-          callbacks.scheduleDrive(sub, { humanPrompt: initPrompt, waitInQue: true });
+          callbacks.scheduleDrive(sub, {
+            humanPrompt: initPrompt,
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_subdialog_init',
+              reason: 'type_b_fallback_subdialog_init',
+            },
+          });
           subdialogsCreated.push(sub.id);
           suspend = true;
         } catch (err) {
@@ -1191,7 +1212,14 @@ async function executeTellaskCall(
               callId,
             },
           };
-          callbacks.scheduleDrive(result.subdialog, { humanPrompt: resumePrompt, waitInQue: true });
+          callbacks.scheduleDrive(result.subdialog, {
+            humanPrompt: resumePrompt,
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_subdialog_resume',
+              reason: 'type_b_registered_subdialog_resume',
+            },
+          });
         } else {
           const initPrompt: KernelDriverHumanPrompt = {
             content: formatAssignmentFromSupdialog({
@@ -1213,7 +1241,14 @@ async function executeTellaskCall(
               callId,
             },
           };
-          callbacks.scheduleDrive(result.subdialog, { humanPrompt: initPrompt, waitInQue: true });
+          callbacks.scheduleDrive(result.subdialog, {
+            humanPrompt: initPrompt,
+            waitInQue: true,
+            driveOptions: {
+              source: 'kernel_driver_subdialog_init',
+              reason: 'type_b_registered_subdialog_init',
+            },
+          });
         }
 
         subdialogsCreated.push(result.subdialog.id);
@@ -1268,7 +1303,14 @@ async function executeTellaskCall(
             callId,
           },
         };
-        callbacks.scheduleDrive(sub, { humanPrompt: initPrompt, waitInQue: true });
+        callbacks.scheduleDrive(sub, {
+          humanPrompt: initPrompt,
+          waitInQue: true,
+          driveOptions: {
+            source: 'kernel_driver_subdialog_init',
+            reason: 'type_c_subdialog_init',
+          },
+        });
         subdialogsCreated.push(sub.id);
         suspend = true;
       } catch (err) {

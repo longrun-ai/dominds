@@ -18,7 +18,6 @@ async function main(): Promise<void> {
 
   try {
     process.chdir(tmpRoot);
-    DialogPersistence.setWorkspaceRoot(tmpRoot);
 
     // Dialog A: was proceeding when server crashed => becomes interrupted (resumable) after reconcile.
     const aRoot = 'dlg-a';

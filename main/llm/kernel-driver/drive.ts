@@ -77,6 +77,7 @@ import {
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
+  KernelDriverDriveCallOptions,
   KernelDriverHumanPrompt,
 } from './types';
 
@@ -861,22 +862,8 @@ async function executeFunctionRound(args: {
   agentTools: readonly Tool[];
   funcCalls: readonly FuncCallMsg[];
   callbacks?: {
-    scheduleDrive: (
-      dialog: Dialog,
-      options: {
-        humanPrompt?: KernelDriverDriveArgs[1];
-        waitInQue: boolean;
-        driveOptions?: KernelDriverDriveArgs[3];
-      },
-    ) => void;
-    driveDialog: (
-      dialog: Dialog,
-      options: {
-        humanPrompt?: KernelDriverDriveArgs[1];
-        waitInQue: boolean;
-        driveOptions?: KernelDriverDriveArgs[3];
-      },
-    ) => Promise<void>;
+    scheduleDrive: (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
+    driveDialog: (dialog: Dialog, options: KernelDriverDriveCallOptions) => Promise<void>;
   };
   abortSignal: AbortSignal | undefined;
 }): Promise<RoutedFunctionResult> {
@@ -1189,22 +1176,8 @@ export async function driveDialogStreamCore(
   humanPrompt?: KernelDriverDriveArgs[1],
   driveOptions?: KernelDriverDriveArgs[3],
   callbacks?: {
-    scheduleDrive: (
-      dialog: Dialog,
-      options: {
-        humanPrompt?: KernelDriverDriveArgs[1];
-        waitInQue: boolean;
-        driveOptions?: KernelDriverDriveArgs[3];
-      },
-    ) => void;
-    driveDialog: (
-      dialog: Dialog,
-      options: {
-        humanPrompt?: KernelDriverDriveArgs[1];
-        waitInQue: boolean;
-        driveOptions?: KernelDriverDriveArgs[3];
-      },
-    ) => Promise<void>;
+    scheduleDrive: (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
+    driveDialog: (dialog: Dialog, options: KernelDriverDriveCallOptions) => Promise<void>;
   },
 ): Promise<KernelDriverCoreResult> {
   const suppressDiligencePushForDrive = driveOptions?.suppressDiligencePush === true;

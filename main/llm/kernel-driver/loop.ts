@@ -36,7 +36,10 @@ async function driveQueuedDialogsOnce(): Promise<void> {
         continue;
       }
 
-      await driveDialogStream(rootDialog, undefined, true);
+      await driveDialogStream(rootDialog, undefined, true, {
+        source: 'kernel_driver_backend_loop',
+        reason: 'global_dialog_registry_needs_drive',
+      });
 
       const status = await rootDialog.getSuspensionStatus();
       const shouldStayQueued = rootDialog.hasUpNext() || !status.canDrive;

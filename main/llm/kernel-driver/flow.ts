@@ -11,6 +11,7 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import { formatAgentFacingContextHealthV3RemediationGuide } from '../../shared/i18n/driver-messages';
 import { getWorkLanguage } from '../../shared/runtime-language';
+import type { DialogRunState } from '../../shared/types/run-state';
 import { generateShortId } from '../../shared/utils/id';
 import { LlmConfig } from '../client';
 import {
@@ -32,8 +33,10 @@ import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
   KernelDriverDriveInvoker,
+  KernelDriverDriveOptions,
   KernelDriverDriveResult,
   KernelDriverDriveScheduler,
+  KernelDriverDriveSource,
   KernelDriverHumanPrompt,
   KernelDriverRunControl,
   KernelDriverRuntimeState,
@@ -111,6 +114,104 @@ async function loadPendingDiagnosticsSnapshot(args: {
   }
 }
 
+function resolveDriveRequestSource(
+  humanPrompt: KernelDriverHumanPrompt | undefined,
+  driveOptions: KernelDriverDriveOptions | undefined,
+): KernelDriverDriveSource {
+  if (driveOptions?.source) {
+    return driveOptions.source;
+  }
+  if (humanPrompt?.origin === 'user') {
+    return 'ws_user_message';
+  }
+  return 'unspecified';
+}
+
+async function inspectNoPromptSubdialogDrive(args: {
+  dialog: SubDialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): Promise<
+  | {
+      shouldReject: false;
+      source: KernelDriverDriveSource;
+      runState: DialogRunState | undefined;
+      currentCourse: number;
+      lastEvent:
+        | {
+            type: string;
+            anchorRole?: 'assignment' | 'response';
+          }
+        | undefined;
+    }
+  | {
+      shouldReject: true;
+      source: KernelDriverDriveSource;
+      rejection:
+        | 'finalized_after_response_anchor'
+        | 'missing_explicit_interrupted_resume_entitlement';
+      runState: DialogRunState | undefined;
+      currentCourse: number;
+      lastEvent:
+        | {
+            type: string;
+            anchorRole?: 'assignment' | 'response';
+          }
+        | undefined;
+    }
+> {
+  const source = resolveDriveRequestSource(undefined, args.driveOptions);
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  const runState = latest?.runState;
+  const rawCourse = latest?.currentCourse ?? args.dialog.currentCourse;
+  const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
+  const courseEvents = await DialogPersistence.loadCourseEvents(
+    args.dialog.id,
+    currentCourse,
+    args.dialog.status,
+  );
+  const rawLastEvent = courseEvents[courseEvents.length - 1];
+  const lastEvent =
+    rawLastEvent?.type === 'teammate_call_anchor_record'
+      ? { type: rawLastEvent.type, anchorRole: rawLastEvent.anchorRole }
+      : rawLastEvent
+        ? { type: rawLastEvent.type }
+        : undefined;
+
+  const explicitInterruptedResumeAllowed =
+    args.driveOptions?.allowResumeFromInterrupted === true && runState?.kind === 'interrupted';
+  const supplyResponseParentReviveAllowed =
+    source === 'kernel_driver_supply_response_parent_revive' &&
+    runState?.kind === 'blocked' &&
+    runState.reason.kind === 'waiting_for_subdialogs';
+  if (lastEvent?.type === 'teammate_call_anchor_record' && lastEvent.anchorRole === 'response') {
+    return {
+      shouldReject: true,
+      source,
+      rejection: 'finalized_after_response_anchor',
+      runState,
+      currentCourse,
+      lastEvent,
+    };
+  }
+  if (!explicitInterruptedResumeAllowed && !supplyResponseParentReviveAllowed) {
+    return {
+      shouldReject: true,
+      source,
+      rejection: 'missing_explicit_interrupted_resume_entitlement',
+      runState,
+      currentCourse,
+      lastEvent,
+    };
+  }
+  return {
+    shouldReject: false,
+    source,
+    runState,
+    currentCourse,
+    lastEvent,
+  };
+}
+
 function resolveEffectivePrompt(
   dialog: KernelDriverDriveArgs[0],
   humanPrompt?: KernelDriverHumanPrompt,
@@ -156,6 +257,7 @@ export async function executeDriveRound(args: {
   let subdialogReplyTarget: SubdialogReplyTarget | undefined;
   const allowResumeFromInterrupted =
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
+  const driveSource = resolveDriveRequestSource(humanPrompt, driveOptions);
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
     // reliably interrupt queued auto-revive drives during preflight.
@@ -212,6 +314,38 @@ export async function executeDriveRound(args: {
     // suspended by pending Q4H or subdialogs. This prevents duplicate generations when
     // multiple wake-ups race around the same subdialog completion boundary.
     if (!humanPrompt) {
+      if (dialog instanceof SubDialog && !dialog.hasUpNext()) {
+        try {
+          const inspection = await inspectNoPromptSubdialogDrive({ dialog, driveOptions });
+          if (inspection.shouldReject) {
+            log.error('Rejected unexpected no-prompt subdialog drive request', undefined, {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              source: inspection.source,
+              reason: driveOptions?.reason ?? null,
+              rejection: inspection.rejection,
+              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+              runState: inspection.runState ?? null,
+              currentCourse: inspection.currentCourse,
+              lastEvent: inspection.lastEvent ?? null,
+              waitInQue,
+            });
+            return;
+          }
+        } catch (err) {
+          log.error('Failed to inspect unexpected no-prompt subdialog drive request', err, {
+            dialogId: dialog.id.valueOf(),
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            source: driveSource,
+            reason: driveOptions?.reason ?? null,
+            allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+          });
+          return;
+        }
+      }
+
       const suspension = await dialog.getSuspensionStatus();
       if (!suspension.canDrive) {
         const lastTrigger = globalDialogRegistry.getLastDriveTrigger(dialog.id.rootId);
@@ -237,6 +371,8 @@ export async function executeDriveRound(args: {
                 nextNeedsDrive: lastTrigger.nextNeedsDrive,
               }
             : null,
+          source: driveSource,
+          reason: driveOptions?.reason ?? null,
         });
         return;
       }
@@ -450,6 +586,10 @@ export async function executeDriveRound(args: {
   if (followUp) {
     args.scheduleDrive(dialog, {
       waitInQue: true,
+      driveOptions: {
+        source: 'kernel_driver_follow_up',
+        reason: 'follow_up_prompt',
+      },
       humanPrompt: {
         content: followUp.prompt,
         msgId: followUp.msgId,

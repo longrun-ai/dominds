@@ -483,7 +483,11 @@ export async function supplyResponseToSupdialog(args: {
       if (!isRoot || !hasRegistryEntry) {
         scheduleDrive(parentDialog, {
           waitInQue: true,
-          driveOptions: { suppressDiligencePush: parentDialog.disableDiligencePush },
+          driveOptions: {
+            suppressDiligencePush: parentDialog.disableDiligencePush,
+            source: 'kernel_driver_supply_response_parent_revive',
+            reason: `all_pending_subdialogs_resolved:type_${callType}`,
+          },
         });
       }
     }

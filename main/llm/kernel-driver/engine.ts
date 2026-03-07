@@ -6,6 +6,7 @@ import { supplyResponseToSupdialog as supplyResponseToSupdialogInternal } from '
 import type {
   KernelDriverCoreResult,
   KernelDriverDriveArgs,
+  KernelDriverDriveCallOptions,
   KernelDriverDriveResult,
   KernelDriverEmitSayingArgs,
   KernelDriverEmitSayingResult,
@@ -13,6 +14,13 @@ import type {
   KernelDriverSupplyResponseResult,
 } from './types';
 import { createKernelDriverRuntimeState } from './types';
+
+function dispatchDrive(dialog: Dialog, options: KernelDriverDriveCallOptions): Promise<void> {
+  if (options.humanPrompt) {
+    return driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
+  }
+  return driveDialogStream(dialog, undefined, options.waitInQue, options.driveOptions);
+}
 
 export async function driveDialogStream(
   ...driveArgs: KernelDriverDriveArgs
@@ -22,10 +30,10 @@ export async function driveDialogStream(
     runtime,
     driveArgs,
     scheduleDrive: (dialog, options) => {
-      void driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
+      void dispatchDrive(dialog, options);
     },
     driveDialog: async (dialog, options) => {
-      await driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
+      await dispatchDrive(dialog, options);
     },
   });
 }
@@ -51,7 +59,7 @@ export async function supplyResponseToSupdialog(
     status,
     calleeResponseRef,
     scheduleDrive: (dialog, options) => {
-      void driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
+      void dispatchDrive(dialog, options);
     },
   });
 }
@@ -61,22 +69,8 @@ export async function driveDialogStreamCore(
   humanPrompt?: KernelDriverDriveArgs[1],
   driveOptions?: KernelDriverDriveArgs[3],
   callbacks?: {
-    scheduleDrive: (
-      dialog: Dialog,
-      options: {
-        humanPrompt?: KernelDriverDriveArgs[1];
-        waitInQue: boolean;
-        driveOptions?: KernelDriverDriveArgs[3];
-      },
-    ) => void;
-    driveDialog: (
-      dialog: Dialog,
-      options: {
-        humanPrompt?: KernelDriverDriveArgs[1];
-        waitInQue: boolean;
-        driveOptions?: KernelDriverDriveArgs[3];
-      },
-    ) => Promise<void>;
+    scheduleDrive: (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
+    driveDialog: (dialog: Dialog, options: KernelDriverDriveCallOptions) => Promise<void>;
   },
 ): Promise<KernelDriverCoreResult> {
   return await driveDialogStreamCoreInternal(dlg, humanPrompt, driveOptions, callbacks);
@@ -100,7 +94,7 @@ export async function supplyResponseToSubdialogBridge(
     status,
     calleeResponseRef,
     scheduleDrive: (dialog, options) => {
-      void driveDialogStream(dialog, options.humanPrompt, options.waitInQue, options.driveOptions);
+      void dispatchDrive(dialog, options);
     },
   });
 }
