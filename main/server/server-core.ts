@@ -7,7 +7,6 @@ import * as http from 'http';
 import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
-import * as url from 'url';
 import type { WebSocket } from 'ws';
 import { createLogger } from '../log';
 import { ApiRouteContext, handleApiRoute, handleWorkspaceFilePreviewPage } from './api-routes';
@@ -16,6 +15,23 @@ import { getHttpAuthCheck } from './auth';
 import { serveStatic } from './static-server';
 
 const log = createLogger('server-core');
+
+function toParsedUrlQuery(searchParams: URLSearchParams): ParsedUrlQuery {
+  const query: ParsedUrlQuery = {};
+  for (const [key, value] of searchParams.entries()) {
+    const existing = query[key];
+    if (existing === undefined) {
+      query[key] = value;
+      continue;
+    }
+    if (typeof existing === 'string') {
+      query[key] = [existing, value];
+      continue;
+    }
+    existing.push(value);
+  }
+  return query;
+}
 
 export interface ServerConfig {
   port: number;
@@ -61,9 +77,9 @@ export class HttpServerCore {
    */
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      const parsedUrl = url.parse(req.url || '', true);
-      const pathname = parsedUrl.pathname || '/';
-      const query = parsedUrl.query;
+      const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
+      const pathname = requestUrl.pathname || '/';
+      const query = toParsedUrlQuery(requestUrl.searchParams);
 
       // Set CORS headers for development
       if (this.config.mode === 'development') {
